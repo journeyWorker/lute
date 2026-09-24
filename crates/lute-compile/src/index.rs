@@ -16,6 +16,9 @@
 //! - `entities` / `enums` / `relations` by `name` — the SAME name-sorted rule a
 //!   single artifact already follows (`RelVocab`'s maps are `BTreeMap`s);
 //! - `prereqEdges` by `node`, matching the single artifact's own rule;
+//! - `entries` (dsl 0.19.0 §7) by document `path`, then document order
+//!   within each lore document — the declaration order an engine uses as
+//!   its eligibility tiebreak;
 //! - `seedFacts` by `(relation, args)` and `rules` by `(head relation, raw)`.
 //!   A single artifact emits these two in vocabulary (import-then-inline)
 //!   order, which is only meaningful WITHIN one document — a union has no such
@@ -53,11 +56,33 @@ pub struct IndexDocument {
     pub artifact: String,
     pub kind: DocKind,
     /// The document's canonical node key: a scene's `{character}.{episodeId}`
-    /// ([`canonical_episode_key`]) or a quest document's first declared
-    /// `<quest id>` (document order = addressing order). A quest PACK's
-    /// remaining ids stay recoverable from its own artifact's `quest` records —
-    /// the index names the document, it does not replace it.
+    /// ([`canonical_episode_key`]), a quest document's first declared
+    /// `<quest id>` (document order = addressing order), or — by the same
+    /// first-declaration rule — a lore document's first declared
+    /// `<entry id>` (dsl 0.19.0). A quest PACK's / lore document's
+    /// remaining ids stay recoverable from its own artifact's `quest` /
+    /// `entry` records (and, for entries, [`ProjectIndex::entries`]) — the
+    /// index names the document, it does not replace it.
     pub key: String,
+}
+
+/// One `<entry>` row of [`ProjectIndex::entries`] (dsl 0.19.0 §7): enough for
+/// an engine to build its `target → entries` / `series → entries` tables
+/// without loading every lore artifact. `document` is the SAME string as the
+/// owning [`IndexDocument::path`].
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexEntry {
+    pub id: String,
+    pub document: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<u32>,
 }
 
 /// The `project.index.json` envelope. Field DECLARATION ORDER is the serialized
@@ -81,6 +106,11 @@ pub struct ProjectIndex {
     pub rules: Vec<RuleEntry>,
     #[serde(rename = "prereqEdges")]
     pub prereq_edges: Vec<PrereqEdgeEntry>,
+    /// dsl 0.19.0 §7: every `<entry>` in the project, document order. Unlike
+    /// the vocabulary arrays above this is OMITTED when empty, so an index
+    /// over a project without lore stays byte-identical to 0.18.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub entries: Vec<IndexEntry>,
 }
 
 impl ProjectIndex {
@@ -280,6 +310,27 @@ pub fn build_index(
         .collect();
     documents.sort_by(|a, b| a.path.cmp(&b.path));
 
+    // Entries follow the SAME path order as `documents`, then each lore
+    // artifact's own command (= document) order.
+    let mut by_path: Vec<&IndexInput<'_>> = docs.iter().collect();
+    by_path.sort_by(|a, b| a.path.cmp(&b.path));
+    let entries = by_path
+        .iter()
+        .flat_map(|d| {
+            d.artifact.commands.iter().filter_map(move |c| match c {
+                Command::Entry(e) => Some(IndexEntry {
+                    id: e.id.clone(),
+                    document: d.path.clone(),
+                    target: e.target.clone(),
+                    category: e.category.clone(),
+                    series: e.series.clone(),
+                    order: e.order,
+                }),
+                _ => None,
+            })
+        })
+        .collect();
+
     Ok(ProjectIndex {
         ir_version: ir_version.to_string(),
         capability_version: capability.map(|(_, v)| v.to_string()).unwrap_or_default(),
@@ -290,6 +341,7 @@ pub fn build_index(
         seed_facts: seed_facts.into_values().collect(),
         rules: rules.into_values().collect(),
         prereq_edges: prereqs.finish(),
+        entries,
     })
 }
 
@@ -298,17 +350,19 @@ pub fn build_index(
 /// ([`lute_check::meta::canonical_scene_key`], dsl 0.15.0 §2) already
 /// stamped into the artifact by `artifact_meta`, so the index can never
 /// name a scene differently from the addressing prefix or `check-project`'s
-/// scene-key grouping. A quest document with no `<quest>` at all has no
-/// key; that shape never survives the check gate, so the empty string is a
-/// total fallback, not a real output.
+/// scene-key grouping. A quest (lore) document's key is its first declared
+/// `<quest id>` (`<entry id>`). A quest/lore document with no declaration at
+/// all has no key; that shape never survives the check gate, so the empty
+/// string is a total fallback, not a real output.
 pub fn document_key(artifact: &Artifact) -> String {
     match &artifact.meta {
         ArtifactMeta::Scene(m) => m.id.clone(),
-        ArtifactMeta::Quest(_) => artifact
+        ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => artifact
             .commands
             .iter()
             .find_map(|c| match c {
                 Command::Quest(q) => Some(q.id.clone()),
+                Command::Entry(e) => Some(e.id.clone()),
                 _ => None,
             })
             .unwrap_or_default(),
@@ -494,5 +548,107 @@ mod tests {
         assert!(pos("\"capabilityVersion\"") < pos("\"documents\""));
         assert!(pos("\"documents\"") < pos("\"entities\""));
         assert!(json.ends_with('\n'));
+        // dsl 0.19.0: no lore → no `entries` key (0.18 byte-identity).
+        assert!(!json.contains("\"entries\""), "{json}");
+    }
+
+    fn lore(capability: &str, entries: &[(&str, Option<&str>, Option<u32>)]) -> Artifact {
+        use crate::ir::{EntryCmd, QuestMeta, Stamp};
+        let mut a = scene("unused", capability);
+        a.kind = DocKind::Lore;
+        a.meta = ArtifactMeta::Lore(QuestMeta {
+            title: None,
+            content_lang: None,
+            extra: BTreeMap::new(),
+            plugin: BTreeMap::new(),
+        });
+        a.commands = entries
+            .iter()
+            .enumerate()
+            .map(|(i, (id, series, order))| {
+                Command::Entry(EntryCmd {
+                    addr: format!("{:03}-0100", i + 1),
+                    id: (*id).to_string(),
+                    target: Some(format!("item.{id}")),
+                    category: Some("note".to_string()),
+                    title: None,
+                    title_line_id: None,
+                    series: series.map(str::to_string),
+                    order: *order,
+                    when: None,
+                    body: format!("{:03}-0200", i + 1),
+                    stamp: Stamp::default(),
+                })
+            })
+            .collect();
+        a
+    }
+
+    /// dsl 0.19.0 §7: `entries` rows follow `documents`' path order, then
+    /// each lore document's own declaration order (NOT id order — the
+    /// engine's eligibility tiebreak); `document` is the row's
+    /// `documents[].path`; a lore document's key is its first entry id.
+    #[test]
+    fn entries_rows_follow_document_path_then_declaration_order() {
+        let docs = [
+            (
+                "lore/z.lute",
+                lore("cap-1", &[("zeta", None, None), ("alpha", None, None)]),
+            ),
+            ("scene.lute", scene("marina", "cap-1")),
+            (
+                "lore/a.lute",
+                lore(
+                    "cap-1",
+                    &[("log2", Some("log"), Some(2)), ("log1", Some("log"), Some(1))],
+                ),
+            ),
+        ];
+        let index = build_index("0.19.0", &inputs(&docs)).expect("no conflicts");
+        let rows: Vec<(&str, &str)> = index
+            .entries
+            .iter()
+            .map(|e| (e.document.as_str(), e.id.as_str()))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("lore/a.lute", "log2"),
+                ("lore/a.lute", "log1"),
+                ("lore/z.lute", "zeta"),
+                ("lore/z.lute", "alpha"),
+            ]
+        );
+        let lore_a = index
+            .documents
+            .iter()
+            .find(|d| d.path == "lore/a.lute")
+            .unwrap();
+        assert_eq!(lore_a.key, "log2", "first declared entry id");
+        assert_eq!(lore_a.kind, DocKind::Lore);
+        let json = index.to_json().unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            v["entries"][0],
+            serde_json::json!({
+                "id": "log2",
+                "document": "lore/a.lute",
+                "target": "item.log2",
+                "category": "note",
+                "series": "log",
+                "order": 2
+            })
+        );
+        assert_eq!(
+            v["entries"][2],
+            serde_json::json!({
+                "id": "zeta",
+                "document": "lore/z.lute",
+                "target": "item.zeta",
+                "category": "note"
+            }),
+            "unauthored series/order are omitted"
+        );
+        assert_eq!(v["documents"][0]["kind"], "lore");
     }
 }

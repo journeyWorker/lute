@@ -5,7 +5,8 @@
 //! [`BTreeMap`] keeps keys sorted; document walks recurse in the exact order
 //! `lute-cli`'s [`crate::loc`] translatable-unit walk uses (Branch → Choice
 //! body, Hub → Choice body, Match → Arm body, Objective/On bodies, Quest
-//! bodies), so lint tables and localization tables see the same lines.
+//! bodies, lore Entry bodies), so lint tables and localization tables see the
+//! same lines.
 //!
 //! [`crate::loc`]: docs-only — this crate does NOT depend on `lute-cli`; the
 //! recursion structure is duplicated here rather than imported to keep the
@@ -153,6 +154,10 @@ pub fn compute_doc_tables(
     }
     for quest in &doc.quests {
         walker.visit_nodes(&quest.body);
+    }
+    // Lore entry lines (dsl 0.19.0 §8) are translatable content like quest lines.
+    for entry in &doc.entries {
+        walker.visit_nodes(&entry.body);
     }
     // The scene target is the whole document — including a doc that never
     // reached a `##` shot heading (a project fragment). Its span is the

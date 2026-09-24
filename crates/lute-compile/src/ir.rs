@@ -201,6 +201,8 @@ pub enum BodyEntry {
 pub enum ArtifactMeta {
     Scene(SceneMeta),
     Quest(QuestMeta),
+    /// dsl 0.19.0 §7: lore documents carry the [`QuestMeta`] shape.
+    Lore(LoreMeta),
 }
 
 /// Scene-kind envelope meta (dsl 0.15.0 §2/§3). Field DECLARATION ORDER is
@@ -272,6 +274,12 @@ pub struct QuestMeta {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub plugin: BTreeMap<String, serde_json::Value>,
 }
+
+/// Lore-kind envelope meta (dsl 0.19.0 §7): exactly the [`QuestMeta`] shape
+/// — `kind: lore` accepts the same frontmatter keys as a quest document
+/// (§2), so the envelope carries the same optional fields. A type alias
+/// rather than a copy: one struct, one serialized shape.
+pub type LoreMeta = QuestMeta;
 
 /// One folded state slot (§4.1): the engine's init/type table.
 #[derive(Clone, Debug, Serialize)]
@@ -345,7 +353,8 @@ impl Role {
     }
 }
 
-/// Document kind (dsl 0.2.0 §2/§3.1): `"scene"` | `"quest"`, mirrors
+/// Document kind (dsl 0.2.0 §2/§3.1, dsl 0.19.0 §2): `"scene"` | `"quest"` |
+/// `"lore"`, mirrors
 /// `lute_check::meta::DocKind` — kept as a SEPARATE compile-local serde enum
 /// so `Serialize` never leaks onto lute-check's public type (serialization
 /// concerns stay in the crate that owns the wire format). Mapped once, here.
@@ -354,6 +363,7 @@ impl Role {
 pub enum DocKind {
     Scene,
     Quest,
+    Lore,
 }
 
 impl From<lute_check::DocKind> for DocKind {
@@ -361,6 +371,7 @@ impl From<lute_check::DocKind> for DocKind {
         match k {
             lute_check::DocKind::Scene => DocKind::Scene,
             lute_check::DocKind::Quest => DocKind::Quest,
+            lute_check::DocKind::Lore => DocKind::Lore,
         }
     }
 }
@@ -393,6 +404,8 @@ pub enum Command {
     On(OnCmd),
     #[serde(rename = "plugin")]
     Other(OtherCmd),
+    /// dsl 0.19.0 §7: `<entry>` declaration head. Appended LAST.
+    Entry(EntryCmd),
 }
 
 /// One `{{…}}` interpolation placeholder (IR A3): the runtime substitutes it
@@ -915,6 +928,35 @@ pub struct OnCmd {
     pub stamp: Stamp,
 }
 
+/// `<entry>` declaration head (dsl 0.19.0 §7, `docs/runtime/lore-entries.md`).
+/// Like [`OnCmd`], its `body` addresses the entry's body segment, which
+/// follows this record and is addressed/terminated exactly as an `<on>` body
+/// (an empty body resolves to the entry unit's one-past-end). Field
+/// declaration order is serialized order (byte-stability contract).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryCmd {
+    pub addr: String,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title_line_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<CelPair>,
+    pub body: String,
+    #[serde(flatten)]
+    pub stamp: Stamp,
+}
+
 /// A CEL slot's raw text + its portable lowered form (IR A7 `ExprNode`
 /// shape), reused for every 0.2.0 quest-kind CEL attr (`start`/`fail`/
 /// `done`/`when`/`on.when`) — the `{raw, expr}` dual-field shape
@@ -1031,6 +1073,7 @@ impl Command {
             Command::Other(c) => &mut c.addr,
             Command::Quest(c) => &mut c.addr,
             Command::On(c) => &mut c.addr,
+            Command::Entry(c) => &mut c.addr,
         }
     }
 
@@ -1072,6 +1115,7 @@ impl Command {
                 }
             }
             Command::On(o) => f(&mut o.body),
+            Command::Entry(e) => f(&mut e.body),
             Command::Line(_)
             | Command::Background(_)
             | Command::Music(_)
@@ -1111,6 +1155,7 @@ impl Command {
             Command::Other(c) => Some(&mut c.stamp),
             Command::Quest(c) => Some(&mut c.stamp),
             Command::On(c) => Some(&mut c.stamp),
+            Command::Entry(c) => Some(&mut c.stamp),
             Command::End(c) => Some(&mut c.stamp),
             Command::Jump(_) | Command::Barrier(_) => None,
         }

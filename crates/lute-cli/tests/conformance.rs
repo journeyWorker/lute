@@ -137,6 +137,14 @@ fn every_fixture_replays_byte_identically() {
             args.push("--mock".into());
             args.push(path_arg(&mock));
         }
+        // dsl 0.19.0 §8: a lore fixture names the entry it presents in an
+        // `entry.txt` sidecar (one id) — `lute run` refuses a lore artifact
+        // without `--entry`.
+        let entry = dir.join("entry.txt");
+        if entry.is_file() {
+            args.push("--entry".into());
+            args.push(read(&entry).trim().to_string());
+        }
         args.push("--json".into());
 
         let out = Command::new(BIN)

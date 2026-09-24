@@ -57,8 +57,8 @@ use lute_manifest::schema::{AssetKindDecl, DefDecl};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Hub, Interp, InterpKind, Line,
-    Node, Objective, On, Quest, Set,
+    Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Entry, Hub, Interp, InterpKind,
+    Line, Node, Objective, On, Quest, Set,
 };
 
 /// Merge imported schema (dsl §9.2) into a document's typed frontmatter so the
@@ -147,13 +147,15 @@ pub(crate) enum Cursor<'a> {
     Speaker,
 }
 
-/// Which 0.2.0 quest-kind construct (dsl 0.2.0 §4/§6.3/§6.4) a
+/// Which fixed-attr construct (dsl 0.2.0 §4/§6.3/§6.4, dsl 0.19.0 §3) a
 /// [`Cursor::ConstructAttrArea`] belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QuestConstruct {
     Quest,
     On,
     Objective,
+    /// A lore `<entry>` (dsl 0.19.0 §3) — a top-level declaration like `<quest>`.
+    Entry,
 }
 
 /// Resolve the innermost construct containing `off` (a byte offset into the
@@ -177,7 +179,37 @@ pub(crate) fn resolve(doc: &Document, off: usize) -> Option<Cursor<'_>> {
             }
         }
     }
+    for entry in &doc.entries {
+        if span_contains(entry.span, off) {
+            if let Some(c) = resolve_entry(entry, off) {
+                return Some(c);
+            }
+        }
+    }
     None
+}
+
+/// Resolve a cursor inside a lore `<entry>` (dsl 0.19.0 §3): its `when`
+/// eligibility guard, then its body, then its residual attrs — falling back
+/// to a construct attr-area cursor. Mirrors [`resolve_quest`].
+fn resolve_entry(e: &Entry, off: usize) -> Option<Cursor<'_>> {
+    if let Some(w) = &e.when {
+        if span_contains(w.span, off) {
+            return Some(Cursor::Cel {
+                slot: w,
+                in_match_subject: false,
+            });
+        }
+    }
+    if let Some(c) = resolve_nodes(&e.body, off) {
+        return Some(c);
+    }
+    if let Some(c) = resolve_attrs(&e.attrs, None, off) {
+        return Some(c);
+    }
+    Some(Cursor::ConstructAttrArea {
+        construct: QuestConstruct::Entry,
+    })
 }
 
 /// Resolve a cursor inside a `<quest>` (dsl 0.2.0 §6.3): its header CEL guards
@@ -798,6 +830,16 @@ pub(crate) fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
             }
         }
     }
+    for entry in &doc.entries {
+        if span_contains(entry.span, off) {
+            if let Some(a) = in_attrs(&entry.attrs, off) {
+                return Some(a);
+            }
+            if let Some(a) = scan(&entry.body, off) {
+                return Some(a);
+            }
+        }
+    }
     None
 }
 
@@ -1232,6 +1274,9 @@ pub(crate) fn path_uses(doc: &Document, path: &str) -> Vec<Span> {
     }
     for quest in &doc.quests {
         collect_set_paths(&quest.body, path, &mut out);
+    }
+    for entry in &doc.entries {
+        collect_set_paths(&entry.body, path, &mut out);
     }
     for slot in all_slots(doc) {
         let base = slot.span.byte_start;

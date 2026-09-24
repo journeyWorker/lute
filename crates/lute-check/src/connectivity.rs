@@ -1199,7 +1199,11 @@ pub fn unreachable_quest_ids(
 /// precedence (T6): ambiguous (2+ declarations) reads `Unknown`; a
 /// caller-supplied `E-QUEST-UNREACHABLE` id reads `Unreachable`; an
 /// `after`-declaring quest already has a memoized `reach` entry; a plain
-/// (no-`after`) quest not otherwise dead defaults `Reachable`.
+/// (no-`after`) quest not otherwise dead defaults `Reachable`. A lore
+/// entry's assert site (dsl 0.19.0 §4) has no hosting node at all — lore
+/// documents are not part of the scene/quest graph, and the engine presents
+/// an entry whenever it chooses — so it is never proven `Unreachable` and
+/// always counts as live.
 ///
 /// Callers MUST pre-scope `docs`/`reach`/`ambiguous_quest_ids`/
 /// `unreachable_quests` to ONE resolved project root (`lute-cli`'s `by_root`
@@ -1239,6 +1243,9 @@ pub fn live_assert_relations(
                 collect_assert_relations(&quest.body, &mut out);
             }
         }
+        for entry in &doc.entries {
+            collect_assert_relations(&entry.body, &mut out);
+        }
     }
     out
 }
@@ -1263,6 +1270,9 @@ pub fn assert_relations_per_doc(
         }
         for quest in &doc.quests {
             collect_assert_relations(&quest.body, &mut rels);
+        }
+        for entry in &doc.entries {
+            collect_assert_relations(&entry.body, &mut rels);
         }
         if !rels.is_empty() {
             out.insert(path.clone(), rels);
@@ -1345,6 +1355,7 @@ mod tests {
             title: None,
             shots: Vec::new(),
             quests: Vec::new(),
+            entries: Vec::new(),
             span: span(0),
         }
     }

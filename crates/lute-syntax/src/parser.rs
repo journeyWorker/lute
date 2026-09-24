@@ -135,7 +135,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         cursor: 0,
         diags,
     };
-    let (title, shots, quests) = p.parse_document_inner();
+    let (title, shots, quests, entries) = p.parse_document_inner();
 
     let doc = Document {
         meta: Meta {
@@ -145,6 +145,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         title,
         shots,
         quests,
+        entries,
         span: Span::from_bytes(&p.idx, 0, text.len()),
     };
     (doc, p.diags)
@@ -289,10 +290,13 @@ impl Parser<'_> {
         }
     }
 
-    fn parse_document_inner(&mut self) -> (Option<(String, Span)>, Vec<Shot>, Vec<Quest>) {
+    fn parse_document_inner(
+        &mut self,
+    ) -> (Option<(String, Span)>, Vec<Shot>, Vec<Quest>, Vec<Entry>) {
         let mut title = None;
         let mut shots = Vec::new();
         let mut quests = Vec::new();
+        let mut entries = Vec::new();
         loop {
             self.skip_blanks();
             if self.cursor >= self.lines.len() {
@@ -304,6 +308,9 @@ impl Parser<'_> {
             } else if trimmed.starts_with('<') && open_tag_name(&trimmed).as_deref() == Some("quest")
             {
                 quests.push(self.parse_quest());
+            } else if trimmed.starts_with('<') && open_tag_name(&trimmed).as_deref() == Some("entry")
+            {
+                entries.push(self.parse_entry());
             } else if trimmed.starts_with("# ") && shots.is_empty() && title.is_none() {
                 title = Some(self.parse_title());
             } else if trimmed.starts_with("# ") {
@@ -346,7 +353,7 @@ impl Parser<'_> {
                 self.cursor += 1;
             }
         }
-        (title, shots, quests)
+        (title, shots, quests, entries)
     }
 
     /// `Title ::= "# " Text` (§6.2). Text is opaque to EOL.
@@ -1627,6 +1634,173 @@ mod tests {
         // <quest> is top-level only; nested it must fall through to the error path.
         let (_, diags) = parse("<quest id=\"q\">\n<quest id=\"inner\"></quest>\n</quest>\n");
         assert!(diags.iter().any(|d| d.code == "E-UNCLASSIFIED"), "{diags:?}");
+    }
+
+    // -- dsl 0.19.0: top-level <entry> (lore documents) --
+
+    /// The source text a span covers.
+    fn spanned<'s>(src: &'s str, sp: &Span) -> &'s str {
+        &src[sp.byte_start..sp.byte_end]
+    }
+
+    #[test]
+    fn entry_with_every_attr_parses_into_fields() {
+        let src = "---\nkind: lore\n---\n\
+                   <entry id=\"scientistLog1\" target=\"item.torn_note_1\" category=\"note\" \
+                   series=\"scientistLog\" order=\"1\" title=\"Research log, day 3\" \
+                   when=\"run.labOpen\">\n\
+                   @scientist: Day three.\n\
+                   ::assert{knows(vesna, project_lumen)}\n\
+                   </entry>\n";
+        let (doc, diags) = parse(src);
+        assert!(diags.is_empty(), "{diags:?}");
+        assert!(doc.shots.is_empty() && doc.quests.is_empty());
+        assert_eq!(doc.entries.len(), 1);
+        let e = &doc.entries[0];
+        assert_eq!(e.id, "scientistLog1");
+        assert_eq!(spanned(src, &e.id_span), "scientistLog1");
+        for (field, want) in [
+            (&e.target, "item.torn_note_1"),
+            (&e.category, "note"),
+            (&e.series, "scientistLog"),
+            (&e.order, "1"),
+            (&e.title, "Research log, day 3"),
+        ] {
+            let (value, sp) = field.as_ref().expect("attr extracted");
+            assert_eq!(value, want);
+            assert_eq!(spanned(src, sp), want, "value span anchors the attribute value");
+        }
+        let when = e.when.as_ref().expect("when slot");
+        assert_eq!(when.kind, CelKind::Condition);
+        assert_eq!(when.raw, "run.labOpen");
+        assert_eq!(spanned(src, &when.span), "run.labOpen");
+        assert!(e.attrs.is_empty(), "every known attr is extracted: {:?}", e.attrs);
+        assert!(matches!(e.body[..], [Node::Line(_), Node::Assert(_)]));
+        assert!(spanned(src, &e.span).starts_with("<entry id="));
+        assert!(spanned(src, &e.span).ends_with("</entry>"));
+    }
+
+    #[test]
+    fn entry_without_attrs_leaves_optionals_empty() {
+        let (doc, diags) = parse("<entry id=\"k\">\n@narrator: A key.\n</entry>\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let e = &doc.entries[0];
+        assert!(e.target.is_none() && e.category.is_none() && e.title.is_none());
+        assert!(e.series.is_none() && e.order.is_none() && e.when.is_none());
+    }
+
+    #[test]
+    fn entry_missing_id_is_empty_and_anchored_at_open_tag() {
+        let src = "<entry category=\"item\">\n@narrator: A key.\n</entry>\n";
+        let (doc, diags) = parse(src);
+        assert!(diags.is_empty(), "missing id is the checker's E-ENTRY-ATTR: {diags:?}");
+        let e = &doc.entries[0];
+        assert_eq!(e.id, "");
+        assert_eq!(spanned(src, &e.id_span), "<entry category=\"item\">");
+        assert_eq!(e.body.len(), 1);
+    }
+
+    #[test]
+    fn entry_non_string_and_unknown_attrs_stay_residual() {
+        // A bare `id` flag is not a string id (checker: E-ENTRY-ATTR); an
+        // invented key is left for the per-tag closure (E-UNKNOWN-ATTR).
+        let (doc, diags) = parse("<entry id speaker=\"x\">\n@narrator: hi\n</entry>\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let e = &doc.entries[0];
+        assert_eq!(e.id, "");
+        let keys: Vec<&str> = e.attrs.iter().map(|a| a.key.as_str()).collect();
+        assert_eq!(keys, ["id", "speaker"]);
+    }
+
+    #[test]
+    fn entries_collect_in_document_order_beside_quests() {
+        let (doc, diags) = parse(
+            "<entry id=\"a\">\n@x: one\n</entry>\n\
+             <quest id=\"q\">\n</quest>\n\
+             <entry id=\"b\">\n@x: two\n</entry>\n\
+             <entry id=\"c\">\n@x: three\n</entry>\n",
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+        let ids: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b", "c"]);
+        assert_eq!(doc.quests.len(), 1);
+    }
+
+    #[test]
+    fn entry_body_is_the_ordinary_node_stream() {
+        let (doc, diags) = parse(
+            "<entry id=\"rustyKey\" target=\"item.rusty_key\">\n\
+             <match on=\"run.labBurned\">\n\
+             <when is=\"true\">\n@narrator: A scorched key.\n</when>\n\
+             <otherwise>\n@narrator: A rusty key.\n</otherwise>\n\
+             </match>\n\
+             ::set{run.keySeen = true}\n\
+             ::assert{knows(vesna, project_lumen)}\n\
+             ::retract{suspects(vesna, _)}\n\
+             @narrator: It is cold.\n\
+             </entry>\n",
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+        let body = &doc.entries[0].body;
+        assert!(
+            matches!(
+                body[..],
+                [
+                    Node::Match(_),
+                    Node::Set(_),
+                    Node::Assert(_),
+                    Node::Retract(_),
+                    Node::Line(_)
+                ]
+            ),
+            "{body:?}"
+        );
+        let Node::Match(m) = &body[0] else { unreachable!() };
+        assert_eq!(m.subject.raw, "run.labBurned");
+        assert_eq!(m.arms.len(), 2);
+    }
+
+    #[test]
+    fn entry_body_admission_is_not_the_parsers() {
+        // Directives / <branch> parse as ordinary nodes; rejecting them in an
+        // entry body is the checker's E-GRAMMAR-NOT-ADMITTED.
+        let (doc, diags) = parse(
+            "<entry id=\"e\">\n::bg{id=\"lab\"}\n<branch id=\"b\">\n\
+             <choice id=\"c\" label=\"L\">\n@x: hi\n</choice>\n</branch>\n</entry>\n",
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+        assert!(matches!(
+            doc.entries[0].body[..],
+            [Node::Directive(_), Node::Branch(_)]
+        ));
+    }
+
+    #[test]
+    fn nested_entry_behaves_like_nested_quest() {
+        // <entry> is top-level only, like <quest>: nested, it falls through
+        // to the same error path with the same diagnostics.
+        let codes = |tag: &str| {
+            let (_, diags) = parse(&format!(
+                "<{tag} id=\"o\">\n<{tag} id=\"inner\">\n@x: hi\n</{tag}>\n</{tag}>\n"
+            ));
+            diags
+                .iter()
+                .map(|d| (d.code.clone(), d.span.byte_start, d.span.byte_end))
+                .collect::<Vec<_>>()
+        };
+        let entry = codes("entry");
+        assert!(entry.iter().any(|(c, ..)| c == E_UNCLASSIFIED), "{entry:?}");
+        assert_eq!(entry, codes("quest"));
+        let (doc, _) = parse("<entry id=\"o\">\n<entry id=\"inner\">\n</entry>\n");
+        assert_eq!(doc.entries.len(), 1);
+        assert_eq!(doc.entries[0].id, "o");
+    }
+
+    #[test]
+    fn unclosed_entry_is_unclosed_tag() {
+        let (doc, diags) = parse("<entry id=\"e\">\n@x: hi\n");
+        assert!(diags.iter().any(|d| d.code == E_UNCLOSED_TAG), "{diags:?}");
+        assert_eq!(doc.entries[0].body.len(), 1);
     }
 
     // -- dsl 0.5.0 §2.1: E-UNCLASSIFIED split into named causes --

@@ -28,6 +28,18 @@ use crate::eval::{expr_path, is_reserved_quest_path};
 /// empty/whitespace-only `raw` (a structural gap) is skipped without
 /// attempting to parse it.
 pub fn collect_referenced_reserved_quest_paths(doc: &Document) -> BTreeSet<String> {
+    collect_referenced(doc, is_reserved_quest_path)
+}
+
+/// Every reserved `entry.<id>.read` path (dsl 0.19.0 §5) referenced
+/// anywhere in `doc` — the entry analogue of
+/// [`collect_referenced_reserved_quest_paths`], same walk, same admission
+/// role in [`crate::mock::validate`].
+pub(crate) fn collect_referenced_entry_read_paths(doc: &Document) -> BTreeSet<String> {
+    collect_referenced(doc, lute_check::is_reserved_entry_read)
+}
+
+fn collect_referenced(doc: &Document, keep: fn(&str) -> bool) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
         let raw = slot.raw.trim();
@@ -41,78 +53,78 @@ pub fn collect_referenced_reserved_quest_paths(doc: &Document) -> BTreeSet<Strin
         let Some(rec) = arena.get(handle) else {
             return;
         };
-        collect_paths(&rec.expr, &mut out);
+        collect_paths(&rec.expr, keep, &mut out);
     });
     out
 }
 
-/// Collect every maximal RESERVED quest path referenced in `expr`,
-/// recursing into every sub-expression (call args, list/map/struct
+/// Collect every maximal reserved path (as decided by `keep`) referenced in
+/// `expr`, recursing into every sub-expression (call args, list/map/struct
 /// elements, comprehensions) — mirrors `lute-check/src/cel_paths.rs`'s
 /// `walk` (`pub(crate)` there, so not reusable across the D1 quarantine
 /// boundary), simplified: this module only needs PRESENCE, never the
 /// guard/read role distinction `check`'s definite-assignment pass needs.
-fn collect_paths(expr: &Expr, out: &mut BTreeSet<String>) {
+fn collect_paths(expr: &Expr, keep: fn(&str) -> bool, out: &mut BTreeSet<String>) {
     match expr {
         Expr::Ident(_) => {
             if let Some(path) = expr_path(expr) {
-                if is_reserved_quest_path(&path) {
+                if keep(&path) {
                     out.insert(path);
                 }
             }
         }
         Expr::Select(sel) => {
             if let Some(path) = expr_path(expr) {
-                if is_reserved_quest_path(&path) {
+                if keep(&path) {
                     out.insert(path);
                 }
             } else {
                 // Chain bottoms out in a non-ident (e.g. `f(x).field`): not
                 // a static path, but its operand may still contain reads.
-                collect_paths(&sel.operand.expr, out);
+                collect_paths(&sel.operand.expr, keep, out);
             }
         }
         Expr::Call(call) => {
             if let Some(target) = &call.target {
-                collect_paths(&target.expr, out);
+                collect_paths(&target.expr, keep, out);
             }
             for arg in &call.args {
-                collect_paths(&arg.expr, out);
+                collect_paths(&arg.expr, keep, out);
             }
         }
         Expr::List(list) => {
             for el in &list.elements {
-                collect_paths(&el.expr, out);
+                collect_paths(&el.expr, keep, out);
             }
         }
         Expr::Map(map) => {
             for entry in &map.entries {
-                collect_entry(&entry.expr, out);
+                collect_entry(&entry.expr, keep, out);
             }
         }
         Expr::Struct(st) => {
             for entry in &st.entries {
-                collect_entry(&entry.expr, out);
+                collect_entry(&entry.expr, keep, out);
             }
         }
         Expr::Comprehension(c) => {
-            collect_paths(&c.iter_range.expr, out);
-            collect_paths(&c.accu_init.expr, out);
-            collect_paths(&c.loop_cond.expr, out);
-            collect_paths(&c.loop_step.expr, out);
-            collect_paths(&c.result.expr, out);
+            collect_paths(&c.iter_range.expr, keep, out);
+            collect_paths(&c.accu_init.expr, keep, out);
+            collect_paths(&c.loop_cond.expr, keep, out);
+            collect_paths(&c.loop_step.expr, keep, out);
+            collect_paths(&c.result.expr, keep, out);
         }
         Expr::Literal(_) | Expr::Unspecified => {}
     }
 }
 
-fn collect_entry(entry: &EntryExpr, out: &mut BTreeSet<String>) {
+fn collect_entry(entry: &EntryExpr, keep: fn(&str) -> bool, out: &mut BTreeSet<String>) {
     match entry {
         EntryExpr::MapEntry(m) => {
-            collect_paths(&m.key.expr, out);
-            collect_paths(&m.value.expr, out);
+            collect_paths(&m.key.expr, keep, out);
+            collect_paths(&m.value.expr, keep, out);
         }
-        EntryExpr::StructField(f) => collect_paths(&f.value.expr, out),
+        EntryExpr::StructField(f) => collect_paths(&f.value.expr, keep, out),
     }
 }
 

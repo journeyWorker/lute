@@ -206,17 +206,17 @@ const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params"];
 /// dsl 0.15.0 D-D: `id:` is per-document unique — it is deliberately NOT in
 /// `DEFAULTABLE_KEYS`, so it can never reach this predicate at runtime, but
 /// filter it explicitly so a hand-built `MetaDefaults` cannot silently smuggle
-/// it either. `extra:` is legal on Scene AND Quest — both artifact meta kinds
-/// carry it (§3).
+/// it either. `extra:` is legal on every ROOT kind — Scene, Quest, and Lore
+/// (dsl 0.19.0 §2: lore takes the quest-document keys) all carry it (§3).
 pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
     if key == "id" {
         return false;
     }
     if key == "extra" {
-        return matches!(kind, MetaKind::Scene | MetaKind::Quest);
+        return kind.is_root();
     }
     UNIVERSAL_KEYS.contains(&key)
-        || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
+        || (key == "kind" && kind.is_root())
         || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
 }
 
@@ -240,7 +240,7 @@ fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> S
                 not a frontmatter key (dsl §4.1)"
             .to_string();
     }
-    let is_root = matches!(kind, MetaKind::Scene | MetaKind::Quest);
+    let is_root = kind.is_root();
     let scene_keys: &[&str] = if kind == MetaKind::Scene {
         SCENE_KEYS
     } else {
@@ -271,7 +271,8 @@ const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 /// dsl §13) are NOT scenes — neither carries the required character/season/
 /// episode keys. `Quest` (dsl 0.2.0 §3.1, §6.1) is a second ROOT kind: like
 /// Scene it carries `kind:`, but (like Schema/Component) requires no keys and
-/// additionally rejects the scene-only [`SCENE_KEYS`].
+/// additionally rejects the scene-only [`SCENE_KEYS`]. `Lore` (dsl 0.19.0 §2)
+/// is the third ROOT kind and accepts exactly the quest-document keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MetaKind {
     Scene,
@@ -282,16 +283,31 @@ pub enum MetaKind {
     /// The quest kind (dsl 0.2.0 §3.1, §6.1): a second ROOT document kind. No
     /// required keys; rejects [`SCENE_KEYS`].
     Quest,
+    /// The lore kind (dsl 0.19.0 §2): a third ROOT document kind whose
+    /// frontmatter keys are the quest document's — no required keys, rejects
+    /// [`SCENE_KEYS`].
+    Lore,
 }
 
-/// A ROOT document's domain kind (dsl 0.2.0 §3.1): the frontmatter `kind:`
-/// discriminator. Import-role docs (`MetaKind::Schema`/`MetaKind::Component`)
-/// never carry `kind:` and are never a `DocKind` — only a Scene or Quest root
-/// document resolves one.
+impl MetaKind {
+    /// `true` for a ROOT document kind — one that carries `kind:` and the
+    /// `extra:` block (Scene, Quest, Lore) — never an import-role fragment.
+    pub fn is_root(self) -> bool {
+        matches!(self, MetaKind::Scene | MetaKind::Quest | MetaKind::Lore)
+    }
+}
+
+/// A ROOT document's domain kind (dsl 0.2.0 §3.1, dsl 0.19.0 §2): the
+/// frontmatter `kind:` discriminator. Import-role docs
+/// (`MetaKind::Schema`/`MetaKind::Component`) never carry `kind:` and are never
+/// a `DocKind` — only a Scene, Quest, or Lore root document resolves one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DocKind {
     Scene,
     Quest,
+    /// `kind: lore` (dsl 0.19.0 §2): a document whose top level is one or more
+    /// `<entry>` declarations — content the engine looks up, not plays.
+    Lore,
 }
 
 /// `<quest>`/`kind:`/etc. diagnostic codes owned by [`resolve_doc_kind`] (dsl
@@ -342,7 +358,8 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
             vec![err(
                 E_KIND_MISSING,
                 "required frontmatter key `kind` is missing; every root document must \
-                 declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)"
+                 declare `kind: scene`, `kind: quest`, or `kind: lore` (dsl 0.2.0 §3.1, \
+                 dsl 0.19.0 §2)"
                     .to_string(),
             )],
         ),
@@ -354,13 +371,14 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
             match kind_str.as_str() {
                 "scene" => (Some(DocKind::Scene), Vec::new()),
                 "quest" => (Some(DocKind::Quest), Vec::new()),
+                "lore" => (Some(DocKind::Lore), Vec::new()),
                 other => (
                     None,
                     vec![err(
                         E_UNKNOWN_KIND,
                         format!(
-                            "unknown document kind `{other}`; expected `scene` or `quest` \
-                             (dsl 0.2.0 §3.1)"
+                            "unknown document kind `{other}`; expected `scene`, `quest`, or \
+                             `lore` (dsl 0.2.0 §3.1, dsl 0.19.0 §2)"
                         ),
                     )],
                 ),
@@ -385,6 +403,7 @@ pub fn resolve_doc_kind_with_defaults(
         // manifest can never route a document to an unknown kind here.
         Some("scene") => (Some(DocKind::Scene), Vec::new()),
         Some("quest") => (Some(DocKind::Quest), Vec::new()),
+        Some("lore") => (Some(DocKind::Lore), Vec::new()),
         _ => (kind, diags),
     }
 }
@@ -768,9 +787,9 @@ pub fn parse_meta_kind_with_defaults(
             continue;
         };
         let core_key = UNIVERSAL_KEYS.contains(&key)
-            || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
+            || (key == "kind" && kind.is_root())
             || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
-            || (matches!(kind, MetaKind::Scene | MetaKind::Quest) && key == "extra")
+            || (kind.is_root() && key == "extra")
             || (component_key_allowed && COMPONENT_ONLY_KEYS.contains(&key));
         if core_key {
             continue;
@@ -840,7 +859,7 @@ pub fn parse_meta_kind_with_defaults(
     // Quest roots (both artifact meta kinds carry it); on Schema/Component
     // documents the top-level unknown-key loop above already rejected it, so
     // the lift silently drops it there.
-    if matches!(kind, MetaKind::Scene | MetaKind::Quest) {
+    if kind.is_root() {
         if let Some(meta_value) = map.get(yaml_key("extra")) {
             lift_extra_block(meta, meta_value, &mut typed.extra_block, &mut diags);
         }

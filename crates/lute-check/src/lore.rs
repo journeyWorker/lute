@@ -1,0 +1,279 @@
+//! dsl 0.19.0 lore entries (§3, §5): `<entry>` attribute shape, per-document
+//! identity (`E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`), and the reserved
+//! `entry.<id>.read` decl fold.
+//!
+//! An entry is the lore mirror of a `<quest>`: [`check_entries`] runs in
+//! `check::fold_env` beside `match_check::check_quest`, contributing its
+//! diagnostics to the fold stream and its implicit reserved decls to the
+//! schema — so a document's OWN entries type `entry.<id>.read` as `bool`
+//! (default `false`) through the ordinary schema lookup. A read of an entry
+//! another document declares is admitted by shape instead
+//! ([`crate::cel_paths::is_reserved_entry_read`]), exactly as a foreign
+//! `quest.<id>.state` is; `check-project` resolves the id
+//! (`W-ENTRY-REF-UNKNOWN`, [`crate::project_check`]).
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::types::{Literal, Type};
+use lute_syntax::ast::{AttrValue, Entry};
+
+use crate::cel_paths::E_PATH_IDENT;
+use crate::meta::{Namespace, StateDecl};
+
+/// `<entry>` attribute shape (§3): missing/non-ident `id`, malformed
+/// `target`, non-ident `category`/`series`, `order` that is not a
+/// non-negative integer, `order` without `series`, or a non-string value for
+/// any string attribute. Anchored at the attribute.
+pub const E_ENTRY_ATTR: &str = "E-ENTRY-ATTR";
+/// Two entries with the same `id` (§3) — per document in `lute check`,
+/// project-wide in `check-project`.
+pub const E_ENTRY_ID_DUP: &str = "E-ENTRY-ID-DUP";
+/// Two entries with the same `(series, order)` (§3).
+pub const E_ENTRY_SERIES_ORDER: &str = "E-ENTRY-SERIES-ORDER";
+/// `entry.<id>.read` names an id no document in the project declares (§5,
+/// `check-project` only).
+pub const W_ENTRY_REF_UNKNOWN: &str = "W-ENTRY-REF-UNKNOWN";
+
+/// What [`check_entries`] folds into the enclosing document: the reserved
+/// `entry.<id>.read` decls (dsl 0.19.0 §5) plus every attribute/identity
+/// diagnostic.
+#[derive(Clone, Debug, Default)]
+pub struct EntryRecord {
+    pub decls: Vec<(String, StateDecl)>,
+    pub diags: Vec<Diagnostic>,
+}
+
+/// The reserved read-flag path of entry `id` (dsl 0.19.0 §5).
+pub fn entry_read_path(id: &str) -> String {
+    format!("entry.{id}.read")
+}
+
+/// The reserved `entry.<id>.read` decl: `bool`, default `false`, run-tier
+/// lifetime (dsl 0.19.0 §5 "resets with the run tier") — never maybe-unset.
+pub fn entry_read_decl() -> StateDecl {
+    StateDecl {
+        ty: Type::Bool,
+        default: Some(Literal::Bool(false)),
+        namespace: Namespace::Run,
+    }
+}
+
+/// `order` (dsl 0.19.0 §3): a non-negative integer, `[0-9]+`, that fits the
+/// IR's integer field. `None` for anything else (`E-ENTRY-ATTR`).
+pub fn parse_entry_order(raw: &str) -> Option<u32> {
+    if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    raw.parse().ok()
+}
+
+/// `Ident ::= [A-Za-z] [A-Za-z0-9_-]*` (dsl 0.1.0 §4.4) — the `id`,
+/// `category`, and `series` shape.
+pub fn is_entry_ident(s: &str) -> bool {
+    let mut bytes = s.bytes();
+    matches!(bytes.next(), Some(b) if b.is_ascii_alphabetic())
+        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// `target ::= Ident ("." Segment)*`, `Segment ::= [A-Za-z0-9_-]+` (dsl
+/// 0.19.0 §3) — shape-only, never checked against a vocabulary.
+pub fn is_entry_target(s: &str) -> bool {
+    let mut segs = s.split('.');
+    segs.next().is_some_and(is_entry_ident)
+        && segs.all(|seg| {
+            !seg.is_empty()
+                && seg
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        })
+}
+
+/// Check every `<entry>` of one document (dsl 0.19.0 §3, §5): per-entry
+/// attribute shape and closure, per-document `E-ENTRY-ID-DUP` /
+/// `E-ENTRY-SERIES-ORDER` (every occurrence past the first, in document
+/// order), and one reserved `entry.<id>.read` decl per entry whose id is a
+/// well-formed `Ident` (a missing or malformed id makes the path
+/// unaddressable, as a missing quest id does).
+///
+/// `seen_ids` is the caller's id set, SEEDED with every import-reachable
+/// entry id (`SchemaImports::imported_entry_ids`) exactly as `check_quest`'s
+/// `seen_quests` is — redeclaring one is `E-ENTRY-ID-DUP` too.
+pub fn check_entries(entries: &[Entry], seen_ids: &mut BTreeSet<String>) -> EntryRecord {
+    let mut record = EntryRecord::default();
+    let mut positions: BTreeMap<(&str, u32), &str> = BTreeMap::new();
+    for entry in entries {
+        check_entry_shape(entry, &mut record.diags);
+        let id = entry.id.as_str();
+        if !id.is_empty() {
+            if !seen_ids.insert(id.to_string()) {
+                record.diags.push(diag(
+                    E_ENTRY_ID_DUP,
+                    Severity::Error,
+                    format!(
+                        "duplicate `<entry id=\"{id}\">`; entry ids must be unique across the \
+                         project (dsl 0.19.0 §3)"
+                    ),
+                    entry.id_span,
+                ));
+            }
+            if is_entry_ident(id) {
+                record.decls.push((entry_read_path(id), entry_read_decl()));
+            }
+        }
+        if let Some((series, order, order_span)) = series_position(entry) {
+            if let Some(first) = positions.get(&(series, order)) {
+                record.diags.push(diag(
+                    E_ENTRY_SERIES_ORDER,
+                    Severity::Error,
+                    series_order_message(series, order, first, id),
+                    order_span,
+                ));
+            } else {
+                positions.insert((series, order), id);
+            }
+        }
+    }
+    record
+}
+
+/// A well-formed `(series, order)` position — both present and valid — with
+/// the `order` value span the duplicate diagnostic anchors at. `None` when
+/// either is absent or malformed (that entry's own `E-ENTRY-ATTR`).
+pub(crate) fn series_position(entry: &Entry) -> Option<(&str, u32, Span)> {
+    let (series, _) = entry.series.as_ref()?;
+    let (raw, span) = entry.order.as_ref()?;
+    if !is_entry_ident(series) {
+        return None;
+    }
+    Some((series.as_str(), parse_entry_order(raw)?, *span))
+}
+
+pub(crate) fn series_order_message(series: &str, order: u32, first: &str, id: &str) -> String {
+    format!(
+        "`<entry id=\"{id}\">` repeats position `order=\"{order}\"` of series `{series}`, \
+         already held by `<entry id=\"{first}\">`; each position in a series names one entry \
+         (dsl 0.19.0 §3)"
+    )
+}
+
+/// One entry's attribute shape (`E-ENTRY-ATTR`, `E-PATH-IDENT`) and closure
+/// (`E-UNKNOWN-ATTR`).
+fn check_entry_shape(entry: &Entry, diags: &mut Vec<Diagnostic>) {
+    let attr_diag = |message: String, span: Span| {
+        diag(E_ENTRY_ATTR, Severity::Error, message, span)
+    };
+    // A permitted key left in the residual list carried a non-string value
+    // (`order=@n`, a bare `target`) — the parser extracts only quoted strings.
+    // `when` is never residual: `take_cel` accepts every value shape.
+    let mut residual_id = false;
+    for attr in &entry.attrs {
+        let key = attr.key.as_str();
+        if !crate::logic_attrs::ENTRY_ATTRS.contains(&key) || key == "when" {
+            continue;
+        }
+        if matches!(attr.value, AttrValue::Str(_)) {
+            // A repeated key: the parser took the first occurrence.
+            continue;
+        }
+        residual_id |= key == "id";
+        diags.push(attr_diag(
+            format!("`<entry>` attribute `{key}` must be a quoted string (dsl 0.19.0 §3)"),
+            attr.span,
+        ));
+    }
+    crate::logic_attrs::check_entry_attrs(entry, diags);
+
+    let id = entry.id.as_str();
+    if id.is_empty() {
+        if !residual_id {
+            diags.push(attr_diag(
+                "`<entry>` has no `id`; an entry id is required (dsl 0.19.0 §3)".to_string(),
+                entry.id_span,
+            ));
+        }
+    } else if !is_entry_ident(id) {
+        diags.push(attr_diag(
+            format!(
+                "`<entry id=\"{id}\">`: `id` must be an identifier \
+                 (`[A-Za-z][A-Za-z0-9_-]*`, dsl 0.19.0 §3)"
+            ),
+            entry.id_span,
+        ));
+    } else if id.contains('-') {
+        // §8.4 CelIdent alignment, exactly as a quest id: the entry id is a
+        // CEL-facing segment of `entry.<id>.read`. The decl still folds so a
+        // read does not cascade to `E-UNDECLARED`.
+        diags.push(diag(
+            E_PATH_IDENT,
+            Severity::Error,
+            format!("entry id `{id}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"),
+            entry.id_span,
+        ));
+    }
+    if let Some((target, span)) = &entry.target {
+        if !is_entry_target(target) {
+            diags.push(attr_diag(
+                format!(
+                    "`<entry>` `target=\"{target}\"` is malformed; a target is a dotted id \
+                     `Ident (\".\" Segment)*` with `Segment ::= [A-Za-z0-9_-]+`, e.g. \
+                     `item.rusty_key` (dsl 0.19.0 §3)"
+                ),
+                *span,
+            ));
+        }
+    }
+    for (key, value) in [("category", &entry.category), ("series", &entry.series)] {
+        if let Some((v, span)) = value {
+            if !is_entry_ident(v) {
+                diags.push(attr_diag(
+                    format!(
+                        "`<entry>` `{key}=\"{v}\"` must be an identifier \
+                         (`[A-Za-z][A-Za-z0-9_-]*`, dsl 0.19.0 §3)"
+                    ),
+                    *span,
+                ));
+            }
+        }
+    }
+    if let Some((raw, span)) = &entry.order {
+        if parse_entry_order(raw).is_none() {
+            diags.push(attr_diag(
+                format!(
+                    "`<entry>` `order=\"{raw}\"` must be a non-negative integer \
+                     (dsl 0.19.0 §3)"
+                ),
+                *span,
+            ));
+        }
+        let has_series = entry.series.is_some()
+            || entry
+                .attrs
+                .iter()
+                .any(|a| a.key == "series" && !matches!(a.value, AttrValue::Str(_)));
+        if !has_series {
+            diags.push(attr_diag(
+                "`<entry>` `order` requires `series`; an order is a position within a series \
+                 (dsl 0.19.0 §3)"
+                    .to_string(),
+                *span,
+            ));
+        }
+    }
+}
+
+/// A `Layer::Logic` diagnostic, matching `check_quest`'s own identity
+/// diagnostics.
+pub(crate) fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: code.to_string(),
+        severity,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}

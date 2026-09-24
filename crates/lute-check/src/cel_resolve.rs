@@ -25,7 +25,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
 use lute_syntax::datalog::{BodyLiteral, FactArg, FactTerm};
 
-use crate::cel_paths::{collect_path_uses, is_reserved_quest_path};
+use crate::cel_paths::{collect_path_uses, is_reserved_entry_read, is_reserved_quest_path};
 use crate::ctx::ExpectedType;
 use crate::rel_schema::{check_atom, RelVocab};
 use crate::Ctx;
@@ -843,9 +843,12 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
 /// of whether THIS document folds the owning `<quest>` (mirrors
 /// `set_op.rs::classify_write`, which shape-checks a reserved write target
 /// before consulting the schema at all) — a scene that merely references
-/// another document's quest instance is not "undeclared".
+/// another document's quest instance is not "undeclared". The reserved
+/// lore flag `entry.<id>.read` (dsl 0.19.0 §5) is admitted by the same
+/// shape rule, wherever its `<entry>` lives.
 fn is_declared(path: &str, ctx: &Ctx<'_>) -> bool {
     is_reserved_quest_path(path)
+        || is_reserved_entry_read(path)
         || ctx
             .env
             .state

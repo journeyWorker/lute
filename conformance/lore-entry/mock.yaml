@@ -1,0 +1,5 @@
+# First read: `entry.scientistLog1.read` is unset (false), so the entry's
+# `assert`/`set` apply; the seeded `run.labBurned` picks the match's first
+# arm; after the presentation the engine sets `entry.scientistLog1.read`.
+state:
+  run.labBurned: true

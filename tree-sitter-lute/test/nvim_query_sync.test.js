@@ -6,10 +6,10 @@ const files = ["highlights", "folds", "tags"];
 const canon = (n) => readFileSync(`${import.meta.dir}/../queries/${n}.scm`, "utf8");
 const mirror = (n) => readFileSync(`${import.meta.dir}/../../editors/nvim/queries/lute/${n}.scm`, "utf8");
 
-test("nvim query mirror covers every quest/on/objective pattern in canonical", () => {
+test("nvim query mirror covers every quest/on/objective/entry pattern in canonical", () => {
   for (const f of files) {
     const c = canon(f), m = mirror(f);
-    for (const node of ["quest", "on", "objective"]) {
+    for (const node of ["quest", "on", "objective", "entry"]) {
       // match the tree-sitter S-expression node HEAD (`(quest` / `(on` / `(objective`),
       // never a bare substring — `\b` stops `(on` matching `(once`, and skips `;` comments.
       const head = new RegExp(`\\(${node}\\b`);

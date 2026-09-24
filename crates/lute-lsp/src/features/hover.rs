@@ -277,6 +277,20 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `when`: cel<bool>\n- `title`: string\n- `optional`: bool"
                 .to_string()
         }
+        QuestConstruct::Entry => {
+            "**\\<entry>** — a lore entry: text the engine looks up rather than \
+             plays (dsl 0.19.0 §3). Reading it the first time applies its \
+             `::set`/`::assert`/`::retract` and sets `entry.<id>.read`.\n\n\
+             **attributes:**\n\
+             - `id` (required): ident — unique across the project\n\
+             - `target`: dotted id — the engine-owned thing it is attached to (`item.rusty_key`)\n\
+             - `category`: ident — what kind of text it is (`note`, `item`, `codex`, …)\n\
+             - `title`: string — display title, localized\n\
+             - `series`: ident — groups multi-part text\n\
+             - `order`: non-negative integer — position within `series` (requires `series`)\n\
+             - `when`: cel<bool> — eligibility; presented only while it holds"
+                .to_string()
+        }
     }
 }
 
@@ -693,5 +707,19 @@ mod tests {
         let s = contents_text(&h);
         assert!(s.contains("run.d"), "{s}");
         assert!(s.contains("bool"), "{s}");
+    }
+
+    // ---- dsl 0.19.0 §3: entry hover ----
+
+    #[test]
+    fn hover_on_entry_construct_explains_its_attrs() {
+        let text = "---\nkind: lore\n---\n<entry id=\"e\" target=\"item.key\">\n@narrator: hi\n</entry>\n";
+        let doc = parsed(text);
+        let off = text.find("<entry ").unwrap() + 1;
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        for k in ["entry", "target", "category", "series", "order", "when"] {
+            assert!(s.contains(k), "missing {k}: {s}");
+        }
     }
 }

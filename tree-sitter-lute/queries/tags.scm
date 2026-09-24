@@ -34,6 +34,12 @@
   (attr (key) @_key (string) @name)
   (#eq? @_key "id")) @definition.class
 
+; `<entry id="…">` (dsl 0.19.0 §3) — the entry id is a project-wide jump
+; target, like a quest id.
+(entry
+  (attr (key) @_key (string) @name)
+  (#eq? @_key "id")) @definition.class
+
 ; `<objective id="…">` (§6.4, NEW) — each objective id inside a quest is a
 ; jump target (self-closing or long form; `attr` is reached either way).
 (objective

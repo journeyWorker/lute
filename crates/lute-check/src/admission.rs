@@ -29,6 +29,11 @@
 //!   No `<objective>`/`<on>`/`<hub>`/`<timeline>` — declarations and triggers
 //!   are quest-body-level only; `<match>`/`<branch>` may nest freely within
 //!   `Emittable` (staying `Emittable`).
+//! - **[`GrammarContext::EntryBody`]** — anywhere inside a lore document's
+//!   `<entry>` body (dsl 0.19.0 §4): admits only `Line`/`Match`/`Set`/
+//!   `Assert`/`Retract`; a nested `<match>` arm body stays `EntryBody`. An
+//!   entry is looked up, not played: no choices, staging, directives, or
+//!   handlers.
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Document, Node};
@@ -78,6 +83,7 @@ enum GrammarContext {
     SceneBody,
     QuestBody,
     Emittable,
+    EntryBody,
 }
 
 /// EXHAUSTIVE `(DocKind, GrammarContext, NodeKind) -> bool` admission table
@@ -96,6 +102,7 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
             (DocKind::Scene, GrammarContext::SceneBody)
                 | (DocKind::Quest, GrammarContext::QuestBody)
                 | (DocKind::Quest, GrammarContext::Emittable)
+                | (DocKind::Lore, GrammarContext::EntryBody)
         ),
         "admits called with a (doc, ctx) pair that never occurs: {doc:?} {ctx:?}"
     );
@@ -134,6 +141,19 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
             | NodeKind::Retract => true,
             NodeKind::Hub | NodeKind::Timeline | NodeKind::On | NodeKind::Objective => false,
         },
+        GrammarContext::EntryBody => match nk {
+            NodeKind::Line
+            | NodeKind::Match
+            | NodeKind::Set
+            | NodeKind::Assert
+            | NodeKind::Retract => true,
+            NodeKind::Directive
+            | NodeKind::Branch
+            | NodeKind::Hub
+            | NodeKind::Timeline
+            | NodeKind::On
+            | NodeKind::Objective => false,
+        },
     }
 }
 
@@ -153,8 +173,13 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
 ///     `QuestDoc ::= Meta QuestDecl+` requires at least one `<quest>`; a quest
 ///     doc that declares none is not a well-formed `QuestDoc` at all);
 /// (e) any [`Node`] whose [`NodeKind`] is not admitted by its `(kind, context)`
-///     position, walking `doc.shots` (scene) or `doc.quests` (quest) with the
-///     context transitions described in the module docs.
+///     position, walking `doc.shots` (scene), `doc.quests` (quest), or
+///     `doc.entries` (lore) with the context transitions described in the
+///     module docs;
+/// (f) a top-level `<entry>` in a scene or quest document (dsl 0.19.0 §2 —
+///     `<entry>` belongs only in a lore document), and in a lore document a
+///     `# ` title, a `## ` shot, a `<quest>`, or an EMPTY `doc.entries` (the
+///     lore mirror of (b)–(d)).
 pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
@@ -171,6 +196,7 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                     quest.span,
                 ));
             }
+            reject_entries(doc, "scene", &mut diags);
             for shot in &doc.shots {
                 walk(
                     &shot.body,
@@ -210,6 +236,7 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                     doc.span,
                 ));
             }
+            reject_entries(doc, "quest", &mut diags);
             for quest in &doc.quests {
                 walk(
                     &quest.body,
@@ -219,9 +246,74 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                 );
             }
         }
+        DocKind::Lore => {
+            if let Some((_, title_span)) = &doc.title {
+                diags.push(diag(
+                    "a document `# ` title is not admitted in a lore document; the lore kind \
+                     forbids `# `/`## ` headings and admits only `<entry>` at the document top \
+                     level (dsl 0.19.0 §2)"
+                        .to_string(),
+                    *title_span,
+                ));
+            }
+            for shot in &doc.shots {
+                diags.push(diag(
+                    format!(
+                        "a `{}` heading is not admitted in a lore document; the lore kind \
+                         forbids `# `/`## ` headings and admits only `<entry>` at the document \
+                         top level (dsl 0.19.0 §2)",
+                        shot.heading
+                    ),
+                    shot.span,
+                ));
+            }
+            for quest in &doc.quests {
+                diags.push(diag(
+                    format!(
+                        "`<quest id=\"{}\">` is not admitted at the document top level of a \
+                         lore document; a lore document admits only `<entry>` declarations \
+                         (dsl 0.19.0 §2)",
+                        quest.id
+                    ),
+                    quest.span,
+                ));
+            }
+            if doc.entries.is_empty() {
+                diags.push(diag(
+                    "a lore document declares no `<entry>`; a lore doc is a set of one or more \
+                     `<entry>` declarations (dsl 0.19.0 §2)"
+                        .to_string(),
+                    doc.span,
+                ));
+            }
+            for entry in &doc.entries {
+                walk(
+                    &entry.body,
+                    DocKind::Lore,
+                    GrammarContext::EntryBody,
+                    &mut diags,
+                );
+            }
+        }
     }
 
     diags
+}
+
+/// (f): a top-level `<entry>` in a document whose kind is not `lore` — the
+/// mirror of a `<quest>` in a scene document. The entry's body is NOT walked
+/// (as a misplaced quest's is not): the declaration itself is the fault.
+fn reject_entries(doc: &Document, kind: &str, diags: &mut Vec<Diagnostic>) {
+    for entry in &doc.entries {
+        diags.push(diag(
+            format!(
+                "`<entry id=\"{}\">` is not admitted at the document top level of a {kind} \
+                 document; only a lore-kind document declares `<entry>` (dsl 0.19.0 §2)",
+                entry.id
+            ),
+            entry.span,
+        ));
+    }
 }
 
 /// Validate a COMPONENT document's top level (dsl §13 x dsl 0.4.0 §6.1): a
@@ -264,6 +356,9 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
 ///   design, since an expanded component contributes nodes to the consuming
 ///   shot rather than a shot of its own.
 /// * `quests` — UNWALKED: the instance this pass reports.
+/// * `entries` — UNWALKED (dsl 0.19.0 §2): a top-level `<entry>` is a lore
+///   declaration, never presentational content, and reported exactly like a
+///   `<quest>`.
 /// * `span` — the document's own byte extent, not content.
 ///
 /// Reported at each declaration's own span; `validate_components` re-anchors
@@ -277,23 +372,34 @@ pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
         title: _,
         shots: _,
         quests,
+        entries,
         span: _,
     } = doc;
-    quests
-        .iter()
-        .map(|quest| {
-            diag(
-                format!(
-                    "`<quest id=\"{}\">` is not admitted at the document top level of a \
-                     component document; a component is presentational content only, and \
-                     top-level content the component walker never processes would be \
-                     silently dropped on `::use` (dsl §13, dsl 0.4.0 §6.1)",
-                    quest.id
-                ),
-                quest.span,
-            )
-        })
-        .collect()
+    let quest_diags = quests.iter().map(|quest| {
+        diag(
+            format!(
+                "`<quest id=\"{}\">` is not admitted at the document top level of a \
+                 component document; a component is presentational content only, and \
+                 top-level content the component walker never processes would be \
+                 silently dropped on `::use` (dsl §13, dsl 0.4.0 §6.1)",
+                quest.id
+            ),
+            quest.span,
+        )
+    });
+    let entry_diags = entries.iter().map(|entry| {
+        diag(
+            format!(
+                "`<entry id=\"{}\">` is not admitted at the document top level of a \
+                 component document; a component is presentational content only, and \
+                 top-level content the component walker never processes would be \
+                 silently dropped on `::use` (dsl §13, dsl 0.19.0 §2)",
+                entry.id
+            ),
+            entry.span,
+        )
+    });
+    quest_diags.chain(entry_diags).collect()
 }
 
 /// Walk a node stream, flagging every [`Node`] not admitted at `ctx`, and
@@ -356,14 +462,16 @@ fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagn
 /// Driven ENTIRELY by `doc` (not the incoming `ctx`): `SceneBody` for a scene
 /// document — dsl 0.1.0 has no context split, so even a rogue `<on>`/
 /// `<objective>` wrongly nested in a scene body still recurses as ordinary
-/// scene content — and `Emittable` for a quest document (`QuestBody` or
-/// already-`Emittable`, both collapse to `Emittable` once nested). This keeps
-/// every `(doc, ctx)` pair [`admits`] ever sees consistent with its
-/// `debug_assert`.
+/// scene content — `Emittable` for a quest document (`QuestBody` or
+/// already-`Emittable`, both collapse to `Emittable` once nested), and
+/// `EntryBody` for a lore document (dsl 0.19.0 §4: a nested `<match>` keeps
+/// the entry admission). This keeps every `(doc, ctx)` pair [`admits`] ever
+/// sees consistent with its `debug_assert`.
 fn nested_ctx(doc: DocKind) -> GrammarContext {
     match doc {
         DocKind::Scene => GrammarContext::SceneBody,
         DocKind::Quest => GrammarContext::Emittable,
+        DocKind::Lore => GrammarContext::EntryBody,
     }
 }
 
@@ -394,6 +502,11 @@ fn context_reason(doc: DocKind, ctx: GrammarContext) -> &'static str {
         (DocKind::Quest, _) => {
             "an emittable body (an `<objective>`/`<on>` arm, or nested `<match>`/`<branch>`) \
              admits no `<hub>`/`<timeline>`/`<on>`/`<objective>` (dsl 0.2.0 §6.7)"
+        }
+        (DocKind::Lore, _) => {
+            "entry bodies are looked up, not played — no choices, staging, directives, or \
+             handlers; an entry admits only content lines, `<match>`, `::set`, `::assert`, \
+             and `::retract` (dsl 0.19.0 §4)"
         }
     }
 }

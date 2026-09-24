@@ -80,6 +80,12 @@ pub(crate) fn check_document_permissions(
         checker.check_rewards(&quest.rewards);
         checker.walk_nodes(&quest.body);
     }
+    // dsl 0.19.0 §4: entry bodies write state and facts (`::set`/`::assert`/
+    // `::retract`) exactly as scene content does — the same write ceilings
+    // apply. No declaration-level ceiling exists for entries.
+    for entry in &doc.entries {
+        checker.walk_nodes(&entry.body);
+    }
 
     checker.diagnostics
 }

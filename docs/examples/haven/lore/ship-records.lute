@@ -1,0 +1,34 @@
+---
+kind: lore
+luteVersion: "0.18.0"
+uses: ../world.schema.yaml
+title: Haven's records
+---
+
+<entry id="purserLedger1" target="item.purser_ledger" category="note" series="purserLedger" order="1" title="Purser's ledger, page 1">
+  @ottavio{code="0010"}: Manifest amended at the third bell. Two pods logged aboard that were never loaded.
+  ::assert{knows(vesna, manifest)}
+</entry>
+
+<entry id="purserLedger2" target="item.purser_ledger" category="note" series="purserLedger" order="2" title="Purser's ledger, page 2" when="entry.purserLedger1.read">
+  @ottavio{code="0010"}: If anyone reads this far: the heading on the bridge was never the true one.
+  ::assert{knows(vesna, true_heading)}
+</entry>
+
+<entry id="shedPlaque" target="place.shed" category="place">
+  <match on="run.shedPressure">
+    <when is="2..">
+      @narrator{code="0010"}: The brass plaque has buckled. Whatever the shed held, it held too much.
+    </when>
+    <when is="1">
+      @narrator{code="0020"}: The brass plaque is warm to the touch, and slightly bowed.
+    </when>
+    <otherwise>
+      @narrator{code="0030"}: A brass plaque: "Pressure shed. Crew access only."
+    </otherwise>
+  </match>
+</entry>
+
+<entry id="vesnaManifestBark" target="npc.vesna" category="bark" when="holds(knows(vesna, manifest))">
+  @vesna{code="0010"}: Two pods that were never loaded. Somebody lied on paper, and I keep reading it.
+</entry>

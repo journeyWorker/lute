@@ -84,8 +84,8 @@ use lute_syntax::ast::{
 use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral, IsLiteralError};
 
 use crate::cel_paths::{
-    is_reserved_quest_activated_at, is_reserved_quest_objective_done, is_reserved_quest_path,
-    E_PATH_IDENT,
+    is_reserved_entry_read, is_reserved_quest_activated_at, is_reserved_quest_objective_done,
+    is_reserved_quest_path, E_PATH_IDENT,
 };
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
@@ -1121,7 +1121,8 @@ fn has_bool_attr(attrs: &[Attr], key: &str) -> bool {
 /// via a `<quest>`'s `<on>`/`<objective>` arms) are scoped PER `<quest>` —
 /// each `<quest>` is its own identity domain, so the SAME (speaker, code)
 /// pair may repeat across two different quests without colliding, but not
-/// twice within one. Document order, deterministic (the caller's final
+/// twice within one. Each `<entry>` (dsl 0.19.0 §4) is likewise its own
+/// identity scope. Document order, deterministic (the caller's final
 /// `(byte_start, code)` sort settles ties).
 pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -1136,6 +1137,12 @@ pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
         let mut quest_lines: Vec<&Line> = Vec::new();
         collect_lines(&quest.body, &mut quest_lines);
         check_dup_line_codes(&quest_lines, &mut diags);
+    }
+
+    for entry in &doc.entries {
+        let mut entry_lines: Vec<&Line> = Vec::new();
+        collect_lines(&entry.body, &mut entry_lines);
+        check_dup_line_codes(&entry_lines, &mut diags);
     }
 
     diags
@@ -1343,10 +1350,12 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
             // Synthesize the SAME domain info `check_quest` folds for a
             // LOCAL quest, so a foreign one gets identical exhaustiveness
             // treatment.
-            if is_reserved_quest_objective_done(path) {
+            if is_reserved_quest_objective_done(path) || is_reserved_entry_read(path) {
                 DomainInfo {
                     domain: Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
-                    // `check_quest` seeds this decl with `default: Some(false)`.
+                    // `check_quest` seeds this decl with `default: Some(false)`;
+                    // `entry.<id>.read` (dsl 0.19.0 §5) is the same `bool`
+                    // defaulting to `false` (`crate::lore::entry_read_decl`).
                     maybe_unset: false,
                     resolved: true,
                 }
@@ -2549,6 +2558,7 @@ mod tests {
                 span: span(),
             }],
             quests: Vec::new(),
+            entries: Vec::new(),
             span: span(),
         }
     }

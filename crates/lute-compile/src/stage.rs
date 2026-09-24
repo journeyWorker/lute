@@ -6,7 +6,7 @@ use lute_check::{lower_node, Ctx, InjectKind, InjectedCommand, StageState};
 use lute_core_span::{Diagnostic, Layer, Severity};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
-    Arm, AttrValue, Branch, ClipNode, Directive, Hub, Match, Node, Quest, Timeline,
+    Arm, AttrValue, Branch, ClipNode, Directive, Entry, Hub, Match, Node, Quest, Timeline,
 };
 
 use crate::cfg::{Emitter, Label};
@@ -775,4 +775,47 @@ pub fn walk_quest(
     for label in empty_on_labels {
         em.bind(label);
     }
+}
+
+/// Walk one `<entry>` declaration (dsl 0.19.0 §4/§7): the `entry` head record
+/// FIRST, then its body segment — addressed and terminated exactly as an
+/// `<on>` body in [`walk_quest`]: a fresh label bound to the first body
+/// record, the body walked by [`walk_seq`] from a FRESH `StageState` (an
+/// entry is presented on its own, never threaded from a sibling), and an
+/// EMPTY body's label left trailing so the addressing pass resolves it to
+/// the entry unit's one-past-end. The checker admits only lines, `<match>`,
+/// `::set`/`::assert`/`::retract` in an entry body (D6), so `walk_seq`'s
+/// generic lowering is exactly right.
+///
+/// `order` is the checker-validated non-negative integer (`E-ENTRY-ATTR`
+/// gates anything else); `titleLineId` is `{entryId}.title`, the quest
+/// `titleLineId` convention.
+pub fn walk_entry(
+    em: &mut Emitter,
+    entry: &Entry,
+    cx: &mut WalkCx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let label = em.fresh();
+    let text = |v: &Option<(String, lute_core_span::Span)>| v.as_ref().map(|(s, _)| s.clone());
+    let mut cmd = Command::Entry(EntryCmd {
+        addr: String::new(),
+        id: entry.id.clone(),
+        target: text(&entry.target),
+        category: text(&entry.category),
+        title: text(&entry.title),
+        title_line_id: entry.title.as_ref().map(|_| format!("{}.title", entry.id)),
+        series: text(&entry.series),
+        order: entry
+            .order
+            .as_ref()
+            .and_then(|(o, _)| lute_check::parse_entry_order(o)),
+        when: entry.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+        body: label.sym(),
+        stamp: Stamp::default(),
+    });
+    apply_source(&mut cmd, cx);
+    em.push(cmd);
+    em.bind(label);
+    walk_seq(em, &entry.body, StageState::default(), cx, &[], diags);
 }

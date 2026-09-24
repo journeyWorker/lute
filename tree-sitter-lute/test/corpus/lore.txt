@@ -1,0 +1,49 @@
+==================
+lore document with two top-level entries (dsl 0.19.0 §2)
+==================
+---
+kind: lore
+uses: ../world.schema.yaml
+title: Ship's records
+---
+
+<entry id="scientistLog1" target="item.torn_note_1" category="note" series="scientistLog" order="1" title="Research log, day 3">
+  @scientist: Day three. Subject E does not respond to light.
+  ::assert{knows(vesna, project_lumen)}
+</entry>
+
+<entry id="rustyKey" target="item.rusty_key" category="item" when="entry.scientistLog1.read">
+  <match on="run.labBurned">
+    <when is="true">
+      @narrator: A scorched key. Someone's name has melted into the grip.
+    </when>
+    <otherwise>
+      @narrator: A rusty key, stamped "Research wing B2".
+    </otherwise>
+  </match>
+</entry>
+----------------------------------------
+
+(source_file
+  (frontmatter)
+  (entry
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (line (speaker) (text))
+    (assert (fact_pattern (ident) (fact_arg (ident)) (fact_arg (ident)))))
+  (entry
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (cel_attr (cel_key) (cel_string (path)))
+    (match
+      (cel_attr (cel_key) (cel_string (path)))
+      (when
+        (when_is (when_key) (when_pattern (when_literal)))
+        (line (speaker) (text)))
+      (otherwise
+        (line (speaker) (text))))))

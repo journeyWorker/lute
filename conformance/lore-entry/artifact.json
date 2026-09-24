@@ -1,0 +1,170 @@
+{
+  "kind": "lore",
+  "lute": "0.18.0",
+  "irVersion": "0.18.0",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {
+    "title": "Ship's records"
+  },
+  "state": [
+    {
+      "path": "entry.scientistLog1.read",
+      "type": "bool",
+      "default": false,
+      "provenance": "entry:scientistLog1"
+    },
+    {
+      "path": "entry.scientistLog2.read",
+      "type": "bool",
+      "default": false,
+      "provenance": "entry:scientistLog2"
+    },
+    {
+      "path": "run.labBurned",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.logsRead",
+      "type": "number",
+      "default": 0
+    }
+  ],
+  "entities": [
+    {
+      "name": "crew",
+      "members": [
+        "vesna",
+        "scientist"
+      ],
+      "open": false
+    },
+    {
+      "name": "topic",
+      "members": [
+        "project_lumen"
+      ],
+      "open": false
+    }
+  ],
+  "relations": [
+    {
+      "name": "knows",
+      "args": [
+        "crew",
+        "topic"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "entry",
+      "addr": "001-0100",
+      "id": "scientistLog1",
+      "target": "item.torn_note_1",
+      "category": "note",
+      "title": "Research log, day 3",
+      "titleLineId": "scientistLog1.title",
+      "series": "scientistLog",
+      "order": 1,
+      "body": "001-0200"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0200",
+      "subject": "run.labBurned",
+      "arms": [
+        {
+          "test": "",
+          "target": "001-0300",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "run.labBurned"
+            },
+            "r": {
+              "lit": true
+            }
+          }
+        }
+      ],
+      "otherwise": "001-0500",
+      "converge": "001-0700"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0300",
+      "role": "dialogue",
+      "speaker": "scientist",
+      "text": "Day three. The page is scorched at the edges.",
+      "lineId": "scientistLog1.scientist_0010",
+      "voiceKey": "scientist-0010"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0400",
+      "target": "001-0700"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0500",
+      "role": "dialogue",
+      "speaker": "scientist",
+      "text": "Day three. Subject E does not respond to light.",
+      "lineId": "scientistLog1.scientist_0020",
+      "voiceKey": "scientist-0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0600",
+      "target": "001-0700"
+    },
+    {
+      "kind": "assert",
+      "addr": "001-0700",
+      "relation": "knows",
+      "args": [
+        "vesna",
+        "project_lumen"
+      ]
+    },
+    {
+      "kind": "set",
+      "addr": "001-0800",
+      "path": "run.logsRead",
+      "op": "+=",
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
+    },
+    {
+      "kind": "entry",
+      "addr": "002-0100",
+      "id": "scientistLog2",
+      "target": "item.torn_note_2",
+      "category": "note",
+      "series": "scientistLog",
+      "order": 2,
+      "when": {
+        "raw": "entry.scientistLog1.read",
+        "expr": {
+          "path": "entry.scientistLog1.read"
+        }
+      },
+      "body": "002-0200"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0200",
+      "role": "dialogue",
+      "speaker": "scientist",
+      "text": "Day four. The light was never the point.",
+      "lineId": "scientistLog2.scientist_0010",
+      "voiceKey": "scientist-0010"
+    }
+  ]
+}

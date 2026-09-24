@@ -134,6 +134,16 @@ pub fn semantic_tokens(doc: &Document, idx: &TextIndex) -> Vec<SemanticToken> {
         quest_tokens(quest, &mut raw);
         walk_nodes(&quest.body, idx.text(), &mut raw);
     }
+    // A lore `<entry>` (dsl 0.19.0 §3) is a top-level declaration like `<quest>`.
+    for entry in &doc.entries {
+        push(
+            &mut raw,
+            entry.span.byte_start,
+            entry.span.byte_start + "<entry".len(),
+            TokType::Logic,
+        );
+        walk_nodes(&entry.body, idx.text(), &mut raw);
+    }
     // CEL sub-tokens: every slot's `@ref`s, state paths, and plain tokens.
     for slot in all_slots(doc) {
         slot_tokens(slot.span.byte_start, &slot.raw, &mut raw);

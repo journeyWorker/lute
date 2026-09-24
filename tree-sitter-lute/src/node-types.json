@@ -214,6 +214,69 @@
     }
   },
   {
+    "type": "entry",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "attr",
+          "named": true
+        },
+        {
+          "type": "branch",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "hub",
+          "named": true
+        },
+        {
+          "type": "line",
+          "named": true
+        },
+        {
+          "type": "match",
+          "named": true
+        },
+        {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
+          "type": "retract",
+          "named": true
+        },
+        {
+          "type": "set",
+          "named": true
+        },
+        {
+          "type": "timeline",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "fact_arg",
     "named": true,
     "fields": {},
@@ -810,6 +873,10 @@
           "named": true
         },
         {
+          "type": "entry",
+          "named": true
+        },
+        {
           "type": "frontmatter",
           "named": true
         },
@@ -1119,6 +1186,10 @@
     "named": false
   },
   {
+    "type": "</entry>",
+    "named": false
+  },
+  {
     "type": "</hub>",
     "named": false
   },
@@ -1160,6 +1231,10 @@
   },
   {
     "type": "<choice",
+    "named": false
+  },
+  {
+    "type": "<entry",
     "named": false
   },
   {

@@ -17,6 +17,7 @@ pub mod fact_write;
 pub mod fix;
 pub mod inject;
 pub mod logic_attrs;
+pub mod lore;
 pub mod match_check;
 pub mod meta;
 pub mod next_labels;
@@ -48,7 +49,7 @@ pub const LUTE_LANG_VERSION: &str = "0.18.0";
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_expand::{expand_cel, DefTable};
 pub use cel_message::{translate_cel_parse, Translation};
-pub use cel_paths::E_PATH_IDENT;
+pub use cel_paths::{is_reserved_entry_read, reserved_entry_id, E_PATH_IDENT};
 pub use cel_resolve::{
     check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALOG_GUARD_FACT,
     E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED,
@@ -70,6 +71,11 @@ pub use fix::{fix_document, FixResult};
 pub use inject::{
     is_declared_exit, lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState,
 };
+pub use lore::{
+    check_entries, entry_read_decl, entry_read_path, is_entry_ident, is_entry_target,
+    parse_entry_order, EntryRecord, E_ENTRY_ATTR, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER,
+    W_ENTRY_REF_UNKNOWN,
+};
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, check_quest_rewards,
     is_exhaustive, is_pattern_literals, BranchRecord, DomainInfo, HubRecord, QuestRecord,
@@ -87,8 +93,9 @@ pub use permissions::{
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
 pub use producible::W_UNPROVEN_RELATIONAL;
 pub use project_check::{
-    check_project_domain_reads, check_project_quest_ids, check_project_quest_refs,
-    check_project_quest_tree, check_project_subquest_unsatisfiable, colliding_occurrences,
+    check_project_domain_reads, check_project_entry_ids, check_project_entry_refs,
+    check_project_quest_ids, check_project_quest_refs, check_project_quest_tree,
+    check_project_subquest_unsatisfiable, colliding_entry_occurrences, colliding_occurrences,
     component_unverified_diag, domain_reading_set, ComponentScope, E_QUEST_MULTI_PARENT,
     E_QUEST_REF_UNKNOWN, E_QUEST_TREE_CYCLE, W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD,
     W_QUEST_REF_UNKNOWN,

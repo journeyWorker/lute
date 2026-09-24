@@ -342,6 +342,7 @@ lute scenario .
 # Add more documents:
 lute new scene <name>
 lute new quest <name>
+lute new lore <name>
 lute new schema <name>
 ```
 "
@@ -567,6 +568,39 @@ state:
     )
 }
 
+/// `lute new lore <name>` (dsl 0.19.0 §2).
+///
+/// Self-contained: one `<entry>` whose id is [`to_ident`] of the name, attached
+/// to `item.<ident>` as a `note`, with one content line. Entries live under
+/// `lore/`, mirroring `quests/`; the file stem keeps the raw name.
+fn new_lore(name: &str, dir: &Path) -> ExitCode {
+    let path = dir.join("lore").join(format!("{name}.lute"));
+    let ident = to_ident(name);
+    let lang = lute_check::LUTE_LANG_VERSION;
+    let content = format!(
+        "\
+---
+kind: lore
+luteVersion: \"{lang}\"
+title: {name}
+# Each <entry> is text the engine looks up (an item description, a found
+# note, a codex page). `target` names the engine-owned thing it belongs to;
+# `::set`/`::assert` in a body apply on the first read only, after which
+# `entry.<id>.read` is true.
+---
+
+<entry id=\"{ident}\" target=\"item.{ident}\" category=\"note\" title=\"{name}\">
+  @narrator: A note about {name}. Replace this with your own text.
+</entry>
+"
+    );
+    write_new(
+        &path,
+        &content,
+        &format!("check it with: lute check {}", path.display()),
+    )
+}
+
 /// `lute new schema <name>` — a `<name>.schema.yaml` skeleton at the project
 /// root. Schema files are declaration maps (no `.lute` body), imported via
 /// `uses:`; they are not `lute check`-able on their own.
@@ -600,16 +634,19 @@ state:
 
 /// Scaffold one new document into an existing project. See [`crate::Command::New`].
 ///
-/// Kinds `scene`/`quest`/`schema`; an unknown kind is a usage error (exit `2`).
-/// Refuses to overwrite an existing target (exit `2`).
+/// Kinds `scene`/`quest`/`lore`/`schema`; an unknown kind is a usage error
+/// (exit `2`). Refuses to overwrite an existing target (exit `2`).
 pub fn run_new(kind: &str, name: &str, dir: &Path) -> ExitCode {
     match kind {
         "scene" => new_scene(name, dir),
         "quest" => new_quest(name, dir),
+        "lore" => new_lore(name, dir),
         "schema" => new_schema(name, dir),
         other => {
-            eprintln!("lute new: unknown kind `{other}` (expected `scene`, `quest`, or `schema`)");
-            eprintln!("usage: lute new <scene|quest|schema> <name> [--dir <DIR>]");
+            eprintln!(
+                "lute new: unknown kind `{other}` (expected `scene`, `quest`, `lore`, or `schema`)"
+            );
+            eprintln!("usage: lute new <scene|quest|lore|schema> <name> [--dir <DIR>]");
             ExitCode::from(2)
         }
     }

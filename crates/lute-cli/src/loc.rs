@@ -13,8 +13,8 @@
 //!
 //! ## Translatable units (`export`)
 //! Two kinds, both walked in document order (descending into `<branch>`/`<hub>`
-//! choice bodies, `<match>` arms, `<objective>`/`<on>` bodies, and quest bodies
-//! — mirroring `lute-check`'s own `collect_lines`):
+//! choice bodies, `<match>` arms, `<objective>`/`<on>` bodies, quest bodies,
+//! and lore `<entry>` bodies — mirroring `lute-check`'s own `collect_lines`):
 //! - **content lines** (`@speaker: text`, dsl §7.1) — `file`, `line`, `lineId`,
 //!   the stable `code` (dsl §12; `null` when the line carries no `code="…"`
 //!   string attr, i.e. it has not been through `lute tag`), `speaker`, and
@@ -30,7 +30,8 @@
 //! layer from exactly the same three inputs the addressing pass uses:
 //! - the identity PREFIX — a scene's `{character}.{episodeId}`
 //!   ([`canonical_episode_key`], the shared implementation compile's own prefix
-//!   join calls), or the enclosing `<quest id>` for a quest document;
+//!   join calls), the enclosing `<quest id>` for a quest document, or the
+//!   enclosing `<entry id>` for a lore document (dsl 0.19.0 §4);
 //! - the line's authored `code` and speaker, rendered through the project's
 //!   [`IdentityTemplates`] (dsl 0.8.0 §9) — never a hardcoded shape, so a
 //!   project that retemplated `lineId` exports the ids it actually compiles;
@@ -364,7 +365,7 @@ fn scene_prefix(doc: &Document) -> Option<String> {
 /// all share ONE document-wide prefix (compile folds them into a single
 /// identity scope); each `<quest>` is its OWN scope prefixed by its id (IR
 /// addendum §4) — mirroring `address.rs`'s two `ShotRecords.prefix` callers
-/// exactly.
+/// exactly — and so is each lore `<entry>` (dsl 0.19.0 §4).
 fn document_units(
     file: &str,
     doc: &Document,
@@ -390,6 +391,15 @@ fn document_units(
             components,
         };
         walk_nodes(&cx, &quest.body, None, out);
+    }
+    for entry in &doc.entries {
+        let cx = Cx {
+            file,
+            prefix: Some(&entry.id),
+            templates,
+            components,
+        };
+        walk_nodes(&cx, &entry.body, None, out);
     }
 }
 

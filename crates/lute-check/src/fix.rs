@@ -127,12 +127,20 @@ pub fn fix_document(text: &str) -> FixResult {
     for quest in &doc2.quests {
         collect_choices(&quest.body, &mut choices);
     }
+    // Entry bodies (dsl 0.19.0 §4) take the same migrations — a `<choice>`
+    // there is an admission error, but its sigil/`as` rewrite still applies.
+    for entry in &doc2.entries {
+        collect_choices(&entry.body, &mut choices);
+    }
     let mut lines: Vec<&Line> = Vec::new();
     for shot in &doc2.shots {
         collect_lines(&shot.body, &mut lines);
     }
     for quest in &doc2.quests {
         collect_lines(&quest.body, &mut lines);
+    }
+    for entry in &doc2.entries {
+        collect_lines(&entry.body, &mut lines);
     }
 
     let mut edits2: Vec<(usize, usize, String)> = Vec::new();

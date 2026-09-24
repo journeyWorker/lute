@@ -197,6 +197,88 @@ fn export_then_import_produces_a_stable_bundle() {
     );
 }
 
+/// dsl 0.19.0 §4: every lore `<entry>` is its own identity scope prefixed by
+/// its id (like a quest), so its tagged lines — including one inside a
+/// `<match>` arm — export under `{entryId}.{speaker}_{code}` and round-trip
+/// through `loc import` and back onto the compiled artifact's `texts`.
+#[test]
+fn lore_entry_lines_round_trip_under_the_entry_prefix() {
+    let dir = temp_dir("lore");
+    write(&dir, "lute.project.yaml", PROJECT_YAML);
+    let lore = write(
+        &dir,
+        "notes.lute",
+        "---\nkind: lore\nstate:\n  run.burned: { type: bool, default: false }\n---\n\n\
+         <entry id=\"log1\" target=\"item.note\" category=\"note\">\n\
+         @scientist{code=\"0010\"}: Day three.\n\
+         </entry>\n\n\
+         <entry id=\"key\" target=\"item.key\">\n\
+         <match on=\"run.burned\">\n\
+         <when is=\"true\">\n@narrator{code=\"0010\"}: A scorched key.\n</when>\n\
+         <otherwise>\n@narrator{code=\"0020\"}: A rusty key.\n</otherwise>\n\
+         </match>\n\
+         </entry>\n",
+    );
+    let work = temp_dir("lore-work");
+    let file = translate(&dir, &work.join("ja-JP.json"), "[ja] ", &[]);
+    let rows: Vec<serde_json::Value> = read_json(&file).as_array().unwrap().clone();
+    let ids: Vec<&str> = rows.iter().map(|r| r["lineId"].as_str().unwrap()).collect();
+    assert_eq!(
+        ids,
+        ["log1.scientist_0010", "key.narrator_0010", "key.narrator_0020"],
+        "each entry is its own prefix scope, in document order"
+    );
+
+    let bundle = work.join("bundle.json");
+    let imported = run(&[
+        "loc",
+        "import",
+        file.to_str().unwrap(),
+        "-o",
+        bundle.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        imported.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&imported.stderr)
+    );
+    let entries = read_json(&bundle)["entries"].as_object().unwrap().clone();
+    assert_eq!(
+        entries["log1.scientist_0010"]["ja-JP"], "[ja] Day three.",
+        "{entries:#?}"
+    );
+
+    // The export's lineIds are the ones the compiler stamps: the bundle
+    // merges back onto every entry line.
+    let merged = work.join("notes.json");
+    let compiled = run(&[
+        "compile",
+        lore.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+        "--locales",
+        bundle.to_str().unwrap(),
+        "-o",
+        merged.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        compiled.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    let artifact = read_json(&merged);
+    let maps = locale_maps(&artifact);
+    assert_eq!(maps.len(), 3, "{maps:#?}");
+    for (id, texts) in maps {
+        assert!(
+            texts["ja-JP"].as_str().unwrap_or_default().starts_with("[ja] "),
+            "{id} not localized: {texts}"
+        );
+    }
+}
+
 #[test]
 fn a_csv_export_round_trips_through_import_too() {
     let dir = project("csv");
