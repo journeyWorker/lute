@@ -282,21 +282,13 @@ pub fn build_index(
 ) -> Result<ProjectIndex, Vec<IndexError>> {
     let mut errors = Vec::new();
 
-    let mut capability: Option<(&str, &str)> = None;
-    for d in docs {
-        match capability {
-            None => capability = Some((d.path.as_str(), d.artifact.capability_version.as_str())),
-            Some((first_doc, first)) if first != d.artifact.capability_version => {
-                errors.push(IndexError::CapabilityMismatch {
-                    first_doc: first_doc.to_string(),
-                    first: first.to_string(),
-                    other_doc: d.path.clone(),
-                    other: d.artifact.capability_version.clone(),
-                });
-            }
-            Some(_) => {}
-        }
-    }
+    let capability: Option<(&str, &str)> = docs
+        .first()
+        .map(|d| (d.path.as_str(), d.artifact.capability_version.as_str()));
+    errors.extend(capability_mismatches(
+        docs.iter()
+            .map(|d| (d.path.as_str(), d.artifact.capability_version.as_str())),
+    ));
 
     let mut entities = Axis::new("entity kind");
     let mut enums = Axis::new("enum");
@@ -417,6 +409,98 @@ pub fn build_index(
         entries,
         beats,
     })
+}
+
+/// `E-CAPABILITY-MISMATCH`: the code `check-project` reports an
+/// [`IndexError::CapabilityMismatch`] under (0.21.1 T1-11).
+pub const E_CAPABILITY_MISMATCH: &str = "E-CAPABILITY-MISMATCH";
+
+/// The single-snapshot gate [`build_index`] enforces, over `(document,
+/// capabilityVersion)` pairs: one [`IndexError::CapabilityMismatch`] per
+/// document whose snapshot differs from the FIRST document's. Shared with
+/// `check-project` (0.21.1 T1-11), which runs it over each project root's
+/// resolved snapshots so a project `play`/`compile --all` will refuse cannot
+/// pass the check first.
+pub fn capability_mismatches<'a>(
+    docs: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Vec<IndexError> {
+    let mut docs = docs.into_iter();
+    let Some((first_doc, first)) = docs.next() else {
+        return Vec::new();
+    };
+    docs.filter(|(_, v)| *v != first)
+        .map(|(other_doc, other)| IndexError::CapabilityMismatch {
+            first_doc: first_doc.to_string(),
+            first: first.to_string(),
+            other_doc: other_doc.to_string(),
+            other: other.to_string(),
+        })
+        .collect()
+}
+
+/// `E-DUP-VOICEKEY` (0.21.1 T1-9): two voiced lines with DIFFERENT text
+/// compiled to one `voiceKey`.
+pub const E_DUP_VOICEKEY: &str = "E-DUP-VOICEKEY";
+
+/// One voice asset key shared by lines that say different things. `lines`
+/// holds every `(document, lineId, text)` carrying `key`, in `docs` order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VoiceKeyCollision {
+    pub key: String,
+    pub lines: Vec<(String, String, String)>,
+}
+
+impl std::fmt::Display for VoiceKeyCollision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "voiceKey `{}` is shared by {} lines with different text, so one recording would \
+             voice all of them:",
+            self.key,
+            self.lines.len()
+        )?;
+        for (doc, line_id, text) in &self.lines {
+            write!(f, " `{doc}` {line_id} \"{text}\";")?;
+        }
+        write!(
+            f,
+            " a voiceKey template without `{{prefix}}` (the default is `{{speaker}}-{{code}}`) \
+             repeats across documents — set `identity.voiceKey: \"{{prefix}}.{{speaker}}-{{code}}\"` \
+             in lute.project.yaml (renames every voice asset) or give the lines distinct `code=`s"
+        )
+    }
+}
+
+/// Every `voiceKey` carried by two or more voiced lines whose `text` differs,
+/// across ALL of `docs` (a project's documents compile independently, so
+/// only a project-wide pass can see the collision). Lines repeating the same
+/// text under one key share a recording legitimately and are not reported.
+/// Sorted by key.
+pub fn voice_key_collisions(docs: &[IndexInput<'_>]) -> Vec<VoiceKeyCollision> {
+    let mut by_key: BTreeMap<&str, Vec<(&str, &str, &str)>> = BTreeMap::new();
+    for d in docs {
+        for c in &d.artifact.commands {
+            if let Command::Line(l) = c {
+                if let Some(key) = l.voice_key.as_deref() {
+                    by_key
+                        .entry(key)
+                        .or_default()
+                        .push((d.path.as_str(), l.line_id.as_str(), l.text.as_str()));
+                }
+            }
+        }
+    }
+    by_key
+        .into_iter()
+        .filter(|(_, lines)| lines.iter().any(|(_, _, t)| *t != lines[0].2))
+        .map(|(key, lines)| VoiceKeyCollision {
+            key: key.to_string(),
+            lines: lines
+                .into_iter()
+                .map(|(d, id, t)| (d.to_string(), id.to_string(), t.to_string()))
+                .collect(),
+        })
+        .collect()
 }
 
 /// The document's canonical node key (see [`IndexDocument::key`]). A scene's

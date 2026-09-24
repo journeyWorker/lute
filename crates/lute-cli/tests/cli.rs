@@ -19,6 +19,16 @@ fn temp_dir(tag: &str) -> PathBuf {
     dir
 }
 
+/// `date-minigame.lute` copied OUT of `arcia-project/`: with no
+/// `lute.project.yaml` above it, `lute check` resolves core-only, where its
+/// plugin directive is `E-UNKNOWN-DIRECTIVE`. In place, `lute check` finds
+/// the arcia project (0.21.1 T3-9) and the file is clean.
+fn loose_date_minigame(tag: &str) -> PathBuf {
+    let file = temp_dir(tag).join("date-minigame.lute");
+    std::fs::copy("../../docs/examples/arcia-project/date-minigame.lute", &file).unwrap();
+    file
+}
+
 #[test]
 fn check_clean_file_exits_zero_json() {
     let out = Command::new(BIN)
@@ -57,12 +67,9 @@ fn check_json_has_resolved_view_and_diagnostics_array() {
 
 #[test]
 fn check_file_with_errors_exits_one() {
+    let file = loose_date_minigame("errors-exit-one");
     let out = Command::new(BIN)
-        .args([
-            "check",
-            "../../docs/examples/arcia-project/date-minigame.lute",
-            "--json",
-        ])
+        .args(["check", file.to_str().unwrap(), "--json"])
         .output()
         .unwrap();
     assert!(
@@ -76,11 +83,9 @@ fn check_file_with_errors_exits_one() {
 
 #[test]
 fn check_human_output_lists_diagnostics() {
+    let file = loose_date_minigame("human-output");
     let out = Command::new(BIN)
-        .args([
-            "check",
-            "../../docs/examples/arcia-project/date-minigame.lute",
-        ])
+        .args(["check", file.to_str().unwrap()])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
@@ -1465,6 +1470,11 @@ fn autopicked_branch_is_reported_not_silent() {
 /// built, so a test expecting that text produced
 /// `state run.x: expected "<never written>", got "<never written>"` — a
 /// difference whose two sides were byte-identical, at `0 passed, 1 failed`.
+///
+/// 0.21.1 (T2-5): `run.unwritten` used to carry `default: 0` here, and the
+/// test pinned "never written" for it — but a declared default IS the path's
+/// effective value, which `expect.state` now compares. A genuinely absent
+/// value is a path with no write, no seed and no default.
 #[test]
 fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
     let dir = temp_dir("test-never-written");
@@ -1472,7 +1482,7 @@ fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
         &dir,
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-         run.written: { type: number, default: 0 }\n  run.unwritten: { type: number, default: 0 }\n\
+         run.written: { type: number, default: 0 }\n  run.unwritten: { type: number }\n\
          ---\n\n## One\n\n::set{ run.written = 2 }\n@narrator: a.\n",
     );
     let run = |name: &str, body: &str| {

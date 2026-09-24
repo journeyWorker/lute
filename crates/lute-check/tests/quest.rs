@@ -653,3 +653,54 @@ fn meta_unknown_key_scene_triad_on_a_quest_names_no_attribute() {
         .expect("`character` is scene-only");
     assert!(!msg.contains("`after=`"), "{}", msg);
 }
+
+// --- 0.21.1 T1-1: `quest.<id>.state` is an always-assigned lifecycle enum ---
+
+const T11_SCENE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
+
+/// Reads — including `== 'unset'` — were `E-MAYBE-UNSET` (with a message
+/// about `::set`), and `== 'unset'` also `E-UNSET-LITERAL`: the checker was
+/// the only tool that did not treat `unset` as a state. Now all clean.
+#[test]
+fn quest_state_reads_and_unset_comparison_are_clean() {
+    let cs = codes(&format!(
+        "{T11_SCENE}@x{{when=\"quest.qq.state == 'complete'\"}}: done\n\
+         @x{{when=\"quest.qq.state == 'unset'\"}}: not yet\n\
+         @x{{when=\"quest.qq.state != 'unset'\"}}: taken\n"
+    ));
+    assert!(cs.is_empty(), "{cs:?}");
+}
+
+/// `isSet(quest.X.state)` is always true (the engine writes `unset`), so the
+/// guard the checker used to recommend is now `W-QUEST-STATE-ISSET`.
+#[test]
+fn isset_on_quest_state_warns() {
+    let r = run(&format!(
+        "{T11_SCENE}@x{{when=\"!isSet(quest.qq.state)\"}}: not yet\n"
+    ));
+    let w: Vec<_> = r
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "W-QUEST-STATE-ISSET")
+        .collect();
+    assert_eq!(w.len(), 1, "{:?}", r.diagnostics);
+    assert!(w[0].message.contains("== 'unset'"), "{}", w[0].message);
+    assert!(r.diagnostics.iter().all(|d| d.code == "W-QUEST-STATE-ISSET"), "{:?}", r.diagnostics);
+}
+
+/// `<when is="unset">` on a quest state names the MEMBER: a match over all
+/// four states is exhaustive, and one missing `unset` is not.
+#[test]
+fn quest_state_match_covers_unset_as_a_member() {
+    let full = codes(&format!(
+        "{T11_SCENE}<match on=\"quest.qq.state\">\n<when is=\"unset\">\n@x: u\n</when>\n\
+         <when is=\"active\">\n@x: a\n</when>\n<when is=\"complete | failed\">\n@x: c\n</when>\n\
+         </match>\n"
+    ));
+    assert!(full.is_empty(), "{full:?}");
+    let missing = codes(&format!(
+        "{T11_SCENE}<match on=\"quest.qq.state\">\n<when is=\"active\">\n@x: a\n</when>\n\
+         <when is=\"complete | failed\">\n@x: c\n</when>\n</match>\n"
+    ));
+    assert!(missing.contains(&"E-NONEXHAUSTIVE".to_string()), "{missing:?}");
+}

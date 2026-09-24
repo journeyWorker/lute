@@ -1,0 +1,11 @@
+---
+# 0.21.1 T1-3: a component param is a compile-time constant, so each `::use`
+# expansion renders its own text.
+component: card
+params:
+  weather: { enum: [grey, still] }
+---
+
+## Card
+
+@narrator: Outside: {{@weather}}. Still {{@weather}}.

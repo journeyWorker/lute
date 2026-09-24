@@ -389,7 +389,9 @@ state:
 ```
 
 `after:`와 장면 간 읽기는 여러 파일에 걸쳐야만 의미가 있으므로, 두 장면을 한 폴더에 넣고, 그
-폴더를 프로젝트 루트로 표시하는 한 줄짜리 `lute.project.yaml`을 두세요:
+폴더를 프로젝트 루트로 표시하는 `lute.project.yaml`을 두세요. `identity:` 줄은 음성 키에 장면도
+넣습니다. 이 줄이 없으면 다이너와 부스의 첫 Mira 대사가 둘 다 `mira-0010`이 되어 녹음 하나를 두 대사가
+나눠 쓰게 되고, `check-project`는 이를 거부합니다(`E-DUP-VOICEKEY`):
 
 ```yaml
 # episodes/lute.project.yaml
@@ -397,6 +399,8 @@ defaultProfile: core
 profiles:
   core:
     plugins: {}
+identity:
+  voiceKey: "{prefix}.{speaker}-{code}"
 ```
 
 ```lute check-project="docs/examples/episodes/booth.lute"

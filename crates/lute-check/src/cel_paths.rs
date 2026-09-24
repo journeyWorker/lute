@@ -134,6 +134,20 @@ pub(crate) fn is_reserved_quest_activated_at(path: &str) -> bool {
     )
 }
 
+/// `true` specifically for `quest.<id>.state` (3 segments, segment 2 ==
+/// `state`, non-empty id) — the sub-case of [`is_reserved_quest_path`] that is
+/// the quest LIFECYCLE ENUM. 0.21.1 T1-1: it is always assigned
+/// (`unset | active | complete | failed` — the engine writes `unset` for every
+/// known quest before activation), so it is never maybe-unset, `'unset'` is a
+/// member rather than a misspelled sentinel, and `isSet()` on it is always
+/// true. Every checker site that reasons about unset-ness asks this predicate.
+pub(crate) fn is_reserved_quest_state(path: &str) -> bool {
+    matches!(
+        path.split('.').collect::<Vec<&str>>().as_slice(),
+        ["quest", id, "state"] if !id.is_empty()
+    )
+}
+
 /// `E-PATH-IDENT`: a `-` in a CEL-facing name — a state-path segment, a `defs`
 /// name, or a def parameter name (dsl §8.4, §4.4 `CelIdent`). CEL parses `-` as
 /// subtraction, so these positions forbid it; `Ident` positions (directive/attr/

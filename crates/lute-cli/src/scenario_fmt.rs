@@ -424,18 +424,24 @@ fn envelope_json(
 
 /// Serialize `value` to stdout as pretty JSON + a trailing newline. Exit `0`
 /// on success, `2` on a serialization/write failure (matching the CLI's
-/// I/O-error tier).
+/// I/O-error tier) — written through [`crate::write_stdout`], so a closed pipe
+/// is that I/O failure rather than a `println!` panic (T3-15).
 fn print_json(value: &Value) -> ExitCode {
     match serde_json::to_string_pretty(value) {
-        Ok(s) => {
-            println!("{s}");
-            ExitCode::SUCCESS
-        }
+        Ok(s) => write_or_io_error(&format!("{s}\n")),
         Err(e) => {
             eprintln!("lute scenario: failed to serialize JSON: {e}");
             ExitCode::from(2)
         }
     }
+}
+
+/// `0` once `text` is on stdout, `2` when the write fails (e.g. EPIPE).
+fn write_or_io_error(text: &str) -> ExitCode {
+    if crate::write_stdout(text).is_err() {
+        return ExitCode::from(2);
+    }
+    ExitCode::SUCCESS
 }
 
 // ===========================================================================
@@ -458,16 +464,14 @@ fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand
         Err(code) => return code,
     };
     if by_root.is_empty() {
-        println!("// lute scenario: no .lute files found");
-        return ExitCode::SUCCESS;
+        return write_or_io_error("// lute scenario: no .lute files found\n");
     }
     let mut out = String::new();
     for (root, group_full) in &by_root {
         let scenario = assemble_root_scenario(group_full, &file_results);
         out.push_str(&root_dot(root, &scenario));
     }
-    print!("{out}");
-    ExitCode::SUCCESS
+    write_or_io_error(&out)
 }
 
 /// One `digraph` for one root: a node line per `graph.nodes` (shape by kind —

@@ -154,15 +154,25 @@ fn invalid_or_projectless_permission_profile_is_an_explicit_error() {
     assert_eq!(unknown.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&unknown.stderr).contains("E-PROFILE-UNKNOWN"));
 
+    // Truly projectless: a copy outside every `lute.project.yaml` (inside
+    // `dir`, `lute check` would discover the manifest — 0.21.1 T3-9).
+    let loose_dir = std::env::temp_dir().join(format!(
+        "lute-permissions-loose-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _ = std::fs::remove_dir_all(&loose_dir);
+    let loose = write_scene(&loose_dir, "scene.lute", 1, "::end\n");
     let projectless = output(&[
         "check",
-        file.to_str().unwrap(),
+        loose.to_str().unwrap(),
         "--permission-profile",
         "restricted",
     ]);
     assert_eq!(projectless.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&projectless.stderr).contains("E-PERMISSION-PROFILE"));
     let _ = std::fs::remove_dir_all(dir);
+    let _ = std::fs::remove_dir_all(loose_dir);
 }
 
 #[test]

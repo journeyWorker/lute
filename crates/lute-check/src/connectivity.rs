@@ -311,7 +311,7 @@ fn check_formula_atoms(
     formula: &PrereqFormula,
     span: Span,
     path: &Path,
-    key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
+    key_set: &SceneKeys<'_>,
     quest_ids: &BTreeSet<String>,
     out: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
@@ -342,22 +342,37 @@ fn check_formula_atoms(
 /// One `visited(K)` target against the project's scene keys: a miss is
 /// [`E_CONN_UNKNOWN_NODE`] at `span`, with a "did you mean" when a key is
 /// close. `cite` names the surface the call came from.
+///
+/// A miss is NOT reported when the key set is incomplete
+/// ([`SceneKeys::complete`]): some document in the root has a frontmatter that
+/// does not parse, so its id is unreadable and `K` may well be it. That
+/// document already fails with `E-META-PARSE`; reporting every reference to
+/// it as unknown would cascade one YAML slip into errors in files that are
+/// fine (0.21.1 T3-8, seven F3).
 fn check_scene_key(
     key: &str,
     cite: &str,
     span: Span,
     path: &Path,
-    key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
+    key_set: &SceneKeys<'_>,
     out: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
-    if key_set.contains_key(key) {
+    if key_set.keys.contains_key(key) || !key_set.complete {
         return;
     }
     let mut message = format!("unknown node: no scene resolves to key `{key}` (`visited`, {cite})");
-    if let Some(sugg) = nearest_match(key, key_set.keys().map(String::as_str), 2) {
+    if let Some(sugg) = nearest_match(key, key_set.keys.keys().map(String::as_str), 2) {
         message.push_str(&format!(" — did you mean `{sugg}`?"));
     }
     out.push((path.to_path_buf(), unknown_node_diag(message, span)));
+}
+
+/// The project's scene keys ([`scene_key_set`]) plus whether they are all of
+/// them: `complete` is false when some document's frontmatter does not parse
+/// ([`crate::meta::frontmatter_parses`]) — a scene whose id cannot be read.
+struct SceneKeys<'a> {
+    keys: &'a BTreeMap<String, Vec<(PathBuf, Span)>>,
+    complete: bool,
 }
 
 /// dsl 0.21.0 §7a.1: every `visited('<scene id>')` call in a condition slot
@@ -370,7 +385,7 @@ fn check_scene_key(
 fn check_visited_calls(
     doc: &Document,
     path: &Path,
-    key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
+    key_set: &SceneKeys<'_>,
     out: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
     let check_raw = |raw: &str, span: Span, out: &mut Vec<(PathBuf, Diagnostic)>| {
@@ -423,6 +438,12 @@ pub fn resolve_nodes(
     key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
     quest_ids: &BTreeSet<String>,
 ) -> Vec<(PathBuf, Diagnostic)> {
+    let key_set = &SceneKeys {
+        keys: key_set,
+        complete: docs
+            .iter()
+            .all(|(_, doc)| crate::meta::frontmatter_parses(&doc.meta)),
+    };
     let mut out = Vec::new();
     for (path, doc) in docs {
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {

@@ -112,8 +112,9 @@ fn long_form_type_is_optional_and_inferred() {
 fn an_undecidable_shorthand_asks_for_the_long_form() {
     let d = def_decl("x: \"scene.flag ? 1 : 'one'\"");
     assert!(d.message.contains("cannot be inferred"), "{}", d.message);
+    // 0.21.1 T1-6: the type is a placeholder, never a guessed `bool`.
     assert!(
-        d.message.contains("x: { type: bool, cel: \"scene.flag ? 1 : 'one'\" }"),
+        d.message.contains("x: { type: <bool|number|enum>, cel: \"scene.flag ? 1 : 'one'\" }"),
         "the fix, spelled out: {}",
         d.message
     );
@@ -262,4 +263,46 @@ fn an_undecidable_imported_shorthand_is_named_in_the_importer() {
         "{}",
         d.message
     );
+}
+
+/// 0.21.1 T1-6: a def body is CEL that lands in every slot using it, but the
+/// `@name` use site is exempt from the gates as a macro and nothing looked at
+/// the body: `%` / `size()` / unparseable CEL all passed `check`. The body now
+/// gets the inline slot's profile gate, at the def's own key; a def's own
+/// `params:` stay legal bare identifiers.
+#[test]
+fn def_body_gets_the_cel_profile_gate() {
+    let t = format!(
+        "{HDR}defs:\n  wd: {{ type: number, cel: \"scene.n % 7\" }}\n  \
+         sz: {{ type: number, cel: \"size(scene.n)\" }}\n  \
+         broken: {{ type: bool, cel: \"scene.n ==\" }}\n  \
+         ok: {{ type: bool, params: {{ k: number }}, cel: \"scene.n >= k\" }}\n---\n\
+         ## Shot 1.\n@x{{when=\"@wd == 3\"}}: a\n@x{{when=\"@sz == 3\"}}: b\n\
+         @x{{when=\"@broken\"}}: c\n@x{{when=\"@ok(2)\"}}: d\n"
+    );
+    let ds = diags(&t);
+    let of = |code: &str| {
+        ds.iter()
+            .filter(|d| d.code == code)
+            .map(|d| d.message.as_str())
+            .collect::<Vec<_>>()
+    };
+    let profile = of("E-CEL-PROFILE");
+    assert_eq!(profile.len(), 2, "{ds:?}");
+    assert!(profile.iter().any(|m| m.starts_with("def `wd`:")), "{profile:?}");
+    assert!(profile.iter().any(|m| m.starts_with("def `sz`:")), "{profile:?}");
+    let parse = of("E-CEL-PARSE");
+    assert_eq!(parse.len(), 1, "{ds:?}");
+    assert!(parse[0].starts_with("def `broken`:"), "{parse:?}");
+}
+
+/// 0.21.1 T1-6: the undecidable-type hint used to guess `type: bool` (wrong
+/// for `% 7`); it names the choice as a placeholder instead.
+#[test]
+fn undecidable_def_type_hint_does_not_guess_bool() {
+    let t = format!("{HDR}defs:\n  wd: \"scene.n % 7\"\n---\n## Shot 1.\n@x: a\n");
+    let ds = diags(&t);
+    let d = ds.iter().find(|d| d.code == "E-DEF-DECL").expect("E-DEF-DECL");
+    assert!(d.message.contains("type: <bool|number|enum>"), "{}", d.message);
+    assert!(!d.message.contains("type: bool"), "{}", d.message);
 }

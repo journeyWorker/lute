@@ -495,9 +495,15 @@ pub enum Placeholder {
     /// A state-path read (`{{run.coins}}` → `{"kind":"path","path":"run.coins"}`).
     Path { path: String },
     /// A `@def` / `@fn(args)` reference; the referent includes the leading `@`.
+    /// `expr` is the def body inlined at compile time (the artifact carries no
+    /// defs table), so an engine renders the value by evaluating it like any
+    /// other `{raw, expr}` slot. Filled by `expand::inline_ref_placeholders`;
+    /// always present in a compiled artifact.
     Ref {
         #[serde(rename = "ref")]
         reference: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expr: Option<CelPair>,
     },
     /// A reserved token (only `userName` in 0.1).
     Reserved { token: String },
@@ -507,6 +513,7 @@ pub enum Placeholder {
 /// [`Placeholder`]. Shared by the content-line lowering ([`crate::lower`]) and
 /// the option-label lowering ([`crate::stage`]) — the single kind→referent
 /// match, never duplicated. The referent is the interp's verbatim trimmed `raw`.
+/// A `Ref`'s `expr` is left empty here; the CEL-expansion pass inlines it.
 pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placeholder {
     use lute_syntax::ast::InterpKind;
     match i.kind {
@@ -515,6 +522,7 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
         },
         InterpKind::Ref => Placeholder::Ref {
             reference: i.raw.clone(),
+            expr: None,
         },
         InterpKind::Reserved => Placeholder::Reserved {
             token: i.raw.clone(),

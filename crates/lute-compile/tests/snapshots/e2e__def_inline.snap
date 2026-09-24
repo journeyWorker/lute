@@ -1,0 +1,87 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "scene",
+  "lute": "0.21.0",
+  "irVersion": "0.21.0",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {
+    "id": "demo.s01ep01",
+    "character": "demo",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01"
+  },
+  "state": [
+    {
+      "path": "run.n",
+      "type": "number",
+      "default": 3
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Outside: grey. Still grey.",
+      "lineId": "demo.s01ep01.narrator_0010",
+      "source": {
+        "component": "card"
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Outside: still. Still still.",
+      "lineId": "demo.s01ep01.narrator_0020",
+      "source": {
+        "component": "card"
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0300",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Def {{@twice}}.",
+      "lineId": "demo.s01ep01.narrator_0030",
+      "placeholders": [
+        {
+          "kind": "ref",
+          "ref": "@twice",
+          "expr": {
+            "raw": "(run.n * 2)",
+            "expr": {
+              "op": "*",
+              "l": {
+                "path": "run.n"
+              },
+              "r": {
+                "lit": 2.0
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "kind": "camera",
+      "addr": "001-0400",
+      "focus": "demo",
+      "zoom": 1.3,
+      "wait": false
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "One"
+    }
+  ]
+}

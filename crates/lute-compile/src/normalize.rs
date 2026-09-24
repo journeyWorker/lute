@@ -18,8 +18,8 @@ use lute_check::{
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document, Line, Match,
-    Node, Set,
+    classify_interp, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive,
+    Document, Interp, InterpKind, Line, Match, Node, Set,
 };
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
@@ -59,6 +59,9 @@ pub fn normalize_document(
     // ordinary `CelPair::from_raw` path — no subquest-aware branch in the
     // lowerer.
     synthesize_subquests(&mut doc.quests);
+    // 0.21.1 T1-10: `(speaker, code)` identity over the EXPANDED stream — the
+    // one the addressing pass mints `lineId`/`voiceKey` from.
+    diags.extend(crate::identity_check::expanded_line_code_diags(doc));
     diags
 }
 
@@ -625,6 +628,7 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                     bind_slot_raw(w, args, params);
                 }
                 bind_attrs(&mut l.attrs, args, params);
+                bind_text(l, args);
             }
             Node::Directive(d) => bind_attrs(&mut d.attrs, args, params),
             Node::Set(s) => bind_slot(&mut s.expr, args, params),
@@ -739,6 +743,79 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
             _ => cel_string_literal(s),
         },
     }
+}
+
+/// dsl §13 / 0.21.1 T1-3: bind a component body line's `{{@param}}`
+/// interpolations to the `::use` args. A param is a compile-time constant, so
+/// a literal arg is spliced into `text` verbatim and its interp dropped — each
+/// expansion ships its OWN text (`Outside: grey.` / `Outside: still.`), never
+/// a ref to a param that no longer exists. A `@ref` arg (a caller-side def)
+/// stays an interpolation, rebound to the caller's ref text (`{{@wdef}}`), so
+/// it renders through the ordinary def-placeholder path.
+///
+/// Markers are walked with the parser's own scan rule (`\{{` is a literal,
+/// `{{…}}` pairs left to right), so the k-th marker IS `l.interps[k]`.
+fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
+    let bound = |interp: &Interp| -> Option<&AttrValue> {
+        (interp.kind == InterpKind::Ref)
+            .then(|| interp.raw.strip_prefix('@'))
+            .flatten()
+            .and_then(|name| args.get(name))
+    };
+    if !l.interps.iter().any(|i| bound(i).is_some()) {
+        return;
+    }
+    let text = &l.text;
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut kept = Vec::with_capacity(l.interps.len());
+    let mut interps = std::mem::take(&mut l.interps).into_iter();
+    let (mut j, mut copied) = (0, 0);
+    while j + 1 < b.len() {
+        if b[j] == b'\\' && text[j + 1..].starts_with("{{") {
+            j += 3;
+            continue;
+        }
+        if b[j] == b'{' && b[j + 1] == b'{' {
+            let Some(rel) = text[j + 2..].find("}}") else {
+                break;
+            };
+            let end = j + 2 + rel + 2;
+            let Some(mut interp) = interps.next() else {
+                break;
+            };
+            match bound(&interp).cloned() {
+                Some(AttrValue::Ref(slot)) => {
+                    out.push_str(&text[copied..j]);
+                    out.push_str("{{");
+                    out.push_str(&slot.raw);
+                    out.push_str("}}");
+                    copied = end;
+                    interp.kind = classify_interp(&slot.raw);
+                    interp.raw = slot.raw;
+                    kept.push(interp);
+                }
+                Some(AttrValue::Str(s)) => {
+                    out.push_str(&text[copied..j]);
+                    out.push_str(&s);
+                    copied = end;
+                }
+                Some(AttrValue::BoolTrue) => {
+                    out.push_str(&text[copied..j]);
+                    out.push_str("true");
+                    copied = end;
+                }
+                None => kept.push(interp),
+            }
+            j = end;
+            continue;
+        }
+        j += 1;
+    }
+    out.push_str(&text[copied..]);
+    kept.extend(interps);
+    l.text = out;
+    l.interps = kept;
 }
 
 /// `<choice … into="run.<path>" [value="<lit>"]>` → append

@@ -294,3 +294,37 @@ fn interp_ref_in_body_is_resolved() {
         "a declared renderable `@param` interpolation must be clean; got {cs:?}"
     );
 }
+
+/// 0.21.1 T1-5: a string `@def` passed to an ENUM param was type-compatible
+/// with every enum, so a def that can produce a non-member checked `ok` and
+/// matched no arm at runtime. Every value the body can produce must be a
+/// member; a body the checker cannot enumerate is refused too.
+#[test]
+fn def_arg_to_enum_param_must_produce_members() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "comp.lute",
+        "---\ncomponent: comp\nparams:\n  depth: { enum: [blazing, brief] }\n---\n\
+         ## Scene 1.\n@narrator: hi\n",
+    );
+    let with_def = |def: &str| {
+        format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [comp.lute]\n\
+             {ANCHOR_ENUMS}state:\n  run.flag: {{ type: bool, default: false }}\n  \
+             run.name: {{ type: string, default: \"\" }}\n  \
+             run.mood: {{ type: {{ enum: [blazing, brief] }}, default: brief }}\n\
+             defs:\n  pick: \"{def}\"\n---\n## Shot 1.\n::use{{component=\"comp\" depth=@pick}}\n"
+        )
+    };
+    let count = |def: &str| {
+        codes(&dir, &with_def(def))
+            .iter()
+            .filter(|c| *c == "E-COMPONENT-ARG")
+            .count()
+    };
+    assert_eq!(count("run.flag ? 'blazing' : 'brief'"), 0);
+    assert_eq!(count("run.mood"), 0);
+    assert_eq!(count("run.flag ? 'blazing' : 'brisk'"), 1, "non-member literal");
+    assert_eq!(count("run.name"), 1, "a string read cannot be proven a member");
+}

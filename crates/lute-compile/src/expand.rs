@@ -9,8 +9,11 @@
 //! table — output CEL is `@`/`$`-free.
 
 use lute_check::cel_expand::{expand_cel, DefTable};
-use lute_core_span::{Diagnostic, Layer, Severity};
+use lute_check::meta::StateSchema;
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, ClipNode, Document, Node};
+
+use crate::ir::{CelPair, Command, Placeholder};
 
 /// Expand every CEL slot in the document in place. Returns diagnostics for
 /// expander failures (`E-COMPILE-EXPAND`: cycle / unknown def / arity — the
@@ -176,6 +179,151 @@ fn expand_slot(
             related: Vec::new(),
         }),
     }
+}
+
+/// 0.21.1 T1-4: every `@ref`-valued attribute left after [`expand_document`]
+/// becomes the literal it provably folds to, so the lowerer reads a plain
+/// value (`zoom=@closeUp` → `zoom: 1.3`) instead of dropping the unparsable
+/// `"(1.3)"` or shipping it as a string. A slot that does not fold is
+/// `E-ATTR-DEF-DYNAMIC` — checker-gated (`lute_check::def_inline`), kept here
+/// as the backstop so a value is never lost. Compile-only: `lute-trace` walks
+/// the expanded tree without it.
+pub fn fold_attr_refs(doc: &mut Document, schema: &StateSchema) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for shot in &mut doc.shots {
+        fold_nodes(&mut shot.body, schema, &mut diags);
+    }
+    for quest in &mut doc.quests {
+        fold_attrs(&mut quest.attrs, schema, &mut diags);
+        fold_nodes(&mut quest.body, schema, &mut diags);
+    }
+    for entry in &mut doc.entries {
+        fold_attrs(&mut entry.attrs, schema, &mut diags);
+        fold_nodes(&mut entry.body, schema, &mut diags);
+    }
+    diags
+}
+
+fn fold_nodes(nodes: &mut [Node], schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => fold_attrs(&mut l.attrs, schema, diags),
+            Node::Directive(d) => fold_attrs(&mut d.attrs, schema, diags),
+            Node::Branch(b) => {
+                fold_attrs(&mut b.attrs, schema, diags);
+                for c in &mut b.choices {
+                    fold_choice_attrs(&mut c.attrs, schema, diags);
+                    fold_nodes(&mut c.body, schema, diags);
+                }
+            }
+            Node::Hub(h) => {
+                fold_attrs(&mut h.attrs, schema, diags);
+                for c in &mut h.choices {
+                    fold_choice_attrs(&mut c.attrs, schema, diags);
+                    fold_nodes(&mut c.body, schema, diags);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &mut m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            fold_nodes(body, schema, diags)
+                        }
+                    }
+                }
+            }
+            Node::Timeline(t) => {
+                for track in &mut t.tracks {
+                    for clip in &mut track.clips {
+                        if let ClipNode::Directive(d) = &mut clip.node {
+                            fold_attrs(&mut d.attrs, schema, diags);
+                        }
+                    }
+                }
+            }
+            Node::On(on) => {
+                fold_attrs(&mut on.attrs, schema, diags);
+                fold_nodes(&mut on.body, schema, diags);
+            }
+            Node::Objective(o) => {
+                fold_attrs(&mut o.attrs, schema, diags);
+                fold_nodes(&mut o.body, schema, diags);
+            }
+            Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
+        }
+    }
+}
+
+fn fold_choice_attrs(attrs: &mut [Attr], schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+    for a in attrs {
+        if !lute_check::choice_attr_owned_elsewhere(&a.key) {
+            fold_attr(a, schema, diags);
+        }
+    }
+}
+
+fn fold_attrs(attrs: &mut [Attr], schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+    for a in attrs {
+        fold_attr(a, schema, diags);
+    }
+}
+
+fn fold_attr(a: &mut Attr, schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+    let AttrValue::Ref(slot) = &a.value else {
+        return;
+    };
+    // Already expanded: no def is left to resolve.
+    let (bodies, params) = (Default::default(), Default::default());
+    let defs = DefTable {
+        bodies: &bodies,
+        params: &params,
+    };
+    match lute_check::fold_attr_ref(&slot.raw, &defs, schema) {
+        Some(d) => a.value = AttrValue::Str(lute_check::decided_literal(&d)),
+        None => diags.push(lute_check::attr_def_dynamic_diag(
+            &a.key,
+            &slot.raw,
+            slot.span,
+        )),
+    }
+}
+
+/// 0.21.1 T1-3: give every `{{@def}}` placeholder its inlined def body as
+/// `expr` — the artifact has no defs table, so without it an engine could
+/// only print the marker. A referent that does not inline is `E-INTERP-DEF`
+/// (checker-gated; the backstop keeps the artifact from shipping a bare ref).
+///
+/// Records carry no source span, so a backstop diagnostic anchors at `at`
+/// (the document's frontmatter).
+pub fn inline_ref_placeholders(
+    commands: &mut [Command],
+    defs: &DefTable<'_>,
+    at: Span,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let mut fill = |phs: &mut [Placeholder]| {
+        for ph in phs {
+            if let Placeholder::Ref { reference, expr } = ph {
+                match lute_check::inline_interp_ref(reference, defs) {
+                    Ok(body) => *expr = Some(CelPair::from_raw(&body)),
+                    Err(reason) => diags.push(lute_check::interp_def_diag(
+                        reference,
+                        &reason,
+                        at,
+                    )),
+                }
+            }
+        }
+    };
+    for cmd in commands {
+        match cmd {
+            Command::Line(l) => fill(&mut l.placeholders),
+            Command::Choice(c) => c.options.iter_mut().for_each(|o| fill(&mut o.placeholders)),
+            Command::Hub(h) => h.options.iter_mut().for_each(|o| fill(&mut o.placeholders)),
+            _ => {}
+        }
+    }
+    diags
 }
 
 #[cfg(test)]

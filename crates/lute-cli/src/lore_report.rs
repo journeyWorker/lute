@@ -378,16 +378,21 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
         fold_document(&document, &doc, &mut entries, &mut facts);
     }
     let report = build_report(entries, facts);
-    if json {
+    let text = if json {
         match serde_json::to_string_pretty(&report) {
-            Ok(s) => println!("{s}"),
+            Ok(s) => format!("{s}\n"),
             Err(e) => {
                 eprintln!("lute lore: cannot serialize the report: {e}");
                 return ExitCode::from(2);
             }
         }
     } else {
-        print!("{}", render_text(&report));
+        render_text(&report)
+    };
+    // T3-15: one write through `write_stdout`, so `lute lore … | head` exits
+    // `2` on the closed pipe instead of panicking inside `println!`.
+    if crate::write_stdout(&text).is_err() {
+        return ExitCode::from(2);
     }
     ExitCode::SUCCESS
 }

@@ -379,6 +379,27 @@ pub(crate) struct Runner {
     terminated: bool,
     /// An unknown command `kind` or malformed record (exit 2).
     fatal: Option<String>,
+    /// The `fatal` message is a walk-time `E-TRACE-CHOICE` refusal — a
+    /// scripted decision naming an option that is not eligible at its
+    /// presentation point — not a malformed artifact. `lute run` exits 2
+    /// for both; `lute play` reports a refusal as an error (exit 1), the
+    /// same verdict an ineligible `pick:` gets.
+    refused: bool,
+    /// Per `<branch>` id: how many decisions of a multi-decision `choose:`
+    /// list earlier presentations consumed. A single decision answers every
+    /// presentation of its branch; a list of two or more is consumed one
+    /// per presentation, in order (`lute play` carries this across its
+    /// presentations via [`RunnerOutcome::choice_cursor`]).
+    choice_cursor: BTreeMap<String, usize>,
+    /// `lute play` drives this walk ([`Runner::with_carryover`]). The script
+    /// is then held to what is really offered — forcing a spent `once` hub
+    /// option is refused (`E-TRACE-CHOICE`), as `lute trace` refuses it —
+    /// and the records carry what a play transcript shows: a line's
+    /// identity and delivery (`role`/`lineId`/`voiceKey`/`as`/`emotion`),
+    /// a menu's spent and guard-closed options. `false` for `lute run`, whose
+    /// `--json` transcript is the byte-exact conformance contract
+    /// (`conformance/`), including its skip of a repeat-forced `once` option.
+    play: bool,
     /// Every [`UnresolvedAtom`] any CEL evaluation this walk performed
     /// produced ([`Runner::eval_raw`]'s one chokepoint). `lute run` never
     /// reads this — its exit code/output are byte-identical to before this
@@ -432,6 +453,11 @@ pub(crate) struct RunnerOutcome {
     /// See [`Runner::accepted`] — the accepts a presentation made, which the
     /// playthrough hands to the next quest advance.
     pub accepted: Vec<String>,
+    /// See [`Runner::refused`].
+    pub refused: bool,
+    /// See [`Runner::choice_cursor`] — the consumption the next
+    /// presentation resumes from.
+    pub choice_cursor: BTreeMap<String, usize>,
 }
 
 impl Runner {
@@ -530,6 +556,9 @@ impl Runner {
             incomplete: false,
             terminated: false,
             fatal: None,
+            refused: false,
+            choice_cursor: BTreeMap::new(),
+            play: false,
             unresolved: Vec::new(),
             quest_resume: false,
             entry: None,
@@ -567,6 +596,7 @@ impl Runner {
         runner.state = initial_state;
         runner.base_facts = initial_facts;
         runner.quest_status = initial_quests;
+        runner.play = true;
         runner.apply_mock_seeds();
         runner.recompute_facts();
         runner
@@ -585,6 +615,13 @@ impl Runner {
     /// presentation history.
     pub(crate) fn with_visited(mut self, visited: &BTreeSet<String>) -> Self {
         self.visited.extend(visited.iter().cloned());
+        self
+    }
+
+    /// `lute play`: resume multi-decision `choose:` lists where earlier
+    /// presentations left them (see [`Runner::choice_cursor`]).
+    pub(crate) fn with_choice_cursor(mut self, cursor: &BTreeMap<String, usize>) -> Self {
+        self.choice_cursor = cursor.clone();
         self
     }
 
@@ -842,6 +879,8 @@ impl Runner {
             unresolved: self.unresolved,
             transcript: self.transcript,
             accepted: self.accepted,
+            refused: self.refused,
+            choice_cursor: self.choice_cursor,
         }
     }
 
@@ -989,12 +1028,23 @@ impl Runner {
         let speaker = cmd.get("speaker").and_then(Json::as_str).unwrap_or("");
         let raw = cmd.get("text").and_then(Json::as_str).unwrap_or("");
         let text = self.interpolate(raw, cmd.get("placeholders").and_then(Json::as_array));
-        self.transcript.push(json!({
-            "addr": addr(cmd),
-            "kind": "line",
-            "speaker": speaker,
-            "text": text,
-        }));
+        let mut rec = serde_json::Map::new();
+        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("kind".into(), Json::String("line".into()));
+        rec.insert("speaker".into(), Json::String(speaker.to_string()));
+        rec.insert("text".into(), Json::String(text));
+        // `lute play`: the line's identity and delivery ride the record
+        // verbatim, so a `--json` consumer never has to re-join the artifact
+        // to know who spoke, how, and under which audio key. (`lute run`'s
+        // record is the conformance contract and stays as it is.)
+        if self.play {
+            for key in ["role", "lineId", "voiceKey", "as", "emotion"] {
+                if let Some(v) = cmd.get(key).filter(|v| !v.is_null()) {
+                    rec.insert(key.into(), v.clone());
+                }
+            }
+        }
+        self.transcript.push(Json::Object(rec));
     }
 
     fn rec_stage(&mut self, cmd: &Json, kind: &str) {
@@ -1004,9 +1054,11 @@ impl Runner {
         }));
     }
 
-    /// Substitute `{{…}}` markers with a resolved `path` value; `@ref`/reserved
-    /// placeholders keep their verbatim marker (state-lifecycle.md).
-    fn interpolate(&self, text: &str, placeholders: Option<&Vec<Json>>) -> String {
+    /// Substitute `{{…}}` markers: a `path` with its live value, a `ref` by
+    /// evaluating its inlined def body (`expr.raw`, lute 0.21.1). A marker whose
+    /// value is unknown (unset path, undecided ref) or a reserved token keeps
+    /// its verbatim text (state-lifecycle.md).
+    fn interpolate(&mut self, text: &str, placeholders: Option<&Vec<Json>>) -> String {
         let Some(phs) = placeholders else {
             return text.to_string();
         };
@@ -1029,6 +1081,13 @@ impl Runner {
                     match self.state.get(path) {
                         Some(v) => value_to_string(v),
                         None => marker.to_string(),
+                    }
+                }
+                Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("ref") => {
+                    let raw = ph.pointer("/expr/raw").and_then(Json::as_str).unwrap_or("");
+                    match self.eval_raw(raw) {
+                        Value::Unknown => marker.to_string(),
+                        v => value_to_string(&v),
                     }
                 }
                 _ => marker.to_string(),
@@ -1155,6 +1214,36 @@ impl Runner {
 
     // ── control flow ───────────────────────────────────────────────────
 
+    /// A walk-time `E-TRACE-CHOICE`: the script forced an option that is not
+    /// offered at this presentation point. Halts like a fatal error, flagged
+    /// so `lute play` can report it as the error (exit 1) it is.
+    fn refuse(&mut self, msg: String) {
+        self.fatal = Some(msg);
+        self.refused = true;
+    }
+
+    /// The ids of `options` whose guard decides false right now — what a
+    /// menu shows as not offered. Display-only: the evaluation never feeds
+    /// [`Runner::unresolved`], so an unchosen option's unknown guard cannot
+    /// halt a playthrough (an unknown guard counts as offered).
+    fn closed_options(&mut self, options: &[Json]) -> Vec<String> {
+        let mark = self.unresolved.len();
+        let mut closed = Vec::new();
+        for o in options {
+            let (Some(oid), Some(when)) = (
+                o.get("id").and_then(Json::as_str),
+                o.get("when").and_then(Json::as_str),
+            ) else {
+                continue;
+            };
+            if self.truthy(when) == Some(false) {
+                closed.push(oid.to_string());
+            }
+        }
+        self.unresolved.truncate(mark);
+        closed
+    }
+
     fn do_choice(&mut self, cmd: &Json) -> Step {
         let branch = cmd
             .get("branchId")
@@ -1172,25 +1261,46 @@ impl Runner {
             .cloned()
             .unwrap_or_default();
 
-        let forced = match self
-            .mock
-            .choose
-            .get(&branch)
-            .and_then(|v| v.first())
-            .cloned()
-        {
-            Some(c) => c,
-            None => {
-                self.incomplete = true;
-                self.transcript.push(json!({
-                    "addr": addr(cmd),
-                    "kind": "choice",
-                    "branch": branch,
-                    "chose": Json::Null,
-                    "note": "no mock decision — incomplete",
-                }));
-                return Step::Halt;
+        // A single scripted decision answers every presentation of this
+        // branch; a list of two or more is consumed one decision per
+        // presentation, in order — never silently truncated to its head.
+        // Running out halts incomplete like an unscripted branch.
+        let scripted = self.mock.choose.get(&branch).cloned().unwrap_or_default();
+        let forced = match scripted.as_slice() {
+            [] => None,
+            [only] => Some(only.clone()),
+            list => {
+                let used = self.choice_cursor.entry(branch.clone()).or_insert(0);
+                let next = list.get(*used).cloned();
+                if next.is_some() {
+                    *used += 1;
+                }
+                next
             }
+        };
+        // `lute play` menus mark what was not offered; `lute run`'s record
+        // is the conformance contract.
+        let closed = if self.play {
+            self.closed_options(&options)
+        } else {
+            Vec::new()
+        };
+        let Some(forced) = forced else {
+            self.incomplete = true;
+            let mut rec = serde_json::Map::new();
+            rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+            rec.insert("kind".into(), Json::String("choice".into()));
+            rec.insert("branch".into(), Json::String(branch));
+            rec.insert("chose".into(), Json::Null);
+            rec.insert("note".into(), Json::String("no mock decision — incomplete".into()));
+            if scripted.len() > 1 {
+                rec.insert("scripted".into(), json!(scripted.len()));
+            }
+            if !closed.is_empty() {
+                rec.insert("ineligible".into(), json!(closed));
+            }
+            self.transcript.push(Json::Object(rec));
+            return Step::Halt;
         };
         let opt = match options
             .iter()
@@ -1213,7 +1323,7 @@ impl Runner {
         // the old behaviour re-creates the divergence under another name.
         if let Some(when) = opt.get("when").and_then(Json::as_str) {
             if self.truthy(when) == Some(false) {
-                self.fatal = Some(format!(
+                self.refuse(format!(
                     "[E-TRACE-CHOICE] `choose: {branch}: {forced}` names an option whose guard \
                      `{when}` decided false at this presentation point (dsl 0.4.0 §4.4)"
                 ));
@@ -1223,12 +1333,15 @@ impl Runner {
         if let Some(key) = record_key {
             self.state.insert(key, Value::Str(forced.clone()));
         }
-        self.transcript.push(json!({
-            "addr": addr(cmd),
-            "kind": "choice",
-            "branch": branch,
-            "chose": forced,
-        }));
+        let mut rec = serde_json::Map::new();
+        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("kind".into(), Json::String("choice".into()));
+        rec.insert("branch".into(), Json::String(branch));
+        rec.insert("chose".into(), Json::String(forced));
+        if !closed.is_empty() {
+            rec.insert("ineligible".into(), json!(closed));
+        }
+        self.transcript.push(Json::Object(rec));
         let target = opt.get("target").and_then(Json::as_str).unwrap_or(converge);
         Step::Next(self.resolve(target))
     }
@@ -1278,21 +1391,35 @@ impl Runner {
             // Eligible = not an already-exhausted `once` option, and its
             // guard does not DECIDE false right now (an unknown guard stays
             // eligible — the same three-valued discipline `do_choice`'s
-            // guard refusal below uses).
-            let eligible: Vec<String> = options
-                .iter()
-                .filter_map(|o| {
-                    let oid = o.get("id").and_then(Json::as_str)?;
-                    let once = o.get("once").and_then(Json::as_bool).unwrap_or(false);
-                    if once && visited_once.contains(oid) {
-                        return None;
-                    }
-                    match o.get("when").and_then(Json::as_str) {
-                        Some(w) if self.truthy(w) == Some(false) => None,
-                        _ => Some(oid.to_string()),
-                    }
-                })
-                .collect();
+            // guard refusal below uses). The spent and guard-closed options
+            // ride the visit record, so a menu shows what was really offered.
+            let (mut eligible, mut spent, mut closed) = (Vec::new(), Vec::new(), Vec::new());
+            for o in &options {
+                let Some(oid) = o.get("id").and_then(Json::as_str) else {
+                    continue;
+                };
+                let once = o.get("once").and_then(Json::as_bool).unwrap_or(false);
+                if once && visited_once.contains(oid) {
+                    spent.push(oid.to_string());
+                    continue;
+                }
+                match o.get("when").and_then(Json::as_str) {
+                    Some(w) if self.truthy(w) == Some(false) => closed.push(oid.to_string()),
+                    _ => eligible.push(oid.to_string()),
+                }
+            }
+            let play = self.play;
+            let marks = |rec: &mut serde_json::Map<String, Json>| {
+                if !play {
+                    return;
+                }
+                if !spent.is_empty() {
+                    rec.insert("spent".into(), json!(spent));
+                }
+                if !closed.is_empty() {
+                    rec.insert("ineligible".into(), json!(closed));
+                }
+            };
 
             let choice_id = if forced_cursor < forced.len() {
                 let c = forced[forced_cursor].clone();
@@ -1311,13 +1438,14 @@ impl Runner {
                 // re-presented (eligible options remain) — halt incomplete
                 // rather than silently converging.
                 self.incomplete = true;
-                self.transcript.push(json!({
-                    "addr": addr(cmd),
-                    "kind": "hub",
-                    "hub": id,
-                    "chose": Json::Null,
-                    "note": "no mock decision — incomplete",
-                }));
+                let mut rec = serde_json::Map::new();
+                rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+                rec.insert("kind".into(), Json::String("hub".into()));
+                rec.insert("hub".into(), Json::String(id));
+                rec.insert("chose".into(), Json::Null);
+                rec.insert("note".into(), Json::String("no mock decision — incomplete".into()));
+                marks(&mut rec);
+                self.transcript.push(Json::Object(rec));
                 return Step::Halt;
             };
 
@@ -1334,17 +1462,26 @@ impl Runner {
             let once = opt.get("once").and_then(Json::as_bool).unwrap_or(false);
             let is_exit = opt.get("exit").and_then(Json::as_bool).unwrap_or(false);
             if once && visited_once.contains(&choice_id) {
-                // A `once` option cannot be re-presented; skip a repeat force.
-                continue;
+                // `lute run` (the conformance contract) skips a repeat force
+                // of a spent `once` option. `lute play` refuses it, as `lute
+                // trace` does: a silent skip lets the rest of the script drift
+                // out of step with what the player was really offered.
+                if !self.play {
+                    continue;
+                }
+                self.refuse(format!(
+                    "[E-TRACE-CHOICE] `choose: {id}: {choice_id}` names a `once` option already \
+                     taken at this hub, so it is no longer offered (dsl 0.4.0 §4.4)"
+                ));
+                return Step::Halt;
             }
             // Same rule as `do_choice` (#20, D-C). A hub option is presented
             // repeatedly, so this is evaluated per visit against live state —
             // a guard false on the first pass may be true on the third, which
-            // is precisely what a hub is for. Placed after the `once` skip: a
-            // repeat-forced `once` option is not a visit at all.
+            // is precisely what a hub is for.
             if let Some(when) = opt.get("when").and_then(Json::as_str) {
                 if self.truthy(when) == Some(false) {
-                    self.fatal = Some(format!(
+                    self.refuse(format!(
                         "[E-TRACE-CHOICE] `choose: {id}: {choice_id}` names an option whose guard \
                          `{when}` decided false at this presentation point (dsl 0.4.0 §4.4)"
                     ));
@@ -1358,12 +1495,13 @@ impl Runner {
             // hub visit record slot (scene.visited.<hub>.<opt>, state-lifecycle.md).
             self.state
                 .insert(format!("scene.visited.{id}.{choice_id}"), Value::Bool(true));
-            self.transcript.push(json!({
-                "addr": addr(cmd),
-                "kind": "hub",
-                "hub": id,
-                "chose": choice_id,
-            }));
+            let mut rec = serde_json::Map::new();
+            rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+            rec.insert("kind".into(), Json::String("hub".into()));
+            rec.insert("hub".into(), Json::String(id.clone()));
+            rec.insert("chose".into(), Json::String(choice_id.clone()));
+            marks(&mut rec);
+            self.transcript.push(Json::Object(rec));
             let target = opt.get("target").and_then(Json::as_str).unwrap_or(converge);
             let start = self.resolve(target);
             let stop = boundaries

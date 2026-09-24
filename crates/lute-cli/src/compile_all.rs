@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_compile::index::{build_index, IndexInput};
+use lute_compile::index::{build_index, voice_key_collisions, IndexInput, E_DUP_VOICEKEY};
 use lute_compile::locale::LocaleBundle;
 use lute_compile::Artifact;
 use lute_manifest::project::load_project;
@@ -223,17 +223,30 @@ pub fn run(
         return ExitCode::FAILURE;
     }
 
-    let index = match build_index(
-        lute_compile::LUTE_IR_VERSION,
-        &compiled
-            .iter()
-            .map(|c| IndexInput {
-                path: c.rel.clone(),
-                artifact_path: c.artifact_rel.clone(),
-                artifact: &c.artifact,
-            })
-            .collect::<Vec<_>>(),
-    ) {
+    let inputs: Vec<IndexInput<'_>> = compiled
+        .iter()
+        .map(|c| IndexInput {
+            path: c.rel.clone(),
+            artifact_path: c.artifact_rel.clone(),
+            artifact: &c.artifact,
+        })
+        .collect();
+    // 0.21.1 T1-9: every document compiled on its own, so only here can two
+    // documents' lines be seen landing on one `voiceKey` — one recording for
+    // lines that say different things. Not part of `build_index`: `play` builds
+    // the same index and has no voice assets to protect.
+    let collisions = voice_key_collisions(&inputs);
+    if !collisions.is_empty() {
+        for c in &collisions {
+            eprintln!("lute compile --all: error [{E_DUP_VOICEKEY}] {c}");
+        }
+        eprintln!(
+            "lute compile --all: {} voiceKey collision(s); no output written",
+            collisions.len()
+        );
+        return ExitCode::FAILURE;
+    }
+    let index = match build_index(lute_compile::LUTE_IR_VERSION, &inputs) {
         Ok(index) => index,
         Err(errors) => {
             for e in &errors {

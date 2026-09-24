@@ -503,7 +503,8 @@ impl<'a> Guards<'a> {
         for node in nodes {
             match node {
                 Node::Match(m) => {
-                    let dom = infer_domain(subject_path(m).as_deref(), self.schema);
+                    let subject = subject_path(m);
+                    let dom = infer_domain(subject.as_deref(), self.schema);
                     for arm in &m.arms {
                         match arm {
                             Arm::When {
@@ -511,7 +512,9 @@ impl<'a> Guards<'a> {
                             } => {
                                 // D4: an arm whose `is` carries a foreign
                                 // literal is rooted by `E-WHEN-LITERAL-DOMAIN`.
-                                if !is.as_ref().is_some_and(|p| arm_has_foreign_literal(p, &dom)) {
+                                if !is.as_ref().is_some_and(|p| {
+                                    arm_has_foreign_literal(p, &dom, subject.as_deref())
+                                }) {
                                     self.guard(
                                         test,
                                         Some(&dom),

@@ -830,13 +830,15 @@ mod tests {
 
     #[test]
     fn guaranteed_excludes_arm_guard_proof_with_no_matching_write() {
-        // RevT8 P1: both arms of an exhaustive bool match guard-prove
-        // `run.x` (`test="isSet(run.x)"`, arm-level, dominating) but NEITHER
-        // writes it. Before the fix `defassign`'s mixed `Assigned` exported
-        // this guard-proof into `G`, while `possible_writes` (writes only)
-        // never saw it -> `G ⊄ P`. `run.x` must now be ABSENT from `G`, and
-        // `P` must remain a superset (both empty for this path here).
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n</match>\n::set{run.out = run.x}\n";
+        // RevT8 P1: two arms of an exhaustive match guard-prove `run.x`
+        // (`test="isSet(run.x)"`, arm-level, dominating) and NEITHER writes
+        // it; the `<otherwise>` (which makes the match exhaustive — a guarded
+        // `is=` arm covers nothing it cannot decide, 0.21.1 T1-12) does.
+        // Before the fix `defassign`'s mixed `Assigned` exported the
+        // guard-proofs into `G`, while `possible_writes` (writes only) never
+        // saw them -> `G ⊄ P`. `run.x` must now be ABSENT from `G` (two of
+        // three arms never wrote it), and `P` must remain a superset.
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(

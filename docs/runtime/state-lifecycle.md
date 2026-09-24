@@ -95,4 +95,12 @@ without pattern-matching on the path.
 `placeholders` list (IR A3, `ir.rs::Placeholder`) names each referent — a
 state `path`, an `@`-`ref`, or a `reserved` token (only `userName` today). The
 engine substitutes these against live state at present time; the raw text is
-kept so an untinterpolated fallback is always available.
+kept so an uninterpolated fallback is always available.
+
+The artifact carries no defs table, so a `ref` placeholder carries its def
+body inlined as `expr` (a `{raw, expr}` pair like every other CEL slot, since
+lute 0.21.1): the engine renders `{{@twice}}` by evaluating `expr` against live
+state, exactly as it would a guard. A component `{{@param}}` never reaches the
+artifact as a placeholder: a param is a compile-time constant, so each `::use`
+expansion's text already contains the bound literal (`Outside: grey.`). A
+param bound to a caller-side def stays a `ref` placeholder naming that def.

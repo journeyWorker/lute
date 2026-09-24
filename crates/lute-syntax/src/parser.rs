@@ -42,6 +42,12 @@ pub const E_COMMENT_UNTERMINATED: &str = "E-COMMENT-UNTERMINATED";
 /// because a `CelString` value (indistinguishable at the parser layer) may
 /// embed a CEL single-quoted string whose own `\'` escape is well-formed.
 pub const E_STRING_ESCAPE: &str = "E-STRING-ESCAPE";
+/// Diagnostic code: an attribute value was single-quoted (`key='…'`). The
+/// attribute grammar (§4.4/§4.5) quotes values with `"` only — a `'` there is
+/// not a delimiter, so without this error the quotes would silently become
+/// part of the value (a `label='"Hi."'` showed `'"Hi."'`). A `"` inside a
+/// value is written `\"`.
+pub const E_ATTR_QUOTE: &str = "E-ATTR-QUOTE";
 /// Diagnostic code: a `{{` interpolation had no closing `}}` before end of line
 /// (§7.6).
 pub const E_INTERP_UNTERMINATED: &str = "E-INTERP-UNTERMINATED";

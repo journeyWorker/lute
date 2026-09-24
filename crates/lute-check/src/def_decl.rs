@@ -70,8 +70,8 @@ pub(crate) fn lift_def(name: &str, v: &Value) -> Result<Value, String> {
         None => {
             return Err(format!(
                 "invalid def `{name}`: the def has no `cel:` key, the CEL body it expands \
-                 to — write `{name}: {{ type: bool, cel: \"…\" }}`, or the shorthand \
-                 `{name}: \"<CEL>\"` (dsl 0.21.0 §7b)"
+                 to — write `{name}: {{ type: <bool|number|enum>, cel: \"…\" }}`, or the \
+                 shorthand `{name}: \"<CEL>\"` (dsl 0.21.0 §7b)"
             ))
         }
         Some(other) => {
@@ -92,7 +92,7 @@ pub(crate) fn lift_def(name: &str, v: &Value) -> Result<Value, String> {
         None if v.get("params").is_some() => Err(format!(
             "invalid def `{name}`: a def with `params:` must declare its `type:` — its body \
              reads parameters whose values arrive at each call, so its type cannot be \
-             inferred; write `{{ type: bool, params: {{ p: <type> }}, cel: \"…\" }}` \
+             inferred; write `{{ type: <bool|number|enum>, params: {{ p: <type> }}, cel: \"…\" }}` \
              (dsl 0.21.0 §7b)"
         )),
         _ => Ok(v.clone()),
@@ -143,10 +143,12 @@ pub(crate) fn settle_def_type(name: &str, def: &mut Value, schema: &StateSchema)
             "def `{name}` has no `type:`, and its body `{cel}` is ill-typed: {what} \
              (dsl 0.21.0 §7b)"
         )),
+        // 0.21.1 T1-6: the hint names the type as a placeholder. It used to
+        // say `type: bool` here — a guess, and wrong for `run.day % 7`.
         (None, Decision::Undecidable) => Some(format!(
             "def `{name}` has no `type:`, and the type its body `{cel}` produces cannot be \
-             inferred; write the long form, `{name}: {{ type: bool, cel: {cel:?} }}`, naming \
-             the type it produces (dsl 0.21.0 §7b)"
+             inferred; write the long form, `{name}: {{ type: <bool|number|enum>, cel: {cel:?} }}`, \
+             naming the type it produces (dsl 0.21.0 §7b)"
         )),
     }
 }

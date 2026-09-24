@@ -2416,3 +2416,43 @@ fn oversized_active_only_formula_is_capped() {
         "an over-cap formula must not be evaluated"
     );
 }
+
+/// 0.21.1 T3-8 (seven F3): one document whose frontmatter does not parse has
+/// an unreadable id, so a `visited(K)` elsewhere cannot be judged unknown — it
+/// may name that very document. The broken file already fails with
+/// `E-META-PARSE`; the reference in a healthy file must not cascade into an
+/// `E-CONN-UNKNOWN-NODE`. The control (same reference, every frontmatter
+/// readable) still errors.
+#[test]
+fn an_unreadable_frontmatter_does_not_cascade_unknown_node_into_other_files() {
+    let broken = "---\nkind: scene\nid: probe.bad\nwhen: 'run.day == 4 && run.slot == 'night''\n---\n## Shot 1.\n@a: hi\n";
+    let referrer = "---\nkind: scene\nid: probe.ref\nafter: 'visited(\"probe.bad\")'\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("bad.lute", broken), ("ref.lute", referrer)]);
+    let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    assert!(
+        !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
+        "no cascade from an unreadable frontmatter: {res:?}"
+    );
+
+    let docs = docs_for(&[("ref.lute", referrer)]);
+    let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    assert!(
+        res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
+        "with every id readable the miss is real: {res:?}"
+    );
+}
+
+/// The per-file half of T3-8: after `E-META-PARSE` the document has no
+/// environment, so its body is not semantically checked — no
+/// `E-DOMAIN-UNKNOWN`/`E-UNDECLARED` consequences of the one real error.
+#[test]
+fn meta_parse_failure_stops_semantic_checks() {
+    let text = "---\nkind: scene\nid: probe.bad\nwhen: 'run.day == 4 && run.slot == 'night''\n---\n\
+                ## Shot 1.\n@ann{emotion=\"nonsense\"}: hi.\n::set{run.n = 1}\n";
+    let codes: Vec<String> = check(&input_for(text))
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, vec!["E-META-PARSE".to_string()], "{codes:?}");
+}

@@ -649,6 +649,21 @@ fn scalar_or_flat_seq_to_json(value: &serde_yaml::Value) -> Option<serde_json::V
     }
 }
 
+/// Whether `meta`'s frontmatter lifts to a mapping (an empty frontmatter
+/// included) — exactly when [`parse_meta_kind_with_defaults`] does NOT emit
+/// `E-META-PARSE`, including its duplicate-block-key retry. The project-wide
+/// passes, which read raw frontmatter without a `TypedMeta`, use this to tell
+/// "this document declares no such id" from "this document's ids are
+/// unreadable" (0.21.1 T3-8).
+pub fn frontmatter_parses(meta: &Meta) -> bool {
+    let value = serde_yaml::from_str::<serde_yaml::Value>(&meta.raw_yaml)
+        .or_else(|_| serde_yaml::from_str(&sanitize_dup_block_keys(&meta.raw_yaml)));
+    matches!(
+        value,
+        Ok(serde_yaml::Value::Mapping(_) | serde_yaml::Value::Null)
+    )
+}
+
 /// Parse the peeled YAML frontmatter (dsl §6.1) into typed form plus the inline
 /// `state:` schema (dsl §9.3). Never panics on malformed YAML: a parse failure
 /// surfaces `E-META-PARSE` and yields a best-effort (empty) `TypedMeta`.

@@ -320,9 +320,7 @@ fn unknown_match_guard_halts_exit3() {
 
 #[test]
 fn no_arm_match_reports_and_continues() {
-    // `run.flag`'s bool domain ({true, false}) is fully covered by the two
-    // `is=` arms (check-clean: no `E-NONEXHAUSTIVE`/`E-UNSET-UNCOVERED`,
-    // `default: false` means never `unset`). Each arm's `test` guard reads
+    // `run.flag` has `default: false`, so it is never `unset`. Each arm's `test` guard reads
     // a non-`derive` relation with zero supplied facts — DEFINITELY
     // `Bool(false)` (never `unknown`, same idiom as
     // `forcing_false_guard_is_refused` above), so `decide()` never trips
@@ -342,7 +340,25 @@ fn no_arm_match_reports_and_continues() {
                 <when is=\"false\" test=\"holds(claims(halsin))\">\n@narrator: false-gate\n</when>\n\
                 </match>\n";
     let input = input_for(text, "no-arm-match", Path::new("."));
-    let (report, exit) = trace_document(&input, MockSet::default());
+    // 0.21.1 (T1-12): `check` now refuses this shape — an `is=`+`test=` arm
+    // covers only the intersection, so two test-guarded arms and no
+    // `<otherwise>` are `E-NONEXHAUSTIVE`, exactly because nothing may fire.
+    // The walker's fourth outcome must still be total for a caller-supplied
+    // gate (`trace_with_check`), so this test gates on the verdict minus that
+    // one diagnostic, and asserts it WAS the only one.
+    let mut gate = lute_check::check(&input);
+    let before = gate.diagnostics.len();
+    gate.diagnostics.retain(|d| d.code != "E-NONEXHAUSTIVE");
+    assert_eq!(before - gate.diagnostics.len(), 1, "{:?}", gate.diagnostics);
+    assert!(
+        gate.diagnostics
+            .iter()
+            .all(|d| d.severity != lute_core_span::Severity::Error),
+        "{:?}",
+        gate.diagnostics
+    );
+    gate.ok = true;
+    let (report, exit) = lute_trace::trace_with_check(&input, gate, MockSet::default(), None);
 
     // (a) the no-arm match itself never forces an incomplete/refused exit.
     assert_complete(&exit);
@@ -619,7 +635,11 @@ fn reserved_quest_mock_note_fires_even_when_the_referencing_arm_is_never_reached
                 <match on=\"run.flag\">\n\
                 <when is=\"true\">\n@narrator: a\n</when>\n\
                 <when is=\"false\" test=\"quest.foo.objectives.bar.done\">\n@narrator: b\n</when>\n\
+                <otherwise>\n@narrator: c\n</otherwise>\n\
                 </match>\n";
+    // 0.21.1 (T1-12): an `is=`+`test=` arm covers only the INTERSECTION of
+    // the two, so `is="false" test=…` no longer makes this match exhaustive
+    // and the fixture needs its `<otherwise>` to stay check-clean.
     let input = input_for(text, "unread-mocked-arm", Path::new("."));
     let mocks = state_mocks(&[("quest.foo.objectives.bar.done", "true")]);
     let (report, exit) = trace_document(&input, mocks);
@@ -977,4 +997,64 @@ fn range_arms_leave_real_gaps_uncovered() {
     // Numbers are real-valued: 3.5 sits between `1..3` and `4..`.
     assert_eq!(range_outcome("3.5"), "otherwise");
     assert_eq!(range_outcome("0.5"), "otherwise");
+}
+
+// ---------------------------------------------------------------------
+// 0.21.1 (T1-8): a `<branch>` presented more than once consumes a
+// multi-element `choose` list in presentation order, as the reference
+// runner does. Only the head used to be read, so every presentation replayed
+// the first decision and the rest of the script was dropped in silence.
+// ---------------------------------------------------------------------
+
+fn revisited_branch_fixture() -> String {
+    "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+     ## Shot 1.\n\
+     <hub id=\"h\">\n\
+     <choice id=\"ask\" label=\"Ask\">\n\
+     <branch id=\"b\">\n\
+     <choice id=\"yes\" label=\"Yes\">\n@narrator: said yes\n</choice>\n\
+     <choice id=\"no\" label=\"No\">\n@narrator: said no\n</choice>\n\
+     </branch>\n\
+     </choice>\n\
+     <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
+     </hub>\n"
+        .to_string()
+}
+
+fn branch_picks(report: &lute_trace::TraceReport) -> Vec<String> {
+    report
+        .decisions
+        .iter()
+        .filter(|d| d.construct == "branch")
+        .map(|d| d.outcome.clone())
+        .collect()
+}
+
+#[test]
+fn a_branch_choose_list_is_consumed_in_presentation_order() {
+    let text = revisited_branch_fixture();
+    let input = input_for(&text, "branch-list", Path::new("."));
+    let mocks = choose(&[("h", &["ask", "ask", "leave"]), ("b", &["yes", "no"])]);
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert_eq!(branch_picks(&report), ["yes", "no"], "{report:#?}");
+
+    // A single decision stays sticky: it answers every presentation.
+    let input = input_for(&text, "branch-single", Path::new("."));
+    let mocks = choose(&[("h", &["ask", "ask", "leave"]), ("b", &["no"])]);
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert_eq!(branch_picks(&report), ["no", "no"], "{report:#?}");
+
+    // A list that runs out halts incomplete rather than guessing.
+    let input = input_for(&text, "branch-exhausted", Path::new("."));
+    let mocks = choose(&[("h", &["ask", "ask", "ask", "leave"]), ("b", &["yes", "no"])]);
+    let (report, exit) = trace_document(&input, mocks);
+    assert!(matches!(exit, TraceExit::Incomplete), "{exit:?}");
+    assert_eq!(branch_picks(&report), ["yes", "no"], "{report:#?}");
+    assert!(
+        report.unresolved.iter().any(|u| u.id == "b" && u.expression.contains("exhausted")),
+        "{:?}",
+        report.unresolved
+    );
 }

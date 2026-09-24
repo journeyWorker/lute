@@ -6,7 +6,7 @@
 //! shapes: `key="str"` → [`AttrValue::Str`]; `key=@ref` → [`AttrValue::Ref`]
 //! (a [`CelSlot`] of [`CelKind::AttrValue`]); bare `key` → [`AttrValue::BoolTrue`].
 
-use super::{is_ident_byte, Parser, E_STRING_ESCAPE};
+use super::{is_ident_byte, Parser, E_ATTR_QUOTE, E_STRING_ESCAPE};
 use crate::ast::{Attr, AttrValue, CelKind, CelSlot};
 use lute_core_span::{Layer, Span};
 
@@ -29,6 +29,9 @@ impl Parser<'_> {
         // Body-offset `(start, end)` spans of undefined escapes, emitted after
         // the `b` borrow of `self.body` ends (emit needs `&mut self`).
         let mut escapes: Vec<(usize, usize)> = Vec::new();
+        // Body-offset spans of single-quoted values (`E-ATTR-QUOTE`), same
+        // deferred-emit reason as `escapes`.
+        let mut single_quoted: Vec<(usize, usize)> = Vec::new();
         let mut j = start;
         loop {
             while j < n && (b[j] == b' ' || b[j] == b'\t') {
@@ -89,7 +92,7 @@ impl Parser<'_> {
                     if j < n && b[j] == b'"' {
                         j += 1; // past closing quote (only when actually found)
                     }
-                    let value = self.body[inner_start..inner_end].to_string();
+                    let value = unescape_quote(&self.body[inner_start..inner_end]);
                     let vspan = self.span(inner_start, inner_end);
                     attrs.push(Attr {
                         key,
@@ -146,6 +149,39 @@ impl Parser<'_> {
                         value_span: vspan,
                         span: self.span(key_start, j),
                     });
+                } else if j < n && b[j] == b'\'' {
+                    // `key='…'`: not attribute quoting (§4.4 quotes with `"`
+                    // only). Consume the whole single-quoted run so the rest
+                    // of the list still parses, keep its inner text as the
+                    // value, and report `E-ATTR-QUOTE` — never let the quotes
+                    // leak into the value silently.
+                    let quote_start = j;
+                    j += 1;
+                    let inner_start = j;
+                    let mut esc = false;
+                    while j < n && b[j] != b'\n' {
+                        if esc {
+                            esc = false;
+                        } else if b[j] == b'\\' {
+                            esc = true;
+                        } else if b[j] == b'\'' {
+                            break;
+                        }
+                        j += 1;
+                    }
+                    let inner_end = j;
+                    if j < n && b[j] == b'\'' {
+                        j += 1;
+                    }
+                    single_quoted.push((quote_start, j));
+                    let value = self.body[inner_start..inner_end].to_string();
+                    let vspan = self.span(inner_start, inner_end);
+                    attrs.push(Attr {
+                        key,
+                        value: AttrValue::Str(value),
+                        value_span: vspan,
+                        span: self.span(key_start, j),
+                    });
                 } else {
                     // `key=` with a bare/unquoted token: read to whitespace/term.
                     let vstart = j;
@@ -179,6 +215,17 @@ impl Parser<'_> {
             self.emit_o(
                 E_STRING_ESCAPE,
                 "only \\\" \\\\ \\n \\t are defined escapes (dsl §4.4)".to_string(),
+                self.orig(s),
+                self.orig(e),
+                Layer::Content,
+            );
+        }
+        for (s, e) in single_quoted {
+            self.emit_o(
+                E_ATTR_QUOTE,
+                "attribute values are quoted with `\"`, not `'`: write `key=\"…\"`, and \
+                 write a `\"` inside the value as `\\\"` (dsl §4.4)"
+                    .to_string(),
                 self.orig(s),
                 self.orig(e),
                 Layer::Content,
@@ -225,6 +272,35 @@ impl Parser<'_> {
         }
         None
     }
+}
+
+/// The stored text of a `"`-quoted attribute value: its `\"` escapes become
+/// `"` (§4.4). Only the delimiter escape is resolved here, because the scanner
+/// cannot tell a `String` from a `CelString` value: `\"` means `"` in both,
+/// while `\\`, `\n`, `\t` and `\'` inside a `CelString` belong to the CEL
+/// string literal they sit in and must reach the CEL parser untouched. Walks
+/// escape PAIRS exactly like the scanner, so `\\"` never reads as `\"`.
+fn unescape_quote(raw: &str) -> String {
+    if !raw.contains("\\\"") {
+        return raw.to_string();
+    }
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('"') => out.push('"'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
 }
 
 /// Take (remove) the string value of attribute `key`, if present.
@@ -325,6 +401,71 @@ mod tests {
         assert!(
             diags.iter().all(|d| d.code != "E-STRING-ESCAPE"),
             "{diags:?}"
+        );
+    }
+
+    fn first_choice_label(src: &str) -> String {
+        let (doc, _) = parse(src);
+        doc.shots[0]
+            .body
+            .iter()
+            .find_map(|n| match n {
+                crate::ast::Node::Branch(b) => Some(b.choices[0].label.clone()),
+                _ => None,
+            })
+            .expect("a branch")
+    }
+
+    // T1-16: `\"` in a quoted value is a defined escape (§4.4) and must be
+    // STORED as `"` — it used to reach the label with its backslash.
+    #[test]
+    fn escaped_double_quote_is_unescaped_in_the_value() {
+        let label = first_choice_label(
+            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"\\\"Hi.\\\" she said\">\n\
+             @x: a\n</choice>\n</branch>\n",
+        );
+        assert_eq!(label, "\"Hi.\" she said");
+    }
+
+    // Only the delimiter escape is resolved: a CelString's own escapes (`\'`,
+    // `\\`) reach the CEL parser untouched, and `\\"` is an escaped backslash
+    // followed by the closing quote, never `\"`.
+    #[test]
+    fn other_escapes_pass_through_to_the_value() {
+        let (doc, _) = parse("## Shot 1.\n::sfx{note=\"a\\'b\\\\\" tail=\"x\"}\n");
+        let crate::ast::Node::Directive(d) = &doc.shots[0].body[0] else {
+            panic!("directive expected");
+        };
+        let note = d.attrs.iter().find(|a| a.key == "note").expect("note");
+        assert!(
+            matches!(&note.value, crate::ast::AttrValue::Str(s) if s == "a\\'b\\\\"),
+            "{:?}",
+            note.value
+        );
+        assert!(d.attrs.iter().any(|a| a.key == "tail"), "{:?}", d.attrs);
+    }
+
+    // T1-16: a single-quoted value is not attribute quoting; it used to become
+    // part of the value silently (`'"Hi."'`). Now `E-ATTR-QUOTE`, and the run
+    // is consumed whole so the next attribute still parses.
+    #[test]
+    fn single_quoted_value_is_attr_quote_error() {
+        let src = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label='Hi there' once>\n\
+                   @x: a\n</choice>\n</branch>\n";
+        let (doc, diags) = parse(src);
+        assert_eq!(
+            diags.iter().filter(|d| d.code == "E-ATTR-QUOTE").count(),
+            1,
+            "{diags:?}"
+        );
+        let crate::ast::Node::Branch(b) = &doc.shots[0].body[0] else {
+            panic!("branch expected");
+        };
+        assert_eq!(b.choices[0].label, "Hi there");
+        assert!(
+            b.choices[0].attrs.iter().any(|a| a.key == "once"),
+            "{:?}",
+            b.choices[0].attrs
         );
     }
 }

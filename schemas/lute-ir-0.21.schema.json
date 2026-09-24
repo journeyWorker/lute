@@ -384,6 +384,10 @@
             "ref": {
               "type": "string",
               "description": "@def / @fn(args) reference, including the leading @."
+            },
+            "expr": {
+              "$ref": "#/$defs/celPair",
+              "description": "The referenced def body, inlined at compile time (the artifact has no defs table). The engine renders the placeholder by evaluating it like any other CEL slot. Always emitted by lute 0.21.1+ compilers; optional so 0.21.0 artifacts stay valid."
             }
           },
           "additionalProperties": true,

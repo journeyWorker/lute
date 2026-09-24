@@ -32,7 +32,8 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:
     run.rank: { type: { enum: [fail, bronze, silver, gold] }, default: fail }\n  \
     run.flag: { type: bool, default: false }\n  \
     run.n: { type: number, default: 0 }\n  \
-    run.unbound: { type: number }\n---\n## Shot 1.\n";
+    run.unbound: { type: number }\n  \
+    run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n";
 
 // (Appendix A) A foreign enum member — a typo (`platnum` against
 // `[fail, bronze, silver, gold]`) — flags E-WHEN-LITERAL-DOMAIN.
@@ -321,8 +322,9 @@ fn spec_54_subsumption_example() {
 
 // A guard cannot resurrect a subsumed pattern, but the inverse also holds: a
 // GUARDED earlier arm never counts toward the subsumption union U (its guard
-// might be false at runtime) — the later identical `is="gold"` stays a plain
-// (pre-existing) W-OVERLAP-ARMS, never elevated to E-ARM-DEAD.
+// might be false at runtime) — so the later identical `is="gold"` is neither
+// E-ARM-DEAD nor, since 0.21.1 T1-12 (an undecidable guard covers nothing),
+// W-OVERLAP-ARMS: it runs whenever `run.flag` is false.
 #[test]
 fn guarded_earlier_arm_never_subsumes() {
     let out = codes(&format!(
@@ -337,8 +339,8 @@ fn guarded_earlier_arm_never_subsumes() {
         "a guarded earlier arm's `is` set never counts toward subsumption: {out:?}"
     );
     assert!(
-        out.contains(&"W-OVERLAP-ARMS".to_string()),
-        "the pre-existing literal-overlap warning is unaffected by this task: {out:?}"
+        !out.contains(&"W-OVERLAP-ARMS".to_string()),
+        "the later arm is reachable when the guard is false, so it does not overlap: {out:?}"
     );
 }
 
@@ -723,9 +725,9 @@ fn scene_reachability_not_polluted_by_param_seeding() {
 #[test]
 fn unset_sentinel_choice_flags_literal_owns_arm_dead_keeps_maybe_unset() {
     let out = codes(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" label=\"C\" when=\"run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -738,7 +740,7 @@ fn unset_sentinel_choice_flags_literal_owns_arm_dead_keeps_maybe_unset() {
     );
     assert!(
         out.contains(&"E-MAYBE-UNSET".to_string()),
-        "the raw quest.foo.state read is still an independent E-MAYBE-UNSET (§4): {out:?}"
+        "the raw run.phase read is still an independent E-MAYBE-UNSET (§4): {out:?}"
     );
 }
 
@@ -749,9 +751,9 @@ fn unset_sentinel_choice_flags_literal_owns_arm_dead_keeps_maybe_unset() {
 #[test]
 fn unset_sentinel_not_equals_still_flags_literal() {
     let out = codes(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"quest.foo.state != 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" label=\"C\" when=\"run.phase != 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -765,9 +767,9 @@ fn unset_sentinel_not_equals_still_flags_literal() {
 #[test]
 fn unset_sentinel_reversed_operands_flag_literal() {
     let eq = codes(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"'unset' == quest.foo.state\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" label=\"C\" when=\"'unset' == run.phase\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -775,9 +777,9 @@ fn unset_sentinel_reversed_operands_flag_literal() {
         "'unset' == S must flag E-UNSET-LITERAL: {eq:?}"
     );
     let ne = codes(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"'unset' != quest.foo.state\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" label=\"C\" when=\"'unset' != run.phase\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -792,7 +794,7 @@ fn unset_sentinel_reversed_operands_flag_literal() {
 fn unset_sentinel_nested_in_boolean_expr_flags_literal() {
     let out = codes(&format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.flag && quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" label=\"C\" when=\"run.flag && run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(
@@ -807,8 +809,8 @@ fn unset_sentinel_nested_in_boolean_expr_flags_literal() {
 #[test]
 fn unset_sentinel_match_arm_dollar_flags_literal_owns_arm_dead() {
     let out = codes(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-         <match on=\"quest.foo.state\">\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
+         <match on=\"run.phase\">\n\
          <when test=\"$ == 'unset'\">\n@x: a\n</when>\n\
          <otherwise>\n@x: o\n</otherwise>\n\
          </match>\n",
@@ -832,7 +834,8 @@ fn unset_sentinel_match_arm_dollar_flags_literal_owns_arm_dead() {
 #[test]
 fn control_undefaulted_foreign_enum_not_unset_stays_arm_dead() {
     let hdr = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-               run.grade: { type: { enum: [bronze, silver, gold] } }\n---\n## Shot 1.\n";
+               run.grade: { type: { enum: [bronze, silver, gold] } }\n  \
+               run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n";
     let out = codes(&format!(
         "{hdr}<branch id=\"b\">\n\
          <choice id=\"c\" label=\"C\" when=\"run.grade == 'legendary'\">\n@x: a\n</choice>\n\
@@ -912,16 +915,16 @@ fn control_legit_unset_enum_member_is_normal_comparison() {
 #[test]
 fn control_quest_state_in_domain_comparison_unchanged() {
     let out = codes(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"quest.foo.state == 'active'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" label=\"C\" when=\"run.phase == 'active'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(!out.contains(&"E-ARM-DEAD".to_string()), "{out:?}");
     assert!(!out.contains(&"E-UNSET-LITERAL".to_string()), "{out:?}");
     assert!(
         out.contains(&"E-MAYBE-UNSET".to_string()),
-        "the raw quest.foo.state read stays independently maybe-unset: {out:?}"
+        "the raw run.phase read stays independently maybe-unset: {out:?}"
     );
 }
 
@@ -939,9 +942,9 @@ fn control_quest_state_in_domain_comparison_unchanged() {
 #[test]
 fn sentinel_alongside_independently_false_clause_keeps_arm_dead() {
     let out = codes(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"false && quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" label=\"C\" when=\"false && run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -961,11 +964,12 @@ fn sentinel_alongside_independently_false_clause_keeps_arm_dead() {
 #[test]
 fn sentinel_alongside_independent_foreign_typo_keeps_arm_dead() {
     let hdr = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-               run.grade: { type: { enum: [bronze, silver, gold] } }\n---\n## Shot 1.\n";
+               run.grade: { type: { enum: [bronze, silver, gold] } }\n  \
+               run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n";
     let out = codes(&format!(
         "{hdr}<branch id=\"b\">\n\
          <choice id=\"c\" label=\"C\" \
-         when=\"run.grade == 'legendary' && quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         when=\"run.grade == 'legendary' && run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(
@@ -986,7 +990,7 @@ fn sentinel_alongside_independent_foreign_typo_keeps_arm_dead() {
 fn sentinel_as_sole_cause_still_suppresses_arm_dead() {
     let out = codes(&format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.flag && quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" label=\"C\" when=\"run.flag && run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(out.contains(&"E-UNSET-LITERAL".to_string()), "{out:?}");
@@ -1005,10 +1009,11 @@ fn sentinel_as_sole_cause_still_suppresses_arm_dead() {
 #[test]
 fn two_sentinel_comparisons_both_flag_and_arm_dead_stays_suppressed() {
     let out = codes(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n  \
+         run.stage: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
          <choice id=\"c\" label=\"C\" \
-         when=\"quest.a.state == 'unset' || quest.b.state == 'unset'\">\n@x: a\n</choice>\n\
+         when=\"run.phase == 'unset' || run.stage == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert_eq!(
@@ -1032,9 +1037,9 @@ fn two_sentinel_comparisons_both_flag_and_arm_dead_stays_suppressed() {
 #[test]
 fn on_when_sentinel_flags_unset_literal() {
     let cs = codes(
-        "---\nkind: quest\n---\n<quest id=\"q\">\n\
+        "---\nkind: quest\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n<quest id=\"q\">\n\
          <objective id=\"o\" done=\"run.d\"/>\n\
-         <on event=\"questActive\" when=\"quest.foo.state == 'unset'\">\n@x: hi\n</on>\n\
+         <on event=\"questActive\" when=\"run.phase == 'unset'\">\n@x: hi\n</on>\n\
          </quest>\n",
     );
     assert!(
