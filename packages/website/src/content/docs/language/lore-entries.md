@@ -1,6 +1,6 @@
 ---
 title: Lore entries
-description: The lore document kind — <entry> declarations the engine looks up instead of plays: item descriptions, found notes, inscriptions, codex pages, and barks, with state-dependent text and knowledge revealed through facts.
+description: "The lore document kind — <entry> declarations the engine looks up instead of plays: item descriptions, found notes, inscriptions, codex pages, and barks, with state-dependent text and knowledge revealed through facts."
 ---
 
 Scenes and quests put story on a **time axis**: what happens, in what order. A lot of a game's
