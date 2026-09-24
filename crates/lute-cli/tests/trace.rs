@@ -144,8 +144,8 @@ fn bad_mock_exits_1() {
 // supplied `inParty` fact (`start="holds(inParty(shadowheart))"`, dsl
 // 0.4.0 §4.4); `questActive` fires automatically from that ONE transition
 // (no `--event questActive` — that lifecycle name is now `E-TRACE-EVENT`-
-// rejected, §4.3); `reach`/`learn` read derived relations with no
-// supplying `--fact` -> unresolved -> trace incomplete, exit 3.
+// rejected, §4.3); under `--no-derive` `reach`/`learn` read derived
+// relations with no supplying `--fact` -> unresolved -> exit 3.
 
 #[test]
 fn incomplete_exits_3() {
@@ -155,6 +155,7 @@ fn incomplete_exits_3() {
         "inParty(shadowheart)",
         "--project",
         "../../docs/examples",
+        "--no-derive",
     ]);
     assert_eq!(
         out.status.code(),
@@ -162,6 +163,27 @@ fn incomplete_exits_3() {
         "an unresolved objective atom must halt the trace incomplete: {}",
         String::from_utf8_lossy(&out.stdout)
     );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("derived relation `believesLocation`"),
+        "each derived read is noted under --no-derive: {stdout}"
+    );
+}
+
+// --- dsl 0.22.0 §6: by default the seeds load and the rules apply — the
+// same trace completes, both derived objectives decided by the rules.
+
+#[test]
+fn derivation_completes_the_quest_by_default() {
+    let out = trace(&[
+        "../../docs/examples/quest-rescue-halsin.lute",
+        "--project",
+        "../../docs/examples",
+    ]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{stdout}");
+    assert!(stdout.contains("rescueHalsin"), "{stdout}");
+    assert!(!stdout.contains("unresolved"), "{stdout}");
 }
 
 // --- §4.3/§4.4: `--event questActive` (a built-in lifecycle event) is
@@ -230,7 +252,7 @@ fn quarantine_edge_is_cli_only() {
     );
 }
 
-// --- §3.1: the resolved schema (`act1.schema.yaml`, imported via `uses:`)
+// --- §3.1 under `--no-derive` (dsl 0.22.0 §6): the resolved schema (`act1.schema.yaml`, imported via `uses:`)
 // declares seed `facts:` but NO `--fact` is supplied at all -> trace prints
 // an informational note naming a declared seed relation and saying schema
 // facts are not auto-loaded, supplied via `--fact`. Never an error: exit
@@ -242,6 +264,7 @@ fn declares_seed_facts_with_no_mocks_prints_not_auto_loaded_note() {
         "../../docs/examples/quest-rescue-halsin.lute",
         "--project",
         "../../docs/examples",
+        "--no-derive",
     ]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(

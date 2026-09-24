@@ -42,6 +42,7 @@ fn import_extends_type_diag_precedes_inline_state_merge_at_same_span() {
             ty: Type::Number,
             default: None,
             namespace: Namespace::Run,
+            owner: None,
         },
     );
     let mut overridable = BTreeSet::new();

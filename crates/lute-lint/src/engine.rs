@@ -125,15 +125,15 @@ pub fn lint(
         let (tables, dirs) = compute_doc_tables(&input.doc, &group_bys);
         per_doc.push((input.path.clone(), tables, dirs));
     }
-    // Project row: aggregate over per-doc SceneRow.words — SCENE documents
-    // only. A component (`component:` frontmatter key), quest
-    // (`kind: quest`), or lore document (`kind: lore`, dsl 0.19.0 §8) is not
-    // a scene: folding a 10-word component into the spread would report a
-    // meaningless min against a full episode. `kind:` absent defaults to
-    // scene (meta.rs), so only explicit non-scene markers exclude.
-    let scene_mask: Vec<bool> = active
+    // Project row: aggregate over per-doc SceneRow.words — LINEAR scene
+    // documents only (`SceneRow.kind == "scene"`, [`crate::metrics::doc_kind`]).
+    // A component, quest, or lore document is not a scene, and a beat (a
+    // scene answering an occasion, dsl 0.21.0 §3) is a short overlay: folding
+    // a 10-word bark into the spread would report a meaningless min against a
+    // full episode (dsl 0.22.0 §13).
+    let scene_mask: Vec<bool> = per_doc
         .iter()
-        .map(|input| is_scene_kind(&input.doc.meta.raw_yaml))
+        .map(|(_, t, _)| t.scene.as_ref().is_some_and(|s| s.kind == "scene"))
         .collect();
     let scene_words: Vec<u32> = per_doc
         .iter()
@@ -209,25 +209,6 @@ pub fn lint(
     outcome.diagnostics.sort_by(diag_order);
     outcome.config_diagnostics.sort_by(diag_order);
     outcome
-}
-
-/// `true` when the document's frontmatter marks a SCENE (the default kind).
-/// Mirrors `lute-check`'s meta typing without importing it: any explicit
-/// non-`scene` `kind:` (`quest`, `lore`) or a `component:` declaration key
-/// means "not a scene"; anything else — including malformed YAML, which lint
-/// tolerates like a parse-error AST — counts as a scene.
-fn is_scene_kind(raw_yaml: &str) -> bool {
-    let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(raw_yaml)
-    else {
-        return true;
-    };
-    if map.contains_key(serde_yaml::Value::String("component".into())) {
-        return false;
-    }
-    match map.get(serde_yaml::Value::String("kind".into())) {
-        Some(serde_yaml::Value::String(k)) => k == "scene",
-        _ => true,
-    }
 }
 
 fn finding_to_diagnostic(f: crate::rules::Finding) -> Diagnostic {

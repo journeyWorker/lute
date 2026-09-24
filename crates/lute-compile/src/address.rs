@@ -247,12 +247,25 @@ fn assign_identity(
 /// One identity scope's Pass 1 (per-speaker highest AUTHORED numeric code,
 /// scoped to `cmds`) + Pass 2 (final record order: fill codes, derive ids
 /// under `prefix`).
+///
+/// A component-expanded line (dsl 0.22.0 §11) is minted under
+/// `{prefix}.{scope}` — `scope` being its `{component}#{n}` path
+/// ([`crate::ir::Source::scope`]) — and each expansion keeps its own code
+/// counters. So two uses of one component never share an id, a component
+/// line never shares one with a host line carrying the same code, and a
+/// component's untagged lines get the same codes at every use regardless of
+/// how many host lines precede it.
 fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &IdentityTemplates) {
-    let mut max_code: BTreeMap<String, u64> = BTreeMap::new();
+    fn scope_of(l: &crate::ir::LineCmd) -> &str {
+        l.stamp.source.as_ref().map_or("", |s| s.scope.as_str())
+    }
+    let mut max_code: BTreeMap<(String, String), u64> = BTreeMap::new();
     for cmd in cmds.iter() {
         if let Command::Line(l) = cmd {
             if let Some(n) = l.code.as_deref().and_then(|c| c.trim().parse::<u64>().ok()) {
-                let e = max_code.entry(l.speaker.clone()).or_insert(0);
+                let e = max_code
+                    .entry((scope_of(l).to_string(), l.speaker.clone()))
+                    .or_insert(0);
                 if n > *e {
                     *e = n;
                 }
@@ -262,6 +275,7 @@ fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &Identity
     for cmd in cmds.iter_mut() {
         match cmd {
             Command::Line(l) => {
+                let scope = scope_of(l).to_string();
                 let code = match &l.code {
                     Some(c) => c.trim().to_string(),
                     None => {
@@ -270,13 +284,20 @@ fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &Identity
                         // closed for THIS line only (`continue`, not `break`), so
                         // other speakers/lines still get identities and no colliding
                         // code is emitted — mirroring lute-check's tag.rs.
-                        let e = max_code.entry(l.speaker.clone()).or_insert(0);
+                        let e = max_code.entry((scope.clone(), l.speaker.clone())).or_insert(0);
                         let Some(nc) = e.checked_add(10) else {
                             continue;
                         };
                         *e = nc;
                         format!("{:04}", nc)
                     }
+                };
+                let scoped;
+                let prefix = if scope.is_empty() {
+                    prefix
+                } else {
+                    scoped = format!("{prefix}.{scope}");
+                    scoped.as_str()
                 };
                 l.line_id = identity.render_line_id(prefix, &l.speaker, &code);
                 if l.role.voiced() {
@@ -515,10 +536,10 @@ mod tests {
         assert_eq!(addrs(&cmds), vec!["002-0100"]);
     }
 
-    /// [`IdentityTemplates::default`] IS 0.7.0's hardcoded pair: every derived
-    /// id must equal the literal `format!` the pre-0.8.0 pass used.
+    /// [`IdentityTemplates::default`]: 0.7.0's `lineId` and dsl 0.22.0 §11's
+    /// `{prefix}`ed `voiceKey` — every derived id equals the literal join.
     #[test]
-    fn default_identity_templates_reproduce_070_byte_for_byte() {
+    fn default_identity_templates_join_prefix_speaker_code() {
         let segments = [("bardstale.s01ep02".to_string(), 3usize)];
         let mut cmds = vec![
             line("fixer", Some("0050")),
@@ -534,7 +555,7 @@ mod tests {
                 l.line_id,
                 format!("bardstale.s01ep02.{}_{}", l.speaker, code)
             );
-            let want_voice = format!("{}-{}", l.speaker, code);
+            let want_voice = format!("bardstale.s01ep02.{}-{}", l.speaker, code);
             assert_eq!(l.voice_key.as_deref(), Some(want_voice.as_str()));
         }
         assert!(IdentityTemplates::default().validate().is_empty());
@@ -612,12 +633,12 @@ mod tests {
         let tagged = as_line(&cmds[0]);
         assert_eq!(tagged.code.as_deref(), Some("0050"));
         assert_eq!(tagged.line_id, "bardstale.s01ep02.fixer_0050");
-        assert_eq!(tagged.voice_key.as_deref(), Some("fixer-0050"));
+        assert_eq!(tagged.voice_key.as_deref(), Some("bardstale.s01ep02.fixer-0050"));
 
         let untagged = as_line(&cmds[1]);
         assert_eq!(untagged.code.as_deref(), Some("0060"));
         assert_eq!(untagged.line_id, "bardstale.s01ep02.fixer_0060");
-        assert_eq!(untagged.voice_key.as_deref(), Some("fixer-0060"));
+        assert_eq!(untagged.voice_key.as_deref(), Some("bardstale.s01ep02.fixer-0060"));
     }
 
     /// A speaker's authored `code` at `u64::MAX` followed by an untagged line for
@@ -643,7 +664,7 @@ mod tests {
         );
         assert_eq!(
             tagged.voice_key.as_deref(),
-            Some("fixer-18446744073709551615")
+            Some("bardstale.s01ep02.fixer-18446744073709551615")
         );
 
         // Untagged line fails closed: no back-filled code, no identity, no

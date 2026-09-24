@@ -28,7 +28,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "Outside: grey. Still grey.",
-      "lineId": "demo.s01ep01.narrator_0010",
+      "lineId": "demo.s01ep01.card#1.narrator_0010",
       "source": {
         "component": "card"
       }
@@ -39,7 +39,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "Outside: still. Still still.",
-      "lineId": "demo.s01ep01.narrator_0020",
+      "lineId": "demo.s01ep01.card#2.narrator_0010",
       "source": {
         "component": "card"
       }
@@ -50,7 +50,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "Def {{@twice}}.",
-      "lineId": "demo.s01ep01.narrator_0030",
+      "lineId": "demo.s01ep01.narrator_0010",
       "placeholders": [
         {
           "kind": "ref",

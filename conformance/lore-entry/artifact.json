@@ -101,7 +101,7 @@
       "speaker": "scientist",
       "text": "Day three. The page is scorched at the edges.",
       "lineId": "scientistLog1.scientist_0010",
-      "voiceKey": "scientist-0010"
+      "voiceKey": "scientistLog1.scientist-0010"
     },
     {
       "kind": "jump",
@@ -115,7 +115,7 @@
       "speaker": "scientist",
       "text": "Day three. Subject E does not respond to light.",
       "lineId": "scientistLog1.scientist_0020",
-      "voiceKey": "scientist-0020"
+      "voiceKey": "scientistLog1.scientist-0020"
     },
     {
       "kind": "jump",
@@ -164,7 +164,7 @@
       "speaker": "scientist",
       "text": "Day four. The light was never the point.",
       "lineId": "scientistLog2.scientist_0010",
-      "voiceKey": "scientist-0010"
+      "voiceKey": "scientistLog2.scientist-0010"
     }
   ]
 }

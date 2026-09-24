@@ -774,6 +774,58 @@ fn every_legal_mock_key_still_parses() {
     parse_mock_yaml("accepts:\n  - q\n").expect("`accepts:` is legal");
 }
 
+/// dsl 0.22.0 §3: `quests:` / `entriesRead:` are save-history seeds, carried
+/// as the reserved state seeds they spell — so they get the reserved-path
+/// admission rule (the document must reference the path) and domain for free.
+#[test]
+fn quests_and_entries_read_seed_their_reserved_paths() {
+    let m = parse_mock_yaml(
+        "quests:\n  foo: complete\nentriesRead:\n  run: [ember]\n  user: [ash]\n",
+    )
+    .expect("valid seeds");
+    let seeds: Vec<(&str, &str)> = m
+        .state
+        .iter()
+        .map(|(p, v, _)| (p.as_str(), v.as_str()))
+        .collect();
+    assert_eq!(
+        seeds,
+        [
+            ("quest.foo.state", "complete"),
+            ("entry.ember.read", "true"),
+            ("entry.ash.everRead", "true"),
+        ]
+    );
+
+    let (folded, doc) = folded_and_doc(
+        quest_state_reader_text(),
+        "quest-state-reader",
+        Path::new("."),
+    );
+    let ok = parse_mock_yaml("quests:\n  foo: complete\n").unwrap();
+    assert!(validate(&ok, &folded, &doc).is_empty());
+    // A quest this document never reads is a typo as far as this walk can
+    // tell — the same refusal a `state: quest.bar.state` mock gets.
+    let stray = parse_mock_yaml("quests:\n  bar: complete\n").unwrap();
+    assert_eq!(
+        codes(&validate(&stray, &folded, &doc)),
+        vec![E_TRACE_MOCK_UNDECLARED]
+    );
+}
+
+#[test]
+fn malformed_history_seeds_are_parse_errors() {
+    for yaml in [
+        "quests:\n  foo: done\n",
+        "quests: [foo]\n",
+        "entriesRead:\n  save: [a]\n",
+        "entriesRead: [a]\n",
+    ] {
+        let err = parse_mock_yaml(yaml).unwrap_err();
+        assert_eq!(err.code, "E-TRACE-MOCK-PARSE", "{yaml}: {err:?}");
+    }
+}
+
 /// The one key the two families do NOT share. `expect:` in a `mocks/*.yaml`
 /// is meaningless — nothing runs it — so the closed mock grammar rejects it,
 /// while `lute test`'s open read (which then applies its OWN closed set,

@@ -50,6 +50,7 @@ fn input_with_anchor(cond: &str) -> CheckInput {
             ty: Type::NarrativeTime,
             default: None,
             namespace: Namespace::App,
+            owner: None,
         },
     );
     CheckInput {

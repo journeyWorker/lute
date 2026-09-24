@@ -69,6 +69,19 @@ pub struct MockSet {
     /// 0.21.0 §7a.2): after a quest walk settles, each raise evaluates the
     /// `<objective on="<occasion>">` objectives of every active quest.
     pub occasions: Vec<String>,
+    /// `derive:` (dsl 0.22.0 §6): `None`/`Some(true)` applies the project's
+    /// seed facts and Datalog rules over the mocked and asserted facts (the
+    /// default); `Some(false)` (`--no-derive`) restores the 0.21 model, in
+    /// which an unmocked derived atom is unknown. Read it through
+    /// [`MockSet::derives`].
+    pub derive: Option<bool>,
+}
+
+impl MockSet {
+    /// Whether derivation applies (dsl 0.22.0 §6: default `true`).
+    pub fn derives(&self) -> bool {
+        self.derive.unwrap_or(true)
+    }
 }
 
 /// `--state`/`--mock` literals and `--choose` targets carry no real source
@@ -178,9 +191,10 @@ fn scalar_to_text(v: &serde_yaml::Value) -> Option<String> {
 }
 
 /// The complete legal top-level key set of a `--mock` / `mocks/*.yaml`
-/// document — the seven surfaces [`parse_mock_yaml`] reads (`accept`/
-/// `accepts` are two spellings of one key; `visited`/`occasions` are dsl
-/// 0.21.0 §7a) plus `file:`, the subject key **D-AC** made required.
+/// document — the surfaces [`parse_mock_yaml`] reads (`accept`/`accepts`
+/// are two spellings of one key; `visited`/`occasions` are dsl 0.21.0 §7a;
+/// `quests`/`entriesRead` are dsl 0.22.0 §3's save-history seeds) plus
+/// `file:`, the subject key **D-AC** made required.
 ///
 /// **CLOSED as of 0.10.0 (#2(a), D-B).** D-B's rationale names this exact
 /// failure — *"a mis-keyed `choose:` currently passes while running the arm it
@@ -188,14 +202,25 @@ fn scalar_to_text(v: &serde_yaml::Value) -> Option<String> {
 /// mock spelling `selections:` was still dropped in silence and `lute trace`
 /// still auto-picked the arm the file excluded, at exit 0.
 ///
-/// **The two families' key sets are NOT identical, and differ by exactly one
-/// key.** `*.test.yaml`'s set (`lute-cli/src/testcmd.rs::TEST_TOP_KEYS`) is
-/// this one plus `expect:`, the harness's own; `expect:` in a `mocks/*.yaml`
-/// is meaningless — nothing runs it — so it is an unknown key here. That one
-/// difference is asserted by `testcmd.rs`'s
-/// `the_test_key_set_is_the_mock_key_set_plus_expect`.
+/// **The two families' key sets are NOT identical.** `*.test.yaml`'s set
+/// (`lute-cli/src/testcmd.rs::TEST_TOP_KEYS`) is this one plus the
+/// harness's own `expect:` and `entry:`/`entries:` (dsl 0.22.0 §5); none of
+/// them means anything in a `mocks/*.yaml` — nothing runs it — so they are
+/// unknown keys here. That difference is asserted by `testcmd.rs`'s
+/// `the_test_key_set_is_the_mock_key_set_plus_the_harness_keys`.
 pub const MOCK_TOP_KEYS: &[&str] = &[
-    "accept", "accepts", "choose", "events", "facts", "file", "occasions", "state", "visited",
+    "accept",
+    "accepts",
+    "choose",
+    "derive",
+    "entriesRead",
+    "events",
+    "facts",
+    "file",
+    "occasions",
+    "quests",
+    "state",
+    "visited",
 ];
 
 /// Parse a `--mock <file.yaml>` document (dsl 0.4.0 §4.3, 0.10.0 §8):
@@ -230,7 +255,7 @@ pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
 ///
 /// One caller, and it is the reason the split exists: `lute test` reads a
 /// `*.test.yaml` through this same parser, and that family's legal set is
-/// [`MOCK_TOP_KEYS`] **plus `expect:`**. It also reports a key violation
+/// [`MOCK_TOP_KEYS`] **plus `expect:`, `entry:` and `entries:`**. It also reports a key violation
 /// differently — a per-test FAILURE naming *every* offender in one run
 /// (`E-TEST-KEY`, exit 1, D-B), not a first-offender parse error (exit 2) —
 /// so it cannot delegate the gate here even for the keys the sets share.
@@ -458,6 +483,86 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         }
     }
 
+    // dsl 0.22.0 §3: `quests:` / `entriesRead:` seed the save's history.
+    // Both are spellings of reserved state paths, so they are carried AS
+    // those `state:` seeds — the same admission rule (the document must
+    // reference or declare the path), the same reserved domains and the
+    // same seeding every `state: { quest.<id>.state: … }` mock already
+    // gets, never a second channel.
+    if let Some(v) = top.get("quests") {
+        let serde_yaml::Value::Mapping(m) = v else {
+            return Err(diag(
+                E_TRACE_MOCK_PARSE,
+                "`quests:` must be a map of quest id -> unset | active | complete | failed \
+                 (dsl 0.22.0 §3)"
+                    .to_string(),
+                span,
+            ));
+        };
+        for (k, status) in m {
+            let (Some(id), Some(status)) = (k.as_str(), status.as_str()) else {
+                return Err(diag(
+                    E_TRACE_MOCK_PARSE,
+                    "every `quests:` entry must be `<quest id>: <status>` (dsl 0.22.0 §3)"
+                        .to_string(),
+                    span,
+                ));
+            };
+            if !matches!(status, "unset" | "active" | "complete" | "failed") {
+                return Err(diag(
+                    E_TRACE_MOCK_PARSE,
+                    format!(
+                        "`quests: {{ {id}: {status} }}` — a quest status is one of unset, \
+                         active, complete, failed (dsl 0.22.0 §3)"
+                    ),
+                    span,
+                ));
+            }
+            mocks
+                .state
+                .push((format!("quest.{id}.state"), status.to_string(), span));
+        }
+    }
+    if let Some(v) = top.get("entriesRead") {
+        let shape = "`entriesRead:` must be a map `{ run: [entry ids], user: [entry ids] }` \
+                     (dsl 0.22.0 §3)";
+        let serde_yaml::Value::Mapping(m) = v else {
+            return Err(diag(E_TRACE_MOCK_PARSE, shape.to_string(), span));
+        };
+        for (tier, ids) in m {
+            let tier = tier.as_str().unwrap_or_default();
+            let (serde_yaml::Value::Sequence(ids), "run" | "user") = (ids, tier) else {
+                return Err(diag(E_TRACE_MOCK_PARSE, shape.to_string(), span));
+            };
+            for id in ids {
+                let Some(id) = id.as_str() else {
+                    return Err(diag(E_TRACE_MOCK_PARSE, shape.to_string(), span));
+                };
+                // `run`: `entry.<id>.read`; `user`: `entry.<id>.everRead`
+                // (dsl 0.22.0 §7). Neither implies the other: a new run
+                // clears `read` and keeps `everRead`.
+                let path = if tier == "run" {
+                    lute_check::entry_read_path(id)
+                } else {
+                    format!("entry.{id}.everRead")
+                };
+                mocks.state.push((path, "true".to_string(), span));
+            }
+        }
+    }
+
+    // dsl 0.22.0 §6: `derive: false` restores the 0.21 lookup-only model.
+    if let Some(v) = top.get("derive") {
+        let Some(b) = v.as_bool() else {
+            return Err(diag(
+                E_TRACE_MOCK_PARSE,
+                "`derive:` must be `true` or `false` (dsl 0.22.0 §6)".to_string(),
+                span,
+            ));
+        };
+        mocks.derive = Some(b);
+    }
+
     Ok(mocks)
 }
 
@@ -520,6 +625,7 @@ pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
 /// * `visited` — set UNION, the same idiom (a scene presented is presented).
 /// * `occasions` — compose file-then-flags, in that relative order (the
 ///   `events` rule: occasions are raised in sequence, not declared).
+/// * `derive` — the flag (`--no-derive`) wins over the file's `derive:`.
 pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
     let flag_paths: std::collections::BTreeSet<&str> =
         flags.state.iter().map(|(p, _, _)| p.as_str()).collect();
@@ -571,6 +677,7 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
         accepts,
         visited,
         occasions,
+        derive: flags.derive.or(file.derive),
     }
 }
 

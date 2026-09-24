@@ -1008,7 +1008,21 @@ fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>>
     let mut arena = lute_cel::CelArena::default();
     let handle = lute_cel::parse_slot_marked_refs(&mut arena, raw)?;
     let ided = arena.get(handle)?;
-    let Expr::Call(c) = &ided.expr else {
+    let (path, set) = comparison_set(&ided.expr, ctx.schema)?;
+    Some(Gate {
+        id: &o.id,
+        path,
+        raw: o.done.raw.trim(),
+        set,
+        span: o.span,
+    })
+}
+
+/// `expr` as ONE in-domain comparison `<declared scalar state path> <op>
+/// <literal>` (either operand order) with its solution set over the path's
+/// declared type; `None` for anything else.
+fn comparison_set(expr: &Expr, schema: &crate::meta::StateSchema) -> Option<(String, SolutionSet)> {
+    let Expr::Call(c) = expr else {
         return None;
     };
     if c.target.is_some() || c.args.len() != 2 {
@@ -1026,14 +1040,97 @@ fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>>
         (_, _, Some(p), Expr::Literal(v)) => (p, flip(&c.func_name)?, v),
         _ => return None,
     };
-    let declared = crate::set_op::resolve_type(&path, ctx.schema)?;
+    let declared = crate::set_op::resolve_type(&path, schema)?;
     let set = solution_set(declared, opname, lit)?;
-    Some(Gate {
-        id: &o.id,
-        path,
-        raw: o.done.raw.trim(),
-        set,
-        span: o.span,
+    Some((path, set))
+}
+
+/// The top-level `&&` conjuncts of a condition that are in-domain comparisons
+/// (dsl 0.22.0 §13, `W-BEAT-PRIORITY-TIE`): each `path op literal`, and a
+/// bare `bool` path / its `!` as `== true` / `== false`. Every other conjunct
+/// constrains nothing here — which only makes exclusivity harder to prove.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Conjuncts(Vec<(String, SolutionSet)>);
+
+/// [`Conjuncts`] of `raw` after `@def` expansion, typed against `schema`.
+pub(crate) fn when_conjuncts(
+    raw: &str,
+    defs: &DefTable<'_>,
+    schema: &crate::meta::StateSchema,
+) -> Conjuncts {
+    let mut stack = Vec::new();
+    let expanded = crate::cel_expand::expand_cel(raw, defs, None, &mut stack)
+        .unwrap_or_else(|_| raw.to_string());
+    let mut arena = lute_cel::CelArena::default();
+    let Some(ided) = lute_cel::parse_slot_marked_refs(&mut arena, &expanded)
+        .and_then(|h| arena.get(h))
+    else {
+        return Conjuncts::default();
+    };
+    let mut out = Vec::new();
+    collect_conjuncts(&ided.expr, schema, &mut out);
+    Conjuncts(out)
+}
+
+fn collect_conjuncts(
+    expr: &Expr,
+    schema: &crate::meta::StateSchema,
+    out: &mut Vec<(String, SolutionSet)>,
+) {
+    if let Expr::Call(c) = expr {
+        if c.target.is_none() && c.func_name == op::LOGICAL_AND && c.args.len() == 2 {
+            collect_conjuncts(&c.args[0].expr, schema, out);
+            collect_conjuncts(&c.args[1].expr, schema, out);
+            return;
+        }
+    }
+    let bool_path = |e: &Expr| {
+        let path = crate::cel_paths::select_path(e)?;
+        matches!(crate::set_op::resolve_type(&path, schema)?, Type::Bool).then_some(path)
+    };
+    let flag = |path: String, value: &str| {
+        (path, SolutionSet::Members(std::iter::once(value.to_string()).collect()))
+    };
+    if let Some(hit) = comparison_set(expr, schema) {
+        out.push(hit);
+    } else if let Some(path) = bool_path(expr).or_else(|| holds_key(expr)) {
+        out.push(flag(path, "true"));
+    } else if let Expr::Call(c) = expr {
+        if c.target.is_none() && c.func_name == op::LOGICAL_NOT && c.args.len() == 1 {
+            if let Some(path) = bool_path(&c.args[0].expr).or_else(|| holds_key(&c.args[0].expr)) {
+                out.push(flag(path, "false"));
+            }
+        }
+    }
+}
+
+/// A ground `holds(rel(args…))` query as a pseudo-path (`holds(rel(a,b))`),
+/// so `holds(P)` and `!holds(P)` are exclusive like `x` and `!x`.
+fn holds_key(expr: &Expr) -> Option<String> {
+    fn term(e: &Expr) -> Option<String> {
+        match e {
+            Expr::Ident(name) => Some(name.clone()),
+            Expr::Literal(Val::String(s)) => Some(format!("'{s}'")),
+            Expr::Literal(Val::Int(i)) => Some(i.to_string()),
+            Expr::Call(c) if c.target.is_none() => {
+                let args: Option<Vec<String>> = c.args.iter().map(|a| term(&a.expr)).collect();
+                Some(format!("{}({})", c.func_name, args?.join(",")))
+            }
+            _ => None,
+        }
+    }
+    let Expr::Call(c) = expr else { return None };
+    (c.target.is_none() && c.func_name == "holds" && c.args.len() == 1)
+        .then(|| term(&c.args[0].expr).map(|t| format!("holds({t})")))
+        .flatten()
+}
+
+/// Two conditions that cannot both hold: some pair of their conjuncts
+/// constrains one path to disjoint solution sets. Sound, never complete.
+pub(crate) fn provably_exclusive(a: &Conjuncts, b: &Conjuncts) -> bool {
+    a.0.iter().any(|(pa, sa)| {
+        b.0.iter()
+            .any(|(pb, sb)| pa == pb && disjoint(sa, sb))
     })
 }
 

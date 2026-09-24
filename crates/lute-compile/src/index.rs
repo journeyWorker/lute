@@ -100,8 +100,8 @@ pub enum BeatKind {
 /// loading every artifact. Row order IS the selection tiebreak after
 /// priority. `id` is the scene's canonical id ([`SceneMeta::id`]) or the
 /// entry id; `document` is the owning [`IndexDocument::path`]; `priority` is
-/// resolved (unauthored → `0`); `once` is present only on scene rows —
-/// entries have no repetition policy (dsl 0.21.0 §3.2).
+/// resolved (unauthored → `0`); `once` is the scene's policy, or an entry's
+/// authored `once` (dsl 0.22.0 §7) — absent on an entry row = repeatable.
 ///
 /// [`SceneMeta::id`]: crate::ir::SceneMeta::id
 #[derive(Clone, Debug, Serialize)]
@@ -388,7 +388,7 @@ pub fn build_index(
                     on: on.clone(),
                     target: e.target.clone(),
                     priority: e.priority.unwrap_or(0),
-                    once: None,
+                    once: e.once,
                 }),
                 _ => None,
             });
@@ -464,9 +464,10 @@ impl std::fmt::Display for VoiceKeyCollision {
         }
         write!(
             f,
-            " a voiceKey template without `{{prefix}}` (the default is `{{speaker}}-{{code}}`) \
-             repeats across documents — set `identity.voiceKey: \"{{prefix}}.{{speaker}}-{{code}}\"` \
-             in lute.project.yaml (renames every voice asset) or give the lines distinct `code=`s"
+            " a voiceKey template without `{{prefix}}` (such as the 0.21 default \
+             `{{speaker}}-{{code}}`) repeats across documents — use the default \
+             `{{prefix}}.{{speaker}}-{{code}}` in lute.project.yaml's `identity.voiceKey` \
+             (renames every voice asset) or give the lines distinct `code=`s"
         )
     }
 }
@@ -748,6 +749,7 @@ mod tests {
                     body: format!("{:03}-0200", i + 1),
                     on: None,
                     priority: None,
+                    once: None,
                     stamp: Stamp::default(),
                 })
             })

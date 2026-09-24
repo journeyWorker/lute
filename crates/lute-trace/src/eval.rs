@@ -13,8 +13,8 @@
 //! selected element are evaluated; a non-list target or an
 //! unknown/non-integer/out-of-range index is `U`. `isSet()`/`has()` are
 //! DEFINITE (D19) — presence, not
-//! value. `holds`/`count` run a bounded scan of the supplied fact set
-//! (never a Datalog fixpoint, §4.2 rule 3). `visited('<scene id>')` (dsl
+//! value. `holds`/`count` read the supplied fact set — through the Datalog
+//! fixpoint under `derive: true` (dsl 0.22.0 §6), a bounded scan otherwise. `visited('<scene id>')` (dsl
 //! 0.21.0 §7a.1) is DEFINITE over the supplied presented-scene set the
 //! [`FactStore`] carries — closed-world, like a non-derived relation: an id
 //! absent from the set was not presented. `now()`/`validAt(...)` are
@@ -30,6 +30,7 @@ use cel_parser::reference::Val;
 use lute_check::{Decided, RelVocab, StateSchema};
 use lute_manifest::Literal;
 
+use crate::datalog::Program;
 use crate::value::{UnresolvedAtom, Value};
 
 /// The result of an [`EffectiveState::read`] — distinguishes "no effective
@@ -238,11 +239,22 @@ fn render_pattern(relation: &str, pattern: &[Pat]) -> String {
 /// presented-scene set `visited(…)` reads (dsl 0.21.0 §7a.1) — engine
 /// knowledge of the save, supplied as a mock (`visited:`) exactly as facts
 /// are, and cloned with them into every pre-event snapshot.
+///
+/// With a [`Program`] attached ([`FactStore::with_derivation`], dsl 0.22.0
+/// §6 `derive: true`) every query reads the stratified least fixpoint over
+/// the held facts — the runner's own evaluator — so a derived relation is
+/// as definite as a base one. Without one (`derive: false`, the 0.21 model)
+/// a query is pattern LOOKUP: an unmatched derived relation is unknown, and
+/// the relation is logged in [`FactStore::derived_reads`].
 #[derive(Clone)]
 pub struct FactStore<'a> {
     facts: BTreeSet<(String, Vec<String>)>,
     rel_vocab: &'a RelVocab,
     visited: BTreeSet<String>,
+    derivation: Option<&'a Program>,
+    /// Derived relations queried without derivation — walk-global like
+    /// [`EffectiveState`]'s reserved-read log, so shared across snapshots.
+    derived_reads: Rc<RefCell<BTreeSet<String>>>,
 }
 
 impl<'a> FactStore<'a> {
@@ -251,7 +263,15 @@ impl<'a> FactStore<'a> {
             facts: BTreeSet::new(),
             rel_vocab,
             visited: BTreeSet::new(),
+            derivation: None,
+            derived_reads: Rc::new(RefCell::new(BTreeSet::new())),
         }
+    }
+
+    /// Answer every query over `program`'s fixpoint of the held facts.
+    pub fn with_derivation(mut self, program: &'a Program) -> Self {
+        self.derivation = Some(program);
+        self
     }
 
     /// Record that the scene `id` has been presented in this save (dsl
@@ -276,6 +296,17 @@ impl<'a> FactStore<'a> {
             .retain(|(r, args)| !(r == rel && pattern_matches(pattern, args)));
     }
 
+    /// The held (base) facts: mocks, seeds and walk deltas, before
+    /// derivation.
+    pub fn base(&self) -> &BTreeSet<(String, Vec<String>)> {
+        &self.facts
+    }
+
+    /// Derived relations a query read without derivation, sorted.
+    pub fn derived_reads(&self) -> BTreeSet<String> {
+        self.derived_reads.borrow().clone()
+    }
+
     fn is_derived(&self, rel: &str) -> bool {
         self.rel_vocab
             .relations
@@ -284,34 +315,49 @@ impl<'a> FactStore<'a> {
             .unwrap_or(false)
     }
 
-    fn scan(&self, rel: &str, pattern: &[Pat]) -> usize {
-        self.facts
-            .iter()
+    fn scan<'f>(
+        facts: impl IntoIterator<Item = &'f (String, Vec<String>)>,
+        rel: &str,
+        pattern: &[Pat],
+    ) -> usize {
+        facts
+            .into_iter()
             .filter(|(r, args)| r == rel && pattern_matches(pattern, args))
             .count()
     }
 
-    /// Bounded scan (§4.3): ground positions match, `_` existential over
-    /// the finite supplied set. `derive:true` + zero matching supplied
-    /// facts → `None` (unknown — §4.2 rule 3: the rules are never run);
-    /// otherwise `Some(bool)`. This is pattern LOOKUP, never derivation.
-    pub fn holds(&self, rel: &str, pattern: &[Pat]) -> Option<bool> {
-        let n = self.scan(rel, pattern);
-        if self.is_derived(rel) && n == 0 {
-            None
-        } else {
-            Some(n > 0)
-        }
-    }
-
-    /// Same rule as [`FactStore::holds`], counting matches instead of
-    /// testing existence.
-    pub fn count(&self, rel: &str, pattern: &[Pat]) -> Option<usize> {
-        let n = self.scan(rel, pattern);
-        if self.is_derived(rel) && n == 0 {
-            None
-        } else {
-            Some(n)
+    /// How many facts match `rel(pattern)` (§4.3: ground positions match,
+    /// `_` existential), or why that is unknown. With derivation the count
+    /// is over the fixpoint — unknown only when a rule guard feeding `rel`
+    /// read undecided state. Without it, a derived relation with zero
+    /// matching held facts is unknown (the 0.21 lookup model).
+    pub fn lookup(
+        &self,
+        rel: &str,
+        pattern: &[Pat],
+        state: &EffectiveState<'_>,
+    ) -> Result<usize, Vec<UnresolvedAtom>> {
+        match self.derivation {
+            Some(program) if !program.is_empty() => {
+                let closure = program.fixpoint(&self.facts, state);
+                if let Some(atoms) = closure.undecided.get(rel) {
+                    return Err(atoms.clone());
+                }
+                Ok(Self::scan(&closure.facts, rel, pattern))
+            }
+            Some(_) => Ok(Self::scan(&self.facts, rel, pattern)),
+            None => {
+                let n = Self::scan(&self.facts, rel, pattern);
+                if self.is_derived(rel) {
+                    self.derived_reads.borrow_mut().insert(rel.to_string());
+                    if n == 0 {
+                        return Err(vec![UnresolvedAtom::DerivedFact(render_pattern(
+                            rel, pattern,
+                        ))]);
+                    }
+                }
+                Ok(n)
+            }
         }
     }
 }
@@ -535,9 +581,11 @@ fn eval_index(
 }
 
 /// `holds(pattern)` / `count(pattern)` (§4.3): looks the pattern up via
-/// [`FactStore`]; `None` (derive:true + zero matches) records a
-/// [`UnresolvedAtom::DerivedFact`] with the rendered pattern as the
-/// "supply it as a mock" hint (§4.6).
+/// [`FactStore::lookup`] — over the Datalog fixpoint under `derive: true`
+/// (dsl 0.22.0 §6), a bounded scan otherwise. An unknown answer records
+/// the atoms that would decide it (for an unmatched derived relation
+/// without derivation, the rendered pattern as the "supply it as a mock"
+/// hint, §4.6).
 fn eval_fact_query(
     kind: &str,
     pattern: &IdedExpr,
@@ -551,21 +599,12 @@ fn eval_fact_query(
     let Some(pats) = pattern_args(pat_call) else {
         return Value::Unknown; // non-ground pattern; defensive, unreachable post-check
     };
-    if kind == "holds" {
-        match env.facts.holds(relation, &pats) {
-            Some(b) => Value::Bool(b),
-            None => {
-                unresolved.push(UnresolvedAtom::DerivedFact(render_pattern(relation, &pats)));
-                Value::Unknown
-            }
-        }
-    } else {
-        match env.facts.count(relation, &pats) {
-            Some(n) => Value::Num(n as f64),
-            None => {
-                unresolved.push(UnresolvedAtom::DerivedFact(render_pattern(relation, &pats)));
-                Value::Unknown
-            }
+    match env.facts.lookup(relation, &pats, env.state) {
+        Ok(n) if kind == "holds" => Value::Bool(n > 0),
+        Ok(n) => Value::Num(n as f64),
+        Err(atoms) => {
+            unresolved.extend(atoms);
+            Value::Unknown
         }
     }
 }
@@ -680,6 +719,7 @@ mod tests {
                     ty: ty.clone(),
                     default: default.clone(),
                     namespace: Namespace::Run,
+                    owner: None,
                 },
             );
         }
@@ -1133,12 +1173,8 @@ mod tests {
         assert_eq!(v, Value::Bool(false));
         assert!(unresolved.is_empty());
         assert_eq!(
-            facts.holds("inParty", &[Pat::Wildcard, Pat::Wildcard]),
-            Some(false)
-        );
-        assert_eq!(
-            facts.count("inParty", &[Pat::Wildcard, Pat::Wildcard]),
-            Some(0)
+            facts.lookup("inParty", &[Pat::Wildcard, Pat::Wildcard], &state),
+            Ok(0)
         );
     }
 
@@ -1154,16 +1190,23 @@ mod tests {
             "inParty",
             &[Pat::Ground("elena".to_string()), Pat::Wildcard],
         );
+        let schema = schema_with(&[]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
         assert_eq!(
-            facts.holds(
+            facts.lookup(
                 "inParty",
-                &[Pat::Ground("elena".to_string()), Pat::Wildcard]
+                &[Pat::Ground("elena".to_string()), Pat::Wildcard],
+                &state
             ),
-            Some(false)
+            Ok(0)
         );
         assert_eq!(
-            facts.holds("inParty", &[Pat::Ground("gale".to_string()), Pat::Wildcard]),
-            Some(true)
+            facts.lookup(
+                "inParty",
+                &[Pat::Ground("gale".to_string()), Pat::Wildcard],
+                &state
+            ),
+            Ok(1)
         );
     }
 

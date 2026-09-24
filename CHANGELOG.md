@@ -36,6 +36,194 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Changed
+
+- **`lute trace`, `lute test` and `lute play` derive by default** (dsl 0.22.0
+  §6, D-B). Trace and test now load the project's seed `facts:` and apply its
+  Datalog rules (stratified negation) over the mocked and asserted facts, so a
+  rule-derived fact satisfies a guard, `done` or `start` without mocking the
+  conclusion, and "derived false because a negated premise holds" is
+  testable. A mocked derived atom is still accepted — it is a seed like any
+  other. Trace, test and the reference runner (`lute run` / `lute play`) now
+  share one evaluator, `lute_trace::datalog`, so they cannot disagree about
+  what a project's rules conclude. A rule guard over undecided trace state
+  leaves the conclusion unknown and names the state path that would decide it.
+- `derive: false` (mock / test / play-script key) and `--no-derive` (`lute
+  trace`, `lute test`, `lute play`; the flag wins over the key) restore the
+  0.21 model: seeds are not loaded, an unmocked derived atom is unknown, and a
+  note names each derived relation read. **Migration:** a test that relied on
+  an unmocked derived atom being unknown (exit 3), or on a seeded relation
+  reading empty, now sees the derived / seeded answer; pin `derive: false` to
+  keep the old verdict.
+- **A lore document is testable, so `lute test --coverage` lists an untested
+  one** (dsl 0.22.0 §5). It was left out of the untested set because no test
+  could target it; a test now names the entries it presents.
+- **Breaking: the default `voiceKey` is `{prefix}.{speaker}-{code}`** (dsl
+  0.22.0 §11, D-E). The 0.21 default `{speaker}-{code}` repeated across
+  documents, so every scene's `@ann{code="0010"}` landed on one voice asset
+  (0.21.1 made that `E-DUP-VOICEKEY`). A project that recorded audio against
+  the old keys pins `identity: { voiceKey: "{speaker}-{code}" }` in
+  `lute.project.yaml` to keep them; a project that already pinned the prefixed
+  template (as `lute init` and the example projects do) is unchanged.
+- **Breaking: component lines have their own `lineId`/`voiceKey` scope** (dsl
+  0.22.0 §11, T1-10). A line expanded from a component is addressed
+  `{prefix}.{component}#{n}.{speaker}_{code}`, where `n` counts the host's
+  `::use`s of that component (1-based, document order; a nested `::use`
+  counts within its enclosing expansion and adds another segment). Each
+  expansion back-fills its own untagged codes, so a component line's code no
+  longer depends on the host lines before it, and host lines after a `::use`
+  keep the codes `lute tag` gives them. Two uses of a tagged component, or a
+  component line sharing a code with a host line, now compile clean with
+  distinct ids instead of `E-DUP-LINE-CODE`; `lute loc export` emits the same
+  ids. **Migration:** re-export localization / voice manifests for documents
+  that `::use` components.
+- **`W-STAGE-ABSENT` follows paths** (dsl 0.22.0 §12, T1-15). `lute check`
+  folds each `<branch>`/`<hub>` choice and `<match>` arm from the stage state
+  at the fork and joins the arms at convergence, so an exit in one arm no
+  longer warns on a line in its sibling. After the convergence a character is
+  on stage only if every arm left them there; one taken off on any arm warns
+  when staged again without a re-show. A `::bg` scene change's auto-hide now
+  records the hidden characters as exited, so a later line by one of them
+  warns (it used to check clean), and a scene change no longer forgets an
+  earlier declared exit. `lute compile` uses the same join.
+- **Lint defaults stop assuming a linear VN** (dsl 0.22.0 §13, T3-3).
+  `L-SHOT-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO` and
+  `L-SCENE-LENGTH-SPREAD` judge only linear scenes: beats (scenes with
+  `on:`), components, quests and lore no longer fire them. Rules see the new
+  `scene.kind` / `shot.kind` (`scene`, `beat`, `component`, `quest`, `lore`).
+  A shot's `firstStagingTag` and `scene.directives` count staging directives
+  only — `::accept`, `::use`, `::end`, `::mark`, `::next` are skipped — and
+  numbers in lint messages are rounded to two decimals.
+- `lute doctor` says "no pinned provider snapshots" instead of calling a
+  project with plugins "core-only", and looks for them in the project's
+  `catalogDir:` (default `catalog/`) — the directory `check` actually reads.
+- `lute init`'s `minimal`/`investigation` manifests drop the `identity:`
+  pin: the 0.22.0 default `voiceKey` already carries `{prefix}`.
+
+### Added
+
+- `lute play --explain <atom>` (repeatable): after the play, prints the
+  derivation tree of a ground atom — the rule used and each premise's own
+  support (seed fact, asserted, or derived in turn), negated premises shown
+  `(absent)` — or, when it does not hold, every rule that could conclude it
+  with its failing premises (a missing premise explained in turn, a present
+  negated premise, a false comparison or guard). `--json` carries the same
+  tree.
+- **Play-script assertions** (dsl 0.22.0 §4). A play step may carry
+  `expect: { winner, offered, notOffered }` (`winner: none` when the occasion
+  passed; `offered` is a subset of the eligible beats, order-insensitive) and
+  the script a top-level `expect: { exit, quests, state, facts, notFacts,
+  transcriptContains, transcriptLacks }` judging the end of the play (`state`
+  compares effective values, typed; `facts` after derivation). A miss names
+  the step, its `label:` and the actual value, and `lute play` exits 1; an
+  unknown `expect:` key is a usage error listing the legal keys.
+- **`lute test` runs every `*.play.yaml` that carries an `expect:`**
+  alongside `*.test.yaml` (PASS/FAIL lines, `--json` entries with
+  `"kind": "play"` and `misses`). A play that halts fails unless its
+  top-level `expect:` declares the exit. `--coverage` counts every document a
+  play presented (`coverage over N traced path(s) and M play(s)`, JSON
+  `coverage.plays`).
+- **Scenario-test expectations** (dsl 0.22.0 §5): `transcriptLacks: [...]`,
+  `offered: { <choice id>: [opts] }` (the exact set of options the walk
+  offered at that branch/hub, across its presentations), and `entry: <id>` /
+  `entries: [ids]` for a lore file — the entries are presented in order with
+  the read flags set between them, so a repeated id is a re-read. A lore
+  test without either is still `E-TEST-LORE`, which now says how to name
+  them.
+- **Save-history seeds in trace mocks and tests** (dsl 0.22.0 §3):
+  `quests: { <id>: unset | active | complete | failed }` and
+  `entriesRead: { run: [ids], user: [ids] }` (`entry.<id>.read` /
+  `entry.<id>.everRead`). They seed the reserved state paths they spell and
+  follow those paths' mock rules — the document must read the path.
+- **`owner: engine`** (dsl 0.22.0 §1.2): a `state:` declaration may carry
+  `owner: engine`; a content `::set` of that path (or a field under it) is
+  the new error `E-ENGINE-OWNED-WRITE`. Reads are unrestricted; any other
+  `owner:` value is `E-STATE-DECL`.
+- **Run boundaries** (dsl 0.22.0 §7): `<quest tier="run">` (IR
+  `QuestCmd.tier: "run"`, omitted for the default `user`; a quest document may
+  hold several quests, so the tier rides on each quest record), entry beats
+  accept `once="run" | "user"` (IR `EntryCmd.once`, and `ProjectIndex.beats`
+  entry rows carry it; absent = repeatable), and the reserved user-tier
+  `entry.<id>.everRead` flag is readable everywhere `entry.<id>.read` is
+  (`W-ENTRY-REF-UNKNOWN` resolves it too). A bad `tier` is `E-ATTR-TYPE`; a
+  bad `once`, or `once` without `on`, is `E-BEAT-ATTR`. New `check-project`
+  warning `W-QUEST-HANDLER-DEAD`: `<on event="questFailed">` on a quest with
+  no `fail`, no required subquest objective, and no parent quest.
+- **Occasion target domains** (dsl 0.22.0 §8): an occasion's `target:` may be
+  `{ prefix, entity }`; a scene or entry beat target must then be
+  `<prefix>.<member>` of that `entities:` kind (`E-BEAT-ATTR` with a
+  did-you-mean; any member of an `open:` kind). `target: true` keeps its
+  shape-only meaning and its `capabilityVersion`. `lute_check::occasion_target_ok`
+  is the shared rule `lute play` uses for step targets.
+- **Beat selection advisories** (dsl 0.22.0 §13, `check-project`):
+  `W-BEAT-PRIORITY-TIE` — beats on one `select: first` occasion (targets
+  absent or equal) with equal priority whose `when`s are not provably
+  exclusive, so file order picks the winner; `W-BEAT-ONCE-RUN-USER` — a
+  `once: run` beat whose `when` reads only user-tier state and so replays
+  every run. `W-BEAT-SHADOWED` now treats an entry with `once` as spendable.
+- **`engine:` play steps** (dsl 0.22.0 §1.1, D-A): `- engine: { state: {…},
+  facts: […], retract: […] }` writes what the engine owns — declared state
+  as a literal or `{ add: <number> }`, ground atoms of any declared base
+  relation, reserved ones included — checked against the declared types,
+  entity members and arities before anything plays (exit 2). The step
+  presents nothing and raises no occasion; the quest lifecycle settles after
+  it, so a write can complete or fail a quest on the spot. `newRun` also
+  takes `{ state, facts }`, applied after the reset as the new run's seed,
+  and a new run now settles the quest lifecycle too. The fake-engine scenes,
+  occasions and plugins the dogfood games shipped are no longer needed.
+- **Per-step `choose:`** (dsl 0.22.0 §2): an occasion step's own map
+  replaces the script's `choose:` key by key for that presentation; a
+  step-local decision list starts fresh and leaves the script-wide list's
+  consumption untouched.
+- **Play scripts start from a save** (dsl 0.22.0 §3): top-level `visited:`,
+  `presented: { run, user }` (spent `once` beats; presented scenes count as
+  visited), `quests:` and `entriesRead: { run, user }`. An id the project
+  does not declare is a usage error with a did-you-mean, and a `state:` seed
+  that does not fit its path's declared type now is one too.
+- **Run boundaries in `lute play`** (dsl 0.22.0 §7): a `newRun` returns
+  `<quest tier="run">` quests to `unset` with their objectives undone; a
+  first read sets `entry.<id>.everRead`, which no `newRun` resets; an entry
+  beat with `once="run"` / `once="user"` is not eligible once its read flag /
+  `everRead` is set.
+- **`event:` play steps** (dsl 0.22.0 §9) fire a declared world event: the
+  `<on event>` handlers of active quests run, as trace `events:` fires them.
+  An `event:` naming an occasion, or an `occasion:` naming a world event,
+  says which step key to use.
+- **`pick: none`** (dsl 0.22.0 §10) closes a `select: all` list: nothing is
+  presented or spent, and `on=` objectives are still judged.
+- Play steps take `label:` (printed in the step header, carried in `--json`)
+  and `repeat: <n>` (the step runs `n` times; each repetition is its own
+  step record). A play step's target must lie in its occasion's target
+  domain (dsl 0.22.0 §8) — a usage error with a did-you-mean otherwise.
+- **`lute init --template beats`** (dsl 0.22.0 §13, T3-1): an occasions
+  plugin, `defaults: { luteVersion, uses }`, a `world.schema.yaml` with an
+  `owner: engine` clock and shorthand defs, beats with `id:`, a quest, entry
+  beats, a play script with `engine:` steps and `expect:`, and scenario tests
+  — `check-project`, `test` and `play` pass as scaffolded.
+- **`lute new scene <name> --on <occasion> [--target <target>]`** writes a
+  beat, checking the occasion and target against the project (a did-you-mean
+  and exit 2 otherwise, leaving no file). Every `lute new` document now has an
+  `id:` (scenes no longer get the `character`/`season`/`episode` triple),
+  omits what the manifest's `defaults:` supplies, lands under the enclosing
+  project's root, and `/` in a name nests it in a subfolder. Outside a
+  project `lute new` says so, and refuses `--on`.
+- **`lute context`** (T3-4) adds `defs` (type, params, body), relation
+  `tier` and `reserved`, `owner: engine` on state paths, component
+  signatures, occasion target domains and descriptions, the built-in
+  directives (`::set`, `::assert`, `::retract`, `::accept`, `::use`), and
+  every scene, quest and entry id in the `--project` (JSON: `defs`,
+  `builtinDirectives`, `ids`).
+- **`lute doctor`** (T3-5) reports the active plugins, every declared
+  occasion with the number of beats answering it, the play scripts and
+  scenario tests, and whether the `lute-lsp` on `PATH` is this toolchain's
+  version. `lute-lsp --version` prints `lute-lsp <version>`.
+- **`lute tag` / `lute fix` accept a directory** (T3-14): every `.lute` file
+  under it, recursively and in sorted order, each line naming its file, then
+  a summary. A refused or unreadable file is reported and the walk goes on;
+  the exit code is the worst outcome.
+
 ## [0.21.1] - 2026-09-25
 
 **No silent wrong answers.**

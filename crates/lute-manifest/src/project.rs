@@ -46,7 +46,7 @@ pub struct ProjectConfig {
     pub catalog_dir: PathBuf,
     /// Resolved `lineId`/`voiceKey` templates (0.8.0 §9, adoption G4). Absent
     /// or malformed entries fall back to [`IdentityTemplates::default`], which
-    /// reproduces 0.7.0's hardcoded shapes byte-for-byte.
+    /// is the default pair ([`DEFAULT_LINE_ID_TEMPLATE`], [`DEFAULT_VOICE_KEY_TEMPLATE`]).
     pub identity: IdentityTemplates,
     /// `E-IDENTITY-TEMPLATE` diagnostics raised while resolving `identity:`.
     /// Held on the config rather than failing the load, so a bad template
@@ -126,9 +126,12 @@ pub const E_IDENTITY_TEMPLATE: &str = "E-IDENTITY-TEMPLATE";
 /// `identity:` compiles byte-identically to 0.7.0.
 pub const DEFAULT_LINE_ID_TEMPLATE: &str = "{prefix}.{speaker}_{code}";
 
-/// 0.7.0's hardcoded `voiceKey` shape (v1: the voice bank IS the speaker,
-/// dsl §11).
-pub const DEFAULT_VOICE_KEY_TEMPLATE: &str = "{speaker}-{code}";
+/// The default `voiceKey` shape (v1: the voice bank IS the speaker, dsl §11).
+/// `{prefix}` since dsl 0.22.0 §11: the 0.7.0 default `{speaker}-{code}`
+/// repeated across documents, so every scene's `@ann{code="0010"}` landed on
+/// one voice asset. A project with audio recorded against the old keys pins
+/// `identity.voiceKey: "{speaker}-{code}"`.
+pub const DEFAULT_VOICE_KEY_TEMPLATE: &str = "{prefix}.{speaker}-{code}";
 
 /// The COMPLETE identity-template token set. Any other `{token}` is
 /// [`E_IDENTITY_TEMPLATE`] at project load.
@@ -214,7 +217,7 @@ impl FromIterator<(String, serde_yaml::Value)> for MetaDefaults {
     }
 }
 
-/// Raw `identity:` block — both keys optional, each defaulting to its 0.7.0
+/// Raw `identity:` block — both keys optional, each defaulting to its default
 /// shape independently (a project may retemplate `lineId` alone).
 #[derive(Debug, Default, Deserialize)]
 struct RawIdentity {
@@ -230,7 +233,7 @@ struct RawIdentity {
 /// Pre-0.8.0 both were hardcoded, which blocked adopters whose existing assets
 /// already key voice/translation tables on a different convention (Stage's
 /// 6,640 rows use `npc_koyuki_ep05.koyuki-0010`, i.e. a `-` join). Templating
-/// them costs nothing when unused: [`Default`] IS the 0.7.0 behavior.
+/// them costs nothing when unused: [`Default`] is the documented default pair.
 ///
 /// Only the LINE identity is templated. A choice/hub option's
 /// `{prefix}.{branchOrHubId}.{optionId}` is structural, not a content join,
@@ -353,7 +356,7 @@ fn validate_template(template: &str, field: &str, diags: &mut Vec<ResolveDiag>) 
     ok
 }
 
-/// Resolve the raw `identity:` block: each key defaults to its 0.7.0 shape
+/// Resolve the raw `identity:` block: each key defaults to its default shape
 /// independently, and a REJECTED key falls back to that same default (fail
 /// closed — a malformed template must never reach the artifact). Returns the
 /// resolved pair plus its `E-IDENTITY-TEMPLATE` diagnostics.
@@ -538,7 +541,7 @@ fn resolve_defaults(
 /// file → `Ok(Some(cfg))`.
 ///
 /// A malformed `identity:` template is NOT a load failure: the offending key
-/// falls back to its 0.7.0 default and the `E-IDENTITY-TEMPLATE` rides along
+/// falls back to its default and the `E-IDENTITY-TEMPLATE` rides along
 /// in [`ProjectConfig::identity_diags`], so the project still resolves its
 /// plugins and both surfaces report the same diagnostic.
 pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String> {

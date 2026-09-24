@@ -3,7 +3,7 @@
 //! Validates a single `::set{Path AssignOp CelExpr}` directive against the
 //! inline `state:` schema. The write-policy half is a reusable [`WriteOwner`]
 //! classification ([`classify_write`], 0.3.0-forward: a relation owner slots in
-//! as one more variant), currently distinguishing THREE static errors:
+//! as one more variant), distinguishing these static errors:
 //!
 //! - **`E-APP-READONLY`** (§9.5) — the target's tier is `app.*`. `app.*` is
 //!   read-only to content; the engine/settings layer owns those writes, so any
@@ -17,6 +17,9 @@
 //! - **`E-QUEST-RESERVED-WRITE`** also covers every `entry.*` target (dsl
 //!   0.19.0 §5): `entry.<id>.read` is engine-written and the `entry` root has
 //!   no author-writable path at all.
+//! - **`E-ENGINE-OWNED-WRITE`** (dsl 0.22.0 §1.2) — the target (or the
+//!   declared ancestor it descends from) is declared `owner: engine`: the
+//!   engine writes it, content only reads it. Short-circuits like `app.*`.
 //! - **`E-UNDECLARED`** (§9.4/§9.5) — a non-`app`/reserved-quest state-tier
 //!   target whose path is absent from the inline `state:` schema. `::set` MUST
 //!   target a declared path (§7.3.4: "The `Path` MUST be a declared state
@@ -39,6 +42,9 @@ use crate::cel_paths::{is_entry_path, is_reserved_quest_path, state_path_has_hyp
 use crate::meta::{namespace_of, Namespace, StateSchema};
 use crate::Ctx;
 
+/// A content `::set` of a path declared `owner: engine` (dsl 0.22.0 §1.2).
+pub const E_ENGINE_OWNED_WRITE: &str = "E-ENGINE-OWNED-WRITE";
+
 /// The OWNER of a `::set` target path (dsl §9.5, dsl 0.2.0 §5.4): which
 /// write-policy tier governs it. 0.3.0-forward: this is the reusable
 /// write-policy seam — a future relation write-owner adds a variant here
@@ -59,21 +65,43 @@ pub enum WriteOwner {
     /// write. Reported with the quest-reserved code — "writing an `entry.*`
     /// path is rejected, as writing a `quest.*` path is".
     EntryReserved,
+    /// A declared path marked `owner: engine` (dsl 0.22.0 §1.2): the engine
+    /// writes it at runtime (and `engine:` play steps / trace mocks in the
+    /// toolchain); content may only read it.
+    Engine,
 }
 
-/// Classify a `::set` target path's write owner (dsl §9.5, dsl 0.2.0 §5.4).
-/// `schema` is threaded for parity with a future owner that needs it (e.g. a
-/// 0.3.0 relation); this classification is purely path-shape driven today.
-pub(crate) fn classify_write(path: &str, _schema: &StateSchema) -> WriteOwner {
+/// Classify a `::set` target path's write owner (dsl §9.5, dsl 0.2.0 §5.4,
+/// dsl 0.22.0 §1.2). Path shape decides the reserved tiers; the schema
+/// decides `owner: engine` (the exact decl, or the nearest declared ancestor
+/// a field path descends from).
+pub(crate) fn classify_write(path: &str, schema: &StateSchema) -> WriteOwner {
     if namespace_of(path) == Some(Namespace::App) {
         WriteOwner::AppReadonly
     } else if is_reserved_quest_path(path) {
         WriteOwner::QuestReserved
     } else if is_entry_path(path) {
         WriteOwner::EntryReserved
+    } else if engine_owned(path, schema) {
+        WriteOwner::Engine
     } else {
         WriteOwner::Content
     }
+}
+
+/// `path` is declared `owner: engine`, directly or through the declared
+/// ancestor it is a field of.
+fn engine_owned(path: &str, schema: &StateSchema) -> bool {
+    let owned = |d: &crate::meta::StateDecl| d.owner == Some(lute_manifest::types::Owner::Engine);
+    if let Some(decl) = schema.decls.get(path) {
+        return owned(decl);
+    }
+    schema
+        .decls
+        .iter()
+        .filter(|(k, _)| path.starts_with(k.as_str()) && path.as_bytes().get(k.len()) == Some(&b'.'))
+        .max_by_key(|(k, _)| k.len())
+        .is_some_and(|(_, d)| owned(d))
 }
 
 /// Check a `::set` directive's target write-policy and op/type compatibility
@@ -135,6 +163,19 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnos
                     "`::set` cannot write `{}`: `entry.*` paths are reserved — \
                      `entry.<id>.read` is engine-written when an entry is first presented \
                      (dsl 0.19.0 §5)",
+                    set.path
+                ),
+                set.path_span,
+            ));
+            return diags;
+        }
+        WriteOwner::Engine => {
+            diags.push(diag(
+                E_ENGINE_OWNED_WRITE,
+                format!(
+                    "`::set` cannot write `{}`: it is declared `owner: engine` — the engine \
+                     writes it and content may only read it; in `lute play` write it with an \
+                     `engine:` step, in a trace/test with a mock (dsl 0.22.0 §1.2)",
                     set.path
                 ),
                 set.path_span,
@@ -299,6 +340,7 @@ mod tests {
             ty,
             default: None,
             namespace,
+            owner: None,
         }
     }
 

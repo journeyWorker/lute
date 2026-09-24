@@ -17,7 +17,6 @@ pub mod address;
 pub mod cfg;
 pub mod expand;
 pub mod expr;
-mod identity_check;
 pub mod index;
 pub mod ir;
 pub mod locale;

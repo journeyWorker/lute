@@ -133,7 +133,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "A familiar face steps into the light.",
-      "lineId": "demo.s01ep02.narrator_0010",
+      "lineId": "demo.s01ep02.greet#1.narrator_0010",
       "source": {
         "component": "greet"
       }
@@ -144,7 +144,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "And the scene carries on.",
-      "lineId": "demo.s01ep02.narrator_0020"
+      "lineId": "demo.s01ep02.narrator_0010"
     }
   ],
   "shots": [

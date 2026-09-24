@@ -308,6 +308,124 @@ fn lore_doc_is_not_a_scene_but_its_entry_lines_are_linted() {
     assert_eq!(long[0].0, PathBuf::from("notes.lute"));
 }
 
+fn lint_default(inputs: Vec<LintDocInput>) -> Vec<(PathBuf, lute_core_span::Diagnostic)> {
+    lint(
+        &inputs,
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    )
+    .diagnostics
+}
+
+/// dsl 0.22.0 §13: beats (scenes with `on:`), components, quests and lore
+/// are not linear episodes, so the linear-VN norms stay quiet on them — a
+/// beat staged into the moment the engine already set up, a component
+/// spliced into its host's staging, a quest body of narration.
+#[test]
+fn linear_vn_rules_skip_beats_components_quests_and_lore() {
+    let mut quest_body = String::from("---\nkind: quest\n---\n<quest id=\"q\" title=\"Q\">\n<on event=\"questComplete\">\n");
+    for i in 0..10 {
+        quest_body.push_str(&format!("::set{{ run.n{i} = 1 }}\n"));
+    }
+    quest_body.push_str("@narrator: done\n</on>\n</quest>\n");
+    let docs = vec![
+        input(
+            "beat.lute",
+            "---\nkind: scene\nid: talk.a\non: talk\n---\n## Talk\n::accept{quest=\"q\"}\n@alice: hi\n",
+        ),
+        input(
+            "beat-kindless.lute",
+            "---\nid: talk.b\non: talk\n---\n## Talk\n::sfx{sound=\"door\"}\n@alice: hello again\n",
+        ),
+        input(
+            "c.component.lute",
+            "---\ncomponent: stinger\n---\n## Sting\n::use{component=\"other\"}\n@alice: hi\n",
+        ),
+        input("q.lute", &quest_body),
+        input(
+            "notes.lute",
+            "---\nkind: lore\n---\n<entry id=\"a\">\n@narrator: one\n</entry>\n",
+        ),
+    ];
+    let out = lint_default(docs);
+    for code in [
+        "L-SHOT-STARTS-WITH-BACKGROUND",
+        "L-DIALOGUE-RATIO",
+        "L-SCENE-LENGTH-SPREAD",
+    ] {
+        assert!(
+            only_code(&out, code).is_empty(),
+            "{code} fired on a non-linear document: {:?}",
+            out.iter()
+                .map(|(p, d)| format!("{}: {} {}", p.display(), d.code, d.message))
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+/// A beat is excluded from the length spread: two comparable linear scenes
+/// plus a two-word bark stay under the cap (the bark alone would make the
+/// ratio 6.0).
+#[test]
+fn scene_length_spread_ignores_beats() {
+    let bark = input("bark.lute", "---\nid: bark\non: talk\n---\n## Bark\n@alice: hi there\n");
+    let scene_a = input(
+        "a.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three four five six seven eight nine ten\n",
+    );
+    let scene_b = input(
+        "b.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three four five six seven eight nine ten eleven twelve\n",
+    );
+    let out = lint_default(vec![bark, scene_a, scene_b]);
+    assert!(
+        only_code(&out, "L-SCENE-LENGTH-SPREAD").is_empty(),
+        "codes: {:?}",
+        codes(&out)
+    );
+}
+
+/// Only staging directives open a shot: `::accept`/`::use`/`::mark` before
+/// the `::bg` do not make a linear scene's shot "start with" something else.
+#[test]
+fn shot_opening_skips_control_directives() {
+    let doc = input(
+        "scene.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n\
+         ::accept{quest=\"q\"}\n::use{component=\"c\"}\n::mark{id=\"top\"}\n\
+         ::bg{location=\"a\"}\n@alice: hi\n",
+    );
+    let out = lint_default(vec![doc]);
+    assert!(
+        only_code(&out, "L-SHOT-STARTS-WITH-BACKGROUND").is_empty(),
+        "codes: {:?}",
+        codes(&out)
+    );
+}
+
+/// Rendered ratios are rounded for the reader: 10 vs 34 words is a spread
+/// of 3.4, and 3 vs 10 is 3.333… → `3.33`.
+#[test]
+fn scene_length_spread_message_rounds_the_ratio() {
+    let small = input("a.lute", "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three\n");
+    let big = input(
+        "b.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three four five six seven eight nine ten\n",
+    );
+    let out = lint_default(vec![small, big]);
+    let rows = only_code(&out, "L-SCENE-LENGTH-SPREAD");
+    assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out));
+    assert!(
+        rows[0].1.message.contains("spread 3.33 "),
+        "{}",
+        rows[0].1.message
+    );
+}
+
 // ---------------------------------------------------------------------------
 // emotion-distribution (speaker) — upstream parity
 // ---------------------------------------------------------------------------

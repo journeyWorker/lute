@@ -606,6 +606,7 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
         ty: Type::Enum(members),
         default: None,
         namespace: Namespace::Scene,
+        owner: None,
     };
     BranchRecord { path, decl, diags }
 }
@@ -706,6 +707,7 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
             ty: Type::Enum(members),
             default: None,
             namespace: Namespace::Scene,
+            owner: None,
         },
     ));
     for choice in &hub.choices {
@@ -715,6 +717,7 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
                 ty: Type::Bool,
                 default: Some(Literal::Bool(false)),
                 namespace: Namespace::Scene,
+                owner: None,
             },
         ));
     }
@@ -828,6 +831,7 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
                     ]),
                     default: None,
                     namespace: Namespace::Quest,
+                    owner: None,
                 },
             ),
             // dsl 0.8.0 §5: the quest-instance activation instant — the
@@ -843,6 +847,7 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
                     ty: Type::NarrativeTime,
                     default: None,
                     namespace: Namespace::Quest,
+                    owner: None,
                 },
             ),
         ]
@@ -960,6 +965,7 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
                     ty: Type::Bool,
                     default: Some(Literal::Bool(false)),
                     namespace: Namespace::Quest,
+                    owner: None,
                 },
             ));
         }
@@ -1111,7 +1117,7 @@ fn has_bool_attr(attrs: &[Attr], key: &str) -> bool {
 }
 
 /// dsl §12 (scene) / dsl 0.2.0 §7 (quest): every content `:line`'s `lineId`
-/// (`{prefix}.{speaker}_{code}`) and `voiceKey` (`{speaker}-{code}`) derive
+/// (`{prefix}.{speaker}_{code}`) and `voiceKey` (`{prefix}.{speaker}-{code}`) derive
 /// from its `(speaker, trimmed code)` pair (see `lute-compile`'s addressing
 /// pass). Two `:line`s for the SAME speaker carrying the SAME trimmed `code`
 /// therefore compile to IDENTICAL `lineId`/`voiceKey` values — corrupting the
@@ -1912,6 +1918,7 @@ mod tests {
                 ty: Type::Enum(vec!["fail".into(), "gold".into()]),
                 default: Some(lute_manifest::types::Literal::Str("fail".into())),
                 namespace: Namespace::Run,
+                owner: None,
             },
         );
         StateSchema { decls }
@@ -1926,6 +1933,7 @@ mod tests {
                 ty: Type::Enum(vec!["fail".into(), "gold".into()]),
                 default: None,
                 namespace: Namespace::Run,
+                owner: None,
             },
         );
         StateSchema { decls }
@@ -1981,6 +1989,7 @@ mod tests {
                 ty: Type::Bool,
                 default: default.map(lute_manifest::types::Literal::Bool),
                 namespace: crate::meta::namespace_of(path).unwrap_or(Namespace::Run),
+                owner: None,
             },
         );
         StateSchema { decls }
@@ -2019,6 +2028,7 @@ mod tests {
                 ty: Type::Number,
                 default: None,
                 namespace: Namespace::Run,
+                owner: None,
             },
         );
         let schema = StateSchema { decls };
@@ -2045,6 +2055,7 @@ mod tests {
                 ty: Type::Number,
                 default: Some(lute_manifest::types::Literal::Num(0.0)),
                 namespace: Namespace::Run,
+                owner: None,
             },
         );
         let schema = StateSchema { decls };
@@ -2231,6 +2242,7 @@ mod tests {
                 ty: Type::Enum(vec!["everyone".into(), "teen".into(), "mature".into()]),
                 default: Some(lute_manifest::types::Literal::Str("everyone".into())),
                 namespace: Namespace::App,
+                owner: None,
             },
         );
         let schema = StateSchema { decls };
@@ -2251,6 +2263,7 @@ mod tests {
                 ty: Type::Enum(vec!["everyone".into(), "teen".into(), "mature".into()]),
                 default: Some(lute_manifest::types::Literal::Str("everyone".into())),
                 namespace: Namespace::App,
+                owner: None,
             },
         );
         let schema = StateSchema { decls };
@@ -2306,6 +2319,7 @@ mod tests {
                 ty: Type::Enum(vec!["help".into(), "ignore".into()]),
                 default: None,
                 namespace: Namespace::Scene,
+                owner: None,
             },
         );
         let schema = StateSchema { decls };
@@ -2789,6 +2803,7 @@ mod tests {
                 ]),
                 default: with_default.then(|| lute_manifest::types::Literal::Str("fail".into())),
                 namespace: Namespace::Run,
+                owner: None,
             },
         );
         StateSchema { decls }
@@ -2954,6 +2969,7 @@ mod tests {
             fail: None,
             after: None,
             after_span: span(),
+            tier: None,
             attrs: Vec::new(),
             body,
             rewards: Vec::new(),
@@ -3283,6 +3299,7 @@ mod tests {
                     ty: Type::Number,
                     default: default.map(Literal::Num),
                     namespace: Namespace::Run,
+                    owner: None,
                 },
             );
             StateSchema { decls }

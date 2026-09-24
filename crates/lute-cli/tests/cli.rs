@@ -986,7 +986,7 @@ fn init_scaffolds_a_checkable_vocabulary() {
 /// kept the hard-coded paths would satisfy the first.
 #[test]
 fn init_readme_names_no_document_that_can_rot() {
-    for template in ["minimal", "investigation"] {
+    for template in ["minimal", "investigation", "beats"] {
         let dir = temp_dir(&format!("init-readme-{template}"));
         let proj = dir.join("proj");
         let out = Command::new(BIN)

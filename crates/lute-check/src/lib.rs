@@ -56,12 +56,13 @@ pub const LUTE_LANG_VERSION: &str = "0.21.1";
 pub use accept::{check_accept_directive, check_project_accepts, E_ACCEPT_TARGET};
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use beats::{
-    check_project_beats, parse_beat_priority, BeatMeta, BeatOnce, BEAT_KEYS, E_BEAT_ATTR,
-    E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_SHADOWED,
+    check_project_beats, occasion_target_ok, parse_beat_priority, BeatMeta, BeatOnce, BEAT_KEYS,
+    E_BEAT_ATTR, E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_ONCE_RUN_USER,
+    W_BEAT_PRIORITY_TIE, W_BEAT_SHADOWED,
 };
 pub use cel_expand::{expand_cel, DefTable};
 pub use cel_message::{translate_cel_parse, Translation};
-pub use cel_paths::{is_reserved_entry_read, reserved_entry_id, E_PATH_IDENT};
+pub use cel_paths::{is_entry_ever_read, is_reserved_entry_read, reserved_entry_id, E_PATH_IDENT};
 pub use cel_resolve::{
     check_cel_slot, check_rule_guards, visited_call_target, visited_targets, E_CEL_PROFILE,
     E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,
@@ -86,7 +87,8 @@ pub use directives::E_AT_CONTEXT;
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
 pub use fix::{fix_document, FixResult};
 pub use inject::{
-    is_declared_exit, lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState,
+    is_declared_exit, lower_node, Departure, InjectKind, InjectedCommand, Provenance, SpriteState,
+    StageState,
 };
 pub use lore::{
     check_entries, document_series, entry_read_decl, entry_read_path, is_entry_ident,
@@ -113,15 +115,15 @@ pub use fact_env::{FactEnv, FactScope, GroundFact, MaySet, MustMap, QueryPattern
 pub use fact_must::{compute_must, FactMust};
 pub use project_check::{
     check_project_domain_reads, check_project_entry_ids, check_project_entry_refs,
-    check_project_quest_ids, check_project_quest_refs, check_project_quest_tree,
-    check_project_subquest_unsatisfiable, colliding_entry_occurrences, colliding_occurrences,
-    component_unverified_diag, domain_reading_set, ComponentScope, E_QUEST_MULTI_PARENT,
-    E_QUEST_REF_UNKNOWN, E_QUEST_TREE_CYCLE, W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD,
-    W_QUEST_REF_UNKNOWN,
+    check_project_quest_handlers, check_project_quest_ids, check_project_quest_refs,
+    check_project_quest_tree, check_project_subquest_unsatisfiable, colliding_entry_occurrences,
+    colliding_occurrences, component_unverified_diag, domain_reading_set, ComponentScope,
+    E_QUEST_MULTI_PARENT, E_QUEST_REF_UNKNOWN, E_QUEST_TREE_CYCLE, W_COMPONENT_UNVERIFIED,
+    W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN,
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use schema_import::{resolve_imports, RelImports, SchemaImports};
-pub use set_op::{check_set, WriteOwner};
+pub use set_op::{check_set, WriteOwner, E_ENGINE_OWNED_WRITE};
 pub use tag::{codes_locked, retag_document, tag_document, RetagOutcome, TagOutcome};
 pub use temporal::{check_temporal, E_TEMPORAL_ARG};
 pub use time::{fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS};

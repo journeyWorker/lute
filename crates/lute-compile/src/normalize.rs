@@ -7,7 +7,9 @@
 //! Component-sourced regions are wrapped in `__component-begin`/`-end`
 //! sentinel directives (reserved `__` prefix — the parser can never produce
 //! them from source). The stage walker (Task 8) consumes them into
-//! `source { component }` stamps; they emit no records.
+//! `source { component }` stamps; they emit no records. The begin sentinel
+//! also carries the expansion's identity segment `{component}#{n}` (dsl
+//! 0.22.0 §11, [`component_scope`]).
 
 use std::collections::BTreeMap;
 
@@ -26,6 +28,33 @@ use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 pub const COMPONENT_BEGIN: &str = "__component-begin";
 pub const COMPONENT_END: &str = "__component-end";
 
+/// The begin sentinel's identity-segment attr: `{component}#{n}`, where `n`
+/// is the 1-based ordinal of this `::use` among the host's uses of the SAME
+/// component, in document order (dsl 0.22.0 §11). The host is one identity
+/// scope of the document (all shots together; each `<quest>`; each
+/// `<entry>`) or, for a nested `::use`, the enclosing component expansion.
+/// A line's `lineId`/`voiceKey` prefix is the host prefix joined with every
+/// enclosing segment, outermost first — so two uses never share an id and a
+/// component line never shares one with its host.
+const COMPONENT_SCOPE_ATTR: &str = "scope";
+
+/// The identity segment a begin sentinel carries ([`COMPONENT_SCOPE_ATTR`]);
+/// empty for any other directive. Every consumer that re-derives a
+/// component line's `lineId` (the addressing pass via the stage walker,
+/// `lute loc export`) reads it from here, so they cannot disagree.
+pub fn component_scope(d: &Directive) -> &str {
+    d.attrs
+        .iter()
+        .find_map(|a| match (&*a.key, &a.value) {
+            (COMPONENT_SCOPE_ATTR, AttrValue::Str(s)) => Some(s.as_str()),
+            _ => None,
+        })
+        .unwrap_or("")
+}
+
+/// Per-host `::use` ordinals, keyed by component name.
+type UseOrdinals = BTreeMap<String, u32>;
+
 /// Normalize the tree in place: no `::use` survives; persists are real `Set`s.
 /// Total; failures (gate-proven unreachable) degrade to `E-COMPILE-COMPONENT`.
 ///
@@ -40,16 +69,19 @@ pub fn normalize_document(
     schema: &StateSchema,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+    // One ordinal counter per identity scope (see `COMPONENT_SCOPE_ATTR`):
+    // shots share one, each quest and each entry gets its own.
+    let mut shot_uses = UseOrdinals::new();
     for shot in &mut doc.shots {
-        normalize_nodes(&mut shot.body, components, schema, &mut diags);
+        normalize_nodes(&mut shot.body, components, schema, &mut shot_uses, &mut diags);
     }
     for quest in &mut doc.quests {
-        normalize_nodes(&mut quest.body, components, schema, &mut diags);
+        normalize_nodes(&mut quest.body, components, schema, &mut UseOrdinals::new(), &mut diags);
     }
     // dsl 0.19.0 §4: entry bodies admit content lines (incl. `when=` guards)
     // and `<match>` — the same desugars a quest body gets.
     for entry in &mut doc.entries {
-        normalize_nodes(&mut entry.body, components, schema, &mut diags);
+        normalize_nodes(&mut entry.body, components, schema, &mut UseOrdinals::new(), &mut diags);
     }
     // Subquest synthesis (2026-08-31 design §2.1/§2.2) — MUST run here (not
     // in `stage::walk_quest`) so `lute-trace` inherits the derived
@@ -59,9 +91,6 @@ pub fn normalize_document(
     // ordinary `CelPair::from_raw` path — no subquest-aware branch in the
     // lowerer.
     synthesize_subquests(&mut doc.quests);
-    // 0.21.1 T1-10: `(speaker, code)` identity over the EXPANDED stream — the
-    // one the addressing pass mints `lineId`/`voiceKey` from.
-    diags.extend(crate::identity_check::expanded_line_code_diags(doc));
     diags
 }
 
@@ -145,6 +174,7 @@ fn normalize_nodes(
     nodes: &mut Vec<Node>,
     components: &ComponentSet,
     schema: &StateSchema,
+    uses: &mut UseOrdinals,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut i = 0;
@@ -160,7 +190,7 @@ fn normalize_nodes(
                     continue;
                 }
             };
-            let spliced = expand_use(&d, components, schema, diags);
+            let spliced = expand_use(&d, components, schema, uses, diags);
             let n = spliced.len();
             nodes.splice(i..i, spliced);
             i += n; // bodies were normalized recursively — skip past them
@@ -216,20 +246,20 @@ fn normalize_nodes(
             Node::Branch(b) => {
                 for c in &mut b.choices {
                     synth_into(c, schema);
-                    normalize_nodes(&mut c.body, components, schema, diags);
+                    normalize_nodes(&mut c.body, components, schema, uses, diags);
                 }
             }
             Node::Hub(h) => {
                 for c in &mut h.choices {
                     synth_into(c, schema);
-                    normalize_nodes(&mut c.body, components, schema, diags);
+                    normalize_nodes(&mut c.body, components, schema, uses, diags);
                 }
             }
             Node::Match(m) => {
                 for arm in &mut m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            normalize_nodes(body, components, schema, diags)
+                            normalize_nodes(body, components, schema, uses, diags)
                         }
                     }
                 }
@@ -260,8 +290,8 @@ fn normalize_nodes(
                     }
                 }
             }
-            Node::On(on) => normalize_nodes(&mut on.body, components, schema, diags),
-            Node::Objective(o) => normalize_nodes(&mut o.body, components, schema, diags),
+            Node::On(on) => normalize_nodes(&mut on.body, components, schema, uses, diags),
+            Node::Objective(o) => normalize_nodes(&mut o.body, components, schema, uses, diags),
             _ => {}
         }
         i += 1;
@@ -352,6 +382,7 @@ fn expand_use(
     d: &Directive,
     components: &ComponentSet,
     schema: &StateSchema,
+    uses: &mut UseOrdinals,
     diags: &mut Vec<Diagnostic>,
 ) -> Vec<Node> {
     let name = d
@@ -432,21 +463,26 @@ fn expand_use(
         .flat_map(|s| s.body.iter().cloned())
         .collect();
     bind_params(&mut body, &args, &def.params);
-    // Nested `::use` in the body expands recursively (acyclic per checker).
-    normalize_nodes(&mut body, components, schema, diags);
+    // Nested `::use` in the body expands recursively (acyclic per checker);
+    // this expansion is the nested uses' host, so they count from 1 afresh.
+    normalize_nodes(&mut body, components, schema, &mut UseOrdinals::new(), diags);
     // §6.4: static selection / residual dispatch for any param-scoped
     // `<match>` in the bound body — runs ONLY here, on this clone (B2).
     fold_component_matches(&mut body, schema);
 
+    let ordinal = uses.entry(name.clone()).or_insert(0);
+    *ordinal += 1;
+    let scope = format!("{name}#{ordinal}");
     let span = d.span;
+    let attr = |key: &str, value: String| Attr {
+        key: key.to_string(),
+        value: AttrValue::Str(value),
+        value_span: span,
+        span,
+    };
     let begin = Node::Directive(Directive {
         tag: COMPONENT_BEGIN.to_string(),
-        attrs: vec![Attr {
-            key: "component".to_string(),
-            value: AttrValue::Str(name),
-            value_span: span,
-            span,
-        }],
+        attrs: vec![attr("component", name), attr(COMPONENT_SCOPE_ATTR, scope)],
         when: None,
         span,
     });
@@ -1056,6 +1092,7 @@ episode: 1
                 ty: Type::Bool,
                 default: Some(Literal::Bool(false)),
                 namespace: Namespace::Run,
+                owner: None,
             },
         );
         schema.decls.insert(
@@ -1064,6 +1101,7 @@ episode: 1
                 ty: Type::Enum(vec!["warm".into(), "cold".into()]),
                 default: None,
                 namespace: Namespace::Run,
+                owner: None,
             },
         );
         schema.decls.insert(
@@ -1072,6 +1110,7 @@ episode: 1
                 ty: Type::Number,
                 default: None,
                 namespace: Namespace::Run,
+                owner: None,
             },
         );
         let diags = normalize_document(&mut doc, &Default::default(), &schema);

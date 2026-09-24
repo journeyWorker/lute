@@ -24,8 +24,8 @@
 //! - a **real stratified Datalog least-fixpoint** over the artifact's `rules`
 //!   (cel-and-facts.md) — recomputed after every `assert`/`retract` delta — so
 //!   a `derive: true` relation queried in a guard returns a *definite* answer.
-//!   This is precisely the work `lute trace` refuses (D1); the runner is the
-//!   leg that performs it;
+//!   The evaluator is [`lute_trace::datalog`], the one `lute trace`/`lute
+//!   test` apply too (dsl 0.22.0 §6); a mock's `derive: false` skips it;
 //! - **`choice` / `hub` / `match`** control flow, with `hub` `once`/`exit`
 //!   re-presentation driven by the mock's ordered `choose:` visit sequence;
 //! - the **quest lifecycle** (quest-lifecycle.md): `start` activation, and
@@ -77,6 +77,7 @@ use std::process::ExitCode;
 
 use lute_cel::CelArena;
 use lute_check::{RelVocab, StateSchema};
+use lute_trace::datalog::Program;
 use lute_trace::{eval, EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value};
 use serde_json::{json, Value as Json};
 
@@ -94,10 +95,11 @@ fn impl_ir_line() -> (u64, u64) {
         .expect("LUTE_IR_VERSION must carry a major.minor prefix")
 }
 
-/// A ground fact: `(relation, args)`. `pub(crate)` (dsl 0.21.0 §6): `lute
-/// play` carries this shape across presentations via
+/// A ground fact: `(relation, args)` — the shared evaluator's
+/// [`lute_trace::datalog::Fact`]. `pub(crate)` (dsl 0.21.0 §6): `lute play`
+/// carries this shape across presentations via
 /// [`RunnerOutcome`]/[`Runner::with_carryover`].
-pub(crate) type Fact = (String, Vec<String>);
+pub(crate) type Fact = lute_trace::datalog::Fact;
 
 /// Execute a compiled artifact against a mock playthrough. See [`crate::Command::Run`].
 /// `entry` selects the one `entry` record a lore artifact presents (dsl
@@ -216,33 +218,6 @@ fn parse_major_minor(v: &str) -> Option<(u64, u64)> {
     Some((maj, min))
 }
 
-/// One rule-body literal (cel-and-facts.md: atom / negated atom / comparison /
-/// scalar guard).
-enum Lit {
-    Atom { atom: RAtom, negated: bool },
-    Cmp { lhs: Term, rhs: Term, negated: bool },
-    Guard { cel: String },
-}
-
-/// A rule atom: a relation applied to terms.
-struct RAtom {
-    rel: String,
-    terms: Vec<Term>,
-}
-
-/// A rule term: a variable (bound during the join) or a ground constant.
-#[derive(Clone)]
-enum Term {
-    Var(String),
-    Const(String),
-}
-
-/// A parsed Datalog rule (head :- body).
-struct Rule {
-    head: RAtom,
-    body: Vec<Lit>,
-}
-
 /// A parsed quest declaration head (quest-lifecycle.md).
 struct QuestDecl {
     id: String,
@@ -345,14 +320,13 @@ pub(crate) struct Runner {
     // Evaluation environments — empty by construction: all live state lives in
     // `state`, so an empty `StateSchema` never shadows a read; an empty
     // `RelVocab` makes every relation non-derived, so `holds`/`count` over the
-    // fully-materialized fixpoint return DEFINITE answers (the runner has run
-    // the fixpoint, unlike trace).
+    // fully-materialized fixpoint return DEFINITE answers. Under `derive:
+    // false` (dsl 0.22.0 §6) `vocab` marks the derived relations instead.
     schema: StateSchema,
     vocab: RelVocab,
 
-    rules: Vec<Rule>,
-    /// Least-fixpoint stratum per derived relation.
-    strata: BTreeMap<String, usize>,
+    /// The artifact's Datalog rules ([`lute_trace::datalog`]).
+    program: Program,
 
     /// Live scalar state (path → value).
     state: BTreeMap<String, Value>,
@@ -527,13 +501,35 @@ impl Runner {
             }
         }
 
-        // Parsed rules + derived set + strata.
-        let rules = parse_rules(art);
-        let mut derived = BTreeSet::new();
-        for r in &rules {
-            derived.insert(r.head.rel.clone());
+        // Parsed rules (the shared evaluator). Under `derive: false` every
+        // derived relation — declared `derive: true` or concluded by a rule —
+        // is marked so, making an unmatched query unknown, not false.
+        let program = Program::from_ir(art.get("rules"));
+        let mut vocab = RelVocab::default();
+        if !mock.derives() {
+            let declared = art
+                .get("relations")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter(|r| r.get("derive").and_then(Json::as_bool) == Some(true))
+                .filter_map(|r| r.get("name").and_then(Json::as_str));
+            let heads = art
+                .get("rules")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|r| r.pointer("/head/relation").and_then(Json::as_str));
+            for rel in declared.chain(heads) {
+                vocab.relations.insert(
+                    rel.to_string(),
+                    lute_manifest::relations::RelationDecl {
+                        derive: true,
+                        ..Default::default()
+                    },
+                );
+            }
         }
-        let strata = compute_strata(&rules, &derived);
         // dsl 0.21.0 §7a.1: the mock's `visited:` seeds the presented set.
         let visited = mock.visited.iter().cloned().collect();
 
@@ -544,9 +540,8 @@ impl Runner {
             addr_order,
             types,
             schema: StateSchema::default(),
-            vocab: RelVocab::default(),
-            rules,
-            strata,
+            vocab,
+            program,
             state,
             base_facts,
             all_facts: BTreeSet::new(),
@@ -675,15 +670,18 @@ impl Runner {
         }
     }
 
-    /// Recompute the least-fixpoint: `all_facts = base ∪ derive(base)`.
+    /// Recompute the least-fixpoint: `all_facts = base ∪ derive(base)`,
+    /// through the shared [`lute_trace::datalog`] evaluator trace uses too.
+    /// Under `derive: false` (dsl 0.22.0 §6) the rules are not applied: the
+    /// derived relations are marked in `vocab`, so an unmatched one reads
+    /// unknown ([`Runner::blank`]).
     fn recompute_facts(&mut self) {
-        self.all_facts = fixpoint(
-            &self.base_facts,
-            &self.rules,
-            &self.strata,
-            &self.state,
-            &self.schema,
-        );
+        self.all_facts = if self.mock.derives() {
+            let eff = EffectiveState::new(&self.schema, self.state.clone());
+            self.program.fixpoint(&self.base_facts, &eff).facts
+        } else {
+            self.base_facts.clone()
+        };
     }
 
     /// Evaluate a `raw` CEL fragment over live state + the current fixpoint.
@@ -1846,6 +1844,13 @@ impl Runner {
         }
     }
 
+    /// `lute play` (dsl 0.22.0 §4): every fact that holds over this runner's
+    /// live snapshot — base facts plus the derived fixpoint (base only under
+    /// `derive: false`) — the end-of-play `facts:` expectations judge.
+    pub(crate) fn all_facts(&self) -> &BTreeSet<Fact> {
+        &self.all_facts
+    }
+
     /// Re-evaluate the quest lifecycle to a fixpoint: referenced-child
     /// activation (subquest §2.4), then per active quest objectives
     /// (monotone), then `fail` before derived completion (quest-lifecycle.md
@@ -2125,7 +2130,9 @@ impl Runner {
     /// (pre-event) state snapshot, running each body once. `scope` is the
     /// transitioning quest's id for the engine-derived lifecycle events —
     /// those fire ONLY for their own enclosing quest (quest-lifecycle.md);
-    /// `None` (a mock world event) fires every matching handler.
+    /// `None` (a mock world event) fires every matching handler — under
+    /// `lute play` (dsl 0.22.0 §9) only those of an ACTIVE quest, as `lute
+    /// trace` delivers `events:`.
     fn fire_event(
         &mut self,
         event: &str,
@@ -2137,7 +2144,16 @@ impl Runner {
             .iter()
             .enumerate()
             .filter(|(_, h)| {
-                h.event == event && scope.is_none_or(|s| h.quest.as_deref() == Some(s))
+                h.event == event
+                    && match scope {
+                        Some(s) => h.quest.as_deref() == Some(s),
+                        None => {
+                            !self.quest_resume
+                                || h.quest.as_ref().is_some_and(|q| {
+                                    self.quest_status.get(q).map(String::as_str) == Some("active")
+                                })
+                        }
+                    }
             })
             .map(|(i, _)| i)
             .collect();
@@ -2523,321 +2539,6 @@ fn parse_reward(r: &Json) -> RewardRec {
         when: cel_raw(r.get("when")),
         on: r.get("on").and_then(Json::as_str).map(str::to_string),
     }
-}
-
-fn parse_rules(art: &Json) -> Vec<Rule> {
-    let Some(arr) = art.get("rules").and_then(Json::as_array) else {
-        return Vec::new();
-    };
-    arr.iter()
-        .filter_map(|r| {
-            let head = parse_atom(r.get("head")?)?;
-            let body = r
-                .get("body")
-                .and_then(Json::as_array)
-                .map(|b| b.iter().filter_map(parse_lit).collect())
-                .unwrap_or_default();
-            Some(Rule { head, body })
-        })
-        .collect()
-}
-
-fn parse_atom(a: &Json) -> Option<RAtom> {
-    let rel = a.get("relation").and_then(Json::as_str)?.to_string();
-    let terms = a
-        .get("terms")
-        .and_then(Json::as_array)
-        .map(|ts| ts.iter().filter_map(parse_term).collect())
-        .unwrap_or_default();
-    Some(RAtom { rel, terms })
-}
-
-fn parse_term(t: &Json) -> Option<Term> {
-    match t.get("kind").and_then(Json::as_str)? {
-        "var" => Some(Term::Var(t.get("name").and_then(Json::as_str)?.to_string())),
-        "const" => Some(Term::Const(
-            t.get("value").and_then(Json::as_str)?.to_string(),
-        )),
-        _ => None,
-    }
-}
-
-fn parse_lit(l: &Json) -> Option<Lit> {
-    match l.get("kind").and_then(Json::as_str)? {
-        "atom" => Some(Lit::Atom {
-            atom: parse_atom(l.get("atom")?)?,
-            negated: l.get("negated").and_then(Json::as_bool).unwrap_or(false),
-        }),
-        "cmp" => Some(Lit::Cmp {
-            lhs: parse_term(l.get("lhs")?)?,
-            rhs: parse_term(l.get("rhs")?)?,
-            negated: l.get("negated").and_then(Json::as_bool).unwrap_or(false),
-        }),
-        "guard" => Some(Lit::Guard {
-            cel: l.get("cel").and_then(Json::as_str)?.to_string(),
-        }),
-        _ => None,
-    }
-}
-
-/// Assign a least stratum to each derived relation (cel-and-facts.md): a
-/// positive body atom keeps the head at-or-above its stratum; a negated one
-/// pushes the head strictly above. Stratification (checker-guaranteed) makes
-/// this converge; a cap defends against a malformed artifact.
-fn compute_strata(rules: &[Rule], derived: &BTreeSet<String>) -> BTreeMap<String, usize> {
-    let mut strata: BTreeMap<String, usize> = derived.iter().map(|r| (r.clone(), 0)).collect();
-    let cap = derived.len() + 2;
-    for _ in 0..cap {
-        let mut changed = false;
-        for rule in rules {
-            let h = &rule.head.rel;
-            for lit in &rule.body {
-                if let Lit::Atom { atom, negated } = lit {
-                    if derived.contains(&atom.rel) {
-                        let want = strata[&atom.rel] + usize::from(*negated);
-                        if strata[h] < want {
-                            strata.insert(h.clone(), want);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    strata
-}
-
-/// The stratified least-fixpoint: `base ∪ derive(base)`, evaluated stratum by
-/// stratum (cel-and-facts.md).
-fn fixpoint(
-    base: &BTreeSet<Fact>,
-    rules: &[Rule],
-    strata: &BTreeMap<String, usize>,
-    state: &BTreeMap<String, Value>,
-    schema: &StateSchema,
-) -> BTreeSet<Fact> {
-    let mut facts = base.clone();
-    if rules.is_empty() {
-        return facts;
-    }
-    let max = strata.values().copied().max().unwrap_or(0);
-    for s in 0..=max {
-        loop {
-            let mut new: Vec<Fact> = Vec::new();
-            for rule in rules {
-                if strata.get(&rule.head.rel).copied().unwrap_or(0) != s {
-                    continue;
-                }
-                for binding in solve_body(&rule.body, &facts, state, schema) {
-                    let mut args = Vec::with_capacity(rule.head.terms.len());
-                    let mut ok = true;
-                    for t in &rule.head.terms {
-                        match t {
-                            Term::Const(c) => args.push(c.clone()),
-                            Term::Var(v) => match binding.get(v) {
-                                Some(val) => args.push(val.clone()),
-                                None => {
-                                    ok = false;
-                                    break;
-                                }
-                            },
-                        }
-                    }
-                    if ok {
-                        let fact = (rule.head.rel.clone(), args);
-                        if !facts.contains(&fact) && !new.contains(&fact) {
-                            new.push(fact);
-                        }
-                    }
-                }
-            }
-            if new.is_empty() {
-                break;
-            }
-            facts.extend(new);
-        }
-    }
-    facts
-}
-
-/// Enumerate every variable binding satisfying `body` over `facts`: join the
-/// positive atoms, then filter by negated atoms, comparisons, and guards.
-fn solve_body(
-    body: &[Lit],
-    facts: &BTreeSet<Fact>,
-    state: &BTreeMap<String, Value>,
-    schema: &StateSchema,
-) -> Vec<BTreeMap<String, String>> {
-    let mut bindings: Vec<BTreeMap<String, String>> = vec![BTreeMap::new()];
-    // 1. positive atoms generate/extend bindings.
-    for lit in body {
-        if let Lit::Atom {
-            atom,
-            negated: false,
-        } = lit
-        {
-            let mut next = Vec::new();
-            for b in &bindings {
-                for (rel, args) in facts {
-                    if rel != &atom.rel || args.len() != atom.terms.len() {
-                        continue;
-                    }
-                    if let Some(ext) = unify(&atom.terms, args, b) {
-                        next.push(ext);
-                    }
-                }
-            }
-            bindings = next;
-        }
-    }
-    // 2. filters.
-    bindings.retain(|b| {
-        body.iter().all(|lit| match lit {
-            Lit::Atom { negated: false, .. } => true,
-            Lit::Atom {
-                atom,
-                negated: true,
-            } => {
-                let ground: Option<Vec<String>> = atom
-                    .terms
-                    .iter()
-                    .map(|t| match t {
-                        Term::Const(c) => Some(c.clone()),
-                        Term::Var(v) => b.get(v).cloned(),
-                    })
-                    .collect();
-                match ground {
-                    Some(g) => !facts.contains(&(atom.rel.clone(), g)),
-                    None => true, // unbound (defensive; safety-checked away in practice)
-                }
-            }
-            Lit::Cmp { lhs, rhs, negated } => {
-                let l = ground_term(lhs, b);
-                let r = ground_term(rhs, b);
-                match (l, r) {
-                    (Some(l), Some(r)) => (l == r) != *negated,
-                    _ => false,
-                }
-            }
-            Lit::Guard { cel } => eval_rule_guard(cel, b, state, schema),
-        })
-    });
-    bindings
-}
-
-fn ground_term(t: &Term, b: &BTreeMap<String, String>) -> Option<String> {
-    match t {
-        Term::Const(c) => Some(c.clone()),
-        Term::Var(v) => b.get(v).cloned(),
-    }
-}
-
-/// Evaluate a rule-body CEL guard (cel-and-facts.md): a guard reads only
-/// scalar state and the ground terms bound by the join — never facts. Each
-/// bound (leading-uppercase) rule variable is substituted by its ground value,
-/// then the fragment is parsed + evaluated over live state with an empty fact
-/// store (a fact query in a rule guard is rejected by the checker, so none
-/// reaches here).
-fn eval_rule_guard(
-    cel: &str,
-    binding: &BTreeMap<String, String>,
-    state: &BTreeMap<String, Value>,
-    schema: &StateSchema,
-) -> bool {
-    let substituted = substitute_vars(cel, binding);
-    let mut arena = CelArena::default();
-    let Ok(handle) = lute_cel::parse_slot(&mut arena, &substituted, 0) else {
-        return false;
-    };
-    let Some(ided) = arena.get(handle) else {
-        return false;
-    };
-    let eff = EffectiveState::new(schema, state.clone());
-    let vocab = RelVocab::default();
-    let fs = FactStore::new(&vocab);
-    let env = EvalEnv {
-        state: &eff,
-        facts: &fs,
-    };
-    let mut unresolved = Vec::new();
-    matches!(eval(&ided.expr, &env, &mut unresolved), Value::Bool(true))
-}
-
-/// Substitute each bound rule variable (a leading-uppercase identifier) in a
-/// guard fragment with its ground value — a numeric value inlined bare, any
-/// other value quoted as a CEL string literal. String-literal regions are left
-/// untouched (`lute_cel::cel_string_mask`), so a `'@gold'`-style member value
-/// is never rewritten.
-fn substitute_vars(cel: &str, binding: &BTreeMap<String, String>) -> String {
-    if binding.is_empty() {
-        return cel.to_string();
-    }
-    let mask = lute_cel::cel_string_mask(cel);
-    let bytes = cel.as_bytes();
-    let mut out = String::with_capacity(cel.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let c = bytes[i] as char;
-        let in_string = mask.get(i).copied().unwrap_or(false);
-        if !in_string && (c.is_ascii_alphabetic() || c == '_') {
-            // Consume an identifier.
-            let start = i;
-            while i < bytes.len() {
-                let ch = bytes[i] as char;
-                if ch.is_ascii_alphanumeric() || ch == '_' {
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
-            let ident = &cel[start..i];
-            match binding.get(ident) {
-                Some(val) => {
-                    if val.parse::<f64>().is_ok() {
-                        out.push_str(val);
-                    } else {
-                        out.push('\'');
-                        out.push_str(&val.replace('\'', "\\'"));
-                        out.push('\'');
-                    }
-                }
-                None => out.push_str(ident),
-            }
-        } else {
-            out.push(c);
-            i += 1;
-        }
-    }
-    out
-}
-
-/// Extend `binding` so `terms` matches `args`, or `None` on a conflict.
-fn unify(
-    terms: &[Term],
-    args: &[String],
-    binding: &BTreeMap<String, String>,
-) -> Option<BTreeMap<String, String>> {
-    let mut b = binding.clone();
-    for (t, a) in terms.iter().zip(args) {
-        match t {
-            Term::Const(c) => {
-                if c != a {
-                    return None;
-                }
-            }
-            Term::Var(v) => match b.get(v) {
-                Some(existing) if existing != a => return None,
-                Some(_) => {}
-                None => {
-                    b.insert(v.clone(), a.clone());
-                }
-            },
-        }
-    }
-    Some(b)
 }
 
 /// Parse a ground `"rel(a, b)"` fact-pattern string into `(rel, args)`.

@@ -27,6 +27,7 @@ fn schema() -> StateSchema {
             ]),
             default: None,
             namespace: Namespace::Run,
+            owner: None,
         },
     );
     decls.insert(
@@ -35,6 +36,7 @@ fn schema() -> StateSchema {
             ty: Type::Bool,
             default: Some(Literal::Bool(false)),
             namespace: Namespace::Run,
+            owner: None,
         },
     );
     decls.insert(
@@ -43,6 +45,7 @@ fn schema() -> StateSchema {
             ty: Type::Number,
             default: Some(Literal::Num(0.0)),
             namespace: Namespace::Run,
+            owner: None,
         },
     );
     StateSchema { decls }

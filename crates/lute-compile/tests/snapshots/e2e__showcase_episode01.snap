@@ -179,7 +179,7 @@ expression: json
       "emotion": "delighted",
       "variant": 1,
       "lineId": "marina.s01ep01.marina_0010",
-      "voiceKey": "marina-0010"
+      "voiceKey": "marina.s01ep01.marina-0010"
     },
     {
       "kind": "line",
@@ -188,7 +188,7 @@ expression: json
       "speaker": "fixer",
       "text": "I did.",
       "lineId": "marina.s01ep01.fixer_0010",
-      "voiceKey": "fixer-0010"
+      "voiceKey": "marina.s01ep01.fixer-0010"
     },
     {
       "kind": "sprite",
@@ -363,7 +363,7 @@ expression: json
       "emotion": "delighted",
       "variant": 1,
       "lineId": "marina.s01ep01.marina_0020",
-      "voiceKey": "marina-0020"
+      "voiceKey": "marina.s01ep01.marina-0020"
     },
     {
       "kind": "set",
@@ -389,7 +389,7 @@ expression: json
       "emotion": "content",
       "variant": 0,
       "lineId": "marina.s01ep01.marina_0030",
-      "voiceKey": "marina-0030"
+      "voiceKey": "marina.s01ep01.marina-0030"
     },
     {
       "kind": "set",
@@ -415,7 +415,7 @@ expression: json
       "emotion": "shy",
       "variant": 0,
       "lineId": "marina.s01ep01.marina_0040",
-      "voiceKey": "marina-0040"
+      "voiceKey": "marina.s01ep01.marina-0040"
     },
     {
       "kind": "jump",
@@ -478,7 +478,7 @@ expression: json
       "speaker": "fixer",
       "text": "Marina. Your number.",
       "lineId": "marina.s01ep01.fixer_0050",
-      "voiceKey": "fixer-0050"
+      "voiceKey": "marina.s01ep01.fixer-0050"
     },
     {
       "kind": "jump",
@@ -492,7 +492,7 @@ expression: json
       "speaker": "fixer",
       "text": "Marina — would you mind terribly if I had your number?",
       "lineId": "marina.s01ep01.fixer_0052",
-      "voiceKey": "fixer-0052"
+      "voiceKey": "marina.s01ep01.fixer-0052"
     },
     {
       "kind": "set",
@@ -526,7 +526,7 @@ expression: json
       "speaker": "fixer",
       "text": "And perhaps I'll stay through your break.",
       "lineId": "marina.s01ep01.fixer_0054",
-      "voiceKey": "fixer-0054"
+      "voiceKey": "marina.s01ep01.fixer-0054"
     },
     {
       "kind": "set",
@@ -562,7 +562,7 @@ expression: json
       "emotion": "delighted",
       "variant": 0,
       "lineId": "marina.s01ep01.marina_0060",
-      "voiceKey": "marina-0060"
+      "voiceKey": "marina.s01ep01.marina-0060"
     },
     {
       "kind": "sfx",
@@ -687,7 +687,7 @@ expression: json
       "emotion": "content",
       "variant": 0,
       "lineId": "marina.s01ep01.marina_0070",
-      "voiceKey": "marina-0070"
+      "voiceKey": "marina.s01ep01.marina-0070"
     },
     {
       "kind": "jump",
@@ -703,7 +703,7 @@ expression: json
       "emotion": "neutral",
       "variant": 0,
       "lineId": "marina.s01ep01.marina_0080",
-      "voiceKey": "marina-0080"
+      "voiceKey": "marina.s01ep01.marina-0080"
     },
     {
       "kind": "jump",
@@ -741,7 +741,7 @@ expression: json
       "emotion": "delighted",
       "variant": 1,
       "lineId": "marina.s01ep01.marina_0090",
-      "voiceKey": "marina-0090"
+      "voiceKey": "marina.s01ep01.marina-0090"
     },
     {
       "kind": "jump",
@@ -757,7 +757,7 @@ expression: json
       "emotion": "shy",
       "variant": 0,
       "lineId": "marina.s01ep01.marina_0100",
-      "voiceKey": "marina-0100"
+      "voiceKey": "marina.s01ep01.marina-0100"
     },
     {
       "kind": "jump",
@@ -911,7 +911,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "A beat of silence, then the moment lands.",
-      "lineId": "marina.s01ep01.narrator_0040",
+      "lineId": "marina.s01ep01.stinger#1.narrator_0010",
       "source": {
         "component": "stinger"
       }
@@ -955,7 +955,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "Subtitles render in Korean.",
-      "lineId": "marina.s01ep01.narrator_0050"
+      "lineId": "marina.s01ep01.narrator_0040"
     },
     {
       "kind": "jump",
@@ -968,7 +968,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "Subtitles render in English.",
-      "lineId": "marina.s01ep01.narrator_0060"
+      "lineId": "marina.s01ep01.narrator_0050"
     },
     {
       "kind": "jump",

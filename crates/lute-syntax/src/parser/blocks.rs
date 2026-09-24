@@ -227,6 +227,7 @@ impl Parser<'_> {
         let (after, after_span) = take_str_spanned(&mut attrs, "after")
             .map(|(s, sp)| (Some(s), sp))
             .unwrap_or_else(|| (None, self.span_o(open.start_o, open.end_o)));
+        let tier = take_str_spanned(&mut attrs, "tier");
         let (body, rewards, end_o) = self.parse_owner_body("quest", &open);
         Quest {
             id,
@@ -236,6 +237,7 @@ impl Parser<'_> {
             fail,
             after,
             after_span,
+            tier,
             attrs,
             body,
             rewards,
@@ -261,6 +263,7 @@ impl Parser<'_> {
         let order = take_str_spanned(&mut attrs, "order");
         let on = take_str_spanned(&mut attrs, "on");
         let priority = take_str_spanned(&mut attrs, "priority");
+        let once = take_str_spanned(&mut attrs, "once");
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let (body, end_o) = self.parse_block_body("entry", &open);
         Entry {
@@ -273,6 +276,7 @@ impl Parser<'_> {
             order,
             on,
             priority,
+            once,
             when,
             attrs,
             body,

@@ -5,7 +5,7 @@
 //! (exit `2`). Each check is a `✓`/`✗` line; a `✗` carries a remedy hint. The
 //! `--json` variant emits the same checks as a stable-keyed object.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -87,9 +87,10 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
     None
 }
 
-/// The merged domain vocabulary the project's documents ACTUALLY resolve,
-/// unioned across every `.lute` file under `root`, plus the DEDUPLICATED
-/// project-resolution problems that resolution surfaced.
+/// What the project's documents ACTUALLY resolve, unioned across every `.lute`
+/// file under `root`: the merged domain vocabulary, the active plugins, the
+/// occasion vocabulary with the beats answering each occasion, and the
+/// DEDUPLICATED project-resolution problems resolution surfaced.
 ///
 /// Deliberately no second resolution path: this reuses `crate::build_input` —
 /// the SAME per-document resolution `lute check`/`check-project` perform (each
@@ -97,8 +98,9 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
 /// capability snapshot per plugin §4/§11, then its `uses:`/`extends:` schema
 /// imports per dsl §9.2) — and folds it through the SAME `merge_domains` the
 /// checker consults for `Type::Domain` resolution. So a slot `doctor` calls
-/// declared is a slot the checker resolves, by construction rather than by
-/// two implementations agreeing.
+/// declared is a slot the checker resolves, and a plugin it calls active is a
+/// plugin some document's snapshot carries, by construction rather than by two
+/// implementations agreeing.
 ///
 /// `root` is the WALK ROOT handed to `crate::project_root_for`, i.e. the lower
 /// bound of each file's own ancestor search. It MUST be the directory `doctor`
@@ -115,10 +117,20 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
 /// plugin option) describes the PROJECT, so every document under it resolves the
 /// identical message — returned deduplicated, in first-seen order, for the
 /// caller to render as ONE `Check`.
-fn resolved_domains(
-    root: &Path,
-    lute_files: &[PathBuf],
-) -> (BTreeMap<String, Domain>, Vec<String>) {
+#[derive(Default)]
+struct ProjectScan {
+    domains: BTreeMap<String, Domain>,
+    problems: Vec<String>,
+    /// Active plugin id → version, `lute.core` excluded (every snapshot has it).
+    plugins: BTreeMap<String, String>,
+    /// Declared occasions (from any document's snapshot).
+    declared_occasions: BTreeSet<String>,
+    /// Occasion → beats answering it: scene documents with `on:` plus lore
+    /// entries with `on=` (dsl 0.21.0 §3).
+    beats: BTreeMap<String, usize>,
+}
+
+fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
     // `merge_domains` anchors its (discarded) diagnostics at this span; there
     // is no one document to blame for a project-wide report, so it gets the
     // same zeroed placeholder the CLI's other source-less call sites use.
@@ -129,16 +141,15 @@ fn resolved_domains(
         column: 0,
         utf16_range: (0, 0),
     };
-    let mut out = BTreeMap::new();
-    let mut problems: Vec<String> = Vec::new();
+    let mut scan = ProjectScan::default();
     for file in lute_files {
         let project = crate::project_root_for(file, root);
         let Some(built) = crate::build_input(file, None, Some(&project), None) else {
             continue;
         };
         for m in &built.project_diags {
-            if !problems.iter().any(|p| p == m) {
-                problems.push(m.clone());
+            if !scan.problems.iter().any(|p| p == m) {
+                scan.problems.push(m.clone());
             }
         }
         let (merged, _diags) = lute_check::schema_import::merge_domains(
@@ -147,9 +158,179 @@ fn resolved_domains(
             &built.meta,
             at,
         );
-        out.extend(merged);
+        scan.domains.extend(merged);
+        for (id, plugin) in &built.input.snapshot.plugins {
+            if id != "lute.core" {
+                scan.plugins.insert(id.clone(), plugin.version.clone());
+            }
+        }
+        scan.declared_occasions
+            .extend(built.input.snapshot.occasions.keys().cloned());
+        if let Some(beat) = &built.meta.beat {
+            *scan.beats.entry(beat.on.clone()).or_default() += 1;
+        }
+        let (doc, _) = lute_syntax::parse(&built.input.text);
+        for entry in &doc.entries {
+            if let Some((on, _)) = &entry.on {
+                *scan.beats.entry(on.clone()).or_default() += 1;
+            }
+        }
     }
-    (out, problems)
+    scan
+}
+
+/// The occasions line: every declared occasion with the number of beats
+/// answering it (a declared occasion nothing answers shows `0` — the engine
+/// raises it and nothing happens), then any occasion beats answer that no
+/// snapshot declares. With no declared vocabulary (shape-only, dsl 0.21.0
+/// §2) the beats' own occasions are the whole report.
+fn occasions_detail(scan: &ProjectScan) -> String {
+    let beats_of = |name: &str| scan.beats.get(name).copied().unwrap_or(0);
+    let declared: Vec<String> = scan
+        .declared_occasions
+        .iter()
+        .map(|name| format!("{name} ({})", beats_of(name)))
+        .collect();
+    let undeclared: Vec<String> = scan
+        .beats
+        .iter()
+        .filter(|(name, _)| !scan.declared_occasions.contains(*name))
+        .map(|(name, n)| format!("{name} ({n})"))
+        .collect();
+    let total: usize = scan.beats.values().sum();
+    if scan.declared_occasions.is_empty() {
+        if undeclared.is_empty() {
+            return "none declared, no beats".to_string();
+        }
+        return format!(
+            "none declared (shape-only); {total} beat(s) answer: {}",
+            undeclared.join(", ")
+        );
+    }
+    let mut detail = format!(
+        "{} declared, {total} beat(s) — {}",
+        scan.declared_occasions.len(),
+        declared.join(", ")
+    );
+    if !undeclared.is_empty() {
+        detail.push_str(&format!("; answered but not declared: {}", undeclared.join(", ")));
+    }
+    detail
+}
+
+/// Count files under `dir` (recursive) whose name ends with `suffix` — the
+/// `*.play.yaml` scripts and `*.test.yaml` scenario tests `lute play` /
+/// `lute test` pick up. An unreadable subdirectory is skipped: the count is
+/// a report, and `find_lute_files` has already vouched for the tree.
+fn count_files(dir: &Path, suffix: &str) -> usize {
+    let mut n = 0;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                stack.push(path);
+            } else if path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|s| s.ends_with(suffix))
+            {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+/// The `lute-lsp` an editor launches is whichever one is first on `PATH`, and
+/// nothing else in the toolchain notices when it is an older build than the
+/// CLI: all three dogfood projects ran a 0.17 server against a 0.21 CLI, so
+/// the editor's diagnostics disagreed with `lute check`. Located by walking
+/// `PATH` exactly as a process spawn would, then asked `--version` (dsl
+/// 0.22.0 §13).
+fn find_on_path(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(name))
+        .find(|candidate| candidate.is_file())
+}
+
+/// Run `<lsp> --version` and return its stdout. A pre-0.22.0 server ignores the
+/// flag and starts serving; with stdin closed it reads EOF and exits, but it is
+/// also killed after a short grace period so `doctor` can never hang on one.
+fn lsp_version_output(lsp: &Path) -> Option<String> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(lsp)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break;
+            }
+        }
+    }
+    let mut out = String::new();
+    child.stdout.take()?.read_to_string(&mut out).ok()?;
+    Some(out)
+}
+
+/// The `languageServer` check: pass when the `lute-lsp` on `PATH` reports this
+/// toolchain's version, fail (with the fix) when it reports another or none,
+/// informational when there is none on `PATH`.
+fn language_server_check() -> Check {
+    const KEY: &str = "languageServer";
+    const LABEL: &str = "lute-lsp on PATH";
+    let ours = env!("CARGO_PKG_VERSION");
+    let exe = if cfg!(windows) { "lute-lsp.exe" } else { "lute-lsp" };
+    let Some(lsp) = find_on_path(exe) else {
+        return Check::info(
+            KEY,
+            LABEL,
+            "not found (editors that launch `lute-lsp` from PATH get no diagnostics)".to_string(),
+        );
+    };
+    let reported = lsp_version_output(&lsp).and_then(|out| {
+        out.lines()
+            .next()
+            .and_then(|l| l.trim().strip_prefix("lute-lsp "))
+            .map(|v| v.trim().to_string())
+    });
+    let hint = "reinstall the language server from this toolchain \
+                (`cargo install --path crates/lute-lsp`) and restart the editor";
+    match reported {
+        Some(v) if v == ours => Check::pass(KEY, LABEL, format!("{v} at {}", lsp.display())),
+        Some(v) => Check::fail(
+            KEY,
+            LABEL,
+            format!("{v} at {} — differs from lute {ours}", lsp.display()),
+            hint,
+        ),
+        None => Check::fail(
+            KEY,
+            LABEL,
+            format!(
+                "{} reports no version (older than 0.22.0) — differs from lute {ours}",
+                lsp.display()
+            ),
+            hint,
+        ),
+    }
 }
 
 /// One declared slot's entry in the `doctor` report: the slot name, plus the
@@ -239,43 +420,65 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
         ));
     }
 
-    // --- Provider snapshots (`providers/` under the manifest dir) --------
-    let providers_dir = manifest_dir
-        .clone()
-        .unwrap_or_else(|| dir.to_path_buf())
-        .join("providers");
-    if providers_dir.is_dir() {
-        let set = ProviderSet::load(&providers_dir);
-        let snaps = set.snapshots();
-        let stale = snaps.iter().filter(|s| s.stale).count();
-        if stale > 0 {
-            checks.push(Check::fail(
-                "providers",
-                "provider snapshots",
-                format!(
-                    "{} snapshot(s) at {}, {stale} stale",
-                    snaps.len(),
-                    providers_dir.display()
-                ),
-                "re-stamp with `lute catalog refresh <providers-dir>`",
-            ));
-        } else {
-            checks.push(Check::pass(
-                "providers",
-                "provider snapshots",
-                format!(
-                    "{} snapshot(s) at {}, none stale",
-                    snaps.len(),
-                    providers_dir.display()
-                ),
-            ));
+    // --- Plays and scenario tests -----------------------------------------
+    // `lute play` scripts and `lute test` scenarios are part of the project
+    // as much as its documents; a count is the at-a-glance answer to "is any
+    // of this exercised".
+    checks.push(Check::info(
+        "plays",
+        "play scripts",
+        format!("{} `*.play.yaml`", count_files(dir, ".play.yaml")),
+    ));
+    checks.push(Check::info(
+        "tests",
+        "scenario tests",
+        format!("{} `*.test.yaml`", count_files(dir, ".test.yaml")),
+    ));
+
+    // --- Provider snapshots (the project's pinned catalog) ---------------
+    // The SAME directory `check` resolves provider ids against
+    // (`lute_manifest::project::project_providers`): the manifest's
+    // `catalogDir:`, default `catalog/`. Its absence says nothing about
+    // plugins — only that no provider id is pinned.
+    let catalog_dir = manifest_dir.as_deref().map(|root| {
+        match lute_manifest::project::load_project(root) {
+            Ok(Some(config)) => config.catalog_dir,
+            _ => root.join("catalog"),
         }
-    } else {
-        checks.push(Check::info(
+    });
+    match catalog_dir.filter(|d| d.is_dir()) {
+        Some(catalog_dir) => {
+            let set = ProviderSet::load(&catalog_dir);
+            let snaps = set.snapshots();
+            let stale = snaps.iter().filter(|s| s.stale).count();
+            if stale > 0 {
+                checks.push(Check::fail(
+                    "providers",
+                    "provider snapshots",
+                    format!(
+                        "{} snapshot(s) at {}, {stale} stale",
+                        snaps.len(),
+                        catalog_dir.display()
+                    ),
+                    "re-stamp with `lute catalog refresh <catalog-dir>`",
+                ));
+            } else {
+                checks.push(Check::pass(
+                    "providers",
+                    "provider snapshots",
+                    format!(
+                        "{} snapshot(s) at {}, none stale",
+                        snaps.len(),
+                        catalog_dir.display()
+                    ),
+                ));
+            }
+        }
+        None => checks.push(Check::info(
             "providers",
             "provider snapshots",
-            "no providers/ directory (core-only project)".to_string(),
-        ));
+            "no pinned provider snapshots".to_string(),
+        )),
     }
 
     // --- Vocabulary slots (dsl 0.9.0 D-A/D-C) ----------------------------
@@ -293,7 +496,30 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // `E-DOMAIN-UNKNOWN`. `manifest_dir` remains the right answer for the
     // "found `lute.project.yaml` at …" line above, which reports the ancestry
     // rather than predicting a verdict.
-    let (domains, project_problems) = resolved_domains(dir, &lute_files);
+    let scan = scan_documents(dir, &lute_files);
+    let domains = &scan.domains;
+
+    // --- Plugins and occasions (dsl 0.21.0 §2) ---------------------------
+    // What the documents resolve, not what the manifest lists: a profile no
+    // document selects activates nothing.
+    checks.push(Check::info(
+        "plugins",
+        "active plugins",
+        if scan.plugins.is_empty() {
+            "none (core-only)".to_string()
+        } else {
+            scan.plugins
+                .iter()
+                .map(|(id, v)| format!("{id} {v}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        },
+    ));
+    checks.push(Check::info(
+        "occasions",
+        "occasions (beats answering)",
+        occasions_detail(&scan),
+    ));
     let declared: Vec<String> = VOCAB_SLOTS
         .iter()
         .filter_map(|slot| domains.get(*slot).map(|dom| slot_entry(slot, dom)))
@@ -333,11 +559,11 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // else — a `doctor` whose findings only reach stderr is invisible to any
     // consumer parsing its output, and `doctor` is the command you run when
     // something is already wrong. Absent key == nothing to report.
-    if !project_problems.is_empty() {
+    if !scan.problems.is_empty() {
         checks.push(Check::fail(
             "projectResolution",
             "project resolution",
-            project_problems.join("; "),
+            scan.problems.join("; "),
             "fix `lute.project.yaml` (or the plugin/profile it activates); \
              `lute check-project` fails on the same problem",
         ));
@@ -349,6 +575,7 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
         "VS Code extension",
         "not detectable from the CLI".to_string(),
     ));
+    checks.push(language_server_check());
 
     Some(checks)
 }

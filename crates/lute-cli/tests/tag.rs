@@ -63,3 +63,103 @@ fn tag_backfills_code_and_is_idempotent() {
         "second tag run must be a no-op"
     );
 }
+
+/// dsl 0.22.0 §13: `lute tag <dir>` tags every `.lute` file under the
+/// directory, recursively and in sorted order, naming each file it changed
+/// and leaving already-tagged files untouched; non-`.lute` files are ignored.
+#[test]
+fn tag_walks_a_directory_recursively_in_sorted_order() {
+    let dir = temp_dir("tag-dir");
+    let scene = |line: &str| {
+        format!("---\nkind: scene\nid: s\n---\n## Shot 1.\n{line}\n")
+    };
+    std::fs::create_dir_all(dir.join("scenes/talk")).unwrap();
+    std::fs::write(dir.join("scenes/talk/b.lute"), scene("@ann: b")).unwrap();
+    std::fs::write(dir.join("scenes/a.lute"), scene("@ann: a")).unwrap();
+    let tagged = scene("@ann{code=\"0010\"}: done");
+    std::fs::write(dir.join("scenes/done.lute"), &tagged).unwrap();
+    std::fs::write(dir.join("scenes/notes.txt"), "@ann: not lute\n").unwrap();
+
+    let out = Command::new(BIN)
+        .args(["tag", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let a = dir.join("scenes/a.lute").display().to_string();
+    let b = dir.join("scenes/talk/b.lute").display().to_string();
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(
+        lines,
+        [
+            format!("lute: {a}: tagged 1 line(s)").as_str(),
+            format!("lute: {b}: tagged 1 line(s)").as_str(),
+            "lute: tagged 2 line(s) in 2 of 3 file(s)",
+        ],
+        "{stdout}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("scenes/talk/b.lute")).unwrap(),
+        scene("@ann{code=\"0010\"}: b")
+    );
+    assert_eq!(std::fs::read_to_string(dir.join("scenes/done.lute")).unwrap(), tagged);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("scenes/notes.txt")).unwrap(),
+        "@ann: not lute\n"
+    );
+}
+
+/// A refused file in a tree does not stop the walk: `--force` renumbers the
+/// draft and refuses the `codesLocked:` one, and the exit code reports the
+/// refusal.
+#[test]
+fn tag_force_over_a_directory_continues_past_a_refusal() {
+    let dir = temp_dir("tag-dir-force");
+    let draft = "---\nkind: scene\nid: d\n---\n## Shot 1.\n@ann{code=\"0050\"}: one\n";
+    let locked =
+        "---\nkind: scene\nid: l\ncodesLocked: true\n---\n## Shot 1.\n@ann{code=\"0050\"}: one\n";
+    std::fs::write(dir.join("a-locked.lute"), locked).unwrap();
+    std::fs::write(dir.join("b-draft.lute"), draft).unwrap();
+
+    let out = Command::new(BIN)
+        .args(["tag", "--force", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("codesLocked"),
+        "{out:?}"
+    );
+    assert_eq!(std::fs::read_to_string(dir.join("a-locked.lute")).unwrap(), locked);
+    assert!(
+        std::fs::read_to_string(dir.join("b-draft.lute"))
+            .unwrap()
+            .contains("@ann{code=\"0010\"}: one"),
+        "the draft after the refused file is still renumbered"
+    );
+}
+
+/// `lute fix <dir>` migrates every `.lute` file under the directory.
+#[test]
+fn fix_walks_a_directory_recursively() {
+    let dir = temp_dir("fix-dir");
+    std::fs::create_dir_all(dir.join("nested")).unwrap();
+    let legacy = "---\nkind: scene\nid: s\n---\n## Shot 1.\n:line[ann]: hi\n";
+    std::fs::write(dir.join("nested/old.lute"), legacy).unwrap();
+    std::fs::write(dir.join("new.lute"), "---\nkind: scene\nid: t\n---\n## Shot 1.\n@ann: hi\n")
+        .unwrap();
+
+    let out = Command::new(BIN)
+        .args(["fix", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("nested/old.lute")).unwrap(),
+        "---\nkind: scene\nid: s\n---\n## Shot 1.\n@ann: hi\n"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).ends_with("in 1 of 2 file(s)\n"),
+        "{out:?}"
+    );
+}

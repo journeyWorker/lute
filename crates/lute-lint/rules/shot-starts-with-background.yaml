@@ -1,6 +1,10 @@
 id: shot-starts-with-background
 target: shot
-when: 'shot.firstStagingTag != "bg"'
+# A linear-VN norm: a beat is presented into an already-staged moment, and a
+# component or lore entry is spliced into someone else's staging (dsl 0.22.0
+# §13). `firstStagingTag` skips non-staging directives (`::accept`, `::use`,
+# `::end`, `::mark`, `::next`).
+when: 'shot.kind == "scene" && shot.firstStagingTag != "bg"'
 level: warn
-message: "shot `{shot.title}` first staging directive is `{shot.firstStagingTag}` (expected `bg`)"
+message: "shot `{shot.title}` does not open with a `::bg` staging directive"
 options: {}

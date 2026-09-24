@@ -75,14 +75,18 @@ macro_rules! outln {
 }
 
 mod compile_all;
+mod context;
 mod doctor;
+mod explain;
 mod lint;
 mod loc;
 mod lore_report;
 mod manifests;
 mod mockcheck;
 mod play;
+mod play_expect;
 mod runner;
+mod rewrite;
 mod scaffold;
 mod scenario_fmt;
 mod stream;
@@ -263,10 +267,11 @@ enum Command {
         permission_profile: Option<String>,
     },
     /// Back-fill a stable `code` into every untagged `:line` (dsl §12),
-    /// rewriting the file in place.
+    /// rewriting the file in place — or every `.lute` file under a directory
+    /// (recursive, sorted; dsl 0.22.0 §13).
     Tag {
-        /// Path to the `.lute` file to tag.
-        file: PathBuf,
+        /// The `.lute` file to tag, or a directory to tag recursively.
+        path: PathBuf,
         /// FORCE-renumber every line's `code` in clean document order
         /// (0010/0020/… per speaker per scope), rewriting existing codes.
         /// A drafting tool: refused when frontmatter declares `codesLocked:`
@@ -281,10 +286,11 @@ enum Command {
     /// `<choice>`/`<hub>` choice `as="…"` → `into="…"` (dsl §7.3), and a
     /// literal-comparison `<when test="$ == …">` → `<when is="…">` (dsl
     /// 0.18.0 §3). Byte-exact and comment-preserving; writes back only when
-    /// something changed. Exit `0` on success, `2` on an I/O failure.
+    /// something changed. Exit `0` on success, `2` on an I/O failure. A
+    /// directory migrates every `.lute` file under it (recursive, sorted).
     Fix {
-        /// Path to the `.lute` file to migrate.
-        file: PathBuf,
+        /// The `.lute` file to migrate, or a directory to migrate recursively.
+        path: PathBuf,
     },
     /// Emit the project-resolved AUTHORING SURFACE for a `.lute` file — the
     /// directives/attrs/enums/asset-kinds/providers/state-schema/components +
@@ -378,31 +384,47 @@ enum Command {
         /// on a non-lore document or an unknown id.
         #[arg(long, value_name = "ID")]
         entry: Option<String>,
+        /// Do not apply the project's seed facts and Datalog rules (dsl
+        /// 0.22.0 §6): an unmocked derived atom is unknown and each derived
+        /// read is noted, as in 0.21. Overrides the mock's `derive:`.
+        #[arg(long)]
+        no_derive: bool,
     },
     /// Provider-catalog maintenance.
     #[command(subcommand)]
     Catalog(CatalogCommand),
     /// Scaffold a new Lute project directory: `lute.project.yaml`, a state
-    /// schema, a starter vocabulary, a starter scene, and a trace mock — ready
-    /// for `lute check-project`.
+    /// schema, a starter vocabulary, starter documents, and ways to exercise
+    /// them — ready for `lute check-project`.
     Init {
         /// Directory to create (must not already contain a `lute.project.yaml`).
         dir: PathBuf,
-        /// Project template: `minimal` (default) or `investigation`.
+        /// Project template: `minimal` (default), `investigation`, or `beats`
+        /// (an occasions plugin, beats with `id:`, a quest, lore, a play
+        /// script and scenario tests, dsl 0.22.0 §13).
         #[arg(long, value_name = "NAME")]
         template: Option<String>,
     },
     /// Scaffold one new document into an existing project: `lute new scene
-    /// <name>` / `lute new quest <name>` / `lute new lore <name>` /
-    /// `lute new schema <name>`.
+    /// <name> [--on <occasion> [--target <target>]]` / `lute new quest
+    /// <name>` / `lute new lore <name>` / `lute new schema <name>`. Documents
+    /// carry an `id:` and omit what the manifest's `defaults:` supplies;
+    /// outside a project `lute new` says so (and `--on` is refused).
     New {
         /// Document kind: `scene`, `quest`, `lore`, or `schema`.
         kind: String,
-        /// The new document's name (file stem / id).
+        /// The new document's name (file stem; `/` nests it in a subfolder).
         name: String,
         /// Project directory to scaffold into (default: current directory).
         #[arg(long, value_name = "DIR", default_value = ".")]
         dir: PathBuf,
+        /// Make the scene a beat answering this occasion (dsl 0.21.0 §3).
+        #[arg(long, value_name = "OCCASION")]
+        on: Option<String>,
+        /// The target the beat answers for (a targeted occasion's
+        /// `<prefix>.<member>`).
+        #[arg(long, value_name = "TARGET", requires = "on")]
+        target: Option<String>,
     },
     /// Diagnose the local toolchain + project setup: versions, project
     /// manifest, provider snapshots, vocabulary slots, and editor integration
@@ -467,17 +489,32 @@ enum Command {
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,
+        /// Do not apply the project's Datalog rules (dsl 0.22.0 §6): an
+        /// unmocked derived atom is unknown and halts the walk incomplete.
+        #[arg(long)]
+        no_derive: bool,
+        /// After the play, print the derivation tree of a ground atom — the
+        /// rule used and each premise's own support, negated premises shown
+        /// absent — or, when it does not hold, the failing premises of every
+        /// rule that could conclude it (repeatable, dsl 0.22.0 §6).
+        #[arg(long, value_name = "ATOM")]
+        explain: Vec<String>,
     },
     /// Run the project's scenario tests: every `*.test.yaml` under `dir`
-    /// traces its scene against the declared mocks and asserts the declared
-    /// expectations (transcript, state, quest status). Resolves each traced
+    /// traces its scene (or, with `entry:`/`entries:`, presents its lore
+    /// entries) against the declared mocks and asserts the declared
+    /// expectations (transcript, offered options, state, quest status); every
+    /// `*.play.yaml` under `dir` that carries an `expect:` is played and
+    /// judged as `lute play` does (dsl 0.22.0 §4). Resolves each traced
     /// document identically to `lute trace` ([`build_input`]): with
     /// `--project`, the document's `profile:`/`plugins:` frontmatter and the
     /// manifest's `defaults: uses:` hoist are both applied before tracing;
     /// without it, a core-only (`lute.core`) resolution, unchanged from
-    /// before.
+    /// before. A play runs `--project`, else the nearest `lute.project.yaml`
+    /// above it.
     Test {
-        /// Directory to walk for `*.test.yaml` scenario tests (default: `.`).
+        /// Directory to walk for `*.test.yaml` scenario tests and
+        /// expect-carrying `*.play.yaml` plays (default: `.`).
         #[arg(default_value = ".")]
         dir: PathBuf,
         /// Emit the machine-readable report as JSON.
@@ -492,9 +529,15 @@ enum Command {
         /// (`lute.core`) test.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
-        /// Also report branch/arm coverage across the tested documents.
+        /// Also report branch/arm coverage across the tested documents, and
+        /// the project's documents no test traced and no play presented.
         #[arg(long)]
         coverage: bool,
+        /// Do not apply the project's seed facts and Datalog rules (dsl
+        /// 0.22.0 §6): an unmocked derived atom is unknown, as in 0.21.
+        /// Overrides every test's and play script's own `derive:`.
+        #[arg(long)]
+        no_derive: bool,
     },
     /// Localization & production reporting over a project's content lines.
     #[command(subcommand)]
@@ -745,6 +788,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-DUP-LINE-CODE",
     "E-DUP-TRACK",
     "E-DUP-VOICEKEY",
+    "E-ENGINE-OWNED-WRITE",
     "E-ENTITY-KIND-CLASH",
     "E-ENTITY-KIND-SHAPE",
     "E-ENTRY-ATTR",
@@ -899,6 +943,8 @@ const DENIABLE_CODES: &[&str] = &[
     "E-WHEN-UNSET-SUBJECT",
     "E-WRITE-CONFLICT",
     "W-ASSET-PLACEHOLDER",
+    "W-BEAT-ONCE-RUN-USER",
+    "W-BEAT-PRIORITY-TIE",
     "W-BEAT-SHADOWED",
     "W-CATALOG-STALE",
     "W-CODE-AFTER-END",
@@ -917,6 +963,7 @@ const DENIABLE_CODES: &[&str] = &[
     "W-OTHERWISE-DEAD",
     "W-OVERLAP-ARMS",
     "W-PROJECT-INERT",
+    "W-QUEST-HANDLER-DEAD",
     "W-QUEST-REF-UNKNOWN",
     "W-QUEST-STATE-ISSET",
     "W-STAGE-ABSENT",
@@ -1089,6 +1136,7 @@ fn main() -> ExitCode {
             providers,
             project,
             entry,
+            no_derive,
         } => run_trace(
             &file,
             state,
@@ -1102,14 +1150,21 @@ fn main() -> ExitCode {
             providers.as_deref(),
             project.as_deref(),
             entry.as_deref(),
+            no_derive,
         ),
-        Command::Tag { file, force } => run_tag(&file, force),
-        Command::Fix { file } => run_fix(&file),
+        Command::Tag { path, force } => rewrite::run_tag(&path, force),
+        Command::Fix { path } => rewrite::run_fix(&path),
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
         }
         Command::Init { dir, template } => scaffold::run_init(&dir, template.as_deref()),
-        Command::New { kind, name, dir } => scaffold::run_new(&kind, &name, &dir),
+        Command::New {
+            kind,
+            name,
+            dir,
+            on,
+            target,
+        } => scaffold::run_new(&kind, &name, &dir, on.as_deref(), target.as_deref()),
         Command::Lore { dir, json } => lore_report::run_lore(&dir, json),
         Command::Doctor { dir, json } => doctor::run_doctor(&dir, json),
         Command::Run {
@@ -1125,19 +1180,27 @@ fn main() -> ExitCode {
             json,
             entry.as_deref(),
         ),
-        Command::Play { dir, script, json } => play::run_play(&dir, &script, json),
+        Command::Play {
+            dir,
+            script,
+            json,
+            no_derive,
+            explain,
+        } => play::run_play(&dir, &script, json, no_derive, &explain),
         Command::Test {
             dir,
             json,
             providers,
             project,
             coverage,
+            no_derive,
         } => testcmd::run_test(
             &dir,
             json,
             providers.as_deref(),
             project.as_deref(),
             coverage,
+            no_derive,
         ),
         Command::Loc(LocCommand::Export { dir, format, out }) => {
             loc::run_export(&dir, format.as_deref().unwrap_or("json"), out.as_deref())
@@ -2369,6 +2432,9 @@ fn reconcile_collected(
         // side (parent quest naming the child). Both are project-wide
         // because a `quest=` reference can name a quest in a sibling file.
         project_diags.extend(lute_check::check_project_quest_tree(group));
+        // dsl 0.22.0 §7: `<on event="questFailed">` on a quest that cannot
+        // fail (project-wide: a parent in another file can cascade-fail it).
+        project_diags.extend(lute_check::check_project_quest_handlers(group));
         project_diags.extend(lute_check::connectivity::check_conn_episode_dup(group));
         let key_set = lute_check::connectivity::scene_key_set(group);
         let quest_ids = lute_check::connectivity::quest_id_set(group);
@@ -4389,13 +4455,15 @@ fn run_context(
     // "does the document reference this exact path" test) so `context` never
     // diverges from what `trace --state` admits on a reserved path.
     let reserved_quest_paths = lute_trace::collect_referenced_reserved_quest_paths(&doc);
-    let surface = authoring_surface(
+    let mut surface = authoring_surface(
         &input,
         &folded.env.state,
         &folded.env.rel_vocab,
         &branch_paths,
         &reserved_quest_paths,
     );
+    // dsl 0.22.0 §13: defs, built-in directives, project ids.
+    context::extend_surface(&mut surface, &folded, file, project);
 
     if json {
         match serde_json::to_string_pretty(&surface) {
@@ -4515,6 +4583,13 @@ fn authoring_surface(
             o.insert("path".into(), path.clone().into());
             o.insert("type".into(), ty.into());
             o.insert("namespace".into(), namespace_str(decl.namespace).into());
+            // dsl 0.22.0 §1.2: engine-owned paths are read-only to content.
+            if let Some(owner) = &decl.owner {
+                o.insert(
+                    "owner".into(),
+                    serde_json::to_value(owner).unwrap_or(Value::Null),
+                );
+            }
             if let Some(def) = &decl.default {
                 o.insert("default".into(), literal_json(def));
             }
@@ -4592,6 +4667,15 @@ fn authoring_surface(
             o.insert("arity".into(), decl.args.len().into());
             o.insert("args".into(), decl.args.clone().into());
             o.insert("derive".into(), decl.derive.into());
+            // The write tier (`run` when unset) and whether only the engine
+            // asserts it (`reserved: true`) — a derived relation has neither.
+            if !decl.derive {
+                o.insert(
+                    "tier".into(),
+                    decl.tier.clone().unwrap_or_else(|| "run".into()).into(),
+                );
+            }
+            o.insert("reserved".into(), decl.reserved.into());
             Value::Object(o)
         })
         .collect();
@@ -4900,12 +4984,21 @@ fn context_outline(surface: &serde_json::Value) -> String {
         let _ = writeln!(out, "occasions ({}):", occasions.len());
         for (name, o) in occasions {
             let select = o["select"].as_str().unwrap_or("first");
-            let target = if o["target"].as_bool().unwrap_or(false) {
-                ", target"
-            } else {
-                ""
+            // dsl 0.22.0 §8: a domain target names its vocabulary.
+            let target = match &o["target"] {
+                serde_json::Value::Bool(true) => ", target".to_string(),
+                serde_json::Value::Object(d) => format!(
+                    ", target: {}.<{}>",
+                    d.get("prefix").and_then(|v| v.as_str()).unwrap_or(""),
+                    d.get("entity").and_then(|v| v.as_str()).unwrap_or("")
+                ),
+                _ => String::new(),
             };
-            let _ = writeln!(out, "  {name} (select: {select}{target})");
+            let description = o["description"]
+                .as_str()
+                .map(|d| format!(" — {d}"))
+                .unwrap_or_default();
+            let _ = writeln!(out, "  {name} (select: {select}{target}){description}");
         }
     }
     let _ = writeln!(
@@ -4937,7 +5030,11 @@ fn context_outline(surface: &serde_json::Value) -> String {
                     format!(" [{}]", members.join(", "))
                 })
                 .unwrap_or_default();
-            let _ = writeln!(out, "  {path}: {ty}{dom}");
+            let owner = s["owner"]
+                .as_str()
+                .map(|o| format!(" (owner: {o})"))
+                .unwrap_or_default();
+            let _ = writeln!(out, "  {path}: {ty}{dom}{owner}");
         }
     }
     // dsl 0.5.1 §2: the reserved quest paths this document REFERENCES —
@@ -5004,10 +5101,16 @@ fn context_outline(surface: &serde_json::Value) -> String {
                     .as_array()
                     .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
                     .unwrap_or_default();
+                // `[derive]`, or the write tier plus `reserved` (engine-asserted).
                 let tag = if r["derive"].as_bool().unwrap_or(false) {
-                    " [derive]"
+                    " [derive]".to_string()
                 } else {
-                    ""
+                    let tier = r["tier"].as_str().unwrap_or("run");
+                    if r["reserved"].as_bool().unwrap_or(false) {
+                        format!(" [{tier}, reserved]")
+                    } else {
+                        format!(" [{tier}]")
+                    }
                 };
                 let _ = writeln!(out, "  {name}/{arity}({}){tag}", args.join(", "));
             }
@@ -5043,10 +5146,41 @@ fn context_outline(surface: &serde_json::Value) -> String {
     }
     if let Some(comps) = surface["components"].as_array() {
         if !comps.is_empty() {
-            let names: Vec<&str> = comps.iter().filter_map(|c| c["name"].as_str()).collect();
-            let _ = writeln!(out, "components ({}): {}", names.len(), names.join(", "));
+            // Signatures, not just names: `::use` binds these by name.
+            let _ = writeln!(out, "components ({}):", comps.len());
+            for c in comps {
+                let params: Vec<String> = c["params"]
+                    .as_array()
+                    .map(|ps| {
+                        ps.iter()
+                            .map(|p| {
+                                let dom = p["domain"]
+                                    .as_array()
+                                    .map(|d| {
+                                        let m: Vec<&str> =
+                                            d.iter().filter_map(|x| x.as_str()).collect();
+                                        format!("[{}]", m.join(", "))
+                                    })
+                                    .unwrap_or_default();
+                                format!(
+                                    "{}: {}{dom}",
+                                    p["name"].as_str().unwrap_or(""),
+                                    p["type"].as_str().unwrap_or("")
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let _ = writeln!(
+                    out,
+                    "  {}({})",
+                    c["name"].as_str().unwrap_or(""),
+                    params.join(", ")
+                );
+            }
         }
     }
+    context::outline_extras(&mut out, surface);
     out
 }
 
@@ -5375,6 +5509,7 @@ fn run_trace(
     providers: Option<&Path>,
     project: Option<&Path>,
     entry: Option<&str>,
+    no_derive: bool,
 ) -> ExitCode {
     let Some(built) = build_input(file, providers, project, None) else {
         return ExitCode::from(2);
@@ -5490,6 +5625,7 @@ fn run_trace(
         accepts: accept,
         occasions: occasion,
         visited: Vec::new(),
+        derive: no_derive.then_some(false),
     };
 
     let mocks = merge(file_mocks, flag_mocks);
@@ -5606,115 +5742,6 @@ fn print_trace_report(report: &TraceReport, json: bool, code: ExitCode) -> ExitC
         return ExitCode::from(2);
     }
     code
-}
-
-/// Back-fill a stable `code` into every untagged `:line` (dsl §12), rewriting
-/// the file in place. A thin shell over [`lute_check::tag_document`] (the pure
-/// core that owns the tagging logic): read the file, tag, and — only when at
-/// least one line was tagged — write the result back. Exit `0` on success
-/// (whether or not anything changed), `2` on an I/O failure (like `run_check`).
-///
-/// With `--force`, FORCE-renumber instead ([`lute_check::retag_document`]):
-/// every line's code is rewritten in clean document order — a drafting tool.
-/// Refused (exit `1`) when frontmatter declares `codesLocked:` (published
-/// codes are `lineId`/`voiceKey` identity; renumbering severs the
-/// localization/voice join) or when the document has structural errors.
-fn run_tag(file: &Path, force: bool) -> ExitCode {
-    let text = match std::fs::read_to_string(file) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("lute: cannot read {}: {e}", file.display());
-            return ExitCode::from(2);
-        }
-    };
-
-    if force {
-        return match lute_check::retag_document(&text) {
-            lute_check::RetagOutcome::Locked => {
-                eprintln!(
-                    "lute: {} declares `codesLocked:` — its codes are published identity \
-                     (lineId/voiceKey); refusing to renumber. Remove the key or set it \
-                     `false` to renumber a draft.",
-                    file.display()
-                );
-                ExitCode::from(1)
-            }
-            lute_check::RetagOutcome::Broken => {
-                eprintln!(
-                    "lute: {} has structural errors — fix `lute check` findings first; \
-                     nothing was rewritten",
-                    file.display()
-                );
-                ExitCode::from(1)
-            }
-            lute_check::RetagOutcome::Renumbered {
-                text: out,
-                renumbered,
-                skipped,
-            } => {
-                if renumbered > 0 {
-                    if let Err(e) = std::fs::write(file, &out) {
-                        eprintln!("lute: cannot write {}: {e}", file.display());
-                        return ExitCode::from(2);
-                    }
-                    println!("lute: renumbered {renumbered} line(s)");
-                } else {
-                    println!("lute: codes already in order");
-                }
-                if skipped > 0 {
-                    println!("lute: {skipped} line(s) skipped (non-string `code` value)");
-                }
-                ExitCode::SUCCESS
-            }
-        };
-    }
-
-    let out = lute_check::tag_document(&text);
-
-    // Never partial-writes: only touch the file when a `code` was actually
-    // added, so an already-tagged document is left byte-identical (idempotent).
-    if out.added > 0 {
-        if let Err(e) = std::fs::write(file, &out.text) {
-            eprintln!("lute: cannot write {}: {e}", file.display());
-            return ExitCode::from(2);
-        }
-        println!("lute: tagged {} line(s)", out.added);
-    } else {
-        println!("lute: already tagged");
-    }
-
-    ExitCode::SUCCESS
-}
-
-/// Apply `lute fix`'s mechanical migrations in place (dsl §7.1, §7.3, 0.18.0
-/// §3), rewriting the file only when a span was actually changed. A thin
-/// shell over [`lute_check::fix_document`] (the pure core that owns every
-/// rule): read the file, migrate, and — only when at least one edit applied
-/// — write the result back, so an already-migrated document is left
-/// byte-identical (idempotent). Exit `0` on success (whether or not anything
-/// changed), `2` on an I/O failure (like `run_tag`).
-fn run_fix(file: &Path) -> ExitCode {
-    let text = match std::fs::read_to_string(file) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("lute: cannot read {}: {e}", file.display());
-            return ExitCode::from(2);
-        }
-    };
-
-    let out = lute_check::fix_document(&text);
-
-    if out.changed > 0 {
-        if let Err(e) = std::fs::write(file, &out.text) {
-            eprintln!("lute: cannot write {}: {e}", file.display());
-            return ExitCode::from(2);
-        }
-        println!("lute: applied {} fix(es)", out.changed);
-    } else {
-        println!("lute: nothing to fix");
-    }
-
-    ExitCode::SUCCESS
 }
 
 /// One `file:line:col: severity [CODE] message` line per diagnostic. A

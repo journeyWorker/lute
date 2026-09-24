@@ -5,11 +5,11 @@ state:
   user.runs: { type: number, default: 0 }
 ---
 
-<entry id="achillesBark3" on="talk" target="npc.achilles" category="bark" priority="10" when="user.runs >= 3">
+<entry id="achillesBark3" on="talk" once="user" target="npc.achilles" category="bark" priority="10" when="user.runs >= 3">
   @achilles: Back again, lad.
 </entry>
 
-<entry id="achillesBark" on="talk" target="npc.achilles" category="bark">
+<entry id="achillesBark" on="talk" once="run" target="npc.achilles" category="bark">
   @achilles: Hm.
 </entry>
 

@@ -916,11 +916,13 @@ fn shot_value(s: &ShotRow) -> Value {
         "firstStagingTag".into(),
         Value::Str(s.firstStagingTag.clone()),
     );
+    m.insert("kind".into(), Value::Str(s.kind.clone()));
     Value::Map(m)
 }
 
 fn scene_value(s: &SceneRow) -> Value {
     let mut m = BTreeMap::new();
+    m.insert("kind".into(), Value::Str(s.kind.clone()));
     m.insert("dialogueLines".into(), num(s.dialogueLines as f64));
     m.insert("words".into(), num(s.words as f64));
     m.insert("bodyNodes".into(), num(s.bodyNodes as f64));

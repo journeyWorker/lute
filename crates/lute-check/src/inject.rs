@@ -95,8 +95,9 @@ pub struct StageState {
     pub on_stage: BTreeMap<String, SpriteState>,
     /// Characters whose pose changed and hasn't been reset yet.
     pub dirty: BTreeSet<String>,
-    /// Characters removed by an **explicit declared exit** and not re-shown
-    /// since (dsl 0.10.0 §11.2, **D-X**).
+    /// Characters taken off stage — by an **explicit declared exit** (dsl
+    /// 0.10.0 §11.2, **D-X**) or by a `::bg` scene change's auto-hide (dsl
+    /// 0.22.0 §12) — and not re-shown since, with how they left.
     ///
     /// `on_stage` cannot answer this on its own: a character who has never been
     /// shown and one who has left are both simply absent from it, and only the
@@ -104,10 +105,9 @@ pub struct StageState {
     /// member of this set, which is what keeps a character's FIRST line — an
     /// implicit entrance, and the overwhelmingly common shape — silent.
     ///
-    /// Cleared per character on a re-show ([`stage_bookkeeping_show`]) and
-    /// wholesale on a scene change ([`stage_bookkeeping_bg`], which clears the
-    /// stage itself).
-    pub exited: BTreeSet<String>,
+    /// Cleared per character on a re-show ([`stage_bookkeeping_show`]). At a
+    /// convergence it is the UNION over the incoming arms ([`StageState::join`]).
+    pub exited: BTreeMap<String, Departure>,
     /// Current background (`::bg` location / assetId).
     pub bg: Option<String>,
     /// Current music (`::music` mood / action).
@@ -116,6 +116,76 @@ pub struct StageState {
     /// conflict channel). Not scene state proper — the reducer's diagnostic
     /// out-channel, since the fixed `lower_node` return can't carry a third slot.
     pub diags: Vec<Diagnostic>,
+}
+
+/// How a character in [`StageState::exited`] left the stage — names the cause
+/// in `W-STAGE-ABSENT`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Departure {
+    /// An `::auto` whose `action` is a declared exit member.
+    Exit,
+    /// Auto-hidden by a `::bg` scene change while on stage.
+    SceneChange,
+}
+
+impl StageState {
+    /// The state at a convergence of parallel arms (choice / match / hub
+    /// arms; dsl 0.22.0 §12), with the fact must-set discipline: the join
+    /// claims only what holds on EVERY incoming path.
+    ///
+    /// * `on_stage`: a character is present only if present in every arm with
+    ///   an identical `SpriteState`; differing or partial → dropped (that
+    ///   encodes `Unknown`: a later plain line assumes no pose — no false
+    ///   posReset — and a later `::auto` is a fresh show → anchor + preload).
+    /// * `dirty` survives for a carried character if ANY arm marks it (a
+    ///   redundant posReset beats a missing one — a `variant`/`dialogMotion`-
+    ///   only line dirties without changing `SpriteState`).
+    /// * `exited` is the UNION: a character who left on some path is not
+    ///   must-present, so staging them after the join warns (may-absent →
+    ///   `W-STAGE-ABSENT`), exactly as a fact asserted on only some arms is
+    ///   not must-set. The first arm's departure names the cause.
+    /// * `bg`/`music` carry only when identical across arms.
+    ///
+    /// Arms' diagnostics concatenate in arm order. No arms → `entry`.
+    pub fn join(entry: &StageState, mut exits: Vec<StageState>) -> StageState {
+        let Some(first) = exits.first().cloned() else {
+            return entry.clone();
+        };
+        let mut joined = StageState::default();
+        for e in &mut exits {
+            joined.diags.append(&mut e.diags);
+        }
+        'chars: for (ch, sprite) in &first.on_stage {
+            for e in &exits[1..] {
+                if e.on_stage.get(ch) != Some(sprite) {
+                    continue 'chars;
+                }
+            }
+            joined.on_stage.insert(ch.clone(), sprite.clone());
+        }
+        let kept: Vec<String> = joined.on_stage.keys().cloned().collect();
+        for ch in kept {
+            if exits.iter().any(|e| e.dirty.contains(&ch)) {
+                joined.dirty.insert(ch);
+            }
+        }
+        for e in &exits {
+            for (ch, how) in &e.exited {
+                joined.exited.entry(ch.clone()).or_insert(*how);
+            }
+        }
+        joined.bg = if exits.iter().all(|e| e.bg == first.bg) {
+            first.bg.clone()
+        } else {
+            None
+        };
+        joined.music = if exits.iter().all(|e| e.music == first.music) {
+            first.music.clone()
+        } else {
+            None
+        };
+        joined
+    }
 }
 
 /// Provenance stamp on every injected command (arch doc §5): *which* named rule
@@ -216,16 +286,17 @@ fn lower_auto(
         // threaded state already records as gone. Only after an EXPLICIT
         // earlier exit — `exited`, never `!on_stage` — so a first-ever `::auto`
         // exit for a character nothing staged is not the finding and is silent.
-        if state.exited.contains(&character) {
+        if let Some(how) = state.exited.get(&character).copied() {
             state.diags.push(stage_absent_diag(
                 &character,
+                how,
                 "another declared exit",
                 d.span,
             ));
         }
         state.on_stage.remove(&character);
         state.dirty.remove(&character);
-        state.exited.insert(character);
+        state.exited.insert(character, Departure::Exit);
         return;
     }
 
@@ -379,12 +450,13 @@ fn lower_line(
         }
     }
 
-    // §11.2 position 1 (**D-X**): a spoken line whose speaker was removed by a
-    // declared exit earlier in the walk, with no intervening show.
-    if state.exited.contains(speaker) {
+    // §11.2 position 1 (**D-X**): a spoken line whose speaker was taken off
+    // stage earlier in the walk — a declared exit or a `::bg` auto-hide
+    // (dsl 0.22.0 §12) — with no intervening show.
+    if let Some(how) = state.exited.get(speaker).copied() {
         state
             .diags
-            .push(stage_absent_diag(speaker, "a spoken line", line.span));
+            .push(stage_absent_diag(speaker, how, "a spoken line", line.span));
     }
 
     if !stateful && state.dirty.contains(speaker) && state.on_stage.contains_key(speaker) {
@@ -413,7 +485,9 @@ fn lower_line(
 
 /// Rule `stage-bookkeeping` (scene-change arm): a `::bg` is a scene change, so
 /// auto-hide every sprite left on stage — the one implicit command this rule
-/// emits — then clear the stage and record the new background.
+/// emits — then clear the stage and record the new background. An auto-hidden
+/// character is recorded as exited (dsl 0.22.0 §12), so a later line by them
+/// without a re-show is `W-STAGE-ABSENT` like one after a declared exit.
 fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<InjectedCommand>) {
     for character in state.on_stage.keys().cloned().collect::<Vec<_>>() {
         emit.push(InjectedCommand {
@@ -428,12 +502,10 @@ fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<In
                 ),
             },
         });
+        state.exited.insert(character, Departure::SceneChange);
     }
     state.on_stage.clear();
     state.dirty.clear();
-    // A `::bg` is a scene change: every sprite is auto-hidden above, so no
-    // earlier exit constrains what follows (§11.2).
-    state.exited.clear();
     state.bg = attr_str(&d.attrs, "location").or_else(|| attr_str(&d.attrs, "assetId"));
 }
 
@@ -606,8 +678,8 @@ fn exit_inert_diag(speaker: &str, action: &str, span: Span) -> Diagnostic {
 }
 
 /// `W-STAGE-ABSENT`: a staging event for a character the threaded stage state
-/// records as off stage after an explicit declared exit (dsl 0.10.0 §11.2,
-/// **D-X**).
+/// records as off stage — after an explicit declared exit (dsl 0.10.0 §11.2,
+/// **D-X**) or a `::bg` auto-hide, on some path reaching it (dsl 0.22.0 §12).
 pub const W_STAGE_ABSENT: &str = "W-STAGE-ABSENT";
 
 /// Build the `W-STAGE-ABSENT` staging-layer warning. `what` names the event —
@@ -616,14 +688,19 @@ pub const W_STAGE_ABSENT: &str = "W-STAGE-ABSENT";
 /// **D-X** keeps this separate from [`W_EXIT_INERT`]: they are different
 /// claims. One says an attribute does not do what it looks like; this one says
 /// the staging is impossible. `--deny <CODE>` must be able to separate them.
-fn stage_absent_diag(character: &str, what: &str, span: Span) -> Diagnostic {
+fn stage_absent_diag(character: &str, how: Departure, what: &str, span: Span) -> Diagnostic {
+    let left = match how {
+        Departure::Exit => "left the stage on an earlier declared exit",
+        Departure::SceneChange => "was auto-hidden by an earlier `::bg` scene change",
+    };
     Diagnostic {
         code: W_STAGE_ABSENT.to_string(),
         severity: Severity::Warning,
         message: format!(
-            "`{character}` left the stage on an earlier declared exit and has not been shown \
-             again, so {what} here stages someone who is not present. Show them again with an \
-             `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2)"
+            "`{character}` {left} on a path that reaches here and has not been shown again, \
+             so {what} here stages someone who is not present. Show them again with an \
+             `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2, \
+             0.22.0 §12)"
         ),
         span,
         layer: Layer::Staging,
@@ -1340,10 +1417,37 @@ mod tests {
         );
     }
 
-    /// A `::bg` is a scene change: the stage is cleared and every exit mark goes
-    /// with it, so a line after the scene change is a fresh implicit entrance.
+    fn bg(location: &str) -> Node {
+        Node::Directive(Directive {
+            tag: "bg".to_string(),
+            attrs: vec![attr("location", location)],
+            when: None,
+            span: span(),
+        })
+    }
+
+    /// dsl 0.22.0 §12: a `::bg` auto-hides whoever is on stage and records
+    /// them as exited, so a later line by them — with no re-show — stages
+    /// someone who is not there.
     #[test]
-    fn a_scene_change_clears_the_exited_mark() {
+    fn a_line_after_a_scene_change_auto_hide_warns_absent() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let (st, hid) = lower_node(staged("vesna"), &bg("hold"), &[], &doms);
+        assert!(matches!(&hid[..], [InjectedCommand { kind: InjectKind::Hide { .. }, .. }]));
+        let (st2, _) = lower_node(st, &plain_line("vesna"), &[], &doms);
+        let d = st2
+            .diags
+            .iter()
+            .find(|d| d.code == "W-STAGE-ABSENT")
+            .unwrap_or_else(|| panic!("auto-hidden then spoke; got {:?}", st2.diags));
+        assert!(d.message.contains("auto-hidden by an earlier `::bg`"), "{}", d.message);
+    }
+
+    /// A scene change hides; it does not un-exit. A character who left on a
+    /// declared exit is still off stage after the `::bg`, and a re-show after
+    /// the auto-hide ends the absence as it always did.
+    #[test]
+    fn a_scene_change_keeps_the_exited_mark_and_a_re_show_clears_it() {
         let doms = action_domain_with_exits(&["go-under"]);
         let (st, _) = lower_node(
             staged("vesna"),
@@ -1351,18 +1455,44 @@ mod tests {
             &[],
             &doms,
         );
-        let bg = Node::Directive(Directive {
-            tag: "bg".to_string(),
-            attrs: vec![attr("location", "hold")],
-            when: None,
-            span: span(),
-        });
-        let (st, _) = lower_node(st, &bg, &[], &doms);
-        let (st2, _) = lower_node(st, &plain_line("vesna"), &[], &doms);
+        let (st, _) = lower_node(st, &bg("hold"), &[], &doms);
+        let (st2, _) = lower_node(st.clone(), &plain_line("vesna"), &[], &doms);
         assert!(
-            !st2.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"),
-            "a scene change resets the stage; got {:?}",
+            st2.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"),
+            "still gone after the scene change; got {:?}",
             st2.diags
         );
+        let (st, _) = lower_node(st, &auto_with_action("vesna", "brace"), &[], &doms);
+        let (st3, _) = lower_node(st, &plain_line("vesna"), &[], &doms);
+        assert!(
+            !st3.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"),
+            "re-shown; got {:?}",
+            st3.diags
+        );
+    }
+
+    /// The convergence join claims only what holds on every arm: a character
+    /// who left on one arm and stayed on the other is not present after it,
+    /// and is recorded as exited (may-absent → warn).
+    #[test]
+    fn join_keeps_presence_only_when_every_arm_agrees_and_unions_exits() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let entry = staged("vesna");
+        let (left, _) = lower_node(
+            entry.clone(),
+            &auto_with_action("vesna", "go-under"),
+            &[],
+            &doms,
+        );
+        let stayed = entry.clone();
+        let joined = StageState::join(&entry, vec![stayed.clone(), left]);
+        assert!(!joined.on_stage.contains_key("vesna"));
+        assert_eq!(joined.exited.get("vesna"), Some(&Departure::Exit));
+        let (after, _) = lower_node(joined, &plain_line("vesna"), &[], &doms);
+        assert!(after.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"));
+
+        let both = StageState::join(&entry, vec![stayed.clone(), stayed]);
+        assert!(both.on_stage.contains_key("vesna") && both.exited.is_empty());
+        assert!(StageState::join(&entry, Vec::new()).on_stage.contains_key("vesna"));
     }
 }

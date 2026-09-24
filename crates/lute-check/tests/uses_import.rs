@@ -44,6 +44,7 @@ fn run_bool(default: bool) -> StateDecl {
         ty: Type::Bool,
         default: Some(Literal::Bool(default)),
         namespace: Namespace::Run,
+        owner: None,
     }
 }
 
@@ -71,6 +72,7 @@ fn scene_override_of_imported_tier_flags_redeclare() {
             ty: Type::Bool,
             default: None,
             namespace: Namespace::Run,
+            owner: None,
         },
     );
     let imports = SchemaImports {

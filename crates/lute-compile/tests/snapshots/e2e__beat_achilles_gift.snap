@@ -71,7 +71,7 @@ expression: json
       "speaker": "achilles",
       "text": "You've come back again, lad. Take this.",
       "lineId": "hades.achilles.run12.achilles_0010",
-      "voiceKey": "achilles-0010"
+      "voiceKey": "hades.achilles.run12.achilles-0010"
     },
     {
       "kind": "choice",
@@ -111,7 +111,7 @@ expression: json
       "speaker": "achilles",
       "text": "Use it well.",
       "lineId": "hades.achilles.run12.achilles_0020",
-      "voiceKey": "achilles-0020"
+      "voiceKey": "hades.achilles.run12.achilles-0020"
     },
     {
       "kind": "jump",
@@ -125,7 +125,7 @@ expression: json
       "speaker": "achilles",
       "text": "Suit yourself.",
       "lineId": "hades.achilles.run12.achilles_0030",
-      "voiceKey": "achilles-0030"
+      "voiceKey": "hades.achilles.run12.achilles-0030"
     },
     {
       "kind": "jump",

@@ -22,12 +22,15 @@ pub enum Namespace {
 }
 
 /// A single `state:` declaration (dsl §9.3): `type` + optional `default`, plus
-/// the tier its path prefix maps to.
+/// the tier its path prefix maps to, and (dsl 0.22.0 §1.2) who writes it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StateDecl {
     pub ty: Type,
     pub default: Option<Literal>,
     pub namespace: Namespace,
+    /// `owner: engine` (dsl 0.22.0 §1.2): content `::set` of this path is
+    /// `E-ENGINE-OWNED-WRITE`. `None` = content-writable.
+    pub owner: Option<lute_manifest::types::Owner>,
 }
 
 /// The document's inline `state:` schema (dsl §9), path -> decl.
@@ -1353,6 +1356,7 @@ pub fn parse_meta_kind_with_defaults(
                                     ty: raw.ty,
                                     default: raw.default,
                                     namespace,
+                                    owner: raw.owner,
                                 },
                             );
                         }
@@ -1416,6 +1420,19 @@ fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String {
             yaml_shape(decl)
         );
     };
+    if let Some(owner) = map.get(yaml_key("owner")) {
+        if owner.as_str() != Some("engine") {
+            return format!(
+                "invalid state declaration for `{path}`: `owner:` is {}, but the only owner a \
+                 declaration can name is `engine` (`owner: engine` — the engine writes the \
+                 path; content may only read it); omit `owner:` for content-written state \
+                 (dsl 0.22.0 §1.2)",
+                owner
+                    .as_str()
+                    .map_or_else(|| yaml_shape(owner).to_string(), |s| format!("`{s}`"))
+            );
+        }
+    }
     let Some(ty) = map.get(yaml_key("type")) else {
         return format!(
             "invalid state declaration for `{path}`: the declaration has no `type:` key; \
@@ -1711,14 +1728,16 @@ fn sanitize_dup_block_keys(raw_yaml: &str) -> String {
     out
 }
 
-/// Raw `state:` entry (dsl §9.3): `{ type, default? }`. `Type` reuses the
-/// manifest's manual serde (inline `{ enum: [...] }` etc. work).
+/// Raw `state:` entry (dsl §9.3): `{ type, default?, owner? }`. `Type` reuses
+/// the manifest's manual serde (inline `{ enum: [...] }` etc. work).
 #[derive(serde::Deserialize)]
 struct StateDeclRaw {
     #[serde(rename = "type")]
     ty: Type,
     #[serde(default)]
     default: Option<Literal>,
+    #[serde(default)]
+    owner: Option<lute_manifest::types::Owner>,
 }
 
 fn yaml_key(k: &str) -> serde_yaml::Value {

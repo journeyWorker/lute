@@ -246,6 +246,7 @@ fn timeline_stamp_and_source_flatten() {
             timeline: Some(1),
             source: Some(Source {
                 component: "stinger".into(),
+                scope: "stinger#1".into(),
             }),
             ..Stamp::default()
         },
@@ -455,6 +456,7 @@ fn quest_record_serializes_per_spec() {
             on: None,
         }],
         rewards: Vec::new(),
+        tier: None,
         stamp: Stamp::default(),
     });
     assert_eq!(

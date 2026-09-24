@@ -26,7 +26,7 @@ fn with_occasions() -> CapabilitySnapshot {
             OccasionDecl {
                 name: name.into(),
                 select: OccasionSelect::First,
-                target: false,
+                target: false.into(),
                 description: None,
             },
         );
