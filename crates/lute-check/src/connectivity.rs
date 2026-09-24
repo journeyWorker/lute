@@ -14,7 +14,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, Document, Node};
+use lute_syntax::ast::{Arm, Assert, Document, Node};
 
 use crate::check::CheckResult;
 use crate::meta::{
@@ -1229,16 +1229,38 @@ pub fn unreachable_quest_ids(
 
 /// dsl 0.4.0 §4.2/§B: every relation name with at least one `::assert{R(…)}`
 /// site inside a node this root's [`check_reachability`] pass did NOT prove
-/// [`Reachability::Unreachable`] — the reachability-GATED refinement of
-/// `producible()`'s base case (c) (spec §4.2's "a node that is
-/// `E-CONN-UNREACHABLE`-clean"). `Reachable` AND `Unknown` both seed
-/// producibility: provable-only discipline demands `producible(R) == false`
-/// be a PROVEN fact before an objective gated on `R` is flagged dead, so a
-/// node this pass cannot resolve either way (`Unknown`, OR one this graph
-/// has no entry for at all — e.g. inside an `E-CONN-CYCLE`, or a scene whose
-/// identity triad this pass could not even compute) must never be treated
-/// as dead by omission; only a node PROVABLY `Unreachable` excludes its
-/// assert sites.
+/// [`Reachability::Unreachable`] — the relation-level projection of
+/// [`live_assert_sites`], read by `producible()`'s base case (c) (spec §4.2's
+/// "a node that is `E-CONN-UNREACHABLE`-clean").
+///
+/// Callers MUST pre-scope `docs`/`reach`/`ambiguous_quest_ids`/
+/// `unreachable_quests` to ONE resolved project root (`lute-cli`'s `by_root`
+/// grouping) — an assert site in one root can never seed a relation in a
+/// sibling root's `producible()` walk.
+pub fn live_assert_relations(
+    docs: &[(PathBuf, Document)],
+    reach: &BTreeMap<NodeId, Reachability>,
+    ambiguous_quest_ids: &BTreeSet<String>,
+    unreachable_quests: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    live_assert_sites(docs, reach, ambiguous_quest_ids, unreachable_quests)
+        .into_iter()
+        .filter(|(_, a)| !a.pattern.relation.is_empty())
+        .map(|(_, a)| a.pattern.relation.clone())
+        .collect()
+}
+
+/// Every `::assert` site, with its document, inside a node this root's
+/// [`check_reachability`] pass did NOT prove [`Reachability::Unreachable`] —
+/// the reachability gate both `producible()` (relation names,
+/// [`live_assert_relations`]) and the dsl 0.20.0 may set
+/// (`crate::fact_env::MaySet`, ground facts) seed from. `Reachable` AND
+/// `Unknown` both count: provable-only discipline demands an impossibility
+/// be a PROVEN fact before a guard over it is flagged dead, so a node this
+/// pass cannot resolve either way (`Unknown`, OR one this graph has no entry
+/// for at all — e.g. inside an `E-CONN-CYCLE`, or a scene whose identity
+/// triad this pass could not even compute) must never be treated as dead by
+/// omission; only a node PROVABLY `Unreachable` excludes its assert sites.
 ///
 /// A scene assert site's hosting `NodeId::Scene` is its own
 /// [`canonical_episode_key`] (every scene is always a `ConnGraph` node —
@@ -1254,24 +1276,24 @@ pub fn unreachable_quest_ids(
 /// an entry whenever it chooses — so it is never proven `Unreachable` and
 /// always counts as live.
 ///
-/// Callers MUST pre-scope `docs`/`reach`/`ambiguous_quest_ids`/
-/// `unreachable_quests` to ONE resolved project root (`lute-cli`'s `by_root`
-/// grouping) — an assert site in one root can never seed a relation in a
-/// sibling root's `producible()` walk.
-pub fn live_assert_relations(
-    docs: &[(PathBuf, Document)],
+/// Parse-failed asserts (D13's empty-relation sentinel) are included; each
+/// consumer skips them. Same root-scoping contract as
+/// [`live_assert_relations`].
+pub fn live_assert_sites<'d>(
+    docs: &'d [(PathBuf, Document)],
     reach: &BTreeMap<NodeId, Reachability>,
     ambiguous_quest_ids: &BTreeSet<String>,
     unreachable_quests: &BTreeSet<String>,
-) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for (_, doc) in docs {
+) -> Vec<(&'d Path, &'d Assert)> {
+    let mut out = Vec::new();
+    for (path, doc) in docs {
+        let mut sites = Vec::new();
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
             let node_reach =
                 scene_identity(doc).and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
             if assert_site_is_live(node_reach) {
                 for shot in &doc.shots {
-                    collect_assert_relations(&shot.body, &mut out);
+                    collect_asserts(&shot.body, &mut sites);
                 }
             }
         }
@@ -1289,19 +1311,20 @@ pub fn live_assert_relations(
                 )
             };
             if assert_site_is_live(node_reach) {
-                collect_assert_relations(&quest.body, &mut out);
+                collect_asserts(&quest.body, &mut sites);
             }
         }
         for entry in &doc.entries {
-            collect_assert_relations(&entry.body, &mut out);
+            collect_asserts(&entry.body, &mut sites);
         }
+        out.extend(sites.into_iter().map(|a| (path.as_path(), a)));
     }
     out
 }
 
 /// Every `::assert{R(…)}` relation name, per document — the producer half of
-/// the producer→consumer edge `check-project` already computes for
-/// `W-UNPROVEN-RELATIONAL` and renders nowhere (#15, T4.7).
+/// the producer→consumer edge `lute scenario`'s facts section renders
+/// (#15, T4.7).
 ///
 /// Unlike [`live_assert_relations`] this applies NO reachability gate: it
 /// answers "which file writes this relation", a question about the source
@@ -1313,16 +1336,21 @@ pub fn assert_relations_per_doc(
 ) -> BTreeMap<PathBuf, BTreeSet<String>> {
     let mut out = BTreeMap::new();
     for (path, doc) in docs {
-        let mut rels = BTreeSet::new();
+        let mut sites = Vec::new();
         for shot in &doc.shots {
-            collect_assert_relations(&shot.body, &mut rels);
+            collect_asserts(&shot.body, &mut sites);
         }
         for quest in &doc.quests {
-            collect_assert_relations(&quest.body, &mut rels);
+            collect_asserts(&quest.body, &mut sites);
         }
         for entry in &doc.entries {
-            collect_assert_relations(&entry.body, &mut rels);
+            collect_asserts(&entry.body, &mut sites);
         }
+        let rels: BTreeSet<String> = sites
+            .into_iter()
+            .filter(|a| !a.pattern.relation.is_empty())
+            .map(|a| a.pattern.relation.clone())
+            .collect();
         if !rels.is_empty() {
             out.insert(path.clone(), rels);
         }
@@ -1338,39 +1366,33 @@ fn assert_site_is_live(r: Option<Reachability>) -> bool {
     !matches!(r, Some(Reachability::Unreachable))
 }
 
-/// Recursively collect every `::assert{R(…)}` site's relation name from a
-/// node stream — mirrors `reachability.rs`'s `walk_reach` recursion shape
-/// (match-arm / branch-choice / hub-choice / on / objective bodies). A
-/// parse-failed assert (`pattern.relation.is_empty()`, D13) contributes
-/// nothing — never fabricates a relation name out of malformed input.
-fn collect_assert_relations(nodes: &[Node], out: &mut BTreeSet<String>) {
+/// Recursively collect every `::assert` site of a node stream — mirrors
+/// `reachability.rs`'s `walk_reach` recursion shape (match-arm /
+/// branch-choice / hub-choice / on / objective bodies).
+fn collect_asserts<'d>(nodes: &'d [Node], out: &mut Vec<&'d Assert>) {
     for node in nodes {
         match node {
-            Node::Assert(a) => {
-                if !a.pattern.relation.is_empty() {
-                    out.insert(a.pattern.relation.clone());
-                }
-            }
+            Node::Assert(a) => out.push(a),
             Node::Match(m) => {
                 for arm in &m.arms {
                     let body = match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
                     };
-                    collect_assert_relations(body, out);
+                    collect_asserts(body, out);
                 }
             }
             Node::Branch(b) => {
                 for choice in &b.choices {
-                    collect_assert_relations(&choice.body, out);
+                    collect_asserts(&choice.body, out);
                 }
             }
             Node::Hub(h) => {
                 for choice in &h.choices {
-                    collect_assert_relations(&choice.body, out);
+                    collect_asserts(&choice.body, out);
                 }
             }
-            Node::On(o) => collect_assert_relations(&o.body, out),
-            Node::Objective(o) => collect_assert_relations(&o.body, out),
+            Node::On(o) => collect_asserts(&o.body, out),
+            Node::Objective(o) => collect_asserts(&o.body, out),
             Node::Line(_)
             | Node::Directive(_)
             | Node::Set(_)

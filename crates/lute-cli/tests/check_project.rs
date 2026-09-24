@@ -1549,7 +1549,7 @@ fn dead_required_objective_never_drops_a_sibling_optional_objectives_live_assert
         "{v}"
     );
     // Load-bearing: `checkLive`'s `holds(liveRel(a))` cause is a RELATIONAL
-    // one, which `scan_objective_liveness` emits into `project_diags`
+    // one, which the project guard pass emits into `project_diags`
     // (never `files[].diagnostics` -- a per-file `check()` alone can't
     // decide it, R5-Undecided). If Fix 1 regressed (host-liveness gated on
     // the COMBINED unreachable set instead of lifecycle-only), `liveRel`
@@ -2337,4 +2337,111 @@ fn check_project_warns_on_an_unknown_entry_read() {
     assert_eq!(warns[0]["severity"], "warning");
     assert!(warns[0]["path"].as_str().unwrap().ends_with("scene.lute"), "{v}");
     assert!(warns[0]["message"].as_str().unwrap().contains("entry.nope.read"), "{v}");
+}
+
+// --- dsl 0.20.0 fact envelopes ------------------------------------------------
+
+const FACT_VOCAB: &str = "entities:\n  crew: { members: [vesna, toma] }\n  \
+    topic: { members: [heading, manifest] }\nrelations:\n  \
+    knows: { args: [crew, topic], tier: run }\n";
+
+/// The verified gap: a line guard over a ground fact asserted nowhere (the
+/// relation IS asserted, with other arguments) is `E-ARM-DEAD` under
+/// `check-project` and stays silent under single-file `check`, which cannot
+/// see sibling asserts.
+#[test]
+fn check_project_flags_a_line_guard_over_a_never_asserted_fact() {
+    let dir = temp_dir("fact-envelope-line-guard");
+    write(
+        &dir,
+        "archive.lute",
+        &format!(
+            "---\nkind: scene\ncharacter: haven\nseason: 1\nepisode: 1\n{FACT_VOCAB}---\n\
+             ## Shot 1.\n::assert{{knows(vesna, manifest)}}\n@vesna: noted.\n"
+        ),
+    );
+    let bridge = write(
+        &dir,
+        "bridge.lute",
+        &format!(
+            "---\nkind: scene\ncharacter: haven\nseason: 1\nepisode: 2\n{FACT_VOCAB}---\n\
+             ## Shot 1.\n@vesna{{when=\"holds(knows(vesna, manifest))\"}}: Two pods.\n\
+             @vesna{{when=\"holds(knows(toma, heading))\"}}: So you read the log.\n"
+        ),
+    );
+
+    let single = run(&["check", bridge.to_str().unwrap(), "--json"]);
+    assert_eq!(single.status.code(), Some(0), "{}", String::from_utf8_lossy(&single.stdout));
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let diags = v["project_diagnostics"].as_array().unwrap();
+    assert_eq!(diags.len(), 1, "only the never-asserted guard: {v}");
+    assert_eq!(diags[0]["code"], "E-ARM-DEAD", "{v}");
+    assert!(diags[0]["path"].as_str().unwrap().ends_with("bridge.lute"), "{v}");
+    assert!(
+        diags[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no seed, assert, rule, or engine relation produces `knows(toma, heading)`"),
+        "{v}"
+    );
+}
+
+/// A quest whose required objective is dead only at the argument level
+/// (the relation is asserted, the queried fact never is) is unreachable to
+/// complete, so a scene gated on `completed(Q)` is `E-CONN-UNREACHABLE` —
+/// connectivity and the diagnostic read the same verdict.
+#[test]
+fn argument_level_dead_objective_marks_completed_gate_unreachable() {
+    let dir = temp_dir("fact-envelope-completed-gate");
+    write(
+        &dir,
+        "q.lute",
+        &format!(
+            "---\nkind: quest\n{FACT_VOCAB}---\n<quest id=\"q\" start=\"true\">\n\
+             <objective id=\"o\" done=\"holds(knows(toma, heading))\"/>\n</quest>\n"
+        ),
+    );
+    write(
+        &dir,
+        "a.lute",
+        &format!(
+            "---\nkind: scene\ncharacter: haven\nseason: 1\nepisode: 1\n{FACT_VOCAB}---\n\
+             ## Shot 1.\n::assert{{knows(toma, manifest)}}\n@vesna: hi.\n"
+        ),
+    );
+    write(
+        &dir,
+        "gated.lute",
+        "---\nkind: scene\ncharacter: gated\nseason: 1\nepisode: 1\n\
+         after: 'completed(\"q\")'\n---\n## Shot 1.\n@narrator: hi\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let codes: Vec<&str> = v["project_diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        codes.iter().filter(|c| **c == "E-OBJECTIVE-UNSATISFIABLE").count(),
+        1,
+        "{v}"
+    );
+    assert!(codes.contains(&"E-CONN-UNREACHABLE"), "{v}");
+}
+
+/// dsl 0.20.0 §5 removes `W-UNPROVEN-RELATIONAL` (the 0.10.0 `W-INJECT-
+/// CONFLICT` precedent): the code leaves the deny registry, so naming it is a
+/// usage error rather than a promotion that silently protects nothing.
+#[test]
+fn deny_of_the_removed_unproven_relational_code_is_a_usage_error() {
+    let dir = temp_dir("deny-removed-unproven");
+    let out = run(&["check-project", dir.to_str().unwrap(), "--deny", "W-UNPROVEN-RELATIONAL"]);
+    assert_eq!(out.status.code(), Some(2), "{}", String::from_utf8_lossy(&out.stderr));
+    let ok = run(&["check-project", dir.to_str().unwrap(), "--deny", "W-FACT-GUARANTEED"]);
+    assert_eq!(ok.status.code(), Some(0), "{}", String::from_utf8_lossy(&ok.stderr));
 }

@@ -1235,15 +1235,14 @@ fn duplicate_quest_id_graph_dead_completed_is_unknown() {
 }
 
 // ---------------------------------------------------------------------
-// T7: `producible()` rule-dependency walk + relational-objective-liveness
-// (dsl 0.4.0 §4.2/§B) -- wired into the SAME by_root pipeline
-// `lute-cli::run_check_project` runs (reachability -> `live_assert_relations`
-// -> per-doc `producible()` -> `scan_objective_liveness`), reproduced here
-// so the connectivity layer's own test suite covers the full project-wide
-// wiring without depending on the `lute-cli` binary.
+// T7 / dsl 0.20.0: the fact envelope + relational guard pass (dsl 0.4.0
+// §4.2/§B, 0.20.0 §3/§5) -- wired into the SAME by_root pipeline
+// `lute-cli::run_check_project` runs (reachability -> `live_assert_sites`
+// -> `MaySet` -> `compute_must` -> `check_fact_guards`), reproduced here so the connectivity
+// layer's own test suite covers the full project-wide wiring without
+// depending on the `lute-cli` binary.
 // ---------------------------------------------------------------------
 
-use lute_check::producible::{producible, scan_objective_liveness};
 use lute_check::{fold_env, resolve_components, resolve_imports, CheckResult};
 use lute_core_span::{Diagnostic, Span};
 use lute_manifest::project::{load_project, project_providers, resolve_document_snapshot};
@@ -1289,8 +1288,8 @@ fn parse_meta(
 
 /// Reproduce `run_check_project`'s by_root T3-T7 pipeline over an explicit
 /// `(path, CheckInput)` list (all ONE resolved root) and return the
-/// project-wide diagnostics `producible()`/`scan_objective_liveness`
-/// contribute.
+/// project-wide diagnostics the fact-envelope guard pass and the scalar
+/// envelope contribute.
 fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, Diagnostic)> {
     let mut docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::new();
     let mut foldeds: Vec<lute_check::FoldedEnv> = Vec::new();
@@ -1314,27 +1313,26 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         &ambiguous_quests,
         &unreachable_quests,
     );
-    let live_asserts = lute_check::connectivity::live_assert_relations(
+    let mut root_vocab = lute_check::RootVocab::default();
+    for folded in &foldeds {
+        root_vocab.add(&folded.env.rel_vocab, &folded.env.domains);
+    }
+    let live_facts = lute_check::connectivity::live_assert_sites(
         &docs,
         &reach,
         &ambiguous_quests,
         &unreachable_quests,
-    );
-    let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
+    )
+    .into_iter()
+    .filter_map(|(_, a)| lute_check::GroundFact::from_pattern(&a.pattern));
+    let may = lute_check::MaySet::build(&root_vocab, live_facts);
+    let folded_refs: Vec<&lute_check::FoldedEnv> = foldeds.iter().collect();
+    let must = lute_check::compute_must(&docs, &folded_refs, &conn_graph, &root_vocab, &may);
+    let fact_env = lute_check::FactEnv::new(may, must.slots);
     let mut out = Vec::new();
     for (idx, (path, doc)) in docs.iter().enumerate() {
-        let folded = &foldeds[idx];
-        let prod = producible(&folded.env.rel_vocab, &live_asserts);
-        let defs = lute_check::DefTable {
-            bodies: &folded.def_bodies,
-            params: &folded.env.def_params,
-        };
-        let ctx = lute_check::DecideCtx {
-            schema: &folded.env.state,
-            dollar: None,
-            params: &no_params,
-        };
-        for d in scan_objective_liveness(doc, &prod, &defs, &ctx) {
+        let reported = &file_results[idx].1.diagnostics;
+        for d in lute_check::check_fact_guards(path, doc, &foldeds[idx], &fact_env, reported) {
             out.push((path.clone(), d));
         }
     }
@@ -1585,10 +1583,10 @@ fn assert_in_lifecycle_unreachable_quest_does_not_seed_producibility() {
 }
 
 // ---------------------------------------------------------------------
-// Sound partial evaluator (substitute dead fact-query -> false/0, then run
-// the EXISTING decide() R1-R5) -- NOT a top-level-only or naive nested-scan
-// match. Each case below is a worked example from the algorithm's own
-// contract.
+// Relational verdicts compose through the EXISTING decide() R1-R5 (a
+// never-producible fact query decides `false`/`0` under the fact envelope)
+// -- NOT a top-level-only or naive nested-scan match. Each case below is a
+// worked example from the algorithm's own contract.
 // ---------------------------------------------------------------------
 
 fn dead_relation_fixture(done: &str) -> String {
@@ -1601,7 +1599,7 @@ fn dead_relation_fixture(done: &str) -> String {
     )
 }
 
-// `count(deadR) > 0` -- substituted to `0 > 0` -- decides false -- DEAD.
+// `count(deadR) > 0` -- decides to `0 > 0` -- decides false -- DEAD.
 // A top-level-only match would MISS this (the top-level node is `_>_`, not
 // a bare fact-query call).
 #[test]
@@ -1612,13 +1610,13 @@ fn count_comparison_greater_than_zero_over_dead_relation_is_dead() {
         diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "count(deadR) > 0 substitutes to 0 > 0 -- provably false -- must be flagged: {diags:?}"
+        "count(deadR) > 0 decides to 0 > 0 -- provably false -- must be flagged: {diags:?}"
     );
 }
 
-// `count(deadR) >= 0` -- substituted to `0 >= 0` -- decides TRUE -- the
+// `count(deadR) >= 0` -- decides to `0 >= 0` -- decides TRUE -- the
 // SAME dead relation, a DIFFERENT comparison, is fine: never flagged. This
-// is exactly why constant substitution (not a nested "any dead call" scan)
+// is exactly why deciding through `decide()` (not a nested "any dead call" scan)
 // is required for soundness.
 #[test]
 fn count_comparison_greater_equal_zero_over_dead_relation_is_not_dead() {
@@ -1628,7 +1626,7 @@ fn count_comparison_greater_equal_zero_over_dead_relation_is_not_dead() {
         !diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "count(deadR) >= 0 substitutes to 0 >= 0 -- provably TRUE, not dead: {diags:?}"
+        "count(deadR) >= 0 decides to 0 >= 0 -- provably TRUE, not dead: {diags:?}"
     );
 }
 
@@ -1642,7 +1640,7 @@ fn and_with_dead_relation_short_circuits_dead() {
         diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "holds(deadR) && holds(liveR) substitutes to false && Undecided -- AND short-circuits \
+        "holds(deadR) && holds(liveR) decides to false && Undecided -- AND short-circuits \
          to false -- must be flagged: {diags:?}"
     );
 }
@@ -1658,13 +1656,13 @@ fn or_with_one_live_relation_is_not_dead() {
         !diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "holds(deadR) || holds(liveR) substitutes to false || Undecided -- OR never proves \
+        "holds(deadR) || holds(liveR) decides to false || Undecided -- OR never proves \
          false from one dead arm -- must NOT be flagged: {diags:?}"
     );
 }
 
 // `holds(deadR) || holds(unknownR)` -- `unknownR` is UNDECLARED (never
-// substituted, stays Undecided per R5) -- OR still can't prove false -- NOT
+// decided, stays Undecided per R5) -- OR still can't prove false -- NOT
 // dead.
 #[test]
 fn or_with_one_undeclared_relation_is_not_dead() {
@@ -1680,24 +1678,21 @@ fn or_with_one_undeclared_relation_is_not_dead() {
 }
 
 // ---------------------------------------------------------------------
-// Relational-cause emission gating (connectivity T7 review, RevT7 P2):
-// `scan_objective_liveness` must emit its relational
-// `E-OBJECTIVE-UNSATISFIABLE` ONLY when (a) at least one dead-relation
-// fact-query was actually substituted AND (b) that substitution is
-// LOAD-BEARING for the false result -- the pre-substitution guard was not
-// ALREADY false on its own. Otherwise a non-relational cause (or nothing at
-// all) owns the objective and the relational cause must stay silent (dsl
-// 0.4.0 §5.3/§4.2: one diagnostic per objective, naming whichever
-// standalone cause holds -- never a duplicate).
+// Relational-cause emission gating (connectivity T7 review, RevT7 P2): the
+// project guard pass (`check_fact_guards`) emits a relational
+// `E-OBJECTIVE-UNSATISFIABLE` ONLY when the fact envelope is LOAD-BEARING
+// for the false result -- the guard does not ALREADY decide false without
+// it. Otherwise a non-relational cause (or nothing at all) owns the
+// objective and the relational cause must stay silent (dsl 0.4.0 §5.3/§4.2:
+// one diagnostic per objective, naming whichever standalone cause holds --
+// never a duplicate).
 // ---------------------------------------------------------------------
 
-// `done="false"` has NO fact-query anywhere in it -- `dead_relations` stays
-// empty after substitution (there is nothing to substitute). Gate (a) must
-// suppress: the liveness scan must never contribute its own bogus
-// relational diagnostic naming an empty relation set (the ordinary
-// per-file reachability pass already owns dead-literal `done`, out of
-// scope for `check_project_fixture`, which only collects liveness-scan
-// output).
+// `done="false"` has NO fact-query anywhere in it -- it decides false with
+// or without the fact envelope, so the relational pass must stay silent
+// (the ordinary per-file reachability pass already owns dead-literal
+// `done`, out of scope for `check_project_fixture`, which only collects
+// project-pass output).
 #[test]
 fn literal_false_done_has_no_dead_relation_liveness_scan_stays_silent() {
     let text = dead_relation_fixture("false");
@@ -1706,13 +1701,13 @@ fn literal_false_done_has_no_dead_relation_liveness_scan_stays_silent() {
         !diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "done=\"false\" substitutes NO fact-query -- dead_relations is empty -- the liveness \
-         scan must not emit a relational cause naming an empty relation set (gate a): {diags:?}"
+        "done=\"false\" has no fact-query -- the per-file pass owns it, the relational pass \
+         must not emit a duplicate: {diags:?}"
     );
 }
 
 // `done="0 > 1"` -- same shape as above with a numeric comparison instead
-// of a bare literal: still no fact-query anywhere, still gate (a).
+// of a bare literal: still no fact-query anywhere.
 #[test]
 fn numeric_literal_comparison_done_has_no_dead_relation_liveness_scan_stays_silent() {
     let text = dead_relation_fixture("0 > 1");
@@ -1721,16 +1716,15 @@ fn numeric_literal_comparison_done_has_no_dead_relation_liveness_scan_stays_sile
         !diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "done=\"0 > 1\" substitutes NO fact-query -- dead_relations is empty -- the liveness \
-         scan must not emit a relational cause naming an empty relation set (gate a): {diags:?}"
+        "done=\"0 > 1\" has no fact-query -- the per-file pass owns it, the relational pass \
+         must not emit a duplicate: {diags:?}"
     );
 }
 
-// `done="holds(deadR)"` alone -- pre-substitution `decide()` is `Undecided`
-// (R5's fact-query firewall never reads the fact store on its own);
-// post-substitution it decides false. The dead-relation substitution is
-// the ONLY reason the guard flips to false -- load-bearing -- gate (b)
-// passes, and the scan must emit.
+// `done="holds(deadR)"` alone -- without the fact envelope `decide()` is
+// `Undecided` (R5); with it the query decides false. The envelope is the
+// ONLY reason the guard flips to false -- load-bearing -- and the pass must
+// emit.
 #[test]
 fn pure_dead_relation_guard_is_load_bearing_and_emits() {
     let text = dead_relation_fixture("holds(neverSeeded(ana))");
@@ -1739,19 +1733,16 @@ fn pure_dead_relation_guard_is_load_bearing_and_emits() {
         diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "holds(deadR) alone -- pre-substitution decide() is Undecided, post-substitution decides \
-         false -- the dead-relation substitution is load-bearing (gate b passes) -- must be \
-         flagged: {diags:?}"
+        "holds(deadR) alone -- Undecided without facts, false with them -- the fact envelope is \
+         load-bearing -- must be flagged: {diags:?}"
     );
 }
 
 // `done="false && holds(deadR)"` -- the literal `false` alone already
-// decides the ORIGINAL (pre-substitution) guard false via AND
-// short-circuit (`decide()`'s R4, independent of the Undecided
-// `holds(deadR)` on the other side) -- the dead relation is NOT
-// load-bearing. Gate (b) must suppress the relational cause; the ordinary
-// per-file reachability pass (`check_objective_reach`, `decide_slot` on the
-// raw guard) already independently proves the SAME objective dead for the
+// decides the guard false via AND short-circuit (`decide()`'s R4) without
+// the fact envelope -- the dead relation is NOT load-bearing. The relational
+// pass must stay silent; the ordinary per-file reachability pass
+// (`check_objective_reach`) already proves the SAME objective dead for the
 // non-relational reason. Exactly ONE unsatisfiable-family diagnostic must
 // land on this objective total -- never a relational duplicate.
 #[test]
@@ -1770,15 +1761,13 @@ fn false_and_dead_relation_relational_cause_suppressed_non_relational_owns_it() 
     assert_eq!(
         ordinary_unsat, 1,
         "the ordinary per-file reachability pass must independently prove `false && holds(deadR)` \
-         dead via decide_slot's AND short-circuit on the raw guard, no producible-substitution \
-         needed: {ordinary:?}"
+         dead via decide_slot's AND short-circuit on the raw guard: {ordinary:?}"
     );
     assert_eq!(
         liveness_unsat, 0,
-        "the relational liveness scan must SUPPRESS its own cause here -- decide() on the \
-         ORIGINAL (pre-substitution) guard already decides false via the `false` literal, so the \
-         dead-relation substitution is NOT load-bearing (gate b fails) -- the non-relational \
-         cause already owns this objective, no relational duplicate: {liveness:?}"
+        "the relational pass must stay silent here -- the guard already decides false without \
+         the fact envelope via the `false` literal, so the relational cause is NOT \
+         load-bearing: {liveness:?}"
     );
     assert_eq!(
         ordinary_unsat + liveness_unsat,

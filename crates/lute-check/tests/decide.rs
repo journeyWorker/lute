@@ -70,6 +70,7 @@ fn d(raw: &str) -> Option<Decided> {
         schema: &schema,
         dollar: None,
         params: &params,
+        facts: None,
     };
     let bodies = BTreeMap::new();
     let def_params = BTreeMap::new();
@@ -88,6 +89,7 @@ fn d_dollar(raw: &str) -> Option<Decided> {
         schema: &schema,
         dollar: Some(DollarBinding::Domain(&dom)),
         params: &params,
+        facts: None,
     };
     let bodies = BTreeMap::new();
     let def_params = BTreeMap::new();
@@ -105,6 +107,7 @@ fn d_val(raw: &str) -> Option<Decided> {
         schema: &schema,
         dollar: Some(DollarBinding::Value(Decided::Str("fond".to_string()))),
         params: &params,
+        facts: None,
     };
     let bodies = BTreeMap::new();
     let def_params = BTreeMap::new();
@@ -134,6 +137,7 @@ fn d_param(raw: &str) -> Option<Decided> {
         schema: &schema,
         dollar: None,
         params: &params,
+        facts: None,
     };
     let bodies = BTreeMap::new();
     let def_params = BTreeMap::new();
@@ -151,6 +155,7 @@ fn d_defs(raw: &str) -> Option<Decided> {
         schema: &schema,
         dollar: None,
         params: &params,
+        facts: None,
     };
     let mut bodies = BTreeMap::new();
     bodies.insert("never".to_string(), "1 > 2".to_string());
@@ -172,6 +177,7 @@ fn d_cycle(raw: &str) -> Option<Decided> {
         schema: &schema,
         dollar: None,
         params: &params,
+        facts: None,
     };
     let mut bodies = BTreeMap::new();
     bodies.insert("a".to_string(), "@b".to_string());

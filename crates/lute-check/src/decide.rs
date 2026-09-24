@@ -13,6 +13,12 @@
 //!
 //! D1: this is a closed static constant-folder, not an evaluator — it reads
 //! no runtime state and `lute-cel` stays parse-only.
+//!
+//! dsl 0.20.0 §5: with a fact envelope in scope (`DecideCtx::facts`, set
+//! only by `check-project`'s guard pass), R5's fact-query firewall opens for
+//! `holds`/`count`: a relational call decides from the project's may/must
+//! sets (`fact_env.rs`), and `count(P) ⋈ n` decides over its interval. It
+//! is still a closed fold — the envelope is precomputed, never evaluated.
 
 use std::collections::BTreeMap;
 
@@ -20,6 +26,7 @@ use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr, IdedExpr};
 use cel_parser::reference::Val;
 
 use crate::cel_expand::{expand_cel, DefTable};
+use crate::fact_env::{CountInterval, FactScope, HoldsVerdict, QueryPattern};
 use crate::match_check::{infer_domain, Domain, DomainInfo, DomainValue};
 use crate::meta::StateSchema;
 
@@ -48,6 +55,12 @@ pub struct DecideCtx<'a> {
     pub dollar: Option<DollarBinding<'a>>,
     /// Component params (name -> domain) for §6 slots; empty elsewhere.
     pub params: &'a BTreeMap<String, DomainInfo>,
+    /// dsl 0.20.0 §5: the project's fact envelope bound to the slot being
+    /// decided. `None` (single-file `check`, the LSP, the compiler) keeps
+    /// every relational call undecided (R5); `Some` resolves `holds(P)` /
+    /// `count(P)` from the may/must sets. `validAt` and `now()` stay
+    /// undecided either way.
+    pub facts: Option<FactScope<'a>>,
 }
 
 /// Wrap a `f64` arithmetic/negation result: non-finite (overflow, `/0`)
@@ -220,14 +233,15 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
 
     // R5: an unexpanded `@ref(args)` marker (a bodiless def — a component
     // param — or any other expansion failure `decide_slot` left intact,
-    // D3), `isSet()`, and any fact-query/`now()` call (`is_profile_fact_query`,
-    // cel_resolve.rs) are always undecided — `decide()` never reads runtime
-    // state or resolves an unrecognized macro.
-    if name.starts_with(lute_cel::REF_MARKER)
-        || name.eq_ignore_ascii_case("isSet")
-        || crate::cel_resolve::is_profile_fact_query(c)
-    {
+    // D3) and `isSet()` are always undecided — `decide()` never reads
+    // runtime state or resolves an unrecognized macro.
+    if name.starts_with(lute_cel::REF_MARKER) || name.eq_ignore_ascii_case("isSet") {
         return None;
+    }
+    // A fact-query/`now()` call (`is_profile_fact_query`, cel_resolve.rs) is
+    // undecided unless a fact envelope is in scope (dsl 0.20.0 §5).
+    if crate::cel_resolve::is_profile_fact_query(c) {
+        return decide_fact_query(c, ctx);
     }
 
     match (name, c.args.as_slice()) {
@@ -259,11 +273,13 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         // R2 first (can decide even when the subject side is itself
         // undecided), then the R3 fallback: both sides fully decided.
         (n, [a, b]) if n == op::EQUALS || n == op::NOT_EQUALS => {
-            decide_domain_equality(n, &a.expr, &b.expr, ctx).or_else(|| {
-                let da = decide(&a.expr, ctx)?;
-                let db = decide(&b.expr, ctx)?;
-                apply_op(n, &[da, db])
-            })
+            decide_count_cmp(n, &a.expr, &b.expr, ctx)
+                .or_else(|| decide_domain_equality(n, &a.expr, &b.expr, ctx))
+                .or_else(|| {
+                    let da = decide(&a.expr, ctx)?;
+                    let db = decide(&b.expr, ctx)?;
+                    apply_op(n, &[da, db])
+                })
         }
         (op::IN, [a, b]) => decide_domain_in(&a.expr, &b.expr, ctx).or_else(|| {
             let needle = decide(&a.expr, ctx)?;
@@ -284,17 +300,88 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         (op::ADD, [a, b])
         | (op::SUBSTRACT, [a, b])
         | (op::MULTIPLY, [a, b])
-        | (op::DIVIDE, [a, b])
-        | (op::GREATER, [a, b])
-        | (op::GREATER_EQUALS, [a, b])
-        | (op::LESS, [a, b])
-        | (op::LESS_EQUALS, [a, b]) => {
+        | (op::DIVIDE, [a, b]) => {
             let da = decide(&a.expr, ctx)?;
             let db = decide(&b.expr, ctx)?;
             apply_op(name, &[da, db])
         }
+        (op::GREATER, [a, b])
+        | (op::GREATER_EQUALS, [a, b])
+        | (op::LESS, [a, b])
+        | (op::LESS_EQUALS, [a, b]) => decide_count_cmp(name, &a.expr, &b.expr, ctx).or_else(|| {
+            let da = decide(&a.expr, ctx)?;
+            let db = decide(&b.expr, ctx)?;
+            apply_op(name, &[da, db])
+        }),
         _ => None, // R5: unrecognized shape (index, unknown fn, wrong arity, …)
     }
+}
+
+/// dsl 0.20.0 §5: a well-shaped fact query under a fact envelope.
+/// `holds(P)` decides `false` when no may-fact matches `P` and `true` when a
+/// must-fact at the slot does; `count(P)` decides only when its interval is a
+/// single point. `validAt` and `now()` never decide (narrative time is not
+/// part of the envelope).
+fn decide_fact_query(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
+    let scope = ctx.facts?;
+    let Expr::Call(pattern) = &c.args.first()?.expr else {
+        return None;
+    };
+    match c.func_name.as_str() {
+        "holds" => match scope.holds(&QueryPattern::from_call(pattern)?) {
+            HoldsVerdict::Impossible => Some(Decided::Bool(false)),
+            HoldsVerdict::Guaranteed(_) => Some(Decided::Bool(true)),
+            HoldsVerdict::Possible => None,
+        },
+        "count" => {
+            let iv = scope.count(&QueryPattern::from_call(pattern)?)?;
+            (iv.hi == Some(iv.lo)).then(|| Decided::Num(iv.lo as f64))
+        }
+        _ => None,
+    }
+}
+
+/// The `count(P)` interval of `expr` when it is directly a well-shaped
+/// `count` call and a fact envelope is in scope.
+fn count_interval(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<CountInterval> {
+    let scope = ctx.facts?;
+    let Expr::Call(c) = expr else {
+        return None;
+    };
+    if c.func_name != "count" || !crate::cel_resolve::is_profile_fact_query(c) {
+        return None;
+    }
+    let Expr::Call(pattern) = &c.args[0].expr else {
+        return None;
+    };
+    scope.count(&QueryPattern::from_call(pattern)?)
+}
+
+/// dsl 0.20.0 §5: `count(P) ⋈ n` (either operand order) decided over the
+/// interval `[|Must ∩ P|, |May ∩ P|]` rather than a point — `count(P) >= 5`
+/// is false when at most two facts can ever match, whatever the run.
+fn decide_count_cmp(op_name: &str, lhs: &Expr, rhs: &Expr, ctx: &DecideCtx<'_>) -> Option<Decided> {
+    let (iv, other, op_name) = match count_interval(lhs, ctx) {
+        Some(iv) => (iv, rhs, op_name),
+        None => (count_interval(rhs, ctx)?, lhs, flip_comparison(op_name)?),
+    };
+    let Decided::Num(n) = decide(other, ctx)? else {
+        return None;
+    };
+    iv.compare(op_name, n).map(Decided::Bool)
+}
+
+/// A comparison operator with its operands exchanged (`n < x` is `x > n`).
+fn flip_comparison(op_name: &str) -> Option<&'static str> {
+    Some(match op_name {
+        op::GREATER => op::LESS,
+        op::GREATER_EQUALS => op::LESS_EQUALS,
+        op::LESS => op::GREATER,
+        op::LESS_EQUALS => op::GREATER_EQUALS,
+        op::EQUALS => op::EQUALS,
+        op::NOT_EQUALS => op::NOT_EQUALS,
+        _ => return None,
+    })
 }
 
 /// Decide a MARKED CEL AST (`lute_cel::parse_slot_marked_refs`) under R1–R5

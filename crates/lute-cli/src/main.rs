@@ -765,6 +765,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-ENTRY-ATTR",
     "E-ENTRY-ID-DUP",
     "E-ENTRY-SERIES-ORDER",
+    "E-ENTRY-UNREACHABLE",
     "E-ENUM-DEFAULT-NOT-MEMBER",
     "E-ENUM-EXITS-NOT-MEMBER",
     "E-ENUM-MISSING-SEMANTICS",
@@ -918,6 +919,7 @@ const DENIABLE_CODES: &[&str] = &[
     "W-DOMAIN-UNREAD",
     "W-ENTRY-REF-UNKNOWN",
     "W-EXIT-INERT",
+    "W-FACT-GUARANTEED",
     "W-INTO-SET-DUP",
     "W-L10N-MISSING",
     "W-LUTE-VERSION-STALE",
@@ -932,7 +934,6 @@ const DENIABLE_CODES: &[&str] = &[
     "W-TIMELINE-TOTAL",
     "W-TIMELINE-TRACKS",
     "W-TRACE-MOCK-UNPRODUCIBLE",
-    "W-UNPROVEN-RELATIONAL",
     "W-WHEN-TEST-LITERAL",
 ];
 
@@ -2086,17 +2087,23 @@ fn normalize_span_from_text(text: &str, span: Span) -> Span {
 struct ConnFixpoint {
     reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
     reach_diags: Vec<(PathBuf, Diagnostic)>,
-    live_asserts: BTreeSet<String>,
+    /// dsl 0.20.0 §3/§4: the root's fact envelope at the converged `reach` —
+    /// the one the project-level relational guard pass decides with.
+    fact_env: lute_check::FactEnv,
+    /// dsl 0.20.0 §6: per scene key, the facts guaranteed on arrival —
+    /// `lute scenario`'s fact envelope.
+    scene_must: BTreeMap<String, Vec<lute_check::fact_env::MustFact>>,
     dead_required_objective_quests: BTreeSet<String>,
     unreachable_quests: BTreeSet<String>,
 }
 
-/// Iterate `reach -> live_asserts -> producible -> dead_required_objective_quests
-/// -> grow unreachable_quests` to a FINITE FIXPOINT (dsl 0.4.0 §8.2 rule C4 +
-/// design spec §4.2's closure), shared by [`run_check_project`] and
+/// Iterate `reach -> live assert sites -> May (fact envelope) ->
+/// dead_required_objective_quests / dead_lifecycle_quests -> grow
+/// unreachable_quests` to a FINITE FIXPOINT (dsl 0.4.0 §8.2 rule C4 + design
+/// spec §4.2's closure, dsl 0.20.0 §3), shared by [`run_check_project`] and
 /// [`assemble_root_scenario`].
 ///
-/// **Fix 1 (reviewer, soundness/false-positive):** `live_assert_relations`'s
+/// **Fix 1 (reviewer, soundness/false-positive):** `live_assert_sites`'s
 /// per-quest host-liveness check is seeded ONLY from
 /// `lifecycle_unreachable_quests` (`start=false`/`fail=true` -- 0.4 §5.3:
 /// `fail` "precedes completion... fails at the first evaluation instant",
@@ -2113,32 +2120,28 @@ struct ConnFixpoint {
 ///
 /// **Fix 2 (advisory, completeness): finite fixpoint, not one round.** Each
 /// iteration recomputes `reach` from the CURRENT `unreachable_quests`, then
-/// `live_asserts`/`producible()`/`dead_required_objective_quests` from that
+/// the live assert sites / the may set / the dead-quest sets from that
 /// `reach`, then grows `unreachable_quests` by the union. The composition is
 /// MONOTONE over the finite quest-id domain:
 /// - `eval_reach`'s `And`/`Or` lattice is monotone in `unreachable_quests`
 ///   (more unreachable input never turns a node MORE reachable) -> `reach`
 ///   only ever loses `Reachable`/`Unknown` entries to `Unreachable` as the
 ///   set grows, never the reverse.
-/// - `live_assert_relations`'s scene branch reads `reach` directly -> the
-///   live-assert-relation set can only SHRINK (or stay the same) as `reach`
-///   tightens.
-/// - `producible()` is a monotone least-fixpoint over its own base-case
-///   assert-site seeds -> fewer live asserts can only shrink the
-///   producible-`true` set, never grow it.
-/// - `dead_guard`/`decide_slot`'s dead-relation substitution only SUBSTITUTES
-///   MORE fact-query calls as the non-producible set grows, and CEL boolean
-///   composition (`&&`/`||`, R1-R5) is monotone in "more constants known"
-///   for deciding `false` -- so `dead_required_objective_quests` only grows.
+/// - `live_assert_sites`'s scene branch reads `reach` directly -> the live
+///   site set can only SHRINK (or stay the same) as `reach` tightens.
+/// - `MaySet::build` is a monotone least fixpoint over its seeds -> fewer
+///   live asserts can only shrink `May`, never grow it.
+/// - a smaller `May` only turns *possible* `holds`/`count` verdicts into
+///   decided ones (Kleene composition, R1-R5, never un-decides a value) --
+///   so both dead-quest sets only grow.
 ///
 /// So `unreachable_quests` is monotone NON-DECREASING, bounded above by the
-/// full finite `quest_ids` set (every id `dead_required_objective_quests`
-/// can ever contain is itself one of this root's declared quests) --
-/// the loop terminates in AT MOST `quest_ids.len() + 1` rounds (it either
-/// adds >=1 new id, or stabilizes and returns). Every id ever added is
-/// PROVABLY dead/unreachable at the round it was added (same provable-only
-/// signal as the single-round version) -- monotone growth of a
-/// provable-only set can never introduce a false positive.
+/// full finite `quest_ids` set (every id either set can ever contain is
+/// itself one of this root's declared quests) -- the loop terminates in AT
+/// MOST `quest_ids.len() + 1` rounds (it either adds >=1 new id, or
+/// stabilizes and returns). Every id ever added is PROVABLY dead/unreachable
+/// at the round it was added -- monotone growth of a provable-only set can
+/// never introduce a false positive.
 fn compute_conn_fixpoint(
     group: &[(PathBuf, lute_syntax::ast::Document)],
     group_full: &DocGroup,
@@ -2149,11 +2152,22 @@ fn compute_conn_fixpoint(
 ) -> ConnFixpoint {
     let lifecycle_unreachable_quests =
         lute_check::connectivity::unreachable_quest_ids(group, file_results);
-    let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
+    let mut root_vocab = lute_check::RootVocab::default();
+    for (_path, _doc, folded) in group_full {
+        root_vocab.add(&folded.env.rel_vocab, &folded.env.domains);
+    }
     let mut unreachable_quests = lifecycle_unreachable_quests.clone();
-    // dsl 0.10.0 §5.1 (D-N): grows inside the loop like `newly_dead`, and is
-    // tracked separately so the two derived causes keep distinct verdict text.
-    let mut dead_start_quests: BTreeSet<String> = BTreeSet::new();
+    // dsl 0.10.0 §5.1 (D-N), dsl 0.20.0 §5: grows inside the loop like
+    // `newly_dead`, and is tracked separately so the two derived causes keep
+    // distinct verdict text.
+    let mut dead_lifecycle_quests: BTreeSet<String> = BTreeSet::new();
+    // dsl 0.20.0 §4: the must sets, computed ONCE from the first round's may
+    // set. `May` only shrinks across rounds and `Must` reads it solely to
+    // prove negated rule atoms, so the first (largest) `May` keeps `Must`
+    // sound for every later round — and a fixed `Must` keeps the dead-quest
+    // sets monotone (the termination argument above).
+    let mut must: Option<lute_check::FactMust> = None;
+    let foldeds: Vec<&lute_check::FoldedEnv> = group_full.iter().map(|(_, _, f)| f).collect();
     loop {
         let (reach, reach_diags) = lute_check::connectivity::check_reachability(
             conn_graph,
@@ -2161,72 +2175,70 @@ fn compute_conn_fixpoint(
             ambiguous_quests,
             &unreachable_quests,
         );
-        let live_asserts = lute_check::connectivity::live_assert_relations(
+        let live_facts = lute_check::connectivity::live_assert_sites(
             group,
             &reach,
             ambiguous_quests,
             &lifecycle_unreachable_quests,
-        );
+        )
+        .into_iter()
+        .filter_map(|(_path, a)| lute_check::GroundFact::from_pattern(&a.pattern));
+        let may = lute_check::MaySet::build(&root_vocab, live_facts);
+        let must = must.get_or_insert_with(|| {
+            lute_check::compute_must(group, &foldeds, conn_graph, &root_vocab, &may)
+        });
+        let fact_env = lute_check::FactEnv::new(may, must.slots.clone());
         let mut newly_dead: BTreeSet<String> = BTreeSet::new();
-        // dsl 0.10.0 §5.1 (D-N): a quest whose `start=` is relationally dead
-        // can never activate. `scan_objective_liveness` says so as a
-        // diagnostic, but that diagnostic lands in `project_diags` and NEVER
-        // in `file_results`, so `unreachable_quest_ids` — which scans the
-        // per-file `check()` output — cannot see it. Connectivity reads the
-        // FACT from `dead_start_quests` instead, exactly as it already reads
-        // `dead_required_objective_quests` rather than the diagnostic that
-        // cause emits.
-        let mut newly_dead_start: BTreeSet<String> = BTreeSet::new();
-        for (_path, doc, folded) in group_full {
-            let producible_map =
-                lute_check::producible::producible(&folded.env.rel_vocab, &live_asserts);
-            let defs = lute_check::DefTable {
-                bodies: &folded.def_bodies,
-                params: &folded.env.def_params,
-            };
-            let ctx = lute_check::DecideCtx {
-                schema: &folded.env.state,
-                dollar: None,
-                params: &no_params,
-            };
-            newly_dead.extend(lute_check::producible::dead_required_objective_quests(
+        // A quest whose `start=` decides false (or `fail=` true) only under
+        // the fact envelope can never complete. The project guard pass says
+        // so as a diagnostic, but that diagnostic lands in `project_diags`
+        // and NEVER in `file_results`, so `unreachable_quest_ids` — which
+        // scans the per-file `check()` output — cannot see it. Connectivity
+        // reads the FACT from `dead_lifecycle_quests` instead, exactly as it
+        // reads `dead_required_objective_quests` rather than the diagnostic
+        // that cause emits.
+        let mut newly_dead_lifecycle: BTreeSet<String> = BTreeSet::new();
+        for (path, doc, folded) in group_full {
+            newly_dead.extend(lute_check::fact_check::dead_required_objective_quests(
+                path,
                 doc,
-                &producible_map,
+                folded,
+                &fact_env,
                 ambiguous_quests,
-                &defs,
-                &ctx,
             ));
-            newly_dead_start.extend(lute_check::producible::dead_start_quests(
+            newly_dead_lifecycle.extend(lute_check::fact_check::dead_lifecycle_quests(
+                path,
                 doc,
-                &producible_map,
+                folded,
+                &fact_env,
                 ambiguous_quests,
-                &defs,
-                &ctx,
             ));
         }
-        // Both derived sets are relational consequences and both only ever
-        // GROW, so the fixpoint argument in this function's doc is unchanged.
-        dead_start_quests.extend(newly_dead_start);
+        // Both derived sets only ever GROW, so the fixpoint argument in this
+        // function's doc holds.
+        dead_lifecycle_quests.extend(newly_dead_lifecycle);
         let grown: BTreeSet<String> = lifecycle_unreachable_quests
             .iter()
             .cloned()
-            .chain(dead_start_quests.iter().cloned())
+            .chain(dead_lifecycle_quests.iter().cloned())
             .chain(newly_dead)
             .collect();
         if grown == unreachable_quests {
-            // A dead-`start` quest is a LIFECYCLE cause, not a dead-objective
-            // one: it must reach `reach_verdict_text`'s `E-QUEST-UNREACHABLE`
-            // branch, not the `E-OBJECTIVE-UNSATISFIABLE` one that is checked
-            // first. Subtract it here so the two causes keep their own text.
+            // A dead-lifecycle quest is a LIFECYCLE cause, not a
+            // dead-objective one: it must reach `reach_verdict_text`'s
+            // `E-QUEST-UNREACHABLE` branch, not the `E-OBJECTIVE-UNSATISFIABLE`
+            // one that is checked first. Subtract it here so the two causes
+            // keep their own text.
             let dead_required_objective_quests: BTreeSet<String> = unreachable_quests
                 .difference(&lifecycle_unreachable_quests)
-                .filter(|id| !dead_start_quests.contains(*id))
+                .filter(|id| !dead_lifecycle_quests.contains(*id))
                 .cloned()
                 .collect();
             return ConnFixpoint {
                 reach,
                 reach_diags,
-                live_asserts,
+                fact_env,
+                scene_must: must.scene_entry.clone(),
                 dead_required_objective_quests,
                 unreachable_quests,
             };
@@ -2346,12 +2358,11 @@ fn reconcile_collected(
                 .push((info.id.clone(), info.span));
         }
         // T7/T14/Fix2 wiring: `compute_conn_fixpoint` iterates the
-        // reach/live_asserts/producible/dead-required-objective composition
-        // to a finite fixpoint (see its own doc comment for the
-        // termination + soundness argument) -- `no_params`/`ambiguous_quests`
-        // are shared with the envelope wiring below.
+        // reach/live-assert/may-set/dead-quest composition to a finite
+        // fixpoint (see its own doc comment for the termination + soundness
+        // argument) -- `ambiguous_quests` is shared with the envelope wiring
+        // below.
         let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(group);
-        let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
         let fp = compute_conn_fixpoint(
             group,
             group_full,
@@ -2373,24 +2384,16 @@ fn reconcile_collected(
             group,
             &fp.unreachable_quests,
         ));
+        // dsl 0.20.0 §5: every guard slot re-decided under the root's fact
+        // envelope (built once, by the fixpoint above). Only verdicts the
+        // facts newly make decidable are added; one the per-file `check()`
+        // already reported for the same slot is not repeated.
         for (path, doc, folded) in group_full {
-            let producible =
-                lute_check::producible::producible(&folded.env.rel_vocab, &fp.live_asserts);
-            let defs = lute_check::DefTable {
-                bodies: &folded.def_bodies,
-                params: &folded.env.def_params,
-            };
-            // `<objective>` attrs never have `$` in scope (mirrors
-            // `check_objective_reach`'s own `base_ctx`); component params
-            // are empty here (an objective is never authored inside a
-            // standalone component-file self-check).
-            let ctx = lute_check::DecideCtx {
-                schema: &folded.env.state,
-                dollar: None,
-                params: &no_params,
-            };
-            for d in lute_check::producible::scan_objective_liveness(doc, &producible, &defs, &ctx)
-            {
+            let reported = file_results
+                .iter()
+                .find(|(p, _)| p == path)
+                .map_or(&[][..], |(_, r)| r.diagnostics.as_slice());
+            for d in lute_check::check_fact_guards(path, doc, folded, &fp.fact_env, reported) {
                 project_diags.push((path.clone(), d));
             }
         }
@@ -3107,6 +3110,10 @@ struct RootScenario {
     /// awake the tool that exists to say what is true on arrival did not
     /// mention the subject (#15, T4.7).
     rel_vocab: lute_check::RelVocab,
+    /// dsl 0.20.0 §6: per scene key, the facts guaranteed on arrival (the
+    /// fact envelope beside the scalar one), each with where it is
+    /// established.
+    scene_must: BTreeMap<String, Vec<lute_check::fact_env::MustFact>>,
 }
 
 /// Assemble [`RootScenario`] for one resolved root's docs — mirrors
@@ -3141,6 +3148,7 @@ fn assemble_root_scenario(
     let reach = fp.reach;
     let unreachable_quests = fp.unreachable_quests;
     let dead_required_objective_quests = fp.dead_required_objective_quests;
+    let scene_must = fp.scene_must;
 
     let mut per_doc = envelope::PerDocEffects::default();
     let mut envelope_d: BTreeSet<String> = BTreeSet::new();
@@ -3218,6 +3226,7 @@ fn assemble_root_scenario(
         docs,
         per_doc,
         rel_vocab,
+        scene_must,
     }
 }
 
@@ -3579,6 +3588,17 @@ fn print_path_set(set: &BTreeSet<String>) {
     }
 }
 
+/// dsl 0.20.0 §6: the fact envelope — each fact guaranteed on arrival with
+/// where it is established (an assert site, an enclosing guard, a seed).
+fn print_must_facts(facts: &[lute_check::fact_env::MustFact]) {
+    if facts.is_empty() {
+        println!("    (none)");
+    }
+    for m in facts {
+        println!("    - {} ({})", m.fact, m.provenance);
+    }
+}
+
 /// Every node from which `node` is transitively reachable in the prerequisite
 /// graph — the writers whose writes provably happen BEFORE control reaches
 /// it, which is the only thing a PRE-ENTRY envelope may claim. `g.edges` is
@@ -3703,10 +3723,10 @@ fn print_path_set_with_writers(paths: &BTreeSet<String>, writers: &WriterSplit) 
 
 /// The relational layer the scalar envelope tables cannot show: every
 /// declared relation, whether static analysis can produce it, and which
-/// documents assert it. `producible` and `live_assert_relations` are the SAME
-/// functions `check-project` runs to decide `W-UNPROVEN-RELATIONAL`; this
-/// renders what they already computed rather than deciding anything (#15,
-/// T4.7).
+/// documents assert it. `producible` reads the SAME reachability-gated
+/// assert sites (`live_assert_relations`) the `check-project` fact envelope
+/// seeds from; this renders relation-level facts rather than deciding
+/// anything (#15, T4.7).
 fn print_facts_section(scenario: &RootScenario, root: &Path) {
     let vocab = &scenario.rel_vocab;
     if vocab.relations.is_empty() {
@@ -3831,6 +3851,8 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str, root: &Path) {
     print_path_set_with_writers(&env.guaranteed, &writers);
     println!("  Possible (set on at least one declared route reaching this node):");
     print_path_set_with_writers(&env.possible, &writers);
+    println!("  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):");
+    print_must_facts(scenario.scene_must.get(key).map_or(&[], Vec::as_slice));
 
     let mut single: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
     if let Some(reads) = scenario.reads_per_scene.get(key) {

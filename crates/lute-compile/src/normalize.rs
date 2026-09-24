@@ -543,6 +543,7 @@ fn decide_component_expr(
         schema,
         dollar: dollar.map(DollarBinding::Value),
         params: &empty_params,
+        facts: None,
     };
     decide_slot(raw, &defs, &ctx)
 }

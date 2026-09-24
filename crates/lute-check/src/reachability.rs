@@ -102,6 +102,12 @@ pub(crate) const E_OBJECTIVE_CONTRADICTION: &str = "E-OBJECTIVE-CONTRADICTION";
 /// visibility, so completion may still be reachable.
 pub(crate) const W_OBJECTIVE_HIDDEN: &str = "W-OBJECTIVE-HIDDEN";
 
+/// `E-ENTRY-UNREACHABLE` (dsl 0.20.0 §5): a lore entry whose `when`
+/// eligibility guard provably never holds — the entry is never presented.
+/// Decided per file when the guard is scalar-decidable (here), and by the
+/// project pass (`crate::fact_check`) when only the fact envelope decides it.
+pub const E_ENTRY_UNREACHABLE: &str = "E-ENTRY-UNREACHABLE";
+
 /// `E-UNSET-LITERAL` (dsl 0.5.2 §2): a CEL guard slot (`<when test>`,
 /// `<choice when>`, `<match on>` subject, `<objective when/done>`, or
 /// `<quest start/fail>`) comparing a maybe-unset finite-domain subject to
@@ -239,6 +245,7 @@ pub(crate) fn check_reachability(doc: &Document, folded: &FoldedEnv) -> Vec<Diag
         schema: &folded.env.state,
         dollar: None,
         params: &param_domains,
+        facts: None,
     };
     check_reachability_in(doc, &defs, &base_ctx)
 }
@@ -275,7 +282,23 @@ pub(crate) fn check_reachability_in(
     }
     // dsl 0.19.0 §4: an entry body is an ordinary node stream — its
     // `<match>` arms get the same dead-arm / dead-otherwise verdicts.
+    // dsl 0.20.0 §5: a `when` that decides false never lets the entry show.
     for entry in &doc.entries {
+        if let Some(when) = entry.when.as_ref().filter(|w| !w.raw.trim().is_empty()) {
+            if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, base_ctx) {
+                diags.push(diag(
+                    E_ENTRY_UNREACHABLE,
+                    Severity::Error,
+                    format!(
+                        "entry `{}` is never eligible: its `when` guard `{}` is provably false \
+                         (dsl 0.20.0 §5)",
+                        entry.id,
+                        when.raw.trim()
+                    ),
+                    when.span,
+                ));
+            }
+        }
         walk_reach(&entry.body, defs, base_ctx, &mut diags);
     }
     diags
@@ -330,6 +353,7 @@ fn walk_reach(
                     schema: ctx.schema,
                     dollar: Some(DollarBinding::Domain(&dom)),
                     params: ctx.params,
+                    facts: ctx.facts,
                 };
                 diags.extend(check_match_reach(m, defs, &match_ctx));
                 for arm in &m.arms {
@@ -480,7 +504,7 @@ fn domain_valid_item(lit_raw: &str, dom: &DomainInfo) -> Option<CoverItem> {
 /// (finding 2): the literal-level code OWNS the root for such an arm —
 /// cause 1 (dead-guard) below MUST NOT also report `E-ARM-DEAD` on it, even
 /// when the arm's guard independently decides false.
-fn arm_has_foreign_literal(pat: &lute_syntax::ast::IsPattern, dom: &DomainInfo) -> bool {
+pub(crate) fn arm_has_foreign_literal(pat: &lute_syntax::ast::IsPattern, dom: &DomainInfo) -> bool {
     is_pattern_literals(&pat.raw, pat.span)
         .iter()
         .any(|(lit_raw, _)| domain_valid_item(lit_raw, dom).is_none())
@@ -937,8 +961,8 @@ fn check_objective_contradiction(
 /// query, a `@ref`, a second path, or anything else puts it out of domain.
 ///
 /// Parsed through the SAME expand-then-marked-reparse pipeline `decide_slot`
-/// and `producible::dead_guard` use, so this analysis and reachability can
-/// never see different trees for the same raw text.
+/// and the project guard pass (`fact_check.rs`) use, so this analysis and
+/// reachability can never see different trees for the same raw text.
 fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>> {
     let raw = o.done.raw.trim();
     // A `@ref` anywhere puts it out of domain, and `parse_slot_marked_refs`
