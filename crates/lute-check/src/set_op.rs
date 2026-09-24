@@ -14,6 +14,9 @@
 //!   quest path (`quest.<id>.state` / `quest.<id>.objectives.<oid>.done`,
 //!   §5.2): engine-populated, author-unwritable. Short-circuits identically to
 //!   `app.*`.
+//! - **`E-QUEST-RESERVED-WRITE`** also covers every `entry.*` target (dsl
+//!   0.19.0 §5): `entry.<id>.read` is engine-written and the `entry` root has
+//!   no author-writable path at all.
 //! - **`E-UNDECLARED`** (§9.4/§9.5) — a non-`app`/reserved-quest state-tier
 //!   target whose path is absent from the inline `state:` schema. `::set` MUST
 //!   target a declared path (§7.3.4: "The `Path` MUST be a declared state
@@ -32,7 +35,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::Set;
 
-use crate::cel_paths::{is_reserved_quest_path, state_path_has_hyphen, E_PATH_IDENT};
+use crate::cel_paths::{is_entry_path, is_reserved_quest_path, state_path_has_hyphen, E_PATH_IDENT};
 use crate::meta::{namespace_of, Namespace, StateSchema};
 use crate::Ctx;
 
@@ -51,6 +54,11 @@ pub enum WriteOwner {
     /// A reserved `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` path
     /// (dsl 0.2.0 §5.2, §5.4): engine-populated, author-unwritable.
     QuestReserved,
+    /// Any `entry.*` path (dsl 0.19.0 §5): `entry.<id>.read` is
+    /// engine-written, and the read-only `entry` root has nothing else to
+    /// write. Reported with the quest-reserved code — "writing an `entry.*`
+    /// path is rejected, as writing a `quest.*` path is".
+    EntryReserved,
 }
 
 /// Classify a `::set` target path's write owner (dsl §9.5, dsl 0.2.0 §5.4).
@@ -61,6 +69,8 @@ pub(crate) fn classify_write(path: &str, _schema: &StateSchema) -> WriteOwner {
         WriteOwner::AppReadonly
     } else if is_reserved_quest_path(path) {
         WriteOwner::QuestReserved
+    } else if is_entry_path(path) {
+        WriteOwner::EntryReserved
     } else {
         WriteOwner::Content
     }
@@ -112,6 +122,19 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnos
                 format!(
                     "`::set` cannot write `{}`: it is a reserved quest path, \
                      engine-populated and author-unwritable (dsl 0.2.0 §5.2, §5.4)",
+                    set.path
+                ),
+                set.path_span,
+            ));
+            return diags;
+        }
+        WriteOwner::EntryReserved => {
+            diags.push(diag(
+                "E-QUEST-RESERVED-WRITE",
+                format!(
+                    "`::set` cannot write `{}`: `entry.*` paths are reserved — \
+                     `entry.<id>.read` is engine-written when an entry is first presented \
+                     (dsl 0.19.0 §5)",
                     set.path
                 ),
                 set.path_span,

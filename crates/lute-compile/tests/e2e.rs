@@ -97,6 +97,11 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
 
     for c in commands {
         for key in ["target", "converge", "otherwise"] {
+            // An `entry` record's `target` is the engine-owned attachment id
+            // (`item.rusty_key`, dsl 0.19.0 §3), not a control-flow target.
+            if key == "target" && c["kind"] == "entry" {
+                continue;
+            }
             if let Some(t) = c[key].as_str() {
                 assert_target(t, &valid);
             }
@@ -154,6 +159,14 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
                     assert_cel_clean("on.when", when);
                 }
                 assert_target(c["body"].as_str().expect("on.body"), &valid);
+            }
+            // dsl 0.19.0 §7: the entry `body` is the `on.body` convention —
+            // a resolvable target (an empty body = the unit's one-past-end).
+            Some("entry") => {
+                if let Some(when) = c["when"]["raw"].as_str() {
+                    assert_cel_clean("entry.when", when);
+                }
+                assert_target(c["body"].as_str().expect("entry.body"), &valid);
             }
             Some("assert") | Some("retract") => {
                 let rel = c["relation"].as_str().expect("assert/retract has relation");
@@ -269,6 +282,23 @@ fn quest_subquest() {
 #[test]
 fn quest_rewards() {
     golden("quest_rewards", "tests/fixtures/quest_rewards.lute", None);
+}
+
+/// dsl 0.19.0 §7: a lore document lowered end-to-end. The snapshot pins the
+/// wire: `kind: "lore"` + LoreMeta (the QuestMeta shape), one addressing
+/// unit per `<entry>` (`001-…`, `002-…`), each `entry` head followed by its
+/// body segment with `body` pointing at the first body record (an empty
+/// body → the unit's one-past-end), `order` as an integer, `titleLineId`
+/// `{entryId}.title`, lineIds under the `{entryId}` identity prefix with a
+/// fresh per-entry code counter, and the folded `entry.<id>.read` state
+/// rows with `entry:<id>` provenance.
+#[test]
+fn lore_ship_records() {
+    golden(
+        "lore_ship_records",
+        "tests/fixtures/lore_ship_records.lute",
+        None,
+    );
 }
 
 /// IR A12: the `::serve` plugin record carries resolved effect bindings. The

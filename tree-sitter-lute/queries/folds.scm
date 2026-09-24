@@ -26,3 +26,6 @@
 (quest) @fold
 (on) @fold
 (objective) @fold
+
+; Lore entries (dsl 0.19.0 §2) — each top-level `<entry>` folds like a quest.
+(entry) @fold

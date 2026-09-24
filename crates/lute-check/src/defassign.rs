@@ -75,8 +75,8 @@ use lute_syntax::ast::{
 };
 
 use crate::cel_paths::{
-    collect_path_uses, is_reserved_quest_activated_at, is_reserved_quest_objective_done,
-    is_reserved_quest_path, is_state_path, PathRole,
+    collect_path_uses, is_entry_path, is_reserved_entry_read, is_reserved_quest_activated_at,
+    is_reserved_quest_objective_done, is_reserved_quest_path, is_state_path, PathRole,
 };
 use crate::meta::StateSchema;
 // (no `Ctx` import — `check_definite_assignment`'s `_ctx` param was always
@@ -328,8 +328,10 @@ fn walk_set(
             check_read(target, schema, &flow.available, set.span, diags, reads);
         }
         // The write target itself must be declared (T4.3 covers read sites; the
-        // `::set` LHS path is this pass's responsibility).
-        if !is_declared(target, schema) {
+        // `::set` LHS path is this pass's responsibility). An `entry.*` target
+        // is not "undeclared" but unwritable — `set_op`'s reserved-write
+        // rejection (dsl 0.19.0 §5) is its one report.
+        if !is_declared(target, schema) && !is_entry_path(target) {
             let mut msg = format!("state path `{target}` is not declared in `state:` (dsl §9.4)");
             if let Some(sugg) = crate::cel_paths::nearest_declared_path(target, schema, 2) {
                 msg.push_str(&format!(" — did you mean `{sugg}`?"));
@@ -746,6 +748,7 @@ fn proven(path: &str, assigned: &Assigned) -> bool {
 /// which applies the identical rule for T4.3's read-site check.
 fn is_declared(path: &str, schema: &StateSchema) -> bool {
     is_reserved_quest_path(path)
+        || is_reserved_entry_read(path)
         || schema
             .decls
             .keys()
@@ -774,10 +777,13 @@ fn is_declared(path: &str, schema: &StateSchema) -> bool {
 ///
 /// `quest.<id>.state` carries NO default (its `unset` member is proven only
 /// via `<match>` exhaustiveness, dsl 0.2.0 §5.2) so it is deliberately
-/// excluded here.
+/// excluded here. `entry.<id>.read` (dsl 0.19.0 §5) always defaults to
+/// `false` — the decl `crate::lore::entry_read_decl` folds for a local entry
+/// — so a foreign entry's flag is definite too.
 fn has_default(path: &str, schema: &StateSchema) -> bool {
     is_reserved_quest_objective_done(path)
         || is_reserved_quest_activated_at(path)
+        || is_reserved_entry_read(path)
         || schema
             .decls
             .iter()

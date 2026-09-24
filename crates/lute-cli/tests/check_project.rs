@@ -2238,3 +2238,103 @@ fn a_mis_keyed_mock_surface_is_reported_by_check_project() {
         "anchored at the mock, with no fabricated position (D-AB):\n{text}"
     );
 }
+
+// --- dsl 0.19.0 §3/§5: project-wide entry ids and `entry.<id>.read` refs -----
+
+/// Every `E-ENTRY-ID-DUP` across `v`'s per-file results AND its project list,
+/// as `(path suffix, byte_start)` so a per-file twin of a project report is
+/// visible as a repeated pair.
+fn entry_dup_sites(v: &serde_json::Value) -> Vec<(String, u64)> {
+    let mut out = Vec::new();
+    for f in v["files"].as_array().unwrap() {
+        let path = f["path"].as_str().or(f["file"].as_str()).unwrap_or_default();
+        for d in f["diagnostics"].as_array().unwrap() {
+            if d["code"] == "E-ENTRY-ID-DUP" {
+                out.push((path.to_string(), d["span"]["byte_start"].as_u64().unwrap()));
+            }
+        }
+    }
+    for d in v["project_diagnostics"].as_array().unwrap() {
+        if d["code"] == "E-ENTRY-ID-DUP" {
+            out.push((
+                d["path"].as_str().unwrap().to_string(),
+                d["span"]["byte_start"].as_u64().unwrap(),
+            ));
+        }
+    }
+    out
+}
+
+/// `a.lute` declares `x` twice (per-file `check` already reports the second)
+/// and `b.lute` declares it again. The project pass reports every occurrence
+/// past the first exactly once — the per-file twin is suppressed.
+#[test]
+fn check_project_reports_each_duplicate_entry_id_exactly_once() {
+    let dir = temp_dir("entry-id-dup");
+    let a = "---\nkind: lore\n---\n<entry id=\"x\">\n@narrator: one\n</entry>\n\
+             <entry id=\"x\">\n@narrator: two\n</entry>\n";
+    let b = "---\nkind: lore\n---\n<entry id=\"x\">\n@narrator: three\n</entry>\n";
+    write(&dir, "a.lute", a);
+    write(&dir, "b.lute", b);
+
+    // Red proof that a per-file twin exists to be suppressed.
+    let single = run(&["check", dir.join("a.lute").to_str().unwrap(), "--json"]);
+    let sv: serde_json::Value = serde_json::from_slice(&single.stdout).unwrap();
+    assert_eq!(
+        sv["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["code"] == "E-ENTRY-ID-DUP")
+            .count(),
+        1,
+        "{sv}"
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let sites = entry_dup_sites(&v);
+    let second_in_a = a.rfind("<entry").unwrap() as u64;
+    let mut found: Vec<(bool, u64)> = sites
+        .iter()
+        .map(|(p, s)| (p.ends_with("a.lute"), *s))
+        .collect();
+    found.sort();
+    assert_eq!(sites.len(), 2, "one report per non-first occurrence: {v}");
+    assert!(found[1].0 && found[1].1 >= second_in_a, "a.lute's second `x`: {v}");
+    assert!(!found[0].0, "b.lute's `x`: {v}");
+}
+
+/// A scene reading `entry.nope.read` when no lore document declares `nope`
+/// draws `W-ENTRY-REF-UNKNOWN` (a warning: exit stays 0); a read of a
+/// declared entry does not.
+#[test]
+fn check_project_warns_on_an_unknown_entry_read() {
+    let dir = temp_dir("entry-ref-unknown");
+    write(
+        &dir,
+        "lore.lute",
+        "---\nkind: lore\n---\n<entry id=\"note\">\n@narrator: hi\n</entry>\n",
+    );
+    write(
+        &dir,
+        "scene.lute",
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         @a{when=\"entry.note.read\"}: known.\n\
+         @a{when=\"entry.nope.read\"}: unknown.\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let warns: Vec<&serde_json::Value> = v["project_diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "W-ENTRY-REF-UNKNOWN")
+        .collect();
+    assert_eq!(warns.len(), 1, "{v}");
+    assert_eq!(warns[0]["severity"], "warning");
+    assert!(warns[0]["path"].as_str().unwrap().ends_with("scene.lute"), "{v}");
+    assert!(warns[0]["message"].as_str().unwrap().contains("entry.nope.read"), "{v}");
+}

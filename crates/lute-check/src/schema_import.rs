@@ -77,6 +77,12 @@ pub struct SchemaImports {
     /// from these keys, so redeclaring an import-reachable id is
     /// `E-QUEST-ID-DUP` too.
     pub imported_quest_ids: BTreeMap<String, PathBuf>,
+    /// Every `<entry id>` reachable via the import graph (dsl 0.19.0 §3: entry
+    /// ids are unique across the project) — the lore mirror of
+    /// [`Self::imported_quest_ids`]: a collision between two import-reachable
+    /// docs is `E-ENTRY-ID-DUP` here, and the importing document's own entry
+    /// fold seeds its seen set from these keys.
+    pub imported_entry_ids: BTreeMap<String, PathBuf>,
     pub rel: RelImports,
 }
 
@@ -138,6 +144,9 @@ struct ParsedDoc {
     /// directly checked), not something this traversal can meaningfully
     /// collide on.
     quest_ids: BTreeSet<String>,
+    /// Every non-empty `<entry id>` this doc declares (dsl 0.19.0 §3), the
+    /// lore mirror of `quest_ids`.
+    entry_ids: BTreeSet<String>,
     /// Project-authored `entities:`/`relations:` decls (0.3.0 spec §3.1/§4).
     rel_kinds: ParsedKinds,
     rel_relations: ParsedRelations,
@@ -493,6 +502,36 @@ pub fn resolve_imports(
         imported_quest_ids.insert(id, files[0].clone());
     }
 
+    // The lore mirror (dsl 0.19.0 §3): entry ids are a flat, project-wide
+    // identity exactly as quest ids are.
+    let mut entry_by_name: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    for (canon, doc) in &parsed {
+        for id in &doc.entry_ids {
+            entry_by_name
+                .entry(id.clone())
+                .or_default()
+                .push(canon.clone());
+        }
+    }
+    let mut imported_entry_ids: BTreeMap<String, PathBuf> = BTreeMap::new();
+    for (id, mut files) in entry_by_name {
+        files.sort();
+        files.dedup();
+        if files.len() >= 2 {
+            diags.push(uses_diag(
+                crate::lore::E_ENTRY_ID_DUP,
+                format!(
+                    "duplicate `<entry id=\"{id}\">` across imports (`{}` and `{}`); entry \
+                     ids must be unique across the project (dsl 0.19.0 §3)",
+                    files[0].display(),
+                    files[1].display()
+                ),
+                at,
+            ));
+        }
+        imported_entry_ids.insert(id, files[0].clone());
+    }
+
     SchemaImports {
         state,
         defs,
@@ -500,6 +539,7 @@ pub fn resolve_imports(
         diags,
         state_overridable,
         imported_quest_ids,
+        imported_entry_ids,
         rel: RelImports {
             kinds: rel_kinds,
             relations: rel_relations,
@@ -753,6 +793,7 @@ fn read_and_parse(
         defs: BTreeMap::new(),
         domains: BTreeMap::new(),
         quest_ids: BTreeSet::new(),
+        entry_ids: BTreeSet::new(),
         rel_kinds: ParsedKinds::default(),
         rel_relations: ParsedRelations::default(),
         facts: Vec::new(),
@@ -773,7 +814,7 @@ fn read_and_parse(
         canon.extension().and_then(|e| e.to_str()),
         Some("yaml") | Some("yml")
     );
-    let (tm, issue_diags, quest_ids) = if is_yaml_decl {
+    let (tm, issue_diags, quest_ids, entry_ids) = if is_yaml_decl {
         let byte_end = text.len();
         let meta = Meta {
             raw_yaml: text,
@@ -788,7 +829,7 @@ fn read_and_parse(
         let (tm, mut mdiags) =
             parse_meta_kind(&meta, &CapabilitySnapshot::default(), MetaKind::Schema);
         position_in(&meta.raw_yaml, &mut mdiags);
-        (tm, mdiags, BTreeSet::new())
+        (tm, mdiags, BTreeSet::new(), BTreeSet::new())
     } else {
         let (doc, pdiags) = lute_syntax::parse(&text);
         let (tm, mdiags) =
@@ -804,10 +845,16 @@ fn read_and_parse(
             .map(|q| q.id.clone())
             .filter(|id| !id.is_empty())
             .collect();
+        let entry_ids: BTreeSet<String> = doc
+            .entries
+            .iter()
+            .map(|e| e.id.clone())
+            .filter(|id| !id.is_empty())
+            .collect();
         let mut all = pdiags;
         all.extend(mdiags);
         position_in(&text, &mut all);
-        (tm, all, quest_ids)
+        (tm, all, quest_ids, entry_ids)
     };
     if !issue_diags.is_empty() {
         // dsl 0.5.0 §2.2, mirroring `component_import.rs:260-282`: carry the
@@ -851,6 +898,7 @@ fn read_and_parse(
             defs,
             domains,
             quest_ids,
+            entry_ids,
             rel_kinds,
             rel_relations,
             facts,

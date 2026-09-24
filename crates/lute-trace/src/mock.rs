@@ -101,6 +101,10 @@ pub const E_TRACE_EVENT: &str = "E-TRACE-EVENT";
 /// quest that carries a `start` predicate — it activates declaratively and
 /// needs no accept (§4.3/§4.4).
 pub const E_TRACE_ACCEPT: &str = "E-TRACE-ACCEPT";
+/// `lute trace --entry <id>` (dsl 0.19.0 §8) on a document that is not
+/// `kind: lore`, or naming an id no `<entry>` in the document declares — the
+/// `--entry` analogue of [`E_TRACE_ACCEPT`]'s unknown-quest-id refusal.
+pub const E_TRACE_ENTRY: &str = "E-TRACE-ENTRY";
 
 /// spec §4 (0.6.1): a WARNING — not a refusal — for a supplied `--fact`/mock-
 /// YAML fact whose relation `lute_check::producible::producible()` judges NOT
@@ -562,6 +566,7 @@ pub(crate) fn coerce_state_literal(ty: &Type, raw: &str) -> Option<Literal> {
 fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let mut referenced_reserved: Option<BTreeSet<String>> = None;
+    let mut referenced_entry_reads: Option<BTreeSet<String>> = None;
     for (path, literal, span) in &mocks.state {
         if crate::eval::is_reserved_quest_path(path) {
             let referenced = referenced_reserved.get_or_insert_with(|| {
@@ -582,6 +587,32 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                 continue;
             }
             out.push(undeclared_diag(path, *span));
+            continue;
+        }
+        // dsl 0.19.0 §5: `entry.<id>.read` is admitted when the document
+        // declares that entry (the checker folds its bool decl) OR reads the
+        // path from any CEL slot — the reserved-quest-path rule above,
+        // checked against the reserved `bool` domain.
+        if lute_check::is_reserved_entry_read(path) {
+            let declared = folded.env.state.decls.contains_key(path);
+            let referenced = declared
+                || referenced_entry_reads
+                    .get_or_insert_with(|| {
+                        crate::quest_refs::collect_referenced_entry_read_paths(doc)
+                    })
+                    .contains(path);
+            if !referenced {
+                out.push(undeclared_diag(path, *span));
+            } else if !matches!(literal.as_str(), "true" | "false") {
+                out.push(diag(
+                    E_TRACE_MOCK_TYPE,
+                    format!(
+                        "`--state {path}={literal}` is not compatible with `{path}`'s reserved \
+                         domain (true, false) (dsl 0.19.0 §5)"
+                    ),
+                    *span,
+                ));
+            }
             continue;
         }
         if let Some(decl) = folded.env.state.decls.get(path) {
@@ -883,6 +914,36 @@ fn referenced_child_ids(doc: &Document) -> BTreeSet<&str> {
         }
     }
     out
+}
+
+/// `--entry <id>` validation (dsl 0.19.0 §8): the traced document must be
+/// `kind: lore` and declare an `<entry id="<id>">` — [`E_TRACE_ENTRY`]
+/// otherwise, naming the declared ids so the fix is one copy away.
+pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Vec<Diagnostic> {
+    let span = synthetic_span();
+    if folded.doc_kind != lute_check::DocKind::Lore {
+        return vec![diag(
+            E_TRACE_ENTRY,
+            format!(
+                "`--entry {id}` needs a `kind: lore` document; this one declares no entries \
+                 (dsl 0.19.0 §8)"
+            ),
+            span,
+        )];
+    }
+    if doc.entries.iter().any(|e| e.id == id) {
+        return Vec::new();
+    }
+    let declared: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
+    vec![diag(
+        E_TRACE_ENTRY,
+        format!(
+            "`--entry {id}` names an unknown entry id `{id}`; this document declares: {} \
+             (dsl 0.19.0 §8)",
+            declared.join(", ")
+        ),
+        span,
+    )]
 }
 
 /// STRUCTURAL pre-walk validation (dsl 0.4.0 §4.3): ids/arity/types/

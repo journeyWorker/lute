@@ -22,6 +22,7 @@ Each fixture directory contains:
 | `artifact.json` | the **compiled artifact** — `lute compile source.lute -o artifact.json`, checked in verbatim; this is the engine's only input |
 | `mock.yaml` | the mock playthrough (the same `state:`/`facts:`/`choose:`/`events:`/`accepts:` surfaces `lute trace --mock` reads) |
 | `expected.json` | the exact `--json` machine transcript the runtime contract requires |
+| `entry.txt` | lore fixtures only (dsl 0.19.0): the one entry id the run presents, passed as `--entry <id>` — a lore artifact has no sequence to play, so `lute run` refuses it without one |
 
 ## Replaying
 
@@ -30,7 +31,8 @@ From the repository root:
 ```sh
 for d in conformance/*/; do
   [ -f "$d/artifact.json" ] || continue
-  got=$(cargo run -q -p lute-cli -- run "$d/artifact.json" --mock "$d/mock.yaml" --json)
+  entry=(); [ -f "$d/entry.txt" ] && entry=(--entry "$(cat "$d/entry.txt")")
+  got=$(cargo run -q -p lute-cli -- run "$d/artifact.json" --mock "$d/mock.yaml" "${entry[@]}" --json)
   diff <(printf '%s\n' "$got") "$d/expected.json" && echo "PASS  $d" || echo "FAIL  $d"
 done
 ```
@@ -43,7 +45,7 @@ a plain `diff`.
 
 ```json
 {
-  "kind":       "scene" | "quest",
+  "kind":       "scene" | "quest" | "lore",
   "irVersion":  "0.18",                // the major.minor line the engine gated on
   "exit":       "complete" | "incomplete",
   "commands":   [ /* executed records, in execution order */ ],
@@ -104,6 +106,8 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `facts-datalog-rule` | the **Datalog least-fixpoint** — an `assert` delta plus a seeded fact drive the derived relation `suspected` (cel-and-facts.md); a `holds(...)` guard over the derived relation returns a definite answer |
 | `quest-complete` | the **quest lifecycle** — `start=true` activation, monotone objective completion, derived quest completion, and the `questComplete` `<on>` handler body (quest-lifecycle.md) |
 | `end-reason` | the **`::end` walk terminator** (dsl 0.8.0) — the forced arm's `end` record stops the walk with its `reason` surfaced; the shared converge one record later is never reached, and the run is still `complete` |
+| `lore-entry` | a **lore entry, first read** (dsl 0.19.0, lore-entries.md) — `--entry scientistLog1` presents one `entry` record: the `entry` event carries `firstRead: true` and `eligible`, the body segment runs to the next `entry` record (its `match` picks arm 1 from the seeded state), the first-read `assert`/`set` apply, and the engine then sets `entry.scientistLog1.read` |
+| `lore-entry-reread` | the same entry **re-read** — the mock seeds `entry.scientistLog1.read: true`, so the text presents (the `otherwise` arm) and the `assert`/`set` records are recorded as `skipped` events (`effect` + the record's `path`/`fact`/`pattern`) without changing state or facts |
 
 ## Boundaries — what the reference runner deliberately does NOT implement
 
@@ -134,6 +138,8 @@ d=conformance/choice-basic
 cargo run -q -p lute-cli -- compile "$d/source.lute" -o "$d/artifact.json"
 cargo run -q -p lute-cli -- run "$d/artifact.json" --mock "$d/mock.yaml" --json > "$d/expected.json"
 ```
+
+(a lore fixture adds `--entry "$(cat "$d/entry.txt")"` to the `run` line).
 
 `artifact.json` is checked in (not regenerated on demand) precisely so a
 third-party engine can conform against a **frozen** compiler output — an engine

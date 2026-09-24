@@ -1,0 +1,45 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "eligible": true,
+      "firstRead": false,
+      "id": "scientistLog1",
+      "kind": "entry"
+    },
+    {
+      "addr": "001-0200",
+      "kind": "match",
+      "result": "otherwise"
+    },
+    {
+      "addr": "001-0500",
+      "kind": "line",
+      "speaker": "scientist",
+      "text": "Day three. Subject E does not respond to light."
+    },
+    {
+      "addr": "001-0700",
+      "effect": "assert",
+      "fact": "knows(vesna, project_lumen)",
+      "kind": "skipped"
+    },
+    {
+      "addr": "001-0800",
+      "effect": "set",
+      "kind": "skipped",
+      "path": "run.logsRead"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.18",
+  "kind": "lore",
+  "quests": {},
+  "state": {
+    "entry.scientistLog1.read": true,
+    "entry.scientistLog2.read": false,
+    "run.labBurned": false,
+    "run.logsRead": 0
+  }
+}

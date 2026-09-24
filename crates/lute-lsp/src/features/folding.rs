@@ -8,7 +8,9 @@
 //! - every `<...>` logic/staging block: `<branch>`, `<match>`, `<timeline>`;
 //! - every `<track>` inside a `<timeline>`;
 //! - every `<quest>` (dsl 0.2.0 §6.3, a top-level declaration like a shot) and
-//!   its nested `<on>`/`<objective>` bodies (dsl 0.2.0 §4, §6.4).
+//!   its nested `<on>`/`<objective>` bodies (dsl 0.2.0 §4, §6.4);
+//! - every lore `<entry>` (dsl 0.19.0 §3, a top-level declaration like a
+//!   quest) and the blocks nested in its body.
 //!
 //! A region that begins and ends on the SAME source line is not foldable (there
 //! is nothing to collapse), so single-line blocks are dropped. `<choice>` /
@@ -43,6 +45,11 @@ pub fn folding_ranges(doc: &Document, idx: &TextIndex) -> Vec<FoldingRange> {
     for quest in &doc.quests {
         push_fold(&mut out, &quest.span, idx);
         fold_nodes(&quest.body, idx, &mut out);
+    }
+    // A lore `<entry>` (dsl 0.19.0 §3) is a top-level declaration like `<quest>`.
+    for entry in &doc.entries {
+        push_fold(&mut out, &entry.span, idx);
+        fold_nodes(&entry.body, idx, &mut out);
     }
     out
 }
@@ -304,5 +311,23 @@ mod tests {
             all.iter().any(|f| f.start_line == obj_start),
             "no fold anchored on <objective>: {all:?}"
         );
+    }
+
+    /// dsl 0.19.0 §3: a lore `<entry>` folds its multi-line span, and a
+    /// `<match>` inside its body folds too.
+    #[test]
+    fn entry_and_its_match_fold() {
+        let text = "---\nkind: lore\n---\n\
+            <entry id=\"e\">\n<match on=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
+            <otherwise>\n@narrator: n\n</otherwise>\n</match>\n</entry>\n";
+        let idx = TextIndex::new(text);
+        let all = folds(text);
+        for needle in ["<entry", "<match"] {
+            let start = idx.position(text.find(needle).unwrap()).line - 1;
+            assert!(
+                all.iter().any(|f| f.start_line == start),
+                "no fold anchored on {needle}: {all:?}"
+            );
+        }
     }
 }

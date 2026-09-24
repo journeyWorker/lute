@@ -202,7 +202,8 @@ fn check_code_after_next(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
     ));
 }
 
-/// §5.2/§5.3 whole-document pass. Walks `doc.shots` + `doc.quests`
+/// §5.2/§5.3 whole-document pass. Walks `doc.shots` + `doc.quests` +
+/// `doc.entries` (dsl 0.19.0 §4)
 /// recursively (arm/choice/on/objective bodies, mirroring
 /// `check_admission`'s walk, admission.rs:220-296); timeline clips carry no
 /// arms and are skipped. `DefTable` is built from `folded.def_bodies` +
@@ -271,6 +272,11 @@ pub(crate) fn check_reachability_in(
         diags.extend(check_quest_reach(quest, defs, base_ctx));
         diags.extend(check_objective_contradiction(quest, defs, base_ctx));
         walk_reach(&quest.body, defs, base_ctx, &mut diags);
+    }
+    // dsl 0.19.0 §4: an entry body is an ordinary node stream — its
+    // `<match>` arms get the same dead-arm / dead-otherwise verdicts.
+    for entry in &doc.entries {
+        walk_reach(&entry.body, defs, base_ctx, &mut diags);
     }
     diags
 }

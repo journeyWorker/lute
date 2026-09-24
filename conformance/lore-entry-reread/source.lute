@@ -1,0 +1,23 @@
+---
+kind: lore
+luteVersion: "0.18.0"
+uses: ./schema.yaml
+title: Ship's records
+---
+
+<entry id="scientistLog1" target="item.torn_note_1" category="note" series="scientistLog" order="1" title="Research log, day 3">
+  <match on="run.labBurned">
+    <when is="true">
+      @scientist: Day three. The page is scorched at the edges.
+    </when>
+    <otherwise>
+      @scientist: Day three. Subject E does not respond to light.
+    </otherwise>
+  </match>
+  ::assert{knows(vesna, project_lumen)}
+  ::set{run.logsRead += 1}
+</entry>
+
+<entry id="scientistLog2" target="item.torn_note_2" category="note" series="scientistLog" order="2" when="entry.scientistLog1.read">
+  @scientist: Day four. The light was never the point.
+</entry>

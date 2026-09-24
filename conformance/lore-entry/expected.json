@@ -1,0 +1,46 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "eligible": true,
+      "firstRead": true,
+      "id": "scientistLog1",
+      "kind": "entry"
+    },
+    {
+      "addr": "001-0200",
+      "kind": "match",
+      "result": "arm 1"
+    },
+    {
+      "addr": "001-0300",
+      "kind": "line",
+      "speaker": "scientist",
+      "text": "Day three. The page is scorched at the edges."
+    },
+    {
+      "addr": "001-0700",
+      "fact": "knows(vesna, project_lumen)",
+      "kind": "assert"
+    },
+    {
+      "addr": "001-0800",
+      "kind": "set",
+      "path": "run.logsRead",
+      "value": 1
+    }
+  ],
+  "exit": "complete",
+  "facts": [
+    "knows(vesna, project_lumen)"
+  ],
+  "irVersion": "0.18",
+  "kind": "lore",
+  "quests": {},
+  "state": {
+    "entry.scientistLog1.read": true,
+    "entry.scientistLog2.read": false,
+    "run.labBurned": true,
+    "run.logsRead": 1
+  }
+}

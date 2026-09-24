@@ -1,0 +1,5 @@
+# Re-read: `entry.scientistLog1.read` is seeded true, so the text presents
+# (the `otherwise` arm, `run.labBurned` left false) and the `assert`/`set`
+# records are skipped — the fact store and `run.logsRead` stay untouched.
+state:
+  entry.scientistLog1.read: true

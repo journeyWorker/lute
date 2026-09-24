@@ -85,6 +85,7 @@ export default defineConfig({
             { slug: "language/components-and-extends" },
             { slug: "language/params" },
             { slug: "language/quests-and-scenes" },
+            { slug: "language/lore-entries" },
             { slug: "language/imports" },
           ],
         },

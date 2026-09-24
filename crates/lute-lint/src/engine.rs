@@ -126,11 +126,11 @@ pub fn lint(
         per_doc.push((input.path.clone(), tables, dirs));
     }
     // Project row: aggregate over per-doc SceneRow.words — SCENE documents
-    // only. A component (`component:` frontmatter key) or quest
-    // (`kind: quest`) is not a scene: folding a 10-word component into the
-    // spread would report a meaningless min against a full episode.
-    // `kind:` absent defaults to scene (meta.rs), so only explicit
-    // non-scene markers exclude.
+    // only. A component (`component:` frontmatter key), quest
+    // (`kind: quest`), or lore document (`kind: lore`, dsl 0.19.0 §8) is not
+    // a scene: folding a 10-word component into the spread would report a
+    // meaningless min against a full episode. `kind:` absent defaults to
+    // scene (meta.rs), so only explicit non-scene markers exclude.
     let scene_mask: Vec<bool> = active
         .iter()
         .map(|input| is_scene_kind(&input.doc.meta.raw_yaml))
@@ -212,10 +212,10 @@ pub fn lint(
 }
 
 /// `true` when the document's frontmatter marks a SCENE (the default kind).
-/// Mirrors `lute-check`'s meta typing without importing it: `kind: quest`
-/// or a `component:` declaration key means "not a scene"; anything else —
-/// including malformed YAML, which lint tolerates like a parse-error AST —
-/// counts as a scene.
+/// Mirrors `lute-check`'s meta typing without importing it: any explicit
+/// non-`scene` `kind:` (`quest`, `lore`) or a `component:` declaration key
+/// means "not a scene"; anything else — including malformed YAML, which lint
+/// tolerates like a parse-error AST — counts as a scene.
 fn is_scene_kind(raw_yaml: &str) -> bool {
     let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(raw_yaml)
     else {

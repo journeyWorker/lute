@@ -43,7 +43,7 @@
 //! that survives into the residual list must be permitted.
 
 use lute_core_span::{Diagnostic, Layer, Severity};
-use lute_syntax::ast::{Arm, Attr, AttrValue, Branch, Choice, Hub, Match, Reward};
+use lute_syntax::ast::{Arm, Attr, AttrValue, Branch, Choice, Entry, Hub, Match, Reward};
 
 use crate::content_line::E_UNKNOWN_ATTR;
 
@@ -62,6 +62,13 @@ const HUB_ATTRS: &[&str] = &["id"];
 /// anchor `E-REWARD-ATTR` at the value span. `id=` is deliberately absent
 /// — a reward is a leaf, not an addressable construct.
 pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "on"];
+/// dsl 0.19.0 §3: `<entry>` closes over its seven declared keys. The parser
+/// extracts each into a typed field, so a permitted key reaches the residual
+/// list only when its value was not a quoted string — `crate::lore` owns
+/// that shape fault (`E-ENTRY-ATTR`); every OTHER key is `E-UNKNOWN-ATTR`.
+pub(crate) const ENTRY_ATTRS: &[&str] = &[
+    "id", "target", "category", "title", "series", "order", "when",
+];
 
 /// D-L: the two `<choice>` positions have DIFFERENT permitted sets. `once` and
 /// `exit` attach to `HubChoice` in `0.1.0 §7.3`'s grammar and to nothing else,
@@ -158,6 +165,10 @@ pub(crate) fn check_match_attrs(m: &Match, diags: &mut Vec<Diagnostic>) {
 
 pub(crate) fn check_reward_attrs(r: &Reward, diags: &mut Vec<Diagnostic>) {
     close(&r.attrs, "reward", REWARD_ATTRS, &[], None, diags);
+}
+
+pub(crate) fn check_entry_attrs(e: &Entry, diags: &mut Vec<Diagnostic>) {
+    close(&e.attrs, "entry", ENTRY_ATTRS, &[], None, diags);
 }
 
 pub(crate) fn check_arm_attrs(a: &Arm, diags: &mut Vec<Diagnostic>) {

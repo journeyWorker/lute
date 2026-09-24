@@ -21,8 +21,11 @@ use cel_parser::ast::{EntryExpr, Expr};
 
 /// State-tier roots that introduce a declared state-path read (dsl §9.1).
 /// Tier-GENERAL: kept scalar-agnostic on purpose (0.3.0's relational tiers
-/// reuse this same list, dsl 0.2.0 §5).
-pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app", "quest"];
+/// reuse this same list, dsl 0.2.0 §5). `entry` (dsl 0.19.0 §5) is a
+/// read-only root: its only declared shape is the reserved
+/// [`is_reserved_entry_read`] path, so any other `entry.*` read is
+/// `E-UNDECLARED` and every `entry.*` write is rejected.
+pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app", "quest", "entry"];
 
 /// How a state path appears in an expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,6 +69,33 @@ pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
         segs.as_slice(),
         ["quest", _, "state"] | ["quest", _, "activatedAt"] | ["quest", _, "objectives", _, "done"]
     )
+}
+
+/// `true` for the RESERVED lore path `entry.<id>.read` (dsl 0.19.0 §5): 3
+/// segments, segment 0 == `entry`, segment 2 == `read`. An engine-written
+/// `bool` (default `false`, run-tier lifetime) readable from any CEL slot in
+/// any document kind — implicitly declared regardless of whether THIS
+/// document declares the `<entry>` (the `quest.<id>.state` rule); content
+/// MUST NOT `::set` it (`E-QUEST-RESERVED-WRITE`). `check-project` resolves
+/// the id (`W-ENTRY-REF-UNKNOWN`).
+pub fn is_reserved_entry_read(path: &str) -> bool {
+    reserved_entry_id(path).is_some()
+}
+
+/// The `<id>` of a reserved `entry.<id>.read` path ([`is_reserved_entry_read`]),
+/// or `None` for any other shape.
+pub fn reserved_entry_id(path: &str) -> Option<&str> {
+    let mut segs = path.split('.');
+    match (segs.next(), segs.next(), segs.next(), segs.next()) {
+        (Some("entry"), Some(id), Some("read"), None) => Some(id),
+        _ => None,
+    }
+}
+
+/// `true` for any path rooted at the read-only `entry` tier (dsl 0.19.0 §5:
+/// "writing an `entry.*` path is rejected, as writing a `quest.*` path is").
+pub(crate) fn is_entry_path(path: &str) -> bool {
+    path.split('.').next() == Some("entry")
 }
 
 /// `true` specifically for the `quest.<id>.objectives.<oid>.done` reserved

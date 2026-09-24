@@ -14,7 +14,10 @@
 //!   under its shot/quest;
 //! - each `<on>` / `<objective>` inside a quest as a nested child (dsl 0.2.0
 //!   §4, §6.4) — [`SymbolKind::EVENT`] named by the trigger's `event`, and
-//!   [`SymbolKind::PROPERTY`] named by the objective's `id`.
+//!   [`SymbolKind::PROPERTY`] named by the objective's `id`;
+//! - one [`DocumentSymbol`] per top-level lore `<entry>` (dsl 0.19.0 §3) —
+//!   [`SymbolKind::NAMESPACE`] like a quest, named by its `id`, with its
+//!   `<match>` blocks nested as children.
 //!
 //! ## Ranges
 //! `range` is the construct's full span; `selection_range` is the "interesting"
@@ -24,7 +27,7 @@
 //! symbol positions carry the same UTF-16-correct ranges as every other surface.
 
 use lute_core_span::TextIndex;
-use lute_syntax::ast::{Arm, Document, Match, Node, Quest, Shot};
+use lute_syntax::ast::{Arm, Document, Entry, Match, Node, Quest, Shot};
 use tower_lsp_server::ls_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::backend::{byte_to_position, span_to_range};
@@ -35,6 +38,7 @@ use crate::features::byte_span;
 pub fn document_symbols(doc: &Document, idx: &TextIndex) -> Vec<DocumentSymbol> {
     let mut out: Vec<DocumentSymbol> = doc.shots.iter().map(|s| shot_symbol(s, idx)).collect();
     out.extend(doc.quests.iter().map(|q| quest_symbol(q, idx)));
+    out.extend(doc.entries.iter().map(|e| entry_symbol(e, idx)));
     out
 }
 
@@ -66,6 +70,23 @@ fn quest_symbol(quest: &Quest, idx: &TextIndex) -> DocumentSymbol {
     let mut children = Vec::new();
     collect_children(&quest.body, idx, &mut children);
     symbol(quest.id.clone(), SymbolKind::NAMESPACE, range, sel, children)
+}
+
+/// A lore `<entry>` -> a top-level symbol named by its id (dsl 0.19.0 §3),
+/// mirroring [`quest_symbol`]. An entry whose `id` is missing (checker:
+/// `E-ENTRY-ATTR`) still gets a symbol, named `entry`, so the outline does
+/// not silently drop it.
+fn entry_symbol(entry: &Entry, idx: &TextIndex) -> DocumentSymbol {
+    let range = span_to_range(&entry.span, idx);
+    let sel = keyword_range(entry.span.byte_start, "<entry", idx);
+    let mut children = Vec::new();
+    collect_children(&entry.body, idx, &mut children);
+    let name = if entry.id.is_empty() {
+        "entry".to_string()
+    } else {
+        entry.id.clone()
+    };
+    symbol(name, SymbolKind::NAMESPACE, range, sel, children)
 }
 
 /// Collect the `<branch>`/`<match>`/`<on>`/`<objective>` blocks in `nodes` as
@@ -321,5 +342,22 @@ mod tests {
             .find(|c| c.kind == SymbolKind::PROPERTY)
             .expect("an <objective> child (PROPERTY)");
         assert_eq!(obj.name, "o", "named by the objective id");
+    }
+
+    /// dsl 0.19.0 §3: every lore `<entry>` is a top-level symbol named by its
+    /// id, with a nested `<match>` as a child.
+    #[test]
+    fn entries_are_top_level_symbols() {
+        let text = "---\nkind: lore\n---\n\
+            <entry id=\"a\" target=\"item.key\">\n@narrator: one\n</entry>\n\
+            <entry id=\"b\">\n<match on=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
+            <otherwise>\n@narrator: n\n</otherwise>\n</match>\n</entry>\n";
+        let syms = symbols(text);
+        let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["a", "b"]);
+        assert!(syms.iter().all(|s| s.kind == SymbolKind::NAMESPACE));
+        let kids = syms[1].children.as_ref().expect("entry b has children");
+        assert_eq!(kids.len(), 1);
+        assert_eq!(kids[0].kind, SymbolKind::OBJECT, "the <match> child");
     }
 }

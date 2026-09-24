@@ -46,6 +46,11 @@ pub fn normalize_document(
     for quest in &mut doc.quests {
         normalize_nodes(&mut quest.body, components, schema, &mut diags);
     }
+    // dsl 0.19.0 §4: entry bodies admit content lines (incl. `when=` guards)
+    // and `<match>` — the same desugars a quest body gets.
+    for entry in &mut doc.entries {
+        normalize_nodes(&mut entry.body, components, schema, &mut diags);
+    }
     // Subquest synthesis (2026-08-31 design §2.1/§2.2) — MUST run here (not
     // in `stage::walk_quest`) so `lute-trace` inherits the derived
     // predicates verbatim: trace calls `normalize_document` before its own

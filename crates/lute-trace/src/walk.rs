@@ -37,9 +37,9 @@ use lute_check::{CheckInput, CheckResult, Ctx, FoldedEnv};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
-    Arm, Assert, AttrValue, Branch, CelSlot, Choice, ClipNode, Directive, Document, Hub, Interp,
-    InterpKind, IsPattern, Line, Match, Node, Objective, Quest, Retract, Reward, RewardAmount, Set,
-    Timeline,
+    Arm, Assert, AttrValue, Branch, CelSlot, Choice, ClipNode, Directive, Document, Entry, Hub,
+    Interp, InterpKind, IsPattern, Line, Match, Node, Objective, Quest, Retract, Reward,
+    RewardAmount, Set, Timeline,
 };
 use lute_syntax::datalog::FactTerm;
 use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral};
@@ -92,6 +92,11 @@ struct Walk<'a> {
     /// `exits:`, which is the whole difference between an entrance and an
     /// exit (#32, T2.5).
     domains: &'a BTreeMap<String, lute_manifest::snapshot::Domain>,
+    /// dsl 0.19.0 §6: `false` while presenting an entry on a RE-read
+    /// (`entry.<id>.read` already true) — `::set`/`::assert`/`::retract`
+    /// are then reported as [`Step::Skipped`] instead of applied. `true`
+    /// for every scene/quest walk and for an entry's first read.
+    apply_effects: bool,
 }
 
 impl<'a> Walk<'a> {
@@ -987,6 +992,30 @@ fn walk_node(node: &Node, w: &mut Walk<'_>, sugar_ctx: Option<&Choice>) -> Flow 
             Flow::Continue
         }
         Node::Directive(d) => walk_directive(d, w),
+        Node::Set(s) if !w.apply_effects => {
+            skip_effect("set", format!("{} {} {}", s.path, s.op, s.expr.raw.trim()), w);
+            Flow::Continue
+        }
+        Node::Assert(a) if !w.apply_effects => {
+            let args: Vec<String> = a
+                .pattern
+                .args
+                .iter()
+                .map(|arg| fact_term_text(&arg.term))
+                .collect();
+            skip_effect("assert", fmt_fact(&a.pattern.relation, &args), w);
+            Flow::Continue
+        }
+        Node::Retract(r) if !w.apply_effects => {
+            let args: Vec<String> = r
+                .pattern
+                .args
+                .iter()
+                .map(|arg| fact_term_text(&arg.term))
+                .collect();
+            skip_effect("retract", fmt_fact(&r.pattern.relation, &args), w);
+            Flow::Continue
+        }
         Node::Set(s) => {
             walk_set(s, w, sugar_ctx);
             Flow::Continue
@@ -1034,6 +1063,61 @@ fn walk_document(doc: &Document, w: &mut Walk<'_>) -> Flow {
         }
     }
     Flow::Continue
+}
+
+/// dsl 0.19.0 §6: record a first-read-only effect a RE-read does not apply.
+fn skip_effect(effect: &str, text: String, w: &mut Walk<'_>) {
+    w.steps.push(Step::Skipped {
+        effect: effect.to_string(),
+        text,
+    });
+}
+
+/// Present ONE `<entry>` (dsl 0.19.0 §6, `docs/runtime/lore-entries.md`
+/// `present()`): `firstRead = !entry.<id>.read` against the mocked state;
+/// the body runs in document order (lines present, `<match>` picks an arm
+/// exactly as in a scene) with `::set`/`::assert`/`::retract` applied only on
+/// a first read and reported [`Step::Skipped`] otherwise. The `when`
+/// eligibility gate is evaluated and SHOWN on the [`Step::Entry`] head, never
+/// enforced — presenting is what was asked for. An unknown `when` records an
+/// unresolved atom without halting, like a quest `start` (exit 3). The
+/// engine's post-presentation `entry.<id>.read = true` write is not modeled:
+/// a trace presents once and reports no final state.
+fn walk_entry(entry: &Entry, w: &mut Walk<'_>) -> Flow {
+    let read_path = lute_check::entry_read_path(&entry.id);
+    let first_read = !matches!(w.state.read(&read_path), Read::Value(Value::Bool(true)));
+    let eligible = match &entry.when {
+        None => Some(true),
+        Some(slot) => {
+            let mut atoms = Vec::new();
+            let v = match slot_expr(&slot.raw) {
+                Some(expr) => eval(&expr, &w.env(), &mut atoms),
+                None => Value::Unknown,
+            };
+            match v {
+                Value::Bool(b) => Some(b),
+                _ => {
+                    w.record_unresolved(
+                        "entry",
+                        &entry.id,
+                        slot.span,
+                        slot.raw.trim().to_string(),
+                        atoms,
+                    );
+                    None
+                }
+            }
+        }
+    };
+    w.steps.push(Step::Entry {
+        id: entry.id.clone(),
+        first_read,
+        eligible,
+    });
+    w.apply_effects = first_read;
+    let flow = walk_nodes(&entry.body, w, None);
+    w.apply_effects = true;
+    flow
 }
 
 // ---------------------------------------------------------------------
@@ -1813,6 +1897,16 @@ fn seed_state(mocks: &MockSet, schema: &StateSchema) -> BTreeMap<String, Value> 
             out.insert(path.clone(), v);
             continue;
         }
+        // dsl 0.19.0 §5: a reserved `entry.<id>.read` mock is a `bool` whether
+        // or not this document folds a decl for it (a foreign entry read).
+        if lute_check::is_reserved_entry_read(path) {
+            match raw.as_str() {
+                "true" => out.insert(path.clone(), Value::Bool(true)),
+                "false" => out.insert(path.clone(), Value::Bool(false)),
+                _ => continue, // unreachable post-`mock::validate`
+            };
+            continue;
+        }
         // Already schema-validated by `mock::validate` (run before this);
         // a miss here is defensive-total, never a silent wrong value.
         if let Some(decl) = schema.decls.get(path) {
@@ -2178,6 +2272,38 @@ pub fn trace_with_check(
     result: CheckResult,
     mocks: MockSet,
 ) -> (TraceReport, TraceExit) {
+    trace_pipeline(input, result, mocks, None)
+}
+
+/// `lute trace --entry <id>` (dsl 0.19.0 §8): the SAME §4.3 pipeline as
+/// [`trace_document`] — check gate, mock validation, normalize + expand —
+/// then PRESENTS the one `<entry id="<id>">` instead of walking shots/quests
+/// (`docs/runtime/lore-entries.md` `present()`: first-read effects apply
+/// only while `entry.<id>.read` is false; seed it `true` in the mock to
+/// preview a re-read). A non-lore document or an unknown id is refused with
+/// [`crate::mock::E_TRACE_ENTRY`] (exit 1), like `--accept` of an unknown
+/// quest.
+pub fn trace_entry(input: &CheckInput, mocks: MockSet, entry: &str) -> (TraceReport, TraceExit) {
+    trace_entry_with_check(input, lute_check::check(input), mocks, entry)
+}
+
+/// [`trace_entry`] gated on a caller-supplied [`CheckResult`] — the
+/// project-aware seam [`trace_with_check`] documents.
+pub fn trace_entry_with_check(
+    input: &CheckInput,
+    result: CheckResult,
+    mocks: MockSet,
+    entry: &str,
+) -> (TraceReport, TraceExit) {
+    trace_pipeline(input, result, mocks, Some(entry))
+}
+
+fn trace_pipeline(
+    input: &CheckInput,
+    result: CheckResult,
+    mocks: MockSet,
+    entry: Option<&str>,
+) -> (TraceReport, TraceExit) {
     // 1. `check` gate (§4.3): any Error -> Refused, run check first.
     if !result.ok {
         return (
@@ -2195,7 +2321,15 @@ pub fn trace_with_check(
     let (folded, _fd1, _fd2) = lute_check::fold_env(&doc, input);
 
     // 3. Mock validation (§4.3): any E-TRACE-* -> Refused.
-    let mock_diags = mock::validate(&mocks, &folded, &doc);
+    //    `--entry` (dsl 0.19.0 §8) first: a non-lore document / unknown id
+    //    is refused before any mock is judged against it.
+    let mut mock_diags = match entry {
+        Some(id) => mock::validate_entry(&folded, &doc, id),
+        None => Vec::new(),
+    };
+    if mock_diags.is_empty() {
+        mock_diags = mock::validate(&mocks, &folded, &doc);
+    }
     if !mock_diags.is_empty() {
         return (
             empty_report(&input.uri, &mocks),
@@ -2219,7 +2353,8 @@ pub fn trace_with_check(
 
     // 5. Walk `doc.shots` (the scene walk, Task 19) then `doc.quests` (the
     //    quest walk, Task 20) — admission guarantees a check-clean document
-    //    never populates both, so running both unconditionally is safe.
+    //    never populates both, so running both unconditionally is safe. With
+    //    `--entry` (dsl 0.19.0 §8) only that one entry is presented.
     let seed = seed_state(&mocks, &folded.env.state);
     let state = EffectiveState::new(&folded.env.state, seed);
     let mut facts = FactStore::new(&folded.env.rel_vocab);
@@ -2238,10 +2373,18 @@ pub fn trace_with_check(
         coverage_choices: BTreeMap::new(),
         coverage_arms: BTreeMap::new(),
         domains: &folded.domains,
+        apply_effects: true,
     };
 
-    let mut flow = walk_document(&doc, &mut w);
-    if matches!(flow, Flow::Continue) {
+    let mut flow = match entry {
+        // `validate_entry` proved the id is declared.
+        Some(id) => match doc.entries.iter().find(|e| e.id == id) {
+            Some(e) => walk_entry(e, &mut w),
+            None => Flow::Continue,
+        },
+        None => walk_document(&doc, &mut w),
+    };
+    if entry.is_none() && matches!(flow, Flow::Continue) {
         flow = walk_quests(&doc, &mocks.events, &mut w);
     }
 

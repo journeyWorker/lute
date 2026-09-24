@@ -377,6 +377,30 @@ pub fn compile_with_check(
                 addr_diags,
             )
         }
+        lute_check::DocKind::Lore => {
+            // dsl 0.19.0 §4/§7: one addressing unit per `<entry>`, 1-based in
+            // document order, identity prefix = `{entryId}` — a FRESH
+            // identity scope per entry, exactly the per-quest rule above.
+            let mut shots = Vec::new();
+            for (i, entry) in doc.entries.iter().enumerate() {
+                let mut em = cfg::Emitter::default();
+                stage::walk_entry(&mut em, entry, &mut cx, &mut diags);
+                let (recs, trailing, trailing_named) = em.finish();
+                shots.push(address::ShotRecords {
+                    shot: (i as i64) + 1,
+                    prefix: entry.id.clone(),
+                    recs,
+                    trailing,
+                    trailing_named,
+                });
+            }
+            let (commands, addr_diags) = address::assign_addresses(shots, identity);
+            (
+                ArtifactMeta::Lore(quest_meta(&doc, &folded, &input.snapshot)),
+                commands,
+                addr_diags,
+            )
+        }
     };
     diags.extend(addr_diags);
 
@@ -384,7 +408,8 @@ pub fn compile_with_check(
         return Err(diags);
     }
     let branch_paths = collect_branch_paths(&doc);
-    let quest_reserved = collect_quest_reserved_paths(&doc);
+    let mut reserved = collect_quest_reserved_paths(&doc);
+    reserved.extend(collect_entry_reserved_paths(&doc));
     let (entities, enums, relations, seed_facts, rules) = rel_entries(&folded.env.rel_vocab);
     Ok(Artifact {
         kind: folded.doc_kind.into(),
@@ -392,7 +417,7 @@ pub fn compile_with_check(
         ir_version: LUTE_IR_VERSION.to_string(),
         capability_version: input.snapshot.version.clone(),
         meta,
-        state: state_entries(&folded.env.state, &branch_paths, &quest_reserved),
+        state: state_entries(&folded.env.state, &branch_paths, &reserved),
         entities,
         enums,
         relations,
@@ -758,6 +783,9 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                 }
             }
         }
+        // dsl 0.19.0: an entry is looked up, never scheduled — a lore
+        // document declares no `after` prerequisite.
+        lute_check::DocKind::Lore => {}
     }
     out.sort_by(|a, b| a.node.cmp(&b.node));
     out
@@ -795,7 +823,8 @@ fn quest_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot)
 /// their domain and carry `branch:<id>` provenance (§11.1, plan note 10);
 /// reserved quest entries (`quest.<id>.state`, `quest.<id>.activatedAt`,
 /// `quest.<id>.objectives.<oid>.done`, IR addendum §1–2, dsl 0.8.0 §5) carry
-/// `quest:<id>` provenance — a `quest.<id>.state` enum
+/// `quest:<id>` provenance and reserved entry entries (`entry.<id>.read`,
+/// dsl 0.19.0 §5) carry `entry:<id>` — a `quest.<id>.state` enum
 /// ALSO appends `unset` to its domain (mirrors the branch convention) but is
 /// NOT seeded a forced default (unlike a branch slot: the engine populates it,
 /// maybe-unset, before the quest is known — addendum §3.1's "no default"). The
@@ -804,7 +833,7 @@ fn quest_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot)
 fn state_entries(
     schema: &StateSchema,
     branch_paths: &BTreeSet<String>,
-    quest_reserved: &BTreeMap<String, String>,
+    reserved: &BTreeMap<String, String>,
 ) -> Vec<StateEntry> {
     schema
         .decls
@@ -816,11 +845,15 @@ fn state_entries(
             // guess. An author `state:` decl at a `scene.choices.*` path with no
             // matching `<branch>` is a plain author entry, not a choice slot.
             let is_implicit = branch_paths.contains(path);
-            // Same membership discriminator for the quest-reserved namespace
-            // (NOT a `quest.` prefix guess): only a path the checker actually
-            // folded from a real `<quest>`/`<objective>` counts.
-            let quest_owner = quest_reserved.get(path);
-            let append_unset = is_implicit || (quest_owner.is_some() && path.ends_with(".state"));
+            // Same membership discriminator for the reserved quest/entry
+            // namespaces (NOT a `quest.`/`entry.` prefix guess): only a path
+            // the checker actually folded from a real `<quest>`/`<objective>`/
+            // `<entry>` counts. The map value IS the provenance stamp.
+            let reserved_owner = reserved.get(path);
+            let append_unset = is_implicit
+                || (reserved_owner.is_some()
+                    && path.starts_with("quest.")
+                    && path.ends_with(".state"));
             let (ty, domain) = type_label(append_unset, &decl.ty);
             // §4.1 seeds implicit choice slots `default: "unset"` (their domain is
             // choice ids ∪ `unset`, no author default) so the runtime can init the
@@ -838,7 +871,7 @@ fn state_entries(
                 path.strip_prefix("scene.choices.")
                     .map(|id| format!("branch:{id}"))
             } else {
-                quest_owner.map(|id| format!("quest:{id}"))
+                reserved_owner.cloned()
             };
             StateEntry {
                 path: path.clone(),
@@ -925,25 +958,36 @@ fn collect_branch_paths_nodes(nodes: &[Node], paths: &mut BTreeSet<String>) {
 /// per `<quest>`) and, per top-level `<objective>` (grammar admission
 /// guarantees objectives appear only directly in a quest body, never nested —
 /// mirrors `lute_check::match_check::check_quest`),
-/// `quest.<id>.objectives.<oid>.done` — mapped to the owning quest's id for
-/// the `"quest:<id>"` provenance stamp. Membership here — NOT a `quest.`
+/// `quest.<id>.objectives.<oid>.done` — mapped to the owning quest's
+/// `"quest:<id>"` provenance stamp. Membership here — NOT a `quest.`
 /// prefix guess — is the reliable discriminator between a checker-folded
 /// reserved decl and an author's own `quest.<id>.*` scratch declaration.
 fn collect_quest_reserved_paths(doc: &Document) -> BTreeMap<String, String> {
     let mut paths = BTreeMap::new();
     for quest in &doc.quests {
-        paths.insert(format!("quest.{}.state", quest.id), quest.id.clone());
-        paths.insert(format!("quest.{}.activatedAt", quest.id), quest.id.clone());
+        let owner = format!("quest:{}", quest.id);
+        paths.insert(format!("quest.{}.state", quest.id), owner.clone());
+        paths.insert(format!("quest.{}.activatedAt", quest.id), owner.clone());
         for node in &quest.body {
             if let Node::Objective(o) = node {
                 paths.insert(
                     format!("quest.{}.objectives.{}.done", quest.id, o.id),
-                    quest.id.clone(),
+                    owner.clone(),
                 );
             }
         }
     }
     paths
+}
+
+/// The RESERVED entry state paths (dsl 0.19.0 §5): one
+/// `entry.<id>.read` per `<entry>`, mapped to its `"entry:<id>"` provenance
+/// stamp — the [`collect_quest_reserved_paths`] discriminator for lore.
+fn collect_entry_reserved_paths(doc: &Document) -> BTreeMap<String, String> {
+    doc.entries
+        .iter()
+        .map(|e| (format!("entry.{}.read", e.id), format!("entry:{}", e.id)))
+        .collect()
 }
 
 fn type_label(append_unset: bool, ty: &Type) -> (String, Option<Vec<String>>) {

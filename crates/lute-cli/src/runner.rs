@@ -32,7 +32,13 @@
 //!   monotone objective completion (bodies play once), `fail` evaluated before
 //!   derived completion, and `<on>` handlers fired on the engine-derived
 //!   transitions (`questActive`/`questComplete`/`questFailed`) plus mock
-//!   `events:`.
+//!   `events:`;
+//! - **lore entries** (lore-entries.md, dsl 0.19.0): `--entry <id>` presents
+//!   ONE `entry` record of a lore artifact — its body segment runs to the
+//!   next `entry` record, `set`/`assert`/`retract` apply only while
+//!   `entry.<id>.read` is false (recorded as `skipped` otherwise), and a
+//!   completed first read sets `entry.<id>.read = true`. A lore artifact
+//!   without `--entry` (or `--entry` on another kind) is a usage error.
 //!
 //! Output: a human transcript by default; `--json` emits a stable machine
 //! transcript `{ kind, irVersion, exit, commands, state, facts, quests }`.
@@ -90,7 +96,14 @@ fn impl_ir_line() -> (u64, u64) {
 pub(crate) type Fact = (String, Vec<String>);
 
 /// Execute a compiled artifact against a mock playthrough. See [`crate::Command::Run`].
-pub fn run_artifact(artifact: &Path, mock: Option<&Path>, json_out: bool) -> ExitCode {
+/// `entry` selects the one `entry` record a lore artifact presents (dsl
+/// 0.19.0 §8): required for `kind: "lore"`, refused for any other kind.
+pub fn run_artifact(
+    artifact: &Path,
+    mock: Option<&Path>,
+    json_out: bool,
+    entry: Option<&str>,
+) -> ExitCode {
     let text = match std::fs::read_to_string(artifact) {
         Ok(t) => t,
         Err(e) => {
@@ -129,6 +142,28 @@ pub fn run_artifact(artifact: &Path, mock: Option<&Path>, json_out: bool) -> Exi
         return ExitCode::from(2);
     }
 
+    // ── dsl 0.19.0 §8: a lore artifact is looked up, never played. ──
+    let is_lore = art.get("kind").and_then(Json::as_str) == Some("lore");
+    match (is_lore, entry) {
+        (true, None) => {
+            eprintln!(
+                "lute run: {} is a lore artifact — there is no sequence to play; pass \
+                 `--entry <id>` to present one entry",
+                artifact.display()
+            );
+            return ExitCode::from(2);
+        }
+        (false, Some(id)) => {
+            eprintln!(
+                "lute run: `--entry {id}` needs a lore artifact; {} is kind {:?}",
+                artifact.display(),
+                art.get("kind").and_then(Json::as_str).unwrap_or("scene")
+            );
+            return ExitCode::from(2);
+        }
+        _ => {}
+    }
+
     // ── Mock playthrough (same surfaces as `lute trace --mock`). ──
     let mock_set = match mock {
         None => lute_trace::MockSet::default(),
@@ -148,6 +183,7 @@ pub fn run_artifact(artifact: &Path, mock: Option<&Path>, json_out: bool) -> Exi
     };
 
     let mut runner = Runner::new(&art, mock_set);
+    runner.entry = entry.map(str::to_string);
     match runner.run() {
         Err(msg) => {
             eprintln!("lute run: {msg}");
@@ -346,6 +382,13 @@ pub(crate) struct Runner {
     /// own [`Runner::new`] (no `--auto` surface there); `lute play` sets it
     /// via [`Runner::with_auto_first`].
     auto_first: bool,
+    /// dsl 0.19.0 §8: the `entry` id a lore artifact presents (`lute run
+    /// --entry`). `None` for every scene/quest walk.
+    entry: Option<String>,
+    /// dsl 0.19.0 §6: `false` while presenting an entry whose
+    /// `entry.<id>.read` is already true — `set`/`assert`/`retract` records
+    /// are then recorded as `skipped` instead of applied.
+    apply_effects: bool,
 }
 
 /// `lute play`'s per-scene carryover + transcript-reuse surface (assignment
@@ -463,6 +506,8 @@ impl Runner {
             fatal: None,
             unresolved: Vec::new(),
             auto_first: false,
+            entry: None,
+            apply_effects: true,
         }
     }
 
@@ -736,6 +781,8 @@ impl Runner {
     pub(crate) fn run(&mut self) -> Result<(), String> {
         if self.kind == "quest" {
             self.run_quest();
+        } else if self.kind == "lore" {
+            self.run_entry();
         } else {
             self.run_range(0, self.commands.len());
         }
@@ -807,6 +854,10 @@ impl Runner {
                 self.rec_stage(&cmd, kind);
                 Step::Next(pc + 1)
             }
+            "set" | "assert" | "retract" if !self.apply_effects => {
+                self.rec_skipped(&cmd, kind);
+                Step::Next(pc + 1)
+            }
             "set" => {
                 self.exec_set(&cmd);
                 Step::Next(pc + 1)
@@ -843,8 +894,8 @@ impl Runner {
                 Step::Next(pc + 1)
             }
             // Declarations — inert in a linear walk (a quest artifact is driven
-            // by `run_quest`, never linearly).
-            "quest" | "on" => Step::Next(pc + 1),
+            // by `run_quest`, a lore artifact by `run_entry`, never linearly).
+            "quest" | "on" | "entry" => Step::Next(pc + 1),
             other => {
                 self.fatal = Some(format!(
                     "unknown command kind {other:?} (a new capability the runner cannot fake)"
@@ -995,6 +1046,33 @@ impl Runner {
             "kind": "retract",
             "pattern": render_fact(&rel, &args),
         }));
+    }
+
+    /// dsl 0.19.0 §6: a first-read-only effect record NOT applied on a
+    /// re-read — recorded with the same identifying field its applied form
+    /// carries (`path` / `fact` / `pattern`), never evaluated.
+    fn rec_skipped(&mut self, cmd: &Json, kind: &str) {
+        let mut rec = serde_json::Map::new();
+        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("kind".into(), Json::String("skipped".into()));
+        rec.insert("effect".into(), Json::String(kind.to_string()));
+        match kind {
+            "set" => {
+                let path = cmd.get("path").and_then(Json::as_str).unwrap_or("");
+                rec.insert("path".into(), Json::String(path.to_string()));
+            }
+            _ => {
+                let rel = cmd.get("relation").and_then(Json::as_str).unwrap_or("");
+                let args: Vec<String> = cmd
+                    .get("args")
+                    .and_then(Json::as_array)
+                    .map(|a| a.iter().map(json_arg_to_string).collect())
+                    .unwrap_or_default();
+                let key = if kind == "assert" { "fact" } else { "pattern" };
+                rec.insert(key.into(), Json::String(render_fact(rel, &args)));
+            }
+        }
+        self.transcript.push(Json::Object(rec));
     }
 
     // ── control flow ───────────────────────────────────────────────────
@@ -1763,6 +1841,61 @@ impl Runner {
         self.run_range(start, stop);
     }
 
+    /// Present ONE lore entry (dsl 0.19.0 §6, `docs/runtime/lore-entries.md`
+    /// `present()`): `firstRead = !entry.<id>.read`; run the body segment —
+    /// from `body` up to the next `entry` record, the `<on>`-body
+    /// termination rule — with `set`/`assert`/`retract` applied only on a
+    /// first read; then, on a first read that ran to completion, the
+    /// ENGINE's `entry.<id>.read = true` write. `when` is evaluated and
+    /// recorded as `eligible` (true / false / null = unknown) on the `entry`
+    /// transcript event, not enforced: `--entry` asks for the presentation.
+    fn run_entry(&mut self) {
+        let id = self.entry.clone().unwrap_or_default();
+        let Some(at) = self.commands.iter().position(|c| {
+            c.get("kind").and_then(Json::as_str) == Some("entry")
+                && c.get("id").and_then(Json::as_str) == Some(id.as_str())
+        }) else {
+            let declared: Vec<&str> = self
+                .commands
+                .iter()
+                .filter(|c| c.get("kind").and_then(Json::as_str) == Some("entry"))
+                .filter_map(|c| c.get("id").and_then(Json::as_str))
+                .collect();
+            self.fatal = Some(format!(
+                "`--entry {id}` names no entry in this artifact (declared: {})",
+                declared.join(", ")
+            ));
+            return;
+        };
+        let cmd = self.commands[at].clone();
+        let read_path = format!("entry.{id}.read");
+        let first_read = self.state.get(&read_path) != Some(&Value::Bool(true));
+        let eligible = match cel_raw(cmd.get("when")) {
+            None => Json::Bool(true),
+            Some(raw) => self.truthy(&raw).map(Json::Bool).unwrap_or(Json::Null),
+        };
+        self.transcript.push(json!({
+            "addr": addr(&cmd),
+            "kind": "entry",
+            "id": id,
+            "firstRead": first_read,
+            "eligible": eligible,
+        }));
+        let body = cmd.get("body").and_then(Json::as_str).unwrap_or("");
+        let start = self.resolve(body);
+        let stop = self.commands[at + 1..]
+            .iter()
+            .position(|c| c.get("kind").and_then(Json::as_str) == Some("entry"))
+            .map(|i| at + 1 + i)
+            .unwrap_or(self.commands.len());
+        self.apply_effects = first_read;
+        self.run_range(start, stop);
+        self.apply_effects = true;
+        if first_read && !self.incomplete && self.fatal.is_none() {
+            self.state.insert(read_path, Value::Bool(true));
+        }
+    }
+
     // ── output ─────────────────────────────────────────────────────────
 
     fn output_value(&self) -> Json {
@@ -1842,6 +1975,32 @@ impl Runner {
                     e.get("result").and_then(Json::as_str).unwrap_or("")
                 ),
                 "barrier" => format!("  {a}  barrier (no real clock)"),
+                "entry" => {
+                    let read = if e.get("firstRead").and_then(Json::as_bool) == Some(true) {
+                        "first read"
+                    } else {
+                        "re-read: effects skipped"
+                    };
+                    let gate = match e.get("eligible").and_then(Json::as_bool) {
+                        Some(true) => "",
+                        Some(false) => ", not eligible (`when` is false)",
+                        None => ", eligibility unknown",
+                    };
+                    format!(
+                        "  {a}  entry  {} ({read}{gate})",
+                        e.get("id").and_then(Json::as_str).unwrap_or("")
+                    )
+                }
+                "skipped" => {
+                    let what = ["path", "fact", "pattern"]
+                        .iter()
+                        .find_map(|k| e.get(*k).and_then(Json::as_str))
+                        .unwrap_or("");
+                    format!(
+                        "  {a}  {} {what} (skipped: re-read)",
+                        e.get("effect").and_then(Json::as_str).unwrap_or("")
+                    )
+                }
                 "end" => match e.get("reason").and_then(Json::as_str) {
                     Some(r) => format!("  {a}  end    reason={r}"),
                     None => format!("  {a}  end"),

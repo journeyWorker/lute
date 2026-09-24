@@ -243,6 +243,39 @@ impl Parser<'_> {
         }
     }
 
+    /// `EntryDecl ::= "<entry" Attrs ">" EntryBody "</entry>"` (dsl 0.19.0
+    /// §2–§4). TOP-LEVEL ONLY, exactly like [`Parser::parse_quest`]: the
+    /// caller (`parse_document_inner`) invokes this directly; `<entry>` is
+    /// never dispatched through [`Parser::next_node`]. The body is the
+    /// ordinary node stream — an entry has no owner fields (no `<reward/>`
+    /// interception); body admission is the checker's.
+    pub(super) fn parse_entry(&mut self) -> Entry {
+        let open = self.parse_open_tag();
+        let mut attrs = open.attrs.clone();
+        let (id, id_span) = take_str_spanned(&mut attrs, "id")
+            .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
+        let target = take_str_spanned(&mut attrs, "target");
+        let category = take_str_spanned(&mut attrs, "category");
+        let title = take_str_spanned(&mut attrs, "title");
+        let series = take_str_spanned(&mut attrs, "series");
+        let order = take_str_spanned(&mut attrs, "order");
+        let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let (body, end_o) = self.parse_block_body("entry", &open);
+        Entry {
+            id,
+            id_span,
+            target,
+            category,
+            title,
+            series,
+            order,
+            when,
+            attrs,
+            body,
+            span: self.span_o(open.start_o, end_o),
+        }
+    }
+
     /// `Objective ::= "<objective" Attrs ">" Node* "</objective>" | "<objective"
     /// Attrs "/>"` (dsl 0.2.0 §6.4). One of `done`/`quest=` is required but a
     /// MISSING `done` still yields a valid AST (empty CEL slot) —

@@ -48,8 +48,9 @@ pub mod walk;
 pub use eval::{eval, EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use mock::{
     merge, mock_subject, parse_mock_surfaces, parse_mock_yaml, validate, MockSet, E_MOCK_SUBJECT,
-    E_TRACE_ACCEPT, E_TRACE_CHOICE, E_TRACE_EVENT, E_TRACE_MOCK_FACT, E_TRACE_MOCK_PARSE,
-    E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED, MOCK_TOP_KEYS, W_TRACE_MOCK_UNPRODUCIBLE,
+    E_TRACE_ACCEPT, E_TRACE_CHOICE, E_TRACE_ENTRY, E_TRACE_EVENT, E_TRACE_MOCK_FACT,
+    E_TRACE_MOCK_PARSE, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED, MOCK_TOP_KEYS,
+    W_TRACE_MOCK_UNPRODUCIBLE,
 };
 pub use quest_refs::collect_referenced_reserved_quest_paths;
 pub use report::{
@@ -57,4 +58,4 @@ pub use report::{
     TraceReport, UnresolvedEntry,
 };
 pub use value::{UnresolvedAtom, Value};
-pub use walk::{trace_document, trace_with_check};
+pub use walk::{trace_document, trace_entry, trace_entry_with_check, trace_with_check};

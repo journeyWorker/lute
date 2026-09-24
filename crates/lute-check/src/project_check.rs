@@ -36,7 +36,11 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{Document, Node};
 
-use crate::cel_paths::{collect_path_uses, is_reserved_quest_path};
+use crate::cel_paths::{collect_path_uses, is_reserved_quest_path, reserved_entry_id};
+use crate::lore::{
+    series_order_message, series_position, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER,
+    W_ENTRY_REF_UNKNOWN,
+};
 
 /// `E-QUEST-ID-DUP`, [`Layer::Logic`] (matching `check_quest`'s own in-document
 /// diagnostic — quest-id identity is a §9/§11-style logic concern regardless of
@@ -314,6 +318,194 @@ pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
                     "referenced_reserved_paths only ever yields is_reserved_quest_path shapes"
                 ),
             }
+        }
+    }
+    out
+}
+
+/// Every non-empty `<entry id>` occurrence in `docs`, grouped by id — the
+/// lore mirror of [`group_by_id`] (dsl 0.19.0 §3: entry ids are unique across
+/// the project).
+fn group_entries_by_id(docs: &[(PathBuf, Document)]) -> BTreeMap<&str, Vec<(&Path, Span)>> {
+    let mut by_id: BTreeMap<&str, Vec<(&Path, Span)>> = BTreeMap::new();
+    for (path, doc) in docs {
+        for entry in &doc.entries {
+            if entry.id.is_empty() {
+                continue;
+            }
+            by_id
+                .entry(entry.id.as_str())
+                .or_default()
+                .push((path.as_path(), entry.id_span));
+        }
+    }
+    by_id
+}
+
+/// Every well-formed `(series, order)` position in `docs`, grouped by
+/// position, each occurrence carrying its entry id and its `order` value span
+/// (the anchor `crate::lore::check_entries` uses per document).
+#[allow(clippy::type_complexity)]
+fn group_entries_by_position(
+    docs: &[(PathBuf, Document)],
+) -> BTreeMap<(&str, u32), Vec<(&Path, &str, Span)>> {
+    let mut by_pos: BTreeMap<(&str, u32), Vec<(&Path, &str, Span)>> = BTreeMap::new();
+    for (path, doc) in docs {
+        for entry in &doc.entries {
+            if let Some((series, order, span)) = series_position(entry) {
+                by_pos.entry((series, order)).or_default().push((
+                    path.as_path(),
+                    entry.id.as_str(),
+                    span,
+                ));
+            }
+        }
+    }
+    by_pos
+}
+
+/// dsl 0.19.0 §3, project-wide: [`E_ENTRY_ID_DUP`] for every `<entry id>`
+/// occurrence past its id's first, and [`E_ENTRY_SERIES_ORDER`] for every
+/// `(series, order)` position occurrence past its first — whether the repeat
+/// lives in the same file or in another file of the walked root, with no
+/// import edge needed (the [`check_project_quest_ids`] shape). Each
+/// diagnostic is paired with the file it is anchored in; "first" is `docs`'
+/// own order, so callers MUST pass files pre-sorted. An empty id and a
+/// malformed/absent series or order are skipped: those are the document's
+/// own `E-ENTRY-ATTR`.
+pub fn check_project_entry_ids(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
+    let mut out = Vec::new();
+    for (id, occurrences) in group_entries_by_id(docs) {
+        let Some(&(first_file, _)) = occurrences.first() else {
+            continue;
+        };
+        for &(file, span) in &occurrences[1..] {
+            let message = if file == first_file {
+                format!(
+                    "duplicate `<entry id=\"{id}\">`; entry ids must be unique across the \
+                     project (dsl 0.19.0 §3)"
+                )
+            } else {
+                format!(
+                    "duplicate `<entry id=\"{id}\">` across project files (`{}` and `{}`); \
+                     entry ids must be unique across the project (dsl 0.19.0 §3)",
+                    first_file.display(),
+                    file.display()
+                )
+            };
+            out.push((
+                file.to_path_buf(),
+                crate::lore::diag(E_ENTRY_ID_DUP, Severity::Error, message, span),
+            ));
+        }
+    }
+    for ((series, order), occurrences) in group_entries_by_position(docs) {
+        let Some(&(first_file, first_id, _)) = occurrences.first() else {
+            continue;
+        };
+        for &(file, id, span) in &occurrences[1..] {
+            let mut message = series_order_message(series, order, first_id, id);
+            if file != first_file {
+                message.push_str(&format!(" — in `{}`", first_file.display()));
+            }
+            out.push((
+                file.to_path_buf(),
+                crate::lore::diag(E_ENTRY_SERIES_ORDER, Severity::Error, message, span),
+            ));
+        }
+    }
+    out
+}
+
+/// Every `(path, span)` occurrence belonging to a colliding entry-id group
+/// (anchored at `id_span`) or a colliding `(series, order)` group (anchored
+/// at the `order` value span) among `docs` — first occurrence included. The
+/// lore mirror of [`colliding_occurrences`]: `check-project` suppresses a
+/// per-file `E-ENTRY-ID-DUP` / `E-ENTRY-SERIES-ORDER` whose `(path, span)` is
+/// a member here, because [`check_project_entry_ids`] already reports that
+/// group once; one that is NOT a member (an import-graph collision reaching
+/// outside the walked set) is kept.
+pub fn colliding_entry_occurrences(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Span)> {
+    let mut out = Vec::new();
+    for occurrences in group_entries_by_id(docs).into_values() {
+        if occurrences.len() >= 2 {
+            out.extend(occurrences.into_iter().map(|(p, s)| (p.to_path_buf(), s)));
+        }
+    }
+    for occurrences in group_entries_by_position(docs).into_values() {
+        if occurrences.len() >= 2 {
+            out.extend(
+                occurrences
+                    .into_iter()
+                    .map(|(p, _, s)| (p.to_path_buf(), s)),
+            );
+        }
+    }
+    out
+}
+
+/// Every reserved `entry.<id>.read` path `doc` references, paired with the
+/// span of the enclosing CEL slot it was first found in (canonical
+/// [`lute_syntax::walk::for_each_cel_slot`] order) — the lore twin of
+/// [`referenced_reserved_paths`], same re-parse discipline.
+fn referenced_entry_reads(doc: &Document) -> BTreeMap<String, Span> {
+    let mut out = BTreeMap::new();
+    lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
+        let raw = slot.raw.trim();
+        if raw.is_empty() {
+            return;
+        }
+        let mut arena = CelArena::default();
+        let Ok(handle) = lute_cel::parse_slot(&mut arena, raw, 0) else {
+            return;
+        };
+        let Some(rec) = arena.get(handle) else {
+            return;
+        };
+        for use_ in collect_path_uses(&rec.expr) {
+            if reserved_entry_id(&use_.path).is_some() {
+                out.entry(use_.path).or_insert(slot.span);
+            }
+        }
+    });
+    out
+}
+
+/// dsl 0.19.0 §5: [`W_ENTRY_REF_UNKNOWN`] — every `entry.<id>.read` read
+/// across `docs` whose `<id>` no document among `docs` declares (the
+/// mistyped-entry-id catch). A warning, [`Layer::Logic`], exactly like
+/// [`W_QUEST_REF_UNKNOWN`]: the read is shape-legal and the entry may live
+/// outside the walked project. `check-project` only; single-file `check()`
+/// has no project and MUST NOT emit it.
+pub fn check_project_entry_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
+    let declared: BTreeSet<&str> = docs
+        .iter()
+        .flat_map(|(_, doc)| doc.entries.iter())
+        .filter(|e| !e.id.is_empty())
+        .map(|e| e.id.as_str())
+        .collect();
+    let mut out = Vec::new();
+    for (path, doc) in docs {
+        for (ref_path, span) in referenced_entry_reads(doc) {
+            let Some(id) = reserved_entry_id(&ref_path) else {
+                continue;
+            };
+            if declared.contains(id) {
+                continue;
+            }
+            out.push((
+                path.clone(),
+                crate::lore::diag(
+                    W_ENTRY_REF_UNKNOWN,
+                    Severity::Warning,
+                    format!(
+                        "`{ref_path}` references entry `{id}`, which no project lore document \
+                         declares (dsl 0.19.0 §5) — a typo, or an entry declared outside this \
+                         walked directory"
+                    ),
+                    span,
+                ),
+            ));
         }
     }
     out
@@ -933,6 +1125,7 @@ mod tests {
             title: None,
             shots: Vec::new(),
             quests,
+            entries: Vec::new(),
             span: span(0),
         }
     }

@@ -6,6 +6,8 @@ pub struct Document {
     pub title: Option<(String, Span)>,
     pub shots: Vec<Shot>,
     pub quests: Vec<Quest>,
+    /// Top-level `<entry>` declarations (dsl 0.19.0 §2), in document order.
+    pub entries: Vec<Entry>,
     pub span: Span,
 }
 
@@ -166,6 +168,33 @@ pub struct Quest {
     pub body: Vec<Node>,
     /// Self-closing `<reward/>` children in declaration order (dsl 0.16.0 §2).
     pub rewards: Vec<Reward>,
+    pub span: Span,
+}
+
+/// `<entry id …> EntryBody </entry>` (dsl 0.19.0 §3–§4). A TOP-LEVEL
+/// declaration of a lore document (never a [`Node`]), mirroring [`Quest`]:
+/// `body` reuses the shared `Node` stream (the admitted arms — lines,
+/// `<match>`, `::set`/`::assert`/`::retract` — are enforced in lute-check,
+/// not here). `id` is empty when the attribute is absent or not a quoted
+/// string (checker: `E-ENTRY-ATTR`); `id_span` then falls back to the open
+/// tag. The optional string attrs carry their value span so the checker can
+/// anchor `E-ENTRY-ATTR` at the attribute; `order` stays raw text (the
+/// checker validates the non-negative integer). `title` is a localizable
+/// String captured raw, like [`Quest::title`].
+#[derive(Clone, Debug)]
+pub struct Entry {
+    pub id: String,
+    pub id_span: Span,
+    pub target: Option<(String, Span)>,
+    pub category: Option<(String, Span)>,
+    pub title: Option<(String, Span)>,
+    pub series: Option<(String, Span)>,
+    pub order: Option<(String, Span)>,
+    /// Optional eligibility guard (dsl 0.19.0 §3), like [`Quest::start`].
+    pub when: Option<CelSlot>,
+    /// Residual (post-extraction) attrs, mirroring [`Quest`]; normally empty.
+    pub attrs: Vec<Attr>,
+    pub body: Vec<Node>,
     pub span: Span,
 }
 

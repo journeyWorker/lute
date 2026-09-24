@@ -22,7 +22,7 @@ fn input(text: &str) -> CheckInput {
 fn scene_meta(a: &lute_compile::Artifact) -> &lute_compile::SceneMeta {
     match &a.meta {
         ArtifactMeta::Scene(m) => m,
-        ArtifactMeta::Quest(_) => panic!("expected scene meta"),
+        ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => panic!("expected scene meta"),
     }
 }
 

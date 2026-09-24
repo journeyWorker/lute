@@ -252,6 +252,24 @@ pub fn scan_objective_liveness(
         }
         walk_objectives(&quest.body, producible, defs, ctx, &mut out);
     }
+    // dsl 0.19.0 §3: an entry's `when` eligibility guard is a predicate
+    // like `<quest fail>` — a producible fact-query gate is the same review
+    // region (`W-UNPROVEN-RELATIONAL`); a never-producible one means the
+    // entry is never eligible, which no code reports (as a never-firing
+    // `fail` is not a defect).
+    for entry in &doc.entries {
+        if let Some(slot) = &entry.when {
+            let relations = unproven_relations(&slot.raw, producible, defs, ctx);
+            if !relations.is_empty() {
+                out.push(warn_diag(
+                    W_UNPROVEN_RELATIONAL,
+                    unproven_relation_message("when", &slot.raw, &relations),
+                    slot.span,
+                ));
+            }
+        }
+        walk_objectives(&entry.body, producible, defs, ctx, &mut out);
+    }
     out
 }
 
@@ -784,7 +802,8 @@ fn collect_producible_fact_query_relations(
 }
 
 /// dsl 0.6.1 §2: the [`W_UNPROVEN_RELATIONAL`] message. Quotes the raw
-/// predicate (`{label}="{raw}"` — `label` is `done`/`start`/`fail`), names the
+/// predicate (`{label}="{raw}"` — `label` is `done`/`start`/`fail`, or an
+/// entry's `when`), names the
 /// producible queried relation(s) in deterministic `BTreeSet` order, and states
 /// the boundary + remedy (`lute trace` seeds or human review).
 fn unproven_relation_message(label: &str, raw: &str, relations: &BTreeSet<String>) -> String {
@@ -1050,6 +1069,7 @@ mod tests {
                 rewards: Vec::new(),
                 span: dummy_span(),
             }],
+            entries: Vec::new(),
             span: dummy_span(),
         }
     }
@@ -1269,6 +1289,7 @@ mod tests {
                 rewards: Vec::new(),
                 span: dummy_span(),
             }],
+            entries: Vec::new(),
             span: dummy_span(),
         }
     }

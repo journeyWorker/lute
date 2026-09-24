@@ -12,7 +12,7 @@ name: Test
 # therefore `crates/lute-manifest/**`) must stay in the trigger set below.
 # The same job also owns the nvim query mirror gate:
 # `tree-sitter-lute/test/nvim_query_sync.test.js` asserts that every
-# `(quest`/`(on`/`(objective` pattern the CANONICAL grammar queries
+# `(quest`/`(on`/`(objective`/`(entry` pattern the CANONICAL grammar queries
 # (`tree-sitter-lute/queries/*.scm`) match is also matched by the shipped
 # editor mirror (`editors/nvim/queries/lute/*.scm`), so a node added to one
 # and forgotten in the other cannot ship. It needs neither cargo nor `lute`,

@@ -337,7 +337,7 @@ pub fn fold_env(
     //    treatment it had pre-0.2.0.
     let (resolved_kind, kind_diags) =
         crate::meta::resolve_doc_kind_with_defaults(&doc.meta, &input.defaults);
-    let has_body = !doc.shots.is_empty() || !doc.quests.is_empty();
+    let has_body = !doc.shots.is_empty() || !doc.quests.is_empty() || !doc.entries.is_empty();
     let (doc_kind, meta_kind, kind_diags) = match resolved_kind {
         Some(crate::meta::DocKind::Scene) => (
             crate::meta::DocKind::Scene,
@@ -347,6 +347,13 @@ pub fn fold_env(
         Some(crate::meta::DocKind::Quest) => (
             crate::meta::DocKind::Quest,
             crate::meta::MetaKind::Quest,
+            kind_diags,
+        ),
+        // dsl 0.19.0 §2: a lore document takes the quest-document frontmatter
+        // keys (`MetaKind::Lore` mirrors `MetaKind::Quest`'s key set).
+        Some(crate::meta::DocKind::Lore) => (
+            crate::meta::DocKind::Lore,
+            crate::meta::MetaKind::Lore,
             kind_diags,
         ),
         None => match crate::meta::infer_meta_kind_from_shape(&doc.meta, has_body) {
@@ -525,6 +532,21 @@ pub fn fold_env(
         // gate below owns only the CEL-side check.
         fold_diags.extend(check_quest_rewards(quest, &input.snapshot));
     }
+
+    // 4a'. Fold every `<entry>`'s implicit reserved `entry.<id>.read` decl
+    //      (dsl 0.19.0 §5: `bool`, default `false`) and its attribute /
+    //      per-document identity diagnostics (`E-ENTRY-ATTR`,
+    //      `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`) — the lore mirror of the
+    //      quest fold above, its id set seeded from the import-reachable
+    //      entry ids the same way `seen_quests` is. No reserved-decl
+    //      collision guard is needed: an `entry.*` path can never be
+    //      author-declared (`entry` is not a `state:` tier,
+    //      `E-STATE-NAMESPACE`).
+    let mut seen_entries: std::collections::BTreeSet<String> =
+        input.imports.imported_entry_ids.keys().cloned().collect();
+    let entry_record = crate::lore::check_entries(&doc.entries, &mut seen_entries);
+    schema.decls.extend(entry_record.decls);
+    fold_diags.extend(entry_record.diags);
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
     //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
@@ -821,6 +843,25 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 }
             }
         }
+        // dsl 0.19.0 §3–§4: a lore document walks each entry's `when`
+        // eligibility guard (the SAME `Bool` treatment a `<quest start>`
+        // gets) and then its body through the SAME `Walker` a quest body
+        // uses — lines, `<match>`, `::set`/`::assert`/`::retract` are checked
+        // exactly as in scenes. Canonical order: `when`, then body
+        // (`lute_syntax::walk::entry`).
+        crate::meta::DocKind::Lore => {
+            for entry in &doc.entries {
+                if let Some(when) = &entry.when {
+                    walker.diags.extend(check_cel_slot(
+                        when,
+                        &arena,
+                        &base_ctx,
+                        Some(&ExpectedType::Bool),
+                    ));
+                }
+                walker.walk(&entry.body, &base_ctx);
+            }
+        }
     }
 
     // 6. Definite assignment, kind-dispatched (dsl 0.2.0 §4.4): scene runs
@@ -894,6 +935,27 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 ds
             })
             .collect(),
+        // dsl 0.19.0 §6: each entry is presented on its own against live
+        // state — no entry dominates another — so, like a quest, each entry
+        // is its own definite-assignment scope; its `when` is evaluated
+        // before the body runs and gets the fresh entry-guard check
+        // `<quest start>` gets.
+        crate::meta::DocKind::Lore => doc
+            .entries
+            .iter()
+            .flat_map(|e| {
+                let mut ds = Vec::new();
+                if let Some(when) = &e.when {
+                    ds.extend(check_quest_guard_defassign(when, &env.state));
+                }
+                let (diags, _, _reads) = check_definite_assignment(&e.body, &env.state);
+                exhaustive_subject_spans.extend(crate::defassign::exhaustive_match_subject_spans(
+                    &e.body, &env.state,
+                ));
+                ds.extend(diags);
+                ds
+            })
+            .collect(),
     };
 
     // 6b. Duplicate authored line codes (dsl §12): two `:line`s for the same
@@ -938,6 +1000,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
             .quests
             .iter()
             .flat_map(|q| q.body.iter().map(node_summary))
+            .collect(),
+        crate::meta::DocKind::Lore => doc
+            .entries
+            .iter()
+            .flat_map(|e| e.body.iter().map(node_summary))
             .collect(),
     };
 
@@ -3181,6 +3248,8 @@ fn zeroed_span(byte_start: usize, byte_end: usize) -> Span {
 /// (`<hub>` is never legal in a quest doc, dsl 0.2.0 §6.7 — grammar admission
 /// rejects it separately, so it is never reached from a quest walk in
 /// practice, but the recursion below tolerates it structurally regardless).
+/// Entry bodies (dsl 0.19.0 §4) are folded too: a `<branch>`/`<hub>` there
+/// is an admission error, and folding its decls keeps that the only report.
 fn fold_branches(
     doc: &Document,
     schema: &mut crate::meta::StateSchema,
@@ -3192,6 +3261,9 @@ fn fold_branches(
     }
     for quest in &doc.quests {
         fold_branches_nodes(&quest.body, schema, seen, diags);
+    }
+    for entry in &doc.entries {
+        fold_branches_nodes(&entry.body, schema, seen, diags);
     }
 }
 
@@ -3263,6 +3335,11 @@ fn fold_directive_slots(
     }
     for quest in &doc.quests {
         fold_slots_nodes(&quest.body, snapshot, schema);
+    }
+    // dsl 0.19.0 §4: a directive in an entry body is an admission error;
+    // folding its declared slots keeps that the only report.
+    for entry in &doc.entries {
+        fold_slots_nodes(&entry.body, snapshot, schema);
     }
 }
 
@@ -3686,6 +3763,7 @@ fn undeclared_path(message: &str) -> Option<&str> {
             || tok.starts_with("user.")
             || tok.starts_with("app.")
             || tok.starts_with("quest.")
+            || tok.starts_with("entry.")
     })
 }
 

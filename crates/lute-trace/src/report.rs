@@ -128,6 +128,26 @@ pub enum Step {
         on_failed: bool,
     },
     Decision(Decision),
+    /// dsl 0.19.0 §8 (`lute trace --entry`): the presented `<entry>`'s head.
+    /// `first_read` is `!entry.<id>.read` at presentation — `true` means its
+    /// `::set`/`::assert`/`::retract` apply; `false` (the mock seeded
+    /// `entry.<id>.read: true`) means they are reported as [`Step::Skipped`].
+    /// `eligible` is the entry's `when` against the mocked state: `true` when
+    /// absent or true, `false` when decided false, `null` when unknown (the
+    /// guard is then also listed in `unresolved`). Trace presents the entry
+    /// either way — eligibility is the engine's gate, shown, not enforced.
+    Entry {
+        id: String,
+        first_read: bool,
+        eligible: Option<bool>,
+    },
+    /// A first-read-only effect record NOT applied on a re-read (dsl 0.19.0
+    /// §6, `docs/runtime/lore-entries.md`): `effect` is `set`/`assert`/
+    /// `retract`, `text` the authored write (`run.x += 1`, `knows(a, b)`).
+    Skipped {
+        effect: String,
+        text: String,
+    },
 }
 
 /// dsl 0.16.0 §3: the reward-declaration data carried by a fired [`Step::Grant`],
@@ -421,6 +441,26 @@ fn render_step(step: &Step, out: &mut String) {
                 "  <{} {}>{}   -> {}{}{}\n",
                 d.construct, d.id, eligible, d.outcome, guard, annot
             ));
+        }
+        Step::Entry {
+            id,
+            first_read,
+            eligible,
+        } => {
+            let read = if *first_read {
+                "first read"
+            } else {
+                "re-read: effects skipped"
+            };
+            let gate = match eligible {
+                Some(true) => "",
+                Some(false) => ", not eligible (`when` is false)",
+                None => ", eligibility unknown",
+            };
+            out.push_str(&format!("  <entry {id}>   ({read}{gate})\n"));
+        }
+        Step::Skipped { effect, text } => {
+            out.push_str(&format!("    ::{effect}  {text}  (skipped: re-read)\n"));
         }
         Step::Grant {
             quest,

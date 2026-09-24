@@ -64,6 +64,7 @@ mod compile_all;
 mod doctor;
 mod lint;
 mod loc;
+mod lore_report;
 mod manifests;
 mod mockcheck;
 mod play;
@@ -352,6 +353,14 @@ enum Command {
         /// snapshot (plugin §4/§11). Omit for a core-only (`lute.core`) trace.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
+        /// Present ONE `<entry>` of a `kind: lore` document by id (dsl
+        /// 0.19.0 §8): its lines, the `<match>` arm taken, and the
+        /// `::set`/`::assert`/`::retract` a first read applies — or skips,
+        /// when the mock seeds `entry.<id>.read: true`. REQUIRED for a lore
+        /// document (it has no sequence to walk); `E-TRACE-ENTRY` (exit 1)
+        /// on a non-lore document or an unknown id.
+        #[arg(long, value_name = "ID")]
+        entry: Option<String>,
     },
     /// Provider-catalog maintenance.
     #[command(subcommand)]
@@ -367,9 +376,10 @@ enum Command {
         template: Option<String>,
     },
     /// Scaffold one new document into an existing project: `lute new scene
-    /// <name>` / `lute new quest <name>` / `lute new schema <name>`.
+    /// <name>` / `lute new quest <name>` / `lute new lore <name>` /
+    /// `lute new schema <name>`.
     New {
-        /// Document kind: `scene`, `quest`, or `schema`.
+        /// Document kind: `scene`, `quest`, `lore`, or `schema`.
         kind: String,
         /// The new document's name (file stem / id).
         name: String,
@@ -402,6 +412,11 @@ enum Command {
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,
+        /// Present ONE `entry` record of a lore artifact by id (dsl 0.19.0
+        /// §8, docs/runtime/lore-entries.md). Required for a lore artifact
+        /// (exit 2 without it); refused (exit 2) on any other artifact kind.
+        #[arg(long, value_name = "ID")]
+        entry: Option<String>,
     },
     /// Play a scheduled route through a whole project as one chained,
     /// reviewer-facing transcript — the reference-runtime consumer of a
@@ -507,6 +522,18 @@ enum Command {
     /// Localization & production reporting over a project's content lines.
     #[command(subcommand)]
     Loc(LocCommand),
+    /// The project's world-narrative map (dsl 0.19.0 §8): lore entries
+    /// grouped by `target` and by `series` (in `order`), and for every
+    /// relation asserted anywhere, which ground facts lore entries reveal,
+    /// which scenes/quests reveal, and which both. Read-only; documents need
+    /// not check clean. Exit `0` on success, `2` on an I/O failure.
+    Lore {
+        /// Directory to walk recursively for `*.lute` files.
+        dir: PathBuf,
+        /// Emit the report as JSON instead of human-readable lines.
+        #[arg(long)]
+        json: bool,
+    },
     /// Project-wide, read-only reporting surface over everything the
     /// connectivity layer computes (dsl §5:571-584): the assembled node/edge
     /// graph, per-node reachability plus its declared `after` structure, and
@@ -735,6 +762,9 @@ const DENIABLE_CODES: &[&str] = &[
     "E-DUP-TRACK",
     "E-ENTITY-KIND-CLASH",
     "E-ENTITY-KIND-SHAPE",
+    "E-ENTRY-ATTR",
+    "E-ENTRY-ID-DUP",
+    "E-ENTRY-SERIES-ORDER",
     "E-ENUM-DEFAULT-NOT-MEMBER",
     "E-ENUM-EXITS-NOT-MEMBER",
     "E-ENUM-MISSING-SEMANTICS",
@@ -849,6 +879,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-TITLE-PLACEMENT",
     "E-TRACE-ACCEPT",
     "E-TRACE-CHOICE",
+    "E-TRACE-ENTRY",
     "E-TRACE-EVENT",
     "E-TRACE-MOCK-FACT",
     "E-TRACE-MOCK-PARSE",
@@ -885,6 +916,7 @@ const DENIABLE_CODES: &[&str] = &[
     "W-COMPONENT-UNVERIFIED",
     "W-DERIVE-NO-RULES",
     "W-DOMAIN-UNREAD",
+    "W-ENTRY-REF-UNKNOWN",
     "W-EXIT-INERT",
     "W-INTO-SET-DUP",
     "W-L10N-MISSING",
@@ -1063,6 +1095,7 @@ fn main() -> ExitCode {
             json,
             providers,
             project,
+            entry,
         } => run_trace(
             &file,
             state,
@@ -1074,6 +1107,7 @@ fn main() -> ExitCode {
             json,
             providers.as_deref(),
             project.as_deref(),
+            entry.as_deref(),
         ),
         Command::Tag { file, force } => run_tag(&file, force),
         Command::Fix { file } => run_fix(&file),
@@ -1082,12 +1116,14 @@ fn main() -> ExitCode {
         }
         Command::Init { dir, template } => scaffold::run_init(&dir, template.as_deref()),
         Command::New { kind, name, dir } => scaffold::run_new(&kind, &name, &dir),
+        Command::Lore { dir, json } => lore_report::run_lore(&dir, json),
         Command::Doctor { dir, json } => doctor::run_doctor(&dir, json),
         Command::Run {
             artifact,
             mock,
             json,
-        } => runner::run_artifact(&artifact, mock.as_deref(), json),
+            entry,
+        } => runner::run_artifact(&artifact, mock.as_deref(), json, entry.as_deref()),
         Command::Play {
             dir,
             state,
@@ -2258,6 +2294,10 @@ fn reconcile_collected(
     // structurally cannot see (an import-graph collision reaching outside
     // `dir`, or a same-id declare in a SIBLING project root).
     let mut covered = Vec::new();
+    // The lore mirror (dsl 0.19.0 §3): every `<entry id>` / `(series, order)`
+    // occurrence the project entry pass already reports, used below to
+    // suppress the per-file `E-ENTRY-ID-DUP` / `E-ENTRY-SERIES-ORDER` twins.
+    let mut entry_covered = Vec::new();
     // Spec §5 project gate side channel (additive; NEVER affects
     // `project_diags`, so `check-project`'s output is byte-identical).
     // Accumulated across every resolved root so the single-root gate
@@ -2274,6 +2314,10 @@ fn reconcile_collected(
         let group = &plain_group;
         project_diags.extend(check_project_quest_ids(group));
         project_diags.extend(check_project_quest_refs(group));
+        // dsl 0.19.0 §3/§5: project-wide entry id / series-order uniqueness
+        // and `entry.<id>.read` references (the quest passes' lore mirror).
+        project_diags.extend(lute_check::check_project_entry_ids(group));
+        project_diags.extend(lute_check::check_project_entry_refs(group));
         // dsl 2026-08-31 §4 (subquest design): structural checks over the
         // parent→child tree implied by every `<objective quest="c">`. Sits
         // next to the existing quest-ref pass because the two ask the same
@@ -2490,16 +2534,20 @@ fn reconcile_collected(
             }
         }
         covered.extend(lute_check::colliding_occurrences(group));
+        entry_covered.extend(lute_check::colliding_entry_occurrences(group));
     }
     for (path, result) in &mut file_results {
         result.diagnostics.retain(|d| {
             let quest_dup_covered = d.code == "E-QUEST-ID-DUP"
                 && covered.iter().any(|(p, s)| p == path && *s == d.span);
+            let entry_dup_covered = (d.code == lute_check::E_ENTRY_ID_DUP
+                || d.code == lute_check::E_ENTRY_SERIES_ORDER)
+                && entry_covered.iter().any(|(p, s)| p == path && *s == d.span);
             let envelope_reconciled = d.code == "E-MAYBE-UNSET"
                 && reconciled_reads
                     .iter()
                     .any(|(p, s, m)| p == path && *s == d.span && *m == d.message);
-            !quest_dup_covered && !envelope_reconciled
+            !quest_dup_covered && !entry_dup_covered && !envelope_reconciled
         });
         result.ok = !result
             .diagnostics
@@ -5042,6 +5090,7 @@ fn run_trace(
     json: bool,
     providers: Option<&Path>,
     project: Option<&Path>,
+    entry: Option<&str>,
 ) -> ExitCode {
     let Some(built) = build_input(file, providers, project, None) else {
         return ExitCode::from(2);
@@ -5057,6 +5106,25 @@ fn run_trace(
     // error; it printed above, and it MUST gate here or it would pass silently.
     if resolve_error {
         return ExitCode::from(1);
+    }
+
+    // dsl 0.19.0 §8: a lore document is looked up, not played — there is no
+    // sequence to walk, so tracing one without `--entry` is a usage error.
+    // (`--entry` on a non-lore document / an unknown id is `E-TRACE-ENTRY`,
+    // refused by `lute_trace` below.)
+    if entry.is_none() {
+        let (doc, _) = lute_syntax::parse(&input.text);
+        let (folded, _, _) = lute_check::fold_env(&doc, &input);
+        if folded.doc_kind == lute_check::DocKind::Lore {
+            let ids: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
+            eprintln!(
+                "lute trace: {} is a lore document — pass `--entry <id>` to present one entry \
+                 (declared: {}) (dsl 0.19.0 §8)",
+                file.display(),
+                ids.join(", ")
+            );
+            return ExitCode::from(2);
+        }
     }
 
     let file_mocks = match mock {
@@ -5178,7 +5246,10 @@ fn run_trace(
         }
     }
 
-    let (report, exit) = lute_trace::trace_with_check(&input, gate, mocks);
+    let (report, exit) = match entry {
+        Some(id) => lute_trace::trace_entry_with_check(&input, gate, mocks, id),
+        None => lute_trace::trace_with_check(&input, gate, mocks),
+    };
 
     match exit {
         TraceExit::Complete => {
@@ -5211,6 +5282,8 @@ fn run_trace(
                         "trace refused: {} has check error(s) — run `lute check` first",
                         file.display()
                     );
+                } else if diags.iter().all(|d| d.code == lute_trace::E_TRACE_ENTRY) {
+                    println!("trace refused: {} — invalid `--entry`", file.display());
                 } else {
                     println!("trace refused: {} — invalid mock input", file.display());
                 }

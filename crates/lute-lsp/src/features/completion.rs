@@ -137,6 +137,15 @@ fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
             ("title", "string"),
             ("optional", "bool"),
         ],
+        QuestConstruct::Entry => &[
+            ("id", "string"),
+            ("target", "string"),
+            ("category", "string"),
+            ("title", "string"),
+            ("series", "string"),
+            ("order", "integer"),
+            ("when", "cel<bool>"),
+        ],
     };
     keys.iter()
         .map(|(name, ty)| CompletionItem {
@@ -258,7 +267,8 @@ fn event_name_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
 
 /// `Some` (possibly empty) when `off` lands on the VALUE half of a `kind:`
 /// line in the peeled frontmatter YAML (dsl 0.2.0 §3.1's `scene`/`quest`
-/// discriminator); `None` when `off` is not there, so the caller falls
+/// discriminator, plus dsl 0.19.0's `lore`); `None` when `off` is not there,
+/// so the caller falls
 /// through to the normal body-cursor resolution. Mirrors
 /// `super::find_yaml_key_span`'s line-scan + `FRONTMATTER_BASE` convention.
 fn kind_value_items(
@@ -294,7 +304,7 @@ fn kind_value_items(
             return None; // cursor is on the `kind` KEY, not its value.
         }
         return Some(
-            ["scene", "quest"]
+            ["scene", "quest", "lore"]
                 .into_iter()
                 .filter(|kind| *kind != "quest" || snapshot.permissions.allows_quests())
                 .map(|kind| CompletionItem {
@@ -617,6 +627,9 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
     for quest in &doc.quests {
         scan(&quest.body, off, &mut out);
     }
+    for entry in &doc.entries {
+        scan(&entry.body, off, &mut out);
+    }
     out
 }
 
@@ -743,7 +756,8 @@ mod tests {
             &SchemaImports::default(),
             off,
         );
-        assert_eq!(labels(&items), vec!["scene"]);
+        // Only `quest` is permission-gated; `lore` is not quest authoring.
+        assert_eq!(labels(&items), vec!["scene", "lore"]);
     }
 
     #[test]
@@ -1383,13 +1397,27 @@ mod tests {
     }
 
     #[test]
-    fn kind_frontmatter_value_completion_lists_scene_and_quest() {
+    fn kind_frontmatter_value_completion_lists_scene_quest_and_lore() {
         let text = "---\nkind: \n---\n";
         let off = text.find("kind: ").unwrap() + "kind: ".len();
         let items = complete(text, off);
         let ls = labels(&items);
         assert!(ls.contains(&"scene"), "{ls:?}");
         assert!(ls.contains(&"quest"), "{ls:?}");
+        assert!(ls.contains(&"lore"), "{ls:?}");
+    }
+
+    /// dsl 0.19.0 §3: a cursor inside an `<entry …>` open tag offers the
+    /// seven entry attributes.
+    #[test]
+    fn entry_attr_area_completion_lists_all_seven_attrs() {
+        let text = "---\nkind: lore\n---\n<entry id=\"e\" >\n@narrator: hi\n</entry>\n";
+        let off = text.find("\" >").unwrap() + 2;
+        let items = complete(text, off);
+        let ls = labels(&items);
+        for k in ["id", "target", "category", "title", "series", "order", "when"] {
+            assert!(ls.contains(&k), "missing {k}: {ls:?}");
+        }
     }
 
     #[test]

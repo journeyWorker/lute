@@ -56,6 +56,13 @@ pub fn tag_document(text: &str) -> TagOutcome {
         collect_lines(&quest.body, &mut quest_lines);
         tag_scope(quest_lines, bytes, &mut inserts);
     }
+    // Per-entry identity scope (dsl 0.19.0 §4): each `<entry>` is its own
+    // identity domain with a fresh per-speaker counter, exactly as a quest.
+    for entry in &doc.entries {
+        let mut entry_lines: Vec<&Line> = Vec::new();
+        collect_lines(&entry.body, &mut entry_lines);
+        tag_scope(entry_lines, bytes, &mut inserts);
+    }
 
     if inserts.is_empty() {
         return TagOutcome {
@@ -178,7 +185,8 @@ pub enum RetagOutcome {
 }
 
 /// FORCE-renumber every content line's `code` (`lute tag --force`): each
-/// identity scope (the scene, then each `<quest>` — dsl 0.2.0 §7) restarts a
+/// identity scope (the scene, then each `<quest>` — dsl 0.2.0 §7 — then each
+/// `<entry>`, dsl 0.19.0 §4) restarts a
 /// per-speaker counter and assigns 0010/0020/… in document order, REWRITING
 /// existing codes in place (the one thing [`tag_document`] never does).
 ///
@@ -224,6 +232,17 @@ pub fn retag_document(text: &str) -> RetagOutcome {
         collect_lines(&quest.body, &mut quest_lines);
         retag_scope(
             quest_lines,
+            bytes,
+            &mut edits,
+            &mut renumbered,
+            &mut skipped,
+        );
+    }
+    for entry in &doc.entries {
+        let mut entry_lines: Vec<&Line> = Vec::new();
+        collect_lines(&entry.body, &mut entry_lines);
+        retag_scope(
+            entry_lines,
             bytes,
             &mut edits,
             &mut renumbered,

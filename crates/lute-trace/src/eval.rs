@@ -110,6 +110,11 @@ impl<'a> EffectiveState<'a> {
             }
             return Read::Value(v.clone());
         }
+        // dsl 0.19.0 §5: `entry.<id>.read` is engine-written, default
+        // `false` — an un-mocked read in trace is a first read.
+        if lute_check::is_reserved_entry_read(path) {
+            return Read::Value(Value::Bool(false));
+        }
         if is_reserved_quest_path(path) {
             self.reserved_reads
                 .borrow_mut()

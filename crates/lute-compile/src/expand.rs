@@ -35,6 +35,15 @@ pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnosti
         expand_attrs(&mut quest.attrs, defs, None, &mut diags);
         expand_nodes(&mut quest.body, defs, None, &mut diags);
     }
+    // dsl 0.19.0 §3: an entry's `when` eligibility slot expands like a
+    // quest's `start`; its body like any other node stream.
+    for entry in &mut doc.entries {
+        if let Some(w) = &mut entry.when {
+            expand_slot(w, defs, None, &mut diags);
+        }
+        expand_attrs(&mut entry.attrs, defs, None, &mut diags);
+        expand_nodes(&mut entry.body, defs, None, &mut diags);
+    }
     diags
 }
 

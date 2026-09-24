@@ -40,7 +40,7 @@ module.exports = grammar({
       seq(
         optional($.frontmatter),
         repeat($._pre_item),
-        repeat(choice($.shot, $.quest)),
+        repeat(choice($.shot, $.quest, $.entry)),
       ),
 
     // Items legal before the first shot heading: the document title and bare
@@ -263,6 +263,23 @@ module.exports = grammar({
         ">",
         repeat(choice($._node, $.reward)),
         "</quest>",
+      ),
+
+    // ---- lore entries (nest; dsl 0.19.0 §2–§4) ------------------------------
+    // Entry ::= "<entry" Attrs ">" Node* "</entry>". A DOCUMENT TOP-LEVEL
+    // declaration of a `kind: lore` document, exactly like `quest` (never a
+    // `_node` alternative). The body is the ordinary node stream; which nodes
+    // an entry admits (lines, `<match>`, `::set`/`::assert`/`::retract`) is
+    // the checker's `E-GRAMMAR-NOT-ADMITTED`, not a parse error. Attributes
+    // (`id`/`target`/`category`/`title`/`series`/`order`, CEL `when`) ride the
+    // generic `_tag_attr` machinery.
+    entry: ($) =>
+      seq(
+        "<entry",
+        repeat($._tag_attr),
+        ">",
+        repeat($._node),
+        "</entry>",
       ),
 
     // On ::= "<on" Attrs ">" Node* "</on>" (§4.1). The Event-Condition-Action

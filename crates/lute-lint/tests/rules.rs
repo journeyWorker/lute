@@ -267,6 +267,47 @@ fn scene_length_spread_ignores_components_and_quests() {
     assert!(rows.is_empty(), "codes: {:?}", codes(&out.diagnostics));
 }
 
+/// dsl 0.19.0 §8: a lore document is excluded from scene metrics (its one
+/// short entry would push the spread ratio to 12.0 if it counted as a
+/// scene), yet its entry lines are still translatable lines that line rules
+/// see (`dialogue-length` fires on the over-long entry line).
+#[test]
+fn lore_doc_is_not_a_scene_but_its_entry_lines_are_linted() {
+    let long_line: String = (1..=41).map(|n| format!("w{n} ")).collect();
+    let lore = input(
+        "notes.lute",
+        &format!(
+            "---\nkind: lore\n---\n<entry id=\"a\">\n@narrator: one\n</entry>\n\
+             <entry id=\"b\">\n@narrator: {long_line}\n</entry>\n"
+        ),
+    );
+    let scene_a = input(
+        "a.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three four five six seven eight nine ten\n",
+    );
+    let scene_b = input(
+        "b.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three four five six seven eight nine ten eleven twelve\n",
+    );
+    let out = lint(
+        &[lore, scene_a, scene_b],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
+    assert!(
+        only_code(&out.diagnostics, "L-SCENE-LENGTH-SPREAD").is_empty(),
+        "codes: {:?}",
+        codes(&out.diagnostics)
+    );
+    let long = only_code(&out.diagnostics, "L-DIALOGUE-LENGTH");
+    assert_eq!(long.len(), 1, "codes: {:?}", codes(&out.diagnostics));
+    assert_eq!(long[0].0, PathBuf::from("notes.lute"));
+}
+
 // ---------------------------------------------------------------------------
 // emotion-distribution (speaker) — upstream parity
 // ---------------------------------------------------------------------------

@@ -24,17 +24,19 @@
 //! - [`Node::Assert`] / [`Node::Retract`] → no `CelSlot`s (args are
 //!   compile-time-ground; 0.3.0 T2). No-op.
 //!
-//! ## Document-level order (dsl 0.2.0)
-//! Every `shot.body` (as above), THEN every `quest` in `doc.quests`. Per
-//! [`Quest`]: `start` (if any), `fail` (if any), `attrs` refs, then `body`.
+//! ## Document-level order (dsl 0.2.0, 0.19.0)
+//! Every `shot.body` (as above), THEN every `quest` in `doc.quests`, THEN
+//! every `entry` in `doc.entries`. Per [`Quest`]: `start` (if any), `fail`
+//! (if any), `attrs` refs, then `body`. Per [`Entry`]: `when` (if any),
+//! `attrs` refs, then `body`.
 //! Only `AttrValue::Ref(slot)` attrs are slots; bare/other attr values are not.
 //! This order MUST stay byte-identical to what `lute-cel::fill` historically
 //! walked — the StableId sequence (and thus determinism, goldens, examples) rides
 //! on it.
 
 use crate::ast::{
-    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Directive, Document, Hub, Line, Match, Node,
-    Objective, On, Quest, Reward, Timeline,
+    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Directive, Document, Entry, Hub, Line, Match,
+    Node, Objective, On, Quest, Reward, Timeline,
 };
 
 /// Visit every [`CelSlot`] in `doc` in the canonical pre-order, borrowing each.
@@ -47,6 +49,9 @@ pub fn for_each_cel_slot<'a>(doc: &'a Document, f: &mut impl FnMut(&'a CelSlot))
     }
     for q in &doc.quests {
         quest(q, f);
+    }
+    for e in &doc.entries {
+        entry(e, f);
     }
 }
 
@@ -132,6 +137,14 @@ fn quest<'a>(q: &'a Quest, f: &mut impl FnMut(&'a CelSlot)) {
     }
 }
 
+fn entry<'a>(e: &'a Entry, f: &mut impl FnMut(&'a CelSlot)) {
+    if let Some(w) = &e.when {
+        f(w);
+    }
+    attrs(&e.attrs, f);
+    body(&e.body, f);
+}
+
 fn objective<'a>(o: &'a Objective, f: &mut impl FnMut(&'a CelSlot)) {
     f(&o.done);
     if let Some(w) = &o.when {
@@ -199,6 +212,9 @@ pub fn for_each_cel_slot_mut(doc: &mut Document, f: &mut impl FnMut(&mut CelSlot
     }
     for q in &mut doc.quests {
         quest_mut(q, f);
+    }
+    for e in &mut doc.entries {
+        entry_mut(e, f);
     }
 }
 
@@ -279,6 +295,14 @@ fn quest_mut(q: &mut Quest, f: &mut impl FnMut(&mut CelSlot)) {
     for r in &mut q.rewards {
         reward_mut(r, f);
     }
+}
+
+fn entry_mut(e: &mut Entry, f: &mut impl FnMut(&mut CelSlot)) {
+    if let Some(w) = &mut e.when {
+        f(w);
+    }
+    attrs_mut(&mut e.attrs, f);
+    body_mut(&mut e.body, f);
 }
 
 fn objective_mut(o: &mut Objective, f: &mut impl FnMut(&mut CelSlot)) {
@@ -519,6 +543,7 @@ mod tests {
                 span: span(),
             }],
             quests: Vec::new(),
+            entries: Vec::new(),
             span: span(),
         }
     }
@@ -576,5 +601,23 @@ mod tests {
             raws,
             vec!["run.s", "run.f", "run.d", "run.w", "run.rk", "run.g", "run.rq"]
         );
+    }
+
+    #[test]
+    fn entry_slots_visited_after_quests_in_document_order() {
+        // dsl 0.19.0: entries come after every quest, each entry's `when`
+        // before its body, entries in document order — even when an entry
+        // precedes a quest in the source.
+        let (doc, _) = crate::parse(
+            "<entry id=\"e1\" when=\"run.e1\">\n\
+             <match on=\"run.m\">\n<when is=\"true\">\n@x: a\n</when>\n</match>\n\
+             </entry>\n\
+             <quest id=\"q\" start=\"run.s\">\n</quest>\n\
+             <entry id=\"e2\">\n::set{run.k = run.v}\n</entry>\n",
+        );
+        let mut raws: Vec<String> = Vec::new();
+        super::for_each_cel_slot(&doc, &mut |s| raws.push(s.raw.clone()));
+        // The `is=` arm's `test` is the synthesized empty slot.
+        assert_eq!(raws, vec!["run.s", "run.e1", "run.m", "", "run.v"]);
     }
 }

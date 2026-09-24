@@ -18,9 +18,10 @@
     "kind": {
       "enum": [
         "scene",
-        "quest"
+        "quest",
+        "lore"
       ],
-      "description": "document kind discriminator (dsl 0.2.0 §2/§3.1); read first — it selects `meta`'s shape."
+      "description": "document kind discriminator (dsl 0.2.0 §2/§3.1; `lore` since dsl 0.19.0 §2); read first — it selects `meta`'s shape."
     },
     "lute": {
       "type": "string",
@@ -130,6 +131,22 @@
         "properties": {
           "meta": {
             "$ref": "#/$defs/questMeta"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "lore"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "meta": {
+            "$ref": "#/$defs/loreMeta"
           }
         }
       }
@@ -2146,6 +2163,84 @@
       ],
       "description": "<on> event-condition-action record (dsl 0.2.0 §4, §6.6): an independent event rule."
     },
+    "entryCmd": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "entry"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "id": {
+          "type": "string",
+          "description": "the entry id, unique across the project; also the lineId identity prefix of its body."
+        },
+        "target": {
+          "type": "string",
+          "description": "engine-owned id the entry is attached to (`item.rusty_key`, `npc.vesna`); shape-only."
+        },
+        "category": {
+          "type": "string",
+          "description": "engine-vocabulary text kind (`note`, `item`, `place`, `codex`, `bark`, …); shape-only."
+        },
+        "title": {
+          "type": "string"
+        },
+        "titleLineId": {
+          "type": "string",
+          "description": "`{entryId}.title`, present only when `title` is authored (the quest `titleLineId` convention)."
+        },
+        "series": {
+          "type": "string",
+          "description": "groups multi-part text (`scientistLog`)."
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "position within `series`; present only with `series`."
+        },
+        "when": {
+          "$ref": "#/$defs/celPair",
+          "description": "eligibility: the entry may be presented only while this holds."
+        },
+        "body": {
+          "type": "string",
+          "description": "addr of the entry's body segment (the `cmdOn.body` convention): it follows this record and runs to the next `entry` record or the end of the stream. `set`/`assert`/`retract` records in it apply only on the first read (`entry.<id>.read == false`)."
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "id",
+        "body"
+      ],
+      "description": "<entry> declaration head of a lore artifact (dsl 0.19.0 §7, docs/runtime/lore-entries.md): content the engine looks up rather than plays."
+    },
     "cmdPlugin": {
       "type": "object",
       "properties": {
@@ -2272,11 +2367,14 @@
         },
         {
           "$ref": "#/$defs/cmdPlugin"
+        },
+        {
+          "$ref": "#/$defs/entryCmd"
         }
       ]
     },
     "artifactMeta": {
-      "description": "Kind-polymorphic envelope meta (untagged): SceneMeta when kind==scene, QuestMeta when kind==quest. The top-level allOf pins which by `kind`.",
+      "description": "Kind-polymorphic envelope meta (untagged): SceneMeta when kind==scene, QuestMeta when kind==quest, LoreMeta (the QuestMeta shape, so it is not listed separately here) when kind==lore. The top-level allOf pins which by `kind`.",
       "oneOf": [
         {
           "$ref": "#/$defs/sceneMeta"
@@ -2285,6 +2383,41 @@
           "$ref": "#/$defs/questMeta"
         }
       ]
+    },
+    "loreMeta": {
+      "$ref": "#/$defs/questMeta",
+      "description": "Lore-kind envelope meta (dsl 0.19.0 §7): exactly the questMeta shape — `title?`, `contentLang?`, `extra?`, `plugin?`. Present when `kind` == \"lore\"."
+    },
+    "indexEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "document": {
+          "type": "string",
+          "description": "the owning document's `project.index.json` `documents[].path`."
+        },
+        "target": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "series": {
+          "type": "string"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "document"
+      ],
+      "description": "One row of `project.index.json` `entries` (dsl 0.19.0 §7; `lute compile --all`): every `<entry>` in the project, documents in path order, entries in document order within each. The index itself is not an artifact; this row shape is published here for engines that read it. `entries` is omitted from the index when the project has no lore."
     },
     "shotEntry": {
       "type": "object",
