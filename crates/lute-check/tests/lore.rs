@@ -530,3 +530,133 @@ fn project_entry_ref_unknown() {
     let docs = parse_docs(&[("notes.lute", &notes), ("scene.lute", &fixed)]);
     assert!(check_project_entry_refs(&docs).is_empty());
 }
+
+// --- §2.1 the document is the bundle ------------------------------------------
+
+/// A lore document declaring `id:` and `series:` in its frontmatter.
+fn bundle(frontmatter: &str, body: &str) -> String {
+    format!("---\nkind: lore\n{frontmatter}---\n{body}")
+}
+
+#[test]
+fn series_document_checks_clean_and_orders_by_position() {
+    let src = bundle(
+        "id: haven.captainsLog\ntitle: Captain's log\nseries: captainsLog\n",
+        "<entry id=\"captainsLog1\" target=\"item.captains_log\" category=\"note\" title=\"Day 1\">\n\
+         @captain: We cleared the dock at the third bell.\n</entry>\n\
+         <entry id=\"captainsLog2\" target=\"item.captains_log\" category=\"note\" title=\"Day 2\" \
+         when=\"entry.captainsLog1.read\">\n@captain: The manifest is wrong.\n</entry>\n",
+    );
+    let ds = diags(&src);
+    assert!(ds.is_empty(), "{ds:#?}");
+    let doc = lute_syntax::parse(&src).0;
+    let series = lute_check::document_series(&doc.meta);
+    let resolved: Vec<_> = lute_check::resolve_entry_series(series.as_deref(), &doc.entries)
+        .iter()
+        .map(|e| (e.series, e.order))
+        .collect();
+    assert_eq!(
+        resolved,
+        vec![(Some("captainsLog"), Some(1)), (Some("captainsLog"), Some(2))]
+    );
+}
+
+#[test]
+fn entry_series_or_order_inside_a_series_document_is_entry_attr() {
+    let src = bundle(
+        "series: log\n",
+        "<entry id=\"a\" order=\"1\">\n@n: a\n</entry>\n\
+         <entry id=\"b\" series=\"log\">\n@n: b\n</entry>\n\
+         <entry id=\"c\">\n@n: c\n</entry>\n",
+    );
+    let ds = diags(&src);
+    let attr = with_code(&ds, "E-ENTRY-ATTR");
+    assert_eq!(attr.len(), 2, "{ds:?}");
+    assert_eq!(anchored(&src, attr[0]), "1");
+    assert_eq!(anchored(&src, attr[1]), "log");
+    assert_eq!(
+        attr[0].message,
+        "`<entry>` `order=\"1\"`: this document declares `series: log`; entries are ordered \
+         by position in the file, so an entry carries no `series`/`order` of its own (dsl \
+         0.19.0 §2.1)"
+    );
+    // Mixing is its own fault, never a position collision: `a`'s authored
+    // `order="1"` does not duplicate its resolved position 1.
+    assert!(with_code(&ds, "E-ENTRY-SERIES-ORDER").is_empty(), "{ds:?}");
+}
+
+#[test]
+fn malformed_document_series_is_meta_value_and_orders_nothing() {
+    let src = bundle(
+        "series: 2nd-log\n",
+        "<entry id=\"a\" series=\"log\" order=\"1\">\n@n: a\n</entry>\n",
+    );
+    let ds = diags(&src);
+    let bad = with_code(&ds, "E-META-VALUE");
+    assert_eq!(bad.len(), 1, "{ds:?}");
+    assert!(bad[0].message.contains("`2nd-log`"), "{}", bad[0].message);
+    // A rejected `series:` is not a document series: the entry's own
+    // attributes stand and are not `E-ENTRY-ATTR`.
+    assert!(with_code(&ds, "E-ENTRY-ATTR").is_empty(), "{ds:?}");
+}
+
+#[test]
+fn lore_and_quest_document_id_shape() {
+    let ok = codes(&bundle("id: haven.captainsLog\n", "<entry id=\"e\">\n@n: hi\n</entry>\n"));
+    assert!(ok.is_empty(), "{ok:?}");
+    let quest = |id: &str| {
+        format!("---\nkind: quest\nid: {id}\n---\n<quest id=\"q\">\n</quest>\n")
+    };
+    assert!(codes(&quest("haven.mainChain")).is_empty());
+    let src = quest("\"haven main\"");
+    let ds = diags(&src);
+    let bad = with_code(&ds, "E-META-ID");
+    assert_eq!(bad.len(), 1, "{ds:?}");
+    assert!(
+        bad[0].message.starts_with("document `id:` `haven main` is not a valid document id"),
+        "{}",
+        bad[0].message
+    );
+    assert_eq!(anchored(&src, bad[0]), "id");
+    assert!(with_code(&ds, "E-META-UNKNOWN-KEY").is_empty(), "{ds:?}");
+}
+
+#[test]
+fn series_is_a_lore_only_key() {
+    let ds = diags("---\nkind: quest\nseries: log\n---\n<quest id=\"q\">\n</quest>\n");
+    let unknown = with_code(&ds, "E-META-UNKNOWN-KEY");
+    assert_eq!(unknown.len(), 1, "{ds:?}");
+    assert!(unknown[0].message.contains("`series`"), "{}", unknown[0].message);
+}
+
+#[test]
+fn document_series_collides_with_attribute_positions_project_wide() {
+    // `a.lute` places `log1`/`log2` at positions 1/2 of `log` by file
+    // order; `b.lute` hand-numbers `logB` at position 2 of the same series.
+    let a = bundle(
+        "series: log\n",
+        "<entry id=\"log1\">\n@n: a\n</entry>\n<entry id=\"log2\">\n@n: b\n</entry>\n",
+    );
+    let b = lore("<entry id=\"logB\" series=\"log\" order=\"2\">\n@n: c\n</entry>\n");
+    let docs = parse_docs(&[("a.lute", &a), ("b.lute", &b)]);
+    let out = check_project_entry_ids(&docs);
+    assert_eq!(out.len(), 1, "{out:?}");
+    let (path, d) = &out[0];
+    assert_eq!(path, &PathBuf::from("b.lute"));
+    assert_eq!(d.code, "E-ENTRY-SERIES-ORDER");
+    assert_eq!(
+        d.message,
+        "`<entry id=\"logB\">` repeats position 2 of series `log`, already held by \
+         `<entry id=\"log2\">`; each position in a series names one entry (dsl 0.19.0 §2.1, \
+         §3) — in `a.lute`"
+    );
+    assert_eq!(anchored(&b, d), "2");
+
+    // Reversed file order: the document-series entry is the later
+    // occurrence and anchors at its entry id (it authored no `order=`).
+    let docs = parse_docs(&[("a.lute", &b), ("b.lute", &a)]);
+    let out = check_project_entry_ids(&docs);
+    assert_eq!(out.len(), 1, "{out:?}");
+    assert_eq!(anchored(&a, &out[0].1), "log2");
+    assert_eq!(colliding_entry_occurrences(&docs).len(), 2);
+}

@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.18.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.18.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.18.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.18.schema.json`](../schemas/lute-ir-0.18.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.19.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.19.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.19.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.19.schema.json`](../schemas/lute-ir-0.19.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.18.schema.json`](../schemas/lute-ir-0.18.schema.json)
+published as [`schemas/lute-ir-0.19.schema.json`](../schemas/lute-ir-0.19.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -357,10 +357,39 @@ The IR carries no shape change: a range arm lowers to the existing `>=` / `<=`
 record kind moves, and a document without ranges compiles byte-identically
 apart from the version strings. The IR restamps per the alignment rule, and
 the schema file renames per release line (`lute-ir-0.17.schema.json` →
-[`lute-ir-0.18.schema.json`](../schemas/lute-ir-0.18.schema.json)); only `$id`
+`lute-ir-0.18.schema.json`); only `$id`
 and title are restamped. Engines gate on MAJOR, so nothing widens.
 `capabilityVersion` does not move; the tree-sitter `when_literal` token widens
 to lex every range shape — a grammar regeneration, not a capability restamp.
+
+**`0.19.0` aligns all three axes at `0.19.0`; the language and the IR both earn the move.**
+The language gains a third document kind, `kind: lore`, whose top level is a
+set of `<entry>` declarations — content the engine looks up (an item
+description, a found note, an inscription, a codex page, a bark) rather than
+plays in sequence. Entry bodies admit content lines, `<match>`, `::set`,
+`::assert`, and `::retract`; knowledge is revealed with the ordinary
+`::assert`; every entry has the reserved, engine-written `entry.<id>.read`
+path; and effects apply on the first read only. Quest and lore documents may
+name their bundle with a document `id:`, and a lore document may declare a
+`series:` ordered by position in the file. New diagnostics are
+`E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`, and
+`W-ENTRY-REF-UNKNOWN`; `E-META-ID` and `E-CONN-EPISODE-ID-DUP` extend to the
+new document ids
+([`proposals/scenario-dsl/0.19.0.md`](proposals/scenario-dsl/0.19.0.md);
+engine contract [`runtime/lore-entries.md`](runtime/lore-entries.md)). The IR
+change is additive: a new artifact `kind: "lore"` with `LoreMeta`, a new
+`entry` command record carrying the resolved `series` / `order`, optional
+`QuestMeta.id`, and `ProjectIndex.entries`. Scene artifacts, and quest
+artifacts without an authored `id:`, compile byte-identically apart from the
+version strings. The schema file renames per release line
+(`lute-ir-0.18.schema.json` →
+[`lute-ir-0.19.schema.json`](../schemas/lute-ir-0.19.schema.json)) and gains
+`loreMeta`, `entryCmd`, `questMeta.id`, and the index rows. Engines gate on
+MAJOR, so nothing widens: a scene/quest consumer is unaffected, and one without
+lore support rejects `kind: "lore"` as it rejects any unknown artifact kind.
+`capabilityVersion` does not move (no core vocabulary is added); the
+tree-sitter grammar gains a top-level `entry` production — a regeneration, not
+a capability restamp.
 
 ## Which bump when
 

@@ -39,7 +39,7 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let path = dir.join("lore/ship-records.lute");
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("kind: lore"), "{text}");
+    assert!(text.contains("kind: lore\nid: lore.shipRecords\n"), "{text}");
     assert!(text.contains("<entry id=\"shipRecords\""), "{text}");
 
     let check = run(&["check", path.to_str().unwrap(), "--json"]);
@@ -55,6 +55,99 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
     // Refuses to overwrite, like every other `lute new` kind.
     let again = run(&["new", "lore", "ship-records", "--dir", dir.to_str().unwrap()]);
     assert_eq!(again.status.code(), Some(2));
+}
+
+/// dsl 0.19.0 §2.1: `lute new quest` scaffolds a document id too, and the two
+/// scaffolds for one name share a project without an id collision.
+#[test]
+fn new_quest_and_lore_scaffolds_check_clean_together() {
+    let dir = temp_dir("new-quest");
+    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    let d = dir.to_str().unwrap();
+    assert_eq!(run(&["new", "quest", "ship-records", "--dir", d]).status.code(), Some(0));
+    assert_eq!(run(&["new", "lore", "ship-records", "--dir", d]).status.code(), Some(0));
+    let quest = std::fs::read_to_string(dir.join("quests/ship-records.lute")).unwrap();
+    assert!(quest.contains("kind: quest\nid: quest.shipRecords\n"), "{quest}");
+
+    let check = run(&["check-project", d, "--json"]);
+    let result: serde_json::Value = serde_json::from_slice(&check.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}{}", stdout(&check), String::from_utf8_lossy(&check.stderr)));
+    assert_eq!(check.status.code(), Some(0), "{result:#}");
+    let text = result.to_string();
+    assert!(!text.contains("\"code\""), "no diagnostics at all: {result:#}");
+}
+
+/// dsl 0.19.0 §2.1 through `check-project`: a quest document id colliding
+/// with a scene id is `E-CONN-EPISODE-ID-DUP` worded as a document id, and a
+/// document-level `series:` colliding with another file's hand-numbered
+/// position is `E-ENTRY-SERIES-ORDER`.
+#[test]
+fn check_project_reports_bundle_id_and_resolved_series_collisions() {
+    let dir = temp_dir("bundle");
+    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(&dir, "a-scene.lute", "---\nkind: scene\nid: haven.main\n---\n## One.\n@n: hi\n");
+    write(
+        &dir,
+        "b-quest.lute",
+        "---\nkind: quest\nid: haven.main\n---\n<quest id=\"q\" start=\"true\">\n</quest>\n",
+    );
+    write(
+        &dir,
+        "c-log.lute",
+        "---\nkind: lore\nseries: log\n---\n<entry id=\"log1\">\n@n: a\n</entry>\n\
+         <entry id=\"log2\">\n@n: b\n</entry>\n",
+    );
+    write(
+        &dir,
+        "d-extra.lute",
+        "---\nkind: lore\n---\n<entry id=\"logX\" series=\"log\" order=\"2\">\n@n: c\n</entry>\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}{}", stdout(&out), String::from_utf8_lossy(&out.stderr)));
+    let mut found: Vec<(String, String)> = Vec::new();
+    fn walk(v: &serde_json::Value, found: &mut Vec<(String, String)>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                if let (Some(c), Some(msg)) = (m.get("code"), m.get("message")) {
+                    found.push((
+                        c.as_str().unwrap_or_default().to_string(),
+                        msg.as_str().unwrap_or_default().to_string(),
+                    ));
+                }
+                m.values().for_each(|x| walk(x, found));
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, found)),
+            _ => {}
+        }
+    }
+    walk(&v, &mut found);
+    let dup: Vec<_> = found.iter().filter(|(c, _)| c == "E-CONN-EPISODE-ID-DUP").collect();
+    assert_eq!(dup.len(), 1, "{v:#}");
+    assert!(dup[0].1.starts_with("duplicate document id `haven.main` across project files"), "{}", dup[0].1);
+    let pos: Vec<_> = found.iter().filter(|(c, _)| c == "E-ENTRY-SERIES-ORDER").collect();
+    assert_eq!(pos.len(), 1, "{v:#}");
+    assert!(pos[0].1.contains("repeats position 2 of series `log`"), "{}", pos[0].1);
+    assert_eq!(out.status.code(), Some(1), "{v:#}");
+}
+
+/// `lute lore` groups a document-level series by resolved position.
+#[test]
+fn lore_report_uses_resolved_series() {
+    let dir = temp_dir("resolved");
+    write(
+        &dir,
+        "log.lute",
+        "---\nkind: lore\nseries: captainsLog\n---\n<entry id=\"day2\">\n@n: b\n</entry>\n\
+         <entry id=\"day1\">\n@n: a\n</entry>\n",
+    );
+    let out = run(&["lore", dir.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    assert!(
+        stdout(&out).contains("Series\n  captainsLog\n    1  day2  log.lute\n    2  day1  log.lute\n"),
+        "{}",
+        stdout(&out)
+    );
 }
 
 const SCHEMA: &str = "\

@@ -189,8 +189,9 @@ pub enum BodyEntry {
 }
 
 /// Kind-polymorphic envelope `meta` (dsl 0.2.0, IR addendum §1; dsl 0.15.0
-/// §2): untagged so the wire shape is exactly `SceneMeta`'s or `QuestMeta`'s
-/// own fields — the consumer reads `Artifact.kind` to know which. Since IR
+/// §2): untagged so the wire shape is exactly `SceneMeta`'s, `QuestMeta`'s,
+/// or `LoreMeta`'s own fields — the consumer reads `Artifact.kind` to know
+/// which. Since IR
 /// `0.15.0` the discriminator for a scene is `SceneMeta.id` (always present,
 /// the resolved canonical scene key); legacy `character`/`season`/`episode`/
 /// `episodeId` demote to optional (skipped when unauthored on an authored-
@@ -201,7 +202,7 @@ pub enum BodyEntry {
 pub enum ArtifactMeta {
     Scene(SceneMeta),
     Quest(QuestMeta),
-    /// dsl 0.19.0 §7: lore documents carry the [`QuestMeta`] shape.
+    /// dsl 0.19.0 §7: lore documents carry [`LoreMeta`].
     Lore(LoreMeta),
 }
 
@@ -255,11 +256,18 @@ pub struct SceneMeta {
 }
 
 /// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; dsl 0.15.0 §3
-/// adds the descriptive `extra:` block): MAY serialize as `{}` when none of
-/// title/contentLang/extra/plugin are authored.
+/// adds the descriptive `extra:` block; dsl 0.19.0 §2.1 the optional document
+/// `id`): MAY serialize as `{}` when none of id/title/contentLang/extra/plugin
+/// are authored. Every field is skipped when unauthored, so `id` — declared
+/// first, as on [`SceneMeta`] — leaves a quest document without an `id:`
+/// byte-identical to its 0.18 artifact.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuestMeta {
+    /// dsl 0.19.0 §2.1: the document's authored `id:` verbatim (the bundle
+    /// name, `[A-Za-z0-9_.-]+`); also its `ProjectIndex` key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -275,11 +283,33 @@ pub struct QuestMeta {
     pub plugin: BTreeMap<String, serde_json::Value>,
 }
 
-/// Lore-kind envelope meta (dsl 0.19.0 §7): exactly the [`QuestMeta`] shape
-/// — `kind: lore` accepts the same frontmatter keys as a quest document
-/// (§2), so the envelope carries the same optional fields. A type alias
-/// rather than a copy: one struct, one serialized shape.
-pub type LoreMeta = QuestMeta;
+/// Lore-kind envelope meta (dsl 0.19.0 §7). Field DECLARATION ORDER is the
+/// serialized order: `id` -> `title` -> `series` -> `contentLang` -> `extra`
+/// -> `plugin`, each skipped when unauthored exactly as on [`QuestMeta`].
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoreMeta {
+    /// dsl 0.19.0 §2.1: the document's authored `id:` verbatim; also its
+    /// `ProjectIndex` key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// dsl 0.19.0 §2.1 (D-K): the document-level `series:` every entry
+    /// belongs to. Each `entry` record already carries its resolved
+    /// `series`/`order`; this names the bundle's series for a consumer that
+    /// reads the envelope alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_lang: Option<String>,
+    /// See [`QuestMeta::extra`].
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
+    /// See [`QuestMeta::plugin`].
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub plugin: BTreeMap<String, serde_json::Value>,
+}
 
 /// One folded state slot (§4.1): the engine's init/type table.
 #[derive(Clone, Debug, Serialize)]

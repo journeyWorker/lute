@@ -207,7 +207,8 @@ fn authored_id_and_derived_key_collide_in_one_namespace() {
     // The authored `id: harbor.night` shares one canonical-key namespace with
     // a derived `harbor.night` (character `harbor` + episodeId `night`) —
     // exactly one `E-CONN-EPISODE-ID-DUP` fires and its message names the
-    // canonical scene id (dsl 0.15.0 §2 D-B: code kept, wording generalised).
+    // document id (dsl 0.15.0 §2 D-B / dsl 0.19.0 §2.1: code kept, wording
+    // generalised).
     let text_authored = "---\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@x: hi\n";
     let text_derived = "---\nkind: scene\ncharacter: harbor\nseason: 1\nepisode: 1\nepisodeId: night\n---\n## Shot 1.\n@y: hi\n";
     let docs = docs_for(&[
@@ -225,8 +226,8 @@ fn authored_id_and_derived_key_collide_in_one_namespace() {
         "one dup diagnostic across the two docs: {dups:?}"
     );
     assert!(
-        hits[0].1.message.contains("canonical scene id"),
-        "message must name the canonical scene id (§2 D-B): {}",
+        hits[0].1.message.contains("document id"),
+        "message must name the document id (dsl 0.19.0 §2.1): {}",
         hits[0].1.message
     );
     assert!(
@@ -259,6 +260,62 @@ fn authored_id_occurrence_anchors_at_id_key() {
         hit.1.span.byte_start, id_start,
         "anchor at the `id:` key line"
     );
+}
+
+// --- 0.19.0 §2.1: quest / lore document ids join the scene-id namespace ------
+
+#[test]
+fn quest_document_id_collides_with_a_scene_id() {
+    // A scene first, a quest bundle second: the quest's `id:` is the later
+    // occurrence and anchors at its own `id:` line.
+    let scene = "---\nkind: scene\nid: haven.mainChain\n---\n## Shot 1.\n@a: hi\n";
+    let quest = "---\nkind: quest\nid: haven.mainChain\n---\n<quest id=\"q\">\n</quest>\n";
+    let docs = docs_for(&[("a.lute", scene), ("b.lute", quest)]);
+    let dups = lute_check::connectivity::check_conn_episode_dup(&docs);
+    assert_eq!(dups.len(), 1, "{dups:?}");
+    let (path, d) = &dups[0];
+    assert_eq!(path, &PathBuf::from("b.lute"));
+    assert_eq!(d.code, "E-CONN-EPISODE-ID-DUP");
+    assert!(
+        d.message.contains("duplicate document id `haven.mainChain`")
+            && d.message.contains("a.lute"),
+        "{}",
+        d.message
+    );
+    let doc_b = &docs[1].1;
+    let id_start = doc_b.meta.span.byte_start + 4 + doc_b.meta.raw_yaml.find("id:").unwrap();
+    assert_eq!(d.span.byte_start, id_start, "anchor at the quest's `id:` key");
+
+    // A bundle id is not a scene node: `visited('haven.mainChain')` resolves
+    // only against scene keys.
+    let quest_only = docs_for(&[("b.lute", quest)]);
+    assert!(scene_key_set(&quest_only).is_empty());
+}
+
+#[test]
+fn lore_document_ids_collide_and_unauthored_bundles_do_not() {
+    let lore = |id: &str, entry: &str| {
+        format!("---\nkind: lore\n{id}---\n<entry id=\"{entry}\">\n@n: hi\n</entry>\n")
+    };
+    let a = lore("id: haven.captainsLog\n", "log1");
+    let b = lore("id: haven.captainsLog\n", "log2");
+    let dups = lute_check::connectivity::check_conn_episode_dup(&docs_for(&[
+        ("a.lute", &a),
+        ("b.lute", &b),
+    ]));
+    assert_eq!(dups.len(), 1, "{dups:?}");
+    assert_eq!(dups[0].0, PathBuf::from("b.lute"));
+
+    // Without an authored `id:` a bundle's index key (its first entry id)
+    // is not a document id: an entry named like a scene key collides with
+    // nothing.
+    let scene = "---\nkind: scene\nid: log1\n---\n## Shot 1.\n@a: hi\n";
+    let unauthored = lore("", "log1");
+    assert!(lute_check::connectivity::check_conn_episode_dup(&docs_for(&[
+        ("a.lute", scene),
+        ("b.lute", &unauthored),
+    ]))
+    .is_empty());
 }
 
 #[test]

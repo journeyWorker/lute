@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::{Literal, Type};
-use lute_syntax::ast::{AttrValue, Entry};
+use lute_syntax::ast::{AttrValue, Entry, Meta};
 
 use crate::cel_paths::E_PATH_IDENT;
 use crate::meta::{Namespace, StateDecl};
@@ -89,21 +89,104 @@ pub fn is_entry_target(s: &str) -> bool {
         })
 }
 
+/// One entry's RESOLVED series position (dsl 0.19.0 §2.1, §3, §7): the
+/// `series` / `order` every consumer — the checker's `E-ENTRY-SERIES-ORDER`
+/// (per document and project-wide), the compiled `entry` record, the
+/// `ProjectIndex.entries` row, and `lute lore` — reads, whichever form the
+/// author used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EntrySeries<'a> {
+    /// The document-level `series:` when the document declares one; else the
+    /// entry's own `series=` value verbatim (shape unchecked — a non-ident
+    /// value is that entry's `E-ENTRY-ATTR`).
+    pub series: Option<&'a str>,
+    /// The entry's 1-based position among the document's entries under a
+    /// document-level `series:`; else its own `order=` when that is a
+    /// non-negative integer ([`parse_entry_order`]).
+    pub order: Option<u32>,
+    /// Where a duplicate-position diagnostic anchors: the entry's `order=`
+    /// value when the position is attribute-declared, else the entry's `id`.
+    pub anchor: Span,
+}
+
+impl<'a> EntrySeries<'a> {
+    /// The well-formed `(series, order)` position — an `Ident` series and an
+    /// order — `E-ENTRY-SERIES-ORDER` groups by. `None` when either is absent
+    /// or malformed (that entry's own `E-ENTRY-ATTR`).
+    pub fn position(&self) -> Option<(&'a str, u32)> {
+        let series = self.series.filter(|s| is_entry_ident(s))?;
+        Some((series, self.order?))
+    }
+}
+
+/// Resolve every entry's `(series, order)` (dsl 0.19.0 §2.1 D-K, §3) — the
+/// ONE resolution point. `doc_series` is the document's validated `series:`
+/// ([`crate::meta::TypedMeta::series`], or [`document_series`] where no
+/// typed frontmatter is at hand): when present, every entry resolves to that
+/// series at its 1-based position in `entries`, whatever it authored itself
+/// (authoring `series=`/`order=` there is `E-ENTRY-ATTR`, never a
+/// precedence rule). Otherwise each entry resolves to its own attributes.
+pub fn resolve_entry_series<'a>(
+    doc_series: Option<&'a str>,
+    entries: &'a [Entry],
+) -> Vec<EntrySeries<'a>> {
+    entries
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| match doc_series {
+            Some(series) => EntrySeries {
+                series: Some(series),
+                order: u32::try_from(i + 1).ok(),
+                anchor: entry.id_span,
+            },
+            None => EntrySeries {
+                series: entry.series.as_ref().map(|(s, _)| s.as_str()),
+                order: entry
+                    .order
+                    .as_ref()
+                    .and_then(|(raw, _)| parse_entry_order(raw)),
+                anchor: entry.order.as_ref().map_or(entry.id_span, |(_, sp)| *sp),
+            },
+        })
+        .collect()
+}
+
+/// A lore document's validated `series:` read straight off its raw
+/// frontmatter — for the project-wide passes and reports that hold a parsed
+/// [`Document`] but no [`crate::meta::TypedMeta`]. The same predicate as the
+/// typed lift (a string `Ident`); `series:` is never defaultable, so the raw
+/// mapping is the whole truth.
+pub fn document_series(meta: &Meta) -> Option<String> {
+    let map: serde_yaml::Mapping = serde_yaml::from_str(&meta.raw_yaml).ok()?;
+    map.get(serde_yaml::Value::String("series".to_string()))?
+        .as_str()
+        .filter(|s| is_entry_ident(s))
+        .map(str::to_string)
+}
+
 /// Check every `<entry>` of one document (dsl 0.19.0 §3, §5): per-entry
 /// attribute shape and closure, per-document `E-ENTRY-ID-DUP` /
-/// `E-ENTRY-SERIES-ORDER` (every occurrence past the first, in document
-/// order), and one reserved `entry.<id>.read` decl per entry whose id is a
-/// well-formed `Ident` (a missing or malformed id makes the path
-/// unaddressable, as a missing quest id does).
+/// `E-ENTRY-SERIES-ORDER` over the RESOLVED positions (every occurrence past
+/// the first, in document order), and one reserved `entry.<id>.read` decl
+/// per entry whose id is a well-formed `Ident` (a missing or malformed id
+/// makes the path unaddressable, as a missing quest id does).
+///
+/// `doc_series` is the document's validated `series:` (dsl 0.19.0 §2.1): an
+/// entry that also authors `series=` or `order=` is `E-ENTRY-ATTR`.
 ///
 /// `seen_ids` is the caller's id set, SEEDED with every import-reachable
 /// entry id (`SchemaImports::imported_entry_ids`) exactly as `check_quest`'s
 /// `seen_quests` is — redeclaring one is `E-ENTRY-ID-DUP` too.
-pub fn check_entries(entries: &[Entry], seen_ids: &mut BTreeSet<String>) -> EntryRecord {
+pub fn check_entries(
+    doc_series: Option<&str>,
+    entries: &[Entry],
+    seen_ids: &mut BTreeSet<String>,
+) -> EntryRecord {
     let mut record = EntryRecord::default();
+    let resolved = resolve_entry_series(doc_series, entries);
     let mut positions: BTreeMap<(&str, u32), &str> = BTreeMap::new();
-    for entry in entries {
-        check_entry_shape(entry, &mut record.diags);
+    for (entry, resolved) in entries.iter().zip(&resolved) {
+        check_entry_shape(entry, doc_series, &mut record.diags);
         let id = entry.id.as_str();
         if !id.is_empty() {
             if !seen_ids.insert(id.to_string()) {
@@ -121,13 +204,13 @@ pub fn check_entries(entries: &[Entry], seen_ids: &mut BTreeSet<String>) -> Entr
                 record.decls.push((entry_read_path(id), entry_read_decl()));
             }
         }
-        if let Some((series, order, order_span)) = series_position(entry) {
+        if let Some((series, order)) = resolved.position() {
             if let Some(first) = positions.get(&(series, order)) {
                 record.diags.push(diag(
                     E_ENTRY_SERIES_ORDER,
                     Severity::Error,
                     series_order_message(series, order, first, id),
-                    order_span,
+                    resolved.anchor,
                 ));
             } else {
                 positions.insert((series, order), id);
@@ -137,29 +220,20 @@ pub fn check_entries(entries: &[Entry], seen_ids: &mut BTreeSet<String>) -> Entr
     record
 }
 
-/// A well-formed `(series, order)` position — both present and valid — with
-/// the `order` value span the duplicate diagnostic anchors at. `None` when
-/// either is absent or malformed (that entry's own `E-ENTRY-ATTR`).
-pub(crate) fn series_position(entry: &Entry) -> Option<(&str, u32, Span)> {
-    let (series, _) = entry.series.as_ref()?;
-    let (raw, span) = entry.order.as_ref()?;
-    if !is_entry_ident(series) {
-        return None;
-    }
-    Some((series.as_str(), parse_entry_order(raw)?, *span))
-}
-
 pub(crate) fn series_order_message(series: &str, order: u32, first: &str, id: &str) -> String {
     format!(
-        "`<entry id=\"{id}\">` repeats position `order=\"{order}\"` of series `{series}`, \
-         already held by `<entry id=\"{first}\">`; each position in a series names one entry \
-         (dsl 0.19.0 §3)"
+        "`<entry id=\"{id}\">` repeats position {order} of series `{series}`, already held by \
+         `<entry id=\"{first}\">`; each position in a series names one entry (dsl 0.19.0 §2.1, \
+         §3)"
     )
 }
 
 /// One entry's attribute shape (`E-ENTRY-ATTR`, `E-PATH-IDENT`) and closure
-/// (`E-UNKNOWN-ATTR`).
-fn check_entry_shape(entry: &Entry, diags: &mut Vec<Diagnostic>) {
+/// (`E-UNKNOWN-ATTR`). Under a document-level `series:` (`doc_series`, dsl
+/// 0.19.0 §2.1) the entry's own `series=` / `order=` is itself the fault —
+/// its position is its place in the file — so their value shape is not
+/// checked on top.
+fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Diagnostic>) {
     let attr_diag = |message: String, span: Span| {
         diag(E_ENTRY_ATTR, Severity::Error, message, span)
     };
@@ -223,17 +297,41 @@ fn check_entry_shape(entry: &Entry, diags: &mut Vec<Diagnostic>) {
             ));
         }
     }
-    for (key, value) in [("category", &entry.category), ("series", &entry.series)] {
-        if let Some((v, span)) = value {
-            if !is_entry_ident(v) {
+    if let Some((v, span)) = &entry.category {
+        if !is_entry_ident(v) {
+            diags.push(attr_diag(
+                format!(
+                    "`<entry>` `category=\"{v}\"` must be an identifier \
+                     (`[A-Za-z][A-Za-z0-9_-]*`, dsl 0.19.0 §3)"
+                ),
+                *span,
+            ));
+        }
+    }
+    if let Some(doc_series) = doc_series {
+        for (key, value) in [("series", &entry.series), ("order", &entry.order)] {
+            if let Some((v, span)) = value {
                 diags.push(attr_diag(
                     format!(
-                        "`<entry>` `{key}=\"{v}\"` must be an identifier \
-                         (`[A-Za-z][A-Za-z0-9_-]*`, dsl 0.19.0 §3)"
+                        "`<entry>` `{key}=\"{v}\"`: this document declares `series: \
+                         {doc_series}`; entries are ordered by position in the file, so an \
+                         entry carries no `series`/`order` of its own (dsl 0.19.0 §2.1)"
                     ),
                     *span,
                 ));
             }
+        }
+        return;
+    }
+    if let Some((v, span)) = &entry.series {
+        if !is_entry_ident(v) {
+            diags.push(attr_diag(
+                format!(
+                    "`<entry>` `series=\"{v}\"` must be an identifier \
+                     (`[A-Za-z][A-Za-z0-9_-]*`, dsl 0.19.0 §3)"
+                ),
+                *span,
+            ));
         }
     }
     if let Some((raw, span)) = &entry.order {

@@ -88,7 +88,18 @@ pub struct TypedMeta {
     /// value is validated on lift: non-empty and matching `[A-Za-z0-9_.-]+`
     /// — anything else stays `None` and draws `E-META-ID`. Absent → derived
     /// fallback via [`canonical_scene_key`], byte-identical to 0.14.0.
+    ///
+    /// dsl 0.19.0 §2.1: on a quest or lore document the same key (same
+    /// shape rule) is the optional document id — the artifact's `meta.id`
+    /// and its `ProjectIndex` key. [`canonical_scene_key`] is scene-only;
+    /// callers never consult it for another kind.
     pub id: Option<String>,
+    /// dsl 0.19.0 §2.1 (D-K): a lore document's `series:` — every entry of
+    /// the document belongs to this series, ordered by position. Lifted only
+    /// on `MetaKind::Lore` and only when the value is an `Ident`
+    /// (`E-META-VALUE` otherwise). Resolution into per-entry positions is
+    /// [`crate::lore::resolve_entry_series`].
+    pub series: Option<String>,
     /// dsl 0.15.0 §3: authored `extra:` descriptive block. Free open mapping
     /// with scalar or flat-scalar-list values, never consulted by any
     /// checker/compiler/runtime rule and never routed through CEL — the
@@ -178,7 +189,7 @@ const UNIVERSAL_KEYS: &[&str] = &[
 /// Frontmatter keys valid ONLY in a `MetaKind::Scene` document (dsl 0.1.0 §6.1,
 /// dsl 0.2.0 §3.1/§6.1, dsl 0.15.0 §2): the scene identity triad plus the
 /// scene-only extras plus the authored canonical key `id:`. A Quest document
-/// declaring any of these is `E-META-UNKNOWN-KEY`.
+/// declaring any of these but `id:` is `E-META-UNKNOWN-KEY`.
 const SCENE_KEYS: &[&str] = &[
     "id",
     "character",
@@ -188,6 +199,25 @@ const SCENE_KEYS: &[&str] = &[
     "pov",
     "after",
 ];
+
+/// Frontmatter keys valid ONLY in a `MetaKind::Quest` document: the optional
+/// document id (dsl 0.19.0 §2.1, D-J).
+const QUEST_KEYS: &[&str] = &["id"];
+
+/// Frontmatter keys valid ONLY in a `MetaKind::Lore` document: the optional
+/// document id and the document-level `series:` (dsl 0.19.0 §2.1, D-J/D-K).
+const LORE_KEYS: &[&str] = &["id", "series"];
+
+/// The kind-specific core keys of `kind` beyond [`UNIVERSAL_KEYS`] and the
+/// root-wide `kind:`/`extra:` — empty for the import-role kinds.
+fn kind_keys(kind: MetaKind) -> &'static [&'static str] {
+    match kind {
+        MetaKind::Scene => SCENE_KEYS,
+        MetaKind::Quest => QUEST_KEYS,
+        MetaKind::Lore => LORE_KEYS,
+        MetaKind::Schema | MetaKind::Component => &[],
+    }
+}
 
 /// Frontmatter keys that are valid ONLY in a component file (dsl §13): the
 /// component's own name (`component:`) and its parameter signature (`params:`).
@@ -206,8 +236,10 @@ const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params"];
 /// dsl 0.15.0 D-D: `id:` is per-document unique — it is deliberately NOT in
 /// `DEFAULTABLE_KEYS`, so it can never reach this predicate at runtime, but
 /// filter it explicitly so a hand-built `MetaDefaults` cannot silently smuggle
-/// it either. `extra:` is legal on every ROOT kind — Scene, Quest, and Lore
-/// (dsl 0.19.0 §2: lore takes the quest-document keys) all carry it (§3).
+/// it either (dsl 0.19.0 D-J: the same holds for a quest/lore document id).
+/// The other quest/lore kind key, lore `series:` (D-K), is per-document too,
+/// so only the SCENE kind keys are ever defaultable. `extra:` is legal on
+/// every ROOT kind — Scene, Quest, and Lore all carry it (§3).
 pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
     if key == "id" {
         return false;
@@ -241,11 +273,6 @@ fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> S
             .to_string();
     }
     let is_root = kind.is_root();
-    let scene_keys: &[&str] = if kind == MetaKind::Scene {
-        SCENE_KEYS
-    } else {
-        &[]
-    };
     let component_keys: &[&str] = if component_key_allowed {
         COMPONENT_ONLY_KEYS
     } else {
@@ -256,7 +283,7 @@ fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> S
         .iter()
         .copied()
         .chain(root_extras.iter().copied())
-        .chain(scene_keys.iter().copied())
+        .chain(kind_keys(kind).iter().copied())
         .chain(component_keys.iter().copied());
     match lute_manifest::suggest::nearest(key, candidates, 2) {
         Some(sugg) => format!(" — did you mean `{sugg}`?"),
@@ -788,7 +815,7 @@ pub fn parse_meta_kind_with_defaults(
         };
         let core_key = UNIVERSAL_KEYS.contains(&key)
             || (key == "kind" && kind.is_root())
-            || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
+            || kind_keys(kind).contains(&key)
             || (kind.is_root() && key == "extra")
             || (component_key_allowed && COMPONENT_ONLY_KEYS.contains(&key));
         if core_key {
@@ -835,23 +862,55 @@ pub fn parse_meta_kind_with_defaults(
     typed.lute_version = get_str(map, "luteVersion");
     typed.after = get_str(map, "after");
 
-    // dsl 0.15.0 §2: authored canonical scene key. Non-empty and matching
-    // `[A-Za-z0-9_.-]+` — anything else is `E-META-ID` and the value stays
-    // unlifted (a rejected id must never fall through as a valid canonical
-    // key). Scene-only; a `Quest`/`Schema`/`Component` id: was already
-    // rejected as `E-META-UNKNOWN-KEY` above.
-    if let Some(raw) = get_str(map, "id") {
-        if is_valid_scene_id_raw(&raw) {
-            typed.id = Some(raw);
-        } else {
-            diags.push(err_at(
-                "E-META-ID",
-                format!(
-                    "scene `id:` `{raw}` is not a valid canonical scene key; the value must \
-                     be non-empty and match `[A-Za-z0-9_.-]+` (dsl 0.15.0 §2)"
-                ),
-                meta_key_span(meta, "id"),
-            ));
+    // dsl 0.15.0 §2 / dsl 0.19.0 §2.1: authored document id — a scene's
+    // canonical scene key, a quest or lore document's bundle name. Non-empty
+    // and matching `[A-Za-z0-9_.-]+` — anything else is `E-META-ID` and the
+    // value stays unlifted (a rejected id must never fall through as a valid
+    // key). A `Schema`/`Component` id: was already rejected as
+    // `E-META-UNKNOWN-KEY` above and is not lifted.
+    if kind_keys(kind).contains(&"id") {
+        if let Some(raw) = get_str(map, "id") {
+            if is_valid_scene_id_raw(&raw) {
+                typed.id = Some(raw);
+            } else {
+                let message = if kind == MetaKind::Scene {
+                    format!(
+                        "scene `id:` `{raw}` is not a valid canonical scene key; the value must \
+                         be non-empty and match `[A-Za-z0-9_.-]+` (dsl 0.15.0 §2)"
+                    )
+                } else {
+                    format!(
+                        "document `id:` `{raw}` is not a valid document id; the value must be \
+                         non-empty and match `[A-Za-z0-9_.-]+`, the scene `id:` shape (dsl \
+                         0.19.0 §2.1)"
+                    )
+                };
+                diags.push(err_at("E-META-ID", message, meta_key_span(meta, "id")));
+            }
+        }
+    }
+
+    // dsl 0.19.0 §2.1 (D-K): a lore document's `series:` names the one series
+    // all of its entries form, ordered by position. The value is an `Ident`
+    // (the `<entry series=…>` shape); anything else is `E-META-VALUE` — the
+    // frontmatter value-shape code — and stays unlifted, so no entry
+    // resolves into a malformed series.
+    if kind == MetaKind::Lore {
+        if let Some(value) = map.get(yaml_key("series")) {
+            match value.as_str().filter(|s| crate::lore::is_entry_ident(s)) {
+                Some(series) => typed.series = Some(series.to_string()),
+                None => diags.push(err_at(
+                    "E-META-VALUE",
+                    format!(
+                        "`series:` must be an identifier (`[A-Za-z][A-Za-z0-9_-]*`), got {}; \
+                         it names the series this document's entries form (dsl 0.19.0 §2.1)",
+                        value
+                            .as_str()
+                            .map_or_else(|| "a non-string value".to_string(), |s| format!("`{s}`"))
+                    ),
+                    meta_key_span(meta, "series"),
+                )),
+            }
         }
     }
 
@@ -869,7 +928,7 @@ pub fn parse_meta_kind_with_defaults(
     // identity key coexisting with an authored `id:`. Reads the AUTHORED
     // snapshot from BEFORE the defaults merge — a manifest-inherited legacy
     // key on an `id:`-carrying document is silent.
-    if authored_has_id {
+    if authored_has_id && kind == MetaKind::Scene {
         for key in &authored_legacy {
             diags.push(Diagnostic {
                 code: "W-META-LEGACY".to_string(),

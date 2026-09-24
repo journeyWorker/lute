@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, run, play, trace, test, scenario, loc, context, tag, fix, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
+description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, run, play, trace, test, scenario, loc, context, tag, fix, lore, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
 ---
 
 `lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot (omit for a core-only `lute.core` check). On the permission-aware authoring commands below, `--permission-profile <NAME>` requires project resolution and applies that trusted profile's [permissions](/tooling/capability-permissions/) as an additional ceiling without activating its plugins or changing the source profile.
@@ -136,10 +136,12 @@ and consumer cursor/state rules.
 ```console
 $ lute trace <file> [--state P=L]… [--fact "R(A…)"]… [--choose ID=C[,C]]…
               [--event N]… [--accept Q]… [--mock <FILE>] [--json]
-              [--providers <DIR>] [--project <DIR>]
+              [--providers <DIR>] [--project <DIR>] [--entry <ID>]
 ```
 
 Preview a document against author-supplied mocks (see the [tracing guide](/tooling/tracing/)). Exit **0** complete, **1** refused (check errors or invalid mocks — the `E-TRACE-*` codes render like check diagnostics), **2** I/O, **3** incomplete (an `unknown` guard halted the walk).
+
+`--entry <ID>` presents **one** `<entry>` of a [lore document](/language/lore-entries/) (dsl 0.19.0) instead of walking a sequence: its lines, the `<match>` arm taken, and the `::set` / `::assert` / `::retract` a first read applies — or skips, when the mock seeds `entry.<id>.read: true`. A lore document has no sequence to walk, so tracing one without `--entry` is a usage error (exit **2**, naming the declared entry ids); `--entry` on a scene or quest, or naming an id the document does not declare, is `E-TRACE-ENTRY` (exit **1**).
 
 ## scenario
 
@@ -197,13 +199,21 @@ $ lute init <dir> [--template minimal|investigation]
 
 Scaffold a new Lute project directory — a `lute.project.yaml`, a state schema, a starter scene, and a trace mock, ready for `lute check-project`. `<dir>` must not already contain a `lute.project.yaml`. `--template` selects the starter content: `minimal` (default) or `investigation` (the worked whodunit). Exit **0** on success, **2** on I/O or a refused overwrite.
 
+## lore
+
+```console
+$ lute lore <dir> [--json]
+```
+
+Print the project's **world-narrative map** (dsl 0.19.0): every [lore entry](/language/lore-entries/) under `<dir>` grouped by `target` and by `series` (in `order`), then, for every relation asserted anywhere in the project, each ground fact and whether lore entries, scenes/quests, or both reveal it — with the entries and documents that do. `--json` emits the same report as an object with `targets`, `series`, and `relations` arrays. Read-only; documents need not check clean. Exit **0** on success, **2** on I/O.
+
 ## new
 
 ```console
-$ lute new <scene|quest|schema> <name> [--dir <DIR>]
+$ lute new <scene|quest|lore|schema> <name> [--dir <DIR>]
 ```
 
-Scaffold one new document into an existing project. The first argument is the document kind (`scene`, `quest`, or `schema`); `<name>` is the file stem and id. `--dir` is the project directory to scaffold into (default: the current directory). Exit **0** on success, **2** on I/O or an invalid kind.
+Scaffold one new document into an existing project. The first argument is the document kind (`scene`, `quest`, `lore`, or `schema`); `<name>` is the file stem and id. `lute new quest` writes `quests/<name>.lute` with a document `id: quest.<ident>`; `lute new lore` writes `lore/<name>.lute` with a document `id: lore.<ident>` and one `<entry>` attached to `item.<ident>`. `--dir` is the project directory to scaffold into (default: the current directory). Exit **0** on success, **2** on I/O or an invalid kind.
 
 ## doctor
 
@@ -216,10 +226,12 @@ Diagnose the local toolchain and project setup: the version axes, the project ma
 ## run
 
 ```console
-$ lute run <artifact> [--mock <FILE>] [--json]
+$ lute run <artifact> [--mock <FILE>] [--json] [--entry <ID>]
 ```
 
 Execute a **compiled artifact** (`lute compile` output) headlessly against a mock playthrough — the reference consumer of the [runtime contract](/tooling/runtime-contract/): command dispatch, CEL guards, the facts + Datalog fixpoint, hubs, and quest lifecycle. Distinct from `lute trace`, which previews *source*; `run` consumes the artifact an engine would. `--mock` is a YAML playthrough (the same surfaces as `lute trace --mock`); `--json` emits the machine-readable transcript. Exit **0** on a complete run, **1** refused, **2** on I/O, **3** incomplete.
+
+`--entry <ID>` presents one `entry` record of a **lore artifact** (dsl 0.19.0; [engine contract](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md)): the transcript reports whether it is a first read and whether its `when` holds, runs its body segment, applies first-read effects (or records them as skipped once `entry.<id>.read` is seeded `true`), and then sets `entry.<id>.read`. It is required for a lore artifact and refused on any other kind (both exit **2**).
 
 ## play
 

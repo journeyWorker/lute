@@ -13,8 +13,14 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.18.0.md`](proposals/scenario-dsl/0.18.0.md). The
+> [`proposals/scenario-dsl/0.19.0.md`](proposals/scenario-dsl/0.19.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
+> Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
+> (played episodes, the subject of most of this file), `quest` (goal machines, dsl
+> 0.2.0 §6), and — since 0.19.0 — `lore`, whose top-level `<entry>` declarations are
+> content the engine looks up rather than plays (engine contract:
+> [`runtime/lore-entries.md`](runtime/lore-entries.md)). A quest or lore document may
+> name itself with a document `id:`, the bundle key it is indexed under.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract

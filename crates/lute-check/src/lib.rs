@@ -44,7 +44,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.18.0";
+pub const LUTE_LANG_VERSION: &str = "0.19.0";
 
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_expand::{expand_cel, DefTable};
@@ -72,9 +72,9 @@ pub use inject::{
     is_declared_exit, lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState,
 };
 pub use lore::{
-    check_entries, entry_read_decl, entry_read_path, is_entry_ident, is_entry_target,
-    parse_entry_order, EntryRecord, E_ENTRY_ATTR, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER,
-    W_ENTRY_REF_UNKNOWN,
+    check_entries, document_series, entry_read_decl, entry_read_path, is_entry_ident,
+    is_entry_target, parse_entry_order, resolve_entry_series, EntryRecord, EntrySeries,
+    E_ENTRY_ATTR, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER, W_ENTRY_REF_UNKNOWN,
 };
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, check_quest_rewards,

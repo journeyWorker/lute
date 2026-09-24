@@ -33,7 +33,7 @@ tells you whether a `.lute` file is valid:
 <!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
-my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
+my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore` (dsl 0.2.0 §3.1, dsl 0.19.0 §2)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
@@ -286,8 +286,8 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.18.0",
-  "irVersion": "0.18.0",
+  "lute": "0.19.0",
+  "irVersion": "0.19.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "id": "mira.s01ep01",

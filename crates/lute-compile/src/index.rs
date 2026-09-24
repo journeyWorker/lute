@@ -56,11 +56,10 @@ pub struct IndexDocument {
     pub artifact: String,
     pub kind: DocKind,
     /// The document's canonical node key: a scene's `{character}.{episodeId}`
-    /// ([`canonical_episode_key`]), a quest document's first declared
-    /// `<quest id>` (document order = addressing order), or — by the same
-    /// first-declaration rule — a lore document's first declared
-    /// `<entry id>` (dsl 0.19.0). A quest PACK's / lore document's
-    /// remaining ids stay recoverable from its own artifact's `quest` /
+    /// ([`canonical_episode_key`]); a quest or lore document's authored `id:`
+    /// (dsl 0.19.0 §2.1), else its first declared `<quest id>` / `<entry
+    /// id>` (document order = addressing order). A quest PACK's / lore
+    /// document's ids stay recoverable from its own artifact's `quest` /
     /// `entry` records (and, for entries, [`ProjectIndex::entries`]) — the
     /// index names the document, it does not replace it.
     pub key: String,
@@ -350,23 +349,29 @@ pub fn build_index(
 /// ([`lute_check::meta::canonical_scene_key`], dsl 0.15.0 §2) already
 /// stamped into the artifact by `artifact_meta`, so the index can never
 /// name a scene differently from the addressing prefix or `check-project`'s
-/// scene-key grouping. A quest (lore) document's key is its first declared
-/// `<quest id>` (`<entry id>`). A quest/lore document with no declaration at
-/// all has no key; that shape never survives the check gate, so the empty
-/// string is a total fallback, not a real output.
+/// scene-key grouping. A quest or lore document with an authored `id:` is
+/// keyed by it (dsl 0.19.0 §2.1); without one, by its first declared
+/// `<quest id>` (`<entry id>`). A quest/lore document with neither has no
+/// key; that shape never survives the check gate, so the empty string is a
+/// total fallback, not a real output.
 pub fn document_key(artifact: &Artifact) -> String {
-    match &artifact.meta {
-        ArtifactMeta::Scene(m) => m.id.clone(),
-        ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => artifact
-            .commands
-            .iter()
-            .find_map(|c| match c {
-                Command::Quest(q) => Some(q.id.clone()),
-                Command::Entry(e) => Some(e.id.clone()),
-                _ => None,
-            })
-            .unwrap_or_default(),
+    let authored = match &artifact.meta {
+        ArtifactMeta::Scene(m) => return m.id.clone(),
+        ArtifactMeta::Quest(m) => m.id.as_ref(),
+        ArtifactMeta::Lore(m) => m.id.as_ref(),
+    };
+    if let Some(id) = authored {
+        return id.clone();
     }
+    artifact
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::Quest(q) => Some(q.id.clone()),
+            Command::Entry(e) => Some(e.id.clone()),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -553,11 +558,13 @@ mod tests {
     }
 
     fn lore(capability: &str, entries: &[(&str, Option<&str>, Option<u32>)]) -> Artifact {
-        use crate::ir::{EntryCmd, QuestMeta, Stamp};
+        use crate::ir::{EntryCmd, LoreMeta, Stamp};
         let mut a = scene("unused", capability);
         a.kind = DocKind::Lore;
-        a.meta = ArtifactMeta::Lore(QuestMeta {
+        a.meta = ArtifactMeta::Lore(LoreMeta {
+            id: None,
             title: None,
+            series: None,
             content_lang: None,
             extra: BTreeMap::new(),
             plugin: BTreeMap::new(),

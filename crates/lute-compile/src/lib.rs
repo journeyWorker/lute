@@ -195,7 +195,25 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// to `schemas/lute-ir-0.18.schema.json` per the release-line rule, with only
 /// its `$id` and title restamped. The MAJOR-only runtime gate does not move,
 /// so no engine gate widens.
-pub const LUTE_IR_VERSION: &str = "0.18.0";
+///
+/// IR `0.19.0` is ADDITIVE over `0.18.0` (dsl 0.19.0 §7, lore entries):
+/// [`ir::DocKind`] gains `"lore"` with its own [`ir::LoreMeta`] envelope
+/// (`id?`, `title?`, `series?`, `contentLang?`, `extra?`, `plugin?`);
+/// [`ir::Command`] gains the `entry` record ([`ir::EntryCmd`]: `addr`, `id`,
+/// `target?`, `category?`, `title?`, `titleLineId?`, the RESOLVED `series?` /
+/// `order?`, `when?`, and `body`, the address of its body segment — the
+/// `OnCmd.body` convention); [`ir::QuestMeta`] gains the optional authored
+/// document `id` (dsl 0.19.0 §2.1); and [`index::ProjectIndex`] gains `entries`,
+/// keying a quest or lore document by its authored `id:` when present. Every
+/// new field is skipped when absent, so scene and quest artifacts without
+/// `id:` compile byte-identically apart from the version strings.
+/// `schemas/lute-ir-0.18.schema.json` is renamed to
+/// `schemas/lute-ir-0.19.schema.json` per the release-line rule and gains
+/// `loreMeta`, `entryCmd`, `questMeta.id`, and the index rows. The
+/// MAJOR-only runtime gate does not move: a scene/quest engine is
+/// unaffected, and one without lore support rejects `kind: "lore"` as any
+/// unknown artifact kind.
+pub const LUTE_IR_VERSION: &str = "0.19.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -381,10 +399,14 @@ pub fn compile_with_check(
             // dsl 0.19.0 §4/§7: one addressing unit per `<entry>`, 1-based in
             // document order, identity prefix = `{entryId}` — a FRESH
             // identity scope per entry, exactly the per-quest rule above.
+            // Each entry record carries its RESOLVED series position (§2.1:
+            // a document-level `series:` orders entries by place in file).
+            let resolved =
+                lute_check::resolve_entry_series(folded.typed.series.as_deref(), &doc.entries);
             let mut shots = Vec::new();
-            for (i, entry) in doc.entries.iter().enumerate() {
+            for (i, (entry, series)) in doc.entries.iter().zip(&resolved).enumerate() {
                 let mut em = cfg::Emitter::default();
-                stage::walk_entry(&mut em, entry, &mut cx, &mut diags);
+                stage::walk_entry(&mut em, entry, series, &mut cx, &mut diags);
                 let (recs, trailing, trailing_named) = em.finish();
                 shots.push(address::ShotRecords {
                     shot: (i as i64) + 1,
@@ -396,7 +418,7 @@ pub fn compile_with_check(
             }
             let (commands, addr_diags) = address::assign_addresses(shots, identity);
             (
-                ArtifactMeta::Lore(quest_meta(&doc, &folded, &input.snapshot)),
+                ArtifactMeta::Lore(lore_meta(&doc, &folded, &input.snapshot)),
                 commands,
                 addr_diags,
             )
@@ -793,11 +815,12 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
 
 /// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; dsl 0.15.0 §3
 /// adds the descriptive `extra:` block; plugin-owned keys per plugin-system
-/// 0.0.4 §2): `title`/`contentLang` live only in the raw frontmatter
-/// (mirrors `artifact_meta`'s `title` lookup); `extra` is the JSON-ready
-/// block the checker lifted into `TypedMeta.extra_block`. MAY serialize as
-/// `{}` when none of title/contentLang/meta/plugin are authored (all four
-/// carry `skip_serializing_if`).
+/// 0.0.4 §2; dsl 0.19.0 §2.1 the optional document `id`): `title`/
+/// `contentLang` live only in the raw frontmatter (mirrors `artifact_meta`'s
+/// `title` lookup); `id` is the checker-validated `TypedMeta.id`; `extra` is
+/// the JSON-ready block the checker lifted into `TypedMeta.extra_block`. MAY
+/// serialize as `{}` when none of id/title/contentLang/extra/plugin are
+/// authored (all five carry `skip_serializing_if`).
 fn quest_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> QuestMeta {
     let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
     let lookup = |key: &str| -> Option<String> {
@@ -811,9 +834,31 @@ fn quest_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot)
         .map(|m| plugin_frontmatter(m, snapshot))
         .unwrap_or_default();
     QuestMeta {
+        id: folded.typed.id.clone(),
         title: lookup("title"),
         content_lang: lookup("contentLang"),
         extra: folded.typed.extra_block.clone(),
+        plugin,
+    }
+}
+
+/// Lore-kind envelope meta (dsl 0.19.0 §7): the [`quest_meta`] fields plus
+/// the document-level `series:` (§2.1), the checker-validated
+/// `TypedMeta.series`.
+fn lore_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> LoreMeta {
+    let QuestMeta {
+        id,
+        title,
+        content_lang,
+        extra,
+        plugin,
+    } = quest_meta(doc, folded, snapshot);
+    LoreMeta {
+        id,
+        title,
+        series: folded.typed.series.clone(),
+        content_lang,
+        extra,
         plugin,
     }
 }
@@ -1057,13 +1102,13 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.18.0 axis alignment (docs/versioning.md): the language earns the
-        // move (inclusive numeric ranges in `<when is>`, number-domain
-        // coverage, `E-WHEN-RANGE`, `W-WHEN-TEST-LITERAL`), while range arms
-        // lower to the existing `>=`/`<=`/`&&` operators, so the IR shape does
-        // not change — the alignment rule still moves both independently
-        assert_eq!(super::LUTE_IR_VERSION, "0.18.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.18.0");
+        // 0.19.0 axis alignment (docs/versioning.md): the language earns the
+        // move (`kind: lore` + `<entry>`, `entry.<id>.read`, document `id:` /
+        // `series:` bundles) and so does the IR (the `lore` artifact kind with
+        // `LoreMeta`, the `entry` record, `QuestMeta.id`,
+        // `ProjectIndex.entries`) — both move independently
+        assert_eq!(super::LUTE_IR_VERSION, "0.19.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.19.0");
     }
 
     #[test]
@@ -1072,8 +1117,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.18.0");
-        assert_eq!(v["irVersion"], "0.18.0");
+        assert_eq!(v["lute"], "0.19.0");
+        assert_eq!(v["irVersion"], "0.19.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

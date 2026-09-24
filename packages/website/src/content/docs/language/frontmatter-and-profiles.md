@@ -28,7 +28,7 @@ defs:
 
 ## Required keys
 
-A root document must declare its **`kind`** — either `scene` or `quest` — and, for a scene, the
+A root document must declare its **`kind`** — `scene`, `quest`, or [`lore`](/language/lore-entries/) — and, for a scene, the
 identity triple **`character`**, **`season`**, and **`episode`**. Omitting any of these is a static
 error (`E-KIND-MISSING`, `E-META-MISSING`).
 

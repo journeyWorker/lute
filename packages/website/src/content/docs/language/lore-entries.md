@@ -14,7 +14,7 @@ spawns in which room, which panel shows the codex, when an NPC barks.
 
 ## A lore document
 
-```lute
+```lute check
 ---
 kind: lore
 title: Ship's records
@@ -59,11 +59,57 @@ The top level is one or more `<entry>` declarations and nothing else — no `# `
 | `target` | the engine-owned thing it belongs to — `item.rusty_key`, `place.lab_b2`, `npc.vesna` |
 | `category` | what kind of text it is — `note`, `item`, `place`, `codex`, `bark`, … (engine vocabulary) |
 | `title` | display title, localized like a quest title |
-| `series` / `order` | multi-part text: `order` is the position within `series` |
+| `series` / `order` | multi-part text: `order` is the position within `series` (a document-level `series:` can supply both — see below) |
 | `when` | eligibility: the entry may be presented only while this holds |
 
 `target` and `category` are checked for shape only, so you can write lore before the engine's item
 catalog exists. Several entries may share a `target` — an NPC's barks, for example.
+
+## The document is the bundle
+
+Authors write a series the way they read it: pages one through seven, top to bottom, in one file.
+A lore document can say so directly (dsl 0.19.0 §2.1):
+
+- **`id:`** names the file as a bundle — `haven.purserLedger`, `haven.captainsLog`. It has the
+  same shape rules as a scene's `id:` (`E-META-ID`), becomes the artifact's `meta.id` and the
+  document's key in `project.index.json`, and shares one project-wide namespace with scene and
+  quest document ids (`E-CONN-EPISODE-ID-DUP`). Quest documents may declare one too; without it a
+  document is keyed by its first declared quest or entry id.
+- **`series:`** makes every entry in the file one series, ordered by **position in the file**
+  (1-based). Reordering pages is moving entries; inserting a page renumbers the ones after it.
+
+```lute check="docs/examples/haven/lore/purser-ledger.lute"
+---
+kind: lore
+luteVersion: "0.19.0"
+id: haven.purserLedger
+title: Purser's ledger
+series: purserLedger
+uses: ../world.schema.yaml
+---
+
+<entry id="purserLedger1" target="item.purser_ledger" category="note" title="Page 1">
+  @ottavio{code="0010"}: Manifest amended at the third bell. Two pods logged aboard that were never loaded.
+  ::assert{knows(vesna, manifest)}
+</entry>
+
+<entry id="purserLedger2" target="item.purser_ledger" category="note" title="Page 2" when="entry.purserLedger1.read">
+  @ottavio{code="0010"}: If anyone reads this far: the heading on the bridge was never the true one.
+  ::assert{knows(vesna, true_heading)}
+</entry>
+```
+
+*(From [`docs/examples/haven/lore/purser-ledger.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/haven/lore/purser-ledger.lute).)*
+
+`purserLedger1` compiles as `order` 1 and `purserLedger2` as `order` 2 of series `purserLedger`.
+The compiled `entry` records and `project.index.json` carry the resolved `series` / `order`, so
+the engine reads every entry the same way whichever form you wrote.
+
+The per-entry `series=` / `order=` attributes (the first example on this page) remain the form for
+a series that spans several files. Inside a document that declares `series:`, an entry carrying its
+own `series=` or `order=` is `E-ENTRY-ATTR` — the two forms never mix in one file. Two entries that
+resolve to the same `(series, order)` are `E-ENTRY-SERIES-ORDER`: per document in `lute check`,
+across the project in `lute check-project`.
 
 ## What an entry body may contain
 
@@ -97,7 +143,8 @@ never writes it. `lute check-project` warns `W-ENTRY-REF-UNKNOWN` when no docume
 ## Tooling
 
 - `lute trace <doc> --entry <id> --mock m.yaml` previews one entry against mocked state; seed
-  `entry.<id>.read: true` to preview a re-read.
+  `entry.<id>.read: true` to preview a re-read. `lute run <artifact> --entry <id>` does the same
+  over a compiled lore artifact.
 - `lute lore <dir>` prints the world-narrative map: entries by target and by series, and which
   facts entries reveal versus scenes and quests.
 - `lute new lore <name>` scaffolds a lore document.

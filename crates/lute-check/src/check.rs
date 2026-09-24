@@ -542,9 +542,12 @@ pub fn fold_env(
     //      collision guard is needed: an `entry.*` path can never be
     //      author-declared (`entry` is not a `state:` tier,
     //      `E-STATE-NAMESPACE`).
+    //      The positions are the RESOLVED ones (dsl 0.19.0 §2.1): a lore
+    //      document's `series:` orders its entries by place in the file.
     let mut seen_entries: std::collections::BTreeSet<String> =
         input.imports.imported_entry_ids.keys().cloned().collect();
-    let entry_record = crate::lore::check_entries(&doc.entries, &mut seen_entries);
+    let entry_record =
+        crate::lore::check_entries(typed.series.as_deref(), &doc.entries, &mut seen_entries);
     schema.decls.extend(entry_record.decls);
     fold_diags.extend(entry_record.diags);
 
@@ -4050,15 +4053,16 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.18.0` is a language release: `<when is="…">` gains inclusive numeric
-    /// range literals (`N..M`, `N..`, `..M`), a declared `number` subject gets
-    /// interval coverage, and `E-WHEN-RANGE` / `W-WHEN-TEST-LITERAL` join the
-    /// code set. Range arms lower to the existing comparison operators, so the
-    /// IR moves as an alignment restamp and the current schema is
-    /// `schemas/lute-ir-0.18.schema.json`.
+    /// `0.19.0` is a language AND IR release: a third document kind,
+    /// `kind: lore`, declares `<entry>` content the engine looks up; every
+    /// entry gets the reserved `entry.<id>.read` path; quest and lore
+    /// documents may name their bundle with `id:`, and a lore document may
+    /// order its entries as one `series:`. The IR gains the `lore` artifact
+    /// kind, the `entry` record, `QuestMeta.id`, and `ProjectIndex.entries`,
+    /// so the current schema is `schemas/lute-ir-0.19.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_18_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.18.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.18.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_19_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.19.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.19.0");
     }
 }

@@ -155,7 +155,7 @@ mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.18.0**.
+compiles, traces, and inspects them. The current language version is **0.19.0**.
 
 ## Quick start with `bunx`
 
@@ -211,16 +211,16 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.18.0
-language      0.18.0
-IR schema     0.18.0
+lute toolchain 0.19.0
+language      0.19.0
+IR schema     0.19.0
 ```
 
 Those are three independent axes: the **toolchain** version is this CLI, the **language** version
 is the grammar and semantics the checker enforces, and the **IR schema** version is what
 `lute compile` stamps into every artifact as `irVersion`. They mean different things, but a
 release always re-aligns all three visible numbers to that release's number, so all three read
-`0.18.0`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
+`0.19.0`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
 first time since `0.8.0`, `provenance.reason` becoming `provenance.explanation` — and under the
 then-current major.minor gate an engine on IR `0.9` had to widen to accept `0.10`. The gate is
 MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. For scripts and CI,
@@ -228,10 +228,10 @@ MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. 
 
 ```
 $ lute version --json
-{"toolchain":"0.18.0","language":"0.18.0","ir":"0.18.0"}
+{"toolchain":"0.19.0","language":"0.19.0","ir":"0.19.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.18.0` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.19.0` — the toolchain axis alone.)
 
 ## Next
 
@@ -245,7 +245,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.18.0**.
+**0.19.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -258,7 +258,7 @@ Create an empty file, `my-scene.lute`, and run the checker on it — the checker
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
+my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore` (dsl 0.2.0 §3.1, dsl 0.19.0 §2)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
@@ -474,8 +474,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.18.0",
-  "irVersion": "0.18.0",
+  "lute": "0.19.0",
+  "irVersion": "0.19.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "character": "mira",
@@ -782,7 +782,7 @@ defs:
 
 ## Required keys
 
-A root document must declare its **`kind`** — either `scene` or `quest` — and, for a scene, the
+A root document must declare its **`kind`** — `scene`, `quest`, or [`lore`](/language/lore-entries/) — and, for a scene, the
 identity triple **`character`**, **`season`**, and **`episode`**. Omitting any of these is a static
 error (`E-KIND-MISSING`, `E-META-MISSING`).
 
@@ -1759,9 +1759,12 @@ The `min`/`max`/`values` def fields from earlier drafts are removed: a def is fu
 
 # Quests & scenes
 
-Every `.lute` document declares a **`kind`**: `scene` or `quest`. The kind selects the required
-frontmatter keys, the admitted grammar, and the identity model. Scenes are the playable episodes
-you author line by line; quests are the run-to-completion goal machines that gate and reward them.
+Every `.lute` document declares a **`kind`**: `scene`, `quest`, or `lore`. The kind selects the
+required frontmatter keys, the admitted grammar, and the identity model. Scenes are the playable
+episodes you author line by line; quests are the run-to-completion goal machines that gate and
+reward them. Both sit on the story's time axis. The third kind, `lore` (dsl 0.19.0), holds content
+the engine looks up rather than plays — item descriptions, found notes, barks — and has its own
+page: [Lore entries](/language/lore-entries/).
 
 ## Scenes and `after:`
 
@@ -1813,6 +1816,19 @@ one or more `<quest>` declarations — quests forbid `<hub>`, `<timeline>`, and 
 ```
 
 *(From [`docs/examples/quest-grove.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-grove.lute).)*
+
+A quest document MAY also declare a document **`id:`** (dsl 0.19.0 §2.1) naming the file as a
+bundle — a quest chain written top to bottom, such as `haven.mainChain`. It follows the same shape
+rules as a scene's `id:` (`E-META-ID`), becomes the artifact's `meta.id` and the document's key in
+`project.index.json`, and shares one project-wide namespace with scene and lore document ids
+(`E-CONN-EPISODE-ID-DUP`). It is optional: without it the document is keyed by its first declared
+quest id, exactly as before.
+
+```yaml
+kind: quest
+id: haven.mainChain
+uses: ../world.schema.yaml
+```
 
 ### `<quest>`
 
@@ -1895,6 +1911,161 @@ verdict on it would be undischargeable: no literal inhabits `narrativeTime`, so 
 no `default:`, and both guard forms — `isSet(p)` and `has(p)` — are themselves `E-TEMPORAL-ARG` on a
 narrative-time operand. `quest.<id>.state` has an escape hatch (`<match>` exhaustiveness over its
 lifecycle enum); this has none.
+
+---
+
+# Lore entries
+
+Scenes and quests put story on a **time axis**: what happens, in what order. A lot of a game's
+story lives somewhere else — in **objects and places**. The torn page in the lab, the inscription
+on a door, the key whose description changes after the fire, the line an NPC mutters as you walk
+past. The player finds these in any order, reads them again, and pieces the story together.
+
+A **lore document** (`kind: lore`, dsl 0.19.0) declares that text. Lute says what an entry reads,
+when it is eligible, and what reading it changes. The engine decides where it lives: which item
+spawns in which room, which panel shows the codex, when an NPC barks.
+
+## A lore document
+
+```lute
+---
+kind: lore
+title: Ship's records
+entities:
+  crew: { members: [vesna, toma] }
+  topic: { members: [project_lumen, true_heading] }
+relations:
+  knows: { args: [crew, topic], tier: run }
+state:
+  run.labBurned: { type: bool, default: false }
+---
+
+<entry id="scientistLog1" target="item.torn_note_1" category="note" series="scientistLog" order="1" title="Research log, day 3">
+  @scientist: Day three. Subject E does not respond to light.
+  ::assert{knows(vesna, project_lumen)}
+</entry>
+
+<entry id="scientistLog2" target="item.torn_note_2" category="note" series="scientistLog" order="2" when="entry.scientistLog1.read">
+  @scientist: Day nine. We stopped writing her name in the logs.
+</entry>
+
+<entry id="rustyKey" target="item.rusty_key" category="item">
+  <match on="run.labBurned">
+    <when is="true">
+      @narrator: A scorched key. Someone's name has melted into the grip.
+    </when>
+    <otherwise>
+      @narrator: A rusty key, stamped "Research wing B2".
+    </otherwise>
+  </match>
+</entry>
+```
+
+The top level is one or more `<entry>` declarations and nothing else — no `# ` title heading, no
+`## ` shots, no `<quest>`.
+
+## `<entry>` attributes
+
+| Attr | Meaning |
+|---|---|
+| `id` | required; unique across the project |
+| `target` | the engine-owned thing it belongs to — `item.rusty_key`, `place.lab_b2`, `npc.vesna` |
+| `category` | what kind of text it is — `note`, `item`, `place`, `codex`, `bark`, … (engine vocabulary) |
+| `title` | display title, localized like a quest title |
+| `series` / `order` | multi-part text: `order` is the position within `series` (a document-level `series:` can supply both — see below) |
+| `when` | eligibility: the entry may be presented only while this holds |
+
+`target` and `category` are checked for shape only, so you can write lore before the engine's item
+catalog exists. Several entries may share a `target` — an NPC's barks, for example.
+
+## The document is the bundle
+
+Authors write a series the way they read it: pages one through seven, top to bottom, in one file.
+A lore document can say so directly (dsl 0.19.0 §2.1):
+
+- **`id:`** names the file as a bundle — `haven.purserLedger`, `haven.captainsLog`. It has the
+  same shape rules as a scene's `id:` (`E-META-ID`), becomes the artifact's `meta.id` and the
+  document's key in `project.index.json`, and shares one project-wide namespace with scene and
+  quest document ids (`E-CONN-EPISODE-ID-DUP`). Quest documents may declare one too; without it a
+  document is keyed by its first declared quest or entry id.
+- **`series:`** makes every entry in the file one series, ordered by **position in the file**
+  (1-based). Reordering pages is moving entries; inserting a page renumbers the ones after it.
+
+```lute
+---
+kind: lore
+luteVersion: "0.19.0"
+id: haven.purserLedger
+title: Purser's ledger
+series: purserLedger
+uses: ../world.schema.yaml
+---
+
+<entry id="purserLedger1" target="item.purser_ledger" category="note" title="Page 1">
+  @ottavio{code="0010"}: Manifest amended at the third bell. Two pods logged aboard that were never loaded.
+  ::assert{knows(vesna, manifest)}
+</entry>
+
+<entry id="purserLedger2" target="item.purser_ledger" category="note" title="Page 2" when="entry.purserLedger1.read">
+  @ottavio{code="0010"}: If anyone reads this far: the heading on the bridge was never the true one.
+  ::assert{knows(vesna, true_heading)}
+</entry>
+```
+
+*(From [`docs/examples/haven/lore/purser-ledger.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/haven/lore/purser-ledger.lute).)*
+
+`purserLedger1` compiles as `order` 1 and `purserLedger2` as `order` 2 of series `purserLedger`.
+The compiled `entry` records and `project.index.json` carry the resolved `series` / `order`, so
+the engine reads every entry the same way whichever form you wrote.
+
+The per-entry `series=` / `order=` attributes (the first example on this page) remain the form for
+a series that spans several files. Inside a document that declares `series:`, an entry carrying its
+own `series=` or `order=` is `E-ENTRY-ATTR` — the two forms never mix in one file. Two entries that
+resolve to the same `(series, order)` are `E-ENTRY-SERIES-ORDER`: per document in `lute check`,
+across the project in `lute check-project`.
+
+## What an entry body may contain
+
+Content lines, `<match>`, `::set`, `::assert`, and `::retract`. No `<branch>` or `<hub>` (reading
+has no player choice), no `<timeline>` or `::` directives (the engine owns how an entry is shown),
+no `<on>` or `<objective>`. Anything else is `E-GRAMMAR-NOT-ADMITTED`.
+
+Lines are ordinary content lines. The speaker can be `@narrator` or an in-world author such as
+`@scientist`, and each entry gets its own lineId / voiceKey scope, as each quest does.
+
+## Revealing knowledge
+
+Reading an entry reveals knowledge with the ordinary `::assert`, against relations your schema
+already declares — the checker applies the usual arity, domain, and tier rules. Scenes and quests
+react with `holds(…)`:
+
+```lute
+@eris{when="holds(knows(vesna, project_lumen))"}: ...So you read the log.
+```
+
+## Reading twice
+
+The **first** time an entry is presented in a run, its `::set` / `::assert` / `::retract` apply.
+Afterwards the engine sets **`entry.<id>.read`** to `true`, and later readings show the text only —
+a `<match>` may pick a different arm by then, but nothing else changes.
+
+`entry.<id>.read` is a reserved `bool` any document can read: gate the next page of a series
+(`when="entry.scientistLog1.read"`), branch a scene on it, or complete a quest objective. Content
+never writes it. `lute check-project` warns `W-ENTRY-REF-UNKNOWN` when no document declares the id.
+
+## Tooling
+
+- `lute trace <doc> --entry <id> --mock m.yaml` previews one entry against mocked state; seed
+  `entry.<id>.read: true` to preview a re-read. `lute run <artifact> --entry <id>` does the same
+  over a compiled lore artifact.
+- `lute lore <dir>` prints the world-narrative map: entries by target and by series, and which
+  facts entries reveal versus scenes and quests.
+- `lute new lore <name>` scaffolds a lore document.
+
+The engine contract — eligibility, presentation, first-read effects — is in
+[`docs/runtime/lore-entries.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md);
+the normative spec is
+[`0.19.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md).
 
 ---
 
@@ -2394,7 +2565,7 @@ The index carries the document table plus the deterministic **union** of every a
 
 ```json
 {
-  "irVersion": "0.18.0",
+  "irVersion": "0.19.0",
   "capabilityVersion": "…",
   "documents": [
     { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",
@@ -2438,10 +2609,12 @@ effect.
 ```console
 $ lute trace <file> [--state P=L]… [--fact "R(A…)"]… [--choose ID=C[,C]]…
               [--event N]… [--accept Q]… [--mock <FILE>] [--json]
-              [--providers <DIR>] [--project <DIR>]
+              [--providers <DIR>] [--project <DIR>] [--entry <ID>]
 ```
 
 Preview a document against author-supplied mocks (see the [tracing guide](/tooling/tracing/)). Exit **0** complete, **1** refused (check errors or invalid mocks — the `E-TRACE-*` codes render like check diagnostics), **2** I/O, **3** incomplete (an `unknown` guard halted the walk).
+
+`--entry <ID>` presents **one** `<entry>` of a [lore document](/language/lore-entries/) (dsl 0.19.0) instead of walking a sequence: its lines, the `<match>` arm taken, and the `::set` / `::assert` / `::retract` a first read applies — or skips, when the mock seeds `entry.<id>.read: true`. A lore document has no sequence to walk, so tracing one without `--entry` is a usage error (exit **2**, naming the declared entry ids); `--entry` on a scene or quest, or naming an id the document does not declare, is `E-TRACE-ENTRY` (exit **1**).
 
 ## scenario
 
@@ -2497,13 +2670,21 @@ $ lute init <dir> [--template minimal|investigation]
 
 Scaffold a new Lute project directory — `lute.project.yaml`, a state schema, a `vocabulary.schema.yaml` declaring a starter member list for all seven [content-vocabulary](/language/vocabulary/) slots, a starter scene that imports both, and a trace mock, ready for `lute check-project`. `<dir>` must not already contain a `lute.project.yaml`. `--template` is `minimal` (default) or `investigation`. Exit **0** on success, **2** on I/O or a refused overwrite.
 
+## lore
+
+```console
+$ lute lore <dir> [--json]
+```
+
+Print the project's **world-narrative map** (dsl 0.19.0): every [lore entry](/language/lore-entries/) under `<dir>` grouped by `target` and by `series` (in `order`), then, for every relation asserted anywhere in the project, each ground fact and whether lore entries, scenes/quests, or both reveal it — with the entries and documents that do. `--json` emits the same report as an object with `targets`, `series`, and `relations` arrays. Read-only; documents need not check clean. Exit **0** on success, **2** on I/O.
+
 ## new
 
 ```console
-$ lute new <scene|quest|schema> <name> [--dir <DIR>]
+$ lute new <scene|quest|lore|schema> <name> [--dir <DIR>]
 ```
 
-Scaffold one new document (`scene`, `quest`, or `schema`) into an existing project; `<name>` is the file stem and id, `--dir` the project directory (default: current). Exit **0** on success, **2** on I/O or an invalid kind.
+Scaffold one new document (`scene`, `quest`, `lore`, or `schema`) into an existing project; `<name>` is the file stem and id, `--dir` the project directory (default: current). `lute new quest` writes a document `id: quest.<ident>`; `lute new lore` writes `lore/<name>.lute` with a document `id: lore.<ident>` and one `<entry>`. Exit **0** on success, **2** on I/O or an invalid kind.
 
 ## doctor
 
@@ -2516,10 +2697,12 @@ Diagnose the local toolchain and project setup: version axes, project manifest, 
 ## run
 
 ```console
-$ lute run <artifact> [--mock <FILE>] [--json]
+$ lute run <artifact> [--mock <FILE>] [--json] [--entry <ID>]
 ```
 
 Execute a compiled artifact headlessly against a mock playthrough — the reference consumer of the [runtime contract](/tooling/runtime-contract/): command dispatch, CEL guards, the facts + Datalog fixpoint, hubs, and quest lifecycle. Distinct from `lute trace`, which previews *source*. `--mock` is a YAML playthrough (same surfaces as `lute trace --mock`); `--json` emits the transcript. Exit **0** complete, **1** refused, **2** I/O, **3** incomplete.
+
+`--entry <ID>` presents one `entry` record of a **lore artifact** (dsl 0.19.0; [engine contract](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md)): the transcript reports whether it is a first read and whether its `when` holds, runs its body segment, applies first-read effects (or records them as skipped once `entry.<id>.read` is seeded `true`), and then sets `entry.<id>.read`. It is required for a lore artifact and refused on any other kind (both exit **2**).
 
 ## play
 
@@ -2646,7 +2829,7 @@ Transcript headers read `── <tickLabel> (tick <N>) · <lane> · <event>/<var
 
 # Runtime contract
 
-`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.18.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.18.schema.json) (JSON Schema draft 2020-12).
+`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.19.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.19.schema.json) (JSON Schema draft 2020-12).
 
 Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST and leaves the rest as raw CEL, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. `holds()`/`count()` are inside the §8.4 profile authors may write and deliberately absent from the `expr` AST, so a relational guard reaches the engine as raw CEL text alone and an engine MUST have a CEL evaluator, not merely an AST walker. The engine trusts the artifact.
 
@@ -3607,11 +3790,11 @@ For the complete project — the plugin manifests, schemas, component, catalog, 
 
 # Current specification
 
-The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.18.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.19.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
-| Frontmatter & profiles | 0.1.0 | 0.2.0 (document-kind system) | [0.2.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md) |
+| Frontmatter & profiles | 0.1.0 | 0.19.0 (a third document kind, `kind: lore`, taking the quest-document keys; quest and lore documents gain an optional document `id:`, and a lore document an optional `series:`) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
 | Content lines (`@speaker`) | 0.1.0 | 0.5.1 (delivery-flag honesty) | [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
 | Core directives (the closed `lute.core` vocabulary) | 0.1.0 | 0.9.0 (`::auto{action}` and `::music{mood}` retyped from free `string` to `{ domain: … }`, so both slots are checkable at last; the core's own member lists emptied) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Content vocabulary (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) | 0.1.0 (closed member lists shipped inside `lute.core`) | 0.9.0 (**the project owns the members** — the compiler declares slots and ships none; three declaration routes; the `exits:`/`default:` long form; an undeclared slot is `E-DOMAIN-UNKNOWN`) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
@@ -3624,10 +3807,12 @@ The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://gith
 | Timeline & property tracks | 0.1.0 | 0.1.0 | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
 | Connectivity & `after:` | 0.2.0 (`after:`) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
-| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.10.2 (`meta.plugin` — a plugin-owned, checker-validated frontmatter key now reaches the compiled artifact instead of being discarded at compile time; plugin-system `0.0.4`, additive, no engine gate widens since `0.10.2` shares major.minor `0.10`) | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
-| Warning-severity diagnostics | 0.6.1 | 0.18.0 (`W-WHEN-TEST-LITERAL` — a `<when>` whose `test` is only a literal comparison `is=` can express, such as `test="$ == 'gold'"` or `test="$ >= 2"`; it carries a `migrate` fixit that `lute fix` applies, and the guard form stays valid) | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
+| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.19.0 (additive: artifact `kind: "lore"` with `LoreMeta`, the `entry` command record carrying the resolved `series` / `order` and its body-segment address, optional `QuestMeta.id`, and `ProjectIndex.entries`; scene artifacts, and quest artifacts without `id:`, are byte-identical apart from the version strings) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| Warning-severity diagnostics | 0.6.1 | 0.19.0 (`W-ENTRY-REF-UNKNOWN` — `check-project` warns when an `entry.<id>.read` read names an entry id no document in the project declares) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
 | Deny promotion (`--deny`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.10.2 (all three axes read `0.10.2` — toolchain, language, and IR — because a release re-aligns every visible number; this time the IR **earns** the move (`meta.plugin`) while the language axis is a pure alignment no-op, byte-for-byte `0.10.1`/`0.10.0`) | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.19.0`'s additive IR move — a new artifact kind and command record — costs a scene/quest engine nothing; the schema file still renames per release line, published today as `lute-ir-0.19.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
+| Scene & document identity (`id:` frontmatter) | 0.15.0 (authored canonical scene key; new `id:` frontmatter is the lineId prefix, `visited()`/connectivity node, and `prereqEdges[].node`, superseding the derived `{character}.{episodeId}` join wherever it was consumed; `character`/`season`/`episode`/`episodeId` demote to optional when `id:` is present) | 0.19.0 (quest and lore documents may declare an optional document `id:` — the bundle name, the artifact's `meta.id`, and its `ProjectIndex` key; document ids share one project-wide namespace with scene ids, so `E-META-ID` and `E-CONN-EPISODE-ID-DUP` extend to them) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| Lore entries (queried content) | 0.19.0 (`kind: lore` documents of top-level `<entry>` declarations — content the engine looks up rather than plays; `id` / `target` / `category` / `title` / `series` / `order` / `when` attributes, `target` and `category` shape-only; bodies admit content lines, `<match>`, `::set`, `::assert`, `::retract`; knowledge revealed by plain `::assert`; the reserved engine-written `entry.<id>.read` path; first-read-only effects; a document-level `series:` ordering entries by file position; new `E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`) | 0.19.0 | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
 
 Notes on the boundaries:
 
@@ -3644,7 +3829,7 @@ Notes on the boundaries:
 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.18.0**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.19.0**.
 
 ## Scenario DSL (the language)
 
@@ -3672,7 +3857,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.16.1 candidate | **Prospective tooling only; not released.** A checked continuation compiler appends ordinary final-shot body source to a frozen scene template and emits full ordinary artifact snapshots per complete accepted unit; `lute compile-stream` exposes the same contract as flushed NDJSON. No new grammar, permission, runtime effect, or IR patch shape. Each unit recompiles cumulative source through the existing compiler, and snapshot consumers retain their numeric cursor/state/facts while rebuilding address lookup. | [0.16.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.1.md) |
 | 0.17.0 | **Checked continuations and least-authority compilation**: the toolchain adds the append-only checked continuation compiler and `lute compile-stream`, plus generic capability-permission ceilings for directives, state and fact writes, bridges, rewards, and quests. Both reuse the existing language and ordinary artifact contract, so language and IR are alignment restamps with no grammar, static-semantic, or IR-shape change. | [0.17.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.0.md) |
 | `0.17.2` | **Additive plugin owner metadata**: passthrough `kind: "plugin"` records may carry the resolved owning plugin id in optional `plugin` metadata, so hosts can dispatch by `(plugin, tag)`; declarative presentation directives with `lower: { record, fields }` continue to emit stable core records. No grammar or static-semantic change; `schemas/lute-ir-0.17.schema.json` keeps its name and `$id`. | [0.17.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.2.md) |
-| **0.18.0** | Current tip — **Range patterns in `<when is>`**: inclusive numeric range literals `N..M` / `N..` / `..M` (signed decimal bounds) join the `is=` literal set, and a subject declared `number` becomes a coverage-checkable domain — interval union over the reals, so `E-NONEXHAUSTIVE` names the first uncovered gap and `E-ARM-DEAD` / `W-OVERLAP-ARMS` / `W-OTHERWISE-DEAD` are interval-aware. New `E-WHEN-RANGE` (a malformed or empty range) and `W-WHEN-TEST-LITERAL` (a literal-comparison `test` guard that `is=` expresses; its `migrate` fixit is applied by `lute fix`). IR is an alignment restamp — range arms lower to the existing `>=` / `<=` / `&&` operators — and the schema renames to `schemas/lute-ir-0.18.schema.json`. | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
+| `0.18.0` | **Range patterns in `<when is>`**: inclusive numeric range literals `N..M` / `N..` / `..M` (signed decimal bounds) join the `is=` literal set, and a subject declared `number` becomes a coverage-checkable domain — interval union over the reals, so `E-NONEXHAUSTIVE` names the first uncovered gap and `E-ARM-DEAD` / `W-OVERLAP-ARMS` / `W-OTHERWISE-DEAD` are interval-aware. New `E-WHEN-RANGE` (a malformed or empty range) and `W-WHEN-TEST-LITERAL` (a literal-comparison `test` guard that `is=` expresses; its `migrate` fixit is applied by `lute fix`). IR is an alignment restamp — range arms lower to the existing `>=` / `<=` / `&&` operators — and the schema renames to `schemas/lute-ir-0.18.schema.json`. | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
+| **0.19.0** | Current tip — **Lore entries (queried content)**: a third document kind, `kind: lore`, whose top level is a set of `<entry id target category title series order when>` declarations — content the engine looks up (item descriptions, found notes, inscriptions, codex pages, barks) instead of plays. Entry bodies admit content lines, `<match>`, `::set`, `::assert`, `::retract`; knowledge is revealed with plain `::assert`; the reserved engine-written `entry.<id>.read` path gates series and scenes; effects apply on the first read only. Quest and lore documents may declare a document `id:` (the bundle name), and a lore document a `series:` ordered by file position. New `E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`, `W-ENTRY-REF-UNKNOWN`; `lute trace`/`run --entry`, `lute lore`. IR is additive — artifact `kind: "lore"` with `LoreMeta`, the `entry` record, `QuestMeta.id`, `ProjectIndex.entries` — and the schema renames to `schemas/lute-ir-0.19.schema.json`. | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals
