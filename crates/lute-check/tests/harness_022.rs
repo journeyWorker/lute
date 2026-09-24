@@ -264,6 +264,13 @@ fn quest_failed_handler_on_a_quest_that_cannot_fail_is_dead() {
         "<quest id=\"p\">\n<objective id=\"o\" quest=\"c\"/>\n{handler}</quest>\n\
          <quest id=\"c\">\n<objective id=\"o\" done=\"run.n > 1\"/>\n{handler}</quest>\n"
     ));
+    // dsl 0.23.0 §2: a missed REQUIRED `by=` deadline fails the quest; an
+    // optional objective's miss spares it.
+    let deadline = |optional: &str| {
+        quest_doc(&format!(
+            "<quest id=\"q\">\n<objective id=\"o\" done=\"run.n > 1\" by=\"run.n < 0\"{optional}/>\n{handler}</quest>\n"
+        ))
+    };
     let run = |src: &str| {
         let docs = vec![(PathBuf::from("q.lute"), lute_syntax::parse(src).0)];
         check_project_quest_handlers(&docs)
@@ -278,6 +285,8 @@ fn quest_failed_handler_on_a_quest_that_cannot_fail_is_dead() {
     let out = run(&inert_child);
     assert_eq!(out.len(), 1, "only the parent's handler: {out:?}");
     assert!(out[0].1.message.contains("quest `p`"), "{}", out[0].1.message);
+    assert!(run(&deadline("")).is_empty());
+    assert_eq!(run(&deadline(" optional")).len(), 1);
 }
 
 // --- §13 project beat advisories -------------------------------------------

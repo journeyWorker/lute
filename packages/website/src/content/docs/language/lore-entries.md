@@ -1,6 +1,6 @@
 ---
 title: Lore entries
-description: "The lore document kind — <entry> declarations the engine looks up instead of plays: item descriptions, found notes, inscriptions, codex pages, and barks, with state-dependent text and knowledge revealed through facts."
+description: "The lore document kind — <entry> declarations the engine looks up instead of plays: item descriptions, found notes, inscriptions, codex pages, and barks, with state-dependent text and knowledge revealed through facts — and the <beat> blocks that bundle short scene beats beside them."
 ---
 
 Scenes and quests put story on a **time axis**: what happens, in what order. A lot of a game's
@@ -48,8 +48,9 @@ state:
 </entry>
 ```
 
-The top level is one or more `<entry>` declarations and nothing else — no `# ` title heading, no
-`## ` shots, no `<quest>`.
+The top level is `<entry>` declarations and, since dsl 0.23.0, `<beat>` blocks (see
+[Entries and beats in one file](#entries-and-beats-in-one-file)), and nothing else — no `# ` title
+heading, no `## ` shots, no `<quest>`.
 
 ## `<entry>` attributes
 
@@ -78,14 +79,15 @@ A lore document can say so directly (dsl 0.19.0 §2.1):
   same shape rules as a scene's `id:` (`E-META-ID`), becomes the artifact's `meta.id` and the
   document's key in `project.index.json`, and shares one project-wide namespace with scene and
   quest document ids (`E-CONN-EPISODE-ID-DUP`). Quest documents may declare one too; without it a
-  document is keyed by its first declared quest or entry id.
+  document is keyed by its first declared quest or entry id. A lore document that holds `<beat>`s
+  must declare it, because it prefixes every beat's id.
 - **`series:`** makes every entry in the file one series, ordered by **position in the file**
   (1-based). Reordering pages is moving entries; inserting a page renumbers the ones after it.
 
 ```lute check="docs/examples/haven/lore/purser-ledger.lute"
 ---
 kind: lore
-luteVersion: "0.22.0"
+luteVersion: "0.23.0"
 id: haven.purserLedger
 title: Purser's ledger
 series: purserLedger
@@ -119,7 +121,8 @@ across the project in `lute check-project`.
 
 Content lines, `<match>`, `::set`, `::assert`, and `::retract`. No `<branch>` or `<hub>` (reading
 has no player choice), no `<timeline>` or `::` directives (the engine owns how an entry is shown),
-no `<on>` or `<objective>`. Anything else is `E-GRAMMAR-NOT-ADMITTED`.
+no `<on>` or `<objective>`. Anything else is `E-GRAMMAR-NOT-ADMITTED`. Story with a choice in it
+belongs in a scene, or in a [`<beat>`](#entries-and-beats-in-one-file) in the same file.
 
 Lines are ordinary content lines. The speaker can be `@narrator` or an in-world author such as
 `@scientist`, and each entry gets its own lineId / voiceKey scope, as each quest does.
@@ -172,12 +175,65 @@ An entry beat can also spend itself on these flags directly: `once="run"` stops 
 occasion while `read` is set, and `once="user"` once `everRead` is. See
 [Entry beats](/language/beats/#entry-beats).
 
+## Entries and beats in one file
+
+An interview, a short NPC moment, the remark someone makes when you pick up the log: these are
+scene beats, not entries, because the player plays them rather than reads them. They are also a few
+lines each. Rather than one scene file per moment, a lore document can hold them as `<beat>` blocks
+beside its entries (dsl 0.23.0):
+
+```lute check
+---
+kind: lore
+id: shipRecords
+title: Ship's records
+---
+
+<entry id="bridgeLog" target="item.bridge_log" category="note" title="Bridge log">
+  @narrator: The heading was changed eleven years ago.
+</entry>
+
+<beat id="tomaAtTheLog" on="examine" target="item.bridge_log" title="Toma at the log" when="entry.bridgeLog.read">
+  @toma: You found it too.
+  <branch id="heading">
+    <choice id="tell" label="Tell her what it says">
+      @toma: Then we are not going home.
+    </choice>
+    <choice id="hide" label="Say it is nothing">
+      @toma: Your hands say otherwise.
+    </choice>
+  </branch>
+</beat>
+```
+
+The two kinds of block share a file but keep their own rules:
+
+| | `<entry>` | `<beat>` |
+|---|---|---|
+| Id | its own `id`, unique across the project | `<document id>.<beat id>`: `shipRecords.tomaAtTheLog` |
+| Body | content lines, `<match>`, `::set` / `::assert` / `::retract` | a scene body: lines, branches, hubs, `<match>`, directives |
+| Reached | looked up by the engine, or as an [entry beat](/language/beats/#entry-beats) | only as a beat answering its `on` occasion |
+| Effects | on the first read in a run | on every presentation, as a scene's |
+| Spent | by `entry.<id>.read` / `everRead`, when `once=` asks | by presentation; `once` defaults to `run` |
+| Read by conditions | `entry.<id>.read`, `entry.<id>.everRead` | `visited('<document id>.<beat id>')` |
+
+Entries and beats may come in any order. In the compiled lore artifact each one heads its own
+addressing unit, in source order: an `entry` or `beat` record, then its body, which runs to the
+next `entry` or `beat` record. Beat bodies get lineIds under the canonical id
+(`shipRecords.tomaAtTheLog.toma_0010`). The [Beats](/language/beats/#beat-bundles) page covers
+the `<beat>` attributes, the canonical id, and how a bundle beat is checked and selected.
+
 ## Tooling
 
 - `lute trace <doc> --entry <id> --mock m.yaml` previews one entry against mocked state; seed
   `entry.<id>.read: true`, or `entriesRead: { run: [<id>] }`, to preview a re-read.
   `entriesRead: { user: [<id>] }` seeds `entry.<id>.everRead` instead, for a document that reads
   it. `lute run <artifact> --entry <id>` does the same over a compiled lore artifact.
+- `lute trace <doc> --beat <id> --mock m.yaml` previews one `<beat>` by its local or canonical id,
+  with the mock's `choose:` picking its branches; `lute run <artifact> --beat <id>` does the same
+  over a compiled lore artifact. The beat's `when` is shown, not enforced. An id that names no beat
+  is `E-TRACE-BEAT` in `trace` and a usage error in `run`; both list the document's beats. See
+  [Tracing](/tooling/tracing/#bundle-beats).
 - `lute test` tests a lore document too (dsl 0.22.0). The test names the entries to present, with
   `entry: <id>` or `entries: [ids]`. They are presented in order with the read flags set between
   them, so a repeated id is a re-read. With the first document on this page saved as
@@ -194,12 +250,14 @@ occasion while `read` is set, and `once="user"` once `everRead` is. See
   Since lore is testable, `lute test --coverage` lists an untested lore document with the other
   untested documents.
 - `lute lore <dir>` prints the world-narrative map: entries by target and by series, and which
-  facts entries reveal versus scenes and quests.
+  facts entries reveal versus scenes and quests. It reads beat bodies too.
 - `lute new lore <name>` scaffolds a lore document.
 
 The engine contract — eligibility, presentation, first-read effects, the two read flags — is in
 [`docs/runtime/lore-entries.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md);
 the normative specs are
-[`0.19.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
-and, for `everRead` and lore tests,
-[`0.22.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md).
+[`0.19.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md),
+[`0.22.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
+for `everRead` and lore tests, and
+[`0.23.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
+for beats in a lore document.

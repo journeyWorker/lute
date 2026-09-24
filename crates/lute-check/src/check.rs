@@ -4882,18 +4882,18 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.22.0` is a language AND IR release: `<quest tier>` and entry-beat
-    /// `once` give runs a lifecycle, `entry.<id>.everRead` joins the reserved
-    /// paths, a `state:` declaration may be `owner: engine`, an occasion's
-    /// `target:` may name an entity domain, and `E-ENGINE-OWNED-WRITE`,
-    /// `W-QUEST-HANDLER-DEAD`, `W-BEAT-PRIORITY-TIE` and
-    /// `W-BEAT-ONCE-RUN-USER` join the code set. The IR gains
-    /// `QuestCmd.tier` and `EntryCmd.once`, and the default `voiceKey` and
-    /// component `lineId`s change, so the current schema is
-    /// `schemas/lute-ir-0.22.schema.json`.
+    /// `0.23.0` is a language AND IR release: objectives take `by=`
+    /// deadlines and `target=`, occasions may `select: sequence`, a beat may
+    /// ride along with `also`, a lore document may bundle `<beat>`s, a hub
+    /// takes `prompt=`, component string params interpolate, `prev.run.*` is
+    /// reserved, a declared cast is checked, reward kinds may `credits:` a
+    /// path, and `E-CAST-UNKNOWN` / `W-REWARD-DOUBLE-CREDIT` join the code
+    /// set. The IR gains the `beat` command and optional beat, objective, hub
+    /// and reward fields, so the current schema is
+    /// `schemas/lute-ir-0.23.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_22_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.22.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.22.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_23_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.23.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.23.0");
     }
 }

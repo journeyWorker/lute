@@ -140,8 +140,15 @@ type IndexBeat = {
   target?: string;
   priority: number;       // resolved (unauthored → 0)
   once?: "run" | "user" | "none"; // scene rows: always; entry rows: the authored `once`, absent = repeatable
+  when?: string;          // dsl 0.23.0 §1: the beat's condition, `@def`-expanded
+  title?: string;         // dsl 0.23.0 §11: scene `title:`, entry or bundle beat `title=`
 };
 ```
+
+Rows also carry `when` (the raw condition after `@def` expansion) and `title`
+(a scene's `title:`, an entry's or bundle beat's `title=`), each omitted when
+absent (dsl 0.23.0 §1, §11), so a tool can list the beats and an engine can
+label a `select: all` menu without loading every artifact.
 
 Rows are in **document order**: documents in `documents` (path) order, beats
 in declaration order within each. That order is the selection tiebreak below.

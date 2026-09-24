@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.22.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.22.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.22.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.22.schema.json`](../schemas/lute-ir-0.22.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.23.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.23.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.23.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.23.schema.json`](../schemas/lute-ir-0.23.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.22.schema.json`](../schemas/lute-ir-0.22.schema.json)
+published as [`schemas/lute-ir-0.23.schema.json`](../schemas/lute-ir-0.23.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -498,7 +498,7 @@ path-sensitive `W-STAGE-ABSENT`, and the new warnings `W-QUEST-HANDLER-DEAD`,
 in shape — `QuestCmd.tier` (omitted for the default `user`) and
 `EntryCmd.once`, also on the `ProjectIndex.beats` entry rows — and the schema
 file renames per release line (`lute-ir-0.21.schema.json` →
-[`lute-ir-0.22.schema.json`](../schemas/lute-ir-0.22.schema.json)), gaining
+`lute-ir-0.22.schema.json`, since renamed), gaining
 `cmdQuest.tier` and `entryCmd.once`. **Two identity changes alter compiled
 content:** the default `voiceKey` template becomes `{prefix}.{speaker}-{code}`
 (the `0.21` default collided across documents), and a line expanded from a
@@ -512,6 +512,38 @@ the migration. The quest `tier` default (`user`) keeps every existing quest's
 persistence. Engines gate on MAJOR, so nothing widens. `capabilityVersion`
 moves only for a project whose occasions declare a target domain (`target:
 true` keeps its `0.21` stamp), and the tree-sitter grammar is unchanged.
+
+**`0.23.0` aligns all three axes at `0.23.0`; the language and the IR both
+earn the move, the IR additively.** Once a story is selected by occasions, a
+writer needs overviews
+([`proposals/scenario-dsl/0.23.0.md`](proposals/scenario-dsl/0.23.0.md)):
+`lute beats` prints each occasion's beat ladder with the `check-project`
+verdicts, `lute calendar` evaluates play's own eligibility over a grid of
+state values from a save, and `lute scenario knowledge` traces every
+fact-guarded condition to its producers. The language gains objective
+deadlines (`<objective by>`) and targets (`<objective on target>`), occasion
+`select: sequence` and the `also: true` side beat, scene-like `<beat>` blocks
+in lore documents (canonical id `<document id>.<beat id>`), `<hub prompt>`,
+interpolated component `string` params, the reserved read-only
+`prev.run.<path>`, a checked cast (new `E-CAST-UNKNOWN`), reward kinds that
+credit a state path (new `W-REWARD-DOUBLE-CREDIT`), and `check-project
+--wip`. The condition decider now reasons per path across conjunctions and
+disjunctions, so contradictions that used to pass are reported
+(`E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-ARM-DEAD`,
+`E-OBJECTIVE-UNSATISFIABLE`) — the one way a 0.22-clean project can redden.
+The IR change is additive: a new `beat` command heads each bundle beat's
+addressing unit in a lore artifact, and `BeatIr.also`, `ObjectiveEntry.by` /
+`target`, `HubCmd.prompt`, `RewardEntry.credits`, and the index beat row's
+kind `bundle`, `when`, and `title` are optional. The schema file renames per
+release line (`lute-ir-0.22.schema.json` →
+[`lute-ir-0.23.schema.json`](../schemas/lute-ir-0.23.schema.json)), gaining
+`cmdBeat` and those fields. Artifacts that use none of it compile
+byte-identically apart from the version strings; `prev.run.*` is not an IR
+state row. Engines gate on MAJOR, so nothing widens; an engine without
+bundle beats rejects a lore artifact that carries a `beat` record (unknown
+`kind`). `capabilityVersion` moves only for a project that declares
+`select: sequence`, a plugin cast, or a crediting reward kind, and the
+tree-sitter grammar gains `<beat>`.
 
 ## Which bump when
 

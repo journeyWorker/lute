@@ -98,7 +98,10 @@
               "assetkinds",
               "events",
               "stampattrs",
-              "lints"
+              "rewardkinds",
+              "occasions",
+              "lints",
+              "cast"
             ]
           },
           "additionalProperties": {

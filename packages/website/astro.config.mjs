@@ -124,6 +124,11 @@ export default defineConfig({
               label: "Playing a story",
               translations: { ko: "스토리 플레이" },
             },
+            {
+              slug: "tooling/overviews",
+              label: "Story overviews",
+              translations: { ko: "스토리 개요" },
+            },
             { slug: "tooling/runtime-contract" },
             {
               slug: "tooling/capability-permissions",

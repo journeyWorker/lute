@@ -896,20 +896,29 @@ pub const W_QUEST_HANDLER_DEAD: &str = "W-QUEST-HANDLER-DEAD";
 
 /// [`W_QUEST_HANDLER_DEAD`] over one resolved project root: every
 /// `<on event="questFailed">` of a quest with no way to reach `failed` — no
-/// authored `fail`, no REQUIRED `<objective quest="c">` whose child can itself fail (a failing required
+/// authored `fail`, no REQUIRED objective with a `by=` deadline (dsl 0.23.0
+/// §2: a missed required deadline fails its quest), no REQUIRED
+/// `<objective quest="c">` whose child can itself fail (a failing required
 /// child fails its parent), and no parent quest anywhere in `docs` (a
 /// terminating parent cascade-fails its still-active children). Project-wide
 /// because the parent edge can live in another document. A warning at the
 /// handler's `event` value: the body is dead code, not an error.
 pub fn check_project_quest_handlers(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
     let edges = subquest_edges(docs);
-    // Quests with an authored `fail`; a quest fails on its own when it has
-    // one or a REQUIRED child that fails on its own (a child cascade-failed
-    // by its parent's end cannot fail that parent). Fixpoint, cycle-safe.
+    // Quests that fail on their own: an authored `fail`, a required `by=`
+    // deadline, or a REQUIRED child that fails on its own (a child
+    // cascade-failed by its parent's end cannot fail that parent). Fixpoint,
+    // cycle-safe.
+    let nonempty = |slot: &lute_syntax::ast::CelSlot| !slot.raw.trim().is_empty();
     let mut fails: BTreeSet<&str> = docs
         .iter()
         .flat_map(|(_, d)| &d.quests)
-        .filter(|q| q.fail.as_ref().is_some_and(|f| !f.raw.trim().is_empty()))
+        .filter(|q| {
+            q.fail.as_ref().is_some_and(nonempty)
+                || q.body.iter().any(|n| {
+                    matches!(n, Node::Objective(o) if !o.optional && o.by.as_ref().is_some_and(nonempty))
+                })
+        })
         .map(|q| q.id.as_str())
         .collect();
     loop {
@@ -943,11 +952,10 @@ pub fn check_project_quest_handlers(docs: &[(PathBuf, Document)]) -> Vec<(PathBu
                         severity: Severity::Warning,
                         message: format!(
                             "`<on event=\"questFailed\">` never runs: quest `{}` cannot fail — \
-                             it has no `fail` condition, no required subquest that can fail \
-                             (a failing required child fails it), and no parent quest whose end \
-                             would \
-                             cascade to it; add a `fail=` condition or remove the handler \
-                             (dsl 0.22.0 §7)",
+                             it has no `fail` condition, no required objective with a `by=` \
+                             deadline, no required subquest that can fail (a failing required \
+                             child fails it), and no parent quest whose end would cascade to \
+                             it; add a `fail=` condition or remove the handler (dsl 0.22.0 §7)",
                             quest.id
                         ),
                         span: on.event_span,

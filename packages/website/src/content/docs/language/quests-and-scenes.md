@@ -141,8 +141,9 @@ error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key an
 
 An `<objective id done>` requires a `done` completion predicate over declared state. `when` gates
 only the objective's visibility/tracking, not the completion obligation; `optional` excludes it from
-completion. An empty-body objective should be written self-closing (`<objective …/>`); a body — a
-log line, a per-objective `::set` reward — emits **once**, when the objective first becomes `done`.
+completion; `by` sets a [deadline](#deadlines). An empty-body objective should be written
+self-closing (`<objective …/>`); a body — a log line, a per-objective `::set` reward — emits
+**once**, when the objective first becomes `done`.
 
 **Completion is derived**, never author-written: a quest becomes `complete` when every non-`optional`
 objective is `done`. Objective completion is monotonic — once `done`, it stays recorded.
@@ -164,26 +165,41 @@ a scene advances a quest simply by being played:
 
 The argument is one string literal. An id that names no scene in the project is
 `E-CONN-UNKNOWN-NODE` at `check-project`, exactly as in `after:`. A single-file `check` cannot know
-whether a scene has been played, so it never decides a `visited()` condition true or false.
+whether a scene has been played, so it never decides a lone `visited()` true or false. It still
+sees a contradiction in the condition itself: `visited('a.b') && !visited('a.b')` is false
+whatever was played (dsl 0.23.0, see [How a `when` is decided](/language/beats/#how-a-when-is-decided)).
+A [bundle beat](/language/beats/#beat-bundles) is visited too, under its canonical id
+`<document id>.<beat id>`.
 
 **Objectives judged at an occasion.** `<objective on="<occasion>">` evaluates that objective's
 `done` **only when the occasion is raised** while the quest is active — the end-of-run check point
 that a continuously evaluated condition cannot express. Without `on`, an objective is evaluated
-continuously, as before. An objective takes `on=` only: it has no `target` attribute in 0.22.0
-(`E-UNKNOWN-ATTR`; objective targets are deferred to 0.23), so it is judged whenever its occasion is
-raised, whatever the target.
+continuously, as before.
 
 ```lute
 <objective id="lowPressure" title="Keep the shed calm" on="runEnd" done="run.shedPressure < 2"/>
 ```
 
+Since dsl 0.23.0 an `on` objective may also name a **target**, the way a beat does:
+`<objective on="talk" target="npc.maud" …>` is judged only when `talk` is raised for `npc.maud`.
+Talking to anyone else leaves it alone. Without `target`, an objective is judged whenever its
+occasion is raised, whatever the target.
+
+```lute
+<objective id="thankMaud" title="Thank Maud in person" on="talk" target="npc.maud" done="run.answered"/>
+```
+
 The occasion is checked against the vocabulary exactly as a beat's `on` (see
 [Beats](/language/beats/#occasions)): `E-OCCASION-UNKNOWN` when a plugin declares
 occasions and this one is not among them, shape-only otherwise; an `on` that is not an identifier
-is `E-BEAT-ATTR`. `lute trace` / `lute run` raise occasions for a quest walk with the mock key
-`occasions: [runEnd]` or `--occasion runEnd` (repeatable), applied in order after the walk
-settles; `lute play` judges them on every step that raises the occasion — and an occasion that
-only objectives reference is a legal step.
+is `E-BEAT-ATTR`. A `target` is checked like a beat target, also as `E-BEAT-ATTR`: it must be a
+quoted dotted id, it needs `on`, the occasion must take a target, and a
+[target domain](/language/beats/#target-domains) must contain it. `lute trace` / `lute run` raise
+occasions for a quest walk with the mock key `occasions: [runEnd]` or `--occasion runEnd`
+(repeatable), applied in order after the walk settles, and raise one for a target as
+`<occasion>@<target>` (`occasions: [talk@npc.maud]`, `--occasion talk@npc.maud`). `lute play`
+judges them on every step that raises the occasion, for the step's `target:`, and an occasion
+that only objectives reference is a legal step.
 
 **Accepting a quest from a scene.** A quest without `start` is *accept-driven*. The scene-side
 form of the engine's "accept quest" action (and of `lute trace --accept`) is the core directive
@@ -208,6 +224,48 @@ observe completion. A test, a trace mock, or a play script can also start from a
 a top-level `quests: {<questId>: complete}` (dsl 0.22.0). That is the way to seed one: a play
 script's `engine:` step refuses a `quest.*` write, because a status change belongs to the lifecycle,
 whose transitions fire handlers and grants.
+
+### Deadlines
+
+Some goals have a window: answer the letter before the fourth day, reach the gate before the
+bell. An objective's **`by`** (dsl 0.23.0) closes the window. It is a condition slot like `done`:
+
+```lute check
+---
+kind: quest
+title: The letter
+state:
+  run.day: { type: number, default: 1 }
+  run.answered: { type: bool, default: false }
+---
+
+<quest id="letter" title="Answer the letter" start="true" tier="run">
+  <objective id="reply" title="Write back before the fourth day" done="run.answered" by="run.day >= 4"/>
+  <objective id="thank" title="Thank Maud in person" on="talk" target="npc.maud" done="run.answered"/>
+  <on event="questFailed">
+    @narrator: The letter goes unanswered. Maud stops asking.
+  </on>
+</quest>
+```
+
+While the objective is not done, the **first** time `by` becomes true the objective **fails**, and
+it is never judged again. A failed required objective fails its quest, as a `fail` condition
+would: the quest's `failed` rewards are granted, its `questFailed` handlers run, and the failure
+cascades to its still-active subquests. A failed `optional` objective leaves its quest alone.
+
+- `by` is judged at every lifecycle settle, right after `done`. So an objective that becomes done
+  in the same settle as its deadline passes counts as done, and a done objective never fails later.
+- `on=` does not change that. It decides when `done` is judged, while `by` is judged at every
+  settle. `thank` above has no deadline, but a `by` on it would still fail it on the fourth day.
+- Quests settle after every beat an occasion presents, so a deadline can pass between two beats of
+  one [`select: sequence`](/language/beats/#a-routine-then-the-days-event) occasion.
+- The failure is lifecycle state, not a state path, so content cannot read it. A failed required
+  objective shows as its quest's `failed` state. A new run clears it for a `tier="run"` quest.
+- `by` is checked like `done`: an undeclared path is `E-UNDECLARED`, and a read that may be unset
+  is `E-MAYBE-UNSET`.
+
+`lute trace` records the objective's decision as `failed`, and `lute run` / `lute play` print
+`failed (by)`. See [Playing a story](/tooling/play/#deadlines-and-targeted-objectives).
 
 ### Subquests
 
@@ -278,14 +336,14 @@ worked example:
 quest. World events (e.g. `combatEnd`) are capability-provided by plugins.
 
 A `questFailed` handler on a quest that can never fail is dead code. `lute check-project` warns
-`W-QUEST-HANDLER-DEAD` at the handler's `event` when its quest has no `fail`, no required subquest
-objective whose child can itself fail (a failing required child fails its parent), and no parent
-quest (a parent's end cascade-fails its still-active children). Add a `fail=` condition, or remove
-the handler:
+`W-QUEST-HANDLER-DEAD` at the handler's `event` when its quest has no `fail`, no required objective
+with a `by=` [deadline](#deadlines), no required subquest objective whose child can itself fail (a
+failing required child fails its parent), and no parent quest (a parent's end cascade-fails its
+still-active children). Add a `fail=` condition, or remove the handler:
 
 <!-- lute-diagnostics -->
 ```
-./q.lute:10:14: warning [W-QUEST-HANDLER-DEAD] `<on event="questFailed">` never runs: quest `lampOut` cannot fail — it has no `fail` condition, no required subquest that can fail (a failing required child fails it), and no parent quest whose end would cascade to it; add a `fail=` condition or remove the handler (dsl 0.22.0 §7)
+./q.lute:10:14: warning [W-QUEST-HANDLER-DEAD] `<on event="questFailed">` never runs: quest `lampOut` cannot fail — it has no `fail` condition, no required objective with a `by=` deadline, no required subquest that can fail (a failing required child fails it), and no parent quest whose end would cascade to it; add a `fail=` condition or remove the handler (dsl 0.22.0 §7)
 ```
 
 Content elsewhere can also gate on quest lifecycle by reading the reserved `quest.<id>.state` path.

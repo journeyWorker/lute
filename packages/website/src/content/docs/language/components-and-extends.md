@@ -1,6 +1,6 @@
 ---
 title: Components & extends
-description: Two reuse mechanisms — reusable content components invoked with ::use, and extends schema composition with base-layer override precedence.
+description: Two reuse mechanisms — reusable content components invoked with ::use, including string params that carry a sentence into each call site, and extends schema composition with base-layer override precedence.
 ---
 
 Lute has three reuse mechanisms, each for a different thing: `defs` reuse typed CEL *values*,
@@ -32,15 +32,11 @@ uses: ../base.schema.yaml
 
 A parameter is referenced as `@<param>` in ref and attribute positions, and inside content text via
 `{{@param}}` interpolation. `@who` binds to the invocation argument at expansion time — it is legal
-in the `character` position only because that attribute is `string`-typed.
+in the `character` position because that attribute is `string`-typed.
 
-Not every param type is renderable. A `{{…}}` interpolation renders **number, bool or enum** only
-(§7.6); a `string` param inside content text is `E-REF-TYPE` — *"`@who` produces a non-renderable
-type; a `{{…}}` interpolation renders only number/bool/enum"*. So `who: string` above is usable as
-the `character=` argument it is written for and **not** as `{{@who}}` in a line. That restriction
-is under review. Until it changes, two idioms cover the need: take an **enum** param and `<match>`
-on it to pick between lines written in the component, or keep the varying text in the calling
-document and use the component for the staging around it.
+A `{{…}}` interpolation in a component line renders a **number, bool, or enum** param (§7.6) and,
+since dsl 0.23.0, a **`string`** param whose argument is a literal. So `who: string` above could
+also appear as `{{@who}}` in a line. See [Sentences in string params](#sentences-in-string-params).
 
 The `uses:` line is the component's own [content vocabulary](/language/vocabulary/) import — since
 `0.9.0` `action="fade-in-up"` resolves against a declared `action` domain, and a component file has
@@ -81,9 +77,55 @@ is checked where it lands:
 - for an enum param, every value the def body can produce must be a member, else `E-COMPONENT-ARG`
   (`@mood` = `"run.n > 2 ? 'warm' : 'hot'"` against `{ enum: [cold, warm] }` fails on `hot`);
 - in a `<match on="@tier">`, it dispatches at run time like any subject;
-- in content text, `{{@n}}` stays a placeholder naming the caller's def, and the engine evaluates it;
+- in content text, `{{@n}}` stays a placeholder naming the caller's def, and the engine evaluates
+  it (a number, bool, or enum param; a `string` param that a line interpolates takes only a
+  literal, [below](#sentences-in-string-params));
 - in a directive attribute, it must fold to a constant, and a state-dependent def is
   `E-ATTR-DEF-DYNAMIC`.
+
+### Sentences in string params
+
+A component line may interpolate a `string` param (dsl 0.23.0). A literal `::use` argument is
+substituted into the line when the component expands, like any other literal argument, so each
+call site ships its own finished sentence:
+
+```lute check
+---
+component: cheers
+params:
+  to: string
+---
+
+## A Toast
+
+@mira: To {{@to}}!
+@oskar: To {{@to}}.
+```
+
+A scene with `id: harbor.wake` imports it and uses it twice:
+
+```lute
+::use{component="cheers" to="the harbor"}
+@oskar: Again?
+::use{component="cheers" to="absent friends"}
+```
+
+Each expansion's lines carry their own text under their own [component-scoped](#line-identity)
+`lineId`:
+
+| `lineId` | Text |
+|---|---|
+| `harbor.wake.cheers#1.mira_0010` | To the harbor! |
+| `harbor.wake.cheers#1.oskar_0010` | To the harbor. |
+| `harbor.wake.cheers#2.mira_0010` | To absent friends! |
+| `harbor.wake.cheers#2.oskar_0010` | To absent friends. |
+
+A translator or a voice actor therefore gets `To absent friends!` as a line of its own, not a
+template with a hole in it. The argument has to be a literal. A string `@def` of the caller is only
+known when the engine evaluates it, and a `{{…}}` interpolation renders only number, bool, and enum
+values at run time, so `::use{component="cheers" to=@place}` is `E-REF-TYPE` at the argument. The
+check follows the param through nested components, so a component that passes its own `@to` on to
+`cheers` needs a literal from its caller too.
 
 ### Component body rules
 

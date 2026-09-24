@@ -394,9 +394,10 @@ quest's declaration table):
 
 A `questFailed` handler on a quest that can never reach `failed` never runs.
 `check-project` warns `W-QUEST-HANDLER-DEAD` (dsl 0.22.0 §7) when the quest
-has no authored `fail`, no required subquest objective whose child can itself
-fail (a failing required child fails its parent through the synthesized
-`fail`), and no parent quest (whose terminal transition would cascade-fail
+has no authored `fail`, no required objective with a `by=` deadline (dsl
+0.23.0 §2), no required subquest objective whose child can itself fail (a
+failing required child fails its parent through the synthesized `fail`), and
+no parent quest (whose terminal transition would cascade-fail
 it). The record is still emitted; the warning is for the author.
 
 ## Cross-document reachability is out of scope for one artifact

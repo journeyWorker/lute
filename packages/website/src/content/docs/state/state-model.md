@@ -1,6 +1,6 @@
 ---
 title: The state model
-description: Lute's tiered scalar state — the run, user, and app lifetime namespaces (plus episode-local scene), how paths are declared, the path-sensitive definite-assignment rules that govern reads and writes, and the paths only the engine writes.
+description: Lute's tiered scalar state — the run, user, and app lifetime namespaces (plus episode-local scene), how paths are declared, the path-sensitive definite-assignment rules that govern reads and writes, the paths only the engine writes, and prev.run, the previous run's final values.
 ---
 
 Lute scalar state is a set of typed paths (`number`, `bool`, `string`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
@@ -46,6 +46,7 @@ Some paths belong to the engine. Content reads them anywhere it reads state — 
 | `quest.<id>.state`, `quest.<id>.activatedAt`, `quest.<id>.objectives.<o>.done` | the quest lifecycle (see [Quests & scenes](/language/quests-and-scenes/)) | `E-QUEST-RESERVED-WRITE` |
 | `entry.<id>.read` | the engine, on a lore entry's first presentation in a run — **run** tier | `E-QUEST-RESERVED-WRITE` |
 | `entry.<id>.everRead` | the engine, on a lore entry's first presentation ever — **user** tier | `E-QUEST-RESERVED-WRITE` |
+| `prev.run.<path>` | the engine, when a run ends: the value `run.<path>` had then (see [below](#the-previous-run)) | `E-QUEST-RESERVED-WRITE` |
 | a path your schema declares `owner: engine` | the engine | `E-ENGINE-OWNED-WRITE` |
 
 The quest and entry paths are reserved by name: every document may read them without declaring them. The two entry flags are `bool`s, `false` until the entry is first presented (see [Lore entries](/language/lore-entries/)). `entry.<id>.read` resets with the run, so a new run's first read applies the entry's effects again; `entry.<id>.everRead` (0.22.0) is set on the first read ever and no new run resets it.
@@ -81,3 +82,44 @@ steps:
 ```
 
 So a harness never needs a stand-in scene that `::set`s engine state to move a playthrough along — `owner: engine` is what refuses one. For facts, a [`reserved: true` relation](/state/facts-and-datalog/) plays the same role: content never asserts or retracts it, and an `engine:` step may.
+
+### The previous run
+
+A hub between runs often wants to talk about the run that just ended: where the player fell, how far they got, how they left. **`prev.run.<path>`** (dsl 0.23.0) reads the value `run.<path>` had when the previous run ended.
+
+```lute check
+---
+kind: scene
+id: hearth.welcomeBack
+state:
+  run.floor: { type: number, default: 0 }
+  run.outcome: { type: { enum: [fell, fled, won] } }
+---
+
+# The hearth
+
+## Shot 1.
+
+<match on="prev.run.outcome">
+  <when is="fell">
+    @wren: You fell, last time. Slower, this time.
+  </when>
+  <when is="fled">
+    @wren: You ran. No shame in that.
+  </when>
+  <when is="won">
+    @wren: Back already? You won, last time.
+  </when>
+  <when is="unset">
+    @wren: First climb? Stay close to the wall.
+  </when>
+</match>
+@wren{when="isSet(prev.run.floor) && prev.run.floor >= 5"}: Floor five, though. Better than most.
+```
+
+- **You declare nothing.** Every declared `run.<path>` gets a mirror `prev.run.<path>` of the same type. `prev.*` is reserved: declaring a path under it is `E-STATE-NAMESPACE`, and a typo such as `prev.run.flor` is `E-UNDECLARED` with a did-you-mean.
+- **It may be unset.** The mirror has no default, since no run has ended when the first one starts. Every read needs an `isSet(…)` guard or an `unset` arm, otherwise it is `E-MAYBE-UNSET`, even when `run.<path>` has a default. The `unset` arm above answers the first run, and a run that ended with `run.outcome` never set.
+- **It is read-only.** A content `::set` of it is `E-QUEST-RESERVED-WRITE`.
+- **The engine takes the snapshot.** When a run ends, the engine copies every `run.*` value into `prev.run.*` before the new run resets `run.*`. The mirror is a checker declaration, not a row of the compiled state table, so artifacts do not change.
+
+In the toolchain, [`lute play`](/tooling/play/) takes the snapshot at every `newRun` step. A play script's `state:` seed or a trace mock may also set `prev.run.*` directly, to start from a later run.
