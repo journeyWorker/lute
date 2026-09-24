@@ -300,6 +300,42 @@ fn lore_report_json_carries_the_same_data() {
     assert_eq!(v, expected, "{v:#}");
 }
 
+/// dsl 0.23.0 §4: a lore `<beat>` bundle's `::assert` (even inside a branch
+/// choice) reveals its fact like an entry's, attributed to the beat's
+/// canonical `<document id>.<beat id>`.
+#[test]
+fn lore_report_attributes_bundle_beat_asserts_to_the_canonical_id() {
+    let dir = fixture();
+    write(
+        &dir,
+        "lore/dock.lute",
+        "---\nkind: lore\nid: lore.dock\nuses: ../world.schema.yaml\n---\n\n\
+         <beat id=\"talk\" on=\"talk\">\n  @orin: Keep moving.\n  <branch id=\"ask\">\n    \
+         <choice id=\"why\" label=\"Why?\">\n      ::assert{ knows(vesna, reactor) }\n    </choice>\n  \
+         </branch>\n</beat>\n",
+    );
+    let out = run(&["lore", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let knows = v["relations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["relation"] == "knows")
+        .unwrap();
+    let reactor = knows["facts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["fact"] == "knows(vesna, reactor)")
+        .unwrap();
+    assert_eq!(
+        reactor,
+        &serde_json::json!({"fact": "knows(vesna, reactor)", "revealedBy": "entries",
+            "entries": ["log2", "lore.dock.talk"], "documents": []})
+    );
+}
+
 /// The report does not require a clean check: a lore document with a
 /// checker error (`order` without `series`, a duplicate id) is still
 /// reported. A missing directory is an I/O failure (exit 2).

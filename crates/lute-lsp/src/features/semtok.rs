@@ -144,6 +144,17 @@ pub fn semantic_tokens(doc: &Document, idx: &TextIndex) -> Vec<SemanticToken> {
         );
         walk_nodes(&entry.body, idx.text(), &mut raw);
     }
+    // A lore `<beat>` bundle (dsl 0.23.0 §4) is a top-level declaration like
+    // `<entry>`.
+    for beat in &doc.beats {
+        push(
+            &mut raw,
+            beat.span.byte_start,
+            beat.span.byte_start + "<beat".len(),
+            TokType::Logic,
+        );
+        walk_nodes(&beat.body, idx.text(), &mut raw);
+    }
     // CEL sub-tokens: every slot's `@ref`s, state paths, and plain tokens.
     for slot in all_slots(doc) {
         slot_tokens(slot.span.byte_start, &slot.raw, &mut raw);
@@ -744,6 +755,26 @@ mod tests {
             decoded.iter().filter(|&&(_, _, _, ty)| ty == content).count(),
             4,
             "two narrator lines * (speaker + text) = 4 content tokens: {decoded:?}"
+        );
+    }
+
+    /// dsl 0.23.0 §4: a lore `<beat>` bundle's open keyword is a LOGIC token and
+    /// its body lines still carry CONTENT tokens.
+    #[test]
+    fn bundle_beat_keyword_is_logic_and_body_is_content() {
+        let text = "---\nid: ship.records\nkind: lore\n---\n<beat id=\"b\" on=\"talk\">\n@narrator: hi\n</beat>\n";
+        let idx = TextIndex::new(text);
+        let decoded = decode(&tokens(text));
+        let p = idx.position(text.find("<beat").unwrap());
+        let tok = decoded
+            .iter()
+            .find(|&&(l, c, _, t)| l == p.line - 1 && c == p.utf16_col && t == ty("logic"))
+            .unwrap_or_else(|| panic!("no LOGIC token for <beat: {decoded:?}"));
+        assert_eq!(tok.2, "<beat".len() as u32);
+        assert_eq!(
+            decoded.iter().filter(|&&(_, _, _, t)| t == ty("content")).count(),
+            2,
+            "speaker + text: {decoded:?}"
         );
     }
 }

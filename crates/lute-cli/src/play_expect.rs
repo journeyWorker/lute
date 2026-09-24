@@ -1,6 +1,6 @@
 //! Play-script assertions (dsl 0.22.0 §4).
 //!
-//! A play step MAY carry `expect: { winner, offered, notOffered }` and a
+//! A play step MAY carry `expect: { winner, offered, notOffered, presented }` and a
 //! script MAY carry a top-level `expect: { exit, quests, state, facts,
 //! notFacts, transcriptContains, transcriptLacks }`. [`crate::play`] parses
 //! the script, calls [`validate`] on every `expect:` at parse time (an
@@ -20,7 +20,7 @@ use lute_trace::Value;
 use serde_yaml::Value as Yaml;
 
 /// The complete legal key set of a STEP `expect:`.
-pub(crate) const STEP_EXPECT_KEYS: &[&str] = &["notOffered", "offered", "winner"];
+pub(crate) const STEP_EXPECT_KEYS: &[&str] = &["notOffered", "offered", "presented", "winner"];
 
 /// The complete legal key set of the top-level (end-of-play) `expect:`.
 pub(crate) const PLAY_EXPECT_KEYS: &[&str] = &[
@@ -57,6 +57,9 @@ pub(crate) struct StepOutcome {
     pub winner: Option<String>,
     /// Every eligible beat id, in presentation order.
     pub offered: Vec<String>,
+    /// Every presented beat id, in presentation order (dsl 0.23.0 §3: the
+    /// winner and its `also` riders, or a `select: sequence`'s beats).
+    pub presented: Vec<String>,
 }
 
 /// Everything a play's expectations are judged against.
@@ -194,7 +197,7 @@ fn validate_value(key: &str, v: &Yaml) -> Result<(), String> {
         "winner" => scalar_text(v)
             .map(|_| ())
             .ok_or_else(|| format!("`expect.winner` must be a beat id or `{NO_WINNER}`")),
-        "offered" | "notOffered" | "transcriptContains" | "transcriptLacks" => {
+        "offered" | "notOffered" | "presented" | "transcriptContains" | "transcriptLacks" => {
             string_list(key, v).map(|_| ())
         }
         "facts" | "notFacts" => {
@@ -421,6 +424,12 @@ fn check_step(
             );
         }
     }
+    // dsl 0.23.0 §3: the exact presentation order.
+    if let Some(want) = m.get("presented").and_then(|v| string_list("presented", v).ok()) {
+        if want != row.presented {
+            miss("presented", list(&want), list(&row.presented));
+        }
+    }
 }
 
 fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
@@ -545,6 +554,7 @@ mod tests {
             target: None,
             winner: winner.map(str::to_string),
             offered: offered.iter().map(|s| s.to_string()).collect(),
+            presented: winner.into_iter().map(str::to_string).collect(),
         }
     }
 
@@ -708,7 +718,7 @@ transcriptLacks: ["Welcome"]
         let e = validate(&y("{winer: hub.a}"), false).unwrap_err();
         assert!(e.contains("`winer`"), "{e}");
         assert!(e.contains("did you mean `winner`"), "{e}");
-        assert!(e.contains("legal: notOffered, offered, winner"), "{e}");
+        assert!(e.contains("legal: notOffered, offered, presented, winner"), "{e}");
         let e = validate(&y("{state: {run.day: 1}}"), false).unwrap_err();
         assert!(e.contains("belongs in the top-level"), "{e}");
         let e = validate(&y("{winner: a}"), true).unwrap_err();

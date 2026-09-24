@@ -274,13 +274,29 @@ impl RootVocab {
     /// §2/§3: a relation whose universe is "anything" — `reserved: true`
     /// (the engine populates any fact of it), any argument over an open
     /// domain, or a declaration two documents disagree on.
-    fn is_unbounded(&self, name: &str, decl: &RelationDecl) -> bool {
+    pub(crate) fn is_unbounded(&self, name: &str, decl: &RelationDecl) -> bool {
         decl.reserved
             || self.conflicting.contains(name)
             || decl
                 .args
                 .iter()
                 .any(|a| matches!(self.universe(a), Universe::Open))
+    }
+
+    /// dsl 0.23.0 §10: the declared relations nothing can produce at all —
+    /// not reserved, no seed, no rule deriving them, and none of `asserted`
+    /// (every relation some `::assert` anywhere in the root writes).
+    pub(crate) fn unproduced(&self, asserted: &BTreeSet<String>) -> BTreeSet<String> {
+        self.relations
+            .iter()
+            .filter(|(name, decl)| {
+                !decl.reserved
+                    && !asserted.contains(*name)
+                    && !self.seeds.iter().any(|s| &s.relation == *name)
+                    && !self.rules.iter().any(|r| &r.head.relation == *name)
+            })
+            .map(|(name, _)| name.clone())
+            .collect()
     }
 
     /// A rule-body predicate name that denotes a member set (entity kind,
@@ -300,6 +316,10 @@ pub struct MaySet {
     signature: BTreeMap<String, Vec<Option<BTreeSet<String>>>>,
     facts: BTreeMap<String, BTreeSet<Vec<String>>>,
     unbounded: BTreeSet<String>,
+    /// dsl 0.23.0 §9: the facts that hold at every point of every run
+    /// (`crate::fact_must::stable_seeds`) — a negated rule atom over one of
+    /// them is false, so the clause instance never fires.
+    stable: BTreeSet<GroundFact>,
 }
 
 /// One rule application's result: concrete head tuples, or "the head may be
@@ -312,9 +332,17 @@ enum Derived {
 
 impl MaySet {
     /// §3's least fixpoint over `vocab`'s seeds and rules plus `asserts` — the
-    /// facts of every live assert site in the root.
-    pub fn build(vocab: &RootVocab, asserts: impl IntoIterator<Item = GroundFact>) -> Self {
-        let mut may = MaySet::default();
+    /// facts of every live assert site in the root. `stable` are the facts
+    /// that hold throughout every run (dsl 0.23.0 §9).
+    pub fn build(
+        vocab: &RootVocab,
+        asserts: impl IntoIterator<Item = GroundFact>,
+        stable: &BTreeSet<GroundFact>,
+    ) -> Self {
+        let mut may = MaySet {
+            stable: stable.clone(),
+            ..MaySet::default()
+        };
         for (name, decl) in &vocab.relations {
             let sig = decl
                 .args
@@ -332,6 +360,24 @@ impl MaySet {
         for fact in vocab.seeds.iter().cloned().chain(asserts) {
             may.insert(fact);
         }
+        may.saturate(vocab);
+        may
+    }
+
+    /// dsl 0.23.0 §10 (`check-project --wip`): this set with every relation
+    /// in `open` unbounded — as if content not yet written could produce any
+    /// fact of it — and the rules re-run to their fixpoint. Starting from
+    /// this set's facts is sound: widening only ever adds facts.
+    pub fn widened(&self, vocab: &RootVocab, open: &BTreeSet<String>) -> Self {
+        let mut may = self.clone();
+        may.unbounded
+            .extend(open.iter().filter(|r| may.signature.contains_key(*r)).cloned());
+        may.saturate(vocab);
+        may
+    }
+
+    /// Apply the derived relations' rules until nothing changes.
+    fn saturate(&mut self, vocab: &RootVocab) {
         loop {
             let mut changed = false;
             for rule in &vocab.rules {
@@ -339,17 +385,17 @@ impl MaySet {
                 let Some(decl) = vocab.relations.get(head) else {
                     continue; // `E-DERIVE-UNDECLARED`'s problem
                 };
-                if !decl.derive || may.unbounded.contains(head) {
+                if !decl.derive || self.unbounded.contains(head) {
                     continue;
                 }
-                match may.apply_rule(vocab, rule) {
+                match self.apply_rule(vocab, rule) {
                     Derived::Unbounded => {
-                        may.unbounded.insert(head.clone());
+                        self.unbounded.insert(head.clone());
                         changed = true;
                     }
                     Derived::Tuples(tuples) => {
                         for args in tuples {
-                            changed |= may.insert(GroundFact {
+                            changed |= self.insert(GroundFact {
                                 relation: head.clone(),
                                 args,
                             });
@@ -358,7 +404,7 @@ impl MaySet {
                 }
             }
             if !changed {
-                return may;
+                return;
             }
         }
     }
@@ -381,7 +427,11 @@ impl MaySet {
 
     /// Evaluate one clause over the current set: join the positive atoms,
     /// then filter by `=`/`!=` and drop the clause if a CEL guard decides
-    /// false. Negated atoms are satisfiable (§3 rule 4).
+    /// false. A negated atom is satisfiable (§3 rule 4) unless it denies a
+    /// stable fact (dsl 0.23.0 §9: `not alibi(crane, tunnel)` with the alibi
+    /// a seed nothing removes). A positive atom over an unbounded relation
+    /// may match anything: it is satisfiable and binds nothing, so the head
+    /// is unbounded only when it needs a variable no other atom binds.
     fn apply_rule(&self, vocab: &RootVocab, rule: &Rule) -> Derived {
         let mut bindings: Vec<BTreeMap<&str, &str>> = vec![BTreeMap::new()];
         for lit in &rule.body {
@@ -389,7 +439,7 @@ impl MaySet {
                 continue;
             };
             let Some(rows) = self.atom_rows(vocab, atom) else {
-                return Derived::Unbounded;
+                continue;
             };
             let mut next = Vec::new();
             for b in &bindings {
@@ -414,6 +464,20 @@ impl MaySet {
                 } => bindings.retain(|b| match (term_value(lhs, b), term_value(rhs, b)) {
                     (Some(l), Some(r)) => (l == r) != *negated,
                     _ => true, // unbound: never a basis for dropping a clause
+                }),
+                BodyLiteral::Neg(atom) if !self.stable.is_empty() => bindings.retain(|b| {
+                    let Some(args) = atom
+                        .terms
+                        .iter()
+                        .map(|t| term_value(t, b).map(str::to_string))
+                        .collect::<Option<Vec<_>>>()
+                    else {
+                        return true; // unbound: never a basis for dropping a clause
+                    };
+                    !self.stable.contains(&GroundFact {
+                        relation: atom.relation.clone(),
+                        args,
+                    })
                 }),
                 _ => {}
             }
@@ -775,6 +839,11 @@ impl MustMap {
 pub struct FactEnv {
     pub may: MaySet,
     pub must: MustMap,
+    /// dsl 0.23.0 §10 (`check-project --wip` only): `may` widened so every
+    /// relation nothing produces yet may hold anything
+    /// ([`MaySet::widened`]). A guard that is dead under `may` but not under
+    /// this set is dead only because content is not written yet.
+    pub wip: Option<MaySet>,
 }
 
 /// The §5 verdict for `holds(P)` at one slot.
@@ -827,18 +896,40 @@ impl CountInterval {
 
 impl FactEnv {
     pub fn new(may: MaySet, must: MustMap) -> Self {
-        FactEnv { may, must }
+        FactEnv {
+            may,
+            must,
+            wip: None,
+        }
+    }
+
+    /// dsl 0.23.0 §10: this envelope plus its work-in-progress twin, where
+    /// every relation in `unproduced` (no seed, assert, rule, or reserved
+    /// declaration — [`RootVocab::unproduced`]) is unbounded.
+    pub fn with_wip(mut self, vocab: &RootVocab, unproduced: &BTreeSet<String>) -> Self {
+        self.wip = Some(self.may.widened(vocab, unproduced));
+        self
+    }
+
+    /// The may set a scope reads: the work-in-progress twin when asked for
+    /// and present.
+    fn may_set(&self, wip: bool) -> &MaySet {
+        match &self.wip {
+            Some(widened) if wip => widened,
+            _ => &self.may,
+        }
     }
 
     /// §5's `holds(P)` verdict at the slot `span` of document `path`.
-    pub fn holds(&self, path: &Path, span: Span, q: &QueryPattern) -> HoldsVerdict<'_> {
-        if !self.may.decides(q) {
+    fn holds(&self, path: &Path, span: Span, q: &QueryPattern, wip: bool) -> HoldsVerdict<'_> {
+        let may = self.may_set(wip);
+        if !may.decides(q) {
             return HoldsVerdict::Possible;
         }
         if let Some(m) = self.must.at(path, span).iter().find(|m| q.matches(&m.fact)) {
             return HoldsVerdict::Guaranteed(m);
         }
-        if self.may.any_match(q) {
+        if may.any_match(q) {
             HoldsVerdict::Possible
         } else {
             HoldsVerdict::Impossible
@@ -847,8 +938,9 @@ impl FactEnv {
 
     /// §5's `count(P)` interval at the slot; `None` for a query this set does
     /// not decide.
-    pub fn count(&self, path: &Path, span: Span, q: &QueryPattern) -> Option<CountInterval> {
-        if !self.may.decides(q) {
+    fn count(&self, path: &Path, span: Span, q: &QueryPattern, wip: bool) -> Option<CountInterval> {
+        let may = self.may_set(wip);
+        if !may.decides(q) {
             return None;
         }
         let mut guaranteed: Vec<&GroundFact> = self
@@ -862,7 +954,7 @@ impl FactEnv {
         guaranteed.dedup();
         Some(CountInterval {
             lo: guaranteed.len(),
-            hi: self.may.count_matching(q),
+            hi: may.count_matching(q),
         })
     }
 }
@@ -879,6 +971,8 @@ pub struct FactScope<'a> {
     pub vocab: &'a RelVocab,
     pub path: &'a Path,
     pub span: Span,
+    /// Read the envelope's work-in-progress twin ([`FactEnv::wip`]).
+    pub wip: bool,
 }
 
 impl<'a> FactScope<'a> {
@@ -893,13 +987,13 @@ impl<'a> FactScope<'a> {
         if !self.in_vocab(q) {
             return HoldsVerdict::Possible;
         }
-        self.env.holds(self.path, self.span, q)
+        self.env.holds(self.path, self.span, q, self.wip)
     }
 
     pub fn count(&self, q: &QueryPattern) -> Option<CountInterval> {
         if !self.in_vocab(q) {
             return None;
         }
-        self.env.count(self.path, self.span, q)
+        self.env.count(self.path, self.span, q, self.wip)
     }
 }

@@ -74,7 +74,7 @@ pub fn check_fact_guards(
     if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
         if let Some(v) = g.eval(when, None) {
             if v.newly_false() {
-                out.push(diag(
+                out.push(v.grade(diag(
                     crate::beats::E_BEAT_UNREACHABLE,
                     Severity::Error,
                     crate::beats::beat_unreachable_message(
@@ -83,7 +83,7 @@ pub fn check_fact_guards(
                         Some(&v.dead_reasons()),
                     ),
                     when.span,
-                ));
+                )));
             } else {
                 g.push_guaranteed(&v, "`when` guard", when, &mut out);
             }
@@ -100,7 +100,7 @@ pub fn check_fact_guards(
         if let Some(when) = &entry.when {
             if let Some(v) = g.eval(when, None) {
                 if v.newly_false() {
-                    out.push(diag(
+                    out.push(v.grade(diag(
                         E_ENTRY_UNREACHABLE,
                         Severity::Error,
                         format!(
@@ -111,13 +111,36 @@ pub fn check_fact_guards(
                             v.dead_reasons()
                         ),
                         when.span,
-                    ));
+                    )));
                 } else {
                     g.push_guaranteed(&v, "`when` guard", when, &mut out);
                 }
             }
         }
         g.walk(&entry.body, &mut out);
+    }
+    // dsl 0.23.0 §4: a bundle beat's `when` is a beat `when`.
+    let doc_id = folded.typed.id.as_deref().unwrap_or("this document");
+    for beat in &doc.beats {
+        if let Some(when) = &beat.when {
+            if let Some(v) = g.eval(when, None) {
+                if v.newly_false() {
+                    out.push(v.grade(diag(
+                        crate::beats::E_BEAT_UNREACHABLE,
+                        Severity::Error,
+                        crate::beats::beat_unreachable_message(
+                            &crate::bundles::bundle_beat_key(doc_id, &beat.id),
+                            when.raw.trim(),
+                            Some(&v.dead_reasons()),
+                        ),
+                        when.span,
+                    )));
+                } else {
+                    g.push_guaranteed(&v, "`when` guard", when, &mut out);
+                }
+            }
+        }
+        g.walk(&beat.body, &mut out);
     }
     out.retain(|d| !reported.iter().any(|r| r.code == d.code && r.span == d.span));
     out
@@ -215,6 +238,10 @@ struct SlotVerdict {
     base: Option<Decided>,
     with: Option<Decided>,
     atoms: Vec<Atom>,
+    /// dsl 0.23.0 §10 (`--wip`): decided false under the envelope, but not
+    /// under its work-in-progress twin — only a relation nothing produces
+    /// yet makes the guard dead.
+    wip: bool,
 }
 
 impl SlotVerdict {
@@ -225,6 +252,19 @@ impl SlotVerdict {
 
     fn newly_false(&self) -> bool {
         self.newly(false)
+    }
+
+    /// dsl 0.23.0 §10: a dead-guard error downgraded to a warning when the
+    /// guard is dead only for want of content not written yet.
+    fn grade(&self, mut d: Diagnostic) -> Diagnostic {
+        if self.wip {
+            d.severity = Severity::Warning;
+            d.message.push_str(
+                " — a warning under `--wip`: only relations that nothing produces yet (no seed, \
+                 assert, rule, or reserved declaration) make it so (dsl 0.23.0 §10)",
+            );
+        }
+        d
     }
 
     /// Why the guard decided: every decided relational query, in order.
@@ -340,6 +380,7 @@ impl<'a> Guards<'a> {
                 vocab: self.vocab,
                 path: self.path,
                 span,
+                wip: false,
             }),
         }
     }
@@ -360,10 +401,19 @@ impl<'a> Guards<'a> {
         let with_ctx = self.ctx(dollar, slot.span, true);
         let mut atoms = Vec::new();
         collect_atoms(expr, &with_ctx, &mut atoms);
+        let with = decide(expr, &with_ctx);
+        let wip = self.env.wip.is_some() && with == Some(Decided::Bool(false)) && {
+            let mut wip_ctx = self.ctx(dollar, slot.span, true);
+            if let Some(scope) = &mut wip_ctx.facts {
+                scope.wip = true;
+            }
+            decide(expr, &wip_ctx) != Some(Decided::Bool(false))
+        };
         Some(SlotVerdict {
             base: decide(expr, &self.ctx(dollar, slot.span, false)),
-            with: decide(expr, &with_ctx),
+            with,
             atoms,
+            wip,
         })
     }
 
@@ -472,7 +522,7 @@ impl<'a> Guards<'a> {
                 } else {
                     msg.push_str(REQUIRED_QUEST_NOTE);
                 }
-                out.push(diag(E_OBJECTIVE_UNSATISFIABLE, Severity::Error, msg, o.span));
+                out.push(v.grade(diag(E_OBJECTIVE_UNSATISFIABLE, Severity::Error, msg, o.span)));
             }
         }
         if o.optional {

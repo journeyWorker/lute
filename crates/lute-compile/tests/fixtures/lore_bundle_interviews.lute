@@ -1,0 +1,34 @@
+---
+kind: lore
+id: interviews
+state:
+  run.porterTrust: { type: number, default: 0 }
+---
+
+<entry id="porterNote" target="item.porter_note">
+  @narrator: A note about the porter.
+</entry>
+
+<beat id="porter" on="talk" target="npc.porter" title="The porter" priority="5" when="run.porterTrust >= 0">
+  @porter: You again.
+  <branch id="porterTalk">
+    <choice id="ask" label="Ask about the night">
+      @porter: I saw nothing.
+      ::set{run.porterTrust += 1}
+    </choice>
+    <choice id="leave" label="Leave">
+      @porter: Good.
+    </choice>
+  </branch>
+</beat>
+
+<beat id="lamps" on="talk" target="npc.porter" once="false" also>
+  <hub id="look" prompt="Where do you look?">
+    <choice id="lamp" label="The lamp" once>
+      @narrator: It is cold.
+    </choice>
+    <choice id="done" label="Done" exit>
+      @narrator: Enough.
+    </choice>
+  </hub>
+</beat>

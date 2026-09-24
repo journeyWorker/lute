@@ -62,6 +62,69 @@
     }
   },
   {
+    "type": "beat",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "attr",
+          "named": true
+        },
+        {
+          "type": "branch",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "hub",
+          "named": true
+        },
+        {
+          "type": "line",
+          "named": true
+        },
+        {
+          "type": "match",
+          "named": true
+        },
+        {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
+          "type": "retract",
+          "named": true
+        },
+        {
+          "type": "set",
+          "named": true
+        },
+        {
+          "type": "timeline",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "branch",
     "named": true,
     "fields": {},
@@ -865,6 +928,10 @@
           "named": true
         },
         {
+          "type": "beat",
+          "named": true
+        },
+        {
           "type": "branch",
           "named": true
         },
@@ -1178,6 +1245,10 @@
     "named": false
   },
   {
+    "type": "</beat>",
+    "named": false
+  },
+  {
     "type": "</branch>",
     "named": false
   },
@@ -1223,6 +1294,10 @@
   },
   {
     "type": "</when>",
+    "named": false
+  },
+  {
+    "type": "<beat",
     "named": false
   },
   {

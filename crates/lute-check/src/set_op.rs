@@ -65,6 +65,9 @@ pub enum WriteOwner {
     /// write. Reported with the quest-reserved code — "writing an `entry.*`
     /// path is rejected, as writing a `quest.*` path is".
     EntryReserved,
+    /// Any `prev.*` path (dsl 0.23.0 §6): the read-only mirror of the
+    /// previous run's `run.*` values, snapshotted by the engine at run end.
+    PrevReserved,
     /// A declared path marked `owner: engine` (dsl 0.22.0 §1.2): the engine
     /// writes it at runtime (and `engine:` play steps / trace mocks in the
     /// toolchain); content may only read it.
@@ -82,6 +85,8 @@ pub(crate) fn classify_write(path: &str, schema: &StateSchema) -> WriteOwner {
         WriteOwner::QuestReserved
     } else if is_entry_path(path) {
         WriteOwner::EntryReserved
+    } else if crate::cel_paths::is_prev_path(path) {
+        WriteOwner::PrevReserved
     } else if engine_owned(path, schema) {
         WriteOwner::Engine
     } else {
@@ -163,6 +168,19 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnos
                     "`::set` cannot write `{}`: `entry.*` paths are reserved — \
                      `entry.<id>.read` is engine-written when an entry is first presented \
                      (dsl 0.19.0 §5)",
+                    set.path
+                ),
+                set.path_span,
+            ));
+            return diags;
+        }
+        WriteOwner::PrevReserved => {
+            diags.push(diag(
+                "E-QUEST-RESERVED-WRITE",
+                format!(
+                    "`::set` cannot write `{}`: `prev.run.*` is the read-only mirror of the \
+                     value `run.*` had when the previous run ended, snapshotted by the engine \
+                     (dsl 0.23.0 §6)",
                     set.path
                 ),
                 set.path_span,

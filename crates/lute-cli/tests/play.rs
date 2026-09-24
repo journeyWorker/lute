@@ -1496,3 +1496,216 @@ fn derive_false_leaves_derived_facts_out_of_the_end_of_play() {
         0,
     );
 }
+
+// ── 0.23.0 §2/§3: deadlines, objective targets, composing occasions ────
+
+/// A plugin declaring `hubVisit` (`select: first`), `evening` (`select:
+/// sequence`) and `talk` (targets `npc.<person>`). `hubVisit`: `hub.main`
+/// (repeatable) and the `also` beat `hub.aside` (priority 9, `once: run`).
+/// `evening`: `eve.routine` (priority 5, repeatable, advances `run.day`) and
+/// `eve.letter` (`once: run`, eligible from day 2). Quest `deadline` needs
+/// `letter` (`by` day 3) and `sealed` (never); `errand` completes when `talk`
+/// is raised for `npc.maud`.
+fn compose_project(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: g\nprofiles:\n  g:\n    plugins: { g.occ: true }\n",
+    );
+    write(
+        &dir,
+        "plugins/g.occ/plugin.yaml",
+        "id: g.occ\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n",
+    );
+    write(
+        &dir,
+        "plugins/g.occ/occasions/o.yaml",
+        "occasions:\n  hubVisit: {}\n  evening: { select: sequence }\n  \
+         talk: { target: { prefix: npc, entity: person } }\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.day: { type: number, default: 1 }\n  \
+         run.answered: { type: bool, default: false }\n  \
+         run.sealed: { type: bool, default: false }\n\
+         entities:\n  person: { members: [maud, oskar] }\n",
+    );
+    let scene = |rel: &str, id: &str, fm: &str, body: &str| {
+        write(
+            &dir,
+            rel,
+            &format!("---\nkind: scene\nid: {id}\nuses: ../world.schema.yaml\n{fm}---\n\n## {id}\n\n{body}"),
+        );
+    };
+    scene("scenes/main.lute", "hub.main", "on: hubVisit\nonce: false\n", "@maud: Welcome.\n");
+    scene(
+        "scenes/aside.lute",
+        "hub.aside",
+        "on: hubVisit\npriority: 9\nalso: true\n",
+        "@oskar: Psst.\n",
+    );
+    scene(
+        "scenes/routine.lute",
+        "eve.routine",
+        "on: evening\npriority: 5\nonce: false\n",
+        "@maud: Supper.\n::set{ run.day = run.day + 1 }\n",
+    );
+    scene(
+        "scenes/letter.lute",
+        "eve.letter",
+        "on: evening\nwhen: 'run.day >= 2'\n",
+        "@oskar: A letter came.\n",
+    );
+    write(
+        &dir,
+        "quests/q.lute",
+        "---\nkind: quest\nuses: ../world.schema.yaml\ntitle: Q\n---\n\n\
+         <quest id=\"deadline\" title=\"Deadline\" start=\"true\">\n\
+         <objective id=\"letter\" title=\"Answer\" done=\"run.answered\" by=\"run.day >= 3\"/>\n\
+         <objective id=\"sealed\" title=\"Seal\" done=\"run.sealed\"/>\n\
+         <on event=\"questFailed\">\n@narrator: Too late.\n</on>\n</quest>\n\n\
+         <quest id=\"errand\" title=\"Errand\" start=\"true\">\n\
+         <objective id=\"maud\" title=\"Talk to Maud\" on=\"talk\" target=\"npc.maud\" done=\"true\"/>\n\
+         </quest>\n",
+    );
+    dir
+}
+
+/// Step `n`'s presented beat ids, in order: `presented`, then `then`.
+fn presented_ids(v: &Json, n: usize) -> Vec<String> {
+    let s = step(v, n);
+    s.get("presented")
+        .into_iter()
+        .chain(s["then"].as_array().into_iter().flatten())
+        .map(|p| p["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// Step `n`'s quest records, flattened like [`quest_records`] but telling a
+/// `by` failure (`"<quest>.<objective> failed"`) from a completion.
+fn quest_log(v: &Json, n: usize) -> Vec<String> {
+    step(v, n)["quests"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|doc| doc["commands"].as_array().unwrap())
+        .filter_map(|r| match r["kind"].as_str().unwrap() {
+            "quest" => Some(format!("{} -> {}", r["quest"].as_str()?, r["state"].as_str()?)),
+            "objective" => Some(format!(
+                "{}.{} {}",
+                r["quest"].as_str()?,
+                r["objective"].as_str()?,
+                if r["failed"] == true { "failed" } else { "done" }
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn an_also_beat_is_presented_after_the_winner_and_spends_its_once() {
+    let dir = compose_project("also");
+    let v = play_project_json(&dir, "also", "steps:\n  - occasion: hubVisit\n  - occasion: hubVisit\n");
+    // `hub.aside` outranks `hub.main`, yet never wins: it rides along after.
+    assert_eq!(candidate_ids(&v, 1), ["hub.aside", "hub.main"]);
+    assert_eq!(candidate(&v, 1, "hub.aside")["also"], true);
+    assert!(candidate(&v, 1, "hub.main").get("also").is_none());
+    assert_eq!(winner(&v, 1), Some("hub.main"));
+    assert_eq!(presented_ids(&v, 1), ["hub.main", "hub.aside"]);
+    assert_eq!(step(&v, 1)["then"][0]["also"], true);
+    // Presenting it spent its `once: run`; the winner repeats alone.
+    assert_eq!(candidate(&v, 2, "hub.aside")["eligible"], false);
+    assert_eq!(winner(&v, 2), Some("hub.main"));
+    assert_eq!(presented_ids(&v, 2), ["hub.main"]);
+    assert!(step(&v, 2).get("then").is_none(), "{}", step(&v, 2));
+
+    let out = play_in(&dir, "also-human", "steps:\n  - occasion: hubVisit\n", false);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    let main = text.find("  → hub.main\n").unwrap_or_else(|| panic!("{text}"));
+    let aside = text.find("  + hub.aside (also)\n").unwrap_or_else(|| panic!("{text}"));
+    assert!(main < aside, "{text}");
+    assert!(text.find("Welcome.").unwrap() < text.find("Psst.").unwrap(), "{text}");
+}
+
+#[test]
+fn select_sequence_presents_every_eligible_beat_in_order_and_spends_each_once() {
+    let dir = compose_project("sequence");
+    let v = play_project_json(
+        &dir,
+        "sequence",
+        "steps:\n  - occasion: evening\n  - occasion: evening\n  - occasion: evening\n",
+    );
+    assert_eq!(step(&v, 1)["select"], "sequence");
+    // Eligibility is decided at the raise: the routine moves the day to 2,
+    // but `eve.letter` was ineligible when `evening` was raised on day 1.
+    assert_eq!(presented_ids(&v, 1), ["eve.routine"]);
+    assert_eq!(candidate(&v, 1, "eve.letter")["reason"], "when: false");
+    // Day 2: both, in selection order (priority first).
+    assert_eq!(presented_ids(&v, 2), ["eve.routine", "eve.letter"]);
+    assert_eq!(winner(&v, 2), Some("eve.routine"));
+    // `eve.letter` spent its `once: run`; the routine repeats.
+    assert_eq!(presented_ids(&v, 3), ["eve.routine"]);
+    assert_eq!(candidate(&v, 3, "eve.letter")["reason"], "once: run — already presented this run");
+
+    let script = "steps:\n  - occasion: evening\n  - occasion: evening\n    \
+                  expect: { presented: [eve.routine, eve.letter] }\n";
+    let out = play_in(&dir, "sequence-expect", script, false);
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("· evening (select: sequence)"), "{text}");
+    assert!(text.contains("  → eve.routine\n  → eve.letter\n"), "{text}");
+
+    let wrong = "steps:\n  - occasion: evening\n  - occasion: evening\n    \
+                 expect: { presented: [eve.letter, eve.routine] }\n";
+    let out = play_in(&dir, "sequence-miss", wrong, false);
+    assert_eq!(out.status.code(), Some(1), "{}", stdout(&out));
+
+    let out = play_in(&dir, "sequence-pick", "steps:\n  - occasion: evening\n    pick: eve.routine\n", false);
+    assert_eq!(out.status.code(), Some(2), "{}", stdout(&out));
+    assert!(stderr(&out).contains("applies only to a `select: all` occasion"), "{}", stderr(&out));
+}
+
+#[test]
+fn a_by_deadline_fails_its_objective_and_the_quest_after_the_presentation_that_passes_it() {
+    let dir = compose_project("by-miss");
+    // Each evening's routine advances the day; the second reaches day 3.
+    let v = play_project_json(&dir, "by-miss", "steps:\n  - occasion: evening\n  - occasion: evening\n");
+    assert!(quest_log(&v, 1).is_empty(), "{:?}", quest_log(&v, 1));
+    assert_eq!(quest_log(&v, 2), ["deadline.letter failed", "deadline -> failed"]);
+    let out = play_in(&dir, "by-miss-human", "steps:\n  - occasion: evening\n  - occasion: evening\n", false);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("  deadline.letter failed (by)\n"), "{text}");
+    assert!(text.contains("  quest deadline -> failed\n"), "{text}");
+    assert!(text.contains("Too late."), "questFailed ran: {text}");
+
+    // Done first: the deadline passes without failing it; the quest waits
+    // on `sealed`.
+    let v = play_project_json(
+        &dir,
+        "by-done",
+        "steps:\n  - engine: { state: { run.answered: true } }\n  - occasion: evening\n  \
+         - occasion: evening\n  - occasion: evening\n",
+    );
+    assert_eq!(quest_log(&v, 1), ["deadline.letter done"]);
+    for n in 2..=4 {
+        assert!(quest_log(&v, n).iter().all(|r| !r.starts_with("deadline")), "step {n}: {:?}", quest_log(&v, n));
+    }
+    assert_eq!(v["exit"], "complete");
+}
+
+#[test]
+fn a_targeted_objective_is_judged_only_at_a_step_for_its_target() {
+    let dir = compose_project("target");
+    let v = play_project_json(
+        &dir,
+        "target",
+        "steps:\n  - { occasion: talk, target: npc.oskar }\n  - { occasion: talk, target: npc.maud }\n",
+    );
+    assert!(quest_log(&v, 1).is_empty(), "{:?}", quest_log(&v, 1));
+    assert_eq!(quest_log(&v, 2), ["errand.maud done", "errand -> complete"]);
+}

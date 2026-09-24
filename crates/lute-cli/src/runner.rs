@@ -40,10 +40,15 @@
 //!   `visited:` set (`lute play`: the presented scenes);
 //! - **lore entries** (lore-entries.md, dsl 0.19.0): `--entry <id>` presents
 //!   ONE `entry` record of a lore artifact — its body segment runs to the
-//!   next `entry` record, `set`/`assert`/`retract` apply only while
-//!   `entry.<id>.read` is false (recorded as `skipped` otherwise), and a
-//!   completed first read sets `entry.<id>.read = true`. A lore artifact
-//!   without `--entry` (or `--entry` on another kind) is a usage error.
+//!   next `entry` or `beat` record, `set`/`assert`/`retract` apply only
+//!   while `entry.<id>.read` is false (recorded as `skipped` otherwise), and
+//!   a completed first read sets `entry.<id>.read = true`;
+//! - **bundle beats** (beats-and-occasions.md, dsl 0.23.0 §4): `--beat <id>`
+//!   presents ONE `beat` record of a lore artifact by its canonical
+//!   `<document id>.<beat id>` (or bare beat id) — its body segment runs to
+//!   the next `entry` or `beat` record like a scene's, every effect applied.
+//!   A lore artifact without exactly one of `--entry`/`--beat` (or either
+//!   flag on another kind) is a usage error.
 //!
 //! Output: a human transcript by default; `--json` emits a stable machine
 //! transcript `{ kind, irVersion, exit, commands, state, facts, quests }`.
@@ -102,8 +107,9 @@ fn impl_ir_line() -> (u64, u64) {
 pub(crate) type Fact = lute_trace::datalog::Fact;
 
 /// Execute a compiled artifact against a mock playthrough. See [`crate::Command::Run`].
-/// `entry` selects the one `entry` record a lore artifact presents (dsl
-/// 0.19.0 §8): required for `kind: "lore"`, refused for any other kind.
+/// `entry` / `beat` select the one `entry` record (dsl 0.19.0 §8) or bundle
+/// `beat` record (dsl 0.23.0 §4) a lore artifact presents: exactly one is
+/// required for `kind: "lore"`, either is refused for any other kind.
 /// `occasions` are the `--occasion` flags, raised after the mock's own
 /// `occasions:` (dsl 0.21.0 §7a.2).
 pub fn run_artifact(
@@ -112,6 +118,7 @@ pub fn run_artifact(
     occasions: Vec<String>,
     json_out: bool,
     entry: Option<&str>,
+    beat: Option<&str>,
 ) -> ExitCode {
     let text = match std::fs::read_to_string(artifact) {
         Ok(t) => t,
@@ -153,18 +160,27 @@ pub fn run_artifact(
 
     // ── dsl 0.19.0 §8: a lore artifact is looked up, never played. ──
     let is_lore = art.get("kind").and_then(Json::as_str) == Some("lore");
-    match (is_lore, entry) {
+    let presented = match (entry, beat) {
+        (Some(_), Some(_)) => {
+            eprintln!("lute run: pass `--entry` or `--beat`, not both");
+            return ExitCode::from(2);
+        }
+        (Some(id), None) => Some(("entry", id)),
+        (None, Some(id)) => Some(("beat", id)),
+        (None, None) => None,
+    };
+    match (is_lore, presented) {
         (true, None) => {
             eprintln!(
                 "lute run: {} is a lore artifact — there is no sequence to play; pass \
-                 `--entry <id>` to present one entry",
+                 `--entry <id>` to present one entry or `--beat <id>` to present one bundle beat",
                 artifact.display()
             );
             return ExitCode::from(2);
         }
-        (false, Some(id)) => {
+        (false, Some((flag, id))) => {
             eprintln!(
-                "lute run: `--entry {id}` needs a lore artifact; {} is kind {:?}",
+                "lute run: `--{flag} {id}` needs a lore artifact; {} is kind {:?}",
                 artifact.display(),
                 art.get("kind").and_then(Json::as_str).unwrap_or("scene")
             );
@@ -194,6 +210,7 @@ pub fn run_artifact(
     mock_set.occasions.extend(occasions);
     let mut runner = Runner::new(&art, mock_set);
     runner.entry = entry.map(str::to_string);
+    runner.bundle_beat = beat.map(str::to_string);
     match runner.run() {
         Err(msg) => {
             eprintln!("lute run: {msg}");
@@ -249,6 +266,12 @@ struct Obj {
     /// dsl 0.21.0 §7a.2: `ObjectiveEntry.on` — the occasion at which this
     /// objective's `done` is judged; `None` ⇒ judged continuously.
     on: Option<String>,
+    /// dsl 0.23.0 §2: `ObjectiveEntry.by` raw — while not done, the first
+    /// time it is true the objective fails.
+    by: Option<String>,
+    /// dsl 0.23.0 §2: `ObjectiveEntry.target` — with `on`, judged only by a
+    /// raise for this target.
+    target: Option<String>,
 }
 
 /// One `RewardEntry` (`ir.rs`, dsl 0.16.0 §3) parsed straight off the
@@ -265,6 +288,9 @@ struct RewardRec {
     amount_max: Option<i64>,
     when: Option<String>,
     on: Option<String>,
+    /// dsl 0.23.0 §8: `RewardEntry.credits` — the state path a grant adds
+    /// its (scalar) amount to.
+    credits: Option<String>,
 }
 
 /// dsl 0.16.0 §3 D-D: which lifecycle transition is firing declarative
@@ -390,6 +416,10 @@ pub(crate) struct Runner {
     /// dsl 0.19.0 §8: the `entry` id a lore artifact presents (`lute run
     /// --entry`). `None` for every scene/quest walk.
     entry: Option<String>,
+    /// dsl 0.23.0 §4: the bundle `beat` a lore artifact presents (its
+    /// canonical `<document id>.<beat id>`, or the bare beat id). `None`
+    /// otherwise; `lute play` sets it for a `bundle` beat.
+    bundle_beat: Option<String>,
     /// dsl 0.19.0 §6: `false` while presenting an entry whose
     /// `entry.<id>.read` is already true — `set`/`assert`/`retract` records
     /// are then recorded as `skipped` instead of applied.
@@ -404,6 +434,11 @@ pub(crate) struct Runner {
     /// activates from it on the next lifecycle round; `lute play` carries
     /// the rest to the quest documents via [`RunnerOutcome::accepted`].
     accepted: Vec<String>,
+    /// dsl 0.23.0 §2: `<quest>.<objective>` ids whose `by` came true while
+    /// they were not done — failed, never judged again. `lute play` carries
+    /// them across advances ([`Runner::with_failed_objectives`],
+    /// [`RunnerOutcome::failed_objectives`]).
+    failed_objectives: BTreeSet<String>,
 }
 
 /// `lute play`'s per-presentation carryover + transcript-reuse surface:
@@ -432,6 +467,8 @@ pub(crate) struct RunnerOutcome {
     /// See [`Runner::choice_cursor`] — the consumption the next
     /// presentation resumes from.
     pub choice_cursor: BTreeMap<String, usize>,
+    /// See [`Runner::failed_objectives`].
+    pub failed_objectives: BTreeSet<String>,
 }
 
 impl Runner {
@@ -557,9 +594,11 @@ impl Runner {
             unresolved: Vec::new(),
             quest_resume: false,
             entry: None,
+            bundle_beat: None,
             apply_effects: true,
             visited,
             accepted: Vec::new(),
+            failed_objectives: BTreeSet::new(),
         }
     }
 
@@ -605,6 +644,13 @@ impl Runner {
         self
     }
 
+    /// dsl 0.23.0 §4: present ONE bundle `beat` record of a lore artifact
+    /// (`lute play` for a `bundle` beat, `lute run --beat`).
+    pub(crate) fn with_bundle_beat(mut self, id: &str) -> Self {
+        self.bundle_beat = Some(id.to_string());
+        self
+    }
+
     /// `lute play` (dsl 0.21.0 §7a.1): the playthrough's presented scenes,
     /// joined to any mock `visited:` seed, so `visited('<id>')` reads real
     /// presentation history.
@@ -617,6 +663,14 @@ impl Runner {
     /// presentations left them (see [`Runner::choice_cursor`]).
     pub(crate) fn with_choice_cursor(mut self, cursor: &BTreeMap<String, usize>) -> Self {
         self.choice_cursor = cursor.clone();
+        self
+    }
+
+    /// `lute play` (dsl 0.23.0 §2): the objectives earlier advances failed
+    /// through their `by`, so a resumed walk neither completes nor fails them
+    /// again.
+    pub(crate) fn with_failed_objectives(mut self, failed: &BTreeSet<String>) -> Self {
+        self.failed_objectives.extend(failed.iter().cloned());
         self
     }
 
@@ -755,6 +809,18 @@ impl Runner {
         if let Some(path) = node.get("path").and_then(Json::as_str) {
             return self.state.get(path).cloned().unwrap_or(Value::Unknown);
         }
+        // `isSet(p)` / `has(p)` are definite presence (D19): every live value
+        // — a default, a carried or seeded value, a write — is in `state`.
+        // Without this, every `isSet(…) && …` guard read unknown, so a
+        // gated line on a maybe-unset path (dsl 0.23.0 §6 `prev.run.*`)
+        // could never play.
+        if let Some(path) = node
+            .get("isSet")
+            .or_else(|| node.get("has"))
+            .and_then(Json::as_str)
+        {
+            return Value::Bool(self.state.contains_key(path));
+        }
         if let (Some(cond), Some(then), Some(otherwise)) =
             (node.get("cond"), node.get("then"), node.get("else"))
         {
@@ -853,7 +919,11 @@ impl Runner {
         if self.kind == "quest" {
             self.run_quest();
         } else if self.kind == "lore" {
-            self.run_entry();
+            if self.bundle_beat.is_some() {
+                self.run_bundle_beat();
+            } else {
+                self.run_entry();
+            }
         } else {
             self.run_range(0, self.commands.len());
         }
@@ -879,6 +949,7 @@ impl Runner {
             accepted: self.accepted,
             refused: self.refused,
             choice_cursor: self.choice_cursor,
+            failed_objectives: self.failed_objectives,
         }
     }
 
@@ -972,8 +1043,9 @@ impl Runner {
                 Step::Next(pc + 1)
             }
             // Declarations — inert in a linear walk (a quest artifact is driven
-            // by `run_quest`, a lore artifact by `run_entry`, never linearly).
-            "quest" | "on" | "entry" => Step::Next(pc + 1),
+            // by `run_quest`, a lore artifact by `run_entry` /
+            // `run_bundle_beat`, never linearly).
+            "quest" | "on" | "entry" | "beat" => Step::Next(pc + 1),
             other => {
                 self.fatal = Some(format!(
                     "unknown command kind {other:?} (a new capability the runner cannot fake)"
@@ -1361,6 +1433,8 @@ impl Runner {
             .get("recordKey")
             .and_then(Json::as_str)
             .map(str::to_string);
+        // dsl 0.23.0 §4: `<hub prompt>` rides every presentation record.
+        let prompt = cmd.get("prompt").and_then(Json::as_str).map(str::to_string);
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
         let converge_idx = self.resolve(converge);
         let options = cmd
@@ -1440,6 +1514,9 @@ impl Runner {
                 rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
                 rec.insert("kind".into(), Json::String("hub".into()));
                 rec.insert("hub".into(), Json::String(id));
+                if let Some(p) = &prompt {
+                    rec.insert("prompt".into(), Json::String(p.clone()));
+                }
                 rec.insert("chose".into(), Json::Null);
                 rec.insert("note".into(), Json::String("no mock decision — incomplete".into()));
                 marks(&mut rec);
@@ -1497,6 +1574,9 @@ impl Runner {
             rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
             rec.insert("kind".into(), Json::String("hub".into()));
             rec.insert("hub".into(), Json::String(id.clone()));
+            if let Some(p) = &prompt {
+                rec.insert("prompt".into(), Json::String(p.clone()));
+            }
             rec.insert("chose".into(), Json::String(choice_id.clone()));
             marks(&mut rec);
             self.transcript.push(Json::Object(rec));
@@ -1775,8 +1855,12 @@ impl Runner {
                 break;
             }
             if !self.quest_resume {
-                self.transcript
-                    .push(json!({ "kind": "occasion", "occasion": occasion }));
+                let (name, target) = lute_trace::split_occasion(occasion);
+                let mut rec = json!({ "kind": "occasion", "occasion": name });
+                if let Some(t) = target {
+                    rec["target"] = json!(t);
+                }
+                self.transcript.push(rec);
             }
             self.judge_occasion(occasion, &quests, &seg_starts, &mut done);
             self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
@@ -1789,16 +1873,33 @@ impl Runner {
         if self.terminated {
             return;
         }
-        for q in &quests {
+        for (qi, q) in quests.iter().enumerate() {
             if self.quest_status.get(&q.id).map(String::as_str) == Some("active") {
-                for o in &q.objectives {
-                    // An `on=` objective is judged only at its occasion; one
-                    // this walk never raised is not stuck, it is waiting.
-                    let judged = o
-                        .on
-                        .as_ref()
-                        .is_none_or(|on| occasions.contains(on));
-                    if judged && !o.optional && self.eval_raw(&o.done) == Value::Unknown {
+                for (oi, o) in q.objectives.iter().enumerate() {
+                    if o.optional
+                        || done.contains(&(qi, oi))
+                        || self.failed_objectives.contains(&format!("{}.{}", q.id, o.id))
+                    {
+                        continue;
+                    }
+                    // An `on=` objective is judged only at its occasion (for
+                    // its target, dsl 0.23.0 §2); one this walk never raised
+                    // is not stuck, it is waiting.
+                    let judged = o.on.as_ref().is_none_or(|on| {
+                        occasions
+                            .iter()
+                            .any(|r| lute_trace::raise_judges(r, on, o.target.as_deref()))
+                    });
+                    // dsl 0.23.0 §2: an undecidable `by` could still fail the
+                    // quest — as stuck as an undecidable `done`.
+                    let (key, stuck) = if judged && self.eval_raw(&o.done) == Value::Unknown {
+                        ("done", true)
+                    } else if o.by.as_ref().is_some_and(|by| self.eval_raw(by) == Value::Unknown) {
+                        ("failed", true)
+                    } else {
+                        ("done", false)
+                    };
+                    if stuck {
                         self.incomplete = true;
                         // `lute play` names the stuck objective in its halt;
                         // `lute run`'s transcript is unchanged.
@@ -1807,7 +1908,7 @@ impl Runner {
                                 "kind": "objective",
                                 "quest": q.id,
                                 "objective": o.id,
-                                "done": Json::Null,
+                                key: Json::Null,
                             }));
                         }
                     }
@@ -1904,9 +2005,13 @@ impl Runner {
                 }
                 // 1. objectives (monotone; body plays once). An `on=`
                 // objective is judged only at its occasion
-                // ([`Runner::judge_occasion`]), never continuously.
+                // ([`Runner::judge_occasion`]), never continuously; a failed
+                // one never again.
                 for (oi, o) in q.objectives.iter().enumerate() {
-                    if o.on.is_some() || done.contains(&(qi, oi)) {
+                    if o.on.is_some()
+                        || done.contains(&(qi, oi))
+                        || self.failed_objectives.contains(&format!("{}.{}", q.id, o.id))
+                    {
                         continue;
                     }
                     if self.truthy(&o.done) == Some(true) {
@@ -1914,19 +2019,42 @@ impl Runner {
                         changed = true;
                     }
                 }
-                // 2. fail BEFORE derived completion (§6.3 precedence).
-                if let Some(fail) = &q.fail {
-                    if self.truthy(fail) == Some(true) {
-                        self.set_quest_state(&q.id, "failed");
-                        // dsl 0.16.0 §3 D-D: fresh `failed` → grant
-                        // `on="failed"` quest rewards BEFORE `questFailed`
-                        // handlers and BEFORE the §2.3 downward cascade.
-                        self.emit_grants(&q.id, None, &q.rewards, GrantEvent::Failed);
-                        self.fire_event("questFailed", Some(&q.id), handlers, seg_starts);
-                        self.cascade_children(&q.id, quests, parent_of, handlers, seg_starts);
-                        changed = true;
+                // 1b. dsl 0.23.0 §2: deadlines, after the objectives were
+                // judged — a not-done objective whose `by` is true fails
+                // the first time; a failed required objective fails its
+                // quest below.
+                let mut missed = false;
+                for (oi, o) in q.objectives.iter().enumerate() {
+                    let Some(by) = &o.by else { continue };
+                    let key = format!("{}.{}", q.id, o.id);
+                    if done.contains(&(qi, oi)) || self.failed_objectives.contains(&key) {
                         continue;
                     }
+                    if self.truthy(by) == Some(true) {
+                        self.failed_objectives.insert(key);
+                        self.transcript.push(json!({
+                            "kind": "objective",
+                            "quest": q.id,
+                            "objective": o.id,
+                            "failed": true,
+                        }));
+                        missed |= !o.optional;
+                        changed = true;
+                    }
+                }
+                // 2. fail BEFORE derived completion (§6.3 precedence).
+                let failed = missed
+                    || q.fail.as_ref().is_some_and(|fail| self.truthy(fail) == Some(true));
+                if failed {
+                    self.set_quest_state(&q.id, "failed");
+                    // dsl 0.16.0 §3 D-D: fresh `failed` → grant
+                    // `on="failed"` quest rewards BEFORE `questFailed`
+                    // handlers and BEFORE the §2.3 downward cascade.
+                    self.emit_grants(&q.id, None, &q.rewards, GrantEvent::Failed);
+                    self.fire_event("questFailed", Some(&q.id), handlers, seg_starts);
+                    self.cascade_children(&q.id, quests, parent_of, handlers, seg_starts);
+                    changed = true;
+                    continue;
                 }
                 // 3. derived completion: all non-optional objectives done.
                 let complete = q
@@ -1980,7 +2108,9 @@ impl Runner {
     }
 
     /// dsl 0.21.0 §7a.2: raise `occasion` — every ACTIVE quest judges its
-    /// not-yet-done `on="<occasion>"` objectives, document order. The
+    /// not-yet-done `on="<occasion>"` objectives, document order. The raise
+    /// is `name` or `name@target` (dsl 0.23.0 §2): an objective with a
+    /// `target` is judged only by a raise for it; a failed one never. The
     /// caller settles the lifecycle afterwards (`fail` before completion).
     fn judge_occasion(
         &mut self,
@@ -1996,7 +2126,14 @@ impl Runner {
                 {
                     break;
                 }
-                if o.on.as_deref() != Some(occasion) || done.contains(&(qi, oi)) {
+                let judged = o
+                    .on
+                    .as_deref()
+                    .is_some_and(|on| lute_trace::raise_judges(occasion, on, o.target.as_deref()));
+                if !judged
+                    || done.contains(&(qi, oi))
+                    || self.failed_objectives.contains(&format!("{}.{}", q.id, o.id))
+                {
                     continue;
                 }
                 if self.truthy(&o.done) == Some(true) {
@@ -2119,6 +2256,21 @@ impl Runner {
                 rec.insert("objective".into(), Json::String(oid.to_string()));
             }
             rec.insert("reward".into(), Json::Object(reward));
+            // dsl 0.23.0 §8: a kind that credits a path adds the amount there.
+            // A range is the engine's roll (D-C), so the reference runner
+            // credits scalar amounts only.
+            if let (Some(path), Some(n)) = (&r.credits, r.amount) {
+                let before = match self.state.get(path) {
+                    Some(Value::Num(v)) => *v,
+                    _ => 0.0,
+                };
+                let after = before + n as f64;
+                self.state.insert(path.clone(), Value::Num(after));
+                rec.insert(
+                    "credited".into(),
+                    json!({ "path": path, "value": after }),
+                );
+            }
             if matches!(event, GrantEvent::Failed) {
                 rec.insert("onFailed".into(), Json::Bool(true));
             }
@@ -2184,7 +2336,8 @@ impl Runner {
 
     /// Present ONE lore entry (dsl 0.19.0 §6, `docs/runtime/lore-entries.md`
     /// `present()`): `firstRead = !entry.<id>.read`; run the body segment —
-    /// from `body` up to the next `entry` record, the `<on>`-body
+    /// from `body` up to the next `entry` or `beat` record (dsl 0.23.0 §4:
+    /// a lore artifact interleaves both), the `<on>`-body
     /// termination rule — with `set`/`assert`/`retract` applied only on a
     /// first read; then, on a first read that ran to completion, the
     /// ENGINE's `entry.<id>.read = true` write. `when` is evaluated and
@@ -2224,17 +2377,66 @@ impl Runner {
         }));
         let body = cmd.get("body").and_then(Json::as_str).unwrap_or("");
         let start = self.resolve(body);
-        let stop = self.commands[at + 1..]
-            .iter()
-            .position(|c| c.get("kind").and_then(Json::as_str) == Some("entry"))
-            .map(|i| at + 1 + i)
-            .unwrap_or(self.commands.len());
+        let stop = self.segment_stop(at);
         self.apply_effects = first_read;
         self.run_range(start, stop);
         self.apply_effects = true;
         if first_read && !self.incomplete && self.fatal.is_none() {
             self.state.insert(read_path, Value::Bool(true));
         }
+    }
+
+    /// Where the body segment of the lore head record at `at` ends: the next
+    /// `entry` or `beat` head record, or the end of the artifact.
+    fn segment_stop(&self, at: usize) -> usize {
+        self.commands[at + 1..]
+            .iter()
+            .position(|c| matches!(c.get("kind").and_then(Json::as_str), Some("entry" | "beat")))
+            .map(|i| at + 1 + i)
+            .unwrap_or(self.commands.len())
+    }
+
+    /// Present ONE bundle beat (dsl 0.23.0 §4): its body segment runs like a
+    /// scene's — every effect applies (a beat is spent by presentation, not
+    /// by a read flag). `when` is evaluated and recorded as `eligible` on the
+    /// `beat` transcript event, not enforced, exactly as an entry's. The id
+    /// matches the record's canonical `<document id>.<beat id>`, or its bare
+    /// beat id.
+    fn run_bundle_beat(&mut self) {
+        let id = self.bundle_beat.clone().unwrap_or_default();
+        let suffix = format!(".{id}");
+        let beats: Vec<usize> = (0..self.commands.len())
+            .filter(|&i| self.commands[i].get("kind").and_then(Json::as_str) == Some("beat"))
+            .collect();
+        let record_id = |i: usize| self.commands[i].get("id").and_then(Json::as_str).unwrap_or("");
+        let at = beats
+            .iter()
+            .copied()
+            .find(|&i| record_id(i) == id)
+            .or_else(|| beats.iter().copied().find(|&i| record_id(i).ends_with(&suffix)));
+        let Some(at) = at else {
+            let declared: Vec<&str> = beats.iter().map(|&i| record_id(i)).collect();
+            self.fatal = Some(format!(
+                "`--beat {id}` names no beat in this artifact (declared: {})",
+                declared.join(", ")
+            ));
+            return;
+        };
+        let cmd = self.commands[at].clone();
+        let eligible = match cel_raw(cmd.get("when")) {
+            None => Json::Bool(true),
+            Some(raw) => self.truthy(&raw).map(Json::Bool).unwrap_or(Json::Null),
+        };
+        self.transcript.push(json!({
+            "addr": addr(&cmd),
+            "kind": "beat",
+            "id": cmd.get("id").cloned().unwrap_or(Json::Null),
+            "eligible": eligible,
+        }));
+        let body = cmd.get("body").and_then(Json::as_str).unwrap_or("");
+        let start = self.resolve(body);
+        let stop = self.segment_stop(at);
+        self.run_range(start, stop);
     }
 
     // ── output ─────────────────────────────────────────────────────────
@@ -2307,8 +2509,12 @@ impl Runner {
                     e.get("chose").and_then(Json::as_str).unwrap_or("(none)")
                 ),
                 "hub" => format!(
-                    "  {a}  hub    [{}] -> {}",
+                    "  {a}  hub    [{}]{} -> {}",
                     e.get("hub").and_then(Json::as_str).unwrap_or(""),
+                    e.get("prompt")
+                        .and_then(Json::as_str)
+                        .map(|p| format!(" \"{p}\""))
+                        .unwrap_or_default(),
                     e.get("chose").and_then(Json::as_str).unwrap_or("(none)")
                 ),
                 "match" => format!(
@@ -2329,6 +2535,17 @@ impl Runner {
                     };
                     format!(
                         "  {a}  entry  {} ({read}{gate})",
+                        e.get("id").and_then(Json::as_str).unwrap_or("")
+                    )
+                }
+                "beat" => {
+                    let gate = match e.get("eligible").and_then(Json::as_bool) {
+                        Some(true) => "",
+                        Some(false) => " (not eligible: `when` is false)",
+                        None => " (eligibility unknown)",
+                    };
+                    format!(
+                        "  {a}  beat   {}{gate}",
                         e.get("id").and_then(Json::as_str).unwrap_or("")
                     )
                 }
@@ -2361,14 +2578,26 @@ impl Runner {
                         e.get("quest").and_then(Json::as_str).unwrap_or("")
                     )
                 }
-                "occasion" => format!(
-                    "  occasion {}",
-                    e.get("occasion").and_then(Json::as_str).unwrap_or("")
-                ),
+                "occasion" => {
+                    let target = e
+                        .get("target")
+                        .and_then(Json::as_str)
+                        .map_or_else(String::new, |t| format!(" → {t}"));
+                    format!(
+                        "  occasion {}{target}",
+                        e.get("occasion").and_then(Json::as_str).unwrap_or("")
+                    )
+                }
                 "objective" => format!(
-                    "  {}.{} done",
+                    "  {}.{} {}",
                     e.get("quest").and_then(Json::as_str).unwrap_or(""),
-                    e.get("objective").and_then(Json::as_str).unwrap_or("")
+                    e.get("objective").and_then(Json::as_str).unwrap_or(""),
+                    // dsl 0.23.0 §2: a `by` deadline passed first.
+                    if e.get("failed").and_then(Json::as_bool) == Some(true) {
+                        "failed (by)"
+                    } else {
+                        "done"
+                    }
                 ),
                 "quest" => format!(
                     "  quest {} -> {}",
@@ -2496,6 +2725,8 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
                     quest: o.get("quest").and_then(Json::as_str).map(str::to_string),
                     rewards: parse_rewards(o),
                     on: o.get("on").and_then(Json::as_str).map(str::to_string),
+                    by: cel_raw(o.get("by")),
+                    target: o.get("target").and_then(Json::as_str).map(str::to_string),
                 })
                 .collect()
         })
@@ -2538,6 +2769,7 @@ fn parse_reward(r: &Json) -> RewardRec {
         amount_max: r.get("amountMax").and_then(Json::as_i64),
         when: cel_raw(r.get("when")),
         on: r.get("on").and_then(Json::as_str).map(str::to_string),
+        credits: r.get("credits").and_then(Json::as_str).map(str::to_string),
     }
 }
 

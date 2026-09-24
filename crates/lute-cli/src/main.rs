@@ -74,10 +74,12 @@ macro_rules! outln {
     }};
 }
 
+mod beats_cmd;
 mod compile_all;
 mod context;
 mod doctor;
 mod explain;
+mod knowledge;
 mod lint;
 mod loc;
 mod lore_report;
@@ -162,6 +164,13 @@ enum Command {
         /// (spec §5).
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
+        /// Work in progress (dsl 0.23.0 §10): report `E-ENTRY-UNREACHABLE`,
+        /// `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings
+        /// when only relations nothing produces yet (no seed, assert, rule,
+        /// or reserved declaration) make the guard dead. A relation that has
+        /// producers but can never match stays an error.
+        #[arg(long)]
+        wip: bool,
     },
     /// Run configurable content/metric advisory lints over a `.lute`
     /// document or a directory tree (https://lute-lang.vercel.app/tooling/linting/).
@@ -380,10 +389,17 @@ enum Command {
         /// 0.19.0 §8): its lines, the `<match>` arm taken, and the
         /// `::set`/`::assert`/`::retract` a first read applies — or skips,
         /// when the mock seeds `entry.<id>.read: true`. REQUIRED for a lore
-        /// document (it has no sequence to walk); `E-TRACE-ENTRY` (exit 1)
-        /// on a non-lore document or an unknown id.
+        /// document without `--beat` (it has no sequence to walk);
+        /// `E-TRACE-ENTRY` (exit 1) on a non-lore document or an unknown id.
         #[arg(long, value_name = "ID")]
         entry: Option<String>,
+        /// Present ONE bundle `<beat>` of a `kind: lore` document (dsl
+        /// 0.23.0 §4), by its local id or its canonical `<document id>.<beat
+        /// id>`: its body walked like a scene shot body (`--choose` picks),
+        /// every effect applied, its `when` shown, not enforced.
+        /// `E-TRACE-BEAT` (exit 1) on a non-lore document or an unknown id.
+        #[arg(long, value_name = "ID", conflicts_with = "entry")]
+        beat: Option<String>,
         /// Do not apply the project's seed facts and Datalog rules (dsl
         /// 0.22.0 §6): an unmocked derived atom is unknown and each derived
         /// read is noted, as in 0.21. Overrides the mock's `derive:`.
@@ -458,10 +474,17 @@ enum Command {
         #[arg(long)]
         json: bool,
         /// Present ONE `entry` record of a lore artifact by id (dsl 0.19.0
-        /// §8, docs/runtime/lore-entries.md). Required for a lore artifact
-        /// (exit 2 without it); refused (exit 2) on any other artifact kind.
+        /// §8, docs/runtime/lore-entries.md). A lore artifact needs exactly
+        /// one of `--entry`/`--beat` (exit 2 otherwise); refused (exit 2) on
+        /// any other artifact kind.
         #[arg(long, value_name = "ID")]
         entry: Option<String>,
+        /// Present ONE bundle `beat` record of a lore artifact (dsl 0.23.0
+        /// §4) by canonical id `<document id>.<beat id>` (or the bare beat id
+        /// when unambiguous): its body segment runs like a scene, every
+        /// effect applied. Refused (exit 2) on any other artifact kind.
+        #[arg(long, value_name = "ID", conflicts_with = "entry")]
+        beat: Option<String>,
     },
     /// Play a story through a whole project as a sequence of raised
     /// occasions (dsl 0.21.0 §6). Compiles the WHOLE project in memory
@@ -580,6 +603,62 @@ enum Command {
         #[command(subcommand)]
         command: Option<ScenarioCommand>,
     },
+    /// Every beat of the project, per occasion and target, in selection
+    /// order (priority descending, then project order) with its priority,
+    /// `once`, `after:`, `when` and the static verdicts `check-project`
+    /// reaches about it — unreachable, shadowed, tied, once-per-run over
+    /// user state (dsl 0.23.0 §1). Read-only; documents need not check
+    /// clean. Exit `0` on success, `2` on an I/O failure or an unknown
+    /// `--occasion`.
+    Beats {
+        /// Directory to walk recursively for `*.lute` files.
+        dir: PathBuf,
+        /// Only this occasion's ladders (repeatable).
+        #[arg(long, value_name = "OCCASION")]
+        occasion: Vec<String>,
+        /// Only the ladders raised for this target (repeatable).
+        #[arg(long, value_name = "TARGET")]
+        target: Vec<String>,
+        /// Emit the report as JSON instead of human-readable lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Evaluate beat eligibility over a grid of state values (dsl 0.23.0
+    /// §1): for every cell of the `--axis` product, starting from the
+    /// `--script` save (or the declared defaults), the winner and the
+    /// eligible beats it shadows for every listed occasion — play's own
+    /// eligibility, no presentation. Beats never eligible in any cell are
+    /// listed at the end. Exit `0` on success, `1` when the project does not
+    /// compile, `2` on an I/O or usage failure.
+    Calendar {
+        /// Project directory (`lute.project.yaml`).
+        dir: PathBuf,
+        /// One grid axis: a declared state path and its values, an
+        /// inclusive integer range `run.day=1..7` or a list
+        /// `run.slot=morning,afternoon,night` (repeatable; the first axis
+        /// varies slowest).
+        #[arg(long, value_name = "PATH=VALUES", required = true, value_parser = play::calendar::parse_axis_flag)]
+        axis: Vec<(String, Vec<String>)>,
+        /// An occasion to evaluate (repeatable; default: every occasion a
+        /// beat answers).
+        #[arg(long, value_name = "OCCASION")]
+        occasion: Vec<String>,
+        /// A target to raise targeted occasions for (repeatable; default:
+        /// the occasion's declared domain, else every target its beats name).
+        #[arg(long, value_name = "TARGET")]
+        target: Vec<String>,
+        /// A play script whose save (`state:`/`facts:`/`visited:`/
+        /// `presented:`/`quests:`/`entriesRead:`, dsl 0.22.0 §3) every cell
+        /// starts from; its `steps:` are not played and may be omitted.
+        #[arg(long, value_name = "FILE")]
+        script: Option<PathBuf>,
+        /// Emit the grid as JSON.
+        #[arg(long, conflicts_with = "csv")]
+        json: bool,
+        /// Emit one CSV row per cell and occasion/target.
+        #[arg(long)]
+        csv: bool,
+    },
     /// Print the three independent version axes (docs/versioning.md): the
     /// TOOLCHAIN version (this CLI + workspace crates), the LANGUAGE version
     /// (the grammar/semantics the checker enforces), and the IR schema
@@ -612,6 +691,16 @@ enum ScenarioCommand {
     Envelope {
         /// A scene's canonical key, or `quest:<id>` for a quest.
         node_id: String,
+    },
+    /// Trace every fact-guarded beat, entry and objective to the relations
+    /// its condition reads, and each relation to its producers through the
+    /// rules: asserting documents, seed facts, the engine (reserved), or
+    /// nothing (dsl 0.23.0 §1).
+    Knowledge {
+        /// Only this node: a scene key, an entry id, a `<quest>.<objective>`
+        /// id, or `quest:<id>` for every objective of a quest.
+        #[arg(long = "for", value_name = "NODE")]
+        for_node: Option<String>,
     },
 }
 
@@ -739,6 +828,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-BRANCH-PROMPT",
     "E-BRANCH-TIMEOUT",
     "E-CAPABILITY-MISMATCH",
+    "E-CAST-UNKNOWN",
     "E-CEL-PARSE",
     "E-CEL-PROFILE",
     "E-CHOICE-DUP",
@@ -911,6 +1001,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-TIMELINE-DURATION",
     "E-TITLE-PLACEMENT",
     "E-TRACE-ACCEPT",
+    "E-TRACE-BEAT",
     "E-TRACE-CHOICE",
     "E-TRACE-ENTRY",
     "E-TRACE-EVENT",
@@ -966,6 +1057,7 @@ const DENIABLE_CODES: &[&str] = &[
     "W-QUEST-HANDLER-DEAD",
     "W-QUEST-REF-UNKNOWN",
     "W-QUEST-STATE-ISSET",
+    "W-REWARD-DOUBLE-CREDIT",
     "W-STAGE-ABSENT",
     "W-TEXT-LOOKS-LIKE-REF",
     "W-TIMELINE-CLIPS",
@@ -1064,11 +1156,13 @@ fn main() -> ExitCode {
             providers,
             deny,
             deny_warnings,
+            wip,
         } => run_check_project(
             &dir,
             json,
             providers.as_deref(),
             &DenyPolicy::new(&deny, deny_warnings),
+            wip,
         ),
         Command::Lint {
             path,
@@ -1136,6 +1230,7 @@ fn main() -> ExitCode {
             providers,
             project,
             entry,
+            beat,
             no_derive,
         } => run_trace(
             &file,
@@ -1150,6 +1245,7 @@ fn main() -> ExitCode {
             providers.as_deref(),
             project.as_deref(),
             entry.as_deref(),
+            beat.as_deref(),
             no_derive,
         ),
         Command::Tag { path, force } => rewrite::run_tag(&path, force),
@@ -1173,12 +1269,14 @@ fn main() -> ExitCode {
             occasion,
             json,
             entry,
+            beat,
         } => runner::run_artifact(
             &artifact,
             mock.as_deref(),
             occasion,
             json,
             entry.as_deref(),
+            beat.as_deref(),
         ),
         Command::Play {
             dir,
@@ -1216,6 +1314,29 @@ fn main() -> ExitCode {
             None | Some("text") => run_scenario(&dir, providers.as_deref(), command),
             Some(fmt) => scenario_fmt::run(&dir, providers.as_deref(), command, fmt),
         },
+        Command::Beats {
+            dir,
+            occasion,
+            target,
+            json,
+        } => beats_cmd::run_beats(&dir, &occasion, &target, json),
+        Command::Calendar {
+            dir,
+            axis,
+            occasion,
+            target,
+            script,
+            json,
+            csv,
+        } => play::calendar::run_calendar(
+            &dir,
+            &axis,
+            &occasion,
+            &target,
+            script.as_deref(),
+            json,
+            csv,
+        ),
         Command::Version { json } => run_version(json),
     }
 }
@@ -2248,6 +2369,9 @@ fn compute_conn_fixpoint(
     for (_path, _doc, folded) in group_full {
         root_vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
+    // dsl 0.23.0 §9: seeds nothing can remove — a negated rule atom over one
+    // of them never holds.
+    let stable = lute_check::stable_seeds(group, &root_vocab);
     let mut unreachable_quests = lifecycle_unreachable_quests.clone();
     // dsl 0.10.0 §5.1 (D-N), dsl 0.20.0 §5: grows inside the loop like
     // `newly_dead`, and is tracked separately so the two derived causes keep
@@ -2275,7 +2399,7 @@ fn compute_conn_fixpoint(
         )
         .into_iter()
         .filter_map(|(_path, a)| lute_check::GroundFact::from_pattern(&a.pattern));
-        let may = lute_check::MaySet::build(&root_vocab, live_facts);
+        let may = lute_check::MaySet::build(&root_vocab, live_facts, &stable);
         let must = must.get_or_insert_with(|| {
             lute_check::compute_must(group, &foldeds, conn_graph, &root_vocab, &may)
         });
@@ -2359,10 +2483,13 @@ fn compute_conn_fixpoint(
 /// FS-free and format-free). Shared by [`run_check_project`] (grouping +
 /// human/JSON output) and [`reconciled_project_results`] (the compile/trace
 /// project-aware §5 gate).
+/// `wip` grades the fact-envelope dead-guard verdicts for `check-project
+/// --wip` (dsl 0.23.0 §10).
 #[allow(clippy::type_complexity)]
 fn reconcile_collected(
     mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
     by_root: &ByRoot,
+    wip: bool,
 ) -> (
     Vec<(PathBuf, lute_check::CheckResult)>,
     Vec<(PathBuf, Diagnostic)>,
@@ -2485,12 +2612,21 @@ fn reconcile_collected(
         // envelope (built once, by the fixpoint above). Only verdicts the
         // facts newly make decidable are added; one the per-file `check()`
         // already reported for the same slot is not repeated.
+        let wip_env = wip.then(|| {
+            let mut vocab = lute_check::RootVocab::default();
+            for (_, _, folded) in group_full {
+                vocab.add(&folded.env.rel_vocab, &folded.env.domains);
+            }
+            let unproduced = lute_check::unproduced_relations(group, &vocab);
+            fp.fact_env.clone().with_wip(&vocab, &unproduced)
+        });
+        let fact_env = wip_env.as_ref().unwrap_or(&fp.fact_env);
         for (path, doc, folded) in group_full {
             let reported = file_results
                 .iter()
                 .find(|(p, _)| p == path)
                 .map_or(&[][..], |(_, r)| r.diagnostics.as_slice());
-            for d in lute_check::check_fact_guards(path, doc, folded, &fp.fact_env, reported) {
+            for d in lute_check::check_fact_guards(path, doc, folded, fact_env, reported) {
                 project_diags.push((path.clone(), d));
             }
         }
@@ -2774,6 +2910,7 @@ fn run_check_project(
     json: bool,
     providers: Option<&Path>,
     policy: &DenyPolicy,
+    wip: bool,
 ) -> ExitCode {
     // 0.10.0 §7 (D-D): validate EVERY manifest under the tree, once each,
     // before any document work. Anchored at the manifest's own path, which
@@ -2800,7 +2937,7 @@ fn run_check_project(
         .zip(inputs)
         .collect();
     let (mut file_results, mut project_diags, _nodes_by_path) =
-        reconcile_collected(file_results, &by_root);
+        reconcile_collected(file_results, &by_root, wip);
 
     project_compile_pass(&mut file_results, &mut project_diags, &inputs);
 
@@ -3110,7 +3247,7 @@ fn reconciled_project_results(
         }
     }
     let (file_results, project_diagnostics, nodes_by_path) =
-        reconcile_collected(file_results, &by_root);
+        reconcile_collected(file_results, &by_root, false);
     Ok(ReconciledProject {
         per_doc: file_results.into_iter().collect(),
         project_diagnostics,
@@ -4354,6 +4491,35 @@ fn print_unanchored(out: &mut String, unanchored: &[lute_check::connectivity::No
     }
 }
 
+/// dsl 0.23.0 §1: the prerequisite references the graph does not draw
+/// because a quest declares no `after=` — counted and named, so a missing
+/// edge is explained where it is missed.
+fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedRef]) {
+    use lute_check::connectivity::OmittedRef;
+    if omitted.is_empty() {
+        return;
+    }
+    outln!(
+        out,
+        "  note: {} `visited()`/`completed()`/`active()` reference(s) not drawn — a quest joins \
+         this graph only by declaring `after` (even `after=\"\"`):",
+        omitted.len()
+    );
+    for r in omitted {
+        match r {
+            OmittedRef::Lifecycle { from, kind, quest } => outln!(
+                out,
+                "    {from} -> {}(\"{quest}\") — quest({quest}) declares no `after`",
+                kind.as_str()
+            ),
+            OmittedRef::Visited { quest, scene } => outln!(
+                out,
+                "    quest({quest}) reads visited('{scene}') — quest({quest}) declares no `after`"
+            ),
+        }
+    }
+}
+
 fn run_scenario_graph(out: &mut String, by_root: &ByRoot) -> ExitCode {
     if by_root.is_empty() {
         outln!(out, "lute: no .lute files found");
@@ -4369,6 +4535,10 @@ fn run_scenario_graph(out: &mut String, by_root: &ByRoot) -> ExitCode {
         let (graph, _cycle_diags) =
             lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
         print_graph_for_root(out, root, &graph, &unanchored_quests(&quest_ids, &graph));
+        print_omitted(
+            out,
+            &lute_check::connectivity::omitted_refs(&docs, &graph, &quest_ids),
+        );
     }
     ExitCode::SUCCESS
 }
@@ -4396,6 +4566,9 @@ fn run_scenario(
         }
         Some(ScenarioCommand::Envelope { node_id }) => {
             run_scenario_envelope(&mut out, dir, &by_root, &file_results, &node_id)
+        }
+        Some(ScenarioCommand::Knowledge { for_node }) => {
+            knowledge::run_text(&mut out, &by_root, &file_results, for_node.as_deref())
         }
     };
     if write_stdout(&out).is_err() {
@@ -4753,6 +4926,15 @@ fn authoring_surface(
     root.insert("directives".into(), directives.into());
     root.insert("bridges".into(), bridges.into());
     root.insert("rewardKinds".into(), reward_kinds);
+    // dsl 0.23.0 §7: the declared cast (plugins ∪ imported schemas) the
+    // speakers are checked against; omitted while speakers are shape-only.
+    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &[]);
+    if !cast.is_empty() {
+        root.insert(
+            "cast".into(),
+            serde_json::to_value(&cast).unwrap_or_else(|_| serde_json::json!({})),
+        );
+    }
     // dsl 0.21.0 §2: the occasion vocabulary beats answer with `on:`
     // (empty = shape-only). Key-sorted by the snapshot's BTreeMap.
     root.insert(
@@ -4972,6 +5154,19 @@ fn context_outline(surface: &serde_json::Value) -> String {
             let service = bridge["service"].as_str().unwrap_or("");
             let operation = bridge["operation"].as_str().unwrap_or("");
             let _ = writeln!(out, "  {service}/{operation}");
+        }
+    }
+    if let Some(cast) = surface.get("cast").and_then(serde_json::Value::as_object) {
+        let _ = writeln!(out, "cast ({}):", cast.len());
+        for (id, m) in cast {
+            match m["name"].as_str() {
+                Some(name) => {
+                    let _ = writeln!(out, "  {id} — {name}");
+                }
+                None => {
+                    let _ = writeln!(out, "  {id}");
+                }
+            }
         }
     }
     if let Some(reward_kinds) = surface["rewardKinds"].as_object() {
@@ -5509,6 +5704,7 @@ fn run_trace(
     providers: Option<&Path>,
     project: Option<&Path>,
     entry: Option<&str>,
+    beat: Option<&str>,
     no_derive: bool,
 ) -> ExitCode {
     let Some(built) = build_input(file, providers, project, None) else {
@@ -5528,19 +5724,40 @@ fn run_trace(
     }
 
     // dsl 0.19.0 §8: a lore document is looked up, not played — there is no
-    // sequence to walk, so tracing one without `--entry` is a usage error.
-    // (`--entry` on a non-lore document / an unknown id is `E-TRACE-ENTRY`,
-    // refused by `lute_trace` below.)
-    if entry.is_none() {
+    // sequence to walk, so tracing one without `--entry` / `--beat` (dsl
+    // 0.23.0 §4) is a usage error. (Either flag on a non-lore document / an
+    // unknown id is `E-TRACE-ENTRY` / `E-TRACE-BEAT`, refused by `lute_trace`
+    // below.)
+    if entry.is_none() && beat.is_none() {
         let (doc, _) = lute_syntax::parse(&input.text);
         let (folded, _, _) = lute_check::fold_env(&doc, &input);
         if folded.doc_kind == lute_check::DocKind::Lore {
-            let ids: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
+            let mut ways = Vec::new();
+            if !doc.entries.is_empty() || doc.beats.is_empty() {
+                let ids: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
+                ways.push(format!(
+                    "`--entry <id>` to present one entry (declared: {})",
+                    ids.join(", ")
+                ));
+            }
+            if !doc.beats.is_empty() {
+                let ids: Vec<String> = doc
+                    .beats
+                    .iter()
+                    .map(|b| match folded.typed.id.as_deref() {
+                        Some(doc_id) => lute_check::bundle_beat_key(doc_id, &b.id),
+                        None => b.id.clone(),
+                    })
+                    .collect();
+                ways.push(format!(
+                    "`--beat <id>` to present one bundle beat (declared: {})",
+                    ids.join(", ")
+                ));
+            }
             eprintln!(
-                "lute trace: {} is a lore document — pass `--entry <id>` to present one entry \
-                 (declared: {}) (dsl 0.19.0 §8)",
+                "lute trace: {} is a lore document — pass {} (dsl 0.19.0 §8, 0.23.0 §4)",
                 file.display(),
-                ids.join(", ")
+                ways.join(" or ")
             );
             return ExitCode::from(2);
         }
@@ -5680,15 +5897,24 @@ fn run_trace(
                 .and_then(|root| project_assert_relations(&root, false, providers)),
         }
     };
-    let (report, exit) = match entry {
-        Some(id) => lute_trace::trace_entry_with_check(
+    let (report, exit) = match (entry, beat) {
+        (Some(id), _) => lute_trace::trace_entry_with_check(
             &input,
             gate,
             mocks,
             id,
             project_asserts.as_ref(),
         ),
-        None => lute_trace::trace_with_check(&input, gate, mocks, project_asserts.as_ref()),
+        (None, Some(id)) => lute_trace::trace_beat_with_check(
+            &input,
+            gate,
+            mocks,
+            id,
+            project_asserts.as_ref(),
+        ),
+        (None, None) => {
+            lute_trace::trace_with_check(&input, gate, mocks, project_asserts.as_ref())
+        }
     };
 
     match exit {
@@ -5718,6 +5944,8 @@ fn run_trace(
                     );
                 } else if diags.iter().all(|d| d.code == lute_trace::E_TRACE_ENTRY) {
                     println!("trace refused: {} — invalid `--entry`", file.display());
+                } else if diags.iter().all(|d| d.code == lute_trace::E_TRACE_BEAT) {
+                    println!("trace refused: {} — invalid `--beat`", file.display());
                 } else {
                     println!("trace refused: {} — invalid mock input", file.display());
                 }

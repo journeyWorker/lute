@@ -179,3 +179,43 @@ fn hub_choice_when_guard_is_checked_by_defassign() {
          (guard must not escape defassign); got {out:?}",
     );
 }
+
+const HUB_PROMPT_BODY: &str = "<choice id=\"a\" label=\"A\" once>\n@narrator: a.\n</choice>\n\
+     <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye.\n</choice>\n</hub>\n";
+
+// dsl 0.23.0 §4: `<hub prompt>` is a permitted attribute — a hub carrying one
+// checks clean (it was `E-UNKNOWN-ATTR` before 0.23.0).
+#[test]
+fn hub_prompt_checks_clean() {
+    let res = run(&format!(
+        "{FM}## Shot 1.\n<hub id=\"look\" prompt=\"Where do you look?\">\n{HUB_PROMPT_BODY}"
+    ));
+    let out: Vec<String> = res.diagnostics.iter().map(|d| d.code.clone()).collect();
+    assert!(out.is_empty(), "{out:?}");
+    assert!(res.ok);
+}
+
+// An empty/whitespace `<hub prompt>` is the same fault as an empty
+// `<branch prompt>`: `E-BRANCH-PROMPT`, anchored at the attribute, with a
+// message naming `<hub prompt>`.
+#[test]
+fn hub_empty_prompt_is_branch_prompt_error() {
+    for bad in ["", "   "] {
+        let t = format!("{FM}## Shot 1.\n<hub id=\"look\" prompt=\"{bad}\">\n{HUB_PROMPT_BODY}");
+        let diags = run(&t).diagnostics;
+        let codes: Vec<&str> = diags.iter().map(|d| d.code.as_str()).collect();
+        assert_eq!(codes, vec!["E-BRANCH-PROMPT"], "{bad:?}");
+        let d = &diags[0];
+        assert_eq!(&t[d.span.byte_start..d.span.byte_end], format!("prompt=\"{bad}\""));
+        assert!(d.message.contains("`<hub prompt>`"), "{}", d.message);
+    }
+}
+
+// Admitting `prompt` does not reopen the hub's attribute set.
+#[test]
+fn hub_unknown_attr_still_rejected_beside_prompt() {
+    let out = codes(&format!(
+        "{FM}## Shot 1.\n<hub id=\"look\" prompt=\"Where?\" timeout=\"5\">\n{HUB_PROMPT_BODY}"
+    ));
+    assert_eq!(out, vec!["E-UNKNOWN-ATTR".to_string()]);
+}

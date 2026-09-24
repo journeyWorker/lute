@@ -199,6 +199,7 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
         reward_kinds: Vec::new(),
         occasions: Vec::new(),
         lints: Vec::new(),
+        cast: Vec::new(),
     };
     let installed = InstalledPlugins {
         by_id: BTreeMap::from([("third.party".to_string(), InstalledPlugin { loaded: pkg })]),

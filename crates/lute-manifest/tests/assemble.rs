@@ -48,6 +48,7 @@ fn plugin_with_directive(id: &str, dname: &str) -> LoadedPlugin {
         reward_kinds: vec![],
         occasions: vec![],
         lints: vec![],
+        cast: vec![],
     }
 }
 
@@ -938,6 +939,7 @@ fn reward_kind(name: &str, target: Option<&str>) -> RewardKindDecl {
         name: name.into(),
         target: target.map(|p| RewardTarget { provider: p.into() }),
         attrs: vec![],
+        credits: None,
     }
 }
 

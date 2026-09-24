@@ -170,3 +170,29 @@ fn context_outline_shows_the_new_sections() {
         );
     }
 }
+
+/// dsl 0.23.0 §4: a lore document's `<beat>` bundles are listed by canonical
+/// id (`<document id>.<beat id>`) — the key `visited()` reads — in both the
+/// JSON surface and the outline.
+#[test]
+fn context_lists_bundle_beat_canonical_ids() {
+    let proj = project();
+    write_at(
+        &proj,
+        "lore/barks.lute",
+        "---\nkind: lore\nid: lore.barks\n---\n\n<beat id=\"greet\" on=\"talk\" target=\"npc.mara\">\n  @mara: Hi.\n</beat>\n",
+    );
+    let v: serde_json::Value = serde_json::from_str(&context(&proj, true)).unwrap();
+    assert_eq!(v["ids"]["beats"], serde_json::json!(["lore.barks.greet"]));
+    assert_eq!(v["ids"]["entries"], serde_json::json!(["lampNote"]));
+    let text = context(&proj, false);
+    for expected in [
+        "beats (1; bundle beats; read as visited(\"<id>\")):",
+        "  lore.barks.greet",
+    ] {
+        assert!(
+            text.lines().any(|l| l == expected),
+            "missing line `{expected}`:\n{text}"
+        );
+    }
+}

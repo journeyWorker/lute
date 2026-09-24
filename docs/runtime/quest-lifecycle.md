@@ -15,7 +15,7 @@ state — keeping the lifecycle **total**:
 ```
 unset ──start true / accept──▶ active ──all required objectives done──▶ complete
                                   │
-                                  └────────── fail true ─────────────▶ failed
+                                  └──── fail true / required by missed ─▶ failed
 ```
 
 ### Activation — `start`
@@ -73,7 +73,10 @@ completion (dsl 0.2 §6.3 precedence): if `fail` decides true at any evaluation
 instant, an activated instance transitions to `failed` and fires `questFailed`
 — even if its objectives would otherwise complete. A `fail` that decides true
 unconditionally is `E-QUEST-UNREACHABLE` (the quest fails at the first
-evaluation instant).
+evaluation instant). A **required** objective that misses its `by` deadline
+(§Objectives below) fails its quest the same way, at the same point of the
+evaluation instant: the same `failed` transition, `on="failed"` rewards,
+`questFailed` handlers, and downward cascade to children.
 
 ### Completion — derived from objectives
 
@@ -120,6 +123,8 @@ Each `ObjectiveEntry` in `QuestCmd.objectives`:
 | `title` / `titleLineId` | present only when authored; `titleLineId` is `{questId}.{objectiveId}` for localization. |
 | `body`        | **always present**; the `addr` of the objective's completion-body segment, or `null` when the body is empty. |
 | `on`          | present only when authored (dsl 0.21.0 §7a.2): the occasion at which `done` is judged — see below. |
+| `target`      | present only when authored, always beside `on` (dsl 0.23.0 §2): the objective is judged only when `on` is raised for this target — see below. |
+| `by`          | present only when authored (dsl 0.23.0 §2): a `{raw, expr}` **deadline** predicate — see below. |
 
 **Monotonic completion (dsl §6.3).** Once an objective's `done` predicate holds,
 it stays recorded (`quest.<id>.objectives.<oid>.done = true`); a completed
@@ -149,8 +154,35 @@ is raised. The occasion need not be answered by any beat: an occasion that
 only objectives reference is still raised by the engine at its moment.
 Monotonic completion is unchanged — once recorded, `done` stays recorded
 (until a run-tier quest's reset, §Run-tier quests above). An objective
-carries no target (dsl 0.22.0 §8 defers objective targets to 0.23), so it is
-judged at every raise of its occasion, whatever the target.
+without `target` is judged at every raise of its occasion, whatever the
+target. An objective with `target` (dsl 0.23.0 §2) follows the beat target
+rule (`beats-and-occasions.md`): it is judged only when its occasion is
+raised **for that target** — `on="talk" target="npc.maud"` is judged by a
+`talk` raised for `npc.maud`, never by one raised for `npc.oskar` or without
+a target.
+
+**Deadlines — `by` (dsl 0.23.0 §2).** `by` is a condition slot like `done`
+(the same `Bool` typing, definite-assignment and fact rules). At every
+evaluation instant, after the objectives' `done` were judged, the engine
+evaluates `by` for each objective of the quest that is neither `done` nor
+already failed. The **first** time `by` holds, the objective **fails**: it is
+never judged again — neither `done` nor `by` — for the rest of the quest
+instance. A failed **required** objective fails its quest (§Failure above); a
+failed `optional` objective only closes itself. `by` is judged continuously,
+including on an objective with `on`: a deadline is an event the engine
+observes without a clock, so "done before the fifth day" is
+`by="run.day > 5"`, whatever occasion judges `done`. Because `done` is judged
+first, an objective whose `done` and `by` become true at the same instant is
+done, not failed; and once `done` is recorded, `by` is never evaluated for it
+again. An objective's failure is engine state like the presentation record:
+it is not a state path content reads, and it resets with a run-tier quest.
+The reference tooling shows it: `lute trace` records an objective decision
+`failed` whose guard is the `by` text (an undecidable `by` is reported
+unresolved, exit 3), and `lute run` / `lute play` print `<quest>.<objective>
+failed (by)` (`"failed": true` on the objective record in `--json`). To raise
+an occasion for a target in `lute trace` / `lute run`, write
+`<occasion>@<target>` (`occasions: [talk@npc.maud]`, `--occasion
+talk@npc.maud`); a `lute play` step raises it with `target:`.
 
 **Scenes in objectives.** A `done` (like every condition slot) may read
 `visited('<scene id>')` — true once that scene has been presented in this save
@@ -332,10 +364,14 @@ After **activation** and after **every event**, the engine (0.4.0 §4.6):
 
 1. re-evaluates each objective's `done` predicate (monotonic — once `true`,
    recorded) — except an objective with `on`, which is evaluated only when
-   its occasion is raised (§Objectives above); raising an occasion is itself
-   an evaluation instant, running steps 2–3 after those objectives;
-2. evaluates `fail` **before** derived completion (§6.3 precedence);
-3. fires each lifecycle transition's handlers **once**.
+   its occasion is raised for its target (§Objectives above); raising an
+   occasion is itself an evaluation instant, running steps 2–4 after those
+   objectives;
+2. evaluates each not-done, not-failed objective's `by` deadline; the first
+   time it holds the objective fails (dsl 0.23.0 §2);
+3. evaluates `fail` — and any required objective failed in step 2 —
+   **before** derived completion (§6.3 precedence);
+4. fires each lifecycle transition's handlers **once**.
 
 Event handlers see a **pre-event snapshot** of state and facts (a clone taken
 before the event, dsl 0.2 §4.2); matching arms then run in document order,

@@ -67,7 +67,10 @@ pub struct MockSet {
     pub visited: Vec<String>,
     /// `--occasion`/`occasions:` names, in the order they are raised (dsl
     /// 0.21.0 §7a.2): after a quest walk settles, each raise evaluates the
-    /// `<objective on="<occasion>">` objectives of every active quest.
+    /// `<objective on="<occasion>">` objectives of every active quest. A raise
+    /// FOR a target is written `<occasion>@<target>` (dsl 0.23.0 §2, e.g.
+    /// `talk@npc.maud`): an objective with `target=` is judged only by a
+    /// raise for that target. Read one with [`split_occasion`].
     pub occasions: Vec<String>,
     /// `derive:` (dsl 0.22.0 §6): `None`/`Some(true)` applies the project's
     /// seed facts and Datalog rules over the mocked and asserted facts (the
@@ -82,6 +85,24 @@ impl MockSet {
     pub fn derives(&self) -> bool {
         self.derive.unwrap_or(true)
     }
+}
+
+/// An occasion raise as written in `occasions:` / `--occasion` (dsl 0.23.0
+/// §2): `talk` → `("talk", None)`, `talk@npc.maud` → `("talk",
+/// Some("npc.maud"))`.
+pub fn split_occasion(raw: &str) -> (&str, Option<&str>) {
+    match raw.split_once('@') {
+        Some((name, target)) => (name, Some(target)),
+        None => (raw, None),
+    }
+}
+
+/// dsl 0.23.0 §2: whether an objective `on=on target=target` is judged by
+/// the raise `raw` — the beat target rule: the occasion matches, and the
+/// objective's target is absent or equal to the raise's.
+pub fn raise_judges(raw: &str, on: &str, target: Option<&str>) -> bool {
+    let (name, raised) = split_occasion(raw);
+    name == on && target.is_none_or(|t| raised == Some(t))
 }
 
 /// `--state`/`--mock` literals and `--choose` targets carry no real source
@@ -127,6 +148,11 @@ pub const E_TRACE_ACCEPT: &str = "E-TRACE-ACCEPT";
 /// `kind: lore`, or naming an id no `<entry>` in the document declares — the
 /// `--entry` analogue of [`E_TRACE_ACCEPT`]'s unknown-quest-id refusal.
 pub const E_TRACE_ENTRY: &str = "E-TRACE-ENTRY";
+/// `lute trace --beat <id>` (dsl 0.23.0 §4) on a
+/// document that is not `kind: lore`, or naming an id no `<beat>` in the
+/// document declares (neither the local `<beat id>` nor the canonical
+/// `<document id>.<beat id>`) — the `--beat` analogue of [`E_TRACE_ENTRY`].
+pub const E_TRACE_BEAT: &str = "E-TRACE-BEAT";
 
 /// spec §4 (0.6.1): a WARNING — not a refusal — for a supplied `--fact`/mock-
 /// YAML fact whose relation `lute_check::producible::producible()` judges NOT
@@ -479,6 +505,19 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                     span,
                 ));
             };
+            if key == "occasions" {
+                let (name, target) = split_occasion(s);
+                if name.is_empty() || target.is_some_and(str::is_empty) {
+                    return Err(diag(
+                        E_TRACE_MOCK_PARSE,
+                        format!(
+                            "`occasions:` entry `{s}` must be an occasion name, or \
+                             `<occasion>@<target>` for a raise for a target (dsl 0.23.0 §2)"
+                        ),
+                        span,
+                    ));
+                }
+            }
             out.push(s.to_string());
         }
     }
@@ -907,6 +946,9 @@ fn collect_choice_ids(doc: &Document) -> BTreeMap<String, Vec<String>> {
     for quest in &doc.quests {
         collect_choice_ids_nodes(&quest.body, &mut out);
     }
+    for beat in &doc.beats {
+        collect_choice_ids_nodes(&beat.body, &mut out);
+    }
     out
 }
 
@@ -1106,6 +1148,55 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
         ),
         span,
     )]
+}
+
+/// `--beat <id>` resolution (dsl 0.23.0 §4): the traced document must be
+/// `kind: lore` and declare a `<beat>` whose local id is `id` or whose
+/// canonical id `<document id>.<beat id>` is `id`. Returns the beat's index
+/// in `doc.beats` and its canonical id; [`E_TRACE_BEAT`] otherwise, naming
+/// the declared canonical ids so the fix is one copy away.
+pub(crate) fn resolve_beat(
+    folded: &FoldedEnv,
+    doc: &Document,
+    id: &str,
+) -> Result<(usize, String), Diagnostic> {
+    let span = synthetic_span();
+    if folded.doc_kind != lute_check::DocKind::Lore {
+        return Err(diag(
+            E_TRACE_BEAT,
+            format!(
+                "`--beat {id}` needs a `kind: lore` document; this one declares no `<beat>` \
+                 (dsl 0.23.0 §4)"
+            ),
+            span,
+        ));
+    }
+    let canonical = |local: &str| match folded.typed.id.as_deref() {
+        Some(doc_id) => lute_check::bundle_beat_key(doc_id, local),
+        None => local.to_string(),
+    };
+    let found = doc
+        .beats
+        .iter()
+        .position(|b| b.id == id)
+        .or_else(|| doc.beats.iter().position(|b| canonical(&b.id) == id));
+    if let Some(i) = found {
+        return Ok((i, canonical(&doc.beats[i].id)));
+    }
+    let declared: Vec<String> = doc.beats.iter().map(|b| canonical(&b.id)).collect();
+    let declared = if declared.is_empty() {
+        "no `<beat>`".to_string()
+    } else {
+        declared.join(", ")
+    };
+    Err(diag(
+        E_TRACE_BEAT,
+        format!(
+            "`--beat {id}` names an unknown beat id `{id}`; this document declares: {declared} \
+             (dsl 0.23.0 §4)"
+        ),
+        span,
+    ))
 }
 
 /// STRUCTURAL pre-walk validation (dsl 0.4.0 §4.3): ids/arity/types/

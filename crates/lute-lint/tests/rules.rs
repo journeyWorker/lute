@@ -308,6 +308,26 @@ fn lore_doc_is_not_a_scene_but_its_entry_lines_are_linted() {
     assert_eq!(long[0].0, PathBuf::from("notes.lute"));
 }
 
+/// dsl 0.23.0 §4: a lore document's `<beat>` bundle lines are translatable
+/// lines that line rules see, like entry lines — `dialogue-length` fires on
+/// the over-long beat line, including one nested in a branch choice.
+#[test]
+fn lore_bundle_beat_lines_are_linted() {
+    let long_line: String = (1..=41).map(|n| format!("w{n} ")).collect();
+    let lore = input(
+        "notes.lute",
+        &format!(
+            "---\nid: ship.records\nkind: lore\n---\n\
+             <beat id=\"dock\" on=\"talk\">\n@narrator: {long_line}\n\
+             <branch id=\"ask\">\n<choice id=\"c\" text=\"C\">\n@narrator: {long_line}\n</choice>\n</branch>\n\
+             </beat>\n"
+        ),
+    );
+    let long = only_code(&lint_default(vec![lore]), "L-DIALOGUE-LENGTH");
+    assert_eq!(long.len(), 2, "{long:?}");
+    assert!(long.iter().all(|(p, _)| p == &PathBuf::from("notes.lute")));
+}
+
 fn lint_default(inputs: Vec<LintDocInput>) -> Vec<(PathBuf, lute_core_span::Diagnostic)> {
     lint(
         &inputs,

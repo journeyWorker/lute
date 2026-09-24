@@ -40,6 +40,12 @@
   (attr (key) @_key (string) @name)
   (#eq? @_key "id")) @definition.class
 
+; `<beat id="…">` (dsl 0.23.0 §4) — a lore document's beat bundle; the beat
+; id is a navigable definition, like an entry id.
+(beat
+  (attr (key) @_key (string) @name)
+  (#eq? @_key "id")) @definition.class
+
 ; `<objective id="…">` (§6.4, NEW) — each objective id inside a quest is a
 ; jump target (self-closing or long form; `attr` is reached either way).
 (objective

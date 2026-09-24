@@ -57,6 +57,19 @@
       "additionalProperties": {
         "$ref": "#/definitions/entityDecl"
       }
+    },
+    "cast": {
+      "type": "object",
+      "description": "dsl 0.23.0 §7: speaker id -> `{ name }`. Once any cast is declared (here or by a plugin's `cast` export), a content line whose speaker is outside it is `E-CAST-UNKNOWN`.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "definitions": {

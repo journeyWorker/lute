@@ -102,6 +102,24 @@ fn doctor_reports_plugins_occasions_plays_and_tests() {
     assert!(!text.contains("core-only project"), "{text}");
 }
 
+/// dsl 0.23.0 §4: a lore `<beat>` bundle answers its occasion like an entry
+/// beat, so doctor counts it.
+#[test]
+fn doctor_counts_bundle_beats_answering_an_occasion() {
+    let proj = occasions_project("bundle");
+    write_at(
+        &proj,
+        "lore/talks.lute",
+        "---\nkind: lore\nid: lore.talks\n---\n\n<beat id=\"greet\" on=\"talk\" target=\"npc.mara\">\n  @mara: Hi.\n</beat>\n",
+    );
+    let text = doctor(&proj, &temp_dir("bundle-path"));
+    assert_eq!(
+        line(&text, "occasions (beats answering)").trim(),
+        "• occasions (beats answering): 2 declared, 3 beat(s) — hubVisit (2), talk (1)",
+        "{text}"
+    );
+}
+
 /// Write an executable `lute-lsp` into a fresh directory that prints `stdout`
 /// — standing in for whatever build an editor would find on `PATH`.
 #[cfg(unix)]

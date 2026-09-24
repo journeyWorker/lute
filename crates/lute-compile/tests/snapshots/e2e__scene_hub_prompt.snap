@@ -1,0 +1,103 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "scene",
+  "lute": "0.22.0",
+  "irVersion": "0.22.0",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {
+    "id": "haven.s01ep05",
+    "title": "The lookout"
+  },
+  "state": [
+    {
+      "path": "scene.choices.look",
+      "type": "enum",
+      "domain": [
+        "shore",
+        "leave",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:look"
+    },
+    {
+      "path": "scene.visited.look.leave",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.look.shore",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "dialogue",
+      "speaker": "vesna",
+      "text": "The fog is lifting.",
+      "lineId": "haven.s01ep05.vesna_0010",
+      "voiceKey": "haven.s01ep05.vesna-0010"
+    },
+    {
+      "kind": "hub",
+      "addr": "001-0200",
+      "id": "look",
+      "recordKey": "scene.choices.look",
+      "options": [
+        {
+          "id": "shore",
+          "label": "The shore",
+          "lineId": "haven.s01ep05.look.shore",
+          "once": true,
+          "exit": false,
+          "target": "001-0300"
+        },
+        {
+          "id": "leave",
+          "label": "Head back",
+          "lineId": "haven.s01ep05.look.leave",
+          "once": false,
+          "exit": true,
+          "target": "001-0400"
+        }
+      ],
+      "converge": "001-0600",
+      "prompt": "Where do you look?"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0300",
+      "role": "dialogue",
+      "speaker": "vesna",
+      "text": "Nothing but driftwood.",
+      "lineId": "haven.s01ep05.vesna_0020",
+      "voiceKey": "haven.s01ep05.vesna-0020"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "dialogue",
+      "speaker": "vesna",
+      "text": "Let's go.",
+      "lineId": "haven.s01ep05.vesna_0030",
+      "voiceKey": "haven.s01ep05.vesna-0030"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0500",
+      "target": "001-0600"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "The ridge"
+    }
+  ]
+}

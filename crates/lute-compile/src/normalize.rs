@@ -83,6 +83,11 @@ pub fn normalize_document(
     for entry in &mut doc.entries {
         normalize_nodes(&mut entry.body, components, schema, &mut UseOrdinals::new(), &mut diags);
     }
+    // dsl 0.23.0 §4: a bundle beat body is a scene body, its own identity
+    // scope (like an entry's).
+    for beat in &mut doc.beats {
+        normalize_nodes(&mut beat.body, components, schema, &mut UseOrdinals::new(), &mut diags);
+    }
     // Subquest synthesis (2026-08-31 design §2.1/§2.2) — MUST run here (not
     // in `stage::walk_quest`) so `lute-trace` inherits the derived
     // predicates verbatim: trace calls `normalize_document` before its own
@@ -719,6 +724,9 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                 bind_slot(&mut o.done, args, params);
                 if let Some(w) = &mut o.when {
                     bind_slot(w, args, params);
+                }
+                if let Some(b) = &mut o.by {
+                    bind_slot(b, args, params);
                 }
                 bind_attrs(&mut o.attrs, args, params);
                 bind_params(&mut o.body, args, params);

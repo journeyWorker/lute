@@ -284,6 +284,48 @@ impl Parser<'_> {
         }
     }
 
+    /// `BeatDecl ::= "<beat" Attrs ">" SceneBody "</beat>"` (dsl 0.23.0 §4).
+    /// TOP-LEVEL ONLY, exactly like [`Parser::parse_entry`]; the body is the
+    /// ordinary node stream and its admission is the checker's. `also` is a
+    /// bare flag, also accepted as `also="true"` / `also="false"`; any other
+    /// `also=` value stays residual (`E-BEAT-ATTR`).
+    pub(super) fn parse_bundle_beat(&mut self) -> BundleBeat {
+        let open = self.parse_open_tag();
+        let mut attrs = open.attrs.clone();
+        let (id, id_span) = take_str_spanned(&mut attrs, "id")
+            .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
+        let on = take_str_spanned(&mut attrs, "on");
+        let target = take_str_spanned(&mut attrs, "target");
+        let title = take_str_spanned(&mut attrs, "title");
+        let priority = take_str_spanned(&mut attrs, "priority");
+        let once = take_str_spanned(&mut attrs, "once");
+        let also = attrs.iter().position(|a| a.key == "also").and_then(|pos| {
+            let flag = match &attrs[pos].value {
+                AttrValue::BoolTrue => Some(true),
+                AttrValue::Str(s) if s == "true" => Some(true),
+                AttrValue::Str(s) if s == "false" => Some(false),
+                _ => None,
+            };
+            flag.map(|f| (f, attrs.remove(pos).span))
+        });
+        let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let (body, end_o) = self.parse_block_body("beat", &open);
+        BundleBeat {
+            id,
+            id_span,
+            on,
+            target,
+            title,
+            priority,
+            once,
+            also,
+            when,
+            attrs,
+            body,
+            span: self.span_o(open.start_o, end_o),
+        }
+    }
+
     /// `Objective ::= "<objective" Attrs ">" Node* "</objective>" | "<objective"
     /// Attrs "/>"` (dsl 0.2.0 §6.4). One of `done`/`quest=` is required but a
     /// MISSING `done` still yields a valid AST (empty CEL slot) —
@@ -312,6 +354,8 @@ impl Parser<'_> {
         let title = take_str(&mut attrs, "title");
         let optional = take_bool(&mut attrs, "optional");
         let on = take_str_spanned(&mut attrs, "on");
+        let by = take_cel(&mut attrs, "by", CelKind::Condition);
+        let target = take_str_spanned(&mut attrs, "target");
         let (body, rewards, end_o) = if open.self_closing {
             (Vec::new(), Vec::new(), open.end_o)
         } else {
@@ -327,6 +371,8 @@ impl Parser<'_> {
             title,
             optional,
             on,
+            by,
+            target,
             attrs,
             body,
             rewards,

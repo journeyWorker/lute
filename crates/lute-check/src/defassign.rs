@@ -500,6 +500,11 @@ fn walk_objective(
     // did before.
     let mut done_assigned = arm.available.clone();
     apply_condition(&o.done, schema, &mut done_assigned, diags, reads);
+    // dsl 0.23.0 §2: `by=` is read like `done=` — slot-local narrowing only.
+    if let Some(by) = &o.by {
+        let mut by_assigned = arm.available.clone();
+        apply_condition(by, schema, &mut by_assigned, diags, reads);
+    }
     if let Some(cond) = &o.when {
         apply_condition(cond, schema, &mut arm.available, diags, reads);
     }

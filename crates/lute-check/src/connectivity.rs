@@ -127,7 +127,7 @@ pub fn scene_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(Path
 /// anchors). Without one the document has no id in the shared namespace —
 /// its fallback index key (the first declared quest/entry id) is not a
 /// document id.
-fn bundle_id(doc: &Document) -> Option<String> {
+pub fn bundle_id(doc: &Document) -> Option<String> {
     let serde_yaml::Value::Mapping(map) =
         serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml).ok()?
     else {
@@ -139,12 +139,41 @@ fn bundle_id(doc: &Document) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Every bundle beat's canonical id (dsl 0.23.0 §4, `<document id>.<beat
+/// id>`) in `docs`, anchored at the beat's `id` — the keys `visited()`
+/// resolves beside the scene keys. A lore document without a well-formed
+/// `id:`, or a beat whose id is not an identifier, contributes nothing (its
+/// own `E-BEAT-ATTR` anchors); a beat id repeated within one document counts
+/// once (the per-file check reports the repeat).
+pub fn bundle_beat_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
+    let mut by_key: BTreeMap<String, Vec<(PathBuf, Span)>> = BTreeMap::new();
+    for (path, doc) in docs {
+        if doc.beats.is_empty() || resolve_doc_kind(&doc.meta).0 != Some(DocKind::Lore) {
+            continue;
+        }
+        let Some(doc_id) = bundle_id(doc) else { continue };
+        let mut seen = BTreeSet::new();
+        for beat in &doc.beats {
+            if !crate::lore::is_entry_ident(&beat.id) || !seen.insert(beat.id.as_str()) {
+                continue;
+            }
+            by_key
+                .entry(crate::bundles::bundle_beat_key(&doc_id, &beat.id))
+                .or_default()
+                .push((path.clone(), beat.id_span));
+        }
+    }
+    by_key
+}
+
 /// Every document id in `docs`, grouped by id in `docs` order (dsl 0.19.0
-/// §2.1): each scene's canonical scene key (as [`scene_key_set`]) and each
+/// §2.1): each scene's canonical scene key (as [`scene_key_set`]), each
 /// quest or lore document's authored `id:` ([`bundle_id`], anchored at that
-/// key) — one project-wide namespace. Only the dup check reads this;
-/// `visited(K)` resolution stays on [`scene_key_set`], since a quest or lore
-/// bundle is not a scene node.
+/// key), and each bundle beat's canonical id (dsl 0.23.0 §4,
+/// [`bundle_beat_key_set`]) — one project-wide namespace, since `visited()`
+/// reads scene and bundle beat ids alike. Only the dup check reads this;
+/// `visited(K)` resolution stays on [`scene_key_set`] (+ bundle beat keys in
+/// a condition slot), since a quest or lore document is not a scene node.
 fn document_id_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
     let mut by_id: BTreeMap<String, Vec<(PathBuf, Span)>> = BTreeMap::new();
     for (path, doc) in docs {
@@ -163,6 +192,9 @@ fn document_id_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(PathBu
             .entry(key)
             .or_default()
             .push((path.clone(), meta_key_span(&doc.meta, anchor)));
+    }
+    for (key, occurrences) in bundle_beat_key_set(docs) {
+        by_id.entry(key).or_default().extend(occurrences);
     }
     by_id
 }
@@ -191,15 +223,17 @@ pub fn check_conn_episode_dup(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Dia
             let message = if file == first_file {
                 format!(
                     "duplicate document id `{key}`; a document's `id:` (or a scene's \
-                     `{{character}}.{{episodeId}}` fallback) must be unique project-wide across \
-                     scene, quest, and lore documents (dsl 0.15.0 §2, dsl 0.19.0 §2.1)"
+                     `{{character}}.{{episodeId}}` fallback, or a bundle beat's `<document \
+                     id>.<beat id>`) must be unique project-wide across scene, quest, and lore \
+                     documents (dsl 0.15.0 §2, dsl 0.19.0 §2.1, dsl 0.23.0 §4)"
                 )
             } else {
                 format!(
                     "duplicate document id `{key}` across project files (`{}` and `{}`); a \
-                     document's `id:` (or a scene's `{{character}}.{{episodeId}}` fallback) must \
-                     be unique project-wide across scene, quest, and lore documents (dsl 0.15.0 \
-                     §2, dsl 0.19.0 §2.1)",
+                     document's `id:` (or a scene's `{{character}}.{{episodeId}}` fallback, or a \
+                     bundle beat's `<document id>.<beat id>`) must be unique project-wide across \
+                     scene, quest, and lore documents (dsl 0.15.0 §2, dsl 0.19.0 §2.1, dsl \
+                     0.23.0 §4)",
                     first_file.display(),
                     file.display()
                 )
@@ -322,7 +356,7 @@ fn check_formula_atoms(
         // name quoted back in the message differs.
         let (id, func) = match &atom {
             Atom::Visited(key) => {
-                check_scene_key(key, "dsl §2.3/§4.1", span, path, key_set, out);
+                check_scene_key(key, "dsl §2.3/§4.1", span, path, key_set, false, out);
                 continue;
             }
             Atom::Completed(id) => (id, "completed"),
@@ -341,7 +375,10 @@ fn check_formula_atoms(
 
 /// One `visited(K)` target against the project's scene keys: a miss is
 /// [`E_CONN_UNKNOWN_NODE`] at `span`, with a "did you mean" when a key is
-/// close. `cite` names the surface the call came from.
+/// close. `cite` names the surface the call came from. `bundles_ok`: a
+/// condition slot's `visited()` also resolves a bundle beat's canonical id
+/// (dsl 0.23.0 §4); an `after:` atom does not — a bundle beat is not a node
+/// of the prerequisite graph, so it is named as such.
 ///
 /// A miss is NOT reported when the key set is incomplete
 /// ([`SceneKeys::complete`]): some document in the root has a frontmatter that
@@ -355,13 +392,29 @@ fn check_scene_key(
     span: Span,
     path: &Path,
     key_set: &SceneKeys<'_>,
+    bundles_ok: bool,
     out: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
-    if key_set.keys.contains_key(key) || !key_set.complete {
+    let bundle = key_set.bundles.contains_key(key);
+    if key_set.keys.contains_key(key) || (bundles_ok && bundle) || !key_set.complete {
+        return;
+    }
+    if bundle {
+        let message = format!(
+            "unknown node: `{key}` is a bundle beat, not a scene — `after:` orders scenes and \
+             quests; gate on `visited('{key}')` in a `when` condition instead (`visited`, {cite}, \
+             dsl 0.23.0 §4)"
+        );
+        out.push((path.to_path_buf(), unknown_node_diag(message, span)));
         return;
     }
     let mut message = format!("unknown node: no scene resolves to key `{key}` (`visited`, {cite})");
-    if let Some(sugg) = nearest_match(key, key_set.keys.keys().map(String::as_str), 2) {
+    let candidates = key_set
+        .keys
+        .keys()
+        .chain(key_set.bundles.keys().filter(|_| bundles_ok))
+        .map(String::as_str);
+    if let Some(sugg) = nearest_match(key, candidates, 2) {
         message.push_str(&format!(" — did you mean `{sugg}`?"));
     }
     out.push((path.to_path_buf(), unknown_node_diag(message, span)));
@@ -372,6 +425,8 @@ fn check_scene_key(
 /// ([`crate::meta::frontmatter_parses`]) — a scene whose id cannot be read.
 struct SceneKeys<'a> {
     keys: &'a BTreeMap<String, Vec<(PathBuf, Span)>>,
+    /// dsl 0.23.0 §4: the bundle beat canonical ids ([`bundle_beat_key_set`]).
+    bundles: BTreeMap<String, Vec<(PathBuf, Span)>>,
     complete: bool,
 }
 
@@ -396,7 +451,7 @@ fn check_visited_calls(
             return;
         };
         for key in crate::cel_resolve::visited_targets(&root.expr) {
-            check_scene_key(&key, "dsl 0.21.0 §7a.1", span, path, key_set, out);
+            check_scene_key(&key, "dsl 0.21.0 §7a.1", span, path, key_set, true, out);
         }
     };
     lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
@@ -440,6 +495,7 @@ pub fn resolve_nodes(
 ) -> Vec<(PathBuf, Diagnostic)> {
     let key_set = &SceneKeys {
         keys: key_set,
+        bundles: bundle_beat_key_set(docs),
         complete: docs
             .iter()
             .all(|(_, doc)| crate::meta::frontmatter_parses(&doc.meta)),
@@ -809,6 +865,87 @@ pub fn assemble_graph(
         },
         diags,
     )
+}
+
+/// A prerequisite reference [`assemble_graph`] does not draw because a
+/// quest declares no `after` and so is no node (dsl 0.23.0 §1) — what `lute
+/// scenario` notes beside the graph instead of leaving a missing edge
+/// unexplained.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OmittedRef {
+    /// `completed(Q)` / `active(Q)` in node `from`'s `after`, where `Q` is a
+    /// declared quest without `after`.
+    Lifecycle {
+        from: NodeId,
+        kind: EdgeKind,
+        quest: String,
+    },
+    /// `visited('<scene>')` in a lifecycle condition (`start`, `fail`, an
+    /// objective's `done` / `when` / `by`) of `quest`, which declares no
+    /// `after`.
+    Visited { quest: String, scene: String },
+}
+
+/// Every [`OmittedRef`] of one resolved root, graph-node order for
+/// [`OmittedRef::Lifecycle`], then document order for
+/// [`OmittedRef::Visited`]. `quest_ids` is [`quest_id_set`] over `docs`.
+pub fn omitted_refs(
+    docs: &[(PathBuf, Document)],
+    graph: &ConnGraph,
+    quest_ids: &BTreeSet<String>,
+) -> Vec<OmittedRef> {
+    let mut out = Vec::new();
+    for info in graph.nodes.values() {
+        let PrereqState::Valid(formula) = &info.prereq else {
+            continue;
+        };
+        for atom in atoms(formula) {
+            let kind = atom_edge_kind(&atom);
+            let (Atom::Completed(quest) | Atom::Active(quest)) = atom else {
+                continue;
+            };
+            if quest_ids.contains(&quest) && !graph.nodes.contains_key(&NodeId::Quest(quest.clone())) {
+                out.push(OmittedRef::Lifecycle {
+                    from: info.id.clone(),
+                    kind,
+                    quest,
+                });
+            }
+        }
+    }
+    for (_, doc) in docs {
+        for quest in &doc.quests {
+            if quest.after.is_some() || quest.id.is_empty() {
+                continue;
+            }
+            let mut slots: Vec<&lute_syntax::ast::CelSlot> =
+                quest.start.iter().chain(&quest.fail).collect();
+            for node in &quest.body {
+                if let Node::Objective(o) = node {
+                    slots.push(&o.done);
+                    slots.extend(o.when.iter().chain(&o.by));
+                }
+            }
+            for slot in slots {
+                if !slot.raw.contains(crate::cel_resolve::VISITED_FN) {
+                    continue;
+                }
+                let mut arena = lute_cel::CelArena::default();
+                let Some(root) = lute_cel::parse_slot_marked_refs(&mut arena, &slot.raw)
+                    .and_then(|h| arena.get(h).cloned())
+                else {
+                    continue;
+                };
+                for scene in crate::cel_resolve::visited_targets(&root.expr) {
+                    out.push(OmittedRef::Visited {
+                        quest: quest.id.clone(),
+                        scene,
+                    });
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Detect any directed cycle in `edges`, reporting each as [`E_CONN_CYCLE`]
@@ -1399,6 +1536,9 @@ pub fn live_assert_sites<'d>(
         for entry in &doc.entries {
             collect_asserts(&entry.body, &mut sites);
         }
+        for beat in &doc.beats {
+            collect_asserts(&beat.body, &mut sites);
+        }
         out.extend(sites.into_iter().map(|a| (path.as_path(), a)));
     }
     out
@@ -1428,6 +1568,9 @@ pub fn assert_relations_per_doc(
         for entry in &doc.entries {
             collect_asserts(&entry.body, &mut sites);
         }
+        for beat in &doc.beats {
+            collect_asserts(&beat.body, &mut sites);
+        }
         let rels: BTreeSet<String> = sites
             .into_iter()
             .filter(|a| !a.pattern.relation.is_empty())
@@ -1450,8 +1593,9 @@ fn assert_site_is_live(r: Option<Reachability>) -> bool {
 
 /// Recursively collect every `::assert` site of a node stream — mirrors
 /// `reachability.rs`'s `walk_reach` recursion shape (match-arm /
-/// branch-choice / hub-choice / on / objective bodies).
-fn collect_asserts<'d>(nodes: &'d [Node], out: &mut Vec<&'d Assert>) {
+/// branch-choice / hub-choice / on / objective bodies). Also the producer
+/// half of `lute scenario knowledge` (dsl 0.23.0 §1).
+pub fn collect_asserts<'d>(nodes: &'d [Node], out: &mut Vec<&'d Assert>) {
     for node in nodes {
         match node {
             Node::Assert(a) => out.push(a),
@@ -1509,6 +1653,7 @@ mod tests {
             shots: Vec::new(),
             quests: Vec::new(),
             entries: Vec::new(),
+            beats: Vec::new(),
             span: span(0),
         }
     }

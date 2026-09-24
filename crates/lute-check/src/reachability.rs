@@ -42,7 +42,7 @@
 //! independently dead for another reason. `E-MAYBE-UNSET` is NOT a
 //! derivative — it stays independent (§4).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use cel_parser::ast::{operators as op, Expr};
 use cel_parser::reference::Val;
@@ -60,6 +60,7 @@ use crate::match_check::{
     infer_domain, is_pattern_literals, literal_is_foreign, param_domain, quest_state_is_literal,
     subject_path, Domain, DomainInfo, DomainValue, Interval, NumCoverage,
 };
+use crate::solution::{disjoint, solution_set, SolutionSet};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 /// `E-ARM-DEAD` (dsl 0.4.0 §5.2): a `<when>` arm or `<choice>` that can
@@ -275,6 +276,27 @@ pub(crate) fn check_reachability(doc: &Document, folded: &FoldedEnv) -> Vec<Diag
             ));
         }
     }
+    // dsl 0.23.0 §4: a bundle beat's `when` gets the scene beat's treatment.
+    let doc_id = folded.typed.id.as_deref().unwrap_or("this document");
+    for beat in &doc.beats {
+        let Some(when) = beat.when.as_ref().filter(|w| !w.raw.trim().is_empty()) else {
+            continue;
+        };
+        let analysis = analyze_unset_sentinel_slot(&when.raw, &defs, &base_ctx);
+        push_unset_literal_diags(&mut diags, &analysis.hits, when.span);
+        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, &defs, &base_ctx) {
+            diags.push(diag(
+                crate::beats::E_BEAT_UNREACHABLE,
+                Severity::Error,
+                crate::beats::beat_unreachable_message(
+                    &crate::bundles::bundle_beat_key(doc_id, &beat.id),
+                    when.raw.trim(),
+                    None,
+                ),
+                when.span,
+            ));
+        }
+    }
     diags
 }
 
@@ -328,6 +350,10 @@ pub(crate) fn check_reachability_in(
             }
         }
         walk_reach(&entry.body, defs, base_ctx, &mut diags);
+    }
+    // dsl 0.23.0 §4: a bundle beat body is a scene body.
+    for beat in &doc.beats {
+        walk_reach(&beat.body, defs, base_ctx, &mut diags);
     }
     diags
 }
@@ -900,31 +926,6 @@ fn check_objective_reach(
     diags
 }
 
-/// One in-domain `done` predicate's SOLUTION SET over its path's declared type
-/// (§5.2). Reals for `number`, the finite member set for `bool`/`enum`,
-/// equality/inequality only for `string`.
-#[derive(Clone, Debug)]
-enum SolutionSet {
-    /// A real interval. `lo`/`hi` may be infinite; `*_inc` is endpoint
-    /// inclusion. **The domain is the REALS, not the integers** — a literal is
-    /// an `f64` and the language has no integer scalar type, so `x > 1` and
-    /// `x < 2` INTERSECT and are not a contradiction.
-    Interval {
-        lo: f64,
-        lo_inc: bool,
-        hi: f64,
-        hi_inc: bool,
-    },
-    /// Every real except one (`number` `!=`).
-    NotNum(f64),
-    /// The satisfying members of a finite domain (`bool`, `enum`).
-    Members(BTreeSet<String>),
-    /// Exactly one string (`string` `==`).
-    OnlyStr(String),
-    /// Every string except one (`string` `!=`).
-    NotStr(String),
-}
-
 /// One objective that participates in pairing.
 struct Gate<'a> {
     id: &'a str,
@@ -1049,6 +1050,10 @@ fn comparison_set(expr: &Expr, schema: &crate::meta::StateSchema) -> Option<(Str
 /// (dsl 0.22.0 §13, `W-BEAT-PRIORITY-TIE`): each `path op literal`, and a
 /// bare `bool` path / its `!` as `== true` / `== false`. Every other conjunct
 /// constrains nothing here — which only makes exclusivity harder to prove.
+///
+/// Pairwise disjoint TRUE sets mean "never both true" — weaker than the
+/// conjunction deciding `false` (dsl 0.23.0 §9), which an erring read of an
+/// unset path (`run.flag && !run.flag`) does not.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Conjuncts(Vec<(String, SolutionSet)>);
 
@@ -1088,17 +1093,20 @@ fn collect_conjuncts(
         let path = crate::cel_paths::select_path(e)?;
         matches!(crate::set_op::resolve_type(&path, schema)?, Type::Bool).then_some(path)
     };
-    let flag = |path: String, value: &str| {
-        (path, SolutionSet::Members(std::iter::once(value.to_string()).collect()))
+    let flag = |path: String, value: bool| {
+        (
+            path,
+            SolutionSet::Values(std::iter::once(DomainValue::Bool(value)).collect()),
+        )
     };
     if let Some(hit) = comparison_set(expr, schema) {
         out.push(hit);
     } else if let Some(path) = bool_path(expr).or_else(|| holds_key(expr)) {
-        out.push(flag(path, "true"));
+        out.push(flag(path, true));
     } else if let Expr::Call(c) = expr {
         if c.target.is_none() && c.func_name == op::LOGICAL_NOT && c.args.len() == 1 {
             if let Some(path) = bool_path(&c.args[0].expr).or_else(|| holds_key(&c.args[0].expr)) {
-                out.push(flag(path, "false"));
+                out.push(flag(path, false));
             }
         }
     }
@@ -1145,151 +1153,6 @@ fn flip(func_name: &str) -> Option<&'static str> {
         op::GREATER_EQUALS => op::LESS_EQUALS,
         _ => return None,
     })
-}
-
-/// The satisfying set of `path <opname> lit` over `declared`'s domain, or
-/// `None` when the pair is out of domain (a relational operator on an unordered
-/// type, a literal of the wrong type, a non-scalar declaration).
-fn solution_set(declared: &Type, opname: &str, lit: &Val) -> Option<SolutionSet> {
-    match declared {
-        Type::Number => {
-            let v = match lit {
-                Val::Int(i) => *i as f64,
-                Val::UInt(u) => *u as f64,
-                Val::Double(d) => *d,
-                _ => return None,
-            };
-            Some(match opname {
-                op::EQUALS => SolutionSet::Interval {
-                    lo: v,
-                    lo_inc: true,
-                    hi: v,
-                    hi_inc: true,
-                },
-                op::NOT_EQUALS => SolutionSet::NotNum(v),
-                op::LESS => SolutionSet::Interval {
-                    lo: f64::NEG_INFINITY,
-                    lo_inc: false,
-                    hi: v,
-                    hi_inc: false,
-                },
-                op::LESS_EQUALS => SolutionSet::Interval {
-                    lo: f64::NEG_INFINITY,
-                    lo_inc: false,
-                    hi: v,
-                    hi_inc: true,
-                },
-                op::GREATER => SolutionSet::Interval {
-                    lo: v,
-                    lo_inc: false,
-                    hi: f64::INFINITY,
-                    hi_inc: false,
-                },
-                op::GREATER_EQUALS => SolutionSet::Interval {
-                    lo: v,
-                    lo_inc: true,
-                    hi: f64::INFINITY,
-                    hi_inc: false,
-                },
-                _ => return None,
-            })
-        }
-        // Finite domains. A relational operator has no meaning over an
-        // unordered member set, so `<`/`<=`/`>`/`>=` are OUT OF DOMAIN rather
-        // than guessed at — the conservative reading, and the only one that
-        // cannot false-positive.
-        Type::Bool => {
-            let Val::Boolean(b) = lit else { return None };
-            let all = [String::from("true"), String::from("false")];
-            finite_members(&all, &b.to_string(), opname)
-        }
-        Type::Enum(members) => {
-            let Val::String(s) = lit else { return None };
-            if !members.iter().any(|m| m == s.as_str()) {
-                return None; // a foreign member is its own diagnostic's problem
-            }
-            finite_members(members, s, opname)
-        }
-        // §5.2: equality/inequality only for `string`.
-        Type::Str => {
-            let Val::String(s) = lit else { return None };
-            Some(match opname {
-                op::EQUALS => SolutionSet::OnlyStr(s.to_string()),
-                op::NOT_EQUALS => SolutionSet::NotStr(s.to_string()),
-                _ => return None,
-            })
-        }
-        _ => None,
-    }
-}
-
-fn finite_members(all: &[String], value: &str, opname: &str) -> Option<SolutionSet> {
-    let set: BTreeSet<String> = match opname {
-        op::EQUALS => std::iter::once(value.to_string()).collect(),
-        op::NOT_EQUALS => all
-            .iter()
-            .filter(|m| m.as_str() != value)
-            .cloned()
-            .collect(),
-        _ => return None,
-    };
-    Some(SolutionSet::Members(set))
-}
-
-/// Do the two solution sets fail to intersect? Conservative in both
-/// directions: an unrecognised combination is treated as INTERSECTING, so it
-/// draws nothing.
-fn disjoint(a: &SolutionSet, b: &SolutionSet) -> bool {
-    use SolutionSet::*;
-    match (a, b) {
-        (
-            Interval {
-                lo: l1,
-                lo_inc: li1,
-                hi: h1,
-                hi_inc: hi1,
-            },
-            Interval {
-                lo: l2,
-                lo_inc: li2,
-                hi: h2,
-                hi_inc: hi2,
-            },
-        ) => {
-            // Over the REALS: the intervals miss iff one ends before the other
-            // begins, or they touch at a point neither includes.
-            (h1 < l2 || (h1 == l2 && !(*hi1 && *li2))) || (h2 < l1 || (h2 == l1 && !(*hi2 && *li1)))
-        }
-        // Every real except `v` misses an interval only when that interval IS
-        // the single point `v`.
-        (
-            NotNum(v),
-            Interval {
-                lo,
-                lo_inc,
-                hi,
-                hi_inc,
-            },
-        )
-        | (
-            Interval {
-                lo,
-                lo_inc,
-                hi,
-                hi_inc,
-            },
-            NotNum(v),
-        ) => *lo == *v && *hi == *v && *lo_inc && *hi_inc,
-        (NotNum(_), NotNum(_)) => false,
-        (Members(x), Members(y)) => x.is_disjoint(y),
-        (OnlyStr(x), OnlyStr(y)) => x != y,
-        (OnlyStr(x), NotStr(y)) | (NotStr(y), OnlyStr(x)) => x == y,
-        // Two `!=`s over the infinite string domain always share a value.
-        (NotStr(_), NotStr(_)) => false,
-        // Same path implies same declared type, so a cross-kind pair cannot
-        // arise; treat it as intersecting rather than guessing.
-        _ => false,
-    }
 }
 
 /// The `E-OBJECTIVE-CONTRADICTION` message: names BOTH objective ids (it cannot

@@ -29,3 +29,6 @@
 
 ; Lore entries (dsl 0.19.0 §2) — each top-level `<entry>` folds like a quest.
 (entry) @fold
+
+; Beat bundles (dsl 0.23.0 §4) — each top-level `<beat>` folds like an entry.
+(beat) @fold

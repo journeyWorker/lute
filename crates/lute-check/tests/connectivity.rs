@@ -1325,7 +1325,11 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
     )
     .into_iter()
     .filter_map(|(_, a)| lute_check::GroundFact::from_pattern(&a.pattern));
-    let may = lute_check::MaySet::build(&root_vocab, live_facts);
+    let may = lute_check::MaySet::build(
+        &root_vocab,
+        live_facts,
+        &lute_check::stable_seeds(&docs, &root_vocab),
+    );
     let folded_refs: Vec<&lute_check::FoldedEnv> = foldeds.iter().collect();
     let must = lute_check::compute_must(&docs, &folded_refs, &conn_graph, &root_vocab, &may);
     let fact_env = lute_check::FactEnv::new(may, must.slots);

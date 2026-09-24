@@ -1222,6 +1222,7 @@ mod tests {
             shots: Vec::new(),
             quests,
             entries: Vec::new(),
+            beats: Vec::new(),
             span: span(0),
         }
     }
@@ -1629,6 +1630,8 @@ mod tests {
             title: None,
             optional,
             on: None,
+            by: None,
+            target: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),

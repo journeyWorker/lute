@@ -141,6 +141,16 @@ pub enum Step {
         first_read: bool,
         eligible: Option<bool>,
     },
+    /// dsl 0.23.0 §4 (`lute trace --beat`): the presented bundle `<beat>`'s
+    /// head. `id` is the canonical `<document id>.<beat id>`. `eligible` is
+    /// the beat's `when` against the mocked state, exactly as on
+    /// [`Step::Entry`] — shown, not enforced. A bundle beat is presented
+    /// like a scene beat, so there is no first-read distinction: every
+    /// effect of its body applies.
+    Beat {
+        id: String,
+        eligible: Option<bool>,
+    },
     /// A first-read-only effect record NOT applied on a re-read (dsl 0.19.0
     /// §6, `docs/runtime/lore-entries.md`): `effect` is `set`/`assert`/
     /// `retract`, `text` the authored write (`run.x += 1`, `knows(a, b)`).
@@ -520,6 +530,14 @@ fn render_step(step: &Step, out: &mut String) {
                 None => ", eligibility unknown",
             };
             out.push_str(&format!("  <entry {id}>   ({read}{gate})\n"));
+        }
+        Step::Beat { id, eligible } => {
+            let gate = match eligible {
+                Some(true) => "",
+                Some(false) => "   (not eligible: `when` is false)",
+                None => "   (eligibility unknown)",
+            };
+            out.push_str(&format!("  <beat {id}>{gate}\n"));
         }
         Step::Skipped { effect, text } => {
             out.push_str(&format!("    ::{effect}  {text}  (skipped: re-read)\n"));

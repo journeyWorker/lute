@@ -175,6 +175,12 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
                 *scan.beats.entry(on.clone()).or_default() += 1;
             }
         }
+        // dsl 0.23.0 §4: every lore `<beat>` bundle answers its `on` too.
+        for beat in &doc.beats {
+            if let Some((on, _)) = &beat.on {
+                *scan.beats.entry(on.clone()).or_default() += 1;
+            }
+        }
     }
     scan
 }

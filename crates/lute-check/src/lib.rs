@@ -1,6 +1,8 @@
 pub mod accept;
 pub mod admission;
 pub mod beats;
+pub mod bundles;
+pub mod cast;
 pub mod cel_expand;
 pub mod cel_message;
 pub mod cel_paths;
@@ -38,6 +40,7 @@ pub mod rel_schema;
 pub mod schema_import;
 pub mod set_op;
 pub mod set_type;
+pub(crate) mod solution;
 pub mod tag;
 pub mod temporal;
 pub mod time;
@@ -55,11 +58,17 @@ pub const LUTE_LANG_VERSION: &str = "0.22.0";
 
 pub use accept::{check_accept_directive, check_project_accepts, E_ACCEPT_TARGET};
 pub use admission::{check_admission, node_kind, NodeKind};
+pub use bundles::{
+    bundle_beat_also, bundle_beat_key, bundle_beat_once, bundle_beat_priority, check_bundle_beats,
+    BUNDLE_BEAT_ATTRS,
+};
 pub use beats::{
-    check_project_beats, occasion_target_ok, parse_beat_priority, BeatMeta, BeatOnce, BEAT_KEYS,
+    check_project_beats, occasion_target_ok, parse_beat_priority, project_beats, BeatMeta,
+    BeatOnce, ProjectBeat, ProjectBeatKind, BEAT_KEYS,
     E_BEAT_ATTR, E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_ONCE_RUN_USER,
     W_BEAT_PRIORITY_TIE, W_BEAT_SHADOWED,
 };
+pub use cast::{check_speakers, declared_cast, E_CAST_UNKNOWN};
 pub use cel_expand::{expand_cel, DefTable};
 pub use cel_message::{translate_cel_parse, Translation};
 pub use cel_paths::{is_entry_ever_read, is_reserved_entry_read, reserved_entry_id, E_PATH_IDENT};
@@ -112,7 +121,7 @@ pub use permissions::{
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
 pub use fact_check::{check_fact_guards, E_ENTRY_UNREACHABLE, W_FACT_GUARANTEED};
 pub use fact_env::{FactEnv, FactScope, GroundFact, MaySet, MustMap, QueryPattern, RootVocab};
-pub use fact_must::{compute_must, FactMust};
+pub use fact_must::{compute_must, stable_seeds, unproduced_relations, FactMust};
 pub use project_check::{
     check_project_domain_reads, check_project_entry_ids, check_project_entry_refs,
     check_project_quest_handlers, check_project_quest_ids, check_project_quest_refs,

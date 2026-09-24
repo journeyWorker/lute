@@ -66,6 +66,10 @@ pub struct CapabilitySnapshot {
     /// "shape-only" (any identifier is an occasion). GUARDED in
     /// [`capability_version`] exactly like `rewardKinds`.
     pub occasions: BTreeMap<String, OccasionDecl>,
+    /// Plugin-declared cast (dsl 0.23.0 §7 `cast:`), keyed by speaker id.
+    /// Empty = speakers stay shape-only; populated, a speaker outside it is
+    /// `E-CAST-UNKNOWN`. GUARDED in [`capability_version`] like `occasions`.
+    pub cast: BTreeMap<String, CastMember>,
     /// Effective project/host capability ceiling. Empty means unrestricted.
     pub permissions: Permissions,
 }
@@ -301,6 +305,18 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
             h.update(name.as_bytes());
             h.update(b"=");
             h.update(format!("{o:?}").as_bytes());
+            h.update(b";");
+        }
+    }
+    // GUARDED, the `occasions` precedent (dsl 0.23.0 §7): no declared cast
+    // keeps the pre-0.23 stamp; a declared cast changes what the checker
+    // accepts as a speaker.
+    if !snap.cast.is_empty() {
+        h.update(b"\ncast\n");
+        for (id, c) in &snap.cast {
+            h.update(id.as_bytes());
+            h.update(b"=");
+            h.update(format!("{c:?}").as_bytes());
             h.update(b";");
         }
     }
@@ -708,6 +724,35 @@ mod tests {
         };
         assert_ne!(stamp(domain("person")), stamp(true.into()));
         assert_ne!(stamp(domain("person")), stamp(domain("foe")));
+    }
+
+    #[test]
+    fn sequence_select_restamps_and_first_all_keep_their_stamps() {
+        // dsl 0.23.0 §3: `select: sequence` joins the enum. The existing
+        // values keep the stamp every artifact already carries (pinned from
+        // 0.22); a sequence occasion is a different contract and restamps.
+        let stamp = |select: OccasionSelect| {
+            let mut s = CapabilitySnapshot::default();
+            s.occasions.insert(
+                "talk".into(),
+                OccasionDecl {
+                    name: "talk".into(),
+                    select,
+                    ..Default::default()
+                },
+            );
+            capability_version(&s)
+        };
+        assert_eq!(
+            stamp(OccasionSelect::First),
+            "f8319417baa3545c8d48f883dbb97174ac1fd2cdb3e93073bd82117cff8b0a72"
+        );
+        assert_eq!(
+            stamp(OccasionSelect::All),
+            "44eae9ec1c7bf2a426d3d73ffcc0dd2d1b8158eabe110d031392ff5052826d58"
+        );
+        assert_ne!(stamp(OccasionSelect::Sequence), stamp(OccasionSelect::First));
+        assert_ne!(stamp(OccasionSelect::Sequence), stamp(OccasionSelect::All));
     }
 
     #[test]

@@ -151,6 +151,10 @@ pub(crate) fn check_def_inlining(
         cx.attrs(&entry.attrs, None);
         cx.nodes(&entry.body);
     }
+    for beat in &doc.beats {
+        cx.attrs(&beat.attrs, None);
+        cx.nodes(&beat.body);
+    }
     cx.diags
 }
 

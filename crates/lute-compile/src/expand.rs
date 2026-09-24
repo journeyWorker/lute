@@ -47,6 +47,14 @@ pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnosti
         expand_attrs(&mut entry.attrs, defs, None, &mut diags);
         expand_nodes(&mut entry.body, defs, None, &mut diags);
     }
+    // dsl 0.23.0 §4: a bundle beat's `when` expands like an entry's.
+    for beat in &mut doc.beats {
+        if let Some(w) = &mut beat.when {
+            expand_slot(w, defs, None, &mut diags);
+        }
+        expand_attrs(&mut beat.attrs, defs, None, &mut diags);
+        expand_nodes(&mut beat.body, defs, None, &mut diags);
+    }
     diags
 }
 
@@ -136,6 +144,9 @@ fn expand_nodes(
                 if let Some(w) = &mut o.when {
                     expand_slot(w, defs, subject, diags);
                 }
+                if let Some(b) = &mut o.by {
+                    expand_slot(b, defs, subject, diags);
+                }
                 expand_attrs(&mut o.attrs, defs, subject, diags);
                 expand_nodes(&mut o.body, defs, subject, diags);
             }
@@ -200,6 +211,10 @@ pub fn fold_attr_refs(doc: &mut Document, schema: &StateSchema) -> Vec<Diagnosti
     for entry in &mut doc.entries {
         fold_attrs(&mut entry.attrs, schema, &mut diags);
         fold_nodes(&mut entry.body, schema, &mut diags);
+    }
+    for beat in &mut doc.beats {
+        fold_attrs(&mut beat.attrs, schema, &mut diags);
+        fold_nodes(&mut beat.body, schema, &mut diags);
     }
     diags
 }

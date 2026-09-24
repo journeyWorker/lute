@@ -165,6 +165,9 @@ pub struct TypedMeta {
     /// `lute_syntax::datalog::parse_rule`. Same omit-on-error discipline as
     /// [`Self::rel_facts`].
     pub rel_rules: Vec<RuleDecl>,
+    /// dsl 0.23.0 §7: a schema document's `cast:` — declared speaker ids
+    /// (and display names), in key order. Legal only on `MetaKind::Schema`.
+    pub cast: Vec<lute_manifest::schema::CastMember>,
 }
 
 /// Frontmatter keys valid in EVERY root document kind (dsl 0.2.0 §6.1): the
@@ -211,6 +214,7 @@ const SCENE_KEYS: &[&str] = &[
     "when",
     "priority",
     "once",
+    "also",
 ];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Quest` document: the optional
@@ -221,6 +225,10 @@ const QUEST_KEYS: &[&str] = &["id"];
 /// document id and the document-level `series:` (dsl 0.19.0 §2.1, D-J/D-K).
 const LORE_KEYS: &[&str] = &["id", "series"];
 
+/// Frontmatter keys valid ONLY in a `MetaKind::Schema` document: the
+/// declared cast (dsl 0.23.0 §7).
+const SCHEMA_KEYS: &[&str] = &["cast"];
+
 /// The kind-specific core keys of `kind` beyond [`UNIVERSAL_KEYS`] and the
 /// root-wide `kind:`/`extra:` — empty for the import-role kinds.
 fn kind_keys(kind: MetaKind) -> &'static [&'static str] {
@@ -228,7 +236,8 @@ fn kind_keys(kind: MetaKind) -> &'static [&'static str] {
         MetaKind::Scene => SCENE_KEYS,
         MetaKind::Quest => QUEST_KEYS,
         MetaKind::Lore => LORE_KEYS,
-        MetaKind::Schema | MetaKind::Component => &[],
+        MetaKind::Schema => SCHEMA_KEYS,
+        MetaKind::Component => &[],
     }
 }
 
@@ -1023,6 +1032,27 @@ pub fn parse_meta_kind_with_defaults(
         map.get(yaml_key("relations"))
             .unwrap_or(&serde_yaml::Value::Null),
     );
+    // dsl 0.23.0 §7: `cast: { <id>: { name: "…" } }` (schema documents only;
+    // elsewhere the key was already `E-META-UNKNOWN-KEY` above).
+    if kind == MetaKind::Schema {
+        if let Some(v) = map.get(yaml_key("cast")) {
+            match serde_yaml::from_value::<std::collections::BTreeMap<String, lute_manifest::schema::CastBody>>(v.clone()) {
+                Ok(m) => {
+                    typed.cast = m
+                        .into_iter()
+                        .map(|(id, b)| lute_manifest::schema::CastMember { id, name: b.name })
+                        .collect();
+                }
+                Err(e) => diags.push(err_at(
+                    "E-META-VALUE",
+                    format!(
+                        "`cast:` must map each speaker id to `{{ name: \"…\" }}` (dsl 0.23.0 §7): {e}"
+                    ),
+                    meta_key_span(meta, "cast"),
+                )),
+            }
+        }
+    }
     // Domain projection for the 0.2.2 attr layer (entities win over enums, as before).
     typed
         .domains

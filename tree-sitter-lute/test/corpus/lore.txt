@@ -47,3 +47,50 @@ title: Ship's records
         (line (speaker) (text)))
       (otherwise
         (line (speaker) (text))))))
+
+==================
+lore document with a top-level beat bundle (dsl 0.23.0 §4)
+==================
+---
+id: ship.records
+kind: lore
+---
+
+<entry id="rustyKey" target="item.rusty_key">
+  @narrator: A rusty key.
+</entry>
+
+<beat id="dockTalk" on="talk" target="npc.dockhand" title="Ask about the ship" priority="2" once="user" also when="run.docked">
+  @dockhand: She came in last night.
+  <branch id="ask">
+    <choice id="more" text="Tell me more">
+      @dockhand: Nobody got off.
+    </choice>
+  </branch>
+  ::set{run.askedDock = true}
+</beat>
+----------------------------------------
+
+(source_file
+  (frontmatter)
+  (entry
+    (attr (key) (string))
+    (attr (key) (string))
+    (line (speaker) (text)))
+  (beat
+    (attr (key) (string))
+    (cel_attr (cel_key) (cel_string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key))
+    (cel_attr (cel_key) (cel_string (path)))
+    (line (speaker) (text))
+    (branch
+      (attr (key) (string))
+      (choice
+        (attr (key) (string))
+        (attr (key) (string))
+        (line (speaker) (text))))
+    (set (path) (assign_op) (cel_expr))))

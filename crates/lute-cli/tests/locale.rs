@@ -279,6 +279,66 @@ fn lore_entry_lines_round_trip_under_the_entry_prefix() {
     }
 }
 
+/// dsl 0.23.0 §4: every lore `<beat>` bundle is its own identity scope
+/// prefixed by its canonical `<document id>.<beat id>`, so its lines and
+/// choice labels export under that prefix — exactly the lineIds the compiler
+/// stamps on the beat's records.
+#[test]
+fn lore_bundle_beat_lines_export_under_the_canonical_beat_prefix() {
+    let dir = temp_dir("lore-beat");
+    write(&dir, "lute.project.yaml", PROJECT_YAML);
+    let lore = write(
+        &dir,
+        "notes.lute",
+        "---\nkind: lore\nid: ship.records\n---\n\n\
+         <entry id=\"log1\">\n@scientist{code=\"0010\"}: Day three.\n</entry>\n\n\
+         <beat id=\"dock\" on=\"talk\">\n\
+         @dockhand{code=\"0010\"}: She came in last night.\n\
+         <branch id=\"ask\">\n\
+         <choice id=\"more\" label=\"Tell me more\">\n@dockhand{code=\"0020\"}: Nobody got off.\n</choice>\n\
+         </branch>\n\
+         </beat>\n",
+    );
+    let exported = run(&["loc", "export", dir.to_str().unwrap()]);
+    assert_eq!(exported.status.code(), Some(0), "{exported:?}");
+    let rows: Vec<serde_json::Value> = serde_json::from_slice(&exported.stdout).unwrap();
+    let ids: Vec<&str> = rows.iter().map(|r| r["lineId"].as_str().unwrap()).collect();
+    assert_eq!(
+        ids,
+        [
+            "log1.scientist_0010",
+            "ship.records.dock.dockhand_0010",
+            "ship.records.dock.ask.more",
+            "ship.records.dock.dockhand_0020",
+        ],
+        "the beat is its own scope under its canonical id: {rows:#?}"
+    );
+
+    let artifact = dir.join("notes.json");
+    let compiled = run(&[
+        "compile",
+        lore.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+        "-o",
+        artifact.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        compiled.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+    let mut compiled_ids: Vec<String> = locale_maps(&read_json(&artifact))
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    let mut exported_ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
+    compiled_ids.sort();
+    exported_ids.sort();
+    assert_eq!(exported_ids, compiled_ids, "export lineIds == compiled lineIds");
+}
+
 #[test]
 fn a_csv_export_round_trips_through_import_too() {
     let dir = project("csv");
