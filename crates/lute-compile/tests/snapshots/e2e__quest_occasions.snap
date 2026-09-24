@@ -83,7 +83,8 @@ expression: json
           "body": null,
           "on": "runEnd"
         }
-      ]
+      ],
+      "tier": "run"
     }
   ]
 }

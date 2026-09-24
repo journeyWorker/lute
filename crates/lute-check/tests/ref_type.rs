@@ -75,6 +75,7 @@ fn setexpr_nested_path_mismatch_flags_ref_type() {
             }]),
             default: None,
             namespace: Namespace::Scene,
+            owner: None,
         },
     );
     let t = format!(

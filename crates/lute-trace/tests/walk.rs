@@ -245,9 +245,10 @@ fn forcing_false_guard_is_refused() {
 
 #[test]
 fn forcing_unknown_guard_is_forced() {
-    // `believes` is `derive: true`: with zero supplied facts, `holds()`
-    // over it is `unknown` (the rules are never run, §4.2 rule 3) — never
-    // `E-MAYBE-UNSET` (that check is state-PATH-only, never fact queries).
+    // `believes` is `derive: true` with no rule; under `derive: false` (dsl
+    // 0.22.0 §6, the 0.21 lookup model) `holds()` over it with zero
+    // supplied facts is `unknown` — never `E-MAYBE-UNSET` (that check is
+    // state-PATH-only, never fact queries).
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                 entities:\n  character: { members: [halsin] }\n\
                 relations:\n  believes: { args: [character], derive: true }\n\
@@ -258,7 +259,10 @@ fn forcing_unknown_guard_is_forced() {
                 <choice id=\"blunt\" label=\"Blunt\">\n@narrator: b\n</choice>\n\
                 </branch>\n";
     let input = input_for(text, "forced-unknown", Path::new("."));
-    let mocks = choose(&[("approach", &["soft"])]);
+    let mocks = MockSet {
+        derive: Some(false),
+        ..choose(&[("approach", &["soft"])])
+    };
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
     let branch = report

@@ -74,7 +74,7 @@
       "speaker": "hero",
       "text": "I'm glad.",
       "lineId": "hero.s01ep01.hero_0010",
-      "voiceKey": "hero-0010"
+      "voiceKey": "hero.s01ep01.hero-0010"
     },
     {
       "kind": "jump",
@@ -88,7 +88,7 @@
       "speaker": "hero",
       "text": "I'm low.",
       "lineId": "hero.s01ep01.hero_0020",
-      "voiceKey": "hero-0020"
+      "voiceKey": "hero.s01ep01.hero-0020"
     },
     {
       "kind": "jump",
@@ -102,7 +102,7 @@
       "speaker": "hero",
       "text": "I feel nothing in particular.",
       "lineId": "hero.s01ep01.hero_0030",
-      "voiceKey": "hero-0030"
+      "voiceKey": "hero.s01ep01.hero-0030"
     },
     {
       "kind": "jump",

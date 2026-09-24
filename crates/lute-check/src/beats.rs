@@ -23,7 +23,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::schema::{OccasionDecl, OccasionSelect};
+use lute_manifest::relations::{EntityKindDecl, KindShape};
+use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
 use lute_syntax::ast::{AttrValue, CelKind, CelSlot, Document, Entry, Meta, Node, Quest};
 
 use crate::cel_expand::DefTable;
@@ -244,9 +245,10 @@ pub(crate) fn lift_scene_beat(
     })
 }
 
-/// An `<entry>`'s beat attributes' shape (dsl 0.21.0 §3.2, §5): `on` an
-/// identifier, `priority` an integer, `priority` only beside `on`, and both
-/// quoted strings. Called from `crate::lore`'s per-entry shape check.
+/// An `<entry>`'s beat attributes' shape (dsl 0.21.0 §3.2, dsl 0.22.0 §7,
+/// §5): `on` an identifier, `priority` an integer, `once` `run` / `user`,
+/// `priority` / `once` only beside `on`, and all quoted strings. Called from
+/// `crate::lore`'s per-entry shape check.
 pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>) {
     let mut push = |message: String, span: Span| {
         diags.push(beat_diag(E_BEAT_ATTR, Severity::Error, message, span, Layer::Logic));
@@ -255,7 +257,9 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
     // quoted strings); the shape fault is the beat's own.
     let mut residual_on = false;
     for attr in &entry.attrs {
-        if (attr.key == "on" || attr.key == "priority") && !matches!(attr.value, AttrValue::Str(_)) {
+        if matches!(attr.key.as_str(), "on" | "priority" | "once")
+            && !matches!(attr.value, AttrValue::Str(_))
+        {
             residual_on |= attr.key == "on";
             push(
                 format!(
@@ -288,6 +292,26 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
             push(
                 "`<entry>` `priority` requires `on`; a priority orders the beats answering one \
                  occasion (dsl 0.21.0 §3.2)"
+                    .to_string(),
+                *span,
+            );
+        }
+    }
+    if let Some((raw, span)) = &entry.once {
+        if !matches!(raw.as_str(), "run" | "user") {
+            push(
+                format!(
+                    "`<entry>` `once=\"{raw}\"` must be `run` (not eligible again this run once \
+                     read) or `user` (never again once read); omit it for a repeatable entry \
+                     beat (dsl 0.22.0 §7)"
+                ),
+                *span,
+            );
+        }
+        if entry.on.is_none() && !residual_on {
+            push(
+                "`<entry>` `once` requires `on`; a repetition policy belongs to a beat \
+                 (dsl 0.22.0 §7)"
                     .to_string(),
                 *span,
             );
@@ -395,7 +419,7 @@ fn check_occasion(
         ));
         return;
     };
-    if let (false, Some(span)) = (decl.target, target_span) {
+    if let (false, Some(span)) = (decl.target.takes_target(), target_span) {
         diags.push(beat_diag(
             E_BEAT_ATTR,
             Severity::Error,
@@ -407,6 +431,104 @@ fn check_occasion(
             layer,
         ));
     }
+}
+
+/// Whether `target` lies in `decl`'s target domain (dsl 0.22.0 §8), the one
+/// rule `lute check` (beat targets, [`E_BEAT_ATTR`]) and `lute play` (step
+/// targets, a usage error) share. `kinds` is the project's `entities:`
+/// vocabulary (`Env::rel_vocab.kinds`).
+///
+/// `Ok` for an occasion without a domain (`target: true` keeps the 0.21
+/// shape-only meaning), for a member of the named entity kind under the
+/// domain's prefix, and for any `<prefix>.<id>` of an `open:` kind (its
+/// members are engine-populated). The `Err` is the whole reason, with a
+/// did-you-mean over `<prefix>.<member>` when one is close.
+pub fn occasion_target_ok(
+    decl: &OccasionDecl,
+    target: &str,
+    kinds: &BTreeMap<String, EntityKindDecl>,
+) -> Result<(), String> {
+    let OccasionTarget::Domain { prefix, entity } = &decl.target else {
+        return Ok(());
+    };
+    let on = &decl.name;
+    let Some(kind) = kinds.get(entity) else {
+        return Err(format!(
+            "occasion `{on}` draws its targets from entity kind `{entity}`, which the project \
+             does not declare under `entities:` (dsl 0.22.0 §8)"
+        ));
+    };
+    let member = target
+        .strip_prefix(prefix.as_str())
+        .and_then(|rest| rest.strip_prefix('.'))
+        .filter(|m| !m.is_empty());
+    let members: &[String] = match &kind.shape {
+        KindShape::Members(ms) => ms,
+        // `open:` members are engine-populated: only the prefix is checked.
+        // An invalid kind is `E-ENTITY-KIND-SHAPE`'s, never this rule's.
+        KindShape::Open | KindShape::Invalid => {
+            return match member {
+                Some(_) => Ok(()),
+                None => Err(format!(
+                    "target `{target}` is outside occasion `{on}`'s domain: its targets are \
+                     `{prefix}.<{entity}>` (dsl 0.22.0 §8)"
+                )),
+            };
+        }
+    };
+    if member.is_some_and(|m| members.iter().any(|x| x == m)) {
+        return Ok(());
+    }
+    let domain: Vec<String> = members.iter().map(|m| format!("{prefix}.{m}")).collect();
+    let hint = lute_manifest::suggest::nearest(target, domain.iter().map(String::as_str), 2)
+        .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+    Err(format!(
+        "target `{target}` is outside occasion `{on}`'s domain `{prefix}.<{entity}>` ({}){hint} \
+         (dsl 0.22.0 §8)",
+        domain
+            .iter()
+            .map(|t| format!("`{t}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+/// dsl 0.22.0 §8: every beat target of one document — the scene's own
+/// `target:` and each `<entry on= target=>` — against its occasion's target
+/// domain ([`occasion_target_ok`]); outside it is [`E_BEAT_ATTR`] at the
+/// target value. Runs after the fold (the entity vocabulary comes from the
+/// imported schema). An unknown occasion, an untargeted one, or a malformed
+/// target is already someone else's diagnostic.
+pub(crate) fn check_beat_target_domains(
+    doc: &Document,
+    beat: Option<&BeatMeta>,
+    occasions: &BTreeMap<String, OccasionDecl>,
+    kinds: &BTreeMap<String, EntityKindDecl>,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let mut judge = |on: &str, target: &str, span: Span, layer: Layer| {
+        let Some(decl) = occasions.get(on) else { return };
+        if let Err(why) = occasion_target_ok(decl, target, kinds) {
+            diags.push(beat_diag(E_BEAT_ATTR, Severity::Error, why, span, layer));
+        }
+    };
+    if let Some(BeatMeta {
+        on,
+        target: Some(target),
+        ..
+    }) = beat
+    {
+        judge(on, target, top_value_span(&doc.meta, "target"), Layer::Content);
+    }
+    for entry in &doc.entries {
+        let (Some((on, _)), Some((target, span))) = (&entry.on, &entry.target) else {
+            continue;
+        };
+        if is_entry_ident(on) && is_entry_target(target) {
+            judge(on, target, *span, Layer::Logic);
+        }
+    }
+    diags
 }
 
 /// A scene `when` reads the scene's own `scene.*` state (dsl 0.21.0 §3.1):
@@ -463,25 +585,52 @@ struct Beat<'a> {
     priority: i64,
     /// Always eligible: no `after:`, and a `when` absent or deciding true.
     always: bool,
-    /// Never spent: `once: false`, or an entry (entries have no `once`).
+    /// Never spent: a scene's `once: false`, or an entry without `once`.
     unspent: bool,
-    /// Where a shadowing warning anchors: the `on` key / attribute.
+    /// The `when` after `@def` expansion in its own document (`None` when
+    /// absent) — what the tie check conjoins across documents.
+    when: Option<String>,
+    /// The `when`'s in-domain conjuncts, typed in its own document.
+    conjuncts: crate::reachability::Conjuncts,
+    /// `once: run` (a scene's default, an entry's `once="run"`) with a `when`
+    /// that reads only user-tier state.
+    run_once_user_when: bool,
+    /// Where a warning anchors: the `on` key / attribute.
     anchor: Span,
     folded: &'a FoldedEnv,
 }
 
-/// `W-BEAT-SHADOWED` over one resolved project root (dsl 0.21.0 §4, §5).
-/// `docs` and `foldeds` are parallel and in `check-project` order, which is
-/// the `ProjectIndex.beats` tiebreak order (documents in order, declaration
-/// order within).
+/// `W-BEAT-PRIORITY-TIE` (dsl 0.22.0 §13): two beats on one `select: first`
+/// occasion whose selection falls to file order.
+pub const W_BEAT_PRIORITY_TIE: &str = "W-BEAT-PRIORITY-TIE";
+/// `W-BEAT-ONCE-RUN-USER` (dsl 0.22.0 §13 advisory): a `once: run` beat whose
+/// `when` reads only user-tier state, so it replays every run.
+pub const W_BEAT_ONCE_RUN_USER: &str = "W-BEAT-ONCE-RUN-USER";
+
+/// The project beat passes over one resolved project root (dsl 0.21.0 §4,
+/// §5; dsl 0.22.0 §13). `docs` and `foldeds` are parallel and in
+/// `check-project` order, which is the `ProjectIndex.beats` tiebreak order
+/// (documents in order, declaration order within). Beats are ordered by
+/// priority descending, then that order.
 ///
-/// Beats are ordered by priority descending, then that order. A beat `B` on
-/// a `select: first` occasion (an undeclared occasion counts as `first`) is
-/// shadowed by the first earlier beat `A` on the same occasion whose target
-/// is absent or equal to `B`'s — so `A` is a candidate whenever `B` is —
-/// that is always eligible (no `after:`, `when` absent or deciding true
-/// without facts) and never spent (`once: false`, or an entry). `A` then wins
-/// every time `B` could. Conservative: an undecided `when` never shadows.
+/// - [`W_BEAT_SHADOWED`]: a beat `B` on a `select: first` occasion (an
+///   undeclared occasion counts as `first`) is shadowed by the first earlier
+///   beat `A` on the same occasion whose target is absent or equal to `B`'s —
+///   so `A` is a candidate whenever `B` is — that is always eligible (no
+///   `after:`, `when` absent or deciding true without facts) and never spent
+///   (`once: false`, or an entry without `once`). `A` then wins every time
+///   `B` could. Conservative: an undecided `when` never shadows.
+/// - [`W_BEAT_PRIORITY_TIE`]: an unshadowed `B` with EQUAL priority to
+///   earlier beats on the same `select: first` occasion that can be
+///   candidates at once (either target absent, or equal) and whose `when`s
+///   are not provably exclusive — neither the decider folds their
+///   conjunction to `false` nor two of their comparisons pin one path to
+///   disjoint values. File order then picks the winner. One warning per
+///   `B`, naming every such partner.
+/// - [`W_BEAT_ONCE_RUN_USER`]: a `once: run` beat whose `when` reads state,
+///   all of it user-tier (`user.*`, `entry.<id>.everRead`) with no fact or
+///   scene query: once true it stays true across runs, so the beat plays
+///   again at the start of every run.
 pub fn check_project_beats(
     docs: &[(PathBuf, Document)],
     foldeds: &[&FoldedEnv],
@@ -504,8 +653,21 @@ pub fn check_project_beats(
                 matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true)))
             })
         };
+        let expand = |when: Option<&CelSlot>| {
+            when.map(|w| {
+                let mut stack = Vec::new();
+                crate::cel_expand::expand_cel(&w.raw, &defs, None, &mut stack)
+                    .unwrap_or_else(|_| w.raw.clone())
+            })
+        };
+        let conjuncts = |when: Option<&CelSlot>| {
+            when.map_or_else(Default::default, |w| {
+                crate::reachability::when_conjuncts(&w.raw, &defs, &folded.env.state)
+            })
+        };
         if let Some(beat) = &folded.typed.beat {
             let has_after = folded.typed.after.as_deref().is_some_and(|a| !a.trim().is_empty());
+            let when = expand(beat.when.as_ref());
             beats.push(Beat {
                 path,
                 name: format!("scene `{}`", scene_beat_name(folded)),
@@ -514,6 +676,10 @@ pub fn check_project_beats(
                 priority: beat.priority,
                 always: !has_after && holds(beat.when.as_ref()),
                 unspent: beat.once == BeatOnce::None,
+                run_once_user_when: beat.once == BeatOnce::Run
+                    && when.as_deref().is_some_and(reads_only_user),
+                conjuncts: conjuncts(beat.when.as_ref()),
+                when,
                 anchor: top_key_span(&doc.meta, "on"),
                 folded,
             });
@@ -535,6 +701,13 @@ pub fn check_project_beats(
                 Some((t, _)) if is_entry_target(t) => Some(t.as_str()),
                 Some(_) => continue,
             };
+            let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
+                None => BeatOnce::None,
+                Some("run") => BeatOnce::Run,
+                Some("user") => BeatOnce::User,
+                Some(_) => continue,
+            };
+            let when = expand(entry.when.as_ref());
             beats.push(Beat {
                 path,
                 name: format!("entry `{}`", entry.id),
@@ -542,7 +715,11 @@ pub fn check_project_beats(
                 target,
                 priority,
                 always: holds(entry.when.as_ref()),
-                unspent: true,
+                unspent: once == BeatOnce::None,
+                run_once_user_when: once == BeatOnce::Run
+                    && when.as_deref().is_some_and(reads_only_user),
+                conjuncts: conjuncts(entry.when.as_ref()),
+                when,
                 anchor: *on_span,
                 folded,
             });
@@ -552,6 +729,25 @@ pub fn check_project_beats(
     beats.sort_by(|a, b| b.priority.cmp(&a.priority));
 
     let mut out = Vec::new();
+    for b in beats.iter().filter(|b| b.run_once_user_when) {
+        out.push((
+            b.path.clone(),
+            beat_diag(
+                W_BEAT_ONCE_RUN_USER,
+                Severity::Warning,
+                format!(
+                    "{} is spent once per run (`once: run`), but its `when` `{}` reads only \
+                     user-tier state, which a new run does not reset — once it holds it holds \
+                     every run, so the beat plays again each run; use `once: user` for a beat \
+                     heard once ever, or gate it on run-tier state (dsl 0.22.0 §13)",
+                    b.name,
+                    b.when.as_deref().unwrap_or_default().trim()
+                ),
+                b.anchor,
+                Layer::Logic,
+            ),
+        ));
+    }
     for (j, b) in beats.iter().enumerate() {
         let select = b
             .folded
@@ -561,30 +757,65 @@ pub fn check_project_beats(
         if select != OccasionSelect::First {
             continue;
         }
-        let Some(a) = beats[..j].iter().find(|a| {
+        let target = b.target.map_or_else(String::new, |t| format!(" for `{t}`"));
+        if let Some(a) = beats[..j].iter().find(|a| {
             a.on == b.on
                 && (a.target.is_none() || a.target == b.target)
                 && a.always
                 && a.unspent
-        }) else {
+        }) {
+            let spent = if a.name.starts_with("entry") {
+                "an entry without `once`"
+            } else {
+                "`once: false`"
+            };
+            out.push((
+                b.path.clone(),
+                beat_diag(
+                    W_BEAT_SHADOWED,
+                    Severity::Warning,
+                    format!(
+                        "{} can never win occasion `{}`{target}: {} (priority {}) is ordered \
+                         before it, is always eligible (no `after:`, and its `when` is absent or \
+                         always true), and is never spent ({spent}), so it wins every time \
+                         (dsl 0.21.0 §5)",
+                        b.name, b.on, a.name, a.priority
+                    ),
+                    b.anchor,
+                    Layer::Logic,
+                ),
+            ));
             continue;
-        };
-        let target = b.target.map_or_else(String::new, |t| format!(" for `{t}`"));
-        let spent = if a.name.starts_with("entry") {
-            "an entry has no `once`"
-        } else {
-            "`once: false`"
-        };
+        }
+        let partners: Vec<&Beat<'_>> = beats[..j]
+            .iter()
+            .filter(|a| {
+                a.on == b.on
+                    && a.priority == b.priority
+                    && (a.target.is_none() || b.target.is_none() || a.target == b.target)
+                    && !provably_exclusive(a, b)
+            })
+            .collect();
+        if partners.is_empty() {
+            continue;
+        }
+        let names: Vec<&str> = partners.iter().map(|a| a.name.as_str()).collect();
         out.push((
             b.path.clone(),
             beat_diag(
-                W_BEAT_SHADOWED,
+                W_BEAT_PRIORITY_TIE,
                 Severity::Warning,
                 format!(
-                    "{} can never win occasion `{}`{target}: {} (priority {}) is ordered before \
-                     it, is always eligible (no `after:`, and its `when` is absent or always \
-                     true), and is never spent ({spent}), so it wins every time (dsl 0.21.0 §5)",
-                    b.name, b.on, a.name, a.priority
+                    "{} ties {} on occasion `{}`{target} at priority {}, and their `when`s are \
+                     not provably exclusive — when both are eligible the winner is whichever \
+                     comes first in file order (today {}), so renaming or moving a file \
+                     changes it; give one a different `priority`, or make the conditions \
+                     exclusive (dsl 0.22.0 §13)",
+                    b.name,
+                    names.join(", "),
+                    b.on,
+                    b.priority,
+                    partners[0].name,
                 ),
                 b.anchor,
                 Layer::Logic,
@@ -592,6 +823,71 @@ pub fn check_project_beats(
         ));
     }
     out
+}
+
+/// `a` and `b` can never be eligible together: the decider folds the
+/// conjunction of their `when`s to `false` (in `b`'s document), or two of
+/// their comparisons pin one path to disjoint values. Absent `when` never
+/// excludes anything.
+fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> bool {
+    let (Some(wa), Some(wb)) = (&a.when, &b.when) else {
+        return false;
+    };
+    if crate::reachability::provably_exclusive(&a.conjuncts, &b.conjuncts) {
+        return true;
+    }
+    let params = BTreeMap::new();
+    let defs = DefTable {
+        bodies: &b.folded.def_bodies,
+        params: &b.folded.env.def_params,
+    };
+    let ctx = DecideCtx {
+        schema: &b.folded.env.state,
+        dollar: None,
+        params: &params,
+        facts: None,
+    };
+    matches!(
+        decide_slot(&format!("({wa}) && ({wb})"), &defs, &ctx),
+        Some(Decided::Bool(false))
+    )
+}
+
+/// `when` (already `@def`-expanded) reads at least one state path, every
+/// one of them user-tier (`user.*`, `entry.<id>.everRead`), and calls no
+/// function but the CEL operators and `isSet`/`has` — a fact query,
+/// `visited()`, or `now()` may change within a run.
+fn reads_only_user(when: &str) -> bool {
+    use cel_parser::ast::Expr;
+    fn walk(expr: &Expr, reads: &mut usize) -> bool {
+        match expr {
+            Expr::Ident(_) | Expr::Select(_) => {
+                match crate::cel_paths::select_path(expr) {
+                    Some(p) if p.starts_with("user.") || crate::cel_paths::is_entry_ever_read(&p) => {
+                        *reads += 1;
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            Expr::Call(c) => {
+                let operator = !c.func_name.starts_with(|ch: char| ch.is_ascii_alphabetic())
+                    || matches!(c.func_name.as_str(), "isSet" | "has");
+                c.target.is_none() && operator && c.args.iter().all(|a| walk(&a.expr, reads))
+            }
+            Expr::List(l) => l.elements.iter().all(|e| walk(&e.expr, reads)),
+            Expr::Literal(_) => true,
+            _ => false,
+        }
+    }
+    let mut arena = lute_cel::CelArena::default();
+    let Some(ided) =
+        lute_cel::parse_slot_marked_refs(&mut arena, when).and_then(|h| arena.get(h))
+    else {
+        return false;
+    };
+    let mut reads = 0;
+    walk(&ided.expr, &mut reads) && reads > 0
 }
 
 /// The YAML value an author wrote, for the "got …" half of a message.

@@ -947,5 +947,552 @@ fn the_transcript_shows_the_source_not_the_lowered_ir() {
     assert_eq!(smith["as"], "The Smith");
     assert_eq!(smith["emotion"], "cross");
     assert_eq!(smith["lineId"], "parlor.maud_0010");
-    assert_eq!(smith["voiceKey"], "maud-0010");
+    // dsl 0.22.0 §11: the default voiceKey is project-unique.
+    assert_eq!(smith["voiceKey"], "parlor.maud-0010");
+}
+
+// ── 0.22.0: a reference player that can stand in for the engine ────────
+
+/// A project whose plugin declares `hubVisit`, `talk` (targets drawn from
+/// entity kind `person` under `npc.`), `board` (`select: all`) and the world
+/// event `storm`. `slew` is a RESERVED relation (the engine asserts kills)
+/// and `feared` is derived from it. Quest `climb` is `tier="run"` and
+/// completes at `run.floor >= 5`; `ever` (user tier) at `user.runs >= 3`;
+/// `notes` only at `board` (`on=` objective). Both `climb` and `ever`
+/// handle `storm`. Lore: `notice` (`once="user"`), `memo` (`once="run"`),
+/// `old` (eligible once `notice` was ever read).
+fn harness_project(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: g\nprofiles:\n  g:\n    plugins: { g.occ: true }\n",
+    );
+    write(
+        &dir,
+        "plugins/g.occ/plugin.yaml",
+        "id: g.occ\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n  events: events/\n",
+    );
+    write(
+        &dir,
+        "plugins/g.occ/occasions/o.yaml",
+        "occasions:\n  hubVisit: {}\n  talk: { target: { prefix: npc, entity: person } }\n  \
+         board: { select: all }\n",
+    );
+    write(&dir, "plugins/g.occ/events/e.yaml", "events:\n  - name: storm\n");
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.floor: { type: number, default: 0 }\n  \
+         run.outcome: { type: { enum: [climbing, fell, escaped] }, default: climbing }\n  \
+         user.runs: { type: number, default: 0 }\n  user.brave: { type: bool, default: false }\n\
+         entities:\n  person: { members: [maud, oskar] }\n  foe: { members: [warden, hound] }\n\
+         relations:\n  slew: { args: [foe], tier: run, reserved: true }\n  \
+         heard: { args: [person], tier: user }\n  feared: { args: [foe], derive: true }\n\
+         rules:\n  - 'feared(F) :- slew(F)'\n",
+    );
+    write(
+        &dir,
+        "scenes/hub.lute",
+        "---\nkind: scene\nid: hub.idle\nuses: ../world.schema.yaml\non: hubVisit\nonce: false\n---\n\n\
+         ## Hub\n\n@maud: Quiet night.\n",
+    );
+    write(
+        &dir,
+        "scenes/victory.lute",
+        "---\nkind: scene\nid: hub.victory\nuses: ../world.schema.yaml\non: hubVisit\n\
+         when: \"holds(slew(warden))\"\npriority: 10\nonce: false\n---\n\n## Victory\n\n\
+         @maud: The warden is dead.\n",
+    );
+    write(
+        &dir,
+        "scenes/maud.lute",
+        "---\nkind: scene\nid: maud.talk\nuses: ../world.schema.yaml\non: talk\ntarget: npc.maud\n\
+         once: false\n---\n\n## Maud\n\n@maud: Hello.\n",
+    );
+    write(
+        &dir,
+        "quests/climb.lute",
+        "---\nkind: quest\nuses: ../world.schema.yaml\ntitle: Climb\n---\n\n\
+         <quest id=\"climb\" title=\"Climb\" start=\"true\" tier=\"run\">\n\
+         <objective id=\"high\" title=\"Get high\" done=\"run.floor >= 5\"/>\n\
+         <on event=\"storm\">\n@narrator: Thunder over the stair.\n</on>\n</quest>\n\n\
+         <quest id=\"ever\" title=\"Ever\" start=\"true\">\n\
+         <objective id=\"three\" title=\"Three runs\" done=\"user.runs >= 3\"/>\n\
+         <on event=\"storm\">\n@narrator: The long quest hears the storm.\n</on>\n</quest>\n\n\
+         <quest id=\"notes\" title=\"Notes\" start=\"true\">\n\
+         <objective id=\"looked\" title=\"Look at the board\" on=\"board\" done=\"true\"/>\n\
+         </quest>\n",
+    );
+    write(
+        &dir,
+        "lore/board.lute",
+        "---\nkind: lore\nid: board\ntitle: Board\nuses: ../world.schema.yaml\n---\n\n\
+         <entry id=\"notice\" on=\"board\" once=\"user\" category=\"note\" title=\"Notice\">\n  \
+         @maud: A notice.\n  ::assert{heard(maud)}\n</entry>\n\n\
+         <entry id=\"memo\" on=\"board\" once=\"run\" category=\"note\" title=\"Memo\">\n  \
+         @maud: A memo.\n</entry>\n\n\
+         <entry id=\"old\" on=\"board\" category=\"note\" title=\"Old\" when=\"entry.notice.everRead\">\n  \
+         @maud: You have read the notice before.\n</entry>\n",
+    );
+    dir
+}
+
+/// `harness_project` played with `--json`, asserting the exit code.
+fn harness_json(tag: &str, script: &str, exit: i32) -> Json {
+    let out = play_in(&harness_project(tag), tag, script, true);
+    assert_eq!(out.status.code(), Some(exit), "{}{}", stdout(&out), stderr(&out));
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+/// `harness_project` played for its human transcript, asserting the exit.
+fn harness_text(tag: &str, script: &str, exit: i32) -> String {
+    let out = play_in(&harness_project(tag), tag, script, false);
+    assert_eq!(out.status.code(), Some(exit), "{}{}", stdout(&out), stderr(&out));
+    stdout(&out)
+}
+
+#[test]
+fn an_engine_step_writes_state_and_reserved_facts_and_the_lifecycle_settles_after_it() {
+    let v = harness_json(
+        "engine",
+        "steps:\n  - occasion: hubVisit\n  \
+         - engine: { state: { run.floor: 6, run.outcome: fell }, facts: [slew(warden)] }\n  \
+         - occasion: hubVisit\n  - engine: { retract: [slew(warden)] }\n  - occasion: hubVisit\n",
+        0,
+    );
+    assert_eq!(winner(&v, 1), Some("hub.idle"));
+    // The write is recorded, presents nothing, and the objective it
+    // satisfies completes in the same step — not at the next presentation.
+    let engine = step(&v, 2);
+    assert!(engine.get("candidates").is_none(), "{engine}");
+    let writes: Vec<&str> = engine["engine"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(writes, ["set", "set", "assert"], "{engine}");
+    assert_eq!(
+        quest_records(&engine["quests"]),
+        ["climb.high done", "climb -> complete"]
+    );
+    // The reserved kill fact the engine asserted gates content …
+    assert_eq!(winner(&v, 3), Some("hub.victory"));
+    // … until the engine retracts it.
+    assert_eq!(candidate(&v, 5, "hub.victory")["reason"], "when: false");
+    assert_eq!(winner(&v, 5), Some("hub.idle"));
+}
+
+#[test]
+fn a_repeated_engine_delta_accumulates_and_each_repetition_settles() {
+    let v = harness_json(
+        "engine-add",
+        "steps:\n  - engine: { state: { user.runs: { add: 1 } } }\n    repeat: 3\n    label: a run ends\n",
+        0,
+    );
+    let steps = v["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 3, "one record per repetition: {v}");
+    for (k, s) in steps.iter().enumerate() {
+        assert_eq!(s["step"], 1);
+        assert_eq!(s["label"], "a run ends");
+        assert_eq!(s["iteration"], k + 1);
+        assert_eq!(s["engine"][0]["value"], k + 1, "{s}");
+    }
+    // `ever` completes exactly when the third run is counted.
+    assert!(quest_records(&steps[1]["quests"]).is_empty());
+    assert_eq!(
+        quest_records(&steps[2]["quests"]),
+        ["ever.three done", "ever -> complete"]
+    );
+}
+
+#[test]
+fn engine_writes_are_validated_before_anything_plays() {
+    let dir = harness_project("engine-usage");
+    for (script, needle) in [
+        (
+            "steps:\n  - engine: { state: { run.flor: 1 } }\n",
+            "`engine.state.run.flor` is not a declared state path",
+        ),
+        (
+            "steps:\n  - engine: { state: { run.floor: high } }\n",
+            "does not take `high`",
+        ),
+        (
+            "steps:\n  - engine: { state: { run.outcome: won } }\n",
+            "climbing, fell, escaped",
+        ),
+        (
+            "steps:\n  - engine: { state: { user.brave: { add: 1 } } }\n",
+            "is not a `number` path, so it takes no `{ add: … }`",
+        ),
+        (
+            "steps:\n  - engine: { state: { quest.climb.state: complete } }\n",
+            "seed a save's quest status with top-level `quests:`",
+        ),
+        (
+            "steps:\n  - engine: { facts: [slain(warden)] }\n",
+            "names an undeclared relation `slain`",
+        ),
+        (
+            "steps:\n  - engine: { facts: [feared(warden)] }\n",
+            "`feared` is derived by rules",
+        ),
+        (
+            "steps:\n  - engine: { facts: [slew(dragon)] }\n",
+            "`dragon` is not a member of `foe` (warden, hound)",
+        ),
+        (
+            "steps:\n  - engine: { facts: [\"slew(warden, hound)\"] }\n",
+            "`slew` takes 1 argument(s)",
+        ),
+        (
+            "steps:\n  - engine: { facts: [slew(_)] }\n",
+            "is not a ground fact",
+        ),
+        ("steps:\n  - engine: {}\n", "`engine:` writes nothing"),
+        (
+            "steps:\n  - engine: { state: { run.floor: 1 }, emit: [x] }\n",
+            "unknown `engine:` key `emit`",
+        ),
+        (
+            "steps:\n  - newRun: { retract: [slew(warden)] }\n",
+            "unknown `newRun:` key `retract`",
+        ),
+        ("steps:\n  - newRun: false\n", "`newRun` must be `true` or"),
+        (
+            "steps:\n  - engine: { state: { run.floor: 1 } }\n    occasion: hubVisit\n",
+            "not both",
+        ),
+        (
+            "steps:\n  - engine: { state: { run.floor: 1 } }\n    pick: memo\n",
+            "`pick` applies only to an `occasion` step, not `engine`",
+        ),
+        (
+            "steps:\n  - occasion: hubVisit\n    repeat: 0\n",
+            "`repeat` must be a whole number ≥ 1",
+        ),
+    ] {
+        let out = play_in(&dir, "engine-usage", script, false);
+        assert_eq!(out.status.code(), Some(2), "{script}\n{}", stderr(&out));
+        assert!(stderr(&out).contains(needle), "{script}\n{}", stderr(&out));
+        assert!(stdout(&out).is_empty(), "{script}\n{}", stdout(&out));
+    }
+}
+
+#[test]
+fn a_new_run_resets_run_tier_quests_then_applies_its_seed() {
+    let v = harness_json(
+        "new-run-seed",
+        "steps:\n  - engine: { state: { run.floor: 6, user.runs: 1 } }\n  \
+         - newRun: { state: { run.floor: 2 }, facts: [slew(hound)] }\n  \
+         - engine: { state: { run.floor: 5 } }\n",
+        0,
+    );
+    assert_eq!(
+        quest_records(&step(&v, 1)["quests"]),
+        ["climb.high done", "climb -> complete"]
+    );
+    // `climb` is `tier="run"`: unset and its objectives undone at the new
+    // run, so its `start` activates it again; the seed lands after the
+    // reset (run.floor 2, not the default 0) and before the settle.
+    let new_run = step(&v, 2);
+    assert_eq!(new_run["newRun"], true);
+    let seed: Vec<&str> = new_run["seed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["path"].as_str().or(r["fact"].as_str()).unwrap())
+        .collect();
+    assert_eq!(seed, ["run.floor", "slew(hound)"]);
+    assert_eq!(quest_records(&new_run["quests"]), ["climb -> active"]);
+    // The objective completes a second time — it really was reset.
+    assert_eq!(
+        quest_records(&step(&v, 3)["quests"]),
+        ["climb.high done", "climb -> complete"]
+    );
+}
+
+#[test]
+fn an_event_step_runs_the_handlers_of_active_quests_only() {
+    let text = harness_text(
+        "event",
+        "steps:\n  - event: storm\n  - engine: { state: { run.floor: 9 } }\n  - event: storm\n",
+        0,
+    );
+    let first = text.split("── step 2").next().unwrap();
+    assert!(first.contains("── step 1 · event storm"), "{text}");
+    assert!(first.contains("@narrator: Thunder over the stair."), "{text}");
+    assert!(first.contains("@narrator: The long quest hears the storm."), "{text}");
+    // `climb` completed at step 2: its handler no longer answers.
+    let third = text.split("── step 3 · event storm").nth(1).unwrap();
+    assert!(!third.contains("Thunder"), "{text}");
+    assert!(third.contains("The long quest hears the storm."), "{text}");
+}
+
+#[test]
+fn events_and_occasions_are_distinct_vocabularies_with_a_pointer_between_them() {
+    let dir = harness_project("event-usage");
+    for (script, needle) in [
+        (
+            "steps:\n  - event: board\n",
+            "`event: board` names no declared world event — `board` is an occasion; raise it with `occasion: board`",
+        ),
+        (
+            "steps:\n  - occasion: storm\n",
+            "`storm` is a world event; fire it with `event: storm`",
+        ),
+        ("steps:\n  - event: gale\n", "(declared: storm)"),
+        ("steps:\n  - event: questFailed\n", "is a quest lifecycle event"),
+    ] {
+        let out = play_in(&dir, "event-usage", script, false);
+        assert_eq!(out.status.code(), Some(2), "{script}\n{}", stderr(&out));
+        assert!(stderr(&out).contains(needle), "{script}\n{}", stderr(&out));
+    }
+}
+
+#[test]
+fn pick_none_closes_the_list_without_spending_and_still_judges_on_objectives() {
+    let v = harness_json(
+        "pick-none",
+        "steps:\n  - occasion: board\n    pick: none\n  - occasion: board\n    pick: notice\n",
+        0,
+    );
+    assert_eq!(step(&v, 1)["pick"], "none");
+    assert_eq!(winner(&v, 1), None);
+    assert!(step(&v, 1).get("presented").is_none(), "{}", step(&v, 1));
+    // The occasion still judged `notes.looked` (`on="board"`).
+    assert_eq!(
+        quest_records(&step(&v, 1)["quests"]),
+        ["notes.looked done", "notes -> complete"]
+    );
+    // Nothing was spent: `notice` is still a first read.
+    assert_eq!(presented(&v, 2)[0]["firstRead"], true);
+
+    // `pick: none` on a `select: first` occasion is a usage error.
+    let out = play_in(
+        &harness_project("pick-none-first"),
+        "pick-none-first",
+        "steps:\n  - occasion: hubVisit\n    pick: none\n",
+        false,
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(stderr(&out).contains("`pick: none` applies only to a `select: all` occasion"));
+}
+
+#[test]
+fn entry_once_is_spent_by_its_read_flags_and_ever_read_survives_the_run() {
+    let v = harness_json(
+        "entry-once",
+        "steps:\n  - { occasion: board, pick: notice }\n  - { occasion: board, pick: memo }\n  \
+         - { occasion: board, pick: old }\n  - newRun: true\n  - { occasion: board, pick: memo }\n",
+        0,
+    );
+    // Before any read, `old` (`when: entry.notice.everRead`) is closed.
+    assert_eq!(candidate(&v, 1, "old")["reason"], "when: false");
+    assert_eq!(
+        candidate(&v, 2, "notice")["reason"],
+        "once: user — already read"
+    );
+    assert_eq!(candidate(&v, 3, "old")["eligible"], true);
+    assert_eq!(
+        candidate(&v, 3, "memo")["reason"],
+        "once: run — already read this run"
+    );
+    // A new run re-opens the run-tier entry, not the user-tier one, and
+    // `everRead` is never reset.
+    assert_eq!(candidate(&v, 5, "memo")["eligible"], true);
+    assert_eq!(
+        candidate(&v, 5, "notice")["reason"],
+        "once: user — already read"
+    );
+    assert_eq!(candidate(&v, 5, "old")["eligible"], true);
+}
+
+#[test]
+fn a_save_seeds_history_quests_and_reads_before_step_one() {
+    // `presented.user` spends a `once: user` beat; `quests:` resumes a
+    // completed quest (the trophy's `after: completed(…)` reads it).
+    let v = play_json(
+        "save",
+        "presented: { user: [hub.firstEver] }\nquests: { firstEscape: complete }\n\
+         entriesRead: { run: [megNote] }\nsteps:\n  - occasion: hubVisit\n  \
+         - occasion: inbox\n    pick: megNote\n",
+        0,
+    );
+    assert!(quest_records(&v["start"]["quests"]).is_empty(), "{}", v["start"]);
+    assert_eq!(
+        candidate(&v, 1, "hub.firstEver")["reason"],
+        "once: user — already presented"
+    );
+    assert_eq!(winner(&v, 1), Some("hub.trophy"));
+    assert_eq!(presented(&v, 2)[0]["firstRead"], false, "read in this run already");
+
+    // `visited:` feeds `visited('<id>')`: the objective is done at start.
+    let dir = quest_occasion_project("save-visited");
+    let v = play_project_json(
+        &dir,
+        "save-visited",
+        "visited: [haven.shed]\nsteps:\n  - occasion: runEnd\n",
+    );
+    let start = quest_records(&v["start"]["quests"]);
+    assert!(start.contains(&"seen.looked done".to_string()), "{start:?}");
+
+    // `entriesRead.user` sets `everRead` only.
+    let v = harness_json(
+        "save-ever",
+        "entriesRead: { user: [notice] }\nsteps:\n  - { occasion: board, pick: memo }\n",
+        0,
+    );
+    assert_eq!(candidate(&v, 1, "old")["eligible"], true);
+    assert_eq!(candidate(&v, 1, "notice")["reason"], "once: user — already read");
+}
+
+#[test]
+fn a_save_naming_an_unknown_id_is_a_usage_error() {
+    for (script, needle) in [
+        (
+            "visited: [hub.idel]\nsteps:\n  - occasion: hubVisit\n",
+            "`visited:` names `hub.idel`, which is no scene in this project — did you mean `hub.idle`?",
+        ),
+        (
+            "presented: { run: [hub.nope] }\nsteps:\n  - occasion: hubVisit\n",
+            "`presented.run` names `hub.nope`, which is no scene beat",
+        ),
+        (
+            "presented: { user: [megNote] }\nsteps:\n  - occasion: hubVisit\n",
+            "an entry's read history is `entriesRead:`",
+        ),
+        (
+            "quests: { secondEscape: active }\nsteps:\n  - occasion: hubVisit\n",
+            "`quests.secondEscape`: no quest `secondEscape` is declared",
+        ),
+        (
+            "quests: { firstEscape: done }\nsteps:\n  - occasion: hubVisit\n",
+            "a quest state is one of unset, active, complete, failed",
+        ),
+        (
+            "entriesRead: { run: [megnote] }\nsteps:\n  - occasion: hubVisit\n",
+            "`entriesRead.run` names `megnote`, which is no entry",
+        ),
+        (
+            "entriesRead: { ever: [megNote] }\nsteps:\n  - occasion: hubVisit\n",
+            "takes only `run:` and `user:`",
+        ),
+    ] {
+        let out = play_in(&fixture(), "save-usage", script, false);
+        assert_eq!(out.status.code(), Some(2), "{script}\n{}", stderr(&out));
+        assert!(stderr(&out).contains(needle), "{script}\n{}", stderr(&out));
+    }
+}
+
+#[test]
+fn a_step_choose_replaces_the_script_choose_for_that_step_only() {
+    // The script-wide list would answer `gift` with `accept` first. The
+    // step's own `decline` is used at step 1 and consumes nothing of the
+    // script-wide list, which still starts at `accept` in the next run.
+    let v = play_json(
+        "step-choose",
+        "quests: { firstEscape: complete }\nsteps:\n  \
+         - { occasion: talk, target: npc.achilles, choose: { gift: decline } }\n  \
+         - newRun: true\n  - { occasion: talk, target: npc.achilles }\n\
+         choose:\n  gift: [accept, decline]\n",
+        0,
+    );
+    let chose = |n| {
+        presented(&v, n)
+            .iter()
+            .find(|r| r["kind"] == "choice")
+            .map(|r| r["chose"].clone())
+            .unwrap()
+    };
+    assert_eq!(winner(&v, 1), Some("achilles.proud"));
+    assert_eq!(chose(1), "decline");
+    assert_eq!(winner(&v, 3), Some("achilles.proud"));
+    assert_eq!(chose(3), "accept");
+}
+
+#[test]
+fn a_target_outside_the_occasion_domain_is_a_usage_error() {
+    let dir = harness_project("target-domain");
+    let out = play_in(
+        &dir,
+        "target-domain",
+        "steps:\n  - { occasion: talk, target: npc.mawd }\n",
+        false,
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("did you mean `npc.maud`?"),
+        "{}",
+        stderr(&out)
+    );
+    // A member of the kind with no beat is legal — the occasion passes.
+    let v = harness_json(
+        "target-domain-ok",
+        "steps:\n  - { occasion: talk, target: npc.oskar }\n",
+        0,
+    );
+    assert_eq!(winner(&v, 1), None);
+}
+
+#[test]
+fn labels_and_repetitions_are_printed_in_the_transcript() {
+    let text = harness_text(
+        "label",
+        "steps:\n  - { occasion: talk, target: npc.maud, label: greet, repeat: 2 }\n",
+        0,
+    );
+    for line in [
+        "── step 1 (greet) [1/2] · talk → npc.maud ──────────────",
+        "── step 1 (greet) [2/2] · talk → npc.maud ──────────────",
+        "── end: complete (2 steps) ──────────────",
+    ] {
+        assert!(text.lines().any(|l| l == line), "missing `{line}` in:\n{text}");
+    }
+}
+
+#[test]
+fn a_missed_expectation_fails_the_play_naming_the_step_and_the_actual_value() {
+    let script = "steps:\n  - occasion: hubVisit\n    label: first visit\n    \
+                  expect: { winner: hub.victory }\n  \
+                  - engine: { facts: [slew(warden)] }\n  - occasion: hubVisit\n    \
+                  expect: { winner: hub.victory, offered: [hub.victory, hub.idle] }\n\
+                  expect:\n  facts: [feared(warden)]\n  quests: { climb: active }\n";
+    let text = harness_text("expect-miss", script, 1);
+    assert!(text.contains("── end: complete (3 steps)"), "the walk itself completed:\n{text}");
+    assert!(text.contains("── expect: 1 missed"), "{text}");
+    let miss = text.lines().find(|l| l.starts_with("  ✗ step 1")).unwrap_or_else(|| panic!("{text}"));
+    assert!(miss.contains("(first visit)") && miss.contains("hub.idle"), "{miss}");
+
+    let v = harness_json("expect-miss-json", script, 1);
+    let misses = v["expect"]["misses"].as_array().unwrap();
+    assert_eq!(misses.len(), 1, "{v}");
+    assert_eq!(misses[0]["step"], 1);
+    assert_eq!(misses[0]["actual"], "hub.idle");
+
+    // Every expectation holding leaves the exit to the walk.
+    let text = harness_text(
+        "expect-held",
+        "steps:\n  - occasion: hubVisit\n    expect: { winner: hub.idle, notOffered: [hub.victory] }\n",
+        0,
+    );
+    assert!(text.contains("── expect: every expectation held"), "{text}");
+}
+
+#[test]
+fn derive_false_leaves_derived_facts_out_of_the_end_of_play() {
+    let steps = "steps:\n  - engine: { facts: [slew(warden)] }\n";
+    harness_text(
+        "derive-on",
+        &format!("{steps}expect:\n  facts: [feared(warden), slew(warden)]\n"),
+        0,
+    );
+    harness_text(
+        "derive-off",
+        &format!("derive: false\n{steps}expect:\n  facts: [slew(warden)]\n  notFacts: [feared(warden)]\n"),
+        0,
+    );
 }

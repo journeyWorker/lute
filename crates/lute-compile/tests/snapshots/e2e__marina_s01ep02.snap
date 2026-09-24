@@ -171,7 +171,7 @@ expression: json
       "speaker": "fixer",
       "text": "...",
       "lineId": "marina.s01ep02.fixer_0010",
-      "voiceKey": "fixer-0010"
+      "voiceKey": "marina.s01ep02.fixer-0010"
     },
     {
       "kind": "sprite",
@@ -217,7 +217,7 @@ expression: json
       "emotion": "surprised",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0010",
-      "voiceKey": "marina-0010"
+      "voiceKey": "marina.s01ep02.marina-0010"
     },
     {
       "kind": "line",
@@ -228,7 +228,7 @@ expression: json
       "emotion": "delighted",
       "variant": 1,
       "lineId": "marina.s01ep02.marina_0020",
-      "voiceKey": "marina-0020"
+      "voiceKey": "marina.s01ep02.marina-0020"
     },
     {
       "kind": "line",
@@ -239,7 +239,7 @@ expression: json
       "emotion": "delighted",
       "variant": 1,
       "lineId": "marina.s01ep02.marina_0030",
-      "voiceKey": "marina-0030"
+      "voiceKey": "marina.s01ep02.marina-0030"
     },
     {
       "kind": "line",
@@ -258,7 +258,7 @@ expression: json
       "emotion": "shy",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0040",
-      "voiceKey": "marina-0040"
+      "voiceKey": "marina.s01ep02.marina-0040"
     },
     {
       "kind": "line",
@@ -269,7 +269,7 @@ expression: json
       "emotion": "shy",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0050",
-      "voiceKey": "marina-0050"
+      "voiceKey": "marina.s01ep02.marina-0050"
     },
     {
       "kind": "line",
@@ -286,7 +286,7 @@ expression: json
       "speaker": "fixer",
       "text": "Marina.",
       "lineId": "marina.s01ep02.fixer_0020",
-      "voiceKey": "fixer-0020"
+      "voiceKey": "marina.s01ep02.fixer-0020"
     },
     {
       "kind": "line",
@@ -313,7 +313,7 @@ expression: json
       "emotion": "content",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0060",
-      "voiceKey": "marina-0060"
+      "voiceKey": "marina.s01ep02.marina-0060"
     },
     {
       "kind": "line",
@@ -324,7 +324,7 @@ expression: json
       "emotion": "content",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0070",
-      "voiceKey": "marina-0070"
+      "voiceKey": "marina.s01ep02.marina-0070"
     },
     {
       "kind": "line",
@@ -417,7 +417,7 @@ expression: json
       "speaker": "fixer",
       "text": "The mouse.",
       "lineId": "marina.s01ep02.fixer_0030",
-      "voiceKey": "fixer-0030"
+      "voiceKey": "marina.s01ep02.fixer-0030"
     },
     {
       "kind": "line",
@@ -426,7 +426,7 @@ expression: json
       "speaker": "fixer",
       "text": "The mouse just disappeared!",
       "lineId": "marina.s01ep02.fixer_0040",
-      "voiceKey": "fixer-0040"
+      "voiceKey": "marina.s01ep02.fixer-0040"
     },
     {
       "kind": "line",
@@ -445,7 +445,7 @@ expression: json
       "emotion": "delighted",
       "variant": 1,
       "lineId": "marina.s01ep02.marina_0080",
-      "voiceKey": "marina-0080"
+      "voiceKey": "marina.s01ep02.marina-0080"
     },
     {
       "kind": "line",
@@ -456,7 +456,7 @@ expression: json
       "emotion": "delighted",
       "variant": 1,
       "lineId": "marina.s01ep02.marina_0090",
-      "voiceKey": "marina-0090"
+      "voiceKey": "marina.s01ep02.marina-0090"
     },
     {
       "kind": "line",
@@ -518,7 +518,7 @@ expression: json
       "speaker": "fixer",
       "text": "Marina. Your number.",
       "lineId": "marina.s01ep02.fixer_0050",
-      "voiceKey": "fixer-0050"
+      "voiceKey": "marina.s01ep02.fixer-0050"
     },
     {
       "kind": "jump",
@@ -532,7 +532,7 @@ expression: json
       "speaker": "fixer",
       "text": "Marina — would you mind terribly if I had your number?",
       "lineId": "marina.s01ep02.fixer_0052",
-      "voiceKey": "fixer-0052"
+      "voiceKey": "marina.s01ep02.fixer-0052"
     },
     {
       "kind": "set",
@@ -558,7 +558,7 @@ expression: json
       "emotion": "surprised",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0100",
-      "voiceKey": "marina-0100"
+      "voiceKey": "marina.s01ep02.marina-0100"
     },
     {
       "kind": "line",
@@ -569,7 +569,7 @@ expression: json
       "emotion": "delighted",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0110",
-      "voiceKey": "marina-0110"
+      "voiceKey": "marina.s01ep02.marina-0110"
     },
     {
       "kind": "line",
@@ -594,7 +594,7 @@ expression: json
       "emotion": "content",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0120",
-      "voiceKey": "marina-0120"
+      "voiceKey": "marina.s01ep02.marina-0120"
     },
     {
       "kind": "line",
@@ -605,7 +605,7 @@ expression: json
       "emotion": "content",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0130",
-      "voiceKey": "marina-0130"
+      "voiceKey": "marina.s01ep02.marina-0130"
     },
     {
       "kind": "line",
@@ -616,7 +616,7 @@ expression: json
       "emotion": "shy",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0140",
-      "voiceKey": "marina-0140"
+      "voiceKey": "marina.s01ep02.marina-0140"
     },
     {
       "kind": "line",
@@ -627,7 +627,7 @@ expression: json
       "emotion": "shy",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0150",
-      "voiceKey": "marina-0150"
+      "voiceKey": "marina.s01ep02.marina-0150"
     },
     {
       "kind": "line",
@@ -636,7 +636,7 @@ expression: json
       "speaker": "fixer",
       "text": "When does your shift end.",
       "lineId": "marina.s01ep02.fixer_0060",
-      "voiceKey": "fixer-0060"
+      "voiceKey": "marina.s01ep02.fixer-0060"
     },
     {
       "kind": "line",
@@ -647,7 +647,7 @@ expression: json
       "emotion": "delighted",
       "variant": 1,
       "lineId": "marina.s01ep02.marina_0160",
-      "voiceKey": "marina-0160"
+      "voiceKey": "marina.s01ep02.marina-0160"
     },
     {
       "kind": "line",
@@ -658,7 +658,7 @@ expression: json
       "emotion": "delighted",
       "variant": 1,
       "lineId": "marina.s01ep02.marina_0170",
-      "voiceKey": "marina-0170"
+      "voiceKey": "marina.s01ep02.marina-0170"
     },
     {
       "kind": "music",
@@ -701,7 +701,7 @@ expression: json
       "emotion": "neutral",
       "variant": 0,
       "lineId": "marina.s01ep02.kenshi_0010",
-      "voiceKey": "kenshi-0010"
+      "voiceKey": "marina.s01ep02.kenshi-0010"
     },
     {
       "kind": "line",
@@ -712,7 +712,7 @@ expression: json
       "emotion": "content",
       "variant": 0,
       "lineId": "marina.s01ep02.kenshi_0020",
-      "voiceKey": "kenshi-0020"
+      "voiceKey": "marina.s01ep02.kenshi-0020"
     },
     {
       "kind": "line",
@@ -723,7 +723,7 @@ expression: json
       "emotion": "surprised",
       "variant": 0,
       "lineId": "marina.s01ep02.marina_0180",
-      "voiceKey": "marina-0180"
+      "voiceKey": "marina.s01ep02.marina-0180"
     },
     {
       "kind": "line",
@@ -740,7 +740,7 @@ expression: json
       "speaker": "fixer",
       "text": "...",
       "lineId": "marina.s01ep02.fixer_0070",
-      "voiceKey": "fixer-0070"
+      "voiceKey": "marina.s01ep02.fixer-0070"
     },
     {
       "kind": "match",

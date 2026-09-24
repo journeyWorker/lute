@@ -643,10 +643,11 @@ fn loc_export_emits_component_lines_per_expansion_with_the_callers_id() {
         "a component file must not be exported as a document in its own right"
     );
 
-    // The expansion is exported under the CALLER's id.
+    // The expansion is exported under the CALLER's id, in the expansion's own
+    // `{component}#{n}` scope (dsl 0.22.0 §11).
     let expanded = rows
         .iter()
-        .find(|r| r["lineId"].as_str() == Some("haven.s01ep02.purser_0020"))
+        .find(|r| r["lineId"].as_str() == Some("haven.s01ep02.purserInterject#1.purser_0020"))
         .unwrap_or_else(|| panic!("the caller-derived id must be exported: {text}"));
     assert!(
         expanded["file"]

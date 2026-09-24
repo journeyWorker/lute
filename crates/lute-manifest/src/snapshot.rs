@@ -657,9 +657,9 @@ mod tests {
 
     #[test]
     fn occasion_vocabulary_changes_capability_version() {
-        let decl = |target| OccasionDecl {
+        let decl = |target: bool| OccasionDecl {
             name: "talk".into(),
-            target,
+            target: target.into(),
             ..Default::default()
         };
         let mut a = CapabilitySnapshot::default();
@@ -673,6 +673,41 @@ mod tests {
             capability_version(&b),
             "the occasion contract (`target`) is part of the stamp"
         );
+    }
+
+    #[test]
+    fn shape_only_occasion_targets_keep_their_0_21_stamp() {
+        // dsl 0.22.0 §8: `target:` became `true | { prefix, entity }`. A
+        // project that only ever wrote `target: true` / `false` must keep the
+        // stamp every artifact it already compiled carries (pinned from the
+        // 0.21 `target: bool` field).
+        let stamp = |target: OccasionTarget| {
+            let mut s = CapabilitySnapshot::default();
+            s.occasions.insert(
+                "talk".into(),
+                OccasionDecl {
+                    name: "talk".into(),
+                    target,
+                    ..Default::default()
+                },
+            );
+            capability_version(&s)
+        };
+        assert_eq!(
+            stamp(true.into()),
+            "635d84d2ae27a72f820f5c268618b6060aab7cf2d1c1ffe11941505586fed6fd"
+        );
+        assert_eq!(
+            stamp(false.into()),
+            "f8319417baa3545c8d48f883dbb97174ac1fd2cdb3e93073bd82117cff8b0a72"
+        );
+        // A domain is a different contract: it restamps.
+        let domain = |entity: &str| OccasionTarget::Domain {
+            prefix: "npc".into(),
+            entity: entity.into(),
+        };
+        assert_ne!(stamp(domain("person")), stamp(true.into()));
+        assert_ne!(stamp(domain("person")), stamp(domain("foe")));
     }
 
     #[test]

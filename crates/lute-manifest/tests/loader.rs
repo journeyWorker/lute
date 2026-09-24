@@ -865,7 +865,7 @@ fn unknown_export_message_lists_rewardkinds() {
 /// `DuplicateId { kind: "occasion" }`.
 #[test]
 fn loads_occasions_export() {
-    use lute_manifest::schema::OccasionSelect;
+    use lute_manifest::schema::{OccasionSelect, OccasionTarget};
     let tmp = std::env::temp_dir().join(format!("lute_pkg_oc_{}", std::process::id()));
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(tmp.join("occasions")).unwrap();
@@ -877,16 +877,31 @@ fn loads_occasions_export() {
     fs::write(
         tmp.join("occasions/a.yaml"),
         "occasions:\n  hubVisit: {}\n  talk: { select: first, target: true }\n  \
-         inbox: { select: all, description: Messages }\n",
+         inbox: { select: all, description: Messages }\n  \
+         visit: { target: { prefix: place, entity: location } }\n",
     )
     .unwrap();
     let loaded = load_plugin_dir(&tmp).expect("valid occasions package loads");
     let by_name: std::collections::BTreeMap<_, _> =
         loaded.occasions.iter().map(|o| (o.name.as_str(), o)).collect();
-    assert_eq!(by_name.len(), 3);
+    assert_eq!(by_name.len(), 4);
     let hub = by_name["hubVisit"];
-    assert_eq!((hub.select, hub.target), (OccasionSelect::First, false), "defaults");
-    assert!(by_name["talk"].target);
+    assert_eq!(
+        (hub.select, hub.target.clone()),
+        (OccasionSelect::First, OccasionTarget::Shape(false)),
+        "defaults"
+    );
+    assert!(!hub.target.takes_target());
+    assert_eq!(by_name["talk"].target, OccasionTarget::Shape(true));
+    // dsl 0.22.0 §8: a target domain names a prefix and an entity kind.
+    assert_eq!(
+        by_name["visit"].target,
+        OccasionTarget::Domain {
+            prefix: "place".into(),
+            entity: "location".into()
+        }
+    );
+    assert!(by_name["visit"].target.takes_target());
     assert_eq!(by_name["inbox"].select, OccasionSelect::All);
     assert_eq!(by_name["inbox"].description.as_deref(), Some("Messages"));
 
@@ -903,6 +918,18 @@ fn loads_occasions_export() {
 
     fs::write(tmp.join("occasions/b.yaml"), "occasions:\n  map: { select: random }\n").unwrap();
     let errs = load_plugin_dir(&tmp).expect_err("`select` is a closed enum");
+    assert!(
+        errs.iter().any(|e| matches!(e, lute_manifest::loader::LoadError::Parse { .. })),
+        "{errs:?}"
+    );
+
+    // A domain missing `entity` is neither a bool nor a domain.
+    fs::write(
+        tmp.join("occasions/b.yaml"),
+        "occasions:\n  map: { target: { prefix: place } }\n",
+    )
+    .unwrap();
+    let errs = load_plugin_dir(&tmp).expect_err("a half domain fails the load");
     assert!(
         errs.iter().any(|e| matches!(e, lute_manifest::loader::LoadError::Parse { .. })),
         "{errs:?}"

@@ -165,11 +165,12 @@ impl Unit {
 type Region<'a> = Option<(&'a str, usize)>;
 
 /// Everything one document's walk needs to stamp a `lineId`: the display path,
-/// the identity PREFIX in force for the sub-tree being walked (`None` when the
+/// the identity PREFIX of the document scope being walked (`None` when the
 /// document has none — a schema fragment), the project's
 /// [`IdentityTemplates`], and the resolved component table the
 /// `__component-begin` sentinels name. Carried by reference so the recursive
-/// walk allocates nothing per node.
+/// walk allocates nothing per node. A component expansion's lines use the
+/// prefix extended by its `{component}#{n}` segment ([`walk_nodes`]).
 struct Cx<'a> {
     file: &'a str,
     prefix: Option<&'a str>,
@@ -226,7 +227,7 @@ fn walk_choice<'a>(
         key,
         label: choice.label.clone(),
     });
-    walk_nodes(cx, &choice.body, region, out);
+    walk_nodes(cx, &choice.body, region, cx.prefix, out);
 }
 
 /// Recursively collect translatable units from a node stream in document order
@@ -237,10 +238,24 @@ fn walk_choice<'a>(
 /// `__component-begin`, the bound body, `__component-end` — siblings in this
 /// very list, and nestable, hence the local stack rather than a recursion.
 /// Every other descent forwards `region` unchanged.
-fn walk_nodes<'a>(cx: &Cx<'a>, nodes: &[Node], region: Region<'a>, out: &mut Vec<Unit>) {
+///
+/// `prefix` is the identity prefix in force: the document scope's, extended
+/// by each open expansion's `{component}#{n}` segment — exactly the prefix
+/// the addressing pass mints that line under (dsl 0.22.0 §11).
+fn walk_nodes<'a>(
+    cx: &Cx<'a>,
+    nodes: &[Node],
+    region: Region<'a>,
+    prefix: Option<&str>,
+    out: &mut Vec<Unit>,
+) {
     let mut region = region;
     let mut stack: Vec<Region<'a>> = Vec::new();
+    // One entry per open expansion: its scoped prefix (`None` when the
+    // document scope has no prefix to extend).
+    let mut scoped: Vec<Option<String>> = Vec::new();
     for node in nodes {
+        let prefix = scoped.last().map_or(prefix, |p| p.as_deref());
         match node {
             Node::Directive(d) if d.tag == lute_compile::normalize::COMPONENT_BEGIN => {
                 let name = attr_str(&d.attrs, "component").unwrap_or("");
@@ -259,16 +274,19 @@ fn walk_nodes<'a>(cx: &Cx<'a>, nodes: &[Node], region: Region<'a>, out: &mut Vec
                 // `::use`'s span points into the enclosing component file and
                 // would sort the inner expansion nowhere near its invocation.
                 region = Some((src, region.map_or(d.span.byte_start, |(_, at)| at)));
+                let segment = lute_compile::normalize::component_scope(d);
+                scoped.push(prefix.map(|p| format!("{p}.{segment}")));
             }
             Node::Directive(d) if d.tag == lute_compile::normalize::COMPONENT_END => {
                 region = stack.pop().flatten();
+                scoped.pop();
             }
             Node::Line(l) => {
                 let code = line_code(&l.attrs);
                 // Both halves must be known: an untagged line's code is
                 // BACK-FILLED by the addressing pass from the post-expansion
                 // command stream, which no source-only walk can reproduce.
-                let line_id = match (cx.prefix, &code) {
+                let line_id = match (prefix, &code) {
                     (Some(prefix), Some(code)) => {
                         Some(cx.templates.render_line_id(prefix, &l.speaker, code))
                     }
@@ -304,13 +322,13 @@ fn walk_nodes<'a>(cx: &Cx<'a>, nodes: &[Node], region: Region<'a>, out: &mut Vec
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            walk_nodes(cx, body, region, out)
+                            walk_nodes(cx, body, region, prefix, out)
                         }
                     }
                 }
             }
-            Node::Objective(o) => walk_nodes(cx, &o.body, region, out),
-            Node::On(o) => walk_nodes(cx, &o.body, region, out),
+            Node::Objective(o) => walk_nodes(cx, &o.body, region, prefix, out),
+            Node::On(o) => walk_nodes(cx, &o.body, region, prefix, out),
             Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
             Node::Assert(_) | Node::Retract(_) => {}
         }
@@ -381,7 +399,7 @@ fn document_units(
         components,
     };
     for shot in &doc.shots {
-        walk_nodes(&cx, &shot.body, None, out);
+        walk_nodes(&cx, &shot.body, None, cx.prefix, out);
     }
     for quest in &doc.quests {
         let cx = Cx {
@@ -390,7 +408,7 @@ fn document_units(
             templates,
             components,
         };
-        walk_nodes(&cx, &quest.body, None, out);
+        walk_nodes(&cx, &quest.body, None, cx.prefix, out);
     }
     for entry in &doc.entries {
         let cx = Cx {
@@ -399,7 +417,7 @@ fn document_units(
             templates,
             components,
         };
-        walk_nodes(&cx, &entry.body, None, out);
+        walk_nodes(&cx, &entry.body, None, cx.prefix, out);
     }
 }
 

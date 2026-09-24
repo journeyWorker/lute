@@ -56,7 +56,8 @@ expression: json
       },
       "body": "001-0200",
       "on": "talk",
-      "priority": 10
+      "priority": 10,
+      "once": "user"
     },
     {
       "kind": "line",
@@ -65,7 +66,7 @@ expression: json
       "speaker": "achilles",
       "text": "Back again, lad.",
       "lineId": "achillesBark3.achilles_0010",
-      "voiceKey": "achilles-0010"
+      "voiceKey": "achillesBark3.achilles-0010"
     },
     {
       "kind": "entry",
@@ -74,7 +75,8 @@ expression: json
       "target": "npc.achilles",
       "category": "bark",
       "body": "002-0200",
-      "on": "talk"
+      "on": "talk",
+      "once": "run"
     },
     {
       "kind": "line",
@@ -83,7 +85,7 @@ expression: json
       "speaker": "achilles",
       "text": "Hm.",
       "lineId": "achillesBark.achilles_0010",
-      "voiceKey": "achilles-0010"
+      "voiceKey": "achillesBark.achilles-0010"
     },
     {
       "kind": "entry",

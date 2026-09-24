@@ -46,13 +46,22 @@ pub struct ShotRow {
     pub title: String,
     pub dialogueLines: u32,
     pub words: u32,
+    /// Tag of the first STAGING directive in the shot ([`is_staging_tag`]),
+    /// `""` when the shot stages nothing.
     pub firstStagingTag: String,
+    /// The enclosing document's [`doc_kind`], so a shot rule can scope itself
+    /// to linear scenes without a second binding.
+    pub kind: String,
     pub span: lute_core_span::Span,
 }
 
 /// One document row (spec §4, target `scene`).
 #[derive(Clone, Debug)]
 pub struct SceneRow {
+    /// The document's [`doc_kind`]: `scene` (a linear scene), `beat` (a scene
+    /// answering an occasion), `component`, `quest`, `lore`, or any other
+    /// authored `kind:`.
+    pub kind: String,
     pub dialogueLines: u32,
     pub words: u32,
     pub bodyNodes: u32,
@@ -64,6 +73,48 @@ pub struct SceneRow {
     pub avgLineWords: f64,
     pub dialogueRatio: f64,
     pub span: lute_core_span::Span,
+}
+
+/// Classify a document for the linear-VN metrics (dsl 0.22.0 §13). Only a
+/// `scene` is a linear episode the author reads start to finish; a `beat` (a
+/// scene with `on:`, dsl 0.21.0 §3) is a short overlay presented into an
+/// already-staged moment, and components, quests and lore are fragments, so
+/// shot-opening, dialogue-ratio and length-spread norms do not apply to them.
+///
+/// Mirrors `lute-check`'s meta typing without importing it: a `component:`
+/// declaration key makes a component; an explicit `kind:` other than `scene`
+/// is that kind; otherwise the document is a scene — a `beat` when it carries
+/// `on:`. Malformed frontmatter counts as a scene, which lint tolerates like a
+/// parse-error AST.
+pub fn doc_kind(raw_yaml: &str) -> String {
+    let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(raw_yaml)
+    else {
+        return "scene".to_string();
+    };
+    let key = |k: &str| serde_yaml::Value::String(k.to_string());
+    if map.contains_key(key("component")) {
+        return "component".to_string();
+    }
+    match map.get(key("kind")) {
+        Some(serde_yaml::Value::String(k)) if k != "scene" => k.clone(),
+        _ if map.contains_key(key("on")) => "beat".to_string(),
+        _ => "scene".to_string(),
+    }
+}
+
+/// Whether a directive tag stages something. The language's control
+/// directives — `::accept` (quest acceptance), `::use` (component
+/// invocation), `::end`, `::mark`, `::next` (walk control) — present nothing,
+/// so they never count as a shot's opening staging (dsl 0.22.0 §13).
+pub fn is_staging_tag(tag: &str) -> bool {
+    !matches!(
+        tag,
+        lute_syntax::ast::ACCEPT_DIRECTIVE
+            | "use"
+            | lute_manifest::core::END_DIRECTIVE
+            | lute_manifest::core::MARK_DIRECTIVE
+            | lute_manifest::core::NEXT_DIRECTIVE
+    )
 }
 
 /// Axis statistics (spec §4, upstream parity — run cap, thrash floor, dominance).
@@ -148,7 +199,10 @@ pub fn compute_doc_tables(
     doc: &Document,
     group_bys: &BTreeSet<String>,
 ) -> (DocTables, Vec<DirectiveRow>) {
-    let mut walker = Walker::default();
+    let mut walker = Walker {
+        kind: doc_kind(&doc.meta.raw_yaml),
+        ..Walker::default()
+    };
     for shot in &doc.shots {
         walker.visit_shot(shot);
     }
@@ -256,6 +310,8 @@ pub struct DirectiveRow {
 
 #[derive(Default)]
 struct Walker {
+    /// The document's [`doc_kind`], stamped on every shot row and the scene row.
+    kind: String,
     lines: Vec<LineRow>,
     shots: Vec<ShotRow>,
     /// Per-shot accumulator (index, title, dialogueLines, words,
@@ -265,6 +321,7 @@ struct Walker {
     dialogue_lines: u32,
     total_words: u32,
     body_nodes: u32,
+    /// Staging directives only ([`is_staging_tag`]).
     directives: u32,
     sets: u32,
     choices: u32,
@@ -305,6 +362,7 @@ impl Walker {
                 dialogueLines: acc.dialogueLines,
                 words: acc.words,
                 firstStagingTag: acc.firstStagingTag,
+                kind: self.kind.clone(),
                 span: acc.span,
             });
         }
@@ -316,10 +374,12 @@ impl Walker {
             match n {
                 Node::Line(l) => self.visit_line(l),
                 Node::Directive(d) => {
-                    self.directives += 1;
-                    if let Some(shot) = self.current_shot.as_mut() {
-                        if shot.firstStagingTag.is_empty() {
-                            shot.firstStagingTag = d.tag.clone();
+                    if is_staging_tag(&d.tag) {
+                        self.directives += 1;
+                        if let Some(shot) = self.current_shot.as_mut() {
+                            if shot.firstStagingTag.is_empty() {
+                                shot.firstStagingTag = d.tag.clone();
+                            }
                         }
                     }
                     // Extract assetId for asset-exists.
@@ -414,6 +474,7 @@ impl Walker {
             dialogue as f64 / body_nodes as f64
         };
         SceneRow {
+            kind: self.kind.clone(),
             dialogueLines: dialogue,
             words: self.total_words,
             bodyNodes: body_nodes,

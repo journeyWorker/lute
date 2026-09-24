@@ -94,7 +94,7 @@
       "speaker": "hero",
       "text": "Nothing yet.",
       "lineId": "hero.s01ep01.hero_0010",
-      "voiceKey": "hero-0010"
+      "voiceKey": "hero.s01ep01.hero-0010"
     },
     {
       "kind": "jump",
@@ -108,7 +108,7 @@
       "speaker": "hero",
       "text": "A modest haul.",
       "lineId": "hero.s01ep01.hero_0020",
-      "voiceKey": "hero-0020"
+      "voiceKey": "hero.s01ep01.hero-0020"
     },
     {
       "kind": "jump",
@@ -122,7 +122,7 @@
       "speaker": "hero",
       "text": "A fortune.",
       "lineId": "hero.s01ep01.hero_0030",
-      "voiceKey": "hero-0030"
+      "voiceKey": "hero.s01ep01.hero-0030"
     },
     {
       "kind": "jump",
@@ -136,7 +136,7 @@
       "speaker": "hero",
       "text": "Somewhere in between.",
       "lineId": "hero.s01ep01.hero_0040",
-      "voiceKey": "hero-0040"
+      "voiceKey": "hero.s01ep01.hero-0040"
     },
     {
       "kind": "jump",

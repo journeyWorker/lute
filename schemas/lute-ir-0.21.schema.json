@@ -2134,6 +2134,10 @@
           },
           "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this quest in declaration order. Quest grants fire at fresh `complete`/`failed` transitions (spec §3 D-D). A `<reward on=\"failed\"/>` entry fires ONLY on `failed` (authored fail OR §2.3 downward cascade); a default (no `on=`) entry fires ONLY on `complete`. Runs BEFORE the corresponding `questComplete`/`questFailed` handler bodies. Omitted when the quest authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
         },
+        "tier": {
+          "enum": ["run"],
+          "description": "dsl 0.22.0 §7: `run` for a `<quest tier=\"run\">` — its status and objectives reset to `unset` when a run starts (`newRun`). Omitted for the default `user` tier (status persists across runs)."
+        },
         "wait": {
           "type": "boolean"
         },
@@ -2268,6 +2272,10 @@
         "priority": {
           "type": "integer",
           "description": "dsl 0.21.0 §3.2: the entry beat's authored priority (higher wins). Absent when not authored; the engine reads an absent priority as 0."
+        },
+        "once": {
+          "enum": ["run", "user"],
+          "description": "dsl 0.22.0 §7: the entry beat's repetition policy — `run`: not eligible while `entry.<id>.read` is true; `user`: not eligible once `entry.<id>.everRead` is true. Absent when not authored: repeatable, as in 0.21."
         },
         "body": {
           "type": "string",
@@ -2595,7 +2603,7 @@
             "user",
             "none"
           ],
-          "description": "the scene beat's repetition policy; present only when `kind` == \"scene\" (entries have none, dsl 0.21.0 §3.2)."
+          "description": "the beat's repetition policy: always present on a scene row; on an entry row the authored `once` (`run`/`user`, dsl 0.22.0 §7), absent = repeatable."
         }
       },
       "additionalProperties": false,

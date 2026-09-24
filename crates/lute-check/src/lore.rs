@@ -56,6 +56,7 @@ pub fn entry_read_decl() -> StateDecl {
         ty: Type::Bool,
         default: Some(Literal::Bool(false)),
         namespace: Namespace::Run,
+        owner: None,
     }
 }
 
@@ -245,7 +246,7 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
     for attr in &entry.attrs {
         let key = attr.key.as_str();
         if !crate::logic_attrs::ENTRY_ATTRS.contains(&key)
-            || matches!(key, "when" | "on" | "priority")
+            || matches!(key, "when" | "on" | "priority" | "once")
         {
             continue;
         }

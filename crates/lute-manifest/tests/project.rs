@@ -149,15 +149,20 @@ fn identity_project(tag: &str, identity_yaml: &str) -> std::path::PathBuf {
     root
 }
 
-/// A project with no `identity:` block resolves 0.7.0's hardcoded pair, so an
-/// existing project compiles byte-identically (0.8.0 §9).
+/// A project with no `identity:` block resolves the default pair: 0.7.0's
+/// `lineId` and, since dsl 0.22.0 §11, a `{prefix}`ed `voiceKey` that no two
+/// documents share.
 #[test]
-fn absent_identity_block_defaults_to_070_templates() {
+fn absent_identity_block_defaults_to_prefixed_templates() {
     let root = identity_project("absent", "");
     let proj = load_project(&root).unwrap().unwrap();
     assert_eq!(proj.identity, IdentityTemplates::default());
     assert_eq!(proj.identity.line_id, "{prefix}.{speaker}_{code}");
-    assert_eq!(proj.identity.voice_key, "{speaker}-{code}");
+    assert_eq!(proj.identity.voice_key, "{prefix}.{speaker}-{code}");
+    assert_eq!(
+        proj.identity.render_voice_key("ann.s01ep01", "ann", "0010"),
+        "ann.s01ep01.ann-0010"
+    );
     assert!(proj.identity_diags.is_empty());
     fs::remove_dir_all(&root).ok();
 }
@@ -172,7 +177,7 @@ fn authored_identity_templates_resolve_per_key() {
     );
     let proj = load_project(&root).unwrap().unwrap();
     assert_eq!(proj.identity.line_id, "{prefix}/{speaker}#{code}");
-    assert_eq!(proj.identity.voice_key, "{speaker}-{code}");
+    assert_eq!(proj.identity.voice_key, "{prefix}.{speaker}-{code}");
     assert!(proj.identity_diags.is_empty());
     assert_eq!(
         proj.identity
@@ -221,7 +226,7 @@ fn empty_identity_template_is_reported_at_project_load() {
         proj.identity_diags[0].message,
         "identity template `voiceKey` resolves to an empty string"
     );
-    assert_eq!(proj.identity.voice_key, "{speaker}-{code}");
+    assert_eq!(proj.identity.voice_key, "{prefix}.{speaker}-{code}");
     fs::remove_dir_all(&root).ok();
 }
 

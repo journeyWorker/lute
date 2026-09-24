@@ -71,7 +71,7 @@
       "speaker": "hero",
       "text": "Left it is.",
       "lineId": "hero.s01ep01.hero_0010",
-      "voiceKey": "hero-0010"
+      "voiceKey": "hero.s01ep01.hero-0010"
     },
     {
       "kind": "set",
@@ -95,7 +95,7 @@
       "speaker": "hero",
       "text": "Right it is.",
       "lineId": "hero.s01ep01.hero_0020",
-      "voiceKey": "hero-0020"
+      "voiceKey": "hero.s01ep01.hero-0020"
     },
     {
       "kind": "set",

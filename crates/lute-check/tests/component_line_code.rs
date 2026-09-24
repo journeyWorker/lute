@@ -19,11 +19,10 @@
 //! `scene_component_parity`).
 //!
 //! SCOPE (see the comment at the fix in `check.rs::validate_components`): this
-//! pass checks uniqueness WITHIN one component body. Post-expansion identity
-//! across a component `::use`d twice is a separate, PRE-EXISTING 0.8.0
-//! language property — a single perfectly valid `code="0010"` line in a
-//! component `::use`d twice already compiles to two records with one `lineId`
-//! today — and is deliberately not asserted here.
+//! pass checks uniqueness WITHIN one component body. Across expansions there
+//! is nothing to check: each `::use` is addressed under its own
+//! `{prefix}.{component}#{n}` scope (dsl 0.22.0 §11), pinned end-to-end in
+//! `lute-cli/tests/project_identity.rs`.
 //!
 //! Harness: temp-dir component files resolved through `resolve_components` —
 //! the SAME resolver the CLI/LSP call — mirroring `tests/component_match.rs`

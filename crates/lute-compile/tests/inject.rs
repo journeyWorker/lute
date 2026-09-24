@@ -5,7 +5,7 @@
 use lute_check::ctx::Env;
 use lute_check::{SpriteState, StageState};
 use lute_compile::cfg::{Emitter, Rec};
-use lute_compile::stage::{join_states, walk_seq, WalkCx};
+use lute_compile::stage::{walk_seq, WalkCx};
 use lute_compile::Command;
 use lute_core_span::Severity;
 
@@ -238,7 +238,7 @@ fn join_states_unit_semantics() {
     b.dirty.insert("kenshi".into());
     b.bg = Some("cafe".into());
 
-    let joined = join_states(&StageState::default(), vec![a, b]);
+    let joined = StageState::join(&StageState::default(), vec![a, b]);
     // Differing emotion => marina dropped (Unknown, §7.3).
     assert!(!joined.on_stage.contains_key("marina"));
     // Identical in every arm => carried, dirty intersection kept.
@@ -248,7 +248,7 @@ fn join_states_unit_semantics() {
     assert!(joined.bg.is_none());
     // Empty exits degrade to the entry state.
     let entry = StageState::default();
-    assert!(join_states(&entry, Vec::new()).on_stage.is_empty());
+    assert!(StageState::join(&entry, Vec::new()).on_stage.is_empty());
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn join_unions_dirty_but_only_over_carried_characters() {
     a.dirty.insert("kenshi".into());
     b.on_stage.insert("kenshi".into(), sprite(None));
 
-    let joined = join_states(&StageState::default(), vec![a, b]);
+    let joined = StageState::join(&StageState::default(), vec![a, b]);
     assert!(joined.on_stage.contains_key("marina"));
     assert!(joined.dirty.contains("marina"));
     assert!(!joined.on_stage.contains_key("kenshi"));

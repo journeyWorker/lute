@@ -71,25 +71,33 @@ pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
     )
 }
 
-/// `true` for the RESERVED lore path `entry.<id>.read` (dsl 0.19.0 §5): 3
-/// segments, segment 0 == `entry`, segment 2 == `read`. An engine-written
-/// `bool` (default `false`, run-tier lifetime) readable from any CEL slot in
-/// any document kind — implicitly declared regardless of whether THIS
-/// document declares the `<entry>` (the `quest.<id>.state` rule); content
-/// MUST NOT `::set` it (`E-QUEST-RESERVED-WRITE`). `check-project` resolves
-/// the id (`W-ENTRY-REF-UNKNOWN`).
+/// `true` for a RESERVED lore flag: `entry.<id>.read` (dsl 0.19.0 §5) or
+/// `entry.<id>.everRead` (dsl 0.22.0 §7) — 3 segments, segment 0 ==
+/// `entry`. Both are engine-written `bool`s (default `false`): `read` is
+/// run-tier (reset by a new run), `everRead` user-tier (set on the first read
+/// ever, never reset). Readable from any CEL slot in any document kind —
+/// implicitly declared regardless of whether THIS document declares the
+/// `<entry>` (the `quest.<id>.state` rule); content MUST NOT `::set` either
+/// (`E-QUEST-RESERVED-WRITE`). `check-project` resolves the id
+/// (`W-ENTRY-REF-UNKNOWN`).
 pub fn is_reserved_entry_read(path: &str) -> bool {
     reserved_entry_id(path).is_some()
 }
 
-/// The `<id>` of a reserved `entry.<id>.read` path ([`is_reserved_entry_read`]),
-/// or `None` for any other shape.
+/// The `<id>` of a reserved entry flag path ([`is_reserved_entry_read`]:
+/// `entry.<id>.read` or `entry.<id>.everRead`), or `None` for any other shape.
 pub fn reserved_entry_id(path: &str) -> Option<&str> {
     let mut segs = path.split('.');
     match (segs.next(), segs.next(), segs.next(), segs.next()) {
-        (Some("entry"), Some(id), Some("read"), None) => Some(id),
+        (Some("entry"), Some(id), Some("read" | "everRead"), None) => Some(id),
         _ => None,
     }
+}
+
+/// `true` for the user-tier `entry.<id>.everRead` flag (dsl 0.22.0 §7) — the
+/// one reserved entry flag a new run does not reset.
+pub fn is_entry_ever_read(path: &str) -> bool {
+    reserved_entry_id(path).is_some() && path.ends_with(".everRead")
 }
 
 /// `true` for any path rooted at the read-only `entry` tier (dsl 0.19.0 §5:

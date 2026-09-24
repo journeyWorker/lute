@@ -65,19 +65,20 @@ const HUB_ATTRS: &[&str] = &["id"];
 /// — a reward is a leaf, not an addressable construct.
 pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "on"];
 /// dsl 0.19.0 §3: `<entry>` closes over its declared keys — the seven 0.19.0
-/// keys plus the dsl 0.21.0 §3.2 beat keys `on` and `priority`. The parser
-/// extracts each into a typed field, so a permitted key reaches the residual
-/// list only when its value was not a quoted string — `crate::lore` owns
-/// that shape fault (`E-ENTRY-ATTR`, or `E-BEAT-ATTR` for a beat key); every
-/// OTHER key is `E-UNKNOWN-ATTR`.
+/// keys plus the dsl 0.21.0 §3.2 beat keys `on` and `priority` and the dsl
+/// 0.22.0 §7 beat key `once`. The parser extracts each into a typed field,
+/// so a permitted key reaches the residual list only when its value was not
+/// a quoted string — `crate::lore` owns that shape fault (`E-ENTRY-ATTR`,
+/// or `E-BEAT-ATTR` for a beat key); every OTHER key is `E-UNKNOWN-ATTR`.
 pub const ENTRY_ATTRS: &[&str] = &[
-    "id", "target", "category", "title", "series", "order", "when", "on", "priority",
+    "id", "target", "category", "title", "series", "order", "when", "on", "priority", "once",
 ];
-/// dsl 0.2.0 §6.3 (+ `after`, connectivity T2): `<quest>`'s keys. The parser
-/// extracts each into a typed field, so one reaches the residual list only
-/// with a non-string value; every OTHER key — a `fial=` typo — used to be
-/// accepted and dropped from the IR without a word (0.21.1 T1-7).
-pub const QUEST_ATTRS: &[&str] = &["id", "title", "start", "fail", "after"];
+/// dsl 0.2.0 §6.3 (+ `after`, connectivity T2; `tier`, dsl 0.22.0 §7):
+/// `<quest>`'s keys. The parser extracts each into a typed field, so one
+/// reaches the residual list only with a non-string value; every OTHER key —
+/// a `fial=` typo — used to be accepted and dropped from the IR without a
+/// word (0.21.1 T1-7).
+pub const QUEST_ATTRS: &[&str] = &["id", "title", "start", "fail", "after", "tier"];
 /// dsl 0.2.0 §6.4 (+ subquest `quest`, dsl 0.21.0 §7a.2 `on`): `<objective>`'s
 /// keys. A non-string `on=` stays residual for `crate::beats` to report
 /// (`E-BEAT-ATTR`), so it is permitted here rather than double-reported.
@@ -188,6 +189,31 @@ pub(crate) fn check_entry_attrs(e: &Entry, diags: &mut Vec<Diagnostic>) {
 
 pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
     close(&q.attrs, "quest", QUEST_ATTRS, &[], None, diags);
+    // dsl 0.22.0 §7: `tier` is `"run"` or `"user"` — a quoted string; a
+    // bare/non-string value stays residual.
+    let bad = q
+        .tier
+        .as_ref()
+        .filter(|(t, _)| !matches!(t.as_str(), "run" | "user"))
+        .map(|(_, span)| *span)
+        .into_iter()
+        .chain(q.attrs.iter().filter(|a| a.key == "tier").map(|a| a.span));
+    for span in bad {
+        diags.push(Diagnostic {
+            code: "E-ATTR-TYPE".to_string(),
+            severity: Severity::Error,
+            message: "attribute `tier` of `<quest>` expects \"run\" (status and objectives reset \
+                      at a new run) or \"user\" (persists across runs, the default) \
+                      (dsl 0.22.0 §7)"
+                .to_string(),
+            span,
+            layer: Layer::Logic,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        });
+    }
 }
 
 pub(crate) fn check_objective_attrs(o: &Objective, diags: &mut Vec<Diagnostic>) {

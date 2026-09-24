@@ -14,15 +14,17 @@ use crate::ir::*;
 use crate::lower::{
     attr_bool, attr_string, lower_assert, lower_directive, lower_line, lower_retract, lower_set,
 };
-use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
+use crate::normalize::{component_scope, COMPONENT_BEGIN, COMPONENT_END};
 use crate::schedule::schedule_timeline;
 
 /// Walk context: the read-only capability surface + the component-source
-/// stack (sentinel-driven) + the document-order timeline counter (Task 10).
+/// stack (sentinel-driven: each open expansion's name and its
+/// `{component}#{n}` identity segment) + the document-order timeline counter
+/// (Task 10).
 pub struct WalkCx<'a> {
     pub snapshot: &'a CapabilitySnapshot,
     pub env: &'a Env,
-    pub components: Vec<String>,
+    pub components: Vec<(String, String)>,
     pub timelines: u32,
 }
 
@@ -48,7 +50,7 @@ pub fn walk_seq(
     for (i, node) in nodes.iter().enumerate() {
         match node {
             Node::Directive(d) if d.tag == COMPONENT_BEGIN => {
-                cx.components.push(component_attr(d));
+                cx.components.push((component_attr(d), component_scope(d).to_string()));
             }
             Node::Directive(d) if d.tag == COMPONENT_END => {
                 cx.components.pop();
@@ -348,7 +350,7 @@ fn walk_branch(
         exits.push(exit);
     }
     em.bind(conv);
-    let mut joined = join_states(&state, exits);
+    let mut joined = StageState::join(&state, exits);
     let mut diags = base_diags;
     diags.append(&mut joined.diags);
     joined.diags = diags;
@@ -423,8 +425,8 @@ fn walk_hub(
     }
     em.bind(conv);
     // Hub arms have no dominance relation (like `<match>` arms) — arm writes are
-    // may-writes at hub exit; `join_states` applies the conservative join.
-    let mut joined = join_states(&state, exits);
+    // may-writes at hub exit; `StageState::join` applies the conservative join.
+    let mut joined = StageState::join(&state, exits);
     let mut diags = base_diags;
     diags.append(&mut joined.diags);
     joined.diags = diags;
@@ -509,70 +511,27 @@ fn walk_match(
         exits.push(exit);
     }
     em.bind(conv);
-    let mut joined = join_states(&state, exits);
+    let mut joined = StageState::join(&state, exits);
     let mut diags = base_diags;
     diags.append(&mut joined.diags);
     joined.diags = diags;
     joined
 }
 
-/// §7.3 conservative convergence join. Per character: identical `SpriteState`
-/// in EVERY arm → carried; differing or partial → dropped (that encodes
-/// `Unknown`: a later plain line assumes no pose — no false posReset — and a
-/// later `::auto` is a fresh show → anchor + preload). `dirty` survives for a
-/// carried character if ANY surviving arm exit marks it dirty (a redundant
-/// posReset beats a missing one — e.g. a `variant`/`dialogMotion`-only line
-/// dirties without changing `SpriteState`); `exited` (dsl 0.10.0 §11.2) survives
-/// only if EVERY arm exit marks it, since a character who left on one path is
-/// not provably absent after the join and `W-STAGE-ABSENT` must not fire on a
-/// maybe; `bg`/`music` carry only when identical across arms. Exits'
-/// diagnostics concatenate in arm order.
-pub fn join_states(entry: &StageState, mut exits: Vec<StageState>) -> StageState {
-    let Some(first) = exits.first().cloned() else {
-        return entry.clone();
-    };
-    let mut joined = StageState::default();
-    for e in &mut exits {
-        joined.diags.append(&mut e.diags);
-    }
-    'chars: for (ch, sprite) in &first.on_stage {
-        for e in &exits[1..] {
-            if e.on_stage.get(ch) != Some(sprite) {
-                continue 'chars;
-            }
-        }
-        joined.on_stage.insert(ch.clone(), sprite.clone());
-    }
-    let kept: Vec<String> = joined.on_stage.keys().cloned().collect();
-    for ch in kept {
-        if exits.iter().any(|e| e.dirty.contains(&ch)) {
-            joined.dirty.insert(ch);
-        }
-    }
-    for ch in &first.exited {
-        if exits[1..].iter().all(|e| e.exited.contains(ch)) {
-            joined.exited.insert(ch.clone());
-        }
-    }
-    joined.bg = if exits.iter().all(|e| e.bg == first.bg) {
-        first.bg.clone()
-    } else {
-        None
-    };
-    joined.music = if exits.iter().all(|e| e.music == first.music) {
-        first.music.clone()
-    } else {
-        None
-    };
-    joined
-}
-
-/// `source { component }` from the sentinel-driven stack (§4.3, D8).
+/// `source { component }` from the sentinel-driven stack (§4.3, D8), plus
+/// the identity scope the addressing pass mints the record's ids under.
 fn apply_source(cmd: &mut Command, cx: &WalkCx<'_>) {
-    if let Some(name) = cx.components.last() {
+    if let Some((name, _)) = cx.components.last() {
         if let Some(stamp) = cmd.stamp_mut() {
+            let scope = cx
+                .components
+                .iter()
+                .map(|(_, segment)| segment.as_str())
+                .collect::<Vec<_>>()
+                .join(".");
             stamp.source = Some(Source {
                 component: name.clone(),
+                scope,
             });
         }
     }
@@ -683,6 +642,13 @@ pub fn walk_quest(
             .iter()
             .map(|r| RewardEntry::from_ast(r, true))
             .collect(),
+        // dsl 0.22.0 §7: only `tier="run"` is serialized (`E-ATTR-TYPE`
+        // already gated any other value).
+        tier: quest
+            .tier
+            .as_ref()
+            .filter(|(t, _)| t == "run")
+            .map(|_| crate::ir::QuestTier::Run),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -823,6 +789,12 @@ pub fn walk_entry(
             .priority
             .as_ref()
             .and_then(|(p, _)| lute_check::parse_beat_priority(p)),
+        // dsl 0.22.0 §7: `once="run"|"user"` (`E-BEAT-ATTR` gated the rest).
+        once: entry.once.as_ref().and_then(|(o, _)| match o.as_str() {
+            "run" => Some(crate::ir::BeatOnce::Run),
+            "user" => Some(crate::ir::BeatOnce::User),
+            _ => None,
+        }),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);

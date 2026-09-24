@@ -61,7 +61,7 @@
       "speaker": "hero",
       "text": "I'll hold the crossing.",
       "lineId": "hero.s01ep01.hero_0010",
-      "voiceKey": "hero-0010"
+      "voiceKey": "hero.s01ep01.hero-0010"
     },
     {
       "kind": "end",
@@ -80,7 +80,7 @@
       "speaker": "hero",
       "text": "There's nothing left here.",
       "lineId": "hero.s01ep01.hero_0020",
-      "voiceKey": "hero-0020"
+      "voiceKey": "hero.s01ep01.hero-0020"
     },
     {
       "kind": "end",

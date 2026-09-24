@@ -1102,6 +1102,7 @@ mod tests {
                 ty,
                 default: None,
                 namespace: crate::meta::Namespace::Scene,
+                owner: None,
             },
         );
         Env {

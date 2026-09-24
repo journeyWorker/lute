@@ -35,9 +35,10 @@ fn stdout(out: &Output) -> String {
 /// have a project to find.
 const MANIFEST: &str = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n";
 
-/// A scene whose `<match>` reads a DERIVED relation. `lute trace` runs no
-/// rules, so an unmocked derived atom is unknown and the walk halts there
-/// (exit 3) — the line after the match is never reached.
+/// A scene whose `<match>` reads a DERIVED relation. Under `derive: false`
+/// (dsl 0.22.0 §6) `lute trace` runs no rules, so an unmocked derived atom is
+/// unknown and the walk halts there (exit 3) — the line after the match is
+/// never reached. By default the rule derives it and the walk completes.
 const DERIVED_MATCH: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
      entities:\n  npc: { members: [ana, bo] }\n\
      relations:\n  friend: { args: [npc, npc] }\n  allied: { args: [npc, npc], derive: true }\n\
@@ -58,7 +59,7 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
     write_at(
         &dir,
         "t.test.yaml",
-        "file: s.lute\nexpect:\n  transcriptContains: [\"before.\"]\n",
+        "file: s.lute\nderive: false\nexpect:\n  transcriptContains: [\"before.\"]\n",
     );
     let out = lute(&["test", dir.to_str().unwrap()]);
     let text = stdout(&out);
@@ -94,7 +95,32 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
     write_at(
         &dir,
         "t.test.yaml",
+        "file: s.lute\nderive: false\nexpect:\n  exit: incomplete\n  transcriptContains: [\"before.\"]\n",
+    );
+    let out = lute(&["test", dir.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+
+    // `--no-derive` overrides a test that derives.
+    write_at(
+        &dir,
+        "t.test.yaml",
         "file: s.lute\nexpect:\n  exit: incomplete\n  transcriptContains: [\"before.\"]\n",
+    );
+    let out = lute(&["test", dir.to_str().unwrap(), "--no-derive"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+}
+
+/// dsl 0.22.0 §6: `lute test` applies the rules by default — the derived
+/// `allied(ana, bo)` decides the match without being mocked; the walk
+/// completes past it.
+#[test]
+fn a_rule_derived_fact_decides_a_test_guard_without_mocking_it() {
+    let dir = temp_dir("derived-guard");
+    write_at(&dir, "s.lute", DERIVED_MATCH);
+    write_at(
+        &dir,
+        "t.test.yaml",
+        "file: s.lute\nexpect:\n  exit: complete\n  transcriptContains: [\"allied.\", \"after.\"]\n",
     );
     let out = lute(&["test", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
@@ -102,9 +128,10 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
 
 /// T1-13: a lore document has nothing to walk without an entry. `lute trace`
 /// refuses it, but a test naming it walked nothing and PASSED `exit:
-/// complete`.
+/// complete`. Since dsl 0.22.0 §5 the test names the entries to present;
+/// without one it is still refused, and the refusal says how to name them.
 #[test]
-fn a_lore_document_cannot_be_a_test_subject() {
+fn a_lore_document_is_a_test_subject_only_with_its_entries_named() {
     let dir = temp_dir("lore-subject");
     write_at(
         &dir,
@@ -121,8 +148,16 @@ fn a_lore_document_cannot_be_a_test_subject() {
     let text = stdout(&out);
     assert_eq!(out.status.code(), Some(1), "{text}");
     assert!(text.contains("E-TEST-LORE"), "{text}");
-    assert!(text.contains("--entry"), "the way forward is named: {text}");
+    assert!(text.contains("`entry: <id>`"), "the way forward is named: {text}");
     assert!(text.contains("page"), "the declared entries are listed: {text}");
+
+    write_at(
+        &dir,
+        "t.test.yaml",
+        "file: book.lute\nentry: page\nexpect:\n  transcriptContains: [\"a page.\"]\n",
+    );
+    let out = lute(&["test", dir.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
 }
 
 /// T1-13: `lute test tests --coverage` measured the untested set against
@@ -140,8 +175,8 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
     };
     write_at(&dir, "scenes/tested.lute", &scene(1));
     write_at(&dir, "scenes/untested.lute", &scene(2));
-    // A lore document cannot be a test subject (E-TEST-LORE), so it is not
-    // "untested" either.
+    // A lore document is testable since dsl 0.22.0 §5 (`entry:`), so an
+    // untested one is listed like any other document.
     write_at(
         &dir,
         "lore/book.lute",
@@ -155,10 +190,24 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
     let out = lute(&["test", dir.join("tests").to_str().unwrap(), "--coverage"]);
     let text = stdout(&out);
     assert!(out.status.success(), "{text}");
-    assert!(text.contains("1 untested document"), "{text}");
+    assert!(text.contains("2 untested document"), "{text}");
     assert!(text.contains("untested.lute"), "{text}");
     assert!(!text.contains("every testable document"), "{text}");
-    assert!(!text.contains("book.lute"), "lore is untestable, not untested: {text}");
+    assert!(text.contains("book.lute"), "lore is testable, so untested: {text}");
+
+    // Naming its entry discharges it.
+    write_at(
+        &dir,
+        "tests/book.test.yaml",
+        "file: ../lore/book.lute\nentry: page\nexpect:\n  exit: complete\n",
+    );
+    let out = lute(&["test", dir.join("tests").to_str().unwrap(), "--coverage"]);
+    let text = stdout(&out);
+    assert!(out.status.success(), "{text}");
+    let (_, listed) = text
+        .split_once("1 untested document")
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(!listed.contains("book.lute"), "{text}");
 }
 
 /// T2-5: `expect.state` compared only `::set` writes, so a declared default
@@ -256,7 +305,15 @@ fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
          @narrator: left.\n</choice>\n</branch>\n",
     );
     let file = dir.join("s.lute");
-    let out = lute(&["trace", file.to_str().unwrap(), "--choose", "ask=trust"]);
+    // `--no-derive` (dsl 0.22.0 §6): the rule is not applied, so the guard
+    // over the derived relation stays unknown.
+    let out = lute(&[
+        "trace",
+        file.to_str().unwrap(),
+        "--choose",
+        "ask=trust",
+        "--no-derive",
+    ]);
     let text = stdout(&out);
     assert_eq!(out.status.code(), Some(0), "exit unchanged: {text}");
     assert!(
@@ -265,9 +322,21 @@ fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
     );
     assert!(text.contains("--fact \"allied(ana, bo)\""), "{text}");
 
-    let out = lute(&["trace", file.to_str().unwrap(), "--choose", "ask=trust", "--json"]);
+    let out = lute(&[
+        "trace",
+        file.to_str().unwrap(),
+        "--choose",
+        "ask=trust",
+        "--no-derive",
+        "--json",
+    ]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["forcedUnknown"][0]["id"], "ask -> trust", "{v:#}");
+
+    // By default the rule derives `allied(ana, bo)`: nothing is forced.
+    let out = lute(&["trace", file.to_str().unwrap(), "--choose", "ask=trust", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["forcedUnknown"], serde_json::json!([]), "{v:#}");
 }
 
 /// Two scenes of one mystery: `a` asserts the clue, `b` is traced with it

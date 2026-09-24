@@ -405,6 +405,13 @@ pub struct Stamp {
 #[derive(Clone, Debug, Serialize)]
 pub struct Source {
     pub component: String,
+    /// The record's identity scope below the host prefix: every enclosing
+    /// expansion's `{component}#{n}` segment, outermost first, `.`-joined
+    /// (dsl 0.22.0 §11, `normalize::component_scope`). The addressing pass
+    /// mints a component line's `lineId`/`voiceKey` under
+    /// `{prefix}.{scope}`. Not wire data — the `lineId` already carries it.
+    #[serde(skip)]
+    pub scope: String,
 }
 
 /// `:line` role (§4.4, foundation D7). Voiced roles carry a `voiceKey`
@@ -960,8 +967,22 @@ pub struct QuestCmd {
     /// field's index — the file-header byte-stability contract).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rewards: Vec<RewardEntry>,
+    /// dsl 0.22.0 §7: `"run"` for a `<quest tier="run">` — its status and
+    /// objectives reset to `unset` when a run starts. Omitted for the default
+    /// `user` tier (status persists across runs), so every 0.21 quest record
+    /// is byte-identical. Appended after `rewards` (byte-stability contract).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<QuestTier>,
     #[serde(flatten)]
     pub stamp: Stamp,
+}
+
+/// A quest's lifetime tier (dsl 0.22.0 §7) — only the non-default `run` is
+/// ever serialized.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QuestTier {
+    Run,
 }
 
 /// One objective inlined in `QuestCmd.objectives` (dsl 0.2.0 §6.4, IR
@@ -1065,6 +1086,11 @@ pub struct EntryCmd {
     /// (the engine reads an absent priority as `0`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<i64>,
+    /// dsl 0.22.0 §7: an entry beat's repetition policy — `"run"` (not
+    /// eligible while `entry.<id>.read`), `"user"` (not eligible once
+    /// `entry.<id>.everRead`). Omitted = repeatable, as in 0.21.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub once: Option<BeatOnce>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }

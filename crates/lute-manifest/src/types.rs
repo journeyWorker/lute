@@ -89,6 +89,26 @@ impl Literal {
     }
 }
 
+/// Who writes a declared state path (dsl 0.22.0 §1.2). Only `engine` is
+/// spellable (`owner: engine`); an absent `owner:` means content may write it.
+/// An engine-owned path is written by the engine at runtime and by `engine:`
+/// play steps / trace mocks in the toolchain — a content `::set` of it is
+/// `E-ENGINE-OWNED-WRITE`. Reads are unrestricted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Owner {
+    Engine,
+}
+
+impl Owner {
+    /// The YAML spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Owner::Engine => "engine",
+        }
+    }
+}
+
 /// plugin §7.4 structured path segment.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]

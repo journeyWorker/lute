@@ -39,7 +39,7 @@ fn with_occasions() -> CapabilitySnapshot {
             OccasionDecl {
                 name: name.into(),
                 select,
-                target,
+                target: target.into(),
                 description: None,
             },
         );
@@ -452,9 +452,14 @@ impl Project {
         )
     }
 
+    /// `W-BEAT-SHADOWED` only (the 0.22 tie / once advisories have their own
+    /// tests in `harness_022.rs`).
     fn shadowed(&self) -> Vec<(PathBuf, Diagnostic)> {
         let refs: Vec<&FoldedEnv> = self.foldeds.iter().collect();
         check_project_beats(&self.docs, &refs)
+            .into_iter()
+            .filter(|(_, d)| d.code == "W-BEAT-SHADOWED")
+            .collect()
     }
 }
 
@@ -494,7 +499,6 @@ fn shadow_codes(p: &Project) -> Vec<(String, String)> {
     p.shadowed()
         .into_iter()
         .map(|(path, d)| {
-            assert_eq!(d.code, "W-BEAT-SHADOWED");
             assert_eq!(d.severity, Severity::Warning);
             (path.display().to_string(), d.message)
         })
@@ -593,7 +597,7 @@ fn an_unconditional_entry_beat_shadows_because_entries_never_spend() {
     assert_eq!(got[0].0, "b.lute");
     assert!(got[0].1.starts_with("scene `hades.b` can never win"), "{}", got[0].1);
     assert!(got[0].1.contains("entry `bark` (priority 20)"), "{}", got[0].1);
-    assert!(got[0].1.contains("(an entry has no `once`)"), "{}", got[0].1);
+    assert!(got[0].1.contains("(an entry without `once`)"), "{}", got[0].1);
     assert_eq!(got[1].0, "barks.lute");
     assert!(got[1].1.starts_with("entry `later` can never win"), "{}", got[1].1);
 

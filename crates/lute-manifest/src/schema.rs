@@ -359,7 +359,7 @@ pub struct OccasionBody {
     #[serde(default)]
     pub select: OccasionSelect,
     #[serde(default)]
-    pub target: bool,
+    pub target: OccasionTarget,
     #[serde(default)]
     pub description: Option<String>,
 }
@@ -378,17 +378,65 @@ pub enum OccasionSelect {
 /// A capability-declared occasion (dsl 0.21.0 §2): the vocabulary a plugin's
 /// `occasions:` export contributes, consumed by the checker's
 /// `E-OCCASION-UNKNOWN` closure and beat-target / shadowing analysis.
-/// `target: true` means the occasion is raised FOR something, so a beat may
-/// restrict itself to one target.
+/// A targeted occasion is raised FOR something, so a beat may restrict
+/// itself to one target (dsl 0.22.0 §8: optionally from a closed domain).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct OccasionDecl {
     pub name: String,
     #[serde(default)]
     pub select: OccasionSelect,
     #[serde(default)]
-    pub target: bool,
+    pub target: OccasionTarget,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+/// An occasion's `target:` (dsl 0.21.0 §2, dsl 0.22.0 §8): `true` / `false`
+/// (the 0.21 shape-only meaning — any dotted id), or a domain
+/// `{ prefix, entity }`: a target is then `<prefix>.<member>` for a member of
+/// the project entity kind `entity`.
+///
+/// `Debug` prints a shape-only target as the bare bool, exactly as the 0.21
+/// `target: bool` field did, so a snapshot that never names a domain keeps
+/// its `capabilityVersion` (the hash folds `OccasionDecl`'s `Debug`).
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum OccasionTarget {
+    Shape(bool),
+    Domain { prefix: String, entity: String },
+}
+
+impl Default for OccasionTarget {
+    fn default() -> Self {
+        OccasionTarget::Shape(false)
+    }
+}
+
+impl From<bool> for OccasionTarget {
+    fn from(b: bool) -> Self {
+        OccasionTarget::Shape(b)
+    }
+}
+
+impl OccasionTarget {
+    /// Whether the occasion is raised for a target at all (`target: true` or
+    /// a domain).
+    pub fn takes_target(&self) -> bool {
+        !matches!(self, OccasionTarget::Shape(false))
+    }
+}
+
+impl std::fmt::Debug for OccasionTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OccasionTarget::Shape(b) => std::fmt::Debug::fmt(b, f),
+            OccasionTarget::Domain { prefix, entity } => f
+                .debug_struct("Domain")
+                .field("prefix", prefix)
+                .field("entity", entity)
+                .finish(),
+        }
+    }
 }
 
 /// Deserialize `DefDecl.params` in SOURCE order (dsl §8.1). Accepts either the

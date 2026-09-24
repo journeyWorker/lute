@@ -420,13 +420,20 @@ fn render_scalar(v: &Value) -> String {
 }
 
 /// `1.0` → `"1"`, `1.5` → `"1.5"`, `72.4` → `"72.4"` — no trailing `.0`
-/// (spec §5 "numbers rendered trimmed").
+/// (spec §5 "numbers rendered trimmed"), and at most two decimals
+/// (`3.3333…` → `"3.33"`): a message is read by an author, and a ratio's
+/// sixteenth digit is float noise (dsl 0.22.0 §13).
 fn trim_number(n: f64) -> String {
-    if n.fract() == 0.0 && n.is_finite() {
-        return (n as i64).to_string();
+    if !n.is_finite() {
+        return format!("{n}");
     }
-    let s = format!("{n}");
-    s
+    let s = format!("{:.2}", (n * 100.0).round() / 100.0);
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    if s == "-0" {
+        "0".to_string()
+    } else {
+        s.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -513,5 +520,22 @@ mod tests {
         );
         let msg = render_message("run={s.run}, share={s.share:%}", &e);
         assert_eq!(msg, "run=5, share=72%");
+    }
+
+    #[test]
+    fn message_numbers_round_to_two_decimals() {
+        let mut e = Env::new();
+        e.bind(
+            "p",
+            Value::Map({
+                let mut m = BTreeMap::new();
+                m.insert("ratio".into(), Value::Num(10.0 / 3.0));
+                m.insert("half".into(), Value::Num(1.5));
+                m.insert("tiny".into(), Value::Num(-0.001));
+                m
+            }),
+        );
+        let msg = render_message("{p.ratio} {p.half} {p.tiny}", &e);
+        assert_eq!(msg, "3.33 1.5 0");
     }
 }

@@ -1174,7 +1174,7 @@ fn occasion(name: &str, select: OccasionSelect, target: bool) -> OccasionDecl {
     OccasionDecl {
         name: name.into(),
         select,
-        target,
+        target: target.into(),
         description: None,
     }
 }
@@ -1243,5 +1243,5 @@ fn assemble_rejects_cross_plugin_occasion_dup() {
         )),
         "cross-plugin dup occasion must be DuplicateAcrossPlugins with owner attribution: {errs:?}"
     );
-    assert!(snap.occasions["talk"].target, "first owner wins");
+    assert!(snap.occasions["talk"].target.takes_target(), "first owner wins");
 }

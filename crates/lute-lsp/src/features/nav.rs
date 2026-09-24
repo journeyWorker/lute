@@ -403,6 +403,7 @@ mod tests {
                 ty: Type::Number,
                 default: None,
                 namespace: Namespace::Run,
+                owner: None,
             },
         );
         imports.defs.insert(

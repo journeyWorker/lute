@@ -44,6 +44,7 @@ use lute_syntax::ast::{
 use lute_syntax::datalog::FactTerm;
 use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral};
 
+use crate::datalog::Program;
 use crate::eval::{
     eval, eval_path_read, expr_path, is_reserved_quest_path, literal_to_value, EffectiveState,
     EvalEnv, FactStore, Pat, Read, ReservedReadKind,
@@ -1142,8 +1143,9 @@ fn skip_effect(effect: &str, text: String, w: &mut Walk<'_>) {
 /// eligibility gate is evaluated and SHOWN on the [`Step::Entry`] head, never
 /// enforced — presenting is what was asked for. An unknown `when` records an
 /// unresolved atom without halting, like a quest `start` (exit 3). The
-/// engine's post-presentation `entry.<id>.read = true` write is not modeled:
-/// a trace presents once and reports no final state.
+/// engine's post-presentation `entry.<id>.read` / `entry.<id>.everRead`
+/// writes are applied by the CALLER after this returns, so the next entry of
+/// a sequence ([`trace_entries_with_check`]) sees a re-read.
 fn walk_entry(entry: &Entry, w: &mut Walk<'_>) -> Flow {
     let read_path = lute_check::entry_read_path(&entry.id);
     let first_read = !matches!(w.state.read(&read_path), Read::Value(Value::Bool(true)));
@@ -2034,10 +2036,10 @@ fn seeds_summary(mocks: &MockSet) -> Seeds {
     }
 }
 
-/// §3.1: `trace` keeps the explicit-world model UNCHANGED — the effective
-/// fact set is exactly the supplied `--fact`/`--mock` mocks, never the
-/// schema's own seed `facts:` block (that block is never read into the
-/// [`FactStore`] anywhere in this module). This function ONLY decides
+/// §3.1 under `derive: false` (dsl 0.22.0 §6): the effective fact set is
+/// exactly the supplied `--fact`/`--mock` mocks, never the schema's own
+/// seed `facts:` block (with `derive: true`, the default, the seeds ARE
+/// loaded and this note is not produced). This function ONLY decides
 /// whether to render informational signage about that model: when the
 /// resolved schema DECLARES seed facts and NONE of THEM (specifically —
 /// not merely "the mock list happens to be empty") were supplied as
@@ -2075,10 +2077,27 @@ fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::FactDecl]) -
         return Vec::new();
     }
     vec![format!(
-        "the schema declares seed facts (e.g. `{}`) but trace does not auto-load them (§3.1, \
-         the explicit-world model) — supply seeded relations explicitly via --fact",
+        "the schema declares seed facts (e.g. `{}`) but under `derive: false` trace does not \
+         auto-load them (§3.1, the explicit-world model) — supply seeded relations explicitly \
+         via --fact",
         seed_facts[0].fact.relation
     )]
+}
+
+/// dsl 0.22.0 §6: under `derive: false` every derived relation a query read
+/// was looked up, not derived — an unmocked atom of it read unknown. One
+/// note per relation, sorted; informational only.
+fn derived_read_notes(relations: &BTreeSet<String>) -> Vec<String> {
+    relations
+        .iter()
+        .map(|rel| {
+            format!(
+                "derived relation `{rel}` read under `derive: false`: its rules were not \
+                 applied, so an unmocked `{rel}(…)` is unknown — supply it via --fact, or drop \
+                 `derive: false`"
+            )
+        })
+        .collect()
 }
 
 /// dsl 0.5.1 §1.3: one informational note per FOREIGN quest `<id>` — a
@@ -2500,7 +2519,7 @@ pub fn trace_with_check(
     mocks: MockSet,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, None, project_asserts)
+    trace_pipeline(input, result, mocks, &[], project_asserts)
 }
 
 /// `lute trace --entry <id>` (dsl 0.19.0 §8): the SAME §4.3 pipeline as
@@ -2524,14 +2543,30 @@ pub fn trace_entry_with_check(
     entry: &str,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, Some(entry), project_asserts)
+    trace_pipeline(input, result, mocks, &[entry], project_asserts)
+}
+
+/// `lute test`'s `entries: [ids]` (dsl 0.22.0 §5): [`trace_entry_with_check`]
+/// over a SEQUENCE — each entry is presented in order against the state the
+/// previous ones left, with the engine's post-presentation `entry.<id>.read`
+/// / `entry.<id>.everRead` writes applied between them, so a repeated id is
+/// a re-read (first-read effects skipped). Every id is validated before any
+/// is presented; the walk stops at the first entry that does not continue.
+pub fn trace_entries_with_check(
+    input: &CheckInput,
+    result: CheckResult,
+    mocks: MockSet,
+    entries: &[&str],
+    project_asserts: Option<&BTreeSet<String>>,
+) -> (TraceReport, TraceExit) {
+    trace_pipeline(input, result, mocks, entries, project_asserts)
 }
 
 fn trace_pipeline(
     input: &CheckInput,
     result: CheckResult,
     mocks: MockSet,
-    entry: Option<&str>,
+    entries: &[&str],
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
     // 1. `check` gate (§4.3): any Error -> Refused, run check first.
@@ -2553,10 +2588,15 @@ fn trace_pipeline(
     // 3. Mock validation (§4.3): any E-TRACE-* -> Refused.
     //    `--entry` (dsl 0.19.0 §8) first: a non-lore document / unknown id
     //    is refused before any mock is judged against it.
-    let mut mock_diags = match entry {
-        Some(id) => mock::validate_entry(&folded, &doc, id),
-        None => Vec::new(),
-    };
+    let mut mock_diags: Vec<Diagnostic> = Vec::new();
+    for id in entries {
+        for d in mock::validate_entry(&folded, &doc, id) {
+            // A non-lore document refuses every id with the same line.
+            if !mock_diags.iter().any(|m| m.message == d.message) {
+                mock_diags.push(d);
+            }
+        }
+    }
     if mock_diags.is_empty() {
         mock_diags = mock::validate(&mocks, &folded, &doc);
     }
@@ -2587,7 +2627,18 @@ fn trace_pipeline(
     //    `--entry` (dsl 0.19.0 §8) only that one entry is presented.
     let seed = seed_state(&mocks, &folded.env.state);
     let state = EffectiveState::new(&folded.env.state, seed);
+    // dsl 0.22.0 §6 (D-B): by default the project's seed facts join the
+    // mocked ones and every query reads the Datalog fixpoint — the runner's
+    // own evaluator. `derive: false` keeps the 0.21 explicit-world lookup.
+    let program = Program::from_vocab(&folded.env.rel_vocab);
     let mut facts = FactStore::new(&folded.env.rel_vocab);
+    if mocks.derives() {
+        facts = facts.with_derivation(&program);
+        for fd in &folded.env.rel_vocab.facts {
+            let args: Vec<String> = fd.fact.args.iter().map(|a| fact_term_text(&a.term)).collect();
+            facts.assert(&fd.fact.relation, &args);
+        }
+    }
     seed_facts(&mocks, &mut facts);
 
     let mut w = Walk {
@@ -2612,27 +2663,44 @@ fn trace_pipeline(
     // holds. Judged against the mocks BEFORE the walk writes anything — the
     // selector decides at presentation time — and reported, never enforced:
     // tracing a scene is asking to see it.
-    let beat_note = if entry.is_none() {
+    let beat_note = if entries.is_empty() {
         beat_when_note(&folded, &table, &w)
     } else {
         None
     };
 
-    let mut flow = match entry {
-        // `validate_entry` proved the id is declared.
-        Some(id) => match doc.entries.iter().find(|e| e.id == id) {
-            Some(e) => walk_entry(e, &mut w),
-            None => Flow::Continue,
-        },
-        None => walk_document(&doc, &mut w),
+    let mut flow = if entries.is_empty() {
+        walk_document(&doc, &mut w)
+    } else {
+        let mut flow = Flow::Continue;
+        for id in entries {
+            // `validate_entry` proved every id is declared.
+            let Some(e) = doc.entries.iter().find(|e| e.id == *id) else {
+                continue;
+            };
+            flow = walk_entry(e, &mut w);
+            if !matches!(flow, Flow::Continue) {
+                break;
+            }
+            w.state
+                .write(&lute_check::entry_read_path(id), Value::Bool(true));
+            w.state
+                .write(&format!("entry.{id}.everRead"), Value::Bool(true));
+        }
+        flow
     };
-    if entry.is_none() && matches!(flow, Flow::Continue) {
+    if entries.is_empty() && matches!(flow, Flow::Continue) {
         flow = walk_quests(&doc, &mocks.events, &mut w);
     }
 
     let doc_quest_ids: BTreeSet<&str> = doc.quests.iter().map(|q| q.id.as_str()).collect();
     let mut notes: Vec<String> = beat_note.into_iter().collect();
-    notes.extend(seed_fact_notes(&mocks, &folded.env.rel_vocab.facts));
+    // dsl 0.22.0 §6: under `derive: false` the seeds were not loaded and the
+    // rules not applied — say so, once per derived relation read.
+    if !mocks.derives() {
+        notes.extend(seed_fact_notes(&mocks, &folded.env.rel_vocab.facts));
+        notes.extend(derived_read_notes(&w.facts.derived_reads()));
+    }
     notes.extend(reserved_quest_notes(
         &mocks,
         &w.state.reserved_reads(),

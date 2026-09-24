@@ -890,6 +890,80 @@ pub fn check_project_subquest_unsatisfiable(
     out
 }
 
+/// dsl 0.22.0 §7: an `<on event="questFailed">` on a quest that can never
+/// fail (`check-project` only).
+pub const W_QUEST_HANDLER_DEAD: &str = "W-QUEST-HANDLER-DEAD";
+
+/// [`W_QUEST_HANDLER_DEAD`] over one resolved project root: every
+/// `<on event="questFailed">` of a quest with no way to reach `failed` — no
+/// authored `fail`, no REQUIRED `<objective quest="c">` whose child can itself fail (a failing required
+/// child fails its parent), and no parent quest anywhere in `docs` (a
+/// terminating parent cascade-fails its still-active children). Project-wide
+/// because the parent edge can live in another document. A warning at the
+/// handler's `event` value: the body is dead code, not an error.
+pub fn check_project_quest_handlers(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
+    let edges = subquest_edges(docs);
+    // Quests with an authored `fail`; a quest fails on its own when it has
+    // one or a REQUIRED child that fails on its own (a child cascade-failed
+    // by its parent's end cannot fail that parent). Fixpoint, cycle-safe.
+    let mut fails: BTreeSet<&str> = docs
+        .iter()
+        .flat_map(|(_, d)| &d.quests)
+        .filter(|q| q.fail.as_ref().is_some_and(|f| !f.raw.trim().is_empty()))
+        .map(|q| q.id.as_str())
+        .collect();
+    loop {
+        let grown: Vec<&str> = edges
+            .iter()
+            .filter(|e| e.required && fails.contains(e.child.as_str()))
+            .map(|e| e.parent.as_str())
+            .filter(|p| !fails.contains(p))
+            .collect();
+        if grown.is_empty() {
+            break;
+        }
+        fails.extend(grown);
+    }
+    let mut out = Vec::new();
+    for (path, doc) in docs {
+        for quest in &doc.quests {
+            let has_parent = edges.iter().any(|e| e.child == quest.id);
+            if quest.id.is_empty() || fails.contains(quest.id.as_str()) || has_parent {
+                continue;
+            }
+            for node in &quest.body {
+                let Node::On(on) = node else { continue };
+                if on.event != "questFailed" {
+                    continue;
+                }
+                out.push((
+                    path.clone(),
+                    Diagnostic {
+                        code: W_QUEST_HANDLER_DEAD.to_string(),
+                        severity: Severity::Warning,
+                        message: format!(
+                            "`<on event=\"questFailed\">` never runs: quest `{}` cannot fail — \
+                             it has no `fail` condition, no required subquest that can fail \
+                             (a failing required child fails it), and no parent quest whose end \
+                             would \
+                             cascade to it; add a `fail=` condition or remove the handler \
+                             (dsl 0.22.0 §7)",
+                            quest.id
+                        ),
+                        span: on.event_span,
+                        layer: Layer::Logic,
+                        fixits: Vec::new(),
+                        provenance: None,
+                        covered: Vec::new(),
+                        related: Vec::new(),
+                    },
+                ));
+            }
+        }
+    }
+    out
+}
+
 /// `W-COMPONENT-UNVERIFIED`: a standalone component check with no caller in
 /// scope (dsl 0.10.0 §9 rule 4, **D-W**).
 pub const W_COMPONENT_UNVERIFIED: &str = "W-COMPONENT-UNVERIFIED";
@@ -992,6 +1066,13 @@ pub fn domain_reading_set(snapshot: &CapabilitySnapshot) -> BTreeSet<String> {
     }
     for name in crate::content_line::CONTENT_LINE_DOMAIN_SLOTS {
         out.insert((*name).to_string());
+    }
+    // dsl 0.22.0 §8: an occasion target domain `{ prefix, entity }` checks
+    // every beat target against `entity`'s members — a read.
+    for occasion in snapshot.occasions.values() {
+        if let lute_manifest::schema::OccasionTarget::Domain { entity, .. } = &occasion.target {
+            out.insert(entity.clone());
+        }
     }
     out
 }
@@ -1123,6 +1204,7 @@ mod tests {
             fail: None,
             after: None,
             after_span: span(id_line),
+            tier: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),

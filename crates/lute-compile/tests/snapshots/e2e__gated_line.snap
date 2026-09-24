@@ -46,7 +46,7 @@ expression: json
       "speaker": "elena",
       "text": "You helped me back then. I've been meaning to thank you.",
       "lineId": "elena.s01ep05.elena_0010",
-      "voiceKey": "elena-0010"
+      "voiceKey": "elena.s01ep05.elena-0010"
     },
     {
       "kind": "jump",
@@ -81,7 +81,7 @@ expression: json
       "speaker": "elena",
       "text": "You helped me back then. I've been meaning to thank you.",
       "lineId": "elena.s01ep05.elena_0020",
-      "voiceKey": "elena-0020"
+      "voiceKey": "elena.s01ep05.elena-0020"
     },
     {
       "kind": "jump",

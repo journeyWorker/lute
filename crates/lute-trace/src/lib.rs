@@ -16,11 +16,15 @@
 //!    by the checker alone, are the only static reachability surface —
 //!    nothing `trace` reports may be cited, cached, or consumed as proof of
 //!    reachability, coverage, or correctness.
-//! 3. **`trace` MUST NOT execute engine machinery.** No Datalog fixpoint (a
-//!    `derive: true` relation is never computed — [`eval::FactStore`]'s
-//!    bounded scan is pattern LOOKUP, not derivation), no capability
-//!    bridge, no dice, no scheduler. Every answer the engine would compute
-//!    is either supplied as a mock or reported [`value::Value::Unknown`].
+//! 3. **`trace` MUST NOT execute engine machinery** beyond the project's
+//!    own Datalog rules: no capability bridge, no dice, no scheduler. Since
+//!    dsl 0.22.0 §6 (D-B) `trace`/`test` apply the seed facts and rules by
+//!    default through [`datalog`] — the SAME stratified fixpoint the
+//!    reference runner (`lute run`/`lute play`) uses, so the toolchain
+//!    cannot disagree with itself. `derive: false` restores the 0.21
+//!    lookup-only [`eval::FactStore`]. Every other answer the engine would
+//!    compute is either supplied as a mock or reported
+//!    [`value::Value::Unknown`].
 //! 4. **Isolation is structural, not conventional.** This crate is wired
 //!    ONLY into `lute-cli`. `lute-cel` stays parse-only (it holds no
 //!    evaluator and MUST NOT gain one); `lute-check` and `lute-compile`
@@ -28,8 +32,8 @@
 //!    `tests/quarantine.rs`, which reads every quarantined sibling's
 //!    `Cargo.toml` directly and fails the build if any names `lute-trace`.
 //! 5. **The evaluated subset (§4.3) is CLOSED.** [`eval::eval`] implements
-//!    EXACTLY that subset; widening it — "conveniently" deriving relations
-//!    or modeling narrative time — is a spec revision, not a convenience.
+//!    EXACTLY that subset; widening it — modeling narrative time, calling a
+//!    bridge — is a spec revision, not a convenience.
 //!
 //! `lute_check::decide` is NOT this evaluator: it is a closed, total,
 //! static constant-folder that reads no runtime state (spec §5.1). `D3`'s
@@ -38,6 +42,7 @@
 //! [`value::Value::Unknown`] here ([`eval::eval`]'s doc comment spells out
 //! the K3 lift).
 
+pub mod datalog;
 pub mod eval;
 pub mod mock;
 pub mod quest_refs;
@@ -59,5 +64,6 @@ pub use report::{
 };
 pub use value::{UnresolvedAtom, Value};
 pub use walk::{
-    trace_document, trace_entry, trace_entry_with_check, trace_with_check, NOTE_BEAT_WHEN,
+    trace_document, trace_entries_with_check, trace_entry, trace_entry_with_check,
+    trace_with_check, NOTE_BEAT_WHEN,
 };

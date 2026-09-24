@@ -192,6 +192,10 @@ pub struct Quest {
     /// `after` is `Some`; it defaults to the quest's open-tag span otherwise.
     pub after: Option<String>,
     pub after_span: Span,
+    /// dsl 0.22.0 §7: the quest's lifetime tier, raw text + value span
+    /// (`"run"` resets at `newRun`; absent = `user`). The checker validates
+    /// the value (`E-ATTR-TYPE`).
+    pub tier: Option<(String, Span)>,
     /// Residual (post-extraction) attrs, mirroring [`Branch`]; normally empty.
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
@@ -225,6 +229,10 @@ pub struct Entry {
     /// Beat priority (dsl 0.21.0 §3.2), raw text like `order`; the checker
     /// validates the integer and that `on` is present (`E-BEAT-ATTR`).
     pub priority: Option<(String, Span)>,
+    /// dsl 0.22.0 §7: the entry beat's repetition policy, raw text + value
+    /// span (`"run"` / `"user"`; absent = repeatable). The checker validates
+    /// the value (`E-BEAT-ATTR`).
+    pub once: Option<(String, Span)>,
     /// Optional eligibility guard (dsl 0.19.0 §3), like [`Quest::start`].
     pub when: Option<CelSlot>,
     /// Residual (post-extraction) attrs, mirroring [`Quest`]; normally empty.

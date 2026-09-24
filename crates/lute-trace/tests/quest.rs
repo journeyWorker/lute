@@ -136,16 +136,20 @@ fn objective_unresolved<'a>(
 }
 
 // ---------------------------------------------------------------------
-// (a) The §4.6 quest transcript: start decides true -> active, the
-//     `<on questActive>` handler's assert lands, `learn`'s `done` (an
-//     unsupplied `derive:true` relation) goes unknown -> exit 3, naming
-//     `believesLocation` + the mock hint.
+// (a) The §4.6 quest transcript under `derive: false`: start decides true
+//     -> active, the `<on questActive>` handler's assert lands, `learn`'s
+//     `done` (an unsupplied `derive:true` relation) goes unknown -> exit 3,
+//     naming `believesLocation` + the mock hint.
 // ---------------------------------------------------------------------
 
 #[test]
 fn quest_activates_and_halts_on_unresolved_derived_objective() {
     let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = quest_facts(&["inParty(shadowheart)"]);
+    // `derive: false` (dsl 0.22.0 §6) reproduces the 0.21 model exactly.
+    let mocks = MockSet {
+        derive: Some(false),
+        ..quest_facts(&["inParty(shadowheart)"])
+    };
 
     let (report, exit) = trace_document(&input, mocks);
     assert_incomplete(&exit);
@@ -484,6 +488,8 @@ fn terminal_failed_quest_purges_unresolved_objectives() {
 
 #[test]
 fn nonterminal_quest_dedupes_unresolved_objective_across_passes() {
+    // `derive: false`: the 0.21 lookup model keeps both derived objectives
+    // unknown across passes.
     let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
     // No `atLocation` fact -> `fail` stays unknown, never true -> the quest
     // stays Active across both custom (non-lifecycle) events, re-running
@@ -491,6 +497,7 @@ fn nonterminal_quest_dedupes_unresolved_objective_across_passes() {
     let mocks = MockSet {
         facts: vec!["inParty(shadowheart)".to_string()],
         events: vec!["poke1".to_string(), "poke2".to_string()],
+        derive: Some(false),
         ..Default::default()
     };
 
@@ -523,8 +530,9 @@ fn nonterminal_quest_dedupes_unresolved_objective_across_passes() {
 }
 
 // ---------------------------------------------------------------------
-// (h) §3.1: the schema declares seed `facts:` (`act1.schema.yaml`, imported
-//     via `uses:`) but NO `--fact` mock is supplied at all — trace signals
+// (h) §3.1 under `derive: false` (dsl 0.22.0 §6): the schema declares seed
+//     `facts:` (`act1.schema.yaml`, imported via `uses:`) but NO `--fact`
+//     mock is supplied at all — trace signals
 //     the explicit-world model with an informational note naming a
 //     declared-but-un-supplied seeded relation. Nothing about the walk
 //     itself changes: a non-`derive:true` relation with zero asserted
@@ -538,7 +546,10 @@ fn nonterminal_quest_dedupes_unresolved_objective_across_passes() {
 #[test]
 fn declares_seed_facts_with_no_mocks_emits_not_auto_loaded_note() {
     let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = MockSet::default();
+    let mocks = MockSet {
+        derive: Some(false),
+        ..MockSet::default()
+    };
 
     let (report, exit) = trace_document(&input, mocks);
 
@@ -585,7 +596,7 @@ fn declares_seed_facts_with_no_mocks_emits_not_auto_loaded_note() {
 }
 
 // ---------------------------------------------------------------------
-// (i) §3.1 regression: an UNRELATED `--fact` (a real, declared relation
+// (i) §3.1 regression (`derive: false`): an UNRELATED `--fact` (a real, declared relation
 //     the schema just never seeded) must NOT silence the note — "none
 //     were supplied" means none of the DECLARED SEED tuples, not merely
 //     "the mock list happens to be non-empty". `heardLocation` is a
@@ -596,7 +607,10 @@ fn declares_seed_facts_with_no_mocks_emits_not_auto_loaded_note() {
 #[test]
 fn unrelated_supplied_fact_does_not_silence_the_note() {
     let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = quest_facts(&["heardLocation(player, halsin, grove)"]);
+    let mocks = MockSet {
+        derive: Some(false),
+        ..quest_facts(&["heardLocation(player, halsin, grove)"])
+    };
 
     let (report, _exit) = trace_document(&input, mocks);
 

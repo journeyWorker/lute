@@ -638,6 +638,14 @@ pub fn fold_env(
         &doc.quests,
         &input.snapshot.occasions,
     ));
+    // dsl 0.22.0 §8: every beat target against its occasion's target domain
+    // (the entity kinds come from the merged vocabulary built above).
+    fold_diags.extend(crate::beats::check_beat_target_domains(
+        doc,
+        typed.beat.as_ref(),
+        &input.snapshot.occasions,
+        &vocab.kinds,
+    ));
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
     //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
@@ -2445,12 +2453,10 @@ fn validate_components(
         // one per `<quest>`) then makes each component body its own scope for
         // free, exactly as each quest is.
         //
-        // SCOPE: this checks uniqueness WITHIN one body. Post-expansion
-        // identity across a component `::use`d twice is a separate and
-        // PRE-EXISTING question, not this pass's: a single perfectly VALID
-        // `code="0010"` line in a component `::use`d twice already lowers to
-        // two records with one `lineId` in 0.8.0, independent of this gap. It
-        // is deliberately left alone here.
+        // SCOPE: this checks uniqueness WITHIN one body, which is the whole
+        // question: since dsl 0.22.0 §11 each expansion is addressed under
+        // its own `{prefix}.{component}#{n}` scope, so a component `::use`d
+        // twice, or sharing a code with a host line, never shares a `lineId`.
         body_diags.extend(check_line_codes(&body));
         // Task 7e, the THIRD instance of the same class as Task 7b's
         // (content-line attrs) and Task 7c's (duplicate line codes):
@@ -4047,6 +4053,7 @@ fn insert_shape_fields(
                 ty: f.ty.clone(),
                 default: f.default.clone(),
                 namespace: ns,
+                owner: None,
             },
         );
     }
@@ -4054,11 +4061,14 @@ fn insert_shape_fields(
 }
 
 /// Fold the injection reducer over a node slice, threading `StageState` and
-/// collecting every injected command. Recurses into `<branch>`/`<match>` bodies
-/// in document order (best-effort linearization: parallel-arm state divergence
-/// is not modeled — a preview, not final codegen). `<timeline>` clips are staged
-/// separately in `timeline_tables` and do not participate in stage-entity
-/// lifetime here (see the injection reducer's node-kind coverage).
+/// collecting every injected command. `<branch>`/`<hub>` choices and
+/// `<match>` arms are parallel paths (dsl 0.22.0 §12): each arm folds from a
+/// copy of the state at the fork, and the arms' exit states meet in
+/// [`StageState::join`] at the convergence — the same join `lute compile`'s
+/// CFG walk applies — so a sibling arm's exit never leaks into another arm.
+/// `<timeline>` clips are staged separately in `timeline_tables` and do not
+/// participate in stage-entity lifetime here (see the injection reducer's
+/// node-kind coverage).
 ///
 /// A `::use` is entered too ([`fold_use`], Task 7g) — `using` carries the
 /// component names on the current expansion path so a `::use` cycle
@@ -4076,26 +4086,36 @@ fn fold_injections(
         let (next, emit) = lower_node(taken, node, &nodes[i + 1..], domains);
         *state = next;
         out.extend(emit);
-        match node {
-            Node::Branch(b) => {
-                for choice in &b.choices {
-                    fold_injections(&choice.body, state, out, domains, components, using);
-                }
-            }
-            Node::Match(m) => {
-                for arm in &m.arms {
-                    match arm {
-                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            fold_injections(body, state, out, domains, components, using)
-                        }
-                    }
-                }
-            }
+        let arms: Vec<&[Node]> = match node {
+            Node::Branch(b) => b.choices.iter().map(|c| c.body.as_slice()).collect(),
+            Node::Hub(h) => h.choices.iter().map(|c| c.body.as_slice()).collect(),
+            Node::Match(m) => m
+                .arms
+                .iter()
+                .map(|arm| match arm {
+                    Arm::When { body, .. } | Arm::Otherwise { body, .. } => body.as_slice(),
+                })
+                .collect(),
             Node::Directive(d) if d.tag == "use" => {
                 fold_use(d, state, out, domains, components, using);
+                continue;
             }
-            _ => {}
-        }
+            _ => continue,
+        };
+        // Diagnostics already raised stay once, ahead of the arms' own.
+        let mut diags = std::mem::take(&mut state.diags);
+        let exits = arms
+            .into_iter()
+            .map(|body| {
+                let mut arm = state.clone();
+                fold_injections(body, &mut arm, out, domains, components, using);
+                arm
+            })
+            .collect();
+        let mut joined = StageState::join(state, exits);
+        diags.append(&mut joined.diags);
+        joined.diags = diags;
+        *state = joined;
     }
 }
 
