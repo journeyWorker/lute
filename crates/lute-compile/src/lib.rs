@@ -17,6 +17,7 @@ pub mod address;
 pub mod cfg;
 pub mod expand;
 pub mod expr;
+mod identity_check;
 pub mod index;
 pub mod ir;
 pub mod locale;
@@ -307,6 +308,8 @@ pub fn compile_with_check(
         params: &folded.env.def_params,
     };
     diags.extend(expand::expand_document(&mut doc, &table));
+    // 0.21.1 T1-4: attribute `@ref`s fold to the literal the record ships.
+    diags.extend(expand::fold_attr_refs(&mut doc, &folded.env.state));
 
     // §5 passes 4–5 — flatten + CFG-aware stage resolution + inline timelines,
     // kind-dispatched (IR addendum §6): scene = the existing shot loop
@@ -318,7 +321,7 @@ pub fn compile_with_check(
         components: Vec::new(),
         timelines: 0,
     };
-    let (meta, commands, addr_diags) = match folded.doc_kind {
+    let (meta, mut commands, addr_diags) = match folded.doc_kind {
         lute_check::DocKind::Scene => {
             let mut state = StageState::default();
             // `meta` is computed BEFORE the shot loop so every
@@ -459,6 +462,8 @@ pub fn compile_with_check(
         }
     };
     diags.extend(addr_diags);
+    // 0.21.1 T1-3: `{{@def}}` placeholders carry their inlined def body.
+    diags.extend(expand::inline_ref_placeholders(&mut commands, &table, doc.meta.span));
 
     if diags.iter().any(|d| d.severity == Severity::Error) {
         return Err(diags);

@@ -85,7 +85,7 @@ use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral, I
 
 use crate::cel_paths::{
     is_reserved_entry_read, is_reserved_quest_activated_at, is_reserved_quest_objective_done,
-    is_reserved_quest_path, E_PATH_IDENT,
+    E_PATH_IDENT,
 };
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
@@ -205,6 +205,14 @@ impl Interval {
 
     fn is_point(self) -> bool {
         self.lo == self.hi
+    }
+
+    /// The closed interval both `self` and `other` contain, `None` when
+    /// they are disjoint.
+    fn intersect(self, other: Self) -> Option<Self> {
+        let lo = self.lo.max(other.lo);
+        let hi = self.hi.min(other.hi);
+        (lo <= hi).then_some(Self { lo, hi })
     }
 }
 
@@ -331,7 +339,6 @@ pub(crate) fn check_match_with_domain(
     info: DomainInfo,
     ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
-    let _ = ctx; // reserved: subject typing is owned by T4.3; unused here.
     let mut diags = Vec::new();
     let subject = subject_path(m);
     let has_otherwise = m.arms.iter().any(|a| matches!(a, Arm::Otherwise { .. }));
@@ -382,7 +389,7 @@ pub(crate) fn check_match_with_domain(
                 .unwrap_or_default()
             {
                 let lit = match classify_is_literal(&lit_raw) {
-                    Ok(lit) => lit,
+                    Ok(lit) => quest_state_is_literal(lit, subject.as_deref()),
                     Err(err) => {
                         diags.push(diag(
                             E_WHEN_RANGE,
@@ -402,7 +409,7 @@ pub(crate) fn check_match_with_domain(
                     ));
                 }
             }
-            let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref());
+            let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref(), &ctx.env.state);
             if cov.values.iter().any(|v| covered.contains(v))
                 || cov.intervals.iter().any(|iv| covered_num.overlaps(*iv))
             {
@@ -761,12 +768,14 @@ pub struct QuestRecord {
 ///
 /// Returns the implicit reserved decls (dsl 0.2.0 §5.2): `quest.<id>.state`
 /// (an enum `[active, complete, failed]`, deterministic order, no default —
-/// maybe-unset until the engine populates it) plus, per objective,
+/// `lute-compile` appends the `unset` member; the checker reads the path as
+/// the always-assigned lifecycle enum, [`infer_domain`], 0.21.1 T1-1) plus, per objective,
 /// `quest.<id>.objectives.<oid>.done: bool` (default `false`) — omitted for a
 /// quest or objective with a missing id (see above).
 pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRecord {
     let id = quest.id.as_str();
     let mut diags = Vec::new();
+    crate::logic_attrs::check_quest_attrs(quest, &mut diags);
 
     if id.is_empty() {
         diags.push(diag(
@@ -1237,7 +1246,7 @@ pub fn is_exhaustive(m: &Match, schema: &StateSchema) -> bool {
     let mut covers_unset = false;
     for arm in &m.arms {
         if let Arm::When { is, test, .. } = arm {
-            let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref());
+            let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref(), schema);
             for v in cov.values {
                 covered.insert(v);
             }
@@ -1308,6 +1317,25 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
             },
         };
     }
+    // 0.21.1 T1-1: `quest.<id>.state` — local, imported, or foreign alike —
+    // is the ALWAYS-ASSIGNED lifecycle enum the engine writes: `unset` until
+    // the quest activates, then `active`/`complete`/`failed`. `unset` is a
+    // MEMBER (the string the runtime stores; the IR domain lists it too), not
+    // the CEL-`null` sentinel, so the subject is never maybe-unset: `== 'unset'`
+    // is an ordinary comparison, `<when is="unset">` names the member
+    // ([`quest_state_is_literal`]), and `== null` can never hold.
+    if crate::cel_paths::is_reserved_quest_state(path) {
+        return DomainInfo {
+            domain: Domain::Finite(
+                QUEST_STATES
+                    .iter()
+                    .map(|s| DomainValue::Str((*s).to_string()))
+                    .collect(),
+            ),
+            maybe_unset: false,
+            resolved: true,
+        };
+    }
     match schema.decls.get(path) {
         Some(decl) => {
             let domain = match &decl.ty {
@@ -1339,17 +1367,13 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
             }
         }
         None => {
-            // RC3 (dsl 0.2.0 §5.2): `quest.<id>.state` /
-            // `quest.<id>.objectives.<oid>.done` reads are admitted
-            // UNCONDITIONALLY (`cel_resolve.rs::is_declared` via
-            // `is_reserved_quest_path`), even for a quest THIS document never
-            // locally folds (foreign/imported). Without a matching schema
-            // decl, falling straight to `Domain::Infinite` here would wrongly
-            // demand an `<otherwise>` on a `<match>` that already fully
-            // covers the reserved shape's real (engine-defined) domain.
-            // Synthesize the SAME domain info `check_quest` folds for a
-            // LOCAL quest, so a foreign one gets identical exhaustiveness
-            // treatment.
+            // RC3 (dsl 0.2.0 §5.2): reserved `quest.<id>.objectives.<oid>.done`
+            // / `activatedAt` (and `entry.<id>.read`) reads are admitted
+            // UNCONDITIONALLY (`cel_resolve.rs::is_declared`), even for a
+            // quest THIS document never locally folds (foreign/imported).
+            // Synthesize the SAME domain info the local fold would give, so
+            // a foreign one gets identical exhaustiveness treatment.
+            // (`quest.<id>.state` returned above, before the schema lookup.)
             if is_reserved_quest_objective_done(path) || is_reserved_entry_read(path) {
                 DomainInfo {
                     domain: Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
@@ -1369,18 +1393,6 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
                 // `Namespace::Quest`) mirror that arm's verdict too.
                 DomainInfo {
                     domain: Domain::Infinite,
-                    maybe_unset: true,
-                    resolved: true,
-                }
-            } else if is_reserved_quest_path(path) {
-                DomainInfo {
-                    domain: Domain::Finite(vec![
-                        DomainValue::Str("active".to_string()),
-                        DomainValue::Str("complete".to_string()),
-                        DomainValue::Str("failed".to_string()),
-                    ]),
-                    // `check_quest` seeds this decl with `default: None` in
-                    // `Namespace::Quest`, so a `<match>` must also cover `unset`.
                     maybe_unset: true,
                     resolved: true,
                 }
@@ -1463,28 +1475,91 @@ fn analyze_arm(raw: &str, subject: Option<&str>) -> ArmCoverage {
     cov
 }
 
-/// The full coverage of a `<when>` arm: the union of its `is` literal pattern
-/// (the NORMATIVE path, dsl §11.2) and any coverage [`analyze_arm`] derives from
-/// its `test` guard (the conservative MAY path). Both [`check_match`] and
-/// [`is_exhaustive`] fold coverage through here so they stay consistent.
-fn arm_coverage(is: Option<&IsPattern>, test_raw: &str, subject: Option<&str>) -> ArmCoverage {
-    let mut cov = analyze_arm(test_raw, subject);
-    if let Some(pat) = is {
-        analyze_is_pattern(&pat.raw, &mut cov);
+/// The full coverage of a `<when>` arm. `is` and `test` together mean
+/// "pattern AND guard" (dsl §7.3.1), so an arm carrying both provably
+/// matches only the INTERSECTION of its `is` literal pattern (the NORMATIVE
+/// path, dsl §11.2) and its `test` guard. A pattern value survives when the
+/// guard provably holds for it: either [`analyze_arm`] proves the guard
+/// covers it, or the guard decides `true` with `$` bound to that very value
+/// (`is="gold" test="$ != 'x'"`). An undecidable guard (`test="run.proof"`)
+/// proves nothing, so such an arm covers nothing: it can neither shadow a
+/// later arm (`W-OVERLAP-ARMS`) nor complete the domain (`E-NONEXHAUSTIVE`).
+/// Both [`check_match`] and [`is_exhaustive`] fold coverage through here so
+/// they stay consistent.
+fn arm_coverage(
+    is: Option<&IsPattern>,
+    test_raw: &str,
+    subject: Option<&str>,
+    schema: &StateSchema,
+) -> ArmCoverage {
+    let test = analyze_arm(test_raw, subject);
+    let Some(pat) = is else {
+        return test;
+    };
+    let mut pattern = ArmCoverage::default();
+    analyze_is_pattern(&pat.raw, subject, &mut pattern);
+    if test_raw.trim().is_empty() {
+        return pattern;
     }
-    cov
+    let guard_holds_at = |value: crate::decide::Decided| {
+        let no_params = std::collections::BTreeMap::new();
+        let no_bodies = std::collections::BTreeMap::new();
+        let no_def_params = std::collections::BTreeMap::new();
+        let ctx = crate::decide::DecideCtx {
+            schema,
+            dollar: Some(crate::decide::DollarBinding::Value(value)),
+            params: &no_params,
+            facts: None,
+        };
+        let defs = crate::cel_expand::DefTable {
+            bodies: &no_bodies,
+            params: &no_def_params,
+        };
+        matches!(
+            crate::decide::decide_slot(test_raw, &defs, &ctx),
+            Some(crate::decide::Decided::Bool(true))
+        )
+    };
+    ArmCoverage {
+        values: pattern
+            .values
+            .into_iter()
+            .filter(|v| {
+                test.values.contains(v)
+                    || guard_holds_at(match v {
+                        DomainValue::Str(s) => crate::decide::Decided::Str(s.clone()),
+                        DomainValue::Bool(b) => crate::decide::Decided::Bool(*b),
+                    })
+            })
+            .collect(),
+        intervals: pattern
+            .intervals
+            .iter()
+            .flat_map(|a| {
+                if a.is_point() && guard_holds_at(crate::decide::Decided::Num(a.lo)) {
+                    return vec![*a];
+                }
+                test.intervals
+                    .iter()
+                    .filter_map(|b| a.intersect(*b))
+                    .collect()
+            })
+            .collect(),
+        covers_unset: pattern.covers_unset && test.covers_unset,
+    }
 }
 
 /// Parse a `<when is="…">` literal pattern (dsl §7.3.1) into `cov`: every
 /// alternative ([`is_alternatives`]) is classified by the shared
 /// [`classify_is_literal`] — `true`/`false` are bool domain values, `unset`
-/// covers the unset case (§9.4), a decimal `Number` is a point interval, a
-/// range (dsl 0.18.0 §2) its closed interval, and any other ident is an enum
-/// member matched by string equality on the subject (§8.2). A malformed or
-/// empty range (`E-WHEN-RANGE`) covers nothing.
-fn analyze_is_pattern(raw: &str, cov: &mut ArmCoverage) {
+/// covers the unset case (§9.4) — or, on a `quest.<id>.state` subject, the
+/// `unset` member ([`quest_state_is_literal`]) — a decimal `Number` is a
+/// point interval, a range (dsl 0.18.0 §2) its closed interval, and any other
+/// ident is an enum member matched by string equality on the subject (§8.2).
+/// A malformed or empty range (`E-WHEN-RANGE`) covers nothing.
+fn analyze_is_pattern(raw: &str, subject: Option<&str>, cov: &mut ArmCoverage) {
     for lit in is_alternatives(raw) {
-        match classify_is_literal(lit) {
+        match classify_is_literal(lit).map(|l| quest_state_is_literal(l, subject)) {
             Ok(IsLiteral::Bool(b)) => cov.values.push(DomainValue::Bool(b)),
             Ok(IsLiteral::Unset) => cov.covers_unset = true,
             Ok(IsLiteral::Str(s)) => cov.values.push(DomainValue::Str(s)),
@@ -1493,6 +1568,25 @@ fn analyze_is_pattern(raw: &str, cov: &mut ArmCoverage) {
             }
             Err(_) => {}
         }
+    }
+}
+
+/// The `quest.<id>.state` lifecycle members, in IR domain order (0.21.1 T1-1;
+/// `lute-compile` emits the same list — the folded enum plus `unset`).
+pub(crate) const QUEST_STATES: &[&str] = &["active", "complete", "failed", "unset"];
+
+/// 0.21.1 T1-1: on a `quest.<id>.state` subject, `<when is="unset">` names the
+/// lifecycle MEMBER `unset` — the value the engine stores before the quest
+/// activates — not the never-set sentinel (that subject is always assigned,
+/// [`infer_domain`]). Every other literal, and every other subject, passes
+/// through unchanged. Applied wherever the checker classifies an `is=`
+/// literal, so coverage, `E-WHEN-LITERAL-DOMAIN` and reachability agree.
+pub(crate) fn quest_state_is_literal(lit: IsLiteral, subject: Option<&str>) -> IsLiteral {
+    match lit {
+        IsLiteral::Unset if subject.is_some_and(crate::cel_paths::is_reserved_quest_state) => {
+            IsLiteral::Str("unset".to_string())
+        }
+        other => other,
     }
 }
 
@@ -2031,16 +2125,18 @@ mod tests {
     #[test]
     fn foreign_quest_state_full_coverage_no_otherwise_is_clean() {
         // `quest.foo` is NOT locally declared/imported (empty schema) — the
-        // reserved-shape fallback in `infer_domain` must still synthesize the
-        // engine's real domain (`active|complete|failed`, maybe-unset) so a
-        // `<match>` that fully covers it needs no `<otherwise>`.
+        // reserved-shape branch in `infer_domain` must still synthesize the
+        // engine's real domain so a `<match>` that fully covers it needs no
+        // `<otherwise>`. 0.21.1 T1-1: that domain is the always-assigned
+        // lifecycle enum `active|complete|failed|unset` — `unset` is covered by
+        // `$ == 'unset'` (or `is="unset"`), no longer by `$ == null`.
         let m = match_with(
             "quest.foo.state",
             vec![
                 when_arm("$ == 'active'"),
                 when_arm("$ == 'complete'"),
                 when_arm("$ == 'failed'"),
-                when_arm("$ == null"),
+                when_arm("$ == 'unset'"),
             ],
         );
         let errs = check_match(
@@ -2066,7 +2162,7 @@ mod tests {
             vec![
                 when_arm("$ == 'active'"),
                 when_arm("$ == 'complete'"),
-                when_arm("$ == null"),
+                when_arm("$ == 'unset'"),
             ],
         );
         let errs = check_match(
@@ -2079,6 +2175,27 @@ mod tests {
         assert!(
             errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
             "missing `failed` member must still be E-NONEXHAUSTIVE: {errs:?}"
+        );
+    }
+
+    /// 0.21.1 T1-1: `$ == null` never holds for an always-assigned quest
+    /// state, so it no longer covers `unset` — a match relying on it is
+    /// non-exhaustive (it used to be accepted, and the arm never fired).
+    #[test]
+    fn quest_state_null_arm_does_not_cover_unset() {
+        let m = match_with(
+            "quest.foo.state",
+            vec![
+                when_arm("$ == 'active'"),
+                when_arm("$ == 'complete'"),
+                when_arm("$ == 'failed'"),
+                when_arm("$ == null"),
+            ],
+        );
+        let errs = check_match(&m, &StateSchema::default(), &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
+            "{errs:?}"
         );
     }
 

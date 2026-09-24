@@ -189,6 +189,13 @@ fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
         let node = match class {
             IsLiteral::Bool(b) => subject_eq(subject, LitVal::Bool(b)),
             IsLiteral::Unset => match subject {
+                // 0.21.1 T1-1: `quest.<id>.state` is always assigned — the
+                // engine stores the MEMBER `"unset"` before activation — so
+                // `unset` there is `<subject> == "unset"`; `!isSet` would
+                // never hold.
+                Some(ExprNode::Path { path }) if is_quest_state_path(path) => {
+                    subject_eq(subject, LitVal::Str("unset".to_string()))
+                }
                 // `unset` → `!isSet(<subject-path>)`; requires a bare path.
                 Some(ExprNode::Path { path }) => Some(ExprNode::Unary {
                     op: "!",
@@ -220,6 +227,15 @@ fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
         r: Box::new(n),
     });
     IsSynth::Expr(Some(folded))
+}
+
+/// `quest.<id>.state` exactly (a non-empty id; `quest.<id>.objectives.…` and
+/// `activatedAt` are not the lifecycle enum).
+fn is_quest_state_path(path: &str) -> bool {
+    matches!(
+        path.split('.').collect::<Vec<&str>>().as_slice(),
+        ["quest", id, "state"] if !id.is_empty()
+    )
 }
 
 /// `<subject> == <lit>` with the subject node inlined; `None` when the subject
@@ -553,6 +569,19 @@ mod tests {
         assert_eq!(
             arm_json(Some("unset"), "", "scene.choices.barConvo"),
             json!({"op": "!", "l": {"isSet": "scene.choices.barConvo"}})
+        );
+    }
+
+    // 0.21.1 T1-1: a quest's state is always assigned (`"unset"` before
+    // activation), so `is="unset"` on it must compare the member; the
+    // `!isSet` lowering never held at runtime.
+    #[test]
+    fn is_unset_on_quest_state_lowers_to_member_equality() {
+        assert_eq!(
+            arm_json(Some("unset | failed"), "", "quest.lost.state"),
+            json!({"op": "||",
+                "l": {"op": "==", "l": {"path": "quest.lost.state"}, "r": {"lit": "unset"}},
+                "r": {"op": "==", "l": {"path": "quest.lost.state"}, "r": {"lit": "failed"}}})
         );
     }
 

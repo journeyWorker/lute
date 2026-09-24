@@ -7,6 +7,8 @@ profiles:
 
 # Identity templates (dsl §10). `{prefix}` derives as `{character}.s{season}ep{episode}`
 # from each scene's frontmatter; `{speaker}` and `{code}` come from the line itself.
+# The voiceKey carries `{prefix}` too: without it, two scenes' `@vesna{code="0010"}`
+# lines would share one voice asset (E-DUP-VOICEKEY).
 identity:
   lineId: "{prefix}.{speaker}_{code}"
-  voiceKey: "{speaker}-{code}"
+  voiceKey: "{prefix}.{speaker}-{code}"

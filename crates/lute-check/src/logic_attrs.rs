@@ -43,7 +43,9 @@
 //! that survives into the residual list must be permitted.
 
 use lute_core_span::{Diagnostic, Layer, Severity};
-use lute_syntax::ast::{Arm, Attr, AttrValue, Branch, Choice, Entry, Hub, Match, Reward};
+use lute_syntax::ast::{
+    Arm, Attr, AttrValue, Branch, Choice, Entry, Hub, Match, Objective, On, Quest, Reward,
+};
 
 use crate::content_line::E_UNKNOWN_ATTR;
 
@@ -68,9 +70,20 @@ pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "
 /// list only when its value was not a quoted string — `crate::lore` owns
 /// that shape fault (`E-ENTRY-ATTR`, or `E-BEAT-ATTR` for a beat key); every
 /// OTHER key is `E-UNKNOWN-ATTR`.
-pub(crate) const ENTRY_ATTRS: &[&str] = &[
+pub const ENTRY_ATTRS: &[&str] = &[
     "id", "target", "category", "title", "series", "order", "when", "on", "priority",
 ];
+/// dsl 0.2.0 §6.3 (+ `after`, connectivity T2): `<quest>`'s keys. The parser
+/// extracts each into a typed field, so one reaches the residual list only
+/// with a non-string value; every OTHER key — a `fial=` typo — used to be
+/// accepted and dropped from the IR without a word (0.21.1 T1-7).
+pub const QUEST_ATTRS: &[&str] = &["id", "title", "start", "fail", "after"];
+/// dsl 0.2.0 §6.4 (+ subquest `quest`, dsl 0.21.0 §7a.2 `on`): `<objective>`'s
+/// keys. A non-string `on=` stays residual for `crate::beats` to report
+/// (`E-BEAT-ATTR`), so it is permitted here rather than double-reported.
+pub const OBJECTIVE_ATTRS: &[&str] = &["id", "done", "quest", "when", "title", "optional", "on"];
+/// dsl 0.2.0 §4.1: `<on>`'s keys.
+pub const ON_ATTRS: &[&str] = &["event", "when"];
 
 /// D-L: the two `<choice>` positions have DIFFERENT permitted sets. `once` and
 /// `exit` attach to `HubChoice` in `0.1.0 §7.3`'s grammar and to nothing else,
@@ -173,6 +186,18 @@ pub(crate) fn check_entry_attrs(e: &Entry, diags: &mut Vec<Diagnostic>) {
     close(&e.attrs, "entry", ENTRY_ATTRS, &[], None, diags);
 }
 
+pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
+    close(&q.attrs, "quest", QUEST_ATTRS, &[], None, diags);
+}
+
+pub(crate) fn check_objective_attrs(o: &Objective, diags: &mut Vec<Diagnostic>) {
+    close(&o.attrs, "objective", OBJECTIVE_ATTRS, &[], None, diags);
+}
+
+pub(crate) fn check_on_attrs(o: &On, diags: &mut Vec<Diagnostic>) {
+    close(&o.attrs, "on", ON_ATTRS, &[], None, diags);
+}
+
 pub(crate) fn check_arm_attrs(a: &Arm, diags: &mut Vec<Diagnostic>) {
     match a {
         Arm::When { attrs, .. } => close(attrs, "when", WHEN_ATTRS, &[], None, diags),
@@ -217,7 +242,14 @@ fn close(
             Some((keys, remedy)) if keys.contains(&key) => {
                 format!("`<{tag}>` has no attribute `{key}` here: {remedy} (dsl 0.10.0 §4)")
             }
-            _ => format!("`<{tag}>` has no attribute `{key}` (dsl 0.10.0 §4)"),
+            // dsl 0.5.0 §2.2 "did you mean", over the construct's own table:
+            // a misspelt key (`fial`, `optinal`) is the common case, and
+            // naming the intended key makes the error a one-keystroke fix.
+            _ => {
+                let near = lute_manifest::suggest::nearest(key, permitted.iter().copied(), 2)
+                    .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+                format!("`<{tag}>` has no attribute `{key}`{near} (dsl 0.10.0 §4)")
+            }
         };
         diags.push(Diagnostic {
             code: E_UNKNOWN_ATTR.to_string(),

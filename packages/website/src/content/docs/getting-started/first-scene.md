@@ -391,7 +391,9 @@ state:
 ```
 
 `after:` and cross-scene reads only make sense across several files, so put both scenes in a folder
-with a one-line `lute.project.yaml` marking it a project root:
+with a `lute.project.yaml` marking it a project root. The `identity:` line keys each voice line
+by its scene too; without it the diner's and the booth's first Mira lines would both be
+`mira-0010`, one recording for two lines, and `check-project` refuses that (`E-DUP-VOICEKEY`):
 
 ```yaml
 # episodes/lute.project.yaml
@@ -399,6 +401,8 @@ defaultProfile: core
 profiles:
   core:
     plugins: {}
+identity:
+  voiceKey: "{prefix}.{speaker}-{code}"
 ```
 
 ```lute check-project="docs/examples/episodes/booth.lute"

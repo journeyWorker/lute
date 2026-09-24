@@ -308,9 +308,11 @@ fn component_body_cel_parse_is_translated_and_reanchored() {
          belongs to a different document; got {:?}",
         d.fixits
     );
+    let use_at = scene.find("::use").expect("scene has a ::use");
     assert_eq!(
-        (d.span.byte_start, d.span.byte_end),
-        (doc.meta.span.byte_start, doc.meta.span.byte_end),
-        "a component-body diagnostic is re-anchored to the scene frontmatter span's byte range"
+        d.span.byte_start, use_at,
+        "a component-body diagnostic is re-anchored to the `::use` that brings the body in \
+         (0.21.1 T3-7); got {:?}",
+        d.span
     );
 }

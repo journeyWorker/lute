@@ -13,6 +13,7 @@ pub mod ctx;
 pub mod datalog_check;
 pub mod decide;
 pub mod def_decl;
+pub mod def_inline;
 pub mod defassign;
 pub mod directives;
 pub mod envelope;
@@ -76,6 +77,10 @@ pub use datalog_check::{
 };
 pub use decide::{apply_op, decide, decide_slot, DecideCtx, Decided, DollarBinding};
 pub use def_decl::E_DEF_DECL;
+pub use def_inline::{
+    attr_def_dynamic_diag, choice_attr_owned_elsewhere, decided_literal, fold_attr_ref,
+    inline_interp_ref, interp_def_diag, E_ATTR_DEF_DYNAMIC, E_INTERP_DEF,
+};
 pub use defassign::{check_definite_assignment, check_quest_guard_defassign};
 pub use directives::E_AT_CONTEXT;
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};

@@ -85,6 +85,11 @@ struct Walk<'a> {
     steps: Vec<Step>,
     decisions: Vec<Decision>,
     unresolved: Vec<UnresolvedEntry>,
+    /// Selections forced past an `unknown` guard ([`TraceReport::forced_unknown`]).
+    forced_unknown: Vec<UnresolvedEntry>,
+    /// Per `<branch>` id, how many decisions of a multi-element `choose` list
+    /// earlier presentations consumed ([`walk_branch`]).
+    branch_cursor: BTreeMap<String, usize>,
     coverage_choices: BTreeMap<String, CoverageCount>,
     coverage_arms: BTreeMap<String, CoverageCount>,
     /// The merged domain view (`fold_env`'s `.domains`) — needed to answer
@@ -208,6 +213,25 @@ impl<'a> Walk<'a> {
             span,
             expression,
             atoms: rendered,
+        });
+    }
+
+    /// A `--choose` forced `choice_id` past a guard that decided `unknown`
+    /// (§4.4 permits it). The walk continues, so this never touches the exit
+    /// code — but the guard stays undecided and the report must say so.
+    fn record_forced_unknown(
+        &mut self,
+        construct: &str,
+        id: &str,
+        choice: &Choice,
+        atoms: &[UnresolvedAtom],
+    ) {
+        self.forced_unknown.push(UnresolvedEntry {
+            construct: construct.to_string(),
+            id: format!("{id} -> {}", choice.id),
+            span: choice.span,
+            expression: render_choice_guard(choice.when.as_ref()).unwrap_or_default(),
+            atoms: atoms.iter().map(render_atom).collect(),
         });
     }
 }
@@ -753,7 +777,29 @@ fn walk_branch(b: &Branch, w: &mut Walk<'_>) -> Flow {
         .map(|(i, _)| b.choices[i].id.clone())
         .collect();
 
-    let forced_id = w.mocks.choose.get(&b.id).and_then(|v| v.first().cloned());
+    // A single scripted decision answers every presentation of this branch;
+    // a list of two or more is consumed one decision per presentation, in
+    // order — the reference runner's rule (`lute play`/`lute run`). Taking
+    // only the head replayed the first decision at every presentation and
+    // silently dropped the rest. Running out halts incomplete, as the runner
+    // does: the script said nothing about this presentation.
+    let forced_id = match w.mocks.choose.get(&b.id).map(Vec::as_slice) {
+        None | Some([]) => None,
+        Some([only]) => Some(only.clone()),
+        Some(list) => {
+            let used = w.branch_cursor.entry(b.id.clone()).or_insert(0);
+            let Some(next) = list.get(*used).cloned() else {
+                let expression = format!(
+                    "choose list exhausted — {} decision(s) scripted, presented again",
+                    list.len()
+                );
+                w.record_unresolved("branch", &b.id, b.span, expression, Vec::new());
+                return Flow::Incomplete;
+            };
+            *used += 1;
+            Some(next)
+        }
+    };
     let (winner, forced, auto) = if let Some(cid) = &forced_id {
         let Some(idx) = b.choices.iter().position(|c| &c.id == cid) else {
             return Flow::Refused(vec![choice_diag(
@@ -797,6 +843,9 @@ fn walk_branch(b: &Branch, w: &mut Walk<'_>) -> Flow {
     };
 
     let choice = &b.choices[winner];
+    if forced {
+        w.record_forced_unknown("branch", &b.id, choice, &checked[winner].1);
+    }
     let guard = render_choice_guard(choice.when.as_ref());
     w.record_choice_decision(
         "branch",
@@ -899,6 +948,9 @@ fn walk_hub(h: &Hub, w: &mut Walk<'_>) -> Flow {
                 }
                 Value::Bool(true) | Value::Unknown | Value::Num(_) | Value::Str(_) => {
                     let forced = elig == Value::Unknown;
+                    if forced {
+                        w.record_forced_unknown("hub", &id, choice, &atoms);
+                    }
                     record_hub_pick(w, &id, choice, forced, false, total);
                     let flow = walk_nodes(&choice.body, w, Some(choice));
                     if !matches!(flow, Flow::Continue) {
@@ -2218,16 +2270,33 @@ fn occasion_notes(doc: &Document, occasions: &[String], decisions: &[Decision]) 
 /// `E-TRACE-MOCK-FACT`-refused upstream ([`crate::mock::validate`]), so every
 /// relation reaching here has a `producible` entry; `Some(false)` alone warns.
 /// Deduplicated per relation (deterministic `BTreeSet` order).
-fn mock_unproducible_notes(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<String> {
+///
+/// T1-14 (0.21.1): the document's own asserts are only the producers IN THIS
+/// DOCUMENT. A relation asserted by a sibling scene is producible in play, so
+/// judging by this document alone warned on every piece of evidence a
+/// mystery's other scenes establish — and on every relation derived from
+/// them. When the caller resolved the project (`--project`, or the nearest
+/// `lute.project.yaml`), `project_asserts` is `check-project`'s own
+/// reachability-gated May set ([`lute_check::connectivity::live_assert_relations`])
+/// and is unioned in; without one the note says it judged this document only.
+fn mock_unproducible_notes(
+    mocks: &MockSet,
+    folded: &FoldedEnv,
+    doc: &Document,
+    project_asserts: Option<&BTreeSet<String>>,
+) -> Vec<String> {
     if mocks.facts.is_empty() {
         return Vec::new();
     }
-    let mut live_assert: BTreeSet<String> = BTreeSet::new();
+    let mut live_assert: BTreeSet<String> = project_asserts.cloned().unwrap_or_default();
     for shot in &doc.shots {
         collect_assert_relations(&shot.body, &mut live_assert);
     }
     for quest in &doc.quests {
         collect_assert_relations(&quest.body, &mut live_assert);
+    }
+    for entry in &doc.entries {
+        collect_assert_relations(&entry.body, &mut live_assert);
     }
     let producible = lute_check::producible::producible(&folded.env.rel_vocab, &live_assert);
     let mut unproducible: BTreeSet<String> = BTreeSet::new();
@@ -2239,14 +2308,20 @@ fn mock_unproducible_notes(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) 
             unproducible.insert(pat.relation.clone());
         }
     }
+    let scope = if project_asserts.is_some() {
+        "no reachable `::assert` anywhere in the project"
+    } else {
+        "no `::assert` in this document — judged against this document only; pass \
+         `--project <dir>` to count the asserts of the project's other documents"
+    };
     unproducible
         .into_iter()
         .map(|rel| {
             format!(
                 "{W_TRACE_MOCK_UNPRODUCIBLE} — mock fact over relation `{rel}` is not \
-                 producible (no `facts:` seed, no reachable `::assert`, not `reserved`) — the \
-                 supplied answer can never arise from authored producers, so a complete walk \
-                 seeded with it proves nothing about reachable play (§4)"
+                 producible (no `facts:` seed, {scope}, not `reserved`) — the supplied answer \
+                 can never arise from authored producers, so a complete walk seeded with it \
+                 proves nothing about reachable play (§4)"
             )
         })
         .collect()
@@ -2338,6 +2413,47 @@ fn collect_on_events<'a>(nodes: &'a [Node], out: &mut BTreeSet<&'a str>) {
     }
 }
 
+/// The prefix every beat-`when` note ([`beat_when_note`]) starts with, so a
+/// harness can surface that note without re-deriving it.
+pub const NOTE_BEAT_WHEN: &str = "beat `when`";
+
+/// T1-13: the note for a beat scene (dsl 0.21.0 §3.1) whose frontmatter
+/// `when` does not hold under the supplied mocks. Trace walks the body
+/// regardless — it was asked to — so without this a scene the selector would
+/// never present read as a plain `complete`. The slot is expanded exactly as
+/// `lute compile` expands it (`expand_beat_when`) and evaluated against the
+/// pre-walk state. `false` and `unknown` are both named; `true` and "no
+/// `when`" say nothing. Informational only — never the exit code.
+fn beat_when_note(folded: &FoldedEnv, table: &DefTable<'_>, w: &Walk<'_>) -> Option<String> {
+    let beat = folded.typed.beat.as_ref()?;
+    let mut slot = beat.when.clone()?;
+    let _ = lute_compile::expand::expand_beat_when(&mut slot, table);
+    let mut atoms = Vec::new();
+    let v = eval_choice_guard(Some(&slot), &w.env(), &mut atoms);
+    let raw = beat.when.as_ref().map(|s| s.raw.trim()).unwrap_or_default();
+    match v {
+        Value::Bool(false) => Some(format!(
+            "{NOTE_BEAT_WHEN} ({raw}) is false under these mocks — the `{}` selector would never \
+             present this scene; the walk below shows it as if it had been presented",
+            beat.on
+        )),
+        Value::Bool(true) => None,
+        _ => {
+            let supply: Vec<String> = atoms.iter().map(render_atom).collect();
+            Some(format!(
+                "{NOTE_BEAT_WHEN} ({raw}) is undecided under these mocks{} — whether the `{}` \
+                 selector presents this scene is unknown",
+                if supply.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (supply {})", supply.join(", "))
+                },
+                beat.on
+            ))
+        }
+    }
+}
+
 fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
     TraceReport {
         file: uri.to_string(),
@@ -2349,6 +2465,8 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         notes: Vec::new(),
         disposition: "refused".to_string(),
         end_reason: None,
+        forced_unknown: Vec::new(),
+        final_state: BTreeMap::new(),
     }
 }
 
@@ -2357,7 +2475,7 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
 /// report + exit code. Never panics — every degrade path returns a
 /// (possibly empty) report alongside the appropriate [`TraceExit`].
 pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, TraceExit) {
-    trace_with_check(input, lute_check::check(input), mocks)
+    trace_with_check(input, lute_check::check(input), mocks, None)
 }
 
 /// Like [`trace_document`] but gated on a CALLER-SUPPLIED [`CheckResult`]
@@ -2368,14 +2486,21 @@ pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, Trace
 /// reconciliation is pure graph math the CLI performs, never CEL/Datalog
 /// evaluation, and `trace`'s evaluated subset is unchanged.
 /// [`trace_document`] is the thin wrapper
-/// `trace_with_check(input, lute_check::check(input), mocks)`, so every
+/// `trace_with_check(input, lute_check::check(input), mocks, None)`, so every
 /// existing caller is byte-identical.
+///
+/// `project_asserts` is the project's May producer set — `check-project`'s
+/// [`lute_check::connectivity::live_assert_relations`] for the root the
+/// document belongs to — when the caller resolved one; it widens
+/// `W-TRACE-MOCK-UNPRODUCIBLE`'s producer set past this document (T1-14).
+/// `None` judges this document alone and says so.
 pub fn trace_with_check(
     input: &CheckInput,
     result: CheckResult,
     mocks: MockSet,
+    project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, None)
+    trace_pipeline(input, result, mocks, None, project_asserts)
 }
 
 /// `lute trace --entry <id>` (dsl 0.19.0 §8): the SAME §4.3 pipeline as
@@ -2387,7 +2512,7 @@ pub fn trace_with_check(
 /// [`crate::mock::E_TRACE_ENTRY`] (exit 1), like `--accept` of an unknown
 /// quest.
 pub fn trace_entry(input: &CheckInput, mocks: MockSet, entry: &str) -> (TraceReport, TraceExit) {
-    trace_entry_with_check(input, lute_check::check(input), mocks, entry)
+    trace_entry_with_check(input, lute_check::check(input), mocks, entry, None)
 }
 
 /// [`trace_entry`] gated on a caller-supplied [`CheckResult`] — the
@@ -2397,8 +2522,9 @@ pub fn trace_entry_with_check(
     result: CheckResult,
     mocks: MockSet,
     entry: &str,
+    project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, Some(entry))
+    trace_pipeline(input, result, mocks, Some(entry), project_asserts)
 }
 
 fn trace_pipeline(
@@ -2406,6 +2532,7 @@ fn trace_pipeline(
     result: CheckResult,
     mocks: MockSet,
     entry: Option<&str>,
+    project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
     // 1. `check` gate (§4.3): any Error -> Refused, run check first.
     if !result.ok {
@@ -2473,10 +2600,22 @@ fn trace_pipeline(
         steps: Vec::new(),
         decisions: Vec::new(),
         unresolved: Vec::new(),
+        forced_unknown: Vec::new(),
+        branch_cursor: BTreeMap::new(),
         coverage_choices: BTreeMap::new(),
         coverage_arms: BTreeMap::new(),
         domains: &folded.domains,
         apply_effects: true,
+    };
+
+    // T1-13: a beat scene is only presented when its frontmatter `when`
+    // holds. Judged against the mocks BEFORE the walk writes anything — the
+    // selector decides at presentation time — and reported, never enforced:
+    // tracing a scene is asking to see it.
+    let beat_note = if entry.is_none() {
+        beat_when_note(&folded, &table, &w)
+    } else {
+        None
     };
 
     let mut flow = match entry {
@@ -2492,7 +2631,8 @@ fn trace_pipeline(
     }
 
     let doc_quest_ids: BTreeSet<&str> = doc.quests.iter().map(|q| q.id.as_str()).collect();
-    let mut notes = seed_fact_notes(&mocks, &folded.env.rel_vocab.facts);
+    let mut notes: Vec<String> = beat_note.into_iter().collect();
+    notes.extend(seed_fact_notes(&mocks, &folded.env.rel_vocab.facts));
     notes.extend(reserved_quest_notes(
         &mocks,
         &w.state.reserved_reads(),
@@ -2500,7 +2640,7 @@ fn trace_pipeline(
     ));
     notes.extend(unmatched_event_notes(&doc, &mocks.events));
     notes.extend(occasion_notes(&doc, &mocks.occasions, &w.decisions));
-    notes.extend(mock_unproducible_notes(&mocks, &folded, &doc));
+    notes.extend(mock_unproducible_notes(&mocks, &folded, &doc, project_asserts));
     // #32 / T5.9: `Ended` and `Complete` are the same EXIT CODE (see below)
     // and were therefore indistinguishable to a harness. `disposition` is the
     // additive key that separates a walk an author terminated from one that
@@ -2539,6 +2679,20 @@ fn trace_pipeline(
         TraceExit::Refused(_) => "refused",
     }
     .to_string();
+    // T2-5: read AFTER the notes above, which consult the reserved-read log
+    // this read would otherwise add to.
+    let final_state = w
+        .state
+        .effective_paths()
+        .into_iter()
+        .filter_map(|path| match w.state.read(&path) {
+            Read::Value(v) => Some((
+                path,
+                report::value_text(&v).unwrap_or_else(|| "unknown".to_string()),
+            )),
+            Read::Unset => None,
+        })
+        .collect();
     let report = TraceReport {
         file: input.uri.clone(),
         seeds: seeds_summary(&mocks),
@@ -2552,6 +2706,8 @@ fn trace_pipeline(
         notes,
         disposition,
         end_reason,
+        forced_unknown: w.forced_unknown,
+        final_state,
     };
     (report, exit)
 }

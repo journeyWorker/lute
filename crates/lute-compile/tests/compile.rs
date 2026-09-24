@@ -590,12 +590,22 @@ defs:
     // `text` verbatim: the `{{…}}` markers survive into the artifact.
     assert_eq!(line.text, "Hi {{userName}}, {{run.coins}} left, {{@fond}}.");
     let json = serde_json::to_value(line).unwrap();
+    // 0.21.1 T1-3: the `ref` placeholder carries its inlined def body — the
+    // artifact has no defs table, so without it an engine could only print
+    // the marker (this test used to pin the bare `{kind, ref}` shape).
     assert_eq!(
         json["placeholders"],
         serde_json::json!([
             { "kind": "reserved", "token": "userName" },
             { "kind": "path", "path": "run.coins" },
-            { "kind": "ref", "ref": "@fond" }
+            {
+                "kind": "ref",
+                "ref": "@fond",
+                "expr": {
+                    "raw": "(run.coins >= 1)",
+                    "expr": { "op": ">=", "l": { "path": "run.coins" }, "r": { "lit": 1.0 } }
+                }
+            }
         ]),
         "ordered kind-keyed placeholders mirror the interps left-to-right; got {json}"
     );

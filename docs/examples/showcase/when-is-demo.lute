@@ -7,9 +7,15 @@ episode: 3
 title: The Mood Reading
 pov: fixer
 luteVersion: "0.21.0"
-# Root capability profile (project lute.project.yaml). No plugin directives are
-# used here, so no scene-local `plugins:` narrowing is needed.
+# Root capability profile (project lute.project.yaml), with the SAME scene-local
+# `plugins:` options episode01.lute narrows to: a project compiles to one capability
+# snapshot (`compile --all`, `play`, `check-project` refuse two — E-CAPABILITY-MISMATCH),
+# so every document in it resolves identical options even where no plugin directive is used.
 profile: showcase
+plugins:
+  showcase.pack:
+    resultScope: scene
+    allowedKinds: [rhythm]
 # Shared run/user/app schema + defs arrive via the imported child schema, which
 # `extends:` a base (schema/game.schema.yaml -> schema/base.schema.yaml).
 uses: schema/game.schema.yaml

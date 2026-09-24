@@ -227,6 +227,36 @@ pub struct UnresolvedEntry {
     pub atoms: Vec<String>,
 }
 
+impl UnresolvedEntry {
+    /// The transcript's line for a construct that HALTED on (or left
+    /// undecided) this entry, naming the mocks that would decide it.
+    pub fn render_unresolved(&self) -> String {
+        format!(
+            "unresolved: {} `{}` ({} {}) — supply {} as a mock",
+            self.construct,
+            self.expression,
+            self.id,
+            self.construct,
+            self.atoms.join(", ")
+        )
+    }
+
+    /// The line for a selection forced past this undecided guard
+    /// ([`TraceReport::forced_unknown`]): the walk continued, so this names
+    /// what was never decided rather than why the walk stopped.
+    pub fn render_forced(&self) -> String {
+        let supply = if self.atoms.is_empty() {
+            String::new()
+        } else {
+            format!(" — supply {} as a mock to decide it", self.atoms.join(", "))
+        };
+        format!(
+            "unresolved (forced): {} `{}` choice guard `{}` was unknown{supply}",
+            self.construct, self.id, self.expression
+        )
+    }
+}
+
 /// Visited/total counts for one construct (§4.6: `"choices visited 1/3
 /// (sofaHelp), arms 1/2 (match run.metHelpfully)"`), plus the construct's
 /// authored LABEL. The label is not the identity — that is the whole point of
@@ -290,6 +320,26 @@ pub struct TraceReport {
     /// §3.1 additive key.
     #[serde(rename = "endReason")]
     pub end_reason: Option<String>,
+    /// Every `--choose`/`choose:` selection the walk FORCED past a guard that
+    /// decided `unknown` (§4.4 permits it and records the decision as
+    /// `forced`). The walk went on as asked, so the exit code is unchanged —
+    /// but the guard was never decided, so it is counted as unresolved in the
+    /// summary and its atoms are named like any other unresolved entry.
+    /// Before 0.21.1 the only trace of it was a `(forced)` suffix on the
+    /// decision line, and the walk read as a plain `complete`. §3.1 additive
+    /// key.
+    #[serde(rename = "forcedUnknown")]
+    pub forced_unknown: Vec<UnresolvedEntry>,
+    /// The effective value of every state path that has one when the walk
+    /// ends, rendered as display text — §4.3's read order (trace write →
+    /// mock seed → declared `default:`), the same order every guard in the
+    /// walk read through; an undecided write reads `"unknown"`. A harness
+    /// asserting final state (`lute test`'s `expect.state`) compares against
+    /// THIS, so a declared default or a seed is a value, not "never written".
+    /// Not part of the §4.5 JSON contract (the transcript's `set` steps
+    /// already carry every write), hence never serialized.
+    #[serde(skip)]
+    pub final_state: BTreeMap<String, String>,
 }
 
 /// Render a decided [`Value`] to display text; `Unknown` has no decided
@@ -346,27 +396,30 @@ impl TraceReport {
         for step in &self.steps {
             render_step(step, &mut out);
         }
+        let forced = self.forced_unknown.len();
+        let forced_summary = if forced == 0 {
+            String::new()
+        } else {
+            format!(
+                "; {forced} unresolved (forced past an unknown guard{} — the walk continued, \
+                 exit unchanged)",
+                if forced == 1 { "" } else { "s" }
+            )
+        };
         if self.unresolved.is_empty() {
             out.push_str(&format!(
-                "trace complete: {} decision{}",
+                "trace complete: {} decision{}{forced_summary}",
                 self.decisions.len(),
                 if self.decisions.len() == 1 { "" } else { "s" }
             ));
         } else {
             out.push_str(&format!(
-                "trace incomplete: {} unresolved atom{} (exit 3)",
+                "trace incomplete: {} unresolved atom{} (exit 3){forced_summary}",
                 self.unresolved.len(),
                 if self.unresolved.len() == 1 { "" } else { "s" }
             ));
             for u in &self.unresolved {
-                out.push_str(&format!(
-                    "\n  unresolved: {} `{}` ({} {}) — supply {} as a mock",
-                    u.construct,
-                    u.expression,
-                    u.id,
-                    u.construct,
-                    u.atoms.join(", ")
-                ));
+                out.push_str(&format!("\n  {}", u.render_unresolved()));
             }
         }
         if !self.coverage.choices.is_empty() || !self.coverage.arms.is_empty() {
@@ -383,6 +436,9 @@ impl TraceReport {
             out.push_str(&format!("; {}", parts.join(", ")));
         }
         out.push('\n');
+        for u in &self.forced_unknown {
+            out.push_str(&format!("  {}\n", u.render_forced()));
+        }
         out
     }
 }

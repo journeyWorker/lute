@@ -58,4 +58,6 @@ pub use report::{
     TraceReport, UnresolvedEntry,
 };
 pub use value::{UnresolvedAtom, Value};
-pub use walk::{trace_document, trace_entry, trace_entry_with_check, trace_with_check};
+pub use walk::{
+    trace_document, trace_entry, trace_entry_with_check, trace_with_check, NOTE_BEAT_WHEN,
+};

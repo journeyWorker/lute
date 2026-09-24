@@ -20,7 +20,8 @@ struct File {
 
 /// The `lute.project.yaml` shared by every template — a core-only profile
 /// (no plugins), so each document resolves against the built-in `lute.core`
-/// snapshot.
+/// snapshot — with a `{prefix}`ed `voiceKey`, so a second scene's lines do not
+/// land on the first's voice assets (`E-DUP-VOICEKEY`, 0.21.1 T1-9).
 fn project_manifest() -> String {
     "\
 # Lute project manifest — core-only profile (no plugins). Every document under
@@ -29,6 +30,10 @@ defaultProfile: core
 profiles:
   core:
     plugins: {}
+# Key each voice line by its scene: the default `{speaker}-{code}` gives two
+# scenes' `@detective{code=\"0010\"}` lines one voice asset.
+identity:
+  voiceKey: \"{prefix}.{speaker}-{code}\"
 "
     .to_string()
 }

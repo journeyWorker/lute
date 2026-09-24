@@ -342,9 +342,12 @@ fn when_joins_the_cel_slot_registry() {
     assert_eq!(with_code(&diags(&broken), "E-CEL-PARSE").len(), 1, "{:?}", diags(&broken));
     let not_bool = scene("a.b", "on: talk\nwhen: '@nope'\n");
     assert_eq!(with_code(&diags(&not_bool), "E-UNDECLARED-REF").len(), 1);
-    let sentinel = scene("a.b", "on: talk\nwhen: \"quest.foo.state != 'unset'\"\n");
-    let ds = diags(&sentinel);
-    assert_eq!(with_code(&ds, "E-UNSET-LITERAL").len(), 1, "{ds:?}");
+    // 0.21.1 T1-1: `unset` is a member of the always-assigned quest state, so
+    // comparing to it is an ordinary guard, not the E-UNSET-LITERAL sentinel
+    // mistake (that rule keeps covering maybe-unset subjects, tests/reachability.rs).
+    let quest_unset = scene("a.b", "on: talk\nwhen: \"quest.foo.state != 'unset'\"\n");
+    let ds = diags(&quest_unset);
+    assert!(with_code(&ds, "E-UNSET-LITERAL").is_empty(), "{ds:?}");
 }
 
 #[test]

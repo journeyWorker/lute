@@ -226,3 +226,60 @@ fn branch_empty_prompt_is_rejected_at_its_own_span() {
         .expect("expected E-BRANCH-PROMPT");
     assert_eq!(&t[d.span.byte_start..d.span.byte_end], "prompt=\"\"");
 }
+
+const QUEST_HDR: &str = "---\nkind: quest\nstate:\n  run.flag: { type: bool, default: false }\n---\n";
+
+fn unknown_attr_messages(text: &str) -> Vec<String> {
+    run(text)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "E-UNKNOWN-ATTR")
+        .map(|d| d.message)
+        .collect()
+}
+
+/// 0.21.1 T1-7: `<quest>`, `<objective>` and `<on>` accepted any invented
+/// attribute and dropped it from the IR (`fial=` compiled to a quest with no
+/// fail condition). Each is now `E-UNKNOWN-ATTR`, with a did-you-mean when a
+/// real key is close.
+#[test]
+fn quest_objective_on_close_their_attrs_with_did_you_mean() {
+    let t = format!(
+        "{QUEST_HDR}<quest id=\"q\" start=\"run.flag\" fial=\"run.flag\" banana=\"yes\">\n\
+         <objective id=\"o\" done=\"run.flag\" target=\"place.x\" optinal/>\n\
+         <on event=\"questComplete\" whn=\"run.flag\">\n@x: done\n</on>\n</quest>\n"
+    );
+    let msgs = unknown_attr_messages(&t);
+    assert_eq!(msgs.len(), 5, "{msgs:?}");
+    for (key, near) in [
+        ("fial", Some("fail")),
+        ("banana", None),
+        ("target", None),
+        ("optinal", Some("optional")),
+        ("whn", Some("when")),
+    ] {
+        let m = msgs
+            .iter()
+            .find(|m| m.contains(&format!("attribute `{key}`")))
+            .unwrap_or_else(|| panic!("no E-UNKNOWN-ATTR for `{key}`: {msgs:?}"));
+        match near {
+            Some(near) => assert!(m.contains(&format!("did you mean `{near}`?")), "{m}"),
+            None => assert!(!m.contains("did you mean"), "{m}"),
+        }
+    }
+}
+
+/// Every key the parser extracts stays legal — the closure must not reject a
+/// well-formed quest (`after`, subquest `quest=`, `optional`, objective `on`).
+#[test]
+fn quest_objective_on_permitted_keys_are_clean() {
+    let t = format!(
+        "{QUEST_HDR}<quest id=\"p\" title=\"P\" start=\"run.flag\" fail=\"run.flag\">\n\
+         <objective id=\"o\" title=\"O\" done=\"run.flag\" when=\"run.flag\" optional/>\n\
+         <objective id=\"c\" quest=\"child\"/>\n\
+         <on event=\"questComplete\" when=\"run.flag\">\n@x: done\n</on>\n</quest>\n\
+         <quest id=\"child\" after=\"active(p)\" start=\"run.flag\">\n\
+         <objective id=\"v\" on=\"visit\"/>\n</quest>\n"
+    );
+    assert!(unknown_attr_messages(&t).is_empty(), "{:?}", codes(&t));
+}

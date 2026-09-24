@@ -1,8 +1,9 @@
 //! Plugin-loaded acceptance (plugin §4/§11): `check --project <dir>` loads the
 //! project's installed plugins and resolves the scene's activated snapshot, so a
 //! document that is `E-UNKNOWN-DIRECTIVE` under core-only checks clean once its
-//! plugins are active. The regression guard pins the untouched core-only path:
-//! WITHOUT `--project`, `date-minigame.lute` still exits `1`.
+//! plugins are active. The regression guard pins the core-only path: a copy of
+//! `date-minigame.lute` under NO `lute.project.yaml` still exits `1` (in place,
+//! `lute check` finds `arcia-project/`'s manifest since 0.21.1 T3-9).
 
 use std::process::Command;
 
@@ -35,13 +36,15 @@ fn date_minigame_is_clean_with_plugin_project() {
 
 #[test]
 fn date_minigame_core_only_still_errors() {
-    // REGRESSION GUARD: without --project, the existing core-only contract holds.
+    // REGRESSION GUARD: with no --project and no manifest above the file, the
+    // core-only contract holds.
+    let dir = std::env::temp_dir().join(format!("lute-plugin-loaded-core-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("date-minigame.lute");
+    std::fs::copy("../../docs/examples/arcia-project/date-minigame.lute", &file).unwrap();
     let out = Command::new(lute_bin())
-        .args([
-            "check",
-            "../../docs/examples/arcia-project/date-minigame.lute",
-            "--json",
-        ])
+        .args(["check", file.to_str().unwrap(), "--json"])
         .output()
         .expect("run lute");
     assert_eq!(out.status.code(), Some(1), "core-only still exits 1");

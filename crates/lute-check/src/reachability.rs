@@ -57,8 +57,8 @@ use crate::decide::{
     analyze_unset_sentinel_slot, decide_slot, DecideCtx, Decided, DollarBinding, UnsetSentinelHit,
 };
 use crate::match_check::{
-    infer_domain, is_pattern_literals, literal_is_foreign, param_domain, subject_path, Domain,
-    DomainInfo, DomainValue, Interval, NumCoverage,
+    infer_domain, is_pattern_literals, literal_is_foreign, param_domain, quest_state_is_literal,
+    subject_path, Domain, DomainInfo, DomainValue, Interval, NumCoverage,
 };
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
@@ -511,9 +511,11 @@ enum CoverItem {
 /// `lit_raw` is foreign to `dom` — owned by `E-WHEN-LITERAL-DOMAIN`
 /// (`match_check::literal_is_foreign`, the SAME classification that code
 /// uses) — or a malformed/empty range, owned by `E-WHEN-RANGE` (dsl 0.18.0
-/// §2: such a literal covers nothing).
-fn domain_valid_item(lit_raw: &str, dom: &DomainInfo) -> Option<CoverItem> {
-    let lit = classify_is_literal(lit_raw).ok()?;
+/// §2: such a literal covers nothing). `subject` is the `<match on>` path:
+/// on a `quest.<id>.state` subject `unset` is the lifecycle member
+/// (`match_check::quest_state_is_literal`, 0.21.1 T1-1).
+fn domain_valid_item(lit_raw: &str, dom: &DomainInfo, subject: Option<&str>) -> Option<CoverItem> {
+    let lit = quest_state_is_literal(classify_is_literal(lit_raw).ok()?, subject);
     if literal_is_foreign(&lit, dom) {
         return None;
     }
@@ -532,10 +534,14 @@ fn domain_valid_item(lit_raw: &str, dom: &DomainInfo) -> Option<CoverItem> {
 /// (finding 2): the literal-level code OWNS the root for such an arm —
 /// cause 1 (dead-guard) below MUST NOT also report `E-ARM-DEAD` on it, even
 /// when the arm's guard independently decides false.
-pub(crate) fn arm_has_foreign_literal(pat: &lute_syntax::ast::IsPattern, dom: &DomainInfo) -> bool {
+pub(crate) fn arm_has_foreign_literal(
+    pat: &lute_syntax::ast::IsPattern,
+    dom: &DomainInfo,
+    subject: Option<&str>,
+) -> bool {
     is_pattern_literals(&pat.raw, pat.span)
         .iter()
-        .any(|(lit_raw, _)| domain_valid_item(lit_raw, dom).is_none())
+        .any(|(lit_raw, _)| domain_valid_item(lit_raw, dom, subject).is_none())
 }
 
 /// The accumulated subsumption union `U` (dsl 0.4.0 §5.2 rule 2): every
@@ -620,6 +626,7 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
         },
     };
     let mut diags = Vec::new();
+    let subject = subject_path(m);
     let mut u = Coverage::default();
     let mut otherwise_span: Option<Span> = None;
 
@@ -656,7 +663,7 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                 // comparison is ALSO present.
                 let foreign_literal = is
                     .as_ref()
-                    .is_some_and(|pat| arm_has_foreign_literal(pat, &dom));
+                    .is_some_and(|pat| arm_has_foreign_literal(pat, &dom, subject.as_deref()));
                 let sentinel_load_bearing = analysis
                     .as_ref()
                     .is_some_and(|a| !a.hits.is_empty() && a.load_bearing_for_false);
@@ -680,7 +687,7 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                     if let Some(pat) = is {
                         let residual: Vec<CoverItem> = is_pattern_literals(&pat.raw, pat.span)
                             .into_iter()
-                            .filter_map(|(lit, _)| domain_valid_item(&lit, &dom))
+                            .filter_map(|(lit, _)| domain_valid_item(&lit, &dom, subject.as_deref()))
                             .collect();
                         // A fully-foreign residual (D4-rooted) is skipped —
                         // `is_empty` covers both "no `is` literal survived
@@ -735,7 +742,7 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                 if test.raw.trim().is_empty() {
                     if let Some(pat) = is {
                         for (lit, _) in is_pattern_literals(&pat.raw, pat.span) {
-                            if let Some(item) = domain_valid_item(&lit, &dom) {
+                            if let Some(item) = domain_valid_item(&lit, &dom, subject.as_deref()) {
                                 u.add(item, *span, pat.raw.trim());
                             }
                         }

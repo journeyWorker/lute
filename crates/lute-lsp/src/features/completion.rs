@@ -120,19 +120,34 @@ pub fn complete_at(
 /// always the full set, since `id`/`title`/`start`/`fail`/`event`/`when`/
 /// `done`/`optional` are parsed into dedicated AST fields (not a `Vec<Attr>`),
 /// so "already present" cannot be read back generically the way a
-/// directive's `attrs` list allows.
+/// directive's `attrs` list allows. The key sets are exactly the checker's
+/// closed tables (`lute_check::logic_attrs`), which reject every other key.
 fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
-    let keys: &[(&str, &str)] = match construct {
+    construct_attr_keys(construct)
+        .iter()
+        .map(|(name, ty)| CompletionItem {
+            label: name.to_string(),
+            kind: Some(CompletionItemKind::FIELD),
+            detail: Some(ty.to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
+fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'static str)] {
+    match construct {
         QuestConstruct::Quest => &[
             ("id", "string"),
             ("title", "string"),
             ("start", "cel<bool>"),
             ("fail", "cel<bool>"),
+            ("after", "prereq"),
         ],
         QuestConstruct::On => &[("event", "string"), ("when", "cel<bool>")],
         QuestConstruct::Objective => &[
             ("id", "string"),
             ("done", "cel<bool>"),
+            ("quest", "string"),
             ("when", "cel<bool>"),
             ("title", "string"),
             ("optional", "bool"),
@@ -149,15 +164,7 @@ fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
             ("on", "string"),
             ("priority", "integer"),
         ],
-    };
-    keys.iter()
-        .map(|(name, ty)| CompletionItem {
-            label: name.to_string(),
-            kind: Some(CompletionItemKind::FIELD),
-            detail: Some(ty.to_string()),
-            ..Default::default()
-        })
-        .collect()
+    }
 }
 
 /// Content-line attribute keys (dsl 0.2.2 §7.1, §D7; `when` added dsl 0.4.0
@@ -1396,6 +1403,28 @@ mod tests {
         let ls = labels(&items);
         for k in ["id", "done", "when", "title", "optional"] {
             assert!(ls.contains(&k), "missing {k}: {ls:?}");
+        }
+    }
+
+    /// 0.21.1 T1-7: the checker closes these constructs' attribute sets
+    /// (`E-UNKNOWN-ATTR`), so completion must offer exactly the permitted keys
+    /// — a key offered here but rejected there (or legal there but never
+    /// offered, like `after`/`quest=` were) is a drift bug.
+    #[test]
+    fn construct_attr_keys_match_the_checker_tables() {
+        use lute_check::logic_attrs::{ENTRY_ATTRS, OBJECTIVE_ATTRS, ON_ATTRS, QUEST_ATTRS};
+        for (construct, table) in [
+            (QuestConstruct::Quest, QUEST_ATTRS),
+            (QuestConstruct::Objective, OBJECTIVE_ATTRS),
+            (QuestConstruct::On, ON_ATTRS),
+            (QuestConstruct::Entry, ENTRY_ATTRS),
+        ] {
+            let mut offered: Vec<&str> =
+                construct_attr_keys(construct).iter().map(|(k, _)| *k).collect();
+            let mut permitted = table.to_vec();
+            offered.sort_unstable();
+            permitted.sort_unstable();
+            assert_eq!(offered, permitted, "{construct:?}");
         }
     }
 

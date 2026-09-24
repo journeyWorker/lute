@@ -76,7 +76,8 @@ use lute_syntax::ast::{
 
 use crate::cel_paths::{
     collect_path_uses, is_entry_path, is_reserved_entry_read, is_reserved_quest_activated_at,
-    is_reserved_quest_objective_done, is_reserved_quest_path, is_state_path, PathRole,
+    is_reserved_quest_objective_done, is_reserved_quest_path, is_reserved_quest_state,
+    is_state_path, PathRole,
 };
 use crate::meta::StateSchema;
 // (no `Ctx` import — `check_definite_assignment`'s `_ctx` param was always
@@ -666,9 +667,9 @@ fn check_read(
 ) {
     // `run.choiceLog.*` reads are T4.3's territory; an undeclared (non-reserved)
     // path is ALSO T4.3's territory (`E-UNDECLARED`) -- but a reserved
-    // `quest.<id>.state`/`quest.<id>.objectives.<oid>.done` read is always
-    // declared (dsl 0.2.0 §5.2, mirrors `is_declared` below), so it falls
-    // through and participates in the maybe-unset proof like any other tier.
+    // `quest.<id>.*` read is always declared (dsl 0.2.0 §5.2, mirrors
+    // `is_declared` below), so it falls through to `has_default`, which
+    // treats every reserved quest shape as definite.
     if is_choicelog(path) || !is_declared(path, schema) {
         return;
     }
@@ -676,41 +677,14 @@ fn check_read(
         return;
     }
     reads.push((path.to_string(), span));
-    diags.push(diag("E-MAYBE-UNSET", maybe_unset_message(path), span));
-}
-
-/// The `E-MAYBE-UNSET` advice for `path`.
-///
-/// dsl 0.10.0 §12.2 (#17): `quest.<id>.state` is **engine-populated and not
-/// author-writable**, so two of the generic message's three remedies — add a
-/// schema `default:`, add a dominating `::set` — cannot be performed for it,
-/// and the third reads as if the author simply forgot a guard. Name the two
-/// forms that actually work instead. Same code, same severity, same span: this
-/// is a message correction, not a rule change.
-fn maybe_unset_message(path: &str) -> String {
-    if is_quest_state_path(path) {
-        return format!(
-            "state path `{path}` is engine-populated and cannot be `::set` by an author; \
-             read `quest.<id>.objectives.<oid>.done` for a specific objective, or gate with \
-             `after=\"completed(<id>)\"` (dsl 0.10.0 §12.2)"
-        );
-    }
-    format!(
-        "state path `{path}` may be read before it is set \
-         (no default, no dominating `::set`, no guard) (dsl §9.4)"
-    )
-}
-
-/// `quest.<id>.state` exactly — three dot-separated segments, `quest` then an
-/// id then `state`. Deliberately not a prefix match:
-/// `quest.<id>.objectives.<oid>.done` is the REMEDY, not the defect, and must
-/// keep the ordinary message if it ever reaches this branch.
-fn is_quest_state_path(path: &str) -> bool {
-    let mut parts = path.split('.');
-    parts.next() == Some("quest")
-        && parts.next().is_some_and(|id| !id.is_empty())
-        && parts.next() == Some("state")
-        && parts.next().is_none()
+    diags.push(diag(
+        "E-MAYBE-UNSET",
+        format!(
+            "state path `{path}` may be read before it is set \
+             (no default, no dominating `::set`, no guard) (dsl §9.4)"
+        ),
+        span,
+    ));
 }
 
 /// Reconstruct a slot's path uses by re-parsing its raw CEL into a fresh arena.
@@ -774,15 +748,19 @@ fn is_declared(path: &str, schema: &StateSchema) -> bool {
 ///   and the `unset` case is left to the runtime, exactly as `validAt`'s own
 ///   semantics require. This is the one place `activatedAt` deliberately
 ///   diverges from `quest.<id>.state`.
+/// * `quest.<id>.state` (0.21.1 T1-1) — an ALWAYS-ASSIGNED lifecycle enum,
+///   `unset | active | complete | failed`: the engine writes `unset` for every
+///   quest before activation, so a read is definite and `'unset'` is a value
+///   (`crate::cel_paths::is_reserved_quest_state`). This used to be
+///   `E-MAYBE-UNSET` on every read, with a message about `::set`.
 ///
-/// `quest.<id>.state` carries NO default (its `unset` member is proven only
-/// via `<match>` exhaustiveness, dsl 0.2.0 §5.2) so it is deliberately
-/// excluded here. `entry.<id>.read` (dsl 0.19.0 §5) always defaults to
+/// `entry.<id>.read` (dsl 0.19.0 §5) always defaults to
 /// `false` — the decl `crate::lore::entry_read_decl` folds for a local entry
 /// — so a foreign entry's flag is definite too.
 fn has_default(path: &str, schema: &StateSchema) -> bool {
     is_reserved_quest_objective_done(path)
         || is_reserved_quest_activated_at(path)
+        || is_reserved_quest_state(path)
         || is_reserved_entry_read(path)
         || schema
             .decls
@@ -900,37 +878,27 @@ mod tests {
         );
     }
 
-    /// 0.10.0 §12.2: `quest.<id>.state` is engine-populated and not
-    /// author-writable, so the generic message names two remedies that cannot
-    /// exist for it. Same code, same severity — different advice.
+    /// 0.21.1 T1-1: `quest.<id>.state` is always assigned (`unset` until the
+    /// quest activates), so reading it — even comparing it to `'unset'` — is
+    /// never `E-MAYBE-UNSET`. It used to be, on every read, local or foreign.
     #[test]
-    fn quest_state_read_names_the_two_forms_that_work() {
+    fn quest_state_read_is_definite() {
         let schema = StateSchema::default();
-        let slot = condition_slot("quest.q.state == 'active'");
-        let diags = check_quest_guard_defassign(&slot, &schema);
-        let d = diags
-            .iter()
-            .find(|d| d.code == "E-MAYBE-UNSET")
-            .unwrap_or_else(|| panic!("expected E-MAYBE-UNSET; got {diags:?}"));
-        assert!(
-            d.message.contains("objectives.<oid>.done"),
-            "the message must name the objective-completion read; got {}",
-            d.message
-        );
-        assert!(
-            d.message.contains("completed("),
-            "the message must name the `after=` gate; got {}",
-            d.message
-        );
-        assert!(
-            !d.message.contains("no dominating `::set`"),
-            "there is no `::set` an author can write for this path; got {}",
-            d.message
-        );
+        for raw in [
+            "quest.q.state == 'active'",
+            "quest.q.state == 'unset'",
+            "quest.q.state != 'complete' && quest.q.state != 'failed'",
+        ] {
+            let diags = check_quest_guard_defassign(&condition_slot(raw), &schema);
+            assert!(
+                diags.iter().all(|d| d.code != "E-MAYBE-UNSET"),
+                "{raw}: {diags:?}"
+            );
+        }
     }
 
-    /// The correction is scoped to `quest.<id>.state`. An ordinary state path
-    /// keeps the definite-assignment message, which is correct there.
+    /// The quest-state exemption is scoped to `quest.<id>.state`. An ordinary
+    /// undefaulted path keeps the definite-assignment error and message.
     #[test]
     fn ordinary_path_keeps_the_definite_assignment_message() {
         let schema = schema_with_undefaulted("run.ending");
@@ -1095,14 +1063,17 @@ mod tests {
 
     #[test]
     fn g3_exhaustive_arm_guard_proves_read_but_never_enters_write_set() {
-        // Both arms of an EXHAUSTIVE bool match guard on `isSet(run.x)` (an
-        // arm-level, dominating guard — NOT a subject guard) but neither
-        // WRITES `run.x`. The guard-proof must still satisfy a read after the
-        // match (diagnostic behavior unchanged) but must NOT survive into the
-        // returned WRITE-ONLY set — that write-only set is the envelope's `G`
+        // Two arms of an exhaustive match guard on `isSet(run.x)` (an
+        // arm-level, dominating guard — NOT a subject guard) and neither
+        // WRITES `run.x`; the `<otherwise>` writes it. `<otherwise>` makes the
+        // match exhaustive (a guarded `is=` arm covers nothing it cannot
+        // decide — 0.21.1 T1-12), so every path is either guard-proven or
+        // written: a read after the match is satisfied (diagnostic behavior
+        // unchanged). But the guard-proofs must NOT survive into the returned
+        // WRITE-ONLY set — that write-only set is the envelope's `G`
         // (`crate::envelope::guaranteed`), which must never claim a path is
-        // guaranteed WRITTEN when nothing ever wrote it (RevT8 P1).
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n</match>\n::set{run.out = run.x}\n";
+        // guaranteed WRITTEN when two of three arms never wrote it (RevT8 P1).
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(

@@ -78,6 +78,12 @@ So `character: haven`, `season: 1`, `episode: 2` gives the prefix
 `lineId: "haven.s01ep02.purser_0020"` and `voiceKey: "purser-0020"`. Pinning
 `episodeId: pilot` on that same scene gives `haven.pilot.purser_0020`.
 
+The default `voiceKey` has no `{prefix}`, so it is the same in every document: a
+`@purser{code="0020"}` line in episode 3 is also `purser-0020`. Two lines that say different
+things under one key would share one recording, so `check-project` and `compile --all` refuse it
+(`E-DUP-VOICEKEY`, naming every line on the key). A project with more than one document should
+declare `voiceKey: "{prefix}.{speaker}-{code}"`.
+
 The two templates govern **spoken content lines only**. Two other ids in the
 artifact are also called `lineId`/`titleLineId` and are *not* templated:
 

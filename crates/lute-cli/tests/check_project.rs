@@ -591,6 +591,15 @@ fn check_project_clean_project_still_exits_zero_with_quest_refs_present() {
         "objective-scene.lute",
         &scene_matching_quest_objective_done("heist", "steal"),
     );
+    // Both scenes voice `@x` lines coded 0010/0020 with different text: under
+    // the default `{speaker}-{code}` voiceKey that is E-DUP-VOICEKEY (0.21.1
+    // T1-9), which this quest-ref test is not about.
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         identity:\n  voiceKey: \"{prefix}.{speaker}-{code}\"\n",
+    );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
@@ -977,12 +986,12 @@ fn envelope_out_of_scope_scene_maybe_unset_survives_check_project() {
 }
 
 #[test]
-fn envelope_out_of_scope_quest_maybe_unset_survives_check_project() {
-    // `quest.foo.state` is a reserved, always-declared, never-defaulted
-    // read (dsl 0.2.0 §5.2) -- entry-dependent by defassign's rules, but
-    // QUEST-tier -- out of the envelope's `run.*`/`user.*` scope entirely
-    // (dsl §4.3 §386-393: quest lifecycle is read via `completed()`, never
-    // this lattice). Its per-file `E-MAYBE-UNSET` must survive untouched.
+fn envelope_out_of_scope_quest_state_read_is_clean_in_check_project() {
+    // `quest.foo.state` is QUEST-tier -- out of the envelope's
+    // `run.*`/`user.*` scope entirely (dsl §4.3 §386-393), so it is never
+    // envelope-classified. 0.21.1 T1-1: it is also an always-assigned
+    // lifecycle enum (`unset` before activation), so the per-file read no
+    // longer draws `E-MAYBE-UNSET` either (this test used to pin that error).
     let dir = temp_dir("envelope-out-of-scope-quest");
     write(
         &dir,
@@ -993,7 +1002,7 @@ fn envelope_out_of_scope_quest_maybe_unset_survives_check_project() {
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
-        Some(1),
+        Some(0),
         "{}",
         String::from_utf8_lossy(&out.stdout)
     );
@@ -1012,12 +1021,12 @@ fn envelope_out_of_scope_quest_maybe_unset_survives_check_project() {
         .find(|f| f["path"].as_str().unwrap().ends_with("x.lute"))
         .unwrap();
     assert!(
-        x["diagnostics"]
+        !x["diagnostics"]
             .as_array()
             .unwrap()
             .iter()
             .any(|d| d["code"] == "E-MAYBE-UNSET"),
-        "an out-of-scope quest.* read's E-MAYBE-UNSET must survive reconciliation: {v}"
+        "a quest.<id>.state read is definite: {v}"
     );
 }
 

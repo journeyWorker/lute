@@ -224,8 +224,7 @@ fn an_ineligible_pick_is_an_error() {
 fn a_target_restricts_the_candidates() {
     let v = play_json(
         "target",
-        "steps:\n  - occasion: talk\n    target: npc.achilles\n  - occasion: talk\n    target: npc.meg\n  \
-         - occasion: talk\n",
+        "steps:\n  - occasion: talk\n    target: npc.achilles\n  - occasion: talk\n    target: npc.meg\n",
         0,
     );
     assert_eq!(
@@ -234,8 +233,8 @@ fn a_target_restricts_the_candidates() {
         "only beats targeting npc.achilles"
     );
     assert_eq!(candidate_ids(&v, 2), ["meg.a", "meg.b"]);
-    // Raised for no target: every `talk` beat restricts itself to one.
-    assert!(candidate_ids(&v, 3).is_empty(), "{}", step(&v, 3));
+    // (Raising `talk` for no target at all is a usage error — see
+    // `a_malformed_script_is_a_usage_error_before_anything_plays`.)
 }
 
 #[test]
@@ -406,6 +405,20 @@ fn a_malformed_script_is_a_usage_error_before_anything_plays() {
         (
             "steps:\n  - occasion: hubVisit\n    target: npc.meg\n",
             "not declared `target: true`",
+        ),
+        (
+            // `talk` is declared `target: true`: raising it for nothing used
+            // to play `(no candidates)` at exit 0, hiding a forgotten target.
+            "steps:\n  - occasion: talk\n",
+            "occasion `talk` is declared `target: true` — name what it is raised for",
+        ),
+        (
+            "state:\n  quest.nope.state: active\nsteps:\n  - occasion: hubVisit\n",
+            "`state.quest.nope.state`: no quest `nope` is declared in this project (quests: firstEscape)",
+        ),
+        (
+            "state:\n  quest.firstEscape.state: done\nsteps:\n  - occasion: hubVisit\n",
+            "a quest state is one of unset, active, complete, failed",
         ),
         (
             "steps:\n  - occasion: hubVisit\n    pick: hub.idle\n",
@@ -721,4 +734,218 @@ fn a_branch_without_the_accept_leaves_the_quest_unset() {
     }
     let out = play_in(&dir, "no-accept-human", script, false);
     assert!(!stdout(&out).contains("sideJob"), "{}", stdout(&out));
+}
+
+// ── 0.21.1: no silent wrong answers ────────────────────────────────────
+
+#[test]
+fn a_quest_state_seed_registers_the_quest_instead_of_being_overwritten() {
+    // A save's quest progress: `firstEscape` already complete. The seed used
+    // to land in state only, so the start settle re-registered the quest as
+    // `unset`, activated it, and every quest-gated beat read the wrong status.
+    let v = play_json(
+        "quest-seed",
+        "state:\n  quest.firstEscape.state: complete\nsteps:\n  \
+         - occasion: talk\n    target: npc.achilles\n  - occasion: hubVisit\nchoose:\n  gift: decline\n",
+        0,
+    );
+    assert!(
+        quest_records(&v["start"]["quests"]).is_empty(),
+        "a seeded quest does not start over: {}",
+        v["start"]
+    );
+    assert_eq!(winner(&v, 1), Some("achilles.proud"));
+    assert_eq!(winner(&v, 2), Some("hub.trophy"), "after: completed(…) reads the seed");
+}
+
+/// A shape-only project exercising the transcript and scripted decisions:
+/// `parlor` (`on: visit`) with a monologue, an `as=` line, two guarded lines
+/// and a hub (`piano` gated off, `table` once, `leave` exit); `offer` (`on:
+/// talk`, repeatable) with branch `ask` (`secret` gated off); `finale` (`on:
+/// close`) sets `run.flag` then `::end`s. Quest `acc` completes on its
+/// `on="close"` objective, `plain` on its ordinary one — both need
+/// `run.flag`, which only the ending scene sets.
+fn stage_project(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.flag: { type: bool, default: false }\n  run.lamp: { type: bool, default: false }\n",
+    );
+    write(
+        &dir,
+        "scenes/parlor.lute",
+        "---\nkind: scene\nid: parlor\nuses: ../world.schema.yaml\non: visit\nonce: false\n\
+         enums:\n  emotion: [calm, cross]\n  anchor: { members: [left, right], default: left }\n---\n\n\
+         ## Parlor\n\n::bg{location=\"parlor\"}\n@wren{mono}: Quiet in here.\n\
+         ::auto{character=\"maud\" anchor=\"left\"}\n\
+         @maud{as=\"The Smith\" emotion=\"cross\"}: You again.\n\
+         @maud{when=\"run.flag\"}: The lamp is lit.\n@maud{when=\"!run.flag\"}: Dark in here.\n\n\
+         <hub id=\"look\">\n\
+         <choice id=\"piano\" label=\"Piano\" when=\"run.lamp\" once>\n@narrator: Keys.\n</choice>\n\
+         <choice id=\"table\" label=\"Table\" once>\n@narrator: A cup.\n</choice>\n\
+         <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: Out.\n</choice>\n</hub>\n",
+    );
+    write(
+        &dir,
+        "scenes/offer.lute",
+        "---\nkind: scene\nid: offer\nuses: ../world.schema.yaml\non: talk\nonce: false\n---\n\n\
+         ## Offer\n\n@oskar: Well?\n\n<branch id=\"ask\">\n\
+         <choice id=\"notYet\" label=\"Not yet\">\n@oskar: Later, then.\n</choice>\n\
+         <choice id=\"accept\" label=\"Yes\">\n@oskar: Good.\n</choice>\n\
+         <choice id=\"secret\" label=\"The secret\" when=\"run.lamp\">\n@oskar: Hush.\n</choice>\n\
+         </branch>\n",
+    );
+    write(
+        &dir,
+        "scenes/finale.lute",
+        "---\nkind: scene\nid: finale\nuses: ../world.schema.yaml\non: close\n---\n\n\
+         ## Finale\n\n@narrator: The curtain falls.\n::set{run.flag = true}\n::end{reason=\"curtain\"}\n",
+    );
+    write(
+        &dir,
+        "quests/acc.lute",
+        "---\nkind: quest\nuses: ../world.schema.yaml\ntitle: Acc\n---\n\n\
+         <quest id=\"acc\" title=\"Accuse\" start=\"true\">\n\
+         <objective id=\"named\" title=\"Name them\" on=\"close\" done=\"run.flag\"/>\n</quest>\n\n\
+         <quest id=\"plain\" title=\"Plain\" start=\"true\">\n\
+         <objective id=\"lit\" title=\"Light it\" done=\"run.flag\"/>\n</quest>\n",
+    );
+    dir
+}
+
+#[test]
+fn an_end_stops_the_walk_only_after_the_step_settles_its_quests_and_occasion() {
+    let dir = stage_project("end-order");
+    let v = play_project_json(&dir, "end-order", "steps:\n  - occasion: close\n  - occasion: visit\n");
+    // The ending scene's own progress lands: the ordinary advance AND the
+    // `on="close"` objective the occasion judges. Before, `::end` skipped
+    // both and still exited 0.
+    assert_eq!(
+        quest_records(&step(&v, 1)["quests"]),
+        ["plain.lit done", "plain -> complete", "acc.named done", "acc -> complete"]
+    );
+    assert_eq!(v["exit"], "complete");
+    assert!(
+        v["endReason"].as_str().unwrap().contains("::end in scene `finale`"),
+        "{}",
+        v["endReason"]
+    );
+    assert!(step(&v, 2).is_null(), "nothing plays after `::end`: {v}");
+}
+
+#[test]
+fn a_branch_choose_list_is_consumed_one_decision_per_presentation() {
+    let dir = stage_project("branch-list");
+    let script = "steps:\n  - occasion: talk\n  - occasion: talk\nchoose:\n  ask: [notYet, accept]\n";
+    let v = play_project_json(&dir, "branch-list", script);
+    let chose = |n| {
+        presented(&v, n)
+            .iter()
+            .find(|r| r["kind"] == "choice")
+            .map(|r| r["chose"].clone())
+    };
+    assert_eq!(chose(1), Some(Json::from("notYet")));
+    assert_eq!(chose(2), Some(Json::from("accept")), "never truncated to its head");
+
+    // A third presentation finds the list used up: incomplete, and says so.
+    let out = play_in(
+        &dir,
+        "branch-list-out",
+        "steps:\n  - occasion: talk\n  - occasion: talk\n  - occasion: talk\nchoose:\n  ask: [notYet, accept]\n",
+        true,
+    );
+    assert_eq!(out.status.code(), Some(3), "{}", stdout(&out));
+    let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+    let msg = v["error"]["message"].as_str().unwrap();
+    assert!(
+        msg.contains("choice `ask`") && msg.contains("all 2 decisions of its `choose:` list"),
+        "{msg}"
+    );
+
+    // A single decision still answers every presentation.
+    let v = play_project_json(
+        &dir,
+        "branch-single",
+        "steps:\n  - occasion: talk\n  - occasion: talk\nchoose:\n  ask: accept\n",
+    );
+    assert_eq!(v["exit"], "complete");
+}
+
+#[test]
+fn forcing_a_spent_once_hub_option_halts_instead_of_being_skipped() {
+    let dir = stage_project("spent-once");
+    let out = play_in(
+        &dir,
+        "spent-once",
+        "steps:\n  - occasion: visit\nchoose:\n  look: [table, table, leave]\n",
+        true,
+    );
+    // Before: the second `table` was silently dropped, `leave` played, exit 0.
+    assert_eq!(out.status.code(), Some(1), "{}", stdout(&out));
+    let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["exit"], "error");
+    let msg = v["error"]["message"].as_str().unwrap();
+    assert!(
+        msg.contains("E-TRACE-CHOICE") && msg.contains("`choose: look: table`") && msg.contains("once"),
+        "{msg}"
+    );
+    assert!(
+        !presented(&v, 1).iter().any(|r| r["chose"] == "leave"),
+        "nothing after the refusal plays: {}",
+        step(&v, 1)
+    );
+}
+
+#[test]
+fn an_ineligible_choose_is_an_error_like_an_ineligible_pick() {
+    let dir = stage_project("bad-choose");
+    let out = play_in(&dir, "bad-choose", "steps:\n  - occasion: talk\nchoose:\n  ask: secret\n", true);
+    // Exit 1 like an ineligible `pick:` — it used to be 2, the usage-error code.
+    assert_eq!(out.status.code(), Some(1), "{}{}", stdout(&out), stderr(&out));
+    let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["exit"], "error");
+    let msg = v["error"]["message"].as_str().unwrap();
+    assert!(msg.contains("E-TRACE-CHOICE") && msg.contains("secret"), "{msg}");
+}
+
+#[test]
+fn the_transcript_shows_the_source_not_the_lowered_ir() {
+    let dir = stage_project("source-level");
+    let script = "steps:\n  - occasion: visit\nchoose:\n  look: [table, leave]\n";
+    let out = play_in(&dir, "source-level", script, false);
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    for line in [
+        "@wren{mono}: Quiet in here.",
+        "@maud{as=\"The Smith\" emotion=\"cross\"}: You again.",
+        "  skip @maud \"The lamp is lit.\" — when: false",
+        "@maud: Dark in here.",
+        // The menu marks what was not really offered.
+        "▷ hub look: piano✗ [table] leave        ← chosen: table",
+        "▷ hub look: piano✗ table(spent) [leave]        ← chosen: leave",
+    ] {
+        assert!(text.lines().any(|l| l == line), "missing `{line}` in:\n{text}");
+    }
+    // No line-guard plumbing, no compiler-injected staging (the preload and
+    // the pose resets before maud's plain lines).
+    assert!(!text.contains("match ->"), "{text}");
+    assert!(!text.contains("preload") && !text.contains("posReset"), "{text}");
+
+    // `--json` line records keep the line's identity and delivery.
+    let v = play_project_json(&dir, "source-level-json", script);
+    let lines: Vec<&Json> = presented(&v, 1).iter().filter(|r| r["kind"] == "line").collect();
+    assert_eq!(lines[0]["role"], "monologue");
+    assert_eq!(lines[0]["lineId"], "parlor.wren_0010");
+    let smith = lines[1];
+    assert_eq!(smith["role"], "dialogue");
+    assert_eq!(smith["as"], "The Smith");
+    assert_eq!(smith["emotion"], "cross");
+    assert_eq!(smith["lineId"], "parlor.maud_0010");
+    assert_eq!(smith["voiceKey"], "maud-0010");
 }

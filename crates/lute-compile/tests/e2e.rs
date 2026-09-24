@@ -412,6 +412,19 @@ fn components_scene() {
     );
 }
 
+/// 0.21.1 T1-3/T1-4: the two `::use` sites ship DISTINCT texts (the param is
+/// substituted as a literal, twice per line), `{{@twice}}`'s placeholder
+/// carries the inlined def body as `expr`, and `zoom=@closeUp` folds to the
+/// number `1.3` instead of vanishing.
+#[test]
+fn def_inline() {
+    golden(
+        "def_inline",
+        "tests/fixtures/def_inline/scene.lute",
+        None,
+    );
+}
+
 /// dsl 0.4.0 §6.4/§6.5 (T8): the deduplicated affinity-reaction worked
 /// example — three literal `::use{tier="…"}` sites (§6.4 case 1: fold to
 /// the selected `@marina` line, zero match records) plus one def-bound

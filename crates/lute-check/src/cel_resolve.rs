@@ -213,7 +213,9 @@ pub fn check_cel_slot(
             let mut marked = CelArena::default();
             if let Some(mh) = lute_cel::parse_slot_marked_refs(&mut marked, &slot.raw) {
                 if let Some(mroot) = marked.get(mh) {
-                    check_cel_profile(&mroot.expr, slot, &mut diags);
+                    check_cel_profile(&mroot.expr, slot, &[], &mut diags);
+                    // 0.21.1 T1-1: `isSet(quest.<id>.state)` is always true.
+                    check_quest_state_isset(&mroot.expr, slot.span, &mut diags);
                     // Vocabulary-aware fact-query pass (dsl 0.3.0 §6/§8, T11):
                     // `holds`/`count`/`validAt` patterns against `RelVocab`
                     // (E-RELATION-UNKNOWN/-ARITY/E-FACT-DOMAIN), the
@@ -272,10 +274,96 @@ pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
             for use_ in collect_path_uses(&root.expr) {
                 check_state_path(&use_.path, &slot, ctx, &mut diags);
             }
-            check_cel_profile(&root.expr, &slot, &mut diags);
+            check_cel_profile(&root.expr, &slot, &[], &mut diags);
         }
     }
     diags
+}
+
+/// 0.21.1 T1-6: the closed-profile gate over one def BODY (`defs: name: { cel }`).
+/// A `@name` use site is exempt from the gate as a compile-time macro, and
+/// nothing else ever looked at the body it expands to, so `wd: "run.day % 7"`
+/// passed `check` while the same CEL inline was `E-CEL-PROFILE` — and the
+/// runner, which cannot evaluate `%`, silently took `<otherwise>`. The body
+/// now gets the SAME [`check_cel_profile`] walk (plus the reserved-marker and
+/// [`W_QUEST_STATE_ISSET`] checks) an inline slot gets, with the def's own
+/// `params` admitted as bare identifiers. Every diagnostic lands at `span`
+/// (the def's key) and names the def. A body that does not parse returns
+/// nothing here — the caller reports it as `E-CEL-PARSE`.
+pub(crate) fn check_def_body(name: &str, cel: &str, params: &[String], span: Span) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let slot = CelSlot::raw(CelKind::Condition, cel.to_string(), span);
+    if raw_uses_reserved_marker(cel) {
+        diags.push(diag(
+            E_CEL_PROFILE,
+            format!(
+                "`{}` is a reserved internal token and must not appear in CEL (dsl §8.4)",
+                lute_cel::REF_MARKER
+            ),
+            span,
+        ));
+    }
+    let mut marked = CelArena::default();
+    if let Some(root) = lute_cel::parse_slot_marked_refs(&mut marked, cel).and_then(|h| marked.get(h)) {
+        check_cel_profile(&root.expr, &slot, params, &mut diags);
+        check_quest_state_isset(&root.expr, span, &mut diags);
+    }
+    for d in &mut diags {
+        d.message = format!("def `{name}`: {}", d.message);
+    }
+    diags
+}
+
+/// 0.21.1 T1-1: `quest.<id>.state` is an ALWAYS-ASSIGNED lifecycle enum —
+/// `unset | active | complete | failed`, the engine writing `unset` for every
+/// quest before it activates — so `isSet(quest.<id>.state)` is always true
+/// and `!isSet(…)` never holds. The checker used to recommend exactly that
+/// guard, and it read "not yet accepted" as false at runtime. A warning at
+/// the slot span, naming the comparison that means what the author wanted.
+pub const W_QUEST_STATE_ISSET: &str = "W-QUEST-STATE-ISSET";
+
+fn check_quest_state_isset(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) {
+    match expr {
+        Expr::Call(c) => {
+            if is_profile_isset_call(c) {
+                if let Some(path) = crate::cel_paths::select_path(&c.args[0].expr)
+                    .filter(|p| crate::cel_paths::is_reserved_quest_state(p))
+                {
+                    diags.push(Diagnostic {
+                        severity: Severity::Warning,
+                        ..diag(
+                            W_QUEST_STATE_ISSET,
+                            format!(
+                                "`isSet({path})` is always true: a quest's state is always \
+                                 assigned — `unset` until the quest activates, then `active`, \
+                                 `complete` or `failed`. Test `{path} == 'unset'` (or \
+                                 `!= 'unset'`) instead"
+                            ),
+                            span,
+                        )
+                    });
+                }
+            }
+            if let Some(t) = &c.target {
+                check_quest_state_isset(&t.expr, span, diags);
+            }
+            for a in &c.args {
+                check_quest_state_isset(&a.expr, span, diags);
+            }
+        }
+        Expr::List(list) => {
+            for el in &list.elements {
+                check_quest_state_isset(&el.expr, span, diags);
+            }
+        }
+        Expr::Select(sel) => check_quest_state_isset(&sel.operand.expr, span, diags),
+        Expr::Comprehension(_)
+        | Expr::Map(_)
+        | Expr::Struct(_)
+        | Expr::Ident(_)
+        | Expr::Literal(_)
+        | Expr::Unspecified => {}
+    }
 }
 
 /// The [`GUARD_FIREWALL_CALLS`] walk (D7): a `Call` (with or without a
@@ -354,7 +442,10 @@ fn check_guard_fact_access(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>)
 ///   [`is_profile_ident_root`] below. Only `validAt`'s SECOND arg (a genuine
 ///   CEL expr, e.g. `now()`) is recursed into; the pattern itself is
 ///   validated by [`check_fact_queries`] instead.
-fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
+///
+/// `bound` names the extra bare identifiers in scope — a def body's own
+/// `params:` (0.21.1 T1-6); empty for every ordinary slot.
+fn check_cel_profile(expr: &Expr, slot: &CelSlot, bound: &[String], diags: &mut Vec<Diagnostic>) {
     match expr {
         Expr::Call(c) => {
             let name = c.func_name.as_str();
@@ -384,17 +475,17 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
                     // the ordinary recursion.
                     if name == "validAt" {
                         if let Some(t) = c.args.get(1) {
-                            check_cel_profile(&t.expr, slot, diags);
+                            check_cel_profile(&t.expr, slot, bound, diags);
                         }
                     }
                 } else {
                     // Structural — recurse into target + args to catch any
                     // nested out-of-profile call.
                     if let Some(t) = &c.target {
-                        check_cel_profile(&t.expr, slot, diags);
+                        check_cel_profile(&t.expr, slot, bound, diags);
                     }
                     for a in &c.args {
-                        check_cel_profile(&a.expr, slot, diags);
+                        check_cel_profile(&a.expr, slot, bound, diags);
                     }
                 }
             } else if name == VISITED_FN && slot.kind != CelKind::Condition {
@@ -443,11 +534,11 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
         // exprs; recurse so a call nested inside a list is still caught.
         Expr::List(list) => {
             for el in &list.elements {
-                check_cel_profile(&el.expr, slot, diags);
+                check_cel_profile(&el.expr, slot, bound, diags);
             }
         }
         // A field selection: recurse into the operand (`foo().bar` hides a call).
-        Expr::Select(sel) => check_cel_profile(&sel.operand.expr, slot, diags),
+        Expr::Select(sel) => check_cel_profile(&sel.operand.expr, slot, bound, diags),
         // A bare identifier is in profile ONLY as a legal expression root
         // ([`is_profile_ident_root`]): a state tier, the substituted `$` subject
         // `_`, or a marker-rewritten `@ref`. Every other bare name is a free
@@ -455,7 +546,7 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
         // and is out of profile. Scalar literals are in profile; `Unspecified` is
         // inert.
         Expr::Ident(name) => {
-            if !is_profile_ident_root(name) {
+            if !is_profile_ident_root(name) && !bound.iter().any(|b| b == name) {
                 diags.push(diag(
                     E_CEL_PROFILE,
                     format!(

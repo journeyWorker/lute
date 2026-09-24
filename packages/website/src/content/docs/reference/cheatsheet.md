@@ -29,9 +29,9 @@ defaultProfile: game
 profiles:
   game:
     plugins: { game.occasions: true }   # true = active with defaults
-identity:                               # optional; these are the defaults
+identity:                               # lineId below is the default
   lineId: "{prefix}.{speaker}_{code}"
-  voiceKey: "{speaker}-{code}"
+  voiceKey: "{prefix}.{speaker}-{code}" # default {speaker}-{code} collides across scenes (E-DUP-VOICEKEY)
 defaults:                               # frontmatter every document inherits
   luteVersion: "0.21.0"
   uses: [world.schema.yaml]             # resolved against THIS file's directory

@@ -14,7 +14,9 @@
 //! every active quest (§7a.2) — an occasion only objectives answer is a
 //! legal step. A presentation's `::accept` activates its accept-driven
 //! quest at that advance (§7a.3), and CEL `visited('<id>')` reads the
-//! presented scenes (§7a.1).
+//! presented scenes (§7a.1). A presentation that runs `::end` still gets
+//! both — the advance and the occasion's judging — before the playthrough
+//! stops.
 //!
 //! ## Runs
 //! One `lute play` invocation is one player profile. `once: run` is spent by
@@ -233,6 +235,9 @@ struct Project {
     run_relations: BTreeSet<String>,
     /// Quest documents, path order — advanced after every presentation.
     quest_docs: Vec<String>,
+    /// Every quest id those documents declare — the ids a `state:` seed of
+    /// `quest.<id>.state` may name.
+    quest_ids: BTreeSet<String>,
     /// Every occasion some quest objective is judged at (`<objective
     /// on=…>`, dsl 0.21.0 §7a.2) — raising one advances those objectives
     /// even when no beat answers it.
@@ -401,6 +406,13 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         .filter(|(_, a)| a.get("kind").and_then(Json::as_str) == Some("quest"))
         .map(|(rel, _)| rel.clone())
         .collect();
+    let quest_ids = quest_docs
+        .iter()
+        .filter_map(|rel| artifacts.get(rel))
+        .flat_map(|a| a.get("commands").and_then(Json::as_array).into_iter().flatten())
+        .filter(|c| c.get("kind").and_then(Json::as_str) == Some("quest"))
+        .filter_map(|c| c.get("id").and_then(Json::as_str).map(str::to_string))
+        .collect();
     let objective_occasions = quest_docs
         .iter()
         .filter_map(|rel| artifacts.get(rel))
@@ -425,6 +437,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         seed_facts,
         run_relations,
         quest_docs,
+        quest_ids,
         objective_occasions,
         eval_json,
     })
@@ -448,8 +461,9 @@ fn play_artifact_json(doc_json: &Json, p: &Project) -> Json {
 }
 
 /// Every step's usage-level check, before anything plays (exit 2 on `Err`):
-/// the occasion exists, `target` is legal for it, `pick` is required
-/// exactly for `select: all` and names a beat answering that occasion.
+/// the occasion exists, `target` is given exactly when the occasion is
+/// declared `target: true`, `pick` is required exactly for `select: all` and
+/// names a beat answering that occasion.
 /// Under shape-only vocabulary an occasion exists when a beat answers it or
 /// an objective is judged at it (dsl 0.21.0 §7a.2).
 fn validate_steps(p: &Project, steps: &[ScriptStep]) -> Result<(), String> {
@@ -481,13 +495,20 @@ fn validate_steps(p: &Project, steps: &[ScriptStep]) -> Result<(), String> {
                 declared.join(", ")
             ));
         }
-        if let (Some(t), Some(d)) = (target, decl) {
-            if !d.target {
+        match (target, decl) {
+            (Some(t), Some(d)) if !d.target => {
                 return Err(format!(
                     "step {n}: occasion `{occasion}` is not declared `target: true`, so it cannot \
                      be raised for `{t}`"
                 ));
             }
+            (None, Some(d)) if d.target => {
+                return Err(format!(
+                    "step {n}: occasion `{occasion}` is declared `target: true` — name what it is \
+                     raised for with `target:`"
+                ));
+            }
+            _ => {}
         }
         match (p.select_of(occasion), pick) {
             (OccasionSelect::All, None) => {
@@ -553,6 +574,9 @@ struct World {
     /// Quest ids `accept` records named since the last quest advance (dsl
     /// 0.21.0 §7a.3) — the next advance activates those still `unset`.
     accepts: Vec<String>,
+    /// Per `<branch>` id: the decisions of a multi-decision `choose:` list
+    /// earlier presentations consumed ([`Runner::with_choice_cursor`]).
+    choice_cursor: BTreeMap<String, usize>,
 }
 
 fn json_to_value(j: &Json) -> Option<Value> {
@@ -617,10 +641,23 @@ fn parse_ground_fact(s: &str) -> Option<Fact> {
     Some((rel.to_string(), args))
 }
 
+/// The lifecycle values `quest.<id>.state` takes (always assigned: a quest
+/// nothing has activated yet is `unset`).
+const QUEST_STATES: &[&str] = &["unset", "active", "complete", "failed"];
+
+/// The quest id of a `quest.<id>.state` path.
+fn quest_state_id(path: &str) -> Option<&str> {
+    path.strip_prefix("quest.")?
+        .strip_suffix(".state")
+        .filter(|id| !id.is_empty() && !id.contains('.'))
+}
+
 /// The playthrough's starting world: every declared default (scene tier
 /// excluded), the script's `state:` over it, the project's seed facts plus
-/// the script's `facts:`. A seed naming an undeclared path or relation is a
-/// usage error, never a silent no-op.
+/// the script's `facts:`. A `quest.<id>.state` seed registers that quest's
+/// lifecycle status (a save's quest progress), so the start settle resumes
+/// it instead of starting the quest over. A seed naming an undeclared path,
+/// quest or relation is a usage error, never a silent no-op.
 fn seed_world(p: &Project, surfaces: &MockSet) -> Result<World, String> {
     let mut state = BTreeMap::new();
     for (path, e) in &p.state_table {
@@ -631,7 +668,30 @@ fn seed_world(p: &Project, surfaces: &MockSet) -> Result<World, String> {
             state.insert(path.clone(), v);
         }
     }
+    let mut quests = BTreeMap::new();
     for (path, lit, _) in &surfaces.state {
+        if let Some(id) = quest_state_id(path) {
+            if !p.quest_ids.contains(id) {
+                let declared: Vec<&str> = p.quest_ids.iter().map(String::as_str).collect();
+                return Err(format!(
+                    "`state.{path}`: no quest `{id}` is declared in this project (quests: {})",
+                    if declared.is_empty() {
+                        "none".to_string()
+                    } else {
+                        declared.join(", ")
+                    }
+                ));
+            }
+            if !QUEST_STATES.contains(&lit.as_str()) {
+                return Err(format!(
+                    "`state.{path}: {lit}` — a quest state is one of {}",
+                    QUEST_STATES.join(", ")
+                ));
+            }
+            quests.insert(id.to_string(), lit.clone());
+            state.insert(path.clone(), Value::Str(lit.clone()));
+            continue;
+        }
         if !p.state_table.contains_key(path) {
             return Err(format!(
                 "`state.{path}` is not a declared state path in this project"
@@ -676,11 +736,12 @@ fn seed_world(p: &Project, surfaces: &MockSet) -> Result<World, String> {
     Ok(World {
         state,
         facts,
-        quests: BTreeMap::new(),
+        quests,
         visited: BTreeSet::new(),
         spent_run: BTreeSet::new(),
         spent_user: BTreeSet::new(),
         accepts: Vec::new(),
+        choice_cursor: BTreeMap::new(),
     })
 }
 
@@ -708,8 +769,9 @@ fn new_run(p: &Project, w: &mut World) {
 }
 
 /// Fold a finished runner back into the world: persistent tiers only
-/// (`scene.*` never carries), facts, quest statuses, and the accepts it
-/// made (dsl 0.21.0 §7a.3) for the next quest advance.
+/// (`scene.*` never carries), facts, quest statuses, the accepts it made
+/// (dsl 0.21.0 §7a.3) for the next quest advance, and how far it consumed
+/// the script's multi-decision `choose:` lists.
 fn absorb(w: &mut World, outcome: &RunnerOutcome) {
     for (k, v) in &outcome.state {
         if !k.starts_with("scene.") {
@@ -723,6 +785,7 @@ fn absorb(w: &mut World, outcome: &RunnerOutcome) {
             w.accepts.push(id.clone());
         }
     }
+    w.choice_cursor = outcome.choice_cursor.clone();
 }
 
 /// A scene's fresh starting state: its OWN `scene.*` defaults (never the
@@ -753,7 +816,9 @@ fn scene_initial_state(doc_json: &Json, live: &BTreeMap<String, Value>) -> BTree
 
 /// Why the playthrough stopped short of its last step.
 enum PlayHalt {
-    /// exit 1 — a `pick` that is not eligible.
+    /// exit 1 — a `pick` that is not eligible, or a scripted `choose:`
+    /// decision the runner refused (`E-TRACE-CHOICE`: guard false, or a
+    /// spent `once` option) at its presentation point.
     Error(String),
     /// exit 2 — the runner refused a malformed artifact / unknown command.
     Fatal(String),
@@ -827,8 +892,13 @@ fn outcome_halt(outcome: &RunnerOutcome, what: &str, doc_json: &Json) -> Option<
                 .and_then(Json::as_str)
                 .unwrap_or("?");
             let options = decision_options(doc_json, id);
+            let used_up = rec
+                .get("scripted")
+                .and_then(Json::as_u64)
+                .map(|n| format!(" — all {n} decisions of its `choose:` list were used by earlier presentations"))
+                .unwrap_or_default();
             return Some(PlayHalt::Incomplete(format!(
-                "{what} reached {kind} `{id}` with no scripted `choose:` decision (options: {})",
+                "{what} reached {kind} `{id}` with no scripted `choose:` decision{used_up} (options: {})",
                 if options.is_empty() {
                     "none".to_string()
                 } else {
@@ -973,21 +1043,13 @@ fn advance_pass(
             w.facts.clone(),
             w.quests.clone(),
         )
-        .with_visited(&w.visited);
+        .with_visited(&w.visited)
+        .with_choice_cursor(&w.choice_cursor);
         let result = runner.advance_quests();
         let outcome = runner.into_outcome();
         absorb(w, &outcome);
         let what = format!("quest document `{doc}`");
-        let stop = match result {
-            Err(msg) => Some(Stop::Halt(PlayHalt::Fatal(format!("{what}: {msg}")))),
-            Ok(()) => outcome_halt(&outcome, &what, doc_json)
-                .map(Stop::Halt)
-                .or_else(|| {
-                    outcome
-                        .terminated
-                        .then(|| Stop::End(end_reason(&outcome, &what)))
-                }),
-        };
+        let stop = walk_stop(result, &outcome, &what, doc_json);
         let transcript: Vec<Json> = outcome
             .transcript
             .into_iter()
@@ -1005,6 +1067,29 @@ fn advance_pass(
         }
     }
     (moved, None)
+}
+
+/// How a finished runner walk ends the playthrough, if it does: a refused
+/// scripted decision (`E-TRACE-CHOICE`) is an error like an ineligible
+/// `pick:` (exit 1); any other runner failure is fatal (exit 2); then the
+/// honesty gate; then a `::end`.
+fn walk_stop(
+    result: Result<(), String>,
+    outcome: &RunnerOutcome,
+    what: &str,
+    doc_json: &Json,
+) -> Option<Stop> {
+    match result {
+        Err(msg) if outcome.refused => Some(Stop::Halt(PlayHalt::Error(format!("{what}: {msg}")))),
+        Err(msg) => Some(Stop::Halt(PlayHalt::Fatal(format!("{what}: {msg}")))),
+        Ok(()) => outcome_halt(outcome, what, doc_json)
+            .map(Stop::Halt)
+            .or_else(|| {
+                outcome
+                    .terminated
+                    .then(|| Stop::End(end_reason(outcome, what)))
+            }),
+    }
 }
 
 /// A candidate's verdict (dsl 0.21.0 §4).
@@ -1184,7 +1269,8 @@ fn present(p: &Project, w: &mut World, beat: &IndexBeat, mock: &MockSet) -> (Pre
         w.facts.clone(),
         w.quests.clone(),
     )
-    .with_visited(&w.visited);
+    .with_visited(&w.visited)
+    .with_choice_cursor(&w.choice_cursor);
     let mut runner = match beat.kind {
         BeatKind::Entry => runner.with_entry(&beat.id),
         BeatKind::Scene => runner,
@@ -1198,16 +1284,7 @@ fn present(p: &Project, w: &mut World, beat: &IndexBeat, mock: &MockSet) -> (Pre
         w.spent_user.insert(beat.id.clone());
     }
     let what = format!("{} `{}` ({})", kind_label(beat.kind), beat.id, beat.document);
-    let stop = match result {
-        Err(msg) => Some(Stop::Halt(PlayHalt::Fatal(format!("{what}: {msg}")))),
-        Ok(()) => outcome_halt(&outcome, &what, doc_json)
-            .map(Stop::Halt)
-            .or_else(|| {
-                outcome
-                    .terminated
-                    .then(|| Stop::End(end_reason(&outcome, &what)))
-            }),
-    };
+    let stop = walk_stop(result, &outcome, &what, doc_json);
     let presented = Presented {
         id: beat.id.clone(),
         kind: beat.kind,
@@ -1322,19 +1399,23 @@ fn execute(p: &Project, script: &PlayScript, mut w: World) -> Playthrough {
                 .iter()
                 .find(|b| &b.id == id && is_candidate(b, occasion, target.as_deref()))
         });
-        // A presentation that ended the walk (a halt, a `::end`) advances
-        // nothing further; one that played through advances every quest.
-        let (presented, mut quests, mut stop) = match (halt, beat) {
-            (Some(h), _) => (None, Vec::new(), Some(Stop::Halt(h))),
-            (None, None) => (None, Vec::new(), None),
+        // A presentation that halted advances nothing further. One that
+        // played through — or ended the playthrough with `::end` — first
+        // settles every quest, and the occasion judges its objectives: a
+        // `::end` stops the walk only AFTER the step's lifecycle is settled,
+        // so the quest progress the ending scene made still lands.
+        let (presented, ended, mut stop) = match (halt, beat) {
+            (Some(h), _) => (None, None, Some(Stop::Halt(h))),
+            (None, None) => (None, None, None),
             (None, Some(b)) => match present(p, &mut w, b, &mock) {
-                (presented, Some(stop)) => (Some(presented), Vec::new(), Some(stop)),
-                (presented, None) => {
-                    let (quests, stop) = advance_quests(p, &mut w);
-                    (Some(presented), quests, stop)
-                }
+                (presented, Some(Stop::End(reason))) => (Some(presented), Some(reason), None),
+                (presented, stop) => (Some(presented), None, stop),
             },
         };
+        let mut quests = Vec::new();
+        if stop.is_none() && presented.is_some() {
+            (quests, stop) = advance_quests(p, &mut w);
+        }
         // dsl 0.21.0 §7a.2: after the presentation (or none), the occasion
         // judges the `on=` objectives of every active quest.
         if stop.is_none() && p.objective_occasions.contains(occasion) {
@@ -1342,6 +1423,13 @@ fn execute(p: &Project, script: &PlayScript, mut w: World) -> Playthrough {
             quests.extend(more);
             stop = s;
         }
+        // A settle that halts still halts; otherwise the presentation's own
+        // `::end` is the reason the playthrough is over.
+        let stop = match (stop, ended) {
+            (Some(Stop::Halt(h)), _) => Some(Stop::Halt(h)),
+            (_, Some(reason)) => Some(Stop::End(reason)),
+            (stop, None) => stop,
+        };
         steps.push(StepRecord {
             n,
             body: StepBody::Occasion {
@@ -1392,12 +1480,24 @@ fn render_attrs(cmd: &Json, skip: &[&str]) -> String {
     parts.join(" ")
 }
 
-fn render_options(opts: &[Json], chosen: Option<&str>) -> String {
+/// A menu at its presentation point: the chosen option bracketed, a spent
+/// `once` option `(spent)`, an option whose guard decided false `✗`.
+fn render_options(opts: &[Json], rec: &Json) -> String {
+    let chosen = rec.get("chose").and_then(Json::as_str);
+    let listed = |key: &str, id: &str| {
+        rec.get(key)
+            .and_then(Json::as_array)
+            .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(id)))
+    };
     opts.iter()
         .filter_map(|o| o.get("id").and_then(Json::as_str))
         .map(|id| {
             if Some(id) == chosen {
                 format!("[{id}]")
+            } else if listed("spent", id) {
+                format!("{id}(spent)")
+            } else if listed("ineligible", id) {
+                format!("{id}✗")
             } else {
                 id.to_string()
             }
@@ -1410,41 +1510,129 @@ fn str_of<'a>(rec: &'a Json, key: &str) -> &'a str {
     rec.get(key).and_then(Json::as_str).unwrap_or("")
 }
 
-/// One runner transcript record -> a human line, enriched with the original
-/// command's authored attrs (looked up by `addr`) for lines and staging.
-fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
+/// A line's source head: `@speaker` plus its authored delivery — the role
+/// flag it was written with (`mono`/`vo`/`os`) and its attrs (`as=`,
+/// `emotion=`, …) — never the compiler's identity fields.
+fn line_head(speaker: &str, orig: Option<&Json>) -> String {
+    let flag = match orig.map(|c| str_of(c, "role")) {
+        Some("monologue") => Some("mono"),
+        Some("voiceover") => Some("vo"),
+        Some("offscreen") => Some("os"),
+        _ => None,
+    };
+    let attrs = orig
+        .map(|c| {
+            render_attrs(
+                c,
+                &[
+                    "addr",
+                    "kind",
+                    "text",
+                    "speaker",
+                    "lineId",
+                    "voiceKey",
+                    "role",
+                    "placeholders",
+                    "texts",
+                ],
+            )
+        })
+        .unwrap_or_default();
+    let inner: Vec<&str> = flag
+        .into_iter()
+        .chain((!attrs.is_empty()).then_some(attrs.as_str()))
+        .collect();
+    if inner.is_empty() {
+        format!("@{speaker}")
+    } else {
+        format!("@{speaker}{{{}}}", inner.join(" "))
+    }
+}
+
+/// One document's commands, by address and in stream order.
+struct DocCmds<'a> {
+    list: &'a [Json],
+    at: BTreeMap<&'a str, usize>,
+}
+
+impl<'a> DocCmds<'a> {
+    fn new(doc_json: Option<&'a Json>) -> Self {
+        let list = doc_json
+            .and_then(|d| d.get("commands"))
+            .and_then(Json::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let at = list
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| c.get("addr").and_then(Json::as_str).map(|a| (a, i)))
+            .collect();
+        DocCmds { list, at }
+    }
+
+    fn get(&self, addr: &str) -> Option<&'a Json> {
+        self.at.get(addr).map(|&i| &self.list[i])
+    }
+
+    /// The authored commands from `addr` on, in stream order — the
+    /// compiler's injected staging bookkeeping skipped.
+    fn authored_from(&self, addr: &str) -> impl Iterator<Item = &'a Json> {
+        let list = self.list;
+        let start = self.at.get(addr).copied().unwrap_or(list.len());
+        list[start..].iter().filter(|c| !is_injected(c))
+    }
+}
+
+/// A command the compiler injected (`provenance.injected`: a preload
+/// lookahead, a pose reset, a `::bg` auto-hide) rather than one authored.
+fn is_injected(cmd: &Json) -> bool {
+    cmd.get("provenance")
+        .and_then(|p| p.get("injected"))
+        .and_then(Json::as_bool)
+        == Some(true)
+}
+
+/// The line a `when=` line guard wraps (dsl §7.2/§7.4 desugar: a one-arm
+/// match whose `$` test is the guard itself, whose arm plays exactly that
+/// line and whose `otherwise` is empty). The transcript shows such a match
+/// as the line or its skip — the synthetic match is compiler plumbing.
+fn guarded_line<'a>(m: &Json, cmds: &DocCmds<'a>) -> Option<&'a Json> {
+    let [arm] = m.get("arms")?.as_array()?.as_slice() else {
+        return None;
+    };
+    let subject = str_of(m, "subject").trim();
+    let test = str_of(arm, "test").trim();
+    if subject.is_empty() || (test != subject && test != format!("({subject})")) {
+        return None;
+    }
+    let converge = str_of(m, "converge");
+    let jumps_to_converge =
+        |c: Option<&Json>| c.is_some_and(|c| str_of(c, "kind") == "jump" && str_of(c, "target") == converge);
+    let mut body = cmds.authored_from(str_of(arm, "target"));
+    let line = body.next().filter(|c| str_of(c, "kind") == "line")?;
+    (jumps_to_converge(body.next())
+        && jumps_to_converge(cmds.authored_from(str_of(m, "otherwise")).next()))
+    .then_some(line)
+}
+
+/// One runner transcript record -> a human line at source level, enriched
+/// with the original command's authored attrs (looked up by `addr`).
+/// `None` for a record that is not authored source: a staging record the
+/// compiler injected (`provenance.injected`), or the synthetic match of a
+/// line guard whose line played. `--json` keeps every record verbatim.
+fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
     let kind = str_of(rec, "kind");
-    let orig = cmd_by_addr.get(str_of(rec, "addr")).copied();
-    match kind {
-        "line" => {
-            let attrs = orig
-                .map(|c| {
-                    render_attrs(
-                        c,
-                        &[
-                            "addr",
-                            "kind",
-                            "text",
-                            "speaker",
-                            "lineId",
-                            "voiceKey",
-                            "role",
-                            "asLabel",
-                            "as",
-                            "placeholders",
-                            "texts",
-                        ],
-                    )
-                })
-                .unwrap_or_default();
-            let (speaker, text) = (str_of(rec, "speaker"), str_of(rec, "text"));
-            if attrs.is_empty() {
-                format!("@{speaker}: {text}")
-            } else {
-                format!("@{speaker}{{{attrs}}}: {text}")
-            }
-        }
+    let orig = cmds.get(str_of(rec, "addr"));
+    Some(match kind {
+        "line" => format!(
+            "{}: {}",
+            line_head(str_of(rec, "speaker"), orig),
+            str_of(rec, "text")
+        ),
         "background" | "music" | "sfx" | "vfx" | "sprite" | "camera" | "cut" | "video" => {
+            if orig.is_some_and(is_injected) {
+                return None;
+            }
             let attrs = orig
                 .map(|c| render_attrs(c, &["addr", "kind"]))
                 .unwrap_or_default();
@@ -1479,13 +1667,22 @@ fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
             {
                 label.push_str(&format!(" ({t}s)"));
             }
-            let rendered = render_options(&opts, chosen);
+            let rendered = render_options(&opts, rec);
             match chosen {
                 Some(c) => format!("▷ {label}: {rendered}        ← chosen: {c}"),
                 None => format!("▷ {label}: {rendered}        ← INCOMPLETE (no decision)"),
             }
         }
-        "match" => format!("  match -> {}", str_of(rec, "result")),
+        "match" => match orig.and_then(|m| guarded_line(m, cmds)) {
+            // The guard held: the line record that follows is the output.
+            Some(_) if str_of(rec, "result") == "arm 1" => return None,
+            Some(line) => format!(
+                "  skip {} \"{}\" — when: false",
+                line_head(str_of(line, "speaker"), Some(line)),
+                str_of(line, "text")
+            ),
+            None => format!("  match -> {}", str_of(rec, "result")),
+        },
         "barrier" => "  barrier (no real clock simulated)".to_string(),
         "end" => match rec.get("reason").and_then(Json::as_str) {
             Some(r) => format!("  ::end reason={r}"),
@@ -1560,23 +1757,13 @@ fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
             )
         }
         _ => format!("  {kind}"),
-    }
-}
-
-fn cmd_index(doc_json: Option<&Json>) -> BTreeMap<&str, &Json> {
-    doc_json
-        .and_then(|d| d.get("commands"))
-        .and_then(Json::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|c| c.get("addr").and_then(Json::as_str).map(|a| (a, c)))
-        .collect()
+    })
 }
 
 fn render_records(out: &mut String, p: &Project, document: &str, records: &[Json]) {
-    let by_addr = cmd_index(p.artifacts.get(document));
-    for rec in records {
-        out.push_str(&render_record(rec, &by_addr));
+    let cmds = DocCmds::new(p.artifacts.get(document));
+    for line in records.iter().filter_map(|rec| render_record(rec, &cmds)) {
+        out.push_str(&line);
         out.push('\n');
     }
 }
@@ -1816,11 +2003,14 @@ pub fn run_play(dir: &Path, script_path: &Path, json: bool) -> ExitCode {
     };
 
     let play = execute(&project, &script, world);
-    if json {
+    let text = if json {
         let v = render_json(&play);
-        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+        format!("{}\n", serde_json::to_string_pretty(&v).unwrap_or_default())
     } else {
-        print!("{}", render_human(&project, &play));
+        render_human(&project, &play)
+    };
+    if crate::write_stdout(&text).is_err() {
+        return ExitCode::from(2);
     }
     match &play.outcome {
         Ok(_) => ExitCode::SUCCESS,

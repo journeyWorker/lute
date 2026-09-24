@@ -6,3 +6,9 @@ defaultProfile: core
 profiles:
   core:
     plugins: {}
+
+# Identity templates (dsl §10). The default voiceKey `{speaker}-{code}` has no
+# `{prefix}`, so two documents' lines with the same speaker and code would share
+# one voice asset (E-DUP-VOICEKEY); the scene prefix keeps them apart.
+identity:
+  voiceKey: "{prefix}.{speaker}-{code}"

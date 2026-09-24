@@ -138,6 +138,24 @@ impl<'a> EffectiveState<'a> {
         self.writes.insert(path.to_string(), v);
     }
 
+    /// Every path that can have an effective value: written by the walk,
+    /// seeded by a mock, or declared with a `default:`. [`Self::read`] each
+    /// to get its value in §4.3 order.
+    pub fn effective_paths(&self) -> BTreeSet<String> {
+        self.writes
+            .keys()
+            .chain(self.seed.keys())
+            .chain(
+                self.schema
+                    .decls
+                    .iter()
+                    .filter(|(_, d)| d.default.is_some())
+                    .map(|(p, _)| p),
+            )
+            .cloned()
+            .collect()
+    }
+
     /// §1.3: every reserved quest path actually READ during the walk (via
     /// [`EffectiveState::read`]), classified by how it resolved. Cloned OUT
     /// (not borrowed) so the caller can inspect it after the walk without

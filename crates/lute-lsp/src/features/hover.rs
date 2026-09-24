@@ -270,7 +270,8 @@ fn construct_hover(construct: QuestConstruct) -> String {
         QuestConstruct::Quest => {
             "**\\<quest>** — a top-level quest declaration (dsl 0.2.0 §6.3).\n\n\
              **attributes:**\n- `id` (required): string\n- `title`: string\n\
-             - `start`: cel<bool>\n- `fail`: cel<bool>"
+             - `start`: cel<bool>\n- `fail`: cel<bool>\n\
+             - `after`: prereq — `completed(q)`/`active(q)`/`visited(k)` gate"
                 .to_string()
         }
         QuestConstruct::On => {
@@ -282,8 +283,10 @@ fn construct_hover(construct: QuestConstruct) -> String {
         QuestConstruct::Objective => {
             "**\\<objective>** — a quest objective (dsl 0.2.0 §6.4); \
              self-closing or with a body.\n\n\
-             **attributes:**\n- `id` (required): string\n- `done` (required): cel<bool>\n\
-             - `when`: cel<bool>\n- `title`: string\n- `optional`: bool"
+             **attributes:**\n- `id` (required): string\n- `done`: cel<bool> (required unless `quest`)\n\
+             - `quest`: string — a child quest whose completion completes this objective\n\
+             - `when`: cel<bool>\n- `title`: string\n- `optional`: bool\n\
+             - `on`: ident — the occasion that judges this objective (dsl 0.21.0 §7a.2)"
                 .to_string()
         }
         QuestConstruct::Entry => {

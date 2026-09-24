@@ -149,6 +149,66 @@ fn cel_parse_diagnostics(doc: &Document, cel_errors: Vec<CelParseError>) -> Vec<
         .collect()
 }
 
+/// 0.21.1 T1-6: every def BODY this document declares (`defs:`) or imports
+/// (`uses:` schemas) — a `@name` use site is exempt from the CEL gates as a
+/// compile-time macro, so without this pass nothing ever looked at the body
+/// it expands to: `size()`, `%`, or CEL that does not even parse all passed
+/// `check`. A body that does not parse is `E-CEL-PARSE`; one that does gets
+/// the inline slot's profile gate ([`crate::cel_resolve::check_def_body`]).
+/// An inline def anchors at its own key; an imported one at the frontmatter,
+/// naming its schema file (the `E-DEF-DECL` import convention in
+/// [`fold_env`]) — schema files are not checked on their own.
+fn def_body_diagnostics(
+    doc: &Document,
+    inline: &std::collections::BTreeMap<String, serde_yaml::Value>,
+    imports: &SchemaImports,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    let mut check_one = |name: &str, def: &serde_yaml::Value, span: Span, prefix: &str| {
+        let Some(cel) = def.get("cel").and_then(|c| c.as_str()) else {
+            return; // no body: `E-DEF-DECL` already names it
+        };
+        let mut arena = CelArena::default();
+        let mut diags = match parse_slot(&mut arena, cel, span.byte_start) {
+            Ok(_) => {
+                let params: Vec<String> =
+                    params_from_yaml(def).into_iter().map(|(p, _)| p).collect();
+                crate::cel_resolve::check_def_body(name, cel, &params, span)
+            }
+            Err(err) => {
+                let t = translate_cel_parse(cel, span, &err, CelKind::Condition);
+                vec![Diagnostic {
+                    code: E_CEL_PARSE.to_string(),
+                    severity: Severity::Error,
+                    message: format!("def `{name}`: {}", t.message),
+                    span,
+                    layer: Layer::Cel,
+                    fixits: Vec::new(),
+                    provenance: None,
+                    covered: Vec::new(),
+                    related: Vec::new(),
+                }]
+            }
+        };
+        for d in &mut diags {
+            d.message.insert_str(0, prefix);
+        }
+        out.extend(diags);
+    };
+    for (name, def) in inline {
+        check_one(name, def, crate::meta::meta_key_span(&doc.meta, name), "");
+    }
+    for (name, def) in &imports.defs {
+        let origin = imports
+            .def_origins
+            .get(name)
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        check_one(name, def, doc.meta.span, &format!("schema import `{origin}`: "));
+    }
+    out
+}
+
 /// Parse errors that corrupt the node stream, making the `Resolved` view
 /// misleading (see the Some-vs-None policy in the module docs).
 const STRUCTURAL_CODES: &[&str] = &[
@@ -795,6 +855,36 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // 3–4b. Typed frontmatter + folded schema + merged def tables (one SoT:
     // the public fold_env accessor the compiler also consumes).
     let (folded, fold_diags, state_merge_diags) = fold_env(&doc, input);
+    // 0.21.1 T3-8 (seven F3): a frontmatter that does not parse leaves the
+    // document with NO environment — no `uses:`/`defaults:` vocabulary, no
+    // `state:`, no `defs:`, no id — so every semantic pass below would judge
+    // the body against an empty world and report a dozen consequences of the
+    // one real error (`E-DOMAIN-UNKNOWN`, `E-UNDECLARED`, …), each with advice
+    // that sends the author to the wrong fix. Stop at the syntax layer: the
+    // body's own parse errors, its CEL parse errors, and the `E-META-PARSE`.
+    if fold_diags.iter().any(|d| d.code == "E-META-PARSE") {
+        let mut diags: Vec<Diagnostic> = parse_diags
+            .into_iter()
+            .chain(cel_diags)
+            .chain(fold_diags.into_iter().filter(|d| d.code == "E-META-PARSE"))
+            .collect();
+        normalize_spans(&idx, &input.text, &mut diags);
+        diags.sort_by(|a, b| {
+            a.span
+                .byte_start
+                .cmp(&b.span.byte_start)
+                .then_with(|| a.code.cmp(&b.code))
+        });
+        return CheckResult {
+            ok: false,
+            diagnostics: diags,
+            resolved: None,
+            domain_use: DomainUse {
+                at: doc.meta.span,
+                ..DomainUse::default()
+            },
+        };
+    }
     // dsl 0.21.0 §3.1: a scene beat's `when` is a frontmatter CEL slot, so
     // `fill_document` (which walks the node tree) never saw it — parse it into
     // the same arena here, reporting a failure as the ordinary `E-CEL-PARSE`.
@@ -824,6 +914,14 @@ pub fn check(input: &CheckInput) -> CheckResult {
             }
             slot
         });
+    let mut def_body_diags = def_body_diagnostics(&doc, &folded.typed.defs, &input.imports);
+    check_use_def_enum_args(
+        &doc,
+        &input.components,
+        &folded.def_bodies,
+        &folded.env.state,
+        &mut def_body_diags,
+    );
     let permission_diags =
         crate::permissions::check_document_permissions(&doc, &folded.typed, input);
     let env = &folded.env;
@@ -1129,6 +1227,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(parse_diags);
     diags.extend(cel_diags);
     diags.extend(beat_when_parse_diags);
+    diags.extend(def_body_diags);
     diags.extend(fold_diags);
     diags.extend(permission_diags);
     // Rule-guard CEL firewall (dsl 0.3.0 §7.2/§7.3, D7, 0.3.0 T8): holds()/
@@ -1156,6 +1255,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         &input.providers,
         domains,
         doc.meta.span,
+        &component_use_sites(&doc, &input.components),
     );
     let component_body_diags = crate::component_import::merge_component_body_diags(
         &mut component_diags,
@@ -1206,6 +1306,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // 0.4.0 T4 (§5.2 whole-document reachability pass): E-ARM-DEAD (dead
     // guard + subsumption) + W-OTHERWISE-DEAD.
     diags.extend(check_reachability(&doc, &folded));
+    // 0.21.1 T1-3/T1-4: a def in an attribute must fold to a constant
+    // (E-ATTR-DEF-DYNAMIC) and a `{{@def}}` must inline into one standalone
+    // expression (E-INTERP-DEF) — the artifact has no defs table.
+    diags.extend(crate::def_inline::check_def_inlining(&doc, &folded, input));
     // dsl 0.12.0: forward-jump labels — E-MARK-DUP / E-NEXT-UNDEFINED /
     // E-NEXT-BACKWARD, a whole-document pass (the label namespace spans
     // every shot/quest, unlike reachability's per-body scope above).
@@ -1381,6 +1485,13 @@ pub const W_LUTE_VERSION_STALE: &str = "W-LUTE-VERSION-STALE";
 /// CURRENT stamp is clean. `Layer::Content` (a frontmatter-key concern, same
 /// layer `parse_meta_kind`'s own meta diagnostics use). The span points at the
 /// `luteVersion:` key ([`crate::meta::meta_key_span`]).
+///
+/// The two versions are compared as `MAJOR.MINOR.PATCH` numbers, never as
+/// strings: a stamp NEWER than the toolchain is not stale — the toolchain is
+/// (0.21.1 T3-6, ashen F36: an older language server told every current
+/// document to downgrade its stamp). That case names the toolchain as the
+/// thing to update. A stamp that is not a numeric triple keeps the restamp
+/// advice — there is no order to consult.
 fn check_lute_version_stale(
     typed: &crate::meta::TypedMeta,
     meta: &lute_syntax::ast::Meta,
@@ -1389,14 +1500,26 @@ fn check_lute_version_stale(
     if stamped == crate::LUTE_LANG_VERSION {
         return None;
     }
+    let current = crate::LUTE_LANG_VERSION;
+    let newer = matches!(
+        (version_triple(stamped), version_triple(current)),
+        (Some(s), Some(c)) if s > c
+    );
+    let message = if newer {
+        format!(
+            "frontmatter `luteVersion: \"{stamped}\"` is newer than this toolchain (Lute \
+             {current}) — upgrade the toolchain; do not downgrade the stamp (dsl 0.6.1 §3)"
+        )
+    } else {
+        format!(
+            "frontmatter `luteVersion: \"{stamped}\"` is stale — this toolchain is Lute \
+             {current}; update the stamp to `luteVersion: \"{current}\"` (dsl 0.6.1 §3)"
+        )
+    };
     Some(Diagnostic {
         code: W_LUTE_VERSION_STALE.to_string(),
         severity: Severity::Warning,
-        message: format!(
-            "frontmatter `luteVersion: \"{stamped}\"` is stale — this toolchain is Lute \
-             {current}; update the stamp to `luteVersion: \"{current}\"` (dsl 0.6.1 §3)",
-            current = crate::LUTE_LANG_VERSION
-        ),
+        message,
         span: crate::meta::meta_key_span(meta, "luteVersion"),
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -1404,6 +1527,17 @@ fn check_lute_version_stale(
         covered: Vec::new(),
         related: Vec::new(),
     })
+}
+
+/// `MAJOR.MINOR.PATCH` as a comparable triple; `None` for anything else.
+fn version_triple(v: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = v.trim().split('.');
+    let triple = (
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    );
+    parts.next().is_none().then_some(triple)
 }
 
 /// The per-node validator walk. Holds the read-only capability surface and the
@@ -1453,6 +1587,7 @@ impl Walker<'_> {
                         &mut self.diags,
                     );
                     check_interps(&l.interps, ctx, &mut self.diags);
+                    self.diags.extend(text_looks_like_ref(l, ctx));
                     if let Some(when) = &l.when {
                         // D9 (dsl 0.4.0 §7.2): `$` is NOT in scope in a
                         // content-line `when=`, matching `<on when>` — force
@@ -1789,6 +1924,7 @@ impl Walker<'_> {
                         check_interps(&scan_label_interps(title, o.span), ctx, &mut self.diags);
                     }
                     self.check_attr_refs(&o.attrs, ctx, None);
+                    crate::logic_attrs::check_objective_attrs(o, &mut self.diags);
                     self.walk(&o.body, ctx);
                     // dsl 0.16.0 §2: `reward.when` is a Bool CEL slot with
                     // the SAME profile treatment `<objective when>` gets.
@@ -1823,6 +1959,7 @@ impl Walker<'_> {
                         ));
                     }
                     self.check_attr_refs(&o.attrs, ctx, None);
+                    crate::logic_attrs::check_on_attrs(o, &mut self.diags);
                     self.walk(&o.body, ctx);
                 }
                 Node::Assert(a) => {
@@ -2219,10 +2356,12 @@ fn ref_produced_type<'a>(raw: &str, ctx: &'a Ctx<'_>) -> Option<&'a Type> {
 
 /// Validate every imported component (dsl §13): its presentational body plus the
 /// `::use` expansion graph across components. Body diagnostics are re-anchored to
-/// `at` (the scene frontmatter span) and prefixed with the component name/source
-/// — a component file's own byte spans cannot be represented in this document's
-/// diagnostic surface (mirroring how import diagnostics report at the scene
-/// frontmatter). Deterministic: components iterate in name order.
+/// the FIRST `::use` in this document that brings the body in (`use_sites`,
+/// [`component_use_sites`]) — or `at` (the scene frontmatter span) for a body no
+/// `::use` reaches — and prefixed with the component name and its
+/// project-relative source path: a component file's own byte spans cannot be
+/// represented in this document's diagnostic surface. Deterministic:
+/// components iterate in name order.
 ///
 /// Each body ALSO gets its own isolated run of the whole-document
 /// duplicate-line-code pass ([`check_line_codes`], dsl §12) — see the comment
@@ -2233,6 +2372,7 @@ fn validate_components(
     providers: &ProviderSet,
     domains: &std::collections::BTreeMap<String, Domain>,
     at: Span,
+    use_sites: &std::collections::BTreeMap<String, Span>,
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (name, def) in &components.table {
@@ -2405,8 +2545,16 @@ fn validate_components(
                 covered: Vec::new(),
                 related: Vec::new(),
             };
-            d.message = format!("component `{name}` ({}): {}", def.src.display(), d.message);
-            d.span = at;
+            d.message = format!(
+                "component `{name}` ({}): {}",
+                project_relative_display(&def.src),
+                d.message
+            );
+            // 0.21.1 T3-7 (lamplight F4): the `::use` that brings this body in
+            // is the one position in THIS document that caused the fault, and
+            // where an editor should land — not the frontmatter's 1:1. A body
+            // reached through no `::use` (imported, never used) keeps `at`.
+            d.span = use_sites.get(name).copied().unwrap_or(at);
             // T13: a CEL-parse fixit's edit span (if any) is in the COMPONENT
             // file's own byte-space — this document's diagnostic surface
             // cannot represent it (same reason the span itself collapses to
@@ -2429,6 +2577,219 @@ fn validate_components(
     detect_use_cycles(components, at, &mut cycle_diags);
     out.extend(cycle_diags.into_iter().map(|d| (PathBuf::new(), d)));
     out
+}
+
+/// For every component this document reaches through `::use`, the span of the
+/// FIRST `::use` in THIS document that brings it in (document order: shots,
+/// then quests, then entries). A component reached only through another
+/// component's body inherits the outer `::use`'s span — the importing
+/// document's only position for it.
+fn component_use_sites(
+    doc: &Document,
+    components: &ComponentSet,
+) -> std::collections::BTreeMap<String, Span> {
+    let mut sites = std::collections::BTreeMap::new();
+    let roots = doc
+        .shots
+        .iter()
+        .map(|s| &s.body)
+        .chain(doc.quests.iter().map(|q| &q.body))
+        .chain(doc.entries.iter().map(|e| &e.body));
+    for body in roots {
+        let mut direct = Vec::new();
+        collect_use_names(body, &mut direct);
+        for (name, span) in direct {
+            // Transitive closure, each reached name keeping this outer span.
+            let mut stack = vec![name];
+            while let Some(n) = stack.pop() {
+                if sites.contains_key(&n) {
+                    continue;
+                }
+                sites.insert(n.clone(), span);
+                if let Some(def) = components.table.get(&n) {
+                    let mut inner = Vec::new();
+                    for shot in &def.body.shots {
+                        collect_use_names(&shot.body, &mut inner);
+                    }
+                    stack.extend(inner.into_iter().map(|(n, _)| n));
+                }
+            }
+        }
+    }
+    sites
+}
+
+/// Every `::use{component="…"}` in `nodes`, in document order, with its span.
+fn collect_use_names(nodes: &[Node], out: &mut Vec<(String, Span)>) {
+    let mut dirs = Vec::new();
+    collect_use_directives(nodes, &mut dirs);
+    out.extend(dirs.into_iter().filter_map(|d| {
+        d.attrs.iter().find_map(|a| match (&*a.key, &a.value) {
+            ("component", AttrValue::Str(s)) => Some((s.clone(), d.span)),
+            _ => None,
+        })
+    }));
+}
+
+/// Every `::use` directive in `nodes`, in document order. Recurses every node
+/// kind that can hold one.
+fn collect_use_directives<'a>(nodes: &'a [Node], out: &mut Vec<&'a Directive>) {
+    for node in nodes {
+        match node {
+            Node::Directive(d) if d.tag == "use" => out.push(d),
+            Node::Directive(_) => {}
+            Node::Branch(b) => b.choices.iter().for_each(|c| collect_use_directives(&c.body, out)),
+            Node::Hub(h) => h.choices.iter().for_each(|c| collect_use_directives(&c.body, out)),
+            Node::On(o) => collect_use_directives(&o.body, out),
+            Node::Objective(o) => collect_use_directives(&o.body, out),
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            collect_use_directives(body, out)
+                        }
+                    }
+                }
+            }
+            Node::Timeline(t) => {
+                for track in &t.tracks {
+                    for clip in &track.clips {
+                        if let lute_syntax::ast::ClipNode::Directive(d) = &clip.node {
+                            if d.tag == "use" {
+                                out.push(d);
+                            }
+                        }
+                    }
+                }
+            }
+            Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
+        }
+    }
+}
+
+/// 0.21.1 T1-5: a `@def` argument to an ENUM component param. `use_arg_ok`
+/// only compares the def's produced TYPE, and a string def is compatible
+/// with every enum — so `pick: "run.flag ? 'blazing' : 'brief'"` passed as
+/// `depth=@pick` checked `ok` and matched no arm at runtime. Every value the
+/// def body can produce must be a member of the param's enum: each result
+/// position (through `?:`) must be a string literal that is a member, or a
+/// state path whose enum members all are. Anything the checker cannot prove
+/// is `E-COMPONENT-ARG` too — a wrong verdict is worse than a stop.
+fn check_use_def_enum_args(
+    doc: &Document,
+    components: &ComponentSet,
+    def_bodies: &std::collections::BTreeMap<String, String>,
+    schema: &crate::meta::StateSchema,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut dirs = Vec::new();
+    for body in doc
+        .shots
+        .iter()
+        .map(|s| &s.body)
+        .chain(doc.quests.iter().map(|q| &q.body))
+        .chain(doc.entries.iter().map(|e| &e.body))
+    {
+        collect_use_directives(body, &mut dirs);
+    }
+    for dir in dirs {
+        let Some((name, def)) = dir
+            .attrs
+            .iter()
+            .find_map(|a| match (&*a.key, &a.value) {
+                ("component", AttrValue::Str(s)) => components.table.get(s).map(|d| (s, d)),
+                _ => None,
+            })
+        else {
+            continue; // unknown component: `check_use` owns it
+        };
+        for attr in &dir.attrs {
+            let AttrValue::Ref(slot) = &attr.value else { continue };
+            let Some((_, Type::Enum(members))) = def.params.iter().find(|(p, _)| p == &attr.key)
+            else {
+                continue;
+            };
+            let Some(r) = scan_refs(&slot.raw).into_iter().find(|r| !r.is_dollar) else {
+                continue;
+            };
+            let Some(body) = def_bodies.get(&r.name) else {
+                continue; // undeclared ref: `E-UNDECLARED-REF` owns it
+            };
+            let mut arena = CelArena::default();
+            let values = lute_cel::parse_slot_marked_refs(&mut arena, body)
+                .and_then(|h| arena.get(h))
+                .and_then(|root| def_result_values(&root.expr, schema));
+            let problem = match values {
+                None => Some(format!(
+                    "the values `@{}` (`{body}`) can produce cannot be proven to be members",
+                    r.name
+                )),
+                Some(vals) => vals
+                    .into_iter()
+                    .find(|v| !members.contains(v))
+                    .map(|v| format!("`@{}` (`{body}`) can produce `{v}`, which is not a member", r.name)),
+            };
+            if let Some(problem) = problem {
+                diags.push(use_diag(
+                    E_COMPONENT_ARG,
+                    format!(
+                        "argument `{}` to component `{}`: {problem} of the parameter's enum [{}] \
+                         (dsl §13)",
+                        attr.key,
+                        name,
+                        members.join(", ")
+                    ),
+                    attr.value_span,
+                ));
+            }
+        }
+    }
+}
+
+/// Every value a def body's result can take (0.21.1 T1-5): through `?:`
+/// branches, a string literal is itself and a state path of enum type is its
+/// members. `None` when any result position is something else.
+fn def_result_values(
+    expr: &cel_parser::ast::Expr,
+    schema: &crate::meta::StateSchema,
+) -> Option<Vec<String>> {
+    use cel_parser::ast::Expr;
+    match expr {
+        Expr::Call(c)
+            if c.func_name == cel_parser::ast::operators::CONDITIONAL && c.args.len() == 3 =>
+        {
+            let mut vals = def_result_values(&c.args[1].expr, schema)?;
+            vals.extend(def_result_values(&c.args[2].expr, schema)?);
+            Some(vals)
+        }
+        Expr::Literal(cel_parser::reference::Val::String(s)) => Some(vec![s.to_string()]),
+        Expr::Select(_) | Expr::Ident(_) => {
+            let path = crate::cel_paths::select_path(expr)?;
+            match &schema.decls.get(&path)?.ty {
+                Type::Enum(ms) => Some(ms.clone()),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// `src` (a canonical component path) as shown in a message: relative to the
+/// nearest ancestor directory holding a `lute.project.yaml` — the project
+/// root every other path in a report is read against — with `/` separators.
+/// A component outside any project keeps its full path.
+fn project_relative_display(src: &std::path::Path) -> String {
+    src.ancestors()
+        .skip(1)
+        .find(|dir| dir.join("lute.project.yaml").is_file())
+        .and_then(|root| src.strip_prefix(root).ok())
+        .map(|rel| {
+            rel.components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .unwrap_or_else(|| src.display().to_string())
 }
 
 /// The component-mode analysis environment (dsl §13): the params are the ONLY ref
@@ -2544,6 +2905,42 @@ fn scan_fact_queries(expr: &cel_parser::ast::Expr, slot: &CelSlot, diags: &mut V
     }
 }
 
+/// `W-TEXT-LOOKS-LIKE-REF` (0.21.1 T3-7, lamplight F3): a content line whose
+/// whole text is `@<name>` for a declared def or component param.
+pub const W_TEXT_LOOKS_LIKE_REF: &str = "W-TEXT-LOOKS-LIKE-REF";
+
+/// Text after `: ` is literal by design (dsl §7.6), so `@narrator: @memory`
+/// ships the string "@memory" to the player. When the text is EXACTLY one
+/// `@<ident>` and that ident is declared in this scope (a scene's `defs:`, a
+/// component's `params:` — both live in `ctx.env.defs`), the author almost
+/// certainly meant the interpolation. Anchored at the line text.
+fn text_looks_like_ref(l: &lute_syntax::ast::Line, ctx: &Ctx<'_>) -> Option<Diagnostic> {
+    let name = l.text.trim().strip_prefix('@')?;
+    let is_ident = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !is_ident || !ctx.env.defs.contains(name) {
+        return None;
+    }
+    Some(Diagnostic {
+        code: W_TEXT_LOOKS_LIKE_REF.to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "line text is exactly `@{name}`, which ships as the literal string \"@{name}\" — \
+             line text is never evaluated; to show the value of `@{name}` write \
+             `{{{{@{name}}}}}` (dsl §7.6)"
+        ),
+        span: l.text_span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    })
+}
+
 /// Validate a content line's `{{…}}` interpolations inside a component body
 /// (dsl 0.4.0 §6.2): the component analog of [`check_interps`], differing
 /// ONLY in how an ordinary `Path` interpolation is treated — a component has
@@ -2569,14 +2966,24 @@ fn component_interp_scan(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diag
                     check_interp_referent(&interp.raw, interp, &interp_ctx, diags);
                     continue;
                 }
-                diags.push(use_diag(
-                    E_COMPONENT_STATE,
+                // 0.21.1 T3-7 (seven F9): `{{memory}}` where `memory` IS a
+                // declared param is a missing `@`, not an ambient-state read —
+                // "bind it through a param" is advice the author already
+                // followed. Same code (the read is still not a param ref),
+                // but the message names the fix.
+                let name = interp.raw.trim();
+                let message = if ctx.env.defs.contains(name) {
+                    format!(
+                        "`{{{{{name}}}}}` reads `{name}` as a state path, but `{name}` is a param \
+                         of this component — write `{{{{@{name}}}}}` (dsl 0.4 §6.2)"
+                    )
+                } else {
                     format!(
                         "`{}` reads ambient state — a component body may not depend on it; bind it through a param (dsl 0.4 §6.2)",
                         interp.raw
-                    ),
-                    interp.span,
-                ));
+                    )
+                };
+                diags.push(use_diag(E_COMPONENT_STATE, message, interp.span));
             }
             InterpKind::Ref => {
                 if !is_bare_ref(&interp.raw) {
@@ -2698,6 +3105,7 @@ fn walk_component_body(
                 // here (a component has no `state:` schema to resolve one
                 // against, and the purity contract forbids the read anyway).
                 component_interp_scan(&l.interps, ctx, diags);
+                diags.extend(text_looks_like_ref(l, ctx));
                 // dsl 0.4.0 §7.2/§6.2: a content-line `when=` guard gets BOTH
                 // the positive ambient-state scan (D6: the AUTHORITATIVE
                 // `E-COMPONENT-STATE` diagnosis for a bare-param guard vs. an
@@ -4187,6 +4595,38 @@ mod lute_version_tests {
             d.message.contains(crate::LUTE_LANG_VERSION),
             "names the current version: {}",
             d.message
+        );
+    }
+
+    /// 0.21.1 T3-6 (ashen F36): a stamp NEWER than the toolchain is not stale —
+    /// the toolchain is. The message names the toolchain as the thing to
+    /// upgrade and never advises rewriting the stamp downwards. `0.9.0` is the
+    /// control: string-greater than any `0.1x`/`0.2x` toolchain yet numerically
+    /// older, so it must keep the restamp advice.
+    #[test]
+    fn newer_stamp_says_upgrade_the_toolchain() {
+        let stamp = |v: &str| {
+            let typed = crate::meta::TypedMeta {
+                lute_version: Some(v.to_string()),
+                ..Default::default()
+            };
+            check_lute_version_stale(&typed, &meta(&format!("luteVersion: \"{v}\"\n")))
+                .expect("a differing stamp warns")
+                .message
+        };
+        let newer = stamp("999.0.0");
+        assert!(
+            newer.contains("upgrade the toolchain"),
+            "a newer stamp names the toolchain: {newer}"
+        );
+        assert!(
+            !newer.contains("update the stamp"),
+            "a newer stamp is never told to downgrade: {newer}"
+        );
+        let older = stamp("0.9.0");
+        assert!(
+            older.contains("is stale") && older.contains("update the stamp"),
+            "numerically older (though string-greater) keeps the restamp advice: {older}"
         );
     }
 

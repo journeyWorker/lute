@@ -38,6 +38,166 @@ table.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`lute test`: an incomplete trace fails.** A walk halted by an unknown guard
+  reported `{"exit":"incomplete","passed":true}` whenever the test did not
+  mention `exit:` — the expectations it never reached were never checked. It now
+  fails unless the test opts in with `expect: { exit: incomplete }` (T1-13).
+- **`lute test`: a lore document cannot be a test subject.** A test naming a
+  lore file walked nothing and passed; it now fails with `E-TEST-LORE` and points
+  at `lute trace <file> --entry <id>` (T1-13).
+- **`lute test --coverage` measures the project.** The untested set was taken
+  from the directory the tests live in, so `lute test tests --coverage` always
+  said every document was tested. It now walks `--project`, else the nearest
+  `lute.project.yaml` (T1-13).
+- **`lute test`: `expect.state` compares the effective value.** A path the walk
+  never wrote read "never written" even when its declared `default:` or the
+  test's own `state:` seed was exactly the expected value. The comparison now
+  uses trace's own read order: write, then seed, then default (T2-5).
+- **`lute trace` names a beat scene whose `when` does not hold.** A scene traced
+  under state where its frontmatter `when:` is false (or undecided) read as a
+  plain `complete`; the trace now opens with a `beat \`when\`` note, and `lute
+  test` shows it on the test line (T1-13).
+- **`lute trace`: a choice forced past an unknown guard counts as unresolved.**
+  It was only a `(forced)` suffix; the summary now counts it and names the atoms
+  that would decide it, and `--json` carries `forcedUnknown`. The exit code is
+  unchanged (T1-13).
+- **`W-TRACE-MOCK-UNPRODUCIBLE` consults the project.** It judged a mocked fact
+  against the traced document's own asserts, so every clue a sibling scene
+  establishes was "not producible". With `--project`, or a `lute.project.yaml`
+  above the file, it now uses the project's reachability-gated producer set;
+  without a project the note says it judged this document only (T1-14).
+- **`lute test` failures say why the walk stopped.** The unresolved guards and
+  the `state:`/`facts:` entries that would decide them are printed, and `--json`
+  carries `unresolved` (with `atoms` and `supply`) per test (T3-11).
+- **No panic on a closed pipe.** `lute scenario`, `lute test`, `lute lore` and
+  `lute trace` write their report once through the same EPIPE-safe path
+  `compile` uses, so `… | head` exits instead of panicking (T3-15).
+- **`lute play`: a `quest.<id>.state` seed is the quest's status.** It landed in
+  state only, so the start settle re-registered the quest as `unset` and every
+  quest-gated beat read the wrong status. The seed now registers the quest with
+  that lifecycle status; an undeclared quest id or a value outside
+  `unset|active|complete|failed` is a usage error (exit 2) (T1-1).
+- **`lute play`: `::end` settles the step first.** A beat that ended the
+  playthrough skipped the quest advance and the occasion's `<objective on>`
+  judging, and still exited 0. The step's lifecycle now settles, then the walk
+  stops (T1-2).
+- **`lute play` holds the script to what is offered.** Forcing a spent `once`
+  hub option was silently skipped; it now halts with `E-TRACE-CHOICE`, as `lute
+  trace` does. A `choose:` list of two or more decisions for a `<branch>` is
+  consumed one per presentation, in order, across the playthrough (also in
+  `lute run`) instead of repeating its first entry; running out halts
+  incomplete and says so. A single decision still answers every presentation
+  (T1-8).
+- **`lute play`: an ineligible `choose:` exits 1**, like an ineligible `pick:`;
+  it was 2, the usage-error code (T3-19).
+- **`lute play`: a `target: true` occasion raised without `target:` is a usage
+  error** (exit 2); it played `(no candidates)` at exit 0 (T2-9).
+- **A component `{{@param}}` renders the bound argument.** Every `::use`
+  expansion shipped the same `"Outside: {{@weather}}."` with a `ref`
+  placeholder naming a param that no longer exists, so `lute run`/`lute play`
+  printed the marker. The param's literal is now substituted into each
+  expansion's text (`Outside: grey.` / `Outside: still.`); a param bound to a
+  caller-side def stays a `ref` placeholder naming that def (T1-3).
+- **A `{{@def}}` renders its value.** The artifact has no defs table, so an
+  engine could only print `{{@twice}}`. A `ref` placeholder now carries the def
+  body inlined as `expr` (`{raw, expr}`; optional in
+  `schemas/lute-ir-0.21.schema.json`), and `lute run`/`lute play` evaluate it.
+  A def that cannot be inlined into one expression (an expansion cycle, a body
+  that reads `$`) is the new error `E-INTERP-DEF` at `lute check` (T1-3).
+- **A def in a directive attribute is never dropped.** `::camera{zoom=@closeUp}`
+  compiled with no `zoom` at all, and `::bg{time=@slotNow}` shipped the CEL
+  source `"(run.slot)"` as the time. A def that folds to a constant is now
+  written as that literal (`zoom: 1.3`) and checked like an authored one
+  (`E-BAD-ENUM`, `E-ATTR-TYPE`); a state-dependent def — directly, or as a
+  `::use` arg the component puts into an attribute — is the new error
+  `E-ATTR-DEF-DYNAMIC` (T1-4).
+- **`lute check`: `quest.<id>.state` is an always-assigned lifecycle enum.**
+  Every read was `E-MAYBE-UNSET` with a message about `::set`, and `== 'unset'`
+  added `E-UNSET-LITERAL` — while play, trace and `lute test` all treat `unset`
+  as the state before activation. Reads and `== 'unset'` are now clean, `<when
+  is="unset">` names that member (and compiles to `== "unset"`, which fires;
+  `!isSet(…)` never did), `$ == null` no longer counts as covering it, and
+  `isSet(quest.<id>.state)` — always true — is the new warning
+  `W-QUEST-STATE-ISSET` (T1-1).
+- **`lute check`: a `@def` argument to an enum component param is checked.** A
+  string def was compatible with every enum, so `depth=@pick` with a body that
+  could produce a non-member passed and matched no arm. Every value the body
+  can produce must be a member, or it is `E-COMPONENT-ARG` (T1-5).
+- **`lute check`: def bodies get the CEL profile gate.** The `@name` use site
+  is exempt as a macro and nothing looked at the body, so `%`, `size()` and
+  even unparseable CEL passed. A body is now `E-CEL-PROFILE`/`E-CEL-PARSE` at
+  its own key; the `E-DEF-DECL` hint writes `type: <bool|number|enum>` instead
+  of guessing `bool` (T1-6).
+- **`<quest>`, `<objective>` and `<on>` close their attributes.** An invented
+  or misspelt key (`fial=`, `optinal`, `target=`) was accepted and dropped from
+  the IR; it is now `E-UNKNOWN-ATTR` with a did-you-mean, as every other logic
+  tag already was. LSP completion offers exactly the permitted keys (T1-7).
+- **Attribute values: `\"` is a quote, `'…'` is an error.** A `\"` inside a
+  quoted value kept its backslash in the label; it is now stored as `"` (other
+  escapes still reach CEL untouched). A single-quoted value (`label='"Hi."'`)
+  silently kept its quotes; it is now `E-ATTR-QUOTE` (T1-16).
+- **Component lines keep distinct `lineId`s after expansion.** A tagged line
+  in a component `::use`d twice, or sharing its `(speaker, code)` with a line
+  of the host scene (typically after `lute tag`), compiled to two records with
+  one `lineId`/`voiceKey`. The expanded stream is now checked: `E-DUP-LINE-CODE`
+  at the `::use`, from `lute check`, `check-project` and every compile (T1-10).
+- **`check-project` runs the compile.** Every document that checks clean is
+  compiled under its project's `identity:`, so compile-stage errors (such as
+  the one above) fail `check-project` instead of only `compile` (T1-9, T1-10).
+- **New `E-DUP-VOICEKEY`.** The default `voiceKey` template
+  `{speaker}-{code}` has no `{prefix}`, so lines of different scenes landed on
+  one voice asset without a word. `check-project` and `compile --all` now
+  refuse a key carried by lines with different text, naming each line; set
+  `identity.voiceKey: "{prefix}.{speaker}-{code}"` (the default is unchanged
+  until 0.22.0). `lute init` projects, the `docs/examples` projects and the
+  first-scene tutorial now pin it (T1-9).
+- **New `E-CAPABILITY-MISMATCH` at `check-project`.** A project whose documents
+  resolve two capability snapshots passed `check-project` and was then refused
+  by `compile --all` and `play`; `check-project` now runs the same
+  single-snapshot gate, with the same message. `docs/examples/showcase` was
+  such a project; its three scenes now share one set of scene-local options
+  (T1-11).
+- **`lute check <file>` uses the project the file is in.** Without `--project`
+  it checked the file with no manifest — no `defaults: uses:`, no profile — and
+  reported `E-UNDECLARED`/`E-DOMAIN-UNKNOWN` for paths the project declares. It
+  now applies the nearest `lute.project.yaml` and says so on stderr (`note:
+  using project …`) (T3-9).
+- **`<when is=… test=…>` covers only what both prove.** An arm with both was
+  counted as covering its whole `is=` set, so a later arm on the same member
+  drew a false `W-OVERLAP-ARMS`, and a match missing members was taken as
+  exhaustive (no `E-NONEXHAUSTIVE`) while the runtime matched no arm. A guard
+  the checker cannot decide now covers nothing (T1-12).
+- **`W-LUTE-VERSION-STALE` compares versions as numbers** and, for a stamp
+  newer than the toolchain, says to upgrade the toolchain rather than restamp
+  (T3-6).
+- **Component-body diagnostics point at the `::use`.** They were anchored at
+  the host's frontmatter (1:1) with the component's absolute path; they now
+  land on the first `::use` that brings the body in and name the component
+  relative to the project. `{{p}}` for a declared param now says to write
+  `{{@p}}`, and a line whose whole text is `@name` for a def or param draws the
+  new warning `W-TEXT-LOOKS-LIKE-REF` (it ships the literal text) (T3-7).
+- **`E-META-PARSE` stops that document's checks.** An unparseable frontmatter
+  was followed by a dozen errors from checking the body against an empty
+  environment, and by `E-CONN-UNKNOWN-NODE` in every other file that named the
+  broken scene (T3-8).
+
+### Changed
+
+- **`lute scenario envelope`: Possible lists only what is not Guaranteed.**
+  Possible is a superset of Guaranteed, so every guaranteed path was printed
+  twice. The quest envelope's separate `Possible \ Guaranteed` inventory is now
+  that same Possible table (T3-15).
+- **`lute play` transcripts read like the source.** Lines keep their delivery
+  (`@wren{mono}:`, `as=`), a `when=`-guarded line shows as itself or as
+  `skip @maud "…" — when: false` instead of `match -> arm 1`/`otherwise`,
+  compiler-injected staging (preloads, pose resets, `::bg` auto-hides) is left
+  out, and menus mark options not offered (`piano✗`, `table(spent)`). `--json`
+  line records carry `role`, `lineId`, `voiceKey`, `as` and `emotion`, and
+  menu records `spent`/`ineligible`. `lute run`'s transcript (the conformance
+  contract) is unchanged (T1-8, T3-2).
+
 ## [0.21.0] - 2026-09-24
 
 **Beats and occasions: story selection without a clock.**
