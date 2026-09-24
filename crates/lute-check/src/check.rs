@@ -2199,6 +2199,7 @@ fn validate_components(
             schema: &env.state,
             dollar: None,
             params: &param_domains,
+            facts: None,
         };
         body_diags.extend(crate::reachability::check_reachability_in(
             &body,

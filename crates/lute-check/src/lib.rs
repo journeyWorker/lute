@@ -13,6 +13,9 @@ pub mod decide;
 pub mod defassign;
 pub mod directives;
 pub mod envelope;
+pub mod fact_check;
+pub mod fact_env;
+pub mod fact_must;
 pub mod fact_write;
 pub mod fix;
 pub mod inject;
@@ -91,7 +94,9 @@ pub use permissions::{
     E_PERMISSION_QUEST, E_PERMISSION_REWARD, E_PERMISSION_STATE,
 };
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
-pub use producible::W_UNPROVEN_RELATIONAL;
+pub use fact_check::{check_fact_guards, E_ENTRY_UNREACHABLE, W_FACT_GUARANTEED};
+pub use fact_env::{FactEnv, FactScope, GroundFact, MaySet, MustMap, QueryPattern, RootVocab};
+pub use fact_must::{compute_must, FactMust};
 pub use project_check::{
     check_project_domain_reads, check_project_entry_ids, check_project_entry_refs,
     check_project_quest_ids, check_project_quest_refs, check_project_quest_tree,

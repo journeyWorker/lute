@@ -337,8 +337,8 @@ fn envelope_json(
         Value::Bool(node_cycle_degraded(&scenario, &node_id)),
     );
 
-    let (env, enrichment_note) = match &node_ref {
-        NodeRef::Scene(_) => {
+    let (env, enrichment_note, facts) = match &node_ref {
+        NodeRef::Scene(key) => {
             obj.insert(
                 "tainted".to_string(),
                 Value::Bool(scenario.tainted.contains(&node_id)),
@@ -351,7 +351,7 @@ fn envelope_json(
                     guaranteed: scenario.envelope_d.clone(),
                     possible: scenario.envelope_d.clone(),
                 });
-            (env, None)
+            (env, None, scenario.scene_must.get(key))
         }
         NodeRef::Quest(id) => {
             let Some(quest) = scenario
@@ -369,7 +369,7 @@ fn envelope_json(
                 &scenario.envs,
                 &scenario.envelope_d,
             );
-            (qe.env, Some(qe.enrichment_note))
+            (qe.env, Some(qe.enrichment_note), None)
         }
     };
 
@@ -379,6 +379,25 @@ fn envelope_json(
     envelope_obj.insert("guaranteed".to_string(), path_set_json(&env.guaranteed));
     envelope_obj.insert("possible".to_string(), path_set_json(&env.possible));
     envelope_obj.insert("possibleNotGuaranteed".to_string(), path_set_json(&diff));
+    // dsl 0.20.0 §6: the fact envelope beside the scalar one (scenes only —
+    // a quest body runs at engine-chosen times, not on arrival).
+    if let NodeRef::Scene(_) = &node_ref {
+        let facts: Vec<Value> = facts
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .map(|m| {
+                let mut f = Map::new();
+                f.insert("fact".to_string(), Value::String(m.fact.to_string()));
+                f.insert(
+                    "establishedBy".to_string(),
+                    Value::String(m.provenance.to_string()),
+                );
+                Value::Object(f)
+            })
+            .collect();
+        envelope_obj.insert("guaranteedFacts".to_string(), Value::Array(facts));
+    }
     obj.insert("envelope".to_string(), Value::Object(envelope_obj));
     if let Some(note) = enrichment_note {
         obj.insert("enrichmentNote".to_string(), Value::Bool(note));

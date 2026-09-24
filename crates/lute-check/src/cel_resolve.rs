@@ -669,7 +669,7 @@ fn check_fact_query_call(
 /// short-circuit). Spans are unavailable (cel-parser drops sub-expression
 /// positions) so every [`FactArg::span`] is a `(0, 0)` placeholder —
 /// `check_atom` never reads it, always reporting at the caller-supplied span.
-fn pattern_terms(c: &cel_parser::ast::CallExpr) -> Option<Vec<FactArg>> {
+pub(crate) fn pattern_terms(c: &cel_parser::ast::CallExpr) -> Option<Vec<FactArg>> {
     c.args
         .iter()
         .map(|a| match &a.expr {

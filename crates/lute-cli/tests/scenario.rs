@@ -1167,7 +1167,7 @@ fn envelope_reports_the_relational_layer_not_only_the_scalar_one() {
     // producers must be drawn or the section is decorative.
     let awake = text
         .lines()
-        .find(|l| l.trim_start().starts_with("- awake"))
+        .find(|l| l.trim_start().starts_with("- awake/"))
         .unwrap_or_else(|| panic!("no awake row: {text}"));
     assert!(
         awake.contains("asserted by"),
@@ -1238,5 +1238,57 @@ fn envelope_at_the_root_and_at_the_leaf_are_no_longer_identical() {
         head(&last).contains("written by: scene(haven.s01ep02)"),
         "a real upstream writer must be named at the leaf:\n{}",
         head(&last)
+    );
+}
+
+/// dsl 0.20.0 §6: `scenario envelope` prints the facts guaranteed on arrival
+/// beside the scalar tables, each naming where it is established — text and
+/// JSON alike.
+#[test]
+fn scenario_envelope_reports_guaranteed_facts_on_arrival() {
+    let vocab = "entities:\n  crew: { members: [vesna] }\n  topic: { members: [manifest] }\n\
+                 relations:\n  knows: { args: [crew, topic], tier: run }\n";
+    let dir = temp_dir("scenario-envelope-facts");
+    write(
+        &dir,
+        "a.lute",
+        &format!(
+            "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n{vocab}---\n## Shot 1.\n\
+             ::assert{{knows(vesna, manifest)}}\n@narrator: hi\n"
+        ),
+    );
+    write(
+        &dir,
+        "b.lute",
+        &format!(
+            "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n\
+             after: 'visited(\"a.s01ep01\")'\n{vocab}---\n## Shot 1.\n@narrator: hi\n"
+        ),
+    );
+    // The assert sits on line 13 of `a.lute` (5 metadata + 5 vocabulary lines).
+
+    let text = stdout(&run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]));
+    let section = text
+        .split("Guaranteed facts")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no fact envelope: {text}"));
+    assert!(section.contains("- knows(vesna, manifest) ("), "{text}");
+    assert!(section.contains("a.lute:13)"), "{text}");
+
+    let json = stdout(&run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "--format",
+        "json",
+        "envelope",
+        "b.s01ep01",
+    ]));
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let facts = v["envelope"]["guaranteedFacts"].as_array().unwrap();
+    assert_eq!(facts.len(), 1, "{v}");
+    assert_eq!(facts[0]["fact"], "knows(vesna, manifest)", "{v}");
+    assert!(
+        facts[0]["establishedBy"].as_str().unwrap().ends_with("a.lute:13"),
+        "{v}"
     );
 }
