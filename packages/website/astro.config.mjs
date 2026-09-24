@@ -72,6 +72,11 @@ export default defineConfig({
           ],
         },
         {
+          slug: "reference/cheatsheet",
+          label: "Cheatsheet",
+          translations: { ko: "치트시트" },
+        },
+        {
           label: "Language",
           translations: { ko: "언어" },
           items: [
