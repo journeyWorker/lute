@@ -3,8 +3,8 @@
 A quest-kind artifact (`kind: "quest"`) carries `quest` and `on` records that
 are **declaration data**, not sequential steps. The engine derives the whole
 lifecycle from them; the author never writes `quest.<id>.state` (dsl §5.4). The
-grounding here is `ir.rs::{QuestCmd, ObjectiveEntry, OnCmd, CelPair}` and the
-proposal specs 0.2.0 §5–§6 and 0.4.0 §4.6.
+grounding here is `ir.rs::{QuestCmd, ObjectiveEntry, OnCmd, AcceptCmd, CelPair}`
+and the proposal specs 0.2.0 §5–§6, 0.4.0 §4.6, and 0.21.0 §7a.
 
 ## The state machine
 
@@ -22,7 +22,8 @@ unset ──start true / accept──▶ active ──all required objectives do
 
 `QuestCmd.start` is an optional `{raw, expr}` predicate (`CelPair`):
 
-- **absent** → the quest activates at the start of the walk;
+- **absent** → the quest is *accept-driven* (below): it stays `unset` until it
+  is accepted (or, for a referenced subquest, until its parent activates);
 - **decides true** → activate (`state = active`) and fire the `questActive`
   handlers;
 - **decides false** → the quest **never activates** (a clean compile guarantees
@@ -31,9 +32,25 @@ unset ──start true / accept──▶ active ──all required objectives do
 - **unknown** → the quest is unknown; its objectives are unknown.
 
 A quest with **no `start`** is *accept-driven*: an external accept (the CLI
-`--accept` in `lute trace`, an engine "accept quest" action in production)
-activates it. A quest that carries a `start` predicate needs no accept
-(`E-TRACE-ACCEPT` guards the mismatch).
+`--accept` in `lute trace`, an engine "accept quest" action in production, or
+an `accept` record in a scene) activates it. A quest that carries a `start`
+predicate needs no accept (`E-TRACE-ACCEPT` guards the mismatch).
+
+### Accepting from a scene — the `accept` record
+
+`::accept{quest="<id>"}` (dsl 0.21.0 §7a.3) lowers to a record in the scene's
+command stream, typically inside a choice branch:
+
+```ts
+type AcceptCmd = { kind: "accept"; addr: string; quest: string /* + Stamp */ };
+```
+
+When the walk reaches it, the engine activates quest `quest` **if its state is
+`unset`** — stamping `activatedAt` and firing `questActive` exactly as for any
+other activation — and ignores the record otherwise (an active, complete, or
+failed quest is left alone). `check-project` guarantees the target is an
+accept-driven quest of the project (`E-ACCEPT-TARGET`), so an engine never
+sees an `accept` for a quest with a `start` predicate.
 
 ### Activation instant — `quest.<id>.activatedAt`
 
@@ -78,6 +95,7 @@ Each `ObjectiveEntry` in `QuestCmd.objectives`:
 | `optional`    | `bool` (always present). A non-`optional` objective is *required*: it must be `done` for the quest to complete. |
 | `title` / `titleLineId` | present only when authored; `titleLineId` is `{questId}.{objectiveId}` for localization. |
 | `body`        | **always present**; the `addr` of the objective's completion-body segment, or `null` when the body is empty. |
+| `on`          | present only when authored (dsl 0.21.0 §7a.2): the occasion at which `done` is judged — see below. |
 
 **Monotonic completion (dsl §6.3).** Once an objective's `done` predicate holds,
 it stays recorded (`quest.<id>.objectives.<oid>.done = true`); a completed
@@ -92,6 +110,23 @@ A required objective whose `when` visibility gate is provably false is
 independently of visibility, so completion may still be reachable). A required
 objective whose `done` is provably false is `E-OBJECTIVE-UNSATISFIABLE`; mark
 such an objective `optional` if that is intended.
+
+**Objectives judged at an occasion (dsl 0.21.0 §7a.2).** An objective with
+`on` is **not** evaluated continuously. The engine evaluates its `done` only
+when it raises that occasion (`beats-and-occasions.md`) while the quest is
+`active` — the check point for conditions that only mean something at a
+moment, such as "the shed stayed calm through the run" judged at `runEnd`.
+Raising the occasion evaluates every such objective of every active quest,
+then settles the quest as at any evaluation instant (below); an objective
+that is not `done` then simply stays open until the next time the occasion
+is raised. The occasion need not be answered by any beat: an occasion that
+only objectives reference is still raised by the engine at its moment.
+Monotonic completion is unchanged — once recorded, `done` stays recorded.
+
+**Scenes in objectives.** A `done` (like every condition slot) may read
+`visited('<scene id>')` — true once that scene has been presented in this save
+(`cel-and-facts.md`) — so a scene advances a quest simply by being played,
+without relaying a flag.
 
 ## Subquests
 
@@ -162,8 +197,8 @@ Being referenced refines a child's activation — the natural consequence of
 quest is `active`):
 
 - **child with no `start`** → the child activates when its parent
-  activates, replacing the walk-start / accept-driven default. An
-  unreferenced quest with no `start` keeps today's semantics exactly.
+  activates, replacing the accept-driven default. An unreferenced quest
+  with no `start` stays accept-driven.
 - **child with a `start` predicate** → the predicate is evaluated only
   while the parent is `active`; the effective gate is the conjunction
   "parent is `active` && `start` holds".
@@ -267,7 +302,9 @@ are opaque to the checker.
 After **activation** and after **every event**, the engine (0.4.0 §4.6):
 
 1. re-evaluates each objective's `done` predicate (monotonic — once `true`,
-   recorded);
+   recorded) — except an objective with `on`, which is evaluated only when
+   its occasion is raised (§Objectives above); raising an occasion is itself
+   an evaluation instant, running steps 2–3 after those objectives;
 2. evaluates `fail` **before** derived completion (§6.3 precedence);
 3. fires each lifecycle transition's handlers **once**.
 

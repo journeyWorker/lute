@@ -69,6 +69,7 @@ fn kind(cmd: &Command) -> &'static str {
         Command::Quest(_) => "quest",
         Command::On(_) => "on",
         Command::Entry(_) => "entry",
+        Command::Accept(_) => "accept",
     }
 }
 

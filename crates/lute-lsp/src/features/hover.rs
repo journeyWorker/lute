@@ -126,8 +126,17 @@ pub fn hover_at(
 }
 
 /// Render a directive's declaration: name, layer, each attribute (type +
-/// `required`), and its `semantics` vocabulary.
+/// `required`), and its `semantics` vocabulary. The core `::accept` (dsl
+/// 0.21.0 §7a.3) is part of the language, not of any snapshot.
 fn directive_hover(snapshot: &CapabilitySnapshot, tag: &str) -> Option<String> {
+    if tag == lute_syntax::ast::ACCEPT_DIRECTIVE {
+        return Some(
+            "**::accept** — core\n\nThe player accepts an accept-driven quest (one without \
+             `start`) at this point; the engine activates it if it is `unset` and ignores it \
+             otherwise (dsl 0.21.0 §7a.3).\n\n**attributes:**\n- `quest`: quest id (required)"
+                .to_string(),
+        );
+    }
     let decl = snapshot.directive(tag)?;
     let mut s = format!("**::{}**", decl.name);
     if let Some(layer) = &decl.layer {

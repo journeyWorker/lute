@@ -171,9 +171,12 @@ choose:                          # branch/hub id -> choice id (a list for a hub'
    엔트리 규칙으로 제시됩니다: 효과는 첫 읽기에만 적용되고, 그 뒤 `entry.<id>.read`가 true가 됩니다.
    씬의 `::end`는 플레이스루 전체를 완료로 끝냅니다.
 6. **퀘스트** — 매 제시 후, 그리고 스텝 1 전에 한 번, 모든 퀘스트 라이프사이클이 `lute run`이 퀘스트
-   산출물을 진행시키는 것과 정확히 같게 진행됩니다: 활성화(`start`, 없으면 즉시), 목표 완료(단조적이며
+   산출물을 진행시키는 것과 정확히 같게 진행됩니다: 활성화(`start`, 없으면 제시된 씬의 `::accept` — `start` 없는 퀘스트는 스스로 활성화되지 않음), 목표 완료(단조적이며
    목표 본문은 한 번만 재생), 완료 전의 `fail`, `<on>` 핸들러, `<reward>` 지급. 그래서 이후의 `quest.*`에
    대한 `when`이나 `after: completed(…)` / `active(…)`는 실제 진행을 봅니다.
+7. **계기 판정 목표** — 이어서 스텝의 계기가 모든 **활성** 퀘스트의 `<objective on="<occasion>">`
+   목표를 판정하고(dsl 0.21.0 §7a.2) 라이프사이클이 다시 정착합니다. `on` 목표는 그 밖의 시점에는 판정되지
+   않습니다. 목표만 판정하는 계기도 shape-only 프로젝트에서 합법적인 스텝입니다.
 
 `newRun: true` 스텝은 `run.*` 상태를 선언된 기본값으로, run 등급 팩트를 프로젝트의 시드 팩트로 되돌리고,
 run 등급인 `entry.<id>.read` 플래그(그래서 새 런의 첫 읽기에서 엔트리 효과가 다시 적용됩니다)와
@@ -392,7 +395,7 @@ uses: ../house.schema.yaml
 title: The old soldier
 ---
 
-<quest id="oldSoldier" title="The old soldier">
+<quest id="oldSoldier" title="The old soldier" start="true">
   <objective id="takeGift" title="Accept the old soldier's gift" done="user.giftAccepted"/>
 </quest>
 ```
@@ -488,7 +491,7 @@ $ lute play house --script house/plays/tenth-run.play.yaml
 
 스텝별로 읽으면:
 
-- **시작** — 퀘스트에 `start`가 없으므로 첫 스텝 전에 활성화됩니다.
+- **시작** — 퀘스트의 `start`가 `true`이므로 첫 스텝 전에 활성화됩니다. (`start`가 없는 퀘스트는 씬의 `::accept`를 기다립니다.)
 - **스텝 1** — 두 라운지 씬 모두 자격이 있고, priority 20이 10을 이깁니다.
 - **스텝 2** — `inbox`는 `select: all`이므로 스크립트가 고릅니다. `megNote`의 `when`은 아직 false라서
   목록에는 나오지만 제시되지 않습니다. 여기서 그것을 고르면 오류(종료 코드 1)입니다.

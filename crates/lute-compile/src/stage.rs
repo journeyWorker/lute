@@ -658,6 +658,9 @@ pub fn walk_quest(
                     .iter()
                     .map(|r| RewardEntry::from_ast(r, false))
                     .collect(),
+                // dsl 0.21.0 §7a.2: the occasion the objective is judged at;
+                // `None` (omitted) keeps every other objective byte-identical.
+                on: o.on.as_ref().map(|(on, _)| on.clone()),
             });
             obj_labels.push(label);
         }

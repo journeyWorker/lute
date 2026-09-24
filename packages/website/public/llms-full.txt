@@ -1214,13 +1214,41 @@ also the honest version signal — an engine that does not implement the IR mino
 
 ## Reserved directives
 
-Two `::`-directives are built-in rather than staging vocabulary: `::set` writes declared state (see
-[State model](/state/state-model/)) and `::use` expands a reusable content component (see
-[Components & extends](/language/components-and-extends/)). Content additionally uses
+Three `::`-directives are built-in rather than staging vocabulary: `::set` writes declared state (see
+[State model](/state/state-model/)), `::use` expands a reusable content component (see
+[Components & extends](/language/components-and-extends/)), and `::accept` takes up a quest (below).
+Content additionally uses
 `::assert` / `::retract` to mutate facts (see [Facts & Datalog](/state/facts-and-datalog/)) — in
 scenes as well as quests. `docs/examples/haven/scenes/cryobank.lute` is `kind: scene` and carries
 four `::assert` directives inside `<choice>` bodies; `lute check` on it reports
 `ok … (0 warning(s))`.
+
+### `::accept` — taking up a quest
+
+`::accept{quest="<id>"}` (dsl 0.21.0) declares that the player accepts an **accept-driven** quest —
+one with no `start` predicate — at this point in a scene. It is the scene-side form of the engine's
+"accept quest" action and of `lute trace --accept`, and it usually sits in the choice where the
+player agrees:
+
+```lute
+<branch id="request">
+  <choice id="accept" label="I'll keep it calm">
+    ::accept{quest="calmTheShed"}
+    @vesna: Thank you.
+  </choice>
+  <choice id="decline" label="Not now">
+    @vesna: Another time, then.
+  </choice>
+</branch>
+```
+
+Like `::set` and `::assert`, it is built in, not plugin vocabulary: it lowers to its own IR record,
+`{"kind": "accept", "addr": …, "quest": "calmTheShed"}`, and the engine activates the quest if it is
+still `unset` and ignores the record otherwise. The target is checked twice: a missing or
+non-identifier `quest` is `E-ACCEPT-TARGET` in `lute check`, and `check-project` reports
+`E-ACCEPT-TARGET` when the id names no quest in the project or names a quest that has a `start`
+predicate (such a quest activates itself; accepting it means nothing). See
+[Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions).
 
 ---
 
@@ -1790,7 +1818,8 @@ may assume `quest.q.state == complete`; after `active(q)`, only that the quest r
 
 There is no negation, arithmetic, or state read in `after:`. See
 [Scene graph & after:](/connectivity/scene-graph/) for how these declarations form the reachability
-graph.
+graph. Since 0.21.0, `visited(…)` is also an ordinary condition function — see
+[Quests meet scenes and occasions](#quests-meet-scenes-and-occasions) below.
 
 ## The quest kind
 
@@ -1865,6 +1894,63 @@ log line, a per-objective `::set` reward — emits **once**, when the objective 
 
 **Completion is derived**, never author-written: a quest becomes `complete` when every non-`optional`
 objective is `done`. Objective completion is monotonic — once `done`, it stays recorded.
+
+### Quests meet scenes and occasions
+
+Three small additions (dsl 0.21.0 §7a) let a scene drive a quest directly, instead of relaying a
+flag through state.
+
+**`visited()` in any condition.** `visited('<scene id>')` — until 0.21.0 legal only inside
+`after:` — is a Lute-CEL function in **every condition slot**: quest `start` / `fail`, objective
+`done`, beat and entry `when`, and content-line and choice `when=`. It is true once that scene has
+been presented in this save (the same visited set `after:` reads; a new run does not clear it), so
+a scene advances a quest simply by being played:
+
+```lute
+<objective id="heardVesna" title="Hear Vesna out" done="visited('haven.s01ep04')"/>
+```
+
+The argument is one string literal. An id that names no scene in the project is
+`E-CONN-UNKNOWN-NODE` at `check-project`, exactly as in `after:`. A single-file `check` cannot know
+whether a scene has been played, so it never decides a `visited()` condition true or false.
+
+**Objectives judged at an occasion.** `<objective on="<occasion>">` evaluates that objective's
+`done` **only when the occasion is raised** while the quest is active — the end-of-run check point
+that a continuously evaluated condition cannot express. Without `on`, an objective is evaluated
+continuously, as before.
+
+```lute
+<objective id="lowPressure" title="Keep the shed calm" on="runEnd" done="run.shedPressure < 2"/>
+```
+
+The occasion is checked against the vocabulary exactly as a beat's `on` (see
+[Beats](/language/beats/#occasions)): `E-OCCASION-UNKNOWN` when a plugin declares
+occasions and this one is not among them, shape-only otherwise; an `on` that is not an identifier
+is `E-BEAT-ATTR`. `lute trace` / `lute run` raise occasions for a quest walk with the mock key
+`occasions: [runEnd]` or `--occasion runEnd` (repeatable), applied in order after the walk
+settles; `lute play` judges them on every step that raises the occasion — and an occasion that
+only objectives reference is a legal step.
+
+**Accepting a quest from a scene.** A quest without `start` is *accept-driven*. The scene-side
+form of the engine's "accept quest" action (and of `lute trace --accept`) is the core directive
+[`::accept{quest="<id>"}`](/language/directives/#accept--taking-up-a-quest), typically inside the
+choice where the player agrees:
+
+```lute
+<branch id="request">
+  <choice id="accept" label="I'll keep it calm">
+    ::accept{quest="calmTheShed"}
+    @vesna: Thank you.
+  </choice>
+  <choice id="decline" label="Not now">
+    @vesna: Another time, then.
+  </choice>
+</branch>
+```
+
+**Quest outcomes in scenario tests.** `lute test` asserts the lifecycle the trace ran with
+`expect.quests: {<questId>: unset | active | complete | failed}` — no side-effect `::set` needed to
+observe completion.
 
 ### Lifecycle reactions with `<on>`
 
@@ -2209,6 +2295,10 @@ them, a beat naming an undeclared occasion is `E-OCCASION-UNKNOWN`, and a `targe
 declared without `target: true` is `E-BEAT-ATTR`. The declaration format, `select`, and `target`
 are covered on [Playing a story](/tooling/play/#occasions).
 
+An occasion can also judge quest objectives: `<objective on="runEnd" …>` evaluates its `done` only
+when `runEnd` is raised while its quest is active, and its occasion is checked against the same
+vocabulary. See [Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions).
+
 ## What the checker proves
 
 | Code | When |
@@ -2514,6 +2604,8 @@ The Lute-CEL environment provides exactly: CEL operators, literals, list literal
 
 When the relational layer is in play, conditions may also read the fact database through a bounded predicate surface: `holds(rel(args|_))` (valid-now membership, any slot may be `_`), `count(rel(args|_)) OP n` (distinct valid tuples), and `validAt(rel(args|_), T)` (point-in-time membership over base relations — true iff the fact was valid *at* `T`, never "after" it). `T` is a `narrativeTime` expression — in practice `quest.<id>.activatedAt`, the only one an author can name (see [Quests & scenes](/language/quests-and-scenes/)). Joins under aggregation are expressed as [derived relations](/state/facts-and-datalog/), never multi-relation `count`. A `<match on>` subject must stay a scalar/enum path; fact queries live in guards only.
 
+Since 0.21.0, every condition slot may also call `visited('<scene id>')` — true once that scene has been presented in this save, the same visited set a scene's `after:` reads. The argument is one string literal naming a scene of the project (`E-CONN-UNKNOWN-NODE` at `check-project` otherwise). See [Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions).
+
 ## Compile target
 
 `@ref` macros expand at **compile time**; the resulting inline CEL string is carried in the flat command-record artifact and evaluated at **runtime** by the engine. Everything desugars to flat records plus CEL strings — the compiler↔engine contract. The unset sentinel is CEL `null` (tested with `!isSet(path)` or a `<when is="unset">` arm), never the string `'unset'` — comparing to that string is `E-UNSET-LITERAL`.
@@ -2587,7 +2679,7 @@ Formula ::= "visited(" StringLit ")" | "completed(" StringLit ")" | "active(" St
           | "(" Formula ")" | Formula "&&" Formula | Formula "||" Formula
 ```
 
-`visited(K)`'s string is the project's canonical `{character}.{episodeId}` episode key — the same join the compiler computes for `lineId`. `completed(Q)` and `active(Q)` both name a `<quest id>`. These predicates are scoped to this one slot; writing `visited(...)` in any ordinary CEL guard is just an unknown-function error, and anything outside the grammar above is `E-CONN-PROFILE`.
+`visited(K)`'s string is the project's canonical `{character}.{episodeId}` episode key — the same join the compiler computes for `lineId`. `completed(Q)` and `active(Q)` both name a `<quest id>`. `completed` and `active` are scoped to this one slot (in an ordinary CEL guard, read `quest.<id>.state` instead); `visited(...)` is, since 0.21.0, also an ordinary condition function over the same visited set (see [Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions)). Anything outside the grammar above is `E-CONN-PROFILE`.
 
 `active(Q)` (0.8.0) is the third prerequisite atom. The quest lifecycle is `unset → active → complete | failed`, so a profile carrying only `visited`/`completed` could express two of the three observable states: "this scene unlocks *while* the investigation is running" had no spelling. It is the **strictly weaker** lifecycle claim — `completed(Q)` licenses "`Q` finished and its completion writes ran", `active(Q)` licenses only "`Q` reached `active`" — which is why [reachability](/connectivity/reachability/) treats the two identically while [envelopes](/connectivity/envelopes/) do not.
 
@@ -3134,7 +3226,7 @@ choose:                          # branch/hub id -> choice id (a list for a hub'
 
 `state:`, `facts:`, and `choose:` use exactly the grammar of a [`lute trace --mock`](/tooling/tracing/) file. Each step is either `{occasion, target?, pick?}` or `{newRun: true}`.
 
-The script is rejected before anything plays — a **usage error, exit 2** — when it is unreadable or malformed YAML; it has an unknown top-level key; `steps` is missing or empty; a step is not exactly one of the two shapes; a step names an occasion no resolved plugin declares (when some plugin declares occasions) or, in a shape-only project, an occasion no beat answers; a step carries `target` on an occasion not declared `target: true`; `pick` appears on a `select: first` occasion; a `select: all` step has no `pick`; or a `pick` names no beat that answers that occasion.
+The script is rejected before anything plays — a **usage error, exit 2** — when it is unreadable or malformed YAML; it has an unknown top-level key; `steps` is missing or empty; a step is not exactly one of the two shapes; a step names an occasion no resolved plugin declares (when some plugin declares occasions) or, in a shape-only project, an occasion that neither a beat answers nor an `<objective on>` judges; a step carries `target` on an occasion not declared `target: true`; `pick` appears on a `select: first` occasion; a `select: all` step has no `pick`; or a `pick` names no beat that answers that occasion.
 
 ### What each step does
 
@@ -3142,8 +3234,9 @@ The script is rejected before anything plays — a **usage error, exit 2** — w
 2. **Verdicts** — a candidate is eligible when its `once` is not spent (scene beats only: `run` — not presented since the last `newRun`; `user` — never presented in this play; `false` — never spent), its `after:` holds (scene beats; evaluated against the **live** `visited` set of presented scenes and the `completed` / `active` sets of real quest states), and its `when` holds (evaluated by the reference runner's CEL evaluator over live state and facts, with the Datalog rules applied). A `when` that evaluates to unknown — `validAt(…)`, `now()` — halts the walk **incomplete (exit 3)** naming the beat, unless a definitely-eligible beat outranks it on a `select: first` occasion, where it cannot change the winner.
 3. **Order** — eligible beats by priority descending, then project order.
 4. **Select** — the occasion's `select` comes from the resolved plugins' `occasions` export (an undeclared occasion is `first`). `first`: the first eligible beat wins; none eligible, and the occasion passes with no story. `all`: the step's `pick` is presented; a pick that is not eligible at that moment is an **error (exit 1)**.
-5. **Present** — a scene beat runs through the reference runner (`lute run`'s evaluator): `scene.*` resets to the scene's own defaults, `run.*` / `user.*` / `app.*` / `quest.*` state and facts carry over, and `choose:` decides branches and hubs; an unscripted decision halts **incomplete (exit 3)**. An entry beat is presented by the lore-entry rules: its effects apply on the first read only, then `entry.<id>.read` becomes true. A scene's `::end` ends the whole playthrough, complete.
-6. **Quests** — after every presentation, and once before step 1, every quest lifecycle advances exactly as `lute run` advances a quest artifact: activation (`start`, or immediately without one), objective completion (monotone; objective bodies play once), `fail` before completion, `<on>` handlers, and `<reward>` grants. So a later `when` over `quest.*`, or an `after: completed(…)` / `active(…)`, sees real progress.
+5. **Present** — a scene beat runs through the reference runner (`lute run`'s evaluator): `scene.*` resets to the scene's own defaults, `run.*` / `user.*` / `app.*` / `quest.*` state and facts carry over, and `choose:` decides branches and hubs; an unscripted decision halts **incomplete (exit 3)**. An entry beat is presented by the lore-entry rules: its effects apply on the first read only, then `entry.<id>.read` becomes true. A scene's `::end` ends the whole playthrough, complete. A scene's `::accept{quest="<id>"}` prints `quest <id> accepted`; the quest activates at the advance right after the presentation. A scene counts as visited — for `after:` and for `visited('<id>')` in any condition — once its presentation finished.
+6. **Quests** — after every presentation, and once before step 1, every quest lifecycle advances exactly as `lute run` advances a quest artifact: activation (`start`, or — for a quest with no `start` — an accept from a presented scene's `::accept`; a start-less quest never activates on its own), objective completion (monotone; objective bodies play once), `fail` before completion, `<on>` handlers, and `<reward>` grants. So a later `when` over `quest.*`, or an `after: completed(…)` / `active(…)`, sees real progress.
+7. **Occasion-judged objectives** — then the step's occasion judges the `<objective on="<occasion>">` objectives of every **active** quest (dsl 0.21.0 §7a.2), and the lifecycles settle again, so a quest can complete (or fail) at exactly that step. An `on` objective is judged at no other time. An occasion that only objectives judge is a legal step even in a shape-only project; with no beat to present it prints `(no candidates)` and passes, then judges.
 
 A `newRun: true` step resets `run.*` state to its declared defaults, run-tier facts to the project's seed facts, the run-tier `entry.<id>.read` flags (so an entry's effects apply again on its first read in the new run), and `once: run` spending. `user.*` / `app.*` / `quest.*` state, user- and app-tier facts, the `visited` history, and `once: user` spending persist. `once: user` across separate `lute play` invocations is not modelled — put the runs in one script, separated by `newRun` steps.
 
@@ -3344,7 +3437,7 @@ uses: ../house.schema.yaml
 title: The old soldier
 ---
 
-<quest id="oldSoldier" title="The old soldier">
+<quest id="oldSoldier" title="The old soldier" start="true">
   <objective id="takeGift" title="Accept the old soldier's gift" done="user.giftAccepted"/>
 </quest>
 ```
@@ -3440,7 +3533,7 @@ $ lute play house --script house/plays/tenth-run.play.yaml
 
 Reading it step by step:
 
-- **Start** — the quest has no `start`, so it activates before the first step.
+- **Start** — the quest's `start` is `true`, so it activates before the first step. (A quest with no `start` would wait for a scene's `::accept`.)
 - **Step 1** — both lounge scenes are eligible; priority 20 beats 10.
 - **Step 2** — `inbox` is `select: all`, so the script picks. `megNote`'s `when` is still false, so it is listed but not offered; picking it here would be an error (exit 1).
 - **Step 3** — `user.runs` is 10, so the gift is eligible. Accepting it sets `user.giftAccepted`, and the quest advances right after the presentation.
@@ -3454,7 +3547,7 @@ Reading it step by step:
 
 `lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.21.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.21.schema.json) (JSON Schema draft 2020-12).
 
-Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST and leaves the rest as raw CEL, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. `holds()`/`count()` are inside the §8.4 profile authors may write and deliberately absent from the `expr` AST, so a relational guard reaches the engine as raw CEL text alone and an engine MUST have a CEL evaluator, not merely an AST walker. The engine trusts the artifact.
+Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST and leaves the rest as raw CEL, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. `holds()`/`count()` are inside the §8.4 profile authors may write and deliberately absent from the `expr` AST, so a relational guard reaches the engine as raw CEL text alone and an engine MUST have a CEL evaluator, not merely an AST walker. The same holds for `visited('<scene id>')` (dsl 0.21.0): legal in every condition slot, true once that scene has been presented in this save — the visited set the engine already keeps for `after:` — and carried as raw CEL alone. The engine trusts the artifact.
 
 ## The envelope
 
@@ -3505,7 +3598,9 @@ and `end` does not close stdin.
 
 ## The dispatcher
 
-The `commands` array is already in execution order. Control-flow fields — `jump.target`, choice/hub option `target` and `converge`, match arm `target`/`otherwise`/`converge` — are all addrs. Walk with a program counter over an `addr → index` map, dispatching on `kind`; `null` next means fall through to `pc + 1`, and an unrecognized `kind` is a hard error, never a skip. The full command set is twenty-one kinds: `line`, `background`, `music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video`, `set`, `assert`, `retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`, `plugin`.
+The `commands` array is already in execution order. Control-flow fields — `jump.target`, choice/hub option `target` and `converge`, match arm `target`/`otherwise`/`converge` — are all addrs. Walk with a program counter over an `addr → index` map, dispatching on `kind`; `null` next means fall through to `pc + 1`, and an unrecognized `kind` is a hard error, never a skip. The full scene and quest command set is twenty-two kinds: `line`, `background`, `music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video`, `set`, `assert`, `retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`, `accept`, `plugin`. A lore artifact adds the `entry` declaration head, which the engine looks up rather than plays ([Lore entries](/language/lore-entries/)).
+
+`accept` (dsl 0.21.0) is the scene-side `::accept{quest}`: the engine activates that accept-driven quest if its state is still `unset` and ignores the record otherwise ([Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions)).
 
 `end` carries an optional free-form `reason` — an author string (`"completed"`, an ending id) Lute assigns no meaning to and the host MAY surface. Terminating on it is identical to running off the end of `commands`, except the reason is available.
 
@@ -4430,7 +4525,7 @@ The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://gith
 | Timeline & property tracks | 0.1.0 | 0.1.0 | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
 | Connectivity & `after:` | 0.2.0 (`after:`) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
-| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.21.0 (additive: optional `SceneMeta.beat` — `on`, `target?`, `when?`, the resolved `priority`, and `once` as `"run"` / `"user"` / `"none"` — optional `EntryCmd.on` / `priority`, and `ProjectIndex.beats` in selection-tiebreak order; scene and lore artifacts without beats are byte-identical apart from the version strings) | [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
+| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.21.0 (additive: optional `SceneMeta.beat` — `on`, `target?`, `when?`, the resolved `priority`, and `once` as `"run"` / `"user"` / `"none"` — optional `EntryCmd.on` / `priority`, and `ProjectIndex.beats` in selection-tiebreak order; optional `ObjectiveEntry.on` and the new `accept` record for `::accept{quest}`; a `visited()` condition carries `raw` only, like `holds()`; artifacts using none of it are byte-identical apart from the version strings) | [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | Warning-severity diagnostics | 0.6.1 | 0.21.0 (`W-BEAT-SHADOWED` — `check-project` warns when a `select: first` beat can never win because an earlier-ordered beat on the same occasion and target is always eligible and never spent; `0.20.0` added `W-FACT-GUARANTEED` and removed `W-UNPROVEN-RELATIONAL` — naming it in `--deny` is a usage error) | [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | Deny promotion (`--deny`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
 | Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.21.0`'s additive IR move — beat fields an engine without beat support ignores — costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.21.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |

@@ -480,6 +480,8 @@ pub enum Command {
     Other(OtherCmd),
     /// dsl 0.19.0 §7: `<entry>` declaration head. Appended LAST.
     Entry(EntryCmd),
+    /// dsl 0.21.0 §7a.3: `::accept{quest}`. Appended after `Entry`.
+    Accept(AcceptCmd),
 }
 
 /// One `{{…}}` interpolation placeholder (IR A3): the runtime substitutes it
@@ -727,6 +729,19 @@ pub struct RetractCmd {
     pub relation: String,
     /// Ground literals or "_" wildcards (§5 RetractPattern).
     pub args: Vec<String>,
+    #[serde(flatten)]
+    pub stamp: Stamp,
+}
+
+/// `::accept{quest}` (dsl 0.21.0 §7a.3): the player accepts an accept-driven
+/// quest (one with no `start`) at this point. The engine activates the quest
+/// if it is `unset` and ignores the record otherwise. Declaration data only —
+/// Lute evaluates nothing (D1). Mirrors [`AssertCmd`]'s shape.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcceptCmd {
+    pub addr: String,
+    pub quest: String,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -985,6 +1000,12 @@ pub struct ObjectiveEntry {
     /// objective serializes byte-identically (`Vec::is_empty`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rewards: Vec<RewardEntry>,
+    /// dsl 0.21.0 §7a.2: the occasion at which this objective is judged —
+    /// the engine evaluates `done` only when it raises this occasion while
+    /// the quest is `active`. Appended after `rewards` and skipped when
+    /// unauthored, so every objective without it is byte-identical.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on: Option<String>,
 }
 
 /// `<on>` event-condition-action record (dsl 0.2.0 §4, §6.6, IR addendum
@@ -1157,6 +1178,7 @@ impl Command {
             Command::Quest(c) => &mut c.addr,
             Command::On(c) => &mut c.addr,
             Command::Entry(c) => &mut c.addr,
+            Command::Accept(c) => &mut c.addr,
         }
     }
 
@@ -1213,7 +1235,8 @@ impl Command {
             | Command::Retract(_)
             | Command::Barrier(_)
             | Command::End(_)
-            | Command::Other(_) => {}
+            | Command::Other(_)
+            | Command::Accept(_) => {}
         }
     }
 
@@ -1239,6 +1262,7 @@ impl Command {
             Command::Quest(c) => Some(&mut c.stamp),
             Command::On(c) => Some(&mut c.stamp),
             Command::Entry(c) => Some(&mut c.stamp),
+            Command::Accept(c) => Some(&mut c.stamp),
             Command::End(c) => Some(&mut c.stamp),
             Command::Jump(_) | Command::Barrier(_) => None,
         }

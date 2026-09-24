@@ -1,7 +1,15 @@
-# The one quest whose completion is observable in STATE rather than only in the
-# transcript, because its `<on event="questComplete">` carries a `::set`. That is
-# the whole trick: to make quest completion assertable at all, the author has to
-# give the quest a side effect it did not otherwise need.
+# Completion is asserted directly with `expect.quests` (dsl 0.21.0 §7a.4). Before
+# 0.21.0 a quest's completion was observable outside the transcript only through a
+# side effect — here, the `::set` its `<on event="questComplete">` happens to
+# carry, which this test used to assert as the proof (T9.10, item 5).
+#
+# The `::set{run.vesnaTrust += 1}` stays in the quest, and so does its assertion
+# below, because it is story, not test scaffolding: `whatVesnaCarries` opens at
+# `run.vesnaTrust >= 2` and completes at `>= 3`, and `falseHeading.countTheYears`
+# reads the same scalar (the cross-quest coupling T9.14 describes;
+# `lute scenario docs/examples/haven envelope quest:whatVesnaCarries` lists
+# `quest(manifestGap) on completion` among its writers). Removing the write
+# would move another quest's threshold.
 #
 # `run.shedPressure: 3` also satisfies the `optional` `listHim` objective, so this
 # path is the fully-completed one.
@@ -14,6 +22,8 @@ facts:
   - "knows(vesna, manifest)"
 expect:
   exit: complete
+  quests:
+    manifestGap: complete
   transcriptContains:
     - "Four names, five bunks, and one of the two people who knew it was the one it was about."
   state:

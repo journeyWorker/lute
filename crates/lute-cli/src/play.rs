@@ -9,7 +9,12 @@
 //! evaluator — orders the eligible ones by priority then index order (§4),
 //! presents the winner (or the script's `pick` for a `select: all` occasion)
 //! and then advances every quest lifecycle, so the next step's `when` over
-//! `quest.*` and `after: completed(…)` see real progress (D-H).
+//! `quest.*` and `after: completed(…)` see real progress (D-H). Then the
+//! raised occasion judges the `<objective on="<occasion>">` objectives of
+//! every active quest (§7a.2) — an occasion only objectives answer is a
+//! legal step. A presentation's `::accept` activates its accept-driven
+//! quest at that advance (§7a.3), and CEL `visited('<id>')` reads the
+//! presented scenes (§7a.1).
 //!
 //! ## Runs
 //! One `lute play` invocation is one player profile. `once: run` is spent by
@@ -228,6 +233,10 @@ struct Project {
     run_relations: BTreeSet<String>,
     /// Quest documents, path order — advanced after every presentation.
     quest_docs: Vec<String>,
+    /// Every occasion some quest objective is judged at (`<objective
+    /// on=…>`, dsl 0.21.0 §7a.2) — raising one advances those objectives
+    /// even when no beat answers it.
+    objective_occasions: BTreeSet<String>,
     /// A command-less artifact carrying the union rules + state table: the
     /// evaluator runner every `when` is decided by.
     eval_json: Json,
@@ -387,10 +396,18 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         .filter(|r| r.tier.as_deref() == Some("run"))
         .map(|r| r.name.clone())
         .collect();
-    let quest_docs = artifacts
+    let quest_docs: Vec<String> = artifacts
         .iter()
         .filter(|(_, a)| a.get("kind").and_then(Json::as_str) == Some("quest"))
         .map(|(rel, _)| rel.clone())
+        .collect();
+    let objective_occasions = quest_docs
+        .iter()
+        .filter_map(|rel| artifacts.get(rel))
+        .flat_map(|a| a.get("commands").and_then(Json::as_array).into_iter().flatten())
+        .filter(|c| c.get("kind").and_then(Json::as_str) == Some("quest"))
+        .flat_map(|c| c.get("objectives").and_then(Json::as_array).into_iter().flatten())
+        .filter_map(|o| o.get("on").and_then(Json::as_str).map(str::to_string))
         .collect();
     let eval_json = json!({
         "kind": "scene",
@@ -408,6 +425,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         seed_facts,
         run_relations,
         quest_docs,
+        objective_occasions,
         eval_json,
     })
 }
@@ -432,8 +450,11 @@ fn play_artifact_json(doc_json: &Json, p: &Project) -> Json {
 /// Every step's usage-level check, before anything plays (exit 2 on `Err`):
 /// the occasion exists, `target` is legal for it, `pick` is required
 /// exactly for `select: all` and names a beat answering that occasion.
+/// Under shape-only vocabulary an occasion exists when a beat answers it or
+/// an objective is judged at it (dsl 0.21.0 §7a.2).
 fn validate_steps(p: &Project, steps: &[ScriptStep]) -> Result<(), String> {
-    let answered: BTreeSet<&str> = p.index.beats.iter().map(|b| b.on.as_str()).collect();
+    let mut answered: BTreeSet<&str> = p.index.beats.iter().map(|b| b.on.as_str()).collect();
+    answered.extend(p.objective_occasions.iter().map(String::as_str));
     for (i, step) in steps.iter().enumerate() {
         let ScriptStep::Occasion {
             occasion,
@@ -448,8 +469,9 @@ fn validate_steps(p: &Project, steps: &[ScriptStep]) -> Result<(), String> {
         if p.occasions.is_empty() {
             if !answered.contains(occasion.as_str()) {
                 return Err(format!(
-                    "step {n}: occasion `{occasion}` is answered by no beat in this project \
-                     (no plugin declares occasions, so the beats' `on:` values are the vocabulary)"
+                    "step {n}: occasion `{occasion}` is answered by no beat and judges no \
+                     objective in this project (no plugin declares occasions, so the beats' and \
+                     objectives' `on` values are the vocabulary)"
                 ));
             }
         } else if decl.is_none() {
@@ -521,12 +543,16 @@ struct World {
     facts: BTreeSet<Fact>,
     /// quest id -> `unset`/`active`/`complete`/`failed`.
     quests: BTreeMap<String, String>,
-    /// Canonical ids of every presented scene (the `visited(…)` set).
+    /// Canonical ids of every presented scene — the `visited(…)` set both
+    /// `after:` and CEL `visited('<id>')` read (dsl 0.21.0 §7a.1).
     visited: BTreeSet<String>,
     /// Scene beats presented since the last `newRun` (`once: run`).
     spent_run: BTreeSet<String>,
     /// Scene beats presented in this play (`once: user`).
     spent_user: BTreeSet<String>,
+    /// Quest ids `accept` records named since the last quest advance (dsl
+    /// 0.21.0 §7a.3) — the next advance activates those still `unset`.
+    accepts: Vec<String>,
 }
 
 fn json_to_value(j: &Json) -> Option<Value> {
@@ -654,6 +680,7 @@ fn seed_world(p: &Project, surfaces: &MockSet) -> Result<World, String> {
         visited: BTreeSet::new(),
         spent_run: BTreeSet::new(),
         spent_user: BTreeSet::new(),
+        accepts: Vec::new(),
     })
 }
 
@@ -681,7 +708,8 @@ fn new_run(p: &Project, w: &mut World) {
 }
 
 /// Fold a finished runner back into the world: persistent tiers only
-/// (`scene.*` never carries), facts, quest statuses.
+/// (`scene.*` never carries), facts, quest statuses, and the accepts it
+/// made (dsl 0.21.0 §7a.3) for the next quest advance.
 fn absorb(w: &mut World, outcome: &RunnerOutcome) {
     for (k, v) in &outcome.state {
         if !k.starts_with("scene.") {
@@ -690,6 +718,11 @@ fn absorb(w: &mut World, outcome: &RunnerOutcome) {
     }
     w.facts = outcome.base_facts.clone();
     w.quests = outcome.quest_status.clone();
+    for id in &outcome.accepted {
+        if !w.accepts.contains(id) {
+            w.accepts.push(id.clone());
+        }
+    }
 }
 
 /// A scene's fresh starting state: its OWN `scene.*` defaults (never the
@@ -883,56 +916,95 @@ struct QuestAdvance {
 /// Advance every quest lifecycle to a fixpoint (dsl 0.21.0 §6, D-H): each
 /// quest document's [`Runner::advance_quests`], repeated in path order until
 /// a whole pass transitions nothing — a quest in one document may gate on
-/// another's state.
+/// another's state. The pending accepts (§7a.3) ride every pass and are
+/// spent once the lifecycle settles.
 fn advance_quests(p: &Project, w: &mut World) -> (Vec<QuestAdvance>, Option<Stop>) {
     let mut out = Vec::new();
     let passes = p.quest_docs.len() * 8 + 8;
     for _ in 0..passes {
-        let mut moved = false;
-        for doc in &p.quest_docs {
-            let doc_json = &p.artifacts[doc];
-            let mut runner = Runner::with_carryover(
-                &play_artifact_json(doc_json, p),
-                MockSet::default(),
-                w.state.clone(),
-                w.facts.clone(),
-                w.quests.clone(),
-            );
-            let result = runner.advance_quests();
-            let outcome = runner.into_outcome();
-            absorb(w, &outcome);
-            let what = format!("quest document `{doc}`");
-            let stop = match result {
-                Err(msg) => Some(Stop::Halt(PlayHalt::Fatal(format!("{what}: {msg}")))),
-                Ok(()) => outcome_halt(&outcome, &what, doc_json)
-                    .map(Stop::Halt)
-                    .or_else(|| {
-                        outcome
-                            .terminated
-                            .then(|| Stop::End(end_reason(&outcome, &what)))
-                    }),
-            };
-            let transcript: Vec<Json> = outcome
-                .transcript
-                .into_iter()
-                .filter(|c| !c.get("done").is_some_and(Json::is_null))
-                .collect();
-            if !transcript.is_empty() {
-                moved = true;
-                out.push(QuestAdvance {
-                    document: doc.clone(),
-                    transcript,
-                });
-            }
-            if stop.is_some() {
-                return (out, stop);
-            }
+        let (moved, stop) = advance_pass(p, w, None, &mut out);
+        if stop.is_some() {
+            return (out, stop);
         }
         if !moved {
             break;
         }
     }
+    w.accepts.clear();
     (out, None)
+}
+
+/// dsl 0.21.0 §7a.2: raise `occasion` for the quest lifecycles — ONE pass
+/// in which every quest document judges its active quests' `on="<occasion>"`
+/// objectives (the occasion is one moment, never re-raised by the
+/// fixpoint), then the ordinary settle to a fixpoint.
+fn raise_occasion(p: &Project, w: &mut World, occasion: &str) -> (Vec<QuestAdvance>, Option<Stop>) {
+    let mut out = Vec::new();
+    let (_, stop) = advance_pass(p, w, Some(occasion), &mut out);
+    if stop.is_some() {
+        return (out, stop);
+    }
+    let (more, stop) = advance_quests(p, w);
+    out.extend(more);
+    (out, stop)
+}
+
+/// One pass over every quest document, path order: its runner resumes the
+/// carried lifecycle with the pending accepts and, when given, `occasion`
+/// raised. `true` when any document transitioned.
+fn advance_pass(
+    p: &Project,
+    w: &mut World,
+    occasion: Option<&str>,
+    out: &mut Vec<QuestAdvance>,
+) -> (bool, Option<Stop>) {
+    let mut moved = false;
+    for doc in &p.quest_docs {
+        let doc_json = &p.artifacts[doc];
+        let mock = MockSet {
+            accepts: w.accepts.clone(),
+            occasions: occasion.map(str::to_string).into_iter().collect(),
+            ..MockSet::default()
+        };
+        let mut runner = Runner::with_carryover(
+            &play_artifact_json(doc_json, p),
+            mock,
+            w.state.clone(),
+            w.facts.clone(),
+            w.quests.clone(),
+        )
+        .with_visited(&w.visited);
+        let result = runner.advance_quests();
+        let outcome = runner.into_outcome();
+        absorb(w, &outcome);
+        let what = format!("quest document `{doc}`");
+        let stop = match result {
+            Err(msg) => Some(Stop::Halt(PlayHalt::Fatal(format!("{what}: {msg}")))),
+            Ok(()) => outcome_halt(&outcome, &what, doc_json)
+                .map(Stop::Halt)
+                .or_else(|| {
+                    outcome
+                        .terminated
+                        .then(|| Stop::End(end_reason(&outcome, &what)))
+                }),
+        };
+        let transcript: Vec<Json> = outcome
+            .transcript
+            .into_iter()
+            .filter(|c| !c.get("done").is_some_and(Json::is_null))
+            .collect();
+        if !transcript.is_empty() {
+            moved = true;
+            out.push(QuestAdvance {
+                document: doc.clone(),
+                transcript,
+            });
+        }
+        if stop.is_some() {
+            return (moved, stop);
+        }
+    }
+    (moved, None)
 }
 
 /// A candidate's verdict (dsl 0.21.0 §4).
@@ -1022,7 +1094,8 @@ fn candidates(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> V
         w.state.clone(),
         w.facts.clone(),
         w.quests.clone(),
-    );
+    )
+    .with_visited(&w.visited);
     let mut out: Vec<(usize, Candidate)> = Vec::new();
     for (idx, beat) in p.index.beats.iter().enumerate() {
         if !is_candidate(beat, occasion, target) {
@@ -1110,7 +1183,8 @@ fn present(p: &Project, w: &mut World, beat: &IndexBeat, mock: &MockSet) -> (Pre
         scene_initial_state(doc_json, &w.state),
         w.facts.clone(),
         w.quests.clone(),
-    );
+    )
+    .with_visited(&w.visited);
     let mut runner = match beat.kind {
         BeatKind::Entry => runner.with_entry(&beat.id),
         BeatKind::Scene => runner,
@@ -1250,7 +1324,7 @@ fn execute(p: &Project, script: &PlayScript, mut w: World) -> Playthrough {
         });
         // A presentation that ended the walk (a halt, a `::end`) advances
         // nothing further; one that played through advances every quest.
-        let (presented, quests, stop) = match (halt, beat) {
+        let (presented, mut quests, mut stop) = match (halt, beat) {
             (Some(h), _) => (None, Vec::new(), Some(Stop::Halt(h))),
             (None, None) => (None, Vec::new(), None),
             (None, Some(b)) => match present(p, &mut w, b, &mock) {
@@ -1261,6 +1335,13 @@ fn execute(p: &Project, script: &PlayScript, mut w: World) -> Playthrough {
                 }
             },
         };
+        // dsl 0.21.0 §7a.2: after the presentation (or none), the occasion
+        // judges the `on=` objectives of every active quest.
+        if stop.is_none() && p.objective_occasions.contains(occasion) {
+            let (more, s) = raise_occasion(p, &mut w, occasion);
+            quests.extend(more);
+            stop = s;
+        }
         steps.push(StepRecord {
             n,
             body: StepBody::Occasion {
@@ -1428,6 +1509,14 @@ fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
                 .find_map(|k| rec.get(*k).and_then(Json::as_str))
                 .unwrap_or("");
             format!("  {} {what} (skipped: re-read)", str_of(rec, "effect"))
+        }
+        "accept" => {
+            let ignored = rec
+                .get("ignored")
+                .and_then(Json::as_str)
+                .map(|s| format!(" ({s} — ignored)"))
+                .unwrap_or_default();
+            format!("  quest {} accepted{ignored}", str_of(rec, "quest"))
         }
         "objective" => format!(
             "  {}.{} done",

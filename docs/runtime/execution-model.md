@@ -162,8 +162,8 @@ type Addr = string;
 // Every CEL slot carries its verbatim source under its own key — `option.when`,
 // `arm.test`, `set.value` — and the lowered portable `expr` AST (IR A7) ONLY
 // when that CEL is inside the closed §8.4 profile. A relational fact query
-// (`holds()`/`count()`) is outside it and carries raw text alone, so this
-// two-way read is mandatory, not an optimisation.
+// (`holds()`/`count()`) or a `visited()` read is outside it and carries raw
+// text alone, so this two-way read is mandatory, not an optimisation.
 const evalSlot = (raw, expr, state, facts) =>
   expr !== undefined ? evalExpr(expr, state) : evalCel(raw, state, facts);
 
@@ -218,6 +218,9 @@ function run(artifact: Artifact, state: StateStore, facts: FactStore) {
       // ── quest-kind declarations (consumed by the lifecycle driver) ──
       case "quest": registerQuest(cmd); break;
       case "on":    registerHandler(cmd); break;
+
+      // ── quest acceptance (dsl 0.21.0 §7a.3; quest-lifecycle.md) ──
+      case "accept": acceptQuest(cmd.quest); break; // activates it iff `unset`
 
       // ── plugin passthrough (bridge calls + resolved effects) ──
       case "plugin": callBridgeAndApplyEffects(cmd, state); break; // see bridge-protocol.md

@@ -106,9 +106,36 @@ engine contract:
 - **Docs** — [`docs/runtime/beats-and-occasions.md`](docs/runtime/beats-and-occasions.md)
   (candidates, eligibility, spending, selection order, presentation), and the
   website's *Beats* language page and *Playing a story* tooling page.
+- **Language — quests meet scenes and occasions (dsl 0.21.0 §7a)** —
+  `visited('<scene id>')` is legal in every condition slot (quest `start` /
+  `fail`, objective `done`, beat and entry `when`, content-line and branch
+  `when=`), so a scene advances a quest by being played, without a relay
+  flag; an unknown id is `E-CONN-UNKNOWN-NODE`. `<objective on="<occasion>">`
+  judges the objective only when that occasion is raised — the missing
+  end-of-run check point. `::accept{quest="<id>"}` accepts an accept-driven
+  quest from a scene; `E-ACCEPT-TARGET` rejects a missing, unknown, or
+  `start=`-gated target. IR: `ObjectiveEntry.on`, command
+  `{kind: "accept", quest}`; `visited()` slots carry `raw` only, like `holds()`.
+- **CLI** — `lute trace` / `lute run --occasion <name>` (repeatable) and the
+  mock / test keys `visited:` and `occasions:`; `lute test`
+  `expect.quests: {<id>: unset | active | complete | failed}`; `lute play`
+  occasion steps judge `on=` objectives, and an occasion only objectives
+  reference is a legal step.
 
 ### Changed
 
+- **Start-less quests are accept-driven in `lute run` / `lute play`** — an
+  unreferenced quest with no `start` stays `unset` until a mock `accepts:`
+  entry or an `accept` record names it; it used to activate at walk start.
+  This matches `lute trace` (dsl 0.4.0 §4.4) and `quest-lifecycle.md`, whose
+  contradictory "activates at the start of the walk" line is corrected.
+  Subquest children are unchanged.
+- **`lute scenario` lists bare quests** — a quest without `after=` appears as
+  `unanchored` (text, `roots[].unanchored` in JSON, a dashed DOT node) instead
+  of vanishing; `scenario reach` on one reads `Unanchored — …` (token
+  `unanchored`, formerly `reachable`).
+- **`lute run` transcript** gains `accept` and `occasion` records; `lute trace`
+  JSON gains the `accept` step.
 - **`lute play` drives quest lifecycles** — after each presentation it
   advances every quest exactly as `lute run` does for a quest artifact
   (resuming carried status rather than restarting), so a later `when` over

@@ -1,3 +1,4 @@
+pub mod accept;
 pub mod admission;
 pub mod beats;
 pub mod cel_expand;
@@ -50,6 +51,7 @@ pub mod when_test_literal;
 /// dependency runs the other way (`lute-compile` → `lute-check`).
 pub const LUTE_LANG_VERSION: &str = "0.21.0";
 
+pub use accept::{check_accept_directive, check_project_accepts, E_ACCEPT_TARGET};
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use beats::{
     check_project_beats, parse_beat_priority, BeatMeta, BeatOnce, BEAT_KEYS, E_BEAT_ATTR,
@@ -59,8 +61,8 @@ pub use cel_expand::{expand_cel, DefTable};
 pub use cel_message::{translate_cel_parse, Translation};
 pub use cel_paths::{is_reserved_entry_read, reserved_entry_id, E_PATH_IDENT};
 pub use cel_resolve::{
-    check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALOG_GUARD_FACT,
-    E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED,
+    check_cel_slot, check_rule_guards, visited_call_target, visited_targets, E_CEL_PROFILE,
+    E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,
 };
 pub use check::{
     check, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved, W_LUTE_VERSION_STALE,

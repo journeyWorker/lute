@@ -1,0 +1,98 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "scene",
+  "lute": "0.21.0",
+  "irVersion": "0.21.0",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {
+    "id": "haven.s01ep04",
+    "title": "Vesna's request"
+  },
+  "state": [
+    {
+      "path": "scene.choices.request",
+      "type": "enum",
+      "domain": [
+        "accept",
+        "decline",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:request"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "dialogue",
+      "speaker": "vesna",
+      "text": "The pressure in the shed keeps climbing. Will you help?",
+      "lineId": "haven.s01ep04.vesna_0010",
+      "voiceKey": "vesna-0010"
+    },
+    {
+      "kind": "choice",
+      "addr": "001-0200",
+      "branchId": "request",
+      "recordKey": "scene.choices.request",
+      "options": [
+        {
+          "id": "accept",
+          "label": "I'll keep it calm",
+          "lineId": "haven.s01ep04.request.accept",
+          "target": "001-0300"
+        },
+        {
+          "id": "decline",
+          "label": "Not now",
+          "lineId": "haven.s01ep04.request.decline",
+          "target": "001-0600"
+        }
+      ],
+      "converge": "001-0800"
+    },
+    {
+      "kind": "accept",
+      "addr": "001-0300",
+      "quest": "calmTheShed"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "dialogue",
+      "speaker": "vesna",
+      "text": "Thank you.",
+      "lineId": "haven.s01ep04.vesna_0020",
+      "voiceKey": "vesna-0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0500",
+      "target": "001-0800"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0600",
+      "role": "dialogue",
+      "speaker": "vesna",
+      "text": "Another time, then.",
+      "lineId": "haven.s01ep04.vesna_0030",
+      "voiceKey": "vesna-0030"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0700",
+      "target": "001-0800"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "The shed"
+    }
+  ]
+}

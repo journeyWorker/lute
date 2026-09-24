@@ -244,6 +244,18 @@ pub fn lower_directive(
             reason: get("reason"),
             stamp,
         }),
+        // dsl 0.21.0 §7a.3: a CORE directive the checker resolves without a
+        // snapshot lookup — dispatched on the tag before the plugin
+        // fallthrough. The checker has proven `quest` a plain identifier
+        // (`E-ACCEPT-TARGET`), so the quoted value lands verbatim.
+        lute_syntax::ast::ACCEPT_DIRECTIVE => Command::Accept(AcceptCmd {
+            addr: String::new(),
+            quest: dir
+                .accept_quest()
+                .map(|(q, _)| q.to_string())
+                .unwrap_or_default(),
+            stamp,
+        }),
         // dsl 0.12.0: `::mark{id}` is a pure position anchor — emits NO
         // record. `id` is consumed by `stage::walk_seq`/`walk_quest`'s own
         // `mark` interception (`Emitter::bind_named`) BEFORE this function

@@ -452,6 +452,7 @@ fn quest_record_serializes_per_spec() {
             body: None,
             quest: None,
             rewards: Vec::new(),
+            on: None,
         }],
         rewards: Vec::new(),
         stamp: Stamp::default(),

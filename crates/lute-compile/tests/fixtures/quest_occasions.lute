@@ -1,0 +1,11 @@
+---
+kind: quest
+id: haven.quests.shed
+state:
+  run.shedPressure: { type: number, default: 0 }
+---
+
+<quest id="calmTheShed" title="Calm the shed">
+<objective id="heardVesna" title="Hear Vesna out" done="visited('haven.s01ep04')"/>
+<objective id="lowPressure" title="Keep the shed calm" on="runEnd" done="run.shedPressure < 2"/>
+</quest>

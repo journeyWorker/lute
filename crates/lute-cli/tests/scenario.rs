@@ -1292,3 +1292,86 @@ fn scenario_envelope_reports_guaranteed_facts_on_arrival() {
         "{v}"
     );
 }
+
+// ── 0.21.0 §7a.5: a quest with no `after=` is listed as unanchored ─────
+
+/// One scene and one bare quest (`quest_no_after`): the quest is in no layer
+/// and on no edge.
+fn unanchored_fixture(tag: &str) -> String {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "a.lute",
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",
+    );
+    write(&dir, "q.lute", &quest_no_after("loose"));
+    dir.to_str().unwrap().to_string()
+}
+
+#[test]
+fn scenario_lists_a_bare_quest_as_unanchored_in_every_format() {
+    let path = unanchored_fixture("scenario-unanchored");
+
+    let text = stdout(&run(&["scenario", &path]));
+    let tail = text
+        .split("  unanchored (no `after` — available from the start of play; no prerequisites in this graph):\n")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no unanchored section: {text}"));
+    assert_eq!(tail.lines().next(), Some("    quest(loose)"), "{text}");
+    assert!(
+        !text.split("unanchored").next().unwrap().contains("quest(loose)"),
+        "the bare quest sits in no layer and on no edge: {text}"
+    );
+
+    let out = run(&["scenario", &path, "--format", "json"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(v["roots"][0]["unanchored"], serde_json::json!(["quest(loose)"]), "{v}");
+    assert_eq!(v["roots"][0]["layers"], serde_json::json!([["scene(a.s01ep01)"]]), "{v}");
+
+    let dot = stdout(&run(&["scenario", &path, "--format", "dot"]));
+    assert!(
+        dot.contains(
+            "\"quest(loose)\" [shape=ellipse, style=dashed, color=blue, \
+             label=\"quest(loose) (unanchored)\"];"
+        ),
+        "{dot}"
+    );
+}
+
+#[test]
+fn scenario_json_omits_unanchored_when_every_quest_is_anchored() {
+    let (_dir, path) = both_edge_kinds_fixture();
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout(&run(&["scenario", &path, "--format", "json"]))).unwrap();
+    assert!(v["roots"][0].get("unanchored").is_none(), "{v}");
+}
+
+#[test]
+fn scenario_reach_reports_a_bare_quest_as_unanchored() {
+    let path = unanchored_fixture("scenario-reach-unanchored");
+
+    let out = run(&["scenario", &path, "reach", "quest:loose"]);
+    let text = stdout(&out);
+    assert!(out.status.success(), "{text}{}", stderr(&out));
+    assert!(
+        text.contains(
+            "  verdict: Unanchored — a quest with no declared `after` prerequisite: \
+             available from the start of play;"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains(
+            "  after: (none declared) — unanchored: this quest is in no prerequisite graph \
+             layer and on no edge; it is available from the start of play."
+        ),
+        "{text}"
+    );
+
+    let out = run(&["scenario", &path, "--format", "json", "reach", "quest:loose"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(v["reach"], "unanchored", "{v}");
+    assert_eq!(v["node"], "quest(loose)", "{v}");
+}

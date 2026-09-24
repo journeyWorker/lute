@@ -148,6 +148,12 @@ pub enum Step {
         effect: String,
         text: String,
     },
+    /// dsl 0.21.0 §7a.3: an `::accept{quest="<id>"}` — the player accepts
+    /// an accept-driven quest here. A trace walks one document, and a scene
+    /// never holds quests, so the accept is recorded, not applied.
+    Accept {
+        quest: String,
+    },
 }
 
 /// dsl 0.16.0 §3: the reward-declaration data carried by a fired [`Step::Grant`],
@@ -462,6 +468,7 @@ fn render_step(step: &Step, out: &mut String) {
         Step::Skipped { effect, text } => {
             out.push_str(&format!("    ::{effect}  {text}  (skipped: re-read)\n"));
         }
+        Step::Accept { quest } => out.push_str(&format!("    quest {quest} accepted\n")),
         Step::Grant {
             quest,
             objective,

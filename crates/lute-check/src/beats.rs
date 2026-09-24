@@ -24,7 +24,7 @@ use std::path::PathBuf;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
-use lute_syntax::ast::{AttrValue, CelKind, CelSlot, Document, Entry, Meta};
+use lute_syntax::ast::{AttrValue, CelKind, CelSlot, Document, Entry, Meta, Node, Quest};
 
 use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
@@ -314,6 +314,49 @@ pub(crate) fn check_entry_occasions(
             .filter(|(t, _)| is_entry_target(t))
             .map(|(_, span)| *span);
         check_occasion(on, *on_span, target_span, occasions, Layer::Logic, &mut diags);
+    }
+    diags
+}
+
+/// dsl 0.21.0 §7a.2 (D-I): every `<objective on="<occasion>">` of `quests`
+/// — the occasion at which the objective's `done` is judged — checked
+/// exactly as a beat's `on`: [`E_BEAT_ATTR`] when the value is not a quoted
+/// identifier, [`E_OCCASION_UNKNOWN`] against the resolved vocabulary
+/// (shape-only while `occasions` is empty). Objectives have no `target`.
+pub(crate) fn check_objective_occasions(
+    quests: &[Quest],
+    occasions: &BTreeMap<String, OccasionDecl>,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for node in quests.iter().flat_map(|q| &q.body) {
+        let Node::Objective(o) = node else { continue };
+        for attr in o.attrs.iter().filter(|a| a.key == "on") {
+            // A non-string value stays residual (the parser extracts only
+            // quoted strings).
+            diags.push(beat_diag(
+                E_BEAT_ATTR,
+                Severity::Error,
+                "`<objective>` attribute `on` must be a quoted occasion name (dsl 0.21.0 §7a.2)"
+                    .to_string(),
+                attr.span,
+                Layer::Logic,
+            ));
+        }
+        let Some((on, span)) = &o.on else { continue };
+        if !is_entry_ident(on) {
+            diags.push(beat_diag(
+                E_BEAT_ATTR,
+                Severity::Error,
+                format!(
+                    "`<objective>` `on=\"{on}\"` must name an occasion — an identifier \
+                     (`[A-Za-z][A-Za-z0-9_-]*`) (dsl 0.21.0 §7a.2)"
+                ),
+                *span,
+                Layer::Logic,
+            ));
+            continue;
+        }
+        check_occasion(on, *span, None, occasions, Layer::Logic, &mut diags);
     }
     diags
 }

@@ -516,3 +516,242 @@ fn trace_refuses_a_mock_that_mis_keys_a_surface() {
         "the excluded arm must never be reached — that was the whole defect:\n{text}"
     );
 }
+
+// ── 0.21.0 §7a: quests meet scenes and occasions ───────────────────────
+
+/// A shape-only project: scene `haven.shed` whose `take` choice accepts the
+/// start-less `sideJob`, and quest `holdLine` whose `sawShed` objective reads
+/// `visited('haven.shed')` and whose `calm` objective is judged at `runEnd`
+/// (true whenever judged: `run.pressure` defaults to 0).
+fn quest_occasion_project(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    let files = [
+        (
+            "lute.project.yaml",
+            "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+        ),
+        (
+            "world.schema.yaml",
+            "state:\n  run.pressure: { type: number, default: 0 }\n",
+        ),
+        (
+            "scenes/shed.lute",
+            "---\nkind: scene\nid: haven.shed\nuses: ../world.schema.yaml\non: hubVisit\n---\n\n\
+             ## Shed\n\n@guard: The shed is quiet.\n\n<branch id=\"offer\">\n\
+             <choice id=\"take\" label=\"Take the job\">\n@guard: Deal.\n\
+             ::accept{quest=\"sideJob\"}\n</choice>\n\
+             <choice id=\"pass\" label=\"Pass\">\n@guard: Suit yourself.\n</choice>\n</branch>\n",
+        ),
+        (
+            "quests/hold.lute",
+            "---\nkind: quest\nuses: ../world.schema.yaml\ntitle: Hold\n---\n\n\
+             <quest id=\"holdLine\" title=\"Hold the line\" start=\"true\">\n\
+             <objective id=\"sawShed\" title=\"See the shed\" done=\"visited('haven.shed')\"/>\n\
+             <objective id=\"calm\" title=\"Keep calm\" on=\"runEnd\" done=\"run.pressure < 2\"/>\n\
+             </quest>\n\n\
+             <quest id=\"sideJob\" title=\"Side job\">\n\
+             <objective id=\"paid\" title=\"Get paid\" done=\"run.pressure > 5\"/>\n\
+             </quest>\n",
+        ),
+    ];
+    for (rel, text) in files {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+    dir
+}
+
+/// `lute trace <dir>/quests/hold.lute --project <dir> --json <extra…>`:
+/// asserts exit 0 and returns the report.
+fn trace_quest_json(dir: &std::path::Path, extra: &[&str]) -> serde_json::Value {
+    let quest = dir.join("quests/hold.lute");
+    let mut args = vec![
+        quest.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+        "--json",
+    ];
+    args.extend_from_slice(extra);
+    let out = trace(&args);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+/// Every outcome recorded for `construct` `id`, in walk order.
+fn outcomes<'a>(v: &'a serde_json::Value, construct: &str, id: &str) -> Vec<&'a str> {
+    v["decisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["construct"] == construct && d["id"] == id)
+        .map(|d| d["outcome"].as_str().unwrap())
+        .collect()
+}
+
+fn has_note(v: &serde_json::Value, needle: &str) -> bool {
+    v["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|n| n.as_str().unwrap().contains(needle))
+}
+
+#[test]
+fn trace_visited_mock_makes_a_visited_objective_done() {
+    let dir = quest_occasion_project("trace-visited");
+
+    // No `visited:`: closed-world false — pending, never unresolved, exit 0.
+    let v = trace_quest_json(&dir, &[]);
+    let saw = outcomes(&v, "objective", "sawShed");
+    assert!(!saw.is_empty() && saw.iter().all(|o| *o == "pending"), "{saw:?}");
+    assert_eq!(v["unresolved"], serde_json::json!([]));
+
+    std::fs::write(dir.join("m.yaml"), "visited: [haven.shed]\n").unwrap();
+    let v = trace_quest_json(&dir, &["--mock", dir.join("m.yaml").to_str().unwrap()]);
+    assert!(outcomes(&v, "objective", "sawShed").contains(&"done"), "{v}");
+}
+
+#[test]
+fn trace_judges_an_on_objective_only_when_the_occasion_is_raised() {
+    let dir = quest_occasion_project("trace-occasion");
+    std::fs::write(dir.join("seen.yaml"), "visited: [haven.shed]\n").unwrap();
+    std::fs::write(
+        dir.join("seen-end.yaml"),
+        "visited: [haven.shed]\noccasions: [runEnd]\n",
+    )
+    .unwrap();
+    let mock = |m: &str| dir.join(m).to_str().unwrap().to_string();
+
+    // Every continuous objective done, but `runEnd` never raised: `calm` is
+    // never judged, the quest stays active, and the note says why.
+    let v = trace_quest_json(&dir, &["--mock", &mock("seen.yaml")]);
+    assert!(outcomes(&v, "objective", "calm").is_empty(), "{v}");
+    assert_eq!(outcomes(&v, "quest", "holdLine"), ["active"]);
+    assert!(
+        has_note(
+            &v,
+            "objective `holdLine.calm` is judged at occasion `runEnd`, which this walk never \
+             raised (supply `--occasion runEnd` or `occasions: [runEnd]`)"
+        ),
+        "{}",
+        v["notes"]
+    );
+
+    // Raised by the mock key, or by the flag: judged, and the quest completes.
+    for extra in [
+        vec!["--mock".to_string(), mock("seen-end.yaml")],
+        vec![
+            "--mock".to_string(),
+            mock("seen.yaml"),
+            "--occasion".to_string(),
+            "runEnd".to_string(),
+        ],
+    ] {
+        let args: Vec<&str> = extra.iter().map(String::as_str).collect();
+        let v = trace_quest_json(&dir, &args);
+        assert_eq!(outcomes(&v, "objective", "calm"), ["done"], "{extra:?}");
+        assert_eq!(outcomes(&v, "quest", "holdLine"), ["active", "complete"], "{extra:?}");
+        assert!(!has_note(&v, "never raised"), "{extra:?}: {}", v["notes"]);
+    }
+
+    // An occasion no objective is judged at is noted, not an error.
+    let v = trace_quest_json(&dir, &["--occasion", "hubVisit"]);
+    assert!(
+        has_note(&v, "occasion `hubVisit` is judged by no `<objective on>` in this document"),
+        "{}",
+        v["notes"]
+    );
+}
+
+#[test]
+fn trace_prints_a_scene_accept_on_the_branch_that_takes_it() {
+    let dir = quest_occasion_project("trace-accept");
+    let scene = dir.join("scenes/shed.lute");
+    let run = |choice: &str| {
+        let out = trace(&[
+            scene.to_str().unwrap(),
+            "--project",
+            dir.to_str().unwrap(),
+            "--choose",
+            &format!("offer={choice}"),
+        ]);
+        assert_eq!(out.status.code(), Some(0));
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let text = run("take");
+    assert!(
+        text.lines().any(|l| l == "    quest sideJob accepted"),
+        "{text}"
+    );
+    let text = run("pass");
+    assert!(!text.contains("accepted"), "{text}");
+}
+
+#[test]
+fn run_raises_an_occasion_on_a_compiled_quest_artifact() {
+    let dir = quest_occasion_project("run-occasion");
+    let art = dir.join("hold.json");
+    let out = Command::new(BIN)
+        .args([
+            "compile",
+            dir.join("quests/hold.lute").to_str().unwrap(),
+            "--project",
+            dir.to_str().unwrap(),
+            "-o",
+            art.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "compile: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mock = dir.join("m.yaml");
+    std::fs::write(&mock, "visited: [haven.shed]\n").unwrap();
+    let run = |extra: &[&str]| {
+        let mut args = vec![
+            "run",
+            art.to_str().unwrap(),
+            "--mock",
+            mock.to_str().unwrap(),
+        ];
+        args.extend_from_slice(extra);
+        let out = Command::new(BIN).args(&args).output().unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+
+    let v: serde_json::Value = serde_json::from_str(&run(&["--json"])).unwrap();
+    assert_eq!(v["quests"]["holdLine"], "active", "{v}");
+
+    let v: serde_json::Value =
+        serde_json::from_str(&run(&["--occasion", "runEnd", "--json"])).unwrap();
+    assert_eq!(v["quests"]["holdLine"], "complete", "{v}");
+    let records = v["commands"].as_array().unwrap();
+    let at = |pred: &dyn Fn(&serde_json::Value) -> bool| {
+        records
+            .iter()
+            .position(|r| pred(r))
+            .unwrap_or_else(|| panic!("{v}"))
+    };
+    let raised = at(&|r| r["kind"] == "occasion" && r["occasion"] == "runEnd");
+    let judged = at(&|r| r["kind"] == "objective" && r["objective"] == "calm");
+    let complete = at(&|r| r["kind"] == "quest" && r["state"] == "complete");
+    assert!(raised < judged && judged < complete, "{v}");
+
+    let text = run(&["--occasion", "runEnd"]);
+    assert!(text.lines().any(|l| l == "  occasion runEnd"), "{text}");
+}

@@ -1,6 +1,6 @@
 ---
 title: Runtime contract
-description: What a game engine must implement to run a compiled Lute artifact — the envelope, version negotiation and the IR 0.10.0 provenance-field rename, the addr width invariant, and the dispatcher loop over the twenty-one command kinds.
+description: What a game engine must implement to run a compiled Lute artifact — the envelope, version negotiation and the IR 0.10.0 provenance-field rename, the addr width invariant, and the dispatcher loop over the twenty-two scene and quest command kinds.
 ---
 
 Lute is a total, side-effect-free compiler. `lute compile <file>` checks a
@@ -41,6 +41,9 @@ facts reaches the engine as its raw CEL text alone (`option.when`, `arm.test`,
 evaluator, not merely an AST walker. `lute run`'s module doc says the same:
 it resolves every slot from the raw CEL "including the `holds`/`count`
 fact-query functions the structured `expr` AST deliberately omits".
+The same holds for `visited('<scene id>')` (dsl 0.21.0): legal in every condition slot, true once
+that scene has been presented in this save — the visited set the engine already keeps for
+`after:` — and carried as raw CEL alone.
 
 The through-line: Lute proves *shape and structure*; the engine supplies
 *evaluation and effect*. Lute's static analyses are also honest about their
@@ -275,7 +278,8 @@ program counter over an `addr → index` map, dispatching on `kind`:
 ```ts
 // Every CEL slot carries its verbatim source under its own key — `option.when`,
 // `arm.test`, `set.value` — and the lowered `expr` AST ONLY when that CEL is
-// inside the closed §8.4 profile. A relational fact query carries raw text alone.
+// inside the closed §8.4 profile. A relational fact query or a `visited()` read
+// carries raw text alone.
 const evalSlot = (raw, expr, state, facts) =>
   expr !== undefined ? evalExpr(expr, state) : evalCel(raw, state, facts);
 
@@ -314,6 +318,7 @@ while (pc < artifact.commands.length) {
     // quest declarations & plugin bridges
     case "quest":   registerQuest(cmd); break;
     case "on":      registerHandler(cmd); break;
+    case "accept":  acceptQuest(cmd.quest); break; // activates it iff still `unset`
     case "plugin":  callBridgeAndApplyEffects(cmd, state); break;
 
     default: throw new UnknownCommandKind(cmd.kind); // version gate: hard error
@@ -323,9 +328,15 @@ while (pc < artifact.commands.length) {
 }
 ```
 
-The full command set is twenty-one kinds: `line`, `background`, `music`, `sfx`,
-`vfx`, `sprite`, `camera`, `cut`, `video`, `set`, `assert`, `retract`,
-`choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`, `plugin`.
+The full scene and quest command set is twenty-two kinds: `line`, `background`,
+`music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video`, `set`, `assert`,
+`retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`,
+`accept`, `plugin`. A lore artifact adds the `entry` declaration head, which
+the engine looks up rather than plays ([Lore entries](/language/lore-entries/)).
+
+`accept` (dsl 0.21.0) is the scene-side `::accept{quest}`: the engine activates
+that accept-driven quest if its state is still `unset` and ignores the record
+otherwise ([Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions)).
 
 `end` carries an optional free-form `reason` — an author string
 (`"completed"`, an ending id) Lute assigns no meaning to and the host MAY

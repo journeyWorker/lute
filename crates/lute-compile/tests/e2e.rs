@@ -333,6 +333,27 @@ fn lore_beat_barks() {
     );
 }
 
+/// dsl 0.21.0 §7a.1/§7a.2/§8: quests meet occasions. `visited('<scene id>')`
+/// is out of the portable `expr` profile like `holds(…)`, so its `done` pair
+/// carries `raw` alone; the `on="runEnd"` objective gains `on` appended after
+/// every 0.20 objective field, and the continuous objective has none.
+#[test]
+fn quest_occasions() {
+    golden(
+        "quest_occasions",
+        "tests/fixtures/quest_occasions.lute",
+        None,
+    );
+}
+
+/// dsl 0.21.0 §7a.3/§8: `::accept{quest}` inside a choice branch lowers to a
+/// core `accept` record (`addr`, `quest`) in the branch body — never the
+/// `kind: "plugin"` passthrough.
+#[test]
+fn scene_accept() {
+    golden("scene_accept", "tests/fixtures/scene_accept.lute", None);
+}
+
 /// IR A12: the `::serve` plugin record carries resolved effect bindings. The
 /// `fromAttr` template (`resultKey="debut"`) is substituted into each path at
 /// compile time; `from` is the bridge-result key or the `op`/`by` increment,

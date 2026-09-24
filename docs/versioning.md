@@ -426,15 +426,22 @@ any resolved plugin declares them, occasion names are checked. New codes:
 `check-project` warning `W-BEAT-SHADOWED`. `schedule.yaml` — the `0.11.0`
 clock / lane / placement layer — is removed with every `E-SCHED-*` /
 `W-SCHED-*` code, and `lute play` is rebuilt on raised occasions, driving
-quest lifecycles
+quest lifecycles. Quests meet scenes and occasions: `visited('<scene id>')`
+becomes legal in every condition slot, `<objective on="<occasion>">` judges an
+objective only when its occasion is raised, and `::accept{quest}` accepts an
+accept-driven quest from a scene (new code `E-ACCEPT-TARGET`)
 ([`proposals/scenario-dsl/0.21.0.md`](proposals/scenario-dsl/0.21.0.md)). The
-IR change is additive: `SceneMeta.beat`, `EntryCmd.on` / `priority`, and
-`ProjectIndex.beats`, each omitted when absent, so scene and lore artifacts
-without beats compile byte-identically apart from the version strings. The
+IR change is additive: `SceneMeta.beat`, `EntryCmd.on` / `priority`,
+`ProjectIndex.beats`, and `ObjectiveEntry.on`, each omitted when absent, plus
+a new `accept` record; a `visited()` slot carries `raw` only, like
+`holds()`. Scene, quest, and lore artifacts that use none of it compile
+byte-identically apart from the version strings. The
 schema file renames per release line (`lute-ir-0.20.schema.json` →
 [`lute-ir-0.21.schema.json`](../schemas/lute-ir-0.21.schema.json)) and gains
-`sceneBeat`, the entry fields, and the `indexBeat` row. Engines gate on MAJOR,
-so nothing widens: an engine without beat support ignores the new fields.
+`sceneBeat`, the entry fields, the `indexBeat` row, `objectiveEntry.on`, and
+`cmdAccept`. Engines gate on MAJOR, so nothing widens: an engine without beat
+support ignores the new fields, and one that predates `accept` rejects that
+record as any unknown kind.
 `capabilityVersion` moves only for a project that installs an
 `occasions:`-declaring plugin (a guarded, sorted snapshot section, the
 `rewardKinds` precedent); the tree-sitter grammar is unchanged.

@@ -19,10 +19,10 @@ you want to know what is in the tree.
 | | count | |
 |---|---|---|
 | `scenes/` | 11 | episodes 1–11, one connected graph |
-| `quests/` | 6 | five with `after=`; `hold-the-spine.lute` deliberately without — see "Deliberate imperfections" |
+| `quests/` | 6 | five with `after=`; `hold-the-spine.lute` deliberately without (listed as unanchored) — see "Deliberate imperfections" |
 | `lore/` | 2 | `kind: lore` documents (dsl 0.19.0) — the purser's ledger as a `series:` bundle, and the ship's records; see "Lore entries" |
 | `components/` | 1 | the Purser's interjection, the only reuse construct in the language |
-| `tests/` | 31 | `*.test.yaml` scenario tests, run by `lute test` |
+| `tests/` | 32 | `*.test.yaml` scenario tests, run by `lute test` |
 | `world.schema.yaml` | | scalar state, four relations, one Datalog rule, one seed fact |
 | `vocabulary.schema.yaml` | | all seven compiler-typed content-vocabulary slots |
 | `lute.project.yaml` | | the manifest, including the `identity:` block |
@@ -50,11 +50,11 @@ distinction is kept because a README that oversells is worse than no README.
   real content. Note that the templates govern only when Haven is compiled as its
   own root; built from `docs/examples`, its scenes take the outer manifest's
   templates. They agree today only because the outer manifest declares none.
-- **Scenario tests at scale — 31 of the corpus's 34.** `investigation/` has the
+- **Scenario tests at scale — 32 of the corpus's 35.** `investigation/` has the
   other three. This is the first suite large enough to say what `lute test` is
   and is not: a good regression harness for authored text and state deltas, and a
   poor specification of the work's logic. Deleting the guard from either lever
-  that decides which ending the prologue reaches leaves all 31 green.
+  that decides which ending the prologue reaches leaves all 32 green.
 - **Derived relations — not first, but first *across documents*.**
   `investigation/world.schema.yaml` and `act1.schema.yaml` both declare
   `derive: true` relations, so the construct is not new here. What is new is the
@@ -99,7 +99,7 @@ is revealed only by the ledger).
 # "Deliberate imperfections" below.
 lute check-project docs/examples/haven
 
-# The 31 scenario tests. Exits 0, 31 passed.
+# The 32 scenario tests. Exits 0, 32 passed.
 lute test docs/examples/haven
 lute test docs/examples/haven --coverage    # 24 rows (5 branch/hub, 19 match);
                                             # 5 match rows have an unexecuted arm
@@ -107,7 +107,8 @@ lute test docs/examples/haven --coverage    # 24 rows (5 branch/hub, 19 match);
 # The prerequisite graph: 11 scenes over 9 topological layers, and 19 edges —
 # 12 scene-to-scene, 5 from a scene to one of the five quests that declare
 # `after=`, and 2 quest-to-quest (`whoWakes` gates two siblings, one on
-# `active` and one on `completed`).
+# `active` and one on `completed`). After the edges, `holdTheSpine` — the one
+# quest without `after=` — is listed as unanchored.
 lute scenario docs/examples/haven
 
 # Preview one scene. `trace` runs no Datalog fixpoint, so a guard over the
@@ -122,7 +123,7 @@ lute lore docs/examples/haven
 ```
 
 `check-project docs/examples` (the outer root, which is what CI runs) walks all
-twenty of these documents. `lute test docs/examples` picks up all 31 of these
+twenty of these documents. `lute test docs/examples` picks up all 32 of these
 tests plus `investigation`'s three.
 
 ## Deliberate imperfections
@@ -145,18 +146,21 @@ findings, and a reader who "fixes" one deletes the evidence.
    is not a component, and because it is the corpus's only example of the one
    document kind that cannot be tested (**T9.12**).
 2. **`quests/hold-the-spine.lute` — the one quest with no `after=`.** Its five
-   siblings all declare one; this one does not, and the file now says so in a
+   siblings all declare one; this one does not, and the file says so in a
    comment. What the omission costs, from `lute scenario docs/examples/haven`:
-   the quest is absent from the graph **entirely** — no topological layer, no
-   edge. The graph lists five quests, not six, because `after=` is the only thing
-   that puts a quest into it. `scenario envelope quest:holdTheSpine` therefore
-   degrades to the defaults-only `D` table plus a note offering the
-   project-resolved one if `after` were declared, while `scenario reach
-   quest:holdTheSpine` — which resolves by id, so it still answers — reports
-   `after: (none declared) — this node is an entry point`. That invisibility is
-   the point: it leaves a blind spot visible in a shipped example, a quest that
-   is genuinely reachable and genuinely checked project-wide yet missing from the
-   one tool an author would ask about reachability. It is also honest about the
+   the quest has no topological layer and no edge. The graph holds five quests,
+   not six, because `after=` is the only thing that puts a quest into it. It is
+   no longer silently absent, though (dsl 0.21.0 §7a.5): the report lists it
+   after the edges, under ``unanchored (no `after` — available from the start
+   of play; no prerequisites in this graph):``, and `scenario reach
+   quest:holdTheSpine` answers ``Unanchored — a quest with no declared `after`
+   prerequisite: available from the start of play; …`` with `after: (none
+   declared) — unanchored: this quest is in no prerequisite graph layer and on
+   no edge; it is available from the start of play.` `scenario envelope
+   quest:holdTheSpine` still degrades to the defaults-only `D` table plus a note
+   offering the project-resolved one if `after` were declared. The omission
+   stays because it is the corpus's only worked example of what the
+   connectivity layer does with a bare quest, and because it is honest about the
    story — the coupling can be held the moment somebody who can halt the shed is
    awake, which `start="holds(can_halt(toma))"` already says, so there is no
    route prerequisite to declare (**T4.7**, and the *T4 controller decision*).

@@ -248,3 +248,147 @@ fn project_resolution_error_gates_the_exit_code() {
         "the resolve diagnostic must surface on the lute: stderr channel: {stderr}"
     );
 }
+
+// ── 0.21.0 §7a.4: `expect.quests`, and the `visited:` / `occasions:` keys ──
+
+/// A shape-only project whose `holdLine` completes only when `haven.shed` is
+/// visited AND `runEnd` is raised; `sideJob` is accept-driven (no `start`).
+/// Writes `tests/t.test.yaml` = `test_yaml` and runs `lute test tests/
+/// --project <dir>` (plus `extra`), returning `(exit code, stdout)`.
+fn run_quest_test(tag: &str, test_yaml: &str, extra: &[&str]) -> (Option<i32>, String) {
+    let dir = temp_dir(tag);
+    write_at(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write_at(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.pressure: { type: number, default: 0 }\n",
+    );
+    write_at(
+        &dir,
+        "quests/hold.lute",
+        "---\nkind: quest\nuses: ../world.schema.yaml\ntitle: Hold\n---\n\n\
+         <quest id=\"holdLine\" title=\"Hold the line\" start=\"true\">\n\
+         <objective id=\"sawShed\" title=\"See the shed\" done=\"visited('haven.shed')\"/>\n\
+         <objective id=\"calm\" title=\"Keep calm\" on=\"runEnd\" done=\"run.pressure < 2\"/>\n\
+         </quest>\n\n\
+         <quest id=\"sideJob\" title=\"Side job\">\n\
+         <objective id=\"paid\" title=\"Get paid\" done=\"run.pressure > 5\"/>\n\
+         </quest>\n",
+    );
+    write_at(&dir, "tests/t.test.yaml", test_yaml);
+    let out = Command::new(BIN)
+        .args([
+            "test",
+            dir.join("tests").to_str().unwrap(),
+            "--project",
+            dir.to_str().unwrap(),
+        ])
+        .args(extra)
+        .output()
+        .expect("run lute");
+    (
+        out.status.code(),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
+    )
+}
+
+#[test]
+fn expect_quests_passes_when_visited_and_occasions_drive_the_lifecycle() {
+    let (code, text) = run_quest_test(
+        "quests-pass",
+        "file: ../quests/hold.lute\nvisited: [haven.shed]\noccasions: [runEnd]\n\
+         accepts: [sideJob]\nexpect:\n  exit: complete\n  quests:\n    \
+         holdLine: complete\n    sideJob: active\n",
+        &[],
+    );
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("1 passed, 0 failed"), "{text}");
+
+    // With neither key the same document leaves both quests short of that.
+    let (code, text) = run_quest_test(
+        "quests-pass-bare",
+        "file: ../quests/hold.lute\nexpect:\n  quests:\n    holdLine: active\n    sideJob: unset\n",
+        &[],
+    );
+    assert_eq!(code, Some(0), "{text}");
+}
+
+#[test]
+fn expect_quests_mismatch_fails_naming_expected_and_actual() {
+    // Visited but `runEnd` never raised: `calm` is never judged.
+    let yaml = "file: ../quests/hold.lute\nvisited: [haven.shed]\nexpect:\n  quests:\n    \
+                holdLine: complete\n";
+    let (code, text) = run_quest_test("quests-fail", yaml, &[]);
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        text.contains("quests holdLine: expected \"complete\", got \"active\""),
+        "{text}"
+    );
+    assert!(text.contains("0 passed, 1 failed"), "{text}");
+
+    let (code, text) = run_quest_test("quests-fail-json", yaml, &["--json"]);
+    assert_eq!(code, Some(1), "{text}");
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let e = &v["tests"][0]["expectations"][0];
+    assert_eq!(e["kind"], "quests", "{v}");
+    assert_eq!(e["subject"], "holdLine");
+    assert_eq!(e["expected"], "complete");
+    assert_eq!(e["actual"], "active");
+    assert_eq!(e["passed"], false);
+}
+
+#[test]
+fn expect_quests_naming_an_undeclared_quest_fails() {
+    let (code, text) = run_quest_test(
+        "quests-undeclared",
+        "file: ../quests/hold.lute\nexpect:\n  quests:\n    ghost: active\n",
+        &[],
+    );
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        text.contains(
+            "quests ghost: expected \"active\", but the traced document declares no quest `ghost`"
+        ),
+        "{text}"
+    );
+}
+
+#[test]
+fn expect_quests_with_an_unknown_state_name_fails() {
+    let (code, text) = run_quest_test(
+        "quests-bad-state",
+        "file: ../quests/hold.lute\nexpect:\n  quests:\n    holdLine: done\n",
+        &[],
+    );
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        text.contains(
+            "quests holdLine: \"done\" is not a quest state \
+             (expected one of: unset, active, complete, failed)"
+        ),
+        "{text}"
+    );
+}
+
+/// The top-level key set is closed; `visited`/`occasions` are in it.
+#[test]
+fn a_misspelt_visited_key_is_refused_and_suggests_the_real_one() {
+    let (code, text) = run_quest_test(
+        "quests-key-typo",
+        "file: ../quests/hold.lute\nvisitd: [haven.shed]\nexpect:\n  exit: complete\n",
+        &[],
+    );
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        text.contains("E-TEST-KEY") && text.contains("did you mean `visited`?"),
+        "{text}"
+    );
+}

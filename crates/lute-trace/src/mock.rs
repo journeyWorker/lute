@@ -60,6 +60,15 @@ pub struct MockSet {
     /// carries a `start` predicate (declarative — needs no accept), is
     /// [`E_TRACE_ACCEPT`].
     pub accepts: Vec<String>,
+    /// `visited:` scene ids (dsl 0.21.0 §7a.1): the scenes already presented
+    /// in this save, which `visited('<id>')` reads — closed-world, like
+    /// `facts:`. Scene ids are project-level, so a per-document validator
+    /// cannot check them; an id nothing reads is simply inert.
+    pub visited: Vec<String>,
+    /// `--occasion`/`occasions:` names, in the order they are raised (dsl
+    /// 0.21.0 §7a.2): after a quest walk settles, each raise evaluates the
+    /// `<objective on="<occasion>">` objectives of every active quest.
+    pub occasions: Vec<String>,
 }
 
 /// `--state`/`--mock` literals and `--choose` targets carry no real source
@@ -169,9 +178,9 @@ fn scalar_to_text(v: &serde_yaml::Value) -> Option<String> {
 }
 
 /// The complete legal top-level key set of a `--mock` / `mocks/*.yaml`
-/// document — the five surfaces [`parse_mock_yaml`] reads (`accept`/`accepts`
-/// are two spellings of one key) plus `file:`, the subject key **D-AC** made
-/// required.
+/// document — the seven surfaces [`parse_mock_yaml`] reads (`accept`/
+/// `accepts` are two spellings of one key; `visited`/`occasions` are dsl
+/// 0.21.0 §7a) plus `file:`, the subject key **D-AC** made required.
 ///
 /// **CLOSED as of 0.10.0 (#2(a), D-B).** D-B's rationale names this exact
 /// failure — *"a mis-keyed `choose:` currently passes while running the arm it
@@ -186,14 +195,16 @@ fn scalar_to_text(v: &serde_yaml::Value) -> Option<String> {
 /// difference is asserted by `testcmd.rs`'s
 /// `the_test_key_set_is_the_mock_key_set_plus_expect`.
 pub const MOCK_TOP_KEYS: &[&str] = &[
-    "accept", "accepts", "choose", "events", "facts", "file", "state",
+    "accept", "accepts", "choose", "events", "facts", "file", "occasions", "state", "visited",
 ];
 
 /// Parse a `--mock <file.yaml>` document (dsl 0.4.0 §4.3, 0.10.0 §8):
 /// `state:` (a map of path -> literal), `facts:` (a list of quoted
 /// ground-fact-pattern strings, the `0.3 §4` `facts:` shape), `choose:` (a map
 /// of branch/hub id -> one choice id or a list of them), `events:` (a list of
-/// event names) — every key optional; an absent/empty/`null` document yields
+/// event names), `accept(s):` (quest ids), `visited:` (scene ids) and
+/// `occasions:` (occasion names, dsl 0.21.0 §7a) — every key optional; an
+/// absent/empty/`null` document yields
 /// an empty [`MockSet`]. Every literal/pattern/id is carried as raw TEXT,
 /// never resolved against a schema here — that is [`validate`]'s job, run
 /// AFTER [`merge`]. Malformed YAML or a shape violating this contract is
@@ -419,6 +430,34 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         }
     }
 
+    // dsl 0.21.0 §7a: `visited:` (scene ids) and `occasions:` (occasion
+    // names) — both plain lists of strings.
+    for (key, what) in [("visited", "scene ids"), ("occasions", "occasion names")] {
+        let Some(v) = top.get(key) else { continue };
+        let serde_yaml::Value::Sequence(items) = v else {
+            return Err(diag(
+                E_TRACE_MOCK_PARSE,
+                format!("`{key}:` must be a list of {what} (dsl 0.21.0 §7a)"),
+                span,
+            ));
+        };
+        let out = if key == "visited" {
+            &mut mocks.visited
+        } else {
+            &mut mocks.occasions
+        };
+        for item in items {
+            let Some(s) = item.as_str() else {
+                return Err(diag(
+                    E_TRACE_MOCK_PARSE,
+                    format!("every `{key}:` entry must be a string (dsl 0.21.0 §7a)"),
+                    span,
+                ));
+            };
+            out.push(s.to_string());
+        }
+    }
+
     Ok(mocks)
 }
 
@@ -478,6 +517,9 @@ pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
 /// * `accepts` — set UNION, same idiom as `facts` (accepting a quest twice,
 ///   from the file and a flag, is the same accept — not a shadow to
 ///   resolve).
+/// * `visited` — set UNION, the same idiom (a scene presented is presented).
+/// * `occasions` — compose file-then-flags, in that relative order (the
+///   `events` rule: occasions are raised in sequence, not declared).
 pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
     let flag_paths: std::collections::BTreeSet<&str> =
         flags.state.iter().map(|(p, _, _)| p.as_str()).collect();
@@ -510,12 +552,25 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
         .filter(|id| seen_accepts.insert(id.clone()))
         .collect();
 
+    let mut seen_visited = std::collections::BTreeSet::new();
+    let visited: Vec<String> = file
+        .visited
+        .into_iter()
+        .chain(flags.visited)
+        .filter(|id| seen_visited.insert(id.clone()))
+        .collect();
+
+    let mut occasions = file.occasions;
+    occasions.extend(flags.occasions);
+
     MockSet {
         state,
         facts,
         choose,
         events,
         accepts,
+        visited,
+        occasions,
     }
 }
 
