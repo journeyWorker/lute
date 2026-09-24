@@ -23,7 +23,7 @@ use lute_check::envelope;
 use crate::{
     assemble_root_scenario, collect_project_docs, format_prereq, node_cycle_degraded,
     node_ref_to_id, primary_node_ambiguity_note, reach_verdict_text, resolve_node_ref, topo_layers,
-    NodeRef, RootScenario, ScenarioCommand,
+    unanchored_quests, NodeRef, RootScenario, ScenarioCommand,
 };
 
 /// Render the scenario report in a non-text format. See
@@ -62,7 +62,8 @@ fn node_kind_str(node: &NodeId) -> &'static str {
 /// cycle-degradation test ([`crate::node_cycle_degraded`]) — so a node's JSON
 /// token and its text verdict can never disagree. A cycle-degraded node reads
 /// `cycle-degraded` (its reach is genuinely unavailable, `E-CONN-CYCLE`),
-/// never a fabricated reachable/unreachable claim.
+/// never a fabricated reachable/unreachable claim; a declared quest without
+/// `after=` reads `unanchored` (dsl 0.21.0 §7a.5).
 fn reach_token(scenario: &RootScenario, node: &NodeId) -> &'static str {
     if node_cycle_degraded(scenario, node) {
         return "cycle-degraded";
@@ -72,6 +73,8 @@ fn reach_token(scenario: &RootScenario, node: &NodeId) -> &'static str {
         "reachable"
     } else if verdict.starts_with("Unreachable") {
         "unreachable"
+    } else if verdict.starts_with("Unanchored") {
+        "unanchored"
     } else {
         "unknown"
     }
@@ -153,8 +156,9 @@ fn edge_kinds_json(graph: &ConnGraph, from: &NodeId, to: &NodeId) -> Value {
 /// declared `prereq` formula), the flattened `edges` (prerequisite ->
 /// dependent, mirroring `print_graph_for_root`'s SAME `graph.edges` walk,
 /// each carrying the `kinds` array that justifies it — lang 0.8.0, see
-/// [`edge_kinds_json`]), and the deterministic topological `layers`
-/// ([`crate::topo_layers`]).
+/// [`edge_kinds_json`]), the deterministic topological `layers`
+/// ([`crate::topo_layers`]), and the `unanchored` quests the graph does not
+/// hold (dsl 0.21.0 §7a.5; omitted when there are none).
 fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
     let nodes: Vec<Value> = scenario
         .graph
@@ -210,6 +214,18 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
     obj.insert("nodes".to_string(), Value::Array(nodes));
     obj.insert("edges".to_string(), Value::Array(edges));
     obj.insert("layers".to_string(), Value::Array(layers));
+    let unanchored = unanchored_quests(&scenario.quest_ids, &scenario.graph);
+    if !unanchored.is_empty() {
+        obj.insert(
+            "unanchored".to_string(),
+            Value::Array(
+                unanchored
+                    .iter()
+                    .map(|n| Value::String(n.to_string()))
+                    .collect(),
+            ),
+        );
+    }
     Value::Object(obj)
 }
 
@@ -456,7 +472,8 @@ fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand
 
 /// One `digraph` for one root: a node line per `graph.nodes` (shape by kind —
 /// box scene / ellipse quest; color by reach verdict — green reachable / red
-/// unreachable / gray unknown / orange cycle-degraded; label = id) and an
+/// unreachable / gray unknown / orange cycle-degraded; label = id), a dashed
+/// blue edgeless node per unanchored quest (dsl 0.21.0 §7a.5), and an
 /// edge line per `graph.edges` entry (the SAME prerequisite -> dependent walk
 /// the JSON/text views use, with an `active`-ONLY edge drawn `style=dashed` —
 /// lang 0.8.0). Every id is JSON-escaped+quoted so an id
@@ -485,6 +502,14 @@ fn root_dot(root: &Path, scenario: &RootScenario) -> String {
             shape,
             color,
             dot_quote(&label),
+        ));
+    }
+    for node in unanchored_quests(&scenario.quest_ids, &scenario.graph) {
+        let id = node.to_string();
+        s.push_str(&format!(
+            "  {} [shape=ellipse, style=dashed, color=blue, label={}];\n",
+            dot_quote(&id),
+            dot_quote(&format!("{id} (unanchored)")),
         ));
     }
     // `active`-only edges are dashed: the prerequisite is the weaker "reached

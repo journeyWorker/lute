@@ -233,9 +233,13 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
 
     // R5: an unexpanded `@ref(args)` marker (a bodiless def — a component
     // param — or any other expansion failure `decide_slot` left intact,
-    // D3) and `isSet()` are always undecided — `decide()` never reads
-    // runtime state or resolves an unrecognized macro.
-    if name.starts_with(lute_cel::REF_MARKER) || name.eq_ignore_ascii_case("isSet") {
+    // D3), `isSet()`, and `visited()` (dsl 0.21.0 §7a.1 — presentation
+    // history is never known per file) are always undecided — `decide()`
+    // never reads runtime state or resolves an unrecognized macro.
+    if name.starts_with(lute_cel::REF_MARKER)
+        || name.eq_ignore_ascii_case("isSet")
+        || name == crate::cel_resolve::VISITED_FN
+    {
         return None;
     }
     // A fact-query/`now()` call (`is_profile_fact_query`, cel_resolve.rs) is

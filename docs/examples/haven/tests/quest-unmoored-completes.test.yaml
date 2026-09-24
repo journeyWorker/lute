@@ -2,6 +2,11 @@
 # DERIVED relation (`count(can_halt(_)) >= 1`). The seed asserts the rule's
 # conclusion directly for the reason every other test in this suite does:
 # `lute trace` does not run the rule.
+#
+# `noNewReasons` is judged only at `runEnd` (dsl 0.21.0 §7a.2), so the quest
+# cannot complete until the walk raises it: `occasions: [runEnd]`, with
+# `run.shedPressure: 1` — one reason given, still under the line.
+# quest-unmoored-no-run-end.test.yaml is the same seed without the raise.
 file: ../quests/unmoored.lute
 state:
   run.vesnaTrust: 1
@@ -9,7 +14,10 @@ state:
 facts:
   - "can_halt(vesna)"
   - "knows(vesna, manifest)"
+occasions: [runEnd]
 expect:
   exit: complete
+  quests:
+    unmoored: complete
   transcriptContains:
     - "A hand that could reach the coupling, and somebody willing to stand next to it."

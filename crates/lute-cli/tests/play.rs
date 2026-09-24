@@ -247,7 +247,7 @@ fn quest_gated_beats_become_eligible_once_the_quest_completes_during_play() {
          - occasion: hubVisit\nchoose:\n  gift: accept\n",
         0,
     );
-    // No `start`: the quest is active before the first step.
+    // `start="true"`: the quest is active before the first step.
     let start = &v["start"]["quests"][0]["commands"];
     assert_eq!(start[0]["quest"], "firstEscape");
     assert_eq!(start[0]["state"], "active");
@@ -506,4 +506,219 @@ fn the_human_transcript_names_each_step_its_verdicts_and_the_winner() {
         ["hub.welcome", "hub.idle", "hub.trophy", "hub.restless", "hub.firstEver"],
         "{text}"
     );
+}
+
+// ── 0.21.0 §7a: quests meet scenes and occasions ───────────────────────
+
+/// A shape-only project (no plugin declares occasions): scene `haven.shed`
+/// (`on: hubVisit`) whose `take` choice accepts the start-less `sideJob`;
+/// `seen` completes on `visited('haven.shed')` alone; `holdLine` also needs
+/// `calm`, judged only at `runEnd` (true whenever judged: `run.pressure`
+/// defaults to 0). No beat answers `runEnd`.
+fn quest_occasion_project(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.pressure: { type: number, default: 0 }\n",
+    );
+    write(
+        &dir,
+        "scenes/shed.lute",
+        "---\nkind: scene\nid: haven.shed\nuses: ../world.schema.yaml\non: hubVisit\n---\n\n\
+         ## Shed\n\n@guard: The shed is quiet.\n\n<branch id=\"offer\">\n\
+         <choice id=\"take\" label=\"Take the job\">\n@guard: Deal.\n\
+         ::accept{quest=\"sideJob\"}\n</choice>\n\
+         <choice id=\"pass\" label=\"Pass\">\n@guard: Suit yourself.\n</choice>\n</branch>\n",
+    );
+    write(
+        &dir,
+        "quests/hold.lute",
+        "---\nkind: quest\nuses: ../world.schema.yaml\ntitle: Hold\n---\n\n\
+         <quest id=\"holdLine\" title=\"Hold the line\" start=\"true\">\n\
+         <objective id=\"sawShed\" title=\"See the shed\" done=\"visited('haven.shed')\"/>\n\
+         <objective id=\"calm\" title=\"Keep calm\" on=\"runEnd\" done=\"run.pressure < 2\"/>\n\
+         </quest>\n\n\
+         <quest id=\"seen\" title=\"Seen\" start=\"true\">\n\
+         <objective id=\"looked\" title=\"Look in\" done=\"visited('haven.shed')\"/>\n\
+         </quest>\n\n\
+         <quest id=\"sideJob\" title=\"Side job\">\n\
+         <objective id=\"paid\" title=\"Get paid\" done=\"run.pressure > 5\"/>\n\
+         </quest>\n",
+    );
+    dir
+}
+
+/// Play `script` over `project` with `--json`; asserts exit 0.
+fn play_project_json(project: &Path, tag: &str, script: &str) -> Json {
+    let out = play_in(project, tag, script, true);
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+/// Every quest record at `records` (a `start` or step `quests` array),
+/// flattened as `"<quest> -> <state>"` / `"<quest>.<objective> done"`.
+fn quest_records(records: &Json) -> Vec<String> {
+    records
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|doc| doc["commands"].as_array().unwrap())
+        .map(|r| match r["kind"].as_str().unwrap() {
+            "quest" => format!("{} -> {}", r["quest"].as_str().unwrap(), r["state"].as_str().unwrap()),
+            "objective" => format!(
+                "{}.{} done",
+                r["quest"].as_str().unwrap(),
+                r["objective"].as_str().unwrap()
+            ),
+            other => other.to_string(),
+        })
+        .collect()
+}
+
+#[test]
+fn a_visited_objective_is_done_once_its_scene_is_presented() {
+    let dir = quest_occasion_project("visited");
+    let v = play_project_json(
+        &dir,
+        "visited",
+        "steps:\n  - occasion: hubVisit\nchoose:\n  offer: pass\n",
+    );
+    // Before the shed is presented, `visited('haven.shed')` is false.
+    assert_eq!(quest_records(&v["start"]["quests"]), ["holdLine -> active", "seen -> active"]);
+    assert_eq!(winner(&v, 1), Some("haven.shed"));
+    let s1 = quest_records(&step(&v, 1)["quests"]);
+    assert!(s1.contains(&"seen.looked done".to_string()), "{s1:?}");
+    assert!(s1.contains(&"seen -> complete".to_string()), "{s1:?}");
+    assert!(s1.contains(&"holdLine.sawShed done".to_string()), "{s1:?}");
+}
+
+#[test]
+fn an_on_objective_is_judged_only_at_a_step_raising_its_occasion() {
+    let dir = quest_occasion_project("occasion");
+
+    // `calm`'s `done` holds throughout, yet two hub visits never judge it.
+    let v = play_project_json(
+        &dir,
+        "occasion-never",
+        "steps:\n  - occasion: hubVisit\n  - occasion: hubVisit\nchoose:\n  offer: pass\n",
+    );
+    for n in 1..=2 {
+        let records = quest_records(&step(&v, n)["quests"]);
+        assert!(
+            !records.iter().any(|r| r.starts_with("holdLine.calm") || r == "holdLine -> complete"),
+            "step {n}: {records:?}"
+        );
+    }
+
+    // `runEnd`: no beat answers it (shape-only vocabulary), yet it is a legal
+    // step because an objective is judged at it.
+    let v = play_project_json(
+        &dir,
+        "occasion-raised",
+        "steps:\n  - occasion: hubVisit\n  - occasion: runEnd\nchoose:\n  offer: pass\n",
+    );
+    assert_eq!(v["exit"], "complete");
+    assert!(!quest_records(&step(&v, 1)["quests"]).contains(&"holdLine -> complete".to_string()));
+    assert_eq!(step(&v, 2)["occasion"], "runEnd");
+    assert!(candidate_ids(&v, 2).is_empty(), "{}", step(&v, 2));
+    assert_eq!(winner(&v, 2), None);
+    assert_eq!(
+        quest_records(&step(&v, 2)["quests"]),
+        ["holdLine.calm done", "holdLine -> complete"]
+    );
+
+    let out = play_in(
+        &dir,
+        "occasion-human",
+        "steps:\n  - occasion: hubVisit\n  - occasion: runEnd\nchoose:\n  offer: pass\n",
+        false,
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    let s2 = text
+        .split("── step 2 · runEnd ──────────────\n")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{text}"));
+    let s2: Vec<&str> = s2.lines().take(4).collect();
+    assert_eq!(
+        s2,
+        [
+            "  (no candidates)",
+            "  → (no eligible beat — the occasion passes)",
+            "  holdLine.calm done",
+            "  quest holdLine -> complete",
+        ],
+        "{text}"
+    );
+
+    // An occasion neither a beat nor an objective names stays a usage error.
+    let out = play_in(
+        &dir,
+        "occasion-typo",
+        "steps:\n  - occasion: runEnnd\n",
+        false,
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stdout(&out));
+    assert!(
+        stderr(&out).contains("occasion `runEnnd` is answered by no beat and judges no objective"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn a_scene_accept_activates_an_accept_driven_quest_after_the_presentation() {
+    let dir = quest_occasion_project("accept");
+    let script = "steps:\n  - occasion: hubVisit\nchoose:\n  offer: take\n";
+    let v = play_project_json(&dir, "accept", script);
+
+    let start = quest_records(&v["start"]["quests"]);
+    assert!(!start.iter().any(|r| r.starts_with("sideJob")), "{start:?}");
+    let accept = presented(&v, 1)
+        .iter()
+        .find(|r| r["kind"] == "accept")
+        .unwrap_or_else(|| panic!("{}", step(&v, 1)));
+    assert_eq!(accept["quest"], "sideJob");
+    assert!(
+        quest_records(&step(&v, 1)["quests"]).contains(&"sideJob -> active".to_string()),
+        "{}",
+        step(&v, 1)
+    );
+
+    let out = play_in(&dir, "accept-human", script, false);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    let lines: Vec<&str> = text.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| *l == "  quest sideJob accepted")
+        .unwrap_or_else(|| panic!("{text}"));
+    assert_eq!(lines[at + 1], "  quest sideJob -> active", "{text}");
+    assert!(
+        lines[..at].iter().any(|l| *l == "@guard: Deal."),
+        "the accept lands after the presentation: {text}"
+    );
+}
+
+#[test]
+fn a_branch_without_the_accept_leaves_the_quest_unset() {
+    let dir = quest_occasion_project("no-accept");
+    let script = "steps:\n  - occasion: hubVisit\n  - occasion: runEnd\nchoose:\n  offer: pass\n";
+    let v = play_project_json(&dir, "no-accept", script);
+    assert!(!presented(&v, 1).iter().any(|r| r["kind"] == "accept"));
+    for records in [
+        quest_records(&v["start"]["quests"]),
+        quest_records(&step(&v, 1)["quests"]),
+        quest_records(&step(&v, 2)["quests"]),
+    ] {
+        assert!(!records.iter().any(|r| r.starts_with("sideJob")), "{records:?}");
+    }
+    let out = play_in(&dir, "no-accept-human", script, false);
+    assert!(!stdout(&out).contains("sideJob"), "{}", stdout(&out));
 }

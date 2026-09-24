@@ -1,0 +1,17 @@
+# The seed of quest-unmoored-completes.test.yaml, minus `occasions: [runEnd]`.
+# Every continuous objective is done and the pressure is under the line, and the
+# quest is still `active`: `noNewReasons` is judged only when `runEnd` is raised
+# (dsl 0.21.0 §7a.2). Before 0.21.0 this objective completed the quest at
+# activation, before the player had moved (T9.4) — this test is that finding,
+# closed.
+file: ../quests/unmoored.lute
+state:
+  run.vesnaTrust: 1
+  run.shedPressure: 1
+facts:
+  - "can_halt(vesna)"
+  - "knows(vesna, manifest)"
+expect:
+  exit: complete
+  quests:
+    unmoored: active

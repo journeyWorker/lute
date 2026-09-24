@@ -35,6 +35,8 @@ The Lute-CEL environment provides exactly: CEL operators, literals, list literal
 
 When the relational layer is in play, conditions may also read the fact database through a bounded predicate surface: `holds(rel(args|_))` (valid-now membership, any slot may be `_`), `count(rel(args|_)) OP n` (distinct valid tuples), and `validAt(rel(args|_), T)` (historical form over base relations). `T` is a `narrativeTime` expression — in practice `quest.<id>.activatedAt`, the only one an author can name (see [Quests & scenes](/language/quests-and-scenes/)). Joins under aggregation are expressed as [derived relations](/state/facts-and-datalog/), never multi-relation `count`. A `<match on>` subject must stay a scalar/enum path; fact queries live in guards only.
 
+Since 0.21.0, every condition slot may also call `visited('<scene id>')` — true once that scene has been presented in this save, the same visited set a scene's `after:` reads. The argument is one string literal naming a scene of the project (`E-CONN-UNKNOWN-NODE` at `check-project` otherwise). See [Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions).
+
 ## Compile target
 
 `@ref` macros expand at **compile time**; the resulting inline CEL string is carried in the flat command-record artifact and evaluated at **runtime** by the engine. Everything desugars to flat records plus CEL strings — the compiler↔engine contract. The unset sentinel is CEL `null` (tested with `!isSet(path)` or a `<when is="unset">` arm), never the string `'unset'` — comparing to that string is `E-UNSET-LITERAL`.

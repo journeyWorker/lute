@@ -238,7 +238,14 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// `schemas/lute-ir-0.21.schema.json` per the release-line rule and gains
 /// `sceneBeat`, the entry fields, and the `indexBeat` row. The MAJOR-only
 /// runtime gate does not move: an engine without beat support ignores the
-/// new fields and reaches every scene by explicit flow, as before.
+/// new fields and reaches every scene by explicit flow, as before. The same
+/// release adds the quest–scene joins (dsl 0.21.0 §7a):
+/// [`ir::ObjectiveEntry`] gains the optional `on` (the occasion at which the
+/// objective is judged), a new `accept` record ([`ir::AcceptCmd`],
+/// `::accept{quest}`) is appended to the command union, and `visited('<id>')`
+/// becomes legal in every CEL slot — out of the portable `expr` profile like
+/// `holds(…)`, so such a slot carries `raw` alone. An engine that does not
+/// implement 0.21 rejects the `accept` kind as any unknown record kind.
 pub const LUTE_IR_VERSION: &str = "0.21.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating

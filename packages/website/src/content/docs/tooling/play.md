@@ -110,7 +110,7 @@ choose:                          # branch/hub id -> choice id (a list for a hub'
 
 `state:`, `facts:`, and `choose:` use exactly the grammar of a [`lute trace --mock`](/tooling/tracing/) file. Each step is either `{occasion, target?, pick?}` or `{newRun: true}`.
 
-The script is rejected before anything plays — a **usage error, exit 2** — when it is unreadable or malformed YAML; it has an unknown top-level key; `steps` is missing or empty; a step is not exactly one of the two shapes; a step names an occasion no resolved plugin declares (when some plugin declares occasions) or, in a shape-only project, an occasion no beat answers; a step carries `target` on an occasion not declared `target: true`; `pick` appears on a `select: first` occasion; a `select: all` step has no `pick`; or a `pick` names no beat that answers that occasion.
+The script is rejected before anything plays — a **usage error, exit 2** — when it is unreadable or malformed YAML; it has an unknown top-level key; `steps` is missing or empty; a step is not exactly one of the two shapes; a step names an occasion no resolved plugin declares (when some plugin declares occasions) or, in a shape-only project, an occasion that neither a beat answers nor an `<objective on>` judges; a step carries `target` on an occasion not declared `target: true`; `pick` appears on a `select: first` occasion; a `select: all` step has no `pick`; or a `pick` names no beat that answers that occasion.
 
 ### What each step does
 
@@ -118,8 +118,9 @@ The script is rejected before anything plays — a **usage error, exit 2** — w
 2. **Verdicts** — a candidate is eligible when its `once` is not spent (scene beats only: `run` — not presented since the last `newRun`; `user` — never presented in this play; `false` — never spent), its `after:` holds (scene beats; evaluated against the **live** `visited` set of presented scenes and the `completed` / `active` sets of real quest states), and its `when` holds (evaluated by the reference runner's CEL evaluator over live state and facts, with the Datalog rules applied). A `when` that evaluates to unknown — `validAt(…)`, `now()` — halts the walk **incomplete (exit 3)** naming the beat, unless a definitely-eligible beat outranks it on a `select: first` occasion, where it cannot change the winner.
 3. **Order** — eligible beats by priority descending, then project order.
 4. **Select** — the occasion's `select` comes from the resolved plugins' `occasions` export (an undeclared occasion is `first`). `first`: the first eligible beat wins; none eligible, and the occasion passes with no story. `all`: the step's `pick` is presented; a pick that is not eligible at that moment is an **error (exit 1)**.
-5. **Present** — a scene beat runs through the reference runner (`lute run`'s evaluator): `scene.*` resets to the scene's own defaults, `run.*` / `user.*` / `app.*` / `quest.*` state and facts carry over, and `choose:` decides branches and hubs; an unscripted decision halts **incomplete (exit 3)**. An entry beat is presented by the lore-entry rules: its effects apply on the first read only, then `entry.<id>.read` becomes true. A scene's `::end` ends the whole playthrough, complete.
-6. **Quests** — after every presentation, and once before step 1, every quest lifecycle advances exactly as `lute run` advances a quest artifact: activation (`start`, or immediately without one), objective completion (monotone; objective bodies play once), `fail` before completion, `<on>` handlers, and `<reward>` grants. So a later `when` over `quest.*`, or an `after: completed(…)` / `active(…)`, sees real progress.
+5. **Present** — a scene beat runs through the reference runner (`lute run`'s evaluator): `scene.*` resets to the scene's own defaults, `run.*` / `user.*` / `app.*` / `quest.*` state and facts carry over, and `choose:` decides branches and hubs; an unscripted decision halts **incomplete (exit 3)**. An entry beat is presented by the lore-entry rules: its effects apply on the first read only, then `entry.<id>.read` becomes true. A scene's `::end` ends the whole playthrough, complete. A scene's `::accept{quest="<id>"}` prints `quest <id> accepted`; the quest activates at the advance right after the presentation. A scene counts as visited — for `after:` and for `visited('<id>')` in any condition — once its presentation finished.
+6. **Quests** — after every presentation, and once before step 1, every quest lifecycle advances exactly as `lute run` advances a quest artifact: activation (`start`, or — for a quest with no `start` — an accept from a presented scene's `::accept`; a start-less quest never activates on its own), objective completion (monotone; objective bodies play once), `fail` before completion, `<on>` handlers, and `<reward>` grants. So a later `when` over `quest.*`, or an `after: completed(…)` / `active(…)`, sees real progress.
+7. **Occasion-judged objectives** — then the step's occasion judges the `<objective on="<occasion>">` objectives of every **active** quest (dsl 0.21.0 §7a.2), and the lifecycles settle again, so a quest can complete (or fail) at exactly that step. An `on` objective is judged at no other time. An occasion that only objectives judge is a legal step even in a shape-only project; with no beat to present it prints `(no candidates)` and passes, then judges.
 
 A `newRun: true` step resets `run.*` state to its declared defaults, run-tier facts to the project's seed facts, the run-tier `entry.<id>.read` flags (so an entry's effects apply again on its first read in the new run), and `once: run` spending. `user.*` / `app.*` / `quest.*` state, user- and app-tier facts, the `visited` history, and `once: user` spending persist. `once: user` across separate `lute play` invocations is not modelled — put the runs in one script, separated by `newRun` steps.
 
@@ -147,11 +148,48 @@ The human transcript names every step, lists its candidates with their verdicts,
 ```
 
 - Every header is its text followed by a fixed `──────────────` rule. `── start` carries the quest transitions made before step 1; each step opens with `── step <n> · <occasion>`, plus `→ <target>` for a targeted step and `(select: all, pick: <id>)` on a pick.
-- Candidates are listed eligible first (`✓`), in selection order, then ineligible (`✗`), in selection order, each with its kind and priority. An ineligible candidate carries its reason: `once: run — already presented this run`, `once: user — already presented`, `after: prerequisite not satisfied`, or `when: false`.
+- Candidates are listed eligible first (`✓`), in selection order, then ineligible (`✗`), in selection order, each with its kind and priority. An ineligible candidate carries its reason: `once: run — already presented this run`, `once: user — already presented`, `after: prerequisite not satisfied`, or `when: false`. A step whose occasion no beat answers lists `(no candidates)`.
 - `→ <id>` names the winner. With no winner the line reads `→ (no eligible beat — the occasion passes)`.
-- The presented beat's own transcript follows: content lines as `@speaker: text`, decisions as `▷ choice <id>: … ← chosen: <id>`, state writes as `set <path> = <value>`, and an entry's `entry <id> (first read)` — or `entry <id> (re-read: effects skipped)`, with each skipped effect marked `(skipped: re-read)`. Quest transitions the presentation caused come last: `<quest>.<objective> done`, `quest <id> -> <state>`, and reward grants.
+- The presented beat's own transcript follows: content lines as `@speaker: text`, decisions as `▷ choice <id>: … ← chosen: <id>`, state writes as `set <path> = <value>`, a scene's `::accept` as `quest <id> accepted` (JSON: an `{"kind": "accept", "quest": "<id>"}` record in `presented.commands`), and an entry's `entry <id> (first read)` — or `entry <id> (re-read: effects skipped)`, with each skipped effect marked `(skipped: re-read)`. Quest transitions come last — those the presentation caused, then those the step's occasion judged: `<quest>.<objective> done`, `quest <id> -> <state>`, and reward grants. In JSON both land in the step's `quests`.
 - A `newRun` step prints `── step <n> · new run` and `run.* state, run-tier facts and once: run reset`.
 - The walk ends with `── end: complete (<n> steps)`, or `── halted: <message>` when it stops early.
+
+A shape-only project (no plugins) with a hub scene that offers a side job, and a quest whose `calm` objective is judged at `runEnd`:
+
+```lute unverified="one file of a multi-file project: the scene answering hubVisit and a world schema declaring run.pressure sit beside it"
+<quest id="holdLine" title="Hold the line" start="true">
+  <objective id="sawShed" title="See the shed" done="visited('haven.shed')"/>
+  <objective id="calm" title="Keep it calm" on="runEnd" done="run.pressure < 2"/>
+</quest>
+
+<quest id="sideJob" title="Side job">
+  <objective id="mind" title="Mind the shed" done="run.pressure < 5"/>
+</quest>
+```
+
+With `steps: [{occasion: hubVisit}, {occasion: runEnd}]` and `choose: { offer: take }` — the choice whose body is `::accept{quest="sideJob"}` — the playthrough accepts the side job during the presentation, activates it right after, and completes `holdLine` only when `runEnd` is raised:
+
+```
+── start ──────────────
+  quest holdLine -> active
+── step 1 · hubVisit ──────────────
+  ✓ haven.shed [scene, priority 0]
+  → haven.shed
+@vesna: Somebody has to mind the shed.
+▷ choice offer: [take] leave        ← chosen: take
+  quest sideJob accepted
+@vesna: Good. It's yours.
+  quest sideJob -> active
+  holdLine.sawShed done
+  sideJob.mind done
+  quest sideJob -> complete
+── step 2 · runEnd ──────────────
+  (no candidates)
+  → (no eligible beat — the occasion passes)
+  holdLine.calm done
+  quest holdLine -> complete
+── end: complete (2 steps) ──────────────
+```
 
 `--json` emits the same walk as one object:
 
@@ -320,7 +358,7 @@ uses: ../house.schema.yaml
 title: The old soldier
 ---
 
-<quest id="oldSoldier" title="The old soldier">
+<quest id="oldSoldier" title="The old soldier" start="true">
   <objective id="takeGift" title="Accept the old soldier's gift" done="user.giftAccepted"/>
 </quest>
 ```
@@ -416,7 +454,7 @@ $ lute play house --script house/plays/tenth-run.play.yaml
 
 Reading it step by step:
 
-- **Start** — the quest has no `start`, so it activates before the first step.
+- **Start** — the quest's `start` is `true`, so it activates before the first step. (A quest with no `start` would wait for a scene's `::accept`.)
 - **Step 1** — both lounge scenes are eligible; priority 20 beats 10.
 - **Step 2** — `inbox` is `select: all`, so the script picks. `megNote`'s `when` is still false, so it is listed but not offered; picking it here would be an error (exit 1).
 - **Step 3** — `user.runs` is 10, so the gift is eligible. Accepting it sets `user.giftAccepted`, and the quest advances right after the presentation.

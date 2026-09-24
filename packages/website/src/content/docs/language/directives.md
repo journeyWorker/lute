@@ -121,10 +121,38 @@ also the honest version signal — an engine that does not implement the IR mino
 
 ## Reserved directives
 
-Two `::`-directives are built-in rather than staging vocabulary: `::set` writes declared state (see
-[State model](/state/state-model/)) and `::use` expands a reusable content component (see
-[Components & extends](/language/components-and-extends/)). Content additionally uses
+Three `::`-directives are built-in rather than staging vocabulary: `::set` writes declared state (see
+[State model](/state/state-model/)), `::use` expands a reusable content component (see
+[Components & extends](/language/components-and-extends/)), and `::accept` takes up a quest (below).
+Content additionally uses
 `::assert` / `::retract` to mutate facts (see [Facts & Datalog](/state/facts-and-datalog/)) — in
 scenes as well as quests. `docs/examples/haven/scenes/cryobank.lute` is `kind: scene` and carries
 four `::assert` directives inside `<choice>` bodies; `lute check` on it reports
 `ok … (0 warning(s))`.
+
+### `::accept` — taking up a quest
+
+`::accept{quest="<id>"}` (dsl 0.21.0) declares that the player accepts an **accept-driven** quest —
+one with no `start` predicate — at this point in a scene. It is the scene-side form of the engine's
+"accept quest" action and of `lute trace --accept`, and it usually sits in the choice where the
+player agrees:
+
+```lute
+<branch id="request">
+  <choice id="accept" label="I'll keep it calm">
+    ::accept{quest="calmTheShed"}
+    @vesna: Thank you.
+  </choice>
+  <choice id="decline" label="Not now">
+    @vesna: Another time, then.
+  </choice>
+</branch>
+```
+
+Like `::set` and `::assert`, it is built in, not plugin vocabulary: it lowers to its own IR record,
+`{"kind": "accept", "addr": …, "quest": "calmTheShed"}`, and the engine activates the quest if it is
+still `unset` and ignores the record otherwise. The target is checked twice: a missing or
+non-identifier `quest` is `E-ACCEPT-TARGET` in `lute check`, and `check-project` reports
+`E-ACCEPT-TARGET` when the id names no quest in the project or names a quest that has a `start`
+predicate (such a quest activates itself; accepting it means nothing). See
+[Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions).

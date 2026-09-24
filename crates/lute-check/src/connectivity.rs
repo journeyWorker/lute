@@ -14,7 +14,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, Assert, Document, Node};
+use lute_syntax::ast::{Arm, Assert, CelKind, Document, Node};
 
 use crate::check::CheckResult;
 use crate::meta::{
@@ -322,15 +322,7 @@ fn check_formula_atoms(
         // name quoted back in the message differs.
         let (id, func) = match &atom {
             Atom::Visited(key) => {
-                if !key_set.contains_key(key) {
-                    let mut message = format!(
-                        "unknown node: no scene resolves to key `{key}` (`visited`, dsl §2.3/§4.1)"
-                    );
-                    if let Some(sugg) = nearest_match(key, key_set.keys().map(String::as_str), 2) {
-                        message.push_str(&format!(" — did you mean `{sugg}`?"));
-                    }
-                    out.push((path.to_path_buf(), unknown_node_diag(message, span)));
-                }
+                check_scene_key(key, "dsl §2.3/§4.1", span, path, key_set, out);
                 continue;
             }
             Atom::Completed(id) => (id, "completed"),
@@ -347,10 +339,78 @@ fn check_formula_atoms(
     }
 }
 
+/// One `visited(K)` target against the project's scene keys: a miss is
+/// [`E_CONN_UNKNOWN_NODE`] at `span`, with a "did you mean" when a key is
+/// close. `cite` names the surface the call came from.
+fn check_scene_key(
+    key: &str,
+    cite: &str,
+    span: Span,
+    path: &Path,
+    key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
+    out: &mut Vec<(PathBuf, Diagnostic)>,
+) {
+    if key_set.contains_key(key) {
+        return;
+    }
+    let mut message = format!("unknown node: no scene resolves to key `{key}` (`visited`, {cite})");
+    if let Some(sugg) = nearest_match(key, key_set.keys().map(String::as_str), 2) {
+        message.push_str(&format!(" — did you mean `{sugg}`?"));
+    }
+    out.push((path.to_path_buf(), unknown_node_diag(message, span)));
+}
+
+/// dsl 0.21.0 §7a.1: every `visited('<scene id>')` call in a condition slot
+/// of `doc` — the body's CEL slots (quest `start` / `fail`, objective
+/// `done`, entry `when`, line / branch `when=`, `<when test>`, …) and a
+/// scene beat's frontmatter `when:` — resolved against the scene keys
+/// exactly as an `after:` `visited` atom is. Each slot is re-parsed here
+/// (the project walk holds no CEL arena); an unparseable slot is the
+/// per-file check's `E-CEL-PARSE`, never re-reported.
+fn check_visited_calls(
+    doc: &Document,
+    path: &Path,
+    key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
+    out: &mut Vec<(PathBuf, Diagnostic)>,
+) {
+    let check_raw = |raw: &str, span: Span, out: &mut Vec<(PathBuf, Diagnostic)>| {
+        let mut arena = lute_cel::CelArena::default();
+        let Some(root) =
+            lute_cel::parse_slot_marked_refs(&mut arena, raw).and_then(|h| arena.get(h).cloned())
+        else {
+            return;
+        };
+        for key in crate::cel_resolve::visited_targets(&root.expr) {
+            check_scene_key(&key, "dsl 0.21.0 §7a.1", span, path, key_set, out);
+        }
+    };
+    lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
+        if slot.kind == CelKind::Condition && slot.raw.contains(crate::cel_resolve::VISITED_FN) {
+            check_raw(&slot.raw, slot.span, out);
+        }
+    });
+    if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
+        if let Some(when) = scene_frontmatter_str(doc, "when") {
+            if when.contains(crate::cel_resolve::VISITED_FN) {
+                check_raw(&when, crate::beats::top_value_span(&doc.meta, "when"), out);
+            }
+        }
+    }
+}
+
+/// A top-level string value of a scene's frontmatter (the [`scene_after`]
+/// lookup, for keys whose non-string shape another pass owns).
+fn scene_frontmatter_str(doc: &Document, key: &str) -> Option<String> {
+    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
+    value.get(key)?.as_str().map(str::to_string)
+}
+
 /// Resolve every `after` prerequisite formula in `docs` — BOTH surfaces
 /// (dsl §2.1): a scene document's frontmatter `after:` key, AND every
 /// `<quest after="…">` attribute (a quest pack declares its prerequisite
-/// there instead) — against the known project node sets. `key_set` (T3
+/// there instead) — against the known project node sets, and every
+/// condition slot's `visited('<scene id>')` call (dsl 0.21.0 §7a.1) against
+/// the scene keys. `key_set` (T3
 /// [`scene_key_set`]) and `quest_ids` ([`quest_id_set`]) are supplied by the
 /// caller so both are computed exactly once per resolved project root
 /// (`lute-cli`'s `by_root` grouping), never recomputed per-doc here.
@@ -389,6 +449,7 @@ pub fn resolve_nodes(
                 }
             }
         }
+        check_visited_calls(doc, path, key_set, &mut out);
     }
     out
 }

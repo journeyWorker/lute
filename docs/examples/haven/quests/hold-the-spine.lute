@@ -13,14 +13,16 @@ title: Hold the Spine
   carry `after=`). See the README's "Deliberate imperfections".
 
   What it costs, verified with `lute scenario docs/examples/haven`: this quest appears
-  in NO topological layer and on NO edge. The graph lists five quests, not six —
-  `after=` is the ONLY thing that puts a quest into it, so a quest without one is
-  absent from the project graph entirely, and no amount of `start=`/`done=` work will
-  place it. Two knock-ons: `scenario envelope quest:holdTheSpine` degrades to the
+  in NO topological layer and on NO edge — `after=` is the ONLY thing that puts a
+  quest into the prerequisite graph, and no amount of `start=`/`done=` work will
+  place it. Since dsl 0.21.0 (§7a.5) it is no longer silently absent: the report
+  lists it after the edges, under `unanchored (no `after` — available from the start
+  of play; no prerequisites in this graph):`, and `scenario reach quest:holdTheSpine`
+  gives it its own verdict, `Unanchored — a quest with no declared `after`
+  prerequisite: available from the start of play; …`. The graph still holds five
+  quests, not six. `scenario envelope quest:holdTheSpine` still degrades to the
   defaults-only `D` table (dsl §4.4) plus a note offering the full project-resolved
-  envelope if `after` were declared, and `scenario reach quest:holdTheSpine` — which
-  resolves by id, so it still answers — reports `after: (none declared) — this node is
-  an entry point`, i.e. available from the first instant of the work.
+  envelope if `after` were declared.
 
   Story-wise that is also true: the coupling can be held from the moment somebody who
   can halt the shed is awake, which `start="holds(can_halt(toma))"` already says. The

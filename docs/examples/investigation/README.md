@@ -167,9 +167,11 @@ Every document in the project compiles (`scenes/*.lute` and
 `lute trace` is a manual preview; `lute test` turns those mock-driven
 playthroughs into repeatable assertions. Each `*.test.yaml` under `tests/`
 names a document (`file:`, resolved relative to the test file), carries the
-same five mock surfaces as `lute trace --mock`
-(`state:`/`facts:`/`choose:`/`events:`/`accepts:`), and declares an `expect:`
-block:
+same mock surfaces as `lute trace --mock`
+(`state:`/`facts:`/`choose:`/`events:`/`accepts:`, and since dsl 0.21.0
+`visited:`/`occasions:`), and declares an `expect:` block — `exit:`,
+`transcriptContains:`, `state:`, and, for a quest document, `quests:`
+(`{questId: unset | active | complete | failed}`):
 
 ```yaml
 file: ../scenes/confrontation.lute

@@ -141,6 +141,10 @@ them, a beat naming an undeclared occasion is `E-OCCASION-UNKNOWN`, and a `targe
 declared without `target: true` is `E-BEAT-ATTR`. The declaration format, `select`, and `target`
 are covered on [Playing a story](/tooling/play/#occasions).
 
+An occasion can also judge quest objectives: `<objective on="runEnd" …>` evaluates its `done` only
+when `runEnd` is raised while its quest is active, and its occasion is checked against the same
+vocabulary. See [Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions).
+
 ## What the checker proves
 
 | Code | When |

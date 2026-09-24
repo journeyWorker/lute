@@ -14,7 +14,10 @@
 //! unknown/non-integer/out-of-range index is `U`. `isSet()`/`has()` are
 //! DEFINITE (D19) — presence, not
 //! value. `holds`/`count` run a bounded scan of the supplied fact set
-//! (never a Datalog fixpoint, §4.2 rule 3). `now()`/`validAt(...)` are
+//! (never a Datalog fixpoint, §4.2 rule 3). `visited('<scene id>')` (dsl
+//! 0.21.0 §7a.1) is DEFINITE over the supplied presented-scene set the
+//! [`FactStore`] carries — closed-world, like a non-derived relation: an id
+//! absent from the set was not presented. `now()`/`validAt(...)` are
 //! always `U` — narrative time has no mock surface. Every `U` this module
 //! produces records why into `unresolved`.
 
@@ -213,11 +216,15 @@ fn render_pattern(relation: &str, pattern: &[Pat]) -> String {
 
 /// The mock fact set as modified by trace-applied `::assert`/`::retract`
 /// deltas (§4.3), plus the relational vocabulary needed to tell a
-/// `derive:true` relation apart from an ordinary closed-world one.
+/// `derive:true` relation apart from an ordinary closed-world one, plus the
+/// presented-scene set `visited(…)` reads (dsl 0.21.0 §7a.1) — engine
+/// knowledge of the save, supplied as a mock (`visited:`) exactly as facts
+/// are, and cloned with them into every pre-event snapshot.
 #[derive(Clone)]
 pub struct FactStore<'a> {
     facts: BTreeSet<(String, Vec<String>)>,
     rel_vocab: &'a RelVocab,
+    visited: BTreeSet<String>,
 }
 
 impl<'a> FactStore<'a> {
@@ -225,7 +232,19 @@ impl<'a> FactStore<'a> {
         Self {
             facts: BTreeSet::new(),
             rel_vocab,
+            visited: BTreeSet::new(),
         }
+    }
+
+    /// Record that the scene `id` has been presented in this save (dsl
+    /// 0.21.0 §7a.1): `visited('<id>')` reads true from now on.
+    pub fn visit(&mut self, id: &str) {
+        self.visited.insert(id.to_string());
+    }
+
+    /// `visited('<id>')` — definite, closed-world over the presented set.
+    pub fn visited(&self, id: &str) -> bool {
+        self.visited.contains(id)
     }
 
     pub fn assert(&mut self, rel: &str, args: &[String]) {
@@ -562,6 +581,12 @@ fn eval_call(c: &CallExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAto
         ("holds", [pattern]) | ("count", [pattern]) if matches!(pattern.expr, Expr::Call(_)) => {
             eval_fact_query(c.func_name.as_str(), pattern, env, unresolved)
         }
+        // dsl 0.21.0 §7a.1: one string-literal scene id, definite (never an
+        // unresolved atom — the presented set is the mock).
+        ("visited", [arg]) => match &arg.expr {
+            Expr::Literal(Val::String(id)) => Value::Bool(env.facts.visited(id)),
+            _ => Value::Unknown, // non-literal arg; defensive, unreachable post-check
+        },
         ("validAt", [pattern, _]) if matches!(pattern.expr, Expr::Call(_)) => {
             unresolved.push(UnresolvedAtom::Time);
             Value::Unknown

@@ -140,9 +140,11 @@ function raise(index: ProjectIndex, occasion: string, target: string | undefined
     .filter(({ beat }) => isEligible(beat, state, facts, presented))
     .sort((a, b) => b.beat.priority - a.beat.priority || a.order - b.order)
     .map(({ beat }) => beat);
-  if (eligible.length === 0) return; // the occasion passes: engine default
-  const chosen = select === "first" ? eligible[0] : playerPicks(eligible);
-  present(chosen, state, facts, presented);
+  if (eligible.length > 0) {
+    const chosen = select === "first" ? eligible[0] : playerPicks(eligible);
+    present(chosen, state, facts, presented);
+  } // else the occasion passes with no story: engine default
+  judgeObjectives(occasion, state, facts); // objectives with `on`, quest-lifecycle.md
 }
 
 function isEligible(beat: IndexBeat, state, facts, presented: Presented) {
@@ -180,6 +182,18 @@ body runs against live state, and its `set` / `assert` / `retract` records
 apply only on the first read, after which the engine sets
 `entry.<id>.read = true`.
 
+## Occasions judge objectives
+
+An occasion also judges quest objectives that name it (dsl 0.21.0 §7a.2): an
+`ObjectiveEntry` with `on` is evaluated only when its occasion is raised
+while its quest is `active` (`quest-lifecycle.md`). Raising an occasion
+therefore does two things, in this order: select and present a beat as
+above, then evaluate every active quest's objectives with that `on` and
+settle those quests. An occasion referenced only by objectives is still
+raised — with no beat to present, only the second step runs. An objective's
+occasion is checked against the vocabulary exactly as a beat's `on`
+(`E-OCCASION-UNKNOWN`, `E-BEAT-ATTR`).
+
 ## Static guarantees
 
 An artifact that compiled cleanly carries these guarantees:
@@ -204,4 +218,8 @@ occasion and target beats every time.
   verdicts, presents the winner (or the step's `pick` on a `select: all`
   occasion), runs it with the reference runner, and advances every quest
   lifecycle as `lute run` does, so `when` conditions over `quest.*` and
-  `after: completed(…)` see real progress. `--json` emits the same transcript.
+  `after: completed(…)` see real progress; a step's occasion also judges the
+  objectives that name it. `--json` emits the same transcript.
+- `lute trace` / `lute run` raise occasions for a quest walk with the mock
+  key `occasions: [runEnd]` or `--occasion runEnd` (repeatable), applied in
+  order after the walk settles.

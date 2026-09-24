@@ -19,7 +19,7 @@ use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
-use lute_syntax::ast::{Arm, AttrValue, Document, Node};
+use lute_syntax::ast::{Arm, AttrValue, Document, Node, ACCEPT_DIRECTIVE};
 use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind};
 
 use super::{attr_enum_values, type_label, Cursor, QuestConstruct};
@@ -136,6 +136,7 @@ fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
             ("when", "cel<bool>"),
             ("title", "string"),
             ("optional", "bool"),
+            ("on", "string"),
         ],
         QuestConstruct::Entry => &[
             ("id", "string"),
@@ -320,9 +321,10 @@ fn kind_value_items(
     None
 }
 
-/// Every directive name (`::bg`, `::camera`, …), kind `FUNCTION`.
+/// Every directive name (`::bg`, `::camera`, …), kind `FUNCTION`, plus the
+/// language's core `::accept` (dsl 0.21.0 §7a.3), which no snapshot declares.
 fn directive_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
-    snapshot
+    let mut items: Vec<CompletionItem> = snapshot
         .directives
         .values()
         .filter(|d| snapshot.permissions.allows_directive(&d.name))
@@ -339,7 +341,16 @@ fn directive_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
             detail: d.layer.as_ref().map(|l| format!("layer {l}")),
             ..Default::default()
         })
-        .collect()
+        .collect();
+    if snapshot.permissions.allows_directive(ACCEPT_DIRECTIVE) {
+        items.push(CompletionItem {
+            label: ACCEPT_DIRECTIVE.to_string(),
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some("core — accept a quest".to_string()),
+            ..Default::default()
+        });
+    }
+    items
 }
 
 /// A directive's attribute keys, kind `FIELD`, minus keys already written on the
@@ -352,6 +363,18 @@ fn attr_key_items(
 ) -> Vec<CompletionItem> {
     if !snapshot.permissions.allows_directive(directive) {
         return Vec::new();
+    }
+    // dsl 0.21.0 §7a.3: the core `::accept` has one attribute, `quest`.
+    if directive == ACCEPT_DIRECTIVE {
+        if present_attr_keys(doc, off).iter().any(|k| k == "quest") {
+            return Vec::new();
+        }
+        return vec![CompletionItem {
+            label: "quest".to_string(),
+            kind: Some(CompletionItemKind::FIELD),
+            detail: Some("quest id".to_string()),
+            ..Default::default()
+        }];
     }
     let Some(decl) = snapshot.directive(directive) else {
         return Vec::new();

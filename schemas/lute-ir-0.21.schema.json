@@ -354,7 +354,7 @@
       "required": [
         "raw"
       ],
-      "description": "A CEL slot's raw text plus its optional portable lowered `expr` (IR A7). `expr` is absent for empty/out-of-profile CEL."
+      "description": "A CEL slot's raw text plus its optional portable lowered `expr` (IR A7). `expr` is absent for empty/out-of-profile CEL — including every slot that calls a fact query (`holds`/`count`/`validAt`) or `visited('<scene id>')` (dsl 0.21.0 §7a.1: true once that scene has been presented in this save); the engine evaluates such a slot from `raw`."
     },
     "placeholder": {
       "description": "One {{…}} interpolation placeholder (IR A3), internally tagged on `kind` (lowercase). The runtime substitutes it against live state; the enclosing text/label keeps the verbatim {{…}} marker.",
@@ -1128,6 +1128,11 @@
             "$ref": "#/$defs/rewardEntry"
           },
           "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this objective in declaration order. Objective grants fire once at fresh `done` (spec §3 D-D), BEFORE any quest-level grant. `on=` is never legal on an objective-level entry (checker `E-REWARD-ATTR`); every entry here has no `on` field. Omitted when the objective authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
+        },
+        "on": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "dsl 0.21.0 §7a.2: the occasion at which this objective is judged. The engine evaluates the objective's `done` only when it raises this occasion while the quest is `active`, never continuously (docs/runtime/quest-lifecycle.md). Absent when not authored: the objective is evaluated continuously, as before."
         }
       },
       "additionalProperties": true,
@@ -2296,6 +2301,51 @@
       ],
       "description": "<entry> declaration head of a lore artifact (dsl 0.19.0 §7, docs/runtime/lore-entries.md): content the engine looks up rather than plays."
     },
+    "cmdAccept": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "accept"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "quest": {
+          "type": "string",
+          "description": "id of an accept-driven quest (one with no `start`) in the project; checked by `check-project` (`E-ACCEPT-TARGET`)."
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "quest"
+      ],
+      "description": "`::accept{quest}` (dsl 0.21.0 §7a.3): the player accepts an accept-driven quest at this point — the scene-side form of the engine's accept action. The engine activates the quest if its state is `unset` (stamping `activatedAt` as for any activation) and ignores the record otherwise (docs/runtime/quest-lifecycle.md)."
+    },
     "cmdPlugin": {
       "type": "object",
       "properties": {
@@ -2425,6 +2475,9 @@
         },
         {
           "$ref": "#/$defs/entryCmd"
+        },
+        {
+          "$ref": "#/$defs/cmdAccept"
         }
       ]
     },

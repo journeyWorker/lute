@@ -1188,3 +1188,169 @@ state:
         "range reward must carry min/max verbatim (spec D-C: never pre-rolled)"
     );
 }
+
+// ---------------------------------------------------------------------
+// dsl 0.21.0 §7a.1/§7a.2: `visited('<scene>')` in an objective reads the
+// mock's `visited:` set (closed-world), and an `<objective on=…>` is judged
+// only when the mock raises that occasion while its quest is active.
+// ---------------------------------------------------------------------
+
+fn objective_outcomes<'a>(decisions: &'a [Decision], id: &str) -> Vec<&'a str> {
+    decisions
+        .iter()
+        .filter(|d| d.construct == "objective" && d.id == id)
+        .map(|d| d.outcome.as_str())
+        .collect()
+}
+
+fn visited_fixture() -> &'static str {
+    "---\nkind: quest\ntitle: Visited\n---\n\n\
+     <quest id=\"q\" title=\"Q\" start=\"true\">\n\
+     <objective id=\"sawShed\" title=\"See the shed\" done=\"visited('haven.shed')\"/>\n\
+     </quest>\n"
+}
+
+#[test]
+fn visited_scene_completes_an_objective_that_reads_it() {
+    let input = input_for(visited_fixture(), "visited.lute", Path::new("."));
+    let mocks = MockSet {
+        visited: vec!["haven.shed".to_string()],
+        ..Default::default()
+    };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert!(
+        objective_outcomes(&report.decisions, "sawShed").contains(&"done"),
+        "{:?}",
+        report.decisions
+    );
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 1);
+}
+
+#[test]
+fn an_unvisited_scene_reads_false_never_unknown() {
+    let input = input_for(visited_fixture(), "visited.lute", Path::new("."));
+    // Closed-world: no `visited:` at all, and a `visited:` naming some other
+    // scene, both leave the objective pending — never unresolved, never exit 3.
+    for visited in [vec![], vec!["haven.yard".to_string()]] {
+        let mocks = MockSet {
+            visited: visited.clone(),
+            ..Default::default()
+        };
+        let (report, exit) = trace_document(&input, mocks);
+        assert_complete(&exit);
+        assert!(report.unresolved.is_empty(), "{visited:?}: {:?}", report.unresolved);
+        let outcomes = objective_outcomes(&report.decisions, "sawShed");
+        assert!(
+            !outcomes.is_empty() && outcomes.iter().all(|o| *o == "pending"),
+            "{visited:?}: {outcomes:?}"
+        );
+        assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 0);
+    }
+}
+
+/// `calm`'s `done` is true from the start: were it judged continuously the
+/// quest would complete on its own, so any completion is the occasion's doing.
+fn occasion_fixture(start: &str) -> String {
+    format!(
+        "---\nkind: quest\ntitle: Occasion\nstate:\n  run.calm: {{ type: bool, default: true }}\n---\n\n\
+         <quest id=\"hold\" title=\"Hold\"{start}>\n\
+         <objective id=\"calm\" title=\"Keep calm\" on=\"runEnd\" done=\"run.calm\"/>\n\
+         </quest>\n"
+    )
+}
+
+#[test]
+fn an_on_objective_is_not_judged_until_its_occasion_is_raised() {
+    let text = occasion_fixture(" start=\"true\"");
+    let input = input_for(&text, "occasion.lute", Path::new("."));
+
+    let (report, exit) = trace_document(&input, MockSet::default());
+    // Waiting on an occasion is not stuck: exit 0, nothing unresolved.
+    assert_complete(&exit);
+    assert!(report.unresolved.is_empty(), "{:?}", report.unresolved);
+    assert!(
+        objective_outcomes(&report.decisions, "calm").is_empty(),
+        "never judged without the occasion: {:?}",
+        report.decisions
+    );
+    assert_eq!(count_quest_decisions(&report.decisions, "hold", "active"), 1);
+    assert_eq!(count_quest_decisions(&report.decisions, "hold", "complete"), 0);
+    assert!(
+        report.notes.iter().any(|n| n.contains(
+            "objective `hold.calm` is judged at occasion `runEnd`, which this walk never raised"
+        )),
+        "{:?}",
+        report.notes
+    );
+
+    // Raising some other occasion changes nothing, and is itself noted.
+    let mocks = MockSet {
+        occasions: vec!["hubVisit".to_string()],
+        ..Default::default()
+    };
+    let (report, _) = trace_document(&input, mocks);
+    assert!(objective_outcomes(&report.decisions, "calm").is_empty());
+    assert_eq!(count_quest_decisions(&report.decisions, "hold", "complete"), 0);
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("occasion `hubVisit` is judged by no `<objective on>`")),
+        "{:?}",
+        report.notes
+    );
+}
+
+#[test]
+fn raising_the_occasion_judges_the_objective_and_completes_the_quest() {
+    let text = occasion_fixture(" start=\"true\"");
+    let input = input_for(&text, "occasion.lute", Path::new("."));
+    let mocks = MockSet {
+        occasions: vec!["runEnd".to_string()],
+        ..Default::default()
+    };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert_eq!(objective_outcomes(&report.decisions, "calm"), ["done"]);
+    assert_eq!(count_quest_decisions(&report.decisions, "hold", "complete"), 1);
+    // Activation precedes the occasion's judgement, which precedes completion.
+    let pos = |construct: &str, outcome: &str| {
+        report
+            .decisions
+            .iter()
+            .position(|d| d.construct == construct && d.outcome == outcome)
+            .unwrap_or_else(|| panic!("no {construct} {outcome}: {:?}", report.decisions))
+    };
+    assert!(pos("quest", "active") < pos("objective", "done"));
+    assert!(pos("objective", "done") < pos("quest", "complete"));
+    assert!(
+        !report.notes.iter().any(|n| n.contains("never raised")),
+        "{:?}",
+        report.notes
+    );
+}
+
+#[test]
+fn an_occasion_does_not_judge_the_objectives_of_an_inactive_quest() {
+    // Accept-driven and never accepted: the raise finds no active quest.
+    let text = occasion_fixture("");
+    let input = input_for(&text, "occasion.lute", Path::new("."));
+    let mocks = MockSet {
+        occasions: vec!["runEnd".to_string()],
+        ..Default::default()
+    };
+    let (report, exit) = trace_document(&input, mocks.clone());
+    assert_complete(&exit);
+    assert!(objective_outcomes(&report.decisions, "calm").is_empty());
+    assert!(quest_decision(&report.decisions, "awaiting accept").is_some());
+
+    // Accepted, the same raise completes it.
+    let mocks = MockSet {
+        accepts: vec!["hold".to_string()],
+        ..mocks
+    };
+    let (report, _) = trace_document(&input, mocks);
+    assert_eq!(objective_outcomes(&report.decisions, "calm"), ["done"]);
+    assert_eq!(count_quest_decisions(&report.decisions, "hold", "complete"), 1);
+}

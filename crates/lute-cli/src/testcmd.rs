@@ -2,11 +2,10 @@
 //! layered on `lute-trace`'s deterministic walk.
 //!
 //! A `*.test.yaml` file names a `.lute` document (`file:`, resolved relative
-//! to the TEST file's own directory), carries the SAME five mock surfaces
+//! to the TEST file's own directory), carries the SAME mock surfaces
 //! `lute trace --mock` accepts (`state:`/`facts:`/`choose:`/`events:`/
-//! `accepts:`, parsed by the SAME [`parse_mock_yaml`] — extra keys are
-//! ignored, so `file:`/`expect:` coexist with them), and declares an
-//! `expect:` block:
+//! `accepts:`/`visited:`/`occasions:`, parsed by the SAME mock grammar),
+//! and declares an `expect:` block:
 //!
 //! ```yaml
 //! file: ../scenes/confrontation.lute
@@ -17,6 +16,7 @@
 //! expect:
 //!   transcriptContains: ["Case closed."]
 //!   state: { run.accused: blake }   # the trace's FINAL written state
+//!   quests: { caseClosed: complete } # unset | active | complete | failed
 //!   exit: complete                  # complete | incomplete
 //! ```
 //!
@@ -59,7 +59,7 @@ use std::process::ExitCode;
 use lute_trace::{parse_mock_surfaces, trace_document, Step, TraceExit, TraceReport};
 
 /// The complete legal top-level key set of a `*.test.yaml` (module docs).
-/// `expect:` is the harness's own; the other seven are exactly
+/// `expect:` is the harness's own; the other nine are exactly
 /// [`lute_trace::MOCK_TOP_KEYS`], the mock family's own CLOSED set.
 /// CLOSED as of 0.10.0 (#2(a), D-B): the grammar being open is what let a
 /// `chooses:` typo drop a selection and green a test against the arm the file
@@ -69,14 +69,20 @@ use lute_trace::{parse_mock_surfaces, trace_document, Step, TraceExit, TraceRepo
 /// asserted by [`the_test_key_set_is_the_mock_key_set_plus_expect`], so the
 /// two cannot drift when a surface is added on either side.
 const TEST_TOP_KEYS: &[&str] = &[
-    "accept", "accepts", "choose", "events", "expect", "facts", "file", "state",
+    "accept", "accepts", "choose", "events", "expect", "facts", "file", "occasions", "state",
+    "visited",
 ];
 
-/// The complete legal key set inside `expect:`. Also CLOSED. (b)/(c)'s new
-/// expectation kinds — endings, quest lifecycle, `facts:` as an output — are
-/// deferred with #19 (D-B); when they land they are added HERE, which is the
-/// point of a closed set.
-const TEST_EXPECT_KEYS: &[&str] = &["exit", "state", "transcriptContains"];
+/// The complete legal key set inside `expect:`. Also CLOSED — a new
+/// expectation kind is added HERE, which is the point of a closed set.
+/// `quests:` (dsl 0.21.0 §7a.4) asserts the quest lifecycle the trace ran;
+/// endings and `facts:` as an output stay deferred with #19 (D-B).
+const TEST_EXPECT_KEYS: &[&str] = &["exit", "quests", "state", "transcriptContains"];
+
+/// The quest lifecycle states an `expect.quests` entry may name (dsl 0.21.0
+/// §7a.4) — `unset` is the pre-activation absence, the other three the
+/// engine's `quest.<id>.state` domain.
+const QUEST_STATES: &[&str] = &["unset", "active", "complete", "failed"];
 
 /// One `E-TEST-KEY` line for an unrecognised key, with the same
 /// edit-distance did-you-mean four checker codes already use (dsl 0.5.0
@@ -506,6 +512,27 @@ fn run_one_test(
                 });
             }
         }
+
+        // quests: { id: unset|active|complete|failed } — against the
+        // lifecycle the trace ran (dsl 0.21.0 §7a.4).
+        if let Some(quests) = expect.get("quests").and_then(|v| v.as_mapping()) {
+            let final_quests = final_quests(&report, &input.text);
+            for (k, v) in quests {
+                let Some(id) = k.as_str() else { continue };
+                let want = yaml_scalar_text(v).unwrap_or_default();
+                // `None`: the traced document declares no such quest — there
+                // is no lifecycle to observe (the T9.9 absent-value rule).
+                let actual = final_quests.get(id).cloned();
+                expectations.push(ExpectResult {
+                    kind: "quests",
+                    subject: id.to_string(),
+                    passed: QUEST_STATES.contains(&want.as_str())
+                        && actual.as_deref() == Some(want.as_str()),
+                    expected: want,
+                    actual,
+                });
+            }
+        }
     }
 
     // #2(d) / D-B: `all()` over an empty vector is `true`, so a test that
@@ -549,6 +576,33 @@ fn final_state(report: &TraceReport) -> BTreeMap<String, String> {
     for step in &report.steps {
         if let Step::Set { path, value, .. } = step {
             out.insert(path.clone(), value.clone());
+        }
+    }
+    out
+}
+
+/// Every quest the traced document declares, mapped to where the walk left
+/// it (dsl 0.21.0 §7a.4): the LAST `quest` decision's `active`/`complete`/
+/// `failed` outcome, else `unset` — a quest whose `start` never held, that
+/// awaited an accept, or that was never decided at all never left `unset`.
+/// Read off the transcript's decisions, the same record the human report
+/// prints, never a second lifecycle model.
+fn final_quests(report: &TraceReport, text: &str) -> BTreeMap<String, String> {
+    let (doc, _) = lute_syntax::parse(text);
+    let mut out: BTreeMap<String, String> = doc
+        .quests
+        .iter()
+        .filter(|q| !q.id.is_empty())
+        .map(|q| (q.id.clone(), "unset".to_string()))
+        .collect();
+    for d in &report.decisions {
+        if d.construct != "quest" {
+            continue;
+        }
+        if let Some(slot) = out.get_mut(&d.id) {
+            if matches!(d.outcome.as_str(), "active" | "complete" | "failed") {
+                *slot = d.outcome.clone();
+            }
         }
     }
     out
@@ -698,6 +752,21 @@ fn print_human(
                     ("state", Some(actual)) => println!(
                         "      state {}: expected {:?}, got {:?}",
                         e.subject, e.expected, actual
+                    ),
+                    ("quests", _) if !QUEST_STATES.contains(&e.expected.as_str()) => println!(
+                        "      quests {}: {:?} is not a quest state (expected one of: {})",
+                        e.subject,
+                        e.expected,
+                        QUEST_STATES.join(", ")
+                    ),
+                    ("quests", Some(actual)) => println!(
+                        "      quests {}: expected {:?}, got {:?}",
+                        e.subject, e.expected, actual
+                    ),
+                    ("quests", None) => println!(
+                        "      quests {}: expected {:?}, but the traced document declares no \
+                         quest `{}`",
+                        e.subject, e.expected, e.subject
                     ),
                     // T9.9: there is no observed value to print. The old line
                     // printed the sentinel on the `got` side, so a test whose

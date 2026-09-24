@@ -25,7 +25,7 @@ Formula ::= "visited(" StringLit ")" | "completed(" StringLit ")" | "active(" St
           | "(" Formula ")" | Formula "&&" Formula | Formula "||" Formula
 ```
 
-`visited(K)`'s string is the project's canonical `{character}.{episodeId}` episode key — the same join the compiler computes for `lineId`. `completed(Q)` and `active(Q)` both name a `<quest id>`. These predicates are scoped to this one slot; writing `visited(...)` in any ordinary CEL guard is just an unknown-function error, and anything outside the grammar above is `E-CONN-PROFILE`.
+`visited(K)`'s string is the project's canonical `{character}.{episodeId}` episode key — the same join the compiler computes for `lineId`. `completed(Q)` and `active(Q)` both name a `<quest id>`. `completed` and `active` are scoped to this one slot (in an ordinary CEL guard, read `quest.<id>.state` instead); `visited(...)` is, since 0.21.0, also an ordinary condition function over the same visited set (see [Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions)). Anything outside the grammar above is `E-CONN-PROFILE`.
 
 `active(Q)` (0.8.0) is the third prerequisite atom. The quest lifecycle is `unset → active → complete | failed`, so a profile carrying only `visited`/`completed` could express two of the three observable states: "this scene unlocks *while* the investigation is running" had no spelling. It is the **strictly weaker** lifecycle claim — `completed(Q)` licenses "`Q` finished and its completion writes ran", `active(Q)` licenses only "`Q` reached `active`" — which is why [reachability](/connectivity/reachability/) treats the two identically while [envelopes](/connectivity/envelopes/) do not.
 

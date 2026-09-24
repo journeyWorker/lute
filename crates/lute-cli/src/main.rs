@@ -335,9 +335,15 @@ enum Command {
         /// `E-TRACE-ACCEPT` (dsl 0.4.0 §4.3/§4.4).
         #[arg(long = "accept", value_name = "QUESTID")]
         accept: Vec<String>,
-        /// A YAML document carrying the same five surfaces (`state:`/
-        /// `facts:`/`choose:`/`events:`/`accepts:`, dsl 0.4.0 §4.3); CLI
-        /// flags compose with it, the flag winning on a conflict.
+        /// Raise an occasion after the quest walk settles, in CLI order
+        /// (repeatable): each raise judges the `<objective on="<occasion>">`
+        /// objectives of every active quest (dsl 0.21.0 §7a.2).
+        #[arg(long = "occasion", value_name = "OCCASION")]
+        occasion: Vec<String>,
+        /// A YAML document carrying the same surfaces (`state:`/`facts:`/
+        /// `choose:`/`events:`/`accepts:`/`visited:`/`occasions:`, dsl 0.4.0
+        /// §4.3, 0.21.0 §7a); CLI flags compose with it, the flag winning on
+        /// a conflict.
         #[arg(long, value_name = "FILE")]
         mock: Option<PathBuf>,
         /// Emit the machine-readable `TraceReport` as JSON instead of the
@@ -408,6 +414,12 @@ enum Command {
         /// A YAML mock playthrough (same surfaces as `lute trace --mock`).
         #[arg(long, value_name = "FILE")]
         mock: Option<PathBuf>,
+        /// Raise an occasion after a quest artifact's walk settles, after
+        /// the mock's own `occasions:`, in CLI order (repeatable): each raise
+        /// judges the `on="<occasion>"` objectives of every active quest
+        /// (dsl 0.21.0 §7a.2).
+        #[arg(long = "occasion", value_name = "OCCASION")]
+        occasion: Vec<String>,
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,
@@ -652,6 +664,7 @@ fn parse_choose_flag(raw: &str) -> Result<(String, Vec<String>), String> {
 /// (denying a code `check` never emits merely protects nothing); a MISSING code
 /// is the only defect, and that test guards exactly it. Sorted for readability.
 const DENIABLE_CODES: &[&str] = &[
+    "E-ACCEPT-TARGET",
     "E-AGE-GATE",
     "E-APP-READONLY",
     "E-ARM-DEAD",
@@ -1049,6 +1062,7 @@ fn main() -> ExitCode {
             choose,
             event,
             accept,
+            occasion,
             mock,
             json,
             providers,
@@ -1061,6 +1075,7 @@ fn main() -> ExitCode {
             choose,
             event,
             accept,
+            occasion,
             mock.as_deref(),
             json,
             providers.as_deref(),
@@ -1079,9 +1094,16 @@ fn main() -> ExitCode {
         Command::Run {
             artifact,
             mock,
+            occasion,
             json,
             entry,
-        } => runner::run_artifact(&artifact, mock.as_deref(), json, entry.as_deref()),
+        } => runner::run_artifact(
+            &artifact,
+            mock.as_deref(),
+            occasion,
+            json,
+            entry.as_deref(),
+        ),
         Command::Play { dir, script, json } => play::run_play(&dir, &script, json),
         Command::Test {
             dir,
@@ -2261,6 +2283,8 @@ fn reconcile_collected(
         let group = &plain_group;
         project_diags.extend(check_project_quest_ids(group));
         project_diags.extend(check_project_quest_refs(group));
+        // dsl 0.21.0 §7a.3: every `::accept` names an accept-driven quest.
+        project_diags.extend(lute_check::check_project_accepts(group));
         // dsl 0.19.0 §3/§5: project-wide entry id / series-order uniqueness
         // and `entry.<id>.read` references (the quest passes' lore mirror).
         project_diags.extend(lute_check::check_project_entry_ids(group));
@@ -3288,15 +3312,15 @@ fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::
              (E-CONN-UNKNOWN-NODE), under your declared routes."
                 .to_string()
         }
+        // dsl 0.21.0 §7a.5: a declared quest without `after=` is not a graph
+        // node at all — UNANCHORED, available from the start of play.
         NodeId::Quest(id)
             if !scenario
                 .graph
                 .nodes
                 .contains_key(&NodeId::Quest(id.clone())) =>
         {
-            "Reachable — a plain quest with no declared `after` prerequisite, reachable by \
-             default quest lifecycle under your declared routes."
-                .to_string()
+            UNANCHORED_VERDICT.to_string()
         }
         // Same fix for a `visited(Y)` atom targeting an undeclared scene
         // key -- every DECLARED scene is unconditionally a graph node
@@ -3313,6 +3337,27 @@ fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::
     }
 }
 
+/// dsl 0.21.0 §7a.5: the reach verdict of a declared quest without `after=`.
+/// Its leading word is the JSON/DOT `unanchored` token's source
+/// ([`scenario_fmt`]'s `reach_token` keys off it, like every other verdict).
+const UNANCHORED_VERDICT: &str = "Unanchored — a quest with no declared `after` prerequisite: \
+     available from the start of play; the connectivity layer holds no prerequisites for it, so \
+     only its quest lifecycle (`start`, or an accept) decides when it activates.";
+
+/// dsl 0.21.0 §7a.5: the declared quests the prerequisite graph does not
+/// hold (no `after=`), in id order — the `unanchored` list every `lute
+/// scenario` graph view prints beside the layers.
+fn unanchored_quests(
+    quest_ids: &BTreeSet<String>,
+    graph: &lute_check::connectivity::ConnGraph,
+) -> Vec<lute_check::connectivity::NodeId> {
+    quest_ids
+        .iter()
+        .map(|id| lute_check::connectivity::NodeId::Quest(id.clone()))
+        .filter(|node| !graph.nodes.contains_key(node))
+        .collect()
+}
+
 /// Print `node`'s declared `after` STRUCTURE (dsl §5:575) — the raw formula
 /// shape, `&&`/`||` intact (Main review: never flattened into a
 /// predecessor list that could misrepresent a disjunction as a joint
@@ -3322,6 +3367,12 @@ fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::
 fn print_prereq_structure(scenario: &RootScenario, node: &lute_check::connectivity::NodeId) {
     use lute_check::connectivity::PrereqState;
     match scenario.graph.nodes.get(node).map(|info| &info.prereq) {
+        None if matches!(node, lute_check::connectivity::NodeId::Quest(id) if scenario.quest_ids.contains(id)) => {
+            println!(
+                "  after: (none declared) — unanchored: this quest is in no prerequisite graph \
+                 layer and on no edge; it is available from the start of play."
+            );
+        }
         None | Some(PrereqState::Absent) => {
             println!("  after: (none declared) — this node is an entry point.");
         }
@@ -3994,10 +4045,15 @@ pub(crate) fn edge_kinds_text(
     }
 }
 
-fn print_graph_for_root(root: &Path, graph: &lute_check::connectivity::ConnGraph) {
+fn print_graph_for_root(
+    root: &Path,
+    graph: &lute_check::connectivity::ConnGraph,
+    unanchored: &[lute_check::connectivity::NodeId],
+) {
     println!("project root: {}", root.display());
     if graph.nodes.is_empty() {
         println!("  (no scene/quest nodes)");
+        print_unanchored(unanchored);
         return;
     }
     let layers = topo_layers(graph);
@@ -4031,6 +4087,22 @@ fn print_graph_for_root(root: &Path, graph: &lute_check::connectivity::ConnGraph
     if !printed_any {
         println!("    (none)");
     }
+    print_unanchored(unanchored);
+}
+
+/// dsl 0.21.0 §7a.5: a quest without `after=` is in no layer and on no edge,
+/// and used to be absent from this report entirely. Named here instead.
+fn print_unanchored(unanchored: &[lute_check::connectivity::NodeId]) {
+    if unanchored.is_empty() {
+        return;
+    }
+    println!(
+        "  unanchored (no `after` — available from the start of play; no prerequisites in this \
+         graph):"
+    );
+    for node in unanchored {
+        println!("    {node}");
+    }
 }
 
 fn run_scenario_graph(by_root: &ByRoot) -> ExitCode {
@@ -4047,7 +4119,7 @@ fn run_scenario_graph(by_root: &ByRoot) -> ExitCode {
         let quest_ids = lute_check::connectivity::quest_id_set(&docs);
         let (graph, _cycle_diags) =
             lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
-        print_graph_for_root(root, &graph);
+        print_graph_for_root(root, &graph, &unanchored_quests(&quest_ids, &graph));
     }
     ExitCode::SUCCESS
 }
@@ -5044,7 +5116,7 @@ fn write_stdout(s: &str) -> std::io::Result<()> {
 /// Run `trace` over one file (dsl 0.4.0 §4.3/§4.5): resolve the document
 /// IDENTICALLY to `check`/`compile` ([`build_input`]), load + merge the
 /// `--mock` file with the CLI's own `--state`/`--fact`/`--choose`/`--event`/
-/// `--accept` flags into one [`MockSet`] ([`merge`] — "CLI flags compose with
+/// `--accept`/`--occasion` flags into one [`MockSet`] ([`merge`] — "CLI flags compose with
 /// the file; on a conflict the flag wins"), then hand off to
 /// [`lute_trace::trace_document`] — the entire §4.3 mock-validation gate,
 /// the §4.4 walk, and the §4.5 report are ITS concern; this function owns
@@ -5067,6 +5139,7 @@ fn run_trace(
     choose: Vec<(String, Vec<String>)>,
     event: Vec<String>,
     accept: Vec<String>,
+    occasion: Vec<String>,
     mock: Option<&Path>,
     json: bool,
     providers: Option<&Path>,
@@ -5185,6 +5258,8 @@ fn run_trace(
         choose: choose.into_iter().collect(),
         events: event,
         accepts: accept,
+        occasions: occasion,
+        visited: Vec::new(),
     };
 
     let mocks = merge(file_mocks, flag_mocks);

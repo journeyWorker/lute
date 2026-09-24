@@ -1,0 +1,18 @@
+---
+kind: scene
+id: haven.s01ep04
+title: Vesna's request
+---
+
+## The shed
+
+@vesna: The pressure in the shed keeps climbing. Will you help?
+<branch id="request">
+  <choice id="accept" label="I'll keep it calm">
+    ::accept{quest="calmTheShed"}
+    @vesna: Thank you.
+  </choice>
+  <choice id="decline" label="Not now">
+    @vesna: Another time, then.
+  </choice>
+</branch>

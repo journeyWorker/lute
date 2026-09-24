@@ -1546,6 +1546,7 @@ mod tests {
             when: None,
             title: None,
             optional,
+            on: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),

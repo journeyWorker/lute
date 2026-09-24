@@ -573,6 +573,11 @@ pub fn fold_env(
         &doc.entries,
         &input.snapshot.occasions,
     ));
+    // dsl 0.21.0 §7a.2: every objective's `on` occasion, checked like a beat's.
+    fold_diags.extend(crate::beats::check_objective_occasions(
+        &doc.quests,
+        &input.snapshot.occasions,
+    ));
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
     //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
@@ -1431,6 +1436,13 @@ impl Walker<'_> {
                     // is no directive decl to type them against.
                     self.check_attr_refs(&d.attrs, ctx, None);
                 }
+                Node::Directive(d) if d.is_accept() => {
+                    // dsl 0.21.0 §7a.3: `::accept` is a core directive of the
+                    // language, recognized BEFORE the capability lookup (never
+                    // `E-UNKNOWN-DIRECTIVE`). Its one attribute is a quest id,
+                    // never a `@ref`, so there is no attr ref to resolve.
+                    crate::accept::check_accept_directive(d, &mut self.diags);
+                }
                 Node::Directive(d) => {
                     self.diags.extend(check_directive(
                         d,
@@ -1958,7 +1970,7 @@ fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
 /// `true` when `s` is a `CelIdent` (dsl §4.4): a leading `_`/ASCII-letter then
 /// `_`/ASCII-alphanumerics. No `-` (CEL parses it as subtraction, §8.4). Empty
 /// is not an ident.
-fn is_cel_ident(s: &str) -> bool {
+pub(crate) fn is_cel_ident(s: &str) -> bool {
     let mut it = s.bytes();
     matches!(it.next(), Some(c) if c == b'_' || c.is_ascii_alphabetic())
         && it.all(|c| c == b'_' || c.is_ascii_alphanumeric())

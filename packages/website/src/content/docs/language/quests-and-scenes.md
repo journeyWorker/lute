@@ -35,7 +35,8 @@ envelope it carries is strictly **weaker** — after `completed(q)` a consumer m
 
 There is no negation, arithmetic, or state read in `after:`. See
 [Scene graph & after:](/connectivity/scene-graph/) for how these declarations form the reachability
-graph.
+graph. Since 0.21.0, `visited(…)` is also an ordinary condition function — see
+[Quests meet scenes and occasions](#quests-meet-scenes-and-occasions) below.
 
 ## The quest kind
 
@@ -112,6 +113,63 @@ log line, a per-objective `::set` reward — emits **once**, when the objective 
 **Completion is derived**, never author-written: a quest becomes `complete` when every non-`optional`
 objective is `done`. Objective completion is monotonic — once `done`, it stays recorded.
 
+### Quests meet scenes and occasions
+
+Three small additions (dsl 0.21.0 §7a) let a scene drive a quest directly, instead of relaying a
+flag through state.
+
+**`visited()` in any condition.** `visited('<scene id>')` — until 0.21.0 legal only inside
+`after:` — is a Lute-CEL function in **every condition slot**: quest `start` / `fail`, objective
+`done`, beat and entry `when`, and content-line and choice `when=`. It is true once that scene has
+been presented in this save (the same visited set `after:` reads; a new run does not clear it), so
+a scene advances a quest simply by being played:
+
+```lute
+<objective id="heardVesna" title="Hear Vesna out" done="visited('haven.s01ep04')"/>
+```
+
+The argument is one string literal. An id that names no scene in the project is
+`E-CONN-UNKNOWN-NODE` at `check-project`, exactly as in `after:`. A single-file `check` cannot know
+whether a scene has been played, so it never decides a `visited()` condition true or false.
+
+**Objectives judged at an occasion.** `<objective on="<occasion>">` evaluates that objective's
+`done` **only when the occasion is raised** while the quest is active — the end-of-run check point
+that a continuously evaluated condition cannot express. Without `on`, an objective is evaluated
+continuously, as before.
+
+```lute
+<objective id="lowPressure" title="Keep the shed calm" on="runEnd" done="run.shedPressure < 2"/>
+```
+
+The occasion is checked against the vocabulary exactly as a beat's `on` (see
+[Beats](/language/beats/#occasions)): `E-OCCASION-UNKNOWN` when a plugin declares
+occasions and this one is not among them, shape-only otherwise; an `on` that is not an identifier
+is `E-BEAT-ATTR`. `lute trace` / `lute run` raise occasions for a quest walk with the mock key
+`occasions: [runEnd]` or `--occasion runEnd` (repeatable), applied in order after the walk
+settles; `lute play` judges them on every step that raises the occasion — and an occasion that
+only objectives reference is a legal step.
+
+**Accepting a quest from a scene.** A quest without `start` is *accept-driven*. The scene-side
+form of the engine's "accept quest" action (and of `lute trace --accept`) is the core directive
+[`::accept{quest="<id>"}`](/language/directives/#accept--taking-up-a-quest), typically inside the
+choice where the player agrees:
+
+```lute
+<branch id="request">
+  <choice id="accept" label="I'll keep it calm">
+    ::accept{quest="calmTheShed"}
+    @vesna: Thank you.
+  </choice>
+  <choice id="decline" label="Not now">
+    @vesna: Another time, then.
+  </choice>
+</branch>
+```
+
+**Quest outcomes in scenario tests.** `lute test` asserts the lifecycle the trace ran with
+`expect.quests: {<questId>: unset | active | complete | failed}` — no side-effect `::set` needed to
+observe completion.
+
 ### Subquests
 
 An `<objective quest="childId"/>` names a child quest whose completion is the
@@ -143,7 +201,7 @@ surfaces plus two engine-derived rules:
 | Objective completion | Compiler synthesizes `done = "quest.<child>.state == 'complete'"`. Derived parent completion — "all non-`optional` objectives `done`" — is unchanged; `optional` on a subquest objective means the child's outcome does not gate the parent. |
 | Upward failure | Compiler synthesizes the parent's `fail` as the disjunction of the authored `fail` (if any) and one `quest.<c>.state == 'failed'` test per **required** child, in document order. `fail`'s precedence over completion is unchanged, so a required child failing resolves the parent to `failed` even if the remaining objectives could otherwise complete. |
 | Downward cascade | Engine rule: on a parent's terminal transition (`failed` or `complete`) every child still `active` transitions to `failed`. A required child cannot be `active` at parent completion — its `complete` is part of the derived completion — so the `complete` arm only fails still-running **optional** children. Recursive. |
-| Activation | Engine rule: a referenced child with no `start` activates when its parent activates (replacing the walk-start / accept default); one with `start` evaluates the predicate only while the parent is `active` (effective gate is the conjunction). Unreferenced quests keep today's semantics exactly. |
+| Activation | Engine rule: a referenced child with no `start` activates when its parent activates (replacing the accept-driven default); one with `start` evaluates the predicate only while the parent is `active` (effective gate is the conjunction). Unreferenced quests keep today's semantics exactly. |
 
 The project's parent→child tree is **derived**, not written:
 `ObjectiveEntry.quest` records the reference per artifact, and engines union

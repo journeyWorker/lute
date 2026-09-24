@@ -307,6 +307,7 @@ impl Parser<'_> {
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let title = take_str(&mut attrs, "title");
         let optional = take_bool(&mut attrs, "optional");
+        let on = take_str_spanned(&mut attrs, "on");
         let (body, rewards, end_o) = if open.self_closing {
             (Vec::new(), Vec::new(), open.end_o)
         } else {
@@ -321,6 +322,7 @@ impl Parser<'_> {
             when,
             title,
             optional,
+            on,
             attrs,
             body,
             rewards,

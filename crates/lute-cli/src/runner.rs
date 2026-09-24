@@ -28,11 +28,16 @@
 //!   leg that performs it;
 //! - **`choice` / `hub` / `match`** control flow, with `hub` `once`/`exit`
 //!   re-presentation driven by the mock's ordered `choose:` visit sequence;
-//! - the **quest lifecycle** (quest-lifecycle.md): `start`/accept activation,
-//!   monotone objective completion (bodies play once), `fail` evaluated before
-//!   derived completion, and `<on>` handlers fired on the engine-derived
-//!   transitions (`questActive`/`questComplete`/`questFailed`) plus mock
-//!   `events:`;
+//! - the **quest lifecycle** (quest-lifecycle.md): `start` activation, and
+//!   accept activation of a `start`-less (accept-driven) quest from the
+//!   mock's `accepts:` or an `accept` record (dsl 0.21.0 §7a.3), monotone
+//!   objective completion (bodies play once), `on="<occasion>"` objectives
+//!   judged only when the mock's `occasions:` / `--occasion` raise them
+//!   (§7a.2), `fail` evaluated before derived completion, and `<on>`
+//!   handlers fired on the engine-derived transitions
+//!   (`questActive`/`questComplete`/`questFailed`) plus mock `events:`;
+//! - **`visited('<scene id>')`** (dsl 0.21.0 §7a.1) over the mock's
+//!   `visited:` set (`lute play`: the presented scenes);
 //! - **lore entries** (lore-entries.md, dsl 0.19.0): `--entry <id>` presents
 //!   ONE `entry` record of a lore artifact — its body segment runs to the
 //!   next `entry` record, `set`/`assert`/`retract` apply only while
@@ -97,9 +102,12 @@ pub(crate) type Fact = (String, Vec<String>);
 /// Execute a compiled artifact against a mock playthrough. See [`crate::Command::Run`].
 /// `entry` selects the one `entry` record a lore artifact presents (dsl
 /// 0.19.0 §8): required for `kind: "lore"`, refused for any other kind.
+/// `occasions` are the `--occasion` flags, raised after the mock's own
+/// `occasions:` (dsl 0.21.0 §7a.2).
 pub fn run_artifact(
     artifact: &Path,
     mock: Option<&Path>,
+    occasions: Vec<String>,
     json_out: bool,
     entry: Option<&str>,
 ) -> ExitCode {
@@ -164,7 +172,7 @@ pub fn run_artifact(
     }
 
     // ── Mock playthrough (same surfaces as `lute trace --mock`). ──
-    let mock_set = match mock {
+    let mut mock_set = match mock {
         None => lute_trace::MockSet::default(),
         Some(path) => match std::fs::read_to_string(path) {
             Ok(t) => match lute_trace::parse_mock_yaml(&t) {
@@ -181,6 +189,7 @@ pub fn run_artifact(
         },
     };
 
+    mock_set.occasions.extend(occasions);
     let mut runner = Runner::new(&art, mock_set);
     runner.entry = entry.map(str::to_string);
     match runner.run() {
@@ -262,6 +271,9 @@ struct Obj {
     /// declaration order. Fires ONCE at fresh `done` (spec §3 D-D),
     /// BEFORE any quest-level grant fires.
     rewards: Vec<RewardRec>,
+    /// dsl 0.21.0 §7a.2: `ObjectiveEntry.on` — the occasion at which this
+    /// objective's `done` is judged; `None` ⇒ judged continuously.
+    on: Option<String>,
 }
 
 /// One `RewardEntry` (`ir.rs`, dsl 0.16.0 §3) parsed straight off the
@@ -387,6 +399,16 @@ pub(crate) struct Runner {
     /// `entry.<id>.read` is already true — `set`/`assert`/`retract` records
     /// are then recorded as `skipped` instead of applied.
     apply_effects: bool,
+    /// dsl 0.21.0 §7a.1: the ids of the scenes presented in this save — what
+    /// `visited('<id>')` reads. Seeded from the mock's `visited:` (`lute
+    /// run`) or the playthrough's presentation history (`lute play`,
+    /// [`Runner::with_visited`]).
+    visited: BTreeSet<String>,
+    /// dsl 0.21.0 §7a.3: the quest ids every `accept` record this walk
+    /// executed named, in order. An accept-driven quest of THIS artifact
+    /// activates from it on the next lifecycle round; `lute play` carries
+    /// the rest to the quest documents via [`RunnerOutcome::accepted`].
+    accepted: Vec<String>,
 }
 
 /// `lute play`'s per-presentation carryover + transcript-reuse surface:
@@ -407,6 +429,9 @@ pub(crate) struct RunnerOutcome {
     /// See [`Runner::unresolved`] — the honesty-gate signal.
     pub unresolved: Vec<UnresolvedAtom>,
     pub transcript: Vec<Json>,
+    /// See [`Runner::accepted`] — the accepts a presentation made, which the
+    /// playthrough hands to the next quest advance.
+    pub accepted: Vec<String>,
 }
 
 impl Runner {
@@ -483,6 +508,8 @@ impl Runner {
             derived.insert(r.head.rel.clone());
         }
         let strata = compute_strata(&rules, &derived);
+        // dsl 0.21.0 §7a.1: the mock's `visited:` seeds the presented set.
+        let visited = mock.visited.iter().cloned().collect();
 
         Runner {
             kind,
@@ -507,6 +534,8 @@ impl Runner {
             quest_resume: false,
             entry: None,
             apply_effects: true,
+            visited,
+            accepted: Vec::new(),
         }
     }
 
@@ -548,6 +577,14 @@ impl Runner {
     /// beat follows the entry rules (first-read effects, `entry.<id>.read`).
     pub(crate) fn with_entry(mut self, id: &str) -> Self {
         self.entry = Some(id.to_string());
+        self
+    }
+
+    /// `lute play` (dsl 0.21.0 §7a.1): the playthrough's presented scenes,
+    /// joined to any mock `visited:` seed, so `visited('<id>')` reads real
+    /// presentation history.
+    pub(crate) fn with_visited(mut self, visited: &BTreeSet<String>) -> Self {
+        self.visited.extend(visited.iter().cloned());
         self
     }
 
@@ -638,6 +675,9 @@ impl Runner {
         let mut fs = FactStore::new(&self.vocab);
         for (rel, args) in &self.all_facts {
             fs.assert(rel, args);
+        }
+        for id in &self.visited {
+            fs.visit(id);
         }
         let env = EvalEnv {
             state: &eff,
@@ -801,6 +841,7 @@ impl Runner {
             incomplete: self.incomplete,
             unresolved: self.unresolved,
             transcript: self.transcript,
+            accepted: self.accepted,
         }
     }
 
@@ -889,6 +930,10 @@ impl Runner {
                 self.exec_plugin(&cmd);
                 Step::Next(pc + 1)
             }
+            "accept" => {
+                self.exec_accept(&cmd);
+                Step::Next(pc + 1)
+            }
             // Declarations — inert in a linear walk (a quest artifact is driven
             // by `run_quest`, a lore artifact by `run_entry`, never linearly).
             "quest" | "on" | "entry" => Step::Next(pc + 1),
@@ -902,6 +947,43 @@ impl Runner {
     }
 
     // ── content & staging ──────────────────────────────────────────────
+
+    /// dsl 0.21.0 §7a.3 (`docs/runtime/quest-lifecycle.md`): the player
+    /// accepts quest `quest` here. Recorded as `quest <id> accepted`; the
+    /// activation itself belongs to the quest lifecycle — an accept-driven
+    /// quest of THIS artifact activates on the next lifecycle round
+    /// ([`Runner::is_accepted`]), and `lute play` hands the id to the quest
+    /// documents' next advance. A quest this walk already knows to be past
+    /// `unset` is left alone, and the record says so.
+    fn exec_accept(&mut self, cmd: &Json) {
+        let quest = cmd
+            .get("quest")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        let mut rec = serde_json::Map::new();
+        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("kind".into(), Json::String("accept".into()));
+        rec.insert("quest".into(), Json::String(quest.clone()));
+        if let Some(state) = self
+            .quest_status
+            .get(&quest)
+            .filter(|s| s.as_str() != "unset")
+        {
+            rec.insert(
+                "ignored".into(),
+                Json::String(format!("already {state}")),
+            );
+        }
+        self.transcript.push(Json::Object(rec));
+        self.accepted.push(quest);
+    }
+
+    /// An accept-driven quest's activation signal: a mock `accepts:` entry
+    /// or an `accept` record this walk executed.
+    fn is_accepted(&self, id: &str) -> bool {
+        self.mock.accepts.iter().any(|a| a == id) || self.accepted.iter().any(|a| a == id)
+    }
 
     fn rec_line(&mut self, cmd: &Json) {
         let speaker = cmd.get("speaker").and_then(Json::as_str).unwrap_or("");
@@ -1499,18 +1581,20 @@ impl Runner {
         // parent-activation-driven (§2.4): it never activates at walk start
         // and is not accept-driven — `reevaluate` activates it once its parent
         // is `active` (no `start`: immediately; with `start`: when the
-        // predicate holds while the parent is active).
-        let quest_ids: Vec<String> = quests.iter().map(|q| q.id.clone()).collect();
-        for (qi, q) in quests.iter().enumerate() {
+        // predicate holds while the parent is active). An unreferenced quest
+        // with no `start` is ACCEPT-DRIVEN (dsl 0.21.0 §7a.3): it stays
+        // `unset` until a mock `accepts:` entry or an `accept` record names
+        // it — the rule `lute trace` (dsl 0.4.0 §4.4) always applied.
+        for q in &quests {
             if parent_of.contains_key(&q.id)
                 || self.quest_status.get(&q.id).map(String::as_str) != Some("unset")
             {
                 continue;
             }
             let activate = match &q.start {
-                None => true, // no `start`: activates at the start of the walk / accept.
+                None => false,
                 Some(raw) => self.truthy(raw) == Some(true),
-            } || self.mock.accepts.contains(&quest_ids[qi]);
+            } || self.is_accepted(&q.id);
             if activate {
                 self.set_quest_state(&q.id, "active");
                 self.fire_event("questActive", Some(&q.id), &handlers, &seg_starts);
@@ -1545,6 +1629,23 @@ impl Runner {
             self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
         }
 
+        // dsl 0.21.0 §7a.2: occasions are raised in order after the walk
+        // settles; each judges the `on="<occasion>"` objectives of every
+        // active quest, then the lifecycle settles again. `lute run` records
+        // the raise; `lute play`'s step header already names it.
+        let occasions: Vec<String> = self.mock.occasions.clone();
+        for occasion in &occasions {
+            if self.terminated {
+                break;
+            }
+            if !self.quest_resume {
+                self.transcript
+                    .push(json!({ "kind": "occasion", "occasion": occasion }));
+            }
+            self.judge_occasion(occasion, &quests, &seg_starts, &mut done);
+            self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
+        }
+
         // Incomplete if an active quest is stuck on an undecidable required
         // objective (a missing mock left the `done` predicate unknown). An
         // `end` record makes this moot: the author declared the walk finished,
@@ -1555,7 +1656,13 @@ impl Runner {
         for q in &quests {
             if self.quest_status.get(&q.id).map(String::as_str) == Some("active") {
                 for o in &q.objectives {
-                    if !o.optional && self.eval_raw(&o.done) == Value::Unknown {
+                    // An `on=` objective is judged only at its occasion; one
+                    // this walk never raised is not stuck, it is waiting.
+                    let judged = o
+                        .on
+                        .as_ref()
+                        .is_none_or(|on| occasions.contains(on));
+                    if judged && !o.optional && self.eval_raw(&o.done) == Value::Unknown {
                         self.incomplete = true;
                         // `lute play` names the stuck objective in its halt;
                         // `lute run`'s transcript is unchanged.
@@ -1623,20 +1730,24 @@ impl Runner {
             // 0. referenced-child activation (§2.4): a pending child whose
             // parent is `active` activates — immediately without `start`, or
             // when its `start` predicate holds (evaluated only while the
-            // parent is active).
+            // parent is active). An unreferenced accept-driven quest
+            // activates once an `accept` record this walk ran names it
+            // (dsl 0.21.0 §7a.3 — an accept inside a handler/objective body).
             for q in quests {
                 if self.quest_status.get(&q.id).map(String::as_str) != Some("unset") {
                     continue;
                 }
-                let Some(parent) = parent_of.get(&q.id) else {
-                    continue;
-                };
-                if self.quest_status.get(parent).map(String::as_str) != Some("active") {
-                    continue;
-                }
-                let activate = match &q.start {
-                    None => true,
-                    Some(raw) => self.truthy(raw) == Some(true),
+                let activate = match parent_of.get(&q.id) {
+                    Some(parent) => {
+                        if self.quest_status.get(parent).map(String::as_str) != Some("active") {
+                            continue;
+                        }
+                        match &q.start {
+                            None => true,
+                            Some(raw) => self.truthy(raw) == Some(true),
+                        }
+                    }
+                    None => q.start.is_none() && self.is_accepted(&q.id),
                 };
                 if activate {
                     self.set_quest_state(&q.id, "active");
@@ -1648,37 +1759,15 @@ impl Runner {
                 if self.quest_status.get(&q.id).map(String::as_str) != Some("active") {
                     continue;
                 }
-                // 1. objectives (monotone; body plays once).
+                // 1. objectives (monotone; body plays once). An `on=`
+                // objective is judged only at its occasion
+                // ([`Runner::judge_occasion`]), never continuously.
                 for (oi, o) in q.objectives.iter().enumerate() {
-                    if done.contains(&(qi, oi)) {
+                    if o.on.is_some() || done.contains(&(qi, oi)) {
                         continue;
                     }
                     if self.truthy(&o.done) == Some(true) {
-                        done.insert((qi, oi));
-                        self.state.insert(
-                            format!("quest.{}.objectives.{}.done", q.id, o.id),
-                            Value::Bool(true),
-                        );
-                        self.transcript.push(json!({
-                            "kind": "objective",
-                            "quest": q.id,
-                            "objective": o.id,
-                            "done": true,
-                        }));
-                        // dsl 0.16.0 §3 D-D: fresh `done` → fire this
-                        // objective's rewards in declaration order BEFORE
-                        // the objective body runs (spec: objective grants
-                        // fire before any quest-level grant, which itself
-                        // fires before a `questComplete` handler body).
-                        self.emit_grants(
-                            &q.id,
-                            Some(&o.id),
-                            &q.objectives[oi].rewards,
-                            GrantEvent::Objective,
-                        );
-                        if let Some(body) = &o.body {
-                            self.run_segment(body, seg_starts);
-                        }
+                        self.complete_objective(q, qi, oi, seg_starts, done);
                         changed = true;
                     }
                 }
@@ -1711,6 +1800,64 @@ impl Runner {
                     self.fire_event("questComplete", Some(&q.id), handlers, seg_starts);
                     self.cascade_children(&q.id, quests, parent_of, handlers, seg_starts);
                     changed = true;
+                }
+            }
+        }
+    }
+
+    /// A fresh `done` (monotone — `done` records it; the body plays once):
+    /// write `quest.<id>.objectives.<oid>.done`, record it, fire the
+    /// objective's rewards (dsl 0.16.0 §3 D-D: BEFORE the body runs, and
+    /// before any quest-level grant or `questComplete` handler), then play
+    /// the completion body.
+    fn complete_objective(
+        &mut self,
+        q: &QuestDecl,
+        qi: usize,
+        oi: usize,
+        seg_starts: &[usize],
+        done: &mut BTreeSet<(usize, usize)>,
+    ) {
+        let o = &q.objectives[oi];
+        done.insert((qi, oi));
+        self.state.insert(
+            format!("quest.{}.objectives.{}.done", q.id, o.id),
+            Value::Bool(true),
+        );
+        self.transcript.push(json!({
+            "kind": "objective",
+            "quest": q.id,
+            "objective": o.id,
+            "done": true,
+        }));
+        self.emit_grants(&q.id, Some(&o.id), &o.rewards, GrantEvent::Objective);
+        if let Some(body) = &o.body {
+            self.run_segment(body, seg_starts);
+        }
+    }
+
+    /// dsl 0.21.0 §7a.2: raise `occasion` — every ACTIVE quest judges its
+    /// not-yet-done `on="<occasion>"` objectives, document order. The
+    /// caller settles the lifecycle afterwards (`fail` before completion).
+    fn judge_occasion(
+        &mut self,
+        occasion: &str,
+        quests: &[QuestDecl],
+        seg_starts: &[usize],
+        done: &mut BTreeSet<(usize, usize)>,
+    ) {
+        for (qi, q) in quests.iter().enumerate() {
+            for (oi, o) in q.objectives.iter().enumerate() {
+                if self.terminated
+                    || self.quest_status.get(&q.id).map(String::as_str) != Some("active")
+                {
+                    break;
+                }
+                if o.on.as_deref() != Some(occasion) || done.contains(&(qi, oi)) {
+                    continue;
+                }
+                if self.truthy(&o.done) == Some(true) {
+                    self.complete_objective(q, qi, oi, seg_starts, done);
                 }
             }
         }
@@ -2049,6 +2196,21 @@ impl Runner {
                     "  {a}  plugin {} (external call, not invoked)",
                     e.get("tag").and_then(Json::as_str).unwrap_or("")
                 ),
+                "accept" => {
+                    let ignored = e
+                        .get("ignored")
+                        .and_then(Json::as_str)
+                        .map(|s| format!(" ({s} — ignored)"))
+                        .unwrap_or_default();
+                    format!(
+                        "  {a}  quest {} accepted{ignored}",
+                        e.get("quest").and_then(Json::as_str).unwrap_or("")
+                    )
+                }
+                "occasion" => format!(
+                    "  occasion {}",
+                    e.get("occasion").and_then(Json::as_str).unwrap_or("")
+                ),
                 "objective" => format!(
                     "  {}.{} done",
                     e.get("quest").and_then(Json::as_str).unwrap_or(""),
@@ -2179,6 +2341,7 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
                     body: o.get("body").and_then(Json::as_str).map(str::to_string),
                     quest: o.get("quest").and_then(Json::as_str).map(str::to_string),
                     rewards: parse_rewards(o),
+                    on: o.get("on").and_then(Json::as_str).map(str::to_string),
                 })
                 .collect()
         })

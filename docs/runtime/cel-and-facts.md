@@ -32,8 +32,8 @@ match arms):
 | `{"has": "<path>"}` | the `has(path)` macro. |
 
 The profile is closed (dsl §8.4): no `null`/bytes literals, no maps/structs,
-no comprehensions, no calls beyond `isSet`/`has` and the fact-query functions
-below. Boolean composition follows Kleene short-circuit for `&&`/`||` — an
+no comprehensions, no calls beyond `isSet`/`has`, the fact-query functions,
+and `visited` below. Boolean composition follows Kleene short-circuit for `&&`/`||` — an
 engine evaluating over partially-unknown state should mirror this so an unknown
 operand does not force a spurious verdict.
 
@@ -46,6 +46,22 @@ query). The checker forbids them inside a *rule-body* guard
 (`E-DATALOG-GUARD-FACT`) and forbids `validAt` over a guard-tainted derived
 relation (`E-VALIDAT-DERIVED`, `cel_resolve.rs`) — so any such call that
 survives into the artifact is well-formed for the engine to evaluate.
+
+### `visited()` in a guard
+
+`visited('<scene id>')` (dsl 0.21.0 §7a.1) is legal in every condition slot —
+quest `start` / `fail`, objective `done`, beat and entry `when`, and
+content-line, choice, and match guards. It is true once the scene whose
+`meta.id` is the argument has been **presented in this save**: the same
+visited set a scene's `after:` prerequisite reads (`prereqEdges`,
+`quest-lifecycle.md`), which a new run does not clear. The argument is one
+string literal; `check-project` rejects an id that names no scene in the
+project (`E-CONN-UNKNOWN-NODE`).
+
+Like a fact query, `visited(…)` is outside the portable `expr` profile: a slot
+that calls it carries `raw` only, and the engine evaluates it from the raw
+text. Nothing new is stored — the engine already keeps the visited set for
+`after:`; a guard only reads it.
 
 ## The fact store
 

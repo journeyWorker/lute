@@ -1,0 +1,89 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "quest",
+  "lute": "0.21.0",
+  "irVersion": "0.21.0",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {
+    "id": "haven.quests.shed"
+  },
+  "state": [
+    {
+      "path": "quest.calmTheShed.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:calmTheShed"
+    },
+    {
+      "path": "quest.calmTheShed.objectives.heardVesna.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:calmTheShed"
+    },
+    {
+      "path": "quest.calmTheShed.objectives.lowPressure.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:calmTheShed"
+    },
+    {
+      "path": "quest.calmTheShed.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:calmTheShed"
+    },
+    {
+      "path": "run.shedPressure",
+      "type": "number",
+      "default": 0
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "calmTheShed",
+      "title": "Calm the shed",
+      "titleLineId": "calmTheShed.title",
+      "objectives": [
+        {
+          "id": "heardVesna",
+          "title": "Hear Vesna out",
+          "titleLineId": "calmTheShed.heardVesna",
+          "done": {
+            "raw": "visited('haven.s01ep04')"
+          },
+          "optional": false,
+          "body": null
+        },
+        {
+          "id": "lowPressure",
+          "title": "Keep the shed calm",
+          "titleLineId": "calmTheShed.lowPressure",
+          "done": {
+            "raw": "run.shedPressure < 2",
+            "expr": {
+              "op": "<",
+              "l": {
+                "path": "run.shedPressure"
+              },
+              "r": {
+                "lit": 2.0
+              }
+            }
+          },
+          "optional": false,
+          "body": null,
+          "on": "runEnd"
+        }
+      ]
+    }
+  ]
+}

@@ -517,6 +517,15 @@ fn walk_line(l: &Line, w: &mut Walk<'_>) {
 /// desugar) that [`walk_match`] already handles — so this function only
 /// ever sees the unconditional form.
 fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
+    // dsl 0.21.0 §7a.3: a core `::accept` names a quest in another document
+    // (a scene holds no quests, and trace walks one document), so the trace
+    // records the accept instead of a staging-directive line.
+    if let Some((quest, _)) = d.accept_quest() {
+        w.steps.push(Step::Accept {
+            quest: quest.to_string(),
+        });
+        return Flow::Continue;
+    }
     let boundary = if d.tag == lute_compile::normalize::COMPONENT_BEGIN {
         Some(ComponentBoundary::Begin)
     } else if d.tag == lute_compile::normalize::COMPONENT_END {
@@ -1279,9 +1288,16 @@ fn emit_grants(
 /// exception). `unknown` records an [`UnresolvedEntry`] (never halts —
 /// unlike `<match>`, an objective is a lifecycle FACT the report tables,
 /// not a control-flow gate the walk must stop on).
-fn reevaluate_objectives(quest: &Quest, w: &mut Walk<'_>) {
+///
+/// `occasion` selects WHICH objectives are judged (dsl 0.21.0 §7a.2):
+/// `None` is the continuous pass — every objective WITHOUT `on=`; `Some(o)`
+/// is the raise of occasion `o` — only the objectives declaring `on="o"`.
+fn reevaluate_objectives(quest: &Quest, occasion: Option<&str>, w: &mut Walk<'_>) {
     for node in &quest.body {
         let Node::Objective(o) = node else { continue };
+        if o.on.as_ref().map(|(on, _)| on.as_str()) != occasion {
+            continue;
+        }
         if o.id.is_empty() || is_objective_done(w, &quest.id, &o.id) {
             continue;
         }
@@ -1450,7 +1466,7 @@ fn purge_terminal_objectives(quest: &Quest, w: &mut Walk<'_>) {
 /// already `Complete`/`Failed` never reaches this function again
 /// (`walk_quest`'s own `Active`-only loop guard).
 fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow {
-    reevaluate_objectives(quest, w);
+    reevaluate_objectives(quest, None, w);
 
     let mut fail_atoms = Vec::new();
     let fail_v = match quest.fail.as_ref().and_then(|f| slot_expr(&f.raw)) {
@@ -1831,7 +1847,11 @@ fn quest_settle_fixpoint(
 /// quest's `--event`s stream through before the next quest's), then a
 /// final fixpoint pass to propagate any parent-completion whose only
 /// remaining pending objective referenced a child that reached terminal
-/// state during the events phase (subquest design §2.3). Admission
+/// state during the events phase (subquest design §2.3). Last, every
+/// `--occasion`/`occasions:` raise in order (dsl 0.21.0 §7a.2, "applied in
+/// order after the walk settles"): each active quest, document order,
+/// judges its `<objective on="<occasion>">` objectives and settles, and a
+/// fixpoint propagates the transitions. Admission
 /// (§3.3/§6.7) guarantees a check-clean document never populates both
 /// `doc.shots` and `doc.quests`, so [`trace_document`] calling both this
 /// and [`walk_document`] unconditionally is safe.
@@ -1870,7 +1890,29 @@ fn walk_quests(doc: &Document, events: &[String], w: &mut Walk<'_>) -> Flow {
     // activates any still-Pending children whose parent became Active
     // via events processing (a `<on>` handler's `::set` gating
     // parent's activation… fringe, but the fixpoint covers it).
-    quest_settle_fixpoint(doc, &parents, &mut states, w)
+    let flow = quest_settle_fixpoint(doc, &parents, &mut states, w);
+    if !matches!(flow, Flow::Continue) {
+        return flow;
+    }
+
+    let mocks = w.mocks;
+    for occasion in &mocks.occasions {
+        for quest in &doc.quests {
+            if states.get(&quest.id).copied() != Some(QuestState::Active) {
+                continue;
+            }
+            reevaluate_objectives(quest, Some(occasion), w);
+            let flow = settle_and_cascade(quest, doc, &parents, &mut states, w);
+            if !matches!(flow, Flow::Continue) {
+                return flow;
+            }
+        }
+        let flow = quest_settle_fixpoint(doc, &parents, &mut states, w);
+        if !matches!(flow, Flow::Continue) {
+            return flow;
+        }
+    }
+    Flow::Continue
 }
 
 /// dsl 0.5.1 §1.1: a RESERVED `quest.<id>.state`/`quest.<id>.objectives.
@@ -1925,6 +1967,10 @@ fn seed_facts(mocks: &MockSet, facts: &mut FactStore<'_>) {
             let args: Vec<String> = pat.args.iter().map(|a| fact_term_text(&a.term)).collect();
             facts.assert(&pat.relation, &args);
         }
+    }
+    // dsl 0.21.0 §7a.1: the presented-scene set `visited(…)` reads.
+    for id in &mocks.visited {
+        facts.visit(id);
     }
 }
 
@@ -2086,6 +2132,63 @@ fn unmatched_event_notes(doc: &Document, events: &[String]) -> Vec<String> {
             continue;
         }
         notes.push(format!("event `{name}` matched no `<on>` handler"));
+    }
+    notes
+}
+
+/// dsl 0.21.0 §7a.2: the two silences an occasion-judged objective invites,
+/// named as notes rather than left for the author to infer. A raised
+/// occasion that no `<objective on>` in the document answers did nothing;
+/// an `on=` objective of a quest the walk left `active`, never done, whose
+/// occasion the walk never raised was never judged at all — the quest is
+/// not stuck, it is waiting for a moment the mock did not supply.
+/// Read off the recorded decisions (the last `quest` outcome per id, an
+/// `objective` `done` at the objective's own span), never the reserved
+/// state paths, so the §1.3 reserved-read log is untouched.
+fn occasion_notes(doc: &Document, occasions: &[String], decisions: &[Decision]) -> Vec<String> {
+    let mut notes = Vec::new();
+    let answered: BTreeSet<&str> = doc
+        .quests
+        .iter()
+        .flat_map(|q| &q.body)
+        .filter_map(|n| match n {
+            Node::Objective(o) => o.on.as_ref().map(|(on, _)| on.as_str()),
+            _ => None,
+        })
+        .collect();
+    let mut seen = BTreeSet::new();
+    for name in occasions {
+        if answered.contains(name.as_str()) || !seen.insert(name.as_str()) {
+            continue;
+        }
+        notes.push(format!(
+            "occasion `{name}` is judged by no `<objective on>` in this document"
+        ));
+    }
+    for quest in &doc.quests {
+        let last = decisions
+            .iter()
+            .rev()
+            .find(|d| d.construct == "quest" && d.id == quest.id)
+            .map(|d| d.outcome.as_str());
+        if last != Some("active") {
+            continue;
+        }
+        for node in &quest.body {
+            let Node::Objective(o) = node else { continue };
+            let Some((on, _)) = &o.on else { continue };
+            let done = decisions
+                .iter()
+                .any(|d| d.construct == "objective" && d.span == o.span && d.outcome == "done");
+            if done || occasions.contains(on) {
+                continue;
+            }
+            notes.push(format!(
+                "objective `{}.{}` is judged at occasion `{on}`, which this walk never raised \
+                 (supply `--occasion {on}` or `occasions: [{on}]`)",
+                quest.id, o.id
+            ));
+        }
     }
     notes
 }
@@ -2396,6 +2499,7 @@ fn trace_pipeline(
         &doc_quest_ids,
     ));
     notes.extend(unmatched_event_notes(&doc, &mocks.events));
+    notes.extend(occasion_notes(&doc, &mocks.occasions, &w.decisions));
     notes.extend(mock_unproducible_notes(&mocks, &folded, &doc));
     // #32 / T5.9: `Ended` and `Complete` are the same EXIT CODE (see below)
     // and were therefore indistinguishable to a harness. `disposition` is the

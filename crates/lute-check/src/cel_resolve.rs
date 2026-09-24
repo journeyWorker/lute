@@ -360,17 +360,23 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
             let name = c.func_name.as_str();
             // Exempt: a compile-time `@ref(args)` macro (marker-prefixed name;
             // §8.1 owns its arity), a profile operator, a well-formed
-            // `isSet(<path>)` call, or a well-shaped fact-query/`now()` call
-            // (dsl 0.3.0 §6/§8). Anything else — including `scene.x.isSet()`
-            // (receiver), `isSet(a, b)` (wrong arity), `holds()` (wrong
-            // arity), and `holds(scene.x)` (non-call pattern arg) — is out of
-            // profile.
+            // `isSet(<path>)` call, a well-shaped fact-query/`now()` call
+            // (dsl 0.3.0 §6/§8), or — in a condition slot — a
+            // `visited('<scene id>')` call (dsl 0.21.0 §7a.1). Anything else
+            // — including `scene.x.isSet()` (receiver), `isSet(a, b)` (wrong
+            // arity), `holds()` (wrong arity), `holds(scene.x)` (non-call
+            // pattern arg), and `visited(scene.x)` (non-literal id) — is out
+            // of profile.
+            let visited = slot.kind == CelKind::Condition && visited_call_target(c).is_some();
             if name.starts_with(lute_cel::REF_MARKER)
                 || is_profile_operator(name)
                 || is_profile_isset_call(c)
                 || is_profile_fact_query(c)
+                || visited
             {
-                if is_profile_fact_query(c) {
+                if visited {
+                    // A string-literal leaf: nothing to recurse into.
+                } else if is_profile_fact_query(c) {
                     // A fact-query/now() call: do NOT recurse into the
                     // pattern arg (args[0], a relation Call — validated by
                     // check_fact_queries, never a CEL sub-expression).
@@ -391,6 +397,18 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
                         check_cel_profile(&a.expr, slot, diags);
                     }
                 }
+            } else if name == VISITED_FN && slot.kind != CelKind::Condition {
+                // dsl 0.21.0 §7a.1: `visited()` is a condition-slot function
+                // only — it answers "has this scene been presented", never a
+                // value to store or match on.
+                diags.push(diag(
+                    E_CEL_PROFILE,
+                    "`visited(…)` is legal only in a condition slot (quest `start` / `fail`, \
+                     objective `done`, beat and entry `when`, content-line and branch `when=`, \
+                     `<when test>`) (dsl 0.21.0 §7a.1)"
+                        .to_string(),
+                    slot.span,
+                ));
             } else {
                 // An out-of-profile function/method call. Report and stop
                 // descending (the whole call is rejected).
@@ -399,8 +417,8 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
                     format!(
                         "`{name}(…)` is outside the Lute-CEL profile — only operators, \
                          literals, lists, `?:`, `in`, `has()`, `isSet()`, `holds()`, \
-                         `count()`, `validAt()`, and `now()` are permitted (dsl §8.4, \
-                         0.3.0 §8)"
+                         `count()`, `validAt()`, `now()`, and `visited('<scene id>')` are \
+                         permitted (dsl §8.4, 0.3.0 §8, 0.21.0 §7a.1)"
                     ),
                     slot.span,
                 ));
@@ -499,6 +517,68 @@ fn is_profile_isset_call(c: &cel_parser::ast::CallExpr) -> bool {
         && c.target.is_none()
         && c.args.len() == 1
         && crate::cel_paths::select_path(&c.args[0].expr).is_some()
+}
+
+/// The Lute-CEL name of the presentation-history query (dsl 0.21.0 §7a.1).
+pub const VISITED_FN: &str = "visited";
+
+/// The scene id of an in-profile `visited('<scene id>')` call (dsl 0.21.0
+/// §7a.1): named exactly `visited`, NO receiver, exactly one argument, and
+/// that argument a string literal. `None` for anything else — a malformed
+/// `visited(…)` (`visited(scene.x)`, `visited()`, `x.visited('a')`) is an
+/// ordinary out-of-profile call ([`E_CEL_PROFILE`]).
+///
+/// `visited` is not a state path: it reads the save's presentation history
+/// (the tier `after:` uses, never cleared by `newRun`), so definite
+/// assignment and the unset-sentinel rules do not apply to it, and `decide`
+/// treats it as an undecided atom. Its id resolves against the project's
+/// scene keys at `check-project` (`E-CONN-UNKNOWN-NODE`,
+/// [`crate::connectivity::resolve_nodes`]).
+pub fn visited_call_target(c: &cel_parser::ast::CallExpr) -> Option<&str> {
+    if c.func_name != VISITED_FN || c.target.is_some() || c.args.len() != 1 {
+        return None;
+    }
+    match &c.args[0].expr {
+        Expr::Literal(Val::String(s)) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+/// Every in-profile `visited('<scene id>')` target in `expr`, in source
+/// order (dsl 0.21.0 §7a.1). Walks every sub-expression, including the
+/// arguments of other calls.
+pub fn visited_targets(expr: &Expr) -> Vec<String> {
+    fn walk(expr: &Expr, out: &mut Vec<String>) {
+        match expr {
+            Expr::Call(c) => {
+                if let Some(id) = visited_call_target(c) {
+                    out.push(id.to_string());
+                    return;
+                }
+                if let Some(t) = &c.target {
+                    walk(&t.expr, out);
+                }
+                for a in &c.args {
+                    walk(&a.expr, out);
+                }
+            }
+            Expr::List(list) => {
+                for el in &list.elements {
+                    walk(&el.expr, out);
+                }
+            }
+            Expr::Select(sel) => walk(&sel.operand.expr, out),
+            Expr::Comprehension(_)
+            | Expr::Map(_)
+            | Expr::Struct(_)
+            | Expr::Ident(_)
+            | Expr::Literal(_)
+            | Expr::Unspecified => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(expr, &mut out);
+    out
 }
 
 /// True iff `c` is a structurally well-shaped fact-query/narrative-time call

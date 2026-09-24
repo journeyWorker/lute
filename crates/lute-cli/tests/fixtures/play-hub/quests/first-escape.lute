@@ -4,7 +4,7 @@ uses: ../world.schema.yaml
 title: First Escape
 ---
 
-<quest id="firstEscape" title="Escape the Underworld">
+<quest id="firstEscape" title="Escape the Underworld" start="true">
 <reward kind="darkness" amount="10"/>
 <objective id="twoVisits" title="Come home twice" done="run.hubVisits >= 2"/>
 <on event="questComplete">

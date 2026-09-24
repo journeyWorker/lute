@@ -10,16 +10,34 @@ title: Unmoored
   forty metres of ship stop being ship — because that is where "the ship is
   coming apart" stops being a warning and becomes a measurement.
 
-  What this quest WANTED to say and cannot: "and the shed is still short of the
-  greenhouse when the story ends". Every `done=` is evaluated continuously, so a
-  hold-the-line objective (`run.shedPressure < 2`) is satisfied at activation and
-  the quest completes before the player has done anything. There is no end-of-run
-  evaluation point in the language, so the goal is written in its positive form
-  instead — get a hand onto the coupling — and the losing side is `fail=`. See T9.4.
+  What this quest WANTED to say from the start: "and the shed is still short of
+  the greenhouse when the story ends". Until dsl 0.21.0 it could not: every
+  `done=` was evaluated continuously, so the hold-the-line objective
+  (`run.shedPressure < 2`) was satisfied at activation and the quest completed
+  before the player had done anything (T9.4). The file shipped the positive form
+  instead — `aHandAtTheCoupling`, `somebodyToWalkWith` — with the losing side on
+  `fail=`, and this comment said so.
+
+  `noNewReasons` is that sentence, now written: `on="runEnd"` makes its `done`
+  judged ONLY when the engine raises `runEnd` while the quest is active, never
+  continuously (dsl 0.21.0 §7a.2). The quest can no longer complete mid-run; it
+  completes only once a `runEnd` has found the schedule handed at most one reason,
+  with the other two required objectives done.
+  The two positive-form objectives stay: they were the stand-ins, but they are
+  also true of the story — the completion line names both — so the quest now
+  asks for all three. `fail=` stays too, and still fires the moment the shed runs
+  four modules ahead. Between the two (pressure 2 or 3 at `runEnd`) the quest
+  simply stays active: the run ended with reasons given, and nothing lost outright.
+
+  `visited()` is now legal in `done=` as well (§7a.1), so T9.3's first draft —
+  "arrive at the bridge", `visited('haven.s01ep10')` — is writable. It is not
+  restored: the prologue has two endings, and the frame quest is about the shed,
+  not which terminal the player reaches.
 */
 <quest id="unmoored" title="Unmoored" start="true" fail="run.shedPressure >= 4" after="visited('haven.s01ep03')">
 <objective id="aHandAtTheCoupling" title="Have somebody aboard who can stop the shed" done="count(can_halt(_)) >= 1"/>
 <objective id="somebodyToWalkWith" title="Give Vesna a reason to work with you" done="run.vesnaTrust >= 1"/>
+<objective id="noNewReasons" title="Give the schedule no new reasons" on="runEnd" done="run.shedPressure < 2"/>
 <objective id="theOrderOnPaper" title="Get the order of release onto paper you have read" done="holds(knows(vesna, manifest))" optional/>
 <on event="questComplete">
 @narrator: A hand that could reach the coupling, and somebody willing to stand next to it.

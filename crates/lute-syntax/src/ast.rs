@@ -70,6 +70,35 @@ pub struct Directive {
     pub span: Span,
 }
 
+/// The tag of the core `::accept{quest="<id>"}` directive (dsl 0.21.0 §7a.3):
+/// the scene-side "accept quest" action. It is part of the language, not of
+/// any capability snapshot, so it is recognized by tag (like `::assert` /
+/// `::retract` are recognized by the parser) and never looked up as a plugin
+/// directive. Shared by the checker, the compiler (→ `Command::Accept`), and
+/// the trace walk.
+pub const ACCEPT_DIRECTIVE: &str = "accept";
+
+impl Directive {
+    /// True when this is the core [`ACCEPT_DIRECTIVE`].
+    pub fn is_accept(&self) -> bool {
+        self.tag == ACCEPT_DIRECTIVE
+    }
+
+    /// The target of an `::accept{quest="<id>"}` directive: the quoted
+    /// `quest` attribute's value and value span, or `None` when this is not
+    /// an accept directive or `quest` is missing / not a quoted string. Shape
+    /// validity (a plain identifier) is the checker's (`E-ACCEPT-TARGET`).
+    pub fn accept_quest(&self) -> Option<(&str, Span)> {
+        if !self.is_accept() {
+            return None;
+        }
+        self.attrs.iter().find(|a| a.key == "quest").and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
+            _ => None,
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Set {
     pub path: String,
@@ -228,6 +257,11 @@ pub struct Objective {
     pub when: Option<CelSlot>,
     pub title: Option<String>,
     pub optional: bool,
+    /// The occasion at which this objective's `done`/`fail` is judged (dsl
+    /// 0.21.0 §7a.2), raw text + value span like [`Entry::on`]; `None` →
+    /// evaluated continuously. The checker validates the identifier shape
+    /// (`E-BEAT-ATTR`) and the occasion vocabulary (`E-OCCASION-UNKNOWN`).
+    pub on: Option<(String, Span)>,
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
     /// Self-closing `<reward/>` children in declaration order (dsl 0.16.0 §2).
