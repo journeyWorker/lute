@@ -10,7 +10,8 @@
 //! - every `<quest>` (dsl 0.2.0 §6.3, a top-level declaration like a shot) and
 //!   its nested `<on>`/`<objective>` bodies (dsl 0.2.0 §4, §6.4);
 //! - every lore `<entry>` (dsl 0.19.0 §3, a top-level declaration like a
-//!   quest) and the blocks nested in its body.
+//!   quest) and every lore `<beat>` bundle (dsl 0.23.0 §4), with the blocks
+//!   nested in their bodies.
 //!
 //! A region that begins and ends on the SAME source line is not foldable (there
 //! is nothing to collapse), so single-line blocks are dropped. `<choice>` /
@@ -50,6 +51,12 @@ pub fn folding_ranges(doc: &Document, idx: &TextIndex) -> Vec<FoldingRange> {
     for entry in &doc.entries {
         push_fold(&mut out, &entry.span, idx);
         fold_nodes(&entry.body, idx, &mut out);
+    }
+    // A lore `<beat>` bundle (dsl 0.23.0 §4) is a top-level declaration like
+    // `<entry>`.
+    for beat in &doc.beats {
+        push_fold(&mut out, &beat.span, idx);
+        fold_nodes(&beat.body, idx, &mut out);
     }
     out
 }
@@ -323,6 +330,24 @@ mod tests {
         let idx = TextIndex::new(text);
         let all = folds(text);
         for needle in ["<entry", "<match"] {
+            let start = idx.position(text.find(needle).unwrap()).line - 1;
+            assert!(
+                all.iter().any(|f| f.start_line == start),
+                "no fold anchored on {needle}: {all:?}"
+            );
+        }
+    }
+
+    /// dsl 0.23.0 §4: a lore `<beat>` bundle folds its multi-line span, and a
+    /// `<branch>` inside its body folds too.
+    #[test]
+    fn bundle_beat_and_its_branch_fold() {
+        let text = "---\nid: ship.records\nkind: lore\n---\n\
+            <beat id=\"b\" on=\"talk\">\n<branch id=\"ask\">\n<choice id=\"c\" text=\"C\">\n\
+            @narrator: y\n</choice>\n</branch>\n</beat>\n";
+        let idx = TextIndex::new(text);
+        let all = folds(text);
+        for needle in ["<beat", "<branch"] {
             let start = idx.position(text.find(needle).unwrap()).line - 1;
             assert!(
                 all.iter().any(|f| f.start_line == start),

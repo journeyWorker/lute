@@ -283,7 +283,7 @@ impl WhenTestRewrite {
 }
 
 /// Every rewritable `<when>` arm in `doc` (scene shots, quest bodies, entry
-/// bodies (dsl 0.19.0) — and
+/// bodies (dsl 0.19.0), lore `<beat>` bundle bodies (dsl 0.23.0) — and
 /// every `<match>` nested in choices, hubs, arms, `<on>`, and objectives), in
 /// document order. Only `<when>` arms WITHOUT `is=` and with a quoted
 /// `test="…"` attribute qualify; a `<choice when>`/line `when` guard is never a
@@ -298,6 +298,9 @@ pub(crate) fn when_test_rewrites(doc: &Document, src: &str) -> Vec<WhenTestRewri
     }
     for entry in &doc.entries {
         collect(&entry.body, src.as_bytes(), &mut out);
+    }
+    for beat in &doc.beats {
+        collect(&beat.body, src.as_bytes(), &mut out);
     }
     out
 }

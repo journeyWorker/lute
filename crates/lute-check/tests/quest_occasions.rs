@@ -175,11 +175,22 @@ fn visited_is_never_decided_per_file() {
     // An undecided atom: neither `E-OBJECTIVE-UNREACHABLE`-style dead-guard
     // nor always-true verdicts may fire on it alone.
     let src = quest_doc(
-        "<quest id=\"q\">\n<objective id=\"o\" done=\"visited('a.b') && !visited('a.b')\"/>\n\
+        "<quest id=\"q\">\n<objective id=\"o\" done=\"visited('a.b') && !visited('c.d')\"/>\n\
          <objective id=\"p\" done=\"visited('a.b') || true\"/>\n</quest>\n",
     );
     let ds = diags(&src);
     assert!(errors(&ds).is_empty(), "{ds:?}");
+}
+
+#[test]
+fn visited_and_its_negation_contradict() {
+    // dsl 0.23.0 §9: whatever the history, one scene cannot be both visited
+    // and not visited at one instant.
+    let src = quest_doc(
+        "<quest id=\"q\">\n<objective id=\"o\" done=\"visited('a.b') && !visited('a.b')\"/>\n</quest>\n",
+    );
+    let ds = diags(&src);
+    only(&ds, "E-OBJECTIVE-UNSATISFIABLE");
 }
 
 #[test]

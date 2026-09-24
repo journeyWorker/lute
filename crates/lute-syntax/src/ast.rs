@@ -8,6 +8,9 @@ pub struct Document {
     pub quests: Vec<Quest>,
     /// Top-level `<entry>` declarations (dsl 0.19.0 §2), in document order.
     pub entries: Vec<Entry>,
+    /// Top-level `<beat>` declarations of a lore document (dsl 0.23.0 §4,
+    /// beat bundles), in document order.
+    pub beats: Vec<BundleBeat>,
     pub span: Span,
 }
 
@@ -241,6 +244,37 @@ pub struct Entry {
     pub span: Span,
 }
 
+/// `<beat id on …> SceneBody </beat>` (dsl 0.23.0 §4): a scene-like beat
+/// declared inside a lore document — a beat bundle. A TOP-LEVEL declaration
+/// (never a [`Node`]), mirroring [`Entry`]: `body` is the shared `Node`
+/// stream, admitted as a scene shot body (lines, choices, hubs, matches,
+/// directives — enforced in lute-check, not here). Its canonical id is
+/// `<document id>.<id>`. `id` is empty when the attribute is absent or not a
+/// quoted string (checker: `E-BEAT-ATTR`); `id_span` then falls back to the
+/// open tag. The string attrs keep their value span so the checker can
+/// anchor `E-BEAT-ATTR` at the value; `priority` / `once` stay raw text.
+/// `also` is the bare flag (or `also="true"` / `"false"`) with its span; any
+/// other `also=` value stays residual in `attrs`.
+#[derive(Clone, Debug)]
+pub struct BundleBeat {
+    pub id: String,
+    pub id_span: Span,
+    pub on: Option<(String, Span)>,
+    pub target: Option<(String, Span)>,
+    /// A localizable label (a `select: all` menu names the beat by it),
+    /// captured raw like [`Entry::title`].
+    pub title: Option<(String, Span)>,
+    pub priority: Option<(String, Span)>,
+    /// `run` (the default) / `user` / `false`, like a scene's `once:`.
+    pub once: Option<(String, Span)>,
+    pub also: Option<(bool, Span)>,
+    pub when: Option<CelSlot>,
+    /// Residual (post-extraction) attrs; normally empty.
+    pub attrs: Vec<Attr>,
+    pub body: Vec<Node>,
+    pub span: Span,
+}
+
 /// `<objective id done …> Node* </objective>` or self-closing
 /// `<objective … />` (dsl 0.2.0 §6.4). Exactly one of `done`/`quest` carries
 /// the completion source: `done` is the authored completion predicate;
@@ -270,6 +304,14 @@ pub struct Objective {
     /// evaluated continuously. The checker validates the identifier shape
     /// (`E-BEAT-ATTR`) and the occasion vocabulary (`E-OCCASION-UNKNOWN`).
     pub on: Option<(String, Span)>,
+    /// dsl 0.23.0 §2: `by="<condition>"` — while the objective is not done,
+    /// the first time it becomes true the objective FAILS (a required
+    /// objective fails its quest). A condition slot like `done`.
+    pub by: Option<CelSlot>,
+    /// dsl 0.23.0 §2: `target=` on an `on=` objective — judged only when the
+    /// occasion is raised for that target (the beat target rule). Raw text +
+    /// value span like [`Entry::target`].
+    pub target: Option<(String, Span)>,
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
     /// Self-closing `<reward/>` children in declaration order (dsl 0.16.0 §2).

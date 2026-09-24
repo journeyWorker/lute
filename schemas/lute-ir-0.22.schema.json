@@ -789,6 +789,10 @@
             "none"
           ],
           "description": "repetition policy: `run` (default — presented at most once per run), `user` (at most once ever), `none` (repeatable; source `once: false`)."
+        },
+        "also": {
+          "const": true,
+          "description": "dsl 0.23.0 §3: on a `select: first` occasion, an eligible `also` beat is presented in addition to the winner, after it; it never wins. Absent when not authored."
         }
       },
       "additionalProperties": false,
@@ -1088,6 +1092,10 @@
           "type": "string",
           "enum": ["failed"],
           "description": "Optional lifecycle-transition filter (dsl 0.16.0 §2). Only ever `\"failed\"` on the wire, and only on a quest-level entry — a quest reward with `on=\"failed\"` grants ONLY on a fresh `failed` transition (authored `fail` OR §2.3 cascade); absent `on=` means the reward grants ONLY on a fresh `complete`. Objective-level entries never carry `on=` (checker `E-REWARD-ATTR`)."
+        },
+        "credits": {
+          "type": "string",
+          "description": "dsl 0.23.0 §8: the state path the reward kind's `rewardKinds.credits` declares, stamped at compile from the capability snapshot. A grant adds its `amount` to this path (a range amount is the engine's roll; the reference runner credits scalar amounts only). Omitted when the kind credits nothing."
         }
       },
       "additionalProperties": true,
@@ -1137,6 +1145,14 @@
           "type": "string",
           "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
           "description": "dsl 0.21.0 §7a.2: the occasion at which this objective is judged. The engine evaluates the objective's `done` only when it raises this occasion while the quest is `active`, never continuously (docs/runtime/quest-lifecycle.md). Absent when not authored: the objective is evaluated continuously, as before."
+        },
+        "by": {
+          "$ref": "#/$defs/celPair",
+          "description": "dsl 0.23.0 §2: while the objective is not done, the first time this condition is true the objective FAILS (a required objective fails its quest). Judged at every lifecycle settle, `on` or not. Absent when not authored."
+        },
+        "target": {
+          "type": "string",
+          "description": "dsl 0.23.0 §2: with `on`, the objective is judged only when the occasion is raised for this target (the beat target rule). Absent when not authored: judged whenever the occasion is raised, for any target."
         }
       },
       "additionalProperties": true,
@@ -1966,6 +1982,10 @@
         },
         "converge": {
           "type": "string"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "dsl 0.23.0 §4: the prompt line shown with the hub's options. Present only when authored."
         },
         "wait": {
           "type": "boolean"

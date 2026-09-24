@@ -713,6 +713,7 @@ mod tests {
             reward_kinds: vec![],
             occasions: vec![],
             lints: vec![],
+            cast: vec![],
         }
     }
 

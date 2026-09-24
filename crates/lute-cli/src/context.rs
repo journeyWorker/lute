@@ -97,8 +97,10 @@ pub(crate) fn extend_surface(
 
 /// The ids a document may name in `visited(…)`, `after:`, `completed(…)`,
 /// `::accept`, `quest.<id>.state` and `entry.<id>.read`: every scene key
-/// (authored `id:` or the derived `{character}.sNNepNN`), quest id and lore
-/// entry id — under `project` when given (the same `.lute` walk
+/// (authored `id:` or the derived `{character}.sNNepNN`), quest id, lore
+/// entry id, and lore bundle beat canonical id (`<document id>.<beat id>`,
+/// dsl 0.23.0 §4; the `beats` key is present only when some document bundles
+/// beats) — under `project` when given (the same `.lute` walk
 /// `check-project` does), else in `file` alone. Parse-only: ids are
 /// syntactic, and a document that does not check still declares them.
 fn project_ids(file: &Path, project: Option<&Path>) -> Value {
@@ -125,7 +127,14 @@ fn project_ids(file: &Path, project: Option<&Path>) -> Value {
         .filter(|e| !e.id.is_empty())
         .map(|e| e.id.clone())
         .collect();
-    json!({ "scenes": scenes, "quests": quests, "entries": entries })
+    let mut ids = json!({ "scenes": scenes, "quests": quests, "entries": entries });
+    let beats: Vec<String> = lute_check::connectivity::bundle_beat_key_set(&docs)
+        .into_keys()
+        .collect();
+    if !beats.is_empty() {
+        ids["beats"] = json!(beats);
+    }
+    ids
 }
 
 fn strs(v: &Value) -> Vec<&str> {
@@ -191,6 +200,7 @@ pub(crate) fn outline_extras(out: &mut String, surface: &Value) {
             "entries",
             "read as entry.<id>.read [run] / entry.<id>.everRead [user]",
         ),
+        ("beats", "bundle beats; read as visited(\"<id>\")"),
     ] {
         let list = strs(&ids[key]);
         if !list.is_empty() {

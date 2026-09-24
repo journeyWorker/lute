@@ -19,24 +19,26 @@
 //!   recurse `body`; `Otherwise{body}` → recurse `body`.
 //! - [`Node::Timeline`] → `duration` (if any); then per track, per clip:
 //!   `ClipNode::Directive` → attr refs; `ClipNode::Set` → `expr`.
-//! - [`Node::Objective`] → `done`; `when` (if any); `attrs` refs; then `body`.
+//! - [`Node::Objective`] → `done`; `when` (if any); `by` (if any, dsl
+//!   0.23.0 §2); `attrs` refs; then `body`.
 //! - [`Node::On`] → `when` (if any); `attrs` refs; then `body`.
 //! - [`Node::Assert`] / [`Node::Retract`] → no `CelSlot`s (args are
 //!   compile-time-ground; 0.3.0 T2). No-op.
 //!
-//! ## Document-level order (dsl 0.2.0, 0.19.0)
+//! ## Document-level order (dsl 0.2.0, 0.19.0, 0.23.0)
 //! Every `shot.body` (as above), THEN every `quest` in `doc.quests`, THEN
-//! every `entry` in `doc.entries`. Per [`Quest`]: `start` (if any), `fail`
-//! (if any), `attrs` refs, then `body`. Per [`Entry`]: `when` (if any),
-//! `attrs` refs, then `body`.
+//! every `entry` in `doc.entries`, THEN every bundle `beat` in `doc.beats`.
+//! Per [`Quest`]: `start` (if any), `fail` (if any), `attrs` refs, then
+//! `body`. Per [`Entry`] and [`BundleBeat`]: `when` (if any), `attrs` refs,
+//! then `body`.
 //! Only `AttrValue::Ref(slot)` attrs are slots; bare/other attr values are not.
 //! This order MUST stay byte-identical to what `lute-cel::fill` historically
 //! walked — the StableId sequence (and thus determinism, goldens, examples) rides
 //! on it.
 
 use crate::ast::{
-    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Directive, Document, Entry, Hub, Line, Match,
-    Node, Objective, On, Quest, Reward, Timeline,
+    Arm, Attr, AttrValue, Branch, BundleBeat, CelSlot, ClipNode, Directive, Document, Entry, Hub,
+    Line, Match, Node, Objective, On, Quest, Reward, Timeline,
 };
 
 /// Visit every [`CelSlot`] in `doc` in the canonical pre-order, borrowing each.
@@ -52,6 +54,9 @@ pub fn for_each_cel_slot<'a>(doc: &'a Document, f: &mut impl FnMut(&'a CelSlot))
     }
     for e in &doc.entries {
         entry(e, f);
+    }
+    for b in &doc.beats {
+        bundle_beat(b, f);
     }
 }
 
@@ -145,10 +150,21 @@ fn entry<'a>(e: &'a Entry, f: &mut impl FnMut(&'a CelSlot)) {
     body(&e.body, f);
 }
 
+fn bundle_beat<'a>(b: &'a BundleBeat, f: &mut impl FnMut(&'a CelSlot)) {
+    if let Some(w) = &b.when {
+        f(w);
+    }
+    attrs(&b.attrs, f);
+    body(&b.body, f);
+}
+
 fn objective<'a>(o: &'a Objective, f: &mut impl FnMut(&'a CelSlot)) {
     f(&o.done);
     if let Some(w) = &o.when {
         f(w);
+    }
+    if let Some(b) = &o.by {
+        f(b);
     }
     attrs(&o.attrs, f);
     body(&o.body, f);
@@ -215,6 +231,9 @@ pub fn for_each_cel_slot_mut(doc: &mut Document, f: &mut impl FnMut(&mut CelSlot
     }
     for e in &mut doc.entries {
         entry_mut(e, f);
+    }
+    for b in &mut doc.beats {
+        bundle_beat_mut(b, f);
     }
 }
 
@@ -305,10 +324,21 @@ fn entry_mut(e: &mut Entry, f: &mut impl FnMut(&mut CelSlot)) {
     body_mut(&mut e.body, f);
 }
 
+fn bundle_beat_mut(b: &mut BundleBeat, f: &mut impl FnMut(&mut CelSlot)) {
+    if let Some(w) = &mut b.when {
+        f(w);
+    }
+    attrs_mut(&mut b.attrs, f);
+    body_mut(&mut b.body, f);
+}
+
 fn objective_mut(o: &mut Objective, f: &mut impl FnMut(&mut CelSlot)) {
     f(&mut o.done);
     if let Some(w) = &mut o.when {
         f(w);
+    }
+    if let Some(b) = &mut o.by {
+        f(b);
     }
     attrs_mut(&mut o.attrs, f);
     body_mut(&mut o.body, f);
@@ -544,6 +574,7 @@ mod tests {
             }],
             quests: Vec::new(),
             entries: Vec::new(),
+            beats: Vec::new(),
             span: span(),
         }
     }

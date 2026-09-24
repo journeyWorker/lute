@@ -13,7 +13,8 @@ use lute_check::{decide_slot, DecideCtx, Decided, DefTable, DollarBinding, Domai
 use lute_manifest::types::{Literal, Type};
 
 /// `run.rank: enum [fail, bronze, silver, gold]`, `run.flag: bool` (default
-/// `false`), `run.n: number` (default `0`) — mirrors the plan's Step 1 schema.
+/// `false`), `run.n: number` (default `0`) — mirrors the plan's Step 1 schema
+/// — plus `run.m: number` with no default (maybe unset).
 fn schema() -> StateSchema {
     let mut decls = BTreeMap::new();
     decls.insert(
@@ -44,6 +45,15 @@ fn schema() -> StateSchema {
         StateDecl {
             ty: Type::Number,
             default: Some(Literal::Num(0.0)),
+            namespace: Namespace::Run,
+            owner: None,
+        },
+    );
+    decls.insert(
+        "run.m".to_string(),
+        StateDecl {
+            ty: Type::Number,
+            default: None,
             namespace: Namespace::Run,
             owner: None,
         },
@@ -345,4 +355,154 @@ fn soundness_no_guessing() {
 #[test]
 fn def_cycle_guard_returns_none_promptly() {
     assert_eq!(d_cycle("@a"), None);
+}
+
+// --- dsl 0.23.0 §9: per-path reasoning across `&&` / `||` ----------------
+
+fn f() -> Option<Decided> {
+    Some(Decided::Bool(false))
+}
+
+fn t() -> Option<Decided> {
+    Some(Decided::Bool(true))
+}
+
+/// Every contradiction the seven-days dogfood (T1-17) found passing clean
+/// now decides false: two equalities on one path, an empty interval, and a
+/// flag with its own negation.
+#[test]
+fn contradictory_conjunction_decides_false() {
+    for e in [
+        "run.rank == 'gold' && run.rank == 'fail'",
+        "run.n == 3 && run.n == 4",
+        "run.n > 5 && run.n < 3",
+        "run.flag && !run.flag",
+        "3 == run.n && run.n != 3",
+        "run.n >= 3 && run.n <= 3 && run.n != 3",
+        "!(run.n > 5) && run.n > 7",
+        // De Morgan: `!(a || b)` contributes `!a` and `!b`.
+        "!(run.n <= 5 || run.flag) && run.n < 3",
+        // The contradiction may sit among unrelated operands.
+        "run.flag && run.rank == 'gold' && visited('x') && run.rank == 'silver'",
+        // A nested disjunction over one finite path is a set too.
+        "(run.rank == 'gold' || run.rank == 'silver') && run.rank == 'fail'",
+        "run.rank in ['gold', 'silver'] && run.rank == 'fail'",
+    ] {
+        assert_eq!(d(e), f(), "{e}");
+    }
+}
+
+/// Satisfiable conjunctions stay undecided: the numbers are the REALS, and
+/// operands on different paths never combine.
+#[test]
+fn satisfiable_conjunction_is_undecided() {
+    for e in [
+        "run.n > 1 && run.n < 2",
+        "run.n >= 3 && run.n <= 3",
+        "run.n != 3 && run.n != 4",
+        "run.rank != 'gold' && run.rank != 'fail'",
+        "run.flag && run.n > 5",
+        "(run.rank == 'gold' || run.rank == 'silver') && run.rank != 'gold'",
+    ] {
+        assert_eq!(d(e), None, "{e}");
+    }
+}
+
+/// `unset` is a value too. On `unset` an ordering or a bare boolean read
+/// errs — neither true nor false — so a conjunction of them over a
+/// maybe-unset path is not provably FALSE (its value there is an error);
+/// an equality is false on `unset`, and `isSet` rules `unset` out.
+#[test]
+fn maybe_unset_paths_count_unset_as_a_value() {
+    assert_eq!(d("run.m > 5 && run.m < 3"), None);
+    assert_eq!(d("isSet(run.m) && run.m > 5 && run.m < 3"), f());
+    assert_eq!(d("run.m == 1 && run.m == 2"), f());
+    // `run.rank` has no default: every `!=` holds on `unset`.
+    assert_eq!(
+        d("run.rank != 'fail' && run.rank != 'bronze' && run.rank != 'silver' && run.rank != 'gold'"),
+        None
+    );
+    assert_eq!(d("!isSet(run.rank) && run.rank == 'gold'"), f());
+}
+
+/// An undeclared path may hold a value of any kind: equalities still
+/// exclude each other, but an ordering errs on a non-number.
+#[test]
+fn undeclared_path_keeps_only_equality_reasoning() {
+    assert_eq!(d("run.ghost == 'a' && run.ghost == 'b'"), f());
+    assert_eq!(d("run.ghost > 5 && run.ghost < 3"), None);
+}
+
+/// A disjunction decides true when its cases cover the path's domain —
+/// `unset` included for a maybe-unset path.
+#[test]
+fn covering_disjunction_decides_true() {
+    for e in [
+        "run.flag || !run.flag",
+        "run.n < 5 || run.n >= 5",
+        "run.n <= 5 || run.n > 5",
+        "run.n < 5 || run.n > 5 || run.n == 5",
+        "run.n != 5 || run.n == 5",
+        "run.rank != 'gold' || run.rank == 'gold'",
+        "run.rank == 'fail' || run.rank == 'bronze' || run.rank == 'silver' || run.rank == 'gold' \
+         || run.rank == null",
+        "!(run.n < 5 && run.flag) || run.n < 5",
+        "run.ghost != 'a' || run.ghost != 'b'",
+    ] {
+        assert_eq!(d(e), t(), "{e}");
+    }
+    for e in [
+        "run.n < 5 || run.n > 5",
+        // `run.rank` may be unset, which no `==` member covers.
+        "run.rank == 'fail' || run.rank == 'bronze' || run.rank == 'silver' || run.rank == 'gold'",
+        "run.m < 5 || run.m >= 5",
+        // An undeclared path may hold a non-number.
+        "run.ghost < 5 || run.ghost >= 5",
+    ] {
+        assert_eq!(d(e), None, "{e}");
+    }
+}
+
+/// Relational calls are never-unset paths keyed by their text: a query and
+/// its negation exclude each other with no fact envelope in scope.
+#[test]
+fn relational_queries_are_paths() {
+    assert_eq!(d("holds(inParty(x)) && !holds(inParty(x))"), f());
+    assert_eq!(d("visited('a') || !visited('a')"), t());
+    assert_eq!(d("count(r(_)) > 2 && count(r(_)) < 1"), f());
+    assert_eq!(d("holds(inParty(x)) && !holds(inParty(y))"), None);
+}
+
+/// The `$` subject and component params are paths too.
+#[test]
+fn dollar_and_params_are_paths() {
+    assert_eq!(d_dollar("$ == 'gold' && $ == 'fail'"), f());
+    assert_eq!(d_dollar("$ == 'gold' || $ != 'gold'"), t());
+    assert_eq!(d_param("@tier == 'cold' && @tier == 'warm'"), f());
+}
+
+/// `@def`s expand before deciding, so a schedule def combines with a raw
+/// comparison (seven-days: `@festivalNight && run.day == 2`).
+#[test]
+fn expanded_defs_combine() {
+    let schema = schema();
+    let params = BTreeMap::new();
+    let ctx = DecideCtx {
+        schema: &schema,
+        dollar: None,
+        params: &params,
+        facts: None,
+    };
+    let mut bodies = BTreeMap::new();
+    bodies.insert(
+        "festival".to_string(),
+        "run.n == 5 && run.rank == 'gold'".to_string(),
+    );
+    let def_params = BTreeMap::new();
+    let defs = DefTable {
+        bodies: &bodies,
+        params: &def_params,
+    };
+    assert_eq!(decide_slot("@festival && run.n == 2", &defs, &ctx), f());
+    assert_eq!(decide_slot("@festival && run.n != 2", &defs, &ctx), None);
 }

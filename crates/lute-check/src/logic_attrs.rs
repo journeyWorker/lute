@@ -44,7 +44,8 @@
 
 use lute_core_span::{Diagnostic, Layer, Severity};
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, Branch, Choice, Entry, Hub, Match, Objective, On, Quest, Reward,
+    Arm, Attr, AttrValue, Branch, BundleBeat, Choice, Entry, Hub, Match, Objective, On, Quest,
+    Reward,
 };
 
 use crate::content_line::E_UNKNOWN_ATTR;
@@ -57,7 +58,10 @@ const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout"];
 const MATCH_ATTRS: &[&str] = &["on"];
 const WHEN_ATTRS: &[&str] = &["is", "test"];
 const OTHERWISE_ATTRS: &[&str] = &[];
-const HUB_ATTRS: &[&str] = &["id"];
+/// dsl 0.23.0 §4: `<hub prompt>` attaches the prompt line shown with the
+/// hub's options — the same non-empty-string rule as `<branch prompt>`
+/// ([`check_prompt_attr`], `E-BRANCH-PROMPT`).
+pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
 /// dsl 0.16.0 §2: `<reward>` closes over the five wire-contract keys.
 /// Every OTHER attribute is `E-UNKNOWN-ATTR` at its own span; a malformed
 /// `amount=` survives here as a residual so [`check_reward_attrs`] can
@@ -70,6 +74,8 @@ pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "
 /// so a permitted key reaches the residual list only when its value was not
 /// a quoted string — `crate::lore` owns that shape fault (`E-ENTRY-ATTR`,
 /// or `E-BEAT-ATTR` for a beat key); every OTHER key is `E-UNKNOWN-ATTR`.
+/// `also` (dsl 0.23.0 §3) is a scene beat key: [`check_entry_attrs`] leaves
+/// it to `crate::beats`, which reports it on an entry as `E-BEAT-ATTR`.
 pub const ENTRY_ATTRS: &[&str] = &[
     "id", "target", "category", "title", "series", "order", "when", "on", "priority", "once",
 ];
@@ -79,10 +85,13 @@ pub const ENTRY_ATTRS: &[&str] = &[
 /// a `fial=` typo — used to be accepted and dropped from the IR without a
 /// word (0.21.1 T1-7).
 pub const QUEST_ATTRS: &[&str] = &["id", "title", "start", "fail", "after", "tier"];
-/// dsl 0.2.0 §6.4 (+ subquest `quest`, dsl 0.21.0 §7a.2 `on`): `<objective>`'s
-/// keys. A non-string `on=` stays residual for `crate::beats` to report
-/// (`E-BEAT-ATTR`), so it is permitted here rather than double-reported.
-pub const OBJECTIVE_ATTRS: &[&str] = &["id", "done", "quest", "when", "title", "optional", "on"];
+/// dsl 0.2.0 §6.4 (+ subquest `quest`, dsl 0.21.0 §7a.2 `on`, dsl 0.23.0 §2
+/// `by` / `target`): `<objective>`'s keys. A non-string `on=` / `target=`
+/// stays residual for `crate::beats` to report (`E-BEAT-ATTR`), so it is
+/// permitted here rather than double-reported.
+pub const OBJECTIVE_ATTRS: &[&str] = &[
+    "id", "done", "quest", "when", "title", "optional", "on", "by", "target",
+];
 /// dsl 0.2.0 §4.1: `<on>`'s keys.
 pub const ON_ATTRS: &[&str] = &["event", "when"];
 
@@ -138,13 +147,7 @@ const E_BRANCH_TIMEOUT: &str = "E-BRANCH-TIMEOUT";
 fn check_branch_value_attrs(b: &Branch, diags: &mut Vec<Diagnostic>) {
     for attr in &b.attrs {
         let bad = match attr.key.as_str() {
-            "prompt" => match &attr.value {
-                AttrValue::Str(s) if !s.trim().is_empty() => None,
-                _ => Some((
-                    E_BRANCH_PROMPT,
-                    "`<branch prompt>` must be a non-empty string (dsl 0.11.1 §4)".to_string(),
-                )),
-            },
+            "prompt" => check_prompt_attr(attr, "branch", "dsl 0.11.1 §4"),
             "timeout" => match &attr.value {
                 AttrValue::Str(s) if s.parse::<u32>().is_ok_and(|n| n > 0) => None,
                 _ => Some((
@@ -156,23 +159,45 @@ fn check_branch_value_attrs(b: &Branch, diags: &mut Vec<Diagnostic>) {
             _ => None,
         };
         if let Some((code, message)) = bad {
-            diags.push(Diagnostic {
-                code: code.to_string(),
-                severity: Severity::Error,
-                message,
-                span: attr.span,
-                layer: Layer::Logic,
-                fixits: Vec::new(),
-                provenance: None,
-                covered: Vec::new(),
-                related: Vec::new(),
-            });
+            push_logic_error(diags, code, message, attr);
         }
     }
 }
 
+/// `E-BRANCH-PROMPT` for a `<tag prompt>` value that is not a non-empty
+/// string. Shared by `<branch>` and `<hub>` (dsl 0.23.0 §4) so the rule and
+/// its code cannot drift apart; the message names the construct.
+fn check_prompt_attr(attr: &Attr, tag: &str, cite: &str) -> Option<(&'static str, String)> {
+    match &attr.value {
+        AttrValue::Str(s) if !s.trim().is_empty() => None,
+        _ => Some((
+            E_BRANCH_PROMPT,
+            format!("`<{tag} prompt>` must be a non-empty string ({cite})"),
+        )),
+    }
+}
+
+fn push_logic_error(diags: &mut Vec<Diagnostic>, code: &str, message: String, attr: &Attr) {
+    diags.push(Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        span: attr.span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    });
+}
+
 pub(crate) fn check_hub_attrs(h: &Hub, diags: &mut Vec<Diagnostic>) {
     close(&h.attrs, "hub", HUB_ATTRS, &[], None, diags);
+    for attr in h.attrs.iter().filter(|a| a.key == "prompt") {
+        if let Some((code, message)) = check_prompt_attr(attr, "hub", "dsl 0.23.0 §4") {
+            push_logic_error(diags, code, message, attr);
+        }
+    }
 }
 
 pub(crate) fn check_match_attrs(m: &Match, diags: &mut Vec<Diagnostic>) {
@@ -184,7 +209,14 @@ pub(crate) fn check_reward_attrs(r: &Reward, diags: &mut Vec<Diagnostic>) {
 }
 
 pub(crate) fn check_entry_attrs(e: &Entry, diags: &mut Vec<Diagnostic>) {
-    close(&e.attrs, "entry", ENTRY_ATTRS, &[], None, diags);
+    // dsl 0.23.0 §3: `also` on an entry is `crate::beats`' `E-BEAT-ATTR`.
+    close(&e.attrs, "entry", ENTRY_ATTRS, &["also"], None, diags);
+}
+
+/// dsl 0.23.0 §4: `<beat>` closes over [`crate::bundles::BUNDLE_BEAT_ATTRS`];
+/// a permitted key left residual is `crate::bundles`' `E-BEAT-ATTR`.
+pub(crate) fn check_bundle_beat_attrs(b: &BundleBeat, diags: &mut Vec<Diagnostic>) {
+    close(&b.attrs, "beat", crate::bundles::BUNDLE_BEAT_ATTRS, &[], None, diags);
 }
 
 pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {

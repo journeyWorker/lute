@@ -223,14 +223,35 @@ struct Root<'a> {
     /// Every asserted or seeded ground fact, by relation — the `key:`
     /// displacement candidates.
     produced: BTreeMap<String, BTreeSet<Vec<String>>>,
+    /// Every relation some `::assert` writes, ground or not.
+    asserted: BTreeSet<String>,
     /// The monotone, crossing seeds.
     seeds: Facts,
+}
+
+/// dsl 0.23.0 §9: the seeds that hold at every point of every run of the
+/// root — monotone and crossing, the set every must walk starts from.
+/// [`MaySet::build`] reads a negated rule atom over one of them as false.
+/// Stability reads the vocabulary and the root's writes, never a may set.
+pub fn stable_seeds(docs: &[(PathBuf, Document)], vocab: &RootVocab) -> BTreeSet<GroundFact> {
+    Root::new(docs, vocab, &MaySet::default())
+        .seeds
+        .into_keys()
+        .collect()
+}
+
+/// dsl 0.23.0 §10: the relations of the root nothing produces at all — no
+/// seed, no `::assert` anywhere, no rule, not reserved
+/// ([`RootVocab::unproduced`]).
+pub fn unproduced_relations(docs: &[(PathBuf, Document)], vocab: &RootVocab) -> BTreeSet<String> {
+    vocab.unproduced(&Root::new(docs, vocab, &MaySet::default()).asserted)
 }
 
 impl<'a> Root<'a> {
     fn new(docs: &[(PathBuf, Document)], vocab: &'a RootVocab, may: &'a MaySet) -> Self {
         let mut retracts = Vec::new();
         let mut produced: BTreeMap<String, BTreeSet<Vec<String>>> = BTreeMap::new();
+        let mut asserted = BTreeSet::new();
         for seed in &vocab.seeds {
             produced
                 .entry(seed.relation.clone())
@@ -243,10 +264,12 @@ impl<'a> Root<'a> {
                 .iter()
                 .map(|s| &s.body)
                 .chain(doc.quests.iter().map(|q| &q.body))
-                .chain(doc.entries.iter().map(|e| &e.body));
+                .chain(doc.entries.iter().map(|e| &e.body))
+                .chain(doc.beats.iter().map(|b| &b.body));
             for body in bodies {
                 scan(body, &mut |node| match node {
                     Node::Assert(a) => {
+                        asserted.insert(a.pattern.relation.clone());
                         if let Some(f) = GroundFact::from_pattern(&a.pattern) {
                             produced.entry(f.relation).or_default().insert(f.args);
                         }
@@ -265,6 +288,7 @@ impl<'a> Root<'a> {
             may,
             retracts,
             produced,
+            asserted,
             seeds: Facts::new(),
         };
         root.seeds = vocab
@@ -311,7 +335,7 @@ impl<'a> Root<'a> {
         let Some(decl) = self.vocab.relations.get(&f.relation) else {
             return false;
         };
-        if decl.derive || decl.reserved || self.may.is_unbounded(&f.relation) {
+        if decl.derive || decl.reserved || self.vocab.is_unbounded(&f.relation, decl) {
             return false;
         }
         if self.retracts.iter().any(|q| q.matches(f)) {
@@ -425,6 +449,16 @@ fn walk_doc(
         }
         w.body_base = base.clone().unwrap_or_default();
         w.walk(&entry.body, &mut base);
+    }
+    // dsl 0.23.0 §4: a bundle beat is presented on its own like an entry
+    // (it has no `after:`, so nothing but the seeds is known at its start).
+    for beat in &doc.beats {
+        let mut base = Some(root.seeds.clone());
+        if let Some(when) = &beat.when {
+            w.guard(when, &mut base);
+        }
+        w.body_base = base.clone().unwrap_or_default();
+        w.walk(&beat.body, &mut base);
     }
 
     let vocab = root.vocab;
@@ -582,6 +616,9 @@ impl Walk<'_> {
                     self.record(&o.done, &base);
                     if let Some(when) = &o.when {
                         self.record(when, &base);
+                    }
+                    if let Some(by) = &o.by {
+                        self.record(by, &base);
                     }
                     let mut body = base;
                     self.assume(&o.done, &mut body);

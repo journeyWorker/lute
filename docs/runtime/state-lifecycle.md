@@ -132,6 +132,33 @@ every write it sees there is its own. `reserved: true` relations
 (`RelationEntry.reserved`) are the fact-store analogue: the engine alone
 asserts and retracts their facts.
 
+## Previous run (`prev.run.*`)
+
+`prev.run.<path>` (dsl 0.23.0 §6) is a reserved, read-only mirror of every
+declared `run.<path>`: the value that path held when the previous run
+ended. The engine snapshots it at run end — copy every `run.*` value to
+`prev.run.*` (a path unset at run end is unset in the mirror), **then**
+reset the run tier. Before the first run ends every `prev.run.*` read is
+`unset`, so the checker treats the mirror as maybe-unset (a read needs
+`isSet(prev.run.x)` or an `unset` arm, `E-MAYBE-UNSET`), types it as the
+`run.*` path it mirrors, and rejects a content write
+(`E-QUEST-RESERVED-WRITE`). The mirror is **not** in the artifact's state
+table — it is implied by the `run.*` entries. `lute play` snapshots at
+`newRun` and a play script's `state:` may seed `prev.run.*` (a save made
+after a run ended); a `lute trace` / `lute test` mock may seed it too.
+
+## Rewards that credit state
+
+A `rewardKinds:` entry may declare `credits: <state path>` (dsl 0.23.0
+§8). The compiler stamps that path onto each reward of the kind
+(`RewardEntry.credits`), and a grant adds the reward's `amount` to it — the
+engine owns the write, like a `grant` itself. `lute run` / `lute play` do the
+same for a scalar amount and record it on the `grant` record as
+`credited: { path, value }`; a range amount is the engine's roll (0.16.0
+D-C) and is not credited by the reference runner. Content that also
+`::set`s the path in the same quest's `<on>` or objective body pays twice
+(`W-REWARD-DOUBLE-CREDIT`).
+
 ## Interpolation reads
 
 `line.text` / choice `label` keep their verbatim `{{…}}` markers; the parallel

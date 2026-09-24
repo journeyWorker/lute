@@ -70,6 +70,7 @@ fn kind(cmd: &Command) -> &'static str {
         Command::On(_) => "on",
         Command::Entry(_) => "entry",
         Command::Accept(_) => "accept",
+        Command::Beat(_) => "beat",
     }
 }
 

@@ -310,6 +310,34 @@ fn construct_hover(construct: QuestConstruct) -> String {
              (requires `on`; absent = repeatable) (dsl 0.22.0 §7)"
                 .to_string()
         }
+        QuestConstruct::Beat => {
+            "**\\<beat>** — a beat bundle: a scene-like beat declared inside a lore \
+             document (dsl 0.23.0 §4). Its body is a scene shot body; presenting it \
+             records `<document id>.<id>` in `visited`, and `scene.*` is fresh per \
+             presentation.\n\n\
+             **attributes:**\n\
+             - `id` (required): ident — canonical id `<document id>.<id>`\n\
+             - `on` (required): ident — the occasion this beat answers\n\
+             - `target`: dotted id — the thing the occasion is judged against\n\
+             - `title`: string — menu label, localized\n\
+             - `when`: cel<bool> — eligibility; may not read `scene.*`\n\
+             - `priority`: integer — beat priority, higher wins (default 0)\n\
+             - `once`: `\"run\"` (default), `\"user\"`, or `\"false\"` — spent once \
+             presented this run / ever / never\n\
+             - `also`: bool flag — on a `select: first` occasion, presented after \
+             the winner in addition to it"
+                .to_string()
+        }
+        QuestConstruct::Hub => {
+            "**\\<hub>** — a revisit conversation: its options are re-presented \
+             until an `exit` option is taken or none stays eligible (dsl §7.3.2).\n\n\
+             **attributes:**\n\
+             - `id` (required): ident — records `scene.choices.<id>` and \
+             `scene.visited.<id>.<choice>`\n\
+             - `prompt`: non-empty string — the prompt line shown with the \
+             hub's options (dsl 0.23.0 §4)"
+                .to_string()
+        }
     }
 }
 

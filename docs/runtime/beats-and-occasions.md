@@ -23,11 +23,16 @@ occasions:
   talk:       { select: first, target: { prefix: npc, entity: person } }
   examine:    { select: first, target: true }
   inbox:      { select: all }
+  evening:    { select: sequence }
 ```
 
-- `select: first` (the default) — the engine presents the single winning beat.
+- `select: first` (the default) — the engine presents the single winning beat,
+  then any eligible `also` beat (below).
 - `select: all` — the engine offers every eligible beat, in selection order,
   and the player picks one (or none, below).
+- `select: sequence` (dsl 0.23.0 §3) — the engine presents **every** eligible
+  beat, one after another, in selection order: a routine followed by the
+  day's event.
 - `target: true` — the occasion is raised for a target, and a beat may
   restrict itself to one. Targets are any dotted id (shape only).
 - `target: { prefix, entity }` (dsl 0.22.0 §8) — a **target domain**: the
@@ -64,6 +69,7 @@ type BeatIr = {
   when?: CelPair;         // eligibility, `@def`-expanded
   priority: number;       // resolved; unauthored → 0; higher wins
   once: "run" | "user" | "none"; // unauthored → "run"; "none" is source `once: false`
+  also?: true;            // dsl 0.23.0 §3; present only when authored true
 };
 ```
 
@@ -92,14 +98,43 @@ With `once` (dsl 0.22.0 §7) it is spent by its own read flags
 The flags are set by any first read, so an entry the engine presented by
 looking it up (its `target`, `category`) spends its `once` too.
 
+A **bundle beat** (dsl 0.23.0 §4) is a `beat` record of a lore artifact: a
+scene-like beat written as `<beat>` in a lore document, beside other beats and
+entries. Like an `entry` record, it heads its own addressing unit, and its
+body segment follows it:
+
+```ts
+type BeatCmd = {
+  kind: "beat";
+  addr: Addr;
+  id: string;             // canonical: `<document id>.<beat id>`
+  on: string;
+  target?: string;
+  title?: string;
+  titleLineId?: string;   // `<id>.title`
+  when?: CelPair;         // eligibility, `@def`-expanded
+  priority: number;       // resolved; unauthored → 0
+  once: "run" | "user" | "none"; // unauthored → "run"
+  also?: true;
+  body: Addr;             // first record of the body segment
+};
+```
+
+The canonical `id` is the beat's `ProjectIndex.beats` row id, its key in the
+presentation record, and its `visited()` key. The body segment runs from
+`body` to the next `entry` or `beat` record, or the end of the artifact, and
+holds what a scene shot holds (lines, choices, hubs, matches, staging,
+writes). A bundle beat is otherwise a **scene beat**: its eligibility is its
+`when` and its `once` against the presentation record (it has no `after:`).
+
 `ProjectIndex.beats` (`lute compile --all`) lists every beat in the project so
 an engine can build its `occasion → candidates` table without loading every
 artifact:
 
 ```ts
 type IndexBeat = {
-  id: string;             // the scene's meta.id, or the entry id
-  kind: "scene" | "entry";
+  id: string;             // the scene's meta.id, the entry id, or a bundle beat's canonical id
+  kind: "scene" | "entry" | "bundle";
   document: string;       // the owning documents[].path
   on: string;
   target?: string;
@@ -134,11 +169,14 @@ When the engine raises occasion `O`, optionally for target `T`:
 3. Eligible beats are **ordered by `priority` descending, then
    `ProjectIndex.beats` order**. Scene and entry beats on the same occasion
    compete in one list.
-4. `select: first` presents the first eligible beat; `select: all` offers the
-   ordered list and presents the one the player picks. Beats offered but not
-   picked are not presented and spend nothing. The player may also close the
-   list without picking (dsl 0.22.0 §10): then nothing is presented or spent,
-   and the occasion still judges its objectives (below).
+4. `select: first` presents the first eligible beat that is not `also` (the
+   **winner**), then every eligible `also` beat in selection order (dsl 0.23.0
+   §3). `select: sequence` presents every eligible beat in selection order.
+   `select: all` offers the ordered list and presents the one the player
+   picks. Beats offered but not picked are not presented and spend nothing.
+   The player may also close the list without picking (dsl 0.22.0 §10): then
+   nothing is presented or spent, and the occasion still judges its
+   objectives (below).
 5. **No eligible beat** — the occasion passes with no story, and the engine's
    default behavior for that moment applies.
 
@@ -167,10 +205,26 @@ function raise(index: ProjectIndex, occasion: string, target: string | undefined
     .sort((a, b) => b.beat.priority - a.beat.priority || a.order - b.order)
     .map(({ beat }) => beat);
   if (eligible.length > 0) {
-    const chosen = select === "first" ? eligible[0] : playerPicks(eligible);
-    if (chosen) present(chosen, state, facts, presented); // undefined: the player closed the list
+    if (select === "all") {
+      const chosen = playerPicks(eligible); // undefined: the player closed the list
+      if (chosen) present(chosen, state, facts, presented);
+    } else {
+      for (const beat of presentationOrder(select, eligible)) {
+        present(beat, state, facts, presented);
+        settleQuests(state, facts); // every presentation is an evaluation instant, quest-lifecycle.md
+      }
+    }
   } // else the occasion passes with no story: engine default
   judgeObjectives(occasion, state, facts); // objectives with `on`, quest-lifecycle.md
+}
+
+// Eligibility is decided once, when the occasion is raised: presenting one
+// beat of the list never makes a later one eligible or ineligible.
+function presentationOrder(select: "first" | "sequence", eligible: IndexBeat[]) {
+  if (select === "sequence") return eligible;
+  // alsoOf: a scene's meta.beat.also, a bundle beat's `also`; an entry never
+  const winner = eligible.find((beat) => !alsoOf(beat));
+  return [...(winner ? [winner] : []), ...eligible.filter(alsoOf)];
 }
 
 function isEligible(beat: IndexBeat, state, facts, presented: Presented) {
@@ -210,6 +264,29 @@ body runs against live state, and its `set` / `assert` / `retract` records
 apply only on the first read in a run, after which the engine sets
 `entry.<id>.read = true` and `entry.<id>.everRead = true`.
 
+Presenting a **bundle beat** is presenting a scene beat: the engine adds its
+canonical id to the presentation record (so `visited('<document id>.<beat
+id>')` holds from then on), then runs its body segment — from `body` to the
+next `entry` or `beat` record — exactly as a scene's command stream runs
+(`execution-model.md`): choices, hubs, and matches select, staging plays, and
+every `set` / `assert` / `retract` applies (there is no first-read rule).
+`scene.*` state is fresh for each presentation, as for a scene.
+
+Every beat an occasion presents is presented in full, spends its own `once`,
+and is followed by a quest settle before the next one begins: a `select:
+sequence` routine and the day's event, or a `select: first` winner and the
+`also` beats riding along, are each an evaluation instant for quest
+lifecycles (`quest-lifecycle.md`). A beat that ends the playthrough (`::end`)
+stops the rest of the list.
+
+An `also` beat (`also: true` in a scene's frontmatter, or a bundle beat's
+`also`, dsl 0.23.0 §3) is a side remark: it never competes for the win and
+never replaces the main beat. It is presented after the winner when it is
+eligible — and when no main beat is eligible at all. `also` means something
+only on a `select: first` occasion; on `select: all` or `sequence` every
+eligible beat is already offered or presented, so there it is `E-BEAT-ATTR`.
+An entry beat cannot ride along (`<entry also>` is `E-BEAT-ATTR`).
+
 ## Occasions judge objectives
 
 An occasion also judges quest objectives that name it (dsl 0.21.0 §7a.2): an
@@ -221,9 +298,12 @@ settle those quests. An occasion referenced only by objectives is still
 raised — with no beat to present, only the second step runs, and so does a
 `select: all` list the player closed without picking. An objective's
 occasion is checked against the vocabulary exactly as a beat's `on`
-(`E-OCCASION-UNKNOWN`, `E-BEAT-ATTR`). An objective has no target (dsl
-0.22.0 §8 defers objective targets to 0.23): it is judged whenever its
-occasion is raised, whatever the target.
+(`E-OCCASION-UNKNOWN`, `E-BEAT-ATTR`). An objective without `target` is
+judged whenever its occasion is raised, whatever the target. An objective
+with `target=` (dsl 0.23.0 §2) follows the beat target rule: it is judged only
+when the occasion is raised for that target. Its target is checked like a
+beat's: `E-BEAT-ATTR` when it is not a quoted dotted id, has no `on`, sits on
+an occasion that takes no target, or lies outside the occasion's domain.
 
 ## Static guarantees
 
@@ -233,6 +313,8 @@ An artifact that compiled cleanly carries these guarantees:
   beat's `once` one of `run` / `user` / `none` and an entry beat's `once`
   absent or one of `run` / `user`; beat keys never appear without `on`
   (`E-BEAT-ATTR`).
+- `also` is `true` or `false`, and appears only on a scene or bundle beat of a
+  `select: first` occasion (`E-BEAT-ATTR`).
 - `on` names a declared occasion whenever any resolved plugin declares
   occasions (`E-OCCASION-UNKNOWN`), and a `target` of a domain occasion is
   `<prefix>.<member>` of that domain (`E-BEAT-ATTR`).
@@ -246,21 +328,35 @@ beat (a scene with `once: false`, an entry without `once`) on the same
 occasion and target beats every time. `W-BEAT-PRIORITY-TIE` names beats on
 one `select: first` occasion, either untargeted or for the same target, with
 equal priority and `when`s not provably exclusive, whose winner therefore
-falls to `ProjectIndex.beats` order. `W-BEAT-ONCE-RUN-USER` names a beat
-spent once per run whose `when` reads only user-tier state, so once it holds
-it replays every run.
+falls to `ProjectIndex.beats` order. Both ignore `also` beats, which never
+compete for the win: an `also` beat is never shadowed, never shadows, and
+never ties. `W-BEAT-ONCE-RUN-USER` names a beat spent once per run whose
+`when` reads only user-tier state, so once it holds it replays every run.
 
 ## Reference tooling
 
 - `lute play <dir> --script <play.yaml>` walks a playthrough as a sequence of
   raised occasions: for each step it computes the candidates and their
-  verdicts, presents the winner (or the step's `pick` on a `select: all`
-  occasion; `pick: none` closes the list), runs it with the reference runner,
-  and advances every quest lifecycle as `lute run` does, so `when` conditions
-  over `quest.*` and `after: completed(…)` see real progress; a step's
-  occasion also judges the objectives that name it. A step target outside the
-  occasion's target domain is a usage error with a did-you-mean. `--json`
-  emits the same transcript.
+  verdicts, presents the winner and its eligible `also` beats (every eligible
+  beat on a `select: sequence` occasion, or the step's `pick` on a `select:
+  all` occasion; `pick: none` closes the list), runs each with the reference
+  runner, and advances every quest lifecycle as `lute run` does after each
+  presentation, so `when` conditions over `quest.*` and `after: completed(…)`
+  see real progress; a step's occasion also judges the objectives that name
+  it, for the step's `target`. A step target outside the occasion's target
+  domain is a usage error with a did-you-mean, and so is `pick:` on a
+  `select: sequence` occasion. A step's `expect: { presented: [ids] }` matches
+  the presented beats exactly and in order. `--json` emits the same
+  transcript: `presented` is the first presentation and `then` lists the rest
+  in order; a candidate or presentation that rides along carries `also: true`.
 - `lute trace` / `lute run` raise occasions for a quest walk with the mock
   key `occasions: [runEnd]` or `--occasion runEnd` (repeatable), applied in
-  order after the walk settles.
+  order after the walk settles. A raise for a target is written
+  `<occasion>@<target>` (`occasions: [talk@npc.maud]`, `--occasion
+  talk@npc.maud`); it judges the objectives on that occasion whose `target`
+  is absent or equal to it.
+- `lute trace <lore.lute> --beat <id>` and `lute run <lore artifact> --beat
+  <id>` present one bundle beat by its local or canonical id, outside any
+  selection: `when` is evaluated and shown on the beat's head, not enforced,
+  and the body runs as a scene's (a mock's `choose:` picks). An unknown id is
+  `E-TRACE-BEAT` (`trace`, exit 1) or a usage error (`run`, exit 2).

@@ -403,7 +403,10 @@ pub fn fold_env(
     //    treatment it had pre-0.2.0.
     let (resolved_kind, kind_diags) =
         crate::meta::resolve_doc_kind_with_defaults(&doc.meta, &input.defaults);
-    let has_body = !doc.shots.is_empty() || !doc.quests.is_empty() || !doc.entries.is_empty();
+    let has_body = !doc.shots.is_empty()
+        || !doc.quests.is_empty()
+        || !doc.entries.is_empty()
+        || !doc.beats.is_empty();
     let (doc_kind, meta_kind, kind_diags) = match resolved_kind {
         Some(crate::meta::DocKind::Scene) => (
             crate::meta::DocKind::Scene,
@@ -628,9 +631,35 @@ pub fn fold_env(
         crate::lore::check_entries(typed.series.as_deref(), &doc.entries, &mut seen_entries);
     schema.decls.extend(entry_record.decls);
     fold_diags.extend(entry_record.diags);
+    // 4a''. dsl 0.23.0 §6: `prev.run.<path>` is the reserved, read-only
+    //       mirror of every declared `run.<path>` — the value it had when the
+    //       previous run ended. Same type, no default: it is `unset` before
+    //       the first run ends, so a read needs `isSet` or an `unset` arm.
+    let prev_decls: Vec<(String, crate::meta::StateDecl)> = schema
+        .decls
+        .iter()
+        .filter_map(|(path, decl)| {
+            crate::cel_paths::prev_run_path(path).map(|prev| {
+                let mirror = crate::meta::StateDecl {
+                    ty: decl.ty.clone(),
+                    default: None,
+                    namespace: crate::meta::Namespace::User,
+                    owner: Some(lute_manifest::types::Owner::Engine),
+                };
+                (prev, mirror)
+            })
+        })
+        .collect();
+    schema.decls.extend(prev_decls);
     // dsl 0.21.0 §2: every entry beat's occasion against the vocabulary.
     fold_diags.extend(crate::beats::check_entry_occasions(
         &doc.entries,
+        &input.snapshot.occasions,
+    ));
+    // dsl 0.23.0 §4: every bundle `<beat>`'s shape, id, and occasion.
+    fold_diags.extend(crate::bundles::check_bundle_beats(
+        typed.id.as_deref(),
+        &doc.beats,
         &input.snapshot.occasions,
     ));
     // dsl 0.21.0 §7a.2: every objective's `on` occasion, checked like a beat's.
@@ -1083,6 +1112,18 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 }
                 walker.walk(&entry.body, &base_ctx);
             }
+            // dsl 0.23.0 §4: a bundle beat is a scene beat written in a lore
+            // file — its `when` gets the scene beat's treatment (Bool slot,
+            // fresh guard definite assignment, no `scene.*` reads) and its
+            // body the scene shot walk.
+            for beat in &doc.beats {
+                if let Some(when) = &beat.when {
+                    walker
+                        .diags
+                        .extend(check_beat_when(when, &arena, &base_ctx));
+                }
+                walker.walk(&beat.body, &base_ctx);
+            }
         }
     }
 
@@ -1161,23 +1202,35 @@ pub fn check(input: &CheckInput) -> CheckResult {
         // state — no entry dominates another — so, like a quest, each entry
         // is its own definite-assignment scope; its `when` is evaluated
         // before the body runs and gets the fresh entry-guard check
-        // `<quest start>` gets.
-        crate::meta::DocKind::Lore => doc
-            .entries
-            .iter()
-            .flat_map(|e| {
-                let mut ds = Vec::new();
-                if let Some(when) = &e.when {
-                    ds.extend(check_quest_guard_defassign(when, &env.state));
-                }
-                let (diags, _, _reads) = check_definite_assignment(&e.body, &env.state);
+        // `<quest start>` gets. dsl 0.23.0 §4: each bundle beat is presented
+        // on its own too — one scope per beat body (its `when` got the fresh
+        // guard check with the scene beat treatment in the walk above).
+        crate::meta::DocKind::Lore => {
+            let mut ds: Vec<Diagnostic> = doc
+                .entries
+                .iter()
+                .flat_map(|e| {
+                    let mut ds = Vec::new();
+                    if let Some(when) = &e.when {
+                        ds.extend(check_quest_guard_defassign(when, &env.state));
+                    }
+                    let (diags, _, _reads) = check_definite_assignment(&e.body, &env.state);
+                    exhaustive_subject_spans.extend(
+                        crate::defassign::exhaustive_match_subject_spans(&e.body, &env.state),
+                    );
+                    ds.extend(diags);
+                    ds
+                })
+                .collect();
+            for beat in &doc.beats {
+                let (diags, _, _reads) = check_definite_assignment(&beat.body, &env.state);
                 exhaustive_subject_spans.extend(crate::defassign::exhaustive_match_subject_spans(
-                    &e.body, &env.state,
+                    &beat.body, &env.state,
                 ));
                 ds.extend(diags);
-                ds
-            })
-            .collect(),
+            }
+            ds
+        }
     };
 
     // 6b. Duplicate authored line codes (dsl §12): two `:line`s for the same
@@ -1187,6 +1240,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
     //     document only: each imported component body gets its OWN isolated
     //     run of this same pass in `validate_components` (Task 7c).
     let line_code_diags = check_line_codes(&doc);
+    // 6b'. dsl 0.23.0 §7: speakers against the declared cast (plugins ∪
+    //      imported schemas ∪ this schema's own `cast:`), root document only.
+    let cast = crate::cast::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
+    let cast_diags = crate::cast::check_speakers(&doc, &cast);
 
     // 7. Resolved view: injection fold + the timeline tables gathered in the walk.
     //    Unlike steps 6b/8, this pass is NOT root-only: `fold_injections`
@@ -1208,6 +1265,20 @@ pub fn check(input: &CheckInput) -> CheckResult {
             &mut using,
         );
     }
+    // dsl 0.23.0 §4: each bundle beat is staged on its own, from an empty
+    // stage, exactly as a scene is.
+    for beat in &doc.beats {
+        let mut beat_state = StageState::default();
+        fold_injections(
+            &beat.body,
+            &mut beat_state,
+            &mut injections,
+            domains,
+            &input.components,
+            &mut using,
+        );
+        inject_state.diags.append(&mut beat_state.diags);
+    }
     let inject_diags = std::mem::take(&mut inject_state.diags);
     // `node_summary` already covers `Node::On`/`Node::Objective` (Plan A), so
     // the quest arm reuses it verbatim — no wildcard, both surfaces summarized
@@ -1227,6 +1298,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
             .entries
             .iter()
             .flat_map(|e| e.body.iter().map(node_summary))
+            .chain(doc.beats.iter().flat_map(|b| b.body.iter().map(node_summary)))
             .collect(),
     };
 
@@ -1275,6 +1347,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(line_code_diags);
+    diags.extend(cast_diags);
     // 6c. Connectivity layer (T2, dsl connectivity spec §2.1/§5): a scene's
     // `after:` frontmatter and each quest's `after` attribute share the SAME
     // restricted `visited()`/`completed()`/`active()` formula grammar T1's
@@ -1621,6 +1694,7 @@ impl Walker<'_> {
                     // `E-UNKNOWN-DIRECTIVE`. It is a component invocation, not a
                     // snapshot directive.
                     check_use(d, self.components, ctx, &mut self.diags);
+                    check_use_interp_args(d, self.components, ctx, &mut self.diags);
                     // `@ref`-valued args still resolve in the current scope; there
                     // is no directive decl to type them against.
                     self.check_attr_refs(&d.attrs, ctx, None);
@@ -1785,6 +1859,12 @@ impl Walker<'_> {
                             match &clip.node {
                                 ClipNode::Directive(d) if d.tag == "use" => {
                                     check_use(d, self.components, ctx, &mut self.diags);
+                                    check_use_interp_args(
+                                        d,
+                                        self.components,
+                                        ctx,
+                                        &mut self.diags,
+                                    );
                                     self.check_attr_refs(&d.attrs, ctx, None);
                                 }
                                 // dsl 0.8.0: `::end` is a walk TERMINATOR, not
@@ -1926,6 +2006,15 @@ impl Walker<'_> {
                             Some(&ExpectedType::Bool),
                         ));
                     }
+                    // dsl 0.23.0 §2: `by` — a condition slot like `done`.
+                    if let Some(by) = &o.by {
+                        self.diags.extend(check_cel_slot(
+                            by,
+                            self.arena,
+                            ctx,
+                            Some(&ExpectedType::Bool),
+                        ));
+                    }
                     // §7.6: an objective `title` MAY embed `{{…}}` interpolations,
                     // same as a choice label.
                     if let Some(title) = &o.title {
@@ -2052,7 +2141,7 @@ fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>)
                 &interp.raw
             }
         };
-        check_interp_referent(referent, interp, &interp_ctx, diags);
+        check_interp_referent(referent, interp, &interp_ctx, false, diags);
     }
 }
 
@@ -2068,10 +2157,16 @@ fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>)
 /// `component_interp_scan` never does (a component-body `Path` is always
 /// ambient state, dsl §6.2) — except `{{$}}`, which stays on this shared path
 /// everywhere so `E-DOLLAR-OUTSIDE-MATCH` fires uniformly.
+///
+/// `component_body` (dsl 0.23.0 §5): in a component body every `@name` in
+/// scope is a param (`component_env`), and a bare `{{@p}}` of a `string`
+/// param renders — expansion splices the `::use` site's literal into the
+/// text (`check_use_interp_args` holds the caller to a literal).
 fn check_interp_referent(
     referent: &str,
     interp: &Interp,
     interp_ctx: &Ctx<'_>,
+    component_body: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
     // Reuse the guard/`::set` read-check verbatim: parse the referent as a
@@ -2105,7 +2200,10 @@ fn check_interp_referent(
             .map(|r| r.name)
         {
             if let Some(ty) = interp_ctx.env.def_types.get(&name) {
-                if !is_renderable(ty) {
+                let string_param = component_body
+                    && *ty == Type::Str
+                    && bare_param_ref(referent).as_deref() == Some(name.as_str());
+                if !is_renderable(ty) && !string_param {
                     diags.push(Diagnostic {
                         code: "E-REF-TYPE".to_string(),
                         severity: Severity::Error,
@@ -2362,6 +2460,110 @@ fn ref_produced_type<'a>(raw: &str, ctx: &'a Ctx<'_>) -> Option<&'a Type> {
     ctx.env.def_types.get(&r.name)
 }
 
+/// dsl 0.23.0 §5, the `::use` half of a component body's `{{@p}}` over a
+/// `string` param: expansion splices a LITERAL arg into the line text, but a
+/// `@ref` arg is rebound as `{{@ref}}` in the caller's scope — which renders
+/// only when the ref's type does. So a `@ref` arg whose def produces a
+/// non-renderable type (a `string` def), bound to a param the body
+/// interpolates (directly or through a nested `::use` passing it on), is
+/// `E-REF-TYPE` at the arg. Scene-scope `::use` only: inside a component body a
+/// `@ref` arg names an enclosing param, bound (to this site's literal) before
+/// the nested expansion — the enclosing site is the one checked.
+fn check_use_interp_args(
+    dir: &Directive,
+    components: &ComponentSet,
+    ctx: &Ctx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(name) = dir.attrs.iter().find_map(|a| match &a.value {
+        AttrValue::Str(s) if a.key == "component" => Some(s.as_str()),
+        _ => None,
+    }) else {
+        return;
+    };
+    for attr in &dir.attrs {
+        let AttrValue::Ref(slot) = &attr.value else {
+            continue;
+        };
+        let Some(ty) = ref_produced_type(&slot.raw, ctx) else {
+            continue;
+        };
+        if is_renderable(ty)
+            || !component_interpolates(components, name, &attr.key, &mut Vec::new())
+        {
+            continue;
+        }
+        diags.push(use_diag(
+            "E-REF-TYPE",
+            format!(
+                "argument `{key}` to component `{name}`: component `{name}` interpolates \
+                 `{{{{@{key}}}}}`, so the argument must be a literal string — `{raw}` produces \
+                 a non-renderable type, and a `{{{{…}}}}` interpolation renders only \
+                 number/bool/enum (dsl §7.6, 0.23.0 §5)",
+                key = attr.key,
+                raw = slot.raw.trim(),
+            ),
+            attr.value_span,
+        ));
+    }
+}
+
+/// `true` when component `comp`'s body interpolates its param `param` as a
+/// bare `{{@param}}` — directly, or by passing it whole-slot to a nested
+/// `::use` whose component interpolates the receiving param. `seen` guards a
+/// `::use` cycle (reported elsewhere as `E-COMPONENT-CYCLE`).
+fn component_interpolates(
+    components: &ComponentSet,
+    comp: &str,
+    param: &str,
+    seen: &mut Vec<(String, String)>,
+) -> bool {
+    if seen.iter().any(|(c, p)| c == comp && p == param) {
+        return false;
+    }
+    seen.push((comp.to_string(), param.to_string()));
+    let Some(def) = components.table.get(comp) else {
+        return false;
+    };
+    def.body
+        .shots
+        .iter()
+        .any(|s| body_interpolates(&s.body, components, param, seen))
+}
+
+fn body_interpolates(
+    nodes: &[Node],
+    components: &ComponentSet,
+    param: &str,
+    seen: &mut Vec<(String, String)>,
+) -> bool {
+    nodes.iter().any(|node| match node {
+        Node::Line(l) => l.interps.iter().any(|i| {
+            i.kind == InterpKind::Ref && bare_param_ref(&i.raw).as_deref() == Some(param)
+        }),
+        Node::Match(m) => m.arms.iter().any(|arm| {
+            let body = match arm {
+                Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
+            };
+            body_interpolates(body, components, param, seen)
+        }),
+        Node::Directive(d) if d.tag == "use" => {
+            let Some(inner) = d.attrs.iter().find_map(|a| match &a.value {
+                AttrValue::Str(s) if a.key == "component" => Some(s.as_str()),
+                _ => None,
+            }) else {
+                return false;
+            };
+            d.attrs.iter().any(|a| {
+                matches!(&a.value, AttrValue::Ref(slot)
+                    if bare_param_ref(&slot.raw).as_deref() == Some(param))
+                    && component_interpolates(components, inner, &a.key, seen)
+            })
+        }
+        _ => false,
+    })
+}
+
 /// Validate every imported component (dsl §13): its presentational body plus the
 /// `::use` expansion graph across components. Body diagnostics are re-anchored to
 /// the FIRST `::use` in this document that brings the body in (`use_sites`,
@@ -2600,7 +2802,8 @@ fn component_use_sites(
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
-        .chain(doc.entries.iter().map(|e| &e.body));
+        .chain(doc.entries.iter().map(|e| &e.body))
+        .chain(doc.beats.iter().map(|b| &b.body));
     for body in roots {
         let mut direct = Vec::new();
         collect_use_names(body, &mut direct);
@@ -2695,6 +2898,7 @@ fn check_use_def_enum_args(
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
         .chain(doc.entries.iter().map(|e| &e.body))
+        .chain(doc.beats.iter().map(|b| &b.body))
     {
         collect_use_directives(body, &mut dirs);
     }
@@ -2948,15 +3152,15 @@ fn text_looks_like_ref(l: &lute_syntax::ast::Line, ctx: &Ctx<'_>) -> Option<Diag
 }
 
 /// Validate a content line's `{{…}}` interpolations inside a component body
-/// (dsl 0.4.0 §6.2): the component analog of [`check_interps`], differing
-/// ONLY in how an ordinary `Path` interpolation is treated — a component has
+/// (dsl 0.4.0 §6.2): the component analog of [`check_interps`], differing in
+/// how an ordinary `Path` interpolation is treated — a component has
 /// no `state:` schema to resolve one against, so any REAL dotted-path
 /// referent is unconditionally `E-COMPONENT-STATE` (`{{$}}` is never
 /// meaningful outside a `<match test>` and stays on the ordinary
 /// [`check_interp_referent`]/`E-DOLLAR-OUTSIDE-MATCH` path, same as at scene
-/// level). A `@ref` interpolation keeps its ordinary
-/// `E-UNDECLARED-REF`/`E-REF-TYPE` semantics (resolved against the
-/// component's `@param` env in `ctx`).
+/// level) — and in rendering a bare `string` param (dsl 0.23.0 §5). A `@ref`
+/// interpolation otherwise keeps its ordinary `E-UNDECLARED-REF`/`E-REF-TYPE`
+/// semantics (resolved against the component's `@param` env in `ctx`).
 fn component_interp_scan(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
     let interp_ctx = Ctx {
         env: ctx.env,
@@ -2969,7 +3173,7 @@ fn component_interp_scan(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diag
             InterpKind::Path => {
                 let has_dollar = scan_refs(&interp.raw).iter().any(|r| r.is_dollar);
                 if has_dollar {
-                    check_interp_referent(&interp.raw, interp, &interp_ctx, diags);
+                    check_interp_referent(&interp.raw, interp, &interp_ctx, true, diags);
                     continue;
                 }
                 // 0.21.1 T3-7 (seven F9): `{{memory}}` where `memory` IS a
@@ -2996,7 +3200,7 @@ fn component_interp_scan(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diag
                     diags.push(interp_grammar_diag(&interp.raw, interp.span));
                     continue;
                 }
-                check_interp_referent(&interp.raw, interp, &interp_ctx, diags);
+                check_interp_referent(&interp.raw, interp, &interp_ctx, true, diags);
             }
         }
     }
@@ -3839,6 +4043,11 @@ fn fold_branches(
     for entry in &doc.entries {
         fold_branches_nodes(&entry.body, schema, seen, diags);
     }
+    // dsl 0.23.0 §4: a bundle beat's `<branch>`/`<hub>` records its choice
+    // under `scene.choices.<id>` exactly as a scene's does.
+    for beat in &doc.beats {
+        fold_branches_nodes(&beat.body, schema, seen, diags);
+    }
 }
 
 fn fold_branches_nodes(
@@ -3914,6 +4123,9 @@ fn fold_directive_slots(
     // folding its declared slots keeps that the only report.
     for entry in &doc.entries {
         fold_slots_nodes(&entry.body, snapshot, schema);
+    }
+    for beat in &doc.beats {
+        fold_slots_nodes(&beat.body, snapshot, schema);
     }
 }
 

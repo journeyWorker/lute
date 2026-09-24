@@ -246,7 +246,7 @@ fn unknown_attr_messages(text: &str) -> Vec<String> {
 fn quest_objective_on_close_their_attrs_with_did_you_mean() {
     let t = format!(
         "{QUEST_HDR}<quest id=\"q\" start=\"run.flag\" fial=\"run.flag\" banana=\"yes\">\n\
-         <objective id=\"o\" done=\"run.flag\" target=\"place.x\" optinal/>\n\
+         <objective id=\"o\" done=\"run.flag\" deadline=\"run.flag\" optinal/>\n\
          <on event=\"questComplete\" whn=\"run.flag\">\n@x: done\n</on>\n</quest>\n"
     );
     let msgs = unknown_attr_messages(&t);
@@ -254,7 +254,7 @@ fn quest_objective_on_close_their_attrs_with_did_you_mean() {
     for (key, near) in [
         ("fial", Some("fail")),
         ("banana", None),
-        ("target", None),
+        ("deadline", None),
         ("optinal", Some("optional")),
         ("whn", Some("when")),
     ] {

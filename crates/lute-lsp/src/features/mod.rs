@@ -57,8 +57,8 @@ use lute_manifest::schema::{AssetKindDecl, DefDecl};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Entry, Hub, Interp, InterpKind,
-    Line, Node, Objective, On, Quest, Set,
+    Arm, Attr, AttrValue, BundleBeat, CelSlot, ClipNode, Directive, Document, Entry, Hub, Interp,
+    InterpKind, Line, Node, Objective, On, Quest, Set,
 };
 
 /// Merge imported schema (dsl §9.2) into a document's typed frontmatter so the
@@ -156,6 +156,12 @@ pub(crate) enum QuestConstruct {
     Objective,
     /// A lore `<entry>` (dsl 0.19.0 §3) — a top-level declaration like `<quest>`.
     Entry,
+    /// A lore `<beat>` bundle (dsl 0.23.0 §4) — a top-level declaration like
+    /// `<entry>`.
+    Beat,
+    /// A scene `<hub>` open tag (dsl 0.23.0 §4 adds `prompt` beside `id`) —
+    /// a nested [`Node`], but with the same small closed attr set.
+    Hub,
 }
 
 /// Resolve the innermost construct containing `off` (a byte offset into the
@@ -186,6 +192,13 @@ pub(crate) fn resolve(doc: &Document, off: usize) -> Option<Cursor<'_>> {
             }
         }
     }
+    for beat in &doc.beats {
+        if span_contains(beat.span, off) {
+            if let Some(c) = resolve_bundle_beat(beat, off) {
+                return Some(c);
+            }
+        }
+    }
     None
 }
 
@@ -209,6 +222,29 @@ fn resolve_entry(e: &Entry, off: usize) -> Option<Cursor<'_>> {
     }
     Some(Cursor::ConstructAttrArea {
         construct: QuestConstruct::Entry,
+    })
+}
+
+/// Resolve a cursor inside a lore `<beat>` bundle (dsl 0.23.0 §4), exactly
+/// like [`resolve_entry`]: its `when` guard, its body, its residual attrs, then
+/// the construct attr area.
+fn resolve_bundle_beat(b: &BundleBeat, off: usize) -> Option<Cursor<'_>> {
+    if let Some(w) = &b.when {
+        if span_contains(w.span, off) {
+            return Some(Cursor::Cel {
+                slot: w,
+                in_match_subject: false,
+            });
+        }
+    }
+    if let Some(c) = resolve_nodes(&b.body, off) {
+        return Some(c);
+    }
+    if let Some(c) = resolve_attrs(&b.attrs, None, off) {
+        return Some(c);
+    }
+    Some(Cursor::ConstructAttrArea {
+        construct: QuestConstruct::Beat,
     })
 }
 
@@ -358,7 +394,18 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
                     return resolve_nodes(&choice.body, off);
                 }
             }
-            resolve_attrs(&h.attrs, None, off)
+            if let Some(c) = resolve_attrs(&h.attrs, None, off) {
+                return Some(c);
+            }
+            // The open tag (and the gap before the first `<choice>`) is the
+            // hub's attr area; past the first choice is body trivia.
+            let before_choices = h
+                .choices
+                .first()
+                .is_none_or(|c| off < c.span.byte_start);
+            before_choices.then_some(Cursor::ConstructAttrArea {
+                construct: QuestConstruct::Hub,
+            })
         }
         Node::On(o) => Some(resolve_on(o, off)),
         Node::Objective(ob) => Some(resolve_objective(ob, off)),
@@ -840,6 +887,16 @@ pub(crate) fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
             }
         }
     }
+    for beat in &doc.beats {
+        if span_contains(beat.span, off) {
+            if let Some(a) = in_attrs(&beat.attrs, off) {
+                return Some(a);
+            }
+            if let Some(a) = scan(&beat.body, off) {
+                return Some(a);
+            }
+        }
+    }
     None
 }
 
@@ -1277,6 +1334,9 @@ pub(crate) fn path_uses(doc: &Document, path: &str) -> Vec<Span> {
     }
     for entry in &doc.entries {
         collect_set_paths(&entry.body, path, &mut out);
+    }
+    for beat in &doc.beats {
+        collect_set_paths(&beat.body, path, &mut out);
     }
     for slot in all_slots(doc) {
         let base = slot.span.byte_start;

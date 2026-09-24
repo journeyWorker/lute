@@ -178,8 +178,10 @@ impl Collector {
 }
 
 /// dsl 0.12.0 whole-document pass: `E-MARK-DUP` / `E-NEXT-UNDEFINED` /
-/// `E-NEXT-BACKWARD`. Walks `doc.shots`, `doc.quests`, then `doc.entries`
-/// (dsl 0.19.0), each recursively
+/// `E-NEXT-BACKWARD`. Walks `doc.shots`, `doc.quests`, then the lore
+/// addressing units — `doc.entries` (dsl 0.19.0) and `doc.beats` (dsl 0.23.0
+/// §4) interleaved in source order, as the artifact lays them out — each
+/// recursively
 /// — mirrors `reachability::check_reachability_in`'s own walk shape. The
 /// label NAMESPACE is document-wide: ids are NOT reset between shots/quests
 /// — a mark in shot 1 and a `::next` in shot 4 resolve against the SAME
@@ -199,8 +201,15 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
     for quest in &doc.quests {
         c.walk(&quest.body);
     }
-    for entry in &doc.entries {
-        c.walk(&entry.body);
+    let mut units: Vec<(usize, &[Node])> = doc
+        .entries
+        .iter()
+        .map(|e| (e.span.byte_start, e.body.as_slice()))
+        .chain(doc.beats.iter().map(|b| (b.span.byte_start, b.body.as_slice())))
+        .collect();
+    units.sort_by_key(|(start, _)| *start);
+    for (_, body) in units {
+        c.walk(body);
     }
     let Collector {
         labels,

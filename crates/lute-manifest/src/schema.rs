@@ -310,6 +310,9 @@ pub struct RewardKindBody {
     pub target: Option<RewardTarget>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attrs: Vec<AttrDecl>,
+    /// dsl 0.23.0 §8: the state path a grant of this kind credits.
+    #[serde(default)]
+    pub credits: Option<String>,
 }
 
 /// A reward kind's `target:` contract (dsl 0.16.0 §4): the id-space a
@@ -329,13 +332,57 @@ pub struct RewardTarget {
 /// `<reward target=…>` resolves against — the `providerRef` pattern
 /// (`assemble` rejects a kind whose provider is absent); `attrs` (optional)
 /// carries game-specific extra slots parsed as ordinary [`AttrDecl`]s.
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+/// `credits` (dsl 0.23.0 §8, optional) names the state path a grant of this
+/// kind adds its amount to (`lute run` / `lute play` apply it).
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct RewardKindDecl {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<RewardTarget>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attrs: Vec<AttrDecl>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credits: Option<String>,
+}
+
+/// Hand-written so a kind without `credits` prints exactly as it did before
+/// the field existed: `capabilityVersion` hashes this `Debug`, and a
+/// vocabulary that declares no credit path must keep its stamp.
+impl std::fmt::Debug for RewardKindDecl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("RewardKindDecl");
+        s.field("name", &self.name)
+            .field("target", &self.target)
+            .field("attrs", &self.attrs);
+        if let Some(credits) = &self.credits {
+            s.field("credits", credits);
+        }
+        s.finish()
+    }
+}
+
+/// dsl 0.23.0 §7 cast declaration file (export `cast/*.yaml`, or a schema
+/// document's `cast:` key): a `cast:` mapping keyed by the speaker id.
+#[derive(Debug, Deserialize)]
+pub struct CastFile {
+    pub cast: std::collections::BTreeMap<String, CastBody>,
+}
+
+/// The value half of a `cast:` map entry (the id is the map key).
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CastBody {
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// One declared cast member (dsl 0.23.0 §7): a speaker id and its display
+/// name. When any cast is declared, a speaker outside it is `E-CAST-UNKNOWN`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CastMember {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// dsl 0.21.0 §2 occasion declaration file (export `occasions/*.yaml`): an
@@ -366,13 +413,28 @@ pub struct OccasionBody {
 
 /// How the engine presents an occasion's eligible beats (dsl 0.21.0 §2):
 /// `first` (default) presents the single winner; `all` offers every
-/// eligible beat in selection order.
+/// eligible beat in selection order; `sequence` (dsl 0.23.0 §3) presents
+/// every eligible beat, one after another, in selection order. Appending a
+/// variant leaves the `Debug` of `First`/`All` — and so every existing
+/// snapshot's `capabilityVersion` — unchanged.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum OccasionSelect {
     #[default]
     First,
     All,
+    Sequence,
+}
+
+impl OccasionSelect {
+    /// The declaration spelling: `first`, `all`, or `sequence`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OccasionSelect::First => "first",
+            OccasionSelect::All => "all",
+            OccasionSelect::Sequence => "sequence",
+        }
+    }
 }
 
 /// A capability-declared occasion (dsl 0.21.0 §2): the vocabulary a plugin's

@@ -993,7 +993,86 @@ pub fn check_quest_rewards(quest: &Quest, snapshot: &CapabilitySnapshot) -> Vec<
             }
         }
     }
+    check_reward_double_credit(quest, snapshot, &mut diags);
     diags
+}
+
+/// `W-REWARD-DOUBLE-CREDIT` (dsl 0.23.0 §8): a reward kind that declares
+/// `credits: <path>` already adds its amount to `<path>` when granted, so a
+/// content `::set` of that same path in one of this quest's handlers — an
+/// `<on>` body or an objective's completion body — pays twice.
+pub const W_REWARD_DOUBLE_CREDIT: &str = "W-REWARD-DOUBLE-CREDIT";
+
+fn check_reward_double_credit(
+    quest: &Quest,
+    snapshot: &CapabilitySnapshot,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let objective_rewards = quest.body.iter().flat_map(|n| match n {
+        Node::Objective(o) => o.rewards.as_slice(),
+        _ => &[],
+    });
+    // credited path -> the first reward kind crediting it.
+    let mut credited: std::collections::BTreeMap<&str, &str> = std::collections::BTreeMap::new();
+    for r in quest.rewards.iter().chain(objective_rewards) {
+        let kind = r.kind.trim();
+        if let Some(path) = snapshot
+            .reward_kinds
+            .get(kind)
+            .and_then(|k| k.credits.as_deref())
+        {
+            credited.entry(path).or_insert(kind);
+        }
+    }
+    if credited.is_empty() {
+        return;
+    }
+    let mut sets: Vec<&lute_syntax::ast::Set> = Vec::new();
+    for node in &quest.body {
+        match node {
+            Node::On(o) => collect_sets(&o.body, &mut sets),
+            Node::Objective(o) => collect_sets(&o.body, &mut sets),
+            _ => {}
+        }
+    }
+    for s in sets {
+        if let Some(kind) = credited.get(s.path.as_str()) {
+            diags.push(diag(
+                W_REWARD_DOUBLE_CREDIT,
+                Severity::Warning,
+                format!(
+                    "`::set` of `{}` in a handler of quest `{}`: its `<reward kind=\"{kind}\">` \
+                     already credits `{}` when granted, so the player is paid twice — drop \
+                     the `::set` or the reward (dsl 0.23.0 §8)",
+                    s.path, quest.id, s.path
+                ),
+                s.path_span,
+            ));
+        }
+    }
+}
+
+/// Every `::set` in `nodes`, descending into choice and arm bodies.
+fn collect_sets<'a>(nodes: &'a [Node], out: &mut Vec<&'a lute_syntax::ast::Set>) {
+    for node in nodes {
+        match node {
+            Node::Set(s) => out.push(s),
+            Node::Branch(b) => b.choices.iter().for_each(|c| collect_sets(&c.body, out)),
+            Node::Hub(h) => h.choices.iter().for_each(|c| collect_sets(&c.body, out)),
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            collect_sets(body, out)
+                        }
+                    }
+                }
+            }
+            Node::Objective(o) => collect_sets(&o.body, out),
+            Node::On(o) => collect_sets(&o.body, out),
+            _ => {}
+        }
+    }
 }
 
 /// The two owner positions a `<reward/>` can occupy (dsl 0.16.0 §2 / D-D).
@@ -1136,7 +1215,8 @@ fn has_bool_attr(attrs: &[Attr], key: &str) -> bool {
 /// via a `<quest>`'s `<on>`/`<objective>` arms) are scoped PER `<quest>` —
 /// each `<quest>` is its own identity domain, so the SAME (speaker, code)
 /// pair may repeat across two different quests without colliding, but not
-/// twice within one. Each `<entry>` (dsl 0.19.0 §4) is likewise its own
+/// twice within one. Each `<entry>` (dsl 0.19.0 §4) and each lore `<beat>`
+/// bundle (dsl 0.23.0 §4) is likewise its own
 /// identity scope. Document order, deterministic (the caller's final
 /// `(byte_start, code)` sort settles ties).
 pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
@@ -1158,6 +1238,12 @@ pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
         let mut entry_lines: Vec<&Line> = Vec::new();
         collect_lines(&entry.body, &mut entry_lines);
         check_dup_line_codes(&entry_lines, &mut diags);
+    }
+
+    for beat in &doc.beats {
+        let mut beat_lines: Vec<&Line> = Vec::new();
+        collect_lines(&beat.body, &mut beat_lines);
+        check_dup_line_codes(&beat_lines, &mut diags);
     }
 
     diags
@@ -1203,7 +1289,7 @@ fn authored_code(line: &Line) -> Option<String> {
 
 /// Collect every `Node::Line` in document order, descending into branch choices'
 /// and match arms' bodies (mirrors `check.rs::Walker::walk` / `tag.rs`).
-fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
+pub(crate) fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
     for node in nodes {
         match node {
             Node::Line(l) => out.push(l),
@@ -2690,6 +2776,7 @@ mod tests {
             }],
             quests: Vec::new(),
             entries: Vec::new(),
+            beats: Vec::new(),
             span: span(),
         }
     }
@@ -2764,6 +2851,23 @@ mod tests {
             diags[0].span.byte_start, 60,
             "flagged at the nested second occurrence"
         );
+    }
+
+    /// dsl 0.23.0 §4: each lore `<beat>` bundle is its own identity scope —
+    /// a pair repeated across an entry and two beats is clean, a pair repeated
+    /// inside one beat (even nested in a branch choice) is flagged.
+    #[test]
+    fn bundle_beat_line_codes_are_scoped_per_beat() {
+        let src = "---\nid: ship.records\nkind: lore\n---\n\
+                   <entry id=\"e\">\n@n{code=\"0010\"}: a\n</entry>\n\
+                   <beat id=\"b1\" on=\"talk\">\n@n{code=\"0010\"}: b\n</beat>\n\
+                   <beat id=\"b2\" on=\"talk\">\n@n{code=\"0010\"}: c\n\
+                   <branch id=\"k\">\n<choice id=\"x\" label=\"X\">\n@n{code=\"0010\"}: d\n</choice>\n</branch>\n\
+                   </beat>\n";
+        let (doc, _) = lute_syntax::parse(src);
+        let diags = check_line_codes(&doc);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].span.byte_start, src.find("@n{code=\"0010\"}: d").unwrap());
     }
     // ---- B4: <when is> literal-pattern coverage + E-WHEN-PATTERN (§7.3.1) ----
 
@@ -2953,6 +3057,8 @@ mod tests {
             title: None,
             optional: false,
             on: None,
+            by: None,
+            target: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),
@@ -3060,6 +3166,8 @@ mod tests {
             title: None,
             optional: false,
             on: None,
+            by: None,
+            target: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),

@@ -6,7 +6,8 @@ use lute_check::{lower_node, Ctx, InjectKind, InjectedCommand, StageState};
 use lute_core_span::{Diagnostic, Layer, Severity};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
-    Arm, AttrValue, Branch, ClipNode, Directive, Entry, Hub, Match, Node, Quest, Timeline,
+    Arm, AttrValue, Branch, BundleBeat, ClipNode, Directive, Entry, Hub, Match, Node, Quest,
+    Timeline,
 };
 
 use crate::cfg::{Emitter, Label};
@@ -398,6 +399,8 @@ fn walk_hub(
         record_key: format!("scene.choices.{id}"),
         options,
         converge: conv.sym(),
+        // dsl 0.23.0 §4: `<hub prompt>`, like `<branch prompt>`.
+        prompt: attr_string(&h.attrs, "prompt"),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -620,6 +623,10 @@ pub fn walk_quest(
                 // dsl 0.21.0 §7a.2: the occasion the objective is judged at;
                 // `None` (omitted) keeps every other objective byte-identical.
                 on: o.on.as_ref().map(|(on, _)| on.clone()),
+                // dsl 0.23.0 §2: the deadline condition (expanded like
+                // `done`) and the occasion target; both omitted when absent.
+                by: o.by.as_ref().map(|b| CelPair::from_raw(&b.raw)),
+                target: o.target.as_ref().map(|(t, _)| t.clone()),
             });
             obj_labels.push(label);
         }
@@ -801,4 +808,42 @@ pub fn walk_entry(
     em.push(cmd);
     em.bind(label);
     walk_seq(em, &entry.body, StageState::default(), cx, &[], diags);
+}
+
+/// Walk one bundle `<beat>` (dsl 0.23.0 §4): the `beat` head record FIRST,
+/// then its body segment, addressed exactly like an entry's
+/// ([`walk_entry`]) — a fresh label bound to the first body record (an empty
+/// body's label trails to the unit's one-past-end). The body is a scene
+/// body, walked by [`walk_seq`] from a FRESH `StageState`: a beat is staged
+/// on its own, from an empty stage, as a scene is. `key` is the canonical
+/// `<document id>.<beat id>`; `when` is already `@def`-expanded
+/// (`expand_document`), and every attribute is checker-validated (D6), so
+/// the resolution helpers' defaults never mask a fault.
+pub fn walk_bundle_beat(
+    em: &mut Emitter,
+    beat: &BundleBeat,
+    key: &str,
+    cx: &mut WalkCx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let label = em.fresh();
+    let title = beat.title.as_ref().map(|(t, _)| t.clone());
+    let mut cmd = Command::Beat(BeatCmd {
+        addr: String::new(),
+        id: key.to_string(),
+        on: beat.on.as_ref().map(|(on, _)| on.clone()).unwrap_or_default(),
+        target: beat.target.as_ref().map(|(t, _)| t.clone()),
+        title_line_id: title.as_ref().map(|_| format!("{key}.title")),
+        title,
+        when: beat.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+        priority: lute_check::bundle_beat_priority(beat),
+        once: lute_check::bundle_beat_once(beat).into(),
+        also: lute_check::bundle_beat_also(beat),
+        body: label.sym(),
+        stamp: Stamp::default(),
+    });
+    apply_source(&mut cmd, cx);
+    em.push(cmd);
+    em.bind(label);
+    walk_seq(em, &beat.body, StageState::default(), cx, &[], diags);
 }

@@ -63,6 +63,14 @@ pub fn tag_document(text: &str) -> TagOutcome {
         collect_lines(&entry.body, &mut entry_lines);
         tag_scope(entry_lines, bytes, &mut inserts);
     }
+    // Per-beat identity scope (dsl 0.23.0 §4): each lore `<beat>` bundle is its
+    // own identity domain (prefix `<doc id>.<beat id>`) with a fresh
+    // per-speaker counter, exactly as an entry.
+    for beat in &doc.beats {
+        let mut beat_lines: Vec<&Line> = Vec::new();
+        collect_lines(&beat.body, &mut beat_lines);
+        tag_scope(beat_lines, bytes, &mut inserts);
+    }
 
     if inserts.is_empty() {
         return TagOutcome {
@@ -186,7 +194,7 @@ pub enum RetagOutcome {
 
 /// FORCE-renumber every content line's `code` (`lute tag --force`): each
 /// identity scope (the scene, then each `<quest>` — dsl 0.2.0 §7 — then each
-/// `<entry>`, dsl 0.19.0 §4) restarts a
+/// `<entry>`, dsl 0.19.0 §4, then each `<beat>` bundle, dsl 0.23.0 §4) restarts a
 /// per-speaker counter and assigns 0010/0020/… in document order, REWRITING
 /// existing codes in place (the one thing [`tag_document`] never does).
 ///
@@ -243,6 +251,17 @@ pub fn retag_document(text: &str) -> RetagOutcome {
         collect_lines(&entry.body, &mut entry_lines);
         retag_scope(
             entry_lines,
+            bytes,
+            &mut edits,
+            &mut renumbered,
+            &mut skipped,
+        );
+    }
+    for beat in &doc.beats {
+        let mut beat_lines: Vec<&Line> = Vec::new();
+        collect_lines(&beat.body, &mut beat_lines);
+        retag_scope(
+            beat_lines,
             bytes,
             &mut edits,
             &mut renumbered,
@@ -549,6 +568,46 @@ mod tests {
             text.contains("@fixer{code=\"0010\"}: plain"),
             "got:\n{text}"
         );
+    }
+
+    /// dsl 0.23.0 §4: each lore `<beat>` bundle is its own identity scope —
+    /// a fresh per-speaker counter per beat, independent of entries and of
+    /// other beats — and a beat's branch-choice lines share its scope.
+    const BUNDLE: &str = "---\nid: ship.records\nkind: lore\n---\n\
+                          <entry id=\"note\">\n@n: e1\n</entry>\n\
+                          <beat id=\"dock\" on=\"talk\">\n@n: b1\n\
+                          <branch id=\"ask\">\n<choice id=\"c\" text=\"C\">\n@n: b2\n</choice>\n</branch>\n\
+                          </beat>\n\
+                          <beat id=\"yard\" on=\"talk\">\n@n{code=\"0040\"}: y1\n@n: y2\n</beat>\n";
+
+    #[test]
+    fn tag_bundle_beats_get_their_own_scopes() {
+        let out = tag_document(BUNDLE);
+        assert_eq!(out.added, 4, "got:\n{}", out.text);
+        for want in [
+            "@n{code=\"0010\"}: e1",
+            "@n{code=\"0010\"}: b1",
+            "@n{code=\"0020\"}: b2",
+            "@n{code=\"0040\"}: y1",
+            "@n{code=\"0050\"}: y2",
+        ] {
+            assert!(out.text.contains(want), "missing {want} in:\n{}", out.text);
+        }
+    }
+
+    #[test]
+    fn retag_bundle_beats_restart_counters() {
+        let (text, n, _) = renumbered(retag_document(BUNDLE));
+        assert_eq!(n, 5, "got:\n{text}");
+        for want in [
+            "@n{code=\"0010\"}: e1",
+            "@n{code=\"0010\"}: b1",
+            "@n{code=\"0020\"}: b2",
+            "@n{code=\"0010\"}: y1",
+            "@n{code=\"0020\"}: y2",
+        ] {
+            assert!(text.contains(want), "missing {want} in:\n{text}");
+        }
     }
 
     #[test]

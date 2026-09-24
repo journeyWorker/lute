@@ -1368,3 +1368,166 @@ fn an_occasion_does_not_judge_the_objectives_of_an_inactive_quest() {
     assert_eq!(objective_outcomes(&report.decisions, "calm"), ["done"]);
     assert_eq!(count_quest_decisions(&report.decisions, "hold", "complete"), 1);
 }
+
+// ---------------------------------------------------------------------
+// dsl 0.23.0 §2: `<objective by=…>` fails the objective the first time `by`
+// holds while it is not done (a required one fails its quest), and
+// `<objective on=… target=…>` is judged only by a raise for that target
+// (`occasions: [name@target]`).
+// ---------------------------------------------------------------------
+
+/// `late` is true from the start; `got` never. `bell` sets `run.bell`.
+fn deadline_fixture(objectives: &str) -> String {
+    format!(
+        "---\nkind: quest\ntitle: Deadline\nstate:\n  \
+         run.late: {{ type: bool, default: true }}\n  \
+         run.got: {{ type: bool, default: false }}\n  \
+         run.early: {{ type: bool, default: true }}\n  \
+         run.bell: {{ type: bool, default: false }}\n---\n\n\
+         <quest id=\"q\" title=\"Q\" start=\"true\">\n{objectives}\
+         <on event=\"bell\">\n::set{{ run.bell = true }}\n</on>\n\
+         <on event=\"questFailed\">\n@narrator: Too late.\n</on>\n\
+         </quest>\n"
+    )
+}
+
+/// [`deadline_fixture`] assembled, with the world event `bell` declared.
+fn deadline_input(objectives: &str) -> CheckInput {
+    let mut input = input_for(&deadline_fixture(objectives), "deadline.lute", Path::new("."));
+    input.snapshot.events.insert(
+        "bell".to_string(),
+        lute_manifest::schema::EventDecl {
+            name: "bell".to_string(),
+        },
+    );
+    input
+}
+
+#[test]
+fn a_missed_by_fails_the_objective_once_and_an_optional_miss_spares_the_quest() {
+    let input = deadline_input(
+        "<objective id=\"side\" title=\"Side\" done=\"run.got\" by=\"run.late\" optional/>\n\
+         <objective id=\"main\" title=\"Main\" done=\"run.got\"/>\n",
+    );
+    // Later events and raises settle the quest again: the failed objective is
+    // never judged again, so it fails exactly once.
+    let mocks = MockSet {
+        events: vec!["bell".to_string(), "bell".to_string()],
+        occasions: vec!["tick".to_string()],
+        ..Default::default()
+    };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    // The first settle judges `done` (`pending`), then the deadline
+    // (`failed`); every later settle skips the failed objective.
+    assert_eq!(
+        objective_outcomes(&report.decisions, "side"),
+        ["pending", "failed"],
+        "{:?}",
+        report.decisions
+    );
+    let failed = report
+        .decisions
+        .iter()
+        .find(|d| d.construct == "objective" && d.id == "side" && d.outcome == "failed")
+        .unwrap();
+    assert_eq!(failed.guard.as_deref(), Some("run.late"));
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 0);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "active"), 1);
+    assert!(!has_line_containing(&report.steps, "Too late."));
+}
+
+#[test]
+fn a_required_by_miss_fails_the_quest_and_fires_quest_failed() {
+    let input = deadline_input("<objective id=\"main\" title=\"Main\" done=\"run.got\" by=\"run.late\"/>\n");
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+    assert_eq!(objective_outcomes(&report.decisions, "main"), ["pending", "failed"]);
+    let quest_failed = quest_decision(&report.decisions, "failed").expect("the quest fails");
+    assert_eq!(quest_failed.guard.as_deref(), Some("run.late"), "the deadline is the reason");
+    let pos = |construct: &str, outcome: &str| {
+        report
+            .decisions
+            .iter()
+            .position(|d| d.construct == construct && d.outcome == outcome)
+            .unwrap()
+    };
+    assert!(pos("objective", "failed") < pos("quest", "failed"));
+    assert!(has_line_containing(&report.steps, "Too late."), "{:?}", report.steps);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 0);
+}
+
+#[test]
+fn a_by_never_fails_a_done_objective() {
+    // `done` and `by` true at the same instant: `done` is judged first.
+    let input = deadline_input("<objective id=\"main\" title=\"Main\" done=\"run.early\" by=\"run.late\"/>\n");
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+    assert_eq!(objective_outcomes(&report.decisions, "main"), ["done"]);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 1);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 0);
+
+    // Done first, deadline later (the `bell` handler): still never failed —
+    // while the not-done sibling with the same deadline fails at the bell.
+    let input = deadline_input(
+        "<objective id=\"early\" title=\"Early\" done=\"run.early\" by=\"run.bell\"/>\n\
+         <objective id=\"slow\" title=\"Slow\" done=\"run.got\" by=\"run.bell\" optional/>\n\
+         <objective id=\"main\" title=\"Main\" done=\"run.got\"/>\n",
+    );
+    let (report, _) = trace_document(&input, MockSet::default());
+    assert!(objective_outcomes(&report.decisions, "slow").iter().all(|o| *o != "failed"));
+    let mocks = MockSet {
+        events: vec!["bell".to_string()],
+        ..Default::default()
+    };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert_eq!(objective_outcomes(&report.decisions, "early"), ["done"]);
+    assert!(objective_outcomes(&report.decisions, "slow").contains(&"failed"));
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 0);
+}
+
+fn targeted_fixture() -> &'static str {
+    "---\nkind: quest\ntitle: Targets\n---\n\n\
+     <quest id=\"q\" title=\"Q\" start=\"true\">\n\
+     <objective id=\"maud\" title=\"Talk to Maud\" on=\"talk\" target=\"npc.maud\" done=\"true\"/>\n\
+     <objective id=\"anyone\" title=\"Talk to anyone\" on=\"talk\" done=\"true\" optional/>\n\
+     </quest>\n"
+}
+
+#[test]
+fn a_targeted_on_objective_is_judged_only_by_a_raise_for_its_target() {
+    let input = input_for(targeted_fixture(), "targets.lute", Path::new("."));
+    let raise = |occasions: &[&str]| {
+        let mocks = MockSet {
+            occasions: occasions.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        };
+        trace_document(&input, mocks)
+    };
+
+    // Another target, or no target: the untargeted objective is judged, the
+    // targeted one is not — and the note names the raise that would judge it.
+    for occasions in [&["talk@npc.oskar"][..], &["talk"][..]] {
+        let (report, exit) = raise(occasions);
+        assert_complete(&exit);
+        assert!(objective_outcomes(&report.decisions, "maud").is_empty(), "{occasions:?}");
+        assert_eq!(objective_outcomes(&report.decisions, "anyone"), ["done"], "{occasions:?}");
+        assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 0);
+        assert!(
+            report.notes.iter().any(|n| n.contains(
+                "objective `q.maud` is judged at occasion `talk` for `npc.maud`, which this walk \
+                 never raised (supply `--occasion talk@npc.maud` or `occasions: [talk@npc.maud]`)"
+            )),
+            "{occasions:?}: {:?}",
+            report.notes
+        );
+    }
+
+    let (report, exit) = raise(&["talk@npc.maud"]);
+    assert_complete(&exit);
+    assert_eq!(objective_outcomes(&report.decisions, "maud"), ["done"]);
+    assert_eq!(objective_outcomes(&report.decisions, "anyone"), ["done"]);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 1);
+    assert!(!report.notes.iter().any(|n| n.contains("never raised")), "{:?}", report.notes);
+}

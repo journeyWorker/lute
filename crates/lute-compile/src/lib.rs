@@ -455,21 +455,49 @@ pub fn compile_with_check(
             )
         }
         lute_check::DocKind::Lore => {
-            // dsl 0.19.0 §4/§7: one addressing unit per `<entry>`, 1-based in
-            // document order, identity prefix = `{entryId}` — a FRESH
-            // identity scope per entry, exactly the per-quest rule above.
-            // Each entry record carries its RESOLVED series position (§2.1:
-            // a document-level `series:` orders entries by place in file).
+            // dsl 0.19.0 §4/§7: one addressing unit per `<entry>`, identity
+            // prefix = `{entryId}` — a FRESH identity scope per entry, exactly
+            // the per-quest rule above. Each entry record carries its RESOLVED
+            // series position (§2.1: a document-level `series:` orders entries
+            // by place in file). dsl 0.23.0 §4: one unit per bundle `<beat>`
+            // too, identity prefix = its canonical `<document id>.<beat id>`.
+            // Units are 1-based in SOURCE order, entries and beats
+            // interleaved as authored — the declaration order
+            // `ProjectIndex.beats` (and `check-project`) break ties by.
             let resolved =
                 lute_check::resolve_entry_series(folded.typed.series.as_deref(), &doc.entries);
+            enum Unit<'d> {
+                Entry(&'d lute_syntax::ast::Entry, &'d lute_check::EntrySeries<'d>),
+                Beat(&'d lute_syntax::ast::BundleBeat),
+            }
+            let mut units: Vec<(usize, Unit<'_>)> = doc
+                .entries
+                .iter()
+                .zip(&resolved)
+                .map(|(e, s)| (e.span.byte_start, Unit::Entry(e, s)))
+                .chain(doc.beats.iter().map(|b| (b.span.byte_start, Unit::Beat(b))))
+                .collect();
+            units.sort_by_key(|(at, _)| *at);
+            // The check gate proved a document bundling beats has an `id:`.
+            let doc_id = folded.typed.id.clone().unwrap_or_default();
             let mut shots = Vec::new();
-            for (i, (entry, series)) in doc.entries.iter().zip(&resolved).enumerate() {
+            for (i, (_, unit)) in units.iter().enumerate() {
                 let mut em = cfg::Emitter::default();
-                stage::walk_entry(&mut em, entry, series, &mut cx, &mut diags);
+                let prefix = match unit {
+                    Unit::Entry(entry, series) => {
+                        stage::walk_entry(&mut em, entry, series, &mut cx, &mut diags);
+                        entry.id.clone()
+                    }
+                    Unit::Beat(beat) => {
+                        let key = lute_check::bundle_beat_key(&doc_id, &beat.id);
+                        stage::walk_bundle_beat(&mut em, beat, &key, &mut cx, &mut diags);
+                        key
+                    }
+                };
                 let (recs, trailing, trailing_named) = em.finish();
                 shots.push(address::ShotRecords {
                     shot: (i as i64) + 1,
-                    prefix: entry.id.clone(),
+                    prefix,
                     recs,
                     trailing,
                     trailing_named,
@@ -486,6 +514,7 @@ pub fn compile_with_check(
     diags.extend(addr_diags);
     // 0.21.1 T1-3: `{{@def}}` placeholders carry their inlined def body.
     diags.extend(expand::inline_ref_placeholders(&mut commands, &table, doc.meta.span));
+    stamp_reward_credits(&mut commands, &input.snapshot);
 
     if diags.iter().any(|d| d.severity == Severity::Error) {
         return Err(diags);
@@ -797,6 +826,7 @@ fn scene_beat(
         when,
         priority: beat.priority,
         once: beat.once.into(),
+        also: beat.also,
     })
 }
 
@@ -955,6 +985,29 @@ fn lore_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) 
     }
 }
 
+/// dsl 0.23.0 §8: stamp each quest/objective reward with the `credits:`
+/// path its kind declares, so `lute run` / `lute play` (and an engine) know
+/// where a grant lands without the capability snapshot at hand.
+fn stamp_reward_credits(commands: &mut [Command], snapshot: &CapabilitySnapshot) {
+    if snapshot.reward_kinds.values().all(|k| k.credits.is_none()) {
+        return;
+    }
+    for cmd in commands {
+        if let Command::Quest(q) = cmd {
+            let rewards = q
+                .rewards
+                .iter_mut()
+                .chain(q.objectives.iter_mut().flat_map(|o| o.rewards.iter_mut()));
+            for r in rewards {
+                r.credits = snapshot
+                    .reward_kinds
+                    .get(r.kind.trim())
+                    .and_then(|k| k.credits.clone());
+            }
+        }
+    }
+}
+
 /// The RESOLVED + FOLDED state table (§4.1): BTreeMap order = sorted by path
 /// (deterministic). Implicit `scene.choices.*` entries append `unset` to
 /// their domain and carry `branch:<id>` provenance (§11.1, plan note 10);
@@ -975,6 +1028,10 @@ fn state_entries(
     schema
         .decls
         .iter()
+        // dsl 0.23.0 §6: the checker's `prev.run.*` mirror decls are implied
+        // by the `run.*` entries (the engine snapshots them at run end), so
+        // the table carries only what content declares or quests reserve.
+        .filter(|(path, _)| !lute_check::cel_paths::is_prev_path(path))
         .map(|(path, decl)| {
             // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is
             // one of the `scene.choices.<branchId>` paths folded in from an actual
@@ -1044,6 +1101,10 @@ pub fn collect_branch_paths(doc: &Document) -> BTreeSet<String> {
     }
     for quest in &doc.quests {
         collect_branch_paths_nodes(&quest.body, &mut paths);
+    }
+    // dsl 0.23.0 §4: a bundle beat body is a scene body (`fold_branches`).
+    for beat in &doc.beats {
+        collect_branch_paths_nodes(&beat.body, &mut paths);
     }
     paths
 }

@@ -46,7 +46,7 @@ pub const W_BEAT_SHADOWED: &str = "W-BEAT-SHADOWED";
 
 /// The scene-frontmatter beat keys (dsl 0.21.0 §3.1). Scene-only, never
 /// defaultable: a beat is one scene's own declaration.
-pub const BEAT_KEYS: &[&str] = &["on", "target", "when", "priority", "once"];
+pub const BEAT_KEYS: &[&str] = &["on", "target", "when", "priority", "once", "also"];
 
 /// A scene beat's repetition policy (dsl 0.21.0 §3.1, D-F).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,6 +88,9 @@ pub struct BeatMeta {
     pub priority: i64,
     /// Default [`BeatOnce::Run`].
     pub once: BeatOnce,
+    /// dsl 0.23.0 §3: `also: true` — on a `select: first` occasion, presented
+    /// in addition to the winner, after it; never the winner itself.
+    pub also: bool,
 }
 
 /// A beat `priority` (dsl 0.21.0 §3): an integer `-?[0-9]+` that fits `i64`.
@@ -227,6 +230,22 @@ pub(crate) fn lift_scene_beat(
         },
     };
 
+    let also = match get("also") {
+        None | Some(serde_yaml::Value::Bool(false)) => false,
+        Some(serde_yaml::Value::Bool(true)) => true,
+        Some(v) => {
+            push(
+                format!(
+                    "`also:` must be `true` (presented after the occasion's winner, in addition \
+                     to it) or `false`, got {} (dsl 0.23.0 §3)",
+                    describe(v)
+                ),
+                top_value_span(meta, "also"),
+            );
+            false
+        }
+    };
+
     let on = on?;
     check_occasion(
         &on,
@@ -236,12 +255,32 @@ pub(crate) fn lift_scene_beat(
         Layer::Content,
         diags,
     );
+    // dsl 0.23.0 §3: a side remark rides along a single winner — on a
+    // `select: all` / `sequence` occasion every eligible beat is already
+    // offered or presented, so `also` means nothing there.
+    if also {
+        if let Some(decl) = occasions.get(&on).filter(|d| d.select != OccasionSelect::First) {
+            diags.push(beat_diag(
+                E_BEAT_ATTR,
+                Severity::Error,
+                format!(
+                    "`also: true` applies only to a `select: first` occasion; `{on}` is \
+                     `select: {}`, which already presents or offers every eligible beat — \
+                     remove `also:` (dsl 0.23.0 §3)",
+                    decl.select.as_str()
+                ),
+                top_value_span(meta, "also"),
+                Layer::Content,
+            ));
+        }
+    }
     Some(BeatMeta {
         on,
         target,
         when,
         priority,
         once,
+        also,
     })
 }
 
@@ -269,6 +308,16 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
                 attr.span,
             );
         }
+    }
+    // dsl 0.23.0 §3: `also` rides along a `select: first` winner as a scene
+    // (or bundle) beat; an entry beat is read, not presented beside another.
+    for attr in entry.attrs.iter().filter(|a| a.key == "also") {
+        push(
+            "`also` is a scene beat key (`also: true` in a scene's frontmatter, dsl 0.23.0 §3); \
+             an `<entry>` beat cannot ride along another beat — remove `also`"
+                .to_string(),
+            attr.span,
+        );
     }
     if let Some((on, span)) = &entry.on {
         if !is_entry_ident(on) {
@@ -346,7 +395,10 @@ pub(crate) fn check_entry_occasions(
 /// — the occasion at which the objective's `done` is judged — checked
 /// exactly as a beat's `on`: [`E_BEAT_ATTR`] when the value is not a quoted
 /// identifier, [`E_OCCASION_UNKNOWN`] against the resolved vocabulary
-/// (shape-only while `occasions` is empty). Objectives have no `target`.
+/// (shape-only while `occasions` is empty). dsl 0.23.0 §2: its `target=`
+/// follows the beat target rule — a dotted id, only beside `on`, only on an
+/// occasion raised for a target (the domain is
+/// [`check_beat_target_domains`]'s).
 pub(crate) fn check_objective_occasions(
     quests: &[Quest],
     occasions: &BTreeMap<String, OccasionDecl>,
@@ -354,18 +406,52 @@ pub(crate) fn check_objective_occasions(
     let mut diags = Vec::new();
     for node in quests.iter().flat_map(|q| &q.body) {
         let Node::Objective(o) = node else { continue };
-        for attr in o.attrs.iter().filter(|a| a.key == "on") {
+        for attr in o.attrs.iter().filter(|a| matches!(a.key.as_str(), "on" | "target")) {
             // A non-string value stays residual (the parser extracts only
             // quoted strings).
             diags.push(beat_diag(
                 E_BEAT_ATTR,
                 Severity::Error,
-                "`<objective>` attribute `on` must be a quoted occasion name (dsl 0.21.0 §7a.2)"
-                    .to_string(),
+                format!(
+                    "`<objective>` attribute `{}` must be a quoted string (dsl 0.21.0 §7a.2, \
+                     0.23.0 §2)",
+                    attr.key
+                ),
                 attr.span,
                 Layer::Logic,
             ));
         }
+        let target_span = match &o.target {
+            Some((t, span)) if !is_entry_target(t) => {
+                diags.push(beat_diag(
+                    E_BEAT_ATTR,
+                    Severity::Error,
+                    format!(
+                        "`<objective>` `target=\"{t}\"` must be a dotted id `Ident (\".\" \
+                         Segment)*`, e.g. `npc.maud` (dsl 0.23.0 §2)"
+                    ),
+                    *span,
+                    Layer::Logic,
+                ));
+                None
+            }
+            Some((_, span)) if o.on.is_none() => {
+                if !o.attrs.iter().any(|a| a.key == "on") {
+                    diags.push(beat_diag(
+                        E_BEAT_ATTR,
+                        Severity::Error,
+                        "`<objective>` `target` requires `on`; the objective is judged when the \
+                         occasion is raised for that target (dsl 0.23.0 §2)"
+                            .to_string(),
+                        *span,
+                        Layer::Logic,
+                    ));
+                }
+                None
+            }
+            Some((_, span)) => Some(*span),
+            None => None,
+        };
         let Some((on, span)) = &o.on else { continue };
         if !is_entry_ident(on) {
             diags.push(beat_diag(
@@ -380,7 +466,7 @@ pub(crate) fn check_objective_occasions(
             ));
             continue;
         }
-        check_occasion(on, *span, None, occasions, Layer::Logic, &mut diags);
+        check_occasion(on, *span, target_span, occasions, Layer::Logic, &mut diags);
     }
     diags
 }
@@ -388,7 +474,7 @@ pub(crate) fn check_objective_occasions(
 /// `on` against the resolved occasion vocabulary (dsl 0.21.0 §2): unknown is
 /// [`E_OCCASION_UNKNOWN`]; a `target` on an occasion declared without
 /// `target: true` is [`E_BEAT_ATTR`]. Silent when no occasion is declared.
-fn check_occasion(
+pub(crate) fn check_occasion(
     on: &str,
     on_span: Span,
     target_span: Option<Span>,
@@ -528,6 +614,25 @@ pub(crate) fn check_beat_target_domains(
             judge(on, target, *span, Layer::Logic);
         }
     }
+    // dsl 0.23.0 §4: a bundle beat's target, like an entry beat's.
+    for beat in &doc.beats {
+        let (Some((on, _)), Some((target, span))) = (&beat.on, &beat.target) else {
+            continue;
+        };
+        if is_entry_ident(on) && is_entry_target(target) {
+            judge(on, target, *span, Layer::Logic);
+        }
+    }
+    // dsl 0.23.0 §2: an objective's target is checked like a beat's.
+    for node in doc.quests.iter().flat_map(|q| &q.body) {
+        let Node::Objective(o) = node else { continue };
+        let (Some((on, _)), Some((target, span))) = (&o.on, &o.target) else {
+            continue;
+        };
+        if is_entry_ident(on) && is_entry_target(target) {
+            judge(on, target, *span, Layer::Logic);
+        }
+    }
     diags
 }
 
@@ -575,7 +680,195 @@ pub(crate) fn scene_beat_name(folded: &FoldedEnv) -> String {
     crate::meta::canonical_scene_key(&folded.typed).unwrap_or_else(|| "this scene".to_string())
 }
 
-/// One beat of the project, in selection-tiebreak order.
+/// What declares a [`ProjectBeat`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProjectBeatKind {
+    /// A scene's frontmatter beat (dsl 0.21.0 §3.1).
+    Scene,
+    /// A lore `<entry on=…>` (dsl 0.21.0 §3.2).
+    Entry,
+    /// A lore `<beat>` of a beat bundle (dsl 0.23.0 §4).
+    Bundle,
+}
+
+/// One well-formed beat of a project root (dsl 0.21.0 §4, 0.23.0 §1) — what
+/// the project beat passes judge and `lute beats` lists. A beat whose `on`,
+/// `target`, `priority` or `once` is malformed is `E-BEAT-ATTR`'s and is not
+/// listed.
+#[derive(Clone, Debug)]
+pub struct ProjectBeat<'a> {
+    pub path: &'a PathBuf,
+    pub kind: ProjectBeatKind,
+    /// A scene's canonical key (`this scene` without one), an entry's id, a
+    /// bundle beat's canonical `<document id>.<beat id>`.
+    pub id: String,
+    pub on: &'a str,
+    pub target: Option<&'a str>,
+    pub priority: i64,
+    /// A scene's policy; an entry's authored `once` ([`BeatOnce::None`] when
+    /// absent — an entry without `once` is repeatable).
+    pub once: BeatOnce,
+    /// dsl 0.23.0 §3: a scene's `also: true`.
+    pub also: bool,
+    /// A scene's non-blank `after:`, raw.
+    pub after: Option<&'a str>,
+    /// The `when` slot as authored.
+    pub when_slot: Option<&'a CelSlot>,
+    /// The `when` after `@def` expansion in its own document.
+    pub when: Option<String>,
+    /// The scene's frontmatter `title:` / the entry's `title=`.
+    pub title: Option<String>,
+    /// The `on` key / attribute — where a beat diagnostic anchors.
+    pub anchor: Span,
+    pub folded: &'a FoldedEnv,
+}
+
+impl ProjectBeat<'_> {
+    /// The beat as messages name it: ``scene `k` `` / ``entry `id` `` /
+    /// ``beat `doc.id` ``.
+    pub fn name(&self) -> String {
+        match self.kind {
+            ProjectBeatKind::Scene => format!("scene `{}`", self.id),
+            ProjectBeatKind::Entry => format!("entry `{}`", self.id),
+            ProjectBeatKind::Bundle => format!("beat `{}`", self.id),
+        }
+    }
+}
+
+/// Every well-formed beat of one project root, in `ProjectIndex.beats`
+/// order: `docs` (parallel to `foldeds`) in `check-project` order — the
+/// selection tiebreak after priority — then declaration order within a
+/// document (a lore document's entry beats and bundle beats interleave by
+/// source position, as their compiled records do).
+pub fn project_beats<'a>(
+    docs: &'a [(PathBuf, Document)],
+    foldeds: &[&'a FoldedEnv],
+) -> Vec<ProjectBeat<'a>> {
+    let mut beats = Vec::new();
+    for ((path, doc), &folded) in docs.iter().zip(foldeds) {
+        let defs = DefTable {
+            bodies: &folded.def_bodies,
+            params: &folded.env.def_params,
+        };
+        let expand = |when: Option<&CelSlot>| {
+            when.map(|w| {
+                let mut stack = Vec::new();
+                crate::cel_expand::expand_cel(&w.raw, &defs, None, &mut stack)
+                    .unwrap_or_else(|_| w.raw.clone())
+            })
+        };
+        if let Some(beat) = &folded.typed.beat {
+            let title = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml)
+                .ok()
+                .and_then(|m| {
+                    m.get(serde_yaml::Value::String("title".to_string()))?
+                        .as_str()
+                        .map(str::to_string)
+                });
+            beats.push(ProjectBeat {
+                path,
+                kind: ProjectBeatKind::Scene,
+                id: scene_beat_name(folded),
+                on: &beat.on,
+                target: beat.target.as_deref(),
+                priority: beat.priority,
+                once: beat.once,
+                also: beat.also,
+                after: folded.typed.after.as_deref().filter(|a| !a.trim().is_empty()),
+                when_slot: beat.when.as_ref(),
+                when: expand(beat.when.as_ref()),
+                title,
+                anchor: top_key_span(&doc.meta, "on"),
+                folded,
+            });
+        }
+        // A lore document's entry beats and bundle beats, by source position.
+        let mut lore: Vec<(usize, ProjectBeat<'a>)> = Vec::new();
+        for entry in &doc.entries {
+            let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_entry_ident(on))
+            else {
+                continue;
+            };
+            let priority = match &entry.priority {
+                None => 0,
+                Some((raw, _)) => match parse_beat_priority(raw) {
+                    Some(p) => p,
+                    None => continue,
+                },
+            };
+            let target = match &entry.target {
+                None => None,
+                Some((t, _)) if is_entry_target(t) => Some(t.as_str()),
+                Some(_) => continue,
+            };
+            let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
+                None => BeatOnce::None,
+                Some("run") => BeatOnce::Run,
+                Some("user") => BeatOnce::User,
+                Some(_) => continue,
+            };
+            lore.push((entry.span.byte_start, ProjectBeat {
+                path,
+                kind: ProjectBeatKind::Entry,
+                id: entry.id.clone(),
+                on,
+                target,
+                priority,
+                once,
+                also: false,
+                after: None,
+                when_slot: entry.when.as_ref(),
+                when: expand(entry.when.as_ref()),
+                title: entry.title.as_ref().map(|(t, _)| t.clone()),
+                anchor: *on_span,
+                folded,
+            }));
+        }
+        // dsl 0.23.0 §4: bundle beats — skipped without a document `id:`
+        // (their canonical id hangs off it; `E-BEAT-ATTR`) or with a
+        // malformed `on` / `target` / `priority` / `once`.
+        if let Some(doc_id) = folded.typed.id.as_deref() {
+            for beat in &doc.beats {
+                let Some((on, on_span)) = beat.on.as_ref().filter(|(on, _)| is_entry_ident(on))
+                else {
+                    continue;
+                };
+                if beat.id.is_empty()
+                    || beat.target.as_ref().is_some_and(|(t, _)| !is_entry_target(t))
+                    || beat.priority.as_ref().is_some_and(|(p, _)| parse_beat_priority(p).is_none())
+                    || beat
+                        .once
+                        .as_ref()
+                        .is_some_and(|(o, _)| !matches!(o.as_str(), "run" | "user" | "false"))
+                {
+                    continue;
+                }
+                lore.push((beat.span.byte_start, ProjectBeat {
+                    path,
+                    kind: ProjectBeatKind::Bundle,
+                    id: crate::bundles::bundle_beat_key(doc_id, &beat.id),
+                    on,
+                    target: beat.target.as_ref().map(|(t, _)| t.as_str()),
+                    priority: crate::bundles::bundle_beat_priority(beat),
+                    once: crate::bundles::bundle_beat_once(beat),
+                    also: crate::bundles::bundle_beat_also(beat),
+                    after: None,
+                    when_slot: beat.when.as_ref(),
+                    when: expand(beat.when.as_ref()),
+                    title: beat.title.as_ref().map(|(t, _)| t.clone()),
+                    anchor: *on_span,
+                    folded,
+                }));
+            }
+        }
+        lore.sort_by_key(|(at, _)| *at);
+        beats.extend(lore.into_iter().map(|(_, b)| b));
+    }
+    beats
+}
+
+/// One beat of the project, in selection-tiebreak order, with what the
+/// selection passes judge about it.
 struct Beat<'a> {
     path: &'a PathBuf,
     /// `scene `k`` / `entry `id`` — the beat as messages name it.
@@ -583,6 +876,8 @@ struct Beat<'a> {
     on: &'a str,
     target: Option<&'a str>,
     priority: i64,
+    /// dsl 0.23.0 §3: presented beside the winner, never instead of it.
+    also: bool,
     /// Always eligible: no `after:`, and a `when` absent or deciding true.
     always: bool,
     /// Never spent: a scene's `once: false`, or an entry without `once`.
@@ -636,95 +931,43 @@ pub fn check_project_beats(
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let params = BTreeMap::new();
-    let mut beats: Vec<Beat<'_>> = Vec::new();
-    for ((path, doc), folded) in docs.iter().zip(foldeds) {
-        let defs = DefTable {
-            bodies: &folded.def_bodies,
-            params: &folded.env.def_params,
-        };
-        let ctx = DecideCtx {
-            schema: &folded.env.state,
-            dollar: None,
-            params: &params,
-            facts: None,
-        };
-        let holds = |when: Option<&CelSlot>| {
-            when.is_none_or(|w| {
+    let mut beats: Vec<Beat<'_>> = project_beats(docs, foldeds)
+        .into_iter()
+        .map(|pb| {
+            let folded = pb.folded;
+            let defs = DefTable {
+                bodies: &folded.def_bodies,
+                params: &folded.env.def_params,
+            };
+            let ctx = DecideCtx {
+                schema: &folded.env.state,
+                dollar: None,
+                params: &params,
+                facts: None,
+            };
+            let holds = pb.when_slot.is_none_or(|w| {
                 matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true)))
-            })
-        };
-        let expand = |when: Option<&CelSlot>| {
-            when.map(|w| {
-                let mut stack = Vec::new();
-                crate::cel_expand::expand_cel(&w.raw, &defs, None, &mut stack)
-                    .unwrap_or_else(|_| w.raw.clone())
-            })
-        };
-        let conjuncts = |when: Option<&CelSlot>| {
-            when.map_or_else(Default::default, |w| {
-                crate::reachability::when_conjuncts(&w.raw, &defs, &folded.env.state)
-            })
-        };
-        if let Some(beat) = &folded.typed.beat {
-            let has_after = folded.typed.after.as_deref().is_some_and(|a| !a.trim().is_empty());
-            let when = expand(beat.when.as_ref());
-            beats.push(Beat {
-                path,
-                name: format!("scene `{}`", scene_beat_name(folded)),
-                on: &beat.on,
-                target: beat.target.as_deref(),
-                priority: beat.priority,
-                always: !has_after && holds(beat.when.as_ref()),
-                unspent: beat.once == BeatOnce::None,
-                run_once_user_when: beat.once == BeatOnce::Run
-                    && when.as_deref().is_some_and(reads_only_user),
-                conjuncts: conjuncts(beat.when.as_ref()),
-                when,
-                anchor: top_key_span(&doc.meta, "on"),
-                folded,
             });
-        }
-        for entry in &doc.entries {
-            let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_entry_ident(on))
-            else {
-                continue;
-            };
-            let priority = match &entry.priority {
-                None => 0,
-                Some((raw, _)) => match parse_beat_priority(raw) {
-                    Some(p) => p,
-                    None => continue,
-                },
-            };
-            let target = match &entry.target {
-                None => None,
-                Some((t, _)) if is_entry_target(t) => Some(t.as_str()),
-                Some(_) => continue,
-            };
-            let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
-                None => BeatOnce::None,
-                Some("run") => BeatOnce::Run,
-                Some("user") => BeatOnce::User,
-                Some(_) => continue,
-            };
-            let when = expand(entry.when.as_ref());
-            beats.push(Beat {
-                path,
-                name: format!("entry `{}`", entry.id),
-                on,
-                target,
-                priority,
-                always: holds(entry.when.as_ref()),
-                unspent: once == BeatOnce::None,
-                run_once_user_when: once == BeatOnce::Run
-                    && when.as_deref().is_some_and(reads_only_user),
-                conjuncts: conjuncts(entry.when.as_ref()),
-                when,
-                anchor: *on_span,
+            Beat {
+                path: pb.path,
+                name: pb.name(),
+                on: pb.on,
+                target: pb.target,
+                priority: pb.priority,
+                also: pb.also,
+                always: pb.after.is_none() && holds,
+                unspent: pb.once == BeatOnce::None,
+                run_once_user_when: pb.once == BeatOnce::Run
+                    && pb.when.as_deref().is_some_and(reads_only_user),
+                conjuncts: pb.when_slot.map_or_else(Default::default, |w| {
+                    crate::reachability::when_conjuncts(&w.raw, &defs, &folded.env.state)
+                }),
+                when: pb.when,
+                anchor: pb.anchor,
                 folded,
-            });
-        }
-    }
+            }
+        })
+        .collect();
     // Stable: equal priorities keep the tiebreak order.
     beats.sort_by(|a, b| b.priority.cmp(&a.priority));
 
@@ -754,12 +997,16 @@ pub fn check_project_beats(
             .occasions
             .get(b.on)
             .map_or(OccasionSelect::First, |o| o.select);
-        if select != OccasionSelect::First {
+        // dsl 0.23.0 §3: an `also` beat never competes for the win — it is
+        // presented beside the winner — so it is neither shadowed nor
+        // shadows, and its order among other `also` beats is no tie.
+        if select != OccasionSelect::First || b.also {
             continue;
         }
         let target = b.target.map_or_else(String::new, |t| format!(" for `{t}`"));
         if let Some(a) = beats[..j].iter().find(|a| {
-            a.on == b.on
+            !a.also
+                && a.on == b.on
                 && (a.target.is_none() || a.target == b.target)
                 && a.always
                 && a.unspent
@@ -790,7 +1037,8 @@ pub fn check_project_beats(
         let partners: Vec<&Beat<'_>> = beats[..j]
             .iter()
             .filter(|a| {
-                a.on == b.on
+                !a.also
+                    && a.on == b.on
                     && a.priority == b.priority
                     && (a.target.is_none() || b.target.is_none() || a.target == b.target)
                     && !provably_exclusive(a, b)

@@ -38,6 +38,101 @@ table.
 
 ## [Unreleased]
 
+- **Previous run** (dsl 0.23.0 §6): `prev.run.<path>` reads the value every
+  declared `run.<path>` had when the previous run ended — typed like its run
+  path, maybe-unset before the first run ends, read-only
+  (`E-QUEST-RESERVED-WRITE`). `lute play` snapshots it at `newRun`; play
+  `state:` seeds and trace mocks may set it.
+- **Cast** (dsl 0.23.0 §7): a plugin `cast` export or a schema document's
+  `cast: { <id>: { name } }` declares the speakers; once declared, any other
+  speaker is `E-CAST-UNKNOWN` with a did-you-mean. `lute context` lists the
+  cast and LSP speaker completion offers it.
+- **Rewards that credit state** (dsl 0.23.0 §8): `rewardKinds.<kind>.credits`
+  names a state path; the IR stamps it on each reward (`RewardEntry.credits`,
+  additive), `lute run` / `lute play` add the scalar amount there on grant,
+  and a handler `::set` of the same path is `W-REWARD-DOUBLE-CREDIT`.
+- **Deadlines** (dsl 0.23.0 §2): `<objective by="<condition>">` — a condition
+  slot like `done`. The first time `by` holds while the objective is not
+  done, the objective fails and is never judged again; a failed required
+  objective fails its quest (`failed` rewards, `questFailed`, cascade). `done`
+  is judged first, so a deadline never fails a done objective. IR:
+  `ObjectiveEntry.by` (additive). `lute trace` records the objective decision
+  `failed`; `lute run` / `lute play` print `failed (by)`.
+- **Objective targets** (dsl 0.23.0 §2): `<objective on="talk"
+  target="npc.maud">` is judged only when the occasion is raised for that
+  target, checked like a beat target (`E-BEAT-ATTR`). IR:
+  `ObjectiveEntry.target` (additive). `lute trace` / `lute run` raise for a
+  target with `occasions: [talk@npc.maud]` / `--occasion talk@npc.maud`; a
+  `lute play` step judges objectives for its `target:`.
+- **Composing occasions** (dsl 0.23.0 §3): an occasion declared `select:
+  sequence` presents every eligible beat in selection order; a scene beat's
+  `also: true` rides along after a `select: first` winner and never replaces
+  it (IR `BeatIr.also`, additive; `E-BEAT-ATTR` when not a bool, on an entry,
+  or on a `select: all` / `sequence` occasion). `W-BEAT-SHADOWED` and
+  `W-BEAT-PRIORITY-TIE` ignore `also` beats. `lute play` presents the whole
+  list with a quest settle after each beat (`--json`: `presented`, then
+  `then`), rejects `pick:` on a `sequence` occasion, and gains the step
+  expectation `presented: [ids]`. The `sequence` value changes the
+  capability stamp only for snapshots that declare it.
+- **Overviews** (dsl 0.23.0 §1, §11): `project.index.json` beat rows carry
+  `when` (expanded) and `title` (additive, omitted when absent). `lute beats
+  <dir> [--occasion] [--target] [--json]` prints each occasion/target's beat
+  ladder in selection order with priority, `once`, `after`, `when` and the
+  `check-project` verdicts (unreachable, shadowed, tied, once-run-user).
+  `lute calendar <dir> --axis path=1..7 --axis path=a,b [--occasion]
+  [--target] [--script save.play.yaml] [--json|--csv]` evaluates play's own
+  eligibility at every cell of the axes' product from the save (quests
+  settled per cell): winner, shadowed eligible beats, undecided cells, and
+  the beats never eligible anywhere. `lute scenario <dir> knowledge [--for
+  <node>]` traces every fact-guarded beat/entry/objective to the atoms it
+  queries and their producers through rules (asserting documents, seed
+  facts, reserved, or none). The scenario graph notes the
+  `completed()`/`active()`/`visited()` references it does not draw because a
+  quest declares no `after=`. `lute play` marks an already-read entry
+  candidate `read`.
+- **A sharper condition decider** (dsl 0.23.0 §9): `decide` now reasons per
+  path across `&&`/`||` operands (state paths, `$`, component params,
+  `holds(P)`/`visited(id)`/`count(P)`). A conjunction whose operands are false
+  for every value of one path decides false (`run.n > 5 && run.n < 3`,
+  `run.slot == 'a' && run.slot == 'b'`, `x && !x`); a disjunction whose cases
+  cover a path's domain decides true. `unset` counts as a value, and an
+  ordering that errs on it is neither true nor false, so every verdict is the
+  expression's actual value. `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`,
+  `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `W-BEAT-PRIORITY-TIE` and the
+  compile-time fold all benefit. In the may set, a negated rule atom over a
+  seed nothing retracts or displaces is false, so `not alibi(crane)` with a
+  canon alibi no longer keeps a derived fact possible.
+- **`lute check-project --wip`** (dsl 0.23.0 §10): `E-ENTRY-UNREACHABLE`,
+  `E-BEAT-UNREACHABLE` and `E-OBJECTIVE-UNSATISFIABLE` become warnings when
+  the guard is dead only because a relation has no producer at all yet (no
+  seed, assert, rule, or reserved declaration); a relation that has producers
+  but never matches stays an error.
+- **Beat bundles** (dsl 0.23.0 §4): a `kind: lore` document may hold
+  scene-like `<beat id on target when priority once also title>` blocks with
+  a scene body (lines, branches, hubs, matches, directives). A beat's
+  canonical id is `<document id>.<beat id>` (the document needs `id:`); it is
+  checked like a scene beat (`E-BEAT-ATTR`, `E-OCCASION-UNKNOWN`,
+  `E-BEAT-UNREACHABLE` per file and under the fact envelope,
+  `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE`, `W-BEAT-ONCE-RUN-USER`), is
+  spent by presentation (`once` defaults to `run`), and `visited('<doc>.<beat>')`
+  reads it in any condition (an `after:` still names only scenes and quests).
+  A beat id sharing a scene's id is `E-CONN-EPISODE-ID-DUP`. IR: a new `beat`
+  command heads each beat's addressing unit in the lore artifact (units in
+  source order; an entry's or beat's body segment runs to the next `entry` or
+  `beat` record), and `project.index.json` beat rows gain kind `bundle`
+  (additive). `lute play` presents bundle beats; `lute trace --beat <id>` and
+  `lute run --beat <id>` present one (new `E-TRACE-BEAT`). Tree-sitter, LSP
+  (completion, symbols, folding, tokens), `lute tag`/`fix`/`loc`/`context`/
+  `doctor`, lint metrics and `lute lore` cover beat bodies.
+- **Hub prompts** (dsl 0.23.0 §4): `<hub prompt="…">` attaches the question
+  shown with the hub's options (IR `HubCmd.prompt`, additive; an empty prompt
+  is `E-BRANCH-PROMPT`). `lute run` / `lute play` print it; LSP completes it.
+- **Components with sentences** (dsl 0.23.0 §5): a component `string` param
+  may be interpolated (`{{@p}}`); a literal `::use` argument is substituted
+  into the line at expansion, so each call site ships its own sentence under
+  its own component-scoped `lineId`. Binding such a param to a `@def` ref is
+  `E-REF-TYPE` at the argument.
+
 ## [0.22.0] - 2026-09-25
 
 **A reference player that can stand in for the engine.**

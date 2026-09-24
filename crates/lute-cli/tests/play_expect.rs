@@ -129,7 +129,7 @@ fn an_unknown_expect_key_is_a_usage_error_listing_the_legal_keys() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(2), "{t}");
     assert!(t.contains("`winer`"), "{t}");
-    assert!(t.contains("notOffered, offered, winner"), "{t}");
+    assert!(t.contains("notOffered, offered, presented, winner"), "{t}");
 }
 
 #[test]

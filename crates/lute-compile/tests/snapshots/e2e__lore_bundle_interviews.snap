@@ -1,0 +1,225 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "lore",
+  "lute": "0.22.0",
+  "irVersion": "0.22.0",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {
+    "id": "interviews"
+  },
+  "state": [
+    {
+      "path": "entry.porterNote.read",
+      "type": "bool",
+      "default": false,
+      "provenance": "entry:porterNote"
+    },
+    {
+      "path": "run.porterTrust",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "scene.choices.look",
+      "type": "enum",
+      "domain": [
+        "lamp",
+        "done",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:look"
+    },
+    {
+      "path": "scene.choices.porterTalk",
+      "type": "enum",
+      "domain": [
+        "ask",
+        "leave",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:porterTalk"
+    },
+    {
+      "path": "scene.visited.look.done",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.look.lamp",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "entry",
+      "addr": "001-0100",
+      "id": "porterNote",
+      "target": "item.porter_note",
+      "body": "001-0200"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "A note about the porter.",
+      "lineId": "porterNote.narrator_0010"
+    },
+    {
+      "kind": "beat",
+      "addr": "002-0100",
+      "id": "interviews.porter",
+      "on": "talk",
+      "target": "npc.porter",
+      "title": "The porter",
+      "titleLineId": "interviews.porter.title",
+      "when": {
+        "raw": "run.porterTrust >= 0",
+        "expr": {
+          "op": ">=",
+          "l": {
+            "path": "run.porterTrust"
+          },
+          "r": {
+            "lit": 0.0
+          }
+        }
+      },
+      "priority": 5,
+      "once": "run",
+      "body": "002-0200"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0200",
+      "role": "dialogue",
+      "speaker": "porter",
+      "text": "You again.",
+      "lineId": "interviews.porter.porter_0010",
+      "voiceKey": "interviews.porter.porter-0010"
+    },
+    {
+      "kind": "choice",
+      "addr": "002-0300",
+      "branchId": "porterTalk",
+      "recordKey": "scene.choices.porterTalk",
+      "options": [
+        {
+          "id": "ask",
+          "label": "Ask about the night",
+          "lineId": "interviews.porter.porterTalk.ask",
+          "target": "002-0400"
+        },
+        {
+          "id": "leave",
+          "label": "Leave",
+          "lineId": "interviews.porter.porterTalk.leave",
+          "target": "002-0700"
+        }
+      ],
+      "converge": "002-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0400",
+      "role": "dialogue",
+      "speaker": "porter",
+      "text": "I saw nothing.",
+      "lineId": "interviews.porter.porter_0020",
+      "voiceKey": "interviews.porter.porter-0020"
+    },
+    {
+      "kind": "set",
+      "addr": "002-0500",
+      "path": "run.porterTrust",
+      "op": "+=",
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
+    },
+    {
+      "kind": "jump",
+      "addr": "002-0600",
+      "target": "002-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0700",
+      "role": "dialogue",
+      "speaker": "porter",
+      "text": "Good.",
+      "lineId": "interviews.porter.porter_0030",
+      "voiceKey": "interviews.porter.porter-0030"
+    },
+    {
+      "kind": "jump",
+      "addr": "002-0800",
+      "target": "002-0900"
+    },
+    {
+      "kind": "beat",
+      "addr": "003-0100",
+      "id": "interviews.lamps",
+      "on": "talk",
+      "target": "npc.porter",
+      "priority": 0,
+      "once": "none",
+      "also": true,
+      "body": "003-0200"
+    },
+    {
+      "kind": "hub",
+      "addr": "003-0200",
+      "id": "look",
+      "recordKey": "scene.choices.look",
+      "options": [
+        {
+          "id": "lamp",
+          "label": "The lamp",
+          "lineId": "interviews.lamps.look.lamp",
+          "once": true,
+          "exit": false,
+          "target": "003-0300"
+        },
+        {
+          "id": "done",
+          "label": "Done",
+          "lineId": "interviews.lamps.look.done",
+          "once": false,
+          "exit": true,
+          "target": "003-0400"
+        }
+      ],
+      "converge": "003-0600",
+      "prompt": "Where do you look?"
+    },
+    {
+      "kind": "line",
+      "addr": "003-0300",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "It is cold.",
+      "lineId": "interviews.lamps.narrator_0010"
+    },
+    {
+      "kind": "line",
+      "addr": "003-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Enough.",
+      "lineId": "interviews.lamps.narrator_0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "003-0500",
+      "target": "003-0600"
+    }
+  ]
+}

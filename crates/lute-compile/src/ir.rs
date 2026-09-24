@@ -275,6 +275,11 @@ pub struct BeatIr {
     pub when: Option<CelPair>,
     pub priority: i64,
     pub once: BeatOnce,
+    /// dsl 0.23.0 §3: `also: true` — presented after the `select: first`
+    /// winner, in addition to it. Serialized only when true, so every other
+    /// beat is byte-identical to its 0.22 artifact.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub also: bool,
 }
 
 /// A scene beat's repetition policy (dsl 0.21.0 §3.1): `"run"` (once per
@@ -489,6 +494,9 @@ pub enum Command {
     Entry(EntryCmd),
     /// dsl 0.21.0 §7a.3: `::accept{quest}`. Appended after `Entry`.
     Accept(AcceptCmd),
+    /// dsl 0.23.0 §4: a bundle `<beat>` declaration head in a lore artifact.
+    /// Appended after `Accept`.
+    Beat(BeatCmd),
 }
 
 /// One `{{…}}` interpolation placeholder (IR A3): the runtime substitutes it
@@ -813,6 +821,10 @@ pub struct HubCmd {
     pub record_key: String,
     pub options: Vec<HubOption>,
     pub converge: String,
+    /// dsl 0.23.0 §4: the prompt line shown with the hub's options. Absent
+    /// unless authored, so every other hub record is byte-identical.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1035,6 +1047,16 @@ pub struct ObjectiveEntry {
     /// unauthored, so every objective without it is byte-identical.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on: Option<String>,
+    /// dsl 0.23.0 §2: `by=` — while the objective is not done, the first
+    /// time this condition is true the objective FAILS (a required
+    /// objective fails its quest). Judged at every lifecycle settle.
+    /// Appended and skipped when unauthored (byte-stability).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by: Option<CelPair>,
+    /// dsl 0.23.0 §2: with `on`, the objective is judged only when the
+    /// occasion is raised for this target (the beat target rule).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 /// `<on>` event-condition-action record (dsl 0.2.0 §4, §6.6, IR addendum
@@ -1095,6 +1117,39 @@ pub struct EntryCmd {
     pub stamp: Stamp,
 }
 
+/// A bundle beat's declaration head (dsl 0.23.0 §4): a scene-like beat
+/// written in a lore document. Like [`EntryCmd`] it is the FIRST record of
+/// its own addressing unit and its `body` addresses the body segment that
+/// follows it (to the next `entry`/`beat` record or the artifact end); the
+/// body is lowered exactly like a scene shot. `id` is the canonical
+/// `<document id>.<beat id>` — the `ProjectIndex.beats` row id, the
+/// `visited()` key, and the identity prefix of its `lineId`s. The beat
+/// fields mirror a scene's [`BeatIr`] (resolved `priority`, `once`
+/// defaulting to `run`, `also` only when true). Field declaration order is
+/// serialized order (byte-stability contract).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BeatCmd {
+    pub addr: String,
+    pub id: String,
+    pub on: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title_line_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<CelPair>,
+    pub priority: i64,
+    pub once: BeatOnce,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub also: bool,
+    pub body: String,
+    #[serde(flatten)]
+    pub stamp: Stamp,
+}
+
 /// A CEL slot's raw text + its portable lowered form (IR A7 `ExprNode`
 /// shape), reused for every 0.2.0 quest-kind CEL attr (`start`/`fail`/
 /// `done`/`when`/`on.when`) — the `{raw, expr}` dual-field shape
@@ -1145,6 +1200,11 @@ pub struct RewardEntry {
     pub when: Option<CelPair>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on: Option<String>,
+    /// dsl 0.23.0 §8: the state path the reward kind's `credits:` names —
+    /// a grant adds its amount there. Stamped from the capability snapshot
+    /// at compile; omitted when the kind credits nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credits: Option<String>,
 }
 
 impl RewardEntry {
@@ -1182,6 +1242,7 @@ impl RewardEntry {
             amount_max,
             when: reward.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
             on,
+            credits: None,
         }
     }
 }
@@ -1213,6 +1274,7 @@ impl Command {
             Command::On(c) => &mut c.addr,
             Command::Entry(c) => &mut c.addr,
             Command::Accept(c) => &mut c.addr,
+            Command::Beat(c) => &mut c.addr,
         }
     }
 
@@ -1255,6 +1317,7 @@ impl Command {
             }
             Command::On(o) => f(&mut o.body),
             Command::Entry(e) => f(&mut e.body),
+            Command::Beat(b) => f(&mut b.body),
             Command::Line(_)
             | Command::Background(_)
             | Command::Music(_)
@@ -1297,6 +1360,7 @@ impl Command {
             Command::On(c) => Some(&mut c.stamp),
             Command::Entry(c) => Some(&mut c.stamp),
             Command::Accept(c) => Some(&mut c.stamp),
+            Command::Beat(c) => Some(&mut c.stamp),
             Command::End(c) => Some(&mut c.stamp),
             Command::Jump(_) | Command::Barrier(_) => None,
         }

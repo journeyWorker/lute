@@ -2454,3 +2454,50 @@ fn deny_of_the_removed_unproven_relational_code_is_a_usage_error() {
     let ok = run(&["check-project", dir.to_str().unwrap(), "--deny", "W-FACT-GUARANTEED"]);
     assert_eq!(ok.status.code(), Some(0), "{}", String::from_utf8_lossy(&ok.stderr));
 }
+
+// --- dsl 0.23.0 §10: `check-project --wip` ----------------------------------
+
+/// A lore document whose entry reacts to `found(toma)` — a relation nothing
+/// produces yet — plus, when `with_dead_match`, an entry on `knows(toma,
+/// heading)`, a relation that IS asserted but never with those arguments.
+fn wip_lore(with_dead_match: bool) -> String {
+    let extra = if with_dead_match {
+        "<entry id=\"heading\" when=\"holds(knows(toma, heading))\">\n  @vesna: The heading.\n</entry>\n\
+         <entry id=\"note\">\n  @vesna: Noted.\n  ::assert{knows(toma, manifest)}\n</entry>\n"
+    } else {
+        ""
+    };
+    format!(
+        "---\nkind: lore\ntitle: Records\nentities:\n  crew: {{ members: [vesna, toma] }}\n  \
+         topic: {{ members: [heading, manifest] }}\nrelations:\n  found: {{ args: [crew], tier: run }}\n  \
+         knows: {{ args: [crew, topic], tier: run }}\n---\n\
+         <entry id=\"found\" when=\"holds(found(toma))\">\n  @vesna: Found him.\n</entry>\n{extra}"
+    )
+}
+
+#[test]
+fn wip_downgrades_a_guard_dead_only_for_want_of_a_producer() {
+    let dir = temp_dir("wip-unwritten");
+    write(&dir, "notes.lute", &wip_lore(false));
+    let plain = run(&["check-project", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&plain.stdout);
+    assert_eq!(plain.status.code(), Some(1), "{text}");
+    assert!(text.contains("error [E-ENTRY-UNREACHABLE]"), "{text}");
+
+    let wip = run(&["check-project", "--wip", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&wip.stdout);
+    assert_eq!(wip.status.code(), Some(0), "{text}");
+    assert!(text.contains("warning [E-ENTRY-UNREACHABLE]"), "{text}");
+    assert!(text.contains("`--wip`"), "{text}");
+}
+
+#[test]
+fn wip_keeps_a_produced_relation_that_never_matches_an_error() {
+    let dir = temp_dir("wip-never-matches");
+    write(&dir, "notes.lute", &wip_lore(true));
+    let wip = run(&["check-project", "--wip", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&wip.stdout);
+    assert_eq!(wip.status.code(), Some(1), "{text}");
+    assert!(text.contains("warning [E-ENTRY-UNREACHABLE] entry `found`"), "{text}");
+    assert!(text.contains("error [E-ENTRY-UNREACHABLE] entry `heading`"), "{text}");
+}

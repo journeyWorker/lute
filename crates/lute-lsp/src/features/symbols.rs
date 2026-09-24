@@ -15,9 +15,10 @@
 //! - each `<on>` / `<objective>` inside a quest as a nested child (dsl 0.2.0
 //!   §4, §6.4) — [`SymbolKind::EVENT`] named by the trigger's `event`, and
 //!   [`SymbolKind::PROPERTY`] named by the objective's `id`;
-//! - one [`DocumentSymbol`] per top-level lore `<entry>` (dsl 0.19.0 §3) —
-//!   [`SymbolKind::NAMESPACE`] like a quest, named by its `id`, with its
-//!   `<match>` blocks nested as children.
+//! - one [`DocumentSymbol`] per top-level lore `<entry>` (dsl 0.19.0 §3) and
+//!   per lore `<beat>` bundle (dsl 0.23.0 §4) — [`SymbolKind::NAMESPACE`] like
+//!   a quest, named by its `id`, with its body blocks nested as children;
+//!   entries and beats interleave in source order.
 //!
 //! ## Ranges
 //! `range` is the construct's full span; `selection_range` is the "interesting"
@@ -27,7 +28,7 @@
 //! symbol positions carry the same UTF-16-correct ranges as every other surface.
 
 use lute_core_span::TextIndex;
-use lute_syntax::ast::{Arm, Document, Entry, Match, Node, Quest, Shot};
+use lute_syntax::ast::{Arm, BundleBeat, Document, Entry, Match, Node, Quest, Shot};
 use tower_lsp_server::ls_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::backend::{byte_to_position, span_to_range};
@@ -38,7 +39,18 @@ use crate::features::byte_span;
 pub fn document_symbols(doc: &Document, idx: &TextIndex) -> Vec<DocumentSymbol> {
     let mut out: Vec<DocumentSymbol> = doc.shots.iter().map(|s| shot_symbol(s, idx)).collect();
     out.extend(doc.quests.iter().map(|q| quest_symbol(q, idx)));
-    out.extend(doc.entries.iter().map(|e| entry_symbol(e, idx)));
+    let mut lore: Vec<(usize, DocumentSymbol)> = doc
+        .entries
+        .iter()
+        .map(|e| (e.span.byte_start, entry_symbol(e, idx)))
+        .chain(
+            doc.beats
+                .iter()
+                .map(|b| (b.span.byte_start, bundle_beat_symbol(b, idx))),
+        )
+        .collect();
+    lore.sort_by_key(|(start, _)| *start);
+    out.extend(lore.into_iter().map(|(_, s)| s));
     out
 }
 
@@ -85,6 +97,22 @@ fn entry_symbol(entry: &Entry, idx: &TextIndex) -> DocumentSymbol {
         "entry".to_string()
     } else {
         entry.id.clone()
+    };
+    symbol(name, SymbolKind::NAMESPACE, range, sel, children)
+}
+
+/// A lore `<beat>` bundle -> a top-level symbol named by its local id (dsl
+/// 0.23.0 §4), mirroring [`entry_symbol`]; a beat with no `id` (checker:
+/// `E-BEAT-ATTR`) is named `beat`.
+fn bundle_beat_symbol(beat: &BundleBeat, idx: &TextIndex) -> DocumentSymbol {
+    let range = span_to_range(&beat.span, idx);
+    let sel = keyword_range(beat.span.byte_start, "<beat", idx);
+    let mut children = Vec::new();
+    collect_children(&beat.body, idx, &mut children);
+    let name = if beat.id.is_empty() {
+        "beat".to_string()
+    } else {
+        beat.id.clone()
     };
     symbol(name, SymbolKind::NAMESPACE, range, sel, children)
 }
@@ -359,5 +387,27 @@ mod tests {
         let kids = syms[1].children.as_ref().expect("entry b has children");
         assert_eq!(kids.len(), 1);
         assert_eq!(kids[0].kind, SymbolKind::OBJECT, "the <match> child");
+    }
+
+    /// dsl 0.23.0 §4: every lore `<beat>` bundle is a top-level symbol named by
+    /// its id, interleaved with entries in source order, with its `<branch>` as
+    /// a child.
+    #[test]
+    fn bundle_beats_are_top_level_symbols_in_source_order() {
+        let text = "---\nid: ship.records\nkind: lore\n---\n\
+            <entry id=\"a\">\n@narrator: one\n</entry>\n\
+            <beat id=\"dock\" on=\"talk\">\n<branch id=\"ask\">\n<choice id=\"c\" text=\"C\">\n\
+            @narrator: y\n</choice>\n</branch>\n</beat>\n\
+            <entry id=\"z\">\n@narrator: two\n</entry>\n";
+        let syms = symbols(text);
+        let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["a", "dock", "z"]);
+        let beat = &syms[1];
+        assert_eq!(beat.kind, SymbolKind::NAMESPACE);
+        assert_eq!(beat.selection_range.start.line, 7, "selects the `<beat` keyword");
+        let kids = beat.children.as_ref().expect("the beat has children");
+        assert_eq!(kids.len(), 1);
+        assert_eq!(kids[0].kind, SymbolKind::ENUM, "the <branch> child");
+        assert_eq!(kids[0].name, "ask");
     }
 }

@@ -108,7 +108,10 @@ pub fn complete_at(
             Vec::new()
         }
         Cursor::ConstructAttrArea { construct } => construct_attr_key_items(construct),
-        Cursor::Speaker => speaker_items(providers),
+        Cursor::Speaker => speaker_items(
+            providers,
+            &lute_check::declared_cast(snapshot, imports, &meta.cast),
+        ),
     }
 }
 
@@ -153,6 +156,8 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("title", "string"),
             ("optional", "bool"),
             ("on", "string"),
+            ("by", "cel<bool>"),
+            ("target", "string"),
         ],
         QuestConstruct::Entry => &[
             ("id", "string"),
@@ -166,6 +171,17 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("priority", "integer"),
             ("once", "\"run\" | \"user\""),
         ],
+        QuestConstruct::Beat => &[
+            ("id", "string"),
+            ("on", "string"),
+            ("target", "string"),
+            ("title", "string"),
+            ("when", "cel<bool>"),
+            ("priority", "integer"),
+            ("once", "\"run\" | \"user\" | \"false\""),
+            ("also", "bool"),
+        ],
+        QuestConstruct::Hub => &[("id", "string"), ("prompt", "string")],
     }
 }
 
@@ -233,17 +249,26 @@ fn character_ids(providers: &ProviderSet) -> Vec<String> {
         .collect()
 }
 
-/// `@speaker{…}:` name completion (dsl §7.1): pinned `character` catalog ids
-/// (kind `VALUE`, as [`asset_segment_items`] offers provider ids) plus the
-/// always-valid `narrator` keyword (kind `KEYWORD`). Speaker-id VALIDATION
-/// stays out of scope for 0.2.1 (deferred to the 0.2.2 foundation minor) —
-/// this only completes + claims the span.
-fn speaker_items(providers: &ProviderSet) -> Vec<CompletionItem> {
-    character_ids(providers)
-        .into_iter()
-        .map(|id| CompletionItem {
+/// `@speaker{…}:` name completion (dsl §7.1): the declared cast (dsl 0.23.0
+/// §7 — plugin `cast` exports ∪ imported schemas' `cast:`, each member's
+/// display name as the detail) when one is declared, since only those ids
+/// check; otherwise the pinned `character` catalog ids (kind `VALUE`, as
+/// [`asset_segment_items`] offers provider ids). The always-valid `narrator`
+/// keyword (kind `KEYWORD`) follows either way.
+fn speaker_items(
+    providers: &ProviderSet,
+    cast: &std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
+) -> Vec<CompletionItem> {
+    let ids: Vec<(String, Option<String>)> = if cast.is_empty() {
+        character_ids(providers).into_iter().map(|id| (id, None)).collect()
+    } else {
+        cast.values().map(|c| (c.id.clone(), c.name.clone())).collect()
+    };
+    ids.into_iter()
+        .map(|(id, name)| CompletionItem {
             label: id,
             kind: Some(CompletionItemKind::VALUE),
+            detail: name,
             ..Default::default()
         })
         .chain(std::iter::once(CompletionItem {
@@ -663,6 +688,9 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
     }
     for entry in &doc.entries {
         scan(&entry.body, off, &mut out);
+    }
+    for beat in &doc.beats {
+        scan(&beat.body, off, &mut out);
     }
     out
 }
@@ -1415,12 +1443,17 @@ mod tests {
     /// offered, like `after`/`quest=` were) is a drift bug.
     #[test]
     fn construct_attr_keys_match_the_checker_tables() {
-        use lute_check::logic_attrs::{ENTRY_ATTRS, OBJECTIVE_ATTRS, ON_ATTRS, QUEST_ATTRS};
+        use lute_check::logic_attrs::{
+            ENTRY_ATTRS, HUB_ATTRS, OBJECTIVE_ATTRS, ON_ATTRS, QUEST_ATTRS,
+        };
+        use lute_check::BUNDLE_BEAT_ATTRS;
         for (construct, table) in [
             (QuestConstruct::Quest, QUEST_ATTRS),
             (QuestConstruct::Objective, OBJECTIVE_ATTRS),
             (QuestConstruct::On, ON_ATTRS),
             (QuestConstruct::Entry, ENTRY_ATTRS),
+            (QuestConstruct::Beat, BUNDLE_BEAT_ATTRS),
+            (QuestConstruct::Hub, HUB_ATTRS),
         ] {
             let mut offered: Vec<&str> =
                 construct_attr_keys(construct).iter().map(|(k, _)| *k).collect();
@@ -1429,6 +1462,20 @@ mod tests {
             permitted.sort_unstable();
             assert_eq!(offered, permitted, "{construct:?}");
         }
+    }
+
+    /// dsl 0.23.0 §4: a cursor inside a `<hub …>` open tag offers `prompt`
+    /// beside `id`; a cursor in the hub body past the first choice offers
+    /// no hub attr keys.
+    #[test]
+    fn hub_attr_area_completion_offers_prompt() {
+        let text = "## Shot 1.\n<hub id=\"h\" >\n<choice id=\"a\" label=\"A\" once>\n@f: a.\n</choice>\n\
+                    \n<choice id=\"leave\" label=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n";
+        let off = text.find("\" >").unwrap() + 2;
+        let ls: Vec<String> = labels(&complete(text, off)).into_iter().map(str::to_string).collect();
+        assert_eq!(ls, vec!["id".to_string(), "prompt".to_string()]);
+        let between = text.find("\n\n<choice id=\"leave\"").unwrap() + 1;
+        assert!(complete(text, between).is_empty());
     }
 
     #[test]
@@ -1475,6 +1522,25 @@ mod tests {
         for k in ["id", "target", "category", "title", "series", "order", "when", "on", "priority", "once"] {
             assert!(ls.contains(&k), "missing {k}: {ls:?}");
         }
+    }
+
+    /// dsl 0.23.0 §4: a cursor inside a lore `<beat …>` open tag offers the
+    /// beat attributes — `once` documented with its three values — and never
+    /// an entry-only key.
+    #[test]
+    fn beat_attr_area_completion_lists_beat_attrs() {
+        let text = "---\nid: ship.records\nkind: lore\n---\n<beat id=\"b\" >\n@narrator: hi\n</beat>\n";
+        let off = text.find("\" >").unwrap() + 2;
+        let items = complete(text, off);
+        let ls = labels(&items);
+        for k in ["id", "on", "target", "title", "when", "priority", "once", "also"] {
+            assert!(ls.contains(&k), "missing {k}: {ls:?}");
+        }
+        for k in ["category", "series", "order"] {
+            assert!(!ls.contains(&k), "entry-only {k} offered on a beat: {ls:?}");
+        }
+        let once = items.iter().find(|i| i.label == "once").unwrap();
+        assert_eq!(once.detail.as_deref(), Some("\"run\" | \"user\" | \"false\""));
     }
 
     #[test]
@@ -1577,5 +1643,31 @@ mod tests {
             ls.contains(&"marina") && ls.contains(&"ren") && ls.contains(&"narrator"),
             "catalog ids + narrator: {ls:?}"
         );
+    }
+
+    #[test]
+    fn speaker_completion_offers_the_declared_cast_with_names() {
+        // dsl 0.23.0 §7: a declared cast is what checks, so it replaces the
+        // catalog; each member's display name rides along as the detail.
+        let text = "## Shot 1.\n@ma: hi\n";
+        let doc = parsed(text);
+        let off = text.find("@ma").unwrap() + 2;
+        let mut imports = SchemaImports::default();
+        imports.cast.insert(
+            "maud".into(),
+            lute_manifest::schema::CastMember {
+                id: "maud".into(),
+                name: Some("Maud".into()),
+            },
+        );
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &imports,
+            off,
+        );
+        assert_eq!(labels(&items), vec!["maud", "narrator"]);
+        assert_eq!(items[0].detail.as_deref(), Some("Maud"));
     }
 }

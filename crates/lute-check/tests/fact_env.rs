@@ -12,8 +12,8 @@ use lute_check::connectivity::{
 };
 use lute_check::fact_env::{MustFact, Provenance};
 use lute_check::{
-    check, check_fact_guards, compute_must, fold_env, CheckInput, FactEnv, FoldedEnv, GroundFact,
-    MaySet, Mode, MustMap, RootVocab, SchemaImports,
+    check, check_fact_guards, compute_must, fold_env, stable_seeds, CheckInput, FactEnv,
+    FoldedEnv, GroundFact, MaySet, Mode, MustMap, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_syntax::ast::{Document, Node};
@@ -108,7 +108,7 @@ fn root(texts: &[(&str, &str)]) -> Root {
     let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle)
         .into_iter()
         .filter_map(|(_, a)| GroundFact::from_pattern(&a.pattern));
-    let may = MaySet::build(&vocab, facts);
+    let may = MaySet::build(&vocab, facts, &stable_seeds(&docs, &vocab));
     let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);
     let scene_entry = must.scene_entry;
@@ -849,4 +849,99 @@ fn entry_when_that_decides_false_is_entry_unreachable_per_file() {
     assert_eq!(&text[d.span.byte_start..d.span.byte_end], "false");
     let r = root(&[("notes.lute", &text)]);
     assert!(r.guards("notes.lute").is_empty(), "reported once, per file: {:?}", r.guards("notes.lute"));
+}
+
+// --- dsl 0.23.0 §9: a negated rule atom over a stable seed ------------------
+
+/// lamplight F9: `suspect(C) :- crew(C), not alibi(C)` with `alibi(vesna)` a
+/// seed nothing removes — `suspect(vesna)` can never hold.
+fn alibi_lore(body: &str) -> String {
+    format!(
+        "---\nkind: lore\ntitle: Casebook\nentities:\n  crew: {{ members: [vesna, toma] }}\n\
+         relations:\n  alibi: {{ args: [crew], tier: run }}\n  suspect: {{ args: [crew], derive: true }}\n\
+         facts:\n  - \"alibi(vesna)\"\n\
+         rules:\n  - \"suspect(C) :- crew(C), not alibi(C)\"\n---\n{body}\n"
+    )
+}
+
+#[test]
+fn negated_atom_over_a_stable_seed_never_holds() {
+    let text = alibi_lore(
+        "<entry id=\"vesnaPage\" when=\"holds(suspect(vesna))\">\n  @vesna: Me?\n</entry>\n\
+         <entry id=\"tomaPage\" when=\"holds(suspect(toma))\">\n  @toma: Me?\n</entry>",
+    );
+    let r = root(&[("casebook.lute", &text)]);
+    assert_vocab_clean(&r);
+    let ds = r.guards("casebook.lute");
+    let d = only(&ds, "E-ENTRY-UNREACHABLE");
+    assert!(d.message.starts_with("entry `vesnaPage`"), "{}", d.message);
+}
+
+#[test]
+fn negated_atom_over_a_retracted_seed_stays_possible() {
+    // Once anything can retract the alibi, `not alibi(vesna)` may hold.
+    let text = alibi_lore(
+        "<entry id=\"vesnaPage\" when=\"holds(suspect(vesna))\">\n  @vesna: Me?\n</entry>\n\
+         <entry id=\"recant\">\n  @toma: She lied.\n  ::retract{alibi(vesna)}\n</entry>",
+    );
+    let r = root(&[("casebook.lute", &text)]);
+    assert_vocab_clean(&r);
+    assert!(r.guards("casebook.lute").is_empty(), "{:?}", r.guards("casebook.lute"));
+}
+
+// --- dsl 0.23.0 §10: `check-project --wip` -----------------------------------
+
+impl Root {
+    /// This root's envelope with its work-in-progress twin.
+    fn with_wip(mut self) -> Self {
+        let mut vocab = RootVocab::default();
+        for folded in &self.foldeds {
+            vocab.add(&folded.env.rel_vocab, &folded.env.domains);
+        }
+        let unproduced = lute_check::unproduced_relations(&self.docs, &vocab);
+        self.env = self.env.with_wip(&vocab, &unproduced);
+        self
+    }
+}
+
+#[test]
+fn wip_downgrades_only_a_guard_dead_for_want_of_any_producer() {
+    // `found` has no seed, assert, or rule: content not written yet. `knows`
+    // is asserted, but never as `knows(toma, heading)` — producers that can
+    // never match stay an error. So does `can_halt(toma)`: it needs
+    // `awake(toma)`, which the seeded `awake` never holds.
+    let text = lore(
+        "<entry id=\"found\" when=\"holds(found(toma))\">\n  @vesna: Found him.\n</entry>\n\
+         <entry id=\"heading\" when=\"holds(knows(toma, heading))\">\n  @vesna: The heading.\n</entry>\n\
+         <entry id=\"halt\" when=\"holds(can_halt(toma))\">\n  @vesna: Halt.\n</entry>\n\
+         <entry id=\"note\">\n  @vesna: Noted.\n  ::assert{knows(toma, manifest)}\n</entry>",
+    );
+    let plain = root(&[("notes.lute", &text)]).guards("notes.lute");
+    for d in &plain {
+        assert_eq!(d.severity, Severity::Error, "without --wip every verdict is an error: {d:?}");
+    }
+    assert_eq!(plain.iter().filter(|d| d.code == "E-ENTRY-UNREACHABLE").count(), 3, "{plain:?}");
+    let wip = root(&[("notes.lute", &text)]).with_wip().guards("notes.lute");
+    let grade = |id: &str| {
+        wip.iter()
+            .find(|d| d.message.starts_with(&format!("entry `{id}`")))
+            .unwrap_or_else(|| panic!("{id}: {wip:?}"))
+            .severity
+    };
+    assert_eq!(grade("found"), Severity::Warning);
+    assert_eq!(grade("heading"), Severity::Error);
+    assert_eq!(grade("halt"), Severity::Error);
+    let found = wip.iter().find(|d| d.message.starts_with("entry `found`")).unwrap();
+    assert!(found.message.contains("`--wip`"), "{}", found.message);
+}
+
+#[test]
+fn wip_follows_rules_to_the_missing_producer() {
+    // `can_halt(vesna)` needs `knows(vesna, shed_sequence)`; with `knows`
+    // produced nowhere, only the unwritten content makes the query dead.
+    let text = lore("<entry id=\"halt\" when=\"holds(can_halt(vesna))\">\n  @vesna: Halt.\n</entry>");
+    let plain = root(&[("notes.lute", &text)]).guards("notes.lute");
+    assert_eq!(only(&plain, "E-ENTRY-UNREACHABLE").severity, Severity::Error);
+    let wip = root(&[("notes.lute", &text)]).with_wip().guards("notes.lute");
+    assert_eq!(only(&wip, "E-ENTRY-UNREACHABLE").severity, Severity::Warning);
 }

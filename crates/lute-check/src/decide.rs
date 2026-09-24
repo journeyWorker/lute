@@ -3,13 +3,13 @@
 //! param-scoped `<match>` (T7), the `§6.4` compile-time fold (T8), `when=`
 //! dead guards (T10), and `lute trace`'s ground-op evaluator (T17, D3).
 //!
-//! `decide()` implements EXACTLY R1–R5 — the spec's Closure clause forbids
-//! anything stronger (no SAT, no interval/path-sensitive narrowing, no
-//! cross-shot state flow). It is TOTAL (never panics) and returns `None`
-//! ("undecided") for everything outside the fragment, including a
-//! non-finite numeric result (overflow, `/0`). A decided constant is
-//! provably the expression's runtime value on EVERY reachable run
-//! (soundness, §5.1) — `decide()` never guesses.
+//! `decide()` implements R1–R5 plus dsl 0.23.0 §9's per-path rule for the
+//! connectives (see [`decide_chain`]); nothing stronger (no SAT, no
+//! cross-path narrowing, no cross-shot state flow). It is TOTAL (never
+//! panics) and returns `None` ("undecided") for everything outside the
+//! fragment, including a non-finite numeric result (overflow, `/0`). A
+//! decided constant is provably the expression's runtime value on EVERY
+//! reachable run (soundness, §5.1) — `decide()` never guesses.
 //!
 //! D1: this is a closed static constant-folder, not an evaluator — it reads
 //! no runtime state and `lute-cel` stays parse-only.
@@ -24,11 +24,16 @@ use std::collections::BTreeMap;
 
 use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr, IdedExpr};
 use cel_parser::reference::Val;
+use lute_manifest::types::Type;
 
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::fact_env::{CountInterval, FactScope, HoldsVerdict, QueryPattern};
 use crate::match_check::{infer_domain, Domain, DomainInfo, DomainValue};
 use crate::meta::StateSchema;
+use crate::solution::{
+    covers, domain_value, finite_set, holds_member, number_set, Kind, PathDomain, SolutionSet,
+    Truth,
+};
 
 /// A §5.1-decided constant — provably the expression's value in EVERY
 /// reachable runtime state (soundness note, dsl 0.4.0 §5.1).
@@ -228,6 +233,367 @@ fn decide_domain_in(needle: &Expr, container: &Expr, ctx: &DecideCtx<'_>) -> Opt
     Some(Decided::Bool(false))
 }
 
+/// The connective an operand chain belongs to (dsl 0.23.0 §9).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Chain {
+    And,
+    Or,
+}
+
+/// dsl 0.23.0 §9: an `&&` / `||` chain decided per path. Its operands are
+/// flattened ([`chain_literals`]) and read as solution sets over one path
+/// each ([`literal_truth`]); for some path with at least two of them —
+///
+/// - an `||` chain holds in every state when their TRUE sets cover every
+///   value the path can take (`run.n < 5 || run.n >= 5`);
+/// - an `&&` chain fails in every state when their FALSE sets do — the TRUE
+///   sets of their negations (`run.n > 5 && run.n < 3`, `x && !x`,
+///   `run.slot == 'a' && run.slot == 'b'`).
+///
+/// "Every value" includes `unset` for a maybe-unset path and every kind of
+/// value for an undeclared one, and an operand that ERRS on a value (an
+/// ordering on `unset`) is neither true nor false there — so a verdict is
+/// the chain's actual value, never merely "not true" (`solution::covers`).
+/// A single operand per path is left to R1–R5.
+fn decide_chain(args: &[IdedExpr], chain: Chain, ctx: &DecideCtx<'_>) -> bool {
+    let mut literals = Vec::new();
+    for a in args {
+        chain_literals(&a.expr, true, chain, &mut literals);
+    }
+    let negate = chain == Chain::And;
+    let mut by_path: BTreeMap<String, (PathDomain, Vec<Truth>)> = BTreeMap::new();
+    for (expr, positive) in literals {
+        if let Some((key, dom, truth)) = literal_truth(expr, positive != negate, ctx) {
+            by_path
+                .entry(key)
+                .or_insert_with(|| (dom, Vec::new()))
+                .1
+                .push(truth);
+        }
+    }
+    by_path
+        .values()
+        .any(|(dom, truths)| truths.len() > 1 && covers(dom, truths))
+}
+
+/// Flatten one operand of a `chain` into its literals with their polarity
+/// (`true` = as written), pushing `!` inward by De Morgan — which CEL's
+/// commutative, error-absorbing `&&`/`||` preserve: inside an `&&` chain,
+/// `!(a || b)` contributes `!a` and `!b`.
+fn chain_literals<'e>(expr: &'e Expr, positive: bool, chain: Chain, out: &mut Vec<(&'e Expr, bool)>) {
+    if let Expr::Call(c) = expr {
+        if c.target.is_none() {
+            match (c.func_name.as_str(), c.args.as_slice()) {
+                (op::LOGICAL_NOT, [a]) => return chain_literals(&a.expr, !positive, chain, out),
+                (n @ (op::LOGICAL_AND | op::LOGICAL_OR), [a, b])
+                    if connective(n, positive) == chain =>
+                {
+                    chain_literals(&a.expr, positive, chain, out);
+                    chain_literals(&b.expr, positive, chain, out);
+                    return;
+                }
+                _ => {}
+            }
+        }
+    }
+    out.push((expr, positive));
+}
+
+/// The connective `&&`/`||` (`name`) acts as under `positive` polarity.
+fn connective(name: &str, positive: bool) -> Chain {
+    if (name == op::LOGICAL_AND) == positive {
+        Chain::And
+    } else {
+        Chain::Or
+    }
+}
+
+/// One literal read with `positive` polarity as a solution set over one
+/// path: its key, the path's domain, and the values that make it TRUE.
+/// `None` for any other shape — it then constrains nothing.
+fn literal_truth(expr: &Expr, positive: bool, ctx: &DecideCtx<'_>) -> Option<(String, PathDomain, Truth)> {
+    if let Expr::Call(c) = expr {
+        if c.target.is_none() {
+            match (c.func_name.as_str(), c.args.as_slice()) {
+                (op::LOGICAL_NOT, [a]) => return literal_truth(&a.expr, !positive, ctx),
+                (n @ (op::LOGICAL_AND | op::LOGICAL_OR), [_, _]) => {
+                    return nested_truth(expr, connective(n, positive), positive, ctx)
+                }
+                (n, [a, b]) if flip_comparison(n).is_some() => {
+                    return comparison_truth(n, &a.expr, &b.expr, positive, ctx)
+                }
+                (op::IN, [a, b]) => return in_truth(&a.expr, &b.expr, positive, ctx),
+                (n, [a]) if n.eq_ignore_ascii_case("isSet") => {
+                    let (key, dom) = subject(&a.expr, ctx)?;
+                    let truth = Truth {
+                        set: (!positive).then(|| SolutionSet::Values(Default::default())),
+                        unset: !positive,
+                    };
+                    return Some((key, dom, truth));
+                }
+                _ => {}
+            }
+        }
+    }
+    // A bare read of a boolean (or undeclared) path.
+    let (key, dom) = subject(expr, ctx)?;
+    let boolean = match &dom.kind {
+        Kind::Finite(members) => members.iter().all(|m| matches!(m, DomainValue::Bool(_))),
+        Kind::Number => false,
+        Kind::Open => true,
+    };
+    boolean.then(|| {
+        let truth = Truth {
+            set: Some(SolutionSet::Values(
+                std::iter::once(DomainValue::Bool(positive)).collect(),
+            )),
+            unset: false,
+        };
+        (key, dom, truth)
+    })
+}
+
+/// `S ⋈ c` (either operand order) with `S` a [`subject`] and `c` decided
+/// (or `null`, the DSL's `unset`). Under negative polarity the operator is
+/// complemented (`!(x > 5)` is `x <= 5` — still false on a non-number).
+fn comparison_truth(
+    op_name: &str,
+    lhs: &Expr,
+    rhs: &Expr,
+    positive: bool,
+    ctx: &DecideCtx<'_>,
+) -> Option<(String, PathDomain, Truth)> {
+    let (key, dom, other, op_name) = match subject(lhs, ctx) {
+        Some((key, dom)) => (key, dom, rhs, op_name),
+        None => {
+            let (key, dom) = subject(rhs, ctx)?;
+            (key, dom, lhs, flip_comparison(op_name)?)
+        }
+    };
+    let op_name = if positive {
+        op_name
+    } else {
+        match op_name {
+            op::EQUALS => op::NOT_EQUALS,
+            op::NOT_EQUALS => op::EQUALS,
+            op::LESS => op::GREATER_EQUALS,
+            op::LESS_EQUALS => op::GREATER,
+            op::GREATER => op::LESS_EQUALS,
+            op::GREATER_EQUALS => op::LESS,
+            _ => return None,
+        }
+    };
+    let truth = match const_side(other, ctx)? {
+        Constant::Unset => match op_name {
+            op::EQUALS => Truth {
+                set: Some(SolutionSet::Values(Default::default())),
+                unset: true,
+            },
+            op::NOT_EQUALS => Truth {
+                set: None,
+                unset: false,
+            },
+            _ => return None,
+        },
+        Constant::Value(v) => {
+            let set = match (&dom.kind, &v) {
+                (Kind::Finite(all), _) => finite_set(all, &domain_value(&v)?, op_name)?,
+                (Kind::Number | Kind::Open, Decided::Num(n)) => number_set(op_name, *n)?,
+                (Kind::Open, _) => match op_name {
+                    op::EQUALS => SolutionSet::Values(std::iter::once(domain_value(&v)?).collect()),
+                    op::NOT_EQUALS => SolutionSet::Except(v),
+                    _ => return None,
+                },
+                (Kind::Number, _) => return None,
+            };
+            Truth {
+                set: Some(set),
+                unset: op_name == op::NOT_EQUALS,
+            }
+        }
+    };
+    Some((key, dom, truth))
+}
+
+/// `S in [c, …]` over a finite-domain subject, every element decided (or
+/// `null`). `unset` is `in` the list exactly when `null` is listed.
+fn in_truth(
+    needle: &Expr,
+    container: &Expr,
+    positive: bool,
+    ctx: &DecideCtx<'_>,
+) -> Option<(String, PathDomain, Truth)> {
+    let (key, dom) = subject(needle, ctx)?;
+    let Kind::Finite(all) = &dom.kind else {
+        return None;
+    };
+    let Expr::List(list) = container else {
+        return None;
+    };
+    let mut listed = std::collections::BTreeSet::new();
+    let mut null_listed = false;
+    for el in &list.elements {
+        match const_side(&el.expr, ctx)? {
+            Constant::Unset => null_listed = true,
+            Constant::Value(v) => {
+                listed.extend(domain_value(&v));
+            }
+        }
+    }
+    let set = all
+        .iter()
+        .filter(|m| listed.contains(*m) == positive)
+        .cloned()
+        .collect();
+    let truth = Truth {
+        set: Some(SolutionSet::Values(set)),
+        unset: null_listed == positive,
+    };
+    Some((key, dom, truth))
+}
+
+/// A nested chain of the OTHER connective (`(x == 'a' || x == 'b')` inside
+/// an `&&` chain) whose literals all read ONE finite-domain path: its TRUE
+/// set is the union (`||`) or intersection (`&&`) of theirs.
+fn nested_truth(
+    expr: &Expr,
+    chain: Chain,
+    positive: bool,
+    ctx: &DecideCtx<'_>,
+) -> Option<(String, PathDomain, Truth)> {
+    let mut literals = Vec::new();
+    chain_literals(expr, positive, chain, &mut literals);
+    let mut key_dom: Option<(String, PathDomain)> = None;
+    let mut truths = Vec::with_capacity(literals.len());
+    for (e, p) in literals {
+        let (key, dom, truth) = literal_truth(e, p, ctx)?;
+        match &key_dom {
+            Some((k, _)) if *k != key => return None,
+            Some(_) => {}
+            None => key_dom = Some((key, dom)),
+        }
+        truths.push(truth);
+    }
+    let (key, dom) = key_dom?;
+    let Kind::Finite(all) = &dom.kind else {
+        return None;
+    };
+    let any = chain == Chain::Or;
+    let holds = |t: &Truth, m: &DomainValue| t.set.as_ref().is_none_or(|s| holds_member(s, m));
+    let set = all
+        .iter()
+        .filter(|m| {
+            if any {
+                truths.iter().any(|t| holds(t, m))
+            } else {
+                truths.iter().all(|t| holds(t, m))
+            }
+        })
+        .cloned()
+        .collect();
+    let unset = if any {
+        truths.iter().any(|t| t.unset)
+    } else {
+        truths.iter().all(|t| t.unset)
+    };
+    let truth = Truth {
+        set: Some(SolutionSet::Values(set)),
+        unset,
+    };
+    Some((key, dom, truth))
+}
+
+/// A §9 subject: the `$` bound to a domain, a bound component param, a
+/// relational call (`holds(P)` / `visited(id)` — a never-unset `bool`;
+/// `count(P)` — a never-unset number), or a dotted state path. The key is
+/// the subject's text; one guard evaluation reads each at one instant, so
+/// equal text is an equal value.
+fn subject(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<(String, PathDomain)> {
+    match expr {
+        Expr::Ident(name) if name == "_" => match &ctx.dollar {
+            Some(DollarBinding::Domain(d)) => Some(("$".to_string(), PathDomain::of(d))),
+            _ => None,
+        },
+        Expr::Ident(name) => {
+            let param = name.strip_prefix(lute_cel::REF_MARKER)?;
+            Some((name.clone(), PathDomain::of(ctx.params.get(param)?)))
+        }
+        Expr::Call(c) if c.target.is_none() => {
+            let dom = match c.func_name.as_str() {
+                "holds" if crate::cel_resolve::is_profile_fact_query(c) => PathDomain::boolean(),
+                crate::cel_resolve::VISITED_FN if c.args.len() == 1 => PathDomain::boolean(),
+                "count" if crate::cel_resolve::is_profile_fact_query(c) => PathDomain {
+                    kind: Kind::Number,
+                    maybe_unset: false,
+                },
+                _ => return None,
+            };
+            Some((ground_text(expr, ctx)?, dom))
+        }
+        _ => {
+            let path = state_path(expr)?;
+            let dom = path_domain(&path, ctx.schema);
+            Some((path, dom))
+        }
+    }
+}
+
+/// A dotted `a.b.c` state path — never a bare identifier (a comprehension
+/// variable, the §2.3 placeholder), a `has()` test, or a path rooted at `$`
+/// or a param marker.
+fn state_path(expr: &Expr) -> Option<String> {
+    let Expr::Select(sel) = expr else {
+        return None;
+    };
+    if sel.test {
+        return None;
+    }
+    let base = match &sel.operand.expr {
+        Expr::Ident(root) if root != "_" && !root.starts_with(lute_cel::REF_MARKER) => root.clone(),
+        operand => state_path(operand)?,
+    };
+    Some(format!("{base}.{}", sel.field))
+}
+
+/// A state path's domain: [`infer_domain`]'s for a declared path, else the
+/// declared type of a field under a declared record/map (which may be
+/// absent — maybe unset), else open.
+fn path_domain(path: &str, schema: &StateSchema) -> PathDomain {
+    let info = infer_domain(Some(path), schema);
+    if info.resolved {
+        return PathDomain::of(&info);
+    }
+    let kind = match crate::set_op::resolve_type(path, schema) {
+        Some(Type::Bool) => Kind::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
+        Some(Type::Enum(members)) => Kind::Finite(members.iter().cloned().map(DomainValue::Str).collect()),
+        Some(Type::Number) => Kind::Number,
+        _ => Kind::Open,
+    };
+    PathDomain {
+        kind,
+        maybe_unset: true,
+    }
+}
+
+/// The canonical text of a ground relational call. Inside a `<match>` arm
+/// `$` and the `_` wildcard parse alike, so an `_` there declines.
+fn ground_text(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<String> {
+    match expr {
+        Expr::Ident(name) if name == "_" && ctx.dollar.is_some() => None,
+        Expr::Ident(name) => Some(name.clone()),
+        Expr::Literal(Val::String(s)) => Some(format!("'{s}'")),
+        Expr::Literal(Val::Int(i)) => Some(i.to_string()),
+        Expr::Literal(Val::UInt(u)) => Some(u.to_string()),
+        Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
+        Expr::Select(_) => state_path(expr),
+        Expr::Call(c) if c.target.is_none() => {
+            let args: Option<Vec<String>> = c.args.iter().map(|a| ground_text(&a.expr, ctx)).collect();
+            Some(format!("{}({})", c.func_name, args?.join(",")))
+        }
+        _ => None,
+    }
+}
+
 fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
     let name = c.func_name.as_str();
 
@@ -260,14 +626,14 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
                 Some(Decided::Bool(false))
             }
             (Some(Decided::Bool(true)), Some(Decided::Bool(true))) => Some(Decided::Bool(true)),
-            _ => None,
+            _ => decide_chain(&c.args, Chain::And, ctx).then_some(Decided::Bool(false)),
         },
         (op::LOGICAL_OR, [a, b]) => match (decide(&a.expr, ctx), decide(&b.expr, ctx)) {
             (Some(Decided::Bool(true)), _) | (_, Some(Decided::Bool(true))) => {
                 Some(Decided::Bool(true))
             }
             (Some(Decided::Bool(false)), Some(Decided::Bool(false))) => Some(Decided::Bool(false)),
-            _ => None,
+            _ => decide_chain(&c.args, Chain::Or, ctx).then_some(Decided::Bool(true)),
         },
         (op::CONDITIONAL, [cnd, t, e]) => match decide(&cnd.expr, ctx)? {
             Decided::Bool(true) => decide(&t.expr, ctx),

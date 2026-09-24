@@ -141,7 +141,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         cursor: 0,
         diags,
     };
-    let (title, shots, quests, entries) = p.parse_document_inner();
+    let (title, shots, quests, entries, beats) = p.parse_document_inner();
 
     let doc = Document {
         meta: Meta {
@@ -152,6 +152,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         shots,
         quests,
         entries,
+        beats,
         span: Span::from_bytes(&p.idx, 0, text.len()),
     };
     (doc, p.diags)
@@ -296,13 +297,15 @@ impl Parser<'_> {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn parse_document_inner(
         &mut self,
-    ) -> (Option<(String, Span)>, Vec<Shot>, Vec<Quest>, Vec<Entry>) {
+    ) -> (Option<(String, Span)>, Vec<Shot>, Vec<Quest>, Vec<Entry>, Vec<BundleBeat>) {
         let mut title = None;
         let mut shots = Vec::new();
         let mut quests = Vec::new();
         let mut entries = Vec::new();
+        let mut beats = Vec::new();
         loop {
             self.skip_blanks();
             if self.cursor >= self.lines.len() {
@@ -317,6 +320,9 @@ impl Parser<'_> {
             } else if trimmed.starts_with('<') && open_tag_name(&trimmed).as_deref() == Some("entry")
             {
                 entries.push(self.parse_entry());
+            } else if trimmed.starts_with('<') && open_tag_name(&trimmed).as_deref() == Some("beat")
+            {
+                beats.push(self.parse_bundle_beat());
             } else if trimmed.starts_with("# ") && shots.is_empty() && title.is_none() {
                 title = Some(self.parse_title());
             } else if trimmed.starts_with("# ") {
@@ -359,7 +365,7 @@ impl Parser<'_> {
                 self.cursor += 1;
             }
         }
-        (title, shots, quests, entries)
+        (title, shots, quests, entries, beats)
     }
 
     /// `Title ::= "# " Text` (§6.2). Text is opaque to EOL.

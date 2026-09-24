@@ -40,7 +40,7 @@ module.exports = grammar({
       seq(
         optional($.frontmatter),
         repeat($._pre_item),
-        repeat(choice($.shot, $.quest, $.entry)),
+        repeat(choice($.shot, $.quest, $.entry, $.beat)),
       ),
 
     // Items legal before the first shot heading: the document title and bare
@@ -280,6 +280,21 @@ module.exports = grammar({
         ">",
         repeat($._node),
         "</entry>",
+      ),
+
+    // BeatDecl ::= "<beat" Attrs ">" SceneBody "</beat>" (dsl 0.23.0 §4, beat
+    // bundles). A DOCUMENT TOP-LEVEL declaration of a `kind: lore` document,
+    // exactly like `entry`. The body is the ordinary node stream; its scene
+    // shot body admission is the checker's. Attributes (`id`/`on`/`target`/
+    // `title`/`priority`/`once`, bare `also`, CEL `when`) ride the generic
+    // `_tag_attr` machinery.
+    beat: ($) =>
+      seq(
+        "<beat",
+        repeat($._tag_attr),
+        ">",
+        repeat($._node),
+        "</beat>",
       ),
 
     // On ::= "<on" Attrs ">" Node* "</on>" (§4.1). The Event-Condition-Action

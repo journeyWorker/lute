@@ -47,6 +47,10 @@ pub struct LoadedPlugin {
     /// lints are advisory and must never change artifact identity
     /// (design §1 non-goals).
     pub lints: Vec<crate::lint::LintRuleDecl>,
+    /// dsl 0.23.0 §7 `cast/*.yaml`: the declared speaker ids and display
+    /// names. Folded into [`crate::snapshot::CapabilitySnapshot::cast`] at
+    /// assembly as a guarded `capabilityVersion` section.
+    pub cast: Vec<CastMember>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -143,7 +147,7 @@ impl std::fmt::Display for LoadError {
                 f,
                 "export `{export}` is not one of the plugin manifest's known kinds \
                  (directives, state, providers, bridge, defs, enums, frontmatter, docs, \
-                 assetkinds, events, stampattrs, rewardkinds, occasions, lints)"
+                 assetkinds, events, stampattrs, rewardkinds, occasions, lints, cast)"
             ),
             LoadError::AssetSegmentType {
                 file,
@@ -199,6 +203,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
         reward_kinds: Vec::new(),
         occasions: Vec::new(),
         lints: Vec::new(),
+        cast: Vec::new(),
     };
 
     // Read each declared export. A relative export path resolves under `dir`.
@@ -270,6 +275,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                         name,
                         target: body.target,
                         attrs: body.attrs,
+                        credits: body.credits,
                     })
                     .collect();
                 merge_named(
@@ -295,6 +301,14 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
             }),
             "lints" => read_kind::<LintsFile, _>(&path, &mut errs, |f, _file, e| {
                 merge_named(&mut out.lints, f.lints, "lint", |r| r.id.clone(), e)
+            }),
+            "cast" => read_kind::<CastFile, _>(&path, &mut errs, |f, _file, e| {
+                let decls: Vec<CastMember> = f
+                    .cast
+                    .into_iter()
+                    .map(|(id, body)| CastMember { id, name: body.name })
+                    .collect();
+                merge_named(&mut out.cast, decls, "cast", |c| c.id.clone(), e)
             }),
             other => errs.push(LoadError::UnknownExport {
                 export: other.to_string(),

@@ -132,6 +132,11 @@ pub fn fix_document(text: &str) -> FixResult {
     for entry in &doc2.entries {
         collect_choices(&entry.body, &mut choices);
     }
+    // Lore `<beat>` bundle bodies (dsl 0.23.0 §4) are scene shot bodies and
+    // take every scene-body migration.
+    for beat in &doc2.beats {
+        collect_choices(&beat.body, &mut choices);
+    }
     let mut lines: Vec<&Line> = Vec::new();
     for shot in &doc2.shots {
         collect_lines(&shot.body, &mut lines);
@@ -141,6 +146,9 @@ pub fn fix_document(text: &str) -> FixResult {
     }
     for entry in &doc2.entries {
         collect_lines(&entry.body, &mut lines);
+    }
+    for beat in &doc2.beats {
+        collect_lines(&beat.body, &mut lines);
     }
 
     let mut edits2: Vec<(usize, usize, String)> = Vec::new();
@@ -757,6 +765,20 @@ mod tests {
             out.text
         );
         assert_eq!(out.text, src);
+    }
+
+    /// dsl 0.23.0 §4: a lore `<beat>` bundle body is a scene shot body, so
+    /// its lines and choices take the same migrations as a shot's.
+    #[test]
+    fn migrates_bundle_beat_body() {
+        let out = fix_document(
+            "---\nid: ship.records\nkind: lore\n---\n<beat id=\"b\" on=\"talk\">\n\
+             @x{delivery=\"thought\"}: a\n<branch id=\"k\">\n<choice id=\"c\" label=\"L\" as=\"run.x\">\n\
+             @y: b\n</choice>\n</branch>\n</beat>\n",
+        );
+        assert_eq!(out.changed, 2, "{}", out.text);
+        assert!(out.text.contains("@x{mono}: a"), "{}", out.text);
+        assert!(out.text.contains("into=\"run.x\""), "{}", out.text);
     }
 
     #[test]

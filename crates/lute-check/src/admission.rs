@@ -34,6 +34,10 @@
 //!   `Assert`/`Retract`; a nested `<match>` arm body stays `EntryBody`. An
 //!   entry is looked up, not played: no choices, staging, directives, or
 //!   handlers.
+//! - **[`GrammarContext::BeatBody`]** — anywhere inside a lore document's
+//!   `<beat>` body (dsl 0.23.0 §4, beat bundles): a beat is a scene beat
+//!   written in a lore file, so it admits exactly what a scene shot body does
+//!   (`SceneBody`), nested bodies included.
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Document, Node};
@@ -84,6 +88,7 @@ enum GrammarContext {
     QuestBody,
     Emittable,
     EntryBody,
+    BeatBody,
 }
 
 /// EXHAUSTIVE `(DocKind, GrammarContext, NodeKind) -> bool` admission table
@@ -103,11 +108,12 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
                 | (DocKind::Quest, GrammarContext::QuestBody)
                 | (DocKind::Quest, GrammarContext::Emittable)
                 | (DocKind::Lore, GrammarContext::EntryBody)
+                | (DocKind::Lore, GrammarContext::BeatBody)
         ),
         "admits called with a (doc, ctx) pair that never occurs: {doc:?} {ctx:?}"
     );
     match ctx {
-        GrammarContext::SceneBody => match nk {
+        GrammarContext::SceneBody | GrammarContext::BeatBody => match nk {
             NodeKind::Line
             | NodeKind::Directive
             | NodeKind::Set
@@ -197,6 +203,7 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                 ));
             }
             reject_entries(doc, "scene", &mut diags);
+            reject_beats(doc, "scene", &mut diags);
             for shot in &doc.shots {
                 walk(
                     &shot.body,
@@ -237,6 +244,7 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                 ));
             }
             reject_entries(doc, "quest", &mut diags);
+            reject_beats(doc, "quest", &mut diags);
             for quest in &doc.quests {
                 walk(
                     &quest.body,
@@ -250,8 +258,8 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
             if let Some((_, title_span)) = &doc.title {
                 diags.push(diag(
                     "a document `# ` title is not admitted in a lore document; the lore kind \
-                     forbids `# `/`## ` headings and admits only `<entry>` at the document top \
-                     level (dsl 0.19.0 §2)"
+                     forbids `# `/`## ` headings and admits only `<entry>` and `<beat>` at the \
+                     document top level (dsl 0.19.0 §2, dsl 0.23.0 §4)"
                         .to_string(),
                     *title_span,
                 ));
@@ -260,8 +268,8 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                 diags.push(diag(
                     format!(
                         "a `{}` heading is not admitted in a lore document; the lore kind \
-                         forbids `# `/`## ` headings and admits only `<entry>` at the document \
-                         top level (dsl 0.19.0 §2)",
+                         forbids `# `/`## ` headings and admits only `<entry>` and `<beat>` at \
+                         the document top level (dsl 0.19.0 §2, dsl 0.23.0 §4)",
                         shot.heading
                     ),
                     shot.span,
@@ -271,17 +279,18 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                 diags.push(diag(
                     format!(
                         "`<quest id=\"{}\">` is not admitted at the document top level of a \
-                         lore document; a lore document admits only `<entry>` declarations \
-                         (dsl 0.19.0 §2)",
+                         lore document; a lore document admits only `<entry>` and `<beat>` \
+                         declarations (dsl 0.19.0 §2, dsl 0.23.0 §4)",
                         quest.id
                     ),
                     quest.span,
                 ));
             }
-            if doc.entries.is_empty() {
+            if doc.entries.is_empty() && doc.beats.is_empty() {
                 diags.push(diag(
-                    "a lore document declares no `<entry>`; a lore doc is a set of one or more \
-                     `<entry>` declarations (dsl 0.19.0 §2)"
+                    "a lore document declares no `<entry>` or `<beat>`; a lore doc is a set of \
+                     one or more `<entry>` / `<beat>` declarations (dsl 0.19.0 §2, dsl 0.23.0 \
+                     §4)"
                         .to_string(),
                     doc.span,
                 ));
@@ -291,6 +300,14 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                     &entry.body,
                     DocKind::Lore,
                     GrammarContext::EntryBody,
+                    &mut diags,
+                );
+            }
+            for beat in &doc.beats {
+                walk(
+                    &beat.body,
+                    DocKind::Lore,
+                    GrammarContext::BeatBody,
                     &mut diags,
                 );
             }
@@ -312,6 +329,23 @@ fn reject_entries(doc: &Document, kind: &str, diags: &mut Vec<Diagnostic>) {
                 entry.id
             ),
             entry.span,
+        ));
+    }
+}
+
+/// A top-level `<beat>` in a document whose kind is not `lore` (dsl 0.23.0
+/// §4 — a beat bundle is a lore document; a scene answers an occasion through
+/// its own frontmatter). Reported like a misplaced `<entry>`, body unwalked.
+fn reject_beats(doc: &Document, kind: &str, diags: &mut Vec<Diagnostic>) {
+    for beat in &doc.beats {
+        diags.push(diag(
+            format!(
+                "`<beat id=\"{}\">` is not admitted at the document top level of a {kind} \
+                 document; only a lore-kind document bundles `<beat>` declarations — a scene \
+                 answers an occasion through its frontmatter `on:` (dsl 0.23.0 §4)",
+                beat.id
+            ),
+            beat.span,
         ));
     }
 }
@@ -373,6 +407,7 @@ pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
         shots: _,
         quests,
         entries,
+        beats,
         span: _,
     } = doc;
     let quest_diags = quests.iter().map(|quest| {
@@ -399,7 +434,19 @@ pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
             entry.span,
         )
     });
-    quest_diags.chain(entry_diags).collect()
+    let beat_diags = beats.iter().map(|beat| {
+        diag(
+            format!(
+                "`<beat id=\"{}\">` is not admitted at the document top level of a \
+                 component document; a component is presentational content only, and \
+                 top-level content the component walker never processes would be \
+                 silently dropped on `::use` (dsl §13, dsl 0.23.0 §4)",
+                beat.id
+            ),
+            beat.span,
+        )
+    });
+    quest_diags.chain(entry_diags).chain(beat_diags).collect()
 }
 
 /// Walk a node stream, flagging every [`Node`] not admitted at `ctx`, and
@@ -422,13 +469,13 @@ fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagn
         }
         match node {
             Node::Branch(b) => {
-                let child_ctx = nested_ctx(doc);
+                let child_ctx = nested_ctx(doc, ctx);
                 for choice in &b.choices {
                     walk(&choice.body, doc, child_ctx, diags);
                 }
             }
             Node::Match(m) => {
-                let child_ctx = nested_ctx(doc);
+                let child_ctx = nested_ctx(doc, ctx);
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
@@ -447,8 +494,8 @@ fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagn
                     walk(&choice.body, doc, ctx, diags);
                 }
             }
-            Node::On(o) => walk(&o.body, doc, nested_ctx(doc), diags),
-            Node::Objective(o) => walk(&o.body, doc, nested_ctx(doc), diags),
+            Node::On(o) => walk(&o.body, doc, nested_ctx(doc, ctx), diags),
+            Node::Objective(o) => walk(&o.body, doc, nested_ctx(doc, ctx), diags),
             // `Timeline`'s clips are `ClipNode` (`Directive`/`Set` only) — a
             // strictly narrower shape than `Node` that cannot carry an
             // inadmissible construct, so there is nothing further to walk.
@@ -465,12 +512,14 @@ fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagn
 /// scene content — `Emittable` for a quest document (`QuestBody` or
 /// already-`Emittable`, both collapse to `Emittable` once nested), and
 /// `EntryBody` for a lore document (dsl 0.19.0 §4: a nested `<match>` keeps
-/// the entry admission). This keeps every `(doc, ctx)` pair [`admits`] ever
-/// sees consistent with its `debug_assert`.
-fn nested_ctx(doc: DocKind) -> GrammarContext {
+/// the entry admission) — except inside a `<beat>` body, which stays
+/// `BeatBody` (dsl 0.23.0 §4). This keeps every `(doc, ctx)` pair [`admits`]
+/// ever sees consistent with its `debug_assert`.
+fn nested_ctx(doc: DocKind, ctx: GrammarContext) -> GrammarContext {
     match doc {
         DocKind::Scene => GrammarContext::SceneBody,
         DocKind::Quest => GrammarContext::Emittable,
+        DocKind::Lore if ctx == GrammarContext::BeatBody => GrammarContext::BeatBody,
         DocKind::Lore => GrammarContext::EntryBody,
     }
 }
@@ -493,7 +542,7 @@ fn describe(nk: NodeKind) -> &'static str {
 
 fn context_reason(doc: DocKind, ctx: GrammarContext) -> &'static str {
     match (doc, ctx) {
-        (DocKind::Scene, _) => {
+        (DocKind::Scene, _) | (DocKind::Lore, GrammarContext::BeatBody) => {
             "the scene grammar admits no `<on>`/`<objective>` (quest-only constructs)"
         }
         (DocKind::Quest, GrammarContext::QuestBody) => {

@@ -246,7 +246,7 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
     for attr in &entry.attrs {
         let key = attr.key.as_str();
         if !crate::logic_attrs::ENTRY_ATTRS.contains(&key)
-            || matches!(key, "when" | "on" | "priority" | "once")
+            || matches!(key, "when" | "on" | "priority" | "once" | "also")
         {
             continue;
         }

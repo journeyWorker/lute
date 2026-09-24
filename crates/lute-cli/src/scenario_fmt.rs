@@ -129,6 +129,15 @@ fn run_json(dir: &Path, providers: Option<&Path>, command: Option<ScenarioComman
         Some(ScenarioCommand::Envelope { node_id }) => {
             envelope_json(dir, &by_root, &file_results, &node_id)
         }
+        Some(ScenarioCommand::Knowledge { for_node }) => {
+            match crate::knowledge::json(&by_root, for_node.as_deref()) {
+                Ok(v) => print_json(&v),
+                Err(e) => {
+                    eprintln!("lute scenario knowledge: {e}");
+                    ExitCode::from(2)
+                }
+            }
+        }
     }
 }
 
@@ -225,6 +234,31 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
                     .collect(),
             ),
         );
+    }
+    // dsl 0.23.0 §1: references not drawn because a quest has no `after=`.
+    let omitted = lute_check::connectivity::omitted_refs(
+        &scenario.docs,
+        &scenario.graph,
+        &scenario.quest_ids,
+    );
+    if !omitted.is_empty() {
+        use lute_check::connectivity::OmittedRef;
+        let refs = omitted
+            .iter()
+            .map(|r| match r {
+                OmittedRef::Lifecycle { from, kind, quest } => serde_json::json!({
+                    "from": from.to_string(),
+                    "kind": kind.as_str(),
+                    "quest": quest,
+                }),
+                OmittedRef::Visited { quest, scene } => serde_json::json!({
+                    "from": format!("quest({quest})"),
+                    "kind": "visited",
+                    "scene": scene,
+                }),
+            })
+            .collect();
+        obj.insert("omitted".to_string(), Value::Array(refs));
     }
     Value::Object(obj)
 }
@@ -455,7 +489,7 @@ fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand
     if command.is_some() {
         eprintln!(
             "lute scenario: --format dot applies to the graph view only; \
-             `reach`/`envelope` have no graph to render (use --format json or text)"
+             `reach`/`envelope`/`knowledge` have no graph to render (use --format json or text)"
         );
         return ExitCode::from(2);
     }

@@ -17,9 +17,11 @@
 //!    (entries whose `order` is absent or not a non-negative integer follow,
 //!    in project order).
 //! 3. **Facts** — for every relation with at least one `::assert` anywhere,
-//!    each ground fact asserted, and who reveals it: lore entries (their ids),
-//!    scenes/quests (their documents), or both. Relations and facts are
-//!    byte-sorted; ids and documents too.
+//!    each ground fact asserted, and who reveals it: lore entries (their ids)
+//!    and lore `<beat>` bundles (their canonical `<document id>.<beat id>`,
+//!    dsl 0.23.0 §4) — listed together as `entries` — scenes/quests (their
+//!    documents), or both. Relations and facts are byte-sorted; ids and
+//!    documents too.
 //!
 //! Document paths are shown relative to `dir`. `--json` emits the same data as
 //! one object. Exit `0` on success, `2` on an I/O failure.
@@ -75,7 +77,8 @@ struct SeriesGroup {
 #[serde(rename_all = "camelCase")]
 struct FactRow {
     fact: String,
-    /// `"entries"`, `"scenes"` (scenes and quests), or `"both"`.
+    /// `"entries"` (lore entries and bundle beats), `"scenes"` (scenes and
+    /// quests), or `"both"`.
     revealed_by: &'static str,
     entries: Vec<String>,
     documents: Vec<String>,
@@ -201,6 +204,23 @@ fn fold_document(
             series: position.series.map(str::to_string),
             order: position.order,
         });
+    }
+    // dsl 0.23.0 §4: a bundle beat reveals its asserts like an entry, under
+    // its canonical id; without a well-formed document `id:` it has none (its
+    // own `E-BEAT-ATTR`), so the bare beat id stands in.
+    let doc_id = (!doc.beats.is_empty())
+        .then(|| lute_check::connectivity::bundle_id(doc))
+        .flatten();
+    for beat in &doc.beats {
+        let id = match &doc_id {
+            Some(doc_id) => lute_check::bundle_beat_key(doc_id, &beat.id),
+            None => beat.id.clone(),
+        };
+        let mut beat_facts = Vec::new();
+        collect_asserts(&beat.body, &mut beat_facts);
+        for fact in beat_facts {
+            record(fact, Some(&id));
+        }
     }
 }
 

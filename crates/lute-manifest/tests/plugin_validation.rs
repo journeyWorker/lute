@@ -60,6 +60,7 @@ fn backdrop_plugin(lower: Lowering) -> LoadedPlugin {
         reward_kinds: vec![],
         occasions: vec![],
         lints: vec![],
+        cast: vec![],
     }
 }
 

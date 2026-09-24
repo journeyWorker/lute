@@ -37,7 +37,8 @@ use lute_check::{CheckInput, CheckResult, Ctx, FoldedEnv};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
-    Arm, Assert, AttrValue, Branch, CelSlot, Choice, ClipNode, Directive, Document, Entry, Hub,
+    Arm, Assert, AttrValue, Branch, BundleBeat, CelSlot, Choice, ClipNode, Directive, Document,
+    Entry, Hub,
     Interp, InterpKind, IsPattern, Line, Match, Node, Objective, Quest, Retract, Reward,
     RewardAmount, Set, Timeline,
 };
@@ -1149,29 +1150,7 @@ fn skip_effect(effect: &str, text: String, w: &mut Walk<'_>) {
 fn walk_entry(entry: &Entry, w: &mut Walk<'_>) -> Flow {
     let read_path = lute_check::entry_read_path(&entry.id);
     let first_read = !matches!(w.state.read(&read_path), Read::Value(Value::Bool(true)));
-    let eligible = match &entry.when {
-        None => Some(true),
-        Some(slot) => {
-            let mut atoms = Vec::new();
-            let v = match slot_expr(&slot.raw) {
-                Some(expr) => eval(&expr, &w.env(), &mut atoms),
-                None => Value::Unknown,
-            };
-            match v {
-                Value::Bool(b) => Some(b),
-                _ => {
-                    w.record_unresolved(
-                        "entry",
-                        &entry.id,
-                        slot.span,
-                        slot.raw.trim().to_string(),
-                        atoms,
-                    );
-                    None
-                }
-            }
-        }
-    };
+    let eligible = eval_eligibility(entry.when.as_ref(), "entry", &entry.id, w);
     w.steps.push(Step::Entry {
         id: entry.id.clone(),
         first_read,
@@ -1181,6 +1160,50 @@ fn walk_entry(entry: &Entry, w: &mut Walk<'_>) -> Flow {
     let flow = walk_nodes(&entry.body, w, None);
     w.apply_effects = true;
     flow
+}
+
+/// A presentation head's `when` (an `<entry>`'s or a bundle `<beat>`'s)
+/// against the current state: `Some(true)` when absent or true,
+/// `Some(false)` when decided false, `None` when unknown — which also
+/// records the unresolved atoms under `construct`/`id` without halting.
+fn eval_eligibility(
+    when: Option<&CelSlot>,
+    construct: &str,
+    id: &str,
+    w: &mut Walk<'_>,
+) -> Option<bool> {
+    let Some(slot) = when else {
+        return Some(true);
+    };
+    let mut atoms = Vec::new();
+    let v = match slot_expr(&slot.raw) {
+        Some(expr) => eval(&expr, &w.env(), &mut atoms),
+        None => Value::Unknown,
+    };
+    match v {
+        Value::Bool(b) => Some(b),
+        _ => {
+            w.record_unresolved(construct, id, slot.span, slot.raw.trim().to_string(), atoms);
+            None
+        }
+    }
+}
+
+/// Present ONE bundle `<beat>` (dsl 0.23.0 §4): a scene-like beat declared
+/// in a lore document, presented exactly as a scene beat's shot body is
+/// walked — lines, directives, `<branch>`/`<hub>` (honouring `choose:`),
+/// `<match>`, and every `::set`/`::assert`/`::retract` applied (a bundle
+/// beat has no first-read rule). `scene.*` starts fresh: the walk seeds
+/// only the mocks. The `when` eligibility gate is evaluated and SHOWN on the
+/// [`Step::Beat`] head under the canonical id, never enforced, as on an
+/// entry.
+fn walk_bundle_beat(beat: &BundleBeat, canonical: &str, w: &mut Walk<'_>) -> Flow {
+    let eligible = eval_eligibility(beat.when.as_ref(), "beat", canonical, w);
+    w.steps.push(Step::Beat {
+        id: canonical.to_string(),
+        eligible,
+    });
+    walk_nodes(&beat.body, w, None)
 }
 
 // ---------------------------------------------------------------------
@@ -1246,6 +1269,60 @@ fn is_objective_done(w: &Walk<'_>, quest_id: &str, objective_id: &str) -> bool {
         w.state.read(&objective_done_path(quest_id, objective_id)),
         Read::Value(Value::Bool(true))
     )
+}
+
+/// dsl 0.23.0 §2: the objective already FAILED (its `by` came true while it
+/// was not done) — read off the recorded decisions at the objective's own
+/// span, so a failed objective is never judged done or failed again.
+fn is_objective_failed(w: &Walk<'_>, o: &Objective) -> bool {
+    w.decisions
+        .iter()
+        .any(|d| d.construct == "objective" && d.span == o.span && d.outcome == "failed")
+}
+
+/// dsl 0.23.0 §2: judge every not-done, not-failed objective's `by` (document
+/// order) after the objectives were judged this settle. The first time it is
+/// `true` the objective FAILS (decision `failed`, guard = the `by` text);
+/// `unknown` is recorded unresolved (trace never guesses a deadline).
+/// Returns the first REQUIRED objective that failed on this pass — its quest
+/// fails with it.
+fn judge_deadlines<'q>(quest: &'q Quest, w: &mut Walk<'_>) -> Option<&'q Objective> {
+    let mut missed = None;
+    for node in &quest.body {
+        let Node::Objective(o) = node else { continue };
+        let Some(by) = &o.by else { continue };
+        if o.id.is_empty() || is_objective_done(w, &quest.id, &o.id) || is_objective_failed(w, o)
+        {
+            continue;
+        }
+        let mut atoms = Vec::new();
+        let v = match slot_expr(&by.raw) {
+            Some(expr) => as_guard_value(eval(&expr, &w.env(), &mut atoms)),
+            None => Value::Bool(false),
+        };
+        match v {
+            Value::Bool(true) => {
+                w.push_decision(
+                    "objective",
+                    &o.id,
+                    o.span,
+                    "failed".to_string(),
+                    render_done_guard(by),
+                    false,
+                    false,
+                    Vec::new(),
+                );
+                if !o.optional && missed.is_none() {
+                    missed = Some(o);
+                }
+            }
+            Value::Bool(false) => {}
+            Value::Unknown | Value::Num(_) | Value::Str(_) => {
+                w.record_unresolved("objective", &o.id, o.span, by.raw.trim().to_string(), atoms);
+            }
+        }
+    }
+    missed
 }
 
 /// Which lifecycle transition is firing rewards (spec §3 D-D). An
@@ -1345,14 +1422,25 @@ fn emit_grants(
 ///
 /// `occasion` selects WHICH objectives are judged (dsl 0.21.0 §7a.2):
 /// `None` is the continuous pass — every objective WITHOUT `on=`; `Some(o)`
-/// is the raise of occasion `o` — only the objectives declaring `on="o"`.
+/// is the raise `o` (`name` or `name@target`, dsl 0.23.0 §2) — only the
+/// objectives declaring that `on=` whose `target=` is absent or the raise's.
+/// An objective whose `by` already failed it is never judged again.
 fn reevaluate_objectives(quest: &Quest, occasion: Option<&str>, w: &mut Walk<'_>) {
     for node in &quest.body {
         let Node::Objective(o) = node else { continue };
-        if o.on.as_ref().map(|(on, _)| on.as_str()) != occasion {
+        let on = o.on.as_ref().map(|(on, _)| on.as_str());
+        let judged = match (occasion, on) {
+            (None, None) => true,
+            (Some(raise), Some(on)) => {
+                crate::mock::raise_judges(raise, on, o.target.as_ref().map(|(t, _)| t.as_str()))
+            }
+            _ => false,
+        };
+        if !judged {
             continue;
         }
-        if o.id.is_empty() || is_objective_done(w, &quest.id, &o.id) {
+        if o.id.is_empty() || is_objective_done(w, &quest.id, &o.id) || is_objective_failed(w, o)
+        {
             continue;
         }
         let mut atoms = Vec::new();
@@ -1513,28 +1601,35 @@ fn purge_terminal_objectives(quest: &Quest, w: &mut Walk<'_>) {
 }
 
 /// After activation and after every event (§4.4): re-evaluate objectives
-/// (monotonic), evaluate `fail` BEFORE derived completion (`0.2 §6.3`
-/// precedence — a quest whose objectives would ALL be done still fails if
-/// `fail` decides true THIS pass), then check completion. Fires exactly
-/// one of `questFailed`/`questComplete` on a fresh transition; a quest
-/// already `Complete`/`Failed` never reaches this function again
-/// (`walk_quest`'s own `Active`-only loop guard).
+/// (monotonic), judge their `by` deadlines (dsl 0.23.0 §2), evaluate `fail`
+/// BEFORE derived completion (`0.2 §6.3` precedence — a quest whose
+/// objectives would ALL be done still fails if `fail` decides true THIS
+/// pass, or a required objective's `by` failed it), then check completion.
+/// Fires exactly one of `questFailed`/`questComplete` on a fresh
+/// transition; a quest already `Complete`/`Failed` never reaches this
+/// function again (`walk_quest`'s own `Active`-only loop guard).
 fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow {
     reevaluate_objectives(quest, None, w);
+    let missed = judge_deadlines(quest, w);
 
     let mut fail_atoms = Vec::new();
     let fail_v = match quest.fail.as_ref().and_then(|f| slot_expr(&f.raw)) {
         Some(expr) => as_guard_value(eval(&expr, &w.env(), &mut fail_atoms)),
         None => Value::Bool(false),
     };
-    if matches!(fail_v, Value::Bool(true)) {
+    let failed_by_fail = matches!(fail_v, Value::Bool(true));
+    if failed_by_fail || missed.is_some() {
         *state = QuestState::Failed;
         w.state.write(
             &quest_state_path(&quest.id),
             Value::Str("failed".to_string()),
         );
         purge_terminal_objectives(quest, w);
-        let guard = render_choice_guard(quest.fail.as_ref());
+        let guard = if failed_by_fail {
+            render_choice_guard(quest.fail.as_ref())
+        } else {
+            missed.and_then(|o| o.by.as_ref()).and_then(render_done_guard)
+        };
         w.push_decision(
             "quest",
             &quest.id,
@@ -2229,7 +2324,8 @@ fn occasion_notes(doc: &Document, occasions: &[String], decisions: &[Decision]) 
         .collect();
     let mut seen = BTreeSet::new();
     for name in occasions {
-        if answered.contains(name.as_str()) || !seen.insert(name.as_str()) {
+        let (bare, _) = crate::mock::split_occasion(name);
+        if answered.contains(bare) || !seen.insert(name.as_str()) {
             continue;
         }
         notes.push(format!(
@@ -2248,15 +2344,20 @@ fn occasion_notes(doc: &Document, occasions: &[String], decisions: &[Decision]) 
         for node in &quest.body {
             let Node::Objective(o) = node else { continue };
             let Some((on, _)) = &o.on else { continue };
-            let done = decisions
-                .iter()
-                .any(|d| d.construct == "objective" && d.span == o.span && d.outcome == "done");
-            if done || occasions.contains(on) {
+            let target = o.target.as_ref().map(|(t, _)| t.as_str());
+            let settled = decisions.iter().any(|d| {
+                d.construct == "objective"
+                    && d.span == o.span
+                    && matches!(d.outcome.as_str(), "done" | "failed")
+            });
+            if settled || occasions.iter().any(|r| crate::mock::raise_judges(r, on, target)) {
                 continue;
             }
+            let raise = target.map_or_else(|| on.clone(), |t| format!("{on}@{t}"));
+            let what = target.map_or_else(|| format!("`{on}`"), |t| format!("`{on}` for `{t}`"));
             notes.push(format!(
-                "objective `{}.{}` is judged at occasion `{on}`, which this walk never raised \
-                 (supply `--occasion {on}` or `occasions: [{on}]`)",
+                "objective `{}.{}` is judged at occasion {what}, which this walk never raised \
+                 (supply `--occasion {raise}` or `occasions: [{raise}]`)",
                 quest.id, o.id
             ));
         }
@@ -2316,6 +2417,9 @@ fn mock_unproducible_notes(
     }
     for entry in &doc.entries {
         collect_assert_relations(&entry.body, &mut live_assert);
+    }
+    for beat in &doc.beats {
+        collect_assert_relations(&beat.body, &mut live_assert);
     }
     let producible = lute_check::producible::producible(&folded.env.rel_vocab, &live_assert);
     let mut unproducible: BTreeSet<String> = BTreeSet::new();
@@ -2519,7 +2623,7 @@ pub fn trace_with_check(
     mocks: MockSet,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, &[], project_asserts)
+    trace_pipeline(input, result, mocks, Presentation::Document, project_asserts)
 }
 
 /// `lute trace --entry <id>` (dsl 0.19.0 §8): the SAME §4.3 pipeline as
@@ -2543,7 +2647,7 @@ pub fn trace_entry_with_check(
     entry: &str,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, &[entry], project_asserts)
+    trace_pipeline(input, result, mocks, Presentation::Entries(&[entry]), project_asserts)
 }
 
 /// `lute test`'s `entries: [ids]` (dsl 0.22.0 §5): [`trace_entry_with_check`]
@@ -2559,14 +2663,49 @@ pub fn trace_entries_with_check(
     entries: &[&str],
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, entries, project_asserts)
+    trace_pipeline(input, result, mocks, Presentation::Entries(entries), project_asserts)
+}
+
+/// `lute trace --beat <id>` (dsl 0.23.0 §4): the SAME §4.3 pipeline as
+/// [`trace_document`], then PRESENTS the one bundle `<beat>` of a lore
+/// document — its body walked exactly as a scene shot body (choices, hubs
+/// and matches honour `choose:`; every effect applies; `scene.*` fresh),
+/// its `when` shown on the [`Step::Beat`] head, not enforced. `beat` is the
+/// local `<beat id>` or the canonical `<document id>.<beat id>`. A non-lore
+/// document or an unknown id is refused with [`crate::mock::E_TRACE_BEAT`]
+/// (exit 1), like `--entry`.
+pub fn trace_beat(input: &CheckInput, mocks: MockSet, beat: &str) -> (TraceReport, TraceExit) {
+    trace_beat_with_check(input, lute_check::check(input), mocks, beat, None)
+}
+
+/// [`trace_beat`] gated on a caller-supplied [`CheckResult`] — the
+/// project-aware seam [`trace_with_check`] documents.
+pub fn trace_beat_with_check(
+    input: &CheckInput,
+    result: CheckResult,
+    mocks: MockSet,
+    beat: &str,
+    project_asserts: Option<&BTreeSet<String>>,
+) -> (TraceReport, TraceExit) {
+    trace_pipeline(input, result, mocks, Presentation::Beat(beat), project_asserts)
+}
+
+/// What [`trace_pipeline`] walks once the document is gated and expanded.
+#[derive(Clone, Copy)]
+enum Presentation<'a> {
+    /// `doc.shots`, then `doc.quests` — a scene or quest document.
+    Document,
+    /// These lore `<entry>` ids, in order, read flags written between them.
+    Entries(&'a [&'a str]),
+    /// One lore bundle `<beat>`, by local or canonical id.
+    Beat(&'a str),
 }
 
 fn trace_pipeline(
     input: &CheckInput,
     result: CheckResult,
     mocks: MockSet,
-    entries: &[&str],
+    present: Presentation<'_>,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
     // 1. `check` gate (§4.3): any Error -> Refused, run check first.
@@ -2586,16 +2725,27 @@ fn trace_pipeline(
     let (folded, _fd1, _fd2) = lute_check::fold_env(&doc, input);
 
     // 3. Mock validation (§4.3): any E-TRACE-* -> Refused.
-    //    `--entry` (dsl 0.19.0 §8) first: a non-lore document / unknown id
-    //    is refused before any mock is judged against it.
+    //    `--entry` (dsl 0.19.0 §8) / `--beat` (dsl 0.23.0 §4) first: a
+    //    non-lore document / unknown id is refused before any mock is judged
+    //    against it.
     let mut mock_diags: Vec<Diagnostic> = Vec::new();
-    for id in entries {
-        for d in mock::validate_entry(&folded, &doc, id) {
-            // A non-lore document refuses every id with the same line.
-            if !mock_diags.iter().any(|m| m.message == d.message) {
-                mock_diags.push(d);
+    let mut beat_at: Option<(usize, String)> = None;
+    match present {
+        Presentation::Document => {}
+        Presentation::Entries(entries) => {
+            for id in entries {
+                for d in mock::validate_entry(&folded, &doc, id) {
+                    // A non-lore document refuses every id with the same line.
+                    if !mock_diags.iter().any(|m| m.message == d.message) {
+                        mock_diags.push(d);
+                    }
+                }
             }
         }
+        Presentation::Beat(id) => match mock::resolve_beat(&folded, &doc, id) {
+            Ok(found) => beat_at = Some(found),
+            Err(d) => mock_diags.push(d),
+        },
     }
     if mock_diags.is_empty() {
         mock_diags = mock::validate(&mocks, &folded, &doc);
@@ -2624,7 +2774,8 @@ fn trace_pipeline(
     // 5. Walk `doc.shots` (the scene walk, Task 19) then `doc.quests` (the
     //    quest walk, Task 20) — admission guarantees a check-clean document
     //    never populates both, so running both unconditionally is safe. With
-    //    `--entry` (dsl 0.19.0 §8) only that one entry is presented.
+    //    `--entry` (dsl 0.19.0 §8) only those entries are presented; with
+    //    `--beat` (dsl 0.23.0 §4) only that bundle beat.
     let seed = seed_state(&mocks, &folded.env.state);
     let state = EffectiveState::new(&folded.env.state, seed);
     // dsl 0.22.0 §6 (D-B): by default the project's seed facts join the
@@ -2663,35 +2814,45 @@ fn trace_pipeline(
     // holds. Judged against the mocks BEFORE the walk writes anything — the
     // selector decides at presentation time — and reported, never enforced:
     // tracing a scene is asking to see it.
-    let beat_note = if entries.is_empty() {
-        beat_when_note(&folded, &table, &w)
-    } else {
-        None
+    let beat_note = match present {
+        Presentation::Document => beat_when_note(&folded, &table, &w),
+        Presentation::Entries(_) | Presentation::Beat(_) => None,
     };
 
-    let mut flow = if entries.is_empty() {
-        walk_document(&doc, &mut w)
-    } else {
-        let mut flow = Flow::Continue;
-        for id in entries {
-            // `validate_entry` proved every id is declared.
-            let Some(e) = doc.entries.iter().find(|e| e.id == *id) else {
-                continue;
-            };
-            flow = walk_entry(e, &mut w);
-            if !matches!(flow, Flow::Continue) {
-                break;
+    let flow = match present {
+        Presentation::Document => {
+            let flow = walk_document(&doc, &mut w);
+            if matches!(flow, Flow::Continue) {
+                walk_quests(&doc, &mocks.events, &mut w)
+            } else {
+                flow
             }
-            w.state
-                .write(&lute_check::entry_read_path(id), Value::Bool(true));
-            w.state
-                .write(&format!("entry.{id}.everRead"), Value::Bool(true));
         }
-        flow
+        Presentation::Entries(entries) => {
+            let mut flow = Flow::Continue;
+            for id in entries {
+                // `validate_entry` proved every id is declared.
+                let Some(e) = doc.entries.iter().find(|e| e.id == *id) else {
+                    continue;
+                };
+                flow = walk_entry(e, &mut w);
+                if !matches!(flow, Flow::Continue) {
+                    break;
+                }
+                w.state
+                    .write(&lute_check::entry_read_path(id), Value::Bool(true));
+                w.state
+                    .write(&format!("entry.{id}.everRead"), Value::Bool(true));
+            }
+            flow
+        }
+        // `resolve_beat` proved the index; normalize/expand never reorder
+        // `doc.beats`.
+        Presentation::Beat(_) => match &beat_at {
+            Some((i, canonical)) => walk_bundle_beat(&doc.beats[*i], canonical, &mut w),
+            None => Flow::Continue,
+        },
     };
-    if entries.is_empty() && matches!(flow, Flow::Continue) {
-        flow = walk_quests(&doc, &mocks.events, &mut w);
-    }
 
     let doc_quest_ids: BTreeSet<&str> = doc.quests.iter().map(|q| q.id.as_str()).collect();
     let mut notes: Vec<String> = beat_note.into_iter().collect();

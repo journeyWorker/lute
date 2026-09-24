@@ -99,6 +99,9 @@ pub fn check_project_accepts(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diag
         for e in &doc.entries {
             walk(&e.body, &mut visit);
         }
+        for b in &doc.beats {
+            walk(&b.body, &mut visit);
+        }
     }
     out
 }

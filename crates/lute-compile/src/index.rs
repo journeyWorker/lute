@@ -87,21 +87,29 @@ pub struct IndexEntry {
 }
 
 /// What a [`ProjectIndex::beats`] row declares (dsl 0.21.0 §8): a scene beat
-/// (`SceneMeta.beat`) or an entry beat (`EntryCmd.on`).
+/// (`SceneMeta.beat`), an entry beat (`EntryCmd.on`), or a bundle beat (a
+/// lore document's `beat` record, dsl 0.23.0 §4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BeatKind {
     Scene,
     Entry,
+    Bundle,
 }
 
 /// One row of [`ProjectIndex::beats`] (dsl 0.21.0 §4/§8): every beat in the
 /// project, so an engine can build its `occasion → candidates` table without
 /// loading every artifact. Row order IS the selection tiebreak after
-/// priority. `id` is the scene's canonical id ([`SceneMeta::id`]) or the
-/// entry id; `document` is the owning [`IndexDocument::path`]; `priority` is
-/// resolved (unauthored → `0`); `once` is the scene's policy, or an entry's
-/// authored `once` (dsl 0.22.0 §7) — absent on an entry row = repeatable.
+/// priority. `id` is the scene's canonical id ([`SceneMeta::id`]), the
+/// entry id, or a bundle beat's canonical `<document id>.<beat id>`;
+/// `document` is the owning [`IndexDocument::path`]; `priority` is
+/// resolved (unauthored → `0`); `once` is the scene's / bundle beat's policy,
+/// or an entry's authored `once` (dsl 0.22.0 §7) — absent on an entry row =
+/// repeatable.
+/// `when` is the beat's condition after `@def` expansion (a scene's
+/// `meta.beat.when`, an entry's own `when`) and `title` the scene's / entry's
+/// title — enough to list the beats and label a `select: all` menu without
+/// loading every artifact (dsl 0.23.0 §1, §11). Both are omitted when absent.
 ///
 /// [`SceneMeta::id`]: crate::ir::SceneMeta::id
 #[derive(Clone, Debug, Serialize)]
@@ -116,6 +124,10 @@ pub struct IndexBeat {
     pub priority: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub once: Option<BeatOnce>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 /// The `project.index.json` envelope. Field DECLARATION ORDER is the serialized
@@ -364,7 +376,8 @@ pub fn build_index(
 
     // Beats (dsl 0.21.0 §8) follow the same path order: a scene document
     // contributes at most its one `meta.beat`, a lore document every entry
-    // that names an occasion, in command (= declaration) order.
+    // that names an occasion and every bundle `beat` (dsl 0.23.0 §4), in
+    // command (= declaration) order.
     let beats = by_path
         .iter()
         .flat_map(|d| {
@@ -377,6 +390,8 @@ pub fn build_index(
                     target: b.target.clone(),
                     priority: b.priority,
                     once: Some(b.once),
+                    when: b.when.as_ref().map(|w| w.raw.clone()),
+                    title: m.title.clone(),
                 }),
                 ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => None,
             };
@@ -389,6 +404,19 @@ pub fn build_index(
                     target: e.target.clone(),
                     priority: e.priority.unwrap_or(0),
                     once: e.once,
+                    when: e.when.as_ref().map(|w| w.raw.clone()),
+                    title: e.title.clone(),
+                }),
+                Command::Beat(b) => Some(IndexBeat {
+                    id: b.id.clone(),
+                    kind: BeatKind::Bundle,
+                    document: d.path.clone(),
+                    on: b.on.clone(),
+                    target: b.target.clone(),
+                    priority: b.priority,
+                    once: Some(b.once),
+                    when: b.when.as_ref().map(|w| w.raw.clone()),
+                    title: b.title.clone(),
                 }),
                 _ => None,
             });
@@ -841,6 +869,7 @@ mod tests {
             when: None,
             priority,
             once,
+            also: false,
         })
     }
 
@@ -940,5 +969,48 @@ mod tests {
             }),
             "an untargeted beat omits `target`"
         );
+    }
+
+    /// dsl 0.23.0 §1/§11: a row carries the beat's expanded `when` and its
+    /// title — the scene's `title:`, an entry's own `title` — each omitted
+    /// when unauthored.
+    #[test]
+    fn beats_rows_carry_when_and_title() {
+        let mut scene_beat = beat("dayStart", None, 5, BeatOnce::Run);
+        if let Some(b) = &mut scene_beat {
+            b.when = Some(crate::ir::CelPair {
+                raw: "run.day == 3 && run.slot == 'night'".to_string(),
+                expr: None,
+            });
+        }
+        let mut titled = beat_scene("wed.night", scene_beat);
+        if let ArtifactMeta::Scene(m) = &mut titled.meta {
+            m.title = Some("Wednesday night".to_string());
+        }
+        let mut barks = beat_lore(&[("shopBark", Some("placeVisit"), None)]);
+        if let Some(Command::Entry(e)) = barks.commands.first_mut() {
+            e.title = Some("At the shop".to_string());
+            e.when = Some(crate::ir::CelPair {
+                raw: "run.slot != 'night'".to_string(),
+                expr: None,
+            });
+        }
+        let docs = [
+            ("scenes/wed.lute", titled),
+            ("lore/barks.lute", barks),
+            ("scenes/plain.lute", beat_scene("plain", beat("dayStart", None, 0, BeatOnce::Run))),
+        ];
+        let index = build_index("0.23.0", &inputs(&docs)).expect("no conflicts");
+        let v: serde_json::Value = serde_json::from_str(&index.to_json().unwrap()).unwrap();
+        assert_eq!(v["beats"][0]["when"], "run.slot != 'night'");
+        assert_eq!(v["beats"][0]["title"], "At the shop");
+        assert_eq!(v["beats"][1]["id"], "plain");
+        assert!(
+            v["beats"][1].get("when").is_none() && v["beats"][1].get("title").is_none(),
+            "unauthored `when`/`title` are omitted: {}",
+            v["beats"][1]
+        );
+        assert_eq!(v["beats"][2]["when"], "run.day == 3 && run.slot == 'night'");
+        assert_eq!(v["beats"][2]["title"], "Wednesday night");
     }
 }

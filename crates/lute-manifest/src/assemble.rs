@@ -220,6 +220,8 @@ pub fn assemble_snapshot(
     let mut rk_pending: Vec<(String, crate::schema::RewardKindDecl)> = Vec::new();
     // Occasion owners (dsl 0.21.0 §2), for precise cross-plugin dup errors.
     let mut oc_owner: BTreeMap<String, String> = BTreeMap::new();
+    // Cast owners (dsl 0.23.0 §7), same treatment.
+    let mut cast_owner: BTreeMap<String, String> = BTreeMap::new();
 
     for ap in active {
         if ap.id == "lute.core" {
@@ -435,6 +437,20 @@ pub fn assemble_snapshot(
             }
             oc_owner.insert(oc.name.clone(), ap.id.clone());
             snap.occasions.insert(oc.name.clone(), oc.clone());
+        }
+        // dsl 0.23.0 §7: cast members merge like occasions — one owner per id.
+        for c in &pkg.cast {
+            if let Some(owner) = cast_owner.get(&c.id) {
+                errs.push(AssembleError::DuplicateAcrossPlugins {
+                    kind: "cast".into(),
+                    id: c.id.clone(),
+                    first: owner.clone(),
+                    second: ap.id.clone(),
+                });
+                continue;
+            }
+            cast_owner.insert(c.id.clone(), ap.id.clone());
+            snap.cast.insert(c.id.clone(), c.clone());
         }
         for b in &pkg.bridge {
             let k = (b.service.clone(), b.operation.clone());

@@ -145,6 +145,39 @@ fn choice_matches_spec_worked_example() {
     );
 }
 
+/// dsl 0.23.0 §4: an authored `<hub prompt>` serializes as `"prompt"` after
+/// `converge`; an unprompted hub record carries no `prompt` key at all.
+#[test]
+fn hub_prompt_serializes_only_when_authored() {
+    let hub = |prompt: Option<&str>| {
+        Command::Hub(HubCmd {
+            addr: "003-0200".into(),
+            id: "look".into(),
+            record_key: "scene.choices.look".into(),
+            options: vec![HubOption {
+                id: "leave".into(),
+                label: "Leave".into(),
+                line_id: "s.look.leave".into(),
+                once: false,
+                exit: true,
+                when: None,
+                expr: None,
+                target: "003-0300".into(),
+                placeholders: Vec::new(),
+                labels: Default::default(),
+            }],
+            converge: "003-0400".into(),
+            prompt: prompt.map(str::to_string),
+            stamp: Stamp::default(),
+        })
+    };
+    assert_eq!(
+        j(&hub(Some("Where do you look?"))),
+        r#"{"kind":"hub","addr":"003-0200","id":"look","recordKey":"scene.choices.look","options":[{"id":"leave","label":"Leave","lineId":"s.look.leave","once":false,"exit":true,"target":"003-0300"}],"converge":"003-0400","prompt":"Where do you look?"}"#
+    );
+    assert!(!j(&hub(None)).contains("prompt"));
+}
+
 #[test]
 fn match_jump_barrier_serialize() {
     let m = Command::Match(MatchCmd {
@@ -454,6 +487,8 @@ fn quest_record_serializes_per_spec() {
             quest: None,
             rewards: Vec::new(),
             on: None,
+            by: None,
+            target: None,
         }],
         rewards: Vec::new(),
         tier: None,
@@ -481,6 +516,7 @@ fn reward_entry_scalar_serializes_per_spec() {
         amount_max: None,
         when: None,
         on: None,
+        credits: None,
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -501,6 +537,7 @@ fn reward_entry_range_serializes_amount_min_and_max() {
             expr: None,
         }),
         on: None,
+        credits: None,
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -521,6 +558,7 @@ fn reward_entry_on_failed_serializes_only_when_quest_level() {
         amount_max: None,
         when: None,
         on: Some("failed".into()),
+        credits: None,
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),

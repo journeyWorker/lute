@@ -86,6 +86,11 @@ pub(crate) fn check_document_permissions(
     for entry in &doc.entries {
         checker.walk_nodes(&entry.body);
     }
+    // dsl 0.23.0 §4: a lore `<beat>` bundle body is a scene shot body — the
+    // same write ceilings apply.
+    for beat in &doc.beats {
+        checker.walk_nodes(&beat.body);
+    }
 
     checker.diagnostics
 }

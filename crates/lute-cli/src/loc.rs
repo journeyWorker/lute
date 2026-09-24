@@ -14,7 +14,8 @@
 //! ## Translatable units (`export`)
 //! Two kinds, both walked in document order (descending into `<branch>`/`<hub>`
 //! choice bodies, `<match>` arms, `<objective>`/`<on>` bodies, quest bodies,
-//! and lore `<entry>` bodies — mirroring `lute-check`'s own `collect_lines`):
+//! lore `<entry>` bodies, and lore `<beat>` bundle bodies — mirroring
+//! `lute-check`'s own `collect_lines`):
 //! - **content lines** (`@speaker: text`, dsl §7.1) — `file`, `line`, `lineId`,
 //!   the stable `code` (dsl §12; `null` when the line carries no `code="…"`
 //!   string attr, i.e. it has not been through `lute tag`), `speaker`, and
@@ -31,7 +32,8 @@
 //! - the identity PREFIX — a scene's `{character}.{episodeId}`
 //!   ([`canonical_episode_key`], the shared implementation compile's own prefix
 //!   join calls), the enclosing `<quest id>` for a quest document, or the
-//!   enclosing `<entry id>` for a lore document (dsl 0.19.0 §4);
+//!   enclosing `<entry id>` for a lore document (dsl 0.19.0 §4) — for a lore
+//!   `<beat>` bundle, its canonical `<document id>.<beat id>` (dsl 0.23.0 §4);
 //! - the line's authored `code` and speaker, rendered through the project's
 //!   [`IdentityTemplates`] (dsl 0.8.0 §9) — never a hardcoded shape, so a
 //!   project that retemplated `lineId` exports the ids it actually compiles;
@@ -346,27 +348,15 @@ fn walk_nodes<'a>(
 /// own `scene_identity`) because `id`/`episodeId` are never lifted into a
 /// syntax-layer type here.
 fn scene_prefix(doc: &Document) -> Option<String> {
+    if let Some(id) = authored_doc_id(doc) {
+        return Some(id);
+    }
     let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
     let map = match value {
         serde_yaml::Value::Mapping(m) => m,
         _ => return None,
     };
     let key = |k: &str| serde_yaml::Value::String(k.to_string());
-    // Authored `id:` wins — validated to the dsl 0.15.0 §2 charset (the
-    // whole-project compile gate rejects anything else, but `loc export`
-    // never runs the checker so we mirror the charset here rather than
-    // stamping an id `lute compile` would refuse). An invalid or missing
-    // authored id falls through to today's derivation, unchanged.
-    if let Some(id) = map.get(key("id")).and_then(|v| v.as_str()) {
-        let trimmed = id.trim();
-        if !trimmed.is_empty()
-            && trimmed
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
-        {
-            return Some(trimmed.to_string());
-        }
-    }
     let character = map.get(key("character"))?.as_str()?.to_string();
     if character.is_empty() {
         return None;
@@ -379,11 +369,28 @@ fn scene_prefix(doc: &Document) -> Option<String> {
     ))
 }
 
+/// The document's authored frontmatter `id:`, validated to the dsl 0.15.0 §2
+/// charset (the whole-project compile gate rejects anything else, but `loc
+/// export` never runs the checker so we mirror the charset here rather than
+/// stamping an id `lute compile` would refuse). `None` when absent or
+/// invalid; [`scene_prefix`] then falls through to the triad derivation.
+fn authored_doc_id(doc: &Document) -> Option<String> {
+    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
+    let id = value.get("id")?.as_str()?.trim();
+    let valid = !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+    valid.then(|| id.to_string())
+}
+
 /// Collect every translatable unit from one parsed document. A scene's shots
 /// all share ONE document-wide prefix (compile folds them into a single
 /// identity scope); each `<quest>` is its OWN scope prefixed by its id (IR
 /// addendum §4) — mirroring `address.rs`'s two `ShotRecords.prefix` callers
-/// exactly — and so is each lore `<entry>` (dsl 0.19.0 §4).
+/// exactly — and so is each lore `<entry>` (dsl 0.19.0 §4) and each lore
+/// `<beat>` bundle, prefixed by its canonical `<document id>.<beat id>` (dsl
+/// 0.23.0 §4; no reproducible prefix without an authored document `id:`).
 fn document_units(
     file: &str,
     doc: &Document,
@@ -418,6 +425,19 @@ fn document_units(
             components,
         };
         walk_nodes(&cx, &entry.body, None, cx.prefix, out);
+    }
+    let doc_id = (!doc.beats.is_empty()).then(|| authored_doc_id(doc)).flatten();
+    for beat in &doc.beats {
+        let key = doc_id
+            .as_deref()
+            .map(|doc_id| lute_check::bundle_beat_key(doc_id, &beat.id));
+        let cx = Cx {
+            file,
+            prefix: key.as_deref(),
+            templates,
+            components,
+        };
+        walk_nodes(&cx, &beat.body, None, cx.prefix, out);
     }
 }
 

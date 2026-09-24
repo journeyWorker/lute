@@ -88,6 +88,10 @@ pub struct SchemaImports {
     /// docs is `E-ENTRY-ID-DUP` here, and the importing document's own entry
     /// fold seeds its seen set from these keys.
     pub imported_entry_ids: BTreeMap<String, PathBuf>,
+    /// dsl 0.23.0 §7: every `cast:` member declared by an import-reachable
+    /// schema, keyed by speaker id (a union — the same id in two schemas
+    /// keeps the byte-sorted-first file's entry).
+    pub cast: BTreeMap<String, lute_manifest::schema::CastMember>,
     pub rel: RelImports,
 }
 
@@ -158,6 +162,8 @@ struct ParsedDoc {
     /// Seed `facts:`/`rules:` (0.3.0 spec §4/§7.1), in this doc's own order.
     facts: Vec<FactDecl>,
     rules: Vec<RuleDecl>,
+    /// dsl 0.23.0 §7: this schema's `cast:` members.
+    cast: Vec<lute_manifest::schema::CastMember>,
 }
 
 fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
@@ -547,6 +553,13 @@ pub fn resolve_imports(
         imported_entry_ids.insert(id, files[0].clone());
     }
 
+    let mut cast: BTreeMap<String, lute_manifest::schema::CastMember> = BTreeMap::new();
+    for doc in parsed.values() {
+        for c in &doc.cast {
+            cast.entry(c.id.clone()).or_insert_with(|| c.clone());
+        }
+    }
+
     SchemaImports {
         state,
         defs,
@@ -556,6 +569,7 @@ pub fn resolve_imports(
         state_overridable,
         imported_quest_ids,
         imported_entry_ids,
+        cast,
         rel: RelImports {
             kinds: rel_kinds,
             relations: rel_relations,
@@ -810,6 +824,7 @@ fn read_and_parse(
         domains: BTreeMap::new(),
         quest_ids: BTreeSet::new(),
         entry_ids: BTreeSet::new(),
+        cast: Vec::new(),
         rel_kinds: ParsedKinds::default(),
         rel_relations: ParsedRelations::default(),
         facts: Vec::new(),
@@ -906,6 +921,7 @@ fn read_and_parse(
     let rel_relations = tm.rel_relations;
     let facts = tm.rel_facts;
     let rules = tm.rel_rules;
+    let cast = tm.cast;
     let uses = tm.uses;
     let extends = tm.extends;
     (
@@ -919,6 +935,7 @@ fn read_and_parse(
             rel_relations,
             facts,
             rules,
+            cast,
         },
         uses,
         extends,

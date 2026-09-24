@@ -97,9 +97,10 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
 
     for c in commands {
         for key in ["target", "converge", "otherwise"] {
-            // An `entry` record's `target` is the engine-owned attachment id
-            // (`item.rusty_key`, dsl 0.19.0 §3), not a control-flow target.
-            if key == "target" && c["kind"] == "entry" {
+            // An `entry` / `beat` record's `target` is the engine-owned
+            // attachment id (`item.rusty_key`, dsl 0.19.0 §3, 0.23.0 §4),
+            // not a control-flow target.
+            if key == "target" && (c["kind"] == "entry" || c["kind"] == "beat") {
                 continue;
             }
             if let Some(t) = c[key].as_str() {
@@ -167,6 +168,14 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
                     assert_cel_clean("entry.when", when);
                 }
                 assert_target(c["body"].as_str().expect("entry.body"), &valid);
+            }
+            // dsl 0.23.0 §4: a bundle beat's `body` follows the entry
+            // convention, and its `when` is expanded like every CEL slot.
+            Some("beat") => {
+                if let Some(when) = c["when"]["raw"].as_str() {
+                    assert_cel_clean("beat.when", when);
+                }
+                assert_target(c["body"].as_str().expect("beat.body"), &valid);
             }
             Some("assert") | Some("retract") => {
                 let rel = c["relation"].as_str().expect("assert/retract has relation");
@@ -352,6 +361,20 @@ fn quest_occasions() {
 #[test]
 fn scene_accept() {
     golden("scene_accept", "tests/fixtures/scene_accept.lute", None);
+}
+
+/// dsl 0.23.0 §4: `<hub prompt>` lowers to `"prompt"` on the hub record.
+#[test]
+fn scene_hub_prompt() {
+    golden("scene_hub_prompt", "tests/fixtures/scene_hub_prompt.lute", None);
+}
+
+/// dsl 0.23.0 §4: a lore document bundling beats — one unit per entry /
+/// beat in source order, `beat` head records with canonical ids, scene-body
+/// lowering (branch, hub with its prompt), `also`, `once: false` → `none`.
+#[test]
+fn lore_bundle_interviews() {
+    golden("lore_bundle_interviews", "tests/fixtures/lore_bundle_interviews.lute", None);
 }
 
 /// IR A12: the `::serve` plugin record carries resolved effect bindings. The

@@ -24,8 +24,22 @@ use cel_parser::ast::{EntryExpr, Expr};
 /// reuse this same list, dsl 0.2.0 §5). `entry` (dsl 0.19.0 §5) is a
 /// read-only root: its only declared shape is the reserved
 /// [`is_reserved_entry_read`] path, so any other `entry.*` read is
-/// `E-UNDECLARED` and every `entry.*` write is rejected.
-pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app", "quest", "entry"];
+/// `E-UNDECLARED` and every `entry.*` write is rejected. `prev` (dsl 0.23.0
+/// §6) is read-only too: `prev.run.<path>` mirrors each declared `run.<path>`.
+pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app", "quest", "entry", "prev"];
+
+/// `true` for any path rooted at the read-only `prev` mirror (dsl 0.23.0 §6).
+pub fn is_prev_path(path: &str) -> bool {
+    path.split('.').next() == Some("prev")
+}
+
+/// The `prev.run.<path>` mirror of a `run.<path>` (dsl 0.23.0 §6).
+pub fn prev_run_path(run_path: &str) -> Option<String> {
+    run_path
+        .strip_prefix("run.")
+        .filter(|rest| !rest.is_empty())
+        .map(|rest| format!("prev.run.{rest}"))
+}
 
 /// How a state path appears in an expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

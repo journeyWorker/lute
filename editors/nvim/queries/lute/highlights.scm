@@ -84,6 +84,9 @@
 ; `<entry>` (dsl 0.19.0 §2) — the lore-kind top-level declaration, a sibling
 ; of `<quest>`; same control-family capture.
 (entry ["<entry" "</entry>"] @keyword.control)
+; `<beat>` (dsl 0.23.0 §4) — a lore document's top-level beat bundle, a
+; sibling of `<entry>`; same control-family capture.
+(beat ["<beat" "</beat>"] @keyword.control)
 
 ; ---- distinct arch captures -----------------------------------------------
 ; CEL expression (the `::set` right-hand side) — an embedded expression lang.

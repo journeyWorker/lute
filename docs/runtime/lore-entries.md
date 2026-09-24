@@ -33,10 +33,12 @@ type EntryCmd = {
 };
 ```
 
-The body segment follows the record and is addressed and terminated exactly as
-an `<on>` body is (`quest-lifecycle.md`). It contains only `line`, `match`,
-`jump`, `set`, `assert`, and `retract` records: an entry has no choices, no
-staging, and no handlers.
+The body segment follows the record and runs to the next `entry` or `beat`
+record (a lore artifact interleaves entries and bundle beats, dsl 0.23.0 §4;
+`beats-and-occasions.md`) or the end of the artifact — addressed and
+terminated exactly as an `<on>` body is (`quest-lifecycle.md`). It contains
+only `line`, `match`, `jump`, `set`, `assert`, and `retract` records: an entry
+has no choices, no staging, and no handlers.
 
 `ProjectIndex.entries` (`lute compile --all`) lists every entry in the project
 as `{id, document, target?, category?, series?, order?}` in document order, so

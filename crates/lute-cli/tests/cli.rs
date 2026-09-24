@@ -268,6 +268,65 @@ fn hub_demo_example_compiles() {
     assert_eq!(hub["recordKey"], "scene.choices.chatWithMarina");
 }
 
+/// dsl 0.23.0 §4: `<hub prompt>` checks clean, and `lute run` carries the
+/// prompt on every hub presentation — `"prompt"` on the JSON record and
+/// quoted after the hub id in the human transcript.
+#[test]
+fn hub_prompt_checks_clean_and_runs_with_its_prompt() {
+    const SRC: &str = "../lute-compile/tests/fixtures/scene_hub_prompt.lute";
+    let check = Command::new(BIN).args(["check", SRC]).output().unwrap();
+    assert_eq!(
+        check.status.code(),
+        Some(0),
+        "{}{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+
+    let dir = temp_dir("hub-prompt");
+    let art = dir.join("artifact.json");
+    let mock = dir.join("mock.yaml");
+    std::fs::write(&mock, "choose:\n  look: [shore, leave]\n").unwrap();
+    let out = Command::new(BIN)
+        .args(["compile", SRC, "-o", art.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let run = |json: bool| {
+        let mut args = vec!["run", art.to_str().unwrap(), "--mock", mock.to_str().unwrap()];
+        if json {
+            args.push("--json");
+        }
+        let out = Command::new(BIN).args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8(out.stdout).unwrap()
+    };
+
+    let v: serde_json::Value = serde_json::from_str(&run(true)).unwrap();
+    let hubs: Vec<(&str, &str)> = v["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["kind"] == "hub")
+        .map(|c| (c["prompt"].as_str().unwrap(), c["chose"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        hubs,
+        [("Where do you look?", "shore"), ("Where do you look?", "leave")],
+        "{v}"
+    );
+
+    let human = run(false);
+    assert!(
+        human.contains("hub    [look] \"Where do you look?\" -> shore"),
+        "{human}"
+    );
+    assert!(
+        human.contains("hub    [look] \"Where do you look?\" -> leave"),
+        "{human}"
+    );
+}
+
 // --- 0.1.0 golden coverage: the NON-HUB companion `when-is-demo.lute` exercises
 // `<when is="…">` literal-pattern arms (dsl §7.3.1) — including an `is="a|b"`
 // alternation — over a PLAIN scene-local finite enum (`scene.mood`), not a hub's
