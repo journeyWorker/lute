@@ -10,7 +10,7 @@ behavior lives on the far side of the artifact, in the **engine**. This page is
 the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)
 and the machine-checkable shape is
-[`schemas/lute-ir-0.21.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.21.schema.json)
+[`schemas/lute-ir-0.22.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.22.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -104,6 +104,49 @@ Gate on `irVersion` by **MAJOR only** (since `0.13.0`):
   older engine.
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
+
+### What IR 0.22.0 changed
+
+**Two additive fields, a new reserved flag, a wider occasion declaration, and new identity
+values.** No field is renamed, retyped, or removed, and there is no new command `kind`, so under
+the MAJOR-only gate an engine that loads 0.21 artifacts loads 0.22 ones. An engine that ignores
+the new fields plays them with 0.21 semantics: every quest persists across runs and every entry
+beat repeats. To play them as written:
+
+- **`QuestCmd.tier`** is `"run"` on a `<quest tier="run">` and omitted for the default `user`
+  tier. It rides on each `quest` record, not on `meta`, because one quest document may declare
+  several quests. When a run starts, return every run-tier quest to `unset` with its objectives
+  not done, then settle the lifecycle as at any evaluation instant. User-tier quests keep their
+  status. See
+  [quest-lifecycle.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md).
+- **`EntryCmd.once`** is `"run"` or `"user"` on an entry beat that authored it, and omitted
+  otherwise (repeatable, as in 0.21). `ProjectIndex.beats` entry rows carry the same value; scene
+  rows always carried `once`. A `"run"` entry beat is not eligible while `entry.<id>.read` is true,
+  and a `"user"` one once `entry.<id>.everRead` is.
+- **`entry.<id>.everRead`** is a new reserved, user-tier `bool` per entry, default `false`. Set it
+  whenever you set `entry.<id>.read` after a first read, and never reset it when a run starts. It
+  is not listed in the artifact's `state` table (`entry.<id>.read` is, with `entry:<id>`
+  provenance), but content reads it like any path, in raw CEL and in the `expr` AST
+  (`{ "path": "entry.<id>.everRead" }`), so keep one for every entry you load.
+- **Occasion target domains.** In the capability snapshot an occasion's `target` is `false`,
+  `true`, or `{ "prefix", "entity" }`. For a domain, the checker guarantees every beat target of
+  that occasion is `<prefix>.<member>` of the project's entity kind `entity`, so raise the
+  occasion with targets of that shape. Occasion declarations stay out of the artifact. A domain
+  changes `capabilityVersion`; `true` and `false` keep their 0.21 stamp.
+- **`owner: engine`.** A `state:` declaration may name the engine as the path's writer. The
+  checker refuses a content `::set` of such a path, or of a field under it
+  (`E-ENGINE-OWNED-WRITE`), so no `set` record in a clean artifact targets it: the engine writes
+  it. The artifact's `state` entry for the path is unchanged (path, type, default);
+  `lute context --json` reports the owner as `"owner": "engine"`.
+- **Identity values move.** The default `voiceKey` template is now `{prefix}.{speaker}-{code}`
+  (it was `{speaker}-{code}`). A line expanded from a component is minted under
+  `{prefix}.{component}#{n}`, where `n` counts the host's `::use`s of that component from 1, so
+  under the default templates its `lineId` is `{prefix}.{component}#{n}.{speaker}_{code}` and its
+  `voiceKey` `{prefix}.{component}#{n}.{speaker}-{code}`; a nested `::use` adds another segment.
+  The field shapes are unchanged but the values differ, so rebuild voice and localization tables
+  keyed on 0.21 ids. A project with audio recorded against the old keys pins
+  `identity: { voiceKey: "{speaker}-{code}" }` (see
+  [Frontmatter & profiles](/language/frontmatter-and-profiles/)).
 
 ### What IR 0.10.2 changed
 
@@ -378,6 +421,8 @@ Each surface has its own contract document under
 - **[execution-model.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/execution-model.md)** — the artifact shape, version gate, addressing, and the dispatcher loop.
 - **[state-lifecycle.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/state-lifecycle.md)** — the `scene`/`run`/`user`/`app`/`quest.<id>` tiers, initialization, and reset boundaries.
 - **[cel-and-facts.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/cel-and-facts.md)** — evaluating the `expr` AST, the fact store's assert/retract deltas, and the stratified least-fixpoint the engine computes.
-- **[quest-lifecycle.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md)** — `start`/`fail` precedence, required vs. optional objectives, monotone completion, and lifecycle events.
+- **[quest-lifecycle.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md)** — `start`/`fail` precedence, required vs. optional objectives, monotone completion, run-tier quests, and lifecycle events.
+- **[beats-and-occasions.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/beats-and-occasions.md)** — occasions and their target domains, beat candidates, eligibility and `once` spending, and the selection order.
+- **[lore-entries.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md)** — entry eligibility, presentation, first-read effects, and the `read` / `everRead` flags.
 - **[timeline-semantics.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/timeline-semantics.md)** — the local clock, per-track cursors, barriers, and the one-writer-per-target invariant the checker guarantees.
 - **[bridge-protocol.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/bridge-protocol.md)** — typed bridge calls, return shapes, `wait`, and resolved state effects.

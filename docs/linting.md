@@ -92,16 +92,24 @@ scalar counts.
 | target | row | fields |
 | --- | --- | --- |
 | `line` | each content `Line` | `words`, `chars`, `speaker` (`""` for narration), `attrs` (string map; `BoolTrue` is `"true"`) |
-| `shot` | each `##` shot | `index` (1-based), `title`, `dialogueLines`, `words`, `firstStagingTag` (or `""`) |
-| `scene` | each document | `dialogueLines`, `words`, `bodyNodes` (nested included), `directives`, `sets`, `choices`, `shots`, `maxLineWords`, `avgLineWords`, `dialogueRatio` |
+| `shot` | each `##` shot | `index` (1-based), `title`, `dialogueLines`, `words`, `firstStagingTag` (or `""`), `kind` |
+| `scene` | each document | `kind`, `dialogueLines`, `words`, `bodyNodes` (nested included), `directives`, `sets`, `choices`, `shots`, `maxLineWords`, `avgLineWords`, `dialogueRatio` |
 | `speaker` | each document/speaker with dialogue | `lines`, `words`, `axis`, `attrShare` |
 | `group` | each document/attribute/value for configured `groupBy` | `attr`, `key`, `count`, `speakers` |
 | `project` | project root | `scenes`, `sceneWords`, `spreadRatio` |
 
+`scene.kind` classifies the document (dsl 0.22.0): `scene` for a linear scene,
+`beat` for a scene with `on:`, `component` for a document declaring
+`component:`, and otherwise its authored `kind:` (`quest`, `lore`, …);
+`shot.kind` repeats its document's value. `scene.directives` and
+`shot.firstStagingTag` count staging directives only — `::accept`, `::use`,
+`::end`, `::mark`, and `::next` are skipped.
+
 `scene.dialogueRatio` is `dialogueLines / bodyNodes`, or `0.0` when there are no
-body nodes. `project.sceneWords` is `{ min, max, mean, stddev }` over document
-word counts; `spreadRatio` is `max / min`, or `0.0` when `min == 0` or fewer than
-two scenes exist.
+body nodes. `project.scenes` counts linear scenes only (`scene.kind == "scene"`),
+and `project.sceneWords` is `{ min, max, mean, stddev }` over their word counts;
+`spreadRatio` is `max / min`, or `0.0` when `min == 0` or fewer than two scenes
+exist. Numbers interpolated into a message are rounded to at most two decimals.
 
 `speaker.axis` is observed from the speaker's line attributes, not preconfigured:
 it has an entry for every observed domain slot and for every observed
@@ -122,9 +130,9 @@ Set any rule to `level: error` to make it release-blocking for that project.
 | rule | target | default | trigger and defaults |
 | --- | --- | --- | --- |
 | `dialogue-length` | line | warn | `line.words > maxWords`; `maxWords: 40`. Keeps individual lines readable and performable. |
-| `dialogue-ratio` | scene | warn | `bodyNodes >= minNodes` and `dialogueRatio < min`; `minNodes: 10`, `min: 0.35`. Flags scenes with too little dialogue relative to their authored body. |
-| `scene-length-spread` | project | warn | `scenes >= 2` and `spreadRatio > maxRatio`; `maxRatio: 3.0`. Finds an unusually uneven scene-length mix. |
-| `shot-starts-with-background` | shot | warn | `firstStagingTag != "bg"`, including a shot with no staging directive. Encourages each shot to establish its background first. |
+| `dialogue-ratio` | scene | warn | `scene.kind == "scene"`, `bodyNodes >= minNodes`, and `dialogueRatio < min`; `minNodes: 10`, `min: 0.35`. Flags linear scenes with too little dialogue relative to their authored body. |
+| `scene-length-spread` | project | warn | `scenes >= 2` and `spreadRatio > maxRatio`, over linear scenes only; `maxRatio: 3.0`. Finds an unusually uneven scene-length mix. |
+| `shot-starts-with-background` | shot | warn | `shot.kind == "scene"` and `firstStagingTag != "bg"`, including a shot with no staging directive. Encourages each shot of a linear scene to establish its background first; a beat, component, quest, or lore entry is presented into staging someone else set. |
 | `emotion-distribution` | speaker | warn | Checks the selected axis once a speaker has at least `minLines: 10`: `domain: emotion`, optional `pairWith`, `runMax: 3`, `streakAvgMin: 1.5`, `maxShare: 0.4`. It applies the upstream lineage's hard cap of three identical emotion streaks, thrash floor of 1.5 average streak length, and 40% dominance cap; when `pairWith` is set it also checks the paired axis. One finding per failing speaker joins all reasons. |
 | `variant-composition` | speaker and group | warn | `attr: variant`, optional `groupBy`, `minPerGroup: 2`, `minShare: 0.0`, `minLines: 10`. With `groupBy`, groups below `minPerGroup` fire. With `minShare > 0`, speakers meeting its own `minLines` whose `attrShare[attr]` is below the threshold fire. |
 | `asset-exists` | line/directive | error | `providers: {}` (inert), `sentinels: [clear, empty, false, none, null, stop]`. For each mapped directive tag, checks `assetId` against the pinned provider snapshot. Absent assets fire; stale catalog data downgrades the finding to warn. Sentinel values are case-insensitively exempt. |

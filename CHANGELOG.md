@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.21.1`, the grammar and semantics the checker
+- **Language** — currently `0.22.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.21.1`) and gated on by consuming engines.
+  artifact (currently `0.22.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -37,6 +37,20 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.22.0] - 2026-09-25
+
+**A reference player that can stand in for the engine.**
+
+Three dogfood games each shipped a fake engine inside their content because
+`lute play` could not write the state the engine owns, start from a save,
+assert anything, or vary decisions per step. This release closes those gaps,
+gives run boundaries a lifecycle, lets trace and test apply the project's
+Datalog rules, and gives occasion targets a vocabulary. It also carries the
+two identity changes 0.21.1 deferred because they alter compiled output. The
+language and the IR both earn the move; see
+[`docs/proposals/scenario-dsl/0.22.0.md`](docs/proposals/scenario-dsl/0.22.0.md)
+and [`docs/versioning.md`](docs/versioning.md).
 
 ### Changed
 
@@ -223,6 +237,48 @@ table.
   under it, recursively and in sorted order, each line naming its file, then
   a summary. A refused or unreadable file is reported and the walk goes on;
   the exit code is the worst outcome.
+- `lute-lsp` completes and documents on hover `<quest tier>` and
+  `<entry once>`.
+
+### Compatibility
+
+- **Compiled identity changes (breaking).** Two changes alter the
+  `lineId` / `voiceKey` strings `lute compile` emits: the default `voiceKey`
+  is now `{prefix}.{speaker}-{code}`, and a line expanded from a component is
+  addressed `{prefix}.{component}#{n}.{speaker}_{code}`. A project on the
+  0.21 default `voiceKey` that recorded audio against it pins
+  `identity: { voiceKey: "{speaker}-{code}" }` in `lute.project.yaml` to keep
+  its keys; a project that already pinned `{prefix}.{speaker}-{code}` sees no
+  voice-key change. Documents that `::use` components get new component-line
+  ids either way — re-export localization and voice manifests for them. There
+  is no `lute fix` rewrite: the pin is the migration.
+- **Trace and test results can change.** Derivation is on by default, so a
+  test that relied on an unmocked derived atom being unknown (exit 3), or on a
+  seeded relation reading empty, now sees the derived / seeded answer. Pin
+  `derive: false` in the test or mock, or pass `--no-derive`, to keep the
+  0.21 verdict. `W-STAGE-ABSENT` follows paths, so a scene that warned on a
+  sibling arm checks clean, and a line after a `::bg` auto-hide now warns;
+  lint defaults stop firing linear-VN rules on beats, components, quests and
+  lore.
+- **Quest persistence is unchanged.** `<quest tier>` defaults to `user`, so
+  every existing quest keeps its status across runs; only a quest that opts
+  into `tier="run"` resets. An entry without `once` stays repeatable, and an
+  occasion with `target: true` keeps its shape-only meaning and its
+  `capabilityVersion`.
+- **Documents that were already wrong can redden.** `E-ENGINE-OWNED-WRITE`
+  fires only on a new `owner: engine` declaration; a beat target outside an
+  occasion's new target domain is `E-BEAT-ATTR`; `check-project` adds the
+  warnings `W-QUEST-HANDLER-DEAD`, `W-BEAT-PRIORITY-TIE` and
+  `W-BEAT-ONCE-RUN-USER`. A play script whose `state:` seed does not fit its
+  declared type, or that names an unknown id, is now a usage error (exit 2).
+- **Additive IR.** The version strings move to `0.22.0` and
+  `schemas/lute-ir-0.21.schema.json` is renamed to
+  [`schemas/lute-ir-0.22.schema.json`](schemas/lute-ir-0.22.schema.json),
+  gaining the optional `cmdQuest.tier` and `entryCmd.once` (also on the
+  `ProjectIndex.beats` entry rows). Engines gate on MAJOR, so nothing widens;
+  an engine without run tiers ignores both fields. `capabilityVersion` moves
+  only for a project whose occasions declare a target domain; the tree-sitter
+  grammar is unchanged.
 
 ## [0.21.1] - 2026-09-25
 

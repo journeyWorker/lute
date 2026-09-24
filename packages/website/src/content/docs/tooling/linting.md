@@ -76,7 +76,7 @@ Every custom entry has the same shape as a plugin rule:
 | `target` | yes | `line`, `shot`, `scene`, `speaker`, `group`, or `project`. |
 | `when` | yes | A CEL assertion over the target row and `options`; it fires when `true`. |
 | `level` | no | `off`, `hint`, `info`, `warn`, or `error`. |
-| `message` | yes | Finding text. `{path.to.field}` interpolates a metric or option path. `{expr:%}` renders shares as percentages. |
+| `message` | yes | Finding text. `{path.to.field}` interpolates a metric or option path; a number renders trimmed (no trailing `.0`) and rounded to at most two decimals, so a ratio of `3.3333…` reads `3.33`. `{expr:%}` renders shares as rounded percentages. |
 | `options` | no | Defaults exposed to `when` and the message. |
 
 The lint CEL fragment is ground-only: no `@ref` or `$` DSL tokens, state paths,
@@ -95,16 +95,31 @@ scalar counts.
 | target | row | fields |
 | --- | --- | --- |
 | `line` | each content `Line` | `words`, `chars`, `speaker` (`""` for narration), `attrs` (string map; `BoolTrue` is `"true"`) |
-| `shot` | each `##` shot | `index` (1-based), `title`, `dialogueLines`, `words`, `firstStagingTag` (or `""`) |
-| `scene` | each document | `dialogueLines`, `words`, `bodyNodes` (nested included), `directives`, `sets`, `choices`, `shots`, `maxLineWords`, `avgLineWords`, `dialogueRatio` |
+| `shot` | each `##` shot | `index` (1-based), `title`, `dialogueLines`, `words`, `firstStagingTag` (or `""`), `kind` |
+| `scene` | each document | `kind`, `dialogueLines`, `words`, `bodyNodes` (nested included), `directives`, `sets`, `choices`, `shots`, `maxLineWords`, `avgLineWords`, `dialogueRatio` |
 | `speaker` | each document/speaker with dialogue | `lines`, `words`, `axis`, `attrShare` |
 | `group` | each document/attribute/value for configured `groupBy` | `attr`, `key`, `count`, `speakers` |
 | `project` | project root | `scenes`, `sceneWords`, `spreadRatio` |
 
+`scene.kind` classifies the document (dsl 0.22.0), and `shot.kind` repeats its
+enclosing document's value so a shot rule can scope itself without another
+binding: `scene` for a linear scene, `beat` for a scene with `on:` (a
+[beat](/tooling/play/) answering an occasion), `component` for a document
+declaring `component:`, and otherwise its authored `kind:` — `quest`, `lore`, or
+any other value. A rule meant for linear episodes guards on
+`scene.kind == "scene"`; the three core rules below that encode linear-VN norms
+already do.
+
+`scene.directives` and `shot.firstStagingTag` count **staging** directives only:
+`::accept`, `::use`, `::end`, `::mark`, and `::next` present nothing, so they are
+skipped — a shot that opens with `::accept{quest="…"}` followed by `::bg` has
+`firstStagingTag == "bg"`.
+
 `scene.dialogueRatio` is `dialogueLines / bodyNodes`, or `0.0` when there are no
-body nodes. `project.sceneWords` is `{ min, max, mean, stddev }` over document
-word counts; `spreadRatio` is `max / min`, or `0.0` when `min == 0` or fewer than
-two scenes exist.
+body nodes. `project.scenes` counts linear scenes only (`scene.kind == "scene"`),
+and `project.sceneWords` is `{ min, max, mean, stddev }` over their word counts;
+`spreadRatio` is `max / min`, or `0.0` when `min == 0` or fewer than two scenes
+exist. A beat, component, quest, or lore document never enters the spread.
 
 `speaker.axis` is observed from the speaker's line attributes, not preconfigured:
 it has an entry for every observed domain slot and for every observed
@@ -125,12 +140,21 @@ Set any rule to `level: error` to make it release-blocking for that project.
 | rule | target | default | trigger and defaults |
 | --- | --- | --- | --- |
 | `dialogue-length` | line | warn | `line.words > maxWords`; `maxWords: 40`. Keeps individual lines readable and performable. |
-| `dialogue-ratio` | scene | warn | `bodyNodes >= minNodes` and `dialogueRatio < min`; `minNodes: 10`, `min: 0.35`. Flags scenes with too little dialogue relative to their authored body. |
-| `scene-length-spread` | project | warn | `scenes >= 2` and `spreadRatio > maxRatio`; `maxRatio: 3.0`. Finds an unusually uneven scene-length mix. |
-| `shot-starts-with-background` | shot | warn | `firstStagingTag != "bg"`, including a shot with no staging directive. Encourages each shot to establish its background first. |
+| `dialogue-ratio` | scene | warn | `scene.kind == "scene"`, `bodyNodes >= minNodes`, and `dialogueRatio < min`; `minNodes: 10`, `min: 0.35`. Flags linear scenes with too little dialogue relative to their authored body. |
+| `scene-length-spread` | project | warn | `scenes >= 2` and `spreadRatio > maxRatio`, over linear scenes only; `maxRatio: 3.0`. Finds an unusually uneven scene-length mix. |
+| `shot-starts-with-background` | shot | warn | `shot.kind == "scene"` and `firstStagingTag != "bg"`, including a shot with no staging directive. Encourages each shot of a linear scene to establish its background first. |
 | `emotion-distribution` | speaker | warn | Checks the selected axis once a speaker has at least `minLines: 10`: `domain: emotion`, optional `pairWith`, `runMax: 3`, `streakAvgMin: 1.5`, `maxShare: 0.4`. It applies the upstream lineage's hard cap of three identical emotion streaks, thrash floor of 1.5 average streak length, and 40% dominance cap; when `pairWith` is set it also checks the paired axis. One finding per failing speaker joins all reasons. |
 | `variant-composition` | speaker and group | warn | `attr: variant`, optional `groupBy`, `minPerGroup: 2`, `minShare: 0.0`, `minLines: 10`. With `groupBy`, groups below `minPerGroup` fire. With `minShare > 0`, speakers meeting its own `minLines` whose `attrShare[attr]` is below the threshold fire. |
 | `asset-exists` | line/directive | error | `providers: {}` (inert), `sentinels: [clear, empty, false, none, null, stop]`. For each mapped directive tag, checks `assetId` against the pinned provider snapshot. Absent assets fire; stale catalog data downgrades the finding to warn. Sentinel values are case-insensitively exempt. |
+
+Since 0.22.0 the three linear-VN rules — `dialogue-ratio`,
+`scene-length-spread`, and `shot-starts-with-background` — judge only linear
+scenes. A beat is presented into a moment the engine has already staged, and a
+component, quest, or lore entry is spliced into someone else's staging, so a
+project built on [beats and occasions](/tooling/play/) no longer drowns in
+`L-SHOT-STARTS-WITH-BACKGROUND` for every bark. To hold beats to a norm of their
+own, write a `custom:` rule that guards on `scene.kind == "beat"` (or
+`shot.kind == "beat"`).
 
 ## Plugin rule authoring
 

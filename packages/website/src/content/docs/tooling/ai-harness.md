@@ -16,6 +16,17 @@ lute context scene.lute --json --project . \
 
 It emits the project-resolved directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, imported components, effective permission layers, and a `capabilityVersion`. In JSON, `permissions` is `{ "layers": [...] }`, `bridges` contains allowed bridge objects, `rewardKinds` is the allowed name-keyed object, and `questsAllowed` is a boolean; `directives` also excludes entries blocked by directive or bridge policy. Read-only external state remains visible. It is a capability **query**, not validation: it emits regardless of the document's own diagnostics (exit `0`), and — the key property — **works on an empty file**, because the surface comes from the resolved project and plugins, not the document body. Use `capabilityVersion` as a prompt-cache key: restrictive effective permissions change it, while policy-free projects retain their prior hashes byte-for-byte.
 
+Since 0.22.0 the surface also carries what a model otherwise reads out of sibling files or guesses:
+
+- **`defs`** — every named condition the document can read as `@name`, each `{ name, type, params, body }` (the shorthand `defs: { firstDay: "run.day == 1" }` arrives with its inferred `type: "bool"` and empty `params`).
+- **`builtinDirectives`** — the language's own `::set`, `::assert`, `::retract`, `::accept`, and `::use`, each `{ name, syntax, meaning }`; `directives` lists only the project's and plugins' ones.
+- **`ids`** — `{ scenes, quests, entries }`: every scene id a guard reads as `visited('<id>')`, every quest id `quest.<id>.state` and `::accept` take, and every lore entry id `entry.<id>.read` / `entry.<id>.everRead` take, across the whole `--project` (without `--project`, only the document's own ids).
+- On `relations`, each relation's `tier` and whether it is `reserved`; on `stateSchema`, `owner: "engine"` for a path the engine writes (a content `::set` of it is `E-ENGINE-OWNED-WRITE`).
+- On `occasions`, each occasion's `description` and its `target` — `false`, `true` (shape-only), or a `{ prefix, entity }` domain whose beat targets must be `<prefix>.<member>`.
+- **Component signatures** in the human outline — each imported component with its parameters and their types, as JSON `components` already carried them — so a model writes `::use{component="…" …}` against the signature, not just the name.
+
+The human outline prints the same additions — `defs (N):`, `builtinDirectives (N):`, the `scenes`/`quests`/`entries` id lists, `run.day: number (owner: engine)`, `knows/1(item) [run]`, and `talk (select: first, target: npc.<npc>)`.
+
 ## Feedback loop: `lute check --json`
 
 After each generation, check and feed the serialized diagnostics back:

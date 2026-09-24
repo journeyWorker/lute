@@ -14,12 +14,13 @@ member lists), and — when the relational layer is used — `entities:` / `rela
 ```yaml
 state:
   run.choseHelp: { type: bool, default: false }
+  run.day:       { type: number, default: 1, owner: engine }
   user.level:    { type: number, default: 1 }
 defs:
   helped: { type: bool, cel: "run.choseHelp" }
 ```
 
-Each `<path>` segment is a CEL-facing identifier (no `-`). A `default` is materialized into the tier's initial state at schema load **and** re-materialized whenever the engine fires that tier's reset — so a defaulted path is always assigned, and the checker and engine read the one snapshot.
+Each `<path>` segment is a CEL-facing identifier (no `-`). A declaration is `{ type, default?, owner? }`. A `default` is materialized into the tier's initial state at schema load **and** re-materialized whenever the engine fires that tier's reset — so a defaulted path is always assigned, and the checker and engine read the one snapshot. `owner: engine` (0.22.0) marks a path content may read but never `::set` (`E-ENGINE-OWNED-WRITE`); `engine` is the only value it takes — see [`owner: engine`](/state/state-model/#owner-engine).
 
 An `enums:` block does double duty. Its domains are argument types for the
 [relational layer](/state/facts-and-datalog/), and since language `0.9.0` they are also how a project

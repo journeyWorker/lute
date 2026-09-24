@@ -1,13 +1,13 @@
 ---
 title: Tracing guide
-description: Preview a scene before you ship it — seeding state, facts, choices, events, accepts, the visited set, and raised occasions via flags or a mock YAML file, reading the decision transcript, and the E-TRACE-* refusals.
+description: Preview a scene before you ship it — seeding state, facts, choices, events, accepts, the visited set, a save's quest status and entry reads, and raised occasions via flags or a mock YAML file, how the project's rules derive over them, reading the decision transcript, and the E-TRACE-* refusals.
 ---
 
-`lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never runs the Datalog fixpoint, never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof.
+`lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof. Since 0.22.0 it applies the project's seed facts and Datalog rules over those mocks by default, exactly as `lute run` and `lute play` do — see [Derivation](#derivation).
 
 ## Seeding the world
 
-Trace operates on an **explicit** world — the effective set is exactly what you supply, never the schema's own seed block. Five surfaces feed the walk, as repeatable flags:
+Trace walks the world you supply. A state path you do not seed reads its declared default (unknown when it has none), and the facts are your mocks, the schema's seed `facts:`, and everything the project's rules derive from them. Five surfaces feed the walk, as repeatable flags:
 
 ```console
 $ lute trace scene.lute \
@@ -43,6 +43,32 @@ occasions: [runEnd]
 
 Two notes point at an occasion mismatch without refusing the walk: an objective whose occasion the walk never raised (``objective `q.o` is judged at occasion `runEnd`, which this walk never raised (supply `--occasion runEnd` or `occasions: [runEnd]`)``), and a raised occasion no `<objective on>` in the document judges (``occasion `dayEnd` is judged by no `<objective on>` in this document``).
 
+### A save's history
+
+Two more mock keys (dsl 0.22.0, mock file only) seed what a player's save already holds — the same keys a [play script starts from](/tooling/play/#starting-from-a-save):
+
+- `quests: { <questId>: unset | active | complete | failed }` — a quest's lifecycle status, exactly a `quest.<id>.state` state seed.
+- `entriesRead: { run: [<entry id>…], user: [<entry id>…] }` — `run` seeds `entry.<id>.read: true` (read this run), `user` seeds `entry.<id>.everRead: true` (read in some run). In a mock neither implies the other: a new run clears `read` and keeps `everRead`.
+
+Both are spellings of reserved state paths, so they follow those paths' mock rules: the traced document must read (or declare) the path. Seeding a quest or an entry the document never reads is `E-TRACE-MOCK-UNDECLARED`, and a status outside the four is `E-TRACE-MOCK-PARSE`. In the [`beats` scaffold](/tooling/play/#worked-example), Tomas's oil entry is guarded on the lamp quest being active:
+
+```yaml
+# mocks/oil.yaml
+quests: { lampOut: active }
+```
+
+```console
+$ lute trace lore/tomas.lute --project . --entry tomasOil --mock mocks/oil.yaml
+trace: lore/tomas.lute  (seeds: 1 paths, 0 facts; 0 selections)
+note: quest `lampOut`'s existence is unverified by trace (run `check-project` to confirm it is defined by a project quest, dsl 0.5.1 §1.3/§1.4)
+  <entry tomasOil>   (first read)
+    @tomas  Oil? Top shelf. Tell Mara it's the wick, not the oil.
+    ::assert  knows(lamp)
+trace complete: 0 decisions
+```
+
+Without the mock the entry reads ``(first read, not eligible (`when` is false))``, and the same `quests:` against a scene that never reads `quest.lampOut.state` is refused with `E-TRACE-MOCK-UNDECLARED`.
+
 ## Reading the transcript
 
 The human form is an indented, ordered transcript: emitted content lines (interpolations substituted where decided, kept verbatim `{{…}}` where unknown), staging directives, state writes, and one line per **decision** — the construct, the winning arm/choice, and the guard with its read values. A trailing summary reports decisions taken, arm/choice coverage, and any unresolved atoms.
@@ -61,20 +87,7 @@ trace: docs/examples/choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
 trace complete: 2 decisions; choices 1/3 (sofaHelp), arms 1/2 (run.metHelpfully @45:1)
 ```
 
-An `unknown` guard halts the walk at that construct (exit 3) and reports the unresolved atoms — which paths or facts a mock would need. Trace never guesses past unknown eligibility; forcing past an unknown guard via `--choose` is the documented escape hatch. A forced choice still counts: the summary reads `1 unresolved (forced past an unknown guard — the walk continued, exit unchanged)` and names the atoms that would decide it, and `--json` lists it under `forcedUnknown`. The exit code stays what the rest of the walk earned. Reserved quest reads (`quest.<id>.state`, `…objectives.<oid>.done`) resolve to their defaults (`unset` / `false`) unless mocked, each carrying an "existence unverified" note (only `check-project` validates a foreign quest id).
-
-**Facts are closed; derived facts are unknown.** Trace does not run the Datalog rules. A base fact you did not supply is simply false. A fact of a `derive: true` relation that you did not supply is **unknown**, even when you supplied every base fact its rule needs, so a guard on it halts the walk (exit 3):
-
-```console
-$ lute trace d.lute --fact "clue(ann)"
-…
-  <match holds(clue(ann))>   -> arm 1 ((holds(clue(ann))))
-    @ann  base.
-trace incomplete: 1 unresolved atom (exit 3)
-  unresolved: match `(holds(guilty(ann)))` (holds(guilty(ann)) match) — supply --fact "guilty(ann)" as a mock; …
-```
-
-To trace what follows from a conclusion, mock the conclusion itself (`--fact "guilty(ann)"`). There is no mock for "this derived fact is false": leave the guard unresolved, or exercise the rule through `lute run` or `lute play`, which apply the seeds and the rules. [`lute test`](/tooling/cli/#test) walks the same way, and a test whose walk halts fails unless it declares `expect: { exit: incomplete }`.
+An `unknown` guard halts the walk at that construct (exit 3) and reports the unresolved atoms — which paths or facts a mock would need. Trace never guesses past unknown eligibility; forcing past an unknown guard via `--choose` is the documented escape hatch. A forced choice still counts: the summary reads `1 unresolved (forced past an unknown guard — the walk continued, exit unchanged)` and names the atoms that would decide it, and `--json` lists it under `forcedUnknown`. The exit code stays what the rest of the walk earned. Reserved quest reads (`quest.<id>.state`, `…objectives.<oid>.done`) resolve to their defaults (`unset` / `false`) unless mocked (`quests:` or `--state`), each carrying an "existence unverified" note (only `check-project` validates a foreign quest id).
 
 **A beat's own `when`.** Tracing a [beat scene](/language/beats/) walks its body whether or not its frontmatter `when:` holds. When the mocks make that `when` false or undecided, the trace opens with a note — ``beat `when` (run.day == 3) is false under these mocks — the `visit` selector would never present this scene; the walk below shows it as if it had been presented`` — and `lute test` shows the same note on the test line.
 
@@ -91,9 +104,146 @@ trace: scenes/shed.lute  (seeds: 0 paths, 0 facts; 1 selection)
 trace complete: 1 decision; choices 1/2 (offer)
 ```
 
+## Derivation
+
+**Facts are closed; rules derive** (dsl 0.22.0 §6). Trace loads the schema's seed `facts:`, adds your `--fact` / `facts:` mocks and every `::assert` / `::retract` the walk makes, and applies the project's Datalog rules — with stratified negation — over them. It is the same evaluator `lute run` and `lute play` use, so trace, test, and play cannot disagree about what a project's rules conclude. A base fact that is neither seeded, mocked, nor asserted is false; a derived fact holds exactly when a rule concludes it. So a guard, `done`, or `start` on a derived relation decides without mocking the conclusion, and "derived false because a negated premise holds" is testable:
+
+```lute check
+---
+kind: scene
+id: case.accuse
+entities:
+  person: { members: [ann, bob] }
+relations:
+  suspect: { args: [person] }
+  alibi: { args: [person] }
+  culprit: { args: [person], derive: true }
+facts:
+  - "suspect(ann)"
+rules:
+  - "culprit(P) :- suspect(P), not alibi(P)"
+---
+
+## The parlour
+
+@inspector: Everyone stays in this room.
+
+<branch id="ask">
+  <choice id="maid" label="Ask the maid first">
+    @maid: Miss Ann? She was at the harbour all evening.
+    ::assert{ alibi(ann) }
+  </choice>
+  <choice id="skip" label="Ask no one">
+    @inspector: No more questions.
+  </choice>
+</branch>
+
+<branch id="verdict">
+  <choice id="ann" label="Name Ann" when="holds(culprit(ann))">
+    @inspector: It was Ann. No one can place her anywhere else.
+  </choice>
+  <choice id="wait" label="Keep looking">
+    @inspector: Then we start again.
+  </choice>
+</branch>
+```
+
+With no mock at all, the seeded `suspect(ann)` and the absent `alibi(ann)` derive `culprit(ann)`:
+
+```console
+$ lute trace accuse.lute --choose ask=skip --choose verdict=ann
+trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
+  ## The parlour
+    @inspector  Everyone stays in this room.
+  <branch ask>   eligible: maid, skip   -> skip
+    @inspector  No more questions.
+  <branch verdict>   eligible: ann, wait   -> ann (holds(culprit(ann)))
+    @inspector  It was Ann. No one can place her anywhere else.
+trace complete: 2 decisions; choices 1/2 (ask), choices 1/2 (verdict)
+```
+
+Once the maid's `::assert{ alibi(ann) }` runs, the negated premise holds and `culprit(ann)` is definitely false — `verdict` offers only `wait`, and forcing `--choose verdict=ann` there is refused (`E-TRACE-CHOICE`, exit 1), not forced past an unknown:
+
+```console
+$ lute trace accuse.lute --choose ask=maid --choose verdict=wait
+trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
+  ## The parlour
+    @inspector  Everyone stays in this room.
+  <branch ask>   eligible: maid, skip   -> maid
+    @maid  Miss Ann? She was at the harbour all evening.
+    ::assert  alibi(ann)
+  <branch verdict>   eligible: wait   -> wait
+    @inspector  Then we start again.
+trace complete: 2 decisions; choices 1/2 (ask), choices 1/2 (verdict)
+```
+
+A mocked derived atom is still accepted: it is a seed like any other, so `--fact "culprit(ann)"` holds whatever the rules conclude. [`lute test`](/tooling/cli/#test) walks the same way, and a test whose walk halts fails unless it declares `expect: { exit: incomplete }`.
+
+**A rule guard over undecided state.** A rule may test state (`cel("…")`). When the mocks leave that state undecided, the rule decides nothing: its conclusion is unknown, and the report names the state path that would decide it rather than the derived atom:
+
+```lute check
+---
+kind: scene
+id: case.arrest
+state:
+  run.day: { type: number }
+entities:
+  person: { members: [ann] }
+relations:
+  suspect: { args: [person] }
+  warrant: { args: [person], derive: true }
+facts:
+  - "suspect(ann)"
+rules:
+  - 'warrant(P) :- suspect(P), cel("run.day >= 3")'
+---
+
+## The station
+
+<branch id="arrest">
+  <choice id="now" label="Arrest Ann" when="holds(warrant(ann))">
+    @inspector: The warrant came through. Bring her in.
+  </choice>
+  <choice id="later" label="Wait for the warrant">
+    @inspector: Not yet.
+  </choice>
+</branch>
+```
+
+```console
+$ lute trace arrest.lute --choose arrest=now
+trace: arrest.lute  (seeds: 0 paths, 0 facts; 1 selection)
+  ## The station
+  <branch arrest>   eligible: later   -> now (holds(warrant(ann))) (forced)
+    @inspector  The warrant came through. Bring her in.
+trace complete: 1 decision; 1 unresolved (forced past an unknown guard — the walk continued, exit unchanged); choices 1/2 (arrest)
+  unresolved (forced): branch `arrest -> now` choice guard `holds(warrant(ann))` was unknown — supply --state run.day=<value> as a mock to decide it
+```
+
+With `--state run.day=3` the rule concludes `warrant(ann)` and `now` is eligible outright.
+
+**`derive: false` restores 0.21.** The mock key `derive: false` (also accepted in a `*.test.yaml`), or the `--no-derive` flag on `lute trace` and `lute test` — the flag wins over the key — brings back the lookup-only model: the seed facts are not loaded, the rules are not applied, and a fact of a derived relation that you did not mock is **unknown**, so a guard on it halts the walk (exit 3) unless forced. A note says so when the schema declares seed facts you did not supply, and another names each derived relation the walk read. (`lute play` takes the same key and flag; there the seed facts still load and only the rules stop — see [Playing a story](/tooling/play/#derivation-and---explain).)
+
+```console
+$ lute trace accuse.lute --choose ask=skip --choose verdict=ann --no-derive
+trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
+note: the schema declares seed facts (e.g. `suspect`) but under `derive: false` trace does not auto-load them (§3.1, the explicit-world model) — supply seeded relations explicitly via --fact
+note: derived relation `culprit` read under `derive: false`: its rules were not applied, so an unmocked `culprit(…)` is unknown — supply it via --fact, or drop `derive: false`
+  ## The parlour
+    @inspector  Everyone stays in this room.
+  <branch ask>   eligible: maid, skip   -> skip
+    @inspector  No more questions.
+  <branch verdict>   eligible: wait   -> ann (holds(culprit(ann))) (forced)
+    @inspector  It was Ann. No one can place her anywhere else.
+trace complete: 2 decisions; 1 unresolved (forced past an unknown guard — the walk continued, exit unchanged); choices 1/2 (ask), choices 1/2 (verdict)
+  unresolved (forced): branch `verdict -> ann` choice guard `holds(culprit(ann))` was unknown — supply --fact "culprit(ann)" as a mock to decide it
+```
+
+**Migrating from 0.21.** A test that relied on an unmocked derived atom being unknown (exit 3), or on a seeded relation reading empty, now sees the derived or seeded answer and may change verdict. Pin `derive: false` in that test or mock to keep the old one — or, better, assert what the rules conclude. To walk everything the old way at once, run `lute test --no-derive`, which overrides every test's and play script's own `derive:`.
+
 ## The `E-TRACE-*` refusals
 
-Before walking, trace resolves the document exactly as `check` does and **refuses** (exit 1) a document with check errors or invalid mocks — run `check` first. The mock refusals: `E-TRACE-MOCK-UNDECLARED` (undeclared `--state` path), `E-TRACE-MOCK-TYPE` (wrong literal type), `E-TRACE-MOCK-FACT` (unknown relation/arity/foreign arg), `E-TRACE-CHOICE` (unknown or ineligible forced choice), `E-TRACE-EVENT` (a built-in lifecycle event `questActive`/`questComplete`/`questFailed` — engine-derived, never fired by hand), and `E-TRACE-ACCEPT` (an unknown quest id, or one that carries a `start` predicate and needs no accept). An unmatched `--event` is an informational note, not a refusal.
+Before walking, trace resolves the document exactly as `check` does and **refuses** (exit 1) a document with check errors or invalid mocks — run `check` first. The mock refusals: `E-TRACE-MOCK-PARSE` (a malformed mock file — including a `quests:` status outside the four, an `entriesRead:` that is not `{ run: [...], user: [...] }`, or a `derive:` that is not `true`/`false`), `E-TRACE-MOCK-UNDECLARED` (an undeclared `--state` path, or a `quests:`/`entriesRead:` path the document neither reads nor declares), `E-TRACE-MOCK-TYPE` (wrong literal type), `E-TRACE-MOCK-FACT` (unknown relation/arity/foreign arg), `E-TRACE-CHOICE` (unknown or ineligible forced choice), `E-TRACE-EVENT` (a built-in lifecycle event `questActive`/`questComplete`/`questFailed` — engine-derived, never fired by hand), and `E-TRACE-ACCEPT` (an unknown quest id, or one that carries a `start` predicate and needs no accept). An unmatched `--event` is an informational note, not a refusal.
 
 Since 0.6.1, trace also emits a warning (not a refusal) — `W-TRACE-MOCK-UNPRODUCIBLE` — for a `--fact`/mock-YAML fact whose relation no authored producer can ever assert (`producible()` judges it not producible): the supplied answer can never arise in reachable play, so a "complete" walk seeded with it proves nothing. A `reserved: true` or `open: engine`-argument relation is producible by definition and never warns.
 

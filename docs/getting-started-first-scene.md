@@ -286,8 +286,8 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.21.1",
-  "irVersion": "0.21.1",
+  "lute": "0.22.0",
+  "irVersion": "0.22.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "id": "mira.s01ep01",
@@ -317,7 +317,7 @@ $ ./target/debug/lute compile my-scene.lute
       "lineId": "mira.s01ep01.narrator_0010" },
     { "kind": "line", "addr": "001-0200", "role": "dialogue", "speaker": "mira",
       "text": "{{userName}}, you made it.", "emotion": "content", "variant": 0,
-      "lineId": "mira.s01ep01.mira_0010", "voiceKey": "mira-0010",
+      "lineId": "mira.s01ep01.mira_0010", "voiceKey": "mira.s01ep01.mira-0010",
       "placeholders": [{ "kind": "reserved", "token": "userName" }] },
     { "kind": "line", "addr": "001-0300", "role": "monologue", "speaker": "mira",
       "text": "I should not be this pleased about a coffee order.",
@@ -334,11 +334,11 @@ $ ./target/debug/lute compile my-scene.lute
       "converge": "001-0900" },
     { "kind": "line", "addr": "001-0500", "role": "dialogue", "speaker": "mira",
       "text": "Good. No nonsense in a cup.", "emotion": "content", "variant": 0,
-      "lineId": "mira.s01ep01.mira_0030", "voiceKey": "mira-0030" },
+      "lineId": "mira.s01ep01.mira_0030", "voiceKey": "mira.s01ep01.mira-0030" },
     { "kind": "jump", "addr": "001-0600", "target": "001-0900" },
     { "kind": "line", "addr": "001-0700", "role": "dialogue", "speaker": "mira",
       "text": "You remembered. That's new.", "emotion": "surprised", "variant": 0,
-      "lineId": "mira.s01ep01.mira_0040", "voiceKey": "mira-0040" },
+      "lineId": "mira.s01ep01.mira_0040", "voiceKey": "mira.s01ep01.mira-0040" },
     { "kind": "jump", "addr": "001-0800", "target": "001-0900" }
   ],
   "shots": [
@@ -428,7 +428,10 @@ id: mira.s01ep01
 `id:` is a plain string (letters, digits, `_`, `-`, `.`) that identifies this scene
 project-wide. `visited("mira.s01ep01")` in another scene's `after:` names *this* one;
 the same string is the prefix every `lineId`/`voiceKey` in the compiled artifact is
-built from (`"lineId": "mira.s01ep01.narrator_0010"` in the Part 4 output). With
+built from (`"lineId": "mira.s01ep01.narrator_0010"` and
+`"voiceKey": "mira.s01ep01.mira-0010"` in the Part 4 output — the default `voiceKey`
+template is `{prefix}.{speaker}-{code}`, so two scenes' `mira` lines with the same
+code never share a recording). With
 `id:` declared, `character:` / `season:` / `episode:` become optional — keep them if
 they carry useful metadata (search, TMS), drop them if they don't. If you write
 `id:` **and** any of those legacy identity keys in the same document, the checker
@@ -619,22 +622,30 @@ routes, the guaranteed state at each node — instead of guessing.
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
 project accepts — the staging directives, their attributes, the vocabulary members in scope
-(your `emotion` list, say), the declared state, and the delivery-flag vocabulary — resolved for
-the specific file you give it:
+(your `emotion` list, say), the declared state, the delivery-flag vocabulary, the language's
+own built-in directives, and the scene ids you can name in `visited(…)` — resolved for the
+specific file you give it:
 
 ```
 $ ./target/debug/lute context my-scene.lute
 capabilityVersion: 69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81
-directives (9):
-  auto: character, anchor, action
-  bg: location, time, assetId
+permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
+directives (11):
+  auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
+  bg: location, time, assetId   [mutatesScene]
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
   cut: assetId, action, full
-  end: reason
-  music: action, mood, volume, assetId, track
+  end: reason   [terminatesWalk]
+  mark: id
+  music: action, mood, volume, assetId, track   [mutatesScene]
+  next: to, when
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
+bridges (0):
+rewardKinds (0):
+occasions (0):
+questsAllowed: true
 enums (0):
 stateSchema (3):
   run.metMira: bool
@@ -646,6 +657,14 @@ deliveryFlags (3):
   {vo}: voiceover: narration-style delivery layered over the scene
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
+builtinDirectives (5):
+  ::set{ <path> = <expr> }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
+  ::assert{ <relation>(<arg>, …) } — assert a ground fact of a declared, non-derived, non-reserved relation
+  ::retract{ <relation>(<arg | _>, …) } — retract the matching facts of a declared, non-derived, non-reserved relation
+  ::accept{quest="<questId>"} — accept a quest that has no `start` condition
+  ::use{component="<name>" <param>=<value> …} — expand an imported component with named arguments
+scenes (1; read as visited("<id>")):
+  mira.s01ep01
 ```
 
 `enums (0)` is not a bug: that line counts members supplied by the active *plugins*, and this
@@ -663,6 +682,10 @@ path, `context` also lists exactly those referenced paths under a `reservedQuest
 (omitted here since this scene reads no quest state — see `docs/proposals/scenario-dsl/0.2.0.md`
 for quests).
 
+`builtinDirectives` lists the directives the language itself provides — `::set` from Part 5 is
+one — and `scenes` lists the ids `visited("…")` can name. Pass `--project episodes` and that
+list covers every scene in the project, alongside its quests and lore entries.
+
 Run it any time you need to double check a directive name, an attribute, or a legal `emotion`
 value instead of guessing.
 
@@ -676,6 +699,13 @@ snippets):
   [README](examples/showcase/README.md) — a feature-by-feature tour with a line-number index.
 - [`docs/examples/quest-grove.lute`](examples/quest-grove.lute) — an example of the *other*
   document kind, `quest`.
+
+Building a game the engine drives by moments — the player walks into the hub, talks to
+someone, ends the day — rather than a fixed episode order? `lute init --template beats
+my-game` scaffolds a working example: an occasions plugin, beats that answer those moments, a
+quest, lore entries, a play script, and scenario tests, where `lute check-project`, `lute test`,
+and `lute play` all pass as scaffolded (`docs/proposals/scenario-dsl/0.21.0.md` and `0.22.0.md`
+specify beats, occasions, and play scripts).
 
 And when you're ready to go deeper than this tutorial:
 

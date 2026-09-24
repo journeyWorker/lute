@@ -76,6 +76,12 @@ maintains a fact store; the artifact drives it with:
 - **`retract` commands** — a negative delta: remove matches of
   `relation(args)` where `"_"` positions are a bulk wildcard the engine
   resolves (`ir.rs::RetractCmd`, §5 RetractPattern).
+- **engine assertions** — a `reserved: true` relation (`RelationEntry.reserved`)
+  is the engine's own, the fact-store counterpart of an `owner: engine` state
+  path (`state-lifecycle.md`): the checker rejects content's `::assert` /
+  `::retract` of it (`E-RELATION-RESERVED-WRITE`), so no `assert` / `retract`
+  record in a checked artifact targets one, and its facts are its seeds plus
+  whatever the engine establishes.
 
 Deltas are **valid-now** — Lute emits no timestamps. The DSL's temporal model
 (dsl 0.3.0 §6) keys each fact to **narrative time**: the engine stamps
@@ -90,7 +96,7 @@ store.
 ## Datalog: the engine computes the minimal model
 
 `rules: RuleEntry[]` are emitted as **structured data** — a `head` atom plus a
-`body` of literals — never evaluated by Lute. The engine runs the
+`body` of literals — never evaluated by the compiler. The engine runs the
 **least-fixpoint** over `seedFacts` ∪ asserted facts ∪ `rules`, deriving every
 `derive: true` relation (`RelationEntry.derive`). A rule body literal
 (`ir.rs::BodyEntry`) is one of:
@@ -126,6 +132,16 @@ Because negation is stratified and every rule is safe, the least-fixpoint
 exists, is unique (the minimal model), and terminates over the finite Herbrand
 base. Recomputation policy — full recompute vs. incremental maintenance on each
 delta — is the engine's choice; the *result* is fixed by these semantics.
+
+The toolchain implements these semantics once, in `lute_trace::datalog`: the
+reference runner (`lute run` / `lute play`) and, since dsl 0.22.0 §6,
+`lute trace` / `lute test` compute this fixpoint over the seed facts, the
+mocked and asserted facts, and the rules, so none of them can disagree with the
+others about a rule's conclusion. That makes the runner a reference to check an
+engine's evaluator against: `lute play --explain <atom>` prints the derivation
+it found for a ground atom at the end of a playthrough — the rule and each
+premise's support — or, when the atom does not hold, every rule that could
+conclude it with its failing premises.
 
 > **Boundary — relational gates are decided conservatively at compile time.**
 > Since dsl 0.20.0, `check-project` decides every `holds(…)`/`count(…)` in a

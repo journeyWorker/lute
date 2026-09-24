@@ -28,16 +28,19 @@ defs:
 
 ## Required keys
 
-A root document must declare its **`kind`** — `scene`, `quest`, or [`lore`](/language/lore-entries/) — and, for a scene, the
-identity triple **`character`**, **`season`**, and **`episode`**. Omitting any of these is a static
-error (`E-KIND-MISSING`, `E-META-MISSING`).
+A root document must declare its **`kind`** — `scene`, `quest`, or [`lore`](/language/lore-entries/) — and a scene
+must declare an identity: an **`id`**, or the triple **`character`**, **`season`**, and
+**`episode`**. Omitting these is a static error (`E-KIND-MISSING`, `E-META-MISSING`).
 
 ## Optional keys
 
-- **`episodeId`** — a stable opaque episode id, the prefix input to every derived `lineId`. When
-  omitted it defaults to `s{season:02}ep{episode:02}` (e.g. `season: 1, episode: 2` → `s01ep02`).
-  Pinning it explicitly lets you renumber `season`/`episode` without breaking translation or voice
-  keys.
+- **`id`** — the scene's canonical key (`hub.welcome`, `mara.first`): what `visited('…')` and
+  `after:` name, the artifact's `meta.id`, and the `{prefix}` of every derived `lineId`. Letters,
+  digits, `_`, `.`, and `-` only (`E-META-ID`). When omitted, the key is derived as
+  `{character}.{episodeId}`.
+- **`episodeId`** — a stable opaque episode id, the input to that derived key. When omitted it
+  defaults to `s{season:02}ep{episode:02}` (e.g. `season: 1, episode: 2` → `s01ep02`). Pinning it
+  explicitly lets you renumber `season`/`episode` without breaking translation or voice keys.
 - **`title`** — an optional human title (localizable).
 - **`pov`** — the id of the player/protagonist speaker. The content-line speaker whose id equals
   `pov` renders as the reserved **player** kind (see [Dialogue & cast](/language/dialogue-and-cast/)).
@@ -64,25 +67,45 @@ once per project rather than per document. In `lute.project.yaml`:
 ```yaml
 identity:
   lineId: "{prefix}.{speaker}_{code}"
-  voiceKey: "{speaker}-{code}"
+  voiceKey: "{prefix}.{speaker}-{code}"
 ```
 
 Both values above are the **defaults** — a project that declares no `identity:`
 block compiles exactly as if it had declared this one, and a project that
 declares one of the two keys leaves the other at its default.
 
-`{prefix}` is derived, not authored: it is `{character}.{episodeId}`, and
-`episodeId` itself defaults to `s{season:02}ep{episode:02}` as described above.
-So `character: haven`, `season: 1`, `episode: 2` gives the prefix
+`{prefix}` is derived, not authored: it is the document's key — its `id:`, or else
+`{character}.{episodeId}`, with `episodeId` defaulting to `s{season:02}ep{episode:02}` as
+described above. So `character: haven`, `season: 1`, `episode: 2` gives the prefix
 `haven.s01ep02`, and a line `@purser{code="0020"}` compiles to
-`lineId: "haven.s01ep02.purser_0020"` and `voiceKey: "purser-0020"`. Pinning
-`episodeId: pilot` on that same scene gives `haven.pilot.purser_0020`.
+`lineId: "haven.s01ep02.purser_0020"` and `voiceKey: "haven.s01ep02.purser-0020"`. Pinning
+`episodeId: pilot` on that same scene gives `haven.pilot.purser_0020`; declaring `id: haven.deck`
+gives `haven.deck.purser_0020`.
 
-The default `voiceKey` has no `{prefix}`, so it is the same in every document: a
-`@purser{code="0020"}` line in episode 3 is also `purser-0020`. Two lines that say different
-things under one key would share one recording, so `check-project` and `compile --all` refuse it
-(`E-DUP-VOICEKEY`, naming every line on the key). A project with more than one document should
-declare `voiceKey: "{prefix}.{speaker}-{code}"`.
+**Breaking in 0.22.0: the default `voiceKey` carries `{prefix}`.** Through 0.21 it was
+`{speaker}-{code}`, which is the same in every document: a `@purser{code="0020"}` line in
+episode 3 was also `purser-0020`, one voice asset for two different lines (0.21.1 began refusing
+that as `E-DUP-VOICEKEY`). With the prefix the default is unique across the project. A project
+that recorded audio against the old keys pins the old template in `lute.project.yaml` to keep
+them:
+
+```yaml
+identity:
+  voiceKey: "{speaker}-{code}"
+```
+
+Under such a pin, two lines that say different things under one key still refuse to build:
+`check-project` and `compile --all` report `E-DUP-VOICEKEY`, naming every line on the key. A
+project that already declared `voiceKey: "{prefix}.{speaker}-{code}"` compiles unchanged, and can
+drop the pin.
+
+Lines expanded from a [component](/language/components-and-extends/#line-identity) get their own
+scope (0.22.0): inside a `::use` expansion, `{prefix}` is `{prefix}.{component}#{n}`, where `n`
+counts the host's uses of that component. So the second `::use{component="toast"}` in
+`harbor.dinner` compiles its `@mira{code="0010"}` line to `harbor.dinner.toast#2.mira_0010`, and its
+default `voiceKey` to `harbor.dinner.toast#2.mira-0010`. A pinned template without `{prefix}`
+drops that scope from the `voiceKey`, so the component line shares `mira-0010` with the host's own
+`@mira{code="0010"}`.
 
 The two templates govern **spoken content lines only**. Two other ids in the
 artifact are also called `lineId`/`titleLineId` and are *not* templated:

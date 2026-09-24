@@ -20,7 +20,7 @@ Statically validate one `.lute` document. Without `--project`, the nearest `lute
 $ lute check-project <dir> [--json] [--providers <DIR>] [--deny <CODE>]… [--deny-warnings]
 ```
 
-Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted order, each against its own nearest-ancestor `lute.project.yaml` root, **plus** project-wide `<quest id>` uniqueness, the connectivity passes (`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`), and the [relational guard analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards) (dsl 0.20.0): every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project, so a guard that can never hold is reported through its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`) and a redundant one as `W-FACT-GUARANTEED`. It then compiles every document that checked clean under its project's `identity:`, so compile-stage errors fail here rather than only at `compile`: `E-DUP-LINE-CODE` in an expanded component, `E-DUP-VOICEKEY` (lines with different text on one `voiceKey`, which the default `{speaker}-{code}` template invites across scenes — set `identity.voiceKey: "{prefix}.{speaker}-{code}"`), and `E-CAPABILITY-MISMATCH` (documents resolving two capability snapshots, which `compile --all` and `play` refuse). Exit **0** clean, **1** when any file has an error or a project-wide collision, **2** on I/O. The same `--deny <CODE>`/`--deny-warnings` promotion (see `check`) applies project-wide.
+Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted order, each against its own nearest-ancestor `lute.project.yaml` root, **plus** project-wide `<quest id>` uniqueness, the connectivity passes (`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`), and the [relational guard analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards) (dsl 0.20.0): every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project, so a guard that can never hold is reported through its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`) and a redundant one as `W-FACT-GUARANTEED`. The project-wide beat and quest advisories run here too (dsl 0.22.0): `W-BEAT-PRIORITY-TIE` (beats on one `select: first` occasion, for the same or no target, with equal priority and `when`s not provably exclusive, so file order picks the winner), `W-BEAT-ONCE-RUN-USER` (a `once: run` beat whose `when` reads only user-tier state, so it replays every run), and `W-QUEST-HANDLER-DEAD` (an `<on event="questFailed">` on a quest that has no `fail`, no required subquest objective, and no parent quest, so it can never fail). It then compiles every document that checked clean under its project's `identity:`, so compile-stage errors fail here rather than only at `compile`: `E-DUP-VOICEKEY` (lines with different text on one `voiceKey` — since 0.22.0 the default `{prefix}.{speaker}-{code}` keeps scenes apart, so this is what a project pinning the older unprefixed `identity.voiceKey: "{speaker}-{code}"` risks) and `E-CAPABILITY-MISMATCH` (documents resolving two capability snapshots, which `compile --all` and `play` refuse). Exit **0** clean, **1** when any file has an error or a project-wide collision, **2** on I/O. The same `--deny <CODE>`/`--deny-warnings` promotion (see `check`) applies project-wide.
 
 ## compile
 
@@ -136,10 +136,14 @@ and consumer cursor/state rules.
 ```console
 $ lute trace <file> [--state P=L]… [--fact "R(A…)"]… [--choose ID=C[,C]]…
               [--event N]… [--accept Q]… [--occasion O]… [--mock <FILE>] [--json]
-              [--providers <DIR>] [--project <DIR>] [--entry <ID>]
+              [--providers <DIR>] [--project <DIR>] [--entry <ID>] [--no-derive]
 ```
 
 Preview a document against author-supplied mocks (see the [tracing guide](/tooling/tracing/)). Exit **0** complete, **1** refused (check errors or invalid mocks — the `E-TRACE-*` codes render like check diagnostics), **2** I/O, **3** incomplete (an `unknown` guard halted the walk). `--occasion <O>` (repeatable, dsl 0.21.0) raises an occasion after a quest walk settles, judging the `<objective on="O">` objectives of every active quest; the mock file's `occasions:` list does the same, and its `visited:` list seeds the scenes `visited('<id>')` reads as presented (unlisted scenes are not visited).
+
+A mock can also start from a save (dsl 0.22.0): `quests: { <id>: unset | active | complete | failed }` seeds `quest.<id>.state`, and `entriesRead: { run: [ids], user: [ids] }` seeds `entry.<id>.read` and `entry.<id>.everRead`. Each follows the mock rules of the reserved path it spells — the document must read that path.
+
+**Derivation is on by default** (dsl 0.22.0). Trace loads the project's seed `facts:` and applies its Datalog rules (stratified negation) over the mocked and asserted facts, so a rule-derived fact satisfies a guard, `done`, or `start` without mocking the conclusion, and a derived fact that is false because a negated premise holds can be traced. Mocking a derived atom still works — it is a seed like any other. `--no-derive`, or `derive: false` in the mock (the flag wins), restores the 0.21 model: seeds are not loaded, an unmocked derived atom is unknown, and a note names each derived relation read. Trace, `test`, `run`, and `play` share one Datalog evaluator, so they cannot disagree about what a project's rules conclude.
 
 `--entry <ID>` presents **one** `<entry>` of a [lore document](/language/lore-entries/) (dsl 0.19.0) instead of walking a sequence: its lines, the `<match>` arm taken, and the `::set` / `::assert` / `::retract` a first read applies — or skips, when the mock seeds `entry.<id>.read: true`. A lore document has no sequence to walk, so tracing one without `--entry` is a usage error (exit **2**, naming the declared entry ids); `--entry` on a scene or quest, or naming an id the document does not declare, is `E-TRACE-ENTRY` (exit **1**).
 
@@ -169,21 +173,35 @@ $ lute context <file> [--json] [--providers <DIR>] [--project <DIR>]
 
 Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, effective permission layers, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. With `--permission-profile`, JSON `permissions` is `{ "layers": [...] }`, `bridges` contains only allowed bridge capability objects, `rewardKinds` is the allowed name-keyed object (empty when rewards are denied), and `questsAllowed` is a boolean. `directives` excludes both directive-denied entries and bridge directives whose `service/operation` is denied. External read-only state remains visible. Text output describes a compile-time authoring restriction and explicitly does not claim runtime sandboxing. Exit **0** on success, **2** on I/O; project/profile resolution errors are surfaced rather than treated as unrestricted.
 
+Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `type`, `params`, and `body`), the language's built-in directives under `builtinDirectives` (`::set`, `::assert`, `::retract`, `::accept`, `::use`, each with its `syntax` and `meaning`), and `ids` — every scene, quest, and lore entry id in the `--project` (`{ scenes, quests, entries }`; without `--project`, the document's own). A relation reports its `tier` and whether it is `reserved`, a state path declared `owner: engine` says so, an occasion carries its `description` and its `target` (`false`, `true`, or a `{ prefix, entity }` domain — human: `talk (select: first, target: npc.<npc>)`), and the human outline prints each imported component's parameters with their types. See the [AI harness guide](/tooling/ai-harness/#prompt-context-lute-context---json).
+
 ## tag
 
 ```console
-$ lute tag <file>
+$ lute tag <path> [--force]
 ```
 
-Back-fill a stable `code` into every untagged `:line`, rewriting the file in place. Exit **0** on success, **2** on I/O.
+Back-fill a stable `code` into every untagged `:line`, rewriting the file in place; a document already fully tagged is left byte-identical. `--force` renumbers every line's `code` in clean document order instead (`0010`/`0020`/… per speaker per scope) — a drafting tool, refused for a document whose frontmatter declares `codesLocked:` (published codes are `lineId`/`voiceKey` identity) or that has structural errors. Exit **0** on success, **1** when a document was refused, **2** on I/O.
+
+`<path>` may be a directory (dsl 0.22.0): every `.lute` file under it is rewritten, recursively, in the same sorted order `check-project` walks. Each changed file gets a line naming it, a file with nothing to do stays silent, and a summary closes the run; a refused or unreadable file is reported and the walk goes on, and the exit code is the worst outcome across the files:
+
+```console
+$ lute tag scenes
+lute: scenes/hub/day-end.lute: tagged 1 line(s)
+lute: scenes/hub/morning.lute: tagged 1 line(s)
+lute: scenes/hub/welcome.lute: tagged 1 line(s)
+lute: scenes/talk/mara-first.lute: tagged 3 line(s)
+lute: scenes/talk/mara-idle.lute: tagged 2 line(s)
+lute: tagged 8 line(s) in 5 of 5 file(s)
+```
 
 ## fix
 
 ```console
-$ lute fix <file>
+$ lute fix <path>
 ```
 
-Apply the mechanical, meaning-preserving migrations in place — `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, choice `as="…"` → `into="…"`, and a literal-comparison `<when test="$ == 'gold'">` → `<when is="gold">` (`W-WHEN-TEST-LITERAL`, dsl 0.18.0). Byte-exact and comment-preserving; writes back only when something changed. Exit **0** on success, **2** on I/O.
+Apply the mechanical, meaning-preserving migrations in place — `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, choice `as="…"` → `into="…"`, and a literal-comparison `<when test="$ == 'gold'">` → `<when is="gold">` (`W-WHEN-TEST-LITERAL`, dsl 0.18.0). Byte-exact and comment-preserving; writes back only when something changed. Like [`tag`](#tag), `<path>` may be a directory: every `.lute` file under it, recursively and in sorted order, each changed file on its own line, then a summary (`lute: applied N fix(es) in M of K file(s)`). Exit **0** on success, **2** on I/O — for a directory, the worst outcome across its files.
 
 ## catalog refresh
 
@@ -196,10 +214,16 @@ Re-stamp every pinned provider snapshot in `<dir>` against the current `capabili
 ## init
 
 ```console
-$ lute init <dir> [--template minimal|investigation]
+$ lute init <dir> [--template minimal|investigation|beats]
 ```
 
-Scaffold a new Lute project directory — a `lute.project.yaml`, a state schema, a starter scene, and a trace mock, ready for `lute check-project`. `<dir>` must not already contain a `lute.project.yaml`. `--template` selects the starter content: `minimal` (default) or `investigation` (the worked whodunit). Exit **0** on success, **2** on I/O or a refused overwrite.
+Scaffold a new Lute project directory, ready for `lute check-project`. `<dir>` must not already contain a `lute.project.yaml`. `--template` selects the starter content:
+
+- `minimal` (default) — a core-only `lute.project.yaml`, a state schema, a vocabulary schema, a starter scene, and a trace mock.
+- `investigation` — the worked whodunit.
+- `beats` (dsl 0.22.0) — a game driven by [beats and occasions](/tooling/play/): a project-local occasions plugin (one occasion with a `{ prefix, entity }` target domain), a manifest whose `defaults:` supply `luteVersion` and `uses`, a `world.schema.yaml` with an `owner: engine` clock and shorthand `defs`, scene beats with `id:`, a quest, lore entry beats, a play script with an `engine:` step and `expect:`s, and scenario tests. `check-project`, `test`, and `play` all pass as scaffolded.
+
+None of the templates pins `identity:` — the default `voiceKey` already carries the scene prefix. The command prints every file it created and the next commands to run. Exit **0** on success, **2** on I/O, an unknown template, or a refused overwrite.
 
 ## lore
 
@@ -213,9 +237,19 @@ Print the project's **world-narrative map** (dsl 0.19.0): every [lore entry](/la
 
 ```console
 $ lute new <scene|quest|lore|schema> <name> [--dir <DIR>]
+$ lute new scene <name> --on <occasion> [--target <target>] [--dir <DIR>]
 ```
 
-Scaffold one new document into an existing project. The first argument is the document kind (`scene`, `quest`, `lore`, or `schema`); `<name>` is the file stem and id. `lute new quest` writes `quests/<name>.lute` with a document `id: quest.<ident>`; `lute new lore` writes `lore/<name>.lute` with a document `id: lore.<ident>` and one `<entry>` attached to `item.<ident>`. `--dir` is the project directory to scaffold into (default: the current directory). Exit **0** on success, **2** on I/O or an invalid kind.
+Scaffold one new document into an existing project. The first argument is the document kind (`scene`, `quest`, `lore`, or `schema`); `<name>` is the file stem, and a `/` in it nests the file in a subfolder (`lute new scene talk/tomas-evening` writes `scenes/talk/tomas-evening.lute`). Every document gets an `id:` — a scene's is its name (dotted by folder: `talk.tomasEvening`), `lute new quest` writes `quests/<name>.lute` with `id: quest.<ident>`, and `lute new lore` writes `lore/<name>.lute` with `id: lore.<ident>` and one `<entry>` attached to `item.<ident>` — and omits whatever the manifest's `defaults:` already supplies (such as `luteVersion` or `uses`). `--dir` is where to start looking for the project (default: the current directory); the document lands under the enclosing project's root, the directory holding its `lute.project.yaml`. Outside any project, `lute new` says so on stderr and writes a self-contained document.
+
+`--on <occasion>` (dsl 0.22.0) makes the scene a [beat](/language/beats/) answering that occasion, and `--target <target>` names what a targeted occasion is raised for, a `<prefix>.<member>` of its target domain. Both are checked against the project before anything is written — an occasion the project's plugins do not declare, or a target outside the occasion's domain, is exit **2** with a did-you-mean and no file:
+
+```console
+$ lute new scene talk/tomas-evening --on talk --target npc.tomass
+lute new: target `npc.tomass` is outside occasion `talk`'s domain `npc.<npc>` (`npc.mara`, `npc.tomas`) — did you mean `npc.tomas`? (dsl 0.22.0 §8); nothing was written
+```
+
+Outside a project `--on` is refused, since no occasion is declared. Exit **0** on success, **2** on I/O, an invalid kind, or a refused `--on`/`--target`.
 
 ## doctor
 
@@ -223,7 +257,28 @@ Scaffold one new document into an existing project. The first argument is the do
 $ lute doctor [<dir>] [--json]
 ```
 
-Diagnose the local toolchain and project setup: the version axes, the project manifest, provider snapshots, and editor-integration hints. `<dir>` is the project directory to inspect (default: the current directory). `--json` emits the report as JSON instead of the human checklist. Exit **0** when every check passes, **1** when a check reports a problem, **2** on I/O.
+Diagnose the local toolchain and project setup: the version axes, the project manifest, the content documents, play scripts (`*.play.yaml`) and scenario tests (`*.test.yaml`), provider snapshots, the active plugins, every declared occasion with the number of beats answering it, the declared vocabulary slots, and editor integration. `<dir>` is the project directory to inspect (default: the current directory). Provider snapshots are looked for in the manifest's `catalogDir:` (default `catalog/`), the directory `check` reads; with none there the line says `no pinned provider snapshots`. The editor check runs `lute-lsp --version` on the first `lute-lsp` on `PATH` and flags one that reports another version — or none, as a server older than 0.22.0 does — with how to reinstall it.
+
+```console
+$ lute doctor .
+lute doctor — .
+  • toolchain version: 0.22.0
+  • language version: 0.22.0
+  • IR schema version: 0.22.0
+  ✓ lute.project.yaml: found at ./lute.project.yaml
+  ✓ content documents: 7 `.lute` file(s) under .
+  • play scripts: 1 `*.play.yaml`
+  • scenario tests: 2 `*.test.yaml`
+  • provider snapshots: no pinned provider snapshots
+  • active plugins: game.occasions 0.1.0
+  • occasions (beats answering): 3 declared, 7 beat(s) — dayEnd (1), hubVisit (2), talk (4)
+  • vocabulary slots declared: emotion, action (exits: fade-out/hide), anchor (default: center), mood, volume, musicAction, vfxType
+  • VS Code extension: not detectable from the CLI
+  ✗ lute-lsp on PATH: /usr/local/bin/lute-lsp reports no version (older than 0.22.0) — differs from lute 0.22.0
+      → reinstall the language server from this toolchain (`cargo install --path crates/lute-lsp`) and restart the editor
+```
+
+`--json` emits the same checks as one object, `{ "dir", "checks": { <key>: { label, ok, detail, hint } } }` (`ok` is `null` for an informational line). A report, never a gate: exit **0** whatever the checks find, **2** when `<dir>` cannot be read.
 
 ## run
 
@@ -240,20 +295,49 @@ For a quest artifact, `--occasion <O>` (repeatable, dsl 0.21.0) raises an occasi
 ## play
 
 ```console
-$ lute play <PROJECT_DIR> --script <FILE> [--json]
+$ lute play <PROJECT_DIR> --script <FILE> [--json] [--no-derive] [--explain <ATOM>]…
 ```
 
-Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project is compiled once, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). The required `--script` is a `*.play.yaml` file with a closed key set — `steps:` (each one `{occasion, target?, pick?}` or `{newRun: true}`) plus the `lute trace --mock` grammars for `state:`, `facts:`, and `choose:`. Each step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object. Exit **0** complete (every step played, or a scene's `::end`), **1** an error (the project fails to compile, a vocabulary conflict, or a `pick` that is not eligible), **2** a usage/I/O failure (a malformed script, an unknown occasion, an unreadable project), **3** incomplete (an unscripted choice or hub, or a `when`, quest objective, `now()`/`validAt()`, or plugin `bridgeResult` the reference runtime cannot decide). A `choose:` decision that is not offered — an ineligible choice, or a `once` hub option already taken (`E-TRACE-CHOICE`) — is exit **1**, like an ineligible `pick`. Script format, selection order, and transcript shapes: [Playing a story](/tooling/play/).
+Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project is compiled once, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), or fire a world `event:` — and any step may carry `label:`, `repeat: <n>`, and `expect: { winner, offered, notOffered }`. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, and `choose:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none` presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
+
+`--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--explain <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
+
+Exit **0** complete (every step played, or a scene's `::end`) with every expectation met, **1** an error (the project fails to compile, a vocabulary conflict, a `pick` that is not eligible, or an `expect:` miss — each miss names the step, its `label:`, and the actual value), **2** a usage/I/O failure (a malformed script, an unknown occasion or `expect:` key, a step target outside its occasion's target domain, a save id the project does not declare, an `engine:` write that does not fit its declared type — or any `quest.*` write, since quest status is the lifecycle's and a save seeds it with top-level `quests:` — or an unreadable project), **3** incomplete (an unscripted choice or hub, or a `when`, quest objective, `now()`/`validAt()`, or plugin `bridgeResult` the reference runtime cannot decide). A `choose:` decision that is not offered — an ineligible choice, or a `once` hub option already taken (`E-TRACE-CHOICE`) — is exit **1**, like an ineligible `pick`. `lute test` runs every play script that carries an `expect:`. Script format, selection order, and transcript shapes: [Playing a story](/tooling/play/).
 
 ## test
 
 ```console
-$ lute test [<dir>] [--json] [--providers <DIR>] [--project <DIR>] [--coverage]
+$ lute test [<dir>] [--json] [--providers <DIR>] [--project <DIR>] [--coverage] [--no-derive]
 ```
 
-Run the project's scenario tests: every `*.test.yaml` under `<dir>` (default: the current directory) traces its scene against the declared mocks and asserts the declared expectations. `--json` emits the machine-readable report; `--providers` pins a snapshot directory; `--project` resolves each traced document against the project (its `defaults:` and plugins) exactly as `lute trace --project` does — without it the trace is core-only. `--coverage` also reports branch/arm coverage across the tested documents and lists the **untested** documents — every testable document no `*.test.yaml` names — under `--project`, or else under the nearest `lute.project.yaml` above `<dir>`, so `lute test tests --coverage` still measures the whole project. Exit **0** when every test passes, **1** on a test failure, **2** on I/O.
+Run the project's scenario tests: every `*.test.yaml` under `<dir>` (default: the current directory) traces its scene or quest — or presents a lore document's entries — against the declared mocks and asserts the declared expectations, and every `*.play.yaml` under `<dir>` that carries an `expect:` (on a step or at the top level) is played exactly as [`lute play`](#play) plays it and judged by its own expectations (dsl 0.22.0). `--json` emits the machine-readable report; `--providers` pins a snapshot directory; `--project` resolves each traced document against the project (its `defaults:` and plugins) exactly as `lute trace --project` does — without it the trace is core-only. A play runs against `--project`, else the nearest `lute.project.yaml` above the script. `--no-derive` turns derivation off for every test and play, overriding their own `derive:` keys (see [trace](#trace)). Exit **0** when every test and play passes, **1** on a failure, **2** on I/O or a malformed test file.
+
+Each test and play prints one `PASS`/`FAIL` line naming its file and what it ran, a failure followed by its misses, then a summary:
+
+```console
+$ lute test . --project .
+PASS  ./tests/lamp-quest.test.yaml  (./tests/../quests/lamp.lute)
+PASS  ./tests/mara-first.test.yaml  (./tests/../scenes/talk/mara-first.lute)
+FAIL  ./plays/first-day.play.yaml  (play of .)
+      step 6 at hubVisit: expect winner: expected hub.welcome, actual hub.morning
+
+2 passed, 1 failed
+```
+
+A play passes when every step and top-level expectation holds and the play completed. **A play that halts fails** — an unscripted choice, or a `when` the reference runtime cannot decide — unless its top-level `expect:` declares the exit (`expect: { exit: incomplete }`); the failure names why it stopped. In `--json`, each `tests` entry carries `"kind": "test"` or `"kind": "play"`; a play's misses are in `misses`, each `{ step, label, repetition, occasion, key, expected, actual }` (`step` is `null` for a top-level expectation).
 
 A failing test says why its walk stopped: the unresolved guards and the `state:`/`facts:` entries that would decide them (`--json`: `unresolved`, each with `atoms` and `supply`).
+
+`--coverage` also reports branch/arm coverage across the tested documents and lists the **untested** documents — every testable document no `*.test.yaml` names and no play presents — under `--project`, or else under the nearest `lute.project.yaml` above `<dir>`, so `lute test tests --coverage` still measures the whole project. Every document a play presented counts as covered, and since a lore document is now testable, an untested one is listed too:
+
+```console
+coverage over 2 traced path(s) and 1 play(s):
+  branch/hub maraAsk (./tests/../scenes/talk/mara-first.lute:maraAsk): 1/2 chosen [lamp]; never chosen [leave]
+  1 untested document(s) under . — no *.test.yaml names them and no play presents them:
+    ./scenes/talk/mara-idle.lute
+```
+
+`--json` carries the same under `coverage` (`tracedPaths`, `plays`, `choices`, `arms`, `untested`).
 
 A `*.test.yaml` file declares:
 
@@ -267,15 +351,25 @@ events:  [npcSpoke]
 accepts: [identifyKiller]
 expect:
   transcriptContains: ["Case closed."]   # substrings that must appear in the transcript
+  transcriptLacks: ["You let her go."]   # substrings that must NOT appear
+  offered: { accuse: [accuseBlake, accuseMoss] }  # the exact options offered at a branch/hub
   state: { run.accused: blake }          # path: literal assertions after the walk
   exit: complete                         # complete | incomplete
 ```
 
-`file:` is required; every mock surface and every `expect:` key is optional. The mock surfaces also include `visited:` and `occasions:` (dsl 0.21.0), exactly as in a trace mock. `expect.transcriptContains` lists substrings that must appear in the transcript, `expect.state` maps a state path to the literal it must hold after the walk — compared against the value the walk ends with, read the way trace reads it: the walk's last write, else the test's `state:` seed, else the declared `default:` — and `expect.exit` asserts the terminal verdict (`complete` or `incomplete`).
+`file:` is required; every mock surface and every `expect:` key is optional. The mock surfaces also include `visited:` and `occasions:` (dsl 0.21.0), the save seeds `quests:` and `entriesRead:` (dsl 0.22.0), and `derive:`, exactly as in a [trace mock](#trace). `expect.transcriptContains` lists substrings that must appear in the transcript and `expect.transcriptLacks` substrings that must not. `expect.offered` maps a `<branch>`/`<hub>` id to the exact set of options the walk offered there, order-insensitive and across all its presentations; a mismatch names both sets, and a branch the walk never presented fails as such. `expect.state` maps a state path to the literal it must hold after the walk — compared against the value the walk ends with, read the way trace reads it: the walk's last write, else the test's `state:` seed, else the declared `default:` — and `expect.exit` asserts the terminal verdict (`complete` or `incomplete`).
 
-**An incomplete walk fails.** When an unknown guard halts the trace, the expectations after it were never walked, so the test fails — whatever else it asserts — unless it declares `expect: { exit: incomplete }`. Trace does not run the Datalog rules: an unmocked `derive: true` fact is unknown and halts the walk even when the test supplies the facts its rule needs, while an unmocked base fact is simply false. Mock the derived fact (`facts: ["guilty(ann)"]`) to test what follows from it.
+**An incomplete walk fails.** When an unknown guard halts the trace, the expectations after it were never walked, so the test fails — whatever else it asserts — unless it declares `expect: { exit: incomplete }`. Derivation is on (see [trace](#trace)): a rule-derived fact follows from the test's `facts:` and the project's seed facts, with no need to mock the conclusion. **Migration from 0.21:** a test that relied on an unmocked derived atom being unknown (exit `incomplete`), or on a seeded relation reading empty, now sees the derived or seeded answer; pin `derive: false` to keep the old verdict.
 
-`file:` names a scene or quest document. A lore document has no sequence to walk, so naming one is `E-TEST-LORE`; preview an entry with `lute trace <file> --entry <id>`.
+`file:` may name a lore document when the test says which entries to present: `entry: <id>`, or `entries: [ids]` to present several in order with the read flags set between them, so a repeated id is a re-read that skips first-read effects. A lore test that names neither is `E-TEST-LORE`, listing the declared entry ids:
+
+```yaml
+file: ../lore/tomas.lute
+entries: [tomasOil, tomasBusy]
+quests: { lampOut: active }            # seeds quest.lampOut.state, which tomasOil's `when` reads
+expect:
+  transcriptContains: ["Top shelf.", "Busy."]
+```
 
 `expect.quests` (dsl 0.21.0 §7a.4) asserts a quest document's lifecycle outcome directly — the state each quest ended the trace in, one of `unset`, `active`, `complete`, `failed`:
 
@@ -287,7 +381,7 @@ expect:
   quests: { holdLine: complete, sideJob: unset }
 ```
 
-A mismatch fails as `quests holdLine: expected "complete", got "active"`; a value outside the four states, or a quest id the traced document does not declare, fails the test with a message naming it.
+A mismatch fails as `quests holdLine: expected "complete", got "active"`; a value outside the four states, or a quest id the traced document does not declare, fails the test with a message naming it. (The top-level `quests:` key is the seed the walk *starts* from; `expect.quests` is the outcome it must *end* in.)
 
 ## lint
 
@@ -295,7 +389,7 @@ A mismatch fails as `quests holdLine: expected "complete", got "active"`; a valu
 $ lute lint [<path>] [--json] [--config <FILE>] [--deny <CODE>]… [--deny-warnings]
 ```
 
-Run the advisory content lints — line length, dialogue ratio, emotion streaks, missing assets, and project-local rules — over a file or a directory tree (default: the current directory). Documents are grouped by their nearest `lute.project.yaml`, and each project's `lute.lint.yaml` (or `--config <FILE>`) sets rule levels, thresholds, ignore globs, and `custom:` rules. Findings are `L-*` codes, separate from `lute check`: lints never enter the capability snapshot or change an artifact. `--deny`/`--deny-warnings` promote findings as in `check`. Exit **0** clean or only sub-error findings, **1** any error-severity finding (including `E-LINT-CONFIG`/`E-LINT-EXPR`), **2** on I/O, malformed YAML, or usage. Rules, metrics, and the config format: [Linting](/tooling/linting/).
+Run the advisory content lints — line length, dialogue ratio, emotion streaks, missing assets, and project-local rules — over a file or a directory tree (default: the current directory). The linear-VN norms (`L-SHOT-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO`, `L-SCENE-LENGTH-SPREAD`) judge only linear scenes, never beats, components, quests, or lore. Documents are grouped by their nearest `lute.project.yaml`, and each project's `lute.lint.yaml` (or `--config <FILE>`) sets rule levels, thresholds, ignore globs, and `custom:` rules. Findings are `L-*` codes, separate from `lute check`: lints never enter the capability snapshot or change an artifact. `--deny`/`--deny-warnings` promote findings as in `check`. Exit **0** clean or only sub-error findings, **1** any error-severity finding (including `E-LINT-CONFIG`/`E-LINT-EXPR`), **2** on I/O, malformed YAML, or usage. Rules, metrics, and the config format: [Linting](/tooling/linting/).
 
 ## loc export
 
@@ -343,4 +437,4 @@ Word-count and line-count report per document and per speaker — a production-p
 $ lute version [--json]
 ```
 
-Print the three independent version axes ([versioning](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)): the **toolchain** version (this CLI and the workspace crates), the **language** version (the grammar/semantics the checker enforces), and the **IR** schema version (stamped as `irVersion` in every compiled artifact). Distinct from clap's built-in `--version`, which prints only the toolchain version. `--json` prints one object `{"toolchain":…,"language":…,"ir":…}`; human mode prints one labeled line each. Always exits **0**.
+Print the three independent version axes ([versioning](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)): the **toolchain** version (this CLI and the workspace crates), the **language** version (the grammar/semantics the checker enforces), and the **IR** schema version (stamped as `irVersion` in every compiled artifact). Distinct from clap's built-in `--version`, which prints only the toolchain version; the language server answers the same flag, `lute-lsp --version` printing `lute-lsp <version>` (which [`doctor`](#doctor) compares against this CLI). `--json` prints one object `{"toolchain":…,"language":…,"ir":…}`; human mode prints one labeled line each. Always exits **0**.

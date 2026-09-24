@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.21.1**.
+**0.22.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -242,8 +242,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.21.1",
-  "irVersion": "0.21.1",
+  "lute": "0.22.0",
+  "irVersion": "0.22.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "id": "mira.s01ep01",
@@ -273,7 +273,7 @@ $ lute compile my-scene.lute
       "emotion": "content",
       "variant": 0,
       "lineId": "mira.s01ep01.mira_0010",
-      "voiceKey": "mira-0010",
+      "voiceKey": "mira.s01ep01.mira-0010",
       "placeholders": [ … ]
     },
     …
@@ -361,7 +361,8 @@ id: mira.s01ep01
 `id:` is a plain string (letters, digits, `_`, `-`, `.`) that identifies this scene project-wide.
 `visited("mira.s01ep01")` in another scene's `after:` names *this* one; the same string is the
 prefix every `lineId`/`voiceKey` in the compiled artifact is built from
-(`"lineId": "mira.s01ep01.narrator_0010"` in the Part 4 output). With `id:` declared,
+(`"lineId": "mira.s01ep01.narrator_0010"` and `"voiceKey": "mira.s01ep01.mira-0010"` in the Part 4
+output). With `id:` declared,
 `character:` / `season:` / `episode:` become optional — keep them if they carry useful metadata
 (search, TMS), drop them if they don't. If you write `id:` **and** any of those legacy identity
 keys in the same document, the checker draws one `W-META-LEGACY` per key: identity now comes from
@@ -391,9 +392,10 @@ state:
 ```
 
 `after:` and cross-scene reads only make sense across several files, so put both scenes in a folder
-with a `lute.project.yaml` marking it a project root. The `identity:` line keys each voice line
-by its scene too; without it the diner's and the booth's first Mira lines would both be
-`mira-0010`, one recording for two lines, and `check-project` refuses that (`E-DUP-VOICEKEY`):
+with a `lute.project.yaml` marking it a project root. Every voice line is already keyed by its scene
+— the default `voiceKey` is `{prefix}.{speaker}-{code}` — so the diner's and the booth's first Mira
+lines are `mira.s01ep01.mira-0010` and `mira.s01ep02.mira-0010`, two recordings, with nothing to
+configure:
 
 ```yaml
 # episodes/lute.project.yaml
@@ -401,9 +403,12 @@ defaultProfile: core
 profiles:
   core:
     plugins: {}
-identity:
-  voiceKey: "{prefix}.{speaker}-{code}"
 ```
+
+(Before 0.22.0 the default was the unprefixed `{speaker}-{code}`, so both lines were `mira-0010` —
+one recording for two lines, which `check-project` refuses as `E-DUP-VOICEKEY`. A project that
+already recorded audio against those old keys keeps them by pinning
+`identity: { voiceKey: "{speaker}-{code}" }` in `lute.project.yaml`.)
 
 ```lute check-project="docs/examples/episodes/booth.lute"
 ---
@@ -478,22 +483,30 @@ through the diner, which always `::set`s it. That's a genuine cross-scene guaran
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
 project accepts — the staging directives, their attributes, the vocabulary members in scope (your
-`emotion` list, say), the declared state, and the delivery-flag vocabulary — resolved for the
-specific file you give it:
+`emotion` list, say), the declared state, the delivery-flag vocabulary, the language's own
+built-in directives, and the scene ids you can name in `visited(…)` — resolved for the specific
+file you give it:
 
 ```
 $ lute context my-scene.lute
 capabilityVersion: 69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81
-directives (9):
-  auto: character, anchor, action
-  bg: location, time, assetId
+permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
+directives (11):
+  auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
+  bg: location, time, assetId   [mutatesScene]
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
   cut: assetId, action, full
-  end: reason
-  music: action, mood, volume, assetId, track
+  end: reason   [terminatesWalk]
+  mark: id
+  music: action, mood, volume, assetId, track   [mutatesScene]
+  next: to, when
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
+bridges (0):
+rewardKinds (0):
+occasions (0):
+questsAllowed: true
 enums (0):
 stateSchema (3):
   run.metMira: bool
@@ -505,6 +518,14 @@ deliveryFlags (3):
   {vo}: voiceover: narration-style delivery layered over the scene
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
+builtinDirectives (5):
+  ::set{ <path> = <expr> }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
+  ::assert{ <relation>(<arg>, …) } — assert a ground fact of a declared, non-derived, non-reserved relation
+  ::retract{ <relation>(<arg | _>, …) } — retract the matching facts of a declared, non-derived, non-reserved relation
+  ::accept{quest="<questId>"} — accept a quest that has no `start` condition
+  ::use{component="<name>" <param>=<value> …} — expand an imported component with named arguments
+scenes (1; read as visited("<id>")):
+  mira.s01ep01
 ```
 
 `enums (0)` is not a bug: that line counts members supplied by the active *plugins*, and this file
@@ -515,6 +536,22 @@ actually resolves `emotion="content"`.
 `run.metMira` from Part 5) plus `scene.choices.orderChoice`, which the `<branch>` declares on your
 behalf so a later construct can read which option the player took.
 
+`builtinDirectives` lists the directives the language itself provides — `::set` you have already
+used — and `scenes` lists the ids `visited("…")` can name. Pass `--project episodes` and that list
+covers every scene in the project, alongside its quests and lore entries.
+
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
 instead of guessing. From here, follow the **Language** section for each construct in depth, or read
 the [full-spec showcase](/examples/showcase/) for a feature-by-feature tour of a real project.
+
+**Building a game the engine drives by moments** — the player walks into the hub, talks to
+someone, ends the day — rather than a fixed episode order? Scaffold a working example to start
+from:
+
+```
+$ lute init --template beats my-game
+```
+
+It sets up an occasions plugin, beats that answer those moments, a quest, lore entries, a play
+script, and scenario tests — `lute check-project`, `lute test`, and `lute play` all pass as
+scaffolded. [Beats](/language/beats/) and [Playing a story](/tooling/play/) explain the model.

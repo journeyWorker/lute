@@ -10,7 +10,7 @@ entry is:
 | `type`       | a value-level type label: `bool` / `number` / `string` / `enum` / `narrativeTime` / `list<…>` / `map<…>` / `record`. **An AUTHOR `state:` declaration is scalar-only** — `bool`/`number`/`string`/`enum` (dsl 0.8.0 §4, `E-STATE-COLLECTION`); `narrativeTime` and the collection labels appear only on engine-surfaced slots (a reserved quest slot, or a plugin `state_shapes` expansion). |
 | `domain`     | for an `enum`, its member set. An implicit branch slot or a `quest.<id>.state` slot appends `"unset"` to the domain. Absent for non-enums. |
 | `default`    | the initial value (any JSON scalar/array/object, integral-collapsed). **Absent** when the slot has no default — the slot is *maybe-unset* until written. |
-| `provenance` | `"branch:<id>"` for an implicit `<branch>`/`<hub>` choice slot, `"quest:<id>"` for a reserved quest slot; absent for an author-declared slot. |
+| `provenance` | `"branch:<id>"` for an implicit `<branch>`/`<hub>` choice slot, `"quest:<id>"` for a reserved quest slot, `"entry:<id>"` for a lore entry's reserved `entry.<id>.read` flag; absent for an author-declared slot. |
 
 The engine initializes each declared path from `default` where present, and
 treats a slot with **no `default` as unset** until the first write. Reading an
@@ -92,6 +92,45 @@ Two families of `quest.<id>.*` paths are **engine-owned**, not author-written
 A `StateEntry` for these carries `provenance: "quest:<id>"`, so the engine can
 tell a reserved slot from an author's own `quest.<id>.*` scratch declaration
 without pattern-matching on the path.
+
+A quest's `tier` (dsl 0.22.0 §7, `QuestCmd.tier`) decides how long these
+slots live. The default `user` tier keeps them across runs. A
+`<quest tier="run">` (`tier: "run"` on its record) has them reset when a run
+starts — `state` back to `unset`, every objective not done, `activatedAt`
+cleared — so the quest can be taken up again in the next run (see
+[quest-lifecycle.md](./quest-lifecycle.md)).
+
+## Reserved entry flags
+
+Each lore `<entry>` has two engine-written `bool` flags, readable from any CEL
+slot in any document and never author-writable (a `::set` of any `entry.*`
+path is `E-QUEST-RESERVED-WRITE`):
+
+- `entry.<id>.read` — **run** tier. `false` until the entry is first presented
+  in the run; reset with the run tier, so a new run's first presentation
+  applies the entry's effects again. A lore artifact's state table carries it
+  (`type: "bool"`, `default: false`, `provenance: "entry:<id>"`).
+- `entry.<id>.everRead` — **user** tier (dsl 0.22.0 §7). Set on the entry's
+  first presentation ever and never reset by a new run. It has no state-table
+  row: the engine keeps it per user beside the read flag, `false` until then.
+
+An entry beat with `once="run"` / `once="user"` (`EntryCmd.once`) is not
+eligible once the matching flag is set; see
+[lore-entries.md](./lore-entries.md) for the presentation rules.
+
+## Engine-owned paths (`owner: engine`)
+
+A `state:` declaration may carry `owner: engine` (dsl 0.22.0 §1.2): content
+reads the path freely but never writes it — a `::set` of the path, or of a
+field under it, is `E-ENGINE-OWNED-WRITE`, and any other `owner:` value is
+`E-STATE-DECL`. The key is a check-time contract only. It is **not** carried
+in the artifact: the path's `StateEntry` is the same `path` / `type` /
+`default` as any author-declared slot of its tier, and the engine initializes
+and resets it by the tier rules above. What the declaration guarantees the
+engine is that no `set` record in a checked artifact targets the path, so
+every write it sees there is its own. `reserved: true` relations
+(`RelationEntry.reserved`) are the fact-store analogue: the engine alone
+asserts and retracts their facts.
 
 ## Interpolation reads
 

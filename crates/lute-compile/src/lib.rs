@@ -254,7 +254,22 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// its name and `$id` and marks the field optional, so `0.21.0` artifacts stay
 /// valid; every other document compiles byte-identically apart from the
 /// version strings.
-pub const LUTE_IR_VERSION: &str = "0.21.1";
+///
+/// IR `0.22.0` is ADDITIVE over `0.21.1` (dsl 0.22.0 §7, run boundaries):
+/// [`ir::QuestCmd`] gains the optional `tier` (`"run"` for a
+/// `<quest tier="run">`, omitted for the default `user` — a quest document
+/// may hold several quests, so the tier rides on each quest record) and
+/// [`ir::EntryCmd`] the optional `once` (`"run"` / `"user"`, also carried by
+/// the `ProjectIndex.beats` entry rows). The same release changes CONTENT
+/// without changing shape (dsl 0.22.0 §11): the default `voiceKey` becomes
+/// `{prefix}.{speaker}-{code}`, and a line expanded from a component is
+/// addressed `{prefix}.{component}#{n}.{speaker}_{code}`, so documents that
+/// rely on the default template or `::use` components compile to different
+/// `lineId`/`voiceKey` strings. `schemas/lute-ir-0.21.schema.json` is renamed
+/// to `schemas/lute-ir-0.22.schema.json` per the release-line rule and gains
+/// `cmdQuest.tier` and `entryCmd.once`. The MAJOR-only runtime gate does not
+/// move: an engine without run tiers ignores the new fields.
+pub const LUTE_IR_VERSION: &str = "0.22.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1179,12 +1194,14 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.21.1 axis alignment (docs/versioning.md): a patch on the 0.21
-        // line. The language tightens static semantics and the IR gains the
-        // optional `placeholder.expr` (additive; the schema keeps its 0.21
-        // name) — both still move independently of the toolchain pin.
-        assert_eq!(super::LUTE_IR_VERSION, "0.21.1");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.21.1");
+        // 0.22.0 axis alignment (docs/versioning.md): a minor release. The
+        // language earns the move (quest `tier`, entry `once`, `owner:
+        // engine`, occasion target domains, new diagnostics) and so does the
+        // IR (additive `QuestCmd.tier` / `EntryCmd.once`; the default
+        // `voiceKey` and component `lineId`s change content) — both move
+        // independently of the toolchain pin.
+        assert_eq!(super::LUTE_IR_VERSION, "0.22.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.22.0");
     }
 
     #[test]
@@ -1193,8 +1210,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.21.1");
-        assert_eq!(v["irVersion"], "0.21.1");
+        assert_eq!(v["lute"], "0.22.0");
+        assert_eq!(v["irVersion"], "0.22.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

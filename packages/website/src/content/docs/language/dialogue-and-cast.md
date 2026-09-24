@@ -45,7 +45,10 @@ and only `::auto` can end a presence (see
 `mayExitCharacter` among `auto`'s semantics for exactly this reason). Writing a
 member of the `action` domain's `exits:` list on a content line is
 `W-EXIT-INERT`: the pose is honoured, the character stays on stage, and the
-artifact gets no `exit` record.
+artifact gets no `exit` record. Once a character has left — by a declared exit
+or a `::bg` scene change — a line from them before an `::auto` shows them again
+is `W-STAGE-ABSENT`, judged along every path through choices and `<match>` arms
+(see [Stage state](/language/directives/#stage-state)).
 
 ```lute
 @marina{as="???"}: ...who's there?

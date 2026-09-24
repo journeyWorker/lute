@@ -142,6 +142,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("start", "cel<bool>"),
             ("fail", "cel<bool>"),
             ("after", "prereq"),
+            ("tier", "\"user\" | \"run\""),
         ],
         QuestConstruct::On => &[("event", "string"), ("when", "cel<bool>")],
         QuestConstruct::Objective => &[
@@ -163,6 +164,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("when", "cel<bool>"),
             ("on", "string"),
             ("priority", "integer"),
+            ("once", "\"run\" | \"user\""),
         ],
     }
 }
@@ -1470,7 +1472,7 @@ mod tests {
         let off = text.find("\" >").unwrap() + 2;
         let items = complete(text, off);
         let ls = labels(&items);
-        for k in ["id", "target", "category", "title", "series", "order", "when", "on", "priority"] {
+        for k in ["id", "target", "category", "title", "series", "order", "when", "on", "priority", "once"] {
             assert!(ls.contains(&k), "missing {k}: {ls:?}");
         }
     }
