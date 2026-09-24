@@ -1,11 +1,14 @@
 ---
 title: Quests & scenes
-description: The two document kinds — scenes sequenced with after:, and quests with objectives, derived completion, and lifecycle-event reactions.
+description: The time-axis document kinds — scenes sequenced with after:, and quests with objectives, derived completion, and lifecycle-event reactions — beside the lore kind for looked-up content.
 ---
 
-Every `.lute` document declares a **`kind`**: `scene` or `quest`. The kind selects the required
-frontmatter keys, the admitted grammar, and the identity model. Scenes are the playable episodes
-you author line by line; quests are the run-to-completion goal machines that gate and reward them.
+Every `.lute` document declares a **`kind`**: `scene`, `quest`, or `lore`. The kind selects the
+required frontmatter keys, the admitted grammar, and the identity model. Scenes are the playable
+episodes you author line by line; quests are the run-to-completion goal machines that gate and
+reward them. Both sit on the story's time axis. The third kind, `lore` (dsl 0.19.0), holds content
+the engine looks up rather than plays — item descriptions, found notes, barks — and has its own
+page: [Lore entries](/language/lore-entries/).
 
 ## Scenes and `after:`
 
@@ -58,6 +61,19 @@ one or more `<quest>` declarations — quests forbid `<hub>`, `<timeline>`, and 
 ```
 
 *(From [`docs/examples/quest-grove.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-grove.lute).)*
+
+A quest document MAY also declare a document **`id:`** (dsl 0.19.0 §2.1) naming the file as a
+bundle — a quest chain written top to bottom, such as `haven.mainChain`. It follows the same shape
+rules as a scene's `id:` (`E-META-ID`), becomes the artifact's `meta.id` and the document's key in
+`project.index.json`, and shares one project-wide namespace with scene and lore document ids
+(`E-CONN-EPISODE-ID-DUP`). It is optional: without it the document is keyed by its first declared
+quest id, exactly as before.
+
+```yaml
+kind: quest
+id: haven.mainChain
+uses: ../world.schema.yaml
+```
 
 ### `<quest>`
 

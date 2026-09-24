@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.18.0`, the grammar and semantics the checker
+- **Language** — currently `0.19.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.18.0`) and gated on by consuming engines.
+  artifact (currently `0.19.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -37,6 +37,124 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.19.0] - 2026-09-24
+
+**Lore entries: content the engine looks up instead of plays.**
+
+Scenes and quests put a story on a **time axis** — what happens, in what
+order, under which conditions. Much of a game's story sits in **space and
+objects** instead: the torn page in the lab, the inscription on a door, the
+key whose description changes after the fire, the line an NPC mutters as you
+walk past. The player finds these in any order and reads them again, and the
+only way to write one was a scene per note — scheduled, sequential, played
+once. `0.19.0` adds a third document kind, `kind: lore`, whose `<entry>`
+declarations say **what** the text is, **when** it is eligible, and **what**
+reading it changes; the engine still decides **where** it lives — which item
+spawns where, which panel shows the codex, when an NPC barks. Spec:
+[`docs/proposals/scenario-dsl/0.19.0.md`](docs/proposals/scenario-dsl/0.19.0.md);
+engine contract: [`docs/runtime/lore-entries.md`](docs/runtime/lore-entries.md).
+
+### Added
+
+- **Language — `kind: lore` and `<entry>`** — a lore document takes the
+  quest-document frontmatter keys and a body of one or more top-level
+  `<entry>` declarations and nothing else (a `# ` heading, `## ` shot,
+  `<quest>`, or loose content is `E-GRAMMAR-NOT-ADMITTED`). `<entry>`
+  carries `id` (required, project-unique), `target` (a dotted id such as
+  `item.rusty_key`, shape-only), `category` (an ident such as `note` or
+  `bark`, shape-only), `title` (localized like a quest title), `series` /
+  `order`, and a `when` eligibility guard that joins the CEL-slot registry.
+  Several entries may share a `target`.
+- **Language — entry bodies** — content lines, `<match>` (recursively),
+  `::set`, `::assert`, and `::retract` only; `<branch>`, `<hub>`,
+  `<timeline>`, `<on>`, `<objective>`, and every `::` directive are
+  `E-GRAMMAR-NOT-ADMITTED`. Each entry is its own lineId / voiceKey / code
+  scope, as each quest is. Revealing knowledge is the ordinary `::assert`
+  against the project's relations, checked by the usual arity/domain/tier
+  rules, and scenes react through `holds(…)`.
+- **Language — `entry.<id>.read`** — a reserved, engine-written `bool`
+  (default `false`, run tier) readable from any CEL slot in any document
+  kind: series gating (`when="entry.scientistLog1.read"`), a scene guard, a
+  quest objective, a `<match on>` subject. Writing it is rejected, as
+  writing `quest.*` is.
+- **Runtime contract — first-read effects** — presenting an entry runs its
+  body against live state; `::set` / `::assert` / `::retract` apply only
+  while `entry.<id>.read` is `false`, after which the engine sets it.
+  Re-reading shows the (possibly different) text and changes nothing else.
+- **Language — document bundles** — a quest or lore document MAY declare a
+  document `id:` (the scene `id:` shape) naming the file as a bundle
+  (`haven.purserLedger`, `haven.mainChain`); it becomes `meta.id` and the
+  document's `ProjectIndex` key. A lore document MAY declare `series:`,
+  making every entry one series ordered by position in the file (1-based);
+  a non-ident value is `E-META-VALUE`. Per-entry `series=` / `order=` stay
+  for series spanning files.
+- **Diagnostics** — `E-ENTRY-ATTR` (attribute shape, `order` without
+  `series`, or a per-entry `series=` / `order=` in a document declaring
+  `series:`), `E-ENTRY-ID-DUP` (per document in `check`, project-wide in
+  `check-project`), `E-ENTRY-SERIES-ORDER` (a duplicate resolved
+  `(series, order)`), and `W-ENTRY-REF-UNKNOWN` (`check-project`: an
+  `entry.<id>.read` naming an id no document declares). `E-META-ID` now
+  covers a quest or lore document's `id:`; `E-CONN-EPISODE-ID-DUP` covers
+  quest and lore document ids, which share one namespace with scene ids,
+  and its message says "document id". `E-UNKNOWN-KIND` admits `lore`.
+- **IR** — artifact `kind: "lore"` with `LoreMeta` (`id?`, `title?`,
+  `series?`, `contentLang?`, `extra?`, `plugin?`); a new `entry` command
+  record (`addr`, `id`, `target?`, `category?`, `title?`, `titleLineId?`,
+  the resolved `series?` / `order?`, `when?`, and `body`, the address of its
+  body segment in the `OnCmd.body` convention); optional `QuestMeta.id`;
+  `ProjectIndex.entries` (one row per entry, document order, omitted when
+  empty), and a quest or lore document with an authored `id:` is indexed
+  under it. The schema renames to
+  [`schemas/lute-ir-0.19.schema.json`](schemas/lute-ir-0.19.schema.json)
+  and gains `loreMeta`, `entryCmd`, `questMeta.id`, and `indexEntry`.
+- **CLI — `lute trace <doc> --entry <id>`** presents one entry against
+  mocked state: its lines, the `<match>` arm taken, and the effects a first
+  read applies — or skips, when the mock seeds `entry.<id>.read: true`.
+  Required for a lore document; `E-TRACE-ENTRY` on a non-lore document or
+  an unknown id. **`lute run <artifact> --entry <id>`** does the same over
+  a compiled lore artifact (exit `2` without it, or on another kind).
+- **CLI — `lute lore <dir> [--json]`** — the world-narrative map: entries
+  grouped by `target` and by `series` (in `order`), and for every asserted
+  ground fact whether lore entries, scenes/quests, or both reveal it.
+- **CLI — `lute new lore <name>`** scaffolds `lore/<name>.lute` with one
+  `<entry>`.
+- **Editors and tooling** — tree-sitter gains a top-level `entry`
+  production with fold, highlight, and tag queries (nvim mirrors); the LSP
+  covers `<entry>` in document symbols, folding, semantic highlighting, and
+  attribute completion and hover. `lute tag` and `lute loc` walk entry
+  bodies (each entry its own identity scope), and `lute compile --all`
+  writes `ProjectIndex.entries`; `lute lint` excludes lore documents from
+  scene metrics and counts their lines as translatable content.
+- **Conformance — `lore-entry` and `lore-entry-reread`** — one entry
+  presented on its first read (effects applied) and on a re-read (effects
+  skipped); the harness passes the entry id from each fixture's
+  `entry.txt`.
+- **Examples — `docs/examples/haven/lore/`** — a `series:` bundle (the
+  purser's ledger) whose pages reveal facts with `::assert` and gate on
+  `entry.<id>.read`, a place inscription selecting text by state, and an
+  NPC bark gated on `holds(knows(…))`.
+
+### Changed
+
+- **`lute new quest`** now writes a namespaced document `id:`
+  (`quest.<ident>`), as `lute new lore` does (`lore.<ident>`).
+- **`W-META-LEGACY` is scene-only** — it fires for a scene identity key
+  beside an authored `id:`; on a quest or lore document those keys are
+  already `E-META-UNKNOWN-KEY`, so the new document `id:` never draws it.
+
+### Compatibility
+
+- Every 0.18.x document is a valid 0.19.0 document: `kind: lore` was
+  `E-UNKNOWN-KIND`, `entry.*` paths were undeclared, and `id:` in a quest
+  document was `E-META-UNKNOWN-KEY`.
+- IR: additive. Scene artifacts, and quest artifacts without an authored
+  `id:`, are byte-identical apart from the version strings, and a project
+  without lore writes no `entries` key. Engines gate on MAJOR, so a
+  scene/quest consumer is unaffected; one without lore support rejects
+  `kind: "lore"` as it rejects any unknown artifact kind.
+- `capabilityVersion` is unchanged (no core vocabulary is added); the
+  tree-sitter grammar regenerates.
 
 ## [0.18.0] - 2026-09-24
 

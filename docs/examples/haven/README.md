@@ -6,8 +6,9 @@ either on the bridge or in the shed.
 
 Haven exists to be a **whole small work** rather than a feature demo. Every other
 example under `docs/examples/` isolates one construct; this one carries a story
-across eighteen documents and asks whether the constructs still hold when they
-have to coexist. It was written as the instrument of a drive test, and the
+across twenty documents and asks whether the constructs still hold when they
+have to coexist. It was written as the instrument of a drive test (over the
+eighteen scene, quest, and component documents that predate `lore/`), and the
 measurement — 111 entries, 74 of them carrying a verdict — is
 [`docs/superpowers/notes/2026-07-31-haven-drive-test-findings.md`](../../superpowers/notes/2026-07-31-haven-drive-test-findings.md).
 Read that file if you want to know what 0.9.0 costs an author. Read this one if
@@ -19,13 +20,14 @@ you want to know what is in the tree.
 |---|---|---|
 | `scenes/` | 11 | episodes 1–11, one connected graph |
 | `quests/` | 6 | five with `after=`; `hold-the-spine.lute` deliberately without — see "Deliberate imperfections" |
+| `lore/` | 2 | `kind: lore` documents (dsl 0.19.0) — the purser's ledger as a `series:` bundle, and the ship's records; see "Lore entries" |
 | `components/` | 1 | the Purser's interjection, the only reuse construct in the language |
 | `tests/` | 31 | `*.test.yaml` scenario tests, run by `lute test` |
 | `world.schema.yaml` | | scalar state, four relations, one Datalog rule, one seed fact |
 | `vocabulary.schema.yaml` | | all seven compiler-typed content-vocabulary slots |
 | `lute.project.yaml` | | the manifest, including the `identity:` block |
 
-176 content lines, 2,299 words, 15 choices (`lute loc report docs/examples/haven`).
+182 content lines, 2,375 words, 15 choices (`lute loc report docs/examples/haven`).
 
 ## What it is the corpus's first coverage of
 
@@ -62,12 +64,38 @@ distinction is kept because a README that oversells is worse than no README.
   episodes upstream. In `investigation`, the one document that reads a derived
   relation is the same document that asserts its base fact.
 
+## Lore entries
+
+`lore/` holds the text the engine looks up rather than plays (dsl 0.19.0,
+[`docs/runtime/lore-entries.md`](../../runtime/lore-entries.md)). Each file shows
+one piece of the lore surface against the same world schema the scenes use:
+
+- **`purser-ledger.lute` — a series bundle.** The document declares
+  `id: haven.purserLedger` and `series: purserLedger`, so its two pages are
+  `order` 1 and 2 by position in the file, with no per-entry `order=`. Each
+  page **reveals** a fact with a plain `::assert` over the schema's `knows`
+  relation — `knows(vesna, manifest)`, then `knows(vesna, true_heading)` — which
+  applies on the first read only. Page 2 is **gated on page 1** with
+  `when="entry.purserLedger1.read"`, the reserved path the engine sets after a
+  presentation.
+- **`ship-records.lute` — state-dependent text and a gated bark.** The shed
+  plaque selects its text with an ordinary `<match on="run.shedPressure">`
+  (range arms `2..` / `1` / `<otherwise>`). `vesnaManifestBark` is an NPC bark
+  attached to `npc.vesna`, eligible only while
+  `holds(knows(vesna, manifest))` — the fact the ledger (and several scenes)
+  reveal.
+
+`lute lore docs/examples/haven` prints the resulting map: entries by target and
+by series, and for every `knows`/`awake`/`found` fact whether lore, scenes, or
+both reveal it (`knows(vesna, manifest)` is `both`; `knows(vesna, true_heading)`
+is revealed only by the ledger).
+
 ## Running it
 
 ```sh
-# The checker. Exits 0. Prints 13 warnings, all project-wide (which is the
-# number in its own summary line) and no per-file warning on any of the 18
-# files. See "Deliberate imperfections" below — every one of the 13 is
+# The checker. Exits 0. Prints 14 warnings, all project-wide (which is the
+# number in its own summary line) and no per-file warning on any of the 20
+# files. See "Deliberate imperfections" below — every one of the 14 is
 # accounted for there.
 lute check-project docs/examples/haven
 
@@ -86,10 +114,15 @@ lute scenario docs/examples/haven
 # derived `can_halt` must be seeded — or driven through `lute run` instead.
 lute trace docs/examples/haven/scenes/cryobank.lute \
   --project docs/examples/haven --choose whoWakes=wakeToma
+
+# Preview one lore entry on its first read, and the world-narrative map.
+lute trace docs/examples/haven/lore/purser-ledger.lute \
+  --project docs/examples/haven --entry purserLedger1
+lute lore docs/examples/haven
 ```
 
 `check-project docs/examples` (the outer root, which is what CI runs) walks all
-eighteen of these documents. `lute test docs/examples` picks up all 31 of these
+twenty of these documents. `lute test docs/examples` picks up all 31 of these
 tests plus `investigation`'s three.
 
 ## Deliberate imperfections
@@ -128,13 +161,14 @@ findings, and a reader who "fixes" one deletes the evidence.
    awake, which `start="holds(can_halt(toma))"` already says, so there is no
    route prerequisite to declare (**T4.7**, and the *T4 controller decision*).
 
-Separately, the 13 project-wide `W-UNPROVEN-RELATIONAL` warnings are neither
+Separately, the 14 project-wide `W-UNPROVEN-RELATIONAL` warnings are neither
 deliberate nor removable. Each marks a correct relational gate on a producible
-relation; the checker declines to claim the ground query is true, which is honest.
-The warning has no discharge path — no `--allow`, no seed surface on
-`check-project`, no site-level acknowledgement — so a finished, correct, fully
-tested work triggers it thirteen times and there is nothing an author can do
-about it (**T9.19**).
+relation — thirteen in quests, one on the `when` of the lore bark
+`vesnaManifestBark`; the checker declines to claim the ground query is true,
+which is honest. The warning has no discharge path — no `--allow`, no seed
+surface on `check-project`, no site-level acknowledgement — so a finished,
+correct, fully tested work triggers it fourteen times and there is nothing an
+author can do about it (**T9.19**).
 
 ## Reading order
 

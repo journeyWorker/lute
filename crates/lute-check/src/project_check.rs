@@ -38,8 +38,8 @@ use lute_syntax::ast::{Document, Node};
 
 use crate::cel_paths::{collect_path_uses, is_reserved_quest_path, reserved_entry_id};
 use crate::lore::{
-    series_order_message, series_position, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER,
-    W_ENTRY_REF_UNKNOWN,
+    document_series, resolve_entry_series, series_order_message, E_ENTRY_ID_DUP,
+    E_ENTRY_SERIES_ORDER, W_ENTRY_REF_UNKNOWN,
 };
 
 /// `E-QUEST-ID-DUP`, [`Layer::Logic`] (matching `check_quest`'s own in-document
@@ -342,21 +342,25 @@ fn group_entries_by_id(docs: &[(PathBuf, Document)]) -> BTreeMap<&str, Vec<(&Pat
     by_id
 }
 
-/// Every well-formed `(series, order)` position in `docs`, grouped by
-/// position, each occurrence carrying its entry id and its `order` value span
-/// (the anchor `crate::lore::check_entries` uses per document).
+/// Every well-formed RESOLVED `(series, order)` position in `docs` (dsl
+/// 0.19.0 §2.1: a document-level `series:` supplies its entries' positions),
+/// grouped by position, each occurrence carrying its entry id and its anchor
+/// span (the one `crate::lore::check_entries` uses per document). `series`
+/// holds each document's own validated `series:`, index-aligned with `docs`.
 #[allow(clippy::type_complexity)]
-fn group_entries_by_position(
-    docs: &[(PathBuf, Document)],
-) -> BTreeMap<(&str, u32), Vec<(&Path, &str, Span)>> {
+fn group_entries_by_position<'a>(
+    docs: &'a [(PathBuf, Document)],
+    series: &'a [Option<String>],
+) -> BTreeMap<(&'a str, u32), Vec<(&'a Path, &'a str, Span)>> {
     let mut by_pos: BTreeMap<(&str, u32), Vec<(&Path, &str, Span)>> = BTreeMap::new();
-    for (path, doc) in docs {
-        for entry in &doc.entries {
-            if let Some((series, order, span)) = series_position(entry) {
-                by_pos.entry((series, order)).or_default().push((
+    for ((path, doc), doc_series) in docs.iter().zip(series) {
+        let resolved = resolve_entry_series(doc_series.as_deref(), &doc.entries);
+        for (entry, resolved) in doc.entries.iter().zip(resolved) {
+            if let Some(position) = resolved.position() {
+                by_pos.entry(position).or_default().push((
                     path.as_path(),
                     entry.id.as_str(),
-                    span,
+                    resolved.anchor,
                 ));
             }
         }
@@ -364,15 +368,22 @@ fn group_entries_by_position(
     by_pos
 }
 
+/// Each document's validated `series:` ([`document_series`]), index-aligned
+/// with `docs` — the owner [`group_entries_by_position`] borrows from.
+fn documents_series(docs: &[(PathBuf, Document)]) -> Vec<Option<String>> {
+    docs.iter().map(|(_, doc)| document_series(&doc.meta)).collect()
+}
+
 /// dsl 0.19.0 §3, project-wide: [`E_ENTRY_ID_DUP`] for every `<entry id>`
 /// occurrence past its id's first, and [`E_ENTRY_SERIES_ORDER`] for every
-/// `(series, order)` position occurrence past its first — whether the repeat
-/// lives in the same file or in another file of the walked root, with no
-/// import edge needed (the [`check_project_quest_ids`] shape). Each
-/// diagnostic is paired with the file it is anchored in; "first" is `docs`'
-/// own order, so callers MUST pass files pre-sorted. An empty id and a
-/// malformed/absent series or order are skipped: those are the document's
-/// own `E-ENTRY-ATTR`.
+/// RESOLVED `(series, order)` position occurrence past its first (§2.1: a
+/// document-level `series:` colliding with attribute-declared positions
+/// elsewhere is caught here) — whether the repeat lives in the same file or
+/// in another file of the walked root, with no import edge needed (the
+/// [`check_project_quest_ids`] shape). Each diagnostic is paired with the
+/// file it is anchored in; "first" is `docs`' own order, so callers MUST pass
+/// files pre-sorted. An empty id and a malformed/absent series or order are
+/// skipped: those are the document's own `E-ENTRY-ATTR`.
 pub fn check_project_entry_ids(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (id, occurrences) in group_entries_by_id(docs) {
@@ -399,7 +410,8 @@ pub fn check_project_entry_ids(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Di
             ));
         }
     }
-    for ((series, order), occurrences) in group_entries_by_position(docs) {
+    let doc_series = documents_series(docs);
+    for ((series, order), occurrences) in group_entries_by_position(docs, &doc_series) {
         let Some(&(first_file, first_id, _)) = occurrences.first() else {
             continue;
         };
@@ -418,8 +430,9 @@ pub fn check_project_entry_ids(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Di
 }
 
 /// Every `(path, span)` occurrence belonging to a colliding entry-id group
-/// (anchored at `id_span`) or a colliding `(series, order)` group (anchored
-/// at the `order` value span) among `docs` — first occurrence included. The
+/// (anchored at `id_span`) or a colliding resolved `(series, order)` group
+/// (anchored at the `order` value span, or the entry id under a
+/// document-level `series:`) among `docs` — first occurrence included. The
 /// lore mirror of [`colliding_occurrences`]: `check-project` suppresses a
 /// per-file `E-ENTRY-ID-DUP` / `E-ENTRY-SERIES-ORDER` whose `(path, span)` is
 /// a member here, because [`check_project_entry_ids`] already reports that
@@ -432,7 +445,8 @@ pub fn colliding_entry_occurrences(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf
             out.extend(occurrences.into_iter().map(|(p, s)| (p.to_path_buf(), s)));
         }
     }
-    for occurrences in group_entries_by_position(docs).into_values() {
+    let doc_series = documents_series(docs);
+    for occurrences in group_entries_by_position(docs, &doc_series).into_values() {
         if occurrences.len() >= 2 {
             out.extend(
                 occurrences

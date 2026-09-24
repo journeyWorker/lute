@@ -787,12 +787,16 @@ pub fn walk_quest(
 /// `::set`/`::assert`/`::retract` in an entry body (D6), so `walk_seq`'s
 /// generic lowering is exactly right.
 ///
-/// `order` is the checker-validated non-negative integer (`E-ENTRY-ATTR`
-/// gates anything else); `titleLineId` is `{entryId}.title`, the quest
-/// `titleLineId` convention.
+/// `series`/`order` are the entry's RESOLVED position
+/// ([`lute_check::resolve_entry_series`], dsl 0.19.0 §2.1/§7) — a
+/// document-level `series:` supplies them by place in the file; `order` is
+/// the checker-validated non-negative integer (`E-ENTRY-ATTR` gates anything
+/// else). `titleLineId` is `{entryId}.title`, the quest `titleLineId`
+/// convention.
 pub fn walk_entry(
     em: &mut Emitter,
     entry: &Entry,
+    series: &lute_check::EntrySeries<'_>,
     cx: &mut WalkCx<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -805,11 +809,8 @@ pub fn walk_entry(
         category: text(&entry.category),
         title: text(&entry.title),
         title_line_id: entry.title.as_ref().map(|_| format!("{}.title", entry.id)),
-        series: text(&entry.series),
-        order: entry
-            .order
-            .as_ref()
-            .and_then(|(o, _)| lute_check::parse_entry_order(o)),
+        series: series.series.map(str::to_string),
+        order: series.order,
         when: entry.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
         body: label.sym(),
         stamp: Stamp::default(),

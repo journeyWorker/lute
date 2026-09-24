@@ -45,11 +45,15 @@ struct EntryRow {
     category: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
+    /// The RESOLVED series ([`lute_check::resolve_entry_series`], spec
+    /// §2.1): the document's `series:` when it declares one, else the
+    /// entry's own `series=`.
     #[serde(skip_serializing_if = "Option::is_none")]
     series: Option<String>,
-    /// `order` when it is a non-negative integer (spec §3, the checker's own
-    /// [`lute_check::parse_entry_order`]); a malformed value (`E-ENTRY-ATTR`)
-    /// is reported as absent.
+    /// The RESOLVED order: the entry's position under a document-level
+    /// `series:`, else its own `order=` when that is a non-negative integer
+    /// (spec §3, the checker's own [`lute_check::parse_entry_order`]); a
+    /// malformed value (`E-ENTRY-ATTR`) is reported as absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     order: Option<u32>,
 }
@@ -180,7 +184,9 @@ fn fold_document(
     for fact in scene_facts {
         record(fact, None);
     }
-    for entry in &doc.entries {
+    let doc_series = lute_check::document_series(&doc.meta);
+    let resolved = lute_check::resolve_entry_series(doc_series.as_deref(), &doc.entries);
+    for (entry, position) in doc.entries.iter().zip(resolved) {
         let mut entry_facts = Vec::new();
         collect_asserts(&entry.body, &mut entry_facts);
         for fact in entry_facts {
@@ -192,11 +198,8 @@ fn fold_document(
             target: entry.target.as_ref().map(|(v, _)| v.clone()),
             category: entry.category.as_ref().map(|(v, _)| v.clone()),
             title: entry.title.as_ref().map(|(v, _)| v.clone()),
-            series: entry.series.as_ref().map(|(v, _)| v.clone()),
-            order: entry
-                .order
-                .as_ref()
-                .and_then(|(v, _)| lute_check::parse_entry_order(v)),
+            series: position.series.map(str::to_string),
+            order: position.order,
         });
     }
 }

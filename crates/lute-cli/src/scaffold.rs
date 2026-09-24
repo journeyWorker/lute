@@ -538,7 +538,9 @@ title: {name}
 /// `default:`, so the objective's `done` read is definitely assigned) and one
 /// objective gated on it. The quest id / state segment is [`to_ident`] of the
 /// name (a valid lower-camel identifier), while the file stem keeps the raw
-/// name.
+/// name. The document id (dsl 0.19.0 §2.1) is `quest.<ident>` — namespaced
+/// so it cannot collide with a scaffolded scene's `{name}.s01epNN` key or a
+/// same-named `lute new lore` bundle.
 fn new_quest(name: &str, dir: &Path) -> ExitCode {
     let path = dir.join("quests").join(format!("{name}.lute"));
     let ident = to_ident(name);
@@ -548,6 +550,7 @@ fn new_quest(name: &str, dir: &Path) -> ExitCode {
         "\
 ---
 kind: quest
+id: quest.{ident}
 luteVersion: \"{lang}\"
 title: {name}
 # Self-contained progress counter — a scene can bump it with
@@ -572,7 +575,8 @@ state:
 ///
 /// Self-contained: one `<entry>` whose id is [`to_ident`] of the name, attached
 /// to `item.<ident>` as a `note`, with one content line. Entries live under
-/// `lore/`, mirroring `quests/`; the file stem keeps the raw name.
+/// `lore/`, mirroring `quests/`; the file stem keeps the raw name. The
+/// document id (§2.1) is `lore.<ident>`, namespaced like `lute new quest`'s.
 fn new_lore(name: &str, dir: &Path) -> ExitCode {
     let path = dir.join("lore").join(format!("{name}.lute"));
     let ident = to_ident(name);
@@ -581,6 +585,7 @@ fn new_lore(name: &str, dir: &Path) -> ExitCode {
         "\
 ---
 kind: lore
+id: lore.{ident}
 luteVersion: \"{lang}\"
 title: {name}
 # Each <entry> is text the engine looks up (an item description, a found

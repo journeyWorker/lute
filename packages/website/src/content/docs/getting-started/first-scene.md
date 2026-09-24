@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.18.0**.
+**0.19.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -20,7 +20,7 @@ Create an empty file, `my-scene.lute`, and run the checker on it — the checker
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
+my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore` (dsl 0.2.0 §3.1, dsl 0.19.0 §2)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
@@ -242,8 +242,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.18.0",
-  "irVersion": "0.18.0",
+  "lute": "0.19.0",
+  "irVersion": "0.19.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "id": "mira.s01ep01",

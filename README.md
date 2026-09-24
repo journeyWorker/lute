@@ -31,13 +31,14 @@ The website — landing, guides, language reference, CLI docs (en + 한국어) �
 
 ```sh
 lute init my-project           # scaffold project + starter scene + mock
-lute new quest the-hunt        # scaffold one document (scene | quest | schema)
+lute new quest the-hunt        # scaffold one document (scene | quest | lore | schema)
 lute check scene.lute          # static validation of one document
 lute check-project .           # every document + project-wide passes (quest ids, connectivity)
 lute lint .                    # advisory L-* findings governed by lute.lint.yaml
 lute trace scene.lute --mock m.yaml   # preview SOURCE behaviour, every decision explained
 lute compile scene.lute -o out.json   # JSON artifact (--all for a whole project + index)
 lute run out.json --mock m.yaml       # reference runtime over the ARTIFACT an engine consumes
+lute lore my-project           # world-narrative map: lore entries by target/series, facts revealed
 lute play my-project --auto first     # a whole scheduled route as one chained transcript
 lute test .                    # *.test.yaml scenario tests (transcript/state/quest assertions)
 lute loc export . --format csv # localization round trip (+ import, word-count report)
@@ -54,10 +55,11 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.18.0`](docs/proposals/scenario-dsl/0.18.0.md) (range patterns in `<when is>`; literal `test` guards move to `is=`). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.19.0`](docs/proposals/scenario-dsl/0.19.0.md) (lore entries: a third document kind for looked-up content). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
 | **authoring quests** (lifecycle, objectives, subquests, rewards) | [`0.2.0`](docs/proposals/scenario-dsl/0.2.0.md) §6 (quest kind, objectives, lifecycle events) + [`0.14.0`](docs/proposals/scenario-dsl/0.14.0.md) (subquests) + [`0.16.0`](docs/proposals/scenario-dsl/0.16.0.md) (`<reward/>`) | [`runtime/quest-lifecycle.md`](docs/runtime/quest-lifecycle.md) |
+| **authoring lore** (item descriptions, found notes, codex pages, barks) | [`0.19.0`](docs/proposals/scenario-dsl/0.19.0.md) (`kind: lore`, `<entry>`, `entry.<id>.read`, document bundles) | [`runtime/lore-entries.md`](docs/runtime/lore-entries.md) |
 | **writing a plugin** (directives, state, providers, bridge, `stampAttrs`, `rewardKinds`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md)–[`0.0.7`](docs/proposals/plugin-system/0.0.7.md) deltas | [`plugin-system.md`](docs/plugin-system.md) |
-| **building an engine** (consuming the artifact) | [`docs/runtime/`](docs/runtime) — execution model, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol — plus the artifact JSON Schema [`schemas/lute-ir-0.18.schema.json`](schemas/lute-ir-0.18.schema.json) and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
+| **building an engine** (consuming the artifact) | [`docs/runtime/`](docs/runtime) — execution model, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol, lore entries — plus the artifact JSON Schema [`schemas/lute-ir-0.19.schema.json`](schemas/lute-ir-0.19.schema.json) and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
 | **building the compiler / checker / LSP** | the proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
@@ -66,8 +68,8 @@ Each document owns one role; read the one that matches what you are doing.
 
 Worked examples:
 
-- [`docs/examples/haven/`](docs/examples/haven) — a whole small project: scenes, quests, a shared
-  world schema, a component, and a `schedule.yaml`.
+- [`docs/examples/haven/`](docs/examples/haven) — a whole small project: scenes, quests, lore
+  entries, a shared world schema, a component, and a `schedule.yaml`.
 - [`docs/examples/marina-s01ep02.lute`](docs/examples/marina-s01ep02.lute) — linear episode faithful
   to a real catalog episode; comments, `::camera`, a multi-track `<timeline>`, and a
   `<branch>`/`<match>`/state callback.
@@ -111,7 +113,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.18.0"
+luteVersion: "0.19.0"
 profile: date-minigame
 extra:
   arc: main
@@ -185,16 +187,16 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.18.0.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.19.0.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
-  [`0.18.0`](docs/proposals/scenario-dsl/0.18.0.md). Recent tips: `0.14.0` subquests,
+  [`0.19.0`](docs/proposals/scenario-dsl/0.19.0.md). Recent tips: `0.14.0` subquests,
   `0.15.0` authored scene identity (`id:` + the descriptive `extra:` block), `0.16.0`
   declarative rewards, `0.17.0` checked continuation tooling (ordinary grammar
-  unchanged), and `0.18.0` numeric range patterns in `<when is>`. Being draft means the
-  grammar may still break before 1.0; each breaking change ships a `lute fix` migration
-  where the rewrite is mechanical.
-- **IR: 0.18.0.** The compiled artifact is specified by
-  [`schemas/lute-ir-0.18.schema.json`](schemas/lute-ir-0.18.schema.json) and the
+  unchanged), `0.18.0` numeric range patterns in `<when is>`, and `0.19.0` lore entries
+  (queried content). Being draft means the grammar may still break before 1.0; each
+  breaking change ships a `lute fix` migration where the rewrite is mechanical.
+- **IR: 0.19.0.** The compiled artifact is specified by
+  [`schemas/lute-ir-0.19.schema.json`](schemas/lute-ir-0.19.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only
   (since `0.13.0`): fields are append-only within a major line, so a minor move costs a

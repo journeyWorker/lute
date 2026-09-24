@@ -22,11 +22,12 @@ use crate::meta::{
 };
 use crate::prereq::{atoms, parse_prereq, Atom, PrereqFormula};
 
-/// dsl §2.3/§4.1, dsl 0.15.0 §2/§6 (D-B): two scene documents resolve to the
-/// SAME canonical scene id (authored `id:` or the derived
-/// `{character}.{episodeId}` fallback). The code stays for tooling stability
-/// (breaks no downstream `--deny` config); the message names the canonical
-/// scene id.
+/// dsl §2.3/§4.1, dsl 0.15.0 §2/§6 (D-B), dsl 0.19.0 §2.1: two documents
+/// resolve to the SAME document id — a scene's canonical scene id (authored
+/// `id:` or the derived `{character}.{episodeId}` fallback) or a quest/lore
+/// document's authored `id:`, all one project-wide namespace. The code stays
+/// for tooling stability (breaks no downstream `--deny` config); the message
+/// names the document id.
 pub const E_CONN_EPISODE_ID_DUP: &str = "E-CONN-EPISODE-ID-DUP";
 
 fn diag(message: String, span: Span) -> Diagnostic {
@@ -120,21 +121,68 @@ pub fn scene_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(Path
     by_key
 }
 
-/// Every `E-CONN-EPISODE-ID-DUP` collision across `docs`' scene documents
-/// (parallel to [`crate::project_check::check_project_quest_ids`]): for each
-/// canonical scene key with 2+ occurrences, every occurrence past the first
-/// is one diagnostic, anchored at that occurrence's own canonical-key source
-/// — `id:` when authored, `character:` for the derived triad. Callers MUST
+/// A quest or lore document's authored, well-formed `id:` (dsl 0.19.0
+/// §2.1), read off the raw frontmatter under the same `[A-Za-z0-9_.-]+` gate
+/// as a scene's (a rejected id contributes nothing; its own `E-META-ID`
+/// anchors). Without one the document has no id in the shared namespace —
+/// its fallback index key (the first declared quest/entry id) is not a
+/// document id.
+fn bundle_id(doc: &Document) -> Option<String> {
+    let serde_yaml::Value::Mapping(map) =
+        serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml).ok()?
+    else {
+        return None;
+    };
+    map.get(serde_yaml::Value::String("id".to_string()))?
+        .as_str()
+        .filter(|raw| is_valid_scene_id_raw(raw))
+        .map(str::to_string)
+}
+
+/// Every document id in `docs`, grouped by id in `docs` order (dsl 0.19.0
+/// §2.1): each scene's canonical scene key (as [`scene_key_set`]) and each
+/// quest or lore document's authored `id:` ([`bundle_id`], anchored at that
+/// key) — one project-wide namespace. Only the dup check reads this;
+/// `visited(K)` resolution stays on [`scene_key_set`], since a quest or lore
+/// bundle is not a scene node.
+fn document_id_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
+    let mut by_id: BTreeMap<String, Vec<(PathBuf, Span)>> = BTreeMap::new();
+    for (path, doc) in docs {
+        let (key, anchor) = match resolve_doc_kind(&doc.meta).0 {
+            Some(DocKind::Scene) => match scene_identity(doc) {
+                Some(SceneIdentity { key, anchor }) => (key, anchor),
+                None => continue,
+            },
+            Some(DocKind::Quest | DocKind::Lore) => match bundle_id(doc) {
+                Some(id) => (id, "id"),
+                None => continue,
+            },
+            None => continue,
+        };
+        by_id
+            .entry(key)
+            .or_default()
+            .push((path.clone(), meta_key_span(&doc.meta, anchor)));
+    }
+    by_id
+}
+
+/// Every `E-CONN-EPISODE-ID-DUP` collision across `docs` (parallel to
+/// [`crate::project_check::check_project_quest_ids`]): for each document id
+/// ([`document_id_set`]) with 2+ occurrences, every occurrence past the first
+/// is one diagnostic, anchored at that occurrence's own id source — `id:`
+/// when authored, `character:` for a scene's derived triad. Callers MUST
 /// pre-scope `docs` to one resolved project root (`lute-cli`'s `by_root`
 /// grouping) — this function itself performs no root scoping.
 ///
 /// The code stays `E-CONN-EPISODE-ID-DUP` for tooling stability (dsl 0.15.0
 /// §2/§6 D-B): renaming would break downstream `--deny` configs and log
-/// tooling to convey no new information. The MESSAGE generalises: `canonical
-/// scene id`, since authored `id:` and the derived join share one namespace.
+/// tooling to convey no new information. The MESSAGE generalises to
+/// `document id` (dsl 0.19.0 §2.1): scene ids (authored or derived) and
+/// quest/lore document ids share one namespace.
 pub fn check_conn_episode_dup(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
-    for (key, occurrences) in scene_key_set(docs) {
+    for (key, occurrences) in document_id_set(docs) {
         if occurrences.len() < 2 {
             continue;
         }
@@ -142,15 +190,16 @@ pub fn check_conn_episode_dup(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Dia
         for (file, span) in &occurrences[1..] {
             let message = if file == first_file {
                 format!(
-                    "duplicate canonical scene id `{key}`; a scene's `id:` (or its \
-                     `{{character}}.{{episodeId}}` fallback) must be unique project-wide \
-                     (dsl 0.15.0 §2)"
+                    "duplicate document id `{key}`; a document's `id:` (or a scene's \
+                     `{{character}}.{{episodeId}}` fallback) must be unique project-wide across \
+                     scene, quest, and lore documents (dsl 0.15.0 §2, dsl 0.19.0 §2.1)"
                 )
             } else {
                 format!(
-                    "duplicate canonical scene id `{key}` across project files (`{}` and \
-                     `{}`); a scene's `id:` (or its `{{character}}.{{episodeId}}` fallback) \
-                     must be unique project-wide (dsl 0.15.0 §2)",
+                    "duplicate document id `{key}` across project files (`{}` and `{}`); a \
+                     document's `id:` (or a scene's `{{character}}.{{episodeId}}` fallback) must \
+                     be unique project-wide across scene, quest, and lore documents (dsl 0.15.0 \
+                     §2, dsl 0.19.0 §2.1)",
                     first_file.display(),
                     file.display()
                 )

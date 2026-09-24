@@ -222,8 +222,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.18.0");
-    assert_eq!(artifact.ir_version, "0.18.0");
+    assert_eq!(artifact.lute, "0.19.0");
+    assert_eq!(artifact.ir_version, "0.19.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
@@ -1604,6 +1604,98 @@ after: "visited('kestrel.s01ep01')"
     );
 }
 
+/// dsl 0.19.0 §2.1: a quest document's authored `id:` is its `meta.id` and
+/// its index key; the quest ids still key the addressing units.
+#[test]
+fn quest_document_id_is_meta_id_and_index_key() {
+    const DOC: &str = "---\nkind: quest\nid: haven.mainChain\ntitle: Main chain\n---\n\n\
+                       <quest id=\"arrival\" title=\"Arrive\" start=\"true\">\n\
+                       </quest>\n\n<quest id=\"harbor\" title=\"Harbor\">\n</quest>\n";
+    let art = compile(&input(DOC)).expect("quest bundle compiles");
+    let v = serde_json::to_value(&art).unwrap();
+    assert_eq!(
+        v["meta"],
+        serde_json::json!({"id": "haven.mainChain", "title": "Main chain"})
+    );
+    assert_eq!(lute_compile::index::document_key(&art), "haven.mainChain");
+
+    // Without `id:` the meta has no `id` key and the key falls back to the
+    // first declared quest id.
+    let bare = compile(&input(&DOC.replace("id: haven.mainChain\n", ""))).unwrap();
+    assert_eq!(
+        serde_json::to_value(&bare).unwrap()["meta"],
+        serde_json::json!({"title": "Main chain"})
+    );
+    assert_eq!(lute_compile::index::document_key(&bare), "arrival");
+}
+
+/// dsl 0.19.0 §2.1/§7: a document-level `series:` resolves every entry to
+/// that series at its 1-based file position — in the `entry` records, the
+/// `LoreMeta`, and the `ProjectIndex.entries` rows — and the document's
+/// `id:` keys it in the index.
+#[test]
+fn lore_document_series_resolves_positions_everywhere() {
+    const DOC: &str = "---\nkind: lore\nid: haven.captainsLog\ntitle: Captain's log\n\
+                       series: captainsLog\n---\n\n\
+                       <entry id=\"captainsLog1\" target=\"item.captains_log\" category=\"note\">\n\
+                       @captain: Day one.\n</entry>\n\n\
+                       <entry id=\"captainsLog2\" target=\"item.captains_log\" category=\"note\">\n\
+                       @captain: Day two.\n</entry>\n\n\
+                       <entry id=\"captainsLog3\" target=\"item.captains_log\" category=\"note\">\n\
+                       @captain: Day three.\n</entry>\n";
+    let art = compile(&input(DOC)).expect("lore bundle compiles");
+    let v = serde_json::to_value(&art).unwrap();
+    assert_eq!(
+        v["meta"],
+        serde_json::json!({
+            "id": "haven.captainsLog",
+            "title": "Captain's log",
+            "series": "captainsLog"
+        })
+    );
+    let positions: Vec<(String, Option<String>, Option<u32>)> = art
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            Command::Entry(e) => Some((e.id.clone(), e.series.clone(), e.order)),
+            _ => None,
+        })
+        .collect();
+    let log = || Some("captainsLog".to_string());
+    assert_eq!(
+        positions,
+        vec![
+            ("captainsLog1".to_string(), log(), Some(1)),
+            ("captainsLog2".to_string(), log(), Some(2)),
+            ("captainsLog3".to_string(), log(), Some(3)),
+        ]
+    );
+
+    let index = lute_compile::index::build_index(
+        lute_compile::LUTE_IR_VERSION,
+        &[lute_compile::index::IndexInput {
+            path: "lore/log.lute".to_string(),
+            artifact_path: "lore/log.lute.json".to_string(),
+            artifact: &art,
+        }],
+    )
+    .expect("index builds");
+    assert_eq!(index.documents[0].key, "haven.captainsLog");
+    let rows: Vec<(&str, Option<&str>, Option<u32>)> = index
+        .entries
+        .iter()
+        .map(|e| (e.id.as_str(), e.series.as_deref(), e.order))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("captainsLog1", Some("captainsLog"), Some(1)),
+            ("captainsLog2", Some("captainsLog"), Some(2)),
+            ("captainsLog3", Some("captainsLog"), Some(3)),
+        ]
+    );
+}
+
 /// dsl 0.15.0 §7 wire-compat: a legacy (no `id:`) document's 0.15 artifact
 /// differs from a pinned 0.14-shape expectation ONLY by the added `id`
 /// field and the two version strings (`lute`, `irVersion`). Asserted via
@@ -1669,8 +1761,8 @@ title: Legacy
     assert_eq!(actual["meta"]["episodeId"], pinned_014["meta"]["episodeId"]);
     assert_eq!(actual["meta"]["title"], pinned_014["meta"]["title"]);
     assert_eq!(actual["meta"]["id"], serde_json::json!("marina.s01ep02"));
-    assert_eq!(actual["lute"], serde_json::json!("0.18.0"));
-    assert_eq!(actual["irVersion"], serde_json::json!("0.18.0"));
+    assert_eq!(actual["lute"], serde_json::json!("0.19.0"));
+    assert_eq!(actual["irVersion"], serde_json::json!("0.19.0"));
 }
 
 /// dsl 0.15.0 §3: the authored `extra:` block lands under `meta.extra`
