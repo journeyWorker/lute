@@ -53,8 +53,8 @@ error (`E-KIND-MISSING`, `E-META-MISSING`).
   [Params](/language/params/)).
 
 A top-level key that is neither a core key nor owned by an active plugin is a static error.
-Plugins may contribute additional frontmatter keys through their manifest (for example, `cast:` is
-owned by the character/cast capability).
+Plugins may contribute additional frontmatter keys through their manifest (a `frontmatter` export;
+the draft character/cast capability, for example, would own a `cast:` key).
 
 ## `identity:` — the id shapes a project compiles to
 

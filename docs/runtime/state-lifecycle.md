@@ -70,10 +70,14 @@ Two families of `quest.<id>.*` paths are **engine-owned**, not author-written
 (the author never assigns `quest.<id>.state`, dsl §5.4):
 
 - `quest.<id>.state` — the fixed lifecycle enum `active` / `complete` /
-  `failed` / `unset`. Its `domain` in the state table appends `"unset"`, but —
-  unlike a branch slot — it carries **no forced default**: the engine populates
-  it (maybe-unset) before the quest is known (IR addendum §3.1). The engine
-  *derives* every transition (see [quest-lifecycle.md](./quest-lifecycle.md)).
+  `failed` / `unset`. Its `domain` in the state table appends `"unset"`, and
+  its entry carries no `default`, but the slot is **always assigned**: an
+  engine MUST read a quest it has not activated as `"unset"` (IR addendum
+  §3.1) — never as a missing value. The checker relies on this (since lute
+  `0.21.1`): a read needs no guard, `== 'unset'` is legal and means "not yet
+  activated", and `isSet(quest.<id>.state)` — always true — is
+  `W-QUEST-STATE-ISSET`. The engine *derives* every transition (see
+  [quest-lifecycle.md](./quest-lifecycle.md)).
 - `quest.<id>.objectives.<oid>.done` — a plain `bool`, recorded when the
   objective's `done` predicate first holds (monotonic within an instance).
 - `quest.<id>.activatedAt` — a `narrativeTime` (dsl 0.8.0 §5), populated by the

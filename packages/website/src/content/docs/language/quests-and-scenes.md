@@ -238,7 +238,11 @@ worked example:
 — **`questActive`**, **`questComplete`**, **`questFailed`** — each firing only for its own enclosing
 quest. World events (e.g. `combatEnd`) are capability-provided by plugins.
 
-Content elsewhere can also gate on quest lifecycle by reading the reserved `quest.<id>.state` path:
+Content elsewhere can also gate on quest lifecycle by reading the reserved `quest.<id>.state` path.
+It is **always assigned**: `unset` until the quest activates, then `active`, `complete`, or `failed`.
+So a read needs no `isSet` guard (`isSet(quest.<id>.state)` is always true, `W-QUEST-STATE-ISSET`),
+`when="quest.rescueHalsin.state == 'complete'"` is a complete guard, and "not taken up yet" is
+`quest.rescueHalsin.state == 'unset'` or a `<when is="unset">` arm:
 
 ```lute
 <match on="quest.rescueHalsin.state">
@@ -278,9 +282,8 @@ is the conjunction "true now, and not yet true at activation" — a bare
 admits only the ordering comparisons `<`, `<=`, `==`, `>`, `>=`; `!=` is `E-TEMPORAL-ARG`, as is any
 arithmetic on one. See [Facts & Datalog](/state/facts-and-datalog/) for the interval semantics.
 
-`activatedAt` is also the one reserved path exempt from `E-MAYBE-UNSET`, because a maybe-unset
-verdict on it would be undischargeable: no literal inhabits `narrativeTime`, so the slot can carry
-no `default:`, and both guard forms — `isSet(p)` and `has(p)` — are themselves `E-TEMPORAL-ARG` on a
-narrative-time operand. `quest.<id>.state` has an escape hatch (`<match>` exhaustiveness over its
-lifecycle enum); this has none. The engine guarantees the stamp exists for any activated instance,
-and a read is only meaningful inside one.
+`activatedAt` is also exempt from `E-MAYBE-UNSET`, because a maybe-unset verdict on it would be
+undischargeable: no literal inhabits `narrativeTime`, so the slot can carry no `default:`, and both
+guard forms — `isSet(p)` and `has(p)` — are themselves `E-TEMPORAL-ARG` on a narrative-time operand.
+(`quest.<id>.state` is exempt for a different reason: it is always assigned.) The engine guarantees
+the stamp exists for any activated instance, and a read is only meaningful inside one.

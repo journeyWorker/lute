@@ -89,10 +89,11 @@ Declaration is **per project root** — a directory with a `lute.project.yaml`. 
 declaration never reaches into yours.
 
 :::note
-A plugin's members only reach a single-file `lute check` when the run can see the project:
-`lute check scenes/opening.lute --project .`, or `lute check-project .`, which resolves the root
-itself. Without one of those the run is core-only, and a document relying on the plugin route
-reports `E-DOMAIN-UNKNOWN`.
+A plugin's members only reach a single-file command when the run can see the project.
+`lute check scenes/opening.lute` finds the nearest `lute.project.yaml` above the file on its own
+(stderr: `note: using project …`), and `lute check-project .` resolves the root itself. `lute
+compile`, `trace`, and `context` need `--project .`: without it they run core-only, and a document
+relying on the plugin route reports `E-DOMAIN-UNKNOWN`.
 :::
 
 ## Precedence when two routes declare one slot

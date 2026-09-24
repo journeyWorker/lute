@@ -140,6 +140,10 @@ a `<match>` may pick a different arm by then, but nothing else changes.
 (`when="entry.scientistLog1.read"`), branch a scene on it, or complete a quest objective. Content
 never writes it. `lute check-project` warns `W-ENTRY-REF-UNKNOWN` when no document declares the id.
 
+The flag is **run-tier**: a new run resets it, and the next first read applies the effects again.
+So `when="!entry.<id>.read"` makes an entry play once per run, not once ever. For once ever, have the
+entry set a `user.*` flag and guard on that.
+
 ## Tooling
 
 - `lute trace <doc> --entry <id> --mock m.yaml` previews one entry against mocked state; seed

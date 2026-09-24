@@ -136,6 +136,7 @@ export default defineConfig({
               translations: { ko: "스트리밍 연속 컴파일러" },
             },
             { slug: "tooling/tracing" },
+            { slug: "tooling/linting" },
             { slug: "tooling/providers-and-catalog" },
             { slug: "tooling/editors" },
             {

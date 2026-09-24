@@ -160,14 +160,12 @@ enum Command {
         deny_warnings: bool,
     },
     /// Run configurable content/metric advisory lints over a `.lute`
-    /// document or a directory tree (docs/superpowers/specs/
-    /// 2026-08-26-lute-lint-system-design.md). Distinct from `lute check`:
-    /// this surface publishes advisory `L-*` findings governed by
-    /// `<project root>/lute.lint.yaml` (rule levels, thresholds, ignore
-    /// globs, project-local `custom:` rules) and never touches artifact
-    /// identity (spec §1). Documents are grouped by their nearest
-    /// ancestor `lute.project.yaml` exactly as `check-project` does;
-    /// engine runs once per root with `LintScope::Full`. Exit `0` clean
+    /// document or a directory tree (https://lute-lang.vercel.app/tooling/linting/).
+    /// Distinct from `lute check`: this surface publishes advisory `L-*`
+    /// findings governed by `<project root>/lute.lint.yaml` (rule levels,
+    /// thresholds, ignore globs, project-local `custom:` rules) and never
+    /// touches artifact identity. Documents are grouped by their nearest
+    /// ancestor `lute.project.yaml` exactly as `check-project` does. Exit `0` clean
     /// or only sub-error findings, `1` any Error-severity finding
     /// (native or `--deny`-promoted, including `E-LINT-CONFIG`/
     /// `E-LINT-EXPR`), `2` I/O, malformed YAML, or usage.

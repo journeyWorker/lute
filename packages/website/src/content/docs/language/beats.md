@@ -103,8 +103,11 @@ state:
 ```
 
 Entries have no `once`. Being read again is normal for an entry: an NPC repeats a bark, a codex
-page stays open. An entry that should be heard only once guards on its own `entry.<id>.read`, as
-`achillesFirstMeeting` does above. `priority=` without `on=` is `E-BEAT-ATTR`.
+page stays open. An entry that should be heard only once **per run** guards on its own
+`entry.<id>.read`, as `achillesFirstMeeting` does above. That flag is run-tier: a new run resets it,
+and the entry plays again. For once ever, guard on a `user.*` flag the entry sets
+(`::set{user.metAchilles = true}` with `when="!user.metAchilles"`), or write the line as a scene
+beat with `once: user`. `priority=` without `on=` is `E-BEAT-ATTR`.
 
 ## Which beat wins
 
@@ -121,8 +124,9 @@ When the engine raises occasion `O`, optionally for target `T`:
 5. If no beat is eligible, the occasion passes with no story and the engine does its default.
 
 With the three barks above and a player on their fifth run, talking to Achilles for the first time
-presents `achillesFirstMeeting` (priority 20). After that it presents `achillesBark3` (priority 10)
-every time, and `achillesBark1` answers only while `user.runs` is below 3.
+in that run presents `achillesFirstMeeting` (priority 20). After that it presents `achillesBark3`
+(priority 10) for the rest of the run, and `achillesBark1` answers only while `user.runs` is below 3.
+The next run starts with `achillesFirstMeeting` again.
 
 ## Occasions
 
@@ -151,7 +155,7 @@ vocabulary. See [Quests & scenes](/language/quests-and-scenes/#quests-meet-scene
 |---|---|
 | `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not an identifier, `target` not a dotted id, `priority` not an integer, `once` outside `run` / `user` / `false`, beat keys without `on`, or a `target` on an untargeted occasion |
 | `E-OCCASION-UNKNOWN` | `on` names an occasion no resolved plugin declares (only once some plugin declares occasions) |
-| `E-BEAT-UNREACHABLE` | a scene beat's `when` provably never holds. `lute check` decides scalar conditions per file; `lute check-project` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
+| `E-BEAT-UNREACHABLE` | a scene beat's `when` provably never holds. `lute check` decides what the literals alone settle — a constant `false` conjunct, or a comparison against a value outside the path's enum (`run.slot == 'afternon'`) — but treats every state path as able to hold any value, so it does not see a contradiction between two conditions on one path (`run.n == 3 && run.n == 4`, `run.flag && !run.flag`). `lute check-project` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
 | `W-BEAT-SHADOWED` | `check-project` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry, or a scene with `once: false`) |
 
 ## Tooling

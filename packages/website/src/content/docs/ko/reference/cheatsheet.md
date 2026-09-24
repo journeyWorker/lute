@@ -71,6 +71,7 @@ defs:
   veteran: "user.runs >= 10"
   vesnaKnows: "holds(knows(vesna, manifest))"
   zoom: "run.pressure > 2 ? 1.3 : 1.1"        # inferred number
+  closeUp: "1.3"                              # a constant: the only kind of def an attribute takes
   atLeast: { type: bool, params: { n: number }, cel: "user.runs >= n" }   # params need type:
 ```
 
@@ -143,7 +144,7 @@ state:
 | `@speaker{attrs}: text` | `@narrator`는 내레이션입니다. `pov:`와 같은 화자는 플레이어입니다. `: ` 뒤의 텍스트는 줄 끝까지 그대로입니다. |
 | 줄 속성 | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as`(이름표 덮어쓰기), `when`(가드), `id`(점프 라벨) |
 | 전달 플래그 | `{mono}` 속마음, `{os}` 화면 밖, `{vo}` 보이스오버. 한 줄에 하나까지이며 `@narrator`에는 쓸 수 없습니다. |
-| `{{…}}` | `{{userName}}` 또는 선언된 상태 경로. 값이 없을 수 있는 경로를 읽으면 `E-MAYBE-UNSET`입니다. |
+| `{{…}}` | `{{userName}}`, 선언된 상태 경로, 또는 `{{@def}}`(산출물에 def 본문이 실리고 `lute run` / `lute play`가 그 값을 계산합니다). 값이 없을 수 있는 경로를 읽으면 `E-MAYBE-UNSET`입니다. 줄의 텍스트 전체가 `@name`이면 그 글자가 그대로 출하됩니다(`W-TEXT-LOOKS-LIKE-REF`). `{{@name}}`으로 쓰세요. |
 | 샷 | 모든 콘텐츠는 `## 제목` 아래에 둡니다. `# 제목`만으로는 샷이 열리지 않습니다. |
 | 디렉티브 | `::bg` `::music` `::sfx` `::auto`(등장, 포즈, 퇴장) `::camera` `::cut` `::vfx` `::video` `::end`. 타이밍 키: `duration`, `delay`, `wait="true"`(대기). |
 | 주석 | `/* … */` |
@@ -317,7 +318,7 @@ relations:
 | `run.*` | 새 런에서 | 예 |
 | `user.*` | 프로필 초기화 시 | 예 |
 | `app.*` | 앱 삭제 시 | 아니요 |
-| `quest.<id>.state` (`unset` `active` `complete` `failed`), `quest.<id>.activatedAt`, `quest.<id>.objectives.<o>.done` | 엔진 | 아니요 |
+| `quest.<id>.state`(항상 값이 있음: 퀘스트가 활성화되기 전에는 `unset`, 그 뒤로 `active` `complete` `failed`), `quest.<id>.activatedAt`, `quest.<id>.objectives.<o>.done` | 엔진 | 아니요 |
 | `entry.<id>.read` | 엔진, run 등급 | 아니요 |
 | `scene.choices.<branch>`, `scene.visited.<hub>.<choice>` | 엔진 | 아니요 |
 | `visited('<scene id>')` | 초기화되지 않음: 세이브 전체 | 아니요 |
@@ -326,14 +327,17 @@ relations:
 |---|---|
 | `== != < <= > >=` · `&& \|\| !` · `+ - * /` · `c ? a : b` · `x in ['a', 'b']` · 문자열·숫자 리터럴 | `has(p)` / `isSet(p)`(값이 있는가) · `holds(rel(a, _))` · `count(rel(_)) >= n` · `validAt(rel(a), quest.q.activatedAt)` · `visited('scene.id')` · `@def` / `@def(args)` · `$`(`<match>` 안에서만) |
 
-쓸 수 없는 것: `%`, `size`, `matches`, `map`/`filter`/`exists`/`all`(`E-CEL-PROFILE`). 값이 없음은
-문자열 `'unset'`이 아닙니다(`E-UNSET-LITERAL`). `!isSet(p)`나 `is="unset"`으로 확인하세요. 경로 세그먼트,
-def 이름, 파라미터 이름에는 `-`를 쓸 수 없습니다.
+쓸 수 없는 것: `%`, `size`, `matches`, `map`/`filter`/`exists`/`all`(`E-CEL-PROFILE`). 가드에서도 def
+본문에서도 마찬가지입니다. 값이 없음은 문자열 `'unset'`이 아닙니다(`E-UNSET-LITERAL`). `!isSet(p)`나
+`is="unset"`으로 확인하세요. 예외는 `quest.<id>.state`로, 여기서는 `unset`이 실제 멤버입니다.
+`quest.q.state == 'unset'`으로 쓰세요. `isSet(quest.q.state)`는 항상 참입니다(`W-QUEST-STATE-ISSET`).
+경로 세그먼트, def 이름, 파라미터 이름에는 `-`를 쓸 수 없습니다.
 
 CEL이 들어가는 곳: `<match on>`, `<when test>`, 줄이나 선택지의 `when=`, `::set`의 우변, `::next when`,
 비트 `when:`, 엔트리 `when=`, 퀘스트 `start` / `fail`, 목표 `done` / `when`, `<on when>`,
-`<reward when>`. 디렉티브 속성에서 def 참조는 따옴표 없이 씁니다: `zoom="@zoom"`이 아니라
-`::camera{zoom=@zoom}`입니다.
+`<reward when>`. 디렉티브 속성에서 def 참조는 따옴표 없이 씁니다: `zoom="@closeUp"`이 아니라
+`::camera{zoom=@closeUp}`입니다. 속성에는 def가 접히는 상수가 들어가므로, 위의 `zoom`처럼 상태를 읽는
+def는 `E-ATTR-DEF-DYNAMIC`입니다. `<match>`로 나누고 갈래마다 리터럴을 쓰세요.
 
 → [CEL 표현식](/state/cel/) · [정의와 파라미터](/language/params/)
 
@@ -386,7 +390,7 @@ state:
 |---|---|
 | `on` | 응답하는 계기. 이 키가 씬을 비트로 만듭니다. `on` 없이 다른 비트 키를 쓰면 `E-BEAT-ATTR`입니다. |
 | `target` | 선택, 점으로 구분한 id(`npc.vesna`). 계기가 그 대상에 대해 발생했을 때만 후보가 됩니다. |
-| `when` | `run` / `user` / `app`, `quest.*`, `entry.*.read`, 팩트, `visited()`에 대한 CEL. `scene.*`는 읽을 수 없습니다. |
+| `when` | `run` / `user` / `app`, `quest.*`, `entry.*.read`, 팩트, `visited()`에 대한 CEL. `scene.*`는 읽을 수 없습니다. 문자열을 비교할 때는 YAML 값을 큰따옴표로 감싸 CEL이 작은따옴표를 쓸 수 있게 하세요: `when: "run.slot == 'night' && user.runs >= 3"`. 두 층 모두 작은따옴표를 쓰면 `E-META-PARSE`입니다. |
 | `priority` | 정수, 기본값 `0`. 높은 쪽이 이깁니다. |
 | `once` | `run`(기본값), `user`(평생 한 번), `false`(반복 가능). 씬 전용이며 엔트리는 반복됩니다. |
 
@@ -433,7 +437,7 @@ state:
 ---
 
 <quest id="regular" title="Become a regular" start="true" fail="run.fired" after="visited('cafe.counter')">
-  <reward kind="XP" amount="100"/>
+  <reward kind="BADGE" amount="1"/>
   <objective id="tip" title="Tip three times" done="run.tips >= 3">
     @narrator: Mira starts your order when you walk in.
   </objective>
@@ -468,11 +472,12 @@ state:
 | `on="runEnd"` | 퀘스트가 활성인 동안 그 계기가 발생했을 때만 `done`을 판정합니다. |
 | 목표의 `when=` | 표시 여부만 정합니다. 완료에는 영향을 주지 않습니다. |
 | `quest="child"` | 하위 퀘스트: 자식이 완료되면 완료되고, 필수 자식이 실패하면 부모도 실패합니다. `done=`과 함께 쓸 수 없습니다(`E-OBJECTIVE-QUEST-DONE`). `start`가 없는 자식은 부모와 함께 활성화됩니다. |
-| `<reward kind amount target when on/>` | 엔진에 넘기는 데이터입니다. `amount`는 정수나 범위 `N..M`입니다. `on="failed"`는 실패 시에 지급합니다. |
+| `<reward kind amount target when on/>` | 엔진에 넘기는 데이터입니다. 콘텐츠는 보상을 읽을 수 없고 `lute run` / `lute play`는 `grant`만 출력하므로, 같은 재화를 `<on>` 핸들러에서 `::set`으로 또 올리지 마세요. 두 번 지급됩니다. `amount`는 정수나 범위 `N..M`입니다. `on="failed"`는 실패 시에 지급합니다. |
 | `<on event>` | `questActive`, `questComplete`, `questFailed`, 또는 플러그인의 월드 이벤트. `when=`으로 가드할 수 있습니다. |
 
 퀘스트 문서에는 `#`/`##` 제목, `<hub>`, `<timeline>`이 없습니다. 다른 문서는
 `<match on="quest.regular.state">`나 `when="quest.regular.state == 'complete'"`로 퀘스트를 읽습니다.
+상태는 항상 값이 있으므로 `quest.regular.state == 'unset'`은 "아직 받지 않음"을 뜻합니다.
 
 → [퀘스트와 씬](/language/quests-and-scenes/)
 
@@ -514,7 +519,8 @@ state:
   위치로 엔트리 순서를 정하며, 그런 문서에서 엔트리별 `series=`/`order=`는 `E-ENTRY-ATTR`입니다.
 - 엔트리 본문에는 콘텐츠 줄, `<match>`, `::set`, `::assert`, `::retract`만 둘 수 있습니다. `<branch>`,
   디렉티브, 제목을 비롯한 그 밖의 것은 `E-GRAMMAR-NOT-ADMITTED`입니다.
-- 효과는 첫 읽기에만 적용됩니다. 그 뒤로 `entry.<id>.read`는 `true`이며 어느 문서에서나 읽을 수 있습니다.
+- 효과는 한 런에서 처음 읽을 때만 적용됩니다. 그 뒤로 `entry.<id>.read`는 `true`이며 어느 문서에서나 읽을
+  수 있습니다. run 등급이라 새 런에서 초기화됩니다.
 
 → [로어 엔트리](/language/lore-entries/)
 
@@ -541,8 +547,11 @@ params:
 ```
 
 컴포넌트 파일 이름은 `name.component.lute`입니다. 본문에는 대사, 연출, `@param` 참조, 파라미터에 대한
-`<match>`를 둘 수 있으며 상태를 읽거나 쓰지 않습니다. 가져오는 씬은 `components:`에 파일을 적고
-`::use`로 펼칩니다:
+`<match>`를 둘 수 있으며 스스로 상태를 읽거나 쓰지 않습니다. `{{@param}}`은 number, bool, enum
+파라미터만 렌더링하며 `string` 파라미터는 렌더링하지 않습니다. 가져오는 씬은 `components:`에 파일을 적고
+`::use`로 펼칩니다. 인자로 호출하는 쪽의 `@def`를 넘길 수 있습니다(`tier=@mood`). enum 파라미터라면 def가
+낼 수 있는 모든 값이 멤버여야 하고(`E-COMPONENT-ARG`), 컴포넌트가 디렉티브 속성에 넣는 인자가 상태에
+따라 바뀌는 def이면 `E-ATTR-DEF-DYNAMIC`입니다:
 
 ```lute check="docs/examples/components/scene.lute"
 ---
@@ -601,18 +610,19 @@ id: storm.beat
 
 | 명령 | 용도 |
 |---|---|
-| `lute check <file> [--project <dir>]` | 문서 하나를 검사합니다. `defaults:`, 플러그인, 계기에 기대는 문서라면 반드시 `--project`를 붙이세요. |
-| `lute check-project <dir>` | 모든 문서와 함께 연결성, 퀘스트 id, `::accept` 대상, 계기, 팩트 가드를 검사합니다. |
+| `lute check <file> [--project <dir>]` | 문서 하나를 검사합니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고, 그 사실을 stderr에 알립니다. |
+| `lute check-project <dir>` | 모든 문서와 함께 연결성, 퀘스트 id, `::accept` 대상, 계기, 팩트 가드를 검사합니다. 깨끗한 문서는 모두 컴파일까지 해 보므로, 컴파일 단계 오류(`E-DUP-VOICEKEY`, `E-CAPABILITY-MISMATCH`)도 여기서 실패합니다. |
 | `lute fix <file>` | 기계적 이전을 제자리에서 적용합니다: 옛 `:line` 표기, `as=` → `into=`, `test="$ == …"` → `is=`. |
 | `lute tag <file>` | 모든 줄에 안정적인 `code`를 채웁니다. |
 | `lute compile <file> -o out.json` · `--all --project <dir> -o <outdir>` | 산출물을 만듭니다. `--all`은 `beats`를 포함한 `project.index.json`도 씁니다. |
 | `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o] [--entry id]` | 소스를 목에 맞춰 미리 봅니다. 종료 코드 `3`은 판정할 수 없는 가드를 만났다는 뜻입니다. |
 | `lute run <artifact> [--mock m.yaml] [--occasion o] [--entry id]` | 컴파일된 산출물을 엔진처럼 실행합니다. |
 | `lute play <dir> --script p.play.yaml [--json]` | 프로젝트 전체에 계기를 발생시키며 퀘스트를 진행합니다. |
-| `lute test [<dir>] --project <dir> [--coverage]` | 모든 `*.test.yaml`을 실행합니다. |
+| `lute test [<dir>] [--project <dir>] [--coverage]` | 모든 `*.test.yaml`을 실행합니다. 미완료로 끝난 워크는 실패합니다. `--coverage`는 `--project`나 가장 가까운 `lute.project.yaml`의 프로젝트에서 테스트되지 않은 문서를 나열합니다. |
 | `lute scenario <dir> [reach <node> \| envelope <node>] [--format text\|json\|dot]` | `after:` 그래프, 도달 가능성, 보장되는 상태와 팩트. 노드는 씬 id나 `quest:<id>`입니다. |
 | `lute lore <dir>` | 대상별·시리즈별 엔트리와 그 엔트리가 드러내는 팩트. |
 | `lute context <file> [--project <dir>]` | 여기서 쓸 수 있는 모든 것: 디렉티브, 어휘, 상태, 계기. |
+| `lute lint [<path>] [--config lute.lint.yaml]` | 프로젝트별로 설정하는 권고성 편집 린트(`L-*`). |
 | `lute new scene\|quest\|lore\|schema <name> [--dir <dir>]` · `lute init <dir>` | 문서나 프로젝트의 뼈대를 만듭니다. |
 
 trace 목(`--mock`). 테스트의 목 키도 같은 형식입니다:
@@ -641,13 +651,16 @@ expect:
   quests: { regular: complete, lostCup: unset }   # unset | active | complete | failed
   state: { user.xp: 50 }
   transcriptContains: ["You are a regular now."]
-  exit: complete                                  # complete | incomplete
+  exit: complete                                  # complete | incomplete; without it, incomplete fails
 ```
+
+테스트의 `file:`은 씬이나 퀘스트 문서여야 합니다. 로어 문서는 `E-TEST-LORE`입니다. 엔트리는
+`lute trace <file> --entry <id>`로 미리 보세요.
 
 `plays/first.play.yaml`. 최상위 키는 이 네 개만 허용됩니다:
 
 ```yaml
-state: { user.runs: 10 }
+state: { user.runs: 10, quest.lostCup.state: active }   # a quest.<id>.state seed sets that quest's status
 facts: ["knows(vesna, manifest)"]
 steps:
   - occasion: hubVisit
@@ -657,7 +670,7 @@ steps:
     pick: megNote              # required on `select: all`, refused on `select: first`
   - newRun: true               # resets run.*, run facts, once: run
   - occasion: runEnd           # judges <objective on="runEnd">
-choose: { greet: wave, chat: [coffee, leave] }
+choose: { greet: wave, chat: [coffee, leave] }   # hub: visit order; a branch list: one per presentation
 ```
 
 → [CLI 레퍼런스](/tooling/cli/) · [트레이싱](/tooling/tracing/) · [스토리 플레이](/tooling/play/)
@@ -674,10 +687,15 @@ choose: { greet: wave, chat: [coffee, leave] }
 | `E-DOMAIN-UNKNOWN` | `emotion=`, `action=`, `anchor`, `mood` 등을 썼지만 그 슬롯에 선언된 멤버가 없습니다. |
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | 상태 경로나 `@def`가 선언되지 않았거나, 그 스키마를 가져오지 않았습니다. |
 | `E-MAYBE-UNSET` | 기본값도, 앞선 `::set`도, `isSet` 가드도 없는 경로를 읽었습니다. |
+| `W-QUEST-STATE-ISSET` | `isSet(quest.<id>.state)`는 항상 참입니다. `'unset'`과 비교하세요. |
+| `W-TEXT-LOOKS-LIKE-REF` | 줄의 텍스트 전체가 def나 파라미터 이름인 `@name`이라 글자 그대로 출하됩니다. `{{@name}}`으로 쓰세요. |
 | `E-UNSET-UNCOVERED` / `E-NONEXHAUSTIVE` | `<match>`가 `unset`, enum 멤버, 숫자 틈을 놓쳤습니다. 갈래나 `<otherwise>`를 추가하세요. |
 | `E-TAG-INLINE-BODY` / `E-TAG-NOT-ONE-LINE` | 태그와 본문이 한 줄에 있거나, 태그가 여러 줄로 나뉘었습니다. |
 | `E-BRANCH-ALL-GUARDED` / `E-HUB-NO-EXIT` | 메뉴가 빌 수 있거나, 허브가 끝나지 않을 수 있습니다. |
 | `E-SET-TYPE` / `E-REF-TYPE` / `E-ATTR-TYPE` | 값의 타입이 자리에 맞지 않습니다. 디렉티브 안의 따옴표 친 `"@def"`가 흔한 원인입니다. |
+| `E-ATTR-DEF-DYNAMIC` | 디렉티브 속성에 상태를 읽는 `@def`를 넣었습니다. 속성 값은 상수여야 하니 `<match>`로 나누세요. |
+| `E-INTERP-DEF` | `{{@def}}`의 본문을 식 하나로 펼칠 수 없습니다(펼침 순환, 또는 `$`를 읽는 본문). |
+| `E-ATTR-QUOTE` | 속성 값을 작은따옴표로 감쌌습니다. `"…"`를 쓰고, 값 안의 `"`는 `\"`로 쓰세요. |
 | `E-DEF-DECL` | def 형식이 잘못되었습니다: 타입을 추론할 수 없거나, `type:` 없이 `params:`를 썼거나, 모르는 키가 있습니다. |
 | `E-OBJECTIVE-MISSING-DONE` / `E-OBJECTIVE-QUEST-DONE` | 목표에 `done`이 없거나, `quest=`와 `done=`을 함께 썼습니다. |
 | `E-GRAMMAR-NOT-ADMITTED` | 이 kind에서 허용되지 않는 구문입니다. 예: 엔트리 안의 `<branch>`, 퀘스트 안의 제목. |
@@ -687,6 +705,9 @@ choose: { greet: wave, chat: [coffee, leave] }
 | `E-ACCEPT-TARGET` | `::accept`가 없는 퀘스트나 `start`가 있는 퀘스트를 가리킵니다. |
 | `E-CONN-UNKNOWN-NODE` | `visited('…')`나 `after`가 프로젝트에 없는 씬을 가리킵니다. |
 | `E-CONN-EPISODE-ID-DUP` / `E-QUEST-ID-DUP` | 두 문서가 같은 씬 id나 퀘스트 id를 씁니다. |
+| `E-DUP-VOICEKEY` | 텍스트가 다른 줄들이 같은 `voiceKey`로 컴파일됩니다. `identity.voiceKey: "{prefix}.{speaker}-{code}"`를 설정하세요. |
+| `E-CAPABILITY-MISMATCH` | 프로젝트의 문서들이 서로 다른 기능 스냅샷으로 해석되어(다른 프로필이나 씬별 `plugins:`) 하나로 컴파일할 수 없습니다. |
+| `E-TEST-LORE` | `*.test.yaml`이 워크가 없는 로어 문서를 가리킵니다. `lute trace <file> --entry <id>`를 쓰세요. |
 | `W-FACT-GUARANTEED` | 팩트 가드가 모든 경로에서 항상 참이라 불필요합니다. |
 | `W-BEAT-SHADOWED` | 항상 자격이 있고 소진되지 않는 앞선 비트가 매번 이깁니다. |
 | `W-ENTRY-REF-UNKNOWN` | `entry.<id>.read`가 아무도 선언하지 않은 엔트리를 가리킵니다. |
@@ -700,15 +721,18 @@ choose: { greet: wave, chat: [coffee, leave] }
 `::accept`를 쓰면 `E-ACCEPT-TARGET`입니다. 예외는 `quest=`로 지정된 자식으로, 부모와 함께 활성화됩니다.
 
 **`once`의 기본값은 `run`입니다.** `once: false`로 쓰지 않으면 씬 비트는 런마다 최대 한 번 재생됩니다.
-엔트리에는 `once`가 없으니 `when="!entry.<id>.read"`로 가드하세요.
+엔트리에는 `once`가 없습니다. `when="!entry.<id>.read"`로 가드한 엔트리는 **런마다** 한 번 들립니다.
+`entry.<id>.read`는 run 등급이라 새 런에서 초기화되기 때문입니다. 평생 한 번이라면 엔트리가 세우는
+`user.*` 플래그로 가드하거나, `once: user` 씬으로 만드세요.
 
 **`after:`는 구조이고, 상태는 `when:`이 담당합니다.** `after:`는 `&&`와 `||`로 묶은 `visited`,
 `completed`, `active`만 읽으며 씬 그래프에 쓰입니다. 비트는 둘 다 성립할 때만 자격이 있습니다.
 `<quest>`의 `after=`는 그래프 메타데이터일 뿐 활성화를 늦추지 않습니다. 퀘스트를 씬에 묶으려면 조건을
 `start`에 넣으세요: `start="visited('cafe.counter')"`.
 
-**`::end`는 현재 씬이 아니라 `lute play` 진행 전체를 끝냅니다.** 게임에 제어를 돌려줘야 하는 허브나 비트
-씬은 마지막 줄에서 그냥 끝나면 됩니다.
+**`::end`는 현재 씬이 아니라 `lute play` 진행 전체를 끝냅니다.** 그 스텝은 먼저 정산되고(퀘스트 진행과
+계기의 `<objective on>` 판정) 나서 워크가 멈춥니다. 게임에 제어를 돌려줘야 하는 허브나 비트 씬은 마지막
+줄에서 그냥 끝나면 됩니다.
 
 **`visited()`는 세이브 전체에 걸칩니다.** 새 런에서도 지워지지 않습니다. 단일 파일 `check`는 이를 판정하지
 않고, `check-project`는 id를 검증하며, `trace`와 `test`에는 `visited:` 목록이 필요합니다.
@@ -761,15 +785,24 @@ id: choice.readback
 </match>
 ```
 
-**단일 파일 명령은 `lute.project.yaml`을 찾지 않습니다.** `check`, `trace`, `compile`, `context`, `test`는
-`--project <dir>`를 줄 때만 프로젝트를 해석합니다. 없으면 `defaults:`로 끌어올린 것과 플러그인이 선언한
-것이 모두 빠집니다. `check-project`, `play`, `scenario`는 넘겨받은 디렉터리에서 프로젝트를 읽습니다.
+**`lute check`는 프로젝트를 찾지만 다른 단일 파일 명령은 찾지 않습니다.** `lute check <file>`은 파일
+위쪽에서 가장 가까운 `lute.project.yaml`을 적용합니다(stderr 알림이 그 경로를 알려 줍니다). `trace`,
+`compile`, `context`, `test`는 `--project <dir>`를 줄 때만 프로젝트를 해석하며, 없으면 `defaults:`로
+끌어올린 것과 플러그인이 선언한 것이 모두 빠집니다. `check-project`, `play`, `scenario`는 넘겨받은
+디렉터리에서 프로젝트를 읽습니다.
 
-**`trace`는 명시한 세계에서 시작합니다.** 스키마의 `facts:` 시드는 불러오지 않으니 `--fact`나 `facts:`로
-넘기세요. `lute run`과 `lute play`는 시드와 Datalog 규칙을 적용합니다.
+**`trace`와 `test`는 명시한 세계에서 시작하며 도출하지 않습니다.** 스키마의 `facts:` 시드는 불러오지
+않으니 `--fact`나 `facts:`로 넘기세요. 목으로 주지 않은 기본 팩트는 거짓입니다. 목으로 주지 않은
+`derive: true` 팩트는 그 규칙에 필요한 팩트를 다 주었더라도 unknown이며 워크를 멈춥니다(종료 코드 3).
+도출된 팩트 자체를 목으로 주세요. `lute test`에서는 이렇게 멈추면 `expect: { exit: incomplete }`를
+선언하지 않은 테스트는 실패합니다. `lute run`과 `lute play`는 시드와 Datalog 규칙을 적용합니다.
 
-**디렉티브 속성에는 따옴표 없는 참조를 씁니다.** `::camera{zoom=@zoom}`처럼 쓰세요. 따옴표 친
-`zoom="@zoom"`은 문자열 `@zoom` 그대로입니다.
+**디렉티브 속성에는 상수 def를 따옴표 없이 참조합니다.** `::camera{zoom=@closeUp}`처럼 쓰세요. 따옴표 친
+`zoom="@closeUp"`은 문자열 `@closeUp` 그대로입니다(숫자 속성이면 `E-ATTR-TYPE`). 상태를 읽는 def는
+`E-ATTR-DEF-DYNAMIC`입니다.
+
+**속성 값은 큰따옴표로 감쌉니다.** `label='"Hi."'`는 `E-ATTR-QUOTE`입니다. `label="\"Hi.\""`로 쓰면
+레이블은 `"Hi."`가 됩니다.
 
 **`<match>`에서 숫자는 실수입니다.** `is="1..9"` 다음에 `is="10.."`를 써도 `9.5`는 다뤄지지 않습니다.
 `<otherwise>`를 두거나, 끝이 맞닿는 열린 범위를 쓰세요.
