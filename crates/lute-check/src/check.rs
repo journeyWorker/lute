@@ -4658,10 +4658,13 @@ mod lute_version_tests {
     /// `schedule.yaml` with every `E-SCHED-*` / `W-SCHED-*` code is removed.
     /// The IR gains `SceneMeta.beat`, `EntryCmd.on` / `priority`, and
     /// `ProjectIndex.beats`, so the current schema is
-    /// `schemas/lute-ir-0.21.schema.json`.
+    /// `schemas/lute-ir-0.21.schema.json`. `0.21.1` is a patch on the same
+    /// line: static semantics tighten (checks that reported nothing now
+    /// report the defect) and the IR gains the optional `placeholder.expr`,
+    /// so the schema keeps its `0.21` name and `$id`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_21_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.21.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.21.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_21_1() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.21.1");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.21.1");
     }
 }

@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.21.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.21.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.21.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.21.schema.json`](../schemas/lute-ir-0.21.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.21.1` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.21.1` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.21.1` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.21.schema.json`](../schemas/lute-ir-0.21.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -445,6 +445,39 @@ record as any unknown kind.
 `capabilityVersion` moves only for a project that installs an
 `occasions:`-declaring plugin (a guarded, sorted snapshot section, the
 `rewardKinds` precedent); the tree-sitter grammar is unchanged.
+
+**`0.21.1` aligns all three axes at `0.21.1`, a patch on the `0.21` line; the
+toolchain earns it, and the language and IR each carry a small, compatible
+move.** The release closes a class of silent wrong answers: checks that
+accepted a defect and then shipped the wrong thing now report it. The
+language adds no syntax, but its static semantics tighten —
+`quest.<id>.state` reads as an always-assigned lifecycle enum (new warning
+`W-QUEST-STATE-ISSET`); a def body passes the CEL profile gate; a def in a
+directive attribute folds to its literal or is the new `E-ATTR-DEF-DYNAMIC`;
+a `{{@def}}` that cannot be inlined is the new `E-INTERP-DEF`; `<quest>`,
+`<objective>`, and `<on>` close their attributes (`E-UNKNOWN-ATTR`); a
+single-quoted attribute value is the new `E-ATTR-QUOTE`; a `<when is=… test=…>`
+arm covers only what both prove; and a line whose whole text is `@name` draws
+the new `W-TEXT-LOOKS-LIKE-REF`. At project scope, `check-project` now runs
+the compile and the single-snapshot gate (`E-CAPABILITY-MISMATCH`), expanded
+component lines are checked for duplicate `lineId`s (`E-DUP-LINE-CODE`), and
+the new `E-DUP-VOICEKEY` refuses a `voiceKey` carried by lines with different
+text. Because the default template `{speaker}-{code}` has no `{prefix}`,
+**every multi-scene project on the default voice-key template fails
+`E-DUP-VOICEKEY` until it pins `identity.voiceKey:
+"{prefix}.{speaker}-{code}"`**; the default itself is unchanged until
+`0.22.0`. `lute test` fails an incomplete trace unless the test expects
+`exit: incomplete`. The IR change is additive: a `ref` placeholder gains
+`expr`, the referenced def body inlined as a `{raw, expr}` CEL pair so an
+engine can render `{{@def}}` without a defs table. The field is optional in
+the schema, so `0.21.0` artifacts stay valid, and
+[`schemas/lute-ir-0.21.schema.json`](../schemas/lute-ir-0.21.schema.json)
+keeps its name and `$id` (the `0.17.1` / `0.17.2` precedent for a patch on
+one line). Some artifacts change content without changing shape — a
+`<when is="unset">` arm compiles to `== "unset"`, a `\"` in an attribute value
+is stored as `"`, a constant def in an attribute is written as its literal.
+Engines gate on MAJOR, so nothing widens. `capabilityVersion` does not move,
+and the tree-sitter grammar is unchanged.
 
 ## Which bump when
 
