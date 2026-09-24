@@ -48,7 +48,7 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `stampattrs/*.yaml` — cross-cutting attributes admissible on every directive and content line (below).
 - `enums/*.yaml`, `frontmatter/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, and hover docs.
 - `events/*.yaml` — world events a quest's `<on event>` may name and `lute trace --event` fires.
-- `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0).
+- `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0), each optionally raised for a target drawn from a project entity kind (dsl 0.22.0).
 - `rewardkinds/*.yaml` — the closed set of `<reward kind>` values, with an optional target provider and extra attributes.
 - `lints/*.yaml` — advisory [lint rules](/tooling/linting/), namespaced `<plugin-id>/<rule-id>`; excluded from the capability snapshot.
 
@@ -65,9 +65,14 @@ events:
 # occasions/game.yaml — a bare {} is select: first, untargeted
 occasions:
   hubVisit: {}
-  talk:     { select: first, target: true }
+  examine:  { select: first, target: true }
+  talk:     { select: first, target: { prefix: npc, entity: person } }
   inbox:    { select: all, description: Letters waiting at the fountain }
 ```
+
+An occasion's `target:` says what it is raised for. Absent or `false`, it is untargeted. `true` keeps its 0.21.0 meaning: the occasion is raised for some dotted id, and a beat's target is checked for shape only. A **domain** `{ prefix, entity }` (dsl 0.22.0) also closes the set: a target is `<prefix>.<member>`, where `entity` names an entity kind the *project* declares under `entities:` in its schema. The plugin supplies the prefix and the kind, and the project supplies the members (or declares the kind `open:` for engine-populated members). A beat target outside the domain is `E-BEAT-ATTR`, with a did-you-mean when a member is close, and so is every target of an occasion whose kind the document's schema does not declare (see [Beats](/language/beats/#target-domains)). A `target:` that is neither a bool nor a `{ prefix, entity }` map fails the plugin load with `E-PLUGIN-PARSE`.
+
+Occasions are part of the capability snapshot, so they fold into `capabilityVersion`. Declaring a domain restamps; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0.
 
 ```yaml
 # rewardkinds/game.yaml
@@ -107,7 +112,7 @@ Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default?
 { "kind": "sfx", "addr": "001-0100", "sound": "chime", "bonusId": "b-02" }
 { "kind": "line", "addr": "001-0200", "role": "dialogue", "speaker": "marina",
   "text": "Welcome back.", "lineId": "marina.s01ep01.marina_0010",
-  "voiceKey": "marina-0010", "bonusId": "b-01", "bonusScore": 7.0 }
+  "voiceKey": "marina.s01ep01.marina-0010", "bonusId": "b-01", "bonusScore": 7.0 }
 ```
 
 An **unauthored** stamp attribute is not injected — not even when its declaration carries a `default`. Absent means absent, so declaring a cross-cutting vocabulary and authoring none of it leaves the artifact byte-identical. The declaration is not free, though: `stampAttrs` participates in `capabilityVersion`, because a changed cross-cutting vocabulary is a changed capability surface and an engine must be able to refuse the mismatch.

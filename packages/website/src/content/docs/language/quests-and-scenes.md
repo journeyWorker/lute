@@ -1,6 +1,6 @@
 ---
 title: Quests & scenes
-description: The time-axis document kinds — scenes sequenced with after:, and quests with objectives, derived completion, and lifecycle-event reactions — beside the lore kind for looked-up content.
+description: The time-axis document kinds — scenes sequenced with after:, and quests with objectives, derived completion, run or user tiers, and lifecycle-event reactions — beside the lore kind for looked-up content.
 ---
 
 Every `.lute` document declares a **`kind`**: `scene`, `quest`, or `lore`. The kind selects the
@@ -83,6 +83,40 @@ optional predicates are CEL strings: **`start`** transitions the quest `unset` �
 holds; **`fail`** transitions `active` → `failed`. `fail` takes precedence over completion — if
 both hold in the same state, the quest fails (a deterministic tie-break).
 
+**`tier`** (dsl 0.22.0) says how long a quest's outcome lasts. The default, `tier="user"`, keeps its
+status across runs, as every quest did before 0.22.0. `tier="run"` resets it: when a new run
+starts, the quest's status returns to `unset` and its objectives to not done. A roguelike's
+per-run goal is then taken up, completed, or failed afresh each run, beside a user-tier quest that
+tracks the whole save:
+
+```lute check
+---
+kind: quest
+title: The climb
+state:
+  run.floor: { type: number, default: 0 }
+  user.bestFloor: { type: number, default: 0 }
+---
+
+<quest id="climb" title="Reach the tenth floor" start="true" tier="run">
+  <objective id="top" title="Reach floor ten" done="run.floor >= 10"/>
+  <on event="questComplete">
+    @narrator: The wind at the top is colder than you expected.
+  </on>
+</quest>
+
+<quest id="legend" title="Become a legend" start="true">
+  <objective id="deep" title="Reach floor ten in any run" done="user.bestFloor >= 10"/>
+</quest>
+```
+
+After the reset the lifecycle settles as usual: `climb`'s `start` holds again, so it re-activates
+at the start of every run, while an accept-driven run-tier quest stays `unset` until it is accepted
+again. `legend` keeps its status across runs. The tier belongs to each `<quest>`, not to the
+document, so one quest document can mix both. Any value but `run` or `user` is `E-ATTR-TYPE`.
+[`lute play`](/tooling/play/) performs the reset at every `newRun` step, so a play script can walk
+several runs and assert each one.
+
 A quest declares its own prerequisite as an **attribute** on the element, not as
 a frontmatter key — the one place this page's opening heading, "Scenes and
 `after:`", does not apply:
@@ -135,7 +169,9 @@ whether a scene has been played, so it never decides a `visited()` condition tru
 **Objectives judged at an occasion.** `<objective on="<occasion>">` evaluates that objective's
 `done` **only when the occasion is raised** while the quest is active — the end-of-run check point
 that a continuously evaluated condition cannot express. Without `on`, an objective is evaluated
-continuously, as before.
+continuously, as before. An objective takes `on=` only: it has no `target` attribute in 0.22.0
+(`E-UNKNOWN-ATTR`; objective targets are deferred to 0.23), so it is judged whenever its occasion is
+raised, whatever the target.
 
 ```lute
 <objective id="lowPressure" title="Keep the shed calm" on="runEnd" done="run.shedPressure < 2"/>
@@ -168,7 +204,10 @@ choice where the player agrees:
 
 **Quest outcomes in scenario tests.** `lute test` asserts the lifecycle the trace ran with
 `expect.quests: {<questId>: unset | active | complete | failed}` — no side-effect `::set` needed to
-observe completion.
+observe completion. A test, a trace mock, or a play script can also start from a saved status with
+a top-level `quests: {<questId>: complete}` (dsl 0.22.0). That is the way to seed one: a play
+script's `engine:` step refuses a `quest.*` write, because a status change belongs to the lifecycle,
+whose transitions fire handlers and grants.
 
 ### Subquests
 
@@ -237,6 +276,17 @@ worked example:
 `when` guard holds, the arm's nodes are emitted. Three built-in **lifecycle events** are quest-scoped
 — **`questActive`**, **`questComplete`**, **`questFailed`** — each firing only for its own enclosing
 quest. World events (e.g. `combatEnd`) are capability-provided by plugins.
+
+A `questFailed` handler on a quest that can never fail is dead code. `lute check-project` warns
+`W-QUEST-HANDLER-DEAD` at the handler's `event` when its quest has no `fail`, no required subquest
+objective whose child can itself fail (a failing required child fails its parent), and no parent
+quest (a parent's end cascade-fails its still-active children). Add a `fail=` condition, or remove
+the handler:
+
+<!-- lute-diagnostics -->
+```
+./q.lute:10:14: warning [W-QUEST-HANDLER-DEAD] `<on event="questFailed">` never runs: quest `lampOut` cannot fail — it has no `fail` condition, no required subquest that can fail (a failing required child fails it), and no parent quest whose end would cascade to it; add a `fail=` condition or remove the handler (dsl 0.22.0 §7)
+```
 
 Content elsewhere can also gate on quest lifecycle by reading the reserved `quest.<id>.state` path.
 It is **always assigned**: `unset` until the quest activates, then `active`, `complete`, or `failed`.

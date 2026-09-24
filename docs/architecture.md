@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.21.0.md`](proposals/scenario-dsl/0.21.0.md). The
+> [`proposals/scenario-dsl/0.22.0.md`](proposals/scenario-dsl/0.22.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -23,7 +23,11 @@ target is the flat command-record format the engine consumes.
 > name itself with a document `id:`, the bundle key it is indexed under. Since 0.21.0 a
 > scene (frontmatter `on:`) or a lore entry (`on=`) may be a **beat** answering an engine
 > **occasion**; the engine picks the winner among eligible beats (engine contract:
-> [`runtime/beats-and-occasions.md`](runtime/beats-and-occasions.md)).
+> [`runtime/beats-and-occasions.md`](runtime/beats-and-occasions.md)). Since 0.22.0 the
+> reference player (`lute play`) stands in for the engine: `engine:` steps write the state
+> and facts the engine owns, a script starts from a save and asserts with `expect:`, and
+> `lute test` runs those plays; runs have a lifecycle (`<quest tier="run">`, entry
+> `once`, `entry.<id>.everRead`).
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -671,7 +675,15 @@ above, never a rule-body dependency):
   vocabulary folded from plugin `occasions:` exports (`E-OCCASION-UNKNOWN`, shape-only when no
   plugin declares any), and the `check-project` selection pass `check_project_beats`
   (`W-BEAT-SHADOWED`: a `select: first` beat an earlier, always-eligible, never-spent beat
-  always beats).
+  always beats). Since 0.22.0 the same pass checks occasion target domains
+  (`occasion_target_ok`, shared with `lute play`) and adds `W-BEAT-PRIORITY-TIE` (equal
+  priorities on one `select: first` occasion whose `when`s are not provably exclusive) and
+  `W-BEAT-ONCE-RUN-USER` (a `once: run` beat gated only on user-tier state);
+  `project_check.rs` adds `W-QUEST-HANDLER-DEAD`.
+- **Harness derivation (dsl 0.22.0).** `lute trace`, `lute test` and the reference runner
+  behind `lute run` / `lute play` share one Datalog evaluator, `lute_trace::datalog`
+  (stratified negation over seed, mocked and asserted facts), so the toolchain cannot disagree
+  with itself about what a project's rules conclude; `derive: false` / `--no-derive` opt out.
 
 ### Narrative time (spec §6, D11)
 

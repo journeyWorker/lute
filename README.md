@@ -30,8 +30,8 @@ The website — landing, guides, language reference, CLI docs (en + 한국어) �
 ## The CLI surface
 
 ```sh
-lute init my-project           # scaffold project + starter scene + mock
-lute new quest the-hunt        # scaffold one document (scene | quest | lore | schema)
+lute init my-project           # scaffold project + starter scene + mock (--template beats: occasions, beats, plays, tests)
+lute new quest the-hunt        # scaffold one document (scene | quest | lore | schema; scene --on <occasion> writes a beat)
 lute check scene.lute          # static validation of one document
 lute check-project .           # every document + project-wide passes (quest ids, connectivity, fact guards)
 lute lint .                    # advisory L-* findings governed by lute.lint.yaml
@@ -39,11 +39,11 @@ lute trace scene.lute --mock m.yaml   # preview SOURCE behaviour, every decision
 lute compile scene.lute -o out.json   # JSON artifact (--all for a whole project + index)
 lute run out.json --mock m.yaml       # reference runtime over the ARTIFACT an engine consumes
 lute lore my-project           # world-narrative map: lore entries by target/series, facts revealed
-lute play my-project --script p.play.yaml   # raise occasions, see every beat's verdict + the winner
-lute test .                    # *.test.yaml scenario tests (transcript/state/quest assertions)
+lute play my-project --script p.play.yaml   # raise occasions + engine writes, see every beat's verdict + the winner
+lute test .                    # *.test.yaml scenario tests + every *.play.yaml carrying expect:
 lute loc export . --format csv # localization round trip (+ import, word-count report)
 lute scenario .                # read-only graph / reachability / envelope reporting
-lute tag scene.lute            # back-fill stable line codes (localization identity)
+lute tag scenes/               # back-fill stable line codes (localization identity; a file or a directory)
 lute context scene.lute        # the project-resolved authoring surface (for AI authoring)
 lute doctor                    # diagnose local toolchain + project setup
 lute version                   # the three independent version axes
@@ -55,16 +55,16 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) (beats and occasions: which scene or entry answers which engine moment). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.22.0`](docs/proposals/scenario-dsl/0.22.0.md) (the play/test harness model, run boundaries, occasion target domains). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
 | **writing scenarios, fast** (one page to keep open: every construct, CLI, diagnostics, gotchas) | the spec stack above | the website's [Cheatsheet](https://lute-lang.vercel.app/reference/cheatsheet/) — every snippet on it is compile-checked in CI |
 | **authoring quests** (lifecycle, objectives, subquests, rewards) | [`0.2.0`](docs/proposals/scenario-dsl/0.2.0.md) §6 (quest kind, objectives, lifecycle events) + [`0.14.0`](docs/proposals/scenario-dsl/0.14.0.md) (subquests) + [`0.16.0`](docs/proposals/scenario-dsl/0.16.0.md) (`<reward/>`) | [`runtime/quest-lifecycle.md`](docs/runtime/quest-lifecycle.md) |
 | **authoring lore** (item descriptions, found notes, codex pages, barks) | [`0.19.0`](docs/proposals/scenario-dsl/0.19.0.md) (`kind: lore`, `<entry>`, `entry.<id>.read`, document bundles) | [`runtime/lore-entries.md`](docs/runtime/lore-entries.md) |
 | **writing a plugin** (directives, state, providers, bridge, `stampAttrs`, `rewardKinds`, `occasions`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md)–[`0.0.7`](docs/proposals/plugin-system/0.0.7.md) deltas; the `occasions:` export is [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) §2 | [`plugin-system.md`](docs/plugin-system.md) |
-| **building an engine** (consuming the artifact) | [`docs/runtime/`](docs/runtime) — execution model, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol, lore entries, beats and occasions — plus the artifact JSON Schema [`schemas/lute-ir-0.21.schema.json`](schemas/lute-ir-0.21.schema.json) and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
+| **building an engine** (consuming the artifact) | [`docs/runtime/`](docs/runtime) — execution model, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol, lore entries, beats and occasions — plus the artifact JSON Schema [`schemas/lute-ir-0.22.schema.json`](schemas/lute-ir-0.22.schema.json) and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
 | **building the compiler / checker / LSP** | the proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) + [`0.20.0`](docs/proposals/scenario-dsl/0.20.0.md) (what `check-project` proves about fact guards) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
-| **choosing story beats / running `lute play`** | [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) — occasions, scene and entry beats (`on` / `target` / `when` / `priority` / `once`), selection order, and `lute play`'s script and transcript | [`runtime/beats-and-occasions.md`](docs/runtime/beats-and-occasions.md); the website's [Playing a story](https://lute-lang.vercel.app/tooling/play/) |
+| **choosing story beats / running `lute play`** | [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) — occasions, scene and entry beats (`on` / `target` / `when` / `priority` / `once`), selection order, and `lute play`'s script and transcript — plus [`0.22.0`](docs/proposals/scenario-dsl/0.22.0.md): `engine:` steps, save seeds, `expect:` assertions, run boundaries, occasion target domains | [`runtime/beats-and-occasions.md`](docs/runtime/beats-and-occasions.md); the website's [Playing a story](https://lute-lang.vercel.app/tooling/play/) |
 | **configuring lints** | [`specs/2026-08-26-lute-lint-system-design.md`](docs/superpowers/specs/2026-08-26-lute-lint-system-design.md) — `lute.lint.yaml`, rule levels, project-local `custom:` rules | [`docs/linting.md`](docs/linting.md) |
 
 Worked examples:
@@ -114,7 +114,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.21.1"
+luteVersion: "0.22.0"
 profile: date-minigame
 extra:
   arc: main
@@ -163,28 +163,38 @@ raised occasions through the whole project:
 state: { user.runs: 10 }
 steps:
   - occasion: hubVisit
+    expect: { winner: hub.welcome }
   - occasion: talk
     target: npc.achilles
+  - engine:                # what the engine owns: state, facts, reserved relations
+      state: { run.outcome: fell, user.runs: { add: 1 } }
   - newRun: true
   - occasion: inbox
     pick: megNote          # a `select: all` occasion: the beat the player takes
 choose:
   gift: accept
+expect:
+  quests: { tenthRun: complete }
 ```
 
 ```sh
 lute play my-project --script plays/tenth-run.play.yaml
 lute play my-project --script plays/tenth-run.play.yaml --json
+lute test my-project       # runs every play that carries an expect:, beside *.test.yaml
 ```
 
 For each step it lists every candidate beat with its verdict (`once`, `after:`, `when`), presents
 the winner — highest priority, then project order — through the same reference runner as
 `lute run`, and advances every quest lifecycle, so later `when` conditions over `quest.*` and
-`after: completed(…)` see real progress. `run.*` state and `once: run` spending reset at each
-`newRun`. See [Playing a story](https://lute-lang.vercel.app/tooling/play/) for the script
-format, exit codes, and transcript shapes, and
+`after: completed(…)` see real progress. An `engine:` step writes what the engine owns, so the
+harness needs no fake-engine content; a script may start from a save (`visited:`, `presented:`,
+`quests:`, `entriesRead:`), and `expect:` turns a play into a test. `run.*` state, `once: run`
+spending, and `<quest tier="run">` quests reset at each `newRun`. See
+[Playing a story](https://lute-lang.vercel.app/tooling/play/) for the script format, exit
+codes, and transcript shapes, and
 [`docs/runtime/beats-and-occasions.md`](docs/runtime/beats-and-occasions.md) for the engine
-contract.
+contract. `lute init --template beats` scaffolds a project where all of this passes as
+generated.
 
 ## Editor support
 
@@ -204,25 +214,28 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.21.1.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.22.0.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
-  [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md). Recent tips: `0.16.0` declarative
-  rewards, `0.17.0` checked continuation tooling (ordinary grammar unchanged), `0.18.0`
-  numeric range patterns in `<when is>`, `0.19.0` lore entries (queried content), `0.20.0`
-  fact envelopes (`check-project` proves relational guards dead or redundant), and `0.21.0`
-  beats and occasions (a scene or lore entry answers an engine moment by `on`, `when`,
-  `priority`, and `once`). `0.21.1` is a patch that adds no syntax: checks that used to
-  pass silently wrong input now report it (for example `E-DUP-VOICEKEY` for two different
-  lines sharing one voice asset — pin `identity.voiceKey: "{prefix}.{speaker}-{code}"`), and
-  `lute test` fails an incomplete trace. Being draft means the grammar may still break before
-  1.0; each breaking change ships a `lute fix` migration where the rewrite is mechanical.
-- **IR: 0.21.1.** The compiled artifact is specified by
-  [`schemas/lute-ir-0.21.schema.json`](schemas/lute-ir-0.21.schema.json) and the
+  [`0.22.0`](docs/proposals/scenario-dsl/0.22.0.md). Recent tips: `0.18.0` numeric range
+  patterns in `<when is>`, `0.19.0` lore entries (queried content), `0.20.0` fact envelopes
+  (`check-project` proves relational guards dead or redundant), `0.21.0` beats and occasions
+  (a scene or lore entry answers an engine moment by `on`, `when`, `priority`, and `once`),
+  `0.21.1` checks that no longer pass wrong input silently, and `0.22.0` a harness that stands
+  in for the engine: `lute play` writes engine-owned state, starts from a save and asserts
+  with `expect:`; `lute test` runs those plays; trace and test apply Datalog rules by
+  default; `<quest tier="run">` and entry `once` give runs a lifecycle; occasion targets name
+  an entity domain; and a `state:` path may be `owner: engine`. `0.22.0` changes the default
+  `voiceKey` to `{prefix}.{speaker}-{code}` and gives component lines their own `lineId`
+  scope — pin `identity: { voiceKey: "{speaker}-{code}" }` to keep audio recorded against the
+  old keys. Being draft means the grammar may still break before 1.0; each breaking change
+  ships a `lute fix` migration or a pin where the rewrite is mechanical.
+- **IR: 0.22.0.** The compiled artifact is specified by
+  [`schemas/lute-ir-0.22.schema.json`](schemas/lute-ir-0.22.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only
   (since `0.13.0`): fields are append-only within a major line, so a minor move costs a
-  consumer nothing. `0.21.1` adds one optional field, `expr` on a `ref` placeholder (the
-  `{{@def}}` body inlined so an engine can render it).
+  consumer nothing. `0.22.0` adds `QuestCmd.tier` and `EntryCmd.once` (both optional);
+  artifacts that use the default `voiceKey` or `::use` components carry new id strings.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver, reference
   runtime, LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (including `lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-trace`, `lute-lint`,

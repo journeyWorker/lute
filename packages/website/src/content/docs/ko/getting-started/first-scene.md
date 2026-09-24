@@ -6,7 +6,7 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 이 문서는 Lute를 한 번도 다뤄본 적 없는 시나리오 작가를 위한 "여기서 시작" 안내입니다 —
 컴파일러 배경지식은 필요 없습니다. 빈 파일에서 **작지만 실제로 동작하는 장면 하나**를 단계별로
 만들며, 매 단계마다 실제 `lute` 도구를 실행해 도구가 정확히 뭐라고 말하는지 확인합니다. 언어
-버전 **0.21.1**를 대상으로 합니다.
+버전 **0.22.0**를 대상으로 합니다.
 
 일반 텍스트 편집기, 터미널, 그리고 `lute` 명령
 ([먼저 설치하세요](/ko/getting-started/installation/))이 필요합니다. 여기서 작성하는 모든
@@ -241,8 +241,8 @@ lute: applied 1 fix(es)
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.21.1",
-  "irVersion": "0.21.1",
+  "lute": "0.22.0",
+  "irVersion": "0.22.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "id": "mira.s01ep01",
@@ -272,7 +272,7 @@ $ lute compile my-scene.lute
       "emotion": "content",
       "variant": 0,
       "lineId": "mira.s01ep01.mira_0010",
-      "voiceKey": "mira-0010",
+      "voiceKey": "mira.s01ep01.mira-0010",
       "placeholders": [ … ]
     },
     …
@@ -360,7 +360,8 @@ id: mira.s01ep01
 `id:`는 이 장면을 프로젝트 전역에서 식별하는 평문 문자열입니다(문자, 숫자, `_`, `-`, `.`).
 다른 장면의 `after:`에 있는 `visited("mira.s01ep01")`는 *이* 장면을 가리키고, 컴파일된
 산출물의 모든 `lineId` / `voiceKey`의 접두사(Part 4 출력의
-`"lineId": "mira.s01ep01.narrator_0010"`)도 같은 문자열에서 만들어집니다. `id:`가 선언되면
+`"lineId": "mira.s01ep01.narrator_0010"`와 `"voiceKey": "mira.s01ep01.mira-0010"`)도 같은
+문자열에서 만들어집니다. `id:`가 선언되면
 `character:` / `season:` / `episode:`는 선택 사항이 됩니다 — 검색·TMS 등 유용한 메타데이터로
 남기려면 유지하고, 그렇지 않으면 지우세요. `id:`와 저 레거시 식별 키들을 한 문서에서 함께
 작성하면 체커는 각 키마다 `W-META-LEGACY` 한 건씩을 냅니다: 정체성은 이제 `id:`에서 오고,
@@ -389,9 +390,10 @@ state:
 ```
 
 `after:`와 장면 간 읽기는 여러 파일에 걸쳐야만 의미가 있으므로, 두 장면을 한 폴더에 넣고, 그
-폴더를 프로젝트 루트로 표시하는 `lute.project.yaml`을 두세요. `identity:` 줄은 음성 키에 장면도
-넣습니다. 이 줄이 없으면 다이너와 부스의 첫 Mira 대사가 둘 다 `mira-0010`이 되어 녹음 하나를 두 대사가
-나눠 쓰게 되고, `check-project`는 이를 거부합니다(`E-DUP-VOICEKEY`):
+폴더를 프로젝트 루트로 표시하는 `lute.project.yaml`을 두세요. 음성 키에는 이미 장면이 들어가
+있습니다 — 기본 `voiceKey`가 `{prefix}.{speaker}-{code}`이므로, 다이너와 부스의 첫 Mira 대사는
+각각 `mira.s01ep01.mira-0010`과 `mira.s01ep02.mira-0010`, 녹음 두 개가 되고 따로 설정할 것은
+없습니다:
 
 ```yaml
 # episodes/lute.project.yaml
@@ -399,9 +401,12 @@ defaultProfile: core
 profiles:
   core:
     plugins: {}
-identity:
-  voiceKey: "{prefix}.{speaker}-{code}"
 ```
+
+(0.22.0 이전에는 기본값이 접두사 없는 `{speaker}-{code}`여서 두 대사가 모두 `mira-0010`이
+되었습니다 — 녹음 하나를 두 대사가 나눠 쓰게 되고, `check-project`는 이를 `E-DUP-VOICEKEY`로
+거부합니다. 옛 키로 이미 음성을 녹음한 프로젝트는 `lute.project.yaml`에
+`identity: { voiceKey: "{speaker}-{code}" }`를 고정해 그 키를 유지합니다.)
 
 ```lute check-project="docs/examples/episodes/booth.lute"
 ---
@@ -477,21 +482,29 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
 
 **무엇을 쓸 수 있는지 확실하지 않으신가요?** `lute context <file>`는 프로젝트가 허용하는 어휘를
 정확히 출력합니다 — 연출 디렉티브, 그 속성, 현재 유효한 어휘 멤버(예: 당신의 `emotion` 목록),
-선언된 상태, 전달 플래그 어휘 — 당신이 지정한 특정 파일에 맞게 해석하여:
+선언된 상태, 전달 플래그 어휘, 언어 자체의 내장 디렉티브, `visited(…)`로 가리킬 수 있는 장면
+id — 당신이 지정한 특정 파일에 맞게 해석하여:
 
 ```
 $ lute context my-scene.lute
 capabilityVersion: 69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81
-directives (9):
-  auto: character, anchor, action
-  bg: location, time, assetId
+permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
+directives (11):
+  auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
+  bg: location, time, assetId   [mutatesScene]
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
   cut: assetId, action, full
-  end: reason
-  music: action, mood, volume, assetId, track
+  end: reason   [terminatesWalk]
+  mark: id
+  music: action, mood, volume, assetId, track   [mutatesScene]
+  next: to, when
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
+bridges (0):
+rewardKinds (0):
+occasions (0):
+questsAllowed: true
 enums (0):
 stateSchema (3):
   run.metMira: bool
@@ -503,6 +516,14 @@ deliveryFlags (3):
   {vo}: voiceover: narration-style delivery layered over the scene
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
+builtinDirectives (5):
+  ::set{ <path> = <expr> }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
+  ::assert{ <relation>(<arg>, …) } — assert a ground fact of a declared, non-derived, non-reserved relation
+  ::retract{ <relation>(<arg | _>, …) } — retract the matching facts of a declared, non-derived, non-reserved relation
+  ::accept{quest="<questId>"} — accept a quest that has no `start` condition
+  ::use{component="<name>" <param>=<value> …} — expand an imported component with named arguments
+scenes (1; read as visited("<id>")):
+  mira.s01ep01
 ```
 
 `enums (0)`은 버그가 아닙니다: 그 줄은 활성화된 *플러그인*이 제공하는 멤버를 세는데, 이 파일은
@@ -513,6 +534,22 @@ projectEnums (1):
 Part 5의 `run.metMira`)에, `<branch>`가 대신 선언해 주는 `scene.choices.orderChoice`가 더해진
 목록입니다. 뒤따르는 구성이 플레이어가 어느 선택지를 골랐는지 읽을 수 있도록 하기 위한 것입니다.
 
+`builtinDirectives`는 언어가 직접 제공하는 디렉티브 목록입니다 — 이미 써 본 `::set`도 여기
+있습니다. `scenes`는 `visited("…")`가 가리킬 수 있는 id 목록입니다. `--project episodes`를
+넘기면 이 목록이 프로젝트의 모든 장면을 담고, 퀘스트와 로어 엔트리 id도 함께 나옵니다.
+
 디렉티브 이름, 속성, 유효한 `emotion` 값을 추측하는 대신 다시 확인하고 싶을 때 언제든 실행하세요.
 여기서부터는 각 구성을 깊이 다루는 **Language** 섹션을 따라가거나, 실제 프로젝트를 기능별로
 둘러보는 [전체 스펙 쇼케이스](/examples/showcase/)를 읽어보세요.
+
+정해진 에피소드 순서가 아니라, 엔진이 알리는 순간 — 플레이어가 허브에 도착하고, 누군가에게 말을
+걸고, 하루를 마치는 순간 — 에 따라 이야기가 흘러가는 게임을 만드시나요? 출발점이 될 동작하는
+예제를 만들어 보세요:
+
+```
+$ lute init --template beats my-game
+```
+
+계기(occasion) 플러그인, 그 순간에 응답하는 비트, 퀘스트, 로어 엔트리, 플레이 스크립트, 시나리오
+테스트를 만들어 주며 — 만든 그대로 `lute check-project`, `lute test`, `lute play`가 모두
+통과합니다. [비트](/language/beats/)와 [스토리 플레이](/ko/tooling/play/)에서 모델을 설명합니다.

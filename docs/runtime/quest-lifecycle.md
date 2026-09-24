@@ -4,7 +4,7 @@ A quest-kind artifact (`kind: "quest"`) carries `quest` and `on` records that
 are **declaration data**, not sequential steps. The engine derives the whole
 lifecycle from them; the author never writes `quest.<id>.state` (dsl §5.4). The
 grounding here is `ir.rs::{QuestCmd, ObjectiveEntry, OnCmd, AcceptCmd, CelPair}`
-and the proposal specs 0.2.0 §5–§6, 0.4.0 §4.6, and 0.21.0 §7a.
+and the proposal specs 0.2.0 §5–§6, 0.4.0 §4.6, 0.21.0 §7a, and 0.22.0 §7.
 
 ## The state machine
 
@@ -83,6 +83,30 @@ compiler emits no control flow for this — `objectives` is a declaration table
 inlined in the `quest` record (analogous to `HubCmd.options`), and the engine
 derives the transition.
 
+### Run-tier quests — `tier`
+
+`QuestCmd.tier` (dsl 0.22.0 §7) is `"run"` for a `<quest tier="run">` and
+absent for the default `user` tier. A quest document may declare several
+quests, so the tier rides on each `quest` record, not on `QuestMeta`.
+
+- **`user`** (absent) — the status persists across runs: a quest that reached
+  `complete` or `failed` stays there for the rest of the save. Every quest
+  before 0.22.0 behaved this way.
+- **`run`** — when a run starts, the engine returns the quest to `unset`:
+  `quest.<id>.state = unset`, every `quest.<id>.objectives.<oid>.done =
+  false`, and `quest.<id>.activatedAt` cleared. The reset itself fires no
+  handler. The quest is then a fresh instance, exactly as a repeatable quest's
+  re-instantiation (§Activation instant above): at the next evaluation
+  instant a `start` that holds activates it again (stamping `activatedAt` and
+  firing `questActive`), an accept-driven one stays `unset` until it is
+  accepted, and its objective bodies, rewards, and lifecycle handlers fire
+  again on the new run's transitions.
+
+The reset belongs to the run boundary (`state-lifecycle.md`), beside the
+`run.*` reset, and precedes the new run's first evaluation. `lute play`'s
+`newRun` step performs exactly this: it resets run-tier state, run-tier facts
+and run-tier quests, applies the step's seed, then settles the lifecycle.
+
 ## Objectives
 
 Each `ObjectiveEntry` in `QuestCmd.objectives`:
@@ -99,8 +123,10 @@ Each `ObjectiveEntry` in `QuestCmd.objectives`:
 
 **Monotonic completion (dsl §6.3).** Once an objective's `done` predicate holds,
 it stays recorded (`quest.<id>.objectives.<oid>.done = true`); a completed
-objective does not un-complete. Because completion is monotonic, the
-objective's **body segment plays exactly once** — when `done` first holds. The
+objective does not un-complete within a quest instance (only a run-tier
+quest's reset at a run start clears it, §Run-tier quests above). Because
+completion is monotonic, the objective's **body segment plays exactly once**
+per instance — when `done` first holds. The
 body is a forward-only segment (ends by falling through / a forward converge —
 no backward jump); an empty-body objective has `body: null` and emits no
 segment.
@@ -121,7 +147,10 @@ then settles the quest as at any evaluation instant (below); an objective
 that is not `done` then simply stays open until the next time the occasion
 is raised. The occasion need not be answered by any beat: an occasion that
 only objectives reference is still raised by the engine at its moment.
-Monotonic completion is unchanged — once recorded, `done` stays recorded.
+Monotonic completion is unchanged — once recorded, `done` stays recorded
+(until a run-tier quest's reset, §Run-tier quests above). An objective
+carries no target (dsl 0.22.0 §8 defers objective targets to 0.23), so it is
+judged at every raise of its occasion, whatever the target.
 
 **Scenes in objectives.** A `done` (like every condition slot) may read
 `visited('<scene id>')` — true once that scene has been presented in this save
@@ -326,6 +355,13 @@ quest's declaration table):
   snapshot.
 - `body` — the `addr` of the action segment (a line, `::set`, `::assert` /
   `::retract`, etc.) the engine plays when the event fires and `when` holds.
+
+A `questFailed` handler on a quest that can never reach `failed` never runs.
+`check-project` warns `W-QUEST-HANDLER-DEAD` (dsl 0.22.0 §7) when the quest
+has no authored `fail`, no required subquest objective whose child can itself
+fail (a failing required child fails its parent through the synthesized
+`fail`), and no parent quest (whose terminal transition would cascade-fail
+it). The record is still emitted; the warning is for the author.
 
 ## Cross-document reachability is out of scope for one artifact
 

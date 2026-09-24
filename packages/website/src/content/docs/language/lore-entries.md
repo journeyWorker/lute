@@ -61,9 +61,13 @@ The top level is one or more `<entry>` declarations and nothing else — no `# `
 | `title` | display title, localized like a quest title |
 | `series` / `order` | multi-part text: `order` is the position within `series` (a document-level `series:` can supply both — see below) |
 | `when` | eligibility: the entry may be presented only while this holds |
+| `on` / `priority` / `once` | make the entry a [beat](/language/beats/#entry-beats) that answers an engine occasion; `once="run"` or `once="user"` stops it answering again after a read |
 
 `target` and `category` are checked for shape only, so you can write lore before the engine's item
-catalog exists. Several entries may share a `target` — an NPC's barks, for example.
+catalog exists. Several entries may share a `target` — an NPC's barks, for example. The one
+exception is an entry beat whose occasion declares a
+[target domain](/language/beats/#target-domains): its `target` must then be `<prefix>.<member>` of
+that domain.
 
 ## The document is the bundle
 
@@ -81,7 +85,7 @@ A lore document can say so directly (dsl 0.19.0 §2.1):
 ```lute check="docs/examples/haven/lore/purser-ledger.lute"
 ---
 kind: lore
-luteVersion: "0.21.1"
+luteVersion: "0.22.0"
 id: haven.purserLedger
 title: Purser's ledger
 series: purserLedger
@@ -141,19 +145,61 @@ a `<match>` may pick a different arm by then, but nothing else changes.
 never writes it. `lute check-project` warns `W-ENTRY-REF-UNKNOWN` when no document declares the id.
 
 The flag is **run-tier**: a new run resets it, and the next first read applies the effects again.
-So `when="!entry.<id>.read"` makes an entry play once per run, not once ever. For once ever, have the
-entry set a `user.*` flag and guard on that.
+So `when="!entry.<id>.read"` makes an entry play once per run, not once ever.
+
+Its user-tier twin, **`entry.<id>.everRead`** (dsl 0.22.0), answers "has the player *ever* read
+this?". The engine sets it whenever it sets `entry.<id>.read`, so it turns true on the first read
+ever, and a new run never resets it. It is reserved the same way: readable wherever
+`entry.<id>.read` is, never written by content, and resolved by `W-ENTRY-REF-UNKNOWN` like its twin.
+Together the two flags tell a later run from the first one:
+
+```lute
+<entry id="tomaDejaVu" target="npc.toma" category="bark" when="entry.scientistLog1.everRead && !entry.scientistLog1.read">
+  @toma: You have that look again. As if you already know what the log says.
+</entry>
+```
+
+`tomaDejaVu` is eligible only in a run after the one where the player first read the log, and
+only until they find it again. On its own, `when="!entry.<id>.everRead"` makes an entry play once
+ever.
+
+| Flag | Tier | Set | Reset |
+|---|---|---|---|
+| `entry.<id>.read` | run | after the entry's first presentation in a run | at every new run |
+| `entry.<id>.everRead` | user | after the entry's first presentation ever | never |
+
+An entry beat can also spend itself on these flags directly: `once="run"` stops it answering its
+occasion while `read` is set, and `once="user"` once `everRead` is. See
+[Entry beats](/language/beats/#entry-beats).
 
 ## Tooling
 
 - `lute trace <doc> --entry <id> --mock m.yaml` previews one entry against mocked state; seed
-  `entry.<id>.read: true` to preview a re-read. `lute run <artifact> --entry <id>` does the same
-  over a compiled lore artifact.
+  `entry.<id>.read: true`, or `entriesRead: { run: [<id>] }`, to preview a re-read.
+  `entriesRead: { user: [<id>] }` seeds `entry.<id>.everRead` instead, for a document that reads
+  it. `lute run <artifact> --entry <id>` does the same over a compiled lore artifact.
+- `lute test` tests a lore document too (dsl 0.22.0). The test names the entries to present, with
+  `entry: <id>` or `entries: [ids]`. They are presented in order with the read flags set between
+  them, so a repeated id is a re-read. With the first document on this page saved as
+  `lore/ship-records.lute`:
+
+  ```yaml
+  file: ../lore/ship-records.lute
+  entries: [scientistLog1, scientistLog2]
+  expect:
+    transcriptContains: ["Day nine. We stopped writing her name in the logs."]
+  ```
+
+  A lore test that names neither is `E-TEST-LORE`, and the message lists the document's entry ids.
+  Since lore is testable, `lute test --coverage` lists an untested lore document with the other
+  untested documents.
 - `lute lore <dir>` prints the world-narrative map: entries by target and by series, and which
   facts entries reveal versus scenes and quests.
 - `lute new lore <name>` scaffolds a lore document.
 
-The engine contract — eligibility, presentation, first-read effects — is in
+The engine contract — eligibility, presentation, first-read effects, the two read flags — is in
 [`docs/runtime/lore-entries.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md);
-the normative spec is
-[`0.19.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md).
+the normative specs are
+[`0.19.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
+and, for `everRead` and lore tests,
+[`0.22.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md).

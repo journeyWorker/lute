@@ -23,7 +23,7 @@ facts:
   - "atLocation(player, camp)"
 ```
 
-Content writes **deltas** with the leaf directives `::assert` and `::retract`; the engine maintains the cumulative, time-scoped view. A functional `key:` auto-invalidates the superseded fact. Wildcards (`_`) are admitted only in `::retract`.
+Content writes **deltas** with the leaf directives `::assert` and `::retract`; the engine maintains the cumulative, time-scoped view. A functional `key:` auto-invalidates the superseded fact. Wildcards (`_`) are admitted only in `::retract`. A `reserved: true` relation (`wounded` above) is the engine's to populate — the facts counterpart of an [`owner: engine`](/state/state-model/#owner-engine) state path. Content never asserts or retracts one (`E-RELATION-RESERVED-WRITE`); in the toolchain, a trace mock or a `lute play` `engine:` step supplies its facts.
 
 ```lute
 ::assert{ atLocation(shadowheart, grove) }
@@ -74,6 +74,45 @@ rules:
 ```
 
 Because there are no function symbols, the Herbrand base is finite: bottom-up evaluation reaches a least fixpoint in finitely many steps, so **every derivation terminates** — this is Datalog, not Prolog. Safety requires every head/negated/guard variable to appear in a positive body atom (an entity-kind atom such as `character(P)` counts); violations are `E-DATALOG-UNSAFE`. A rule whose head has no variables needs no positive atom at all, so a ground head behind a scalar guard alone — `canReach(player, moonrise) :- cel("run.act >= 2")` — is a legal rule. A negation cycle is `E-DATALOG-UNSTRATIFIED`, and a would-be function term is `E-DATALOG-FUNCTION`. A rule body may carry a scalar CEL guard (`cel("run.act == 1")`) but never a fact query — that firewall (`E-DATALOG-GUARD-FACT`) keeps every dependency visible to the analysis. Derived and `reserved:` relations are read-only to content. The whole layer reduces to data the engine evaluates deterministically; nothing is author-iterated.
+
+## Derivation in trace, test, and play
+
+The engine computes the minimal model at run time, and since 0.22.0 the toolchain computes the same one wherever it plays content. `lute trace`, `lute test`, and `lute play` load the project's seed `facts:` and apply its `rules:` — stratified negation included — over the facts you mock and the facts content asserts along the way. All three share one evaluator with the reference runner (`lute run`), so the toolchain cannot disagree with itself about what a rule concludes.
+
+A derived fact therefore behaves like any other. Given
+
+```yaml
+entities:
+  item: { members: [lamp] }
+relations:
+  knows:   { args: [item], tier: run }
+  broken:  { args: [item], tier: run }
+  canMend: { args: [item], derive: true }
+rules:
+  - "canMend(I) :- knows(I), not broken(I)"
+```
+
+a guard `holds(canMend(lamp))` is decided by the rule: mock `knows(lamp)` and it holds, add `broken(lamp)` and it does not. You never mock the conclusion, and "false because a negated premise holds" is testable. A mocked derived atom is still accepted; it joins the base facts like a seed. When a rule's `cel(…)` guard reads state the trace has not decided, that rule derives nothing, and the trace reports the conclusion unknown and names the state path that would decide it.
+
+`derive: false` — a key of a trace mock, a `*.test.yaml`, or a play script — or the `--no-derive` flag, which wins over the key, restores the 0.21 model: the seed `facts:` are not loaded, an unmocked derived atom is unknown, and a note names each derived relation read. A test written against that model (an unmocked derived atom reading unknown, or a seeded relation reading empty) pins `derive: false` to keep its verdict. See the [Tracing guide](/tooling/tracing/) and [Playing a story](/tooling/play/).
+
+To see *why* an atom holds, `lute play --explain <atom>` (repeatable) prints its derivation at the end of the playthrough: the rule used, each premise's own support — a seed fact, asserted, or derived in turn — and a negated premise shown `(absent)`:
+
+```
+explain canMend(lamp): holds
+  canMend(lamp)  ⇐ canMend(I) :- knows(I), not broken(I)
+  ├─ knows(lamp)  (asserted)
+  └─ not broken(lamp)  (absent)
+```
+
+When the atom does not hold, it lists every rule that could conclude it, with the premise that failed:
+
+```
+explain canMend(lamp): does not hold
+  canMend(I) :- knows(I), not broken(I)
+  ├─ knows(lamp)  (asserted)
+  └─ ✗ not broken(lamp)  (but it holds: asserted)
+```
 
 ## How `check-project` analyzes relational guards
 

@@ -113,7 +113,10 @@ const TEST_TOP_KEYS: &[&str] = &[
 ];
 
 /// The `*.test.yaml` keys that are not mock surfaces: the expectations, and
-/// the lore entries a test presents (dsl 0.22.0 §5).
+/// the lore entries a test presents (dsl 0.22.0 §5). Only the drift test
+/// reads it — the runtime gate is the literal [`TEST_TOP_KEYS`] — so it is
+/// test-only rather than a dead constant in the binary.
+#[cfg(test)]
 const HARNESS_KEYS: &[&str] = &["entries", "entry", "expect"];
 
 /// The complete legal key set inside `expect:`. Also CLOSED — a new

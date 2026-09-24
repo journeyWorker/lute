@@ -119,6 +119,64 @@ uses: ../base.schema.yaml
 *(From [`docs/examples/components/reaction.component.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/components/reaction.component.lute).)* The three arms cover the declared
 enum and a param is never `unset`, so no `<otherwise>` is needed.
 
+### Line identity
+
+Each `::use` expansion is its own identity scope (0.22.0). A line expanded from a component is
+addressed `{prefix}.{component}#{n}.{speaker}_{code}`, where `{prefix}` is the host document's
+key and `n` counts the host's `::use`s of that component — 1-based, in document order. The scene
+above compiles the component's narrator line to `demo.s01ep02.greet#1.narrator_0010` and its own
+`@narrator: And the scene carries on.` to `demo.s01ep02.narrator_0010`. A voiced line's default
+`voiceKey` takes the same scope (see [Frontmatter & profiles](/language/frontmatter-and-profiles/)
+for the `identity:` templates).
+
+Take a component with one tagged and one untagged line:
+
+```lute check
+---
+component: toast
+---
+
+## A Toast
+
+@mira{code="0010"}: To the harbor.
+@oskar: To the harbor.
+```
+
+A scene with `id: harbor.dinner` imports it (`components: [toast.component.lute]`) and uses it
+twice, between lines of its own:
+
+```lute
+@mira{code="0010"}: Sit, everyone.
+::use{component="toast"}
+@oskar: Again?
+::use{component="toast"}
+@mira: Last one.
+```
+
+Every line gets its own `lineId`:
+
+| Line | `lineId` |
+|---|---|
+| `@mira{code="0010"}: Sit, everyone.` | `harbor.dinner.mira_0010` |
+| first `toast` | `harbor.dinner.toast#1.mira_0010`, `harbor.dinner.toast#1.oskar_0010` |
+| `@oskar: Again?` | `harbor.dinner.oskar_0010` |
+| second `toast` | `harbor.dinner.toast#2.mira_0010`, `harbor.dinner.toast#2.oskar_0010` |
+| `@mira: Last one.` | `harbor.dinner.mira_0020` |
+
+- **Each expansion back-fills its own untagged codes.** The component's `@oskar` is `0010` at every
+  use, however many host lines precede it, and the host's own untagged lines keep the codes
+  `lute tag` writes for them (`@oskar: Again?` → `0010`, `@mira: Last one.` → `0020`).
+- **Codes no longer collide across the boundary.** Two uses of a tagged component, or a component
+  line sharing a code with a host line (both `@mira` lines above are `0010`), compile clean with
+  distinct ids. Before 0.22.0 both were `E-DUP-LINE-CODE`.
+- **A nested `::use` adds a segment.** It counts within its enclosing expansion: a `feast`
+  component that uses `toast`, itself used twice, gives `…feast#1.toast#1.mira_0010` and
+  `…feast#2.toast#1.mira_0010`.
+- **`lute loc export` emits the same ids.**
+
+Migrating from 0.21: every line a component contributes has a new `lineId` and `voiceKey`, so
+re-export the localization and voice manifests of each document that `::use`s a component.
+
 ## Schema `extends:`
 
 Where `uses:` unions **peer** schemas (a name declared by two peers is an error), **`extends:`**

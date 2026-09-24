@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.21.1` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.21.1` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.21.1` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.21.schema.json`](../schemas/lute-ir-0.21.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.22.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.22.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.22.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.22.schema.json`](../schemas/lute-ir-0.22.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.21.schema.json`](../schemas/lute-ir-0.21.schema.json)
+published as [`schemas/lute-ir-0.22.schema.json`](../schemas/lute-ir-0.22.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -437,7 +437,7 @@ a new `accept` record; a `visited()` slot carries `raw` only, like
 `holds()`. Scene, quest, and lore artifacts that use none of it compile
 byte-identically apart from the version strings. The
 schema file renames per release line (`lute-ir-0.20.schema.json` →
-[`lute-ir-0.21.schema.json`](../schemas/lute-ir-0.21.schema.json)) and gains
+`lute-ir-0.21.schema.json`, since renamed) and gains
 `sceneBeat`, the entry fields, the `indexBeat` row, `objectiveEntry.on`, and
 `cmdAccept`. Engines gate on MAJOR, so nothing widens: an engine without beat
 support ignores the new fields, and one that predates `accept` rejects that
@@ -471,13 +471,47 @@ text. Because the default template `{speaker}-{code}` has no `{prefix}`,
 `expr`, the referenced def body inlined as a `{raw, expr}` CEL pair so an
 engine can render `{{@def}}` without a defs table. The field is optional in
 the schema, so `0.21.0` artifacts stay valid, and
-[`schemas/lute-ir-0.21.schema.json`](../schemas/lute-ir-0.21.schema.json)
+`schemas/lute-ir-0.21.schema.json`
 keeps its name and `$id` (the `0.17.1` / `0.17.2` precedent for a patch on
 one line). Some artifacts change content without changing shape — a
 `<when is="unset">` arm compiles to `== "unset"`, a `\"` in an attribute value
 is stored as `"`, a constant def in an attribute is written as its literal.
 Engines gate on MAJOR, so nothing widens. `capabilityVersion` does not move,
 and the tree-sitter grammar is unchanged.
+
+**`0.22.0` aligns all three axes at `0.22.0`; the language and the IR both
+earn the move, and the release is breaking for compiled identity.** The
+play/test harness can now stand in for the engine
+([`proposals/scenario-dsl/0.22.0.md`](proposals/scenario-dsl/0.22.0.md)): a
+`lute play` script writes engine-owned state and facts with `engine:` steps,
+starts from a save (`visited:`, `presented:`, `quests:`, `entriesRead:`),
+varies decisions per step, fires world events, and asserts with `expect:`;
+`lute test` runs every play that carries an `expect:`; and `lute trace`,
+`lute test` and `lute play` apply the project's seed facts and Datalog rules
+by default (`derive: false` / `--no-derive` restores the `0.21` answer). The
+language gains run boundaries — `<quest tier="run">`, entry-beat
+`once="run" | "user"`, and the reserved user-tier `entry.<id>.everRead` — a
+`state:` declaration's `owner: engine` (new `E-ENGINE-OWNED-WRITE`), occasion
+target domains (`target: { prefix, entity }`, checked through `E-BEAT-ATTR`),
+path-sensitive `W-STAGE-ABSENT`, and the new warnings `W-QUEST-HANDLER-DEAD`,
+`W-BEAT-PRIORITY-TIE`, and `W-BEAT-ONCE-RUN-USER`. The IR change is additive
+in shape — `QuestCmd.tier` (omitted for the default `user`) and
+`EntryCmd.once`, also on the `ProjectIndex.beats` entry rows — and the schema
+file renames per release line (`lute-ir-0.21.schema.json` →
+[`lute-ir-0.22.schema.json`](../schemas/lute-ir-0.22.schema.json)), gaining
+`cmdQuest.tier` and `entryCmd.once`. **Two identity changes alter compiled
+content:** the default `voiceKey` template becomes `{prefix}.{speaker}-{code}`
+(the `0.21` default collided across documents), and a line expanded from a
+component is addressed `{prefix}.{component}#{n}.{speaker}_{code}`, `n` being
+the host's 1-based `::use` ordinal of that component. A project that
+recorded audio against the old keys pins `identity: { voiceKey:
+"{speaker}-{code}" }`; one that already pinned the prefixed template is
+unchanged; localization and voice manifests of documents that `::use`
+components must be re-exported. No `lute fix` migration applies — the pin is
+the migration. The quest `tier` default (`user`) keeps every existing quest's
+persistence. Engines gate on MAJOR, so nothing widens. `capabilityVersion`
+moves only for a project whose occasions declare a target domain (`target:
+true` keeps its `0.21` stamp), and the tree-sitter grammar is unchanged.
 
 ## Which bump when
 

@@ -271,7 +271,9 @@ fn construct_hover(construct: QuestConstruct) -> String {
             "**\\<quest>** — a top-level quest declaration (dsl 0.2.0 §6.3).\n\n\
              **attributes:**\n- `id` (required): string\n- `title`: string\n\
              - `start`: cel<bool>\n- `fail`: cel<bool>\n\
-             - `after`: prereq — `completed(q)`/`active(q)`/`visited(k)` gate"
+             - `after`: prereq — `completed(q)`/`active(q)`/`visited(k)` gate\n\
+             - `tier`: `\"user\"` (default, status persists across runs) or `\"run\"` \
+             (status and objectives reset when a run starts) (dsl 0.22.0 §7)"
                 .to_string()
         }
         QuestConstruct::On => {
@@ -292,7 +294,8 @@ fn construct_hover(construct: QuestConstruct) -> String {
         QuestConstruct::Entry => {
             "**\\<entry>** — a lore entry: text the engine looks up rather than \
              plays (dsl 0.19.0 §3). Reading it the first time applies its \
-             `::set`/`::assert`/`::retract` and sets `entry.<id>.read`.\n\n\
+             `::set`/`::assert`/`::retract` and sets `entry.<id>.read` (run tier) and \
+             `entry.<id>.everRead` (user tier).\n\n\
              **attributes:**\n\
              - `id` (required): ident — unique across the project\n\
              - `target`: dotted id — the engine-owned thing it is attached to (`item.rusty_key`)\n\
@@ -302,7 +305,9 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `order`: non-negative integer — position within `series` (requires `series`)\n\
              - `when`: cel<bool> — eligibility; presented only while it holds\n\
              - `on`: ident — the occasion this entry answers as a beat (dsl 0.21.0 §3.2)\n\
-             - `priority`: integer — beat priority, higher wins (requires `on`)"
+             - `priority`: integer — beat priority, higher wins (requires `on`)\n\
+             - `once`: `\"run\"` or `\"user\"` — not eligible once read this run / ever \
+             (requires `on`; absent = repeatable) (dsl 0.22.0 §7)"
                 .to_string()
         }
     }
@@ -733,7 +738,7 @@ mod tests {
         let off = text.find("<entry ").unwrap() + 1;
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
-        for k in ["entry", "target", "category", "series", "order", "when", "on", "priority"] {
+        for k in ["entry", "target", "category", "series", "order", "when", "on", "priority", "once"] {
             assert!(s.contains(k), "missing {k}: {s}");
         }
     }

@@ -51,8 +51,8 @@ non-Turing-complete.
 
 A `::bg` is a **scene change**. Every character still on stage is hidden just before it by an
 injected `::auto` record (`provenance.by: "stage-bookkeeping"`). A character who keeps speaking in
-the new place must enter again with `::auto`. The checker does not flag a line from a character
-hidden this way, so re-enter them explicitly:
+the new place must enter again with `::auto`; a line from one before that is `W-STAGE-ABSENT`
+([below](#stage-state)), so re-enter them explicitly:
 
 ```lute
 ::bg{location="station" time="night"}
@@ -62,6 +62,69 @@ hidden this way, so re-enter them explicitly:
 ::auto{character="marina" action="fade-in-up"}
 @marina: We walk, then.
 ```
+
+## Stage state
+
+The checker threads a **stage state** through the document — who is on stage, where, and in what
+pose — and `lute compile` injects its staging records from the same state. A character's first
+line needs no `::auto`: a speaker who has never been shown enters implicitly, and nothing warns.
+What warns is staging someone the state says has **left**: after a declared exit (an `::auto`
+whose `action` is in the `action` domain's `exits:` list) or a `::bg` auto-hide, a line by that
+character — or another declared exit — before an `::auto` shows them again is `W-STAGE-ABSENT`.
+
+Since 0.22.0 the stage state follows paths:
+
+- It **forks** at every `<branch>` or `<hub>` choice and every `<match>` arm. Each arm starts from
+  the stage as it was at the fork, so an exit in one arm never warns on a line in its sibling.
+- It **joins** where the arms converge, keeping only what holds on every arm. After the
+  convergence a character is on stage only if every arm left them there; one taken off on any arm
+  warns when staged again without a re-show.
+- A `::bg` auto-hide records the hidden characters as **exited**, so a later line by one of them
+  warns until an `::auto` brings them back, and a scene change no longer forgets an earlier
+  declared exit. (Before 0.22.0 both checked clean.)
+
+```lute check
+---
+kind: scene
+id: demo.platform
+enums:
+  action:
+    members: [fade-in-up, fade-out-down]
+    exits: [fade-out-down]
+  anchor:
+    members: [left, center, right]
+    default: center
+---
+
+## The Platform
+
+::bg{location="station" time="night"}
+::auto{character="marina" action="fade-in-up"}
+@marina: The last train is gone.
+<branch id="wait">
+  <choice id="leave" label="Let her go">
+    ::auto{character="marina" action="fade-out-down"}
+    @narrator: She walks off without a word.
+  </choice>
+  <choice id="stay" label="Ask her to stay">
+    @marina: Fine. One more minute.
+  </choice>
+</branch>
+@marina: So, what now?
+```
+
+`@marina: Fine. One more minute.` is silent — on the `stay` path she never left. The line after
+the branch is not, because the `leave` path reaches it with her gone:
+
+<!-- lute-diagnostics -->
+```
+platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)
+```
+
+An `::auto{character="marina" action="fade-in-up"}` before that line, or at the end of the `leave`
+choice, puts her on stage on every path and silences it. `lute compile` stages the artifact over
+the same join: after the convergence she is not on stage, so an `::auto` there is a fresh entrance
+and gets its anchor again.
 
 ## Timing & the `wait` model
 

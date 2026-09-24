@@ -3,8 +3,8 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the JSON IR described
-by [`schemas/lute-ir-0.21.schema.json`](../../schemas/lute-ir-0.21.schema.json),
-the schema for the current IR version (`0.21.1`; the file is renamed per
+by [`schemas/lute-ir-0.22.schema.json`](../../schemas/lute-ir-0.22.schema.json),
+the schema for the current IR version (`0.22.0`; the file is renamed per
 release line, so an older `lute-ir-0.X.schema.json` named anywhere below is
 history, not a second live contract).
 It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**
@@ -111,7 +111,15 @@ Every executable record carries an `addr` (`address.rs`), a position string
 `"{shot}-{(index+1)*100}"` (e.g. `"001-0300"`). `addr` is **regenerated on
 every compile** — it is a position, not an identity. The stable content joins
 are `lineId` / `voiceKey`, derived from per-speaker `code` (dsl §12), and are
-what you key localization and voice assets on.
+what you key localization and voice assets on. Under the default templates
+(dsl 0.22.0 §11) a line's `lineId` is `{prefix}.{speaker}_{code}` and its
+`voiceKey` `{prefix}.{speaker}-{code}`, with `{prefix}` = `meta.id`; a line
+expanded from a component `::use` is minted under
+`{prefix}.{component}#{n}` (`n` = the host's 1-based use of that component,
+one more segment per nested use), so two uses never share an id. A project may
+re-template both (`identity:` in `lute.project.yaml` — a pinned
+`voiceKey: "{speaker}-{code}"` restores the 0.21 keys), so treat them as
+opaque keys and never parse them.
 
 **Field width (IR 0.8.0, dsl 0.8.0 §2).** Both segments are zero-padded to a
 width computed from the document — at least `3` for the shot and `4` for the
