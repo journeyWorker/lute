@@ -85,8 +85,9 @@ once: user
 </entry>
 ```
 
-엔트리에는 `once`가 없습니다: 다시 제시되는 것이 엔트리의 본성입니다. 한 번만 들려야 하는 엔트리는
-자신의 `entry.<id>.read`로 가드합니다.
+엔트리에는 `once`가 없습니다: 다시 제시되는 것이 엔트리의 본성입니다. 런마다 한 번만 들려야 하는 엔트리는
+자신의 `entry.<id>.read`로 가드합니다. 이 플래그는 run 등급이라 `newRun` 스텝이 초기화합니다. 평생 한
+번이라면 엔트리가 세우는 `user.*` 플래그로 가드하세요.
 
 ## 선택
 
@@ -143,9 +144,20 @@ choose:                          # branch/hub id -> choice id (a list for a hub'
 `state:`, `facts:`, `choose:`는 [`lute trace --mock`](/tooling/tracing/) 파일과 정확히 같은 문법을
 씁니다. 각 스텝은 `{occasion, target?, pick?}` 또는 `{newRun: true}` 중 하나입니다.
 
+- `quest.<id>.state` 시드(`state: { quest.lostCup.state: active }`)는 세이브에 이미 그 상태가 있었던
+  것처럼 처음부터 그 퀘스트의 라이프사이클 상태가 됩니다. id는 선언된 퀘스트여야 하고 값은 `unset`,
+  `active`, `complete`, `failed` 중 하나여야 합니다. 그 밖의 경우는 사용법 오류(종료 코드 2)입니다.
+- `choose:`의 결정 하나는 그 branch나 hub가 제시될 때마다 답합니다. **hub**의 목록은 방문 순서 하나이며
+  제시될 때마다 다시 쓰입니다. **branch**에 두 개 이상의 목록을 주면 플레이스루 전체에 걸쳐 제시될
+  때마다 순서대로 하나씩 소비됩니다. 그래서 사흘 밤 재생되는 씬이 밤마다 다르게 결정할 수 있습니다.
+  목록이 바닥나면 워크는 그 사실을 알리며 미완료(종료 코드 3)로 멈춥니다.
+- 그 순간 메뉴가 제시하지 않는 결정은 워크를 오류(종료 코드 1)로 멈춥니다: 가드가 거짓인 선택지, 또는
+  이미 고른 `once` hub 선택지(`lute trace`와 같은 `E-TRACE-CHOICE`).
+
 다음 경우 스크립트는 아무것도 재생하기 전에 거부됩니다 — **사용법 오류, 종료 코드 2**: 읽을 수 없거나
 잘못된 YAML, 알 수 없는 최상위 키, `steps`가 없거나 비어 있음, 두 모양 중 어느 것과도 정확히 일치하지 않는
-스텝, 해석된 플러그인 중 아무도 선언하지 않은 계기를 가리키는 스텝(어떤 플러그인이 계기를 선언한 경우),
+스텝, 선언되지 않은 퀘스트나 네 상태 밖의 값을 쓴 `quest.<id>.state` 시드, `target:` 없이 `target: true`
+계기를 발생시키는 스텝, 해석된 플러그인 중 아무도 선언하지 않은 계기를 가리키는 스텝(어떤 플러그인이 계기를 선언한 경우),
 또는 모양만 검사하는 프로젝트에서 어떤 비트도 응답하지 않는 계기, `target: true`로 선언되지 않은 계기에
 `target`을 붙인 스텝, `select: first` 계기의 `pick`, `pick`이 없는 `select: all` 스텝, 그 계기에 응답하는
 비트를 가리키지 않는 `pick`.
@@ -169,7 +181,8 @@ choose:                          # branch/hub id -> choice id (a list for a hub'
    초기화되고, `run.*` / `user.*` / `app.*` / `quest.*` 상태와 팩트는 이어지며, `choose:`가 branch와
    hub를 결정합니다. 스크립트에 없는 결정은 **미완료(종료 코드 3)**로 정지합니다. 엔트리 비트는 로어
    엔트리 규칙으로 제시됩니다: 효과는 첫 읽기에만 적용되고, 그 뒤 `entry.<id>.read`가 true가 됩니다.
-   씬의 `::end`는 플레이스루 전체를 완료로 끝냅니다.
+   씬의 `::end`는 플레이스루 전체를 완료로 끝냅니다. 단, 그 스텝이 먼저 정산됩니다: 그 스텝의 퀘스트
+   진행(6)과 계기의 목표 판정(7)이 실행된 뒤 워크가 멈춥니다.
 6. **퀘스트** — 매 제시 후, 그리고 스텝 1 전에 한 번, 모든 퀘스트 라이프사이클이 `lute run`이 퀘스트
    산출물을 진행시키는 것과 정확히 같게 진행됩니다: 활성화(`start`, 없으면 제시된 씬의 `::accept` — `start` 없는 퀘스트는 스스로 활성화되지 않음), 목표 완료(단조적이며
    목표 본문은 한 번만 재생), 완료 전의 `fail`, `<on>` 핸들러, `<reward>` 지급. 그래서 이후의 `quest.*`에
@@ -189,9 +202,9 @@ run 등급인 `entry.<id>.read` 플래그(그래서 새 런의 첫 읽기에서 
 | 코드 | 의미 |
 |---|---|
 | `0` | 완료 — 모든 스텝이 재생되었거나, 씬의 `::end`가 플레이스루를 끝냄. |
-| `1` | 오류 — 프로젝트 컴파일 실패, 어휘 충돌, 또는 자격이 없는 `pick`. |
-| `2` | 사용법 또는 I/O — 잘못된 스크립트, 알 수 없는 계기, 읽을 수 없는 프로젝트, 잘못된 산출물. |
-| `3` | 미완료 — 스크립트에 없는 choice나 hub, unknown으로 평가되는 `when`이나 퀘스트 목표, 또는 해석되지 않은 `now()` / `validAt()` / 플러그인 `bridgeResult`. |
+| `1` | 오류 — 프로젝트 컴파일 실패, 어휘 충돌, 자격이 없는 `pick`, 또는 메뉴가 제시하지 않는 `choose:` 결정(자격 없는 선택지나 이미 고른 `once` hub 선택지). |
+| `2` | 사용법 또는 I/O — 잘못된 스크립트, 알 수 없는 계기, `target:` 없이 발생시킨 `target: true` 계기, 잘못된 `quest.<id>.state` 시드, 읽을 수 없는 프로젝트, 잘못된 산출물. |
+| `3` | 미완료 — 스크립트에 없는 choice나 hub, 바닥난 branch `choose:` 목록, unknown으로 평가되는 `when`이나 퀘스트 목표, 또는 해석되지 않은 `now()` / `validAt()` / 플러그인 `bridgeResult`. |
 
 ## 트랜스크립트
 
@@ -216,11 +229,18 @@ run 등급인 `entry.<id>.read` 플래그(그래서 새 런의 첫 읽기에서 
   `once: run — already presented this run`, `once: user — already presented`,
   `after: prerequisite not satisfied`, 또는 `when: false`.
 - `→ <id>`가 승자를 가리킵니다. 승자가 없으면 `→ (no eligible beat — the occasion passes)`로 표시됩니다.
-- 그 뒤에 제시된 비트 자신의 트랜스크립트가 이어집니다: 콘텐츠 줄은 `@speaker: text`, 결정은
-  `▷ choice <id>: … ← chosen: <id>`, 상태 쓰기는 `set <path> = <value>`, 엔트리는
+- 그 뒤에 제시된 비트 자신의 트랜스크립트가 소스처럼 읽히게 이어집니다: 콘텐츠 줄은 `@speaker: text`로,
+  전달 방식을 유지합니다(`@wren{mono}: …`, `@maud{as="Barkeep"}: …`). `when=`이 거짓인 줄은
+  `skip @maud "You again." — when: false`로 표시됩니다. 작가가 쓴 연출 디렉티브는 그대로 나오고,
+  컴파일러가 주입한 연출(프리로드, 포즈 리셋, `::bg` 자동 숨김)은 빠집니다. 결정은
+  `▷ choice <id>: … ← chosen: <id>`(또는 `▷ hub <id>: …`)이며, 메뉴에서 고른 선택지는 `[table]`,
+  가드가 거짓인 선택지는 `piano✗`, 이미 고른 `once` 선택지는 `table(spent)`로 표시됩니다. 상태 쓰기는 `set <path> = <value>`, 엔트리는
   `entry <id> (first read)` — 또는 `entry <id> (re-read: effects skipped)`와 함께 건너뛴 각 효과에
   `(skipped: re-read)` 표시. 제시로 인한 퀘스트 전이가 마지막에 옵니다: `<quest>.<objective> done`,
   `quest <id> -> <state>`, 보상 지급.
+- `--json`에서 `presented.commands`의 줄 레코드는 해당하는 경우 `role`, `lineId`, `voiceKey`, `as`,
+  `emotion`을 담고, choice와 hub 레코드는 제시되지 않은 선택지를 `ineligible`에, 이미 고른 `once`
+  선택지를 `spent`에 나열합니다.
 - `newRun` 스텝은 `── step <n> · new run`과 `run.* state, run-tier facts and once: run reset`을
   출력합니다.
 - 워크는 `── end: complete (<n> steps)`로, 중간에 멈추면 `── halted: <message>`로 끝납니다.

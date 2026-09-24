@@ -22,7 +22,7 @@ accepts.
 
 | Directive | Attributes |
 |---|---|
-| `::bg` | `location`, `time`, `assetId` |
+| `::bg` | `location`, `time`, `assetId` — a scene change: characters still on stage are hidden first (below) |
 | `::music` | `action` (`start`\|`change`\|`stop`\|`resume`\|`fade-out`), `mood`, `volume` (`silent`\|`down`\|`normal`\|`up`\|`full`), `assetId`, `track` |
 | `::sfx` | `sound` (description), `assetId`, `name` |
 | `::auto` | `character`, `anchor` (`left`\|`center`\|`right`), `action` (a named action id such as `fade-in-up` / `pose-*`) — character entrance/exit/pose |
@@ -43,9 +43,25 @@ accepts.
 
 Character staging lives on `::auto` with an action id (there is no `::sprite`/`::char`); music
 fade-out is `::music{action="fade-out"}`; a character exit is
-`::auto{action="fade-out-down"}`. All attribute values are strings, or a bare `@ref` to a
-[def](/language/params/) (`::camera{zoom="@closeUp"}`); there are no inline code expressions, which
-keeps staging non-Turing-complete.
+`::auto{action="fade-out-down"}`. All attribute values are strings in double quotes (a `"` inside
+one is written `\"`; single quotes are `E-ATTR-QUOTE`), or a bare `@ref` to a
+[def](/language/params/) that folds to a constant (`::camera{zoom=@closeUp}`; a def that reads state
+is `E-ATTR-DEF-DYNAMIC`). There are no inline code expressions, which keeps staging
+non-Turing-complete.
+
+A `::bg` is a **scene change**. Every character still on stage is hidden just before it by an
+injected `::auto` record (`provenance.by: "stage-bookkeeping"`). A character who keeps speaking in
+the new place must enter again with `::auto`. The checker does not flag a line from a character
+hidden this way, so re-enter them explicitly:
+
+```lute
+::bg{location="station" time="night"}
+::auto{character="marina" action="fade-in-up"}
+@marina: The last train is gone.
+::bg{location="street" time="night"}
+::auto{character="marina" action="fade-in-up"}
+@marina: We walk, then.
+```
 
 ## Timing & the `wait` model
 

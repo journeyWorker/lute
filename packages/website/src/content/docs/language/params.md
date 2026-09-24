@@ -16,7 +16,7 @@ schema. Each entry has a `type`, an optional `params` block, and a `cel` body:
 ```yaml
 defs:
   warm:    { type: bool,   cel: "scene.affect.elena >= 2" }
-  closeUp: { type: number, cel: "scene.affect.elena >= 5 ? 1.35 : 1.15" }
+  closeUp: { type: number, cel: "1.35" }
   fond:    { type: bool,   cel: "scene.affect.marina >= 1" }
 ```
 
@@ -28,11 +28,33 @@ CEL. A bool def reads as a guard; a number def reads as a staging value:
 <when test="@fond">
   @fixer{mono}: I asked nicely.
 </when>
-::camera{zoom="@closeUp"}
+::camera{zoom=@closeUp}
 ```
 
 A `@ref` must appear in a position whose required type matches the def's declared `type`, and its
 name must be declared in `defs`. Def names and param names are CEL identifiers (no `-`).
+
+In a directive attribute the ref is **bare** — `zoom=@closeUp`. A quoted `zoom="@closeUp"` is the
+literal string `@closeUp`, which a number attribute rejects as `E-ATTR-TYPE`. An attribute value is
+a constant, not an expression, so the compiler writes the literal the def folds to (`zoom: 1.35`) and
+checks it like an authored one (`E-BAD-ENUM`, `E-ATTR-TYPE`). A def that reads state does not fold,
+and using it there is `E-ATTR-DEF-DYNAMIC`. Branch instead, with a literal in each arm:
+
+```lute
+<match on="scene.affect.elena">
+  <when is="5..">
+    ::camera{zoom="1.35"}
+  </when>
+  <otherwise>
+    ::camera{zoom="1.15"}
+  </otherwise>
+</match>
+```
+
+In content text, `{{@name}}` renders the def's value: the artifact carries the def body with the
+placeholder, and the engine evaluates it like any guard. A def whose body cannot be inlined into one
+expression (an expansion cycle, or a body that reads `$`) is `E-INTERP-DEF`. A def body gets the same
+CEL profile check as any guard, so `%` or `size()` in one is `E-CEL-PROFILE` at the def's own key.
 
 ## Parameterized defs
 

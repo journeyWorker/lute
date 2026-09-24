@@ -51,10 +51,12 @@ artifact gets no `exit` record.
 @marina{as="???"}: ...who's there?
 ```
 
-`as` overrides only the shown label for that one line. When absent, the label is resolved by the
-active display-name capability (the character/cast plugin), which adds registry validation,
-costumes, and name-reveal. With no such capability active, a line still renders its speaker id as
-the label.
+`as` overrides only the shown label for that one line. When absent, a line renders its speaker id
+as the label, and the engine maps that id to a display name. A display-name capability — the
+[character/cast proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md),
+with a speaker registry, costumes, and name-reveal — is a draft, and no such plugin ships yet. So
+Lute does not validate speaker ids against a cast, and `as=` is the only way to set a label from
+the source.
 
 ## Delivery flags
 

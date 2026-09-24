@@ -13,7 +13,7 @@ version: 0.1.0              # REQUIRED — the plugin's own semver
 kind: capability           # REQUIRED — only "capability" is defined
 depends:                   # OPTIONAL — { id, range } against other plugins
   - { id: lute.core, range: "^0.0.1" }
-exports:                   # REQUIRED — which sub-directories the loader reads
+exports:                   # REQUIRED — which sub-directories the loader reads (list only what you ship)
   directives: directives/
   state: state/
   providers: providers/
@@ -21,6 +21,13 @@ exports:                   # REQUIRED — which sub-directories the loader reads
   assetkinds: assetkinds/
   defs: defs/
   stampattrs: stampattrs/
+  enums: enums/
+  frontmatter: frontmatter/
+  events: events/
+  occasions: occasions/
+  rewardkinds: rewardkinds/
+  lints: lints/
+  docs: docs/
 options:                   # OPTIONAL — typed activation options
   - { name: resultScope,  type: { enum: [scene, run] }, default: scene }
   - { name: allowedKinds, type: { list: { enum: [rhythm, puzzle, timing] } }, default: [rhythm, puzzle, timing] }
@@ -39,7 +46,46 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `defs/*.yaml` — shared typed-CEL `@refs`.
 - `assetkinds/*.yaml` — asset-id segment templates (compose / query modes) with ordered `fallback` hooks.
 - `stampattrs/*.yaml` — cross-cutting attributes admissible on every directive and content line (below).
-- `enums/*.yaml`, `frontmatter/*.yaml`, `events/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, world events, and hover docs.
+- `enums/*.yaml`, `frontmatter/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, and hover docs.
+- `events/*.yaml` — world events a quest's `<on event>` may name and `lute trace --event` fires.
+- `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0).
+- `rewardkinds/*.yaml` — the closed set of `<reward kind>` values, with an optional target provider and extra attributes.
+- `lints/*.yaml` — advisory [lint rules](/tooling/linting/), namespaced `<plugin-id>/<rule-id>`; excluded from the capability snapshot.
+
+An export name outside this list is a load error. The four newest kinds, one minimal file each (every file carries one top-level key; the id is the map key or `name`/`id`):
+
+```yaml
+# events/world.yaml
+events:
+  - { name: combatEnd }
+  - { name: npcSpoke }
+```
+
+```yaml
+# occasions/game.yaml — a bare {} is select: first, untargeted
+occasions:
+  hubVisit: {}
+  talk:     { select: first, target: true }
+  inbox:    { select: all, description: Letters waiting at the fountain }
+```
+
+```yaml
+# rewardkinds/game.yaml
+rewardKinds:
+  XP: {}
+  ITEM: { target: { provider: items }, attrs: [ { name: rarity, type: string } ] }   # `items` must be an active provider
+```
+
+```yaml
+# lints/style.yaml
+lints:
+  - id: too-many-choices
+    target: scene
+    when: "scene.choices > options.max"
+    level: warn
+    message: "scene has {scene.choices} choices (budget {options.max})"
+    options: { max: 6 }
+```
 
 `enums/` is the third route a project gets its [content vocabulary](/language/vocabulary/) from, and the only one that is *capability* rather than project data: `lute.core` declares the seven slots and exports an **empty** `enums`, so an engine or genre pack ships members to every project that activates it. Its entries take the same long form as an author's `enums:` block — a bare sequence is shorthand for `{ members: [...] }`, and `action` must carry `exits:` while `anchor` must carry `default:`.
 

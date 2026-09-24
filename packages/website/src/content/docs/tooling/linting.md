@@ -1,4 +1,7 @@
-# Lute linting
+---
+title: Linting
+description: "lute lint — advisory, per-project editorial lints (L-* codes) configured in lute.lint.yaml: the seven core rules, project-local custom rules, plugin lint exports, the metric tables rules read, and the exit-code contract."
+---
 
 `lute lint [PATH]` reviews project content for configurable editorial and
 composition concerns. It collects documents by their nearest `lute.project.yaml`,

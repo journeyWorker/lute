@@ -17,6 +17,7 @@ relations:
   inParty:    { args: [character], tier: run }
   atLocation: { args: [character, location], tier: run, key: [0] }
   canReach:   { args: [character, location], derive: true }
+  wounded:    { args: [character], tier: run, reserved: true }   # asserted by the engine only
 facts:
   - "inParty(shadowheart)"
   - "atLocation(player, camp)"
@@ -55,7 +56,24 @@ rules:
   - "canReach(C, L2) :- canReach(C, L1), connected(L1, L2)"
 ```
 
-Because there are no function symbols, the Herbrand base is finite: bottom-up evaluation reaches a least fixpoint in finitely many steps, so **every derivation terminates** — this is Datalog, not Prolog. Safety requires every head/negated/guard variable to appear in a positive body atom; violations are `E-DATALOG-UNSAFE`, a negation cycle is `E-DATALOG-UNSTRATIFIED`, a would-be function term is `E-DATALOG-FUNCTION`. A rule body may carry a scalar CEL guard (`cel("run.act == 1")`) but never a fact query — that firewall (`E-DATALOG-GUARD-FACT`) keeps every dependency visible to the analysis. Derived and `reserved:` relations are read-only to content. The whole layer reduces to data the engine evaluates deterministically; nothing is author-iterated.
+A rule is `head :- body`, where the body is a comma-separated conjunction of these literals:
+
+| Literal | Example | Meaning |
+| --- | --- | --- |
+| relation atom | `atLocation(C, L)` | a base or derived fact matches; variables are capitalized, constants are entity members |
+| entity kind | `character(C)` | `C` ranges over the members of the entity kind `character` |
+| negation | `not awake(P)` | no matching fact holds (stratified: `awake` must not depend on this head) |
+| inequality | `A != B` | two bound terms differ |
+| scalar guard | `cel("run.act == 1")` | a CEL condition over scalar state, never a fact query |
+
+```yaml
+rules:
+  - "suspect(P) :- character(P), not inParty(P)"
+  - "rivals(A, B) :- inParty(A), inParty(B), A != B"
+  - "canReach(player, moonrise) :- cel(\"run.act >= 2\")"
+```
+
+Because there are no function symbols, the Herbrand base is finite: bottom-up evaluation reaches a least fixpoint in finitely many steps, so **every derivation terminates** — this is Datalog, not Prolog. Safety requires every head/negated/guard variable to appear in a positive body atom (an entity-kind atom such as `character(P)` counts); violations are `E-DATALOG-UNSAFE`. A rule whose head has no variables needs no positive atom at all, so a ground head behind a scalar guard alone — `canReach(player, moonrise) :- cel("run.act >= 2")` — is a legal rule. A negation cycle is `E-DATALOG-UNSTRATIFIED`, and a would-be function term is `E-DATALOG-FUNCTION`. A rule body may carry a scalar CEL guard (`cel("run.act == 1")`) but never a fact query — that firewall (`E-DATALOG-GUARD-FACT`) keeps every dependency visible to the analysis. Derived and `reserved:` relations are read-only to content. The whole layer reduces to data the engine evaluates deterministically; nothing is author-iterated.
 
 ## How `check-project` analyzes relational guards
 
@@ -67,13 +85,13 @@ A guard that presumes knowledge is the right tool — `@eris{when="holds(knows(p
 
 The verdicts come from two sets:
 
-- **May** — project-wide and flow-insensitive: every ground fact that can be live at any point of any run. The `facts:` seeds, the fact of every `::assert` anywhere in the project root (scenes, quest `<on>`/`<objective>` bodies, lore entries) whose document is not proven unreachable, every fact of a `reserved:` relation (the engine may populate any of them), and whatever the `rules:` derive over that set. May only knows *that* some route can produce a fact, not when.
+- **May** — project-wide and flow-insensitive: every ground fact that can be live at any point of any run. The `facts:` seeds, the fact of every `::assert` anywhere in the project root (scenes, quest `<on>`/`<objective>` bodies, lore entries) whose document is not proven unreachable, every fact of a `reserved:` relation (the engine may populate any of them), and whatever the `rules:` derive over that set. May only knows *that* some route can produce a fact, not when. It reads a negated body atom as satisfiable: `suspect(P) :- character(P), not inParty(P)` counts as able to fire for every member, even one a seed puts in the party, so a guard on a negation-derived fact is never proven impossible.
 - **Must** — path-sensitive: the facts live on every route to one program point. Within a document it is a forward walk: `::assert` adds a fact (and drops the one its `key:` supersedes), `::retract` removes every match, `<branch>`/`<match>` arms **intersect** where they rejoin (a branch with no unguarded choice, or a non-exhaustive match, also intersects with the set before the block, because no arm may run), and a `<hub>` body may run zero or more times. Across scenes it follows the `after:` graph, exactly like the [scalar envelope](/connectivity/envelopes/): a scene starts from the seeds plus the facts its `after:` formula guarantees — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, and `completed(q)`/`active(q)` contribute nothing. Quest bodies and lore entry bodies run at engine-chosen times, so they start from the seeds plus their own guards.
 
 Three rules keep Must sound:
 
 - **Only monotone facts cross time the author does not control.** A fact survives a document boundary only if no `::retract` anywhere in the project matches it, no other assert shares its `key:` tuple with a different value, and its relation is neither `reserved:` nor has an `open: engine` argument. Facts of `tier: scene` and `tier: quest` relations never cross a document boundary — the engine clears them with their episode or quest.
-- **Guards are assumptions.** Inside `<when test="holds(F)">`, a `<choice when="holds(F)">`, a guarded `::next`, an `<on when>`, an objective `done`, or an entry `when`, each positive top-level `&&` conjunct `holds(F)` with a ground `F` is in Must — so a nested guard on the same fact is shown redundant. A line `when=` guards only its own line.
+- **Guards are assumptions.** Inside `<when test="holds(F)">`, a `<choice when="holds(F)">`, a guarded `::next`, an `<on when>`, an objective `done`, an entry `when`, or — for the whole scene — a beat scene's frontmatter `when:`, each positive top-level `&&` conjunct `holds(F)` with a ground `F` is in Must — so a nested guard on the same fact is shown redundant. A line `when=` guards only its own line.
 - **Counts are intervals.** `count(P)` lies between the number of Must facts matching `P` and the number of May facts matching it; a comparison against `n` is decided when the whole interval falls on one side.
 
 The verdict feeds the same decision procedure that already reports dead scalar guards, so a relational guard that can never hold is reported through the code its slot already owns, and a guaranteed one inside a guard is flagged as redundant:

@@ -38,8 +38,9 @@ Not every param type is renderable. A `{{…}}` interpolation renders **number, 
 (§7.6); a `string` param inside content text is `E-REF-TYPE` — *"`@who` produces a non-renderable
 type; a `{{…}}` interpolation renders only number/bool/enum"*. So `who: string` above is usable as
 the `character=` argument it is written for and **not** as `{{@who}}` in a line. That restriction
-is under review; until it changes, pass renderable text through the calling document rather than
-through a `string` param.
+is under review. Until it changes, two idioms cover the need: take an **enum** param and `<match>`
+on it to pick between lines written in the component, or keep the varying text in the calling
+document and use the component for the staging around it.
 
 The `uses:` line is the component's own [content vocabulary](/language/vocabulary/) import — since
 `0.9.0` `action="fade-in-up"` resolves against a declared `action` domain, and a component file has
@@ -70,15 +71,27 @@ components: [greet.component.lute]
 
 `::use` expands the named component's body inline, binding each `@param` to the matching named arg;
 argument count and type are checked (`E-COMPONENT-ARG`), and naming a component from no imported
-file is `E-COMPONENT-UNDECLARED`.
+file is `E-COMPONENT-UNDECLARED`. A literal argument is substituted into the expansion, so
+`{{@weather}}` in a component line compiles to `Outside: grey.` for `weather="grey"`.
+
+An argument may also be a **def of the calling document** — `::use{component="greet" tier=@mood}`.
+The component still reads no state itself; the caller's def is where the state read lives, and it
+is checked where it lands:
+
+- for an enum param, every value the def body can produce must be a member, else `E-COMPONENT-ARG`
+  (`@mood` = `"run.n > 2 ? 'warm' : 'hot'"` against `{ enum: [cold, warm] }` fails on `hot`);
+- in a `<match on="@tier">`, it dispatches at run time like any subject;
+- in content text, `{{@n}}` stays a placeholder naming the caller's def, and the engine evaluates it;
+- in a directive attribute, it must fold to a constant, and a state-dependent def is
+  `E-ATTR-DEF-DYNAMIC`.
 
 ### Component body rules
 
 A component body is **presentational**: lines, staging directives, and `@param` refs only. It may
 **not** read or write scene/run state and may **not** contain logic blocks (`E-COMPONENT-BODY`) —
-pass values in through params instead. One notable exception: a `<match>` that dispatches on the
-component's own param is admitted, because dispatch on a param is a pure read of an invocation
-argument, not of ambient state:
+pass values in through params instead (a caller's def is a legal argument, above). One notable
+exception: a `<match>` that dispatches on the component's own param is admitted, because dispatch on
+a param is a pure read of an invocation argument, not of ambient state:
 
 ```lute check="docs/examples/components/reaction.component.lute"
 ---
