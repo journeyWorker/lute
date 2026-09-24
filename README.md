@@ -114,7 +114,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.21.0"
+luteVersion: "0.21.1"
 profile: date-minigame
 extra:
   arc: main
@@ -204,21 +204,25 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.21.0.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.21.1.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
   [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md). Recent tips: `0.16.0` declarative
   rewards, `0.17.0` checked continuation tooling (ordinary grammar unchanged), `0.18.0`
   numeric range patterns in `<when is>`, `0.19.0` lore entries (queried content), `0.20.0`
   fact envelopes (`check-project` proves relational guards dead or redundant), and `0.21.0`
   beats and occasions (a scene or lore entry answers an engine moment by `on`, `when`,
-  `priority`, and `once`). Being draft means the grammar may still break before 1.0; each
-  breaking change ships a `lute fix` migration where the rewrite is mechanical.
-- **IR: 0.21.0.** The compiled artifact is specified by
+  `priority`, and `once`). `0.21.1` is a patch that adds no syntax: checks that used to
+  pass silently wrong input now report it (for example `E-DUP-VOICEKEY` for two different
+  lines sharing one voice asset — pin `identity.voiceKey: "{prefix}.{speaker}-{code}"`), and
+  `lute test` fails an incomplete trace. Being draft means the grammar may still break before
+  1.0; each breaking change ships a `lute fix` migration where the rewrite is mechanical.
+- **IR: 0.21.1.** The compiled artifact is specified by
   [`schemas/lute-ir-0.21.schema.json`](schemas/lute-ir-0.21.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only
   (since `0.13.0`): fields are append-only within a major line, so a minor move costs a
-  consumer nothing.
+  consumer nothing. `0.21.1` adds one optional field, `expr` on a `ref` placeholder (the
+  `{{@def}}` body inlined so an engine can render it).
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver, reference
   runtime, LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (including `lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-trace`, `lute-lint`,

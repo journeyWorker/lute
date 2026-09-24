@@ -4,7 +4,7 @@ This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the JSON IR described
 by [`schemas/lute-ir-0.21.schema.json`](../../schemas/lute-ir-0.21.schema.json),
-the schema for the current IR version (`0.21.0`; the file is renamed per
+the schema for the current IR version (`0.21.1`; the file is renamed per
 release line, so an older `lute-ir-0.X.schema.json` named anywhere below is
 history, not a second live contract).
 It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**

@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.21.0`, the grammar and semantics the checker
+- **Language** — currently `0.21.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.21.0`) and gated on by consuming engines.
+  artifact (currently `0.21.1`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,7 +36,38 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.21.1] - 2026-09-25
+
+**No silent wrong answers.**
+
+A patch on the `0.21` line. An audit of the toolchain found checks that
+accepted a defect and then shipped the wrong thing — a passing test that never
+reached its expectations, a `{{@def}}` an engine could only print as a marker,
+a directive attribute dropped from the IR, two scenes' lines landing on one
+voice asset. Each now reports the defect where it is made. No syntax is added;
+the language's static semantics tighten, and the IR gains one optional field.
+See [`docs/versioning.md`](docs/versioning.md) for what each axis earned.
+
+### Added
+
+- **New `E-DUP-VOICEKEY`.** The default `voiceKey` template
+  `{speaker}-{code}` has no `{prefix}`, so lines of different scenes landed on
+  one voice asset without a word. `check-project` and `compile --all` now
+  refuse a key carried by lines with different text, naming each line; set
+  `identity.voiceKey: "{prefix}.{speaker}-{code}"` (the default is unchanged
+  until 0.22.0). `lute init` projects, the `docs/examples` projects and the
+  first-scene tutorial now pin it (T1-9).
+- **New `E-CAPABILITY-MISMATCH` at `check-project`.** A project whose documents
+  resolve two capability snapshots passed `check-project` and was then refused
+  by `compile --all` and `play`; `check-project` now runs the same
+  single-snapshot gate, with the same message. `docs/examples/showcase` was
+  such a project; its three scenes now share one set of scene-local options
+  (T1-11).
+- **IR — `expr` on a `ref` placeholder.** The referenced def body, inlined as
+  a `{raw, expr}` CEL pair, so an engine renders `{{@def}}` by evaluating it
+  like any other CEL slot (see *A `{{@def}}` renders its value* below).
+  Optional in [`schemas/lute-ir-0.21.schema.json`](schemas/lute-ir-0.21.schema.json),
+  which keeps its name and `$id`.
 
 ### Fixed
 
@@ -143,27 +174,6 @@ table.
   of the host scene (typically after `lute tag`), compiled to two records with
   one `lineId`/`voiceKey`. The expanded stream is now checked: `E-DUP-LINE-CODE`
   at the `::use`, from `lute check`, `check-project` and every compile (T1-10).
-- **`check-project` runs the compile.** Every document that checks clean is
-  compiled under its project's `identity:`, so compile-stage errors (such as
-  the one above) fail `check-project` instead of only `compile` (T1-9, T1-10).
-- **New `E-DUP-VOICEKEY`.** The default `voiceKey` template
-  `{speaker}-{code}` has no `{prefix}`, so lines of different scenes landed on
-  one voice asset without a word. `check-project` and `compile --all` now
-  refuse a key carried by lines with different text, naming each line; set
-  `identity.voiceKey: "{prefix}.{speaker}-{code}"` (the default is unchanged
-  until 0.22.0). `lute init` projects, the `docs/examples` projects and the
-  first-scene tutorial now pin it (T1-9).
-- **New `E-CAPABILITY-MISMATCH` at `check-project`.** A project whose documents
-  resolve two capability snapshots passed `check-project` and was then refused
-  by `compile --all` and `play`; `check-project` now runs the same
-  single-snapshot gate, with the same message. `docs/examples/showcase` was
-  such a project; its three scenes now share one set of scene-local options
-  (T1-11).
-- **`lute check <file>` uses the project the file is in.** Without `--project`
-  it checked the file with no manifest — no `defaults: uses:`, no profile — and
-  reported `E-UNDECLARED`/`E-DOMAIN-UNKNOWN` for paths the project declares. It
-  now applies the nearest `lute.project.yaml` and says so on stderr (`note:
-  using project …`) (T3-9).
 - **`<when is=… test=…>` covers only what both prove.** An arm with both was
   counted as covering its whole `is=` set, so a later arm on the same member
   drew a false `W-OVERLAP-ARMS`, and a match missing members was taken as
@@ -185,6 +195,15 @@ table.
 
 ### Changed
 
+- **`check-project` runs the compile.** Every document that checks clean is
+  compiled under its project's `identity:`, so compile-stage errors (such as
+  `E-DUP-LINE-CODE` and `E-DUP-VOICEKEY`) fail `check-project` instead of only
+  `compile` (T1-9, T1-10).
+- **`lute check <file>` uses the project the file is in.** Without `--project`
+  it checked the file with no manifest — no `defaults: uses:`, no profile — and
+  reported `E-UNDECLARED`/`E-DOMAIN-UNKNOWN` for paths the project declares. It
+  now applies the nearest `lute.project.yaml` and says so on stderr (`note:
+  using project …`) (T3-9).
 - **`lute scenario envelope`: Possible lists only what is not Guaranteed.**
   Possible is a superset of Guaranteed, so every guaranteed path was printed
   twice. The quest envelope's separate `Possible \ Guaranteed` inventory is now
@@ -197,6 +216,40 @@ table.
   line records carry `role`, `lineId`, `voiceKey`, `as` and `emotion`, and
   menu records `spent`/`ineligible`. `lute run`'s transcript (the conformance
   contract) is unchanged (T1-8, T3-2).
+
+### Compatibility
+
+- **Multi-scene projects on the default `voiceKey` template now fail.** The
+  default `{speaker}-{code}` carries no scene prefix and every scene numbers
+  its lines independently, so in practice every project with two or more
+  scenes gets `E-DUP-VOICEKEY` from `check-project` and `compile --all` until
+  its `lute.project.yaml` pins
+  `identity: { voiceKey: "{prefix}.{speaker}-{code}" }`. Pinning renames
+  every voice asset key, so re-export voice-asset manifests afterwards.
+- **Incomplete traces fail tests.** A `lute test` case whose walk halts on a
+  guard it cannot decide used to pass whenever it did not mention `exit:`; it
+  now fails and names the `state:` / `facts:` entries that would decide the
+  guard. Supply them, or write `expect: { exit: incomplete }` when stopping
+  there is the point of the test. A test whose `file:` is a lore document
+  fails with `E-TEST-LORE`.
+- **Documents that were already wrong can redden.** New errors
+  (`E-ATTR-DEF-DYNAMIC`, `E-INTERP-DEF`, `E-ATTR-QUOTE`), attribute closure on
+  `<quest>` / `<objective>` / `<on>` (`E-UNKNOWN-ATTR`), the CEL profile gate
+  on def bodies (`E-CEL-PROFILE` / `E-CEL-PARSE`), enum checking of `@def`
+  component args (`E-COMPONENT-ARG`), `E-DUP-LINE-CODE` over expanded
+  components, `E-NONEXHAUSTIVE` for an `is=` + `test=` arm that was wrongly
+  counted as covering, and `check-project`'s compile and single-snapshot gate
+  (`E-CAPABILITY-MISMATCH`) each fire only where the artifact was already
+  wrong. `quest.<id>.state` reads lose their false `E-MAYBE-UNSET` /
+  `E-UNSET-LITERAL`.
+- **Additive IR.** The version strings move to `0.21.1`; the one shape change
+  is the optional `placeholder.expr`, so `0.21.0` artifacts stay valid against
+  the `0.21` schema and engines, gating on MAJOR, widen nothing. Some
+  artifacts change content: a `<when is="unset">` arm on a quest state
+  compiles to `== "unset"`, a `\"` in an attribute value is stored as `"`, and
+  a def in a directive attribute that folds to a constant is written as that
+  literal. `capabilityVersion` does not move; the tree-sitter grammar is
+  unchanged.
 
 ## [0.21.0] - 2026-09-24
 
