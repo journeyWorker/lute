@@ -1,6 +1,6 @@
 ---
 kind: lore
-luteVersion: "0.20.0"
+luteVersion: "0.21.0"
 id: haven.purserLedger
 title: Purser's ledger
 series: purserLedger

@@ -1,0 +1,6 @@
+id: hub.occasions
+version: 0.1.0
+kind: capability
+depends: [ { id: lute.core, range: "^0.0.1" } ]
+exports:
+  occasions: occasions/

@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED artifact
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.20.schema.json`).
+//! `schemas/lute-ir-0.21.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! artifact (`lute compile` output), gates on `irVersion` by **MAJOR** only
@@ -89,10 +89,9 @@ fn impl_ir_line() -> (u64, u64) {
         .expect("LUTE_IR_VERSION must carry a major.minor prefix")
 }
 
-/// A ground fact: `(relation, args)`. `pub(crate)` (design spec
-/// docs/superpowers/specs/2026-08-14-lute-schedule-and-play-design.md §4.2):
-/// `lute play`'s chained evaluator carries this shape across scene
-/// boundaries via [`RunnerOutcome`]/[`Runner::with_carryover`].
+/// A ground fact: `(relation, args)`. `pub(crate)` (dsl 0.21.0 §6): `lute
+/// play` carries this shape across presentations via
+/// [`RunnerOutcome`]/[`Runner::with_carryover`].
 pub(crate) type Fact = (String, Vec<String>);
 
 /// Execute a compiled artifact against a mock playthrough. See [`crate::Command::Run`].
@@ -315,10 +314,11 @@ enum Step {
     Halt,
 }
 
-/// The reference engine over one artifact. `pub(crate)` (design spec §4.2):
-/// `lute play`'s chained evaluator (`play.rs`) drives one `Runner` per
-/// scheduled scene, threading state/facts/quest status across instances via
-/// [`RunnerOutcome`]/[`Runner::with_carryover`] — never a second dispatcher.
+/// The reference engine over one artifact. `pub(crate)` (dsl 0.21.0 §6):
+/// `lute play` (`play.rs`) drives one `Runner` per presented beat and per
+/// quest-lifecycle advance, threading state/facts/quest status across
+/// instances via [`RunnerOutcome`]/[`Runner::with_carryover`] — never a
+/// second dispatcher.
 pub(crate) struct Runner {
     kind: String,
     commands: Vec<Json>,
@@ -371,17 +371,15 @@ pub(crate) struct Runner {
     /// produced ([`Runner::eval_raw`]'s one chokepoint). `lute run` never
     /// reads this — its exit code/output are byte-identical to before this
     /// field existed; it exists for [`RunnerOutcome`] to hand to `lute
-    /// play`'s §4.5 honesty gate.
+    /// play`'s honesty gate (an unresolved surface halts it incomplete).
     unresolved: Vec<UnresolvedAtom>,
-    /// `lute play --auto first` (design spec §4.4, review fix #6): when a
-    /// hub's scripted `choose:` sequence is exhausted mid-walk (no more
-    /// route-script/`--choose` entries for this re-presentation) and
-    /// eligible options remain, [`Runner::do_hub`] auto-selects the FIRST
-    /// still-eligible option live rather than halting incomplete — applied
-    /// at EVERY re-presentation, not just once. `false` for `lute run`'s
-    /// own [`Runner::new`] (no `--auto` surface there); `lute play` sets it
-    /// via [`Runner::with_auto_first`].
-    auto_first: bool,
+    /// `lute play` (dsl 0.21.0 §6, D-H): [`Runner::advance_quests`] RESUMES
+    /// the quest lifecycle over carried-over state instead of starting a
+    /// fresh walk — a quest keeps its carried status (only an `unset` quest
+    /// may activate) and an objective whose
+    /// `quest.<id>.objectives.<oid>.done` is already true is not completed
+    /// (nor its body played) a second time. `false` for `lute run`.
+    quest_resume: bool,
     /// dsl 0.19.0 §8: the `entry` id a lore artifact presents (`lute run
     /// --entry`). `None` for every scene/quest walk.
     entry: Option<String>,
@@ -391,21 +389,22 @@ pub(crate) struct Runner {
     apply_effects: bool,
 }
 
-/// `lute play`'s per-scene carryover + transcript-reuse surface (assignment
-/// contract points b/c): everything the chained walk needs to seed the NEXT
-/// scene's [`Runner::with_carryover`], plus the machine transcript play.rs's
-/// own renderer reuses verbatim instead of re-implementing per-`kind`
-/// rendering rules a second time.
+/// `lute play`'s per-presentation carryover + transcript-reuse surface:
+/// everything the playthrough needs to seed the NEXT
+/// [`Runner::with_carryover`], plus the machine transcript play.rs's own
+/// renderer reuses verbatim instead of re-implementing per-`kind` rendering
+/// rules a second time.
 pub(crate) struct RunnerOutcome {
     pub state: BTreeMap<String, Value>,
     pub base_facts: BTreeSet<Fact>,
     pub quest_status: BTreeMap<String, String>,
-    /// dsl 0.8.0 `::end` executed: the WHOLE playthrough is over (design spec
-    /// §4.2 "`::end` terminates the whole playthrough"), not just this scene.
+    /// dsl 0.8.0 `::end` executed: the WHOLE playthrough is over, not just
+    /// this scene.
     pub terminated: bool,
-    /// A `choice`/`hub` was reached with no route-script/`--auto` decision.
+    /// A `choice`/`hub` was reached with no scripted `choose:` decision, or
+    /// (quest advance) an active quest's required objective is undecidable.
     pub incomplete: bool,
-    /// See [`Runner::unresolved`] — the §4.5 honesty-gate signal.
+    /// See [`Runner::unresolved`] — the honesty-gate signal.
     pub unresolved: Vec<UnresolvedAtom>,
     pub transcript: Vec<Json>,
 }
@@ -416,7 +415,7 @@ impl Runner {
     /// parsed Datalog rules/strata. Live `state`/`base_facts` start EMPTY
     /// here — [`Runner::new`] (fresh `lute run` walk) seeds them from the
     /// artifact's own `state[].default`/`seedFacts`; [`Runner::with_carryover`]
-    /// (`lute play`'s chained walk, design spec §4.2) seeds them from the
+    /// (`lute play`, dsl 0.21.0 §6) seeds them from the
     /// PRIOR scene's [`RunnerOutcome`] instead. Both then layer `mock`'s own
     /// `state:`/`facts:` seeds on top via [`Runner::apply_mock_seeds`] — the
     /// one place that override rule lives.
@@ -505,7 +504,7 @@ impl Runner {
             terminated: false,
             fatal: None,
             unresolved: Vec::new(),
-            auto_first: false,
+            quest_resume: false,
             entry: None,
             apply_effects: true,
         }
@@ -518,17 +517,16 @@ impl Runner {
         runner
     }
 
-    /// `lute play`'s chained-evaluation constructor (design spec §4.2):
+    /// `lute play`'s chained-evaluation constructor (dsl 0.21.0 §6):
     /// seeds live state/facts/quest status from a PRIOR scene's
     /// [`RunnerOutcome`] instead of this artifact's own declared defaults —
     /// `play.rs` already decided what carries forward across the scene
     /// boundary (its own state-tier filter: `run.*`/`user.*`/`app.*`/
     /// `quest.*` persist, `scene.*` resets); this constructor does not
-    /// re-derive that policy, only accepts its result. This scene's OWN mock
-    /// (a route-script's per-event `choose:`, if it also carries a local
-    /// seed) still layers on top afterward via [`Runner::apply_mock_seeds`],
-    /// identically to how [`Runner::new`] layers `--mock` over the artifact
-    /// defaults.
+    /// re-derive that policy, only accepts its result. The play script's
+    /// `choose:` rides in `mock`; `play.rs` never puts `state:`/`facts:`
+    /// seeds there (it seeds the playthrough once, up front), so
+    /// [`Runner::apply_mock_seeds`] layers nothing over the carryover.
     pub(crate) fn with_carryover(
         art: &Json,
         mock: lute_trace::MockSet,
@@ -545,13 +543,11 @@ impl Runner {
         runner
     }
 
-    /// `lute play --auto first` (review fix #6): opts THIS runner's
-    /// [`Runner::do_hub`] into live per-re-presentation auto-selection once
-    /// its scripted `choose:` sequence runs out. Builder-style so
-    /// [`Runner::with_carryover`]'s own signature (already mirrored by
-    /// every call site) never needs another positional parameter.
-    pub(crate) fn with_auto_first(mut self, auto_first: bool) -> Self {
-        self.auto_first = auto_first;
+    /// `lute play` (dsl 0.21.0 §6): present ONE `entry` record of a lore
+    /// artifact — the same `--entry` surface `lute run` sets — so an entry
+    /// beat follows the entry rules (first-read effects, `entry.<id>.read`).
+    pub(crate) fn with_entry(mut self, id: &str) -> Self {
+        self.entry = Some(id.to_string());
         self
     }
 
@@ -623,8 +619,8 @@ impl Runner {
     /// here (rather than at each call site) covers guards, `::set` RHS
     /// values, and quest predicates alike with one line. `lute run` itself
     /// never reads `self.unresolved` — its own output/exit code are
-    /// unchanged; the field exists for `lute play`'s §4.5 honesty gate
-    /// ([`RunnerOutcome::unresolved`]).
+    /// unchanged; the field exists for `lute play`'s honesty gate
+    /// ([`RunnerOutcome::unresolved`], [`Runner::eval_guard`]).
     fn eval_raw(&mut self, raw: &str) -> Value {
         if raw.trim().is_empty() {
             return Value::Unknown;
@@ -775,8 +771,8 @@ impl Runner {
     }
 
     /// Drive the whole walk. See [`crate::Command::Run`] for the `lute run`
-    /// caller; `lute play` (design spec §4.2) calls this once per scheduled
-    /// scene, then [`Runner::into_outcome`] instead of [`Runner::print_json`]/
+    /// caller; `lute play` (dsl 0.21.0 §6) calls this once per presented
+    /// beat, then [`Runner::into_outcome`] instead of [`Runner::print_json`]/
     /// [`Runner::print_human`].
     pub(crate) fn run(&mut self) -> Result<(), String> {
         if self.kind == "quest" {
@@ -793,7 +789,7 @@ impl Runner {
     }
 
     /// Consume a Runner after [`Runner::run`] into `lute play`'s carryover +
-    /// transcript-reuse surface (assignment contract points b/c). Only
+    /// transcript-reuse surface. Only
     /// meaningful post-`run`; a pre-run outcome would just echo the seeds
     /// back, which no caller has a reason to do.
     pub(crate) fn into_outcome(self) -> RunnerOutcome {
@@ -1155,17 +1151,13 @@ impl Runner {
         Step::Next(self.resolve(target))
     }
 
-    /// Design spec §4.4's hub re-presentation loop, done honestly (review
-    /// fix #6): a `choose:` sequence is consumed ONE decision at a time —
-    /// never the whole vector up front — so running out of scripted
-    /// decisions can be told apart from a genuine natural convergence.
-    /// Exhaustion with eligible options still standing halts incomplete
-    /// (`self.incomplete = true`, exit 3) UNLESS `self.auto_first` is set,
-    /// in which case the first still-eligible option is auto-selected —
-    /// applied at EVERY re-presentation the sequence has to fall back to,
-    /// not merely once. A bounded re-presentation count (`loop_guard`) is
-    /// the actual "loop guard" spec §4.4 implies: a hub authored with no
-    /// reachable exit option would otherwise spin `--auto first` forever.
+    /// The hub re-presentation loop: a `choose:` sequence is consumed ONE
+    /// decision at a time — never the whole vector up front — so running out
+    /// of scripted decisions can be told apart from a genuine natural
+    /// convergence. Exhaustion with eligible options still standing halts
+    /// incomplete (`self.incomplete = true`, exit 3) rather than silently
+    /// converging. Every iteration consumes one scripted decision or leaves
+    /// the loop, so it terminates within `forced.len() + 1` presentations.
     fn do_hub(&mut self, cmd: &Json) -> Step {
         let id = cmd
             .get("id")
@@ -1198,20 +1190,9 @@ impl Runner {
 
         let forced: Vec<String> = self.mock.choose.get(&id).cloned().unwrap_or_default();
         let mut forced_cursor = 0usize;
-        let loop_guard = options.len().saturating_mul(4).max(64);
-        let mut presentations = 0usize;
 
         let mut visited_once: BTreeSet<String> = BTreeSet::new();
         loop {
-            presentations += 1;
-            if presentations > loop_guard {
-                self.fatal = Some(format!(
-                    "hub `{id}` did not converge after {loop_guard} re-presentations under `--auto first` \
-                     (no reachable `exit` option)"
-                ));
-                return Step::Halt;
-            }
-
             // Eligible = not an already-exhausted `once` option, and its
             // guard does not DECIDE false right now (an unknown guard stays
             // eligible — the same three-valued discipline `do_choice`'s
@@ -1235,8 +1216,6 @@ impl Runner {
                 let c = forced[forced_cursor].clone();
                 forced_cursor += 1;
                 Some(c)
-            } else if self.auto_first {
-                eligible.first().cloned()
             } else {
                 None
             };
@@ -1246,9 +1225,8 @@ impl Runner {
                     // Natural convergence: nothing left eligible to present.
                     break;
                 }
-                // Review fix #6: the scripted sequence ran out but the hub
-                // would still be re-presented (eligible options remain) and
-                // no `--auto` policy is filling the gap — halt incomplete
+                // The scripted sequence ran out but the hub would still be
+                // re-presented (eligible options remain) — halt incomplete
                 // rather than silently converging.
                 self.incomplete = true;
                 self.transcript.push(json!({
@@ -1492,8 +1470,18 @@ impl Runner {
         seg_starts.sort_unstable();
         seg_starts.dedup();
 
+        // A fresh walk (`lute run`) starts every quest `unset`. A resumed one
+        // (`lute play`) keeps each carried status and registers only a quest it
+        // has never seen — populating its `quest.<id>.state` as `unset` so a
+        // beat `when` over it decides instead of reading an unset path.
         for q in &quests {
-            self.quest_status.insert(q.id.clone(), "unset".to_string());
+            if !self.quest_resume {
+                self.quest_status.insert(q.id.clone(), "unset".to_string());
+            } else if !self.quest_status.contains_key(&q.id) {
+                self.quest_status.insert(q.id.clone(), "unset".to_string());
+                self.state
+                    .insert(format!("quest.{}.state", q.id), Value::Str("unset".into()));
+            }
         }
 
         // Parent→child edges (subquest design 2026-08-31 §2.4/§3): a child is
@@ -1514,7 +1502,9 @@ impl Runner {
         // predicate holds while the parent is active).
         let quest_ids: Vec<String> = quests.iter().map(|q| q.id.clone()).collect();
         for (qi, q) in quests.iter().enumerate() {
-            if parent_of.contains_key(&q.id) {
+            if parent_of.contains_key(&q.id)
+                || self.quest_status.get(&q.id).map(String::as_str) != Some("unset")
+            {
                 continue;
             }
             let activate = match &q.start {
@@ -1527,8 +1517,20 @@ impl Runner {
             }
         }
 
-        // Track which objectives have completed (monotone).
+        // Track which objectives have completed (monotone). A resumed walk
+        // seeds this from the carried `quest.<id>.objectives.<oid>.done`, so an
+        // objective completed by an earlier advance never completes again.
         let mut done: BTreeSet<(usize, usize)> = BTreeSet::new();
+        if self.quest_resume {
+            for (qi, q) in quests.iter().enumerate() {
+                for (oi, o) in q.objectives.iter().enumerate() {
+                    let path = format!("quest.{}.objectives.{}.done", q.id, o.id);
+                    if self.state.get(&path) == Some(&Value::Bool(true)) {
+                        done.insert((qi, oi));
+                    }
+                }
+            }
+        }
         self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
 
         // Mock events fire in order; each re-evaluates the lifecycle. An `end`
@@ -1555,9 +1557,47 @@ impl Runner {
                 for o in &q.objectives {
                     if !o.optional && self.eval_raw(&o.done) == Value::Unknown {
                         self.incomplete = true;
+                        // `lute play` names the stuck objective in its halt;
+                        // `lute run`'s transcript is unchanged.
+                        if self.quest_resume {
+                            self.transcript.push(json!({
+                                "kind": "objective",
+                                "quest": q.id,
+                                "objective": o.id,
+                                "done": Json::Null,
+                            }));
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// `lute play` (dsl 0.21.0 §6, D-H): advance this quest artifact's
+    /// lifecycle over carried-over state, facts and statuses exactly as
+    /// [`Runner::run`] settles it for `lute run` — activation, objectives,
+    /// `fail` before completion, `<on>` handlers, `<reward>` grants — but
+    /// RESUMED ([`Runner::quest_resume`]): nothing already active, terminal or
+    /// done transitions again. Called once per quest artifact after every
+    /// presentation, so later beat conditions see real quest progress.
+    pub(crate) fn advance_quests(&mut self) -> Result<(), String> {
+        self.quest_resume = true;
+        self.run_quest();
+        match self.fatal.take() {
+            Some(msg) => Err(msg),
+            None => Ok(()),
+        }
+    }
+
+    /// `lute play` (dsl 0.21.0 §4): decide one beat `when` over this runner's
+    /// live snapshot — state plus the Datalog fixpoint — through the same
+    /// [`Runner::eval_raw`] chokepoint every guard of a walk uses. `Err`
+    /// carries the [`UnresolvedAtom`]s of an undecided (or non-bool) result.
+    pub(crate) fn eval_guard(&mut self, raw: &str) -> Result<bool, Vec<UnresolvedAtom>> {
+        let before = self.unresolved.len();
+        match self.eval_raw(raw) {
+            Value::Bool(b) => Ok(b),
+            _ => Err(self.unresolved.split_off(before)),
         }
     }
 

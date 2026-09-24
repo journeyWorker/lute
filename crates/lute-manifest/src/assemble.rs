@@ -218,6 +218,8 @@ pub fn assemble_snapshot(
     // resolves (parallels `validate_asset_kind_refs`'s post-loop stance).
     let mut rk_owner: BTreeMap<String, String> = BTreeMap::new();
     let mut rk_pending: Vec<(String, crate::schema::RewardKindDecl)> = Vec::new();
+    // Occasion owners (dsl 0.21.0 §2), for precise cross-plugin dup errors.
+    let mut oc_owner: BTreeMap<String, String> = BTreeMap::new();
 
     for ap in active {
         if ap.id == "lute.core" {
@@ -420,6 +422,19 @@ pub fn assemble_snapshot(
             }
             rk_owner.insert(rk.name.clone(), ap.id.clone());
             rk_pending.push((ap.id.clone(), rk.clone()));
+        }
+        for oc in &pkg.occasions {
+            if let Some(first) = oc_owner.get(&oc.name) {
+                errs.push(AssembleError::DuplicateAcrossPlugins {
+                    kind: "occasion".into(),
+                    id: oc.name.clone(),
+                    first: first.clone(),
+                    second: ap.id.clone(),
+                });
+                continue;
+            }
+            oc_owner.insert(oc.name.clone(), ap.id.clone());
+            snap.occasions.insert(oc.name.clone(), oc.clone());
         }
         for b in &pkg.bridge {
             let k = (b.service.clone(), b.operation.clone());

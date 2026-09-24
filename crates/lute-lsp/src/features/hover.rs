@@ -288,7 +288,9 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `title`: string — display title, localized\n\
              - `series`: ident — groups multi-part text\n\
              - `order`: non-negative integer — position within `series` (requires `series`)\n\
-             - `when`: cel<bool> — eligibility; presented only while it holds"
+             - `when`: cel<bool> — eligibility; presented only while it holds\n\
+             - `on`: ident — the occasion this entry answers as a beat (dsl 0.21.0 §3.2)\n\
+             - `priority`: integer — beat priority, higher wins (requires `on`)"
                 .to_string()
         }
     }
@@ -718,7 +720,7 @@ mod tests {
         let off = text.find("<entry ").unwrap() + 1;
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
-        for k in ["entry", "target", "category", "series", "order", "when"] {
+        for k in ["entry", "target", "category", "series", "order", "when", "on", "priority"] {
             assert!(s.contains(k), "missing {k}: {s}");
         }
     }

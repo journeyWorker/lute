@@ -1,0 +1,12 @@
+---
+kind: scene
+id: hub.idle
+uses: ../../world.schema.yaml
+on: hubVisit
+once: false
+---
+
+## The Hall
+
+@hypnos: Zzz.
+::set{run.hubVisits = run.hubVisits + 1}

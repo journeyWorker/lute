@@ -1,0 +1,11 @@
+---
+kind: scene
+id: meg.a
+uses: ../../world.schema.yaml
+on: talk
+target: npc.meg
+---
+
+## Megaera
+
+@meg: Get out of my sight.

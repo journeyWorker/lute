@@ -403,6 +403,7 @@ fn envelope_serializes_with_state_entries() {
             title: Some("T".into()),
             extra: BTreeMap::new(),
             plugin: BTreeMap::new(),
+            beat: None,
         }),
         state: vec![StateEntry {
             path: "scene.choices.number".into(),

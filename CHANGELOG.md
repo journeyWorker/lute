@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.20.0`, the grammar and semantics the checker
+- **Language** — currently `0.21.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.20.0`) and gated on by consuming engines.
+  artifact (currently `0.21.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -37,6 +37,121 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.21.0] - 2026-09-24
+
+**Beats and occasions: story selection without a clock.**
+
+The `0.11.0` schedule layer modelled one kind of game — a visual novel on a
+day clock, every scene a placement at a tick on a lane. Most narrative games
+do not advance by clock: at some moment (a hub visit, entering a room,
+talking to an NPC, a new day, the start of a run) they pick one of the story
+pieces whose conditions hold. An audit of the schedule found the rest: quest
+progress could not gate a placement (`completed()`/`active()` read an empty
+set), placement order was a second source of truth beside `after:`, and
+recurring events were forbidden. `0.21.0` replaces it. The engine raises
+**occasions**; a scene or lore entry becomes a **beat** by naming the occasion
+it answers, with a `when`, a `priority`, and a repetition policy; Lute defines
+which beats are eligible and which one wins. Spec:
+[`docs/proposals/scenario-dsl/0.21.0.md`](docs/proposals/scenario-dsl/0.21.0.md);
+engine contract:
+[`docs/runtime/beats-and-occasions.md`](docs/runtime/beats-and-occasions.md).
+
+### Added
+
+- **Plugins — `occasions:` export** — a plugin manifest may declare the
+  occasions its engine raises: `select: first` (default — present the single
+  winner) or `select: all` (offer every eligible beat and let the player
+  pick), `target: true` for an occasion raised *for* something (`talk` →
+  `npc.achilles`), and an optional `description`. Folded into the capability
+  snapshot as a guarded, sorted section (the `rewardKinds` precedent), so a
+  project without it keeps its `capabilityVersion`. With no declaring plugin,
+  occasion names are shape-only.
+- **Language — scene beats** — scene frontmatter `on:` (the occasion),
+  `target:` (a dotted id), `when:` (a CEL condition over `run`/`user`/`app`
+  state, `quest.*`, `entry.<id>.read`, and fact queries — never the scene's
+  own `scene.*`), `priority:` (integer, default `0`, higher wins), and
+  `once: run | user | false` (default `run`). A beat is eligible when its
+  `after:` and `when` both hold and its `once` is unspent. `when` joins the
+  CEL-slot registry like a quest `start`. The keys are scene-only and never
+  defaultable.
+- **Language — entry beats** — `<entry on="…" priority="…">` beside the
+  existing `when` / `target`. Entries have no `once`; an entry heard once
+  guards on its own `entry.<id>.read`.
+- **Diagnostics** — `E-BEAT-ATTR` (a malformed `on` / `target` / `priority` /
+  `once`, beat keys without `on`, or a `target` on an untargeted occasion),
+  `E-OCCASION-UNKNOWN` (an occasion no resolved plugin declares, once some
+  plugin declares occasions), `E-BEAT-UNREACHABLE` (a scene beat whose `when`
+  provably never holds — scalar conditions per file, fact conditions in
+  `check-project` through the `0.20.0` fact envelope), and the `check-project`
+  warning `W-BEAT-SHADOWED` (a `select: first` beat that can never win because
+  an earlier-ordered, always-eligible, never-spent beat on the same occasion
+  and target always does).
+- **IR** — `SceneMeta.beat` (`{on, target?, when?, priority, once}`, `once` as
+  `"run"` / `"user"` / `"none"`), `EntryCmd.on` / `priority`, and
+  `ProjectIndex.beats` (every scene and entry beat in selection-tiebreak
+  order: document path, then declaration order). All omitted when absent.
+- **CLI — `lute play <dir> --script <play.yaml> [--json]`** — rebuilt on
+  occasions. A script lists `steps:` (`{occasion, target?, pick?}` and
+  `{newRun: true}` boundaries) plus `state:` / `facts:` seeds and `choose:`
+  branch decisions in the trace-mock grammar. Each step prints every candidate
+  beat with its verdict (`once`, `after:`, `when`), presents the winner — or
+  the step's `pick` on a `select: all` occasion — through the same reference
+  runner as `lute run`, and then advances every quest lifecycle. `newRun`
+  resets `run.*` state, run-tier facts, and `once: run` spending. Exit `0`
+  complete, `1` a failed project compile or an ineligible `pick`, `2` a usage
+  error (malformed script, unknown occasion), `3` an incomplete walk.
+- **LSP** — hover and completion for the `<entry>` `on=` / `priority=`
+  attributes.
+- **Docs** — [`docs/runtime/beats-and-occasions.md`](docs/runtime/beats-and-occasions.md)
+  (candidates, eligibility, spending, selection order, presentation), and the
+  website's *Beats* language page and *Playing a story* tooling page.
+
+### Changed
+
+- **`lute play` drives quest lifecycles** — after each presentation it
+  advances every quest exactly as `lute run` does for a quest artifact
+  (resuming carried status rather than restarting), so a later `when` over
+  `quest.*` and an `after: completed(…)` see real progress. The
+  schedule-era player never advanced quests.
+- **`lute context`** lists the project's declared occasions (`occasions` in
+  `--json`, with each occasion's `select` and `target`) beside the other
+  vocabulary.
+
+### Removed
+
+- **`schedule.yaml`** — the project-file layer, its loader and route-space
+  sweep, and the clock / lane / placement model. No project used it; a
+  day-clock story is a `dayStart` occasion plus `when` over `run.day`.
+- **Schedule-driven `lute play`** — the `--state`, `--fact`, `--choose`,
+  `--auto`, `--lanes`, `--steps`, and `--coverage` flags go with it; seeds and
+  decisions now live in the play script. The reference runner's `--auto first`
+  hub fallback (auto-selecting the first eligible option once a scripted
+  sequence ran out) is gone: an unscripted hub halts the walk incomplete.
+- **Every schedule diagnostic** — `E-SCHED-AT-PARSE`, `E-SCHED-BUCKET-DUP`,
+  `E-SCHED-CLOCK-OVERFLOW`, `E-SCHED-CLOCK-STRUCTURE`,
+  `E-SCHED-CURSOR-DYNAMIC`, `E-SCHED-DOC-MISSING`, `E-SCHED-DOC-PATH`,
+  `E-SCHED-EVENT-DUP`, `E-SCHED-GUARD-PARSE`, `E-SCHED-LANE-UNKNOWN`,
+  `E-SCHED-SIZE-INVALID`, `E-SCHED-USER-OVERLAP`, `E-SCHED-VARIANT-AMBIG`,
+  `E-SCHED-VARIANT-FORM`, `E-SCHED-VARIANT-GAP`, `W-SCHED-DOC-UNPLACED`,
+  `W-SCHED-IDLE`, and `W-SCHED-ROUTESPACE-CAP`.
+- **`docs/schedule-and-play.md`** and the website's *Schedule & play* pages
+  (en + ko), replaced by *Playing a story*.
+
+### Compatibility
+
+- Additive IR: scene and lore artifacts without beats compile
+  byte-identically apart from the version strings; the IR restamps to
+  `0.21.0` and the schema file renames to
+  [`schemas/lute-ir-0.21.schema.json`](schemas/lute-ir-0.21.schema.json),
+  gaining `sceneBeat`, the entry fields, and the `indexBeat` row. Engines gate
+  on MAJOR, so nothing widens; an engine without beat support ignores the new
+  fields and reaches every scene by explicit flow.
+- A project carrying a `schedule.yaml` keeps checking and compiling (the file
+  is simply no longer read); scripts invoking `lute play` with the removed
+  flags must move to `--script`.
+- `capabilityVersion` moves only for a project that installs an
+  `occasions:`-declaring plugin; the tree-sitter grammar is unchanged.
 
 ## [0.20.0] - 2026-09-24
 

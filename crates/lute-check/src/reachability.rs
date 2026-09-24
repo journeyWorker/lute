@@ -247,7 +247,35 @@ pub(crate) fn check_reachability(doc: &Document, folded: &FoldedEnv) -> Vec<Diag
         params: &param_domains,
         facts: None,
     };
-    check_reachability_in(doc, &defs, &base_ctx)
+    let mut diags = check_reachability_in(doc, &defs, &base_ctx);
+    // dsl 0.21.0 §5: a scene beat's `when` is a listed guard slot (the
+    // `<quest start>` treatment: `E-UNSET-LITERAL` independently, no
+    // suppression) and a `when` that decides false never lets the beat be
+    // chosen. An entry beat's `when` is the entry's own eligibility guard and
+    // keeps `E-ENTRY-UNREACHABLE` above.
+    if let Some(when) = folded
+        .typed
+        .beat
+        .as_ref()
+        .and_then(|b| b.when.as_ref())
+        .filter(|w| !w.raw.trim().is_empty())
+    {
+        let analysis = analyze_unset_sentinel_slot(&when.raw, &defs, &base_ctx);
+        push_unset_literal_diags(&mut diags, &analysis.hits, when.span);
+        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, &defs, &base_ctx) {
+            diags.push(diag(
+                crate::beats::E_BEAT_UNREACHABLE,
+                Severity::Error,
+                crate::beats::beat_unreachable_message(
+                    &crate::beats::scene_beat_name(folded),
+                    when.raw.trim(),
+                    None,
+                ),
+                when.span,
+            ));
+        }
+    }
+    diags
 }
 
 /// The §5.2/§5.3 walk itself, over a caller-supplied resolution environment —

@@ -813,6 +813,13 @@ pub fn walk_entry(
         order: series.order,
         when: entry.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
         body: label.sym(),
+        // dsl 0.21.0 §3.2: an entry beat's occasion + priority, verbatim /
+        // parsed (`E-BEAT-ATTR` already gated a non-integer priority).
+        on: text(&entry.on),
+        priority: entry
+            .priority
+            .as_ref()
+            .and_then(|(p, _)| lute_check::parse_beat_priority(p)),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);

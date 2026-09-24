@@ -7,12 +7,14 @@
 //! | --- | --- | --- |
 //! | `<when test>`, `<choice when>`, `::next{when}`, content line `when=` | `E-ARM-DEAD` | — |
 //! | lore entry `when` | [`E_ENTRY_UNREACHABLE`] | — |
+//! | scene beat `when` (dsl 0.21.0) | [`crate::beats::E_BEAT_UNREACHABLE`] | — |
 //! | `<objective done>` | `E-OBJECTIVE-UNSATISFIABLE` | — |
 //! | required `<objective when>` | `W-OBJECTIVE-HIDDEN` | — |
 //! | `<quest start>` / `<quest fail>` | `E-QUEST-UNREACHABLE` | `fail` only |
 //!
 //! — plus [`W_FACT_GUARANTEED`] on a guard (line `when=`, `<choice when>`,
-//! `<when test>`, entry `when`) that carries a guaranteed relational query.
+//! `<when test>`, entry `when`, scene beat `when`) that carries a guaranteed
+//! relational query.
 //!
 //! **Never a duplicate of the per-file pass.** Single-file `check()` decides
 //! the same slots with no fact envelope (`reachability.rs`). A slot that
@@ -66,6 +68,27 @@ pub fn check_fact_guards(
     let params = BTreeMap::new();
     let g = Guards::new(path, folded, env, &params);
     let mut out = Vec::new();
+    // dsl 0.21.0 §5: a scene beat's `when` — evaluated when its occasion is
+    // raised, before the scene runs; the must set there is the scene's entry
+    // set (`crate::fact_must`).
+    if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
+        if let Some(v) = g.eval(when, None) {
+            if v.newly_false() {
+                out.push(diag(
+                    crate::beats::E_BEAT_UNREACHABLE,
+                    Severity::Error,
+                    crate::beats::beat_unreachable_message(
+                        &crate::beats::scene_beat_name(folded),
+                        when.raw.trim(),
+                        Some(&v.dead_reasons()),
+                    ),
+                    when.span,
+                ));
+            } else {
+                g.push_guaranteed(&v, "`when` guard", when, &mut out);
+            }
+        }
+    }
     for shot in &doc.shots {
         g.walk(&shot.body, &mut out);
     }

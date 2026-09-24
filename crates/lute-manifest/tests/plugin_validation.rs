@@ -58,6 +58,7 @@ fn backdrop_plugin(lower: Lowering) -> LoadedPlugin {
         events: vec![],
         stamp_attrs: vec![],
         reward_kinds: vec![],
+        occasions: vec![],
         lints: vec![],
     }
 }

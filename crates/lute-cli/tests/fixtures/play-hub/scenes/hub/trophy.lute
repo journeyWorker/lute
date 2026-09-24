@@ -1,0 +1,12 @@
+---
+kind: scene
+id: hub.trophy
+uses: ../../world.schema.yaml
+after: 'completed("firstEscape")'
+on: hubVisit
+priority: 50
+---
+
+## The Entrance
+
+@hypnos: They hung your first trophy over the door. Very shiny.

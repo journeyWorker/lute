@@ -1,0 +1,18 @@
+# The fixture's reference playthrough (dsl 0.21.0 §6): two runs of a hub.
+steps:
+  - occasion: hubVisit          # hub.firstEver: priority 20, once: user
+  - occasion: talk
+    target: npc.meg             # meg.a: ties meg.b at priority 0, wins on index order
+  - occasion: hubVisit          # hub.welcome; the second visit completes firstEscape
+  - occasion: talk
+    target: npc.achilles        # achilles.proud: `when` over the quest's state
+  - occasion: inbox
+    pick: megNote               # an entry beat on a `select: all` occasion
+  - occasion: hubVisit          # hub.trophy: `after: completed("firstEscape")`
+  - occasion: hubVisit          # hub.idle (once: false) — nothing else is eligible
+  - occasion: hubVisit          # hub.restless: `when: run.hubVisits >= 3`
+  - newRun: true
+  - occasion: hubVisit          # hub.trophy again: once: run spending reset
+  - occasion: hubVisit          # hub.welcome again; hub.firstEver stays spent (once: user)
+choose:
+  gift: accept

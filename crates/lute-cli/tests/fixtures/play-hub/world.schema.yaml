@@ -1,0 +1,8 @@
+state:
+  run.hubVisits: { type: number, default: 0 }
+  user.metHypnos: { type: bool, default: false }
+entities:
+  shade: { members: [achilles, meg, patroclus] }
+relations:
+  heardOf:    { args: [shade], tier: run }
+  befriended: { args: [shade], tier: user }

@@ -338,6 +338,59 @@ pub struct RewardKindDecl {
     pub attrs: Vec<AttrDecl>,
 }
 
+/// dsl 0.21.0 §2 occasion declaration file (export `occasions/*.yaml`): an
+/// `occasions:` mapping keyed by the occasion name — engine vocabulary, the
+/// named moments the engine raises and a beat answers with `on:`. A bare
+/// `{}` value declares a `select: first`, untargeted occasion.
+///
+/// Per-package duplicate name is a [`crate::loader::LoadError::DuplicateId`]
+/// (`kind = "occasion"`); a name colliding with a peer plugin's occasion is
+/// [`crate::assemble::AssembleError::DuplicateAcrossPlugins`] — the
+/// `rewardKinds` treatment.
+#[derive(Debug, Deserialize)]
+pub struct OccasionsFile {
+    pub occasions: std::collections::BTreeMap<String, OccasionBody>,
+}
+
+/// The value half of an `occasions:` map entry (the name is the map key,
+/// materialized onto [`OccasionDecl::name`] by the loader).
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct OccasionBody {
+    #[serde(default)]
+    pub select: OccasionSelect,
+    #[serde(default)]
+    pub target: bool,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// How the engine presents an occasion's eligible beats (dsl 0.21.0 §2):
+/// `first` (default) presents the single winner; `all` offers every
+/// eligible beat in selection order.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OccasionSelect {
+    #[default]
+    First,
+    All,
+}
+
+/// A capability-declared occasion (dsl 0.21.0 §2): the vocabulary a plugin's
+/// `occasions:` export contributes, consumed by the checker's
+/// `E-OCCASION-UNKNOWN` closure and beat-target / shadowing analysis.
+/// `target: true` means the occasion is raised FOR something, so a beat may
+/// restrict itself to one target.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct OccasionDecl {
+    pub name: String,
+    #[serde(default)]
+    pub select: OccasionSelect,
+    #[serde(default)]
+    pub target: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// Deserialize `DefDecl.params` in SOURCE order (dsl §8.1). Accepts either the
 /// §8.1 `params:` YAML MAPPING (`{ p: number }`) — read via `serde_yaml::Mapping`,
 /// which is insertion-ordered in serde_yaml 0.9.34, so declaration order is

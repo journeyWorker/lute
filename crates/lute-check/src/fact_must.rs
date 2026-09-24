@@ -31,9 +31,9 @@
 //!   fall-through route.
 //! - A guard is an assumption inside its region (D-D): every positive
 //!   top-level conjunct `holds(F)` of a `<when test>`, `<choice when>`,
-//!   guarded `::next`, `<on when>`, `<objective done>`, or entry `when` with a
-//!   ground `F` is in the set inside it. A content line's `when=` guards
-//!   nothing after it.
+//!   guarded `::next`, `<on when>`, `<objective done>`, entry `when`, or scene
+//!   beat `when` (dsl 0.21.0 §3.1) with a ground `F` is in the set inside it.
+//!   A content line's `when=` guards nothing after it.
 //!
 //! At every guard slot the set BEFORE the slot's own assumption is recorded
 //! (a slot visited more than once — a hub body — keeps the intersection of
@@ -45,7 +45,10 @@
 //! `Must_out(A)`, `&&` unions, `||` intersects, `completed`/`active`
 //! nothing), memoized over the connectivity graph's topological order like
 //! the scalar envelope (`crate::envelope::propagate`); a scene on or past a
-//! cycle, or one the graph does not host, starts from the seeds alone.
+//! cycle, or one the graph does not host, starts from the seeds alone. A
+//! beat scene's `when` slot sees `Must_in` (a beat is eligible only once its
+//! `after:` holds) and its assumptions hold throughout the scene, which runs
+//! as soon as the beat is chosen (dsl 0.21.0 §4).
 //! `Must_out` is the meet of every route to the document's end (`::end`
 //! included), restricted to crossing facts. Quest bodies start from the
 //! seeds plus the crossing facts `start` assumes (plus `<on when>` /
@@ -389,6 +392,9 @@ fn walk_doc(
         body_base: root.seeds.clone(),
     };
     let mut flow = Some(entry);
+    if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
+        w.guard(when, &mut flow);
+    }
     for shot in &doc.shots {
         w.walk(&shot.body, &mut flow);
     }

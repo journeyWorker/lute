@@ -5,7 +5,7 @@ description: bunx, 전역 bun 설치, 또는 Rust 소스로 Lute CLI를 설치�
 
 Lute는 단일 명령줄 도구 `lute` 하나로 제공됩니다. 이 도구는 `.lute` 시나리오 파일을 읽어
 검사(check), 컴파일(compile), 트레이스(trace)하고 그 내용을 살펴봅니다. 현재 언어 버전은
-**0.20.0**입니다.
+**0.21.0**입니다.
 
 ## `bunx`로 빠르게 시작하기
 
@@ -61,9 +61,9 @@ cargo install --path crates/lute-cli
 
 ```
 $ lute version
-$ lute toolchain 0.20.0
-language      0.20.0
-IR schema     0.20.0
+$ lute toolchain 0.21.0
+language      0.21.0
+IR schema     0.21.0
 ```
 
 이 셋은 서로 독립적인 축이며, 다른 곳에서도 다시 마주치게 됩니다: **toolchain** 버전은 이 CLI
@@ -72,7 +72,8 @@ IR schema     0.20.0
 **릴리스는 언제나 세 축의 보이는 숫자를 그 릴리스 번호로 맞춥니다**
 ([버전 정책](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)).
 `0.11.0`에서는 **toolchain**만 실질적으로 움직였습니다 — 새로운 `schedule.yaml` 레이어와
-`lute play` 명령, 그리고 공유 참조 러너의 버그 수정 두 건입니다. IR은 모양도 내용도 전혀
+`lute play` 명령(이 레이어는 `0.21.0`에서 `lute play`가 계기 기반으로 바뀌며 다시 제거되었습니다),
+그리고 공유 참조 러너의 버그 수정 두 건입니다. IR은 모양도 내용도 전혀
 바뀌지 않았지만, major.minor는 그래도 움직입니다(`0.10` → `0.11` — 릴리스는 실질 변경 여부와
 무관하게 보이는 모든 숫자를 맞추기 때문입니다). 엔진은 여전히 `irVersion`을 major.minor로
 게이팅하므로, IR `0.10`을 구현한 엔진은 `0.11.0` 산출물을 받아들이려면 게이트를 `0.11`까지
@@ -82,10 +83,10 @@ IR schema     0.20.0
 
 ```
 $ lute version --json
-{"toolchain":"0.20.0","language":"0.20.0","ir":"0.20.0"}
+{"toolchain":"0.21.0","language":"0.21.0","ir":"0.21.0"}
 ```
 
-(`lute --version`도 동작하며 `lute 0.20.0`만 출력합니다 — toolchain 축 하나뿐입니다.)
+(`lute --version`도 동작하며 `lute 0.21.0`만 출력합니다 — toolchain 축 하나뿐입니다.)
 
 ## 다음
 

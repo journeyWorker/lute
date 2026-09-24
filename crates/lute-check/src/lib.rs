@@ -1,4 +1,5 @@
 pub mod admission;
+pub mod beats;
 pub mod cel_expand;
 pub mod cel_message;
 pub mod cel_paths;
@@ -47,9 +48,13 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.20.0";
+pub const LUTE_LANG_VERSION: &str = "0.21.0";
 
 pub use admission::{check_admission, node_kind, NodeKind};
+pub use beats::{
+    check_project_beats, parse_beat_priority, BeatMeta, BeatOnce, BEAT_KEYS, E_BEAT_ATTR,
+    E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_SHADOWED,
+};
 pub use cel_expand::{expand_cel, DefTable};
 pub use cel_message::{translate_cel_parse, Translation};
 pub use cel_paths::{is_reserved_entry_read, reserved_entry_id, E_PATH_IDENT};

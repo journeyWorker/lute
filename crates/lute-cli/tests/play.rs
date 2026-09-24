@@ -1,17 +1,20 @@
-//! `lute play` acceptance (design spec
-//! `docs/superpowers/specs/2026-08-14-lute-schedule-and-play-design.md` v2
-//! §4): a mini fixture project (a cold-open/rewind placement, a two-variant
-//! branching event, a causally-gated follow-up event, and one world-lane
-//! event, `schedule.yaml`, and two route scripts) exercised end-to-end
-//! through the built `lute` binary — route A/B transcript divergence, world
-//! interleaving, rewind, `--steps`, the exit-code contract (0/1/3), and the
-//! hard failure when a project has no `schedule.yaml` at all (design v2 §2:
-//! there is no `after:`-graph fallback).
+//! `lute play` acceptance (dsl 0.21.0 §6): the `tests/fixtures/play-hub`
+//! project — a tiny Hades-like hub whose project-local plugin declares the
+//! `hubVisit` / `talk` (targeted) / `inbox` (`select: all`) occasions — played
+//! end to end through the built `lute` binary: selection order, verdicts,
+//! `once` spending, `newRun`, quest-gated beats, entry beats, and the exit-code
+//! contract (0 complete, 1 error, 2 usage, 3 incomplete).
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use serde_json::Value as Json;
+
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
+
+fn fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/play-hub")
+}
 
 fn temp_dir(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -30,10 +33,6 @@ fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     p
 }
 
-fn run(args: &[&str]) -> Output {
-    Command::new(BIN).args(args).output().unwrap()
-}
-
 fn stdout(o: &Output) -> String {
     String::from_utf8_lossy(&o.stdout).to_string()
 }
@@ -42,1526 +41,469 @@ fn stderr(o: &Output) -> String {
     String::from_utf8_lossy(&o.stderr).to_string()
 }
 
-const PROJECT_YAML: &str = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n";
-
-const SCHEDULE_YAML: &str = "\
-clock:
-  buckets: [morning, afternoon, evening]
-  ticksPerBucket: 10
-  days: 2
-
-lanes:
-  user: { exclusive: true }
-  world: { exclusive: false }
-
-placements:
-  - event: confinement
-    lane: user
-    at: d2.evening+0
-    size: 5
-    presentation: 0
-    doc: scenes/confinement/main.lute
-  - event: meet
-    lane: user
-    at: morning+0
-    size: 5
-    presentation: 100
-    variants:
-      - when: \"run.route == 'a'\"
-        doc: scenes/meet/routeA.lute
-      - when: \"run.route == 'b'\"
-        doc: scenes/meet/routeB.lute
-  - event: errand
-    lane: user
-    size: 5
-    doc: scenes/errand/main.lute
-  - event: cara
-    lane: world
-    at: afternoon+0
-    size: 5
-    doc: scenes/cara/main.lute
-";
-
-const CONFINEMENT: &str = "\
----
-kind: scene
-character: confinement
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-::bg{location=\"cell\" time=\"night\"}
-@hero: Cold open flashback.
-";
-
-const ROUTE_A: &str = "\
----
-kind: scene
-character: meet-a
-season: 1
-episode: 1
-state:
-  run.route: { type: { enum: [a, b] }, default: a }
----
-
-## Shot 1.
-
-::bg{location=\"cafe\" time=\"morning\"}
-@hero: Route A meeting.
-
-<branch id=\"pick\">
-  <choice id=\"left\" label=\"Left\">
-    @hero: Went left.
-  </choice>
-  <choice id=\"right\" label=\"Right\">
-    @hero: Went right.
-  </choice>
-</branch>
-";
-
-const ROUTE_B: &str = "\
----
-kind: scene
-character: meet-b
-season: 1
-episode: 1
-state:
-  run.route: { type: { enum: [a, b] }, default: a }
----
-
-## Shot 1.
-
-::bg{location=\"cafe\" time=\"afternoon\"}
-@hero: Route B meeting.
-";
-const ERRAND: &str = "\
----
-kind: scene
-character: errand
-season: 1
-episode: 1
-after: 'visited(\"meet-a.s01ep01\") || visited(\"meet-b.s01ep01\")'
----
-
-## Shot 1.
-
-::bg{location=\"street\" time=\"morning\"}
-@hero: Running an errand.
-";
-
-const CARA: &str = "\
----
-kind: scene
-character: cara
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-::bg{location=\"woods\" time=\"afternoon\"}
-@cara: World event fires.
-";
-
-/// The mini fixture project: a cold-open/rewind placement (`confinement`,
-/// `presentation: 0`, story tick on day 2 but presented FIRST), a
-/// two-variant branching event (`meet`, routes `a`/`b`), a follow-up event
-/// causally gated on either branch having played (`errand`), and one
-/// world-lane event (`cara`) interleaved between `errand` and the eventual
-/// rewind back to day 1.
-fn fixture(tag: &str) -> PathBuf {
+/// Play `script` over `project`, human transcript.
+fn play_in(project: &Path, tag: &str, script: &str, json: bool) -> Output {
     let dir = temp_dir(tag);
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", SCHEDULE_YAML);
-    write(&dir, "scenes/confinement/main.lute", CONFINEMENT);
-    write(&dir, "scenes/meet/routeA.lute", ROUTE_A);
-    write(&dir, "scenes/meet/routeB.lute", ROUTE_B);
-    write(&dir, "scenes/errand/main.lute", ERRAND);
-    write(&dir, "scenes/cara/main.lute", CARA);
+    let script = write(&dir, "s.play.yaml", script);
+    let mut args = vec![
+        "play".to_string(),
+        project.display().to_string(),
+        "--script".to_string(),
+        script.display().to_string(),
+    ];
+    if json {
+        args.push("--json".to_string());
+    }
+    Command::new(BIN).args(&args).output().unwrap()
+}
+
+/// Play `script` over the hub fixture with `--json`; asserts the exit code.
+fn play_json(tag: &str, script: &str, exit: i32) -> Json {
+    let out = play_in(&fixture(), tag, script, true);
+    assert_eq!(
+        out.status.code(),
+        Some(exit),
+        "stdout: {}\nstderr: {}",
+        stdout(&out),
+        stderr(&out)
+    );
+    serde_json::from_slice(&out.stdout).expect("--json emits one JSON object")
+}
+
+fn step(v: &Json, n: usize) -> &Json {
+    &v["steps"][n - 1]
+}
+
+fn winner(v: &Json, n: usize) -> Option<&str> {
+    step(v, n)["winner"].as_str()
+}
+
+fn candidate<'a>(v: &'a Json, n: usize, id: &str) -> &'a Json {
+    step(v, n)["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == id)
+        .unwrap_or_else(|| panic!("step {n} has no candidate `{id}`: {}", step(v, n)))
+}
+
+fn candidate_ids(v: &Json, n: usize) -> Vec<&str> {
+    step(v, n)["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect()
+}
+
+/// Every runner record of step `n`'s presented beat.
+fn presented(v: &Json, n: usize) -> &Vec<Json> {
+    step(v, n)["presented"]["commands"]
+        .as_array()
+        .unwrap_or_else(|| panic!("step {n} presented nothing: {}", step(v, n)))
+}
+
+#[test]
+fn priority_outranks_index_order() {
+    // `hub.idle` (scenes/hub/idle.lute) precedes `hub.welcome`
+    // (scenes/hub/welcome.lute) in index order, but welcome's priority 10
+    // beats idle's 0 once both are eligible.
+    let v = play_json(
+        "priority",
+        "steps:\n  - occasion: hubVisit\n  - occasion: hubVisit\n",
+        0,
+    );
+    assert_eq!(winner(&v, 1), Some("hub.firstEver"));
+    assert_eq!(candidate(&v, 2, "hub.idle")["eligible"], true);
+    assert_eq!(candidate(&v, 2, "hub.welcome")["eligible"], true);
+    assert_eq!(winner(&v, 2), Some("hub.welcome"));
+}
+
+#[test]
+fn a_priority_tie_falls_back_to_index_order() {
+    let v = play_json(
+        "tie",
+        "steps:\n  - occasion: talk\n    target: npc.meg\n",
+        0,
+    );
+    assert_eq!(candidate(&v, 1, "meg.a")["eligible"], true);
+    assert_eq!(candidate(&v, 1, "meg.b")["eligible"], true);
+    assert_eq!(winner(&v, 1), Some("meg.a"));
+}
+
+#[test]
+fn when_over_run_state_decides_eligibility() {
+    let unseeded = play_json("when-off", "steps:\n  - occasion: hubVisit\n", 0);
+    assert_eq!(candidate(&unseeded, 1, "hub.restless")["reason"], "when: false");
+    assert_eq!(winner(&unseeded, 1), Some("hub.firstEver"));
+
+    // Seeded past the gate. The seed also satisfies firstEscape's objective,
+    // so the quest completes in the start settle and the trophy (50) is up
+    // first; once it is spent, restless (30) outranks firstEver (20).
+    let seeded = play_json(
+        "when-on",
+        "state:\n  run.hubVisits: 3\nsteps:\n  - occasion: hubVisit\n  - occasion: hubVisit\n",
+        0,
+    );
+    assert_eq!(candidate(&seeded, 1, "hub.restless")["eligible"], true);
+    assert_eq!(winner(&seeded, 1), Some("hub.trophy"));
+    assert_eq!(winner(&seeded, 2), Some("hub.restless"));
+}
+
+#[test]
+fn once_run_is_spent_by_a_presentation_and_the_next_beat_wins() {
+    let v = play_json(
+        "once-run",
+        "steps:\n  - occasion: talk\n    target: npc.meg\n  - occasion: talk\n    target: npc.meg\n  \
+         - occasion: talk\n    target: npc.meg\n",
+        0,
+    );
+    assert_eq!(winner(&v, 1), Some("meg.a"));
+    assert_eq!(
+        candidate(&v, 2, "meg.a")["reason"],
+        "once: run — already presented this run"
+    );
+    assert_eq!(winner(&v, 2), Some("meg.b"));
+    // Both spent: the occasion passes with no story.
+    assert_eq!(step(&v, 3)["winner"], Json::Null);
+    assert!(step(&v, 3).get("presented").is_none(), "{}", step(&v, 3));
+}
+
+#[test]
+fn once_false_repeats() {
+    let v = play_json(
+        "once-false",
+        "steps:\n  - occasion: talk\n    target: npc.achilles\n  \
+         - occasion: talk\n    target: npc.achilles\n",
+        0,
+    );
+    assert_eq!(winner(&v, 1), Some("achilles.greeting"));
+    assert_eq!(winner(&v, 2), Some("achilles.greeting"));
+}
+
+#[test]
+fn select_all_presents_the_pick() {
+    let v = play_json(
+        "pick",
+        "steps:\n  - occasion: inbox\n    pick: megNote\n",
+        0,
+    );
+    assert_eq!(step(&v, 1)["select"], "all");
+    assert_eq!(winner(&v, 1), Some("megNote"));
+    assert_eq!(step(&v, 1)["presented"]["kind"], "entry");
+}
+
+#[test]
+fn select_all_without_a_pick_is_a_usage_error() {
+    let out = play_in(
+        &fixture(),
+        "no-pick",
+        "steps:\n  - occasion: inbox\n",
+        false,
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(stderr(&out).contains("`select: all`"), "{}", stderr(&out));
+    assert!(stdout(&out).is_empty(), "nothing plays: {}", stdout(&out));
+}
+
+#[test]
+fn an_ineligible_pick_is_an_error() {
+    // `dusaNote` needs `befriended(achilles)`, which nothing asserted yet.
+    let v = play_json(
+        "bad-pick",
+        "steps:\n  - occasion: inbox\n    pick: dusaNote\n",
+        1,
+    );
+    assert_eq!(v["exit"], "error");
+    let msg = v["error"]["message"].as_str().unwrap();
+    assert!(msg.contains("dusaNote") && msg.contains("when: false"), "{msg}");
+    assert!(step(&v, 1).get("presented").is_none(), "{}", step(&v, 1));
+}
+
+#[test]
+fn a_target_restricts_the_candidates() {
+    let v = play_json(
+        "target",
+        "steps:\n  - occasion: talk\n    target: npc.achilles\n  - occasion: talk\n    target: npc.meg\n  \
+         - occasion: talk\n",
+        0,
+    );
+    assert_eq!(
+        candidate_ids(&v, 1),
+        ["achilles.proud", "achilles.greeting"],
+        "only beats targeting npc.achilles"
+    );
+    assert_eq!(candidate_ids(&v, 2), ["meg.a", "meg.b"]);
+    // Raised for no target: every `talk` beat restricts itself to one.
+    assert!(candidate_ids(&v, 3).is_empty(), "{}", step(&v, 3));
+}
+
+#[test]
+fn quest_gated_beats_become_eligible_once_the_quest_completes_during_play() {
+    let v = play_json(
+        "quest-gate",
+        "steps:\n  - occasion: talk\n    target: npc.achilles\n  - occasion: hubVisit\n  \
+         - occasion: hubVisit\n  - occasion: talk\n    target: npc.achilles\n  \
+         - occasion: hubVisit\nchoose:\n  gift: accept\n",
+        0,
+    );
+    // No `start`: the quest is active before the first step.
+    let start = &v["start"]["quests"][0]["commands"];
+    assert_eq!(start[0]["quest"], "firstEscape");
+    assert_eq!(start[0]["state"], "active");
+
+    // `when: quest.firstEscape.state == 'complete'` and `after:
+    // completed("firstEscape")` both read the real, still-active quest.
+    assert_eq!(candidate(&v, 1, "achilles.proud")["reason"], "when: false");
+    assert_eq!(winner(&v, 1), Some("achilles.greeting"));
+    assert_eq!(
+        candidate(&v, 2, "hub.trophy")["reason"],
+        "after: prerequisite not satisfied"
+    );
+
+    // The second hub visit completes the quest: objective, transition,
+    // reward grant, and `questComplete` handler, in that order.
+    let quest: Vec<&str> = step(&v, 3)["quests"][0]["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(quest, ["objective", "quest", "grant", "line"], "{}", step(&v, 3));
+
+    assert_eq!(winner(&v, 4), Some("achilles.proud"));
+    assert_eq!(winner(&v, 5), Some("hub.trophy"));
+}
+
+#[test]
+fn new_run_resets_run_state_and_run_once_but_not_user_once() {
+    let v = play_json(
+        "new-run",
+        "steps:\n  - occasion: hubVisit\n  - occasion: hubVisit\n  - newRun: true\n  \
+         - occasion: hubVisit\n  - occasion: hubVisit\n",
+        0,
+    );
+    assert_eq!(winner(&v, 1), Some("hub.firstEver"));
+    assert_eq!(winner(&v, 2), Some("hub.welcome"));
+    assert_eq!(step(&v, 3)["newRun"], true);
+    // The quest completed in run 1 stays complete (`quest.*` persists), so
+    // the trophy is up; `once: run` spending was reset for it and welcome.
+    assert_eq!(winner(&v, 4), Some("hub.trophy"));
+    assert_eq!(winner(&v, 5), Some("hub.welcome"));
+    // `once: user` persists across the run boundary …
+    assert_eq!(
+        candidate(&v, 5, "hub.firstEver")["reason"],
+        "once: user — already presented"
+    );
+    // … `user.metHypnos` (welcome's `when`) persists, and `run.hubVisits`
+    // restarted from its declared default: welcome counts 0 -> 1 again.
+    assert_eq!(
+        step(&v, 5)["presented"]["stateDelta"]["run.hubVisits"],
+        1,
+        "{}",
+        step(&v, 5)
+    );
+}
+
+#[test]
+fn new_run_resets_run_tier_facts_and_entry_reads_but_keeps_user_tier_facts() {
+    let v = play_json(
+        "new-run-facts",
+        "steps:\n  - occasion: hubVisit\n  - occasion: hubVisit\n  \
+         - occasion: talk\n    target: npc.achilles\n  - occasion: inbox\n    pick: megNote\n  \
+         - newRun: true\n  - occasion: inbox\n    pick: megNote\n  - occasion: inbox\n    pick: dusaNote\n\
+         choose:\n  gift: accept\n",
+        0,
+    );
+    // `entry.megNote.read` is run-tier (dsl 0.19.0 §5): a first read again.
+    assert_eq!(presented(&v, 6)[0]["kind"], "entry");
+    assert_eq!(presented(&v, 6)[0]["firstRead"], true);
+    // `befriended(achilles)` is a `tier: user` fact: it survives the run.
+    assert_eq!(candidate(&v, 7, "dusaNote")["eligible"], true);
+    assert_eq!(winner(&v, 7), Some("dusaNote"));
+}
+
+#[test]
+fn an_entry_beat_applies_its_effects_on_the_first_read_only() {
+    let v = play_json(
+        "entry",
+        "steps:\n  - occasion: inbox\n    pick: megNote\n  - occasion: inbox\n    pick: megNote\n",
+        0,
+    );
+    let first = presented(&v, 1);
+    assert_eq!(first[0]["kind"], "entry");
+    assert_eq!(first[0]["firstRead"], true);
+    assert!(
+        first
+            .iter()
+            .any(|r| r["kind"] == "assert" && r["fact"] == "heardOf(meg)"),
+        "{first:?}"
+    );
+    let second = presented(&v, 2);
+    assert_eq!(second[0]["firstRead"], false);
+    assert!(
+        second
+            .iter()
+            .any(|r| r["kind"] == "skipped" && r["fact"] == "heardOf(meg)"),
+        "{second:?}"
+    );
+    assert!(
+        !second.iter().any(|r| r["kind"] == "assert"),
+        "a re-read applies no effect: {second:?}"
+    );
+}
+
+#[test]
+fn an_unknown_when_halts_incomplete_naming_the_beat() {
+    let v = play_json(
+        "unknown-when",
+        "steps:\n  - occasion: talk\n    target: npc.oracle\n",
+        3,
+    );
+    assert_eq!(v["exit"], "incomplete");
+    assert_eq!(candidate(&v, 1, "oracle.vision")["eligible"], Json::Null);
+    let msg = v["error"]["message"].as_str().unwrap();
+    assert!(
+        msg.contains("oracle.vision") && msg.contains("now()/validAt"),
+        "{msg}"
+    );
+    assert_eq!(winner(&v, 1), None, "an undecided beat is never presented");
+}
+
+#[test]
+fn an_unscripted_branch_halts_incomplete() {
+    let v = play_json(
+        "unscripted",
+        "steps:\n  - occasion: hubVisit\n  - occasion: hubVisit\n  \
+         - occasion: talk\n    target: npc.achilles\n",
+        3,
+    );
+    let msg = v["error"]["message"].as_str().unwrap();
+    assert!(
+        msg.contains("achilles.proud") && msg.contains("`gift`") && msg.contains("accept, decline"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn a_malformed_script_is_a_usage_error_before_anything_plays() {
+    for (script, needle) in [
+        ("steps: []\n", "`steps:` is empty"),
+        ("state:\n  run.hubVisits: 1\n", "`steps:` is required"),
+        (
+            "steps:\n  - occasion: hubVisit\nschedule: x\n",
+            "unknown top-level key `schedule`",
+        ),
+        ("steps:\n  - {}\n", "step 1 is empty"),
+        (
+            "steps:\n  - occasion: hubVisit\n    newRun: true\n",
+            "not both",
+        ),
+        (
+            "steps:\n  - occasion: dayStart\n",
+            "occasion `dayStart` is declared by no resolved plugin",
+        ),
+        (
+            "steps:\n  - occasion: hubVisit\n    target: npc.meg\n",
+            "not declared `target: true`",
+        ),
+        (
+            "steps:\n  - occasion: hubVisit\n    pick: hub.idle\n",
+            "applies only to a `select: all` occasion",
+        ),
+        (
+            "steps:\n  - occasion: inbox\n    pick: hub.idle\n",
+            "names no beat answering `inbox`",
+        ),
+        (
+            "state:\n  run.hubVisitz: 1\nsteps:\n  - occasion: hubVisit\n",
+            "`state.run.hubVisitz` is not a declared state path",
+        ),
+    ] {
+        let out = play_in(&fixture(), "usage", script, false);
+        assert_eq!(out.status.code(), Some(2), "{script}\n{}", stderr(&out));
+        assert!(stderr(&out).contains(needle), "{script}\n{}", stderr(&out));
+        assert!(stdout(&out).is_empty(), "{script}\n{}", stdout(&out));
+    }
+}
+
+#[test]
+fn without_declared_occasions_the_beats_on_values_are_the_vocabulary() {
+    // No plugin declares occasions: `on:` is shape-only, every occasion is
+    // `select: first`, and an occasion no beat answers is a usage error.
+    let dir = temp_dir("shape-only");
     write(
         &dir,
-        "routes/a.play.yaml",
-        "state:\n  run.route: a\nchoose:\n  meet/pick: left\n",
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
     );
-    write(&dir, "routes/b.play.yaml", "state:\n  run.route: b\n");
-    dir
-}
+    write(
+        &dir,
+        "scenes/arrive.lute",
+        "---\nkind: scene\nid: town.arrive\non: arrive\n---\n\n## Gate\n\n@guard: Welcome to town.\n",
+    );
+    let out = play_in(&dir, "shape-only", "steps:\n  - occasion: arrive\n", false);
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert!(stdout(&out).contains("Welcome to town."), "{}", stdout(&out));
 
-#[test]
-fn route_a_and_route_b_transcripts_diverge_on_the_branch_and_dialogue() {
-    let dir = fixture("routes");
-    let script_a = dir.join("routes/a.play.yaml");
-    let script_b = dir.join("routes/b.play.yaml");
-
-    let out_a = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script_a.to_str().unwrap(),
-    ]);
-    assert!(out_a.status.success(), "route A: {}", stderr(&out_a));
-    let text_a = stdout(&out_a);
-    assert!(text_a.contains("Route A meeting."), "{text_a}");
-    assert!(text_a.contains("Went left."), "{text_a}");
-    assert!(text_a.contains("chosen: left"), "{text_a}");
+    let out = play_in(&dir, "shape-only-typo", "steps:\n  - occasion: arrival\n", false);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
     assert!(
-        !text_a.contains("Route B meeting."),
-        "route A transcript must not play route B's doc: {text_a}"
-    );
-
-    let out_b = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script_b.to_str().unwrap(),
-    ]);
-    assert!(out_b.status.success(), "route B: {}", stderr(&out_b));
-    let text_b = stdout(&out_b);
-    assert!(text_b.contains("Route B meeting."), "{text_b}");
-    assert!(
-        !text_b.contains("Route A meeting."),
-        "route B transcript must not play route A's doc: {text_b}"
-    );
-
-    // Both routes still reach the causally-gated `errand` scene.
-    assert!(text_a.contains("Running an errand."), "{text_a}");
-    assert!(text_b.contains("Running an errand."), "{text_b}");
-}
-
-#[test]
-fn world_lane_interleaves_between_errand_and_the_rewind_and_is_hidden_by_default() {
-    let dir = fixture("world");
-    let script_a = dir.join("routes/a.play.yaml");
-
-    // Default `--lanes user`: world scene EXECUTES (its dialogue never
-    // appears) but is omitted from the transcript.
-    let default_out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script_a.to_str().unwrap(),
-    ]);
-    assert!(default_out.status.success(), "{}", stderr(&default_out));
-    let default_text = stdout(&default_out);
-    assert!(
-        !default_text.contains("cara"),
-        "world scene must be hidden under default --lanes user: {default_text}"
-    );
-
-    let all_out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script_a.to_str().unwrap(),
-        "--lanes",
-        "all",
-    ]);
-    assert!(all_out.status.success(), "{}", stderr(&all_out));
-    let all_text = stdout(&all_out);
-    assert!(all_text.contains("· world · cara/main"), "{all_text}");
-    assert!(all_text.contains("World event fires."), "{all_text}");
-    // World placement fires strictly after `errand`'s dialogue in the
-    // transcript (drain happens after the covering user placement).
-    let errand_pos = all_text
-        .find("Running an errand.")
-        .expect("errand line present");
-    let world_pos = all_text
-        .find("World event fires.")
-        .expect("world line present");
-    assert!(
-        errand_pos < world_pos,
-        "world event must interleave AFTER errand: {all_text}"
-    );
-}
-
-#[test]
-fn cold_open_presentation_override_rewinds_and_flags_the_world_drain() {
-    let dir = fixture("rewind");
-    let script_a = dir.join("routes/a.play.yaml");
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script_a.to_str().unwrap(),
-        "--lanes",
-        "all",
-    ]);
-    assert!(out.status.success(), "{}", stderr(&out));
-    let text = stdout(&out);
-
-    // `confinement` (presentation: 0) plays FIRST despite its story tick
-    // being on day 2, well after `meet`/`errand`'s day-1 ticks.
-    let confinement_pos = text
-        .find("Cold open flashback.")
-        .expect("confinement present");
-    let meet_pos = text.find("Route A meeting.").expect("meet present");
-    assert!(
-        confinement_pos < meet_pos,
-        "confinement must present before meet: {text}"
-    );
-
-    // The presentation jump backward is marked as a rewind.
-    assert!(
-        text.contains('\u{23EA}'),
-        "expected a rewind marker (⏪) in: {text}"
-    );
-    assert!(text.contains("(rewind"), "{text}");
-
-    // The world event drains inside the rewound segment and is flagged.
-    assert!(text.contains("W-SCHED-WORLD-IN-FLASHBACK"), "{text}");
-}
-
-#[test]
-fn incomplete_unscripted_choice_exits_three_and_names_the_hub_and_options() {
-    let dir = fixture("incomplete");
-    let out = run(&["play", dir.to_str().unwrap(), "--state", "run.route=a"]);
-    assert_eq!(
-        out.status.code(),
-        Some(3),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("INCOMPLETE"), "{text}");
-    assert!(text.contains("halted"), "{text}");
-    assert!(text.contains("pick"), "{text}");
-    assert!(text.contains("left"), "{text}");
-    assert!(text.contains("right"), "{text}");
-}
-
-#[test]
-fn auto_first_resolves_the_unscripted_choice_and_completes() {
-    let dir = fixture("auto-first");
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--state",
-        "run.route=a",
-        "--auto",
-        "first",
-    ]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(
-        text.contains("chosen: left"),
-        "`first` must pick the first declared option: {text}"
-    );
-}
-
-#[test]
-fn variant_gap_exits_one_and_names_the_event() {
-    let dir = fixture("gap");
-    // Neither `meet` variant's guard (`run.route == 'a'|'b'`) is satisfiable.
-    let out = run(&["play", dir.to_str().unwrap(), "--state", "run.route=c"]);
-    assert_eq!(
-        out.status.code(),
-        Some(1),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("E-SCHED-VARIANT-GAP"), "{text}");
-    assert!(text.contains("meet"), "{text}");
-}
-
-#[test]
-fn steps_stops_after_n_presented_placements() {
-    let dir = fixture("steps");
-    let script_a = dir.join("routes/a.play.yaml");
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script_a.to_str().unwrap(),
-        "--steps",
-        "2",
-    ]);
-    assert!(out.status.success(), "{}", stderr(&out));
-    let text = stdout(&out);
-    assert!(text.contains("stopped after 2 step"), "{text}");
-    // Only the first two presented placements (confinement, meet) ran —
-    // `errand` (the third) never appears.
-    assert!(text.contains("Cold open flashback."), "{text}");
-    assert!(text.contains("Route A meeting."), "{text}");
-    assert!(
-        !text.contains("Running an errand."),
-        "--steps 2 must stop before errand: {text}"
-    );
-}
-
-#[test]
-fn json_output_is_valid_and_carries_scene_records() {
-    let dir = fixture("json");
-    let script_a = dir.join("routes/a.play.yaml");
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script_a.to_str().unwrap(),
-        "--json",
-    ]);
-    assert!(out.status.success(), "{}", stderr(&out));
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("valid JSON");
-    assert_eq!(v["exit"], "complete");
-    let scenes = v["scenes"].as_array().expect("scenes array");
-    assert!(scenes.len() >= 3, "{v}");
-    assert_eq!(scenes[0]["event"], "confinement");
-    let meet = scenes
-        .iter()
-        .find(|s| s["event"] == "meet")
-        .expect("meet scene present");
-    assert_eq!(meet["doc"], "scenes/meet/routeA.lute");
-    assert_eq!(meet["lane"], "user");
-}
-
-#[test]
-fn same_seeds_and_script_produce_byte_identical_output() {
-    let dir = fixture("determinism");
-    let script_a = dir.join("routes/a.play.yaml");
-    let args = [
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script_a.to_str().unwrap(),
-        "--lanes",
-        "all",
-    ];
-    let out1 = run(&args);
-    let out2 = run(&args);
-    assert!(out1.status.success() && out2.status.success());
-    assert_eq!(
-        out1.stdout, out2.stdout,
-        "same seeds + script must produce byte-identical output"
-    );
-}
-
-#[test]
-fn a_project_with_no_schedule_yaml_is_a_hard_error() {
-    // Design v2 §2: there is no `after:`-graph fallback — a project without
-    // a schedule cannot select a route, so `play` refuses outright.
-    let dir = temp_dir("no-schedule");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "scenes/only.lute", CONFINEMENT);
-    let out = run(&["play", dir.to_str().unwrap()]);
-    assert_eq!(
-        out.status.code(),
-        Some(2),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    assert!(
-        stderr(&out).contains("no schedule.yaml"),
+        stderr(&out).contains("occasion `arrival` is answered by no beat"),
         "{}",
         stderr(&out)
     );
 }
 
 #[test]
-fn a_project_that_fails_to_compile_refuses_to_play() {
-    let dir = fixture("badcompile");
-    // Corrupt `errand`'s content so the whole-project compile gate fails.
-    write(&dir, "scenes/errand/main.lute", "---\nkind: scene\ncharacter: errand\nseason: 1\nepisode: 1\n---\n\n@undeclaredspeakerwithnotext\n");
-    let out = run(&["play", dir.to_str().unwrap(), "--state", "run.route=a"]);
+fn the_human_transcript_names_each_step_its_verdicts_and_the_winner() {
+    let script = fixture().join("plays/tour.play.yaml");
+    let out = Command::new(BIN)
+        .args([
+            "play",
+            fixture().to_str().unwrap(),
+            "--script",
+            script.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    for line in [
+        "── start ──────────────",
+        "  quest firstEscape -> active",
+        "── step 1 · hubVisit ──────────────",
+        "  ✓ hub.firstEver [scene, priority 20]",
+        "  ✗ hub.trophy [scene, priority 50] — after: prerequisite not satisfied",
+        "  → hub.firstEver",
+        "── step 4 · talk → npc.achilles ──────────────",
+        "▷ choice gift: [accept] decline        ← chosen: accept",
+        "  grant firstEscape darkness 10",
+        "── step 5 · inbox (select: all, pick: megNote) ──────────────",
+        "  entry megNote (first read)",
+        "── step 9 · new run ──────────────",
+        "── end: complete (11 steps) ──────────────",
+    ] {
+        assert!(
+            text.lines().any(|l| l == line),
+            "missing `{line}` in:\n{text}"
+        );
+    }
+    // Eligible candidates list before ineligible ones, each in selection
+    // order.
+    let s3 = text
+        .split("── step 3 · hubVisit")
+        .nth(1)
+        .and_then(|rest| rest.split("  →").next())
+        .unwrap();
+    let ids: Vec<&str> = s3
+        .lines()
+        .filter_map(|l| l.trim_start().strip_prefix(['✓', '✗']))
+        .map(|l| l.split_whitespace().next().unwrap())
+        .collect();
     assert_eq!(
-        out.status.code(),
-        Some(1),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-}
-
-#[test]
-fn play_help_matches_the_existing_command_tone() {
-    let out = run(&["play", "--help"]);
-    assert!(out.status.success());
-    let text = stdout(&out);
-    assert!(text.contains("schedule.yaml"), "{text}");
-    assert!(text.contains("--script"), "{text}");
-    assert!(text.contains("--lanes"), "{text}");
-    assert!(text.contains("--steps"), "{text}");
-}
-
-#[test]
-fn coverage_reports_full_corpus_covered_and_exits_zero() {
-    let dir = fixture("coverage-full");
-    // `a.play.yaml` (chooses `left`), a third script forcing `right`, and
-    // `b.play.yaml` together exercise every placement (confinement/meet/
-    // errand/cara), both `meet` variants, and both `pick` hub options — the
-    // review-gap detector should report clean.
-    write(
-        &dir,
-        "routes/a-right.play.yaml",
-        "state:\n  run.route: a\nchoose:\n  meet/pick: right\n",
-    );
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--coverage",
-        dir.join("routes/a.play.yaml").to_str().unwrap(),
-        "--coverage",
-        dir.join("routes/a-right.play.yaml").to_str().unwrap(),
-        "--coverage",
-        dir.join("routes/b.play.yaml").to_str().unwrap(),
-    ]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("3 script(s) replayed"), "{text}");
-    assert!(text.contains("COVERED"), "{text}");
-    assert!(!text.contains("never presented"), "{text}");
-    assert!(!text.contains("never selected"), "{text}");
-    assert!(!text.contains("never chosen"), "{text}");
-}
-
-#[test]
-fn coverage_reports_an_unchosen_hub_option_and_exits_one() {
-    let dir = fixture("coverage-gap");
-    // Only `a.play.yaml` (chooses `left`) and `b.play.yaml` (route B's
-    // `meet` variant carries no hub at all) are in the corpus — `right` is
-    // never chosen anywhere, though every placement/variant still presents.
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--coverage",
-        dir.join("routes/a.play.yaml").to_str().unwrap(),
-        "--coverage",
-        dir.join("routes/b.play.yaml").to_str().unwrap(),
-    ]);
-    assert_eq!(
-        out.status.code(),
-        Some(1),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("never chosen: `meet/pick` "), "{text}");
-    assert!(text.contains("right"), "{text}");
-    assert!(!text.contains("never presented"), "{text}");
-    assert!(!text.contains("never selected"), "{text}");
-    assert!(text.contains("UNCOVERED"), "{text}");
-}
-
-#[test]
-fn coverage_json_output_reports_the_uncovered_option() {
-    let dir = fixture("coverage-json");
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--coverage",
-        dir.join("routes/a.play.yaml").to_str().unwrap(),
-        "--coverage",
-        dir.join("routes/b.play.yaml").to_str().unwrap(),
-        "--json",
-    ]);
-    assert_eq!(
-        out.status.code(),
-        Some(1),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("valid JSON");
-    assert_eq!(v["exit"], "uncovered");
-    assert_eq!(v["scripts"].as_array().expect("scripts array").len(), 2);
-    let opts = v["options"]["uncovered"]
-        .as_array()
-        .expect("uncovered options array");
-    assert!(
-        opts.iter()
-            .any(|o| o["event"] == "meet" && o["id"] == "pick" && o["missing"][0] == "right"),
-        "{v}"
-    );
-}
-
-#[test]
-fn coverage_is_exclusive_with_script_choose_and_steps() {
-    let dir = fixture("coverage-exclusive");
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--coverage",
-        dir.join("routes/a.play.yaml").to_str().unwrap(),
-        "--script",
-        dir.join("routes/b.play.yaml").to_str().unwrap(),
-    ]);
-    assert_eq!(
-        out.status.code(),
-        Some(2),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    assert!(stderr(&out).contains("--coverage"), "{}", stderr(&out));
-}
-
-// ===========================================================================
-// Implementation review fixes (2026-08-14 design v2 review) — one fixture
-// per defect, each isolated from the `fixture()` project above so a
-// regression in one never masks another.
-// ===========================================================================
-
-// -- review fix #1: reset each scene from its own state defaults -----------
-
-const RESET_SCHEDULE: &str = "\
-clock:
-  buckets: [morning, afternoon]
-  ticksPerBucket: 10
-  days: 1
-
-lanes:
-  user: { exclusive: true }
-  world: { exclusive: false }
-
-placements:
-  - event: scene-a
-    lane: user
-    at: morning+0
-    size: 3
-    doc: scenes/a-scene.lute
-  - event: scene-b
-    lane: user
-    size: 3
-    doc: scenes/b-scene.lute
-";
-
-const RESET_SCENE_A: &str = "\
----
-kind: scene
-character: scene-a
-season: 1
-episode: 1
-state:
-  scene.mood: { type: { enum: [calm, tense] }, default: calm }
----
-
-## Shot 1.
-
-<match on=\"scene.mood\">
-<when is=\"calm\">
-@narrator: scene-a sees calm.
-</when>
-<when is=\"tense\">
-@narrator: scene-a sees tense.
-</when>
-</match>
-";
-
-const RESET_SCENE_B: &str = "\
----
-kind: scene
-character: scene-b
-season: 1
-episode: 1
-state:
-  scene.mood: { type: { enum: [calm, tense] }, default: tense }
----
-
-## Shot 1.
-
-<match on=\"scene.mood\">
-<when is=\"calm\">
-@narrator: scene-b sees calm.
-</when>
-<when is=\"tense\">
-@narrator: scene-b sees tense.
-</when>
-</match>
-";
-
-/// Two scenes reuse the SAME `scene.*` path with DIFFERENT declared
-/// defaults. Before the fix, the project-wide union picked the path-
-/// sorted-FIRST document's default (`a-scene.lute`'s `calm`) for every
-/// scene that reuses the path — `scene-b` would incorrectly start `calm`
-/// too, instead of resetting to its own `tense` default.
-#[test]
-fn each_scene_resets_scene_state_from_its_own_declared_default() {
-    let dir = temp_dir("scene-reset");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", RESET_SCHEDULE);
-    write(&dir, "scenes/a-scene.lute", RESET_SCENE_A);
-    write(&dir, "scenes/b-scene.lute", RESET_SCENE_B);
-    let out = run(&["play", dir.to_str().unwrap()]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("scene-a sees calm."), "{text}");
-    assert!(text.contains("scene-b sees tense."), "{text}");
-    assert!(
-        !text.contains("scene-b sees calm."),
-        "scene-b must reset from ITS OWN default: {text}"
-    );
-}
-
-// -- review fix #2: resolve presentation order from live boundary state ----
-
-const REVISIT_SCHEDULE: &str = "\
-clock:
-  buckets: [morning, afternoon]
-  ticksPerBucket: 10
-  days: 1
-
-lanes:
-  user: { exclusive: true }
-  world: { exclusive: false }
-
-placements:
-  - event: gate-setter
-    lane: user
-    at: morning+0
-    size: 2
-    doc: scenes/gate-setter.lute
-  - event: hidden-optional
-    lane: user
-    optional: true
-    at: morning+2
-    size: 2
-    variants:
-      - when: \"run.flag == 'yes'\"
-        doc: scenes/hidden-optional.lute
-";
-
-const GATE_SETTER: &str = "\
----
-kind: scene
-character: gate-setter
-season: 1
-episode: 1
-state:
-  run.flag: { type: string, default: \"no\" }
----
-
-## Shot 1.
-
-@narrator: setter runs.
-::set{run.flag = \"yes\"}
-";
-
-const HIDDEN_OPTIONAL: &str = "\
----
-kind: scene
-character: hidden-optional
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-@narrator: hidden optional fires.
-";
-
-/// `hidden-optional`'s single variant guard reads false against SEED state
-/// (`run.flag` defaults `no`). Before the fix, `presentation_order` resolved
-/// every placement once at seed time and permanently dropped an unsatisfied
-/// `optional` placement — even though `gate-setter` (presented first) flips
-/// `run.flag` to `yes` before `hidden-optional`'s own boundary is reached.
-#[test]
-fn optional_placement_unsatisfied_at_seed_is_reconsidered_after_an_earlier_scene_sets_state() {
-    let dir = temp_dir("optional-reconsidered");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", REVISIT_SCHEDULE);
-    write(&dir, "scenes/gate-setter.lute", GATE_SETTER);
-    write(&dir, "scenes/hidden-optional.lute", HIDDEN_OPTIONAL);
-    let out = run(&["play", dir.to_str().unwrap()]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("setter runs."), "{text}");
-    assert!(
-        text.contains("hidden optional fires."),
-        "hidden-optional must be reconsidered live: {text}"
-    );
-}
-
-const REORDER_SCHEDULE: &str = "\
-clock:
-  buckets: [morning, afternoon, evening]
-  ticksPerBucket: 10
-  days: 1
-
-lanes:
-  user: { exclusive: true }
-  world: { exclusive: false }
-
-placements:
-  - event: setter
-    lane: user
-    at: morning+0
-    size: 2
-    doc: scenes/setter.lute
-  - event: movable
-    lane: user
-    at: morning+2
-    size: 2
-    variants:
-      - when: \"run.flag == 'no'\"
-        doc: scenes/movable-no.lute
-      - when: \"run.flag == 'yes'\"
-        doc: scenes/movable-yes.lute
-        at: evening+0
-  - event: checkpoint
-    lane: user
-    at: afternoon+5
-    size: 2
-    doc: scenes/checkpoint.lute
-";
-
-const REORDER_SETTER: &str = "\
----
-kind: scene
-character: setter
-season: 1
-episode: 1
-state:
-  run.flag: { type: { enum: [no, yes] }, default: no }
----
-
-## Shot 1.
-
-@narrator: setter runs.
-::set{run.flag = \"yes\"}
-";
-
-const MOVABLE_NO: &str = "\
----
-kind: scene
-character: movable-no
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-@narrator: movable sees no.
-";
-
-const MOVABLE_YES: &str = "\
----
-kind: scene
-character: movable-yes
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-@narrator: movable sees yes.
-";
-
-const REORDER_CHECKPOINT: &str = "\
----
-kind: scene
-character: checkpoint
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-@narrator: checkpoint fires.
-";
-
-/// `movable`'s `no` variant (seed-active) sits at `morning+2`; `setter`
-/// (presented first) flips `run.flag` to `yes`, switching movable's LIVE
-/// variant to `yes`, whose OWN declared position is `evening+0` — strictly
-/// after `checkpoint` (`afternoon+5`). Before the fix, `movable` still
-/// played in its stale seed-time `no`-variant slot (right after `setter`,
-/// before `checkpoint`) even though it rendered the live `yes` doc.
-#[test]
-fn a_placement_that_switches_variant_presents_at_the_live_variants_own_position() {
-    let dir = temp_dir("reorder");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", REORDER_SCHEDULE);
-    write(&dir, "scenes/setter.lute", REORDER_SETTER);
-    write(&dir, "scenes/movable-no.lute", MOVABLE_NO);
-    write(&dir, "scenes/movable-yes.lute", MOVABLE_YES);
-    write(&dir, "scenes/checkpoint.lute", REORDER_CHECKPOINT);
-    let out = run(&["play", dir.to_str().unwrap()]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("movable sees yes."), "{text}");
-    assert!(
-        !text.contains("movable sees no."),
-        "the live-active variant must be `yes`, never `no`: {text}"
-    );
-    let checkpoint_pos = text.find("checkpoint fires.").expect("checkpoint present");
-    let movable_pos = text.find("movable sees yes.").expect("movable present");
-    assert!(
-        checkpoint_pos < movable_pos,
-        "movable must present at its LIVE variant's own (later) position, after checkpoint, not the stale seed-time slot: {text}"
-    );
-}
-
-// -- review fix #3: propagate unresolved variant guards as incomplete ------
-
-const UNRESOLVED_GUARD_SCHEDULE: &str = "\
-clock:
-  buckets: [morning]
-  ticksPerBucket: 10
-  days: 1
-
-lanes:
-  user: { exclusive: true }
-  world: { exclusive: false }
-
-placements:
-  - event: futures
-    lane: user
-    at: morning+0
-    size: 2
-    variants:
-      - when: \"now() > 0\"
-        doc: scenes/futures.lute
-";
-
-const FUTURES_SCENE: &str = "\
----
-kind: scene
-character: futures
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-@narrator: should never print.
-";
-
-/// `futures`' sole variant guards on `now()` — a reference-runtime surface
-/// `lute play` cannot resolve (design spec §4.5). Before the fix, variant
-/// selection folded the guard's `Unknown` result straight to `false`,
-/// raising a mundane `E-SCHED-VARIANT-GAP` (exit 1) instead of honestly
-/// halting incomplete (exit 3) naming the unresolved surface.
-#[test]
-fn unresolved_variant_guard_halts_incomplete_naming_the_surface() {
-    let dir = temp_dir("unresolved-guard");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", UNRESOLVED_GUARD_SCHEDULE);
-    write(&dir, "scenes/futures.lute", FUTURES_SCENE);
-    let out = run(&["play", dir.to_str().unwrap()]);
-    assert_eq!(
-        out.status.code(),
-        Some(3),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("futures"), "{text}");
-    assert!(text.contains("now()"), "{text}");
-    assert!(
-        !text.contains("should never print."),
-        "the guard must never silently decide false: {text}"
-    );
-    assert!(
-        !text.contains("E-SCHED-VARIANT-GAP"),
-        "an unresolved guard is incomplete, never a mundane gap: {text}"
-    );
-}
-
-// -- review fix #4: rescan world placements after each world scene ---------
-
-const RESCAN_SCHEDULE: &str = "\
-clock:
-  buckets: [morning, afternoon]
-  ticksPerBucket: 12
-  days: 1
-
-lanes:
-  user: { exclusive: true }
-  world: { exclusive: false }
-
-placements:
-  - event: anchor
-    lane: user
-    at: 0
-    size: 20
-    doc: scenes/anchor.lute
-  - event: flipper
-    lane: world
-    at: 1
-    size: 1
-    doc: scenes/flipper.lute
-  - event: mover
-    lane: world
-    size: 1
-    variants:
-      - when: \"run.state == 'A'\"
-        at: 10
-        doc: scenes/mover-a.lute
-      - when: \"run.state == 'B'\"
-        at: 3
-        doc: scenes/mover-b.lute
-";
-
-const RESCAN_ANCHOR: &str = "\
----
-kind: scene
-character: anchor
-season: 1
-episode: 1
-state:
-  run.state: { type: { enum: [A, B] }, default: A }
----
-
-## Shot 1.
-
-@narrator: anchor runs.
-";
-
-const RESCAN_FLIPPER: &str = "\
----
-kind: scene
-character: flipper
-season: 1
-episode: 1
-state:
-  run.state: { type: { enum: [A, B] }, default: A }
----
-
-## Shot 1.
-
-@narrator: flipper fires.
-::set{run.state = \"B\"}
-";
-
-const RESCAN_MOVER_A: &str = "\
----
-kind: scene
-character: mover-a
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-@narrator: mover sees A.
-";
-
-const RESCAN_MOVER_B: &str = "\
----
-kind: scene
-character: mover-b
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-@narrator: mover sees B.
-";
-
-/// `flipper` (tick 1) and `mover` (whose SEED-active variant `A` sits at
-/// tick 10) both drain in `anchor`'s ONE `[0, 20)` window. `flipper` fires
-/// first and flips `run.state` to `B`, switching `mover`'s LIVE variant to
-/// `B` (tick 3) — still inside the same window. Before the fix, the drain
-/// scanned candidates ONCE upfront: `mover` was captured as the `A`
-/// candidate (tick 10), and by the time its turn came the re-resolved tick
-/// (3) no longer matched the scanned one, so it was silently dropped for
-/// the rest of the playthrough once `world_cursor` advanced past tick 3.
-#[test]
-fn world_placement_switching_variant_mid_drain_is_rescanned_and_fires() {
-    let dir = temp_dir("world-rescan");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", RESCAN_SCHEDULE);
-    write(&dir, "scenes/anchor.lute", RESCAN_ANCHOR);
-    write(&dir, "scenes/flipper.lute", RESCAN_FLIPPER);
-    write(&dir, "scenes/mover-a.lute", RESCAN_MOVER_A);
-    write(&dir, "scenes/mover-b.lute", RESCAN_MOVER_B);
-    let out = run(&["play", dir.to_str().unwrap(), "--lanes", "all"]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("flipper fires."), "{text}");
-    assert!(
-        text.contains("mover sees B."),
-        "mover must be rescanned onto its live `B` variant: {text}"
-    );
-    assert!(
-        !text.contains("mover sees A."),
-        "mover's seed-time `A` variant must never fire once B is live: {text}"
-    );
-}
-
-// -- review fix #5: defer world variant gaps until the placement is due ----
-
-const DEFER_SCHEDULE: &str = "\
-clock:
-  buckets: [morning, afternoon]
-  ticksPerBucket: 12
-  days: 1
-
-lanes:
-  user: { exclusive: true }
-  world: { exclusive: false }
-
-placements:
-  - event: scene-one
-    lane: user
-    at: 0
-    size: 5
-    doc: scenes/scene-one.lute
-  - event: scene-two
-    lane: user
-    at: 5
-    size: 5
-    doc: scenes/scene-two.lute
-  - event: late-event
-    lane: world
-    at: 8
-    size: 1
-    variants:
-      - when: \"run.unlocked == 'yes'\"
-        doc: scenes/late-event.lute
-";
-
-const DEFER_SCENE_ONE: &str = "\
----
-kind: scene
-character: scene-one
-season: 1
-episode: 1
-state:
-  run.unlocked: { type: string, default: \"no\" }
----
-
-## Shot 1.
-
-@narrator: scene one runs.
-";
-
-const DEFER_SCENE_TWO: &str = "\
----
-kind: scene
-character: scene-two
-season: 1
-episode: 1
-state:
-  run.unlocked: { type: string, default: \"no\" }
----
-
-## Shot 1.
-
-@narrator: scene two runs.
-::set{run.unlocked = \"yes\"}
-";
-
-const DEFER_LATE_EVENT: &str = "\
----
-kind: scene
-character: late-event
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-@narrator: late event fires.
-";
-
-/// `late-event` (non-optional, world lane, tick 8) is only satisfiable once
-/// `scene-two` sets `run.unlocked = yes` — but tick 8 is not due until
-/// `scene-two`'s OWN drain window `[5, 10)`. Before the fix, the drain scan
-/// resolved EVERY unfired world placement's guard before checking whether
-/// its tick was even in range, so `late-event`'s guard was evaluated (and
-/// found unsatisfied) during `scene-one`'s EARLIER `[0, 5)` drain, raising a
-/// premature `E-SCHED-VARIANT-GAP` and aborting the whole playthrough.
-#[test]
-fn world_variant_gap_is_deferred_until_the_placement_is_actually_due() {
-    let dir = temp_dir("world-defer");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", DEFER_SCHEDULE);
-    write(&dir, "scenes/scene-one.lute", DEFER_SCENE_ONE);
-    write(&dir, "scenes/scene-two.lute", DEFER_SCENE_TWO);
-    write(&dir, "scenes/late-event.lute", DEFER_LATE_EVENT);
-    let out = run(&["play", dir.to_str().unwrap(), "--lanes", "all"]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("scene one runs."), "{text}");
-    assert!(text.contains("scene two runs."), "{text}");
-    assert!(
-        text.contains("late event fires."),
-        "late-event's gap check must defer until its own boundary: {text}"
-    );
-    let scene_two_pos = text.find("scene two runs.").expect("scene two present");
-    let late_pos = text.find("late event fires.").expect("late event present");
-    assert!(
-        scene_two_pos < late_pos,
-        "late-event must drain after the scene that unlocks it: {text}"
-    );
-}
-
-// -- review fix #6: halt when a hub decision sequence is exhausted ---------
-
-const HUB_SCHEDULE: &str = "\
-clock:
-  buckets: [morning]
-  ticksPerBucket: 10
-  days: 1
-
-lanes:
-  user: { exclusive: true }
-  world: { exclusive: false }
-
-placements:
-  - event: camp-scene
-    lane: user
-    at: morning+0
-    size: 4
-    doc: scenes/camp-scene.lute
-";
-
-const HUB_SCENE: &str = "\
----
-kind: scene
-character: camp-scene
-season: 1
-episode: 1
----
-
-## Shot 1.
-
-<hub id=\"camp\">
-<choice id=\"try\" label=\"Try\" once>
-@narrator: tried once.
-</choice>
-<choice id=\"leave\" label=\"Leave\" exit>
-@narrator: left camp.
-</choice>
-</hub>
-@narrator: after hub.
-";
-
-/// A route script scripts only `[try]` — `try` is `once`, not `exit`, so the
-/// hub is re-presented with `leave` still eligible and no more scripted
-/// decisions. Before the fix, `Runner::do_hub` iterated the whole forced
-/// vector and converged regardless, silently leaving the hub (exit 0)
-/// instead of re-presenting it or halting incomplete.
-#[test]
-fn hub_sequence_exhausted_with_eligible_options_remaining_halts_incomplete() {
-    let dir = temp_dir("hub-exhausted");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", HUB_SCHEDULE);
-    write(&dir, "scenes/camp-scene.lute", HUB_SCENE);
-    let script = write(&dir, "routes/partial.play.yaml", "choose:\n  camp: [try]\n");
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script.to_str().unwrap(),
-    ]);
-    assert_eq!(
-        out.status.code(),
-        Some(3),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("incomplete"), "{text}");
-    assert!(text.contains("camp"), "{text}");
-    assert!(
-        text.contains("leave"),
-        "the still-eligible option must be named: {text}"
-    );
-    assert!(
-        !text.contains("after hub."),
-        "the walk must not fall through past an exhausted hub: {text}"
-    );
-}
-
-/// The SAME hub with NO script at all, under `--auto first`: the policy must
-/// keep applying at EVERY re-presentation (first `try`, once it is spent
-/// `leave`), not just supply one decision for the whole hub.
-#[test]
-fn auto_first_applies_at_every_hub_re_presentation_until_exit() {
-    let dir = temp_dir("hub-auto-first-multistep");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", HUB_SCHEDULE);
-    write(&dir, "scenes/camp-scene.lute", HUB_SCENE);
-    let out = run(&["play", dir.to_str().unwrap(), "--auto", "first"]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("tried once."), "{text}");
-    assert!(text.contains("left camp."), "{text}");
-    assert!(
-        text.contains("after hub."),
-        "the hub must fully converge, not stop after one re-presentation: {text}"
-    );
-}
-
-// ===========================================================================
-// dsl 0.12.0: forward jump (`::mark`/line `id=`/`::next`) — one placement
-// whose branch arm rejoins a LATER shot via an unconditional `::next`, then
-// a GUARDED `::next` picks between two independent `::end{reason}`s
-// (multi-end combination). `lute play` and `lute run` share the SAME
-// `Runner` (`runner.rs`), so a `lute play` smoke over ONE scene doc is a
-// faithful end-to-end exercise of the whole forward-jump pipeline: check
-// (labels resolve, no E-NEXT-*/E-MARK-DUP) -> compile (`jump`/`match`
-// records, named-label addressing) -> runtime walk (the jump actually
-// moves the PC, the guard actually forks).
-// ===========================================================================
-
-const NEXT_SCHEDULE: &str = "\
-clock:
-  buckets: [morning]
-  ticksPerBucket: 10
-  days: 1
-
-lanes:
-  user: { exclusive: true }
-  world: { exclusive: false }
-
-placements:
-  - event: forward-jump
-    lane: user
-    at: morning+0
-    size: 5
-    doc: scenes/forward-jump.lute
-";
-
-const NEXT_SCENE: &str = "\
----
-kind: scene
-character: forward-jump
-season: 1
-episode: 1
-state:
-  run.blessed: { type: bool, default: false }
----
-
-## Shot 1.
-
-<branch id=\"pick\">
-  <choice id=\"a\" label=\"A\">
-    ::next{to=\"join\"}
-  </choice>
-  <choice id=\"b\" label=\"B\">
-    @narrator: taking the b path
-  </choice>
-</branch>
-
-## Shot 2.
-
-::mark{id=\"join\"}
-@narrator{id=\"afterJoin\"}: we joined here
-::next{to=\"tail\" when=\"run.blessed\"}
-@narrator: fallthrough content
-::end{reason=\"completed\"}
-
-## Shot 3.
-
-::mark{id=\"tail\"}
-@narrator: tail reached
-::end{reason=\"tailed\"}
-";
-
-/// Choice `a`'s unconditional `::next{to=\"join\"}` skips straight to shot
-/// 2's `::mark{id=\"join\"}` — never rendering \"taking the b path\" — then
-/// the guarded `::next{to=\"tail\" when=\"run.blessed\"}` fires TRUE
-/// (`run.blessed=true`), joining shot 3 and ending on `reason=tailed`
-/// rather than shot 2's own `reason=completed`.
-#[test]
-fn branch_arm_next_joins_a_later_shot_and_guarded_next_reaches_the_far_end() {
-    let dir = temp_dir("next-join-true");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", NEXT_SCHEDULE);
-    write(&dir, "scenes/forward-jump.lute", NEXT_SCENE);
-    let script = write(
-        &dir,
-        "route.play.yaml",
-        "state:\n  run.blessed: true\nchoose:\n  pick: a\n",
-    );
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script.to_str().unwrap(),
-    ]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("we joined here"), "{text}");
-    assert!(
-        text.contains("tail reached"),
-        "the guarded next's true arm must reach shot 3: {text}"
-    );
-    assert!(
-        !text.contains("taking the b path"),
-        "the unchosen branch arm must never render: {text}"
-    );
-    assert!(
-        !text.contains("fallthrough content"),
-        "the guarded next's false arm must not also render: {text}"
-    );
-}
-
-/// SAME scene, guard FALSE this time: the guarded `::next` falls through to
-/// \"fallthrough content\" and the FIRST `::end{reason=\"completed\"}` —
-/// never reaching shot 3's `tail` mark or its OWN `reason=\"tailed\"` end —
-/// the multi-end combination's other arm.
-#[test]
-fn guarded_next_false_arm_falls_through_to_its_own_end_reason() {
-    let dir = temp_dir("next-join-false");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(&dir, "schedule.yaml", NEXT_SCHEDULE);
-    write(&dir, "scenes/forward-jump.lute", NEXT_SCENE);
-    let script = write(
-        &dir,
-        "route.play.yaml",
-        "state:\n  run.blessed: false\nchoose:\n  pick: a\n",
-    );
-    let out = run(&[
-        "play",
-        dir.to_str().unwrap(),
-        "--script",
-        script.to_str().unwrap(),
-    ]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(text.contains("we joined here"), "{text}");
-    assert!(
-        text.contains("fallthrough content"),
-        "the guarded next's false arm must fall through: {text}"
-    );
-    assert!(
-        !text.contains("tail reached"),
-        "the false arm must never reach shot 3: {text}"
-    );
-}
-
-// --- Task 4 §2 (dsl 0.15.0) — play consumes authored `meta.id` -------------
-
-/// A schedule presents a scene declared with an authored `id:` (no legacy
-/// triad), then a follow-up whose `after: visited("<that id>")` names it.
-/// Pre-fix, `play`'s `scene_canonical_key` derived the visited key from
-/// `meta.character`/`.season`/`.episode` — an authored-id doc has none, so
-/// the follow-up's prerequisite was never satisfied and the placement was
-/// filtered out. The follow-up must now play.
-#[test]
-fn play_records_the_authored_scene_id_in_the_visited_set() {
-    let dir = temp_dir("authored-visited");
-    write(&dir, "lute.project.yaml", PROJECT_YAML);
-    write(
-        &dir,
-        "schedule.yaml",
-        "\
-clock:
-  buckets: [morning, afternoon]
-  ticksPerBucket: 10
-  days: 1
-
-lanes:
-  user: { exclusive: true }
-
-placements:
-  - event: opener
-    lane: user
-    at: morning+0
-    size: 3
-    doc: scenes/opener.lute
-  - event: followup
-    lane: user
-    at: afternoon+0
-    size: 3
-    doc: scenes/followup.lute
-",
-    );
-    write(
-        &dir,
-        "scenes/opener.lute",
-        "\
----
-kind: scene
-id: authored.opener
----
-
-## Shot 1.
-
-@hero: Opening under an authored id.
-",
-    );
-    write(
-        &dir,
-        "scenes/followup.lute",
-        "\
----
-kind: scene
-id: authored.followup
-after: 'visited(\"authored.opener\")'
----
-
-## Shot 1.
-
-@hero: Follow-up gated on the authored id.
-",
-    );
-
-    let out = run(&["play", dir.to_str().unwrap()]);
-    assert!(
-        out.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout(&out),
-        stderr(&out)
-    );
-    let text = stdout(&out);
-    assert!(
-        text.contains("Opening under an authored id."),
-        "opener must present: {text}"
-    );
-    assert!(
-        text.contains("Follow-up gated on the authored id."),
-        "the follow-up whose `after:` names the authored id must play: {text}",
+        ids,
+        ["hub.welcome", "hub.idle", "hub.trophy", "hub.restless", "hub.firstEver"],
+        "{text}"
     );
 }

@@ -197,6 +197,7 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
             default: None,
         }],
         reward_kinds: Vec::new(),
+        occasions: Vec::new(),
         lints: Vec::new(),
     };
     let installed = InstalledPlugins {

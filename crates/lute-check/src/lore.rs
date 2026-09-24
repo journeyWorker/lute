@@ -239,11 +239,14 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
     };
     // A permitted key left in the residual list carried a non-string value
     // (`order=@n`, a bare `target`) — the parser extracts only quoted strings.
-    // `when` is never residual: `take_cel` accepts every value shape.
+    // `when` is never residual: `take_cel` accepts every value shape. The beat
+    // keys `on`/`priority` report their own shape (`E-BEAT-ATTR`, below).
     let mut residual_id = false;
     for attr in &entry.attrs {
         let key = attr.key.as_str();
-        if !crate::logic_attrs::ENTRY_ATTRS.contains(&key) || key == "when" {
+        if !crate::logic_attrs::ENTRY_ATTRS.contains(&key)
+            || matches!(key, "when" | "on" | "priority")
+        {
             continue;
         }
         if matches!(attr.value, AttrValue::Str(_)) {
@@ -257,6 +260,7 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
         ));
     }
     crate::logic_attrs::check_entry_attrs(entry, diags);
+    crate::beats::check_entry_beat_attrs(entry, diags);
 
     let id = entry.id.as_str();
     if id.is_empty() {

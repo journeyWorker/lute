@@ -13,14 +13,17 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.20.0.md`](proposals/scenario-dsl/0.20.0.md). The
+> [`proposals/scenario-dsl/0.21.0.md`](proposals/scenario-dsl/0.21.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
 > 0.2.0 §6), and — since 0.19.0 — `lore`, whose top-level `<entry>` declarations are
 > content the engine looks up rather than plays (engine contract:
 > [`runtime/lore-entries.md`](runtime/lore-entries.md)). A quest or lore document may
-> name itself with a document `id:`, the bundle key it is indexed under.
+> name itself with a document `id:`, the bundle key it is indexed under. Since 0.21.0 a
+> scene (frontmatter `on:`) or a lore entry (`on=`) may be a **beat** answering an engine
+> **occasion**; the engine picks the winner among eligible beats (engine contract:
+> [`runtime/beats-and-occasions.md`](runtime/beats-and-occasions.md)).
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -660,6 +663,15 @@ above, never a rule-body dependency):
   the new `E-ENTRY-UNREACHABLE`) and a guaranteed one inside a guard is `W-FACT-GUARANTEED`.
   Single-file `check()` leaves relational queries undecided: a sibling's asserts are invisible
   to it.
+- **Beats (dsl 0.21.0).** A scene's `when:` beat condition is a CEL slot checked like a quest
+  `start` (`check.rs::check_beat_when` — profile, definite assignment, no `scene.*` reads) and
+  decided per file by `reachability.rs` and under the project fact envelope by `fact_check.rs`,
+  so a never-eligible beat is `E-BEAT-UNREACHABLE` (an entry beat keeps
+  `E-ENTRY-UNREACHABLE`). `beats.rs` owns the shape rules (`E-BEAT-ATTR`), the occasion
+  vocabulary folded from plugin `occasions:` exports (`E-OCCASION-UNKNOWN`, shape-only when no
+  plugin declares any), and the `check-project` selection pass `check_project_beats`
+  (`W-BEAT-SHADOWED`: a `select: first` beat an earlier, always-eligible, never-spent beat
+  always beats).
 
 ### Narrative time (spec §6, D11)
 

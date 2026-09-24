@@ -226,7 +226,20 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// to `schemas/lute-ir-0.20.schema.json` per the release-line rule, with only
 /// its `$id` and title restamped. The MAJOR-only runtime gate does not move,
 /// so no engine gate widens.
-pub const LUTE_IR_VERSION: &str = "0.20.0";
+///
+/// IR `0.21.0` is ADDITIVE over `0.20.0` (dsl 0.21.0 §8, beats and
+/// occasions): [`ir::SceneMeta`] gains the optional `beat` (`on`, `target?`,
+/// `when?`, the RESOLVED `priority`, and `once` — `"run"`, `"user"`, or
+/// `"none"`); [`ir::EntryCmd`] gains the optional `on` / `priority`; and
+/// [`index::ProjectIndex`] gains `beats`, every scene and entry beat in
+/// selection-tiebreak order. Every new field is skipped when absent, so scene
+/// and lore artifacts without beats compile byte-identically apart from the
+/// version strings. `schemas/lute-ir-0.20.schema.json` is renamed to
+/// `schemas/lute-ir-0.21.schema.json` per the release-line rule and gains
+/// `sceneBeat`, the entry fields, and the `indexBeat` row. The MAJOR-only
+/// runtime gate does not move: an engine without beat support ignores the
+/// new fields and reaches every scene by explicit flow, as before.
+pub const LUTE_IR_VERSION: &str = "0.21.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -311,7 +324,8 @@ pub fn compile_with_check(
             // `artifact_meta` via `canonical_scene_key` and stamped into
             // every lineId here (byte-identical to 0.14.0 for a doc that has
             // not migrated to `id:`).
-            let meta = artifact_meta(&doc, &folded, &input.snapshot);
+            let beat = scene_beat(&folded, &table, &mut diags);
+            let meta = artifact_meta(&doc, &folded, &input.snapshot, beat);
             let prefix = meta.id.clone();
             let mut shots = Vec::new();
             for (i, shot) in doc.shots.iter().enumerate() {
@@ -659,7 +673,12 @@ fn body_entry(l: &lute_syntax::datalog::BodyLiteral) -> BodyEntry {
 /// authored descriptive `extra:` block (dsl 0.15.0 §3) is copied verbatim
 /// from `TypedMeta.extra_block` — the checker already validated the shape
 /// and stripped nested maps / mixed lists.
-fn artifact_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> SceneMeta {
+fn artifact_meta(
+    doc: &Document,
+    folded: &FoldedEnv,
+    snapshot: &CapabilitySnapshot,
+    beat: Option<BeatIr>,
+) -> SceneMeta {
     let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
     let lookup_str = |key: &str| -> Option<String> {
         raw.as_ref()?
@@ -718,7 +737,33 @@ fn artifact_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapsh
         title,
         extra: folded.typed.extra_block.clone(),
         plugin,
+        beat,
     }
+}
+
+/// dsl 0.21.0 §3.1/§8: the checker-validated scene beat (`TypedMeta.beat`,
+/// `Some` only when `on:` names a valid occasion identifier) lowered to
+/// [`BeatIr`] for `SceneMeta.beat`. Its `when` expands exactly as a quest
+/// `start` does ([`expand::expand_beat_when`]) and lowers to the `{raw,
+/// expr}` pair; `priority` / `once` arrive already defaulted (`0` / `run`).
+fn scene_beat(
+    folded: &FoldedEnv,
+    defs: &DefTable<'_>,
+    diags: &mut Vec<Diagnostic>,
+) -> Option<BeatIr> {
+    let beat = folded.typed.beat.as_ref()?;
+    let when = beat.when.as_ref().map(|slot| {
+        let mut slot = slot.clone();
+        diags.extend(expand::expand_beat_when(&mut slot, defs));
+        CelPair::from_raw(&slot.raw)
+    });
+    Some(BeatIr {
+        on: beat.on.clone(),
+        target: beat.target.clone(),
+        when,
+        priority: beat.priority,
+        once: beat.once.into(),
+    })
 }
 
 /// plugin-system 0.0.4 §2: fold the raw frontmatter mapping's plugin-owned
@@ -1115,14 +1160,14 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.20.0 axis alignment (docs/versioning.md): the language earns the
-        // move (project-level fact envelopes — relational guards decided
-        // impossible / guaranteed / possible, `E-ENTRY-UNREACHABLE`,
-        // `W-FACT-GUARANTEED`, `W-UNPROVEN-RELATIONAL` removed), static
-        // semantics only, so the IR shape does not change — the alignment
-        // rule still moves both independently
-        assert_eq!(super::LUTE_IR_VERSION, "0.20.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.20.0");
+        // 0.21.0 axis alignment (docs/versioning.md): the language earns the
+        // move (scene and entry beats answering occasions, `E-BEAT-ATTR`,
+        // `E-OCCASION-UNKNOWN`, `E-BEAT-UNREACHABLE`, `W-BEAT-SHADOWED`;
+        // `schedule.yaml` removed) and so does the IR (`SceneMeta.beat`,
+        // `EntryCmd.on` / `priority`, `ProjectIndex.beats`) — both move
+        // independently
+        assert_eq!(super::LUTE_IR_VERSION, "0.21.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.21.0");
     }
 
     #[test]
@@ -1131,8 +1176,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.20.0");
-        assert_eq!(v["irVersion"], "0.20.0");
+        assert_eq!(v["lute"], "0.21.0");
+        assert_eq!(v["irVersion"], "0.21.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

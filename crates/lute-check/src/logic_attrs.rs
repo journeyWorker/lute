@@ -62,12 +62,14 @@ const HUB_ATTRS: &[&str] = &["id"];
 /// anchor `E-REWARD-ATTR` at the value span. `id=` is deliberately absent
 /// — a reward is a leaf, not an addressable construct.
 pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "on"];
-/// dsl 0.19.0 §3: `<entry>` closes over its seven declared keys. The parser
+/// dsl 0.19.0 §3: `<entry>` closes over its declared keys — the seven 0.19.0
+/// keys plus the dsl 0.21.0 §3.2 beat keys `on` and `priority`. The parser
 /// extracts each into a typed field, so a permitted key reaches the residual
 /// list only when its value was not a quoted string — `crate::lore` owns
-/// that shape fault (`E-ENTRY-ATTR`); every OTHER key is `E-UNKNOWN-ATTR`.
+/// that shape fault (`E-ENTRY-ATTR`, or `E-BEAT-ATTR` for a beat key); every
+/// OTHER key is `E-UNKNOWN-ATTR`.
 pub(crate) const ENTRY_ATTRS: &[&str] = &[
-    "id", "target", "category", "title", "series", "order", "when",
+    "id", "target", "category", "title", "series", "order", "when", "on", "priority",
 ];
 
 /// D-L: the two `<choice>` positions have DIFFERENT permitted sets. `once` and

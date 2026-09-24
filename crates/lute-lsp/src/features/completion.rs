@@ -145,6 +145,8 @@ fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
             ("series", "string"),
             ("order", "integer"),
             ("when", "cel<bool>"),
+            ("on", "string"),
+            ("priority", "integer"),
         ],
     };
     keys.iter()
@@ -1415,7 +1417,7 @@ mod tests {
         let off = text.find("\" >").unwrap() + 2;
         let items = complete(text, off);
         let ls = labels(&items);
-        for k in ["id", "target", "category", "title", "series", "order", "when"] {
+        for k in ["id", "target", "category", "title", "series", "order", "when", "on", "priority"] {
             assert!(ls.contains(&k), "missing {k}: {ls:?}");
         }
     }

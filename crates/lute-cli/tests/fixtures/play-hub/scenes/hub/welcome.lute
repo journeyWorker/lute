@@ -1,0 +1,13 @@
+---
+kind: scene
+id: hub.welcome
+uses: ../../world.schema.yaml
+on: hubVisit
+when: 'user.metHypnos'
+priority: 10
+---
+
+## The Lounge
+
+@hypnos: Back already? Sign the ledger on your way in.
+::set{run.hubVisits = run.hubVisits + 1}

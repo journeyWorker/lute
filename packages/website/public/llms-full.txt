@@ -155,7 +155,7 @@ mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.20.0**.
+compiles, traces, and inspects them. The current language version is **0.21.0**.
 
 ## Quick start with `bunx`
 
@@ -211,16 +211,16 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.20.0
-language      0.20.0
-IR schema     0.20.0
+lute toolchain 0.21.0
+language      0.21.0
+IR schema     0.21.0
 ```
 
 Those are three independent axes: the **toolchain** version is this CLI, the **language** version
 is the grammar and semantics the checker enforces, and the **IR schema** version is what
 `lute compile` stamps into every artifact as `irVersion`. They mean different things, but a
 release always re-aligns all three visible numbers to that release's number, so all three read
-`0.20.0`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
+`0.21.0`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
 first time since `0.8.0`, `provenance.reason` becoming `provenance.explanation` — and under the
 then-current major.minor gate an engine on IR `0.9` had to widen to accept `0.10`. The gate is
 MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. For scripts and CI,
@@ -228,10 +228,10 @@ MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. 
 
 ```
 $ lute version --json
-{"toolchain":"0.20.0","language":"0.20.0","ir":"0.20.0"}
+{"toolchain":"0.21.0","language":"0.21.0","ir":"0.21.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.20.0` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.21.0` — the toolchain axis alone.)
 
 ## Next
 
@@ -245,7 +245,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.20.0**.
+**0.21.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -474,8 +474,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.20.0",
-  "irVersion": "0.20.0",
+  "lute": "0.21.0",
+  "irVersion": "0.21.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "character": "mira",
@@ -1994,7 +1994,7 @@ A lore document can say so directly (dsl 0.19.0 §2.1):
 ```lute
 ---
 kind: lore
-luteVersion: "0.20.0"
+luteVersion: "0.21.0"
 id: haven.purserLedger
 title: Purser's ledger
 series: purserLedger
@@ -2066,6 +2066,171 @@ The engine contract — eligibility, presentation, first-read effects — is in
 [`docs/runtime/lore-entries.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md);
 the normative spec is
 [`0.19.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md).
+
+---
+
+# Beats
+
+A lot of games do not advance on a clock. The story moves when something happens: a hub visit,
+entering a room, talking to an NPC, a new day, the start of a run. At that moment the game picks
+one piece of story whose conditions hold, or none.
+
+Lute calls those moments **occasions** and the pieces of story that answer them **beats** (dsl
+0.21.0). The engine raises occasions. Lute declares which beats answer each one, when each is
+eligible, and which eligible beat wins. A scene or a [lore entry](/language/lore-entries/) becomes
+a beat by naming the occasion it answers. Everything else about the document stays the same.
+
+## A scene beat
+
+```lute
+---
+kind: scene
+id: achilles.gift
+on: talk
+target: npc.achilles
+when: 'user.runs >= 10 && !run.giftRefused'
+priority: 50
+once: user
+state:
+  user.runs: { type: number, default: 0 }
+  run.giftRefused: { type: bool, default: false }
+---
+
+# Achilles
+
+## Shot 1.
+
+@achilles: You have been at this a while, lad. Take this.
+```
+
+When the engine raises `talk` for `npc.achilles`, this scene is a candidate. It is eligible once
+the player has started ten runs and has not refused the gift this run. It has never been shown
+before, because `once: user` spends it for good the first time it plays.
+
+## Scene beat keys
+
+| Key | Meaning |
+|---|---|
+| `on` | the occasion this scene answers; it is what makes the scene a beat |
+| `target` | optional; the scene is a candidate only when the occasion is raised for this target, a dotted id in the `<entry target>` shape (`npc.achilles`, `place.lab_b2`) |
+| `when` | optional CEL condition over `run` / `user` / `app` state, `quest.*`, `entry.<id>.read`, and fact queries (`holds(…)`, `count(…)`) |
+| `priority` | optional integer, default `0`; higher wins |
+| `once` | `run` (the default: at most once per run), `user` (at most once ever), or `false` (repeatable) |
+
+The beat keys are scene-only and never come from project `defaults:`. A beat belongs to one scene.
+
+`when` is an ordinary CEL slot, checked the way a quest `start` is: the profile's CEL surface,
+definite assignment, and the unset-sentinel rules all apply. The one extra rule is that a `when`
+may not read the scene's own `scene.*` state. That state does not exist until the scene starts.
+
+`after:` keeps its meaning. It is the structural prerequisite over `visited` / `completed` /
+`active` that [connectivity](/connectivity/scene-graph/) analyzes. A beat is eligible only when
+**both** `after:` and `when` hold, so put route order in `after:` and state conditions in `when`.
+
+A scene without `on:` is reached by explicit flow, as before. `when`, `target`, `priority`, or
+`once` without `on` is an error:
+
+```lute
+---
+kind: scene
+id: courtyard.rumor
+priority: 5
+---
+
+# Courtyard
+
+## Shot 1.
+
+@narrator: A rumor drifts across the courtyard.
+```
+
+## Entry beats
+
+A lore entry answers an occasion with `on=` and `priority=` beside its existing `target` and
+`when`:
+
+```lute
+---
+kind: lore
+title: Achilles barks
+state:
+  user.runs: { type: number, default: 0 }
+---
+
+<entry id="achillesBark1" on="talk" target="npc.achilles" category="bark">
+  @achilles: Keep your guard up.
+</entry>
+
+<entry id="achillesBark3" on="talk" target="npc.achilles" category="bark" priority="10" when="user.runs >= 3">
+  @achilles: Back again, lad.
+</entry>
+
+<entry id="achillesFirstMeeting" on="talk" target="npc.achilles" category="bark" priority="20" when="!entry.achillesFirstMeeting.read">
+  @achilles: So you are the one who keeps coming back.
+</entry>
+```
+
+Entries have no `once`. Being read again is normal for an entry: an NPC repeats a bark, a codex
+page stays open. An entry that should be heard only once guards on its own `entry.<id>.read`, as
+`achillesFirstMeeting` does above. `priority=` without `on=` is `E-BEAT-ATTR`.
+
+## Which beat wins
+
+When the engine raises occasion `O`, optionally for target `T`:
+
+1. The **candidates** are the beats with `on: O` whose `target` is absent or equal to `T`. Scene
+   and entry beats on the same occasion compete in one list.
+2. A candidate is **eligible** when its `after:` and `when` hold and its `once` is not spent.
+3. Eligible beats are ordered by **priority, descending, then project order**: document path,
+   then declaration order within the document. `project.index.json` lists every beat in that
+   order under `beats`.
+4. For a `select: first` occasion the engine presents the first eligible beat. For a `select: all`
+   occasion it offers the whole ordered list and the player picks.
+5. If no beat is eligible, the occasion passes with no story and the engine does its default.
+
+With the three barks above and a player on their fifth run, talking to Achilles for the first time
+presents `achillesFirstMeeting` (priority 20). After that it presents `achillesBark3` (priority 10)
+every time, and `achillesBark1` answers only while `user.runs` is below 3.
+
+## Occasions
+
+Occasions are engine vocabulary. A plugin declares them with an `occasions` export:
+
+```yaml
+occasions:
+  hubVisit:  { select: first }
+  talk:      { select: first, target: true }
+  inbox:     { select: all }
+```
+
+Until some resolved plugin declares occasions, occasion names are **shape-only**: any identifier
+is accepted, so you can write beats before the engine's plugin exists. Once any plugin declares
+them, a beat naming an undeclared occasion is `E-OCCASION-UNKNOWN`, and a `target` on an occasion
+declared without `target: true` is `E-BEAT-ATTR`. The declaration format, `select`, and `target`
+are covered on [Playing a story](/tooling/play/#occasions).
+
+## What the checker proves
+
+| Code | When |
+|---|---|
+| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not an identifier, `target` not a dotted id, `priority` not an integer, `once` outside `run` / `user` / `false`, beat keys without `on`, or a `target` on an untargeted occasion |
+| `E-OCCASION-UNKNOWN` | `on` names an occasion no resolved plugin declares (only once some plugin declares occasions) |
+| `E-BEAT-UNREACHABLE` | a scene beat's `when` provably never holds. `lute check` decides scalar conditions per file; `lute check-project` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
+| `W-BEAT-SHADOWED` | `check-project` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry, or a scene with `once: false`) |
+
+## Tooling
+
+- `lute play <dir> --script <play.yaml>` raises a scripted sequence of occasions through a whole
+  project. It prints every candidate with its verdict, runs the winner, and advances quest
+  lifecycles. See [Playing a story](/tooling/play/).
+- `lute compile --all` writes `beats` into `project.index.json`. Each compiled scene beat carries
+  `meta.beat`, and each entry beat carries `on` / `priority` on its `entry` record.
+- `lute context` lists the project's declared occasions beside its other vocabulary.
+
+The engine contract (candidates, eligibility, spending, presentation) is in
+[`docs/runtime/beats-and-occasions.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/beats-and-occasions.md);
+the normative spec is
+[`0.21.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md).
 
 ---
 
@@ -2659,7 +2824,7 @@ The index carries the document table plus the deterministic **union** of every a
 
 ```json
 {
-  "irVersion": "0.20.0",
+  "irVersion": "0.21.0",
   "capabilityVersion": "…",
   "documents": [
     { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",
@@ -2801,13 +2966,10 @@ Execute a compiled artifact headlessly against a mock playthrough — the refere
 ## play
 
 ```console
-$ lute play <PROJECT_DIR> [--state P=L]… [--fact "R(A…)"]…
-            [--script <FILE>] [--choose EVENT/ID=CHOICEID[,CHOICEID…]]…
-            [--auto first] [--lanes user|all] [--steps N] [--json]
-$ lute play <PROJECT_DIR> --coverage <FILE>… [--json]
+$ lute play <PROJECT_DIR> --script <FILE> [--json]
 ```
 
-Play one scheduled route through a whole project as one chained, reviewer-facing transcript — the reference-runtime consumer of a project's [`schedule.yaml`](/tooling/schedule-and-play/). Requires a schedule; a project with none is a hard error (exit **2**), since sibling route files are unguarded by design. Route selection is `--state`/`--fact` seeds, a `--script <route>.play.yaml` (this command's own closed grammar), and/or ad-hoc `--choose <event>/<id>=<choiceId>`; `--auto first` resolves anything left unscripted. `--coverage <FILE>` (repeatable, one file per flag) replays a corpus of route scripts and reports every never-exercised placement/variant/hub-choice option, exclusive with `--script`/`--choose`/`--steps`. Exit **0** complete (or full coverage), **1** an `E-SCHED-*` schedule/causality violation (or a coverage gap), **2** usage/I/O, **3** incomplete. Full reference: [Schedule & play](/tooling/schedule-and-play/).
+Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project is compiled once, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). The required `--script` is a `*.play.yaml` file with a closed key set — `steps:` (each one `{occasion, target?, pick?}` or `{newRun: true}`) plus the `lute trace --mock` grammars for `state:`, `facts:`, and `choose:`. Each step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object. Exit **0** complete (every step played, or a scene's `::end`), **1** an error (the project fails to compile, a vocabulary conflict, or a `pick` that is not eligible), **2** a usage/I/O failure (a malformed script, an unknown occasion, an unreadable project), **3** incomplete (an unscripted choice or hub, or a `when`, quest objective, `now()`/`validAt()`, or plugin `bridgeResult` the reference runtime cannot decide). Script format, selection order, and transcript shapes: [Playing a story](/tooling/play/).
 
 ## test
 
@@ -2863,67 +3025,434 @@ Print the three independent version axes ([versioning](https://github.com/journe
 
 ---
 
-# Schedule & play
+# Playing a story
 
-`schedule.yaml` places a project's scenes on a tick clock instead of leaving reading order to file position; `lute play <PROJECT_DIR>` walks that schedule into one chained, reviewer-facing transcript — the order a player following one route actually sees. Both are toolchain-only: `schedule.yaml` carries no `kind:`, no `luteVersion:`, no capability fold, and neither the language nor the IR moved to add them. `lute play` refuses a project with no `schedule.yaml` outright (exit **2**): sibling route files are deliberately unguarded (file split *is* the route), so an `after:`-graph walk can't select one route through them.
+A narrative game picks its next piece of story at moments of its own: a hub visit, entering a room, talking to an NPC, a new day, the start of a run. Lute calls those moments **occasions** and the pieces of story that answer them **beats** (dsl 0.21.0). The engine raises occasions; Lute defines which beats are eligible and which one wins. `lute play` is the reference player for that contract: give it a script of raised occasions and it walks the whole project, printing every candidate beat, its verdict, and the winner, and playing the winner through the same reference runner as `lute run`.
 
-## `schedule.yaml`
+The normative text is the [0.21.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md); the engine-side contract (the IR fields and the selection algorithm an engine implements) is [`docs/runtime/beats-and-occasions.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/beats-and-occasions.md). Before 0.21.0, `lute play` walked a tick-clock schedule file; that layer, its clock/lane/placement model, and its flags are removed. Time is now one input to a beat's condition, not the frame.
+
+## Occasions
+
+An occasion is **engine vocabulary**: a named moment the engine raises, optionally *for* a target (`talk` → `npc.achilles`). A plugin declares its occasions through an `occasions` export — list it in `plugin.yaml` (`exports: { occasions: occasions/ }`) and put the map in `occasions/*.yaml`:
 
 ```yaml
-clock:
-  buckets: [dawn, morning, late_morning, afternoon, late_afternoon, evening, night, midnight]
-  ticksPerBucket: 12
-  days: 7
-
-lanes:
-  user:  { exclusive: true, idleThreshold: 0 }
-  world: { exclusive: false }
-
-assume:
-  - "run.inflow != 'none'"
-
-placements:
-  - event: kuhen
-    lane: user
-    at: d2.morning+0
-    size: 4
-    variants:
-      - when: "run.inflow == 'hanae'"
-        doc: scenes/kuhen/hanae.lute
-      - when: "run.inflow == 'yunah'"
-        doc: scenes/kuhen/yunah.lute
-        at: d2.afternoon+0
-        size: 6
+occasions:
+  hubVisit:  { select: first }
+  talk:      { select: first, target: true }
+  roomEnter: { select: first, target: true }
+  inbox:     { select: all, description: Letters waiting at the fountain }
 ```
 
-`clock:` is `buckets` × `ticksPerBucket` × `days` (1-based, `d0` rejected). `lanes:` names any set of lanes; `exclusive: true` guards co-satisfiable placements against overlapping intervals (`E-SCHED-USER-OVERLAP`). `assume:` prunes route-space assignments the schedule can prove never occur from the static gap/ambiguity/overlap sweep — it narrows, never hides a real gap. Each `placements:` entry occupies `[at, at+size)` on one lane, either a single unguarded `doc:` or a `variants:` list (`when`/`doc`/`at?`/`size?`/`presentation?`) where at most one is satisfiable per route; `optional: true` legalizes zero satisfiable variants for some route. `presentation` (default `100`, lower first) decouples *when a scene is presented* from *when it happens on the clock* — a variant overriding its placement's `at`/`size`/`presentation` is how the same event sits at a different position per route.
+- `select: first` (the default) — the engine presents the single winning beat.
+- `select: all` — the engine offers every eligible beat, in selection order, and the player picks one (a message inbox, an area map, quest givers "in any order").
+- `target: true` — the occasion is raised **for** something, and a beat may restrict itself to one target. Default `false`.
+- `description` — optional prose for tooling.
 
-`at:` is `[dN.]<bucket>+<tick>` (`dN.` optional, defaults to day 1; `0 ≤ tick < ticksPerBucket`) or a bare absolute tick integer. A malformed shape is `E-SCHED-AT-PARSE`; a well-formed coordinate resolving past the clock is the different code `E-SCHED-CLOCK-OVERFLOW`. An omitted `at:` inherits the previous same-lane placement's resolved `at + size`, unless that predecessor is itself route-dependent (`E-SCHED-CURSOR-DYNAMIC`). Execution order is a later, separate sort: `(presentation, resolved at, declaration index)`.
+When no resolved plugin declares occasions, occasion names are **shape-only**: any identifier is accepted, so you can write beats before the engine's plugin exists. Once any plugin declares them, a beat naming an undeclared occasion is `E-OCCASION-UNKNOWN`, and a `target` on an occasion declared without `target: true` is `E-BEAT-ATTR`. The export folds into the capability snapshot as a guarded section, so a project whose plugins declare no occasions keeps its `capabilityVersion`.
+
+## Beats
+
+### Scene beats
+
+A scene becomes a beat by naming the occasion it answers in its frontmatter:
+
+```yaml
+---
+kind: scene
+id: achilles.gift
+on: talk
+target: npc.achilles
+when: 'user.runs >= 10'
+priority: 50
+once: user
+---
+```
+
+| Key | Meaning |
+|---|---|
+| `on` | The occasion this scene answers. Makes the scene a beat. |
+| `target` | Optional. The scene is a candidate only when the occasion is raised for this target (a dotted id, the `<entry target>` shape). |
+| `when` | Optional CEL condition over `run` / `user` / `app` state, `quest.*`, `entry.<id>.read`, and fact queries. The scene's own `scene.*` state does not exist yet and is rejected. |
+| `priority` | Optional integer, default `0`. Higher wins. |
+| `once` | `run` (the default — once per run), `user` (once ever), or `false` (repeatable). |
+
+`after:` keeps its meaning — the structural prerequisite over `visited` / `completed` / `active` that [connectivity](/connectivity/scene-graph/) analyzes — and a beat is eligible only when both `after:` and `when` hold. `when`, `target`, `priority`, or `once` without `on` is `E-BEAT-ATTR`: a scene that answers no occasion is reached by explicit flow, as before.
+
+### Entry beats
+
+A [lore entry](/language/lore-entries/) answers an occasion with `on=` and `priority=` beside its existing `target` and `when`:
+
+```lute
+<entry id="achillesBark" on="talk" target="npc.achilles" category="bark" priority="10" when="user.runs >= 3">
+  @achilles: Back again, lad.
+</entry>
+```
+
+Entries have no `once`: re-presentation is their nature. An entry that should be heard once guards on its own `entry.<id>.read`.
+
+## Selection
+
+When the engine raises occasion `O`, optionally for target `T`:
+
+1. **Candidates** are the beats with `on: O` whose `target` is absent or equal to `T`. An occasion raised without a target has only untargeted candidates.
+2. A candidate is **eligible** when its `after:` holds (scene beats), its `when` holds, and its `once` is not spent — `run`: not yet presented this run; `user`: never presented; `false`: never spent. Entry beats are never spent.
+3. Eligible beats are **ordered by priority, descending, then project order**: document path, then declaration order within the document — the order of `beats` in `project.index.json`. Scene and entry beats on the same occasion compete in one list.
+4. `select: first` presents the first eligible beat; `select: all` offers the ordered list and presents the one the player picks.
+5. **No eligible beat** — the occasion passes with no story, and the engine's default behavior for that moment applies.
+
+Selection is deterministic: the same state, facts, and presentation history pick the same beat in every engine. Weighted randomness or cooldowns are engine policy layered on top; the reference tooling implements exactly this order.
 
 ## `lute play`
 
 ```console
-$ lute play <PROJECT_DIR>
-    --state run.inflow=hanae ... --fact "..." ...
-    --script routes/hanae.play.yaml --choose kuhen/coffeeOrder=recommend ...
-    --auto first --lanes user|all --steps N --coverage <FILE>... --json
+$ lute play <PROJECT_DIR> --script <FILE> [--json]
 ```
 
-Compiles the whole gated project once (scene *and* quest kind, the same declaration union `compile --all` writes), then walks the schedule's user-lane placements in presentation order, threading `run.*`/`user.*`/`app.*`/`quest.*` state and facts across scene boundaries through `lute run`'s own reference evaluator. Route selection is `--state`/`--fact` seeds, a `--script <route>.play.yaml` (its own closed grammar — event-qualified `choose:` ids, never the `lute trace --mock` parser), and/or ad-hoc `--choose <event>/<id>=<choiceId>`; `--auto first` resolves anything left unscripted at every hub re-presentation. A non-`optional` placement with zero satisfiable variants is `E-SCHED-VARIANT-GAP`, two or more is `E-SCHED-VARIANT-AMBIG`, an `after:` unsatisfied in presentation order is `E-SCHED-AFTER-ORDER` — all three halt exit **1**. Quest state is data-unioned project-wide but the `<quest>`/`<on>` lifecycle is never driven across scene boundaries — `completed(...)`/`active(...)` always evaluate against an empty set, so a placement causally gated on quest completion always halts `E-SCHED-AFTER-ORDER` (exit **1**), never silently passes.
+- `<PROJECT_DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents).
+- `--script <FILE>` — required: the play script, a `*.play.yaml` file.
+- `--json` — the same transcript as one JSON object on stdout.
 
-After a user placement completes, every not-yet-fired world placement whose start tick falls inside the segment just covered drains atomically, in `(at, declaration index)` order, even under `--lanes user` (world scenes still execute; the flag only gates the transcript). A presentation jump backward starts a new segment, purely cinematic — no state rolls back. A world placement draining inside a segment that plays "in the future" of a later-presented one is `W-SCHED-WORLD-IN-FLASHBACK`.
+There is nothing else to seed on the command line: state, facts, and decisions all live in the script, so a playthrough is one reviewable file.
 
-`--coverage <FILE>` (repeatable, one file per flag — no glob expansion inside the flag itself; a shell glob passed directly is a clap usage error) replays every named route script and reports every placement/variant/hub-choice option the corpus never exercises, exclusive with `--script`/`--choose`/`--steps`. Exit **0** complete (or full coverage), **1** an `E-SCHED-*` violation (or a coverage gap), **2** usage/I/O (including no `schedule.yaml` at all), **3** incomplete — an unscripted decision with no `--auto` policy, or an unresolved reference-runtime surface (`now()`/`validAt(...)`, an unresolved plugin `bridgeResult` effect), or (for `--coverage`) at least one corpus script itself halting incomplete.
+### The play script
 
-Transcript headers read `── <tickLabel> (tick <N>) · <lane> · <event>/<variant> ──`; `⏩`/`⏪` mark fast-forward and cinematic rewind; `▷ choice <id>: opt1 [chosen] opt2 ← chosen: opt2` restates every offered option per decision. `--json` emits `{exit, endReason, scenes: [...]}`, deterministic — same seeds and script produce byte-identical output.
+A play script has exactly four top-level keys — `state`, `facts`, `choose`, and `steps`:
 
-**Diagnostics** — fifteen static errors (`E-SCHED-CLOCK-STRUCTURE`, `E-SCHED-BUCKET-DUP`, `E-SCHED-LANE-UNKNOWN`, `E-SCHED-EVENT-DUP`, `E-SCHED-VARIANT-FORM`, `E-SCHED-SIZE-INVALID`, `E-SCHED-AT-PARSE`, `E-SCHED-CURSOR-DYNAMIC`, `E-SCHED-CLOCK-OVERFLOW`, `E-SCHED-DOC-MISSING`, `E-SCHED-DOC-PATH`, `E-SCHED-VARIANT-GAP`, `E-SCHED-VARIANT-AMBIG`, `E-SCHED-USER-OVERLAP`, `E-SCHED-GUARD-PARSE`), one runtime error (`E-SCHED-AFTER-ORDER`), and five warnings (`W-SCHED-DOC-UNPLACED`, `W-SCHED-IDLE`, `W-SCHED-ROUTESPACE-CAP`, `W-SCHED-TIME-MISMATCH`, `W-SCHED-WORLD-IN-FLASHBACK`). Full field-by-field reference and the complete diagnostic table: [Schedule & play](/tooling/schedule-and-play/).
+```yaml
+state: { user.runs: 9 }          # path -> scalar literal, over the declared defaults
+facts: ["knows(achilles)"]       # ground facts, added to the project's seed facts
+steps:                           # required, non-empty
+  - occasion: hubVisit           # raise an occasion
+  - occasion: talk
+    target: npc.achilles         # only for an occasion declared `target: true`
+  - occasion: inbox
+    pick: megNote                # required for a `select: all` occasion, refused for `select: first`
+  - newRun: true                 # start a new run
+choose:                          # branch/hub id -> choice id (a list for a hub's visit sequence)
+  gift: accept                   # applied to every presented scene
+```
+
+`state:`, `facts:`, and `choose:` use exactly the grammar of a [`lute trace --mock`](/tooling/tracing/) file. Each step is either `{occasion, target?, pick?}` or `{newRun: true}`.
+
+The script is rejected before anything plays — a **usage error, exit 2** — when it is unreadable or malformed YAML; it has an unknown top-level key; `steps` is missing or empty; a step is not exactly one of the two shapes; a step names an occasion no resolved plugin declares (when some plugin declares occasions) or, in a shape-only project, an occasion no beat answers; a step carries `target` on an occasion not declared `target: true`; `pick` appears on a `select: first` occasion; a `select: all` step has no `pick`; or a `pick` names no beat that answers that occasion.
+
+### What each step does
+
+1. **Candidates** — every beat in the project's beat list with `on` equal to the step's occasion whose `target` is absent or equals the step's `target`.
+2. **Verdicts** — a candidate is eligible when its `once` is not spent (scene beats only: `run` — not presented since the last `newRun`; `user` — never presented in this play; `false` — never spent), its `after:` holds (scene beats; evaluated against the **live** `visited` set of presented scenes and the `completed` / `active` sets of real quest states), and its `when` holds (evaluated by the reference runner's CEL evaluator over live state and facts, with the Datalog rules applied). A `when` that evaluates to unknown — `validAt(…)`, `now()` — halts the walk **incomplete (exit 3)** naming the beat, unless a definitely-eligible beat outranks it on a `select: first` occasion, where it cannot change the winner.
+3. **Order** — eligible beats by priority descending, then project order.
+4. **Select** — the occasion's `select` comes from the resolved plugins' `occasions` export (an undeclared occasion is `first`). `first`: the first eligible beat wins; none eligible, and the occasion passes with no story. `all`: the step's `pick` is presented; a pick that is not eligible at that moment is an **error (exit 1)**.
+5. **Present** — a scene beat runs through the reference runner (`lute run`'s evaluator): `scene.*` resets to the scene's own defaults, `run.*` / `user.*` / `app.*` / `quest.*` state and facts carry over, and `choose:` decides branches and hubs; an unscripted decision halts **incomplete (exit 3)**. An entry beat is presented by the lore-entry rules: its effects apply on the first read only, then `entry.<id>.read` becomes true. A scene's `::end` ends the whole playthrough, complete.
+6. **Quests** — after every presentation, and once before step 1, every quest lifecycle advances exactly as `lute run` advances a quest artifact: activation (`start`, or immediately without one), objective completion (monotone; objective bodies play once), `fail` before completion, `<on>` handlers, and `<reward>` grants. So a later `when` over `quest.*`, or an `after: completed(…)` / `active(…)`, sees real progress.
+
+A `newRun: true` step resets `run.*` state to its declared defaults, run-tier facts to the project's seed facts, the run-tier `entry.<id>.read` flags (so an entry's effects apply again on its first read in the new run), and `once: run` spending. `user.*` / `app.*` / `quest.*` state, user- and app-tier facts, the `visited` history, and `once: user` spending persist. `once: user` across separate `lute play` invocations is not modelled — put the runs in one script, separated by `newRun` steps.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Complete — every step played, or a scene's `::end` ended the playthrough. |
+| `1` | Error — the project fails to compile, a vocabulary conflict, or a `pick` that is not eligible. |
+| `2` | Usage or I/O — a bad script, an unknown occasion, an unreadable project, a malformed artifact. |
+| `3` | Incomplete — an unscripted choice or hub, a `when` or quest objective that evaluates to unknown, or an unresolved `now()` / `validAt()` / plugin `bridgeResult`. |
+
+## The transcript
+
+The human transcript names every step, lists its candidates with their verdicts, and marks the winner before the presented beat plays:
+
+```
+── start ──────────────
+  quest oldSoldier -> active
+── step 1 · hubVisit ──────────────
+  ✓ hub.firstEver [scene, priority 20]
+  ✓ hub.welcome [scene, priority 10]
+  → hub.firstEver
+@hypnos: Oh! You're back already? I mean — welcome home, I guess.
+```
+
+- Every header is its text followed by a fixed `──────────────` rule. `── start` carries the quest transitions made before step 1; each step opens with `── step <n> · <occasion>`, plus `→ <target>` for a targeted step and `(select: all, pick: <id>)` on a pick.
+- Candidates are listed eligible first (`✓`), in selection order, then ineligible (`✗`), in selection order, each with its kind and priority. An ineligible candidate carries its reason: `once: run — already presented this run`, `once: user — already presented`, `after: prerequisite not satisfied`, or `when: false`.
+- `→ <id>` names the winner. With no winner the line reads `→ (no eligible beat — the occasion passes)`.
+- The presented beat's own transcript follows: content lines as `@speaker: text`, decisions as `▷ choice <id>: … ← chosen: <id>`, state writes as `set <path> = <value>`, and an entry's `entry <id> (first read)` — or `entry <id> (re-read: effects skipped)`, with each skipped effect marked `(skipped: re-read)`. Quest transitions the presentation caused come last: `<quest>.<objective> done`, `quest <id> -> <state>`, and reward grants.
+- A `newRun` step prints `── step <n> · new run` and `run.* state, run-tier facts and once: run reset`.
+- The walk ends with `── end: complete (<n> steps)`, or `── halted: <message>` when it stops early.
+
+`--json` emits the same walk as one object:
+
+```ts
+type PlayTranscript = {
+  exit: "complete" | "incomplete" | "error";
+  start: { quests: QuestGroup[] };         // transitions made before step 1
+  steps: (OccasionStep | NewRunStep)[];
+  endReason?: string;
+  error?: { message: string };
+};
+
+type OccasionStep = {
+  step: number;
+  occasion: string;
+  target?: string;
+  select: "first" | "all";
+  pick?: string;
+  candidates: {
+    id: string;
+    kind: "scene" | "entry";
+    document: string;
+    priority: number;
+    eligible: boolean | null;              // null: the `when` evaluated to unknown
+    reason?: string;                       // e.g. "when: false", "when: unknown (<detail>)"
+  }[];
+  winner: string | null;
+  presented?: {
+    id: string;
+    kind: "scene" | "entry";
+    document: string;
+    commands: RunnerRecord[];              // the records `lute run --json` emits
+    stateDelta: Record<string, unknown>;   // path -> value
+  };
+  quests: QuestGroup[];                    // transitions after this presentation
+};
+
+type NewRunStep = { step: number; newRun: true };
+
+type QuestGroup = {
+  document: string;                        // the quest document
+  commands: RunnerRecord[];                // its `objective` / `quest` / `grant` records
+};
+```
+
+## Worked example
+
+A small hub game in the shape of *Hades*: a lounge the player returns to between runs, an old soldier with a gift for a tenth escape attempt, and an inbox of letters. The project:
+
+```
+house/
+├── lute.project.yaml
+├── house.schema.yaml
+├── plugins/house.occasions/
+│   ├── plugin.yaml
+│   └── occasions/house.yaml
+├── scenes/
+│   ├── hub-first-ever.lute
+│   ├── hub-welcome.lute
+│   └── achilles-gift.lute
+├── quests/old-soldier.lute
+├── lore/letters.lute
+└── plays/tenth-run.play.yaml
+```
+
+The project activates one plugin whose only export is the engine's occasions — `lute.project.yaml`, `plugins/house.occasions/plugin.yaml`, and `plugins/house.occasions/occasions/house.yaml`:
+
+```yaml
+pluginsDir: plugins/
+defaultProfile: house
+profiles:
+  house:
+    plugins: { house.occasions: true }
+```
+
+```yaml
+id: house.occasions
+version: 0.1.0
+kind: capability
+depends: [ { id: lute.core, range: "^0.0.1" } ]
+exports:
+  occasions: occasions/
+```
+
+```yaml
+occasions:
+  hubVisit: { select: first }
+  talk:     { select: first, target: true }
+  inbox:    { select: all }
+```
+
+The shared state, `house.schema.yaml`:
+
+```yaml
+state:
+  user.runs:         { type: number, default: 0 }
+  user.giftAccepted: { type: bool, default: false }
+```
+
+Two lounge scenes answer `hubVisit`. The first-ever greeting outranks the everyday one and is heard once ever; the everyday one keeps the default `once: run`:
+
+```lute
+---
+kind: scene
+id: hub.firstEver
+uses: ../house.schema.yaml
+on: hubVisit
+priority: 20
+once: user
+---
+
+## The lounge
+
+@hypnos: Oh! You're back already? I mean — welcome home, I guess.
+```
+
+```lute
+---
+kind: scene
+id: hub.welcome
+uses: ../house.schema.yaml
+on: hubVisit
+priority: 10
+---
+
+## The lounge
+
+@hypnos: Welcome back. Try not to die so much.
+```
+
+The old soldier's gift answers `talk` for one target, and only from the tenth run on:
+
+```lute
+---
+kind: scene
+id: achilles.gift
+uses: ../house.schema.yaml
+on: talk
+target: npc.achilles
+when: 'user.runs >= 10'
+priority: 50
+once: user
+---
+
+## The courtyard
+
+@achilles: Ten times through that door, lad. That has earned you something.
+
+<branch id="gift">
+  <choice id="accept" label="Accept the gift">
+    ::set{ user.giftAccepted = true }
+    @achilles: Wear it well.
+  </choice>
+  <choice id="decline" label="Decline">
+    @achilles: Another time, then.
+  </choice>
+</branch>
+```
+
+A quest tracks the gift, and two letters answer the `inbox` — one only after the gift:
+
+```lute
+---
+kind: quest
+uses: ../house.schema.yaml
+title: The old soldier
+---
+
+<quest id="oldSoldier" title="The old soldier">
+  <objective id="takeGift" title="Accept the old soldier's gift" done="user.giftAccepted"/>
+</quest>
+```
+
+```lute
+---
+kind: lore
+id: house.letters
+uses: ../house.schema.yaml
+---
+
+<entry id="megNote" on="inbox" category="note" priority="5" when="user.giftAccepted">
+  @meg: Heard the old soldier gave you something. Don't get sentimental.
+</entry>
+
+<entry id="dusaNote" on="inbox" category="note">
+  @dusa: The lounge is spotless! Well, almost.
+</entry>
+```
+
+The script plays the tenth run and the start of the eleventh:
+
+```yaml
+# plays/tenth-run.play.yaml
+state: { user.runs: 10 }
+steps:
+  - occasion: hubVisit
+  - occasion: inbox
+    pick: dusaNote
+  - occasion: talk
+    target: npc.achilles
+  - occasion: hubVisit
+  - occasion: hubVisit
+  - newRun: true
+  - occasion: hubVisit
+  - occasion: inbox
+    pick: megNote
+choose:
+  gift: accept
+```
+
+```console
+$ lute play house --script house/plays/tenth-run.play.yaml
+```
+
+```
+── start ──────────────
+  quest oldSoldier -> active
+── step 1 · hubVisit ──────────────
+  ✓ hub.firstEver [scene, priority 20]
+  ✓ hub.welcome [scene, priority 10]
+  → hub.firstEver
+@hypnos: Oh! You're back already? I mean — welcome home, I guess.
+── step 2 · inbox (select: all, pick: dusaNote) ──────────────
+  ✓ dusaNote [entry, priority 0]
+  ✗ megNote [entry, priority 5] — when: false
+  → dusaNote
+  entry dusaNote (first read)
+@dusa: The lounge is spotless! Well, almost.
+── step 3 · talk → npc.achilles ──────────────
+  ✓ achilles.gift [scene, priority 50]
+  → achilles.gift
+@achilles: Ten times through that door, lad. That has earned you something.
+▷ choice gift: [accept] decline        ← chosen: accept
+  set user.giftAccepted = true
+@achilles: Wear it well.
+  oldSoldier.takeGift done
+  quest oldSoldier -> complete
+── step 4 · hubVisit ──────────────
+  ✓ hub.welcome [scene, priority 10]
+  ✗ hub.firstEver [scene, priority 20] — once: user — already presented
+  → hub.welcome
+@hypnos: Welcome back. Try not to die so much.
+── step 5 · hubVisit ──────────────
+  ✗ hub.firstEver [scene, priority 20] — once: user — already presented
+  ✗ hub.welcome [scene, priority 10] — once: run — already presented this run
+  → (no eligible beat — the occasion passes)
+── step 6 · new run ──────────────
+  run.* state, run-tier facts and once: run reset
+── step 7 · hubVisit ──────────────
+  ✓ hub.welcome [scene, priority 10]
+  ✗ hub.firstEver [scene, priority 20] — once: user — already presented
+  → hub.welcome
+@hypnos: Welcome back. Try not to die so much.
+── step 8 · inbox (select: all, pick: megNote) ──────────────
+  ✓ megNote [entry, priority 5]
+  ✓ dusaNote [entry, priority 0]
+  → megNote
+  entry megNote (first read)
+@meg: Heard the old soldier gave you something. Don't get sentimental.
+── end: complete (8 steps) ──────────────
+```
+
+Reading it step by step:
+
+- **Start** — the quest has no `start`, so it activates before the first step.
+- **Step 1** — both lounge scenes are eligible; priority 20 beats 10.
+- **Step 2** — `inbox` is `select: all`, so the script picks. `megNote`'s `when` is still false, so it is listed but not offered; picking it here would be an error (exit 1).
+- **Step 3** — `user.runs` is 10, so the gift is eligible. Accepting it sets `user.giftAccepted`, and the quest advances right after the presentation.
+- **Steps 4–5** — the first-ever greeting is spent for good (`once: user`); the everyday one plays once this run, and the next visit passes with no story.
+- **Steps 6–7** — the new run resets `once: run` spending, so the everyday greeting is eligible again; `user.*` state and `once: user` spending persist.
+- **Step 8** — the gift made `megNote` eligible, and the quest's completion is the same fact any later `after: completed("oldSoldier")` would see.
 
 ---
 
 # Runtime contract
 
-`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.20.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.20.schema.json) (JSON Schema draft 2020-12).
+`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.21.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.21.schema.json) (JSON Schema draft 2020-12).
 
 Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST and leaves the rest as raw CEL, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. `holds()`/`count()` are inside the §8.4 profile authors may write and deliberately absent from the `expr` AST, so a relational guard reaches the engine as raw CEL text alone and an engine MUST have a CEL evaluator, not merely an AST walker. The engine trusts the artifact.
 
@@ -3884,11 +4413,11 @@ For the complete project — the plugin manifests, schemas, component, catalog, 
 
 # Current specification
 
-The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.20.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.21.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
-| Frontmatter & profiles | 0.1.0 | 0.19.0 (a third document kind, `kind: lore`, taking the quest-document keys; quest and lore documents gain an optional document `id:`, and a lore document an optional `series:`) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| Frontmatter & profiles | 0.1.0 | 0.21.0 (a scene becomes a beat with the scene-only keys `on:` / `target:` / `when:` / `priority:` / `once:`; `when`, `target`, `priority`, or `once` without `on` is `E-BEAT-ATTR`) | [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | Content lines (`@speaker`) | 0.1.0 | 0.5.1 (delivery-flag honesty) | [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
 | Core directives (the closed `lute.core` vocabulary) | 0.1.0 | 0.9.0 (`::auto{action}` and `::music{mood}` retyped from free `string` to `{ domain: … }`, so both slots are checkable at last; the core's own member lists emptied) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Content vocabulary (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) | 0.1.0 (closed member lists shipped inside `lute.core`) | 0.9.0 (**the project owns the members** — the compiler declares slots and ships none; three declaration routes; the `exits:`/`default:` long form; an undeclared slot is `E-DOMAIN-UNKNOWN`) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
@@ -3901,13 +4430,14 @@ The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://gith
 | Timeline & property tracks | 0.1.0 | 0.1.0 | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
 | Connectivity & `after:` | 0.2.0 (`after:`) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
-| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.19.0 (additive: artifact `kind: "lore"` with `LoreMeta`, the `entry` command record carrying the resolved `series` / `order` and its body-segment address, optional `QuestMeta.id`, and `ProjectIndex.entries`; scene artifacts, and quest artifacts without `id:`, are byte-identical apart from the version strings) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
-| Warning-severity diagnostics | 0.6.1 | 0.20.0 (`W-FACT-GUARANTEED` — `check-project` warns when a relational query inside a guard provably holds on every route to it; `W-UNPROVEN-RELATIONAL` is **removed** — a relational gate is now decided rather than flagged, and naming it in `--deny` is a usage error) | [0.20.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md) |
+| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.21.0 (additive: optional `SceneMeta.beat` — `on`, `target?`, `when?`, the resolved `priority`, and `once` as `"run"` / `"user"` / `"none"` — optional `EntryCmd.on` / `priority`, and `ProjectIndex.beats` in selection-tiebreak order; scene and lore artifacts without beats are byte-identical apart from the version strings) | [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
+| Warning-severity diagnostics | 0.6.1 | 0.21.0 (`W-BEAT-SHADOWED` — `check-project` warns when a `select: first` beat can never win because an earlier-ordered beat on the same occasion and target is always eligible and never spent; `0.20.0` added `W-FACT-GUARANTEED` and removed `W-UNPROVEN-RELATIONAL` — naming it in `--deny` is a usage error) | [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | Deny promotion (`--deny`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.20.0`'s alignment-only IR restamp costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.20.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.21.0`'s additive IR move — beat fields an engine without beat support ignores — costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.21.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
 | Scene & document identity (`id:` frontmatter) | 0.15.0 (authored canonical scene key; new `id:` frontmatter is the lineId prefix, `visited()`/connectivity node, and `prereqEdges[].node`, superseding the derived `{character}.{episodeId}` join wherever it was consumed; `character`/`season`/`episode`/`episodeId` demote to optional when `id:` is present) | 0.19.0 (quest and lore documents may declare an optional document `id:` — the bundle name, the artifact's `meta.id`, and its `ProjectIndex` key; document ids share one project-wide namespace with scene ids, so `E-META-ID` and `E-CONN-EPISODE-ID-DUP` extend to them) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
-| Lore entries (queried content) | 0.19.0 (`kind: lore` documents of top-level `<entry>` declarations — content the engine looks up rather than plays; `id` / `target` / `category` / `title` / `series` / `order` / `when` attributes, `target` and `category` shape-only; bodies admit content lines, `<match>`, `::set`, `::assert`, `::retract`; knowledge revealed by plain `::assert`; the reserved engine-written `entry.<id>.read` path; first-read-only effects; a document-level `series:` ordering entries by file position; new `E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`) | 0.19.0 | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| Lore entries (queried content) | 0.19.0 (`kind: lore` documents of top-level `<entry>` declarations — content the engine looks up rather than plays; `id` / `target` / `category` / `title` / `series` / `order` / `when` attributes, `target` and `category` shape-only; bodies admit content lines, `<match>`, `::set`, `::assert`, `::retract`; knowledge revealed by plain `::assert`; the reserved engine-written `entry.<id>.read` path; first-read-only effects; a document-level `series:` ordering entries by file position; new `E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`) | 0.21.0 (an entry answers an engine occasion with `on=` / `priority=` beside its `when` / `target`, making it an entry beat; entries take no `once`) | [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | Relational guard analysis (fact envelopes) | 0.20.0 (`check-project` decides every `holds(…)` / `count(…)` in a guard slot as **impossible**, **guaranteed**, or **possible** from a project-wide, argument-level *may* set and a path-sensitive *must* set of monotone facts propagated across the `after:` graph; guards are assumptions inside their regions and `count` is decided over an interval; a dead relational guard reuses its slot's code — `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN` — plus the new `E-ENTRY-UNREACHABLE` for a lore entry `when`, and a guaranteed one is `W-FACT-GUARANTEED`; project-level only — single-file `check` leaves relational queries undecided; `lute scenario … envelope` lists the guaranteed facts at a node) | 0.20.0 | [0.20.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md) |
+| Beats and occasions (story selection) | 0.21.0 (a scene or lore entry becomes a **beat** by naming the engine **occasion** it answers — scene frontmatter `on:` / `target:` / `when:` / `priority:` / `once: run \| user \| false`, entry attributes `on=` / `priority=`; eligible when `after:` and `when` hold and `once` is unspent, ordered by priority then `ProjectIndex.beats` order; an optional plugin `occasions:` export — `select: first \| all`, `target: true` — folded into the capability snapshot as a guarded section; new `E-BEAT-ATTR`, `E-OCCASION-UNKNOWN`, `E-BEAT-UNREACHABLE`, `W-BEAT-SHADOWED`; `schedule.yaml` and every `E-SCHED-*` / `W-SCHED-*` code **removed**, `lute play` rebuilt on raised occasions and driving quest lifecycles) | 0.21.0 | [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 
 Notes on the boundaries:
 
@@ -3924,7 +4454,7 @@ Notes on the boundaries:
 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.20.0**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.21.0**.
 
 ## Scenario DSL (the language)
 
@@ -3954,7 +4484,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | `0.17.2` | **Additive plugin owner metadata**: passthrough `kind: "plugin"` records may carry the resolved owning plugin id in optional `plugin` metadata, so hosts can dispatch by `(plugin, tag)`; declarative presentation directives with `lower: { record, fields }` continue to emit stable core records. No grammar or static-semantic change; `schemas/lute-ir-0.17.schema.json` keeps its name and `$id`. | [0.17.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.2.md) |
 | `0.18.0` | **Range patterns in `<when is>`**: inclusive numeric range literals `N..M` / `N..` / `..M` (signed decimal bounds) join the `is=` literal set, and a subject declared `number` becomes a coverage-checkable domain — interval union over the reals, so `E-NONEXHAUSTIVE` names the first uncovered gap and `E-ARM-DEAD` / `W-OVERLAP-ARMS` / `W-OTHERWISE-DEAD` are interval-aware. New `E-WHEN-RANGE` (a malformed or empty range) and `W-WHEN-TEST-LITERAL` (a literal-comparison `test` guard that `is=` expresses; its `migrate` fixit is applied by `lute fix`). IR is an alignment restamp — range arms lower to the existing `>=` / `<=` / `&&` operators — and the schema renames to `schemas/lute-ir-0.18.schema.json`. | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
 | `0.19.0` | **Lore entries (queried content)**: a third document kind, `kind: lore`, whose top level is a set of `<entry id target category title series order when>` declarations — content the engine looks up (item descriptions, found notes, inscriptions, codex pages, barks) instead of plays. Entry bodies admit content lines, `<match>`, `::set`, `::assert`, `::retract`; knowledge is revealed with plain `::assert`; the reserved engine-written `entry.<id>.read` path gates series and scenes; effects apply on the first read only. Quest and lore documents may declare a document `id:` (the bundle name), and a lore document a `series:` ordered by file position. New `E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`, `W-ENTRY-REF-UNKNOWN`; `lute trace`/`run --entry`, `lute lore`. IR is additive — artifact `kind: "lore"` with `LoreMeta`, the `entry` record, `QuestMeta.id`, `ProjectIndex.entries` — and the schema renames to `schemas/lute-ir-0.19.schema.json`. | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
-| **0.20.0** | Current tip — **Fact envelopes (knowledge analysis)**: static semantics only, no grammar change. `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot as **impossible**, **guaranteed**, or **possible** from a project-wide, argument-level *may* set (every ground fact any seed, live assert, rule, or reserved relation can produce) and a path-sensitive *must* set (the monotone facts true on every route to the slot, within a document and across the `after:` graph; guards are assumptions inside their regions; `count` is decided over an interval). Dead relational guards reuse each slot's existing code (`E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN`); new `E-ENTRY-UNREACHABLE` (a lore entry `when` that never holds — also scalar-decided in single-file `check`) and `W-FACT-GUARANTEED` (a redundant relational guard); `W-UNPROVEN-RELATIONAL` is **removed**. `lute scenario … envelope` lists the guaranteed facts at a node. IR is an alignment restamp and the schema renames to `schemas/lute-ir-0.20.schema.json`. | [0.20.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md) |
+| `0.20.0` | **Fact envelopes (knowledge analysis)**: static semantics only, no grammar change. `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot as **impossible**, **guaranteed**, or **possible** from a project-wide, argument-level *may* set (every ground fact any seed, live assert, rule, or reserved relation can produce) and a path-sensitive *must* set (the monotone facts true on every route to the slot, within a document and across the `after:` graph; guards are assumptions inside their regions; `count` is decided over an interval). Dead relational guards reuse each slot's existing code (`E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN`); new `E-ENTRY-UNREACHABLE` (a lore entry `when` that never holds — also scalar-decided in single-file `check`) and `W-FACT-GUARANTEED` (a redundant relational guard); `W-UNPROVEN-RELATIONAL` is **removed**. `lute scenario … envelope` lists the guaranteed facts at a node. IR is an alignment restamp and the schema renames to `schemas/lute-ir-0.21.schema.json`. | [0.20.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md) |
+| **0.21.0** | Current tip — **Beats and occasions (story selection)**: a project names **occasions** — engine moments at which a story beat may be chosen (a hub visit, entering a room, talking to an NPC) — and a scene or lore entry becomes a **beat** by answering one: scene frontmatter `on:` / `target:` / `when:` / `priority:` / `once: run \| user \| false`, entry attributes `on=` / `priority=`. A beat is eligible when its `after:` and `when` hold and its `once` is unspent; eligible beats order by priority, then project order. A plugin may export `occasions:` (`select: first \| all`, `target: true`); occasion names are shape-only until one does. New `E-BEAT-ATTR`, `E-OCCASION-UNKNOWN`, `E-BEAT-UNREACHABLE`, `W-BEAT-SHADOWED`. `schedule.yaml` and every `E-SCHED-*` / `W-SCHED-*` code are **removed**; `lute play` is rebuilt on raised occasions and drives quest lifecycles. IR additive — `SceneMeta.beat`, `EntryCmd.on` / `priority`, `ProjectIndex.beats` — and the schema renames to `schemas/lute-ir-0.21.schema.json`. | [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals

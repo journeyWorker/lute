@@ -1,0 +1,23 @@
+---
+kind: scene
+id: achilles.proud
+uses: ../../world.schema.yaml
+on: talk
+target: npc.achilles
+when: "isSet(quest.firstEscape.state) && quest.firstEscape.state == 'complete'"
+priority: 100
+---
+
+## Achilles, Proud
+
+@achilles: You reached the surface. I knew you would.
+
+<branch id="gift">
+<choice id="accept" label="Accept the spear">
+@achilles: Take it. It served me well.
+::assert{befriended(achilles)}
+</choice>
+<choice id="decline" label="Decline">
+@achilles: Suit yourself, lad.
+</choice>
+</branch>

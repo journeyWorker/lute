@@ -48,7 +48,7 @@
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.20",
+  "irVersion": "0.21",
   "kind": "quest",
   "quests": {
     "reachGoal": "complete"

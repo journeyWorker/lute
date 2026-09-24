@@ -1,0 +1,13 @@
+---
+kind: scene
+id: hub.restless
+uses: ../../world.schema.yaml
+on: hubVisit
+when: 'run.hubVisits >= 3'
+priority: 30
+---
+
+## The Hall, Again
+
+@nyx: You have walked this hall three times tonight, child.
+::set{run.hubVisits = run.hubVisits + 1}
