@@ -34,7 +34,7 @@ the additional host ceiling. Denied source is a non-suppressible
 A pipeline judges by exit code. To make a warning block the loop, promote it with the rustc/clippy-style flags (0.6.1 §5), also on `check-project`:
 
 ```sh
-lute check scene.lute --json --deny W-UNPROVEN-RELATIONAL --deny-warnings
+lute check scene.lute --json --deny W-LUTE-VERSION-STALE --deny-warnings
 ```
 
 `--deny <CODE>` (repeatable) treats exactly that code as an error for the verdict and exit code; `--deny-warnings` promotes every warning. A promoted diagnostic reports severity `error` and carries `"denied": true` in JSON, distinguishing it from a native error. An unknown code is a usage error (exit `2`). Errors are never demotable.
@@ -183,7 +183,7 @@ Diagnostics carry fixits with a `kind`. `kind: "migrate"` is machine-applicable 
 `check` is sound but deliberately incomplete over the relational layer, so know which regions are proof-covered and which are review-covered:
 
 - **Scalar gates are proof-covered** — reachability and Guaranteed/Possible envelopes (§5) statically decide them.
-- **Relational fact gates are review-covered** — a fact query over a producible relation is always `Undecided`. `W-UNPROVEN-RELATIONAL` marks each such `<objective done>`/`<quest start|fail>` predicate; deny it to force human routing of those regions.
+- **Relational fact gates are proof-covered at the extremes, in `check-project` only** — every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project (dsl 0.20.0). A gate that can never hold is its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`); a guard that always holds is `W-FACT-GUARANTEED`. A *possible* gate — some routes have the fact, some do not — is silent and stays review-covered, and single-file `check` leaves every relational query undecided, so run `check-project` before trusting a generated fact gate. (`W-UNPROVEN-RELATIONAL`, which marked every relational gate, was removed in 0.20.0; naming it in `--deny` is a usage error.)
 - `W-TRACE-MOCK-UNPRODUCIBLE` warns when a `lute trace` mock seeds a fact over a relation no authored producer can ever assert — the walk proves nothing about reachable play.
 - `W-LUTE-VERSION-STALE` catches a model reproducing a stale `luteVersion` stamp copied from an old example.
 

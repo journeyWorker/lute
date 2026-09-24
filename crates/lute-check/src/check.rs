@@ -4054,16 +4054,17 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.19.0` is a language AND IR release: a third document kind,
-    /// `kind: lore`, declares `<entry>` content the engine looks up; every
-    /// entry gets the reserved `entry.<id>.read` path; quest and lore
-    /// documents may name their bundle with `id:`, and a lore document may
-    /// order its entries as one `series:`. The IR gains the `lore` artifact
-    /// kind, the `entry` record, `QuestMeta.id`, and `ProjectIndex.entries`,
-    /// so the current schema is `schemas/lute-ir-0.19.schema.json`.
+    /// `0.20.0` is a language release: `check-project` computes fact
+    /// envelopes — a project-wide may set and a path-sensitive must set — and
+    /// decides every relational `holds`/`count` guard as impossible,
+    /// guaranteed, or possible, so dead relational guards reuse each slot's
+    /// existing code, `E-ENTRY-UNREACHABLE` and `W-FACT-GUARANTEED` join the
+    /// code set, and `W-UNPROVEN-RELATIONAL` is removed. Static semantics
+    /// only, so the IR moves as an alignment restamp and the current schema is
+    /// `schemas/lute-ir-0.20.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_19_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.19.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.19.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_20_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.20.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.20.0");
     }
 }

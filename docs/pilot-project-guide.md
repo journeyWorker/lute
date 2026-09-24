@@ -48,17 +48,17 @@ project/
 ```
 
 - 플러그인 매니페스트는 `docs/examples/arcia-project/plugins/arcia.minigame/`을 복사해 개명하는 게 가장 빠르고 정확하다. tactus의 실전 사례: `~/Workspace/tactus/story/plugins/tactus.battle/`.
-- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, 그리고 현재 IR 스키마 [`schemas/lute-ir-0.19.schema.json`](../schemas/lute-ir-0.19.schema.json)(파일명은 릴리스 라인마다 개명되므로 `schemas/`의 실제 파일을 정본으로 삼아라).
+- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, 그리고 현재 IR 스키마 [`schemas/lute-ir-0.20.schema.json`](../schemas/lute-ir-0.20.schema.json)(파일명은 릴리스 라인마다 개명되므로 `schemas/`의 실제 파일을 정본으로 삼아라).
 - 컴파일 스크립트에서 ajv는 **draft 2020-12** 필요: `import Ajv from 'ajv/dist/2020'`.
 
 ## 4. 저작 규칙 (check를 통과하는 형태)
 
-- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.19.0"`(= 현재 언어 버전; 낮게 스탬프하면 `W-LUTE-VERSION-STALE`), `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
+- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.20.0"`(= 현재 언어 버전; 낮게 스탬프하면 `W-LUTE-VERSION-STALE`), `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
 - 관계 선언: `relations: { persuaded: { args: [character, route], tier: run, key: [0] } }` + `entities`/`enums`. `::assert{rel(a,b)}`로 기록, 퀘스트 objective에서 `count(persuaded(_,_)) >= 7`로 판정 — 이 패턴은 0.7에서 완전 동작한다.
 - number 대상 `<match on=...>`은 범위 패턴으로 쓴다: `<when is="4..">` (0.18.0 — 양 끝 포함, `..0`·`1..3`도 가능). `<when test="$ >= 4">`도 동작하지만 `W-WHEN-TEST-LITERAL` 경고가 나고 `lute fix`가 `is=`로 바꿔 준다.
 - 대사 `emotion=`은 **lute 내장 enum**(neutral, surprised, delighted, shy, content, angry, sad)만 허용된다. 엔진 포트레이트 키(serious/soft 등)와 다르면 엔진 쪽에서 매핑 테이블을 둬라.
 - 브리지 호출은 항상 `sync="true"` + 후속 `<match on="scene.<ns>.<key>.outcome">`에 **defeat(실패) 방어 아암**을 작성한다 — 정상 경로가 victory만 돌려줘도.
-- `count()` objective는 `W-UNPROVEN-RELATIONAL` 경고를 낸다. 정적 분석 한계이며 정상 — `lute trace`로 양 경로를 실측하면 된다.
+- 관계 쿼리(`holds()`/`count()`)는 `check-project`가 프로젝트 전체를 보고 판정한다(0.20.0). 어떤 경로로도 성립할 수 없는 조건은 슬롯의 dead-code 에러(`E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE` 등), 도달하는 모든 경로에서 이미 성립하는 가드는 `W-FACT-GUARANTEED`(불필요한 조건 — 지워라)로 보고된다. 경로에 따라 갈리는 조건은 조용히 통과한다. 단일 파일 `lute check`는 관계 쿼리를 판정하지 않으므로 CI는 반드시 `check-project`로 돌려라. 예전 `W-UNPROVEN-RELATIONAL` 경고는 제거됐다(`--deny`에 쓰면 사용법 오류).
 - CI 게이트로 `lute trace <scene> --project story --choose ... --mock <bridge mock>`를 분기 루트별 1회씩 넣어라 (mock 형식: `conformance/*/mock.yaml`).
 
 ## 5. 런타임(엔진) 구현 시 함정 — 전부 실전에서 밟은 것

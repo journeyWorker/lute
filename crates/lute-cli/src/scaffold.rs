@@ -212,7 +212,7 @@ uses:
 ::assert{ foundClue(ledger) }
 ::set{ run.cluesLogged += 1 }
 @detective{emotion=\"surprised\"}: A ledger, its balances scratched out in red ink.
-@detective{mono when=\"holds(points(blake))\"}: One name is starting to surface.
+@detective{mono}: One name is starting to surface.
 "
             .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
@@ -238,7 +238,7 @@ uses:
 @narrator: Three chairs, one table, and the smell of cold coffee.
 
 <hub id=\"interrogate\">
-  <choice id=\"pressLedger\" label=\"Press them on the ledger\" when=\"holds(foundClue(ledger))\">
+  <choice id=\"pressLedger\" label=\"Press them on the ledger\">
     @detective: These numbers were bled dry. Explain them.
     ::set{ run.suspectFocus = \"blake\" }
   </choice>
@@ -273,8 +273,6 @@ title: Identify the Killer
 # resolved against this file. Preview with:
 #   lute trace scenes/interview.lute --mock mocks/playthrough.yaml
 file: ../scenes/interview.lute
-facts:
-  - \"foundClue(ledger)\"
 choose:
   interrogate: pressLedger
 "

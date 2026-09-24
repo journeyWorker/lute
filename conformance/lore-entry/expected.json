@@ -34,7 +34,7 @@
   "facts": [
     "knows(vesna, project_lumen)"
   ],
-  "irVersion": "0.19",
+  "irVersion": "0.20",
   "kind": "lore",
   "quests": {},
   "state": {

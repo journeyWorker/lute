@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.19.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.20.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -46,7 +46,7 @@ a plain `diff`.
 ```json
 {
   "kind":       "scene" | "quest" | "lore",
-  "irVersion":  "0.19",                // the major.minor line the engine gated on
+  "irVersion":  "0.20",                // the major.minor line the engine gated on
   "exit":       "complete" | "incomplete",
   "commands":   [ /* executed records, in execution order */ ],
   "state":      { "<path>": <value>, ... },   // final scalar state, key-sorted

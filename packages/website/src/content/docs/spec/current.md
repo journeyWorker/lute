@@ -1,12 +1,12 @@
 ---
 title: Current specification
-description: The consolidated index of what the Lute language enforces today at version 0.19.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+description: The consolidated index of what the Lute language enforces today at version 0.20.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
 ---
 
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.19.0**:
+the consolidated **index** of what is *current* at language version **0.20.0**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -16,7 +16,7 @@ full cumulative history (including the pre-implementation `0.0.1` draft and the
 capability proposals), see the [specification index](/spec/).
 :::
 
-## What is current at 0.19.0
+## What is current at 0.20.0
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -34,9 +34,9 @@ capability proposals), see the [specification index](/spec/).
 | Connectivity & `after:` sequencing | 0.2.0 (`after:` scene sequencing) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.19.0 (additive: artifact `kind: "lore"` with `LoreMeta`, the `entry` command record carrying the resolved `series` / `order` and its body-segment address, optional `QuestMeta.id`, and `ProjectIndex.entries`; scene artifacts, and quest artifacts without `id:`, are byte-identical apart from the version strings) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
-| Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.19.0 (`W-ENTRY-REF-UNKNOWN` — `check-project` warns when an `entry.<id>.read` read names an entry id no document in the project declares) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| Warning-severity diagnostics (`W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`, `W-FACT-GUARANTEED`) | 0.6.1 | 0.20.0 (`W-FACT-GUARANTEED` — `check-project` warns when a relational query inside a guard provably holds on every route to it, so the condition is redundant; `W-UNPROVEN-RELATIONAL`, one of the three original 0.6.1 coverage warnings, is **removed** — a relational gate is now decided rather than flagged, and naming it in `--deny` is a usage error) | [0.20.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.19.0`'s additive IR move — a new artifact kind and command record — costs a scene/quest engine nothing; the schema file still renames per release line, published today as `lute-ir-0.19.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.20.0`'s alignment-only IR restamp costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.20.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
 | Scene & document identity (`id:` frontmatter) | 0.15.0 (authored canonical scene key; new `id:` frontmatter is the lineId prefix, `visited()`/connectivity node, and `prereqEdges[].node`, superseding the derived `{character}.{episodeId}` join wherever it was consumed; `character`/`season`/`episode`/`episodeId` demote to optional when `id:` is present) | 0.19.0 (quest and lore documents may declare an optional document `id:` — the bundle name, the artifact's `meta.id`, and its `ProjectIndex` key; document ids share one project-wide namespace with scene ids, so `E-META-ID` and `E-CONN-EPISODE-ID-DUP` extend to them) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
 | Descriptive `extra:` block | 0.15.0 (open mapping of scalars or flat scalar-lists on scene and quest roots; carried verbatim into `meta.extra` and read by no language rule — `E-META-VALUE` on a nested mapping or non-scalar list entry) | 0.15.0 | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | Legacy identity keys (`character` / `season` / `episode` / `episodeId`) | 0.1.0 | 0.15.0 (deprecated in prose only — `W-META-LEGACY` warns per legacy key when a document also authors `id:`; the four keys are no longer required when `id:` is present, removal deferred to a future major) | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
@@ -44,6 +44,7 @@ capability proposals), see the [specification index](/spec/).
 | Reward-kind plugin vocabulary (`rewardKinds:` manifest export) | 0.16.0 (optional plugin-manifest map of kind id → contract — optional `target` provider domain and optional extra attr schema — that makes `<reward kind=>` / `target=` statically checkable when declared; folded into the capability snapshot as a guarded, sorted section so `capabilityVersion` moves only for projects that install a `rewardKinds:`-declaring plugin; the empty core section hashes byte-identically) | 0.16.0 | [0.16.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md) |
 | Plugin passthrough ownership | 0.17.2 (optional `plugin` owner id on `kind: "plugin"` records; hosts dispatch by `(plugin, tag)`; older artifacts may omit the field) | 0.17.2 | [0.17.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.2.md) |
 | Lore entries (queried content) | 0.19.0 (`kind: lore` documents of top-level `<entry>` declarations — content the engine looks up rather than plays; `id` / `target` / `category` / `title` / `series` / `order` / `when` attributes, `target` and `category` shape-only; bodies admit content lines, `<match>`, `::set`, `::assert`, `::retract`; knowledge revealed by plain `::assert`; the reserved engine-written `entry.<id>.read` path; first-read-only effects; a document-level `series:` ordering entries by file position; new `E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`) | 0.19.0 | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| Relational guard analysis (fact envelopes) | 0.20.0 (`check-project` decides every `holds(…)` / `count(…)` in a guard slot as **impossible**, **guaranteed**, or **possible** from a project-wide, argument-level *may* set and a path-sensitive *must* set of monotone facts propagated across the `after:` graph; guards are assumptions inside their regions and `count` is decided over an interval; a dead relational guard reuses its slot's code — `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN` — plus the new `E-ENTRY-UNREACHABLE` for a lore entry `when`, and a guaranteed one is `W-FACT-GUARANTEED`; project-level only — single-file `check` leaves relational queries undecided; `lute scenario … envelope` lists the guaranteed facts at a node) | 0.20.0 | [0.20.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md) |
 
 
 ## Notes on the boundaries
@@ -57,7 +58,7 @@ capability proposals), see the [specification index](/spec/).
   `0.10` still has to widen its gate to `0.11` to keep accepting artifacts
   (the runtime contract gates on `major.minor`, not on whether anything
   inside actually changed), and `schemas/lute-ir-0.10.schema.json` is renamed
-  to `schemas/lute-ir-0.19.schema.json` under the `0.7.0` precedent — a
+  to `schemas/lute-ir-0.20.schema.json` under the `0.7.0` precedent — a
   `major.minor` move renames the schema file regardless of why it moved. The
   release itself is entirely toolchain: a new `schedule.yaml` project-file
   layer and `lute play` command
@@ -135,12 +136,16 @@ capability proposals), see the [specification index](/spec/).
   it carried is dropped, not migrated — agreement with the declared default was
   its only trigger, so there was nothing left to warn about.
 - **The `0.6.1` coverage warnings are honesty, not errors.** They name the exact
-  edge of what static analysis can prove — a relational fact query it can neither
-  prove nor refute, a stale `luteVersion` stamp, an unproducible trace mock — and
-  never flip the exit code on their own. The two `0.8.0` additions are ordinary
-  findings rather than coverage claims — unreachable content after an `::end`,
-  and a translatable record missing a locale the bundle declares — but they carry
-  the same severity. Promote any of them to an error with `--deny <CODE>` or
+  edge of what static analysis can prove — a stale `luteVersion` stamp, an
+  unproducible trace mock — and never flip the exit code on their own. The third,
+  `W-UNPROVEN-RELATIONAL` (a relational fact query the checker could neither prove
+  nor refute), is gone since `0.20.0`: `check-project` now decides relational
+  guards, reporting the dead ones through their slots' errors and the redundant
+  ones as `W-FACT-GUARANTEED`, and a merely *possible* guard is the normal case
+  and silent. The two `0.8.0` additions are ordinary findings rather than
+  coverage claims — unreachable content after an `::end`, and a translatable
+  record missing a locale the bundle declares — but they carry the same
+  severity. Promote any of them to an error with `--deny <CODE>` or
   `--deny-warnings`.
 - **Design rationale lives alongside the specs.** The four-tier state model's
   *why* is recorded in

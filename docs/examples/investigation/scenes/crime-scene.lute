@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.19.0"
+luteVersion: "0.20.0"
 character: detective
 season: 1
 episode: 1
@@ -14,9 +14,10 @@ uses: ../world.schema.yaml
   The opening scene. The detective walks the crime scene and LOGS evidence:
   each `::assert{ foundClue(...) }` writes a relational-fact delta (0.3.0 §5),
   and each `::set{ run.cluesLogged += 1 }` bumps the scalar counter the quest's
-  `gatherEvidence` objective gates on. Because `foundClue` is asserted here,
-  the derived relation `points` becomes producible project-wide (its rule's
-  base atoms both have producers: `foundClue` here, `implicates` seeded).
+  `gatherEvidence` objective gates on. Both asserts run on the only route
+  through the scene, so `check-project` knows `foundClue(ledger)`,
+  `foundClue(letter)`, and the derived `points(blake)` hold in every scene
+  sequenced `after:` this one (dsl 0.20.0 fact envelopes).
 */
 
 ## The Study
@@ -33,8 +34,11 @@ uses: ../world.schema.yaml
 @detective: And a letter, signed once and then unsigned.
 
 /*
-  A fact-query `when=` guard over the DERIVED relation `points` (0.3.0 §7):
-  `holds(points(blake))` is true once a found clue implicates Blake. The line
-  emits only when the derivation holds — the engine evaluates it at play time.
+  No `when=` here. A guard `holds(points(blake))` over the DERIVED relation
+  `points` (0.3.0 §7) would be redundant: both clues above are asserted on the
+  only route through this shot, and `implicates(ledger, blake)` is seeded, so
+  the rule derives `points(blake)` before this line on every playthrough.
+  `check-project` proves that and reports such a guard as `W-FACT-GUARANTEED`
+  (dsl 0.20.0 §5).
 */
-@detective{mono when="holds(points(blake))"}: Both threads pull toward one name.
+@detective{mono}: Both threads pull toward one name.

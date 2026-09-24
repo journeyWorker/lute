@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.19.0.md`](proposals/scenario-dsl/0.19.0.md). The
+> [`proposals/scenario-dsl/0.20.0.md`](proposals/scenario-dsl/0.20.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -648,6 +648,18 @@ above, never a rule-body dependency):
 - A `<match on="…">` subject may not itself be a relation query (`E-MATCH-RELATION-SUBJECT`) —
   match subjects stay scalar, preserving the exhaustiveness/definite-assignment guarantees in
   *Existing directives* / *State* above.
+- **Fact envelopes (dsl 0.20.0, project-level).** `check-project` decides every `holds`/`count`
+  query in a guard slot from two sets: the argument-level, flow-insensitive **may** set
+  (`fact_env.rs` — seeds, every live `::assert` in the root, reserved-relation universes, and the
+  rules' closure over them) and the path-sensitive **must** set (`fact_must.rs` — a forward
+  must-dataflow over each document, propagated across the `after:` graph with the scalar
+  envelope's structural recursion; only monotone facts cross a document boundary, and guards
+  are assumptions inside their regions). `fact_check.rs` feeds the verdict — impossible,
+  guaranteed, or possible — into `decide`, so a dead relational guard reuses its slot's code
+  (`E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN`, and
+  the new `E-ENTRY-UNREACHABLE`) and a guaranteed one inside a guard is `W-FACT-GUARANTEED`.
+  Single-file `check()` leaves relational queries undecided: a sibling's asserts are invisible
+  to it.
 
 ### Narrative time (spec §6, D11)
 

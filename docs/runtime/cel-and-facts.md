@@ -111,10 +111,21 @@ exists, is unique (the minimal model), and terminates over the finite Herbrand
 base. Recomputation policy — full recompute vs. incremental maintenance on each
 delta — is the engine's choice; the *result* is fixed by these semantics.
 
-> **Boundary — relational gates are conservatively unproven at compile time.**
-> The static reachability/liveness passes reason over rule *structure*
-> (`producible()`, `crates/lute-check/src/producible.rs`), never the real
-> fixpoint. A fact-query-gated objective or choice yields an **Unknown** verdict
-> and rides `W-UNPROVEN-RELATIONAL` / a human-review boundary — the checker will
-> not claim a relational gate is satisfiable. The engine's fixpoint is the real
-> answer; the compiler only proves the *shape* is well-formed.
+> **Boundary — relational gates are decided conservatively at compile time.**
+> Since dsl 0.20.0, `check-project` decides every `holds(…)`/`count(…)` in a
+> guard from two sets (`crates/lute-check/src/fact_env.rs`,
+> `fact_must.rs`): the project-wide **may** set — every ground fact any seed,
+> assert, rule, or reserved relation can produce — and the path-sensitive
+> **must** set — the monotone facts that hold on every declared route to the
+> guard. A query outside *may* is **impossible** (the guard is reported through
+> its slot's dead-code error: `E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`,
+> `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`); a query inside *must* is
+> **guaranteed** (`W-FACT-GUARANTEED` on a redundant guard); everything else is
+> **possible** and silent. Both proofs are sound, but *possible* is not a
+> promise either way: the analysis never enumerates runs, so a guard it cannot
+> separate stays undecided, and single-file `lute check` leaves every
+> relational query undecided (a sibling document's asserts are invisible to
+> it). `W-UNPROVEN-RELATIONAL`, which marked every relational gate "not
+> proven", was removed with that release. The engine's fixpoint over the live
+> fact store remains the only real answer at run time; the compiler proves the
+> *shape* is well-formed and reports the gates it can prove dead or redundant.

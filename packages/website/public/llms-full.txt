@@ -155,7 +155,7 @@ mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.19.0**.
+compiles, traces, and inspects them. The current language version is **0.20.0**.
 
 ## Quick start with `bunx`
 
@@ -211,16 +211,16 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.19.0
-language      0.19.0
-IR schema     0.19.0
+lute toolchain 0.20.0
+language      0.20.0
+IR schema     0.20.0
 ```
 
 Those are three independent axes: the **toolchain** version is this CLI, the **language** version
 is the grammar and semantics the checker enforces, and the **IR schema** version is what
 `lute compile` stamps into every artifact as `irVersion`. They mean different things, but a
 release always re-aligns all three visible numbers to that release's number, so all three read
-`0.19.0`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
+`0.20.0`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
 first time since `0.8.0`, `provenance.reason` becoming `provenance.explanation` — and under the
 then-current major.minor gate an engine on IR `0.9` had to widen to accept `0.10`. The gate is
 MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. For scripts and CI,
@@ -228,10 +228,10 @@ MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. 
 
 ```
 $ lute version --json
-{"toolchain":"0.19.0","language":"0.19.0","ir":"0.19.0"}
+{"toolchain":"0.20.0","language":"0.20.0","ir":"0.20.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.19.0` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.20.0` — the toolchain axis alone.)
 
 ## Next
 
@@ -245,7 +245,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.19.0**.
+**0.20.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -474,8 +474,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.19.0",
-  "irVersion": "0.19.0",
+  "lute": "0.20.0",
+  "irVersion": "0.20.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "character": "mira",
@@ -739,9 +739,9 @@ Role-first routes through the docs — pick the reading order that matches what 
 
 A first-project tutorial that builds a whole small project — a three-scene whodunit gated by a quest over a relational fact world — mirroring [`docs/examples/investigation/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/investigation). Every command runs from the repository root; every snippet is verbatim from that directory.
 
-The walk: (1) the core-only `lute.project.yaml` manifest; (2) the shared `world.schema.yaml` scalar tiers; (3) its relational entities, seed `facts:`, and one Datalog `rules:` clause deriving `points`; (4) the entry scene logging clues with `::assert{ foundClue(...) }`; (5) a fact-guarded `<hub>` interrogation; (6) the quest whose objectives the scenes satisfy; (7) `after:` sequencing crime-scene → interview → confrontation with an `into=`/`value=` `<branch>` accusation; (8) `check-project`; (9) `scenario reach`; (10) two trace mocks reaching different endings; (11) `compile`.
+The walk: (1) the core-only `lute.project.yaml` manifest; (2) the shared `world.schema.yaml` scalar tiers; (3) its relational entities, seed `facts:`, and one Datalog `rules:` clause deriving `points`; (4) the entry scene logging clues with `::assert{ foundClue(...) }` and reading the derived `points` unguarded; (5) a `<hub>` interrogation pressing the logged clues; (6) the quest whose objectives the scenes satisfy; (7) `after:` sequencing crime-scene → interview → confrontation with an `into=`/`value=` `<branch>` accusation; (8) `check-project` and its relational guard analysis; (9) `scenario reach`; (10) two trace mocks reaching different endings; (11) `compile`.
 
-`check-project` exits `0` with **one project-wide warning**, `W-UNPROVEN-RELATIONAL`, on the quest's `clinchMotive` objective: it gates on a relational fact *query* the checker can prove *producible* but cannot prove *true* — a runtime question. The warning is deliberate honesty about the analysis boundary, never a defect; it never flips the exit code, and `--deny W-UNPROVEN-RELATIONAL` promotes it if a project wants it to block.
+`check-project` exits `0` with no warnings, and that silence is a proof: since 0.20.0 it decides every relational fact query in a guard as impossible, guaranteed, or possible over the whole project. The crime scene asserts both clues on its only route and the interview is sequenced `after:` it, so a hub choice guarded `when="holds(foundClue(ledger))"` would be `W-FACT-GUARANTEED` (redundant) — which is why the example's guards are gone — and a guard on a clue nobody logs, `holds(foundClue(knife))`, would be `E-ARM-DEAD`. The quest's `clinchMotive` objective, `done="holds(implicates(ledger, blake))"`, reads a seed nothing retracts, so it is satisfiable; a fact nothing produces would make it `E-OBJECTIVE-UNSATISFIABLE`. Single-file `lute check` leaves relational queries undecided.
 
 ---
 
@@ -1994,7 +1994,7 @@ A lore document can say so directly (dsl 0.19.0 §2.1):
 ```lute
 ---
 kind: lore
-luteVersion: "0.19.0"
+luteVersion: "0.20.0"
 id: haven.purserLedger
 title: Purser's ledger
 series: purserLedger
@@ -2243,6 +2243,81 @@ rules:
 ```
 
 Because there are no function symbols, the Herbrand base is finite: bottom-up evaluation reaches a least fixpoint in finitely many steps, so **every derivation terminates** — this is Datalog, not Prolog. Safety requires every head/negated/guard variable to appear in a positive body atom; violations are `E-DATALOG-UNSAFE`, a negation cycle is `E-DATALOG-UNSTRATIFIED`, a would-be function term is `E-DATALOG-FUNCTION`. A rule body may carry a scalar CEL guard (`cel("run.act == 1")`) but never a fact query — that firewall (`E-DATALOG-GUARD-FACT`) keeps every dependency visible to the analysis. Derived and `reserved:` relations are read-only to content. The whole layer reduces to data the engine evaluates deterministically; nothing is author-iterated.
+
+## How `check-project` analyzes relational guards
+
+A guard that presumes knowledge is the right tool — `@eris{when="holds(knows(player, lumen))"}` shows the line only once the player knows. Since 0.20.0, `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::next` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`when` — as one of three verdicts:
+
+- **impossible** — no seed, assert, rule, or engine relation anywhere in the project can produce a matching fact;
+- **guaranteed** — a matching fact holds on **every** declared route reaching the guard;
+- **possible** — anything else: some routes have it, some do not, or the analysis cannot separate them. This is the normal case for a guard, and it is silent.
+
+The verdicts come from two sets:
+
+- **May** — project-wide and flow-insensitive: every ground fact that can be live at any point of any run. The `facts:` seeds, the fact of every `::assert` anywhere in the project root (scenes, quest `<on>`/`<objective>` bodies, lore entries) whose document is not proven unreachable, every fact of a `reserved:` relation (the engine may populate any of them), and whatever the `rules:` derive over that set. May only knows *that* some route can produce a fact, not when.
+- **Must** — path-sensitive: the facts live on every route to one program point. Within a document it is a forward walk: `::assert` adds a fact (and drops the one its `key:` supersedes), `::retract` removes every match, `<branch>`/`<match>` arms **intersect** where they rejoin (a branch with no unguarded choice, or a non-exhaustive match, also intersects with the set before the block, because no arm may run), and a `<hub>` body may run zero or more times. Across scenes it follows the `after:` graph, exactly like the [scalar envelope](/connectivity/envelopes/): a scene starts from the seeds plus the facts its `after:` formula guarantees — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, and `completed(q)`/`active(q)` contribute nothing. Quest bodies and lore entry bodies run at engine-chosen times, so they start from the seeds plus their own guards.
+
+Three rules keep Must sound:
+
+- **Only monotone facts cross time the author does not control.** A fact survives a document boundary only if no `::retract` anywhere in the project matches it, no other assert shares its `key:` tuple with a different value, and its relation is neither `reserved:` nor has an `open: engine` argument. Facts of `tier: scene` and `tier: quest` relations never cross a document boundary — the engine clears them with their episode or quest.
+- **Guards are assumptions.** Inside `<when test="holds(F)">`, a `<choice when="holds(F)">`, a guarded `::next`, an `<on when>`, an objective `done`, or an entry `when`, each positive top-level `&&` conjunct `holds(F)` with a ground `F` is in Must — so a nested guard on the same fact is shown redundant. A line `when=` guards only its own line.
+- **Counts are intervals.** `count(P)` lies between the number of Must facts matching `P` and the number of May facts matching it; a comparison against `n` is decided when the whole interval falls on one side.
+
+The verdict feeds the same decision procedure that already reports dead scalar guards, so a relational guard that can never hold is reported through the code its slot already owns, and a guaranteed one inside a guard is flagged as redundant:
+
+| Slot | Can never hold | Always holds |
+| --- | --- | --- |
+| `<when test>`, `<choice when>`, content line `when=`, `::next` guard | `E-ARM-DEAD` | `W-FACT-GUARANTEED` (not `::next`) |
+| lore entry `when` | `E-ENTRY-UNREACHABLE` | `W-FACT-GUARANTEED` |
+| objective `done` | `E-OBJECTIVE-UNSATISFIABLE` | — (a predicate, not a guard) |
+| required objective `when` | `W-OBJECTIVE-HIDDEN` | — |
+| quest `start` / `fail` | `E-QUEST-UNREACHABLE` (`fail` also when it always holds) | — |
+
+A query the document cannot even state — an undeclared relation, a wrong arity, an argument outside a closed domain — stays undecided; its own error (`E-RELATION-UNKNOWN`, `E-RELATION-ARITY`, `E-FACT-DOMAIN`) owns it. `E-ENTRY-UNREACHABLE` is new with this analysis, and also fires in single-file `lute check` for an entry `when` that decides false on scalars alone. `W-UNPROVEN-RELATIONAL`, which used to mark every relational gate as "not proven", is gone: its premise no longer holds, and naming it in `--deny` is a usage error.
+
+A small example. The archive asserts one fact unconditionally and another only down one branch arm:
+
+```lute
+## The Archive
+
+@narrator: The log is still open on the console.
+::assert{ knows(player, lumen) }
+<branch id="dig">
+  <choice id="readOn" label="Keep reading">
+    ::assert{ knows(player, heading) }
+    @narrator: The heading was changed eleven years ago.
+  </choice>
+  <choice id="close" label="Close the log">
+    @narrator: You close it.
+  </choice>
+</branch>
+```
+
+The bridge is sequenced `after: 'visited("demo.archive")'` and guards three lines:
+
+```lute
+## The Bridge
+
+@eris{when="holds(knows(player, lumen))"}: So you read the log.
+@eris{when="holds(knows(player, heading))"}: Then you know where we are going.
+@eris{when="holds(knows(eris, heading))"}: I changed it myself.
+```
+
+`check-project` settles the first and third and leaves the second alone — `knows(player, heading)` holds only if the player chose `readOn`, which is exactly what that guard is for:
+
+<!-- lute-diagnostics -->
+```
+./scenes/bridge.lute:10:13: warning [W-FACT-GUARANTEED] guard `holds(knows(player, lumen))` is redundant: `knows(player, lumen)` is asserted on every route to here (./scenes/archive.lute:10) (dsl 0.20.0 §5)
+```
+
+<!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
+```
+./scenes/bridge.lute:12:13: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(knows(eris, heading))` is provably false — no seed, assert, rule, or engine relation produces `knows(eris, heading)` under your declared routes (dsl 0.20.0 §5)
+```
+
+The same two sets decide counts: after the archive, `count(knows(player, _))` lies between 1 and 2, so a guard `count(knows(player, _)) >= 3` is dead and `count(knows(player, _)) >= 1` is redundant.
+
+The analysis needs the whole project — an assert in a sibling document is invisible to a single file, and claiming "never asserted" from one file would be false — so it runs in `check-project` only. Single-file `lute check` leaves relational queries undecided. To see why a guard was judged guaranteed, `lute scenario <dir> envelope <scene>` lists the **guaranteed facts** at the scene's entry beside the scalar tables (see [envelopes](/connectivity/envelopes/#guaranteed-facts)).
 
 ---
 
@@ -2512,6 +2587,25 @@ Swap that node's `after` to `completed("findkai")` and `run.kaiFound` moves into
 
 Every message carries the verbatim "under your declared routes" qualifier (A-hybrid posture).
 
+## Guaranteed facts
+
+Beside the scalar tables, the envelope carries the **fact envelope** (dsl 0.20.0): the relational facts that hold on *every* declared route reaching the node. It is the same must-set `check-project` uses to decide relational guards (see [how `check-project` analyzes relational guards](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards)), propagated over `after:` with the same structural recursion as `Guaranteed` — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, `completed(Q)`/`active(Q)` contribute nothing. Only monotone facts cross a scene boundary: nothing may retract them, no other assert may share their `key:` with a different value, and their relation is neither `reserved:` nor engine-open; `tier: scene`/`tier: quest` facts never cross. Each fact names what establishes it — an assert site, a `facts:` seed, or a rule.
+
+From the Haven example, the purser scene (ep09):
+
+```console
+$ lute scenario docs/examples/haven envelope haven.s01ep09
+…
+  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+    - awake(ottavio) (docs/examples/haven/scenes/stowaway.lute:20)
+    - awake(vesna) (`facts:` seed)
+    - found(ottavio) (docs/examples/haven/scenes/stowaway.lute:19)
+    - knows(ottavio, manifest) (docs/examples/haven/scenes/stowaway.lute:23)
+…
+```
+
+Episode 6 asserts all three of Ottavio's facts outside any branch, and every route to ep09 passes through it, so a guard `holds(found(ottavio))` in ep09 could never close — which is why that scene's `listTheMass` choice carries none. `knows(vesna, manifest)` is absent even though three other documents assert it: none of them lies on every route to ep09 (hydroponics is one of two alternatives, the archive is optional, and the purser ledger's assert holds only inside its own lore entry, which the engine presents at a time of its choosing). When `check-project` reports `W-FACT-GUARANTEED` on a guard, this table is where the fact comes from. With `--format json` the same list is `envelope.guaranteedFacts`, an array of `{ "fact", "establishedBy" }` objects.
+
 ## Quest addressing
 
 `lute scenario <dir> envelope quest:<id>` prints a real table for **every** quest:
@@ -2534,7 +2628,7 @@ $ lute check <file> [--json] [--providers <DIR>] [--project <DIR>]
               [--permission-profile <NAME>] [--deny <CODE>]… [--deny-warnings]
 ```
 
-Statically validate one `.lute` document. Exit **0** clean, **1** when any `Error`-severity diagnostic is present, **2** on an I/O failure. `--json` prints the serialized `CheckResult`; otherwise a human line per diagnostic. `--deny <CODE>` (repeatable, rustc/clippy `-D` precedent, 0.6.1 §5) promotes every diagnostic with exactly that code to an error for the verdict and exit code, and `--deny-warnings` promotes every warning — a pipeline denies `W-UNPROVEN-RELATIONAL` to force human review of relational fact gates, `W-LUTE-VERSION-STALE` to reject a stale `luteVersion` stamp. A promoted diagnostic reports severity `error` with a `"denied": true` marker in `--json`; an unknown code in `--deny` is a usage error (exit **2**), and errors are never demotable.
+Statically validate one `.lute` document. Exit **0** clean, **1** when any `Error`-severity diagnostic is present, **2** on an I/O failure. `--json` prints the serialized `CheckResult`; otherwise a human line per diagnostic. `--deny <CODE>` (repeatable, rustc/clippy `-D` precedent, 0.6.1 §5) promotes every diagnostic with exactly that code to an error for the verdict and exit code, and `--deny-warnings` promotes every warning — a pipeline denies `W-FACT-GUARANTEED` (under `check-project`) to reject redundant relational guards, `W-LUTE-VERSION-STALE` to reject a stale `luteVersion` stamp. A promoted diagnostic reports severity `error` with a `"denied": true` marker in `--json`; an unknown code in `--deny` — including a removed one such as `W-UNPROVEN-RELATIONAL` (0.20.0) — is a usage error (exit **2**), and errors are never demotable.
 
 ## check-project
 
@@ -2542,7 +2636,7 @@ Statically validate one `.lute` document. Exit **0** clean, **1** when any `Erro
 $ lute check-project <dir> [--json] [--providers <DIR>] [--deny <CODE>]… [--deny-warnings]
 ```
 
-Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted order, each against its own nearest-ancestor `lute.project.yaml` root, **plus** project-wide `<quest id>` uniqueness and the connectivity passes (`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`). Exit **0** clean, **1** when any file has an error or a project-wide collision, **2** on I/O. The same `--deny <CODE>`/`--deny-warnings` promotion (see `check`) applies project-wide.
+Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted order, each against its own nearest-ancestor `lute.project.yaml` root, **plus** project-wide `<quest id>` uniqueness, the connectivity passes (`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`), and the [relational guard analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards) (dsl 0.20.0): every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project, so a guard that can never hold is reported through its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`) and a redundant one as `W-FACT-GUARANTEED`. Exit **0** clean, **1** when any file has an error or a project-wide collision, **2** on I/O. The same `--deny <CODE>`/`--deny-warnings` promotion (see `check`) applies project-wide.
 
 ## compile
 
@@ -2565,7 +2659,7 @@ The index carries the document table plus the deterministic **union** of every a
 
 ```json
 {
-  "irVersion": "0.19.0",
+  "irVersion": "0.20.0",
   "capabilityVersion": "…",
   "documents": [
     { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",
@@ -2623,7 +2717,7 @@ $ lute scenario <dir> [--providers <DIR>] [--format text|json|dot]
               [reach <nodeId> | envelope <nodeId>]
 ```
 
-Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach <nodeId>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope <nodeId>` (or `envelope quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/). `<nodeId>` is a scene's canonical key or `quest:<id>`. `--format` selects the bare graph view's shape: `text` (default — the topological layers, then one line per edge with the [atom kind(s)](/connectivity/scene-graph/) that justify it in brackets), `json` (`{"roots":[{"root":…,"layers":[[…]],"nodes":[…],"edges":[…]}]}`, each node `{id, kind, prereq, reach}` with `prereq` the raw declared formula or `null` for an entry node, each edge `{from, to, kinds}`), or `dot` (one Graphviz `digraph` per root; scenes are boxes, quests ellipses, and an `active`-only edge is drawn `[style=dashed]`). Exit **0** on success, **2** on I/O or an unresolvable node id.
+Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach <nodeId>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope <nodeId>` (or `envelope quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/) plus the [guaranteed facts](/connectivity/envelopes/#guaranteed-facts) at the node's entry (dsl 0.20.0; `envelope.guaranteedFacts` in `--format json`, each `{fact, establishedBy}`). `<nodeId>` is a scene's canonical key or `quest:<id>`. `--format` selects the bare graph view's shape: `text` (default — the topological layers, then one line per edge with the [atom kind(s)](/connectivity/scene-graph/) that justify it in brackets), `json` (`{"roots":[{"root":…,"layers":[[…]],"nodes":[…],"edges":[…]}]}`, each node `{id, kind, prereq, reach}` with `prereq` the raw declared formula or `null` for an entry node, each edge `{from, to, kinds}`), or `dot` (one Graphviz `digraph` per root; scenes are boxes, quests ellipses, and an `active`-only edge is drawn `[style=dashed]`). Exit **0** on success, **2** on I/O or an unresolvable node id.
 
 ## context
 
@@ -2829,7 +2923,7 @@ Transcript headers read `── <tickLabel> (tick <N>) · <lane> · <event>/<var
 
 # Runtime contract
 
-`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.19.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.19.schema.json) (JSON Schema draft 2020-12).
+`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.20.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.20.schema.json) (JSON Schema draft 2020-12).
 
 Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST and leaves the rest as raw CEL, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. `holds()`/`count()` are inside the §8.4 profile authors may write and deliberately absent from the `expr` AST, so a relational guard reaches the engine as raw CEL text alone and an engine MUST have a CEL evaluator, not merely an AST walker. The engine trusts the artifact.
 
@@ -3296,7 +3390,7 @@ checker returns non-suppressible `E-PERMISSION-*` at authored spans.
 Judge by exit code before parsing JSON. Warning promotion remains available:
 
 ```sh
-lute check scene.lute --json --deny W-UNPROVEN-RELATIONAL --deny-warnings
+lute check scene.lute --json --deny W-LUTE-VERSION-STALE --deny-warnings
 ```
 
 For append-only generation, stream ordinary Lute source through a host-owned
@@ -3362,7 +3456,7 @@ Diagnostics carry fixits with a `kind`. `kind: "migrate"` is machine-applicable 
 `check` is sound but deliberately incomplete over the relational layer, so know which regions are proof-covered and which are review-covered:
 
 - **Scalar gates are proof-covered** — reachability and Guaranteed/Possible envelopes (§5) statically decide them.
-- **Relational fact gates are review-covered** — a fact query over a producible relation is always `Undecided`. `W-UNPROVEN-RELATIONAL` marks each such `<objective done>`/`<quest start|fail>` predicate; deny it to force human routing of those regions.
+- **Relational fact gates are proof-covered at the extremes, in `check-project` only** — every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project (dsl 0.20.0). A gate that can never hold is its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`); a guard that always holds is `W-FACT-GUARANTEED`. A *possible* gate — some routes have the fact, some do not — is silent and stays review-covered, and single-file `check` leaves every relational query undecided, so run `check-project` before trusting a generated fact gate. (`W-UNPROVEN-RELATIONAL`, which marked every relational gate, was removed in 0.20.0; naming it in `--deny` is a usage error.)
 - `W-TRACE-MOCK-UNPRODUCIBLE` warns when a `lute trace` mock seeds a fact over a relation no authored producer can ever assert — the walk proves nothing about reachable play.
 - `W-LUTE-VERSION-STALE` catches a model reproducing a stale `luteVersion` stamp copied from an old example.
 
@@ -3790,7 +3884,7 @@ For the complete project — the plugin manifests, schemas, component, catalog, 
 
 # Current specification
 
-The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.19.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.20.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -3808,11 +3902,12 @@ The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://gith
 | Connectivity & `after:` | 0.2.0 (`after:`) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.19.0 (additive: artifact `kind: "lore"` with `LoreMeta`, the `entry` command record carrying the resolved `series` / `order` and its body-segment address, optional `QuestMeta.id`, and `ProjectIndex.entries`; scene artifacts, and quest artifacts without `id:`, are byte-identical apart from the version strings) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
-| Warning-severity diagnostics | 0.6.1 | 0.19.0 (`W-ENTRY-REF-UNKNOWN` — `check-project` warns when an `entry.<id>.read` read names an entry id no document in the project declares) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| Warning-severity diagnostics | 0.6.1 | 0.20.0 (`W-FACT-GUARANTEED` — `check-project` warns when a relational query inside a guard provably holds on every route to it; `W-UNPROVEN-RELATIONAL` is **removed** — a relational gate is now decided rather than flagged, and naming it in `--deny` is a usage error) | [0.20.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md) |
 | Deny promotion (`--deny`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.19.0`'s additive IR move — a new artifact kind and command record — costs a scene/quest engine nothing; the schema file still renames per release line, published today as `lute-ir-0.19.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.20.0`'s alignment-only IR restamp costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.20.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
 | Scene & document identity (`id:` frontmatter) | 0.15.0 (authored canonical scene key; new `id:` frontmatter is the lineId prefix, `visited()`/connectivity node, and `prereqEdges[].node`, superseding the derived `{character}.{episodeId}` join wherever it was consumed; `character`/`season`/`episode`/`episodeId` demote to optional when `id:` is present) | 0.19.0 (quest and lore documents may declare an optional document `id:` — the bundle name, the artifact's `meta.id`, and its `ProjectIndex` key; document ids share one project-wide namespace with scene ids, so `E-META-ID` and `E-CONN-EPISODE-ID-DUP` extend to them) | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
 | Lore entries (queried content) | 0.19.0 (`kind: lore` documents of top-level `<entry>` declarations — content the engine looks up rather than plays; `id` / `target` / `category` / `title` / `series` / `order` / `when` attributes, `target` and `category` shape-only; bodies admit content lines, `<match>`, `::set`, `::assert`, `::retract`; knowledge revealed by plain `::assert`; the reserved engine-written `entry.<id>.read` path; first-read-only effects; a document-level `series:` ordering entries by file position; new `E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`) | 0.19.0 | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| Relational guard analysis (fact envelopes) | 0.20.0 (`check-project` decides every `holds(…)` / `count(…)` in a guard slot as **impossible**, **guaranteed**, or **possible** from a project-wide, argument-level *may* set and a path-sensitive *must* set of monotone facts propagated across the `after:` graph; guards are assumptions inside their regions and `count` is decided over an interval; a dead relational guard reuses its slot's code — `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN` — plus the new `E-ENTRY-UNREACHABLE` for a lore entry `when`, and a guaranteed one is `W-FACT-GUARANTEED`; project-level only — single-file `check` leaves relational queries undecided; `lute scenario … envelope` lists the guaranteed facts at a node) | 0.20.0 | [0.20.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md) |
 
 Notes on the boundaries:
 
@@ -3829,7 +3924,7 @@ Notes on the boundaries:
 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.19.0**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.20.0**.
 
 ## Scenario DSL (the language)
 
@@ -3858,7 +3953,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.17.0 | **Checked continuations and least-authority compilation**: the toolchain adds the append-only checked continuation compiler and `lute compile-stream`, plus generic capability-permission ceilings for directives, state and fact writes, bridges, rewards, and quests. Both reuse the existing language and ordinary artifact contract, so language and IR are alignment restamps with no grammar, static-semantic, or IR-shape change. | [0.17.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.0.md) |
 | `0.17.2` | **Additive plugin owner metadata**: passthrough `kind: "plugin"` records may carry the resolved owning plugin id in optional `plugin` metadata, so hosts can dispatch by `(plugin, tag)`; declarative presentation directives with `lower: { record, fields }` continue to emit stable core records. No grammar or static-semantic change; `schemas/lute-ir-0.17.schema.json` keeps its name and `$id`. | [0.17.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.2.md) |
 | `0.18.0` | **Range patterns in `<when is>`**: inclusive numeric range literals `N..M` / `N..` / `..M` (signed decimal bounds) join the `is=` literal set, and a subject declared `number` becomes a coverage-checkable domain — interval union over the reals, so `E-NONEXHAUSTIVE` names the first uncovered gap and `E-ARM-DEAD` / `W-OVERLAP-ARMS` / `W-OTHERWISE-DEAD` are interval-aware. New `E-WHEN-RANGE` (a malformed or empty range) and `W-WHEN-TEST-LITERAL` (a literal-comparison `test` guard that `is=` expresses; its `migrate` fixit is applied by `lute fix`). IR is an alignment restamp — range arms lower to the existing `>=` / `<=` / `&&` operators — and the schema renames to `schemas/lute-ir-0.18.schema.json`. | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
-| **0.19.0** | Current tip — **Lore entries (queried content)**: a third document kind, `kind: lore`, whose top level is a set of `<entry id target category title series order when>` declarations — content the engine looks up (item descriptions, found notes, inscriptions, codex pages, barks) instead of plays. Entry bodies admit content lines, `<match>`, `::set`, `::assert`, `::retract`; knowledge is revealed with plain `::assert`; the reserved engine-written `entry.<id>.read` path gates series and scenes; effects apply on the first read only. Quest and lore documents may declare a document `id:` (the bundle name), and a lore document a `series:` ordered by file position. New `E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`, `W-ENTRY-REF-UNKNOWN`; `lute trace`/`run --entry`, `lute lore`. IR is additive — artifact `kind: "lore"` with `LoreMeta`, the `entry` record, `QuestMeta.id`, `ProjectIndex.entries` — and the schema renames to `schemas/lute-ir-0.19.schema.json`. | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| `0.19.0` | **Lore entries (queried content)**: a third document kind, `kind: lore`, whose top level is a set of `<entry id target category title series order when>` declarations — content the engine looks up (item descriptions, found notes, inscriptions, codex pages, barks) instead of plays. Entry bodies admit content lines, `<match>`, `::set`, `::assert`, `::retract`; knowledge is revealed with plain `::assert`; the reserved engine-written `entry.<id>.read` path gates series and scenes; effects apply on the first read only. Quest and lore documents may declare a document `id:` (the bundle name), and a lore document a `series:` ordered by file position. New `E-ENTRY-ATTR`, `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`, `W-ENTRY-REF-UNKNOWN`; `lute trace`/`run --entry`, `lute lore`. IR is additive — artifact `kind: "lore"` with `LoreMeta`, the `entry` record, `QuestMeta.id`, `ProjectIndex.entries` — and the schema renames to `schemas/lute-ir-0.19.schema.json`. | [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
+| **0.20.0** | Current tip — **Fact envelopes (knowledge analysis)**: static semantics only, no grammar change. `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot as **impossible**, **guaranteed**, or **possible** from a project-wide, argument-level *may* set (every ground fact any seed, live assert, rule, or reserved relation can produce) and a path-sensitive *must* set (the monotone facts true on every route to the slot, within a document and across the `after:` graph; guards are assumptions inside their regions; `count` is decided over an interval). Dead relational guards reuse each slot's existing code (`E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN`); new `E-ENTRY-UNREACHABLE` (a lore entry `when` that never holds — also scalar-decided in single-file `check`) and `W-FACT-GUARANTEED` (a redundant relational guard); `W-UNPROVEN-RELATIONAL` is **removed**. `lute scenario … envelope` lists the guaranteed facts at a node. IR is an alignment restamp and the schema renames to `schemas/lute-ir-0.20.schema.json`. | [0.20.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals

@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.19.0`, the grammar and semantics the checker
+- **Language** — currently `0.20.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.19.0`) and gated on by consuming engines.
+  artifact (currently `0.20.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -37,6 +37,89 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.20.0] - 2026-09-24
+
+**Fact envelopes: `check-project` decides relational guards.**
+
+An author who writes a line that presumes knowledge guards it —
+`@eris{when="holds(knows(player, project_lumen))"}` — and until now the checker
+never looked at that guard. A relational query was always *undecided*: the
+producibility walk asked only whether a relation **name** was asserted
+somewhere, and only for quest `start`/`fail`, objective `done`, and entry
+`when`. A line guard on a fact nothing ever asserts — a typo'd argument, a cut
+scene, a lore entry never written — checked clean, while
+`W-UNPROVEN-RELATIONAL` marked every other relational gate "not proven", noise
+on exactly the guards that were fine. `0.20.0` computes, for every
+`holds(…)` / `count(…)` in every guard slot, whether the queried facts are
+**impossible**, **guaranteed**, or **possible** there. Spec:
+[`docs/proposals/scenario-dsl/0.20.0.md`](docs/proposals/scenario-dsl/0.20.0.md).
+
+### Added
+
+- **Language — the may set** — a project-wide, argument-level
+  over-approximation of every ground fact that can be live: `facts:` seeds,
+  every `::assert` in a document not proven unreachable (scenes, quest bodies,
+  lore entries), every fact of a reserved relation, and the rules' closure
+  over them (negated atoms and rule-body CEL guards read as satisfiable).
+- **Language — the must set** — a path-sensitive under-approximation of the
+  facts live on every route to a slot: a forward must-dataflow within each
+  document (branch/match joins intersect, a hub is a greatest fixpoint,
+  `::end`/`::next` route their set), propagated across the `after:` graph
+  with the scalar envelope's recursion (`visited(A)` contributes `A`'s exit,
+  `&&` unions, `||` intersects). Only monotone facts cross a document
+  boundary — no matching `::retract`, no `key:` conflict, not reserved or
+  engine-open, not `tier: scene`/`tier: quest`. Guards are assumptions inside
+  their regions; quest and entry bodies start from the seeds plus their own
+  guards. `count(P)` is decided over the interval `[|Must ∩ P|, |May ∩ P|]`.
+- **Checker — verdict plumbing** — the verdict is substituted into `decide`,
+  so every slot that already reports a provably dead or always-true condition
+  now does so for relational ones, with messages that name the fact and the
+  reason (the assert site, seed, rule, or enclosing guard). Project-level
+  only: single-file `lute check` leaves relational queries undecided.
+- **Diagnostics — `E-ENTRY-UNREACHABLE`** — a lore entry `when` that provably
+  never holds (the one guard slot without a dead-code diagnostic); it also
+  fires for a scalar-decidable `when` in single-file `lute check`.
+- **Diagnostics — `W-FACT-GUARANTEED`** — a relational query inside a guard
+  (line `when=`, `<choice when>`, `<when test>`, entry `when`) that holds on
+  every route to it: the condition is redundant. Quest `start`/`fail` and
+  objective `done` are predicates, not guards, and are not flagged.
+- **CLI — `lute scenario <dir> envelope <node>`** prints a *Guaranteed facts*
+  table (each fact with what establishes it) beside the scalar tables;
+  `--format json` carries it as `envelope.guaranteedFacts`
+  (`[{fact, establishedBy}]`).
+
+### Changed
+
+- **Dead relational guards reuse each slot's code** — `E-ARM-DEAD`
+  (`<when test>`, `<choice when>`, content-line `when=`, `::next` guard),
+  `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN`.
+- **Examples** — the four guards `W-FACT-GUARANTEED` found in `docs/examples`
+  are removed (haven `purser.lute` `listTheMass`; investigation
+  `crime-scene.lute`'s derived `points(blake)` line and `interview.lute`'s two
+  hub choices), with their tests, READMEs, and the website tutorial updated;
+  the `lute init --template investigation` scaffold drops the same two
+  guards. `check-project docs/examples` reports no warnings.
+
+### Removed
+
+- **`W-UNPROVEN-RELATIONAL`** — its premise, that relational gates are
+  unanalyzable, no longer holds, and a *possible* gate is the normal state of
+  a guard. Following the `W-INJECT-CONFLICT` (0.10.0) precedent the code
+  leaves the deny registry: `--deny W-UNPROVEN-RELATIONAL` is a usage error
+  (exit `2`).
+
+### Compatibility
+
+- No grammar or IR change: every 0.19.x document parses and compiles
+  identically; the IR restamps to `0.20.0` and the schema file renames to
+  [`schemas/lute-ir-0.20.schema.json`](schemas/lute-ir-0.20.schema.json)
+  (`$id` and title only). Engines gate on MAJOR, so nothing widens.
+- `check-project` may report new errors on guards that could never hold —
+  already dead at runtime; the diagnostic is new, the bug is not — and new
+  `W-FACT-GUARANTEED` warnings on redundant guards.
+- Pipelines passing `--deny W-UNPROVEN-RELATIONAL` must drop it.
+- `capabilityVersion` is unchanged; the tree-sitter grammar is unchanged.
 
 ## [0.19.0] - 2026-09-24
 

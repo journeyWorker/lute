@@ -47,7 +47,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.19.0";
+pub const LUTE_LANG_VERSION: &str = "0.20.0";
 
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_expand::{expand_cel, DefTable};

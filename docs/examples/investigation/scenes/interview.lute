@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.19.0"
+luteVersion: "0.20.0"
 character: detective
 season: 1
 episode: 2
@@ -12,12 +12,15 @@ uses: ../world.schema.yaml
 ---
 
 /*
-  The interrogation. A revisit `<hub>` (§7.3.2) whose choices are FACT-GUARDED
-  — `pressLedger`/`pressLetter` are eligible only once the matching clue has
-  been found (`when="holds(foundClue(...))"`). `askAlibi` is `once`; `leave`
-  is the unguarded `exit` that satisfies the no-dead-end obligation. After the
-  hub, a `<match on="run.suspectFocus">` reads the run-tier enum the choices
-  wrote — exhaustive over the enum domain, so no `<otherwise>` is needed.
+  The interrogation. A revisit `<hub>` (§7.3.2): `pressLedger`/`pressLetter`
+  press the two clues the crime scene logged. They carry no
+  `when="holds(foundClue(...))"` guard because both clues are asserted on the
+  only route here — the scene is sequenced `after:` the crime scene — so such
+  a guard is always true; `check-project` reports it as `W-FACT-GUARANTEED`
+  (dsl 0.20.0 §5). `askAlibi` is `once`; `leave` is the unguarded `exit` that
+  satisfies the no-dead-end obligation. After the hub, a
+  `<match on="run.suspectFocus">` reads the run-tier enum the choices wrote —
+  exhaustive over the enum domain, so no `<otherwise>` is needed.
 */
 
 ## The Interview Room
@@ -25,12 +28,12 @@ uses: ../world.schema.yaml
 @narrator: Three chairs, one table, and the smell of cold coffee.
 
 <hub id="interrogate">
-  <choice id="pressLedger" label="Press them on the ledger" when="holds(foundClue(ledger))">
+  <choice id="pressLedger" label="Press them on the ledger">
     @detective: These numbers were bled dry. Explain them.
     ::set{ run.suspectFocus = "blake" }
     ::set{ run.leadStrength += 1 }
   </choice>
-  <choice id="pressLetter" label="Press them on the letter" when="holds(foundClue(letter))">
+  <choice id="pressLetter" label="Press them on the letter">
     @detective: You signed this, then you tried to unsign it.
     ::set{ run.suspectFocus = "blake" }
     ::set{ run.leadStrength += 1 }

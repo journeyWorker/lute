@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.19.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.19.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.19.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.19.schema.json`](../schemas/lute-ir-0.19.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.20.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.20.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.20.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.20.schema.json`](../schemas/lute-ir-0.20.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.19.schema.json`](../schemas/lute-ir-0.19.schema.json)
+published as [`schemas/lute-ir-0.20.schema.json`](../schemas/lute-ir-0.20.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -383,13 +383,36 @@ change is additive: a new artifact `kind: "lore"` with `LoreMeta`, a new
 artifacts without an authored `id:`, compile byte-identically apart from the
 version strings. The schema file renames per release line
 (`lute-ir-0.18.schema.json` →
-[`lute-ir-0.19.schema.json`](../schemas/lute-ir-0.19.schema.json)) and gains
+`lute-ir-0.19.schema.json`) and gains
 `loreMeta`, `entryCmd`, `questMeta.id`, and the index rows. Engines gate on
 MAJOR, so nothing widens: a scene/quest consumer is unaffected, and one without
 lore support rejects `kind: "lore"` as it rejects any unknown artifact kind.
 `capabilityVersion` does not move (no core vocabulary is added); the
 tree-sitter grammar gains a top-level `entry` production — a regeneration, not
 a capability restamp.
+
+**`0.20.0` aligns all three axes at `0.20.0`; the language earns the move.**
+`check-project` gains fact envelopes: every relational query (`holds(…)`,
+`count(…)`) in a guard slot is decided **impossible**, **guaranteed**, or
+**possible** from a project-wide, argument-level *may* set (every ground fact
+any seed, live assert, rule, or reserved relation can produce) and a
+path-sensitive *must* set (the monotone facts true on every route to the slot,
+within a document and across the `after:` graph). The verdict feeds the
+existing decision procedure, so a dead relational guard reports through the
+code its slot already owns — `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`,
+`E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN` — plus the new
+`E-ENTRY-UNREACHABLE` for a lore entry `when` that can never hold; a guaranteed
+query inside a guard is the new `W-FACT-GUARANTEED`. `W-UNPROVEN-RELATIONAL`
+is removed, and naming it in `--deny` is a usage error, the `W-INJECT-CONFLICT`
+(`0.10.0`) precedent
+([`proposals/scenario-dsl/0.20.0.md`](proposals/scenario-dsl/0.20.0.md)).
+No grammar changes. The IR carries no shape change — the analysis is static
+semantics only — so every document compiles byte-identically apart from the
+version strings; the IR restamps per the alignment rule, and the schema file
+renames per release line (`lute-ir-0.19.schema.json` →
+[`lute-ir-0.20.schema.json`](../schemas/lute-ir-0.20.schema.json)); only `$id`
+and title are restamped. Engines gate on MAJOR, so nothing widens.
+`capabilityVersion` does not move, and the tree-sitter grammar is unchanged.
 
 ## Which bump when
 

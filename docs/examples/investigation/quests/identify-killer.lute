@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.19.0"
+luteVersion: "0.20.0"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---
@@ -12,12 +12,14 @@ title: Identify the Killer
 
   - `gatherEvidence` / `nameSuspect` gate on scalar run state the scenes write
     (`run.cluesLogged`, `run.accused`), so both are statically satisfiable.
-  - `clinchMotive` is `optional` and gates on a relational fact QUERY over the
-    producible relation `implicates` (seeded in the schema). Static reachability
-    can prove the relation is producible but NOT that this exact ground query
-    holds, so the checker emits `W-UNPROVEN-RELATIONAL` — an honest analysis
-    boundary, not a defect: it points you at `lute trace` (seed the fact) or
-    human review rather than silently claiming proof. See the README.
+  - `clinchMotive` is `optional` and gates on a relational fact QUERY,
+    `holds(implicates(ledger, blake))`. `check-project` decides relational
+    queries (dsl 0.20.0 fact envelopes): the fact is seeded in the schema and
+    nothing retracts it, so it is GUARANTEED and the objective is satisfiable.
+    Had no seed, assert, or rule produced it, the objective would be
+    `E-OBJECTIVE-UNSATISFIABLE`. A `done` is a predicate rather than a guard,
+    so an always-true one is not reported as redundant (`W-FACT-GUARANTEED`
+    covers `when=` / `<when test>` guards only).
 */
 
 <quest id="identifyKiller" title="Identify the Killer" start="true">
