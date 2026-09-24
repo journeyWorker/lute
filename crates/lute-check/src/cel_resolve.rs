@@ -839,7 +839,7 @@ fn is_string_family(t: &Type) -> bool {
 }
 
 /// Short human label for a produced [`Type`] in an `E-REF-TYPE` message.
-fn ty_desc(t: &Type) -> String {
+pub(crate) fn ty_desc(t: &Type) -> String {
     match t {
         Type::Bool => "a bool".to_string(),
         Type::Number => "a number".to_string(),

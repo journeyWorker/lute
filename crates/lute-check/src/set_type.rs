@@ -44,8 +44,11 @@ use crate::set_op::resolve_type;
 
 pub const E_SET_TYPE: &str = "E-SET-TYPE";
 
-/// The outcome of deciding ONE expression's produced type (§3.3).
-enum Decision {
+/// The outcome of deciding ONE expression's produced type (§3.3). Also the
+/// produced-type inference for a `defs:` entry without a `type:` (dsl 0.21.0
+/// §7b, [`decide_raw`]) — one closed procedure, so a def and a `::set` can
+/// never be typed by two different judgements.
+pub(crate) enum Decision {
     /// Decided: the expression produces this type.
     Ty(Type),
     /// Ill-typed on its own — rule 5 (a decidably non-`number` operand under
@@ -183,6 +186,17 @@ fn decide(expr: &Expr, schema: &StateSchema) -> Decision {
         // node: §3.3's closing paragraph — undecidable, and it passes.
         _ => Decision::Undecidable,
     }
+}
+
+/// dsl 0.21.0 §7b: [`decide`] over a raw CEL string — a def body, which is
+/// not a document slot and so has no pre-filled `CelSlot.ast`. `None` when
+/// the body does not parse: malformed CEL is `E-CEL-PARSE`'s, never a type
+/// question.
+pub(crate) fn decide_raw(raw: &str, schema: &StateSchema) -> Option<Decision> {
+    let mut arena = CelArena::default();
+    let handle = lute_cel::parse_slot(&mut arena, raw, 0).ok()?;
+    let root = arena.get(handle)?;
+    Some(decide(&root.expr, schema))
 }
 
 /// Rules 3–7. Operators are synthetic `Call`s in this AST, so they and the

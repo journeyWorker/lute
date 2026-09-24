@@ -19,7 +19,7 @@ title: What Vesna Carries
 <quest id="whatVesnaCarries" title="What Vesna Carries" start="run.vesnaTrust >= 2" after="visited('haven.s01ep04')">
 <objective id="sheWillWorkWithYours" title="Be somebody she can work with" done="run.vesnaTrust >= 3"/>
 <objective id="sheCanStopIt" title="Have her know the halt condition well enough to use it" done="holds(can_halt(vesna))"/>
-<objective id="sheHasThePaper" title="Have her holding the manifest when it matters" done="holds(knows(vesna, manifest))" optional/>
+<objective id="sheHasThePaper" title="Have her holding the manifest when it matters" done="@vesnaHasPaper" optional/>
 <on event="questComplete">
 @narrator: She had the page, she had the condition, and she had somebody she could say both to out loud.
 </on>

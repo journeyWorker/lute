@@ -193,6 +193,29 @@ entities:
     expect(ok).toBe(false);
   });
 
+  test("defs: the shorthand string and a type-less long form validate (dsl 0.21.0 §7b)", () => {
+    const { ajv, declSchema } = loadAjv();
+    const doc = Bun.YAML.parse(
+      'defs:\n  ready: "holds(knows(a, b))"\n  level: { cel: "user.level" }\n',
+    );
+    const { ok, errors } = validateAgainst(ajv, declSchema.$id, doc);
+    expect(ok, JSON.stringify(errors)).toBe(true);
+  });
+
+  test("broken def: no `cel`, an unknown key, or `params` without `type` (E-DEF-DECL)", () => {
+    const { ajv, declSchema } = loadAjv();
+    for (const def of [
+      "{ type: bool }",
+      '{ type: bool, cel: "true", body: "x" }',
+      '{ params: { n: number }, cel: "n > 1" }',
+      "5",
+    ]) {
+      const doc = Bun.YAML.parse(`defs:\n  bad: ${def}\n`);
+      const { ok } = validateAgainst(ajv, declSchema.$id, doc);
+      expect(ok, def).toBe(false);
+    }
+  });
+
   test("broken declaration: unknown top-level key", () => {
     const { ajv, declSchema } = loadAjv();
     // `bogusKey` is not in `crate::meta::UNIVERSAL_KEYS` — real Rust checker

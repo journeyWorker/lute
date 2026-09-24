@@ -121,6 +121,19 @@ engine contract:
   `expect.quests: {<id>: unset | active | complete | failed}`; `lute play`
   occasion steps judge `on=` objectives, and an occasion only objectives
   reference is a legal step.
+- **Language — def shorthand and `E-DEF-DECL` (dsl 0.21.0 §7b)** — a def
+  may be written as its CEL body alone, `vesnaHasPaper: "holds(knows(vesna,
+  manifest))"`, and the long form's `type:` is optional: an absent type is
+  inferred from the body by the same closed procedure that types a `::set`
+  (a body it cannot type asks for the long form; an explicit type must agree
+  with the body's). `E-DEF-DECL` rejects every other shape — a non-string,
+  non-mapping value, a mapping without a string `cel:`, a bad `type:`, an
+  unknown key, `params:` without `type:` — inline and in an imported schema.
+  This closes a gate hole: a def whose body `check` could not see (a bare
+  string, before) passed `check` and then failed `compile`/`trace` with
+  `E-COMPILE-EXPAND … (gate should have caught this)`. The published
+  `lute.schema.json` def shape now matches (`cel` required; `min`/`max`/
+  `values` — never read by the checker — removed).
 
 ### Changed
 
@@ -179,6 +192,12 @@ engine contract:
   flags must move to `--script`.
 - `capabilityVersion` moves only for a project that installs an
   `occasions:`-declaring plugin; the tree-sitter grammar is unchanged.
+- `E-DEF-DECL` can redden a def that compiled before only when that def was
+  already wrong: an unknown key was silently ignored, and a `type:` that
+  disagrees with its body's decidable type (`type: string` over the CEL
+  number `0010`) mistyped every `@ref` to it. A type-less long-form def, which
+  used to be unchecked at its `@ref` sites, is now typed by inference, so an
+  existing misuse of it can surface as `E-REF-TYPE`.
 
 ## [0.20.0] - 2026-09-24
 

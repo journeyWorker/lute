@@ -43,7 +43,7 @@
     },
     "defs": {
       "type": "object",
-      "description": "dsl §8.1 inline defs: name -> declaration (untyped at parse time in meta.rs; shape below models the fields the checker actually reads).",
+      "description": "dsl §8.1 / 0.21.0 §7b defs: name -> declaration, either the shorthand CEL string or the long-form mapping (def_decl.rs::lift_def; anything else is E-DEF-DECL).",
       "additionalProperties": {
         "$ref": "#/definitions/inlineDefDecl"
       }
@@ -156,31 +156,35 @@
       }
     },
     "inlineDefDecl": {
-      "description": "Inline frontmatter `defs:` entries are stored as untyped YAML in Rust (meta.rs); nothing here is `required` (a missing `type`/`cel` is not a Rust parse error, just a def the checker can't resolve). Fields ARE shape-checked when present.",
-      "type": "object",
-      "properties": {
-        "type": {
-          "$ref": "#/definitions/type"
-        },
-        "cel": {
+      "description": "dsl 0.21.0 §7b (def_decl.rs::lift_def): the shorthand `name: \"<CEL>\"`, or the long form `{ type?, params?, cel }`. `cel` is required; an absent `type` is inferred from the body; `params` requires `type`. Any other key is E-DEF-DECL.",
+      "oneOf": [
+        {
           "type": "string"
         },
-        "params": {
-          "$ref": "#/definitions/params"
-        },
-        "min": {
-          "type": "number"
-        },
-        "max": {
-          "type": "number"
-        },
-        "values": {
-          "type": "array",
-          "items": {
-            "type": "string"
+        {
+          "type": "object",
+          "required": [
+            "cel"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "$ref": "#/definitions/type"
+            },
+            "cel": {
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/params"
+            }
+          },
+          "dependencies": {
+            "params": [
+              "type"
+            ]
           }
         }
-      }
+      ]
     },
     "params": {
       "description": "dsl §8.1 `params:` (schema.rs::de_params) — a MAPPING `{ p: <Type> }` (source-order preserved) OR a SEQUENCE of `{ name, type }` entries (the plugin defs.yaml list spelling).",

@@ -1161,6 +1161,37 @@ pub fn parse_meta_kind_with_defaults(
     // source consumed by the checker (Task 7).
     typed.rel_relations.dups = scan_block_dup_names(&meta.raw_yaml, "relations");
     typed.rel_kinds.dups = scan_block_dup_names(&meta.raw_yaml, "entities");
+    // dsl 0.21.0 §7b: lift every `defs:` entry to its canonical long form —
+    // the shorthand `name: "<CEL>"` becomes `{ cel: "<CEL>" }` — so no later
+    // reader can see a def's name without its body. A malformed entry is
+    // `E-DEF-DECL` at its own key; its NAME stays declared, so a `@name` use
+    // does not cascade to `E-UNDECLARED-REF`. Imported schemas pass through
+    // this same parse (`MetaKind::Schema`), so the rule holds across `uses:`.
+    match map.get(yaml_key("defs")) {
+        None | Some(serde_yaml::Value::Null) => {}
+        Some(serde_yaml::Value::Mapping(defs)) => {
+            if defs.keys().any(|k| k.as_str().is_none()) {
+                diags.push(err(
+                    crate::def_decl::E_DEF_DECL,
+                    "def names must be strings".to_string(),
+                ));
+            }
+        }
+        Some(_) => diags.push(err(
+            crate::def_decl::E_DEF_DECL,
+            "`defs` must be a mapping of name to declaration".to_string(),
+        )),
+    }
+    for (name, def) in typed.defs.iter_mut() {
+        match crate::def_decl::lift_def(name, def) {
+            Ok(lifted) => *def = lifted,
+            Err(message) => diags.push(err_at(
+                crate::def_decl::E_DEF_DECL,
+                message,
+                meta_key_span(meta, name),
+            )),
+        }
+    }
     // §8.4 identifier alignment: a `defs` name and each of its parameter names
     // are CEL-facing identifiers — no `-` (E-PATH-IDENT). Directive/attr/asset
     // ids are `Ident` and keep permitting `-`; only these def positions are
@@ -1434,8 +1465,8 @@ fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String {
 }
 
 /// The YAML shape of `v`, for the "but this is …" half of
-/// [`state_decl_message`].
-fn yaml_shape(v: &serde_yaml::Value) -> &'static str {
+/// [`state_decl_message`] and of `E-DEF-DECL` ([`crate::def_decl`]).
+pub(crate) fn yaml_shape(v: &serde_yaml::Value) -> &'static str {
     match v {
         serde_yaml::Value::Null => "an empty value",
         serde_yaml::Value::Bool(_) => "a boolean",

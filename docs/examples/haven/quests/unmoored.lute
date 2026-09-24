@@ -38,7 +38,7 @@ title: Unmoored
 <objective id="aHandAtTheCoupling" title="Have somebody aboard who can stop the shed" done="count(can_halt(_)) >= 1"/>
 <objective id="somebodyToWalkWith" title="Give Vesna a reason to work with you" done="run.vesnaTrust >= 1"/>
 <objective id="noNewReasons" title="Give the schedule no new reasons" on="runEnd" done="run.shedPressure < 2"/>
-<objective id="theOrderOnPaper" title="Get the order of release onto paper you have read" done="holds(knows(vesna, manifest))" optional/>
+<objective id="theOrderOnPaper" title="Get the order of release onto paper you have read" done="@vesnaHasPaper" optional/>
 <on event="questComplete">
 @narrator: A hand that could reach the coupling, and somebody willing to stand next to it.
 </on>
