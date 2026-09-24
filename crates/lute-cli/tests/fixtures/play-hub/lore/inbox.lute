@@ -1,0 +1,15 @@
+---
+kind: lore
+id: hub.inbox
+title: Letters
+uses: ../world.schema.yaml
+---
+
+<entry id="megNote" on="inbox" priority="5" category="letter" title="From Meg">
+  @meg: Don't get yourself killed out there.
+  ::assert{heardOf(meg)}
+</entry>
+
+<entry id="dusaNote" on="inbox" category="letter" title="From Dusa" when="holds(befriended(achilles))">
+  @dusa: Achilles says you are kind. Is it true?
+</entry>

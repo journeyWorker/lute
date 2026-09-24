@@ -100,6 +100,10 @@ pub struct TypedMeta {
     /// (`E-META-VALUE` otherwise). Resolution into per-entry positions is
     /// [`crate::lore::resolve_entry_series`].
     pub series: Option<String>,
+    /// dsl 0.21.0 §3.1: a scene's beat declaration (`on` / `target` / `when`
+    /// / `priority` / `once`), lifted on `MetaKind::Scene` only and only when
+    /// `on:` is present and an identifier ([`crate::beats::lift_scene_beat`]).
+    pub beat: Option<crate::beats::BeatMeta>,
     /// dsl 0.15.0 §3: authored `extra:` descriptive block. Free open mapping
     /// with scalar or flat-scalar-list values, never consulted by any
     /// checker/compiler/runtime rule and never routed through CEL — the
@@ -187,8 +191,9 @@ const UNIVERSAL_KEYS: &[&str] = &[
 ];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Scene` document (dsl 0.1.0 §6.1,
-/// dsl 0.2.0 §3.1/§6.1, dsl 0.15.0 §2): the scene identity triad plus the
-/// scene-only extras plus the authored canonical key `id:`. A Quest document
+/// dsl 0.2.0 §3.1/§6.1, dsl 0.15.0 §2, dsl 0.21.0 §3.1): the scene identity
+/// triad plus the scene-only extras plus the authored canonical key `id:`
+/// plus the beat keys ([`crate::beats::BEAT_KEYS`]). A Quest document
 /// declaring any of these but `id:` is `E-META-UNKNOWN-KEY`.
 const SCENE_KEYS: &[&str] = &[
     "id",
@@ -198,6 +203,11 @@ const SCENE_KEYS: &[&str] = &[
     "episodeId",
     "pov",
     "after",
+    "on",
+    "target",
+    "when",
+    "priority",
+    "once",
 ];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Quest` document: the optional
@@ -238,10 +248,12 @@ const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params"];
 /// filter it explicitly so a hand-built `MetaDefaults` cannot silently smuggle
 /// it either (dsl 0.19.0 D-J: the same holds for a quest/lore document id).
 /// The other quest/lore kind key, lore `series:` (D-K), is per-document too,
-/// so only the SCENE kind keys are ever defaultable. `extra:` is legal on
-/// every ROOT kind — Scene, Quest, and Lore all carry it (§3).
+/// so only the SCENE kind keys are ever defaultable. dsl 0.21.0 §3.1: the
+/// beat keys are one scene's own declaration — never defaultable either.
+/// `extra:` is legal on every ROOT kind — Scene, Quest, and Lore all carry
+/// it (§3).
 pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
-    if key == "id" {
+    if key == "id" || crate::beats::BEAT_KEYS.contains(&key) {
         return false;
     }
     if key == "extra" {
@@ -271,6 +283,16 @@ fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> S
         return " — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, \
                 not a frontmatter key (dsl §4.1)"
             .to_string();
+    }
+    if crate::beats::BEAT_KEYS.contains(&key) && matches!(kind, MetaKind::Quest | MetaKind::Lore) {
+        return if kind == MetaKind::Lore && matches!(key, "on" | "priority" | "target" | "when") {
+            format!(
+                " — only a scene's frontmatter declares a beat; a lore entry answers an occasion \
+                 with its own `<entry {key}=…>` attribute (dsl 0.21.0 §3.2)"
+            )
+        } else {
+            " — only a scene's frontmatter declares a beat (dsl 0.21.0 §3.1)".to_string()
+        };
     }
     let is_root = kind.is_root();
     let component_keys: &[&str] = if component_key_allowed {
@@ -912,6 +934,14 @@ pub fn parse_meta_kind_with_defaults(
                 )),
             }
         }
+    }
+
+    // dsl 0.21.0 §3.1: a scene answering an occasion — `on` / `target` /
+    // `when` / `priority` / `once`, validated against the resolved occasion
+    // vocabulary (`E-BEAT-ATTR` / `E-OCCASION-UNKNOWN`). Scene-only: on any
+    // other kind these keys were already `E-META-UNKNOWN-KEY` above.
+    if kind == MetaKind::Scene {
+        typed.beat = crate::beats::lift_scene_beat(meta, map, &snapshot.occasions, &mut diags);
     }
 
     // dsl 0.15.0 §3: authored `extra:` descriptive block. Legal on Scene and

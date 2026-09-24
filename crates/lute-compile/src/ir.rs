@@ -210,7 +210,7 @@ pub enum ArtifactMeta {
 /// the serialized order (byte-stability contract):
 ///
 ///   `id` -> `character` -> `season` -> `episode` -> `episodeId` -> `title`
-///   -> `meta` -> `plugin`
+///   -> `meta` -> `plugin` -> `beat`
 ///
 /// `id` is ALWAYS present — either the authored canonical scene key
 /// (`TypedMeta.id`) or the derived `{character}.{episodeId}` join
@@ -253,6 +253,50 @@ pub struct SceneMeta {
     /// stays byte-identical to pre-0.0.4 output.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub plugin: BTreeMap<String, serde_json::Value>,
+    /// dsl 0.21.0 §3.1/§8: the scene's beat declaration, present only when
+    /// the frontmatter names an occasion (`on:`) — a scene that answers no
+    /// occasion is byte-identical to its 0.20 artifact.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub beat: Option<BeatIr>,
+}
+
+/// A scene beat (dsl 0.21.0 §3.1, `docs/runtime/beats-and-occasions.md`): the
+/// occasion the scene answers, an optional target restriction, the
+/// `@def`-expanded `when` eligibility slot, the resolved priority (unauthored
+/// → `0`), and the repetition policy (unauthored → `run`). Field declaration
+/// order is serialized order (byte-stability contract).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BeatIr {
+    pub on: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<CelPair>,
+    pub priority: i64,
+    pub once: BeatOnce,
+}
+
+/// A scene beat's repetition policy (dsl 0.21.0 §3.1): `"run"` (once per
+/// run), `"user"` (once ever), or `"none"` (repeatable; source `once:
+/// false`). A compile-local serde mirror of `lute_check::BeatOnce`, kept
+/// separate for the same reason as [`DocKind`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BeatOnce {
+    Run,
+    User,
+    None,
+}
+
+impl From<lute_check::BeatOnce> for BeatOnce {
+    fn from(o: lute_check::BeatOnce) -> Self {
+        match o {
+            lute_check::BeatOnce::Run => BeatOnce::Run,
+            lute_check::BeatOnce::User => BeatOnce::User,
+            lute_check::BeatOnce::None => BeatOnce::None,
+        }
+    }
 }
 
 /// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; dsl 0.15.0 §3
@@ -983,6 +1027,15 @@ pub struct EntryCmd {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<CelPair>,
     pub body: String,
+    /// dsl 0.21.0 §3.2: the occasion this entry answers, making it a beat.
+    /// Appended after `body` and skipped when unauthored, so an entry that
+    /// is not a beat is byte-identical to its 0.20 record.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on: Option<String>,
+    /// dsl 0.21.0 §3.2: the authored beat priority; unauthored → omitted
+    /// (the engine reads an absent priority as `0`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i64>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }

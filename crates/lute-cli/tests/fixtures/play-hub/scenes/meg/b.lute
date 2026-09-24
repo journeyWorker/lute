@@ -1,0 +1,11 @@
+---
+kind: scene
+id: meg.b
+uses: ../../world.schema.yaml
+on: talk
+target: npc.meg
+---
+
+## Megaera, Later
+
+@meg: You again. Fine. Sit.

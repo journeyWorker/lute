@@ -190,6 +190,12 @@ pub struct Entry {
     pub title: Option<(String, Span)>,
     pub series: Option<(String, Span)>,
     pub order: Option<(String, Span)>,
+    /// The occasion this entry answers (dsl 0.21.0 §3.2), raw text + value
+    /// span; the checker validates the identifier shape (`E-BEAT-ATTR`).
+    pub on: Option<(String, Span)>,
+    /// Beat priority (dsl 0.21.0 §3.2), raw text like `order`; the checker
+    /// validates the integer and that `on` is present (`E-BEAT-ATTR`).
+    pub priority: Option<(String, Span)>,
     /// Optional eligibility guard (dsl 0.19.0 §3), like [`Quest::start`].
     pub when: Option<CelSlot>,
     /// Residual (post-extraction) attrs, mirroring [`Quest`]; normally empty.

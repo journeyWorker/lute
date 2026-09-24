@@ -19,6 +19,8 @@
 //! - `entries` (dsl 0.19.0 §7) by document `path`, then document order
 //!   within each lore document — the declaration order an engine uses as
 //!   its eligibility tiebreak;
+//! - `beats` (dsl 0.21.0 §8) by the same rule — document `path`, then
+//!   declaration order — the selection tiebreak after priority;
 //! - `seedFacts` by `(relation, args)` and `rules` by `(head relation, raw)`.
 //!   A single artifact emits these two in vocabulary (import-then-inline)
 //!   order, which is only meaningful WITHIN one document — a union has no such
@@ -39,8 +41,8 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use crate::ir::{
-    Artifact, ArtifactMeta, Command, DocKind, EntityKindEntry, EnumEntry, PrereqEdgeEntry,
-    RelationEntry, RuleEntry, SeedFactEntry,
+    Artifact, ArtifactMeta, BeatOnce, Command, DocKind, EntityKindEntry, EnumEntry,
+    PrereqEdgeEntry, RelationEntry, RuleEntry, SeedFactEntry,
 };
 
 /// One document's row in the index. Paths are FORWARD-SLASH relative to the
@@ -84,6 +86,38 @@ pub struct IndexEntry {
     pub order: Option<u32>,
 }
 
+/// What a [`ProjectIndex::beats`] row declares (dsl 0.21.0 §8): a scene beat
+/// (`SceneMeta.beat`) or an entry beat (`EntryCmd.on`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BeatKind {
+    Scene,
+    Entry,
+}
+
+/// One row of [`ProjectIndex::beats`] (dsl 0.21.0 §4/§8): every beat in the
+/// project, so an engine can build its `occasion → candidates` table without
+/// loading every artifact. Row order IS the selection tiebreak after
+/// priority. `id` is the scene's canonical id ([`SceneMeta::id`]) or the
+/// entry id; `document` is the owning [`IndexDocument::path`]; `priority` is
+/// resolved (unauthored → `0`); `once` is present only on scene rows —
+/// entries have no repetition policy (dsl 0.21.0 §3.2).
+///
+/// [`SceneMeta::id`]: crate::ir::SceneMeta::id
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexBeat {
+    pub id: String,
+    pub kind: BeatKind,
+    pub document: String,
+    pub on: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    pub priority: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub once: Option<BeatOnce>,
+}
+
 /// The `project.index.json` envelope. Field DECLARATION ORDER is the serialized
 /// order, exactly as [`Artifact`] does it — a `serde_json::Map` would sort the
 /// keys alphabetically instead.
@@ -110,6 +144,12 @@ pub struct ProjectIndex {
     /// over a project without lore stays byte-identical to 0.18.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<IndexEntry>,
+    /// dsl 0.21.0 §8: every beat in the project — documents in `documents`
+    /// (path) order, declaration order within each — the selection
+    /// tiebreak after priority. OMITTED when empty, so an index over a
+    /// project without beats stays byte-identical to 0.20.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub beats: Vec<IndexBeat>,
 }
 
 impl ProjectIndex {
@@ -330,6 +370,40 @@ pub fn build_index(
         })
         .collect();
 
+    // Beats (dsl 0.21.0 §8) follow the same path order: a scene document
+    // contributes at most its one `meta.beat`, a lore document every entry
+    // that names an occasion, in command (= declaration) order.
+    let beats = by_path
+        .iter()
+        .flat_map(|d| {
+            let scene = match &d.artifact.meta {
+                ArtifactMeta::Scene(m) => m.beat.as_ref().map(|b| IndexBeat {
+                    id: m.id.clone(),
+                    kind: BeatKind::Scene,
+                    document: d.path.clone(),
+                    on: b.on.clone(),
+                    target: b.target.clone(),
+                    priority: b.priority,
+                    once: Some(b.once),
+                }),
+                ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => None,
+            };
+            let entries = d.artifact.commands.iter().filter_map(move |c| match c {
+                Command::Entry(e) => e.on.as_ref().map(|on| IndexBeat {
+                    id: e.id.clone(),
+                    kind: BeatKind::Entry,
+                    document: d.path.clone(),
+                    on: on.clone(),
+                    target: e.target.clone(),
+                    priority: e.priority.unwrap_or(0),
+                    once: None,
+                }),
+                _ => None,
+            });
+            scene.into_iter().chain(entries)
+        })
+        .collect();
+
     Ok(ProjectIndex {
         ir_version: ir_version.to_string(),
         capability_version: capability.map(|(_, v)| v.to_string()).unwrap_or_default(),
@@ -341,6 +415,7 @@ pub fn build_index(
         rules: rules.into_values().collect(),
         prereq_edges: prereqs.finish(),
         entries,
+        beats,
     })
 }
 
@@ -377,7 +452,7 @@ pub fn document_key(artifact: &Artifact) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{AtomEntry, SceneMeta};
+    use crate::ir::{AtomEntry, BeatIr, SceneMeta};
 
     fn scene(character: &str, capability: &str) -> Artifact {
         Artifact {
@@ -394,6 +469,7 @@ mod tests {
                 title: None,
                 extra: BTreeMap::new(),
                 plugin: BTreeMap::new(),
+                beat: None,
             }),
             state: Vec::new(),
             entities: Vec::new(),
@@ -553,8 +629,10 @@ mod tests {
         assert!(pos("\"capabilityVersion\"") < pos("\"documents\""));
         assert!(pos("\"documents\"") < pos("\"entities\""));
         assert!(json.ends_with('\n'));
-        // dsl 0.19.0: no lore → no `entries` key (0.18 byte-identity).
+        // dsl 0.19.0: no lore → no `entries` key (0.18 byte-identity);
+        // dsl 0.21.0: no beats → no `beats` key (0.20 byte-identity).
         assert!(!json.contains("\"entries\""), "{json}");
+        assert!(!json.contains("\"beats\""), "{json}");
     }
 
     fn lore(capability: &str, entries: &[(&str, Option<&str>, Option<u32>)]) -> Artifact {
@@ -584,6 +662,8 @@ mod tests {
                     order: *order,
                     when: None,
                     body: format!("{:03}-0200", i + 1),
+                    on: None,
+                    priority: None,
                     stamp: Stamp::default(),
                 })
             })
@@ -657,5 +737,122 @@ mod tests {
             "unauthored series/order are omitted"
         );
         assert_eq!(v["documents"][0]["kind"], "lore");
+    }
+
+    fn beat_scene(id: &str, beat: Option<BeatIr>) -> Artifact {
+        let mut a = scene("unused", "cap-1");
+        if let ArtifactMeta::Scene(m) = &mut a.meta {
+            m.id = id.to_string();
+            m.beat = beat;
+        }
+        a
+    }
+
+    fn beat(on: &str, target: Option<&str>, priority: i64, once: BeatOnce) -> Option<BeatIr> {
+        Some(BeatIr {
+            on: on.to_string(),
+            target: target.map(str::to_string),
+            when: None,
+            priority,
+            once,
+        })
+    }
+
+    /// `(id, on, priority)` per entry, in declaration order.
+    fn beat_lore(entries: &[(&str, Option<&str>, Option<i64>)]) -> Artifact {
+        let plain: Vec<(&str, Option<&str>, Option<u32>)> =
+            entries.iter().map(|(id, _, _)| (*id, None, None)).collect();
+        let mut a = lore("cap-1", &plain);
+        for (c, (_, on, priority)) in a.commands.iter_mut().zip(entries) {
+            if let Command::Entry(e) = c {
+                e.on = on.map(str::to_string);
+                e.priority = *priority;
+            }
+        }
+        a
+    }
+
+    /// Rows follow `documents`' path order, then declaration order within a
+    /// document (NOT id or priority order — priority is the engine's first
+    /// key, this order its tiebreak); non-beat scenes and entries without
+    /// `on` contribute nothing; `once` rides on scene rows only; an
+    /// unauthored entry priority resolves to `0`.
+    #[test]
+    fn beats_rows_follow_path_then_declaration_order() {
+        let docs = [
+            (
+                "scenes/b.lute",
+                beat_scene(
+                    "hades.achilles.run12",
+                    beat("talk", Some("npc.achilles"), 50, BeatOnce::User),
+                ),
+            ),
+            ("scenes/a.lute", beat_scene("plain.scene", None)),
+            (
+                "lore/barks.lute",
+                beat_lore(&[
+                    ("zBark", Some("talk"), Some(10)),
+                    ("lookedUpOnly", None, None),
+                    ("aBark", Some("hubVisit"), None),
+                ]),
+            ),
+            (
+                "scenes/c.lute",
+                beat_scene("dawn", beat("dayStart", None, 0, BeatOnce::None)),
+            ),
+        ];
+        let index = build_index("0.21.0", &inputs(&docs)).expect("no conflicts");
+        let rows: Vec<(&str, BeatKind, &str)> = index
+            .beats
+            .iter()
+            .map(|b| (b.document.as_str(), b.kind, b.id.as_str()))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("lore/barks.lute", BeatKind::Entry, "zBark"),
+                ("lore/barks.lute", BeatKind::Entry, "aBark"),
+                ("scenes/b.lute", BeatKind::Scene, "hades.achilles.run12"),
+                ("scenes/c.lute", BeatKind::Scene, "dawn"),
+            ]
+        );
+        let v: serde_json::Value = serde_json::from_str(&index.to_json().unwrap()).unwrap();
+        assert_eq!(
+            v["beats"][0],
+            serde_json::json!({
+                "id": "zBark",
+                "kind": "entry",
+                "document": "lore/barks.lute",
+                "on": "talk",
+                "target": "item.zBark",
+                "priority": 10
+            }),
+            "entry rows carry no `once`"
+        );
+        assert_eq!(v["beats"][1]["priority"], 0, "unauthored priority is 0");
+        assert_eq!(
+            v["beats"][2],
+            serde_json::json!({
+                "id": "hades.achilles.run12",
+                "kind": "scene",
+                "document": "scenes/b.lute",
+                "on": "talk",
+                "target": "npc.achilles",
+                "priority": 50,
+                "once": "user"
+            })
+        );
+        assert_eq!(
+            v["beats"][3],
+            serde_json::json!({
+                "id": "dawn",
+                "kind": "scene",
+                "document": "scenes/c.lute",
+                "on": "dayStart",
+                "priority": 0,
+                "once": "none"
+            }),
+            "an untargeted beat omits `target`"
+        );
     }
 }

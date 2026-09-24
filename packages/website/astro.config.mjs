@@ -86,6 +86,7 @@ export default defineConfig({
             { slug: "language/params" },
             { slug: "language/quests-and-scenes" },
             { slug: "language/lore-entries" },
+            { slug: "language/beats" },
             { slug: "language/imports" },
           ],
         },
@@ -114,9 +115,9 @@ export default defineConfig({
           items: [
             { slug: "tooling/cli" },
             {
-              slug: "tooling/schedule-and-play",
-              label: "Schedule & play",
-              translations: { ko: "스케줄과 플레이" },
+              slug: "tooling/play",
+              label: "Playing a story",
+              translations: { ko: "스토리 플레이" },
             },
             { slug: "tooling/runtime-contract" },
             {

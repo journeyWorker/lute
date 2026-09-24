@@ -1,0 +1,18 @@
+---
+kind: lore
+title: Achilles barks
+state:
+  user.runs: { type: number, default: 0 }
+---
+
+<entry id="achillesBark3" on="talk" target="npc.achilles" category="bark" priority="10" when="user.runs >= 3">
+  @achilles: Back again, lad.
+</entry>
+
+<entry id="achillesBark" on="talk" target="npc.achilles" category="bark">
+  @achilles: Hm.
+</entry>
+
+<entry id="courtyardPlaque" target="place.courtyard" category="place">
+  @narrator: A worn plaque: "Here the Myrmidons stood."
+</entry>

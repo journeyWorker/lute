@@ -1,0 +1,7 @@
+# A tiny Hades-like hub for `lute play` (dsl 0.21.0 §6). The project-local
+# `hub.occasions` plugin declares the occasions the engine raises.
+pluginsDir: plugins/
+defaultProfile: hub
+profiles:
+  hub:
+    plugins: { hub.occasions: true }

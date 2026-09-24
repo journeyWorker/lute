@@ -1,0 +1,12 @@
+---
+kind: scene
+id: achilles.greeting
+uses: ../../world.schema.yaml
+on: talk
+target: npc.achilles
+once: false
+---
+
+## Achilles
+
+@achilles: Keep your guard up, lad.

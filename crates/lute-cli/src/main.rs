@@ -71,7 +71,6 @@ mod play;
 mod runner;
 mod scaffold;
 mod scenario_fmt;
-mod schedule;
 mod stream;
 mod testcmd;
 
@@ -418,75 +417,29 @@ enum Command {
         #[arg(long, value_name = "ID")]
         entry: Option<String>,
     },
-    /// Play a scheduled route through a whole project as one chained,
-    /// reviewer-facing transcript — the reference-runtime consumer of a
-    /// `schedule.yaml` (design spec
-    /// `docs/superpowers/specs/2026-08-14-lute-schedule-and-play-design.md`
-    /// §4). Compiles the WHOLE project in memory (scene + quest kind, the
-    /// same declaration union `compile --all` writes), then walks the
-    /// schedule's user-lane placements in presentation order — re-evaluating
-    /// each event's route-guarded variants against live state, chaining
-    /// `run.*`/`user.*`/`app.*`/`quest.*` state and facts across scene
-    /// boundaries via `lute run`'s own reference evaluator, draining
-    /// overlapping world-lane events as the story clock advances. A project
-    /// with no `schedule.yaml` is a hard error (spec §2: there is no
-    /// `after:`-graph fallback — unguarded sibling route files cannot be
-    /// walked into ONE route). Exit `0` a complete walk (`::end`, the clock
-    /// exhausted, or `--steps` reached), `1` a schedule gate/runtime failure
-    /// (a bad `schedule.yaml`, a failed project compile, an unsatisfiable/
-    /// ambiguous route variant, an `after:` violated in presentation order),
-    /// `2` an I/O/usage failure, `3` an incomplete walk (an unscripted
-    /// choice/hub, or a guard/effect this reference runtime cannot resolve —
-    /// spec §4.5).
+    /// Play a story through a whole project as a sequence of raised
+    /// occasions (dsl 0.21.0 §6). Compiles the WHOLE project in memory
+    /// (scene, quest and lore documents — the gate and declaration union
+    /// `compile --all` uses), then for every script step computes the beats
+    /// answering the occasion, each candidate's verdict (`once` spending,
+    /// `after:` over the live visited/completed/active sets, `when` through
+    /// `lute run`'s evaluator), orders the eligible ones by priority then
+    /// index order, presents the winner (or the step's `pick` on a `select:
+    /// all` occasion) with the reference runner, and advances every quest
+    /// lifecycle. Exit `0` a complete walk (every step, or a `::end`), `1` a
+    /// failed project compile or an ineligible `pick`, `2` an I/O/usage
+    /// failure (a malformed script, an unknown occasion), `3` an incomplete
+    /// walk (an unscripted choice/hub, or a `when`/effect this reference
+    /// runtime cannot decide).
     Play {
-        /// Project directory (`lute.project.yaml` + `schedule.yaml`) to play.
+        /// Project directory (`lute.project.yaml`) to play.
         dir: PathBuf,
-        /// A scalar state seed (route selection): a DECLARED state path and
-        /// a literal, `<path>=<literal>` (repeatable).
-        #[arg(long = "state", value_name = "PATH=LITERAL", value_parser = parse_state_flag)]
-        state: Vec<(String, String)>,
-        /// A ground fact, valid-now, over the project's unioned relational
-        /// vocabulary (repeatable).
-        #[arg(long = "fact", value_name = "REL(ARG…)")]
-        fact: Vec<String>,
-        /// A route script (design spec §4.4): `state:`/`facts:`/`choose:`,
-        /// this module's OWN closed grammar — NOT a `lute trace --mock` file.
+        /// The play script (`*.play.yaml`): `steps:` — the occasions to
+        /// raise (`{occasion, target?, pick?}`) and `{newRun: true}`
+        /// boundaries — plus `state:`/`facts:` seeds and `choose:` branch
+        /// decisions in the trace-mock grammar.
         #[arg(long, value_name = "FILE")]
-        script: Option<PathBuf>,
-        /// An ad-hoc choice/hub decision, event-qualified:
-        /// `<event>/<branchOrHubId>=<choiceId>[,<choiceId>…]` (repeatable).
-        /// A bare (unqualified) id is legal only when unique across the
-        /// whole schedule.
-        #[arg(long = "choose", value_name = "EVENT/ID=CHOICEID[,CHOICEID…]", value_parser = parse_choose_flag)]
-        choose: Vec<(String, Vec<String>)>,
-        /// Unattended policy for a choice/hub the route script/`--choose`
-        /// left unscripted: `first` picks the first eligible option.
-        /// Unscripted AND unset here halts the walk incomplete (exit 3).
-        #[arg(long, value_name = "POLICY", value_parser = play::parse_auto_policy)]
-        auto: Option<String>,
-        /// Transcript scope: `user` (default — the strict player view) or
-        /// `all` (world-lane scenes annotated `· world ·`). World-lane
-        /// scenes EXECUTE either way (state must not depend on rendering);
-        /// this only gates what the transcript shows.
-        #[arg(long, value_name = "user|all", value_parser = play::parse_lanes_flag)]
-        lanes: Option<String>,
-        /// Stop after this many presented placements (user + drained world),
-        /// for a partial-playback preview.
-        #[arg(long)]
-        steps: Option<u32>,
-        /// Coverage mode (design spec §4.7): replay every named route
-        /// script (repeatable — shell-expand a glob like
-        /// `routes/*.play.yaml` yourself) through the same chain executor,
-        /// per-script transcript suppressed, and report every
-        /// placement/variant/hub-choice option the corpus as a whole never
-        /// exercises — the review-gap detector. Exclusive with
-        /// `--script`/`--choose`/`--steps` (a single playthrough's own
-        /// knobs do not compose with a corpus replay). Exit `0` full
-        /// coverage, `1` a coverage gap remains, `2` an I/O/usage failure,
-        /// `3` at least one corpus script halted before completion (its
-        /// coverage contribution is partial).
-        #[arg(long = "coverage", value_name = "FILE")]
-        coverage: Vec<PathBuf>,
+        script: PathBuf,
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,
@@ -709,6 +662,8 @@ const DENIABLE_CODES: &[&str] = &[
     "E-AT-CONTEXT",
     "E-ATTR-TYPE",
     "E-BAD-ENUM",
+    "E-BEAT-ATTR",
+    "E-BEAT-UNREACHABLE",
     "E-BRANCH-ALL-GUARDED",
     "E-BRANCH-EMPTY",
     "E-BRANCH-PROMPT",
@@ -809,6 +764,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-OBJECTIVE-MISSING-DONE",
     "E-OBJECTIVE-QUEST-DONE",
     "E-OBJECTIVE-UNSATISFIABLE",
+    "E-OCCASION-UNKNOWN",
     "E-ON-NO-EVENT",
     "E-PATH-IDENT",
     "E-PERMISSION-BRIDGE",
@@ -911,6 +867,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-WHEN-UNSET-SUBJECT",
     "E-WRITE-CONFLICT",
     "W-ASSET-PLACEHOLDER",
+    "W-BEAT-SHADOWED",
     "W-CATALOG-STALE",
     "W-CODE-AFTER-END",
     "W-CODE-AFTER-NEXT",
@@ -1125,29 +1082,7 @@ fn main() -> ExitCode {
             json,
             entry,
         } => runner::run_artifact(&artifact, mock.as_deref(), json, entry.as_deref()),
-        Command::Play {
-            dir,
-            state,
-            fact,
-            script,
-            choose,
-            auto,
-            lanes,
-            steps,
-            coverage,
-            json,
-        } => play::run_play(
-            &dir,
-            state,
-            fact,
-            script.as_deref(),
-            choose,
-            auto,
-            lanes,
-            steps,
-            coverage,
-            json,
-        ),
+        Command::Play { dir, script, json } => play::run_play(&dir, &script, json),
         Command::Test {
             dir,
             json,
@@ -2397,6 +2332,12 @@ fn reconcile_collected(
                 project_diags.push((path.clone(), d));
             }
         }
+        // dsl 0.21.0 §5: `W-BEAT-SHADOWED` — a `select: first` beat an
+        // earlier-ordered, always-eligible, never-spent beat on the same
+        // occasion always beats. Project order is the selection tiebreak.
+        let beat_foldeds: Vec<&lute_check::FoldedEnv> =
+            group_full.iter().map(|(_, _, f)| f).collect();
+        project_diags.extend(lute_check::check_project_beats(group, &beat_foldeds));
         // T10/T11: connectivity envelope (dsl §4.3). `PerDocEffects`
         // populated from T8 (per-scene `guaranteed`/`possible_writes`,
         // recomputed here from this root's own docs+resolved schema, keyed
@@ -4465,6 +4406,12 @@ fn authoring_surface(
     root.insert("directives".into(), directives.into());
     root.insert("bridges".into(), bridges.into());
     root.insert("rewardKinds".into(), reward_kinds);
+    // dsl 0.21.0 §2: the occasion vocabulary beats answer with `on:`
+    // (empty = shape-only). Key-sorted by the snapshot's BTreeMap.
+    root.insert(
+        "occasions".into(),
+        serde_json::to_value(&snap.occasions).unwrap_or_else(|_| serde_json::json!({})),
+    );
     root.insert(
         "questsAllowed".into(),
         snap.permissions.allows_quests().into(),
@@ -4684,6 +4631,18 @@ fn context_outline(surface: &serde_json::Value) -> String {
         let _ = writeln!(out, "rewardKinds ({}):", reward_kinds.len());
         for name in reward_kinds.keys() {
             let _ = writeln!(out, "  {name}");
+        }
+    }
+    if let Some(occasions) = surface["occasions"].as_object() {
+        let _ = writeln!(out, "occasions ({}):", occasions.len());
+        for (name, o) in occasions {
+            let select = o["select"].as_str().unwrap_or("first");
+            let target = if o["target"].as_bool().unwrap_or(false) {
+                ", target"
+            } else {
+                ""
+            };
+            let _ = writeln!(out, "  {name} (select: {select}{target})");
         }
     }
     let _ = writeln!(

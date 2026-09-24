@@ -1,0 +1,12 @@
+---
+kind: scene
+id: oracle.vision
+uses: ../world.schema.yaml
+on: talk
+target: npc.oracle
+when: 'validAt(heardOf(patroclus), now())'
+---
+
+## The Oracle
+
+@oracle: I have seen the hour you heard his name.

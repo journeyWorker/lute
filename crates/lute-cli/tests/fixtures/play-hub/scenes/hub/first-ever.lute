@@ -1,0 +1,14 @@
+---
+kind: scene
+id: hub.firstEver
+uses: ../../world.schema.yaml
+on: hubVisit
+priority: 20
+once: user
+---
+
+## The House of Hades
+
+@hypnos: Oh, a new face. Welcome to the House, I guess.
+::set{user.metHypnos = true}
+::set{run.hubVisits = run.hubVisits + 1}

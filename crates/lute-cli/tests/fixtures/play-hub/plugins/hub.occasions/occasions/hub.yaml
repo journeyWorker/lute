@@ -1,0 +1,4 @@
+occasions:
+  hubVisit: {}
+  talk: { target: true }
+  inbox: { select: all }

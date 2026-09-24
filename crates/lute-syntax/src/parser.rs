@@ -1648,7 +1648,7 @@ mod tests {
         let src = "---\nkind: lore\n---\n\
                    <entry id=\"scientistLog1\" target=\"item.torn_note_1\" category=\"note\" \
                    series=\"scientistLog\" order=\"1\" title=\"Research log, day 3\" \
-                   when=\"run.labOpen\">\n\
+                   on=\"inspect\" priority=\"-5\" when=\"run.labOpen\">\n\
                    @scientist: Day three.\n\
                    ::assert{knows(vesna, project_lumen)}\n\
                    </entry>\n";
@@ -1665,6 +1665,8 @@ mod tests {
             (&e.series, "scientistLog"),
             (&e.order, "1"),
             (&e.title, "Research log, day 3"),
+            (&e.on, "inspect"),
+            (&e.priority, "-5"),
         ] {
             let (value, sp) = field.as_ref().expect("attr extracted");
             assert_eq!(value, want);
@@ -1687,6 +1689,7 @@ mod tests {
         let e = &doc.entries[0];
         assert!(e.target.is_none() && e.category.is_none() && e.title.is_none());
         assert!(e.series.is_none() && e.order.is_none() && e.when.is_none());
+        assert!(e.on.is_none() && e.priority.is_none());
     }
 
     #[test]

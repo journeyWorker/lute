@@ -259,6 +259,8 @@ impl Parser<'_> {
         let title = take_str_spanned(&mut attrs, "title");
         let series = take_str_spanned(&mut attrs, "series");
         let order = take_str_spanned(&mut attrs, "order");
+        let on = take_str_spanned(&mut attrs, "on");
+        let priority = take_str_spanned(&mut attrs, "priority");
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let (body, end_o) = self.parse_block_body("entry", &open);
         Entry {
@@ -269,6 +271,8 @@ impl Parser<'_> {
             title,
             series,
             order,
+            on,
+            priority,
             when,
             attrs,
             body,

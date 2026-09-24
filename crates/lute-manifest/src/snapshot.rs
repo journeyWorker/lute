@@ -60,6 +60,12 @@ pub struct CapabilitySnapshot {
     /// contract; Task 2 lands the empty-by-default field so downstream
     /// checker work can read it.
     pub reward_kinds: BTreeMap<String, RewardKindDecl>,
+    /// Plugin-declared occasions (dsl 0.21.0 §2 `occasions:`) folded from
+    /// every active plugin's `occasions` export. Consumed by the checker's
+    /// `E-OCCASION-UNKNOWN` closure and beat analysis; the empty map means
+    /// "shape-only" (any identifier is an occasion). GUARDED in
+    /// [`capability_version`] exactly like `rewardKinds`.
+    pub occasions: BTreeMap<String, OccasionDecl>,
     /// Effective project/host capability ceiling. Empty means unrestricted.
     pub permissions: Permissions,
 }
@@ -283,6 +289,18 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
             h.update(name.as_bytes());
             h.update(b"=");
             h.update(format!("{k:?}").as_bytes());
+            h.update(b";");
+        }
+    }
+    // GUARDED, the `rewardKinds` precedent (dsl 0.21.0 §2): a snapshot with
+    // no declared occasions keeps its pre-0.21 stamp; a populated vocabulary
+    // changes what the checker accepts, so it folds in via the whole `Debug`.
+    if !snap.occasions.is_empty() {
+        h.update(b"\noccasions\n");
+        for (name, o) in &snap.occasions {
+            h.update(name.as_bytes());
+            h.update(b"=");
+            h.update(format!("{o:?}").as_bytes());
             h.update(b";");
         }
     }
@@ -624,6 +642,37 @@ mod tests {
             },
         );
         assert_ne!(capability_version(&a), capability_version(&b));
+    }
+
+    #[test]
+    fn occasions_absent_keeps_capability_version_stable() {
+        // dsl 0.21.0 §2: the `occasions` section is guarded — a snapshot
+        // with no declared occasions hashes to the pre-0.21 stamp.
+        assert_eq!(
+            capability_version(&CapabilitySnapshot::default()),
+            "e4d422238da1596ef546a76c06acac962e8763b0240c0ab0dd0276d25d74db76",
+            "an empty `occasions` map must not perturb the capability stamp"
+        );
+    }
+
+    #[test]
+    fn occasion_vocabulary_changes_capability_version() {
+        let decl = |target| OccasionDecl {
+            name: "talk".into(),
+            target,
+            ..Default::default()
+        };
+        let mut a = CapabilitySnapshot::default();
+        a.occasions.insert("talk".into(), decl(false));
+        let mut b = CapabilitySnapshot::default();
+        b.occasions.insert("talk".into(), decl(true));
+        let empty = capability_version(&CapabilitySnapshot::default());
+        assert_ne!(capability_version(&a), empty, "declaring an occasion restamps");
+        assert_ne!(
+            capability_version(&a),
+            capability_version(&b),
+            "the occasion contract (`target`) is part of the stamp"
+        );
     }
 
     #[test]

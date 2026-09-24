@@ -34,6 +34,11 @@ pub struct LoadedPlugin {
     /// assembly, participating in `capabilityVersion` via the guarded
     /// hash section.
     pub reward_kinds: Vec<RewardKindDecl>,
+    /// dsl 0.21.0 §2 `occasions/*.yaml`: engine occasion vocabulary (name,
+    /// `select`, `target`). Folded into
+    /// [`crate::snapshot::CapabilitySnapshot::occasions`] at assembly as a
+    /// guarded `capabilityVersion` section, the `rewardKinds` precedent.
+    pub occasions: Vec<OccasionDecl>,
     /// lint-system design §6 `lints/*.yaml`: DECLARATIVE lint rules a
     /// plugin publishes. Stored with RAW ids; a consumer namespaces each
     /// as `<plugin-id>/<id>` via [`crate::lint::namespace_active_lints`].
@@ -138,7 +143,7 @@ impl std::fmt::Display for LoadError {
                 f,
                 "export `{export}` is not one of the plugin manifest's known kinds \
                  (directives, state, providers, bridge, defs, enums, frontmatter, docs, \
-                 assetkinds, events, stampattrs, rewardkinds, lints)"
+                 assetkinds, events, stampattrs, rewardkinds, occasions, lints)"
             ),
             LoadError::AssetSegmentType {
                 file,
@@ -192,6 +197,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
         events: Vec::new(),
         stamp_attrs: Vec::new(),
         reward_kinds: Vec::new(),
+        occasions: Vec::new(),
         lints: Vec::new(),
     };
 
@@ -273,6 +279,19 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                     |r| r.name.clone(),
                     e,
                 )
+            }),
+            "occasions" => read_kind::<OccasionsFile, _>(&path, &mut errs, |f, _file, e| {
+                let decls: Vec<OccasionDecl> = f
+                    .occasions
+                    .into_iter()
+                    .map(|(name, body)| OccasionDecl {
+                        name,
+                        select: body.select,
+                        target: body.target,
+                        description: body.description,
+                    })
+                    .collect();
+                merge_named(&mut out.occasions, decls, "occasion", |o| o.name.clone(), e)
             }),
             "lints" => read_kind::<LintsFile, _>(&path, &mut errs, |f, _file, e| {
                 merge_named(&mut out.lints, f.lints, "lint", |r| r.id.clone(), e)

@@ -178,6 +178,11 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
             _ => {}
         }
     }
+    // dsl 0.21.0 §3.1: a scene beat's `when` is `@def`-expanded like every
+    // other CEL slot.
+    if let Some(when) = json["meta"]["beat"]["when"]["raw"].as_str() {
+        assert_cel_clean("meta.beat.when", when);
+    }
     // Retired identifier must not exist anywhere (§4.2).
     assert!(!json.to_string().contains("textUnitId"));
 }
@@ -297,6 +302,33 @@ fn lore_ship_records() {
     golden(
         "lore_ship_records",
         "tests/fixtures/lore_ship_records.lute",
+        None,
+    );
+}
+
+/// dsl 0.21.0 §3.1/§8: a scene beat lowered end-to-end. The snapshot pins
+/// `meta.beat` appended after every 0.20 meta field: `on`, `target`, the
+/// `when` pair with the `@knowsName` def expanded, the authored `priority`,
+/// and `once: "user"`. The body is an ordinary scene — a beat changes how the
+/// engine reaches the scene, never what it runs.
+#[test]
+fn beat_achilles_gift() {
+    golden(
+        "beat_achilles_gift",
+        "tests/fixtures/beat_achilles_gift.lute",
+        None,
+    );
+}
+
+/// dsl 0.21.0 §3.2/§8: entry beats. `on` / `priority` are appended after
+/// `body` on the entries that author them — an unauthored priority stays
+/// omitted (the engine's `0`) — and the plain lookup entry is byte-shaped
+/// exactly as in 0.20.
+#[test]
+fn lore_beat_barks() {
+    golden(
+        "lore_beat_barks",
+        "tests/fixtures/lore_beat_barks.lute",
         None,
     );
 }

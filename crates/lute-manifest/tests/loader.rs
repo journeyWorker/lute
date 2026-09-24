@@ -858,3 +858,54 @@ fn unknown_export_message_lists_rewardkinds() {
         "closed export list must include `rewardkinds`: {msg}"
     );
 }
+
+/// dsl 0.21.0 §2: the `occasions` export loads like `rewardkinds` — the map
+/// key is the name, `select` defaults to `first`, `target` to `false`; a
+/// `select` outside `first`/`all` fails the load; a per-package duplicate is
+/// `DuplicateId { kind: "occasion" }`.
+#[test]
+fn loads_occasions_export() {
+    use lute_manifest::schema::OccasionSelect;
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_oc_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(tmp.join("occasions")).unwrap();
+    fs::write(
+        tmp.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  occasions: occasions/\n",
+    )
+    .unwrap();
+    fs::write(
+        tmp.join("occasions/a.yaml"),
+        "occasions:\n  hubVisit: {}\n  talk: { select: first, target: true }\n  \
+         inbox: { select: all, description: Messages }\n",
+    )
+    .unwrap();
+    let loaded = load_plugin_dir(&tmp).expect("valid occasions package loads");
+    let by_name: std::collections::BTreeMap<_, _> =
+        loaded.occasions.iter().map(|o| (o.name.as_str(), o)).collect();
+    assert_eq!(by_name.len(), 3);
+    let hub = by_name["hubVisit"];
+    assert_eq!((hub.select, hub.target), (OccasionSelect::First, false), "defaults");
+    assert!(by_name["talk"].target);
+    assert_eq!(by_name["inbox"].select, OccasionSelect::All);
+    assert_eq!(by_name["inbox"].description.as_deref(), Some("Messages"));
+
+    fs::write(tmp.join("occasions/b.yaml"), "occasions:\n  talk: {}\n").unwrap();
+    let errs = load_plugin_dir(&tmp).expect_err("per-package dup occasion must fail load");
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::loader::LoadError::DuplicateId { kind, id }
+                if kind == "occasion" && id == "talk"
+        )),
+        "{errs:?}"
+    );
+
+    fs::write(tmp.join("occasions/b.yaml"), "occasions:\n  map: { select: random }\n").unwrap();
+    let errs = load_plugin_dir(&tmp).expect_err("`select` is a closed enum");
+    assert!(
+        errs.iter().any(|e| matches!(e, lute_manifest::loader::LoadError::Parse { .. })),
+        "{errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}

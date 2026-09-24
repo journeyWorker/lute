@@ -47,6 +47,17 @@ pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnosti
     diags
 }
 
+/// dsl 0.21.0 §5: a scene beat's frontmatter `when` expands exactly like a
+/// quest's `start` (no enclosing `<match>` subject). The slot lives on the
+/// typed frontmatter (`TypedMeta.beat`), not in the document tree, so the
+/// driver hands it over separately. Returns `E-COMPILE-EXPAND` diagnostics
+/// as [`expand_document`] does.
+pub fn expand_beat_when(slot: &mut CelSlot, defs: &DefTable<'_>) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    expand_slot(slot, defs, None, &mut diags);
+    diags
+}
+
 fn expand_nodes(
     nodes: &mut [Node],
     defs: &DefTable<'_>,

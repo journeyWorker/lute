@@ -46,6 +46,7 @@ fn plugin_with_directive(id: &str, dname: &str) -> LoadedPlugin {
         events: vec![],
         stamp_attrs: vec![],
         reward_kinds: vec![],
+        occasions: vec![],
         lints: vec![],
     }
 }
@@ -1160,4 +1161,87 @@ fn empty_reward_kinds_leaves_capability_version_untouched() {
         lute_manifest::snapshot::capability_version(&probe),
         "an empty `reward_kinds` must not perturb the core capabilityVersion"
     );
+}
+
+// -------------------------------------------------------------------------
+// dsl 0.21.0 §2: `occasions:` — plugin-declared occasion vocabulary, the
+// `rewardKinds` precedent (merge, cross-plugin dup, guarded hash section).
+// -------------------------------------------------------------------------
+
+use lute_manifest::schema::{OccasionDecl, OccasionSelect};
+
+fn occasion(name: &str, select: OccasionSelect, target: bool) -> OccasionDecl {
+    OccasionDecl {
+        name: name.into(),
+        select,
+        target,
+        description: None,
+    }
+}
+
+fn assemble_core_plus(plugins: Vec<LoadedPlugin>) -> (lute_manifest::snapshot::CapabilitySnapshot, Vec<lute_manifest::assemble::AssembleError>) {
+    let mut active = vec![ActivePlugin {
+        id: "lute.core".into(),
+        options: BTreeMap::new(),
+    }];
+    let mut by_id = BTreeMap::new();
+    for loaded in plugins {
+        active.push(ActivePlugin {
+            id: loaded.manifest.id.clone(),
+            options: BTreeMap::new(),
+        });
+        by_id.insert(loaded.manifest.id.clone(), InstalledPlugin { loaded });
+    }
+    assemble_snapshot(&active, &InstalledPlugins { by_id })
+}
+
+#[test]
+fn occasions_merge_and_move_capability_version() {
+    let base = plugin_with_directive("hades.engine", "boon");
+    let mut with_oc = base.clone();
+    with_oc.occasions.push(occasion("talk", OccasionSelect::First, true));
+    with_oc.occasions.push(occasion("inbox", OccasionSelect::All, false));
+
+    let (plain, errs) = assemble_core_plus(vec![base]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(plain.occasions.is_empty());
+    let core = lute_manifest::core::load_core_snapshot();
+    let mut probe = core.clone();
+    probe.occasions.clear();
+    assert_eq!(
+        core.version,
+        lute_manifest::snapshot::capability_version(&probe),
+        "an empty `occasions` section must not perturb the core capabilityVersion"
+    );
+
+    let (stamped, errs) = assemble_core_plus(vec![with_oc]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(
+        stamped.occasions.get("talk"),
+        Some(&occasion("talk", OccasionSelect::First, true)),
+        "the declaration survives the merge verbatim"
+    );
+    assert_eq!(stamped.occasions["inbox"].select, OccasionSelect::All);
+    assert_ne!(
+        plain.version, stamped.version,
+        "a populated `occasions` vocabulary must move `capabilityVersion`"
+    );
+}
+
+#[test]
+fn assemble_rejects_cross_plugin_occasion_dup() {
+    let mut a = plugin_with_directive("plug.a", "da");
+    a.occasions.push(occasion("talk", OccasionSelect::First, true));
+    let mut b = plugin_with_directive("plug.b", "db");
+    b.occasions.push(occasion("talk", OccasionSelect::All, false));
+    let (snap, errs) = assemble_core_plus(vec![a, b]);
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::assemble::AssembleError::DuplicateAcrossPlugins { kind, id, first, second }
+                if kind == "occasion" && id == "talk" && first == "plug.a" && second == "plug.b"
+        )),
+        "cross-plugin dup occasion must be DuplicateAcrossPlugins with owner attribution: {errs:?}"
+    );
+    assert!(snap.occasions["talk"].target, "first owner wins");
 }

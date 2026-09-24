@@ -317,6 +317,12 @@ pub struct FoldedEnv {
     /// the SAME vocabulary without recomputing it or double-emitting
     /// `E-DOMAIN-DUP`.
     pub domains: std::collections::BTreeMap<String, Domain>,
+    /// dsl 0.21.0 §2: the resolved occasion vocabulary this document was
+    /// checked against (the snapshot's `occasions`; empty = shape-only) —
+    /// what the project beat pass (`crate::beats::check_project_beats`) reads
+    /// each occasion's `select` from.
+    pub occasions:
+        std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
 }
 
 /// Fold the analysis environment from an already-parsed document. Returns two
@@ -373,13 +379,25 @@ pub fn fold_env(
     // 3b. Typed frontmatter + inline state schema, dispatched by the resolved
     //     kind (dsl 0.2.0 §3.1, §6.1): a Quest doc carries none of the scene
     //     triad and rejects it as an unknown key.
-    let (typed, mut fold_diags) = crate::meta::parse_meta_kind_with_defaults(
+    let (mut typed, mut fold_diags) = crate::meta::parse_meta_kind_with_defaults(
         &doc.meta,
         &input.snapshot,
         meta_kind,
         &input.defaults,
     );
     fold_diags.splice(0..0, kind_diags);
+    // dsl 0.21.0 §3.1: a scene beat's `when` slot is lifted from the raw
+    // frontmatter with a byte-only span; give it its line/column here, where
+    // the document text is at hand, so a fact provenance citing the guard
+    // (`crate::fact_must`) names the right line.
+    if let Some(when) = typed.beat.as_mut().and_then(|b| b.when.as_mut()) {
+        let idx = TextIndex::new(&input.text);
+        let end = when.span.byte_end.min(input.text.len());
+        let start = when.span.byte_start.min(end);
+        if input.text.is_char_boundary(start) && input.text.is_char_boundary(end) {
+            when.span = Span::from_bytes(&idx, start, end);
+        }
+    }
 
     // 3c. The FULL merged domain vocabulary (data-catalog foundation A4):
     //     `snapshot.domains` (A2 — core baseline + active-plugin `enums`)
@@ -550,6 +568,11 @@ pub fn fold_env(
         crate::lore::check_entries(typed.series.as_deref(), &doc.entries, &mut seen_entries);
     schema.decls.extend(entry_record.decls);
     fold_diags.extend(entry_record.diags);
+    // dsl 0.21.0 §2: every entry beat's occasion against the vocabulary.
+    fold_diags.extend(crate::beats::check_entry_occasions(
+        &doc.entries,
+        &input.snapshot.occasions,
+    ));
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
     //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
@@ -693,6 +716,7 @@ pub fn fold_env(
             def_bodies,
             doc_kind,
             domains,
+            occasions: input.snapshot.occasions.clone(),
         },
         fold_diags,
         state_merge_diags,
@@ -720,6 +744,35 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // 3–4b. Typed frontmatter + folded schema + merged def tables (one SoT:
     // the public fold_env accessor the compiler also consumes).
     let (folded, fold_diags, state_merge_diags) = fold_env(&doc, input);
+    // dsl 0.21.0 §3.1: a scene beat's `when` is a frontmatter CEL slot, so
+    // `fill_document` (which walks the node tree) never saw it — parse it into
+    // the same arena here, reporting a failure as the ordinary `E-CEL-PARSE`.
+    let mut beat_when_parse_diags: Vec<Diagnostic> = Vec::new();
+    let beat_when: Option<CelSlot> = folded
+        .typed
+        .beat
+        .as_ref()
+        .and_then(|b| b.when.clone())
+        .map(|mut slot| {
+            match parse_slot(&mut arena, &slot.raw, slot.span.byte_start) {
+                Ok(handle) => slot.ast = Some(handle),
+                Err(err) => {
+                    let t = translate_cel_parse(&slot.raw, slot.span, &err, slot.kind);
+                    beat_when_parse_diags.push(Diagnostic {
+                        code: E_CEL_PARSE.to_string(),
+                        severity: Severity::Error,
+                        message: t.message,
+                        span: t.span.unwrap_or(slot.span),
+                        layer: Layer::Cel,
+                        fixits: t.fixits,
+                        provenance: None,
+                        covered: Vec::new(),
+                        related: Vec::new(),
+                    });
+                }
+            }
+            slot
+        });
     let permission_diags =
         crate::permissions::check_document_permissions(&doc, &folded.typed, input);
     let env = &folded.env;
@@ -807,6 +860,15 @@ pub fn check(input: &CheckInput) -> CheckResult {
             }
         }
         crate::meta::DocKind::Scene => {
+            // dsl 0.21.0 §3.1, §5: the beat's `when` joins the CEL-slot
+            // registry like a `<quest start>` — evaluated when the occasion
+            // is raised, before the scene runs. Canonical order: `when`, then
+            // the shots.
+            if let Some(when) = &beat_when {
+                walker
+                    .diags
+                    .extend(check_beat_when(when, &arena, &base_ctx));
+            }
             for shot in &doc.shots {
                 walker.walk(&shot.body, &base_ctx);
             }
@@ -1015,6 +1077,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
     let mut diags = Vec::new();
     diags.extend(parse_diags);
     diags.extend(cel_diags);
+    diags.extend(beat_when_parse_diags);
     diags.extend(fold_diags);
     diags.extend(permission_diags);
     // Rule-guard CEL firewall (dsl 0.3.0 §7.2/§7.3, D7, 0.3.0 T8): holds()/
@@ -1217,6 +1280,41 @@ pub fn check(input: &CheckInput) -> CheckResult {
             at: doc.meta.span,
         },
     }
+}
+
+/// dsl 0.21.0 §3.1, §5: a scene beat's `when` — the `Bool` CEL-slot checks
+/// and the fresh entry-guard definite-assignment check a `<quest start>` gets
+/// (nothing dominates a guard evaluated before the scene runs), plus the one
+/// beat-only rule: the scene's own `scene.*` state does not exist yet, so a
+/// read of it is `E-BEAT-ATTR`. That rule is the root for such a path — the
+/// `E-UNDECLARED` / `E-MAYBE-UNSET` it would otherwise also draw here are
+/// dropped.
+fn check_beat_when(slot: &CelSlot, arena: &CelArena, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
+    let mut diags = check_cel_slot(slot, arena, ctx, Some(&ExpectedType::Bool));
+    diags.extend(check_quest_guard_defassign(slot, &ctx.env.state));
+    let mut scene_paths: Vec<String> = slot
+        .ast
+        .clone()
+        .and_then(|h| arena.get(h))
+        .map(|root| {
+            crate::cel_paths::collect_path_uses(&root.expr)
+                .into_iter()
+                .map(|u| u.path)
+                .filter(|p| p == "scene" || p.starts_with("scene."))
+                .collect()
+        })
+        .unwrap_or_default();
+    scene_paths.sort();
+    scene_paths.dedup();
+    if !scene_paths.is_empty() {
+        diags.retain(|d| {
+            !(matches!(d.code.as_str(), "E-UNDECLARED" | "E-MAYBE-UNSET")
+                && first_backtick_token(&d.message)
+                    .is_some_and(|p| scene_paths.iter().any(|s| s == p)))
+        });
+        diags.extend(crate::beats::scene_when_scene_reads(&scene_paths, slot));
+    }
+    diags
 }
 
 /// dsl 0.6.1 §3: a document's frontmatter `luteVersion` stamp is present but
@@ -4054,17 +4152,18 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.20.0` is a language release: `check-project` computes fact
-    /// envelopes — a project-wide may set and a path-sensitive must set — and
-    /// decides every relational `holds`/`count` guard as impossible,
-    /// guaranteed, or possible, so dead relational guards reuse each slot's
-    /// existing code, `E-ENTRY-UNREACHABLE` and `W-FACT-GUARANTEED` join the
-    /// code set, and `W-UNPROVEN-RELATIONAL` is removed. Static semantics
-    /// only, so the IR moves as an alignment restamp and the current schema is
-    /// `schemas/lute-ir-0.20.schema.json`.
+    /// `0.21.0` is a language AND IR release: a scene (frontmatter `on:` /
+    /// `target:` / `when:` / `priority:` / `once:`) or a lore entry (`on=` /
+    /// `priority=`) becomes a beat answering an engine occasion; plugins may
+    /// export `occasions:`; `E-BEAT-ATTR`, `E-OCCASION-UNKNOWN`,
+    /// `E-BEAT-UNREACHABLE`, and `W-BEAT-SHADOWED` join the code set; and
+    /// `schedule.yaml` with every `E-SCHED-*` / `W-SCHED-*` code is removed.
+    /// The IR gains `SceneMeta.beat`, `EntryCmd.on` / `priority`, and
+    /// `ProjectIndex.beats`, so the current schema is
+    /// `schemas/lute-ir-0.21.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_20_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.20.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.20.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_21_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.21.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.21.0");
     }
 }

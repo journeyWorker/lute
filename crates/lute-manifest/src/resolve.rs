@@ -711,6 +711,7 @@ mod tests {
             events: vec![],
             stamp_attrs: vec![],
             reward_kinds: vec![],
+            occasions: vec![],
             lints: vec![],
         }
     }

@@ -25,6 +25,8 @@ type EntryCmd = {
   order?: number;        // position within series
   when?: CelPair;        // eligibility
   body: Addr;            // first record of the body segment
+  on?: string;           // dsl 0.21.0: the occasion this entry answers (a beat)
+  priority?: number;     // dsl 0.21.0: beat priority; absent → 0
 };
 ```
 
@@ -49,6 +51,12 @@ keyed by `target` and `category`.
 When several eligible entries share a `target` and `category`, choosing among
 them (first eligible, most recently unlocked, random, cooldown-based) is engine
 policy. Lute's contribution is a stable tiebreak: `ProjectIndex.entries` order.
+
+An entry that names an occasion (`on`, dsl 0.21.0) is also a **beat**: when
+the engine raises that occasion, choosing among the eligible beats follows
+[beats-and-occasions.md](./beats-and-occasions.md) — priority, then
+`ProjectIndex.beats` order — and presenting the winner follows the rules
+below.
 
 ## Presentation
 

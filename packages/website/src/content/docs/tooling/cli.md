@@ -236,13 +236,10 @@ Execute a **compiled artifact** (`lute compile` output) headlessly against a moc
 ## play
 
 ```console
-$ lute play <PROJECT_DIR> [--state P=L]… [--fact "R(A…)"]…
-            [--script <FILE>] [--choose EVENT/ID=CHOICEID[,CHOICEID…]]…
-            [--auto first] [--lanes user|all] [--steps N] [--json]
-$ lute play <PROJECT_DIR> --coverage <FILE>… [--json]
+$ lute play <PROJECT_DIR> --script <FILE> [--json]
 ```
 
-Play one scheduled route through a WHOLE project as one chained, reviewer-facing transcript — the reference-runtime consumer of a project's [`schedule.yaml`](/tooling/schedule-and-play/). Requires a schedule: a project with none is a hard error (exit **2**), since sibling route files are unguarded by design and there is no `after:`-graph fallback that could pick one route among them. Route selection is `--state`/`--fact` seeds, a `--script <route>.play.yaml` (this command's own closed grammar, not a `lute trace --mock` file), and/or ad-hoc `--choose <event>/<id>=<choiceId>`; `--auto first` resolves anything left unscripted. `--coverage <FILE>` (repeatable — one file per flag, no glob expansion inside it) replays a whole corpus of route scripts and reports every placement/variant/hub-choice option the corpus never exercises, exclusive with `--script`/`--choose`/`--steps`. Exit **0** complete (or full coverage), **1** a schedule/causality violation named by its `E-SCHED-*` code (or a coverage gap), **2** a usage/I/O failure, **3** incomplete (or a coverage run with an incomplete corpus script). Full key reference, transcript format, and the complete diagnostic table: [Schedule & play](/tooling/schedule-and-play/).
+Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project is compiled once, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). The required `--script` is a `*.play.yaml` file with a closed key set — `steps:` (each one `{occasion, target?, pick?}` or `{newRun: true}`) plus the `lute trace --mock` grammars for `state:`, `facts:`, and `choose:`. Each step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object. Exit **0** complete (every step played, or a scene's `::end`), **1** an error (the project fails to compile, a vocabulary conflict, or a `pick` that is not eligible), **2** a usage/I/O failure (a malformed script, an unknown occasion, an unreadable project), **3** incomplete (an unscripted choice or hub, or a `when`, quest objective, `now()`/`validAt()`, or plugin `bridgeResult` the reference runtime cannot decide). Script format, selection order, and transcript shapes: [Playing a story](/tooling/play/).
 
 ## test
 

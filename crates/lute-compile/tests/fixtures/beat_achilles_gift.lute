@@ -1,0 +1,29 @@
+---
+kind: scene
+id: hades.achilles.run12
+title: A gift from Achilles
+on: talk
+target: npc.achilles
+when: 'user.runs >= 10 && @knowsName'
+priority: 50
+once: user
+state:
+  user.runs: { type: number, default: 0 }
+  user.patroclusNamed: { type: bool, default: false }
+  run.giftTaken: { type: bool, default: false }
+defs:
+  knowsName: { type: bool, cel: "user.patroclusNamed" }
+---
+
+## The gift
+
+@achilles: You've come back again, lad. Take this.
+<branch id="gift">
+  <choice id="accept" label="Take it">
+    ::set{run.giftTaken = true}
+    @achilles: Use it well.
+  </choice>
+  <choice id="refuse" label="Not now">
+    @achilles: Suit yourself.
+  </choice>
+</branch>
