@@ -3,7 +3,7 @@ kind: scene
 character: marina
 season: 1
 episode: 6
-luteVersion: "0.19.0"
+luteVersion: "0.20.0"
 profile: date-minigame
 plugins:
   arcia.minigame:

@@ -240,9 +240,9 @@ fn permission_diagnostic_uses_the_shared_headless_lsp_surface() {
 /// arrives through `uses: base.schema.yaml` (dsl 0.9.0) and its imports must be
 /// resolved exactly as both surfaces resolve them. It used to carry a
 /// `W-INJECT-CONFLICT` of its own; dsl 0.10.0 §12.3 removed that code, and no
-/// corpus document carries a per-file warning any more (the surviving 18 are
-/// project-wide `W-UNPROVEN-RELATIONAL`, which a single-document `check()`
-/// never produces). So the warning is now appended here rather than borrowed:
+/// corpus document carries a warning any more (the last survivors, project-wide
+/// `W-UNPROVEN-RELATIONAL`, went with dsl 0.20.0 §5 — and a single-document
+/// `check()` never produced them). So the warning is now appended here rather than borrowed:
 /// a thirteen-clip track is `W-TIMELINE-CLIPS`, needs no vocabulary, and cannot
 /// quietly stop firing the way a borrowed corpus warning just did.
 #[test]

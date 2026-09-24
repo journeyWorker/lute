@@ -1,6 +1,6 @@
 ---
 title: Guaranteed / Possible envelopes
-description: The per-node available-state analysis — the Guaranteed and Possible tables over run/user state, why active(Q) is strictly weaker than completed(Q), the Possible-minus-Guaranteed warning, and quest addressing including the bare-quest defaults-only answer.
+description: The per-node available-state analysis — the Guaranteed and Possible tables over run/user state, the guaranteed-facts table beside them, why active(Q) is strictly weaker than completed(Q), the Possible-minus-Guaranteed warning, and quest addressing including the bare-quest defaults-only answer.
 ---
 
 The **envelope** answers a proactive question: *by the time control reaches node X, what state is actually set?* This is distinct from what's legal to read (governed by schema import). The envelope tracks two sets per node, scoped to **`run.*` / `user.*` only** — the tiers whose writes are monotonic ("once set, stays set," so union/intersect over predecessors is sound). Quest scratch fields (`quest.<id>.*`) are excluded; "was it reachable at X" is answered directly by `completed(Q)` / `active(Q)` in the route structure.
@@ -53,6 +53,25 @@ Reading a quest's completion write from a scene gated on `active` is therefore t
 - `P ∈ Possible(X) \ Guaranteed(X)` → set on some but not all routes — **warning grade**, default-suppressed to this command's output only. This is the `Possible \ Guaranteed` read `check-project` computes and drops by default.
 
 Every message carries the verbatim "under your declared routes" qualifier (A-hybrid posture).
+
+## Guaranteed facts
+
+Beside the scalar tables, the envelope carries the **fact envelope** (dsl 0.20.0): the relational facts that hold on *every* declared route reaching the node. It is the same must-set `check-project` uses to decide relational guards (see [how `check-project` analyzes relational guards](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards)), propagated over `after:` with the same structural recursion as `Guaranteed` — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, `completed(Q)`/`active(Q)` contribute nothing. Only monotone facts cross a scene boundary: nothing may retract them, no other assert may share their `key:` with a different value, and their relation is neither `reserved:` nor engine-open; `tier: scene`/`tier: quest` facts never cross. Each fact names what establishes it — an assert site, a `facts:` seed, or a rule.
+
+From the Haven example, the purser scene (ep09):
+
+```console
+$ lute scenario docs/examples/haven envelope haven.s01ep09
+…
+  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+    - awake(ottavio) (docs/examples/haven/scenes/stowaway.lute:20)
+    - awake(vesna) (`facts:` seed)
+    - found(ottavio) (docs/examples/haven/scenes/stowaway.lute:19)
+    - knows(ottavio, manifest) (docs/examples/haven/scenes/stowaway.lute:23)
+…
+```
+
+Episode 6 asserts all three of Ottavio's facts outside any branch, and every route to ep09 passes through it, so a guard `holds(found(ottavio))` in ep09 could never close — which is why that scene's `listTheMass` choice carries none. `knows(vesna, manifest)` is absent even though three other documents assert it: none of them lies on every route to ep09 (hydroponics is one of two alternatives, the archive is optional, and the purser ledger's assert holds only inside its own lore entry, which the engine presents at a time of its choosing). When `check-project` reports `W-FACT-GUARANTEED` on a guard, this table is where the fact comes from. With `--format json` the same list is `envelope.guaranteedFacts`, an array of `{ "fact", "establishedBy" }` objects.
 
 ## Quest addressing
 

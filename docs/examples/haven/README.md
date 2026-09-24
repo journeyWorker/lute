@@ -93,10 +93,10 @@ is revealed only by the ledger).
 ## Running it
 
 ```sh
-# The checker. Exits 0. Prints 14 warnings, all project-wide (which is the
-# number in its own summary line) and no per-file warning on any of the 20
-# files. See "Deliberate imperfections" below — every one of the 14 is
-# accounted for there.
+# The checker. Exits 0 with no warnings — none per file on any of the 20
+# files, none project-wide. Its relational guard analysis (dsl 0.20.0) is
+# what removed the one guard this tree used to carry needlessly; see
+# "Deliberate imperfections" below.
 lute check-project docs/examples/haven
 
 # The 31 scenario tests. Exits 0, 31 passed.
@@ -161,14 +161,18 @@ findings, and a reader who "fixes" one deletes the evidence.
    awake, which `start="holds(can_halt(toma))"` already says, so there is no
    route prerequisite to declare (**T4.7**, and the *T4 controller decision*).
 
-Separately, the 14 project-wide `W-UNPROVEN-RELATIONAL` warnings are neither
-deliberate nor removable. Each marks a correct relational gate on a producible
-relation — thirteen in quests, one on the `when` of the lore bark
-`vesnaManifestBark`; the checker declines to claim the ground query is true,
-which is honest. The warning has no discharge path — no `--allow`, no seed
-surface on `check-project`, no site-level acknowledgement — so a finished,
-correct, fully tested work triggers it fourteen times and there is nothing an
-author can do about it (**T9.19**).
+Separately, this tree used to trigger 14 project-wide `W-UNPROVEN-RELATIONAL`
+warnings — thirteen on quest gates, one on the `when` of the lore bark
+`vesnaManifestBark` — each on a correct relational gate the checker declined to
+judge, with no discharge path an author could take (**T9.19**). dsl 0.20.0
+removed the code: `check-project` now decides every relational query in a
+guard as impossible, guaranteed, or possible, and reports only the dead and
+the redundant; none of those fourteen gates is either, so all are silent. The
+same analysis found one guard that could never close: `listTheMass` in the
+purser scene was guarded on `found(ottavio)` and `knows(ottavio, manifest)`,
+both asserted unconditionally in episode 6 on every route to episode 9, so the
+guard was `W-FACT-GUARANTEED` and is gone. `lute scenario docs/examples/haven
+envelope haven.s01ep09` lists those facts under *Guaranteed facts*.
 
 ## Reading order
 

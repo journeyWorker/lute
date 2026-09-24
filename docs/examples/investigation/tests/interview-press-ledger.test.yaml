@@ -1,11 +1,9 @@
 # Scenario test (`lute test`) — the interrogation hub.
-# Seeds the ledger clue as a fact so the fact-guarded `pressLedger` choice is
-# eligible, forces the hub visit sequence (press then leave), and checks that
+# Forces the hub visit sequence (press the ledger, then leave) and checks that
 # the choice's writes land and the `<match on="run.suspectFocus">` routes to
-# the blake arm.
+# the blake arm. No fact is seeded: `pressLedger` is unguarded, because the
+# crime scene asserts `foundClue(ledger)` on every route here.
 file: ../scenes/interview.lute
-facts:
-  - "foundClue(ledger)"
 choose:
   interrogate: [pressLedger, leave]
 expect:

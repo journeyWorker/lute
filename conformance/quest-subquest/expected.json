@@ -41,7 +41,7 @@
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.19",
+  "irVersion": "0.20",
   "kind": "quest",
   "quests": {
     "findKey": "failed",

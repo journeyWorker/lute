@@ -1,7 +1,9 @@
-# ENDING-DECIDING LEVER 3 — put Ottavio on the manifest. Guarded by
-# `holds(found(ottavio)) && holds(knows(ottavio, manifest))`, both asserted
-# unconditionally by episode 6, so this is the one lever whose licence is a route
-# rather than a choice.
+# ENDING-DECIDING LEVER 3 — put Ottavio on the manifest. Unguarded: its licence
+# is `found(ottavio)` and `knows(ottavio, manifest)`, both asserted
+# unconditionally by episode 6 on every route here, so this is the one lever
+# whose licence is a route rather than a choice. The arm used to spell that out
+# as a `when=`; dsl 0.20.0's `check-project` proves such a guard can never close
+# (`W-FACT-GUARANTEED`), so neither fact is seeded below.
 #
 # `can_halt(vesna)` is seeded only to resolve line 0170's negated guard — nothing
 # in this arm reads it. That is the cost of a derived relation having no false:
@@ -10,8 +12,6 @@ file: ../scenes/purser.lute
 facts:
   - "awake(vesna)"
   - "awake(ottavio)"
-  - "found(ottavio)"
-  - "knows(ottavio, manifest)"
   - "knows(vesna, shed_sequence)"
   - "can_halt(vesna)"
 choose:

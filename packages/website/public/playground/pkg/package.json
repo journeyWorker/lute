@@ -1,7 +1,7 @@
 {
   "name": "lute-wasm",
   "type": "module",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "files": [
     "lute_wasm_bg.wasm",
     "lute_wasm.js",

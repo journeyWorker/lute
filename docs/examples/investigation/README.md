@@ -3,11 +3,11 @@
 A small, self-contained case that wires together the features you reach for in
 an investigation game: **relational facts + Datalog** (clues implicate
 suspects), **`after:` scene sequencing** (crime scene → interview →
-confrontation), a **fact-guarded `<hub>`** interrogation, a **`<branch>`
-accusation** with success/failure endings, and a **quest** whose objectives are
-satisfied by the scenes. It also deliberately surfaces one of Lute's
-**honest-analysis boundaries** (`W-UNPROVEN-RELATIONAL`) so you can see what the
-checker will and will not claim.
+confrontation), a **`<hub>`** interrogation, a **`<branch>` accusation** with
+success/failure endings, and a **quest** whose objectives are satisfied by the
+scenes. It also shows what `check-project` proves about relational fact
+queries across scenes — which is why two guards you might expect to see here
+are not.
 
 Every command below is copy-paste runnable from the **repository root**.
 
@@ -17,8 +17,8 @@ Every command below is copy-paste runnable from the **repository root**.
 |---|---|
 | `lute.project.yaml` | project root — core-only profile (no plugins) |
 | `world.schema.yaml` | shared run/user scalar state **and** the relational world (entities `suspect`/`clue`, relations `foundClue`/`implicates`/`points`, seed `facts:`, and one Datalog `rules:` clause) |
-| `scenes/crime-scene.lute` | entry scene (no `after:`) — logs clues with `::assert{ foundClue(...) }`; reads the derived relation `points` in a `when=` guard |
-| `scenes/interview.lute` | `after:` the crime scene — a `<hub>` interrogation with **fact-guarded** choices (`when="holds(foundClue(...))"`) and a `<match on="run.suspectFocus">` over run state |
+| `scenes/crime-scene.lute` | entry scene (no `after:`) — logs clues with `::assert{ foundClue(...) }`, which the derived relation `points` reads |
+| `scenes/interview.lute` | `after:` the crime scene — a `<hub>` interrogation pressing the logged clues, and a `<match on="run.suspectFocus">` over run state |
 | `scenes/confrontation.lute` | `after:` the interview — a `<branch>` accusation; complementary `when=` verdict lines branch to the success/failure endings |
 | `quests/identify-killer.lute` | the goal machine — objectives whose `done=` predicates the scenes satisfy |
 | `mocks/accuse-correctly.yaml` | trace mock: accuse the right suspect → success ending |
@@ -30,26 +30,45 @@ Every command below is copy-paste runnable from the **repository root**.
 cargo run -q -p lute-cli -- check-project docs/examples/investigation
 ```
 
-Exit `0`. Every file checks clean except for **one project-wide warning** on the
-quest:
+Exit `0`, with no warnings:
+
+```
+ok: docs/examples/investigation/quests/identify-killer.lute (0 warning(s))
+ok: docs/examples/investigation/scenes/confrontation.lute (0 warning(s))
+ok: docs/examples/investigation/scenes/crime-scene.lute (0 warning(s))
+ok: docs/examples/investigation/scenes/interview.lute (0 warning(s))
+ok: docs/examples/investigation (4 file(s), 0 project-wide warning(s))
+```
+
+**What the checker proved.** `check-project` decides every relational fact
+query (`holds(…)`, `count(…)`) in every guard: *impossible* (nothing can ever
+produce the fact), *guaranteed* (it holds on every declared route to the
+guard), or *possible*. The crime scene asserts `foundClue(ledger)` and
+`foundClue(letter)` on its only route, and the interview is sequenced `after:`
+it, so both facts hold on entry to the interview. Give `pressLedger` the guard
+`when="holds(foundClue(ledger))"` and `pressLetter` a guard on a clue nobody
+logs, `when="holds(foundClue(knife))"`, and `check-project` reports the first
+as redundant (it can never close) and the second as dead (it can never open):
 
 <!-- lute-diagnostics -->
 ```
-docs/examples/investigation/quests/identify-killer.lute:
-  26:3: warning [W-UNPROVEN-RELATIONAL] `done="holds(implicates(ledger, blake))"` is gated by a
-  relational fact query over producible relation(s) `implicates`; static reachability analysis
-  (dsl 0.6.1 §2) neither proves nor refutes it. Verify with `lute trace` seeds or human review
-ok: docs/examples/investigation (4 file(s), 1 project-wide warning(s))
+docs/examples/investigation/scenes/interview.lute:31:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (docs/examples/investigation/scenes/crime-scene.lute:28) (dsl 0.20.0 §5)
 ```
 
-**This warning is a feature, not a defect.** The `clinchMotive` objective gates on
-a relational fact *query* (`holds(implicates(ledger, blake))`). The checker can
-prove the `implicates` relation is *producible* (it is seeded in
-`world.schema.yaml`), but it will **not** claim the specific ground query is
-true — that is a runtime question. Rather than silently assert proof it does not
-have, Lute names the exact boundary and points you at `lute trace` seeds or human
-review. (`W-UNPROVEN-RELATIONAL` is a warning and never flips the exit code; you
-can promote it with `--deny W-UNPROVEN-RELATIONAL` if your project wants it to.)
+<!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
+```
+docs/examples/investigation/scenes/interview.lute:36:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes (dsl 0.20.0 §5)
+```
+
+That is why `pressLedger` / `pressLetter` carry no `when=`, and why the crime
+scene's last line reads the derived `points(blake)` without one. The quest's
+optional `clinchMotive` objective, `done="holds(implicates(ledger, blake))"`,
+is decided the same way: the fact is a schema seed nothing retracts, so the
+objective is satisfiable; had no seed, assert, or rule produced it, the
+objective would be `E-OBJECTIVE-UNSATISFIABLE`. (A `done` is a predicate, not a
+guard, so an always-true one is never reported as redundant.) The analysis
+needs every document at once, so it runs in `check-project` only; a
+single-file `lute check` leaves relational queries undecided.
 
 ## 2. Reachability & the scene graph
 
@@ -139,7 +158,7 @@ cargo run -q -p lute-cli -- compile docs/examples/investigation/scenes/crime-sce
   --project docs/examples/investigation -o /tmp/crime-scene.json
 ```
 
-Exit `0`; the artifact is stamped `"lute": "0.19.0"` / `"irVersion": "0.19.0"`.
+Exit `0`; the artifact is stamped `"lute": "0.20.0"` / `"irVersion": "0.20.0"`.
 Every document in the project compiles (`scenes/*.lute` and
 `quests/identify-killer.lute`) — swap the path above.
 

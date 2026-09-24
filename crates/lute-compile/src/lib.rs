@@ -213,7 +213,20 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// MAJOR-only runtime gate does not move: a scene/quest engine is
 /// unaffected, and one without lore support rejects `kind: "lore"` as any
 /// unknown artifact kind.
-pub const LUTE_IR_VERSION: &str = "0.19.0";
+///
+/// IR `0.20.0` is a PURE RESTAMP of `0.19.0`: the language gains the
+/// project-level fact envelopes (dsl 0.20.0 — `check-project` decides
+/// relational `holds`/`count` guards as impossible, guaranteed, or possible,
+/// adds `E-ENTRY-UNREACHABLE` / `W-FACT-GUARANTEED`, and removes
+/// `W-UNPROVEN-RELATIONAL`), which is static semantics only: no field,
+/// operator, or record kind is added, removed, renamed, moved, or retyped, and
+/// every document compiles byte-identically apart from the version strings.
+/// `docs/versioning.md`'s alignment rule moves the IR number with the
+/// language and toolchain axes; `schemas/lute-ir-0.19.schema.json` is renamed
+/// to `schemas/lute-ir-0.20.schema.json` per the release-line rule, with only
+/// its `$id` and title restamped. The MAJOR-only runtime gate does not move,
+/// so no engine gate widens.
+pub const LUTE_IR_VERSION: &str = "0.20.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1102,13 +1115,14 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.19.0 axis alignment (docs/versioning.md): the language earns the
-        // move (`kind: lore` + `<entry>`, `entry.<id>.read`, document `id:` /
-        // `series:` bundles) and so does the IR (the `lore` artifact kind with
-        // `LoreMeta`, the `entry` record, `QuestMeta.id`,
-        // `ProjectIndex.entries`) — both move independently
-        assert_eq!(super::LUTE_IR_VERSION, "0.19.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.19.0");
+        // 0.20.0 axis alignment (docs/versioning.md): the language earns the
+        // move (project-level fact envelopes — relational guards decided
+        // impossible / guaranteed / possible, `E-ENTRY-UNREACHABLE`,
+        // `W-FACT-GUARANTEED`, `W-UNPROVEN-RELATIONAL` removed), static
+        // semantics only, so the IR shape does not change — the alignment
+        // rule still moves both independently
+        assert_eq!(super::LUTE_IR_VERSION, "0.20.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.20.0");
     }
 
     #[test]
@@ -1117,8 +1131,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.19.0");
-        assert_eq!(v["irVersion"], "0.19.0");
+        assert_eq!(v["lute"], "0.20.0");
+        assert_eq!(v["irVersion"], "0.20.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

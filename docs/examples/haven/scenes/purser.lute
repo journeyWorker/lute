@@ -80,7 +80,13 @@ after: 'visited("haven.s01ep07") || visited("haven.s01ep08")'
 @purser{code="0290" emotion="level" os}: Voyage complete. Allocation against voyage: not applicable. Release is withdrawn.
 @vesna{code="0300" emotion="stricken"}: Eleven years. Eleven years, and it just needed to be told it had got there.
 </choice>
-<choice id="listTheMass" label="Put Ottavio on the manifest" when="holds(found(ottavio)) && holds(knows(ottavio, manifest))">
+/*
+  No `when=`: `found(ottavio)` and `knows(ottavio, manifest)` are asserted
+  unconditionally in episode 6, which every route to this scene passes through,
+  so a guard on them could never close (`check-project` reports such a guard as
+  `W-FACT-GUARANTEED`). This lever's licence is the route, not a choice.
+*/
+<choice id="listTheMass" label="Put Ottavio on the manifest">
 ::set{run.shedPressure += 1}
 ::assert{knows(vesna, manifest)}
 @ottavio{code="0310" emotion="frayed"}: Say it out loud. If you're going to do it, do it out loud, because I have waited six weeks to hear somebody aboard say it.
