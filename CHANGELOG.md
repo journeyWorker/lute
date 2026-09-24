@@ -40,6 +40,11 @@ table.
 
 ## [0.20.0] - 2026-09-24
 
+> **First published toolchain since `0.17.2`.** The `0.18.0` and `0.19.0`
+> entries below were never published as packages; their language and IR
+> changes (range patterns in `<when is>`, `W-WHEN-TEST-LITERAL`, lore entries,
+> document bundles) ship in this release together with fact envelopes.
+
 **Fact envelopes: `check-project` decides relational guards.**
 
 An author who writes a line that presumes knowledge guards it —
