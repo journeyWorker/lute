@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.22.0.md`](proposals/scenario-dsl/0.22.0.md). The
+> [`proposals/scenario-dsl/0.23.0.md`](proposals/scenario-dsl/0.23.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -27,7 +27,9 @@ target is the flat command-record format the engine consumes.
 > reference player (`lute play`) stands in for the engine: `engine:` steps write the state
 > and facts the engine owns, a script starts from a save and asserts with `expect:`, and
 > `lute test` runs those plays; runs have a lifecycle (`<quest tier="run">`, entry
-> `once`, `entry.<id>.everRead`).
+> `once`, `entry.<id>.everRead`). Since 0.23.0 a lore document may also bundle scene-like
+> `<beat>` blocks (canonical id `<document id>.<beat id>`), and `lute beats`, `lute calendar`
+> and `lute scenario knowledge` give authors overviews of which beat answers when.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -684,6 +686,18 @@ above, never a rule-body dependency):
   behind `lute run` / `lute play` share one Datalog evaluator, `lute_trace::datalog`
   (stratified negation over seed, mocked and asserted facts), so the toolchain cannot disagree
   with itself about what a project's rules conclude; `derive: false` / `--no-derive` opt out.
+- **Overviews and the sharper decider (dsl 0.23.0).** `beats.rs::project_beats` is the one
+  list of every scene, entry and bundle beat (`bundles.rs` owns the bundle shape rules and
+  canonical ids); `check_project_beats`, `lute beats` (`beats_cmd.rs`, which attaches the
+  `check-project` verdicts to each ladder row) and play all read it. `lute calendar`
+  (`play/calendar.rs`) seeds a world per grid cell from a save and runs play's own
+  `eligible_at`, so the calendar and `lute play` cannot disagree; `lute scenario knowledge`
+  (`knowledge.rs`) traces queried atoms through rules to their asserting sites via
+  `connectivity.rs::collect_asserts`. `decide` flattens an undecided `&&` / `||`, groups
+  operands by path, and compares their solution sets (`solution.rs`: intervals, value sets,
+  exclusions, with `unset` as a value), so a same-path contradiction decides false and a
+  covering disjunction true. `check-project --wip` re-checks a newly dead fact guard against a
+  second may set in which unproduced relations are unbounded (`FactEnv::with_wip`).
 
 ### Narrative time (spec §6, D11)
 

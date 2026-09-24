@@ -26,6 +26,7 @@ exports:                   # REQUIRED — which sub-directories the loader reads
   events: events/
   occasions: occasions/
   rewardkinds: rewardkinds/
+  cast: cast/
   lints: lints/
   docs: docs/
 options:                   # OPTIONAL — typed activation options
@@ -48,11 +49,12 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `stampattrs/*.yaml` — cross-cutting attributes admissible on every directive and content line (below).
 - `enums/*.yaml`, `frontmatter/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, and hover docs.
 - `events/*.yaml` — world events a quest's `<on event>` may name and `lute trace --event` fires.
-- `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0), each optionally raised for a target drawn from a project entity kind (dsl 0.22.0).
-- `rewardkinds/*.yaml` — the closed set of `<reward kind>` values, with an optional target provider and extra attributes.
+- `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0), each optionally raised for a target drawn from a project entity kind (dsl 0.22.0), and presented as one winner, an offered list, or a sequence (dsl 0.23.0).
+- `rewardkinds/*.yaml` — the closed set of `<reward kind>` values, with an optional target provider, extra attributes, and the state path a grant credits (dsl 0.23.0).
+- `cast/*.yaml` — the speakers content lines may use, with display names (dsl 0.23.0).
 - `lints/*.yaml` — advisory [lint rules](/tooling/linting/), namespaced `<plugin-id>/<rule-id>`; excluded from the capability snapshot.
 
-An export name outside this list is a load error. The four newest kinds, one minimal file each (every file carries one top-level key; the id is the map key or `name`/`id`):
+An export name outside this list is a load error. The newest kinds, one minimal file each (every file carries one top-level key; the id is the map key or `name`/`id`):
 
 ```yaml
 # events/world.yaml
@@ -68,17 +70,21 @@ occasions:
   examine:  { select: first, target: true }
   talk:     { select: first, target: { prefix: npc, entity: person } }
   inbox:    { select: all, description: Letters waiting at the fountain }
+  evening:  { select: sequence }
 ```
+
+An occasion's `select:` says what the engine presents when it is raised. `first` (the default) presents the single winning beat, plus any eligible [`also`](/language/beats/#side-remarks-with-also) beat after it. `all` offers every eligible beat and the player picks one. `sequence` (dsl 0.23.0) presents every eligible beat in selection order, such as an evening routine followed by the day's event (see [Composing an occasion](/language/beats/#composing-an-occasion)). A beat's `also: true` on an `all` or `sequence` occasion is `E-BEAT-ATTR`.
 
 An occasion's `target:` says what it is raised for. Absent or `false`, it is untargeted. `true` keeps its 0.21.0 meaning: the occasion is raised for some dotted id, and a beat's target is checked for shape only. A **domain** `{ prefix, entity }` (dsl 0.22.0) also closes the set: a target is `<prefix>.<member>`, where `entity` names an entity kind the *project* declares under `entities:` in its schema. The plugin supplies the prefix and the kind, and the project supplies the members (or declares the kind `open:` for engine-populated members). A beat target outside the domain is `E-BEAT-ATTR`, with a did-you-mean when a member is close, and so is every target of an occasion whose kind the document's schema does not declare (see [Beats](/language/beats/#target-domains)). A `target:` that is neither a bool nor a `{ prefix, entity }` map fails the plugin load with `E-PLUGIN-PARSE`.
 
-Occasions are part of the capability snapshot, so they fold into `capabilityVersion`. Declaring a domain restamps; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0.
+Occasions are part of the capability snapshot, so they fold into `capabilityVersion`. Declaring a domain restamps; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0. Likewise, `select: sequence` changes the stamp only for a snapshot that declares it.
 
 ```yaml
 # rewardkinds/game.yaml
 rewardKinds:
   XP: {}
   ITEM: { target: { provider: items }, attrs: [ { name: rarity, type: string } ] }   # `items` must be an active provider
+  EMBERS: { credits: user.embers }
 ```
 
 ```yaml
@@ -93,6 +99,35 @@ lints:
 ```
 
 `enums/` is the third route a project gets its [content vocabulary](/language/vocabulary/) from, and the only one that is *capability* rather than project data: `lute.core` declares the seven slots and exports an **empty** `enums`, so an engine or genre pack ships members to every project that activates it. Its entries take the same long form as an author's `enums:` block — a bare sequence is shorthand for `{ members: [...] }`, and `action` must carry `exits:` while `anchor` must carry `default:`.
+
+### Rewards that credit state
+
+A reward is data: the engine grants it, and content never reads it. When a reward kind is a currency your own state tracks, `credits:` (dsl 0.23.0) names the state path a grant adds its amount to. The compiler stamps the path on every reward of that kind (`RewardEntry.credits` in the IR, omitted for a kind without one), and the engine owns that write, as it owns the grant itself. [`lute run`](/tooling/cli/#run) and [`lute play`](/tooling/play/) do the same for a **scalar** amount, and record the credit on the grant:
+
+```
+grant climb EMBERS 100 (credits user.embers = 100.0)
+```
+
+A range amount (`amount="10..20"`) is the engine's roll, so the toolchain grants it without crediting anything. Crediting by hand as well pays twice: a content `::set` of the credited path in one of the same quest's `<on>` handlers or objective bodies is `W-REWARD-DOUBLE-CREDIT`:
+
+<!-- lute-diagnostics -->
+```
+./quests/climb.lute:11:11: warning [W-REWARD-DOUBLE-CREDIT] `::set` of `user.embers` in a handler of quest `climb`: its `<reward kind="EMBERS">` already credits `user.embers` when granted, so the player is paid twice — drop the `::set` or the reward (dsl 0.23.0 §8)
+```
+
+A kind without `credits:` hashes exactly as it did before 0.23.0, so adding the key to one kind restamps only the snapshots that declare it.
+
+### Cast
+
+```yaml
+# cast/harbor.yaml
+cast:
+  mira:  { name: Mira }
+  oskar: { name: "Oskar Lind" }
+  vesna: {}
+```
+
+A `cast` export (dsl 0.23.0) declares the speakers an engine pack is built for: each map key is a speaker id, and `name` (optional, the only field) is its display name. Once any cast is declared, by a plugin or by a schema document's `cast:` key, a content line whose speaker is outside it is `E-CAST-UNKNOWN` with a did-you-mean (see [The cast](/language/dialogue-and-cast/#the-cast)). The plugin casts and the schema casts a document imports are unioned, and a plugin's entry wins an id they share, because it carries the engine's display name. Two active plugins declaring the same id is `E-PLUGIN-DUP-ACROSS` at assembly. A non-empty cast folds into `capabilityVersion`; a plugin that exports none leaves the stamp alone.
 
 ## Cross-cutting attributes (`stampAttrs`)
 

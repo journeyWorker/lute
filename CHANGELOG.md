@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.22.0`, the grammar and semantics the checker
+- **Language** — currently `0.23.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.22.0`) and gated on by consuming engines.
+  artifact (currently `0.23.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,21 +36,54 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.23.0] - 2026-09-25
 
-- **Previous run** (dsl 0.23.0 §6): `prev.run.<path>` reads the value every
-  declared `run.<path>` had when the previous run ended — typed like its run
-  path, maybe-unset before the first run ends, read-only
-  (`E-QUEST-RESERVED-WRITE`). `lute play` snapshots it at `newRun`; play
-  `state:` seeds and trace mocks may set it.
-- **Cast** (dsl 0.23.0 §7): a plugin `cast` export or a schema document's
-  `cast: { <id>: { name } }` declares the speakers; once declared, any other
-  speaker is `E-CAST-UNKNOWN` with a did-you-mean. `lute context` lists the
-  cast and LSP speaker completion offers it.
-- **Rewards that credit state** (dsl 0.23.0 §8): `rewardKinds.<kind>.credits`
-  names a state path; the IR stamps it on each reward (`RewardEntry.credits`,
-  additive), `lute run` / `lute play` add the scalar amount there on grant,
-  and a handler `::set` of the same path is `W-REWARD-DOUBLE-CREDIT`.
+**Author overviews and time.**
+
+Once a story is chosen by occasions rather than read top to bottom, a writer
+needs to see who can say what, when. This release adds three overviews — a
+beat ladder, a calendar over state, and a knowledge map — plus deadlines and
+targeted objectives, occasions that compose a routine with an event, several
+scene-like beats in one lore file, a checked cast, rewards that credit state,
+the previous run's values, and a condition decider that finds contradictions
+the checker used to miss. The language and the IR both earn the move (the IR
+additively); see
+[`docs/proposals/scenario-dsl/0.23.0.md`](docs/proposals/scenario-dsl/0.23.0.md)
+and [`docs/versioning.md`](docs/versioning.md).
+
+### Changed
+
+- **A sharper condition decider** (dsl 0.23.0 §9): `decide` now reasons per
+  path across `&&`/`||` operands (state paths, `$`, component params,
+  `holds(P)`/`visited(id)`/`count(P)`). A conjunction whose operands are false
+  for every value of one path decides false (`run.n > 5 && run.n < 3`,
+  `run.slot == 'a' && run.slot == 'b'`, `x && !x`); a disjunction whose cases
+  cover a path's domain decides true. `unset` counts as a value, and an
+  ordering that errs on it is neither true nor false, so every verdict is the
+  expression's actual value. `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`,
+  `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `W-BEAT-PRIORITY-TIE` and the
+  compile-time fold all benefit. In the may set, a negated rule atom over a
+  seed nothing retracts or displaces is false, so `not alibi(crane)` with a
+  canon alibi no longer keeps a derived fact possible.
+
+### Added
+
+- **Overviews** (dsl 0.23.0 §1, §11): `project.index.json` beat rows carry
+  `when` (expanded) and `title` (additive, omitted when absent). `lute beats
+  <dir> [--occasion] [--target] [--json]` prints each occasion/target's beat
+  ladder in selection order with priority, `once`, `after`, `when` and the
+  `check-project` verdicts (unreachable, shadowed, tied, once-run-user).
+  `lute calendar <dir> --axis path=1..7 --axis path=a,b [--occasion]
+  [--target] [--script save.play.yaml] [--json|--csv]` evaluates play's own
+  eligibility at every cell of the axes' product from the save (quests
+  settled per cell): winner, shadowed eligible beats, undecided cells, and
+  the beats never eligible anywhere. `lute scenario <dir> knowledge [--for
+  <node>]` traces every fact-guarded beat/entry/objective to the atoms it
+  queries and their producers through rules (asserting documents, seed
+  facts, reserved, or none). The scenario graph notes the
+  `completed()`/`active()`/`visited()` references it does not draw because a
+  quest declares no `after=`. `lute play` marks an already-read entry
+  candidate `read`.
 - **Deadlines** (dsl 0.23.0 §2): `<objective by="<condition>">` — a condition
   slot like `done`. The first time `by` holds while the objective is not
   done, the objective fails and is never judged again; a failed required
@@ -74,39 +107,6 @@ table.
   `then`), rejects `pick:` on a `sequence` occasion, and gains the step
   expectation `presented: [ids]`. The `sequence` value changes the
   capability stamp only for snapshots that declare it.
-- **Overviews** (dsl 0.23.0 §1, §11): `project.index.json` beat rows carry
-  `when` (expanded) and `title` (additive, omitted when absent). `lute beats
-  <dir> [--occasion] [--target] [--json]` prints each occasion/target's beat
-  ladder in selection order with priority, `once`, `after`, `when` and the
-  `check-project` verdicts (unreachable, shadowed, tied, once-run-user).
-  `lute calendar <dir> --axis path=1..7 --axis path=a,b [--occasion]
-  [--target] [--script save.play.yaml] [--json|--csv]` evaluates play's own
-  eligibility at every cell of the axes' product from the save (quests
-  settled per cell): winner, shadowed eligible beats, undecided cells, and
-  the beats never eligible anywhere. `lute scenario <dir> knowledge [--for
-  <node>]` traces every fact-guarded beat/entry/objective to the atoms it
-  queries and their producers through rules (asserting documents, seed
-  facts, reserved, or none). The scenario graph notes the
-  `completed()`/`active()`/`visited()` references it does not draw because a
-  quest declares no `after=`. `lute play` marks an already-read entry
-  candidate `read`.
-- **A sharper condition decider** (dsl 0.23.0 §9): `decide` now reasons per
-  path across `&&`/`||` operands (state paths, `$`, component params,
-  `holds(P)`/`visited(id)`/`count(P)`). A conjunction whose operands are false
-  for every value of one path decides false (`run.n > 5 && run.n < 3`,
-  `run.slot == 'a' && run.slot == 'b'`, `x && !x`); a disjunction whose cases
-  cover a path's domain decides true. `unset` counts as a value, and an
-  ordering that errs on it is neither true nor false, so every verdict is the
-  expression's actual value. `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`,
-  `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `W-BEAT-PRIORITY-TIE` and the
-  compile-time fold all benefit. In the may set, a negated rule atom over a
-  seed nothing retracts or displaces is false, so `not alibi(crane)` with a
-  canon alibi no longer keeps a derived fact possible.
-- **`lute check-project --wip`** (dsl 0.23.0 §10): `E-ENTRY-UNREACHABLE`,
-  `E-BEAT-UNREACHABLE` and `E-OBJECTIVE-UNSATISFIABLE` become warnings when
-  the guard is dead only because a relation has no producer at all yet (no
-  seed, assert, rule, or reserved declaration); a relation that has producers
-  but never matches stays an error.
 - **Beat bundles** (dsl 0.23.0 §4): a `kind: lore` document may hold
   scene-like `<beat id on target when priority once also title>` blocks with
   a scene body (lines, branches, hubs, matches, directives). A beat's
@@ -132,6 +132,66 @@ table.
   into the line at expansion, so each call site ships its own sentence under
   its own component-scoped `lineId`. Binding such a param to a `@def` ref is
   `E-REF-TYPE` at the argument.
+- **Previous run** (dsl 0.23.0 §6): `prev.run.<path>` reads the value every
+  declared `run.<path>` had when the previous run ended — typed like its run
+  path, maybe-unset before the first run ends, read-only
+  (`E-QUEST-RESERVED-WRITE`). `lute play` snapshots it at `newRun`; play
+  `state:` seeds and trace mocks may set it.
+- **Cast** (dsl 0.23.0 §7): a plugin `cast` export or a schema document's
+  `cast: { <id>: { name } }` declares the speakers; once declared, any other
+  speaker is `E-CAST-UNKNOWN` with a did-you-mean. `lute context` lists the
+  cast and LSP speaker completion offers it.
+- **Rewards that credit state** (dsl 0.23.0 §8): `rewardKinds.<kind>.credits`
+  names a state path; the IR stamps it on each reward (`RewardEntry.credits`,
+  additive), `lute run` / `lute play` add the scalar amount there on grant,
+  and a handler `::set` of the same path is `W-REWARD-DOUBLE-CREDIT`.
+- **`lute check-project --wip`** (dsl 0.23.0 §10): `E-ENTRY-UNREACHABLE`,
+  `E-BEAT-UNREACHABLE` and `E-OBJECTIVE-UNSATISFIABLE` become warnings when
+  the guard is dead only because a relation has no producer at all yet (no
+  seed, assert, rule, or reserved declaration); a relation that has producers
+  but never matches stays an error.
+
+### Fixed
+
+- **`lute run` / `lute play` evaluate structured `isSet` / `has` nodes.** The
+  reference runner read the lowered `{isSet}` / `{has}` expression nodes as
+  unknown, so a compiled gated line or match arm shaped like
+  `isSet(x) && …` never matched. It now evaluates them.
+- **`schemas/lute.plugin.json`** lists the `rewardkinds`, `occasions` and
+  `cast` exports the loader accepts.
+
+### Compatibility
+
+- **Contradictions the checker used to miss are now errors.** The sharper
+  decider reports conditions that can never hold — `run.n > 5 && run.n < 3`,
+  `run.slot == 'a' && run.slot == 'b'`, `x && !x`, a negated rule atom over a
+  seed nothing retracts — as `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`,
+  `E-ARM-DEAD` or `E-OBJECTIVE-UNSATISFIABLE`, and folds provably true/false
+  guards at compile. A project that checked clean on 0.22 may redden where a
+  guard was already dead; fix the condition. While content is still being
+  written, `check-project --wip` downgrades the cases caused by a relation
+  with no producer at all.
+- **Documents that were already wrong can redden.** Once a project declares
+  a cast, an unknown speaker is `E-CAST-UNKNOWN`; a project without a cast
+  is unaffected. A reward whose kind declares `credits` beside a handler
+  `::set` of the same path warns `W-REWARD-DOUBLE-CREDIT`. Declaring a
+  `prev.*` path is `E-STATE-NAMESPACE`.
+- **Additive IR.** The version strings move to `0.23.0` and
+  `schemas/lute-ir-0.22.schema.json` is renamed to
+  [`schemas/lute-ir-0.23.schema.json`](schemas/lute-ir-0.23.schema.json),
+  gaining the `cmdBeat` command, `sceneBeat.also`, `objectiveEntry.by` /
+  `target`, `cmdHub.prompt`, `rewardEntry.credits`, and `indexBeat` kind
+  `bundle` with `when` / `title`. Every new field is optional and every new
+  record appears only when the source uses the feature, so artifacts that use
+  none of it compile byte-identically apart from the version strings.
+  Engines gate on MAJOR, so nothing widens; an engine that predates bundle
+  beats rejects a lore artifact carrying a `beat` record (unknown `kind`),
+  which is the intended hard error. `prev.run.*` is not an IR state row: the
+  engine snapshots `run.*` at run end.
+- **`capabilityVersion` moves only when used.** An occasion declared
+  `select: sequence`, a non-empty plugin `cast`, and a reward kind with
+  `credits` change the capability stamp only for snapshots that declare
+  them. The tree-sitter grammar gains `<beat>` in lore documents.
 
 ## [0.22.0] - 2026-09-25
 

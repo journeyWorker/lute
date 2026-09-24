@@ -1,6 +1,6 @@
 ---
 title: Dialogue & cast
-description: Content lines — the @speaker syntax for dialogue, narration, and player voice — plus delivery flags, line attributes, interpolation, and the cast/display-name model.
+description: Content lines — the @speaker syntax for dialogue, narration, and player voice — plus the declared cast that closes the set of speakers, delivery flags, line attributes, interpolation, and display names.
 ---
 
 Content is the spoken and narrated text of a scene. Every content line has the same shape:
@@ -55,11 +55,46 @@ is `W-STAGE-ABSENT`, judged along every path through choices and `<match>` arms
 ```
 
 `as` overrides only the shown label for that one line. When absent, a line renders its speaker id
-as the label, and the engine maps that id to a display name. A display-name capability — the
+as the label, and the engine maps that id to a display name: the `name` the project's
+[cast](#the-cast) gives it. `as=` is the only way to set a label from the source. A richer
+display-name capability — the
 [character/cast proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md),
-with a speaker registry, costumes, and name-reveal — is a draft, and no such plugin ships yet. So
-Lute does not validate speaker ids against a cast, and `as=` is the only way to set a label from
-the source.
+with costumes and name-reveal — is a draft, and no such plugin ships yet.
+
+## The cast
+
+A project can declare its **cast** (dsl 0.23.0): the speaker ids its lines may use, each with an
+optional display name. A schema document declares it under `cast:`, and the documents that import
+the schema are checked against it:
+
+```yaml
+# cast.schema.yaml
+cast:
+  mira: { name: Mira }
+  oskar: { name: "Oskar Lind" }
+  vesna: {}
+```
+
+A plugin can ship one as well, with a `cast` export of `cast/*.yaml` files in the same shape (see
+[Manifests](/plugins/manifests/#cast)), so an engine pack declares the characters its sprites and
+voices exist for.
+
+Once a cast is declared, every speaker must be in it. Scene lines, quest bodies, lore entries, and
+[bundle beats](/language/beats/#beat-bundles) are all checked. A speaker outside the cast is
+`E-CAST-UNKNOWN`, with a did-you-mean for a near miss such as `@oskr`. `narrator` is always a
+speaker. The player is not: a scene whose `pov` is `fixer` still needs `fixer` in the cast.
+
+<!-- lute-diagnostics -->
+```
+./scenes/arrival.lute:12:2: error [E-CAST-UNKNOWN] speaker `fixer` is not in the declared cast (dsl 0.23.0 §7)
+```
+
+Without a declared cast, speakers are checked for shape only, as before 0.23.0, so a project can
+write dialogue before it settles its characters. The cast belongs to the project, not to one
+scene: a `cast:` key in a scene's frontmatter is `E-META-UNKNOWN-KEY`.
+
+`lute context <file>` lists the cast with its display names (pass `--project <dir>` to include a
+plugin's cast), and the language server offers the cast when it completes a speaker after `@`.
 
 ## Delivery flags
 

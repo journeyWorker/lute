@@ -1,6 +1,6 @@
 ---
 title: Choices & hubs
-description: Choice mechanics — when guards and the into= run-record sugar — plus revisit <hub> conversations with once/exit flags and the no-dead-end guarantee.
+description: Choice mechanics — when guards and the into= run-record sugar — plus revisit <hub> conversations with once/exit flags, hub prompts, and the no-dead-end guarantee.
 ---
 
 A `<choice>` is one option inside a [`<branch>`](/language/branch-match-when/) or a `<hub>`. Every
@@ -94,6 +94,36 @@ order. Hub choices carry two extra boolean flags — **`once`** and **`exit`**:
   `scene.choices.<hubId>` (the last-selected enum) — both are readable in a `<match>`.
 - **Exit.** Taking an `exit` choice runs its arm and leaves the hub. If no choice is eligible at a
   presentation point, the hub auto-exits.
+
+### Hub prompts
+
+A hub can say what it is asking. `prompt="…"` (dsl 0.23.0) attaches a line the host shows with the
+hub's options every time it presents them, the way a `<branch prompt>` (dsl 0.11.1) does for a
+one-off menu:
+
+```lute check
+---
+kind: scene
+id: bar.marina
+---
+
+# The bar
+
+## Shot 1.
+
+<hub id="chat" prompt="Marina polishes a glass and waits.">
+  <choice id="coffee" label="Ask about the coffee" once>
+    @marina: House blend. Bold, like the clientele.
+  </choice>
+  <choice id="leave" label="Head out" exit>
+    @fixer: I'd better get moving.
+  </choice>
+</hub>
+```
+
+The prompt compiles onto the hub record (`prompt` on `HubCmd`, omitted when unauthored), and
+`lute run` / `lute play` print it with every presentation of the hub. An empty prompt is
+`E-BRANCH-PROMPT`, as it is on a branch.
 
 ### No dead ends
 

@@ -489,11 +489,13 @@ fn render_text(
         }
         for (col, o) in columns.iter().zip(&cell.outcomes) {
             if !o.shadowed.is_empty() {
+                // An undecided cell presents nothing: the eligible beats wait
+                // behind the unknown `when`, which `?` stands for.
+                let over = if o.undecided { "?".to_string() } else { o.presented.join(", ") };
                 let _ = writeln!(
                     shadowed,
-                    "  {label}  {}: {} over {}",
+                    "  {label}  {}: {over} over {}",
                     col.label(),
-                    o.presented.join(", "),
                     o.shadowed.join(", ")
                 );
             }

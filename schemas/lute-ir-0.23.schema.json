@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.22.schema.json",
-  "title": "Lute compiled IR artifact (irVersion 0.22.x)",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.23.schema.json",
+  "title": "Lute compiled IR artifact (irVersion 0.23.x)",
   "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `Artifact`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec §4.1, A9; relaxed in 0.13.0): an engine gates on `irVersion` by MAJOR only — it MUST accept any artifact whose `irVersion` MAJOR it implements and MUST refuse one from a different MAJOR. Minor and patch are compatible-by-default (fields are append-only within a major line; unknown fields are ignored), and an unknown command `kind` is the hard error that catches a genuinely newer capability. Pre-1.0, a breaking change may still land in a minor (0.10.0's provenance rename); such changes are called out in the CHANGELOG and this schema rather than fenced by the gate. `lute` (the language version) is informational for the runtime and does not gate parsing. Forward compatibility: an engine MUST IGNORE unknown OBJECT FIELDS (new optional fields are added append-only within a minor line) so a newer PATCH artifact still loads on an older engine of the same major.minor; an engine MUST treat an unknown command `kind` as an ERROR (a new command kind is a real capability the engine cannot fake). Field declaration order in an artifact is a byte-stability contract of the compiler but carries no semantics for a consumer.\n\nIR 0.8.0: within one artifact every `addr` shares a field width, so lexicographic order over `addr` equals execution order (dsl 0.8.0 §2). Engines loading artifacts from mixed toolchain versions SHOULD still compare `addr` segment-wise numerically.\n\nIR 0.9.0: a PURE RESTAMP of 0.8.0 for release-wide version alignment (docs/versioning.md) — lute-ir-0.9.schema.json IS lute-ir-0.8.schema.json renamed, with no field added, renamed, moved, or retyped.\n\nIR 0.10.0: a REAL shape change, not a restamp (#36, dsl 0.10.0 Appendix B). `provenance.reason` is renamed to `provenance.explanation`; no command `kind` is added, renamed, or removed, and no other field changes. Because the gate above is by MAJOR.MINOR, an engine implementing IR 0.9 MUST refuse a 0.10.0 artifact; widening that gate and reading `provenance.explanation` are the only changes such an engine needs. lute-ir-0.9.schema.json is kept published for engines still on 0.9.\n\nIR 0.11.0: a PURE RESTAMP of 0.10.2 for release-wide version alignment (docs/versioning.md) — lute-ir-0.13.schema.json IS lute-ir-0.10.schema.json renamed, with no field added, renamed, moved, or retyped. Unlike 0.10.1/0.10.2, which shared major.minor 0.10 and needed no rename, this release moves the gated major.minor itself (0.10 → 0.11), so the file renames and an engine implementing IR 0.10 MUST widen its gate before it accepts a 0.11.0 artifact — reading no new field, because there is none. lute-ir-0.10.schema.json is kept published for engines still on 0.10.\n\nIR 0.15.0 reshapes sceneMeta (dsl 0.15.0 §2/§3, authored scene identity): sceneMeta gains the always-present `id` field (the resolved canonical scene key — authored `id:` verbatim, else the derived `{character}.{episodeId}` join); the four legacy identity keys (`character`/`season`/`episode`/`episodeId`) demote to optional; and BOTH sceneMeta and questMeta gain the descriptive `meta` block (an open mapping whose values are scalars or flat scalar arrays, key-sorted by the compiler, omitted when empty). The gated major.minor moves (0.14 → 0.15); lute-ir-0.14.schema.json is kept published for engines still on 0.14.\n\nIR 0.16.0 is ADDITIVE-ONLY over 0.15.1 (dsl 0.16.0 declarative rewards): cmdQuest and objectiveEntry each gain an optional `rewards` array of the new `rewardEntry` def. Both arrays are omitted when empty, so a pre-rewards artifact stays byte-identical to 0.15.1. A `rewardEntry` carries `kind`, optional `target`, exactly one of `amount` XOR (`amountMin` + `amountMax`) after amount defaulting (unauthored → `amount: 1`), an optional `when` CEL pair evaluated at the grant instant, and `on: \"failed\"` on a quest-level entry (objective-level entries never carry `on`). Range amounts are wire-verbatim — an engine never sees a pre-rolled scalar (spec D-C). The runtime contract emits deterministic `grant` transcript events at each fresh lifecycle transition (spec §3 D-D); the reference engine's shape is `{ \"kind\": \"grant\", \"quest\": <id>, \"objective\": <oid>?, \"reward\": { …rewardEntry sans when… }, \"onFailed\": true? }`. The per-release rename rule renames `lute-ir-0.15.schema.json` → `lute-ir-0.16.schema.json`; the gated MAJOR does not move under 0.13.0's MAJOR-only runtime contract, so a 0.15 engine parses a 0.16.0 artifact unchanged and simply does not ask for the added arrays.",
   "type": "object",
   "additionalProperties": true,
@@ -2299,7 +2299,7 @@
         },
         "body": {
           "type": "string",
-          "description": "addr of the entry's body segment (the `cmdOn.body` convention): it follows this record and runs to the next `entry` record or the end of the stream. `set`/`assert`/`retract` records in it apply only on the first read (`entry.<id>.read == false`)."
+          "description": "addr of the entry's body segment (the `cmdOn.body` convention): it follows this record and runs to the next `entry` or `beat` record or the end of the stream. `set`/`assert`/`retract` records in it apply only on the first read (`entry.<id>.read == false`)."
         },
         "wait": {
           "type": "boolean"
@@ -2377,6 +2377,96 @@
         "quest"
       ],
       "description": "`::accept{quest}` (dsl 0.21.0 §7a.3): the player accepts an accept-driven quest at this point — the scene-side form of the engine's accept action. The engine activates the quest if its state is `unset` (stamping `activatedAt` as for any activation) and ignores the record otherwise (docs/runtime/quest-lifecycle.md)."
+    },
+    "cmdBeat": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "beat"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "id": {
+          "type": "string",
+          "description": "the canonical `<document id>.<beat id>` — the project.index.json beats row id, the `visited()` key, and the lineId identity prefix of the beat's body."
+        },
+        "on": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "the occasion this beat answers (the sceneBeat.on shape)."
+        },
+        "target": {
+          "type": "string",
+          "description": "the beat is a candidate only when the occasion is raised for this target (dotted id). Absent when the beat answers the occasion for any target."
+        },
+        "title": {
+          "type": "string",
+          "description": "the label an engine shows for this beat in a `select: all` menu. Absent when not authored."
+        },
+        "titleLineId": {
+          "type": "string",
+          "description": "`{id}.title`, present only when `title` is authored (the entryCmd convention)."
+        },
+        "when": {
+          "$ref": "#/$defs/celPair",
+          "description": "eligibility condition, `@def`-expanded. Absent when not authored."
+        },
+        "priority": {
+          "type": "integer",
+          "description": "the RESOLVED priority (unauthored → 0); higher wins."
+        },
+        "once": {
+          "enum": [
+            "run",
+            "user",
+            "none"
+          ],
+          "description": "repetition policy, as sceneBeat.once: `run` (default), `user`, `none` (source `once=false`). Spent when the beat is presented."
+        },
+        "also": {
+          "const": true,
+          "description": "as sceneBeat.also (dsl 0.23.0 §3). Absent when not authored."
+        },
+        "body": {
+          "type": "string",
+          "description": "addr of the beat's body segment: it follows this record and runs to the next `entry` or `beat` record or the end of the stream. The body is lowered like a scene shot (lines, choices, hubs, match, directives)."
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "id",
+        "on",
+        "priority",
+        "once",
+        "body"
+      ],
+      "description": "A bundle beat's declaration head in a lore artifact (dsl 0.23.0 §4, docs/runtime/beats-and-occasions.md): a scene-like beat written in a lore document. It is the first record of its own addressing unit; the engine presents its body like a scene when the beat wins its occasion."
     },
     "cmdPlugin": {
       "type": "object",
@@ -2510,6 +2600,9 @@
         },
         {
           "$ref": "#/$defs/cmdAccept"
+        },
+        {
+          "$ref": "#/$defs/cmdBeat"
         }
       ]
     },
@@ -2594,12 +2687,13 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "the scene's canonical id (sceneMeta.id) for a scene beat, the entry id for an entry beat."
+          "description": "the scene's canonical id (sceneMeta.id) for a scene beat, the entry id for an entry beat, the canonical `<document id>.<beat id>` for a bundle beat (dsl 0.23.0 §4)."
         },
         "kind": {
           "enum": [
             "scene",
-            "entry"
+            "entry",
+            "bundle"
           ]
         },
         "document": {
@@ -2623,7 +2717,15 @@
             "user",
             "none"
           ],
-          "description": "the beat's repetition policy: always present on a scene row; on an entry row the authored `once` (`run`/`user`, dsl 0.22.0 §7), absent = repeatable."
+          "description": "the beat's repetition policy: always present on a scene or bundle row; on an entry row the authored `once` (`run`/`user`, dsl 0.22.0 §7), absent = repeatable."
+        },
+        "when": {
+          "type": "string",
+          "description": "dsl 0.23.0 §1: the beat's condition after `@def` expansion (raw CEL). Absent when not authored."
+        },
+        "title": {
+          "type": "string",
+          "description": "dsl 0.23.0 §11: the scene's `title:`, or the entry's or bundle beat's `title=` — enough to label a `select: all` menu row. Absent when not authored."
         }
       },
       "additionalProperties": false,
@@ -2634,7 +2736,7 @@
         "on",
         "priority"
       ],
-      "description": "One row of `project.index.json` `beats` (dsl 0.21.0 §8; `lute compile --all`): every scene and entry beat in the project, documents in path order, declaration order within each. Row order is the selection tiebreak after priority (docs/runtime/beats-and-occasions.md). `beats` is omitted from the index when the project has no beats."
+      "description": "One row of `project.index.json` `beats` (dsl 0.21.0 §8; `lute compile --all`): every scene, entry and bundle beat in the project, documents in path order, declaration order within each. Row order is the selection tiebreak after priority (docs/runtime/beats-and-occasions.md). `beats` is omitted from the index when the project has no beats."
     },
     "shotEntry": {
       "type": "object",

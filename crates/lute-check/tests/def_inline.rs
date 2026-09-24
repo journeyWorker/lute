@@ -79,14 +79,16 @@ fn def_interpolation_that_cannot_expand_is_rejected() {
     assert_eq!(count(&c, "E-INTERP-DEF"), 1, "got {c:?}");
 }
 
+/// A fresh component directory per call. The name carries a process-wide
+/// counter: two tests running in parallel can read the same clock value
+/// (macOS reports microseconds), and a shared directory lets one test's
+/// component body overwrite the other's.
 fn component_dir(body: &str) -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "lute_def_inline_{}_{}",
         std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
