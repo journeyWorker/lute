@@ -181,7 +181,9 @@ fn the_compile_gate_runs_only_past_the_check_gate() {
 fn component(tag: &str, cycle: bool) -> PathBuf {
     let dir = temp_dir(tag);
     let file = dir.join("c.component.lute");
-    let b = if cycle { "\"@a\"" } else { "\"0010\"" };
+    // `'0010'` is a CEL string, matching `type: string`; a bare `0010` is a
+    // CEL number, which dsl 0.21.0 §7b's type agreement rejects.
+    let b = if cycle { "\"@a\"" } else { "\"'0010'\"" };
     std::fs::write(
         &file,
         format!(
@@ -284,5 +286,59 @@ fn a_components_own_compile_fault_is_reported_but_its_unbound_params_are_not() {
         Some(0),
         "got:\n{:?}",
         diag_lines(&clean)
+    );
+}
+
+/// dsl 0.21.0 §7b: a scene whose `@ready` comes from an imported schema,
+/// declared as `ready_decl`.
+fn scene_with_imported_def(tag: &str, ready_decl: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        format!("state:\n  run.n: {{ type: number, default: 0 }}\ndefs:\n  ready: {ready_decl}\n"),
+    )
+    .unwrap();
+    let file = dir.join("s.lute");
+    std::fs::write(
+        &file,
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n\
+         ## Shot 1.\n<match on=\"run.n\">\n<when test=\"@ready\">\n@x: yes\n</when>\n\
+         <otherwise>\n@x: no\n</otherwise>\n</match>\n",
+    )
+    .unwrap();
+    file
+}
+
+/// The filed defect: a def written as a bare string in an imported schema
+/// passed `check`, then `trace` refused with `E-COMPILE-EXPAND … names no
+/// known def body (gate should have caught this)`. The bare string is now the
+/// legal shorthand, and both legs walk it.
+#[test]
+fn an_imported_shorthand_def_is_walked_by_check_and_trace() {
+    let file = scene_with_imported_def("shorthand", "\"run.n >= 1\"");
+    let path = file.to_str().unwrap();
+    for command in ["check", "trace"] {
+        let out = run(&[command, path]);
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert_eq!(out.status.code(), Some(0), "{command}; got:\n{text}");
+        assert!(!text.contains("gate should have caught this"), "{text}");
+    }
+}
+
+/// Every other malformed def shape is a `check` error, so the compile gate
+/// never meets a declared def without a body.
+#[test]
+fn a_malformed_imported_def_is_caught_by_check_not_compile() {
+    let file = scene_with_imported_def("malformed", "5");
+    let path = file.to_str().unwrap();
+    let checked = run(&["check", path]);
+    let traced = run(&["trace", path]);
+    let text = String::from_utf8_lossy(&checked.stdout);
+    assert_eq!(checked.status.code(), Some(1), "got:\n{text}");
+    assert!(text.contains("E-DEF-DECL"), "got:\n{text}");
+    assert_eq!(diag_lines(&checked), diag_lines(&traced), "same stream");
+    assert!(
+        !String::from_utf8_lossy(&traced.stdout).contains("E-COMPILE-EXPAND"),
+        "the compile gate must not be reached"
     );
 }

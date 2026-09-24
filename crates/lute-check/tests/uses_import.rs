@@ -182,8 +182,13 @@ fn resolves_single_yaml_import() {
         "run.x missing: {:?}",
         res.state.decls.keys().collect::<Vec<_>>()
     );
+    // dsl 0.21.0 §7b: `greeting: hi` is the def shorthand, lifted to its long
+    // form so every reader finds the body at `cel:`.
     assert_eq!(
-        res.defs.get("greeting").and_then(|v| v.as_str()),
+        res.defs
+            .get("greeting")
+            .and_then(|v| v.get("cel"))
+            .and_then(|v| v.as_str()),
         Some("hi"),
         "greeting def missing or wrong: {:?}",
         res.defs

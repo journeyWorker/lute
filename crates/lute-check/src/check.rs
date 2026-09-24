@@ -605,6 +605,51 @@ pub fn fold_env(
         defs.extend(typed.params.iter().map(|p| p.name.clone()));
     }
 
+    // dsl 0.21.0 §7b: settle every imported and inline def's produced type
+    // against the FOLDED schema. The meta parse already lifted each def to
+    // its long form (the shorthand `name: "<CEL>"` included), so the body is
+    // always at `cel:`; here an absent `type:` is inferred from that body and
+    // written back, and an explicit one must agree with it. Every table below
+    // then reads the settled values, so a shorthand def has a body, a type and
+    // a (0-arity) params entry exactly like a long-form one.
+    let mut imported_defs = input.imports.defs.clone();
+    for (name, def) in imported_defs.iter_mut() {
+        if let Some(msg) = crate::def_decl::settle_def_type(name, def, &schema) {
+            let origin = input
+                .imports
+                .def_origins
+                .get(name)
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            fold_diags.push(Diagnostic {
+                code: crate::def_decl::E_DEF_DECL.to_string(),
+                severity: Severity::Error,
+                message: format!("schema import `{origin}`: {msg}"),
+                span: doc.meta.span,
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+        }
+    }
+    for (name, def) in typed.defs.iter_mut() {
+        if let Some(msg) = crate::def_decl::settle_def_type(name, def, &schema) {
+            fold_diags.push(Diagnostic {
+                code: crate::def_decl::E_DEF_DECL.to_string(),
+                severity: Severity::Error,
+                message: msg,
+                span: crate::meta::meta_key_span(&doc.meta, name),
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+        }
+    }
+
     // The def name -> produced `Type` table the `@ref` type-context check
     // (`E-REF-TYPE`, dsl §8) resolves against, merged from two sources.
     let mut def_types: std::collections::BTreeMap<String, lute_manifest::types::Type> =
@@ -613,9 +658,9 @@ pub fn fold_env(
     for (name, d) in &input.snapshot.defs {
         def_types.insert(name.clone(), d.ty.clone());
     }
-    // Imported schema defs (untyped like inline; extract `type:`). Imported
+    // Imported schema defs (untyped YAML, `type:` settled above). Imported
     // overrides plugin; inline (below) overrides imported.
-    for (name, v) in &input.imports.defs {
+    for (name, v) in &imported_defs {
         if let Some(t) = v
             .get("type")
             .cloned()
@@ -624,9 +669,10 @@ pub fn fold_env(
             def_types.insert(name.clone(), t);
         }
     }
-    // Inline frontmatter defs are stored untyped; extract the `type:` sub-value
-    // and deserialize it via the same serde path `Type` uses. Malformed/absent
-    // -> skip (never a panic). Inline overrides plugin (scene-local).
+    // Inline frontmatter defs are stored untyped; extract the settled `type:`
+    // and deserialize it via the same serde path `Type` uses. A def whose type
+    // could not be settled has no entry (never a panic); `E-DEF-DECL` names it.
+    // Inline overrides plugin (scene-local).
     for (name, v) in &typed.defs {
         if let Some(t) = v
             .get("type")
@@ -664,7 +710,7 @@ pub fn fold_env(
     }
     // Imported schema defs (untyped YAML): extract `params:` in order. Imported
     // overrides plugin; inline (below) overrides imported.
-    for (name, v) in &input.imports.defs {
+    for (name, v) in &imported_defs {
         def_params.insert(name.clone(), params_from_yaml(v));
     }
     // Inline frontmatter defs (untyped YAML): same extraction; scene-local override.
@@ -689,7 +735,7 @@ pub fn fold_env(
     for (name, d) in &input.snapshot.defs {
         def_bodies.insert(name.clone(), d.cel.clone());
     }
-    for (name, v) in &input.imports.defs {
+    for (name, v) in &imported_defs {
         if let Some(c) = v.get("cel").and_then(|c| c.as_str()) {
             def_bodies.insert(name.clone(), c.to_string());
         }

@@ -21,7 +21,7 @@ title: The Manifest Gap
 */
 <quest id="manifestGap" title="The Manifest Gap" start="holds(found(ottavio))" after="visited('haven.s01ep06') && completed('whoWakes')">
 <objective id="hearHisArithmetic" title="Hear what being unlisted costs a man" done="holds(knows(ottavio, manifest))"/>
-<objective id="readItYourself" title="Read the listed crew and count the bunks" done="holds(knows(vesna, manifest))"/>
+<objective id="readItYourself" title="Read the listed crew and count the bunks" done="@vesnaHasPaper"/>
 <objective id="listHim" title="Let the ship count him" done="run.shedPressure >= 3" when="quest.manifestGap.objectives.readItYourself.done" optional/>
 <on event="questComplete">
 ::set{run.vesnaTrust += 1}

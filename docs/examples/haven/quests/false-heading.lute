@@ -21,7 +21,7 @@ title: The False Heading
 */
 <quest id="falseHeading" title="The False Heading" start="holds(awake(ilsabet))" fail="run.shedPressure >= 3" after="visited('haven.s01ep02') && active('whoWakes')">
 <objective id="hearTheNavigator" title="Hear where the ship is actually going" done="holds(knows(ilsabet, true_heading))"/>
-<objective id="findThePaper" title="Put the filed voyage in front of somebody who can read it" done="holds(knows(vesna, manifest))" when="quest.falseHeading.objectives.hearTheNavigator.done"/>
+<objective id="findThePaper" title="Put the filed voyage in front of somebody who can read it" done="@vesnaHasPaper" when="quest.falseHeading.objectives.hearTheNavigator.done"/>
 <objective id="countTheYears" title="Be trusted enough to be believed about it" done="run.vesnaTrust >= 2" optional/>
 <on event="questComplete">
 @narrator: A destination, a date, and eleven years of the ship being right about the wrong thing.

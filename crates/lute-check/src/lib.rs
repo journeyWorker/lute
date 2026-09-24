@@ -12,6 +12,7 @@ pub mod content_line;
 pub mod ctx;
 pub mod datalog_check;
 pub mod decide;
+pub mod def_decl;
 pub mod defassign;
 pub mod directives;
 pub mod envelope;
@@ -74,6 +75,7 @@ pub use datalog_check::{
     E_DERIVE_UNDECLARED, W_DERIVE_NO_RULES,
 };
 pub use decide::{apply_op, decide, decide_slot, DecideCtx, Decided, DollarBinding};
+pub use def_decl::E_DEF_DECL;
 pub use defassign::{check_definite_assignment, check_quest_guard_defassign};
 pub use directives::E_AT_CONTEXT;
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};

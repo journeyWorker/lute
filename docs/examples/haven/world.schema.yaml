@@ -17,3 +17,8 @@ facts:
   - "awake(vesna)"
 rules:
   - "can_halt(C) :- awake(C), knows(C, shed_sequence)"
+# Four quests close an objective on the same fact — Vesna holding the manifest —
+# so the condition is named once here and read as `@vesnaHasPaper`. The shorthand
+# is the body alone; its type (bool) is inferred from `holds(...)` (dsl 0.21.0 §7b).
+defs:
+  vesnaHasPaper: "holds(knows(vesna, manifest))"

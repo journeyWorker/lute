@@ -45,6 +45,11 @@ use crate::meta::{
 pub struct SchemaImports {
     pub state: StateSchema,
     pub defs: BTreeMap<String, serde_yaml::Value>,
+    /// def name -> the file whose declaration won (the resolved `defs` entry's
+    /// origin), for a diagnostic about an imported def that is raised in the
+    /// IMPORTER — `E-DEF-DECL` when its type cannot be inferred there
+    /// (dsl 0.21.0 §7b).
+    pub def_origins: BTreeMap<String, PathBuf>,
     /// Project-authored `enums:`/`entities:` domains, PROJECTED from the
     /// depth-resolved [`RelImports::kinds`]/[`RelImports::enums`] (below) via
     /// `kinds_to_domains` plus a closed `Domain` per resolved enum — so the
@@ -347,9 +352,19 @@ pub fn resolve_imports(
     }
 
     let mut defs = BTreeMap::new();
+    let mut def_origins = BTreeMap::new();
     for (name, entries) in def_by_name {
         emit_level_dups("E-USES-DUP-DEF", "def", &name, &entries, &mut diags, at);
-        if let Some((winner, _)) = pick_winner(&entries) {
+        if let Some((winner, winner_depth)) = pick_winner(&entries) {
+            // `pick_winner`'s own tie-break: the byte-least path at the depth.
+            if let Some(file) = entries
+                .iter()
+                .filter(|(_, d, _)| *d == winner_depth)
+                .map(|(p, _, _)| p)
+                .min()
+            {
+                def_origins.insert(name.clone(), file.clone());
+            }
             defs.insert(name, winner);
         }
     }
@@ -535,6 +550,7 @@ pub fn resolve_imports(
     SchemaImports {
         state,
         defs,
+        def_origins,
         domains,
         diags,
         state_overridable,

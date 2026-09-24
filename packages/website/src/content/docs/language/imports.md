@@ -43,7 +43,15 @@ never run as a scene.
 ```yaml
 state:
   run.choseHelp: { type: bool, default: false }
+  user.level:    { type: number, default: 1 }
+defs:
+  helped: "run.choseHelp"
+  atLeast: { type: bool, params: { n: number }, cel: "user.level >= n" }
 ```
+
+A def is its CEL body as a string — `helped: "run.choseHelp"` — and its type is inferred from that
+body. A def with `params:`, or one whose type the checker cannot infer, takes the long form
+`{ type: bool, cel: "…" }`; any other shape is `E-DEF-DECL`.
 
 Import paths are resolved **relative to the importing scene file**, so a scene and its schema must
 travel together (copying a scene to `/tmp` without its schema reports `E-USES-NOT-FOUND`).
