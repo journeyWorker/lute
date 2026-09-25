@@ -262,7 +262,9 @@ fn project_in(snap: fn() -> CapabilitySnapshot, texts: &[(&str, &str)]) -> Vec<(
     let env = FactEnv::new(may, must.slots);
     let ladder = lute_check::beats::presence_ladder(&docs, &folded_refs);
     let producers = lute_check::cast::fact_producers(&docs);
+    let after = lute_check::cast::occasions_before(&docs, &folded_refs, &graph);
     let no_ladder = std::collections::BTreeMap::new();
+    let no_after = std::collections::BTreeMap::new();
     results
         .into_iter()
         .zip(docs.iter().zip(&foldeds))
@@ -271,8 +273,17 @@ fn project_in(snap: fn() -> CapabilitySnapshot, texts: &[(&str, &str)]) -> Vec<(
                 env: &env,
                 ladder: ladder.get(&path).unwrap_or(&no_ladder),
                 producers: &producers,
+                after: after.get(&path).unwrap_or(&no_after),
             };
-            lute_check::cast::reconcile_presence(&mut result.diagnostics, Path::new(&path), doc, folded, &project);
+            let added = lute_check::cast::reconcile_presence(
+                &mut result.diagnostics,
+                Path::new(&path),
+                doc,
+                folded,
+                &project,
+            );
+            result.diagnostics.extend(added);
+            result.diagnostics.sort_by_key(|d| d.span.byte_start);
             (path.display().to_string(), result.diagnostics)
         })
         .collect()
@@ -493,6 +504,129 @@ fn a_disjunct_proven_by_a_fact_only_the_unit_itself_asserts_counts() {
     let recruits = leaves.replace("::assert{departed(wren)}", "::assert{recruited(wren)}");
     let out = project_in(rel_snapshot, &[("meet.lute", &meet), ("recruits.lute", &recruits)]);
     assert_eq!(absent_lines(&meet, &out[0].1).len(), 3, "{:?}", out[0].1);
+}
+
+// --- dsl 0.25.0 §6: `changedOn` ---------------------------------------------
+
+/// [`rel_snapshot`] plus the `battleEnd` occasion and the world event its
+/// raise fires.
+fn battle_snapshot() -> CapabilitySnapshot {
+    let mut snap = rel_snapshot();
+    snap.occasions.insert(
+        "battleEnd".into(),
+        OccasionDecl {
+            name: "battleEnd".into(),
+            select: OccasionSelect::First,
+            ..Default::default()
+        },
+    );
+    snap.events.insert("battleEnd".into(), lute_manifest::schema::EventDecl { name: "battleEnd".into() });
+    snap
+}
+
+/// A [`REL_VOCAB`] scene `id` whose engine-reserved `fell` changes on `battleEnd`.
+fn battle_scene(id: &str, fm: &str, body: &str) -> String {
+    rel_scene(fm, body)
+        .replace("id: a.rel", &format!("id: {id}"))
+        .replace("reserved: true }", "reserved: true, changedOn: [battleEnd] }")
+}
+
+/// A `tomas` line guarded by every premise of his `present` but `fell`.
+const TOMAS: &str = "@tomas{when=\"holds(recruited(tomas)) && !holds(departed(tomas))\"}";
+
+/// The spoken text of every `W-CAST-ABSENT` line of `ds`.
+fn absent_said<'s>(src: &'s str, ds: &[Diagnostic]) -> Vec<&'s str> {
+    absent_lines(src, ds).into_iter().map(|l| l.rsplit(": ").next().unwrap_or(l)).collect()
+}
+
+#[test]
+fn changed_on_takes_assume_away_where_its_occasion_is_presented() {
+    let march = battle_scene("a.march", "on: hubVisit\n", &format!("{TOMAS}: Before the battle."));
+    let ds = check(&input(&march, battle_snapshot())).diagnostics;
+    assert_clean_vocab(&ds);
+    assert!(with_code(&ds, ABSENT).is_empty(), "{ds:?}");
+    let field = battle_scene("a.field", "on: battleEnd\n", &format!("{TOMAS}: After the battle."));
+    let ds = check(&input(&field, battle_snapshot())).diagnostics;
+    assert_clean_vocab(&ds);
+    assert_eq!(absent_said(&field, &ds), ["After the battle."], "{ds:?}");
+    let hit = with_code(&ds, ABSENT)[0];
+    assert!(hit.message.contains("`assume: true` does not cover `fell`"), "{}", hit.message);
+    // Without `changedOn`, 0.24: `assume` covers the battle scene as well.
+    let plain = field.replace(", changedOn: [battleEnd]", "");
+    assert!(with_code(&check(&input(&plain, battle_snapshot())).diagnostics, ABSENT).is_empty());
+    // A quest handler on the occasion's world event runs on the raise.
+    let quest = format!(
+        "---\nkind: quest\nid: q\ntitle: q\n{}---\n\
+         <quest id=\"road\" title=\"Road\" start=\"run.x >= 0\">\n\
+         <objective id=\"o\" title=\"o\" done=\"run.x >= 1\"/>\n\
+         <on event=\"battleEnd\">\n{TOMAS}: The field is quiet.\n</on>\n\
+         <on event=\"questActive\">\n{TOMAS}: On the road.\n</on>\n</quest>\n",
+        REL_VOCAB.replace("reserved: true }", "reserved: true, changedOn: [battleEnd] }")
+    );
+    let ds = check(&input(&quest, battle_snapshot())).diagnostics;
+    assert_clean_vocab(&ds);
+    assert_eq!(absent_said(&quest, &ds), ["The field is quiet."], "{ds:?}");
+}
+
+#[test]
+fn changed_on_takes_assume_away_after_the_occasion_in_check_project() {
+    // Tomas joins on the march (else the project knows his guard never holds).
+    let march = battle_scene(
+        "a.march",
+        "on: hubVisit\n",
+        &format!("::assert{{recruited(tomas)}}\n{TOMAS}: Before the battle."),
+    );
+    let field = battle_scene(
+        "a.field",
+        "on: battleEnd\nafter: 'visited(\"a.march\")'\n",
+        &format!("{TOMAS}: After the battle."),
+    );
+    let camp = battle_scene(
+        "a.camp",
+        "on: hubVisit\nafter: 'visited(\"a.field\")'\n",
+        &format!("{TOMAS}: Days later."),
+    );
+    let road = battle_scene(
+        "a.road",
+        "on: hubVisit\nafter: 'visited(\"a.march\")'\n",
+        &format!("{TOMAS}: Not after the battle."),
+    );
+    // Single-file cannot order the camp after the battle.
+    assert!(with_code(&check(&input(&camp, battle_snapshot())).diagnostics, ABSENT).is_empty());
+    let out = project_in(
+        battle_snapshot,
+        &[("march.lute", &march), ("field.lute", &field), ("camp.lute", &camp), ("road.lute", &road)],
+    );
+    for (_, ds) in &out {
+        assert_clean_vocab(ds);
+    }
+    assert!(with_code(&out[0].1, ABSENT).is_empty(), "{:?}", out[0].1);
+    assert_eq!(absent_said(&field, &out[1].1), ["After the battle."], "{:?}", out[1].1);
+    assert_eq!(absent_said(&camp, &out[2].1), ["Days later."], "{:?}", out[2].1);
+    assert!(with_code(&out[3].1, ABSENT).is_empty(), "{:?}", out[3].1);
+}
+
+#[test]
+fn changed_on_needs_a_reserved_relation_and_a_declared_occasion() {
+    let decl_errors = |fell: &str| -> Vec<String> {
+        let src = rel_scene("", "@narrator: Hm.")
+            .replace("fell: { args: [companion], tier: run, reserved: true }", fell);
+        check(&input(&src, battle_snapshot()))
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.code == "E-RELATION-DECL")
+            .map(|d| d.message)
+            .collect()
+    };
+    let ok = decl_errors("fell: { args: [companion], tier: run, reserved: true, changedOn: [battleEnd] }");
+    assert!(ok.is_empty(), "{ok:?}");
+    let unreserved = decl_errors("fell: { args: [companion], tier: run, changedOn: [battleEnd] }");
+    assert!(unreserved.len() == 1 && unreserved[0].contains("not `reserved: true`"), "{unreserved:?}");
+    let typo = decl_errors("fell: { args: [companion], tier: run, reserved: true, changedOn: [batleEnd] }");
+    assert!(
+        typo.len() == 1 && typo[0].contains("`changedOn: batleEnd` is not a declared occasion — did you mean `battleEnd`?"),
+        "{typo:?}"
+    );
 }
 
 // --- emotions -----------------------------------------------------------------

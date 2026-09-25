@@ -292,11 +292,19 @@ non-negative integer `n` gets the suffix of its last digit — `1st`, `2nd`,
 `3rd`, `4th` … `0th` — except that last two digits `11`–`13` take `th`
 (`11th`, `12th`, `13th`, `111th`, `112th`; `21st`, `22nd`, `101st`). Any
 other number (a fraction, a negative number) renders unchanged, as it
-would without the hint. The checker admits `ordinal` only on a
-number-typed referent (`E-REF-TYPE` otherwise) and no other hint
-(`E-CEL-PROFILE`). A component `{{@n:ordinal}}` bound to a literal
-number is rendered at compile time (`3rd`), since no placeholder survives
-the splice.
+would without the hint.
+
+`{{run.day:ordinalWord}}` (dsl 0.25.0 §8) carries `format: "ordinalWord"`:
+an ordinal word, which the engine localizes. The reference runner and
+`lute trace` render the English words `first` … `twentieth` for 1–20 and
+fall back to the `ordinal` digits otherwise (`0th`, `21st`); a number with
+no ordinal renders unchanged.
+
+The checker admits `ordinal` and `ordinalWord` only on a number-typed
+referent (`E-REF-TYPE` otherwise) and no other hint (`E-CEL-PROFILE`). A
+component `{{@n:ordinal}}` bound to a literal number is rendered at compile
+time (`3rd`; `third` with `:ordinalWord`), since no placeholder survives the
+splice.
 
 A state path typed against a named enum (`run.wd: { type: { domain: weekday } }`)
 whose declaration carries `labels:` (`enums: { weekday: { members: [mon, sun],

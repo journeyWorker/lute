@@ -148,6 +148,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("tier", "\"user\" | \"run\""),
             ("activate", "\"accept\""),
             ("complete", "\"all\" | \"any\""),
+            ("accept", "\"external\""),
         ],
         QuestConstruct::On => &[
             ("event", "string"),
@@ -177,6 +178,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("on", "string"),
             ("priority", "integer"),
             ("once", "\"run\" | \"user\" | \"day\" | \"slot\""),
+            ("share", "string"),
         ],
         QuestConstruct::Beat => &[
             ("id", "string"),
@@ -187,6 +189,8 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("priority", "integer"),
             ("once", "\"run\" | \"user\" | \"false\" | \"day\" | \"slot\""),
             ("also", "bool"),
+            ("share", "string"),
+            ("after", "prereq"),
         ],
         QuestConstruct::Hub => &[("id", "string"), ("prompt", "string")],
     }

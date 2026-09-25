@@ -789,13 +789,13 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                 }
                 Some(AttrValue::Str(s)) => {
                     // dsl 0.24.0 §4: no placeholder survives a literal splice
-                    // to carry the hint, so it applies here — `ordinal` on a
-                    // number literal renders its English ordinal.
-                    let ordinal = (interp.format.as_deref()
-                        == Some(lute_syntax::ast::INTERP_FORMAT_ORDINAL))
-                    .then(|| s.trim().parse::<f64>().ok())
-                    .flatten()
-                    .and_then(lute_syntax::ast::english_ordinal);
+                    // to carry the hint, so it applies here — `ordinal` /
+                    // `ordinalWord` on a number literal renders its ordinal.
+                    let ordinal = interp
+                        .format
+                        .as_deref()
+                        .zip(s.trim().parse::<f64>().ok())
+                        .and_then(|(f, n)| lute_syntax::ast::format_number(f, n));
                     out.push_str(ordinal.as_deref().unwrap_or(&s));
                 }
                 Some(AttrValue::BoolTrue) => out.push_str("true"),

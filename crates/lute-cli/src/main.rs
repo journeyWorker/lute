@@ -957,6 +957,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-EXTENDS-RELATION-SIG",
     "E-EXTENDS-STATE-TYPE",
     "E-FACT-DOMAIN",
+    "E-FACT-EXCLUSIVE",
     "E-FACT-TIER-WRITE",
     "E-FRONTMATTER-SCHEMA",
     "E-GRAMMAR-NOT-ADMITTED",
@@ -1035,6 +1036,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-REF-ARITY",
     "E-REF-TYPE",
     "E-RELATION-ARITY",
+    "E-RELATION-DECL",
     "E-RELATION-DOMAIN",
     "E-RELATION-DUP",
     "E-RELATION-EMPTY",
@@ -2794,18 +2796,34 @@ fn reconcile_collected(
         // dsl 0.24.0 §4: `W-CAST-ABSENT` re-decided under the fact envelope,
         // the beat ladders and the root's assert sites — a line the Must set,
         // the beats a ladder must have spent first, or a fact only its own
-        // unit produces shows its speaker present at is dropped.
+        // unit produces shows its speaker present at is dropped. dsl 0.25.0
+        // §6: a line that follows a `changedOn` occasion in the scenario
+        // graph is decided without `assume: true` for that relation — added.
         let ladder = lute_check::beats::presence_ladder(group, &beat_foldeds);
         let producers = lute_check::cast::fact_producers(group);
+        let after = lute_check::cast::occasions_before(group, &beat_foldeds, &conn_graph);
         let no_ladder = BTreeMap::new();
+        let no_after = BTreeMap::new();
         for (path, doc, folded) in group_full {
             if let Some((_, r)) = file_results.iter_mut().find(|(p, _)| p == path) {
                 let project = lute_check::cast::PresenceProject {
                     env: fact_env,
                     ladder: ladder.get(path).unwrap_or(&no_ladder),
                     producers: &producers,
+                    after: after.get(path).unwrap_or(&no_after),
                 };
-                lute_check::cast::reconcile_presence(&mut r.diagnostics, path, doc, folded, &project);
+                let added =
+                    lute_check::cast::reconcile_presence(&mut r.diagnostics, path, doc, folded, &project);
+                if !added.is_empty() {
+                    let text = std::fs::read_to_string(path).unwrap_or_default();
+                    for mut d in added {
+                        d.span = normalize_span_from_text(&text, d.span);
+                        let at = r.diagnostics.partition_point(|x| {
+                            (x.span.byte_start, &x.code) <= (d.span.byte_start, &d.code)
+                        });
+                        r.diagnostics.insert(at, d);
+                    }
+                }
             }
         }
         // dsl 0.21.0 §5: `W-BEAT-SHADOWED` — a `select: first` beat an
@@ -3977,9 +3995,10 @@ const UNANCHORED_VERDICT: &str = "Unanchored — a quest with no declared `after
      only its quest lifecycle (`start`, or an accept) decides when it activates.";
 
 /// dsl 0.21.0 §7a.5: the declared quests the prerequisite graph does not
-/// hold (no `after=`, and no `::accept` anchor — dsl 0.24.0 §2), in id
-/// order — the `unanchored` list every `lute scenario` graph view prints
-/// beside the layers.
+/// hold (no `after=`, no `::accept` anchor — dsl 0.24.0 §2 — and no
+/// subquest tree or `start` anchor — dsl 0.25.0 §4), in id order — the
+/// `unanchored` list every `lute scenario` graph view prints beside the
+/// layers.
 fn unanchored_quests(
     quest_ids: &BTreeSet<String>,
     graph: &lute_check::connectivity::ConnGraph,
@@ -4015,30 +4034,43 @@ fn print_prereq_structure(out: &mut String, scenario: &RootScenario, node: &lute
         Some(PrereqState::Invalid) => {
             outln!(out, "  after: (malformed — E-CONN-PROFILE; structure unavailable)");
         }
-        Some(prereq @ (PrereqState::Valid(f) | PrereqState::Accepted(f))) => {
-            if matches!(prereq, PrereqState::Accepted(_)) {
-                outln!(
-                    out,
-                    "  after: (none declared) — anchored at its `::accept`s (dsl 0.24.0 §2): {}",
-                    format_prereq(f)
-                );
-            } else {
-                outln!(out, "  after: {}", format_prereq(f));
-            }
-            let targets: BTreeSet<lute_check::connectivity::NodeId> = lute_check::atoms(f)
-                .iter()
-                .map(|atom| lute_check::connectivity::NodeId::of_atom(atom, &scenario.graph.nodes))
-                .collect();
-            if !targets.is_empty() {
-                outln!(out, 
-                    "  referenced node(s) (see `after` above for the && / || structure — this \
-                     is NOT a flat requirement list):"
-                );
-                for target in &targets {
-                    outln!(out, "    - {target}: {}", reach_verdict_text(scenario, target));
-                }
-            }
+        Some(prereq @ PrereqState::Valid(f)) => {
+            outln!(out, "  after: {}", format_prereq(f));
+            print_referenced(out, scenario, prereq, "`after` above for the && / || structure");
         }
+        Some(prereq @ PrereqState::Anchored(anchors)) => {
+            outln!(
+                out,
+                "  after: (none declared) — anchored (dsl 0.24.0 §2, 0.25.0 §4); each anchor \
+                 holds before it activates, through any one of its sources:"
+            );
+            for a in anchors {
+                let from: Vec<String> = a.from.iter().map(|n| n.to_string()).collect();
+                outln!(out, "    [{}] {}", a.kind.as_str(), from.join(" || "));
+            }
+            print_referenced(out, scenario, prereq, "the anchors above");
+        }
+    }
+}
+
+/// Each node `prereq` names, with its own reach verdict — context for the
+/// structure printed above it (`see`), never a route list.
+fn print_referenced(
+    out: &mut String,
+    scenario: &RootScenario,
+    prereq: &lute_check::connectivity::PrereqState,
+    see: &str,
+) {
+    let targets = prereq.referenced(&scenario.graph.nodes);
+    if targets.is_empty() {
+        return;
+    }
+    outln!(
+        out,
+        "  referenced node(s) (see {see} — this is NOT a flat requirement list):"
+    );
+    for target in &targets {
+        outln!(out, "    - {target}: {}", reach_verdict_text(scenario, target));
     }
 }
 
@@ -4771,11 +4803,12 @@ fn print_graph_for_root(
     root: &Path,
     graph: &lute_check::connectivity::ConnGraph,
     unanchored: &[lute_check::connectivity::NodeId],
+    when_visited: &[(lute_check::connectivity::NodeId, Vec<String>)],
 ) {
     outln!(out, "project root: {}", root.display());
     if graph.nodes.is_empty() {
         outln!(out, "  (no scene/quest nodes)");
-        print_unanchored(out, unanchored);
+        print_unanchored(out, unanchored, when_visited);
         return;
     }
     let layers = topo_layers(graph);
@@ -4809,13 +4842,20 @@ fn print_graph_for_root(
     if !printed_any {
         outln!(out, "    (none)");
     }
-    print_unanchored(out, unanchored);
+    print_unanchored(out, unanchored, when_visited);
 }
 
 /// dsl 0.21.0 §7a.5: a quest without `after=` is in no layer and on no edge,
 /// and used to be absent from this report entirely. Named here instead.
-fn print_unanchored(out: &mut String, unanchored: &[lute_check::connectivity::NodeId]) {
-    if unanchored.is_empty() {
+/// dsl 0.25.0 §3: so is a beat whose `when` reads `visited()` but that
+/// declares no `after` — gated, yet drawn as an entry point — with the
+/// `after` that would draw its edge ([`when_visited_hint`]).
+fn print_unanchored(
+    out: &mut String,
+    unanchored: &[lute_check::connectivity::NodeId],
+    when_visited: &[(lute_check::connectivity::NodeId, Vec<String>)],
+) {
+    if unanchored.is_empty() && when_visited.is_empty() {
         return;
     }
     outln!(out, 
@@ -4825,11 +4865,31 @@ fn print_unanchored(out: &mut String, unanchored: &[lute_check::connectivity::No
     for node in unanchored {
         outln!(out, "    {node}");
     }
+    for (node, ids) in when_visited {
+        outln!(out, "    {node} — {}", when_visited_hint(node, ids));
+    }
 }
 
-/// dsl 0.23.0 §1: the prerequisite references the graph does not draw
-/// because a quest declares no `after=` — counted and named, so a missing
-/// edge is explained where it is missed.
+/// dsl 0.25.0 §3: the hint for a beat gated by `visited()` conjuncts of its
+/// `when` that draw no edge — the `after` to write instead.
+pub(crate) fn when_visited_hint(node: &lute_check::connectivity::NodeId, ids: &[String]) -> String {
+    let reads: Vec<String> = ids.iter().map(|k| format!("visited('{k}')")).collect();
+    let formula = reads.join(" && ");
+    let write = match node {
+        lute_check::connectivity::NodeId::Scene(_) => format!("`after: \"{formula}\"`"),
+        _ => format!("`after=\"{formula}\"`"),
+    };
+    format!(
+        "its `when` reads {}, which gates it but draws no edge; write {write} to anchor it \
+         (dsl 0.25.0 §3)",
+        reads.join(", ")
+    )
+}
+
+/// dsl 0.23.0 §1: the prerequisite references the graph does not draw —
+/// counted and named, so a missing edge is explained where it is missed. A
+/// quest's edges come from its `after`, its subquest tree, its top-level
+/// `start` conjuncts and its `::accept`s (dsl 0.24.0 §2, 0.25.0 §4).
 fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedRef]) {
     use lute_check::connectivity::OmittedRef;
     if omitted.is_empty() {
@@ -4837,20 +4897,23 @@ fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedR
     }
     outln!(
         out,
-        "  note: {} `visited()`/`completed()`/`active()` reference(s) not drawn — a quest joins \
-         this graph only by declaring `after` (even `after=\"\"`):",
+        "  note: {} `visited()`/`completed()`/`active()` reference(s) not drawn — a quest's \
+         edges come from its `after`, its subquest tree, its `start` conjuncts and its \
+         `::accept`s:",
         omitted.len()
     );
     for r in omitted {
         match r {
             OmittedRef::Lifecycle { from, kind, quest } => outln!(
                 out,
-                "    {from} -> {}(\"{quest}\") — quest({quest}) declares no `after`",
+                "    {from} -> {}(\"{quest}\") — quest({quest}) is on no edge (no `after`, tree, \
+                 `start` anchor or `::accept`)",
                 kind.as_str()
             ),
             OmittedRef::Visited { quest, scene } => outln!(
                 out,
-                "    quest({quest}) reads visited('{scene}') — quest({quest}) declares no `after`"
+                "    quest({quest}) reads visited('{scene}') outside its `start` conjuncts — \
+                 declare `after` to draw it"
             ),
         }
     }
@@ -4870,7 +4933,14 @@ fn run_scenario_graph(out: &mut String, by_root: &ByRoot) -> ExitCode {
         let quest_ids = lute_check::connectivity::quest_id_set(&docs);
         let (graph, _cycle_diags) =
             lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
-        print_graph_for_root(out, root, &graph, &unanchored_quests(&quest_ids, &graph));
+        let when_visited = lute_check::connectivity::when_visited_unanchored(&docs, &graph);
+        print_graph_for_root(
+            out,
+            root,
+            &graph,
+            &unanchored_quests(&quest_ids, &graph),
+            &when_visited,
+        );
         print_omitted(
             out,
             &lute_check::connectivity::omitted_refs(&docs, &graph, &quest_ids),
@@ -6289,6 +6359,13 @@ fn run_trace(
                     }
                 }
             } else {
+                // dsl 0.25.0 §1: a walk-time exclusive-relations refusal keeps
+                // its transcript — the `✗ exclusive` line sits at the write.
+                let exclusive = !diags.is_empty()
+                    && diags.iter().all(|d| d.code == lute_check::fact_check::E_FACT_EXCLUSIVE);
+                if exclusive && write_stdout(&report.render_human()).is_err() {
+                    return ExitCode::from(2);
+                }
                 // A `bridges:` answer's diagnostic is anchored in the mock's
                 // own text (dsl 0.24.0 §5), so it renders against the mock.
                 let (at_mock, at_doc): (Vec<_>, Vec<_>) = diags
@@ -6303,7 +6380,12 @@ fn run_trace(
                 // anything else came from the `check` gate itself (§4.3:
                 // "MUST refuse a document with check errors ... run `check`
                 // first").
-                if diags.iter().any(|d| !d.code.starts_with("E-TRACE-")) {
+                if exclusive {
+                    println!(
+                        "trace refused: {} — exclusive relations hold together (dsl 0.25.0 §1)",
+                        file.display()
+                    );
+                } else if diags.iter().any(|d| !d.code.starts_with("E-TRACE-")) {
                     println!(
                         "trace refused: {} has check error(s) — run `lute check` first",
                         file.display()

@@ -679,6 +679,10 @@ pub fn walk_quest(
         complete: quest
             .completes_on_any()
             .then_some(crate::ir::QuestComplete::Any),
+        // dsl 0.25.0 §5: the engine may accept it outside any document.
+        accept: quest
+            .accepted_externally()
+            .then_some(crate::ir::QuestAccept::External),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -829,6 +833,7 @@ pub fn walk_entry(
             "slot" => Some(crate::ir::BeatOnce::Slot),
             _ => None,
         }),
+        share: text(&entry.share),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -866,6 +871,8 @@ pub fn walk_bundle_beat(
         priority: lute_check::bundle_beat_priority(beat),
         once: lute_check::bundle_beat_once(beat).into(),
         also: lute_check::bundle_beat_also(beat),
+        share: beat.share.as_ref().map(|(k, _)| k.clone()),
+        after: beat.after.as_ref().map(|(a, _)| a.clone()),
         body: label.sym(),
         stamp: Stamp::default(),
     });

@@ -552,26 +552,37 @@ fn knowledge_traces_a_fact_guard_through_rules_to_producers() {
     );
 }
 
+/// dsl 0.25.0 §4: a `start` conjunct that reads a scene anchors the quest
+/// (`[start]`), which puts it on the graph, so an `after` naming it is drawn
+/// too; a `visited()` elsewhere in the quest still draws nothing and is noted.
 #[test]
-fn scenario_graph_notes_references_it_cannot_draw() {
+fn scenario_graph_draws_start_anchors_and_notes_references_it_cannot_draw() {
     let dir = town("graph-note");
     write(
         &dir,
         "quests/errand.lute",
         "---\nkind: quest\nid: town.quests\n---\n\n<quest id=\"errand\" title=\"Errand\" start=\"visited('inn.ada')\">\n  \
-         <objective id=\"go\" title=\"Go\" done=\"run.day == 2\"/>\n</quest>\n",
+         <objective id=\"go\" title=\"Go\" done=\"run.day == 2 || visited('inn.ada')\"/>\n</quest>\n\n\
+         <quest id=\"chore\" title=\"Chore\" start=\"run.day == 3\">\n  \
+         <objective id=\"go\" title=\"Go\" done=\"visited('inn.ada')\"/>\n</quest>\n",
     );
     write(
         &dir,
         "scenes/thanks.lute",
-        &scene("town.thanks", "on: dayStart\nafter: 'completed(\"errand\")'\npriority: 3\n", "@ada: Thanks."),
+        &scene(
+            "town.thanks",
+            "on: dayStart\nafter: 'completed(\"errand\") && completed(\"chore\")'\npriority: 3\n",
+            "@ada: Thanks.",
+        ),
     );
     let out = lute(&["scenario", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("scene(inn.ada) -> quest(errand) [start]"), "{s}");
+    assert!(s.contains("quest(errand) -> scene(town.thanks) [completed]"), "{s}");
     assert!(s.contains("note: 2 `visited()`/`completed()`/`active()` reference(s) not drawn"), "{s}");
-    assert!(s.contains("scene(town.thanks) -> completed(\"errand\") — quest(errand) declares no `after`"), "{s}");
-    assert!(s.contains("quest(errand) reads visited('inn.ada')"), "{s}");
+    assert!(s.contains("scene(town.thanks) -> completed(\"chore\") — quest(chore) is on no edge"), "{s}");
+    assert!(s.contains("quest(chore) reads visited('inn.ada') outside its `start` conjuncts"), "{s}");
 }
 
 #[test]

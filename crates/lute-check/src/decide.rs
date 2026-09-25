@@ -27,9 +27,10 @@ use cel_parser::reference::Val;
 use lute_manifest::types::Type;
 
 use crate::cel_expand::{expand_cel, DefTable};
-use crate::fact_env::{CountInterval, FactScope, HoldsVerdict, QueryPattern};
+use crate::fact_env::{CountInterval, FactScope, GroundFact, HoldsVerdict, QueryPattern};
 use crate::match_check::{infer_domain, Domain, DomainInfo, DomainValue};
 use crate::meta::StateSchema;
+use crate::rel_schema::RelVocab;
 use crate::solution::{
     covers, domain_value, finite_set, holds_member, meet_spans, number_set, number_spans, Kind,
     PathDomain, SolutionSet, Truth, REALS,
@@ -290,6 +291,71 @@ fn decide_chain(args: &[IdedExpr], chain: Chain, ctx: &DecideCtx<'_>) -> bool {
     by_path
         .values()
         .any(|(dom, truths)| truths.len() > 1 && covers(dom, truths))
+        || ctx.facts.is_some_and(|scope| {
+            !exclusive_pairs(&literals_needed(args, chain), scope.vocab).is_empty()
+        })
+}
+
+/// dsl 0.25.0 §1: the ground `holds(F)` literals a chain needs TRUE — as
+/// written in an `&&` chain, negated in an `||` chain (`!holds(A) ||
+/// !holds(B)` needs `A` and `B` for its false outcome).
+fn literals_needed(args: &[IdedExpr], chain: Chain) -> Vec<GroundFact> {
+    let mut literals = Vec::new();
+    for a in args {
+        chain_literals(&a.expr, true, chain, &mut literals);
+    }
+    literals
+        .into_iter()
+        .filter(|(_, positive)| *positive == (chain == Chain::And))
+        .filter_map(|(e, _)| held_ground(e))
+        .collect()
+}
+
+/// The ground fact of a `holds(F)` call, `None` for anything else (a
+/// pattern with `_`, including the `$` of a `<match>` arm).
+pub(crate) fn held_ground(e: &Expr) -> Option<GroundFact> {
+    let Expr::Call(c) = e else {
+        return None;
+    };
+    if c.func_name != "holds" || !crate::cel_resolve::is_profile_fact_query(c) {
+        return None;
+    }
+    let Expr::Call(p) = &c.args.first()?.expr else {
+        return None;
+    };
+    QueryPattern::from_call(p)?.ground()
+}
+
+/// dsl 0.25.0 §1: every pair of `facts` that can never hold together — the
+/// same arguments over relations one of which `excludes:` the other.
+pub(crate) fn exclusive_pairs(facts: &[GroundFact], vocab: &RelVocab) -> Vec<(GroundFact, GroundFact)> {
+    let mut out = Vec::new();
+    for (i, a) in facts.iter().enumerate() {
+        for b in &facts[i + 1..] {
+            if a.args == b.args
+                && vocab.relations.get(&a.relation).is_some_and(|d| d.args.len() == a.args.len())
+                && vocab.excludes(&a.relation, &b.relation)
+            {
+                out.push((a.clone(), b.clone()));
+            }
+        }
+    }
+    out
+}
+
+/// dsl 0.25.0 §1: the ground `holds(F)` conjuncts of a guard's top-level
+/// `&&` chain, as `(required, negated)` — the facts it needs and those it
+/// needs absent (`!holds(F)`).
+pub(crate) fn and_chain_holds(expr: &Expr) -> (Vec<GroundFact>, Vec<GroundFact>) {
+    let mut literals = Vec::new();
+    chain_literals(expr, true, Chain::And, &mut literals);
+    let (mut pos, mut neg) = (Vec::new(), Vec::new());
+    for (e, positive) in literals {
+        if let Some(f) = held_ground(e) {
+            if positive { pos.push(f) } else { neg.push(f) }
+        }
+    }
+    (pos, neg)
 }
 
 /// Flatten one operand of a `chain` into its literals with their polarity
@@ -728,7 +794,7 @@ fn decide_fact_query(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
     };
     match c.func_name.as_str() {
         "holds" => match scope.holds(&QueryPattern::from_call(pattern)?) {
-            HoldsVerdict::Impossible => Some(Decided::Bool(false)),
+            HoldsVerdict::Impossible | HoldsVerdict::Excluded(_) => Some(Decided::Bool(false)),
             HoldsVerdict::Guaranteed(_) => Some(Decided::Bool(true)),
             HoldsVerdict::Possible => None,
         },

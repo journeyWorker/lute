@@ -2523,7 +2523,11 @@ fn an_accept_driven_quest_is_anchored_at_every_accepting_node() {
     let g = graph_of(&docs);
     let q = NodeId::Quest("helpVesna".into());
     let info = g.nodes.get(&q).expect("the accepted quest is a node");
-    assert!(matches!(info.prereq, PrereqState::Accepted(_)), "{:?}", info.prereq);
+    let PrereqState::Anchored(anchors) = &info.prereq else {
+        panic!("{:?}", info.prereq);
+    };
+    assert_eq!(anchors.len(), 1, "one accept anchor, three sources: {anchors:?}");
+    assert_eq!(anchors[0].kind, EdgeKind::Accept);
     for anchor in [
         NodeId::Scene("camp.night".into()),
         NodeId::Beat("camp.talks.corvinScheme".into()),
@@ -2536,7 +2540,7 @@ fn an_accept_driven_quest_is_anchored_at_every_accepting_node() {
 }
 
 #[test]
-fn an_accept_activated_child_is_anchored_and_an_auto_child_is_not() {
+fn every_subquest_child_hangs_off_its_parent_and_an_accept_child_also_off_its_accepts() {
     let quest = "---\nkind: quest\n---\n\
         <quest id=\"main\" start=\"true\">\n\
         <objective id=\"a\" quest=\"side\"/>\n<objective id=\"b\" quest=\"auto\"/>\n</quest>\n\
@@ -2546,9 +2550,22 @@ fn an_accept_activated_child_is_anchored_and_an_auto_child_is_not() {
         ::accept{quest=\"side\"}\n::accept{quest=\"auto\"}\n@a: hi\n";
     let docs = docs_for(&[("q.lute", quest), ("s.lute", scene)]);
     let g = graph_of(&docs);
+    let (main, side, auto) = (
+        NodeId::Quest("main".into()),
+        NodeId::Quest("side".into()),
+        NodeId::Quest("auto".into()),
+    );
     let night = NodeId::Scene("camp.night".into());
-    assert_eq!(kinds(&g, &night, &NodeId::Quest("side".into())), Some(vec![EdgeKind::Accept]));
-    assert!(!g.nodes.contains_key(&NodeId::Quest("auto".into())), "{g:?}");
+    // dsl 0.25.0 §4: the parent is on the graph (an entry point), each
+    // child hangs off it; only the accept child is anchored at its accept.
+    assert!(matches!(g.nodes[&main].prereq, PrereqState::Absent), "{g:?}");
+    assert_eq!(kinds(&g, &main, &side), Some(vec![EdgeKind::Subquest]));
+    assert_eq!(kinds(&g, &main, &auto), Some(vec![EdgeKind::Subquest]));
+    assert_eq!(kinds(&g, &night, &side), Some(vec![EdgeKind::Accept]));
+    assert_eq!(kinds(&g, &night, &auto), None, "an auto child is not accept-driven: {g:?}");
+    let (reach, _) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+    assert_eq!(reach.get(&auto), Some(&Reachability::Reachable));
+    assert_eq!(reach.get(&side), Some(&Reachability::Reachable));
 }
 
 #[test]
@@ -2605,4 +2622,110 @@ fn an_unresolvable_quest_after_suggests_dropping_after_not_when() {
     assert_eq!(d.code, "E-CONN-UNKNOWN-NODE");
     assert!(d.message.contains("drop `after=`"), "{}", d.message);
     assert!(!d.message.contains("`when`"), "{}", d.message);
+}
+
+// ── dsl 0.25.0 §4: subquest and `start` edges ───────────────────────────────
+
+const DEPARTURE: &str = "---\nkind: scene\nid: road.departure\n---\n## Shot 1.\n@a: hi\n";
+const LOG: &str = "---\nkind: lore\nid: lore.log\n---\n<entry id=\"keeperLog\" title=\"Log\">\n@narrator: Ink.\n</entry>\n";
+
+fn quest_with_start(id: &str, start: &str) -> String {
+    format!(
+        "---\nkind: quest\n---\n<quest id=\"{id}\" start=\"{start}\">\n\
+         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n"
+    )
+}
+
+#[test]
+fn start_conjuncts_that_read_a_node_anchor_the_quest() {
+    let road = quest_with_start(
+        "emberRoad",
+        "visited('road.departure') && entry.keeperLog.everRead && quest.prologue.state == 'complete' && run.day > 1",
+    );
+    let prologue = quest_with_start("prologue", "true");
+    let docs = docs_for(&[("s.lute", DEPARTURE), ("l.lute", LOG), ("q.lute", &road), ("p.lute", &prologue)]);
+    let g = graph_of(&docs);
+    let q = NodeId::Quest("emberRoad".into());
+    let (scene, entry, pro) = (
+        NodeId::Scene("road.departure".into()),
+        NodeId::Entry("keeperLog".into()),
+        NodeId::Quest("prologue".into()),
+    );
+    for from in [&scene, &entry, &pro] {
+        assert_eq!(kinds(&g, from, &q), Some(vec![EdgeKind::Start]), "{from}: {g:?}");
+    }
+    let PrereqState::Anchored(anchors) = &g.nodes[&q].prereq else {
+        panic!("{:?}", g.nodes[&q].prereq);
+    };
+    assert_eq!(anchors.len(), 3, "`run.day > 1` gates but anchors nothing: {anchors:?}");
+    // The sources join the graph as entry points, the entry at its declaration.
+    assert!(matches!(g.nodes[&entry].prereq, PrereqState::Absent));
+    assert_eq!(g.nodes[&entry].path, PathBuf::from("l.lute"));
+    assert!(matches!(g.nodes[&pro].prereq, PrereqState::Absent));
+    let (reach, _) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+    assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
+}
+
+#[test]
+fn only_top_level_conjuncts_and_disjunctions_of_reads_anchor() {
+    let ford = "---\nkind: scene\nid: road.ford\n---\n## Shot 1.\n@a: hi\n";
+    // An `||` of two reads is one anchor with both sources.
+    let either = quest_with_start("either", "visited('road.departure') || visited('road.ford')");
+    // Negated, mixed with a non-read, or naming `unset`: no anchor.
+    let none = quest_with_start(
+        "none",
+        "!visited('road.departure') && (visited('road.ford') || run.d) && quest.either.state == 'unset'",
+    );
+    let docs = docs_for(&[("s.lute", DEPARTURE), ("f.lute", ford), ("q.lute", &either), ("n.lute", &none)]);
+    let g = graph_of(&docs);
+    let PrereqState::Anchored(anchors) = &g.nodes[&NodeId::Quest("either".into())].prereq else {
+        panic!("{g:?}");
+    };
+    assert_eq!(
+        anchors[0].from,
+        vec![NodeId::Scene("road.departure".into()), NodeId::Scene("road.ford".into())]
+    );
+    assert!(!g.nodes.contains_key(&NodeId::Quest("none".into())), "{g:?}");
+}
+
+#[test]
+fn an_explicit_after_replaces_start_anchors_but_keeps_the_subquest_edge() {
+    let quest = "---\nkind: quest\n---\n\
+        <quest id=\"main\" start=\"true\">\n<objective id=\"c\" quest=\"child\"/>\n</quest>\n\
+        <quest id=\"child\" after=\"visited('road.ford')\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n\
+        <quest id=\"road\" start=\"visited('road.departure')\" after=\"visited('road.ford')\">\n\
+        <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
+    let ford = "---\nkind: scene\nid: road.ford\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("s.lute", DEPARTURE), ("f.lute", ford), ("q.lute", quest)]);
+    let g = graph_of(&docs);
+    let road = NodeId::Quest("road".into());
+    assert_eq!(kinds(&g, &NodeId::Scene("road.departure".into()), &road), None, "{g:?}");
+    assert_eq!(kinds(&g, &NodeId::Scene("road.ford".into()), &road), Some(vec![EdgeKind::Visited]));
+    let child = NodeId::Quest("child".into());
+    assert!(matches!(g.nodes[&child].prereq, PrereqState::Valid(_)));
+    assert_eq!(kinds(&g, &NodeId::Quest("main".into()), &child), Some(vec![EdgeKind::Subquest]));
+}
+
+#[test]
+fn a_start_anchor_never_proves_the_quest_dead_nor_closes_a_cycle() {
+    // The scene the quest starts on waits on the quest itself: the anchor
+    // cannot be its way in, so it is not drawn, and nothing is a cycle.
+    let road = quest_with_start("road", "visited('road.departure')");
+    let looped = "---\nkind: scene\nid: road.departure\nafter: \"active('road')\"\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("s.lute", looped), ("q.lute", &road)]);
+    let g = graph_of(&docs);
+    let (q, s) = (NodeId::Quest("road".into()), NodeId::Scene("road.departure".into()));
+    assert_eq!(kinds(&g, &q, &s), Some(vec![EdgeKind::Active]));
+    assert_eq!(kinds(&g, &s, &q), None, "{g:?}");
+
+    // A start on a provably dead scene reads Unknown, never E-CONN-UNREACHABLE.
+    let dead = "---\nkind: scene\nid: road.departure\nafter: \"completed('deadQ')\"\n---\n## Shot 1.\n@a: hi\n";
+    let dead_q = quest_with_start("deadQ", "true");
+    let docs = docs_for(&[("s.lute", dead), ("q.lute", &road), ("d.lute", &dead_q)]);
+    let g = graph_of(&docs);
+    let dead_ids = BTreeSet::from(["deadQ".to_string()]);
+    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &dead_ids);
+    assert_eq!(reach.get(&s), Some(&Reachability::Unreachable));
+    assert_eq!(reach.get(&q), Some(&Reachability::Unknown));
+    assert_eq!(diags.len(), 1, "only the dead scene: {diags:?}");
 }

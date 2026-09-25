@@ -55,6 +55,7 @@ fn node_kind_str(node: &NodeId) -> &'static str {
         NodeId::Scene(_) => "scene",
         NodeId::Quest(_) => "quest",
         NodeId::Beat(_) => "beat",
+        NodeId::Entry(_) => "entry",
     }
 }
 
@@ -88,12 +89,33 @@ fn reach_token(scenario: &RootScenario, node: &NodeId) -> &'static str {
 /// never flattened into a misleading joint requirement).
 fn prereq_json(scenario: &RootScenario, node: &NodeId) -> Value {
     match scenario.graph.nodes.get(node).map(|info| &info.prereq) {
-        // An accept-anchored quest declares no `after`; its anchors are its
-        // `accept` edges and `referenced` nodes (dsl 0.24.0 §2).
-        None | Some(PrereqState::Absent | PrereqState::Accepted(_)) => Value::Null,
+        // An anchored quest declares no `after`; its anchors are listed
+        // under `anchors` (dsl 0.24.0 §2, 0.25.0 §4).
+        None | Some(PrereqState::Absent | PrereqState::Anchored(_)) => Value::Null,
         Some(PrereqState::Invalid) => Value::String("(malformed — E-CONN-PROFILE)".to_string()),
         Some(PrereqState::Valid(f)) => Value::String(format_prereq(f)),
     }
+}
+
+/// dsl 0.24.0 §2, 0.25.0 §4: an anchored quest's anchors, in order — each
+/// `{kind, from}` with `kind` `subquest` / `start` / `accept` and `from` its
+/// alternative source nodes. `None` for any other node.
+fn anchors_json(scenario: &RootScenario, node: &NodeId) -> Option<Value> {
+    let Some(PrereqState::Anchored(anchors)) = scenario.graph.nodes.get(node).map(|i| &i.prereq)
+    else {
+        return None;
+    };
+    Some(Value::Array(
+        anchors
+            .iter()
+            .map(|a| {
+                serde_json::json!({
+                    "kind": a.kind.as_str(),
+                    "from": a.from.iter().map(|n| n.to_string()).collect::<Vec<_>>(),
+                })
+            })
+            .collect(),
+    ))
 }
 
 /// A sorted JSON array of a path set (`Guaranteed`/`Possible`/difference) —
@@ -170,7 +192,9 @@ fn edge_kinds_json(graph: &ConnGraph, from: &NodeId, to: &NodeId) -> Value {
 /// each carrying the `kinds` array that justifies it — lang 0.8.0, see
 /// [`edge_kinds_json`]), the deterministic topological `layers`
 /// ([`crate::topo_layers`]), and the `unanchored` quests the graph does not
-/// hold (dsl 0.21.0 §7a.5; omitted when there are none).
+/// hold (dsl 0.21.0 §7a.5; omitted when there are none) — dsl 0.25.0 §3:
+/// plus every beat whose `when` reads `visited()` but that declares no
+/// `after`, each with its `unanchoredHints` entry (the `after` to write).
 fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
     let nodes: Vec<Value> = scenario
         .graph
@@ -227,13 +251,27 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
     obj.insert("edges".to_string(), Value::Array(edges));
     obj.insert("layers".to_string(), Value::Array(layers));
     let unanchored = unanchored_quests(&scenario.quest_ids, &scenario.graph);
-    if !unanchored.is_empty() {
+    let when_visited =
+        lute_check::connectivity::when_visited_unanchored(&scenario.docs, &scenario.graph);
+    if !unanchored.is_empty() || !when_visited.is_empty() {
         obj.insert(
             "unanchored".to_string(),
             Value::Array(
                 unanchored
                     .iter()
+                    .chain(when_visited.iter().map(|(n, _)| n))
                     .map(|n| Value::String(n.to_string()))
+                    .collect(),
+            ),
+        );
+    }
+    if !when_visited.is_empty() {
+        obj.insert(
+            "unanchoredHints".to_string(),
+            Value::Object(
+                when_visited
+                    .iter()
+                    .map(|(n, ids)| (n.to_string(), Value::String(crate::when_visited_hint(n, ids))))
                     .collect(),
             ),
         );
@@ -306,18 +344,23 @@ fn reach_json(
         Value::String(reach_verdict_text(&scenario, &node_id)),
     );
     obj.insert("prereq".to_string(), prereq_json(&scenario, &node_id));
+    if let Some(anchors) = anchors_json(&scenario, &node_id) {
+        obj.insert("anchors".to_string(), anchors);
+    }
 
     // Directly referenced nodes (same set `print_prereq_structure` lists) —
     // each with its own verdict, so a disjunction's alternatives are visible
     // without pretending the `after` formula is a flat requirement list (the
-    // `prereq` string above carries the real && / || structure).
-    if let Some(f) = scenario.graph.nodes.get(&node_id).and_then(|i| i.prereq.formula()) {
-        // Both quest-lifecycle atoms name the SAME node; the
-        // `completed`/`active` distinction lives on the graph edge.
-        let targets: std::collections::BTreeSet<NodeId> = lute_check::atoms(f)
-            .iter()
-            .map(|atom| NodeId::of_atom(atom, &scenario.graph.nodes))
-            .collect();
+    // `prereq` string above carries the real && / || structure). Both
+    // quest-lifecycle atoms name the SAME node; the `completed`/`active`
+    // distinction lives on the graph edge.
+    let targets = scenario
+        .graph
+        .nodes
+        .get(&node_id)
+        .map(|i| i.prereq.referenced(&scenario.graph.nodes))
+        .unwrap_or_default();
+    if !targets.is_empty() {
         let referenced: Vec<Value> = targets
             .iter()
             .map(|t| {
@@ -512,7 +555,8 @@ fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand
 }
 
 /// One `digraph` for one root: a node line per `graph.nodes` (shape by kind —
-/// box scene / ellipse quest / note bundle beat; color by reach verdict — green reachable / red
+/// box scene / ellipse quest / note bundle beat / tab lore entry, dsl 0.25.0
+/// §4; color by reach verdict — green reachable / red
 /// unreachable / gray unknown / orange cycle-degraded; label = id), a dashed
 /// blue edgeless node per unanchored quest (dsl 0.21.0 §7a.5), and an
 /// edge line per `graph.edges` entry (the SAME prerequisite -> dependent walk
@@ -530,6 +574,7 @@ fn root_dot(root: &Path, scenario: &RootScenario) -> String {
             NodeId::Scene(_) => "box",
             NodeId::Quest(_) => "ellipse",
             NodeId::Beat(_) => "note",
+            NodeId::Entry(_) => "tab",
         };
         let color = match reach_token(scenario, node) {
             "reachable" => "green",

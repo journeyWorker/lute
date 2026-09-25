@@ -324,11 +324,12 @@ pub fn propagate(
             continue;
         };
         let (mut env, is_tainted) = match &info.prereq {
-            // dsl 0.24.0 §2: an accept anchor is no `after` route — the
-            // quest activates mid-body of its anchor, so the anchor's
-            // writes are not guaranteed there. [`quest_envelope`] answers
-            // an `after`-less quest from the entry floor; so does its node.
-            PrereqState::Absent | PrereqState::Accepted(_) => (Env::default(), false),
+            // dsl 0.24.0 §2, 0.25.0 §4: an anchor is no `after` route — an
+            // accepted quest activates mid-body of its anchor, a started one
+            // whenever its `start` holds, so the anchor's writes are not
+            // guaranteed there. [`quest_envelope`] answers an `after`-less
+            // quest from the entry floor; so does its node.
+            PrereqState::Absent | PrereqState::Anchored(_) => (Env::default(), false),
             PrereqState::Invalid => (Env::default(), true),
             PrereqState::Valid(f) => {
                 if formula_tainted(f, per_doc, &tainted) {

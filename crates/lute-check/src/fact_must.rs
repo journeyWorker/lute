@@ -681,7 +681,12 @@ impl<'a> Walk<'a> {
                     }
                 }
                 Node::Directive(d) => self.directive(d, flow),
-                Node::Assert(a) => self.assert(a, flow),
+                Node::Assert(a) => {
+                    // dsl 0.25.0 §1: the set an `::assert` meets —
+                    // `E-FACT-EXCLUSIVE` reads it.
+                    self.record_span(a.span, flow);
+                    self.assert(a, flow)
+                }
                 Node::Retract(r) => self.retract(r, flow),
                 Node::Branch(b) => self.branch(&b.choices, flow),
                 Node::Hub(h) => self.hub(&h.choices, flow),

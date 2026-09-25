@@ -8,9 +8,11 @@
 //!   the quoted `nextRun`; no other attribute.
 //! - `check-project` ([`check_project_accepts`]): the target names a quest
 //!   declared in the project, and that quest is accept-driven
-//!   ([`accept_driven_quests`]).
+//!   ([`accept_driven_quests`]); a `<quest accept="external">` is
+//!   accept-driven too (dsl 0.25.0 §5).
 //! - `check-project` ([`check_project_never_accepted`]): an accept-driven
-//!   quest nothing accepts is [`W_QUEST_NEVER_ACCEPTED`] (dsl 0.24.0 §2).
+//!   quest nothing accepts is [`W_QUEST_NEVER_ACCEPTED`] (dsl 0.24.0 §2);
+//!   `accept="external"` is the one non-content acceptance (dsl 0.25.0 §5).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -22,12 +24,14 @@ use crate::content_line::E_UNKNOWN_ATTR;
 
 /// `::accept` names no quest, a malformed quest id, a bad `at`, or (at
 /// `check-project`) a quest that is not an accept-driven quest of the
-/// project (dsl 0.21.0 §7a.3, 0.24.0 §2).
+/// project (dsl 0.21.0 §7a.3, 0.24.0 §2); also `accept="external"` on a
+/// subquest child that activates with its parent (dsl 0.25.0 §5).
 pub const E_ACCEPT_TARGET: &str = "E-ACCEPT-TARGET";
 
-/// An accept-driven quest that no `::accept` in the project names and no
-/// `accepts:` mock or scenario test accepts: nothing ever activates it
-/// (dsl 0.24.0 §2, `check-project` only).
+/// An accept-driven quest that no `::accept` in the project names and that
+/// is not `accept="external"`: nothing ever activates it (dsl 0.24.0 §2,
+/// 0.25.0 §5, `check-project` only). A test or trace mock's `accepts:` is
+/// no acceptance — it proves the test, not the game.
 pub const W_QUEST_NEVER_ACCEPTED: &str = "W-QUEST-NEVER-ACCEPTED";
 
 /// The one legal value of `::accept{… at=}` (dsl 0.24.0 §2): the
@@ -107,6 +111,9 @@ struct QuestFacts<'a> {
     start: bool,
     /// Some declaration carries `activate="accept"` (dsl 0.24.0 §2).
     on_accept: bool,
+    /// Some declaration carries `accept="external"` (dsl 0.25.0 §5): the
+    /// engine accepts the quest outside any document.
+    external: bool,
     /// The first declaration's file and id span.
     anchor: (&'a Path, Span),
 }
@@ -129,10 +136,12 @@ impl<'a> ProjectQuests<'a> {
                 let facts = quests.entry(q.id.as_str()).or_insert(QuestFacts {
                     start: false,
                     on_accept: false,
+                    external: false,
                     anchor: (path.as_path(), q.id_span),
                 });
                 facts.start |= q.start.is_some();
                 facts.on_accept |= q.activates_on_accept();
+                facts.external |= q.accepted_externally();
                 for node in &q.body {
                     let Node::Objective(o) = node else { continue };
                     if let Some(child) = o.quest.as_deref().filter(|c| *c != q.id) {
@@ -174,22 +183,53 @@ pub(crate) fn accept_driven_quests(docs: &[(PathBuf, Document)]) -> BTreeSet<&st
 /// activates on its own, and a subquest child without `activate="accept"`
 /// activates with its parent, so accepting either is a silent no-op. Every
 /// fault is [`E_ACCEPT_TARGET`] at the `quest` value. A malformed target is
-/// the per-file check's, never re-reported here.
+/// the per-file check's, never re-reported here. The engine's acceptance of
+/// a `<quest accept="external">` child that activates with its parent is
+/// the same no-op (dsl 0.25.0 §5), [`E_ACCEPT_TARGET`] at the `accept`
+/// value; beside `start` it is the per-file `E-ATTR-TYPE`.
 pub fn check_project_accepts(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
     let project = ProjectQuests::new(docs);
     let mut out = Vec::new();
     for_each_accept(docs, |path, d| check_target(d, &project, path, &mut out));
+    for (path, doc) in docs {
+        for q in doc.quests.iter().filter(|q| q.accepted_externally()) {
+            let (Some(facts), Some(parent), Some((_, span))) =
+                (project.quests.get(q.id.as_str()), project.parents.get(q.id.as_str()), &q.accept)
+            else {
+                continue;
+            };
+            if facts.on_accept || facts.start {
+                continue;
+            }
+            out.push((
+                path.clone(),
+                accept_diag(
+                    E_ACCEPT_TARGET,
+                    format!(
+                        "quest `{}` declares `accept=\"external\"`, but it activates with its \
+                         parent `{parent}`, so the engine's acceptance does nothing; declare \
+                         `activate=\"accept\"` on it too so it waits to be accepted (dsl 0.25.0 §5)",
+                        q.id
+                    ),
+                    *span,
+                ),
+            ));
+        }
+    }
     out
 }
 
 /// [`W_QUEST_NEVER_ACCEPTED`] over one resolved project root (dsl 0.24.0
-/// §2): every accept-driven quest ([`accept_driven_quests`]) that no
-/// well-formed `::accept{quest=…}` in `docs` names (either `at`) and no
-/// entry of `mocked` — the quest ids the root's trace mocks and scenario
-/// tests accept through `accepts:` — reaches. Anchored at the quest's id.
+/// §2, 0.25.0 §5): every accept-driven quest ([`accept_driven_quests`])
+/// that no well-formed `::accept{quest=…}` in `docs` names (either `at`)
+/// and that is not `accept="external"`. Anchored at the quest's id.
+/// `mocked` — per quest id, the root's trace mocks and scenario tests
+/// whose `accepts:` list names it — is no source (a mock proves a test,
+/// not the game, dsl 0.25.0 D-C); the warning names them so the author
+/// sees why a passing test does not silence it.
 pub fn check_project_never_accepted(
     docs: &[(PathBuf, Document)],
-    mocked: &BTreeSet<String>,
+    mocked: &BTreeMap<String, Vec<PathBuf>>,
 ) -> Vec<(PathBuf, Diagnostic)> {
     let project = ProjectQuests::new(docs);
     let mut named: BTreeSet<&str> = BTreeSet::new();
@@ -200,24 +240,36 @@ pub fn check_project_never_accepted(
     });
     let mut out = Vec::new();
     for (id, q) in &project.quests {
-        if project.accept_driven(id) != Some(true)
-            || named.contains(id)
-            || mocked.contains(*id)
-        {
+        if project.accept_driven(id) != Some(true) || named.contains(id) || q.external {
             continue;
         }
+        let only_mocks = match mocked.get(*id).map(Vec::as_slice) {
+            None | Some([]) => String::new(),
+            Some(files) => {
+                let files: Vec<String> =
+                    files.iter().map(|f| format!("`{}`", f.display())).collect();
+                format!(
+                    " (only the `accepts:` mock of {} does, and a test mock is no acceptance in \
+                     the game)",
+                    files.join(", ")
+                )
+            }
+        };
+        let external = "declare `accept=\"external\"` if the engine accepts it outside the \
+                        script (a quest board, a menu)";
         let message = match project.parents.get(id) {
             Some(parent) if q.on_accept => format!(
-                "quest `{id}` waits for `::accept` (`activate=\"accept\"`), but no `::accept` in \
-                 the project names it and no `accepts:` mock or test accepts it, so it never \
-                 activates; accept it from a scene with `::accept{{quest=\"{id}\"}}`, or remove \
-                 `activate=\"accept\"` so it activates with its parent `{parent}` (dsl 0.24.0 §2)"
+                "quest `{id}` waits for an acceptance (`activate=\"accept\"`), but no \
+                 `::accept` in the project names it{only_mocks}, so it never activates; \
+                 accept it from a scene with `::accept{{quest=\"{id}\"}}`, {external}, or \
+                 remove `activate=\"accept\"` so it activates with its parent `{parent}` \
+                 (dsl 0.24.0 §2, 0.25.0 §5)"
             ),
             _ => format!(
                 "quest `{id}` is accept-driven (no `start`), but no `::accept` in the project \
-                 names it and no `accepts:` mock or test accepts it, so it never activates; \
-                 accept it from a scene with `::accept{{quest=\"{id}\"}}`, or give it a `start` \
-                 condition (dsl 0.24.0 §2)"
+                 names it{only_mocks}, so it never activates; accept it from a scene with \
+                 `::accept{{quest=\"{id}\"}}`, {external}, or give it a `start` condition \
+                 (dsl 0.24.0 §2, 0.25.0 §5)"
             ),
         };
         let (path, span) = q.anchor;

@@ -136,6 +136,11 @@ pub struct RelationEntry {
     /// 0-based functional-key arg indices (§4); empty when undeclared.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub key: Vec<usize>,
+    /// dsl 0.25.0 §1: the relations this one can never hold together with on
+    /// the same arguments — the symmetric closure of `excludes:`, sorted;
+    /// empty (absent) when none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub excludes: Vec<String>,
 }
 
 /// One seed `facts:` ground tuple (dsl 0.3.0 §4).
@@ -287,6 +292,11 @@ pub struct BeatIr {
     /// beat is byte-identical to its 0.22 artifact.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub also: bool,
+    /// dsl 0.25.0 §2: the shared-spend key — presenting any beat of the key
+    /// spends every beat of it for their (common) `once` period. Omitted
+    /// when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub share: Option<String>,
 }
 
 /// A scene beat's repetition policy (dsl 0.21.0 §3.1, 0.24.0 §1): `"run"`
@@ -532,8 +542,9 @@ pub enum Command {
 /// dsl 0.24.0 §4: a `path`/`ref` placeholder carries the interpolation's
 /// format hint as `format` (`{{user.deaths:ordinal}}` → `"format":"ordinal"`),
 /// omitted when the author wrote none — the engine renders the value in that
-/// format (runtime/state-lifecycle.md). `ordinal` is the only one; the
-/// checker rejects any other, and one on `userName` (a string).
+/// format (runtime/state-lifecycle.md). `ordinal` and (dsl 0.25.0 §8)
+/// `ordinalWord` are the hints; the checker rejects any other, and one on
+/// `userName` (a string).
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Placeholder {
@@ -1047,6 +1058,12 @@ pub struct QuestCmd {
     /// children fail `superseded`. Omitted for the default `all`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub complete: Option<QuestComplete>,
+    /// dsl 0.25.0 §5: `"external"` for a `<quest accept="external">` — the
+    /// quest is accepted outside the script (a quest board, a menu, a UI):
+    /// the engine offers it and activates it whenever the player takes it
+    /// (while its parent is active, for a child). Omitted by default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accept: Option<QuestAccept>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1073,6 +1090,14 @@ pub enum QuestActivate {
 #[serde(rename_all = "lowercase")]
 pub enum QuestComplete {
     Any,
+}
+
+/// Who accepts an accept-driven quest besides `::accept` (dsl 0.25.0 §5) —
+/// only `external` exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QuestAccept {
+    External,
 }
 
 /// One objective inlined in `QuestCmd.objectives` (dsl 0.2.0 §6.4, IR
@@ -1203,6 +1228,10 @@ pub struct EntryCmd {
     /// `entry.<id>.everRead`). Omitted = repeatable, as in 0.21.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub once: Option<BeatOnce>,
+    /// dsl 0.25.0 §2: the shared-spend key, as [`BeatIr::share`]. Omitted
+    /// when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub share: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1235,6 +1264,15 @@ pub struct BeatCmd {
     pub once: BeatOnce,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub also: bool,
+    /// dsl 0.25.0 §2: the shared-spend key, as [`BeatIr::share`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub share: Option<String>,
+    /// dsl 0.25.0 §3: the raw `after=` prerequisite (the restricted
+    /// `visited` / `completed` / `active` grammar, a scene `after:`'s) — an
+    /// eligibility conjunct; the artifact's `prereqEdges` carries the same
+    /// text as the beat's scenario edge. Omitted when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
     pub body: String,
     #[serde(flatten)]
     pub stamp: Stamp,

@@ -351,6 +351,41 @@ impl<'a> FactStore<'a> {
         }
     }
 
+    /// dsl 0.25.0 §1: every pair of facts holding over `state` (the fixpoint
+    /// under derivation, else the held facts) whose relations `excludes:`
+    /// each other, rendered `seenAfter(elias) and fell(elias) both hold`.
+    pub fn exclusive_violations(&self, state: &EffectiveState<'_>) -> Vec<String> {
+        let names = || self.rel_vocab.relations.keys().map(String::as_str);
+        let pairs: Vec<(&str, &str)> = names()
+            .flat_map(|a| {
+                names()
+                    .filter(move |b| a < *b && self.rel_vocab.excludes(a, b))
+                    .map(move |b| (a, b))
+            })
+            .collect();
+        if pairs.is_empty() {
+            return Vec::new();
+        }
+        let closure;
+        let facts = match self.derivation {
+            Some(program) if !program.is_empty() => {
+                closure = program.fixpoint(&self.facts, state).facts;
+                &closure
+            }
+            _ => &self.facts,
+        };
+        let render = |rel: &str, args: &[String]| format!("{rel}({})", args.join(", "));
+        let mut out = Vec::new();
+        for (a, b) in pairs {
+            for (_, args) in facts.iter().filter(|(rel, _)| rel == a) {
+                if facts.contains(&(b.to_string(), args.clone())) {
+                    out.push(format!("{} and {} both hold", render(a, args), render(b, args)));
+                }
+            }
+        }
+        out
+    }
+
     fn is_derived(&self, rel: &str) -> bool {
         self.rel_vocab
             .relations

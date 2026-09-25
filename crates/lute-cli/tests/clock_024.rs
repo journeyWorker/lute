@@ -116,6 +116,26 @@ fn once_day_needs_a_clock() {
     assert!(t.contains("E-BEAT-ATTR") && t.contains("declares no `clock:`"), "{t}");
 }
 
+/// dsl 0.25.0 §9 (SU N8): a state entry swallowed by a malformed `clock:`
+/// leaves the `<match>` over it undeclared — the import error is the report,
+/// not a follow-on `E-NONEXHAUSTIVE` at the match; with the import intact the
+/// undeclared subject is its own `E-UNDECLARED`, again without one.
+#[test]
+fn an_undeclared_match_subject_is_no_nonexhaustive_match() {
+    let scene = "---\nkind: scene\nid: a\nuses: ../world.schema.yaml\n---\n\n## A\n\n\
+                 <match on=\"run.route\">\n<when is=\"none\">\n@narrator: none\n</when>\n\
+                 <when is=\"sol\">\n@narrator: sol\n</when>\n</match>\n";
+    let swallowed = format!("{CLOCK}  run.route: {{ type: {{ enum: [none, sol] }}, default: none }}\n");
+    let dir = project_with("cascade", ", owner: engine", &swallowed, &[("scenes/a.lute", scene)]);
+    let t = text(&check_project(&dir));
+    assert!(t.contains("E-USES-PARSE") && t.contains("unknown field `run.route`"), "{t}");
+    assert!(!t.contains("E-NONEXHAUSTIVE"), "{t}");
+    let dir = project_with("undeclared", ", owner: engine", CLOCK, &[("scenes/a.lute", scene)]);
+    let t = text(&check_project(&dir));
+    assert!(t.contains("E-UNDECLARED") && t.contains("run.route"), "{t}");
+    assert!(!t.contains("E-NONEXHAUSTIVE"), "{t}");
+}
+
 const QUEST_BY: &str = "---\nkind: quest\nuses: ../world.schema.yaml\n---\n\n\
                         <quest id=\"fest\" title=\"Festival\" start=\"true\">\n\
                         <objective id=\"go\" on=\"visit\" done=\"true\" by=\"run.day >= 3\"/>\n\

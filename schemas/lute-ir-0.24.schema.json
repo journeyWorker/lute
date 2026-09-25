@@ -427,9 +427,10 @@
       ]
     },
     "placeholderFormat": {
-      "description": "dsl 0.24.0 §4: the interpolation's format hint ({{user.deaths:ordinal}}), omitted when none was written. The engine renders the value in that format. `ordinal`: a non-negative integer as an English ordinal (1st 2nd 3rd 4th … 11th 12th 13th … 21st 22nd … 101st 111th); any other value renders unchanged.",
+      "description": "dsl 0.24.0 §4 / 0.25.0 §8: the interpolation's format hint ({{user.deaths:ordinal}}), omitted when none was written. The engine renders the value in that format (a locale-aware engine localizes it). `ordinal`: a non-negative integer as an English ordinal (1st 2nd 3rd 4th … 11th 12th 13th … 21st 22nd … 101st 111th). `ordinalWord`: an ordinal word (first second … twentieth for 1–20, the `ordinal` digits above). Any other value renders unchanged.",
       "enum": [
-        "ordinal"
+        "ordinal",
+        "ordinalWord"
       ]
     },
     "role": {
@@ -516,6 +517,13 @@
             "minimum": 0
           },
           "description": "0-based functional-key arg indices (§4); absent when undeclared."
+        },
+        "excludes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "dsl 0.25.0 §1: relations that never hold together with this one on the same arguments — the symmetric closure of `excludes:`, sorted; absent when none."
         }
       },
       "additionalProperties": true,
@@ -701,7 +709,7 @@
       "properties": {
         "node": {
           "type": "string",
-          "description": "the contributing node's canonical key: a scene's {character}.{episodeId} or a quest's <quest id>."
+          "description": "the contributing node's canonical key: a scene's {character}.{episodeId}, a quest's <quest id>, or (dsl 0.25.0 §3) a bundle beat's `<document id>.<beat id>`."
         },
         "after": {
           "type": "string",
@@ -812,6 +820,11 @@
         "also": {
           "const": true,
           "description": "dsl 0.23.0 §3: on a `select: first` occasion, an eligible `also` beat is presented in addition to the winner, after it; it never wins. Absent when not authored."
+        },
+        "share": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "dsl 0.25.0 §2: the shared-spend key. Beats with the same key (project-wide; scene, entry, and bundle beats alike) are spent together: once one is presented (an entry: read), every beat of the key is spent for their common `once` period. Absent when not authored."
         }
       },
       "additionalProperties": false,
@@ -2196,6 +2209,10 @@
           "enum": ["any"],
           "description": "dsl 0.24.0 §2: `any` for a `<quest complete=\"any\">` — the quest completes when ANY required objective is done, and every other still-active child fails with `failedBy: superseded`. Omitted for the default `all`."
         },
+        "accept": {
+          "enum": ["external"],
+          "description": "dsl 0.25.0 §5: `external` for a `<quest accept=\"external\">` — the quest is accepted outside the script (a quest board, a menu, a UI): the engine offers it and activates it whenever the player takes it (for an `activate=\"accept\"` child, while the parent is `active`). Omitted by default (only `::accept` accepts it)."
+        },
         "wait": {
           "type": "boolean"
         },
@@ -2339,6 +2356,11 @@
           "enum": ["run", "user", "day", "slot"],
           "description": "dsl 0.22.0 §7, 0.24.0 §1: the entry beat's repetition policy — `run`: not eligible while `entry.<id>.read` is true; `user`: not eligible once `entry.<id>.everRead` is true; `day` / `slot`: not eligible again until the declared clock's day / slot changes after it was read. Absent when not authored: repeatable, as in 0.21."
         },
+        "share": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "dsl 0.25.0 §2: the shared-spend key, as sceneBeat.share — reading this entry spends every beat of the key, and any of them being presented spends this entry, for the common `once` period. Absent when not authored."
+        },
         "body": {
           "type": "string",
           "description": "addr of the entry's body segment (the `cmdOn.body` convention): it follows this record and runs to the next `entry` or `beat` record or the end of the stream. `set`/`assert`/`retract` records in it apply only on the first read (`entry.<id>.read == false`)."
@@ -2476,6 +2498,15 @@
         "also": {
           "const": true,
           "description": "as sceneBeat.also (dsl 0.23.0 §3). Absent when not authored."
+        },
+        "share": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "dsl 0.25.0 §2: the shared-spend key, as sceneBeat.share. Absent when not authored."
+        },
+        "after": {
+          "type": "string",
+          "description": "dsl 0.25.0 §3: the RAW authored `after=` prerequisite — the restricted `visited` / `completed` / `active` grammar of a scene's `after:` — an eligibility conjunct (the beat is eligible only while it and `when` hold). The artifact's `prereqEdges` carries the same text under the beat's `id` as its scenario edge. Absent when not authored."
         },
         "body": {
           "type": "string",
@@ -2776,6 +2807,11 @@
         "title": {
           "type": "string",
           "description": "dsl 0.23.0 §11: the scene's `title:`, or the entry's or bundle beat's `title=` — enough to label a `select: all` menu row. Absent when not authored."
+        },
+        "share": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "dsl 0.25.0 §2: the beat's shared-spend key — every row of one key is spent when any of them is presented (an entry: read). Absent when not authored."
         }
       },
       "additionalProperties": false,

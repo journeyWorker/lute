@@ -175,6 +175,29 @@ fn knowledge_propagates_constants_into_negations_and_says_whether_they_can_be_de
     assert!(!s.contains("not departed(tobias) — NO PRODUCER"), "{s}");
 }
 
+/// dsl 0.25.0 §9 (LH N6): a defeater derived by two rules names both
+/// routes, not only the first — the second is often the one the story
+/// hinges on.
+#[test]
+fn a_defeater_lists_every_derivation_route() {
+    let dir = inquiry("routes");
+    let schema = std::fs::read_to_string(dir.join("world.schema.yaml"))
+        .unwrap()
+        .replace(
+            "  - \"liar(W) :- lied(W)\"\n",
+            "  - \"liar(W) :- lied(W)\"\n  - \"liar(W) :- saw(W, ada)\"\n",
+        );
+    write(&dir, "world.schema.yaml", &schema);
+    let s = ok(&["scenario", dir.to_str().unwrap(), "knowledge", "--for", "inquiry.report"]);
+    assert!(
+        s.contains(
+            "defeated when liar(maren) is derived ⇐ lied(maren) [entry `marenSaw` \
+             (lore/evidence.lute)] / ⇐ saw(maren, ada) [entry `marenSaw` (lore/evidence.lute)]"
+        ),
+        "{s}"
+    );
+}
+
 #[test]
 fn knowledge_prints_a_derived_tree_once_and_references_it() {
     let dir = inquiry("once");

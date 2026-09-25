@@ -1377,6 +1377,43 @@ fn scenario_reach_reports_a_bare_quest_as_unanchored() {
     assert_eq!(v["node"], "quest(loose)", "{v}");
 }
 
+/// dsl 0.25.0 §4 (ember N13): a quest tree and a start-driven root need no
+/// `after=` — the root is anchored at the scene its `start` reads
+/// (`[start]`), each child at its parent (`[subquest]`), and none is listed
+/// as unanchored; `reach` names the anchors.
+#[test]
+fn scenario_draws_subquest_and_start_edges_without_after() {
+    let dir = temp_dir("scenario-quest-tree");
+    write(
+        &dir,
+        "depart.lute",
+        "---\nkind: scene\nid: road.departure\n---\n## Shot 1.\n@narrator: hi\n",
+    );
+    write(
+        &dir,
+        "q.lute",
+        "---\nkind: quest\nstate:\n  run.done: { type: bool, default: false }\n---\n\
+         <quest id=\"emberRoad\" start=\"visited('road.departure') && !run.done\">\n\
+         <objective id=\"b\" quest=\"openBridge\"/>\n</quest>\n\
+         <quest id=\"openBridge\">\n<objective id=\"o\" done=\"run.done\"/>\n</quest>\n",
+    );
+    let path = dir.to_str().unwrap().to_string();
+    let text = stdout(&run(&["scenario", &path]));
+    assert!(text.contains("scene(road.departure) -> quest(emberRoad) [start]"), "{text}");
+    assert!(text.contains("quest(emberRoad) -> quest(openBridge) [subquest]"), "{text}");
+    assert!(!text.contains("unanchored"), "{text}");
+
+    let out = run(&["scenario", &path, "--format", "json", "reach", "quest:openBridge"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(v["reach"], "reachable", "{v}");
+    assert_eq!(
+        v["anchors"],
+        serde_json::json!([{ "kind": "subquest", "from": ["quest(emberRoad)"] }]),
+        "{v}"
+    );
+}
+
 /// lamplight N8 / ashen N9: a bundle beat is a node of the scenario graph —
 /// drawn in the layers, answerable by `reach`/`envelope` under its canonical
 /// `<document id>.<beat id>` (bare or `beat:`-prefixed) — so moving a scene

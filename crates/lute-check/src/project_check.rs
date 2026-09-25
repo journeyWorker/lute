@@ -1417,6 +1417,7 @@ mod tests {
             tier: None,
             activate: None,
             complete: None,
+            accept: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),

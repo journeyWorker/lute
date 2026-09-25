@@ -111,8 +111,13 @@ struct Walk<'a> {
     /// dsl 0.24.0 §5: result slot -> `(tag, field, answer shape)` of a plugin
     /// call that found no `bridges:` answer — the slot reads UNKNOWN (never
     /// its shape default), and a read of it is hinted as the missing answer,
-    /// every field the call reads with its type ([`mock::bridge_answer_shape`]).
+    /// every field of the call content reads with its type
+    /// ([`mock::bridge_answer_shape`], dsl 0.25.0 §7).
     bridge_unanswered: BTreeMap<String, (String, String, String)>,
+    /// dsl 0.25.0 §7: the state paths the traced document's content reads
+    /// ([`mock::content_read_paths`]) — the bridge result fields an answer
+    /// must give.
+    content_reads: &'a BTreeSet<String>,
     /// dsl 0.24.0 §2.1: the `occasions:` raises not yet made — the settles
     /// before one defer the `by` of the `on=` objectives it judges, so its
     /// `done` is judged first ([`reevaluate_objectives`]).
@@ -526,6 +531,40 @@ fn choice_diag(span: Span, id: &str, choice_id: &str, reason: &str) -> Diagnosti
     }
 }
 
+/// dsl 0.25.0 §1: a write that made facts of exclusive relations hold
+/// together (derived ones included) — recorded at the write as
+/// [`Step::Exclusive`] and the walk refused there (`E-FACT-EXCLUSIVE`, exit
+/// 1). `before` is what already held together before the write, never
+/// blamed on it.
+fn exclusive_check(before: &[String], span: Span, w: &mut Walk<'_>) -> Flow {
+    let new: Vec<String> = w
+        .facts
+        .exclusive_violations(&w.state)
+        .into_iter()
+        .filter(|v| !before.contains(v))
+        .collect();
+    if new.is_empty() {
+        return Flow::Continue;
+    }
+    for v in &new {
+        w.steps.push(Step::Exclusive { text: v.clone() });
+    }
+    Flow::Refused(vec![Diagnostic {
+        code: lute_check::fact_check::E_FACT_EXCLUSIVE.to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "this write makes exclusive relations hold together: {} (dsl 0.25.0 §1)",
+            new.join("; ")
+        ),
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }])
+}
+
 fn fact_term_text(t: &FactTerm) -> String {
     match t {
         FactTerm::Ident(s) => s.clone(),
@@ -580,13 +619,14 @@ fn resolve_interp(interp: &Interp, w: &Walk<'_>) -> Option<String> {
 }
 
 /// A decided interpolation value as text, its format hint applied (dsl
-/// 0.24.0 §4): `ordinal` renders a number as an English ordinal — the
-/// reference runner's rule ([`lute_syntax::ast::english_ordinal`]); a value
-/// with no ordinal, or no hint, renders as itself.
+/// 0.24.0 §4 / 0.25.0 §8): `ordinal` / `ordinalWord` render a number as an
+/// English ordinal — the reference runner's rule
+/// ([`lute_syntax::ast::format_number`]); a value with no ordinal, or no
+/// hint, renders as itself.
 fn formatted_text(interp: &Interp, v: &Value) -> Option<String> {
     match (interp.format.as_deref(), v) {
-        (Some(lute_syntax::ast::INTERP_FORMAT_ORDINAL), Value::Num(n)) => {
-            lute_syntax::ast::english_ordinal(*n).or_else(|| report::value_text(v))
+        (Some(format), Value::Num(n)) => {
+            lute_syntax::ast::format_number(format, *n).or_else(|| report::value_text(v))
         }
         _ => report::value_text(v),
     }
@@ -696,10 +736,11 @@ fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
 /// dsl 0.24.0 §5: a plugin call whose effects read a bridge result consumes
 /// the next `bridges:` answer of its tag and writes each answered field to
 /// its result slot, typed by the slot's declared type ([`mock::validate_bridges`]
-/// proved every answer fits). With no answer left, every result slot reads
+/// proved every answer fits). With no answer left, or a field the answer
+/// leaves out (dsl 0.25.0 §7: one no content reads), the result slot reads
 /// UNKNOWN — never its state-shape default — so a guard over it halts the
-/// walk incomplete, hinted as the missing answer ([`Walk::render_atom`]).
-/// Any other directive records nothing.
+/// walk incomplete, hinted as the missing answer ([`Walk::render_atom`]):
+/// the fields of the tag content reads. Any other directive records nothing.
 fn walk_bridge_call(d: &Directive, w: &mut Walk<'_>) {
     let Some(decl) = w.snapshot.directives.get(&d.tag) else {
         return;
@@ -717,9 +758,16 @@ fn walk_bridge_call(d: &Directive, w: &mut Walk<'_>) {
         .iter()
         .map(|(field, write)| (*field, lute_compile::lower::resolve_effect(write, d).path))
         .collect();
+    // A read the textual scan cannot see (a component body) still halts on
+    // UNKNOWN; its hint then names every field, all of which an answer may give.
+    let read = mock::bridge_fields_read(&reads, w.content_reads);
     let decls = &w.check_env.state.decls;
-    let shape =
-        mock::bridge_answer_shape(resolved.iter().map(|(f, p)| (*f, decls.get(p).map(|d| &d.ty))));
+    let shape = mock::bridge_answer_shape(
+        resolved
+            .iter()
+            .filter(|(f, _)| read.is_empty() || read.contains(f))
+            .map(|(f, p)| (*f, decls.get(p).map(|d| &d.ty))),
+    );
     for (field, path) in resolved {
         let lit = answer
             .as_ref()
@@ -1260,12 +1308,14 @@ fn walk_node(node: &Node, w: &mut Walk<'_>, sugar_ctx: Option<&Choice>) -> Flow 
             Flow::Continue
         }
         Node::Assert(a) => {
+            let before = w.facts.exclusive_violations(&w.state);
             walk_assert(a, w);
-            Flow::Continue
+            exclusive_check(&before, a.span, w)
         }
         Node::Retract(r) => {
+            let before = w.facts.exclusive_violations(&w.state);
             walk_retract(r, w);
-            Flow::Continue
+            exclusive_check(&before, r.span, w)
         }
         Node::Match(m) => walk_match(m, w),
         Node::Branch(b) => walk_branch(b, w),
@@ -1372,14 +1422,46 @@ fn eval_eligibility(
 /// beat has no first-read rule). `scene.*` starts fresh: the walk seeds
 /// only the mocks. The `when` eligibility gate is evaluated and SHOWN on the
 /// [`Step::Beat`] head under the canonical id, never enforced, as on an
-/// entry.
+/// entry — conjoined (dsl 0.25.0 §3) with the beat's `after=` over the
+/// mocked `visited:` and quest states ([`prereq_condition`]).
 fn walk_bundle_beat(beat: &BundleBeat, canonical: &str, w: &mut Walk<'_>) -> Flow {
-    let eligible = eval_eligibility(beat.when.as_ref(), "beat", canonical, w);
+    let after = beat
+        .after
+        .as_ref()
+        .filter(|(a, _)| !a.trim().is_empty())
+        .and_then(|(a, span)| {
+            let f = lute_check::parse_prereq(a, *span).0?;
+            Some(CelSlot::raw(lute_syntax::ast::CelKind::Condition, prereq_condition(&f), *span))
+        });
+    let after = match &after {
+        Some(slot) => eval_eligibility(Some(slot), "beat", canonical, w),
+        None => Some(true),
+    };
+    let when = eval_eligibility(beat.when.as_ref(), "beat", canonical, w);
+    let eligible = match (after, when) {
+        (Some(false), _) | (_, Some(false)) => Some(false),
+        (Some(true), Some(true)) => Some(true),
+        _ => None,
+    };
     w.steps.push(Step::Beat {
         id: canonical.to_string(),
         eligible,
+        after_unmet: after == Some(false),
     });
     walk_nodes(&beat.body, w, None)
+}
+
+/// A prerequisite formula as the CEL condition it stands for: `visited(K)`
+/// reads the visited set, `completed(Q)` / `active(Q)` the quest's state.
+fn prereq_condition(f: &lute_check::PrereqFormula) -> String {
+    use lute_check::PrereqFormula as F;
+    match f {
+        F::Visited(k) => format!("visited('{k}')"),
+        F::Completed(q) => format!("quest.{q}.state == 'complete'"),
+        F::Active(q) => format!("quest.{q}.state == 'active'"),
+        F::And(a, b) => format!("({}) && ({})", prereq_condition(a), prereq_condition(b)),
+        F::Or(a, b) => format!("({}) || ({})", prereq_condition(a), prereq_condition(b)),
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -3115,9 +3197,16 @@ fn trace_pipeline(
             Err(d) => mock_diags.push(d),
         },
     }
+    // dsl 0.25.0 §7: a bridge result field no content reads may go unanswered.
+    let content_reads = mock::content_read_paths(&input.text, &folded.def_bodies);
     if mock_diags.is_empty() {
         mock_diags = mock::validate(&mocks, &folded, &doc);
-        mock_diags.extend(mock::validate_bridges(&mocks, &folded, &input.snapshot));
+        mock_diags.extend(mock::validate_bridges(
+            &mocks,
+            &folded,
+            &input.snapshot,
+            &content_reads,
+        ));
     }
     if !mock_diags.is_empty() {
         return (
@@ -3203,6 +3292,7 @@ fn trace_pipeline(
         apply_effects: true,
         bridge_cursor: BTreeMap::new(),
         bridge_unanswered: BTreeMap::new(),
+        content_reads: &content_reads,
         deferred_by: mocks.occasions.clone(),
         spent_accepts: Vec::new(),
     };

@@ -1,5 +1,6 @@
 //! dsl 0.23.0 §4 beat bundles: scene-like `<beat id on target when priority
-//! once also title>` blocks declared in a lore document.
+//! once also title>` blocks declared in a lore document (dsl 0.25.0: `share`
+//! and `after`).
 //!
 //! A bundle beat is a beat of the project exactly as a scene beat is — it
 //! answers an occasion, is spent by presentation (`once`), and presenting it
@@ -23,7 +24,7 @@ use crate::lore::{is_entry_ident, is_entry_target};
 /// with a value of the wrong shape (a bare `on`, `also="maybe"`) — that is
 /// [`E_BEAT_ATTR`]; every OTHER key is `E-UNKNOWN-ATTR`.
 pub const BUNDLE_BEAT_ATTRS: &[&str] = &[
-    "id", "on", "target", "title", "when", "priority", "once", "also",
+    "id", "on", "target", "title", "when", "priority", "once", "also", "share", "after",
 ];
 
 /// The canonical id of bundle beat `beat_id` in the lore document whose
@@ -197,6 +198,20 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
                 *span,
             ));
         }
+    }
+    // dsl 0.25.0 §2: a shared spend needs a spend to share.
+    if let Some((key, span)) = &beat.share {
+        let once = beat.once.as_ref().map(|(o, _)| o.as_str());
+        if !is_entry_ident(key) {
+            diags.push(beat_attr(crate::beats::share_malformed("`<beat>`", key), *span));
+        } else if once == Some("false") || (once.is_none() && !residual.contains("once")) {
+            diags.push(beat_attr(crate::beats::share_without_once(key), *span));
+        }
+    }
+    // dsl 0.25.0 §3: `after=` under the scene `after:` grammar
+    // (`E-CONN-PROFILE`); an exact empty value declares no prerequisite.
+    if let Some((after, span)) = beat.after.as_ref().filter(|(a, _)| !a.is_empty()) {
+        diags.extend(crate::prereq::parse_prereq(after, *span).1);
     }
 }
 

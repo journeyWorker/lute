@@ -1616,6 +1616,63 @@ pub fn bridge_result_writes(
         .collect()
 }
 
+/// dsl 0.25.0 §7: the state paths a document's content may read — every
+/// dotted identifier chain (`scene.check.guards.margin`) in its source
+/// `text`, and in the body of every `@def` it names, transitively
+/// (`def_bodies`, [`FoldedEnv::def_bodies`]). Textual on purpose, like
+/// `W-RELATION-UNREAD`'s scan: a chain in a comment or a string is counted
+/// too, which only ever keeps a bridge result field required (the 0.24
+/// rule), never lets a read one go unanswered.
+pub fn content_read_paths(text: &str, def_bodies: &BTreeMap<String, String>) -> BTreeSet<String> {
+    let mut paths = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    let mut todo = vec![text];
+    while let Some(text) = todo.pop() {
+        let b = text.as_bytes();
+        let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+        let mut i = 0;
+        while i < b.len() {
+            if !ident(b[i]) || (i > 0 && (ident(b[i - 1]) || b[i - 1] == b'.')) {
+                i += 1;
+                continue;
+            }
+            let start = i;
+            let joins = |i: usize| b[i] == b'.' && b.get(i + 1).is_some_and(|c| ident(*c));
+            while i < b.len() && (ident(b[i]) || joins(i)) {
+                i += 1;
+            }
+            let chain = &text[start..i];
+            if start > 0 && b[start - 1] == b'@' {
+                if let Some(body) = def_bodies.get(chain) {
+                    if seen.insert(chain) {
+                        todo.push(body);
+                    }
+                }
+            } else if chain.contains('.') {
+                paths.insert(chain.to_string());
+            }
+        }
+    }
+    paths
+}
+
+/// dsl 0.25.0 §7: the fields of `writes` ([`bridge_result_writes`] of one
+/// directive) content reads — those some path in `reads`
+/// ([`content_read_paths`]) is a slot of. Per tag, not per call: answers
+/// queue per tag, so a field one call's result is read at is required of
+/// every answer to the tag. What a `bridges:` answer must give and its hint
+/// lists.
+pub fn bridge_fields_read<'d>(
+    writes: &[(&'d str, &lute_manifest::schema::WriteDecl)],
+    reads: &BTreeSet<String>,
+) -> BTreeSet<&'d str> {
+    writes
+        .iter()
+        .filter(|(_, w)| reads.iter().any(|p| write_lands_on(w, p)))
+        .map(|(f, _)| *f)
+        .collect()
+}
+
 /// Whether declared state path `path` is a slot `write` can land on: its
 /// scope and literal segments match, a `fromAttr` segment matches any one.
 fn write_lands_on(write: &lute_manifest::schema::WriteDecl, path: &str) -> bool {
@@ -1631,29 +1688,32 @@ fn write_lands_on(write: &lute_manifest::schema::WriteDecl, path: &str) -> bool 
         })
 }
 
-/// dsl 0.24.0 §5: every `bridges:` answer against the plugin directive it
-/// answers. The tag names a directive whose effects read a `bridgeResult`;
-/// each answer gives exactly the fields those effects read; each value fits
-/// the declared type of every state slot this document's calls of the tag
-/// write it to. A tag, field or slot miss is [`E_TRACE_MOCK_UNDECLARED`]; a
-/// value that does not fit, or an answer missing a field the result shape
-/// requires, is [`E_TRACE_MOCK_TYPE`] — the `state:` codes, since an answer
-/// is a supplied value of those slots. Each is anchored at the offending
-/// tag key, answer or field key in the mock's text ([`MOCK_TEXT`]).
+/// dsl 0.24.0 §5 / 0.25.0 §7: every `bridges:` answer against the plugin
+/// directive it answers. The tag names a directive whose effects read a
+/// `bridgeResult`; an answer gives no field those effects do not read, and
+/// every field content reads — one some path in `reads` ([`content_read_paths`])
+/// lands a write of ([`write_lands_on`]); each value fits the declared type of
+/// every state slot this document's calls of the tag write it to. A field no
+/// content reads MAY be left out. A tag, field or slot miss is
+/// [`E_TRACE_MOCK_UNDECLARED`]; a value that does not fit, or an answer
+/// missing a read field, is [`E_TRACE_MOCK_TYPE`] — the `state:` codes, since
+/// an answer is a supplied value of those slots. Each is anchored at the
+/// offending tag key, answer or field key in the mock's text ([`MOCK_TEXT`]).
 pub fn validate_bridges(
     mocks: &MockSet,
     folded: &FoldedEnv,
     snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
+    reads: &BTreeSet<String>,
 ) -> Vec<Diagnostic> {
     let at = &mocks.bridge_spans;
     let mut out = Vec::new();
     for (tag, answers) in &mocks.bridges {
-        let reads = snapshot
+        let reads_of = snapshot
             .directives
             .get(tag)
             .map(bridge_result_writes)
             .unwrap_or_default();
-        if reads.is_empty() {
+        if reads_of.is_empty() {
             let bridged = snapshot
                 .directives
                 .values()
@@ -1672,12 +1732,18 @@ pub fn validate_bridges(
             ));
             continue;
         }
-        let fields: Vec<&str> = reads.iter().map(|(f, _)| *f).collect();
+        let fields: Vec<&str> = reads_of.iter().map(|(f, _)| *f).collect();
         let slot_type = |write: &lute_manifest::schema::WriteDecl| {
             let decls = &folded.env.state.decls;
             decls.iter().find(|(p, _)| write_lands_on(write, p)).map(|(_, d)| &d.ty)
         };
-        let shape = bridge_answer_shape(reads.iter().map(|(f, w)| (*f, slot_type(w))));
+        let required = bridge_fields_read(&reads_of, reads);
+        let shape = bridge_answer_shape(
+            reads_of
+                .iter()
+                .filter(|(f, _)| required.contains(f))
+                .map(|(f, w)| (*f, slot_type(w))),
+        );
         for (i, answer) in answers.iter().enumerate() {
             let n = i + 1;
             for (field, _) in answer {
@@ -1694,14 +1760,15 @@ pub fn validate_bridges(
                 }
             }
             let mut lacked = BTreeSet::new();
-            for (field, write) in &reads {
+            for (field, write) in &reads_of {
                 let Some((_, lit)) = answer.iter().find(|(f, _)| f == field) else {
-                    if lacked.insert(*field) {
+                    if required.contains(field) && lacked.insert(*field) {
                         out.push(mock_diag(
                             E_TRACE_MOCK_TYPE,
                             format!(
-                                "`bridges.{tag}` answer {n} lacks `{field}` — an answer gives \
-                                 every bridge result `::{tag}` reads: `{shape}` (dsl 0.24.0 §5)"
+                                "`bridges.{tag}` answer {n} lacks `{field}`, which content reads \
+                                 — an answer gives every bridge result `::{tag}` content reads: \
+                                 `{shape}` (dsl 0.25.0 §7)"
                             ),
                             at.answer(tag, i),
                         ));

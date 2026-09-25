@@ -654,6 +654,12 @@ fn rel_entries(
             derive: decl.derive,
             reserved: decl.reserved,
             key: decl.key.iter().map(|&k| k as usize).collect(),
+            excludes: vocab
+                .relations
+                .keys()
+                .filter(|other| vocab.excludes(name, other))
+                .cloned()
+                .collect(),
         })
         .collect();
     let seed_facts = vocab
@@ -863,6 +869,7 @@ fn scene_beat(
         priority: beat.priority,
         once: beat.once.into(),
         also: beat.also,
+        share: beat.share.clone(),
     })
 }
 
@@ -935,7 +942,9 @@ fn plugin_frontmatter(
 /// `id:` and derived legacy joins land on the same identity everywhere. A
 /// quest-pack doc contributes ONE entry per `<quest>` that carries an
 /// `after` attribute (attribute present, any text), keyed by that quest's
-/// id. Sorted by `node` (byte-stable determinism).
+/// id. dsl 0.25.0 §3: a lore doc contributes one per bundle `<beat after=…>`,
+/// keyed by its canonical `<document id>.<beat id>`. Sorted by `node`
+/// (byte-stable determinism).
 fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntry> {
     let mut out = Vec::new();
     match folded.doc_kind {
@@ -963,9 +972,20 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                 }
             }
         }
-        // dsl 0.19.0: an entry is looked up, never scheduled — a lore
-        // document declares no `after` prerequisite.
-        lute_check::DocKind::Lore => {}
+        // dsl 0.19.0: an entry is looked up, never scheduled; dsl 0.25.0 §3:
+        // a bundle beat's `after=` is a scene's `after:`.
+        lute_check::DocKind::Lore => {
+            if let Some(doc_id) = folded.typed.id.as_deref() {
+                for beat in &doc.beats {
+                    if let Some((after, _)) = &beat.after {
+                        out.push(PrereqEdgeEntry {
+                            node: lute_check::bundle_beat_key(doc_id, &beat.id),
+                            after: after.clone(),
+                        });
+                    }
+                }
+            }
+        }
     }
     out.sort_by(|a, b| a.node.cmp(&b.node));
     out

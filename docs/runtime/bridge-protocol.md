@@ -141,10 +141,19 @@ example proves its IR and result bindings, not live host-service execution.
 Authoring tools stand in for the service with **bridge answers**:
 `bridges: { <tag>: [ {<field>: value}, … ] }`, where `<tag>` is the `plugin`
 record's `tag`, each list item answers ONE call of that tag in call order, and
-its fields are exactly the `bridgeResult` keys that call's effects read. Each
-value must fit the declared type (`bool`/`number`/`string`/enum member) of the
-result slot it lands on; an unknown tag, an unread or missing field, or a
-misfit value is a usage error.
+its fields are `bridgeResult` keys that call's effects read. Each value must
+fit the declared type (`bool`/`number`/`string`/enum member) of the result
+slot it lands on; an unknown tag, a field no effect reads, or a misfit value
+is a usage error.
+
+A field **content reads** — its result slot is read by a condition, a `::set`
+value, a `<match>` or a `{{…}}` at some call of the tag — MUST be given in
+every answer to the tag; leaving it out is a usage error (`E-TRACE-MOCK-TYPE`
+in a mock). A field no content reads MAY be left out (dsl 0.25.0 §7): its
+result slot stays unresolved. Every hint lists only the fields content reads.
+`lute play` reads the whole project's content, `lute run` the artifact's, and
+`lute trace` / `lute test` / a checked `mocks/*.yaml` the traced document's
+(its `@def`s included).
 
 - **`lute run --mock`**: the mock's `bridges:` answers the calls. An answered
   call writes its values and its transcript record carries
@@ -154,13 +163,14 @@ misfit value is a usage error.
 - **`lute play`**: top-level `bridges:` is consumed in order across the whole
   play; a step's own `bridges:` is consumed first for the calls of that step,
   and any of its answers left unconsumed fail the step (exit 1). A call with
-  a `bridgeResult` effect and no answer halts the play AT the call (exit 3,
-  incomplete; the record carries `"unanswered": [<fields>]`) — nothing after
+  a `bridgeResult` effect and no answer halts the play AT the call when
+  content reads one of its result slots (exit 3, incomplete; the record
+  carries `"unanswered": [<fields content reads>]`) — nothing after
   it, a default `<match>` arm included, is walked. Answers land in `scene.*`
   result slots even though a `state:` seed of `scene.*` is refused.
 - **`lute trace` / `lute test`**: mocks and `*.test.yaml` carry the same
   `bridges:` key (`E-TRACE-MOCK-UNDECLARED` for an unknown tag or a stray
-  field, `E-TRACE-MOCK-TYPE` for a missing field or a misfit value, each at
+  field, `E-TRACE-MOCK-TYPE` for a missing read field or a misfit value, each at
   the offending key's line:column in the mock). An unanswered call leaves its
   result slots UNKNOWN — never the state-shape default — so a guard reading
   one halts the trace incomplete (exit 3), hinting the whole missing answer

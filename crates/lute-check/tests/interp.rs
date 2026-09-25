@@ -302,7 +302,7 @@ fn ordinal_on_a_number_is_clean() {
     assert!(c.is_empty(), "got {c:?}");
 }
 
-/// `ordinal` is the only hint; any other is the interpolation-grammar code.
+/// A hint other than `ordinal` / `ordinalWord` is the interpolation-grammar code.
 #[test]
 fn an_unknown_hint_is_rejected() {
     let c = ordinal_codes("{{user.deaths:plural}}");
@@ -324,4 +324,22 @@ fn ordinal_on_a_non_number_is_a_type_error() {
         let c = ordinal_codes(text);
         assert_eq!(c, ["E-REF-TYPE"], "{text}: got {c:?}");
     }
+}
+
+/// dsl 0.25.0 §8: `ordinalWord` is accepted wherever `ordinal` is, and
+/// refused on a non-number the same way.
+#[test]
+fn ordinal_word_is_a_second_number_hint() {
+    let c = ordinal_codes("The {{user.deaths:ordinalWord}} time, the {{ @next : ordinalWord }}.");
+    assert!(c.is_empty(), "got {c:?}");
+    let c = codes(&format!(
+        "{HDR}{ORDINAL_STATE}---\n## Shot 1.\n<branch id=\"b\">\n\
+         <choice id=\"c\" label=\"Try a {{{{@next:ordinalWord}}}} time\">\n@marina: hi\n</choice>\n\
+         </branch>\n"
+    ));
+    assert!(c.is_empty(), "got {c:?}");
+    for text in ["{{run.name:ordinalWord}}", "{{userName:ordinalWord}}"] {
+        assert_eq!(ordinal_codes(text), ["E-REF-TYPE"], "{text}");
+    }
+    assert_eq!(ordinal_codes("{{user.deaths:ordinalword}}"), ["E-CEL-PROFILE"]);
 }
