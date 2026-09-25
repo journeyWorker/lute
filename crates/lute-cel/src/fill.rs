@@ -89,10 +89,10 @@ mod tests {
         let text = concat!(
             "---\ncharacter: x\n---\n",
             "## Shot 1.\n",
-            "@narrator{mood=@joy}: hi\n", // Line.attrs Ref
-            "::camera{focus=@fond}\n",          // Directive.attrs Ref
-            "::set{scene.a = 1}\n",             // top-level Set.expr
-            "<branch id=\"b\" flag=@joy>\n",    // Branch.attrs Ref
+            "@narrator{mood=@joy}: hi\n",    // Line.attrs Ref
+            "::camera{focus=@fond}\n",       // Directive.attrs Ref
+            "::set{scene.a = 1}\n",          // top-level Set.expr
+            "<branch id=\"b\" flag=@joy>\n", // Branch.attrs Ref
             "<choice id=\"c\" label=\"l\" when=\"scene.a > 0\" pick=@joy>\n", // Choice.when + Choice.attrs Ref
             "::set{scene.b = 2}\n", // Set inside choice body
             "</choice>\n",

@@ -196,7 +196,10 @@ fn nested_uses_nest_scopes_and_loc_export_agrees() {
         .collect();
     assert_clean_with_ann_ids(
         &dir,
-        &want.iter().map(|(l, v)| (*l, v.as_str())).collect::<Vec<_>>(),
+        &want
+            .iter()
+            .map(|(l, v)| (*l, v.as_str()))
+            .collect::<Vec<_>>(),
     );
 
     let export = lute(&["loc", "export", p(&dir)]);
@@ -264,7 +267,14 @@ fn shared_text_or_the_default_prefixed_voice_key_is_clean() {
     let o = lute(&["check-project", p(&default)]);
     assert_eq!(o.status.code(), Some(0), "{}", text(&o));
     let out_dir = default.join("out");
-    let o = lute(&["compile", "--all", "--project", p(&default), "-o", p(&out_dir)]);
+    let o = lute(&[
+        "compile",
+        "--all",
+        "--project",
+        p(&default),
+        "-o",
+        p(&out_dir),
+    ]);
     assert_eq!(o.status.code(), Some(0), "{}", text(&o));
 }
 
@@ -301,7 +311,14 @@ fn check_project_refuses_the_two_profile_project_compile_all_refuses() {
         "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: b.\n",
     );
 
-    let all = lute(&["compile", "--all", "--project", p(&dir), "-o", p(&dir.join("out"))]);
+    let all = lute(&[
+        "compile",
+        "--all",
+        "--project",
+        p(&dir),
+        "-o",
+        p(&dir.join("out")),
+    ]);
     assert_eq!(all.status.code(), Some(1), "{}", text(&all));
     let project = lute(&["check-project", p(&dir)]);
     assert_eq!(project.status.code(), Some(1), "{}", text(&project));

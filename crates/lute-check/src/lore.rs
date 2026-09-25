@@ -235,9 +235,8 @@ pub(crate) fn series_order_message(series: &str, order: u32, first: &str, id: &s
 /// its position is its place in the file — so their value shape is not
 /// checked on top.
 fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Diagnostic>) {
-    let attr_diag = |message: String, span: Span| {
-        diag(E_ENTRY_ATTR, Severity::Error, message, span)
-    };
+    let attr_diag =
+        |message: String, span: Span| diag(E_ENTRY_ATTR, Severity::Error, message, span);
     // A permitted key left in the residual list carried a non-string value
     // (`order=@n`, a bare `target`) — the parser extracts only quoted strings.
     // `when` is never residual: `take_cel` accepts every value shape. The beat

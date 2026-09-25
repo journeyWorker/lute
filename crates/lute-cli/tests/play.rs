@@ -134,7 +134,10 @@ fn a_priority_tie_falls_back_to_index_order() {
 #[test]
 fn when_over_run_state_decides_eligibility() {
     let unseeded = play_json("when-off", "steps:\n  - occasion: hubVisit\n", 0);
-    assert_eq!(candidate(&unseeded, 1, "hub.restless")["reason"], "when: false");
+    assert_eq!(
+        candidate(&unseeded, 1, "hub.restless")["reason"],
+        "when: false"
+    );
     assert_eq!(winner(&unseeded, 1), Some("hub.firstEver"));
 
     // Seeded past the gate. The seed also satisfies firstEscape's objective,
@@ -220,7 +223,10 @@ fn an_ineligible_pick_is_an_error() {
     );
     assert_eq!(v["exit"], "error");
     let msg = v["error"]["message"].as_str().unwrap();
-    assert!(msg.contains("dusaNote") && msg.contains("when: false"), "{msg}");
+    assert!(
+        msg.contains("dusaNote") && msg.contains("when: false"),
+        "{msg}"
+    );
     assert!(step(&v, 1).get("presented").is_none(), "{}", step(&v, 1));
 }
 
@@ -272,7 +278,12 @@ fn quest_gated_beats_become_eligible_once_the_quest_completes_during_play() {
         .iter()
         .map(|r| r["kind"].as_str().unwrap())
         .collect();
-    assert_eq!(quest, ["objective", "quest", "grant", "line"], "{}", step(&v, 3));
+    assert_eq!(
+        quest,
+        ["objective", "quest", "grant", "line"],
+        "{}",
+        step(&v, 3)
+    );
 
     assert_eq!(winner(&v, 4), Some("achilles.proud"));
     assert_eq!(winner(&v, 5), Some("hub.trophy"));
@@ -460,10 +471,25 @@ fn without_declared_occasions_the_beats_on_values_are_the_vocabulary() {
         "---\nkind: scene\nid: town.arrive\non: arrive\n---\n\n## Gate\n\n@guard: Welcome to town.\n",
     );
     let out = play_in(&dir, "shape-only", "steps:\n  - occasion: arrive\n", false);
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
-    assert!(stdout(&out).contains("Welcome to town."), "{}", stdout(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stdout(&out).contains("Welcome to town."),
+        "{}",
+        stdout(&out)
+    );
 
-    let out = play_in(&dir, "shape-only-typo", "steps:\n  - occasion: arrival\n", false);
+    let out = play_in(
+        &dir,
+        "shape-only-typo",
+        "steps:\n  - occasion: arrival\n",
+        false,
+    );
     assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
     assert!(
         stderr(&out).contains("occasion `arrival` is answered by no beat"),
@@ -484,7 +510,13 @@ fn the_human_transcript_names_each_step_its_verdicts_and_the_winner() {
         ])
         .output()
         .unwrap();
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let text = stdout(&out);
     for line in [
         "── start ──────────────",
@@ -520,7 +552,13 @@ fn the_human_transcript_names_each_step_its_verdicts_and_the_winner() {
         .collect();
     assert_eq!(
         ids,
-        ["hub.welcome", "hub.idle", "hub.trophy", "hub.restless", "hub.firstEver"],
+        [
+            "hub.welcome",
+            "hub.idle",
+            "hub.trophy",
+            "hub.restless",
+            "hub.firstEver"
+        ],
         "{text}"
     );
 }
@@ -574,7 +612,13 @@ fn quest_occasion_project(tag: &str) -> PathBuf {
 /// Play `script` over `project` with `--json`; asserts exit 0.
 fn play_project_json(project: &Path, tag: &str, script: &str) -> Json {
     let out = play_in(project, tag, script, true);
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
@@ -587,7 +631,11 @@ fn quest_records(records: &Json) -> Vec<String> {
         .iter()
         .flat_map(|doc| doc["commands"].as_array().unwrap())
         .map(|r| match r["kind"].as_str().unwrap() {
-            "quest" => format!("{} -> {}", r["quest"].as_str().unwrap(), r["state"].as_str().unwrap()),
+            "quest" => format!(
+                "{} -> {}",
+                r["quest"].as_str().unwrap(),
+                r["state"].as_str().unwrap()
+            ),
             "objective" => format!(
                 "{}.{} done",
                 r["quest"].as_str().unwrap(),
@@ -607,7 +655,10 @@ fn a_visited_objective_is_done_once_its_scene_is_presented() {
         "steps:\n  - occasion: hubVisit\nchoose:\n  offer: pass\n",
     );
     // Before the shed is presented, `visited('haven.shed')` is false.
-    assert_eq!(quest_records(&v["start"]["quests"]), ["holdLine -> active", "seen -> active"]);
+    assert_eq!(
+        quest_records(&v["start"]["quests"]),
+        ["holdLine -> active", "seen -> active"]
+    );
     assert_eq!(winner(&v, 1), Some("haven.shed"));
     let s1 = quest_records(&step(&v, 1)["quests"]);
     assert!(s1.contains(&"seen.looked done".to_string()), "{s1:?}");
@@ -628,7 +679,9 @@ fn an_on_objective_is_judged_only_at_a_step_raising_its_occasion() {
     for n in 1..=2 {
         let records = quest_records(&step(&v, n)["quests"]);
         assert!(
-            !records.iter().any(|r| r.starts_with("holdLine.calm") || r == "holdLine -> complete"),
+            !records
+                .iter()
+                .any(|r| r.starts_with("holdLine.calm") || r == "holdLine -> complete"),
             "step {n}: {records:?}"
         );
     }
@@ -734,7 +787,10 @@ fn a_branch_without_the_accept_leaves_the_quest_unset() {
         quest_records(&step(&v, 1)["quests"]),
         quest_records(&step(&v, 2)["quests"]),
     ] {
-        assert!(!records.iter().any(|r| r.starts_with("sideJob")), "{records:?}");
+        assert!(
+            !records.iter().any(|r| r.starts_with("sideJob")),
+            "{records:?}"
+        );
     }
     let out = play_in(&dir, "no-accept-human", script, false);
     assert!(!stdout(&out).contains("sideJob"), "{}", stdout(&out));
@@ -759,7 +815,11 @@ fn a_quest_state_seed_registers_the_quest_instead_of_being_overwritten() {
         v["start"]
     );
     assert_eq!(winner(&v, 1), Some("achilles.proud"));
-    assert_eq!(winner(&v, 2), Some("hub.trophy"), "after: completed(…) reads the seed");
+    assert_eq!(
+        winner(&v, 2),
+        Some("hub.trophy"),
+        "after: completed(…) reads the seed"
+    );
 }
 
 /// A shape-only project exercising the transcript and scripted decisions:
@@ -835,10 +895,19 @@ fn an_end_ends_only_its_presentation_and_the_play_goes_on() {
     // `on="close"` objective the occasion judges.
     assert_eq!(
         quest_records(&step(&v, 1)["quests"]),
-        ["plain.lit done", "plain -> complete", "acc.named done", "acc -> complete"]
+        [
+            "plain.lit done",
+            "plain -> complete",
+            "acc.named done",
+            "acc -> complete"
+        ]
     );
     // 0.23.1: `::end` ended the finale, not the playthrough.
-    assert_eq!(winner(&v, 2), Some("offer"), "the next step plays after `::end`: {v}");
+    assert_eq!(
+        winner(&v, 2),
+        Some("offer"),
+        "the next step plays after `::end`: {v}"
+    );
     assert_eq!(v["exit"], "complete");
     assert_eq!(v["endReason"], "complete (2 steps)");
     assert!(v.get("skipped").is_none(), "{v}");
@@ -847,22 +916,41 @@ fn an_end_ends_only_its_presentation_and_the_play_goes_on() {
 #[test]
 fn an_end_step_ends_the_playthrough_and_lists_the_steps_it_skips() {
     let dir = stage_project("end-step");
-    let script = "steps:\n  - occasion: talk\n  - end: true\n  - label: never\n    occasion: close\n\
+    let script =
+        "steps:\n  - occasion: talk\n  - end: true\n  - label: never\n    occasion: close\n\
                   choose:\n  ask: notYet\n";
     let v = play_project_json(&dir, "end-step", script);
     assert_eq!(v["exit"], "complete");
-    assert_eq!(v["endReason"], "`end: true` at step 2 (1 later step skipped)");
-    assert_eq!(v["skipped"], serde_json::json!([{ "step": 3, "label": "never" }]));
+    assert_eq!(
+        v["endReason"],
+        "`end: true` at step 2 (1 later step skipped)"
+    );
+    assert_eq!(
+        v["skipped"],
+        serde_json::json!([{ "step": 3, "label": "never" }])
+    );
     assert_eq!(step(&v, 2)["end"], true);
     assert!(step(&v, 3).is_null(), "{v}");
     let out = play_in(&dir, "end-step-text", script, false);
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let text = stdout(&out);
-    assert!(text.contains("── step 3 (never) · skipped (the playthrough ended)"), "{text}");
+    assert!(
+        text.contains("── step 3 (never) · skipped (the playthrough ended)"),
+        "{text}"
+    );
 
     for (bad, why) in [
         ("steps:\n  - end: false\n", "`end` must be `true`"),
-        ("steps:\n  - end: true\n    repeat: 2\n", "`repeat` does not apply to an `end` step"),
+        (
+            "steps:\n  - end: true\n    repeat: 2\n",
+            "`repeat` does not apply to an `end` step",
+        ),
         ("steps:\n  - end: true\n    occasion: talk\n", "not both"),
     ] {
         let out = play_in(&dir, "end-bad", bad, false);
@@ -876,19 +964,48 @@ fn staging_prints_as_authored_and_ir_prints_the_lowered_records() {
     let dir = stage_project("staging-source");
     let script = "steps:\n  - occasion: visit\nchoose:\n  look: [table, leave]\n";
     let text = stdout(&play_in(&dir, "staging-source", script, false));
-    assert!(text.lines().any(|l| l == "::bg{location=\"parlor\"}"), "{text}");
-    assert!(text.lines().any(|l| l == "::auto{character=\"maud\" anchor=\"left\"}"), "{text}");
-    assert!(!text.contains("::background") && !text.contains("::sprite"), "{text}");
+    assert!(
+        text.lines().any(|l| l == "::bg{location=\"parlor\"}"),
+        "{text}"
+    );
+    assert!(
+        text.lines()
+            .any(|l| l == "::auto{character=\"maud\" anchor=\"left\"}"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("::background") && !text.contains("::sprite"),
+        "{text}"
+    );
 
     let s = write(&temp_dir("staging-ir"), "s.play.yaml", script);
     let out = Command::new(BIN)
-        .args(["play", dir.to_str().unwrap(), "--script", s.to_str().unwrap(), "--ir"])
+        .args([
+            "play",
+            dir.to_str().unwrap(),
+            "--script",
+            s.to_str().unwrap(),
+            "--ir",
+        ])
         .output()
         .unwrap();
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let ir = stdout(&out);
-    assert!(ir.lines().any(|l| l == "::background{location=\"parlor\" wait=true}"), "{ir}");
-    assert!(ir.contains("(injected: "), "the lowered view shows injected staging: {ir}");
+    assert!(
+        ir.lines()
+            .any(|l| l == "::background{location=\"parlor\" wait=true}"),
+        "{ir}"
+    );
+    assert!(
+        ir.contains("(injected: "),
+        "the lowered view shows injected staging: {ir}"
+    );
 }
 
 /// 0.23.1: an occasion and a world event of the same name — the engine
@@ -911,7 +1028,11 @@ fn boss_project(tag: &str) -> PathBuf {
         "plugins/g.boss/occasions/o.yaml",
         "occasions:\n  bossDefeated: { target: { prefix: boss, entity: foe } }\n",
     );
-    write(&dir, "plugins/g.boss/events/e.yaml", "events:\n  - name: bossDefeated\n");
+    write(
+        &dir,
+        "plugins/g.boss/events/e.yaml",
+        "events:\n  - name: bossDefeated\n",
+    );
     write(
         &dir,
         "world.schema.yaml",
@@ -971,7 +1092,8 @@ fn raising_an_occasion_fires_the_same_named_world_event_before_judging() {
 #[test]
 fn a_branch_choose_list_is_consumed_one_decision_per_presentation() {
     let dir = stage_project("branch-list");
-    let script = "steps:\n  - occasion: talk\n  - occasion: talk\nchoose:\n  ask: [notYet, accept]\n";
+    let script =
+        "steps:\n  - occasion: talk\n  - occasion: talk\nchoose:\n  ask: [notYet, accept]\n";
     let v = play_project_json(&dir, "branch-list", script);
     let chose = |n| {
         presented(&v, n)
@@ -980,7 +1102,11 @@ fn a_branch_choose_list_is_consumed_one_decision_per_presentation() {
             .map(|r| r["chose"].clone())
     };
     assert_eq!(chose(1), Some(Json::from("notYet")));
-    assert_eq!(chose(2), Some(Json::from("accept")), "never truncated to its head");
+    assert_eq!(
+        chose(2),
+        Some(Json::from("accept")),
+        "never truncated to its head"
+    );
 
     // A third presentation finds the list used up: incomplete, and says so.
     let out = play_in(
@@ -1021,7 +1147,9 @@ fn forcing_a_spent_once_hub_option_halts_instead_of_being_skipped() {
     assert_eq!(v["exit"], "error");
     let msg = v["error"]["message"].as_str().unwrap();
     assert!(
-        msg.contains("E-TRACE-CHOICE") && msg.contains("`choose: look: table`") && msg.contains("once"),
+        msg.contains("E-TRACE-CHOICE")
+            && msg.contains("`choose: look: table`")
+            && msg.contains("once"),
         "{msg}"
     );
     assert!(
@@ -1034,13 +1162,27 @@ fn forcing_a_spent_once_hub_option_halts_instead_of_being_skipped() {
 #[test]
 fn an_ineligible_choose_is_an_error_like_an_ineligible_pick() {
     let dir = stage_project("bad-choose");
-    let out = play_in(&dir, "bad-choose", "steps:\n  - occasion: talk\nchoose:\n  ask: secret\n", true);
+    let out = play_in(
+        &dir,
+        "bad-choose",
+        "steps:\n  - occasion: talk\nchoose:\n  ask: secret\n",
+        true,
+    );
     // Exit 1 like an ineligible `pick:` — it used to be 2, the usage-error code.
-    assert_eq!(out.status.code(), Some(1), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let v: Json = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["exit"], "error");
     let msg = v["error"]["message"].as_str().unwrap();
-    assert!(msg.contains("E-TRACE-CHOICE") && msg.contains("secret"), "{msg}");
+    assert!(
+        msg.contains("E-TRACE-CHOICE") && msg.contains("secret"),
+        "{msg}"
+    );
 }
 
 #[test]
@@ -1048,7 +1190,13 @@ fn the_transcript_shows_the_source_not_the_lowered_ir() {
     let dir = stage_project("source-level");
     let script = "steps:\n  - occasion: visit\nchoose:\n  look: [table, leave]\n";
     let out = play_in(&dir, "source-level", script, false);
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let text = stdout(&out);
     for line in [
         "@wren{mono}: Quiet in here.",
@@ -1059,16 +1207,25 @@ fn the_transcript_shows_the_source_not_the_lowered_ir() {
         "▷ hub look: piano✗ [table] leave        ← chosen: table",
         "▷ hub look: piano✗ table(spent) [leave]        ← chosen: leave",
     ] {
-        assert!(text.lines().any(|l| l == line), "missing `{line}` in:\n{text}");
+        assert!(
+            text.lines().any(|l| l == line),
+            "missing `{line}` in:\n{text}"
+        );
     }
     // No line-guard plumbing, no compiler-injected staging (the preload and
     // the pose resets before maud's plain lines).
     assert!(!text.contains("match ->"), "{text}");
-    assert!(!text.contains("preload") && !text.contains("posReset"), "{text}");
+    assert!(
+        !text.contains("preload") && !text.contains("posReset"),
+        "{text}"
+    );
 
     // `--json` line records keep the line's identity and delivery.
     let v = play_project_json(&dir, "source-level-json", script);
-    let lines: Vec<&Json> = presented(&v, 1).iter().filter(|r| r["kind"] == "line").collect();
+    let lines: Vec<&Json> = presented(&v, 1)
+        .iter()
+        .filter(|r| r["kind"] == "line")
+        .collect();
     assert_eq!(lines[0]["role"], "monologue");
     assert_eq!(lines[0]["lineId"], "parlor.wren_0010");
     let smith = lines[1];
@@ -1109,7 +1266,11 @@ fn harness_project(tag: &str) -> PathBuf {
         "occasions:\n  hubVisit: {}\n  talk: { target: { prefix: npc, entity: person } }\n  \
          board: { select: all }\n",
     );
-    write(&dir, "plugins/g.occ/events/e.yaml", "events:\n  - name: storm\n");
+    write(
+        &dir,
+        "plugins/g.occ/events/e.yaml",
+        "events:\n  - name: storm\n",
+    );
     write(
         &dir,
         "world.schema.yaml",
@@ -1171,14 +1332,26 @@ fn harness_project(tag: &str) -> PathBuf {
 /// `harness_project` played with `--json`, asserting the exit code.
 fn harness_json(tag: &str, script: &str, exit: i32) -> Json {
     let out = play_in(&harness_project(tag), tag, script, true);
-    assert_eq!(out.status.code(), Some(exit), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(exit),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
 /// `harness_project` played for its human transcript, asserting the exit.
 fn harness_text(tag: &str, script: &str, exit: i32) -> String {
     let out = play_in(&harness_project(tag), tag, script, false);
-    assert_eq!(out.status.code(), Some(exit), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(exit),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     stdout(&out)
 }
 
@@ -1353,8 +1526,14 @@ fn an_event_step_runs_the_handlers_of_active_quests_only() {
     );
     let first = text.split("── step 2").next().unwrap();
     assert!(first.contains("── step 1 · event storm"), "{text}");
-    assert!(first.contains("@narrator: Thunder over the stair."), "{text}");
-    assert!(first.contains("@narrator: The long quest hears the storm."), "{text}");
+    assert!(
+        first.contains("@narrator: Thunder over the stair."),
+        "{text}"
+    );
+    assert!(
+        first.contains("@narrator: The long quest hears the storm."),
+        "{text}"
+    );
     // `climb` completed at step 2: its handler no longer answers.
     let third = text.split("── step 3 · event storm").nth(1).unwrap();
     assert!(!third.contains("Thunder"), "{text}");
@@ -1451,13 +1630,21 @@ fn a_save_seeds_history_quests_and_reads_before_step_one() {
          - occasion: inbox\n    pick: megNote\n",
         0,
     );
-    assert!(quest_records(&v["start"]["quests"]).is_empty(), "{}", v["start"]);
+    assert!(
+        quest_records(&v["start"]["quests"]).is_empty(),
+        "{}",
+        v["start"]
+    );
     assert_eq!(
         candidate(&v, 1, "hub.firstEver")["reason"],
         "once: user — already presented"
     );
     assert_eq!(winner(&v, 1), Some("hub.trophy"));
-    assert_eq!(presented(&v, 2)[0]["firstRead"], false, "read in this run already");
+    assert_eq!(
+        presented(&v, 2)[0]["firstRead"],
+        false,
+        "read in this run already"
+    );
 
     // `visited:` feeds `visited('<id>')`: the objective is done at start.
     let dir = quest_occasion_project("save-visited");
@@ -1476,7 +1663,10 @@ fn a_save_seeds_history_quests_and_reads_before_step_one() {
         0,
     );
     assert_eq!(candidate(&v, 1, "old")["eligible"], true);
-    assert_eq!(candidate(&v, 1, "notice")["reason"], "once: user — already read");
+    assert_eq!(
+        candidate(&v, 1, "notice")["reason"],
+        "once: user — already read"
+    );
 }
 
 #[test]
@@ -1579,7 +1769,10 @@ fn labels_and_repetitions_are_printed_in_the_transcript() {
         "── step 1 (greet) [2/2] · talk → npc.maud ──────────────",
         "── end: complete (2 steps) ──────────────",
     ] {
-        assert!(text.lines().any(|l| l == line), "missing `{line}` in:\n{text}");
+        assert!(
+            text.lines().any(|l| l == line),
+            "missing `{line}` in:\n{text}"
+        );
     }
 }
 
@@ -1591,10 +1784,19 @@ fn a_missed_expectation_fails_the_play_naming_the_step_and_the_actual_value() {
                   expect: { winner: hub.victory, offered: [hub.victory, hub.idle] }\n\
                   expect:\n  facts: [feared(warden)]\n  quests: { climb: active }\n";
     let text = harness_text("expect-miss", script, 1);
-    assert!(text.contains("── end: complete (3 steps)"), "the walk itself completed:\n{text}");
+    assert!(
+        text.contains("── end: complete (3 steps)"),
+        "the walk itself completed:\n{text}"
+    );
     assert!(text.contains("── expect: 1 missed"), "{text}");
-    let miss = text.lines().find(|l| l.starts_with("  ✗ step 1")).unwrap_or_else(|| panic!("{text}"));
-    assert!(miss.contains("(first visit)") && miss.contains("hub.idle"), "{miss}");
+    let miss = text
+        .lines()
+        .find(|l| l.starts_with("  ✗ step 1"))
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(
+        miss.contains("(first visit)") && miss.contains("hub.idle"),
+        "{miss}"
+    );
 
     let v = harness_json("expect-miss-json", script, 1);
     let misses = v["expect"]["misses"].as_array().unwrap();
@@ -1669,7 +1871,12 @@ fn compose_project(tag: &str) -> PathBuf {
             &format!("---\nkind: scene\nid: {id}\nuses: ../world.schema.yaml\n{fm}---\n\n## {id}\n\n{body}"),
         );
     };
-    scene("scenes/main.lute", "hub.main", "on: hubVisit\nonce: false\n", "@maud: Welcome.\n");
+    scene(
+        "scenes/main.lute",
+        "hub.main",
+        "on: hubVisit\nonce: false\n",
+        "@maud: Welcome.\n",
+    );
     scene(
         "scenes/aside.lute",
         "hub.aside",
@@ -1722,12 +1929,20 @@ fn quest_log(v: &Json, n: usize) -> Vec<String> {
         .iter()
         .flat_map(|doc| doc["commands"].as_array().unwrap())
         .filter_map(|r| match r["kind"].as_str().unwrap() {
-            "quest" => Some(format!("{} -> {}", r["quest"].as_str()?, r["state"].as_str()?)),
+            "quest" => Some(format!(
+                "{} -> {}",
+                r["quest"].as_str()?,
+                r["state"].as_str()?
+            )),
             "objective" => Some(format!(
                 "{}.{} {}",
                 r["quest"].as_str()?,
                 r["objective"].as_str()?,
-                if r["failed"] == true { "failed" } else { "done" }
+                if r["failed"] == true {
+                    "failed"
+                } else {
+                    "done"
+                }
             )),
             _ => None,
         })
@@ -1737,7 +1952,11 @@ fn quest_log(v: &Json, n: usize) -> Vec<String> {
 #[test]
 fn an_also_beat_is_presented_after_the_winner_and_spends_its_once() {
     let dir = compose_project("also");
-    let v = play_project_json(&dir, "also", "steps:\n  - occasion: hubVisit\n  - occasion: hubVisit\n");
+    let v = play_project_json(
+        &dir,
+        "also",
+        "steps:\n  - occasion: hubVisit\n  - occasion: hubVisit\n",
+    );
     // `hub.aside` outranks `hub.main`, yet never wins: it rides along after.
     assert_eq!(candidate_ids(&v, 1), ["hub.aside", "hub.main"]);
     assert_eq!(candidate(&v, 1, "hub.aside")["also"], true);
@@ -1751,13 +1970,25 @@ fn an_also_beat_is_presented_after_the_winner_and_spends_its_once() {
     assert_eq!(presented_ids(&v, 2), ["hub.main"]);
     assert!(step(&v, 2).get("then").is_none(), "{}", step(&v, 2));
 
-    let out = play_in(&dir, "also-human", "steps:\n  - occasion: hubVisit\n", false);
+    let out = play_in(
+        &dir,
+        "also-human",
+        "steps:\n  - occasion: hubVisit\n",
+        false,
+    );
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let text = stdout(&out);
-    let main = text.find("  → hub.main\n").unwrap_or_else(|| panic!("{text}"));
-    let aside = text.find("  + hub.aside (also)\n").unwrap_or_else(|| panic!("{text}"));
+    let main = text
+        .find("  → hub.main\n")
+        .unwrap_or_else(|| panic!("{text}"));
+    let aside = text
+        .find("  + hub.aside (also)\n")
+        .unwrap_or_else(|| panic!("{text}"));
     assert!(main < aside, "{text}");
-    assert!(text.find("Welcome.").unwrap() < text.find("Psst.").unwrap(), "{text}");
+    assert!(
+        text.find("Welcome.").unwrap() < text.find("Psst.").unwrap(),
+        "{text}"
+    );
 }
 
 #[test]
@@ -1778,12 +2009,21 @@ fn select_sequence_presents_every_eligible_beat_in_order_and_spends_each_once() 
     assert_eq!(winner(&v, 2), Some("eve.routine"));
     // `eve.letter` spent its `once: run`; the routine repeats.
     assert_eq!(presented_ids(&v, 3), ["eve.routine"]);
-    assert_eq!(candidate(&v, 3, "eve.letter")["reason"], "once: run — already presented this run");
+    assert_eq!(
+        candidate(&v, 3, "eve.letter")["reason"],
+        "once: run — already presented this run"
+    );
 
     let script = "steps:\n  - occasion: evening\n  - occasion: evening\n    \
                   expect: { presented: [eve.routine, eve.letter] }\n";
     let out = play_in(&dir, "sequence-expect", script, false);
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let text = stdout(&out);
     assert!(text.contains("· evening (select: sequence)"), "{text}");
     assert!(text.contains("  → eve.routine\n  → eve.letter\n"), "{text}");
@@ -1793,19 +2033,40 @@ fn select_sequence_presents_every_eligible_beat_in_order_and_spends_each_once() 
     let out = play_in(&dir, "sequence-miss", wrong, false);
     assert_eq!(out.status.code(), Some(1), "{}", stdout(&out));
 
-    let out = play_in(&dir, "sequence-pick", "steps:\n  - occasion: evening\n    pick: eve.routine\n", false);
+    let out = play_in(
+        &dir,
+        "sequence-pick",
+        "steps:\n  - occasion: evening\n    pick: eve.routine\n",
+        false,
+    );
     assert_eq!(out.status.code(), Some(2), "{}", stdout(&out));
-    assert!(stderr(&out).contains("applies only to a `select: all` occasion"), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("applies only to a `select: all` occasion"),
+        "{}",
+        stderr(&out)
+    );
 }
 
 #[test]
 fn a_by_deadline_fails_its_objective_and_the_quest_after_the_presentation_that_passes_it() {
     let dir = compose_project("by-miss");
     // Each evening's routine advances the day; the second reaches day 3.
-    let v = play_project_json(&dir, "by-miss", "steps:\n  - occasion: evening\n  - occasion: evening\n");
+    let v = play_project_json(
+        &dir,
+        "by-miss",
+        "steps:\n  - occasion: evening\n  - occasion: evening\n",
+    );
     assert!(quest_log(&v, 1).is_empty(), "{:?}", quest_log(&v, 1));
-    assert_eq!(quest_log(&v, 2), ["deadline.letter failed", "deadline -> failed"]);
-    let out = play_in(&dir, "by-miss-human", "steps:\n  - occasion: evening\n  - occasion: evening\n", false);
+    assert_eq!(
+        quest_log(&v, 2),
+        ["deadline.letter failed", "deadline -> failed"]
+    );
+    let out = play_in(
+        &dir,
+        "by-miss-human",
+        "steps:\n  - occasion: evening\n  - occasion: evening\n",
+        false,
+    );
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(text.contains("  deadline.letter failed (by)\n"), "{text}");
@@ -1822,7 +2083,11 @@ fn a_by_deadline_fails_its_objective_and_the_quest_after_the_presentation_that_p
     );
     assert_eq!(quest_log(&v, 1), ["deadline.letter done"]);
     for n in 2..=4 {
-        assert!(quest_log(&v, n).iter().all(|r| !r.starts_with("deadline")), "step {n}: {:?}", quest_log(&v, n));
+        assert!(
+            quest_log(&v, n).iter().all(|r| !r.starts_with("deadline")),
+            "step {n}: {:?}",
+            quest_log(&v, n)
+        );
     }
     assert_eq!(v["exit"], "complete");
 }
@@ -1859,11 +2124,25 @@ fn integer_modulo_in_a_match_arm_is_evaluated_by_the_runner() {
          - engine: { state: { run.day: 15 } }\n  - occasion: hubVisit\n",
         false,
     );
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let text = stdout(&out);
-    let (day14, day15) = text.split_once("── step 3").unwrap_or_else(|| panic!("{text}"));
-    assert!(day14.contains("Sunday.") && !day14.contains("Weekday."), "{text}");
-    assert!(day15.contains("Weekday.") && !day15.contains("Sunday."), "{text}");
+    let (day14, day15) = text
+        .split_once("── step 3")
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(
+        day14.contains("Sunday.") && !day14.contains("Weekday."),
+        "{text}"
+    );
+    assert!(
+        day15.contains("Weekday.") && !day15.contains("Sunday."),
+        "{text}"
+    );
 }
 
 /// dsl 0.24.0 §1: `::set{… when="…"}` — the playthrough applies the write
@@ -1892,14 +2171,28 @@ fn a_guarded_set_writes_only_while_its_guard_holds() {
     );
     let script = "steps:\n  - occasion: visit\n  - occasion: visit\n";
     let out = play_in(&dir, "set-when", script, false);
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let text = stdout(&out);
-    let (first, second) = text.split_once("── step 2").unwrap_or_else(|| panic!("{text}"));
+    let (first, second) = text
+        .split_once("── step 2")
+        .unwrap_or_else(|| panic!("{text}"));
     let has = |part: &str, line: &str| part.lines().any(|l| l == line);
-    assert!(has(first, "  skip set run.coins += 5 — when: false"), "{text}");
+    assert!(
+        has(first, "  skip set run.coins += 5 — when: false"),
+        "{text}"
+    );
     assert!(has(first, "  set run.lamp = true"), "{text}");
     assert!(has(second, "  set run.coins = 5"), "{text}");
-    assert!(has(second, "  skip set run.lamp = true — when: false"), "{text}");
+    assert!(
+        has(second, "  skip set run.lamp = true — when: false"),
+        "{text}"
+    );
     assert!(!text.contains("match ->"), "{text}");
 
     let v = play_project_json(&dir, "set-when-json", script);
@@ -1996,7 +2289,12 @@ fn an_ordinal_word_placeholder_renders_a_word_up_to_twenty() {
         );
         let out = Command::new(BIN)
             .args(["trace", dir.join("scenes/hall.lute").to_str().unwrap()])
-            .args(["--project", dir.to_str().unwrap(), "--mock", mock.to_str().unwrap()])
+            .args([
+                "--project",
+                dir.to_str().unwrap(),
+                "--mock",
+                mock.to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         let text = format!("{}{}", stdout(&out), stderr(&out));
@@ -2028,21 +2326,49 @@ fn a_clear_prints_once_as_authored_and_lowers_to_an_exit_per_character() {
     let dir = hall_project("clear");
     let script = "steps:\n  - occasion: visit\n";
     let out = play_in(&dir, "clear", script, false);
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let text = stdout(&out);
-    assert_eq!(text.lines().filter(|l| *l == "::clear").count(), 1, "{text}");
+    assert_eq!(
+        text.lines().filter(|l| *l == "::clear").count(),
+        1,
+        "{text}"
+    );
     assert!(!text.contains("::sprite"), "{text}");
 
     let s = write(&temp_dir("clear-ir"), "s.play.yaml", script);
     let out = Command::new(BIN)
-        .args(["play", dir.to_str().unwrap(), "--script", s.to_str().unwrap(), "--ir"])
+        .args([
+            "play",
+            dir.to_str().unwrap(),
+            "--script",
+            s.to_str().unwrap(),
+            "--ir",
+        ])
         .output()
         .unwrap();
-    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
     let ir = stdout(&out);
-    let exits: Vec<&str> = ir.lines().filter(|l| l.contains("(injected: stage-clear)")).collect();
+    let exits: Vec<&str> = ir
+        .lines()
+        .filter(|l| l.contains("(injected: stage-clear)"))
+        .collect();
     assert_eq!(exits.len(), 2, "{ir}");
-    assert!(exits[0].contains("character=\"maud\"") && exits[0].contains("exit=true"), "{ir}");
+    assert!(
+        exits[0].contains("character=\"maud\"") && exits[0].contains("exit=true"),
+        "{ir}"
+    );
     assert!(exits[1].contains("character=\"oskar\""), "{ir}");
 }
 
@@ -2066,7 +2392,11 @@ fn an_entry_target_on_an_untargeted_occasion_does_not_restrict_it() {
          <entry id=\"compass\" on=\"hubVisit\" target=\"item.compass\" title=\"Compass\">\n\
          @narrator: The compass still points home.\n</entry>\n",
     );
-    let v = play_project_json(&dir, "entry-meta-target", "steps:\n  - occasion: hubVisit\n");
+    let v = play_project_json(
+        &dir,
+        "entry-meta-target",
+        "steps:\n  - occasion: hubVisit\n",
+    );
     assert_eq!(winner(&v, 1), Some("compass"), "{}", step(&v, 1));
 }
 
@@ -2075,7 +2405,11 @@ fn an_entry_target_on_an_untargeted_occasion_does_not_restrict_it() {
 #[test]
 fn an_unread_relation_is_reported_at_its_schema_line_walk_relative() {
     let dir = temp_dir("relation-unread");
-    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
     write(
         &dir,
         "world.schema.yaml",
@@ -2086,7 +2420,11 @@ fn an_unread_relation_is_reported_at_its_schema_line_walk_relative() {
         "scenes/a.lute",
         "---\nkind: scene\nid: a.one\nuses: ../world.schema.yaml\n---\n## A\n@narrator: Hi.\n::assert{ met(sol) }\n",
     );
-    let out = Command::new(BIN).args(["check-project", "."]).current_dir(&dir).output().unwrap();
+    let out = Command::new(BIN)
+        .args(["check-project", "."])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
     let text = stdout(&out);
     assert!(
         text.contains("./world.schema.yaml:4:3: warning [W-RELATION-UNREAD] relation `met`"),

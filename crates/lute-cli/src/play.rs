@@ -245,12 +245,11 @@ fn string_list(v: &serde_yaml::Value, what: &str) -> Result<Vec<String>, String>
 
 /// A mapping whose only keys are `legal`, each an optional string list:
 /// `presented: { user, run }` / `entriesRead: { run, user }`.
-fn tiered_lists(
-    v: &serde_yaml::Value,
-    key: &str,
-) -> Result<(Vec<String>, Vec<String>), String> {
+fn tiered_lists(v: &serde_yaml::Value, key: &str) -> Result<(Vec<String>, Vec<String>), String> {
     let serde_yaml::Value::Mapping(m) = v else {
-        return Err(format!("`{key}:` must be a mapping `{{ run: [...], user: [...] }}`"));
+        return Err(format!(
+            "`{key}:` must be a mapping `{{ run: [...], user: [...] }}`"
+        ));
     };
     let (mut run, mut user) = (Vec::new(), Vec::new());
     for (k, v) in m {
@@ -389,7 +388,9 @@ fn expand_includes(
             continue;
         };
         let shown = from.display();
-        let serde_yaml::Value::Mapping(m) = item else { unreachable!("`get` found a key") };
+        let serde_yaml::Value::Mapping(m) = item else {
+            unreachable!("`get` found a key")
+        };
         if m.len() != 1 {
             return Err(format!(
                 "{shown}: an `include:` step names only the file whose steps it splices in"
@@ -399,17 +400,24 @@ fn expand_includes(
             return Err(format!("{shown}: `include:` must name a file"));
         };
         let file = from.parent().unwrap_or(Path::new(".")).join(rel);
-        let canonical = file
-            .canonicalize()
-            .map_err(|e| format!("{shown}: cannot read `include: {rel}` ({}): {e}", file.display()))?;
+        let canonical = file.canonicalize().map_err(|e| {
+            format!(
+                "{shown}: cannot read `include: {rel}` ({}): {e}",
+                file.display()
+            )
+        })?;
         if stack.contains(&canonical) {
             return Err(format!(
                 "{shown}: `include: {rel}` is a cycle — {} is already being included",
                 file.display()
             ));
         }
-        let text = std::fs::read_to_string(&canonical)
-            .map_err(|e| format!("{shown}: cannot read `include: {rel}` ({}): {e}", file.display()))?;
+        let text = std::fs::read_to_string(&canonical).map_err(|e| {
+            format!(
+                "{shown}: cannot read `include: {rel}` ({}): {e}",
+                file.display()
+            )
+        })?;
         let value: serde_yaml::Value = serde_yaml::from_str(&text)
             .map_err(|e| format!("{}: malformed YAML: {e}", file.display()))?;
         let included = match &value {
@@ -435,8 +443,17 @@ fn expand_includes(
 
 /// `engine:` / long-form `newRun:` writes. `retract` says whether
 /// `retract:` is legal (a new run's seed only adds).
-fn parse_writes(n: usize, key: &str, v: &serde_yaml::Value, retract: bool) -> Result<RawWrites, String> {
-    let legal = if retract { "state, facts, retract" } else { "state, facts" };
+fn parse_writes(
+    n: usize,
+    key: &str,
+    v: &serde_yaml::Value,
+    retract: bool,
+) -> Result<RawWrites, String> {
+    let legal = if retract {
+        "state, facts, retract"
+    } else {
+        "state, facts"
+    };
     let serde_yaml::Value::Mapping(m) = v else {
         return Err(format!("step {n}: `{key}:` must be a mapping ({legal})"));
     };
@@ -445,7 +462,9 @@ fn parse_writes(n: usize, key: &str, v: &serde_yaml::Value, retract: bool) -> Re
         match k.as_str() {
             Some("state") => {
                 let serde_yaml::Value::Mapping(paths) = v else {
-                    return Err(format!("step {n}: `{key}.state` must be a mapping of path -> value"));
+                    return Err(format!(
+                        "step {n}: `{key}.state` must be a mapping of path -> value"
+                    ));
                 };
                 for (path, value) in paths {
                     let Some(path) = path.as_str() else {
@@ -494,7 +513,10 @@ fn parse_writes(n: usize, key: &str, v: &serde_yaml::Value, retract: bool) -> Re
 /// One `steps:` entry and its `expect:` (validated). Exactly one action key
 /// ([`STEP_ACTIONS`]); `target`/`pick`/`choose` only beside `occasion`;
 /// `label`/`repeat`/`expect` beside any (`repeat`/`expect` not beside `end`).
-fn parse_step(n: usize, item: &serde_yaml::Value) -> Result<(ScriptStep, Option<serde_yaml::Value>), String> {
+fn parse_step(
+    n: usize,
+    item: &serde_yaml::Value,
+) -> Result<(ScriptStep, Option<serde_yaml::Value>), String> {
     let shape = "one of `occasion` (with `target`, `pick`, `choose`), `newRun`, `engine`, \
                  `event`, `advance` (with `pick`, `choose`, `engine`), `end` — plus \
                  `label`/`repeat`/`expect`";
@@ -543,7 +565,11 @@ fn parse_step(n: usize, item: &serde_yaml::Value) -> Result<(ScriptStep, Option<
             "pick" => {
                 occasion_only.push(key);
                 let s = non_empty(key, v)?;
-                pick = Some(if s == "none" { Pick::Pass } else { Pick::Beat(s) });
+                pick = Some(if s == "none" {
+                    Pick::Pass
+                } else {
+                    Pick::Beat(s)
+                });
             }
             "choose" => {
                 occasion_only.push(key);
@@ -586,15 +612,17 @@ fn parse_step(n: usize, item: &serde_yaml::Value) -> Result<(ScriptStep, Option<
                 advance = Some(match v {
                     serde_yaml::Value::String(s) if s.trim() == "slot" => Advance::Slots(1),
                     serde_yaml::Value::String(s) if s.trim() == "day" => Advance::Day,
-                    serde_yaml::Value::Number(k) => match k.as_u64().and_then(|k| u32::try_from(k).ok()) {
-                        Some(k) if k >= 1 => Advance::Slots(k),
-                        _ => {
-                            return Err(format!(
+                    serde_yaml::Value::Number(k) => {
+                        match k.as_u64().and_then(|k| u32::try_from(k).ok()) {
+                            Some(k) if k >= 1 => Advance::Slots(k),
+                            _ => {
+                                return Err(format!(
                                 "step {n}: `advance: {k}` — a slot count is a whole number ≥ 1 \
                                  (the clock never moves backward)"
                             ))
+                            }
                         }
-                    },
+                    }
                     _ => {
                         return Err(format!(
                             "step {n}: `advance` is `slot`, `day` or a number of slots"
@@ -634,16 +662,16 @@ fn parse_step(n: usize, item: &serde_yaml::Value) -> Result<(ScriptStep, Option<
     // (the plan refuses them when the clock raises nothing).
     let raises = action == "occasion" || action == "advance";
     if action != "occasion" {
-        let misplaced = occasion_only
-            .iter()
-            .find(|k| !raises || **k == "target");
+        let misplaced = occasion_only.iter().find(|k| !raises || **k == "target");
         if let Some(key) = misplaced {
             let only = if *key == "target" {
                 "an `occasion` step"
             } else {
                 "an `occasion` or `advance` step"
             };
-            return Err(format!("step {n}: `{key}` applies only to {only}, not `{action}`"));
+            return Err(format!(
+                "step {n}: `{key}` applies only to {only}, not `{action}`"
+            ));
         }
     }
     if !raises {
@@ -970,7 +998,12 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         quest_docs
             .iter()
             .filter_map(|rel| artifacts.get(rel))
-            .flat_map(|a| a.get("commands").and_then(Json::as_array).into_iter().flatten())
+            .flat_map(|a| {
+                a.get("commands")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+            })
             .filter(|c| c.get("kind").and_then(Json::as_str) == Some("quest"))
     };
     let objectives_of = |c: &Json| -> Option<(String, Vec<String>)> {
@@ -986,7 +1019,12 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
     };
     let quest_objectives = quest_cmds().filter_map(objectives_of).collect();
     let objective_occasions = quest_cmds()
-        .flat_map(|c| c.get("objectives").and_then(Json::as_array).into_iter().flatten())
+        .flat_map(|c| {
+            c.get("objectives")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+        })
         .filter_map(|o| o.get("on").and_then(Json::as_str).map(str::to_string))
         .collect();
     let run_quests = quest_cmds()
@@ -994,7 +1032,12 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         .filter_map(objectives_of)
         .collect();
     let children: BTreeSet<&str> = quest_cmds()
-        .flat_map(|c| c.get("objectives").and_then(Json::as_array).into_iter().flatten())
+        .flat_map(|c| {
+            c.get("objectives")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+        })
         .filter_map(|o| o.get("quest").and_then(Json::as_str))
         .collect();
     let accept_driven = quest_cmds()
@@ -1012,7 +1055,11 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
                 .and_then(Json::as_array)
                 .into_iter()
                 .flatten()
-                .filter_map(move |o| o.get("quest").and_then(Json::as_str).map(|child| (child, parent)))
+                .filter_map(move |o| {
+                    o.get("quest")
+                        .and_then(Json::as_str)
+                        .map(|child| (child, parent))
+                })
         })
         .collect();
     let accept_children = quest_docs
@@ -1028,7 +1075,11 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
                         && c.get("activate").and_then(Json::as_str) == Some("accept")
                 })
                 .filter_map(|c| c.get("id").and_then(Json::as_str))
-                .filter_map(|id| parent_of.get(id).map(|p| (id.to_string(), (p.to_string(), rel.clone()))))
+                .filter_map(|id| {
+                    parent_of
+                        .get(id)
+                        .map(|p| (id.to_string(), (p.to_string(), rel.clone())))
+                })
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -1054,7 +1105,13 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
                 Some(members) if !k.open => KindShape::Members(members.clone()),
                 _ => KindShape::Open,
             };
-            (k.name.clone(), EntityKindDecl { shape, subset_of: None })
+            (
+                k.name.clone(),
+                EntityKindDecl {
+                    shape,
+                    subset_of: None,
+                },
+            )
         })
         .collect();
     let mut eval_json = json!({
@@ -1259,16 +1316,31 @@ fn resolve_bridges(
     let mut calls: BTreeMap<&str, BTreeMap<&str, BTreeSet<&str>>> = BTreeMap::new();
     // tag -> the fields content reads, in effect order, typed by the slot
     // (the typed answer `lute trace` / `lute test` spell, ember N7).
-    let mut shapes: BTreeMap<&str, Vec<(&str, Option<lute_manifest::types::Type>)>> = BTreeMap::new();
+    let mut shapes: BTreeMap<&str, Vec<(&str, Option<lute_manifest::types::Type>)>> =
+        BTreeMap::new();
     for art in p.artifacts.values() {
-        let cmds = art.get("commands").and_then(Json::as_array).into_iter().flatten();
+        let cmds = art
+            .get("commands")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten();
         for c in cmds.filter(|c| c.get("kind").and_then(Json::as_str) == Some("plugin")) {
             let tag = c.get("tag").and_then(Json::as_str).unwrap_or("");
-            for e in c.get("effects").and_then(Json::as_array).into_iter().flatten() {
+            for e in c
+                .get("effects")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+            {
                 let field = e.pointer("/from/bridgeResult").and_then(Json::as_str);
                 let path = e.get("path").and_then(Json::as_str);
                 if let (Some(field), Some(path)) = (field, path) {
-                    calls.entry(tag).or_default().entry(field).or_default().insert(path);
+                    calls
+                        .entry(tag)
+                        .or_default()
+                        .entry(field)
+                        .or_default()
+                        .insert(path);
                     let read = p.bridge_reads.reads(tag, field);
                     let shape = shapes.entry(tag).or_default();
                     if read && !shape.iter().any(|(f, _)| *f == field) {
@@ -1315,11 +1387,15 @@ fn resolve_bridges(
                 .find(|f| !answer.iter().any(|(a, _)| a == *f))
             {
                 let shape = lute_trace::bridge_answer_shape(
-                    shapes.get(tag.as_str()).into_iter().flatten().map(|(f, t)| (*f, t.as_ref())),
+                    shapes
+                        .get(tag.as_str())
+                        .into_iter()
+                        .flatten()
+                        .map(|(f, t)| (*f, t.as_ref())),
                 );
                 return Err(format!(
                     "{at}: `bridges.{tag}` answer {n} lacks `{missing}`, which content reads — an \
-                     answer gives every bridge result of `::{tag}` content reads: `{shape}` (dsl \
+                     answer gives every bridge result `::{tag}` content reads: `{shape}` (dsl \
                      0.25.0 §7)"
                 ));
             }
@@ -1404,7 +1480,10 @@ fn resolve_writes(p: &Project, n: usize, key: &str, raw: &RawWrites) -> Result<W
                 Write::Set(resolve_state(p, path, lit).map_err(|e| format!("{at} {e}"))?)
             }
             RawWrite::Add(d) => {
-                let ty = p.state_table.get(path).map(|e| e.get("type").and_then(Json::as_str));
+                let ty = p
+                    .state_table
+                    .get(path)
+                    .map(|e| e.get("type").and_then(Json::as_str));
                 let why = match ty {
                     _ if path.starts_with("scene.") => resolve_state(p, path, "").err(),
                     None if entry_flag(path).is_none() => resolve_state(p, path, "").err(),
@@ -1419,9 +1498,15 @@ fn resolve_writes(p: &Project, n: usize, key: &str, raw: &RawWrites) -> Result<W
         };
         out.state.push((path.clone(), write));
     }
-    for (list, into, what) in [(&raw.facts, &mut out.facts, "facts"), (&raw.retract, &mut out.retract, "retract")] {
+    for (list, into, what) in [
+        (&raw.facts, &mut out.facts, "facts"),
+        (&raw.retract, &mut out.retract, "retract"),
+    ] {
         for f in list {
-            into.push(resolve_fact(p, f).map_err(|e| format!("step {n}: `{key}.{what}` entry `{f}` {e}"))?);
+            into.push(
+                resolve_fact(p, f)
+                    .map_err(|e| format!("step {n}: `{key}.{what}` entry `{f}` {e}"))?,
+            );
         }
     }
     Ok(out)
@@ -1454,12 +1539,14 @@ fn plan_steps(p: &Project, steps: &[ScriptStep]) -> Result<Vec<Step>, String> {
                     ));
                 }
                 if !p.world_events.contains(name) {
-                    let hint = if p.occasions.contains_key(name) || answered.contains(name.as_str()) {
+                    let hint = if p.occasions.contains_key(name) || answered.contains(name.as_str())
+                    {
                         format!(" — `{name}` is an occasion; raise it with `occasion: {name}`")
                     } else if p.world_events.is_empty() {
                         " (no plugin declares world events)".to_string()
                     } else {
-                        let declared: Vec<&str> = p.world_events.iter().map(String::as_str).collect();
+                        let declared: Vec<&str> =
+                            p.world_events.iter().map(String::as_str).collect();
                         format!(" (declared: {})", declared.join(", "))
                     };
                     return Err(format!(
@@ -1523,10 +1610,17 @@ fn plan_steps(p: &Project, steps: &[ScriptStep]) -> Result<Vec<Step>, String> {
                         ));
                     }
                 }
-                let moments = [(&raise.slot, pick.as_ref()), (&raise.day_start, None), (&raise.day_end, None)];
+                let moments = [
+                    (&raise.slot, pick.as_ref()),
+                    (&raise.day_start, None),
+                    (&raise.day_end, None),
+                ];
                 for (occasion, pick) in moments {
                     let Some(occasion) = occasion else { continue };
-                    if p.occasions.get(occasion).is_some_and(|d| d.target.takes_target()) {
+                    if p.occasions
+                        .get(occasion)
+                        .is_some_and(|d| d.target.takes_target())
+                    {
                         return Err(format!(
                             "step {n}: the clock raises `{occasion}`, which is declared \
                              `target: true` — an `advance:` raises it for no target"
@@ -1534,7 +1628,10 @@ fn plan_steps(p: &Project, steps: &[ScriptStep]) -> Result<Vec<Step>, String> {
                     }
                     // Shape-only vocabulary: an occasion no beat answers
                     // and no objective is judged at is raised to nobody.
-                    if !p.occasions.is_empty() || answered.contains(occasion.as_str()) || pick.is_some() {
+                    if !p.occasions.is_empty()
+                        || answered.contains(occasion.as_str())
+                        || pick.is_some()
+                    {
                         plan_occasion(p, &answered, n, occasion, None, pick)?;
                     }
                 }
@@ -1622,8 +1719,7 @@ fn plan_occasion(
             select.as_str()
         )),
         (OccasionSelect::All, Some(Pick::Beat(pk))) => {
-            if p
-                .index
+            if p.index
                 .beats
                 .iter()
                 .any(|b| &b.id == pk && is_candidate(b, occasion, target))
@@ -1773,13 +1869,7 @@ fn quest_state_id(path: &str) -> Option<&str> {
 
 /// Register a save's quest status (a `quests:` entry or a `quest.<id>.state`
 /// seed) so the start settle resumes it instead of starting the quest over.
-fn seed_quest(
-    p: &Project,
-    w: &mut World,
-    at: &str,
-    id: &str,
-    status: &str,
-) -> Result<(), String> {
+fn seed_quest(p: &Project, w: &mut World, at: &str, id: &str, status: &str) -> Result<(), String> {
     if !p.quest_objectives.contains_key(id) {
         let declared: Vec<&str> = p.quest_objectives.keys().map(String::as_str).collect();
         return Err(format!(
@@ -1869,7 +1959,12 @@ fn seed_world(p: &Project, script: &PlayScript) -> Result<World, String> {
     }
     for id in &save.visited {
         if !p.scene_ids.contains(id) {
-            return Err(unknown_id("`visited:`", id, "scene", p.scene_ids.iter().map(String::as_str)));
+            return Err(unknown_id(
+                "`visited:`",
+                id,
+                "scene",
+                p.scene_ids.iter().map(String::as_str),
+            ));
         }
         w.visited.insert(id.clone());
     }
@@ -1915,7 +2010,8 @@ fn seed_world(p: &Project, script: &PlayScript) -> Result<World, String> {
             }
             // Read this run ⇒ read ever.
             if tier == "run" {
-                w.state.insert(format!("entry.{id}.read"), Value::Bool(true));
+                w.state
+                    .insert(format!("entry.{id}.read"), Value::Bool(true));
             }
             w.state.insert(ever_read_path(id), Value::Bool(true));
             if share_of(p, id).is_some() {
@@ -1969,7 +2065,8 @@ fn new_run(p: &Project, w: &mut World, seed: &Writes) -> Result<NewRunReport, St
         .filter_map(|(k, v)| lute_check::cel_paths::prev_run_path(k).map(|prev| (prev, v.clone())))
         .collect();
     let prev_run = ended.clone();
-    w.state.retain(|k, _| !run_tier(k) && !lute_check::cel_paths::is_prev_path(k));
+    w.state
+        .retain(|k, _| !run_tier(k) && !lute_check::cel_paths::is_prev_path(k));
     w.state.extend(ended);
     for (path, e) in &p.state_table {
         if run_tier(path) {
@@ -1997,7 +2094,10 @@ fn new_run(p: &Project, w: &mut World, seed: &Writes) -> Result<NewRunReport, St
                     };
                     !judged("done") && !judged("failed")
                 })
-                && !w.failed_objectives.iter().any(|k| k.starts_with(&format!("{id}.")))
+                && !w
+                    .failed_objectives
+                    .iter()
+                    .any(|k| k.starts_with(&format!("{id}.")))
         })
         .map(|(id, _)| id.clone())
         .collect();
@@ -2191,9 +2291,11 @@ fn describe_atoms(atoms: &[UnresolvedAtom]) -> String {
 /// an undecidable quest objective, `now()`/`validAt(...)`.
 fn outcome_halt(outcome: &RunnerOutcome, what: &str, doc_json: &Json) -> Option<PlayHalt> {
     if outcome.incomplete {
-        if let Some(rec) = outcome.transcript.iter().rev().find(|c| {
-            c.get("note").and_then(Json::as_str) == Some("no mock decision — incomplete")
-        }) {
+        if let Some(rec) =
+            outcome.transcript.iter().rev().find(|c| {
+                c.get("note").and_then(Json::as_str) == Some("no mock decision — incomplete")
+            })
+        {
             let kind = rec.get("kind").and_then(Json::as_str).unwrap_or("choice");
             let id = rec
                 .get("branch")
@@ -2226,10 +2328,14 @@ fn outcome_halt(outcome: &RunnerOutcome, what: &str, doc_json: &Json) -> Option<
             // `unanswered` and `unresolvedEffects` pair each field with the
             // result slot it writes; the slot's declared type is the
             // placeholder, as in `lute trace`'s hint.
-            let types: Vec<Option<lute_manifest::types::Type>> =
-                strs("unresolvedEffects").into_iter().map(|p| state_entry_type(doc_json, p)).collect();
+            let types: Vec<Option<lute_manifest::types::Type>> = strs("unresolvedEffects")
+                .into_iter()
+                .map(|p| state_entry_type(doc_json, p))
+                .collect();
             let shape = lute_trace::bridge_answer_shape(
-                strs("unanswered").into_iter().zip(types.iter().map(Option::as_ref)),
+                strs("unanswered")
+                    .into_iter()
+                    .zip(types.iter().map(Option::as_ref)),
             );
             return Some(PlayHalt::Incomplete(format!(
                 "{what}: plugin call `{tag}` reads a bridge result and has no answer — give one \
@@ -2271,7 +2377,9 @@ fn outcome_halt(outcome: &RunnerOutcome, what: &str, doc_json: &Json) -> Option<
 fn state_entry_type(doc_json: &Json, path: &str) -> Option<lute_manifest::types::Type> {
     use lute_manifest::types::Type;
     let entries = doc_json.get("state")?.as_array()?;
-    let entry = entries.iter().find(|e| e.get("path").and_then(Json::as_str) == Some(path))?;
+    let entry = entries
+        .iter()
+        .find(|e| e.get("path").and_then(Json::as_str) == Some(path))?;
     Some(match entry.get("type")?.as_str()? {
         "bool" => Type::Bool,
         "number" => Type::Number,
@@ -2337,7 +2445,9 @@ fn advance_quests(p: &Project, w: &mut World) -> (Vec<QuestAdvance>, Option<Play
     // dsl 0.24.0 §2 (ER N15): an accept of an `activate="accept"` child
     // while its parent is not active is spent — the transcript says so.
     for id in std::mem::take(&mut w.accepts) {
-        let Some((parent, doc)) = p.accept_children.get(&id) else { continue };
+        let Some((parent, doc)) = p.accept_children.get(&id) else {
+            continue;
+        };
         let status = |q: &str| w.quests.get(q).map_or("unset", String::as_str);
         if status(&id) != "unset" || status(parent) == "active" {
             continue;
@@ -2415,7 +2525,12 @@ fn run_deferred_handlers(
         let result = runner.run_deferred_handlers(&bodies);
         let outcome = runner.into_outcome();
         absorb(w, &outcome);
-        let stop = walk_stop(result, &outcome, &format!("quest document `{doc}`"), doc_json);
+        let stop = walk_stop(
+            result,
+            &outcome,
+            &format!("quest document `{doc}`"),
+            doc_json,
+        );
         if !outcome.transcript.is_empty() {
             out.push(QuestAdvance {
                 document: doc.clone(),
@@ -2470,8 +2585,12 @@ fn advance_pass(
         let result = runner.advance_quests();
         let outcome = runner.into_outcome();
         absorb(w, &outcome);
-        w.deferred_handlers
-            .extend(outcome.deferred_handlers.iter().map(|b| (doc.clone(), b.clone())));
+        w.deferred_handlers.extend(
+            outcome
+                .deferred_handlers
+                .iter()
+                .map(|b| (doc.clone(), b.clone())),
+        );
         let what = format!("quest document `{doc}`");
         let stop = walk_stop(result, &outcome, &what, doc_json);
         let mut transcript = skipped;
@@ -2524,7 +2643,10 @@ fn handlers_skipped(
                     continue;
                 }
                 let Some(q) = owner else { continue };
-                if let Some(status) = quests.get(q).filter(|s| matches!(s.as_str(), "complete" | "failed")) {
+                if let Some(status) = quests
+                    .get(q)
+                    .filter(|s| matches!(s.as_str(), "complete" | "failed"))
+                {
                     out.push(json!({
                         "addr": str_of(cmd, "addr"),
                         "kind": "handlerSkipped",
@@ -2696,7 +2818,11 @@ fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> 
     )
     .with_visited(&w.visited);
     let flag = |path: String| w.state.get(&path) == Some(&Value::Bool(true));
-    let clock_now = p.index.clock.as_ref().and_then(|c| lute_trace::clock::position(c, &w.state));
+    let clock_now = p
+        .index
+        .clock
+        .as_ref()
+        .and_then(|c| lute_trace::clock::position(c, &w.state));
     let mut out: Vec<(usize, Candidate)> = Vec::new();
     for (idx, beat) in p.index.beats.iter().enumerate() {
         if !is_candidate(beat, occasion, target) {
@@ -2730,7 +2856,9 @@ fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> 
             }
             // dsl 0.24.0 §1: spent until the clock's day (slot) moves on.
             (_, Some(BeatOnce::Day))
-                if clock_now.is_some_and(|now| w.spent_at.get(&beat.id).is_some_and(|at| at.day == now.day)) =>
+                if clock_now.is_some_and(|now| {
+                    w.spent_at.get(&beat.id).is_some_and(|at| at.day == now.day)
+                }) =>
             {
                 Some("once: day — already presented today")
             }
@@ -2756,7 +2884,10 @@ fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> 
                         BeatOnce::Slot => " this slot",
                         BeatOnce::User | BeatOnce::None => "",
                     };
-                    format!("once: {} — `share: {key}` already spent{period} by {by}", once_word(once))
+                    format!(
+                        "once: {} — `share: {key}` already spent{period} by {by}",
+                        once_word(once)
+                    )
                 }
                 _ => reason.to_string(),
             }
@@ -2858,7 +2989,12 @@ struct Presented {
 /// §2, [`spend_group`]). Nothing without a clock (such a beat is
 /// `E-BEAT-ATTR`).
 fn spend_at_clock(p: &Project, w: &mut World, id: &str) {
-    if let Some(at) = p.index.clock.as_ref().and_then(|c| lute_trace::clock::position(c, &w.state)) {
+    if let Some(at) = p
+        .index
+        .clock
+        .as_ref()
+        .and_then(|c| lute_trace::clock::position(c, &w.state))
+    {
         for m in spend_group(p, id) {
             w.spent_at.insert(m.to_string(), at.clone());
         }
@@ -2914,7 +3050,12 @@ fn once_word(once: BeatOnce) -> &'static str {
 /// Present `beat`: a scene through the runner (`scene.*` fresh), an entry
 /// through the runner's entry path (first-read effects, `entry.<id>.read`),
 /// a bundle beat through its `beat` record's body (dsl 0.23.0 §4).
-fn present(p: &Project, w: &mut World, beat: &IndexBeat, mock: &MockSet) -> (Presented, Option<PlayHalt>) {
+fn present(
+    p: &Project,
+    w: &mut World,
+    beat: &IndexBeat,
+    mock: &MockSet,
+) -> (Presented, Option<PlayHalt>) {
     let doc_json = &p.artifacts[&beat.document];
     let state_before = w.state.clone();
     let runner = Runner::with_carryover(
@@ -2954,7 +3095,12 @@ fn present(p: &Project, w: &mut World, beat: &IndexBeat, mock: &MockSet) -> (Pre
             }
         }
     }
-    let what = format!("{} `{}` ({})", kind_label(beat.kind), beat.id, beat.document);
+    let what = format!(
+        "{} `{}` ({})",
+        kind_label(beat.kind),
+        beat.id,
+        beat.document
+    );
     let stop = walk_stop(result, &outcome, &what, doc_json);
     let presented = Presented {
         id: beat.id.clone(),
@@ -2998,8 +3144,12 @@ enum StepBody {
         /// dsl 0.24.0 §2: the `at="nextRun"` accepts applied at this start.
         accepted: Vec<String>,
     },
-    Engine { writes: Vec<Json> },
-    Event { event: String },
+    Engine {
+        writes: Vec<Json>,
+    },
+    Event {
+        event: String,
+    },
     /// dsl 0.24.0 §1: an `advance:` — `by` as written (`slot`, `day`, `3`),
     /// the clock `from` → `to` (described, `day 2 (Tue) morning`), each
     /// `dayEnd` / `dayStart` the clock raised at a midnight it crossed,
@@ -3062,6 +3212,23 @@ struct Playthrough {
 }
 
 fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Playthrough {
+    // dsl 0.25.0 §1 (LH N16): the script's seeded world (`state:` /
+    // `facts:`, the project's seeds, and what the rules derive) must not
+    // already hold exclusive relations together.
+    let seeded = exclusive_violations(p, &w);
+    if !seeded.is_empty() {
+        return Playthrough {
+            start: Vec::new(),
+            steps: Vec::new(),
+            skipped: Vec::new(),
+            outcome: Err(PlayHalt::Error(format!(
+                "the script's seeded world holds exclusive relations together before step 1 — \
+                 {} (dsl 0.25.0 §1); fix the script's `facts:` (or the `excludes:` declaration)",
+                seeded.join("; ")
+            ))),
+            world: w,
+        };
+    }
     let (start, halt) = advance_quests(p, &mut w);
     let mut steps = Vec::new();
     let finish = |start, steps, h: PlayHalt, world| Playthrough {
@@ -3086,8 +3253,10 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
                 notes: Vec::new(),
                 exclusive: Vec::new(),
             });
-            let skipped: Vec<(usize, Option<String>)> =
-                plan[i + 1..].iter().map(|s| (s.n, s.label.clone())).collect();
+            let skipped: Vec<(usize, Option<String>)> = plan[i + 1..]
+                .iter()
+                .map(|s| (s.n, s.label.clone()))
+                .collect();
             let reason = match skipped.len() {
                 0 => format!("`end: true` at step {}", step.n),
                 k => format!(
@@ -3116,7 +3285,13 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
             let (body, quests, halt) = run_step(p, script, &mut w, step);
             let leftover = std::mem::take(&mut w.bridges.step);
             let halt = halt.or_else(|| unconsumed_step_bridges(step.n, &leftover));
-            let exclusive = exclusive_violations(p, &w);
+            // A halted step (a write-time exclusive refusal included, whose
+            // `✗ exclusive` already sits in the transcript) is not checked again.
+            let exclusive = if halt.is_none() {
+                exclusive_violations(p, &w)
+            } else {
+                Vec::new()
+            };
             let halt = halt.or_else(|| {
                 (!exclusive.is_empty()).then(|| {
                     PlayHalt::Error(format!(
@@ -3146,7 +3321,10 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
         start,
         steps,
         skipped: Vec::new(),
-        outcome: Ok(format!("complete ({n} step{})", if n == 1 { "" } else { "s" })),
+        outcome: Ok(format!(
+            "complete ({n} step{})",
+            if n == 1 { "" } else { "s" }
+        )),
         world: w,
     }
 }
@@ -3156,10 +3334,15 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
 /// midnight raises it again, so its content runs twice for one day. A note,
 /// not an error: a script may mean it.
 fn clock_raised_note(p: &Project, action: &Action) -> Option<String> {
-    let Action::Occasion { occasion, .. } = action else { return None };
+    let Action::Occasion { occasion, .. } = action else {
+        return None;
+    };
     let moments = p.index.clock.as_ref()?.raise.as_ref()?.moments();
     let (moment, when) = if moments.day_end.as_ref() == Some(occasion) {
-        ("dayEnd", "at each midnight it crosses, before the clock leaves the day")
+        (
+            "dayEnd",
+            "at each midnight it crosses, before the clock leaves the day",
+        )
     } else if moments.day_start.as_ref() == Some(occasion) {
         ("dayStart", "on each day it enters")
     } else {
@@ -3261,7 +3444,9 @@ fn run_step(
                 Ok(writes) => {
                     refresh_clock(p, w);
                     // dsl 0.24.0 §1: the clock never moves backward.
-                    if let (Some(clock), Some(from), Some(to)) = (&p.index.clock, before, clock_at(p, w)) {
+                    if let (Some(clock), Some(from), Some(to)) =
+                        (&p.index.clock, before, clock_at(p, w))
+                    {
                         if to < from {
                             let halt = PlayHalt::Fatal(format!(
                                 "step {n}: `engine:` moves the clock backward, from {} to {} \
@@ -3287,7 +3472,13 @@ fn run_step(
         }
         Action::Event(event) => {
             let (quests, stop) = raise(p, w, Raise::Event(event));
-            return (StepBody::Event { event: event.clone() }, quests, stop);
+            return (
+                StepBody::Event {
+                    event: event.clone(),
+                },
+                quests,
+                stop,
+            );
         }
         Action::Advance {
             by,
@@ -3326,10 +3517,16 @@ fn move_clock(
 ) -> Vec<Json> {
     let mut moved = Writes::default();
     if to.day != from.day {
-        moved.state.push((clock.day.clone(), Write::Set(Value::Num(to.day as f64))));
+        moved
+            .state
+            .push((clock.day.clone(), Write::Set(Value::Num(to.day as f64))));
     }
-    if let (Some(path), Some(name), true) = (&clock.slot, clock.slot_name(to.slot), to.slot != from.slot) {
-        moved.state.push((path.clone(), Write::Set(Value::Str(name.to_string()))));
+    if let (Some(path), Some(name), true) =
+        (&clock.slot, clock.slot_name(to.slot), to.slot != from.slot)
+    {
+        moved
+            .state
+            .push((path.clone(), Write::Set(Value::Str(name.to_string()))));
     }
     let writes = apply_writes(w, &moved).expect("literal writes never fail");
     refresh_clock(p, w);
@@ -3339,7 +3536,11 @@ fn move_clock(
 /// Settle every quest after the clock moved; the settle before a raise
 /// defers the `by` of the `on=` objectives that raise judges (dsl 0.24.0
 /// §2.1).
-fn settle_before(p: &Project, w: &mut World, next: Option<&String>) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
+fn settle_before(
+    p: &Project,
+    w: &mut World,
+    next: Option<&String>,
+) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
     if let Some(occasion) = next.filter(|o| p.objective_occasions.contains(*o)) {
         w.defer_by = Some(occasion.clone());
     }
@@ -3375,7 +3576,11 @@ fn run_advance(
     choose: &BTreeMap<String, Vec<String>>,
 ) -> (StepBody, Vec<QuestAdvance>, Option<PlayHalt>) {
     use lute_manifest::clock::{Advance, ClockAt};
-    let clock = p.index.clock.as_ref().expect("the plan requires a clock for `advance:`");
+    let clock = p
+        .index
+        .clock
+        .as_ref()
+        .expect("the plan requires a clock for `advance:`");
     let by_text = match by {
         Advance::Day => "day".to_string(),
         Advance::Slots(1) => "slot".to_string(),
@@ -3399,8 +3604,21 @@ fn run_advance(
             ),
             None => format!("`{}` is no whole day number", clock.day),
         };
-        let halt = PlayHalt::Error(format!("step {n}: `advance:` cannot move the clock — {names}"));
-        return (body(String::new(), String::new(), Vec::new(), Vec::new(), Vec::new(), None), Vec::new(), Some(halt));
+        let halt = PlayHalt::Error(format!(
+            "step {n}: `advance:` cannot move the clock — {names}"
+        ));
+        return (
+            body(
+                String::new(),
+                String::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ),
+            Vec::new(),
+            Some(halt),
+        );
     };
     let mut writes = Vec::new();
     let to = clock.advance(from, by);
@@ -3411,7 +3629,11 @@ fn run_advance(
     // Each midnight crossed, while the clock raises something there.
     while at.day < to.day && (raise.day_end.is_some() || raise.day_start.is_some()) {
         if let Some(end) = &raise.day_end {
-            let last = if by == Advance::Day { at } else { clock.day_end(at) };
+            let last = if by == Advance::Day {
+                at
+            } else {
+                clock.day_end(at)
+            };
             writes.extend(move_clock(p, w, clock, at, last));
             at = last;
             let (s, halt) = settle_before(p, w, Some(end));
@@ -3433,10 +3655,15 @@ fn run_advance(
                 break;
             }
         }
-        let next = ClockAt { day: at.day + 1, slot: 0 };
+        let next = ClockAt {
+            day: at.day + 1,
+            slot: 0,
+        };
         writes.extend(move_clock(p, w, clock, at, next));
         at = next;
-        let Some(start) = &raise.day_start else { continue };
+        let Some(start) = &raise.day_start else {
+            continue;
+        };
         let (s, halt) = settle_before(p, w, Some(start));
         settled.extend(s);
         if halt.is_some() {
@@ -3477,7 +3704,18 @@ fn run_advance(
             stop = halt;
         }
     }
-    (body(clock.describe(from), clock.describe(at), writes, settled, days, raised), quests, stop)
+    (
+        body(
+            clock.describe(from),
+            clock.describe(at),
+            writes,
+            settled,
+            days,
+            raised,
+        ),
+        quests,
+        stop,
+    )
 }
 
 /// Raise `occasion` (for `target`) as one step: its candidates' verdicts,
@@ -3501,13 +3739,16 @@ fn run_occasion(
     // after the presentations (or none — `pick: none` included, dsl 0.22.0
     // §10); under `judge: before` (dsl 0.24.0 §2) first, so the beats'
     // `when` and bodies read the judged quests.
-    let judged_here =
-        p.objective_occasions.contains(occasion) || p.world_events.contains(occasion);
+    let judged_here = p.objective_occasions.contains(occasion) || p.world_events.contains(occasion);
     let before = judged_here && p.judges_before(occasion);
     // dsl 0.24.0 §2.1: until the raise, this step's settles defer the `by`
     // of the `on=` objectives it judges — their `done` is judged first.
     if judged_here {
-        w.defer_by = Some(target.as_ref().map_or_else(|| occasion.clone(), |t| format!("{occasion}@{t}")));
+        w.defer_by = Some(
+            target
+                .as_ref()
+                .map_or_else(|| occasion.clone(), |t| format!("{occasion}@{t}")),
+        );
     }
     let mut quests = Vec::new();
     let mut judged = Vec::new();
@@ -3581,7 +3822,10 @@ fn run_occasion(
     let order: Vec<&Candidate> = match (decided, pick) {
         (false, _) | (true, Some(Pick::Pass)) => Vec::new(),
         (true, Some(Pick::Beat(pk))) => cands.iter().filter(|c| &c.id == pk).take(1).collect(),
-        (true, None) => presented(select, &cands).into_iter().map(|i| &cands[i]).collect(),
+        (true, None) => presented(select, &cands)
+            .into_iter()
+            .map(|i| &cands[i])
+            .collect(),
     };
     // The winner is the main beat: never an `also` rider.
     let winner = order.iter().find(|c| !c.also).map(|c| c.id.clone());
@@ -3835,8 +4079,9 @@ fn guarded_leaf<'a>(m: &Json, cmds: &DocCmds<'a>) -> Option<&'a Json> {
         return None;
     }
     let converge = str_of(m, "converge");
-    let jumps_to_converge =
-        |c: Option<&Json>| c.is_some_and(|c| str_of(c, "kind") == "jump" && str_of(c, "target") == converge);
+    let jumps_to_converge = |c: Option<&Json>| {
+        c.is_some_and(|c| str_of(c, "kind") == "jump" && str_of(c, "target") == converge)
+    };
     let mut body = cmds.authored_from(str_of(arm, "target"));
     let leaf = body
         .next()
@@ -3975,6 +4220,8 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 .unwrap_or("");
             format!("  {} {what} (skipped: re-read)", str_of(rec, "effect"))
         }
+        // dsl 0.25.0 §1: the write just before made exclusive relations hold.
+        "exclusive" => format!("  ✗ exclusive: {}", str_of(rec, "text")),
         // dsl 0.24.0 (T3-11): a handler whose quest already settled.
         "handlerSkipped" => format!(
             "  <on event={}> of quest {} skipped — quest {}",
@@ -4015,7 +4262,11 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 str_of(rec, "quest"),
                 str_of(rec, "objective")
             ),
-            _ => format!("  {}.{} done", str_of(rec, "quest"), str_of(rec, "objective")),
+            _ => format!(
+                "  {}.{} done",
+                str_of(rec, "quest"),
+                str_of(rec, "objective")
+            ),
         },
         // dsl 0.24.0 §2: a failure names its reason (`failedBy`).
         "quest" => match rec.get("failedBy").and_then(Json::as_str) {
@@ -4210,7 +4461,13 @@ fn render_human(p: &Project, play: &Playthrough, ir: bool) -> String {
                     for q in &d.settled {
                         render_records(&mut out, p, ir, &q.document, &q.transcript);
                     }
-                    render_occasion_human(&mut out, p, ir, &format!("{head} · {}", d.at), &d.occasion);
+                    render_occasion_human(
+                        &mut out,
+                        p,
+                        ir,
+                        &format!("{head} · {}", d.at),
+                        &d.occasion,
+                    );
                     for q in &d.quests {
                         render_records(&mut out, p, ir, &q.document, &q.transcript);
                     }
@@ -4242,7 +4499,10 @@ fn render_human(p: &Project, play: &Playthrough, ir: bool) -> String {
         }
     }
     for (n, label) in &play.skipped {
-        let label = label.as_ref().map(|l| format!(" ({l})")).unwrap_or_default();
+        let label = label
+            .as_ref()
+            .map(|l| format!(" ({l})"))
+            .unwrap_or_default();
         out.push_str(&format!(
             "── step {n}{label} · skipped (the playthrough ended) {RULE}\n"
         ));
@@ -4344,7 +4604,11 @@ fn said(play: &Playthrough) -> String {
     let mut out = String::new();
     let mut push = |records: &[Json]| {
         for rec in records.iter().filter(|r| str_of(r, "kind") == "line") {
-            out.push_str(&format!("@{}: {}\n", str_of(rec, "speaker"), str_of(rec, "text")));
+            out.push_str(&format!(
+                "@{}: {}\n",
+                str_of(rec, "speaker"),
+                str_of(rec, "text")
+            ));
         }
     };
     for q in &play.start {
@@ -4409,7 +4673,10 @@ impl StepBody {
         let mut out = Vec::new();
         for d in days {
             out.extend(d.settled.iter().map(Played::Quest));
-            if let StepBody::Occasion { judged, presented, .. } = &*d.occasion {
+            if let StepBody::Occasion {
+                judged, presented, ..
+            } = &*d.occasion
+            {
                 out.extend(judged.iter().map(Played::Quest));
                 out.extend(presented.iter().map(Played::Beat));
             }
@@ -4456,14 +4723,21 @@ fn fact_origins(play: &Playthrough, initial: &BTreeSet<Fact>) -> BTreeMap<Fact, 
     let mut take = |records: &[Json], who: String| {
         for rec in records {
             if rec.get("kind").and_then(Json::as_str) == Some("assert") {
-                if let Some(f) = rec.get("fact").and_then(Json::as_str).and_then(parse_ground_fact) {
+                if let Some(f) = rec
+                    .get("fact")
+                    .and_then(Json::as_str)
+                    .and_then(parse_ground_fact)
+                {
                     out.insert(f, who.clone());
                 }
             }
         }
     };
     for q in &play.start {
-        take(&q.transcript, format!("a quest handler in {}, before step 1", q.document));
+        take(
+            &q.transcript,
+            format!("a quest handler in {}, before step 1", q.document),
+        );
     }
     for s in &play.steps {
         let step = match s.iteration {
@@ -4477,20 +4751,35 @@ fn fact_origins(play: &Playthrough, initial: &BTreeSet<Fact>) -> BTreeMap<Fact, 
         }
         for played in s.body.days_played() {
             match played {
-                Played::Quest(q) => take(&q.transcript, format!("a quest handler in {}, {step}", q.document)),
-                Played::Beat(p) => take(&p.transcript, format!("{} `{}`, {step}", kind_label(p.kind), p.id)),
+                Played::Quest(q) => take(
+                    &q.transcript,
+                    format!("a quest handler in {}, {step}", q.document),
+                ),
+                Played::Beat(p) => take(
+                    &p.transcript,
+                    format!("{} `{}`, {step}", kind_label(p.kind), p.id),
+                ),
             }
         }
         for q in s.body.settled() {
-            take(&q.transcript, format!("a quest handler in {}, {step}", q.document));
+            take(
+                &q.transcript,
+                format!("a quest handler in {}, {step}", q.document),
+            );
         }
         if let Some(StepBody::Occasion { presented, .. }) = s.body.occasion() {
             for p in presented {
-                take(&p.transcript, format!("{} `{}`, {step}", kind_label(p.kind), p.id));
+                take(
+                    &p.transcript,
+                    format!("{} `{}`, {step}", kind_label(p.kind), p.id),
+                );
             }
         }
         for q in &s.quests {
-            take(&q.transcript, format!("a quest handler in {}, {step}", q.document));
+            take(
+                &q.transcript,
+                format!("a quest handler in {}, {step}", q.document),
+            );
         }
     }
     out
@@ -4613,7 +4902,10 @@ fn render_json(play: &Playthrough) -> Json {
             root.insert("error".into(), json!({ "message": h.message() }));
         }
     }
-    root.insert("start".into(), json!({ "quests": quests_json(&play.start) }));
+    root.insert(
+        "start".into(),
+        json!({ "quests": quests_json(&play.start) }),
+    );
     if !play.skipped.is_empty() {
         root.insert(
             "skipped".into(),
@@ -4708,7 +5000,10 @@ fn render_occasion_json(o: &mut serde_json::Map<String, Json>, body: &StepBody) 
     if let Some((first, rest)) = presented.split_first() {
         o.insert("presented".into(), pr_json(first));
         if !rest.is_empty() {
-            o.insert("then".into(), Json::Array(rest.iter().map(pr_json).collect()));
+            o.insert(
+                "then".into(),
+                Json::Array(rest.iter().map(pr_json).collect()),
+            );
         }
     }
 }
@@ -4737,10 +5032,17 @@ fn load(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Loaded, (Exit
             script_path.display()
         ))
     })?;
-    let script = parse_script(&text, script_path)
-        .map_err(|e| usage(format!("invalid play script {}: {e}", script_path.display())))?;
+    let script = parse_script(&text, script_path).map_err(|e| {
+        usage(format!(
+            "invalid play script {}: {e}",
+            script_path.display()
+        ))
+    })?;
     if !dir.is_dir() {
-        return Err(usage(format!("{} is not a project directory", dir.display())));
+        return Err(usage(format!(
+            "{} is not a project directory",
+            dir.display()
+        )));
     }
     let project = compile_project(dir).map_err(|code| (code, String::new()))?;
     let at = |e: String| usage(format!("{}: {e}", script_path.display()));
@@ -4810,7 +5112,9 @@ fn play_outcome(p: &Project, play: &Playthrough, said: String) -> PlayOutcome {
             }
             match &s.body {
                 StepBody::Occasion { .. } => {}
-                StepBody::Advance { by, raised: None, .. } => row.occasion = format!("advance {by}"),
+                StepBody::Advance {
+                    by, raised: None, ..
+                } => row.occasion = format!("advance {by}"),
                 StepBody::Advance { .. } => {}
                 StepBody::NewRun { .. } => row.occasion = "newRun".to_string(),
                 StepBody::Engine { .. } => row.occasion = "engine".to_string(),
@@ -5128,7 +5432,11 @@ pub(crate) fn run_play_for_test(
         .chain(
             play.start
                 .iter()
-                .chain(play.steps.iter().flat_map(|s| s.body.settled().chain(&s.quests)))
+                .chain(
+                    play.steps
+                        .iter()
+                        .flat_map(|s| s.body.settled().chain(&s.quests)),
+                )
                 .map(|q| q.document.clone()),
         )
         .collect();

@@ -84,7 +84,9 @@ pub fn parse_enums(value: &Value) -> BTreeMap<String, Domain> {
                     .and_then(Value::as_mapping)
                     .map(|m| {
                         m.iter()
-                            .filter_map(|(k, v)| Some((k.as_str()?.to_string(), v.as_str()?.to_string())))
+                            .filter_map(|(k, v)| {
+                                Some((k.as_str()?.to_string(), v.as_str()?.to_string()))
+                            })
                             .collect()
                     })
                     .unwrap_or_default(),
@@ -122,7 +124,9 @@ pub fn label_shape_errors(value: &Value) -> Vec<String> {
         };
         for (member, label) in labels {
             if label.as_str().is_none() {
-                let member = member.as_str().map_or_else(|| format!("{member:?}"), str::to_string);
+                let member = member
+                    .as_str()
+                    .map_or_else(|| format!("{member:?}"), str::to_string);
                 out.push(format!(
                     "enum `{name}`: the label for `{member}` must be a string of display text \
                      (dsl 0.24.0 §1)"
@@ -186,14 +190,23 @@ mod tests {
         )
         .unwrap();
         let doms = parse_enums(&v);
-        assert_eq!(doms["weekday"].labels.get("sun").map(String::as_str), Some("Sunday"));
+        assert_eq!(
+            doms["weekday"].labels.get("sun").map(String::as_str),
+            Some("Sunday")
+        );
         assert_eq!(doms["weekday"].labels.get("mon"), None);
         // The non-string label is dropped; the string one beside it survives.
         assert_eq!(doms["slot"].labels.len(), 1);
         assert!(doms["mood"].labels.is_empty());
         let errs = label_shape_errors(&v);
         assert_eq!(errs.len(), 2, "{errs:?}");
-        assert!(errs[0].contains("`slot`") && errs[0].contains("`am`"), "{errs:?}");
-        assert!(errs[1].contains("`mood`") && errs[1].contains("must map"), "{errs:?}");
+        assert!(
+            errs[0].contains("`slot`") && errs[0].contains("`am`"),
+            "{errs:?}"
+        );
+        assert!(
+            errs[1].contains("`mood`") && errs[1].contains("must map"),
+            "{errs:?}"
+        );
     }
 }

@@ -60,8 +60,8 @@ use crate::decide::{
     analyze_unset_sentinel_slot, decide_slot, DecideCtx, Decided, DollarBinding, UnsetSentinelHit,
 };
 use crate::match_check::{
-    is_pattern_literals, literal_is_foreign, param_domain, quest_state_is_literal,
-    subject_path, CoverItem, Domain, DomainInfo, DomainValue, Interval, NumCoverage,
+    is_pattern_literals, literal_is_foreign, param_domain, quest_state_is_literal, subject_path,
+    CoverItem, Domain, DomainInfo, DomainValue, Interval, NumCoverage,
 };
 use crate::solution::{disjoint, solution_set, SolutionSet};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
@@ -345,19 +345,18 @@ pub(crate) fn check_reachability_in(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     // One body's walk under the `when` it runs behind (dsl 0.24.0).
-    let walk_body =
-        |bodies: &[&[Node]], when: Option<&CelSlot>, diags: &mut Vec<Diagnostic>| {
-            let assumption = when.zip(env.snapshot).and_then(|(when, snapshot)| {
-                Assumption::new(when, bodies, defs, env.def_types, base_ctx.schema, snapshot)
-            });
-            let rx = Reach {
-                def_types: env.def_types,
-                assume: assumption.as_ref(),
-            };
-            for body in bodies {
-                walk_reach(body, defs, &rx, base_ctx, diags);
-            }
+    let walk_body = |bodies: &[&[Node]], when: Option<&CelSlot>, diags: &mut Vec<Diagnostic>| {
+        let assumption = when.zip(env.snapshot).and_then(|(when, snapshot)| {
+            Assumption::new(when, bodies, defs, env.def_types, base_ctx.schema, snapshot)
+        });
+        let rx = Reach {
+            def_types: env.def_types,
+            assume: assumption.as_ref(),
         };
+        for body in bodies {
+            walk_reach(body, defs, &rx, base_ctx, diags);
+        }
+    };
     // A scene's shots are one body: `scene.*`/`run.*` persist across shots.
     let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
     walk_body(&shots, env.beat_when, &mut diags);
@@ -514,14 +513,9 @@ impl Assumption {
 /// Every state path a `::set` / `<choice into>` in `nodes` writes (at any
 /// depth), into `out`; `true` when the body also runs something whose writes
 /// are not spelled out here — a `::use` or a directive that writes state.
-fn scan_writes(
-    nodes: &[Node],
-    snapshot: &CapabilitySnapshot,
-    out: &mut BTreeSet<String>,
-) -> bool {
-    let opaque_directive = |tag: &str| {
-        tag == "use" || crate::check::directive_writes_state(snapshot, tag)
-    };
+fn scan_writes(nodes: &[Node], snapshot: &CapabilitySnapshot, out: &mut BTreeSet<String>) -> bool {
+    let opaque_directive =
+        |tag: &str| tag == "use" || crate::check::directive_writes_state(snapshot, tag);
     let mut opaque = false;
     for node in nodes {
         match node {
@@ -568,7 +562,12 @@ fn scan_choice_writes(
     snapshot: &CapabilitySnapshot,
     out: &mut BTreeSet<String>,
 ) -> bool {
-    if let Some(AttrValue::Str(into)) = choice.attrs.iter().find(|a| a.key == "into").map(|a| &a.value) {
+    if let Some(AttrValue::Str(into)) = choice
+        .attrs
+        .iter()
+        .find(|a| a.key == "into")
+        .map(|a| &a.value)
+    {
         out.insert(into.clone());
     }
     scan_writes(&choice.body, snapshot, out)
@@ -1060,17 +1059,17 @@ fn check_match_reach(
                 covered_or_ruled_out(u.values.contains_key(v), CoverItem::Value(v.clone()))
             }),
             Domain::IntRange { lo, hi } => (*lo..=*hi).all(|k| {
-                let p = Interval { lo: k as f64, hi: k as f64 };
+                let p = Interval {
+                    lo: k as f64,
+                    hi: k as f64,
+                };
                 covered_or_ruled_out(u.num.contains(p), CoverItem::Num(p))
             }),
             Domain::Number => u.num.covers_all(),
             Domain::Infinite => false,
         };
     if let (Some(span), true) = (otherwise_span, domain_covered) {
-        if u.unset.is_some()
-            || !dom.maybe_unset
-            || covered_or_ruled_out(false, CoverItem::Unset)
-        {
+        if u.unset.is_some() || !dom.maybe_unset || covered_or_ruled_out(false, CoverItem::Unset) {
             let whole = match assume.filter(|_| narrowed.get()) {
                 Some(a) => format!("the domain left by the body's `when` guard `{}`", a.raw),
                 None => "the subject's whole domain".to_string(),
@@ -1203,7 +1202,11 @@ fn check_handler_after_completion(quest: &Quest, defs: &DefTable<'_>) -> Vec<Dia
             let done = text_conjuncts(&expand_text(&o.done.raw, defs));
             !done.is_empty() && done.iter().all(|c| guard.contains(c))
         };
-        let completes = if any { required.iter().any(implied) } else { required.iter().all(implied) };
+        let completes = if any {
+            required.iter().any(implied)
+        } else {
+            required.iter().all(implied)
+        };
         if !completes {
             continue;
         }
@@ -1216,7 +1219,11 @@ fn check_handler_after_completion(quest: &Quest, defs: &DefTable<'_>) -> Vec<Dia
                  active quest's handlers; move the body to `<on event=\"questComplete\">` or \
                  the objective's own body (dsl 0.24.0)",
                 on.event,
-                if any { "a required objective" } else { "every required objective" },
+                if any {
+                    "a required objective"
+                } else {
+                    "every required objective"
+                },
                 quest.id
             ),
             on.event_span,
@@ -1544,7 +1551,11 @@ pub(crate) fn when_conjuncts(
 ) -> Conjuncts {
     let mut out = Vec::new();
     if let Some(expr) = parse_expanded(raw, defs) {
-        let ctx = ConjunctCtx { defs, schema, vocab };
+        let ctx = ConjunctCtx {
+            defs,
+            schema,
+            vocab,
+        };
         collect_conjuncts(&expr, &ctx, &mut out);
     }
     Conjuncts(out)
@@ -1640,11 +1651,15 @@ fn schedule_conjuncts(
     ctx: &ConjunctCtx<'_>,
 ) -> Vec<(String, SolutionSet)> {
     use lute_syntax::datalog::{BodyLiteral, FactTerm, RuleTerm};
-    let Expr::Call(c) = expr else { return Vec::new() };
+    let Expr::Call(c) = expr else {
+        return Vec::new();
+    };
     if c.target.is_some() || c.func_name != "holds" || c.args.len() != 1 {
         return Vec::new();
     }
-    let Expr::Call(atom) = &c.args[0].expr else { return Vec::new() };
+    let Expr::Call(atom) = &c.args[0].expr else {
+        return Vec::new();
+    };
     if atom.target.is_some() {
         return Vec::new();
     }
@@ -1662,7 +1677,11 @@ fn schedule_conjuncts(
         return Vec::new();
     };
     let rel = atom.func_name.as_str();
-    if !vocab.relations.get(rel).is_some_and(|d| d.derive && !d.reserved) {
+    if !vocab
+        .relations
+        .get(rel)
+        .is_some_and(|d| d.derive && !d.reserved)
+    {
         return Vec::new();
     }
     let seeded = vocab.facts.iter().any(|f| {
@@ -1678,7 +1697,10 @@ fn schedule_conjuncts(
         return Vec::new();
     }
     // One unifying rule is one disjunct: the conjunction of its guards.
-    let inner = ConjunctCtx { vocab: None, ..*ctx };
+    let inner = ConjunctCtx {
+        vocab: None,
+        ..*ctx
+    };
     let mut per_rule: Vec<Vec<(String, SolutionSet)>> = Vec::new();
     for r in vocab.rules.iter().filter(|r| r.rule.head.relation == rel) {
         let head = &r.rule.head.terms;
@@ -1757,10 +1779,8 @@ fn join(a: &SolutionSet, b: &SolutionSet) -> Option<SolutionSet> {
 /// Two conditions that cannot both hold: some pair of their conjuncts
 /// constrains one path to disjoint solution sets. Sound, never complete.
 pub(crate) fn provably_exclusive(a: &Conjuncts, b: &Conjuncts) -> bool {
-    a.0.iter().any(|(pa, sa)| {
-        b.0.iter()
-            .any(|(pb, sb)| pa == pb && disjoint(sa, sb))
-    })
+    a.0.iter()
+        .any(|(pa, sa)| b.0.iter().any(|(pb, sb)| pa == pb && disjoint(sa, sb)))
 }
 
 /// The operator with its operands exchanged (`1 < x` is `x > 1`).

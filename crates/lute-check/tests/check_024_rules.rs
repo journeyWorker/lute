@@ -85,12 +85,18 @@ fn a_def_in_a_rule_guard_is_expanded_and_checks_clean() {
             _ => None,
         })
         .unwrap();
-    assert!(!guard.contains('@') && guard.contains("scene.n == 0"), "{guard}");
+    assert!(
+        !guard.contains('@') && guard.contains("scene.n == 0"),
+        "{guard}"
+    );
 }
 
 #[test]
 fn an_undefined_def_in_a_rule_guard_is_rule_guard_def() {
-    let text = scene(&format!("{LIT}rules:\n  - \"lit(lamp) :- cel(\\\"@nope\\\")\"\n"), "holds(lit(lamp))");
+    let text = scene(
+        &format!("{LIT}rules:\n  - \"lit(lamp) :- cel(\\\"@nope\\\")\"\n"),
+        "holds(lit(lamp))",
+    );
     let ds = diags(&text);
     assert!(codes(&ds).contains(&"E-RULE-GUARD-DEF"), "{ds:#?}");
 }
@@ -112,11 +118,21 @@ fn a_def_reading_facts_in_a_rule_guard_hits_the_firewall() {
 
 #[test]
 fn a_relation_named_like_a_cel_macro_is_reserved_name() {
-    let text = scene("relations:\n  has: { args: [item], tier: run }\n", "holds(has(lamp))");
+    let text = scene(
+        "relations:\n  has: { args: [item], tier: run }\n",
+        "holds(has(lamp))",
+    );
     let ds = diags(&text);
     assert!(codes(&ds).contains(&"E-RELATION-RESERVED-NAME"), "{ds:#?}");
-    let parse = ds.iter().find(|d| d.code == "E-CEL-PARSE").expect("the use cannot parse");
-    assert!(parse.message.contains("`has` is a reserved CEL name"), "{}", parse.message);
+    let parse = ds
+        .iter()
+        .find(|d| d.code == "E-CEL-PARSE")
+        .expect("the use cannot parse");
+    assert!(
+        parse.message.contains("`has` is a reserved CEL name"),
+        "{}",
+        parse.message
+    );
 }
 
 // --- T3-9: `_` in rule bodies, `countDistinct` ---
@@ -158,16 +174,26 @@ fn imported_schema_problems_point_at_the_schema_and_do_not_cascade() {
     )
     .unwrap();
     let imports = resolve_imports(&dir, &["world.schema.yaml".to_string()], &[], zero_span());
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: a\n";
+    let text =
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: a\n";
     let res = check(&input(text, imports));
-    let no_rules: Vec<&Diagnostic> =
-        res.diagnostics.iter().filter(|d| d.code == "W-DERIVE-NO-RULES").collect();
+    let no_rules: Vec<&Diagnostic> = res
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "W-DERIVE-NO-RULES")
+        .collect();
     assert_eq!(no_rules.len(), 1, "{:#?}", res.diagnostics);
     let d = no_rules[0];
-    assert!(d.related[0].file.ends_with("world.schema.yaml"), "{:#?}", d.related);
+    assert!(
+        d.related[0].file.ends_with("world.schema.yaml"),
+        "{:#?}",
+        d.related
+    );
     let at = &d.related[0];
     assert!(
-        d.message.contains("`empty`") && d.message.ends_with("(declared in schema import `world.schema.yaml`)"),
+        d.message.contains("`empty`")
+            && d.message
+                .ends_with("(declared in schema import `world.schema.yaml`)"),
         "{}",
         d.message
     );

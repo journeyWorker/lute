@@ -271,7 +271,12 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
             Value::Object(
                 when_visited
                     .iter()
-                    .map(|(n, ids)| (n.to_string(), Value::String(crate::when_visited_hint(n, ids))))
+                    .map(|(n, ids)| {
+                        (
+                            n.to_string(),
+                            Value::String(crate::when_visited_hint(n, ids)),
+                        )
+                    })
                     .collect(),
             ),
         );
@@ -292,10 +297,11 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
                     "kind": kind.as_str(),
                     "quest": quest,
                 }),
-                OmittedRef::Visited { quest, scene } => serde_json::json!({
+                OmittedRef::Visited { quest, scene, slot } => serde_json::json!({
                     "from": format!("quest({quest})"),
                     "kind": "visited",
                     "scene": scene,
+                    "slot": slot,
                 }),
             })
             .collect();

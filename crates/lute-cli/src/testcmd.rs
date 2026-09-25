@@ -79,8 +79,7 @@ use std::process::ExitCode;
 
 use lute_trace::{
     parse_mock_surfaces, trace_beat_with_check, trace_entries_with_check, trace_with_check,
-    TraceExit, TraceReport,
-    UnresolvedEntry,
+    TraceExit, TraceReport, UnresolvedEntry,
 };
 
 use crate::play_expect::ExpectMiss;
@@ -378,8 +377,7 @@ pub fn run_test(
         }
     }
     for play_file in &play_files {
-        if let Some(r) = run_one_play(play_file, project, no_derive, coverage.then_some(&mut cov))
-        {
+        if let Some(r) = run_one_play(play_file, project, no_derive, coverage.then_some(&mut cov)) {
             results.push(r);
         }
     }
@@ -442,7 +440,11 @@ pub fn run_test(
     // T3-15: the whole report is rendered first and written once, so a
     // closed pipe (`lute test … | head`) is an I/O exit rather than a panic.
     let text = if json {
-        render_json(&results, coverage.then_some((&cov, coverage_root.as_path())), &untested)
+        render_json(
+            &results,
+            coverage.then_some((&cov, coverage_root.as_path())),
+            &untested,
+        )
     } else {
         render_human(
             dir,
@@ -596,9 +598,10 @@ fn run_one_test(
     let entries: Vec<String> = match (map.get("entry"), map.get("entries")) {
         (None, None) => Vec::new(),
         (Some(serde_yaml::Value::String(id)), None) => vec![id.clone()],
-        (None, Some(serde_yaml::Value::Sequence(ids))) if ids.iter().all(|i| i.is_string()) => {
-            ids.iter().filter_map(|i| i.as_str().map(str::to_string)).collect()
-        }
+        (None, Some(serde_yaml::Value::Sequence(ids))) if ids.iter().all(|i| i.is_string()) => ids
+            .iter()
+            .filter_map(|i| i.as_str().map(str::to_string))
+            .collect(),
         (Some(_), Some(_)) => {
             eprintln!(
                 "lute: {}: name the entries to present with ONE of `entry: <id>` or \
@@ -668,7 +671,11 @@ fn run_one_test(
             eprintln!(
                 "lute: note: scenario tests use project {} (nearest lute.project.yaml); pass \
                  --project to choose another",
-                if shown.is_empty() { "." } else { shown.as_str() }
+                if shown.is_empty() {
+                    "."
+                } else {
+                    shown.as_str()
+                }
             );
         }
     }
@@ -722,8 +729,16 @@ fn run_one_test(
                      test names what to present: `entry: <id>` or `entries: [ids]` (declared: \
                      {}), or `beat: <id>` (declared: {}), or judges them with `expect: \
                      {{ eligible: {{ <id>: true|false }} }}`",
-                    if ids.is_empty() { "none".to_string() } else { ids.join(", ") },
-                    if beats.is_empty() { "none".to_string() } else { beats.join(", ") }
+                    if ids.is_empty() {
+                        "none".to_string()
+                    } else {
+                        ids.join(", ")
+                    },
+                    if beats.is_empty() {
+                        "none".to_string()
+                    } else {
+                        beats.join(", ")
+                    }
                 )],
             ));
         }
@@ -1104,7 +1119,8 @@ fn run_one_test(
             .notes
             .iter()
             .filter(|n| {
-                n.starts_with(lute_trace::NOTE_BEAT_WHEN) || n.starts_with(lute_trace::NOTE_ACCEPT_SPENT)
+                n.starts_with(lute_trace::NOTE_BEAT_WHEN)
+                    || n.starts_with(lute_trace::NOTE_ACCEPT_SPENT)
             })
             .cloned()
             .chain(ineligible_notes(
@@ -1264,9 +1280,8 @@ fn presented_eligibility(report: &TraceReport) -> Vec<(String, Option<bool>)> {
         .steps
         .iter()
         .filter_map(|s| match s {
-            lute_trace::Step::Entry { id, eligible, .. } | lute_trace::Step::Beat { id, eligible, .. } => {
-                Some((id.clone(), *eligible))
-            }
+            lute_trace::Step::Entry { id, eligible, .. }
+            | lute_trace::Step::Beat { id, eligible, .. } => Some((id.clone(), *eligible)),
             _ => None,
         })
         .collect()
@@ -1292,7 +1307,11 @@ fn eligibility_alone(
     let checked = lute_check::check(input);
     let (report, _) = if doc.entries.iter().any(|e| e.id == id) {
         trace_entries_with_check(input, checked, mocks.clone(), &[id], project_asserts)
-    } else if doc.beats.iter().any(|b| names_presented(id, &b.id) || b.id == id) {
+    } else if doc
+        .beats
+        .iter()
+        .any(|b| names_presented(id, &b.id) || b.id == id)
+    {
         trace_beat_with_check(input, checked, mocks.clone(), id, project_asserts)
     } else {
         return Vec::new();
@@ -1409,7 +1428,11 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
                     // Ember N14: the author's `@def` spelling, not its
                     // expansion (as `lute trace` prints it, T3-12).
                     .or_insert_with(|| {
-                        (d.authored_id.clone().unwrap_or_else(|| d.id.clone()), BTreeSet::new(), 0)
+                        (
+                            d.authored_id.clone().unwrap_or_else(|| d.id.clone()),
+                            BTreeSet::new(),
+                            0,
+                        )
                     });
                 entry.1.insert(d.outcome.clone());
             }
@@ -1431,7 +1454,11 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
             .entry(key)
             // N14: the author's `@def` spelling, not its expansion (T3-12).
             .or_insert_with(|| {
-                (c.authored_label.clone().unwrap_or_else(|| c.label.clone()), BTreeSet::new(), 0)
+                (
+                    c.authored_label.clone().unwrap_or_else(|| c.label.clone()),
+                    BTreeSet::new(),
+                    0,
+                )
             });
         entry.2 = entry.2.max(c.total);
     }
@@ -1495,7 +1522,12 @@ fn render_human(
     for r in results {
         let mark = if r.passed { "PASS" } else { "FAIL" };
         if r.kind == "play" {
-            outln!(out, "{mark}  {}  (play of {})", r.test_file.display(), r.lute_file);
+            outln!(
+                out,
+                "{mark}  {}  (play of {})",
+                r.test_file.display(),
+                r.lute_file
+            );
         } else {
             outln!(out, "{mark}  {}  ({})", r.test_file.display(), r.lute_file);
         }
@@ -1667,7 +1699,11 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
         ("eligible", Some(actual)) => outln!(
             out,
             "      eligible{}: expected {}, got {actual}",
-            if e.subject.is_empty() { String::new() } else { format!(" {}", e.subject) },
+            if e.subject.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", e.subject)
+            },
             e.expected
         ),
         ("eligible", None) if e.subject.is_empty() => outln!(
@@ -1681,11 +1717,9 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
             e.subject,
             e.expected
         ),
-        ("accepts", Some(actual)) => outln!(
-            out,
-            "      accepts: expected {}, got {actual}",
-            e.expected
-        ),
+        ("accepts", Some(actual)) => {
+            outln!(out, "      accepts: expected {}, got {actual}", e.expected)
+        }
         _ => {}
     }
 }

@@ -1,6 +1,6 @@
 ---
 title: Facts and Datalog
-description: The relational fact layer beside Lute's scalar tiers — declared entities, sub-kinds and relations, ground facts asserted and retracted as deltas, and a total Datalog derivation layer that stays terminating by construction.
+description: The relational fact layer beside Lute's scalar tiers — declared entities, sub-kinds and relations, relations that exclude each other (excludes:), ground facts asserted and retracted as deltas, and a total Datalog derivation layer that stays terminating by construction.
 ---
 
 Scalar tiers hold magnitudes; they cannot express *relationships between entities* — "Shadowheart is in the party," "the player told Halsin about the grove." Lute adds a **relational fact kernel** beside the scalar tiers: a closed, n-ary fact database over a declared finite vocabulary. A document opts in simply by declaring relations; a document with none behaves exactly as before.
@@ -29,6 +29,8 @@ Content writes **deltas** with the leaf directives `::assert` and `::retract`; t
 ::assert{ atLocation(shadowheart, grove) }
 ::retract{ atLocation(shadowheart, _) }
 ```
+
+A reserved relation may also say *when* the engine changes it: `changedOn: [battleEnd]` names the occasions whose raise may write it (dsl 0.25.0 §6). It is a checker input, not an IR field, and it matters to cast presence: see [Presence after engine events](/language/dialogue-and-cast/#presence-after-engine-events-changedon). `changedOn` on a relation that is not `reserved: true`, or naming an occasion no plugin declares, is `E-RELATION-DECL`.
 
 A relation cannot take the name of a CEL call, macro or keyword — `has`, `holds`, `count`, `isSet`, `now`, and the like. `holds(has(lamp))` could never be written, so declaring such a relation is `E-RELATION-RESERVED-NAME` at its declaration (dsl 0.24.0).
 
@@ -65,6 +67,55 @@ Every member of a sub-kind must also be a member of its parent, and a member it 
 A sub-kind lists its own `members:`. A member outside the parent is `E-ENTITY-KIND-SHAPE`, naming the outsider. The same code covers a parent the document does not declare, a parent declared `open:`, a sub-kind declared `open:`, and a `subsetOf:` chain that loops back on itself.
 
 `check-project`'s `W-DOMAIN-UNREAD` flags a kind that nothing reads. It counts a sub-kind's `subsetOf:` parent, a kind used as a `per:` index, and a kind atom in a rule body or a `holds(…)` condition as reads, alongside relation arguments. The warning lands on the line of the schema that declares the kind, or on the document's own `entities:` key, rather than on the first importer.
+
+### Exclusive relations: `excludes:`
+
+Some relations can never hold together on the same arguments. Nobody is seen alive after they fell; a witness is not both truthful and a liar. A relation may declare the relations it excludes (dsl 0.25.0 §1):
+
+```yaml
+entities:
+  character: { members: [elias, maren] }
+  place:     { members: [gallery, landing] }
+relations:
+  at:        { args: [character, place], tier: run }
+  damaged:   { args: [place], tier: run }
+  seen:      { args: [character], tier: run }
+  seenAfter: { args: [character], derive: true, excludes: [fell] }
+  fell:      { args: [character], derive: true }
+  calm:      { args: [character], tier: run, excludes: [panicked] }
+  panicked:  { args: [character], tier: run }
+rules:
+  - "seenAfter(S) :- seen(S)"
+  - "fell(S) :- at(S, gallery), damaged(gallery), not seenAfter(S)"
+```
+
+The declaration is symmetric: `fell` excludes `seenAfter` without restating it, and the compiled `RelationEntry` carries the symmetric closure, sorted (`"excludes": ["seenAfter"]` on `fell`; absent when empty). Each partner must be a declared relation other than the relation itself, with the same argument kinds. Otherwise the declaration is `E-RELATION-DECL`: `` `dwon` is not a declared relation — did you mean `down`? ``, `` `near` takes [c, p] but `up` takes [c] ``, or a relation that `cannot exclude itself`. Base and derived relations may exclude each other in any mix.
+
+Exclusion is an invariant the author declares, not something the checker infers from the rules. `check-project` then uses it everywhere it decides a relational guard ([below](#how-check-project-analyzes-relational-guards)):
+
+- `holds(A(x)) && holds(B(x))` is false, so a guard that needs both is dead: `E-ARM-DEAD` on a line or arm, `E-BEAT-UNREACHABLE` on a beat, and the message names the exclusion;
+- `!holds(B(x))` follows from `holds(A(x))`: in the same guard, in an enclosing one, or because `A(x)` holds on every route to the guard. Such a guard is `W-FACT-GUARANTEED`, and [cast presence](/language/dialogue-and-cast/#presence-present) reads it the same way. A guard over an engine `reserved:` relation counts too, inside the region it guards;
+- an `::assert{A(x)}` where `B(x)` holds on every route to it is the new **`E-FACT-EXCLUSIVE`**;
+- a rule that can only break the exclusion is the new **`E-RULE-EXCLUSIVE`**, at the rule: `dark(X) :- lit(X)` with `dark` excluding `lit` derives `dark` only where `lit` holds on the same arguments, so every derivation breaks the exclusion. Fix the rule or the declaration.
+
+A relation named in an `excludes:` pair counts as read, so declaring the pair never draws [`W-RELATION-UNREAD`](#relations-nothing-reads).
+
+A storm scene asserts `at(elias, gallery)` and `damaged(gallery)`, and `panicked(maren)` on every route. Then a dawn scene sequenced `after: 'visited("storm")'`:
+
+```lute
+@narrator{when="holds(seenAfter(elias)) && holds(fell(elias))"}: Both at once.
+@narrator{when="holds(seenAfter(elias)) && !holds(fell(elias))"}: Elias walks on.
+::assert{ calm(maren) }
+```
+
+<!-- lute-diagnostics unverified="verbatim check-project output; the relational E-ARM-DEAD message names its code through the reachability::E_ARM_DEAD constant, so the scraper cannot pair quote and code" -->
+```
+./scenes/dawn.lute:20:17: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(seenAfter(elias)) && holds(fell(elias))` is provably false — `seenAfter(elias)` and `fell(elias)` can never hold together (`seenAfter` excludes `fell`, dsl 0.25.0 §1) (dsl 0.20.0 §5)
+./scenes/dawn.lute:21:17: warning [W-FACT-GUARANTEED] guard `holds(seenAfter(elias)) && !holds(fell(elias))` is redundant: `!holds(fell(elias))` follows from this guard's `holds(seenAfter(elias))`: `seenAfter` excludes `fell` (dsl 0.25.0 §1) (dsl 0.20.0 §5)
+./scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] `::assert{calm(maren)}` would make `calm(maren)` and `panicked(maren)` both hold: `panicked(maren)` is asserted on every route to here (./scenes/storm.lute:14), and `calm` excludes `panicked` (dsl 0.25.0 §1) — retract `panicked(maren)` first, or assert only where it does not hold
+```
+
+When both facts are only *possible*, say `panicked(maren)` is asserted down one branch of the storm, there is no static verdict. The walk tools catch it instead, never silently: `lute play` prints `✗ exclusive: calm(maren) and panicked(maren) both hold` under the write that made both hold and halts there (exit 1), and `lute trace` / `lute test` print the same line at the write and refuse the walk with `E-FACT-EXCLUSIVE` (exit 1). Seeded facts that already break an exclusion are refused before anything is walked. A derived relation is covered through its derivations: the check runs after the rules, so a write that makes some rule conclude the excluded partner is caught at that write. See [Playing a story](/tooling/play/#exclusive-relations) and [Tracing](/tooling/tracing/#exclusive-relations).
 
 ## Querying history with `validAt`
 

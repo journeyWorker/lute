@@ -350,7 +350,13 @@ fn source_lute_version(src: &str) -> Option<String> {
     src.lines()
         .map(str::trim)
         .find_map(|line| line.strip_prefix("luteVersion:"))
-        .map(|value| value.trim().trim_matches('"').trim_matches('\'').to_string())
+        .map(|value| {
+            value
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string()
+        })
 }
 
 fn path_arg(p: &Path) -> String {

@@ -99,13 +99,20 @@ fn set_without_effects_is_still_component_body() {
 
 #[test]
 fn write_to_a_path_the_host_does_not_declare_is_undeclared_at_the_use() {
-    let s = scene("", "@narrator: Before.\n::use{component=\"approval\" delta=\"2\"}");
+    let s = scene(
+        "",
+        "@narrator: Before.\n::use{component=\"approval\" delta=\"2\"}",
+    );
     let ds = run(APPROVAL, &s, &[]);
     let d = ds
         .iter()
         .find(|d| d.code == "E-UNDECLARED")
         .unwrap_or_else(|| panic!("the host has no `run.approval.isolde`: {ds:#?}"));
-    assert_eq!(d.span.line, line_of(&s, "::use{"), "anchored at the `::use`: {d:#?}");
+    assert_eq!(
+        d.span.line,
+        line_of(&s, "::use{"),
+        "anchored at the `::use`: {d:#?}"
+    );
     assert!(d.message.contains("run.approval.isolde"), "{}", d.message);
     assert!(
         !codes(&ds).contains(&"E-COMPONENT-BODY"),
@@ -131,7 +138,8 @@ fn set_type_is_judged_against_the_host_decl() {
     let s = scene(front, "::use{component=\"approval\" delta=\"2\"}");
     let ds = run(APPROVAL, &s, &[]);
     assert!(
-        ds.iter().any(|d| d.code.starts_with("E-") && d.span.line == line_of(&s, "::use{")),
+        ds.iter()
+            .any(|d| d.code.starts_with("E-") && d.span.line == line_of(&s, "::use{")),
         "`+=` on a bool path is a type error at the `::use`: {ds:#?}"
     );
 }
@@ -147,8 +155,14 @@ fn fact_writes_are_judged_against_the_host_vocabulary() {
         ds.iter()
             .any(|d| d.code == code && d.span.line == line_of(&s, "::use{"))
     };
-    assert!(at_use("E-FACT-DOMAIN"), "`reds` is not a `c` in the host: {ds:#?}");
-    assert!(at_use("E-RELATION-UNKNOWN"), "the host declares no `knows`: {ds:#?}");
+    assert!(
+        at_use("E-FACT-DOMAIN"),
+        "`reds` is not a `c` in the host: {ds:#?}"
+    );
+    assert!(
+        at_use("E-RELATION-UNKNOWN"),
+        "the host declares no `knows`: {ds:#?}"
+    );
 
     let ok = "---\ncomponent: recruit\neffects: true\n---\n## Scene 1.\n::assert{inParty(ana)}\n";
     let ds = run(ok, &s, &[]);
@@ -166,7 +180,10 @@ fn a_presentational_body_may_not_use_an_effects_component() {
     )
     .unwrap();
     std::fs::write(dir.join("c.lute"), comp).unwrap();
-    let s = scene("state:\n  run.x: { type: number, default: 0 }\n", "::use{component=\"outer\"}");
+    let s = scene(
+        "state:\n  run.x: { type: number, default: 0 }\n",
+        "::use{component=\"outer\"}",
+    );
     let (doc, _) = lute_syntax::parse(&s);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let input = CheckInput {

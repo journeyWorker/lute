@@ -75,10 +75,8 @@ fn temp_dir(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU32, Ordering};
     static N: AtomicU32 = AtomicU32::new(0);
     let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!(
-        "lute-bundle-beat-{tag}-{}-{n}",
-        std::process::id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("lute-bundle-beat-{tag}-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -112,8 +110,14 @@ fn kinds(v: &serde_json::Value) -> Vec<String> {
 fn trace_bundle_beat_walks_the_chosen_arm() {
     let dir = temp_dir("trace");
     let file = write(&dir, "interviews.lute", SOURCE);
-    let (code, stdout, stderr) =
-        lute(&["trace", &file, "--beat", "porter", "--choose", "porterTalk=ask"]);
+    let (code, stdout, stderr) = lute(&[
+        "trace",
+        &file,
+        "--beat",
+        "porter",
+        "--choose",
+        "porterTalk=ask",
+    ]);
     assert_eq!(code, Some(0), "stderr: {stderr}\nstdout: {stdout}");
     assert!(stdout.contains("<beat interviews.porter>\n"), "{stdout}");
     assert!(stdout.contains("You again."), "{stdout}");
@@ -160,8 +164,7 @@ fn trace_bundle_beat_usage_and_refusals() {
     assert!(stdout.contains("invalid `--beat`"), "{stdout}");
 
     // `--entry` and `--beat` are one presentation or the other.
-    let (code, _, stderr) =
-        lute(&["trace", &file, "--entry", "porterNote", "--beat", "porter"]);
+    let (code, _, stderr) = lute(&["trace", &file, "--entry", "porterNote", "--beat", "porter"]);
     assert_eq!(code, Some(2), "{stderr}");
 }
 
@@ -197,7 +200,10 @@ fn run_bundle_beat_runs_its_segment_like_a_scene() {
     // The bare beat id resolves; the human line mirrors an entry's.
     let (code, stdout, stderr) = lute(&["run", &art, "--beat", "porter", "--mock", &mock]);
     assert_eq!(code, Some(0), "stderr: {stderr}");
-    assert!(stdout.contains("  002-0100  beat   interviews.porter\n"), "{stdout}");
+    assert!(
+        stdout.contains("  002-0100  beat   interviews.porter\n"),
+        "{stdout}"
+    );
 
     // `when` false is recorded, not enforced.
     let low = write(
@@ -274,7 +280,10 @@ fn run_bundle_beat_usage_errors() {
 
     let (code, _, stderr) = lute(&["run", SCENE_ARTIFACT, "--beat", "porter"]);
     assert_eq!(code, Some(2));
-    assert!(stderr.contains("`--beat porter` needs a lore artifact"), "{stderr}");
+    assert!(
+        stderr.contains("`--beat porter` needs a lore artifact"),
+        "{stderr}"
+    );
 
     let (code, _, stderr) = lute(&["run", &art, "--entry", "porterNote", "--beat", "porter"]);
     assert_eq!(code, Some(2), "{stderr}");

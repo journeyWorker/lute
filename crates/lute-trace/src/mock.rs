@@ -167,7 +167,11 @@ fn yaml_span(text: &str, path: &[YamlStep<'_>]) -> Option<Span> {
         Some(YamlStep::Key(k)) if text[start..].starts_with(k) => start + k.len(),
         _ => start,
     };
-    Some(Span::from_bytes(&lute_core_span::TextIndex::new(text), start, end))
+    Some(Span::from_bytes(
+        &lute_core_span::TextIndex::new(text),
+        start,
+        end,
+    ))
 }
 
 /// The error [`yaml_span`] raises at its target.
@@ -195,7 +199,9 @@ impl<'de> serde::de::Visitor<'de> for YamlSeek<'_> {
             Some(_) => None,
             None => return Err(serde::de::Error::custom(YAML_FOUND)),
         };
-        while let Some(hit) = map.next_key_seed(YamlKey(want.map(|(k, rest)| (k, rest.is_empty()))))? {
+        while let Some(hit) =
+            map.next_key_seed(YamlKey(want.map(|(k, rest)| (k, rest.is_empty()))))?
+        {
             match want {
                 Some((_, rest)) if hit => map.next_value_seed(YamlSeek(rest))?,
                 _ => {
@@ -313,7 +319,9 @@ pub fn type_placeholder(ty: Option<&Type>) -> String {
 /// A whole bridge answer as a hint: every field the call reads, once each
 /// in the order given, with its [`type_placeholder`] — `{ passed: <bool>,
 /// margin: <number> }`, exactly the set [`validate_bridges`] demands.
-pub fn bridge_answer_shape<'t>(fields: impl IntoIterator<Item = (&'t str, Option<&'t Type>)>) -> String {
+pub fn bridge_answer_shape<'t>(
+    fields: impl IntoIterator<Item = (&'t str, Option<&'t Type>)>,
+) -> String {
     let mut seen = BTreeSet::new();
     let parts: Vec<String> = fields
         .into_iter()
@@ -1088,7 +1096,12 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
     for (path, literal, span) in &mocks.state {
         // dsl 0.24.0 §1: `clock.*` is derived from the clock's day / slot
         // paths, never stored — a seed of it would contradict them.
-        if let Some(clock) = folded.env.clock.as_ref().filter(|_| lute_manifest::clock::is_clock_path(path)) {
+        if let Some(clock) = folded
+            .env
+            .clock
+            .as_ref()
+            .filter(|_| lute_manifest::clock::is_clock_path(path))
+        {
             let seedable = match &clock.slot {
                 Some(slot) => format!("`{}` / `{slot}`", clock.day),
                 None => format!("`{}`", clock.day),
@@ -1511,7 +1524,10 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
         None => local.to_string(),
     };
     let beats: Vec<String> = doc.beats.iter().map(|b| canonical(&b.id)).collect();
-    let is_beat = doc.beats.iter().any(|b| b.id == id || canonical(&b.id) == id);
+    let is_beat = doc
+        .beats
+        .iter()
+        .any(|b| b.id == id || canonical(&b.id) == id);
     let beat_hint = if is_beat {
         format!(" — `{id}` is a `<beat>`: present it with `--beat {id}`")
     } else if beats.is_empty() {
@@ -1524,7 +1540,11 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
         format!(
             "`--entry {id}` names an unknown entry id `{id}`; this document declares entries: \
              {}{beat_hint} (dsl 0.19.0 §8)",
-            if declared.is_empty() { "none".to_string() } else { declared.join(", ") }
+            if declared.is_empty() {
+                "none".to_string()
+            } else {
+                declared.join(", ")
+            }
         ),
         span,
     )]
@@ -1735,7 +1755,10 @@ pub fn validate_bridges(
         let fields: Vec<&str> = reads_of.iter().map(|(f, _)| *f).collect();
         let slot_type = |write: &lute_manifest::schema::WriteDecl| {
             let decls = &folded.env.state.decls;
-            decls.iter().find(|(p, _)| write_lands_on(write, p)).map(|(_, d)| &d.ty)
+            decls
+                .iter()
+                .find(|(p, _)| write_lands_on(write, p))
+                .map(|(_, d)| &d.ty)
         };
         let required = bridge_fields_read(&reads_of, reads);
         let shape = bridge_answer_shape(

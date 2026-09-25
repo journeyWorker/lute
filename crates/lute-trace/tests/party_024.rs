@@ -54,9 +54,15 @@ rules:
 fn input() -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(PARTY);
     assert!(parse_diags.is_empty(), "{parse_diags:?}");
-    let (meta0, _) = lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
-    let (snapshot, _) =
-        lute_manifest::project::resolve_document_snapshot(None, meta0.profile.as_deref(), &meta0.plugins);
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let (snapshot, _) = lute_manifest::project::resolve_document_snapshot(
+        None,
+        meta0.profile.as_deref(),
+        &meta0.plugins,
+    );
     CheckInput {
         text: PARTY.to_string(),
         uri: "party.lute".to_string(),
@@ -78,8 +84,16 @@ fn fact(rel: &str, arg: &str) -> Fact {
 #[test]
 fn trace_derives_through_a_kind_predicate_and_an_indexed_guard() {
     let (report, exit) = trace_document(&input(), MockSet::default());
-    assert!(matches!(exit, TraceExit::Complete), "{exit:?} {:?}", report.unresolved);
-    let who = report.decisions.iter().find(|d| d.id == "who").expect("the branch");
+    assert!(
+        matches!(exit, TraceExit::Complete),
+        "{exit:?} {:?}",
+        report.unresolved
+    );
+    let who = report
+        .decisions
+        .iter()
+        .find(|d| d.id == "who")
+        .expect("the branch");
     assert!(who.eligible.contains(&"isolde".to_string()), "{who:?}");
     assert!(!who.eligible.contains(&"corvin".to_string()), "{who:?}");
     assert!(who.eligible.contains(&"party".to_string()), "{who:?}");
@@ -92,13 +106,19 @@ fn the_compiled_rules_derive_with_the_ir_kinds() {
     let art = lute_compile::compile(&input()).expect("compiles");
     let json = serde_json::to_value(&art).unwrap();
     let rules = json.get("rules").and_then(|r| r.as_array()).unwrap();
-    let raws: Vec<&str> = rules.iter().filter_map(|r| r.get("raw").and_then(|r| r.as_str())).collect();
+    let raws: Vec<&str> = rules
+        .iter()
+        .filter_map(|r| r.get("raw").and_then(|r| r.as_str()))
+        .collect();
     assert_eq!(rules.len(), 3, "{raws:?}");
     assert!(raws.iter().any(|r| r.ends_with("[P = isolde]")), "{raws:?}");
     for r in rules {
         for lit in r["body"].as_array().unwrap() {
             if let Some(cel) = lit.get("cel").and_then(|c| c.as_str()) {
-                assert!(!cel.contains('['), "an IR guard is over ground terms: {cel}");
+                assert!(
+                    !cel.contains('['),
+                    "an IR guard is over ground terms: {cel}"
+                );
             }
         }
     }
@@ -110,15 +130,24 @@ fn the_compiled_rules_derive_with_the_ir_kinds() {
         ("run.approval.corvin".to_string(), Value::Num(1.0)),
     ]);
     let eff = EffectiveState::new(&schema, state);
-    let base: BTreeSet<Fact> = ["isolde", "corvin", "oda"].iter().map(|p| fact("recruited", p)).collect();
+    let base: BTreeSet<Fact> = ["isolde", "corvin", "oda"]
+        .iter()
+        .map(|p| fact("recruited", p))
+        .collect();
     let closure = program.fixpoint(&base, &eff);
     assert!(closure.facts.contains(&fact("inParty", "isolde")));
     assert!(closure.facts.contains(&fact("inParty", "corvin")));
-    assert!(!closure.facts.contains(&fact("inParty", "oda")), "oda is a person, not a companion");
+    assert!(
+        !closure.facts.contains(&fact("inParty", "oda")),
+        "oda is a person, not a companion"
+    );
     assert!(closure.facts.contains(&fact("loyal", "isolde")));
     assert!(!closure.facts.contains(&fact("loyal", "corvin")));
     assert!(
-        !closure.facts.iter().any(|(r, _)| r == "companion" || r == "person"),
+        !closure
+            .facts
+            .iter()
+            .any(|(r, _)| r == "companion" || r == "person"),
         "membership is tested, never materialised as facts"
     );
 

@@ -113,10 +113,7 @@ pub enum Premise {
     /// A positive atom that does not hold (`atom` may keep unbound
     /// variables when no binding reached it); `why` explains a ground
     /// derived atom's failure in turn.
-    Missing {
-        atom: String,
-        why: Vec<Attempt>,
-    },
+    Missing { atom: String, why: Vec<Attempt> },
     /// `not X` with `X` absent.
     Absent(Fact),
     /// `not X` with `X` present — the premise fails; `X`'s own support.
@@ -140,7 +137,10 @@ pub enum Explanation {
     Holds(Proof),
     /// Not derivable: every rule whose head matches, with its failing
     /// premises. Empty when `derived` is false and nothing concludes it.
-    Fails { derived: bool, attempts: Vec<Attempt> },
+    Fails {
+        derived: bool,
+        attempts: Vec<Attempt>,
+    },
 }
 
 impl Program {
@@ -216,7 +216,9 @@ impl Program {
                         continue;
                     }
                     let mut unknown = Vec::new();
-                    for binding in solve_body(&rule.body, &out.facts, &self.kinds, state, &mut unknown) {
+                    for binding in
+                        solve_body(&rule.body, &out.facts, &self.kinds, state, &mut unknown)
+                    {
                         if let Some(args) = ground_atom(&rule.head, &binding) {
                             let fact = (rule.head.rel.clone(), args);
                             if !out.facts.contains(&fact) {
@@ -256,7 +258,9 @@ impl Program {
             let mut changed = false;
             for rule in &self.rules {
                 for lit in &rule.body {
-                    let Lit::Atom { atom, .. } = lit else { continue };
+                    let Lit::Atom { atom, .. } = lit else {
+                        continue;
+                    };
                     let Some(atoms) = undecided.get(&atom.rel).cloned() else {
                         continue;
                     };
@@ -279,7 +283,12 @@ impl Program {
     /// negations shown absent) or, when it does not, every rule that could
     /// conclude it with its failing premises — a ground failing derived
     /// premise is explained in turn, `depth` levels deep.
-    pub fn explain(&self, closure: &Closure, goal: &Fact, state: &EffectiveState<'_>) -> Explanation {
+    pub fn explain(
+        &self,
+        closure: &Closure,
+        goal: &Fact,
+        state: &EffectiveState<'_>,
+    ) -> Explanation {
         if closure.facts.contains(goal) {
             return Explanation::Holds(self.prove(closure, goal, state));
         }
@@ -300,7 +309,14 @@ impl Program {
                 continue;
             };
             let mut unknown = Vec::new();
-            let sols = solve_from(&rule.body, &closure.facts, &self.kinds, state, &mut unknown, seed);
+            let sols = solve_from(
+                &rule.body,
+                &closure.facts,
+                &self.kinds,
+                state,
+                &mut unknown,
+                seed,
+            );
             let Some(b) = sols.into_iter().find(|b| {
                 positive_atoms(&rule.body)
                     .filter_map(|a| ground_atom(a, b).map(|args| (a.rel.clone(), args)))
@@ -452,7 +468,11 @@ impl Program {
                     negated: false,
                 } if reached(i) => {
                     let args = ground_atom(atom, &b).unwrap_or_default();
-                    Premise::Holds(Box::new(self.prove(closure, &(atom.rel.clone(), args), state)))
+                    Premise::Holds(Box::new(self.prove(
+                        closure,
+                        &(atom.rel.clone(), args),
+                        state,
+                    )))
                 }
                 // Filters are judged only once the join completed.
                 other if failed_at.is_some() => Premise::Unreached(render_test(other, &b)),
@@ -479,7 +499,14 @@ impl Program {
                 }
                 other => Premise::Test {
                     text: render_test(other, &b),
-                    holds: test_holds(other, &b, &closure.facts, &self.kinds, state, &mut Vec::new()),
+                    holds: test_holds(
+                        other,
+                        &b,
+                        &closure.facts,
+                        &self.kinds,
+                        state,
+                        &mut Vec::new(),
+                    ),
                 },
             };
             premises.push(premise);
@@ -530,7 +557,11 @@ fn ir_rule(r: &Json) -> Option<Rule> {
         .and_then(Json::as_array)
         .map(|b| b.iter().filter_map(ir_lit).collect())
         .unwrap_or_default();
-    let raw = r.get("raw").and_then(Json::as_str).unwrap_or("").to_string();
+    let raw = r
+        .get("raw")
+        .and_then(Json::as_str)
+        .unwrap_or("")
+        .to_string();
     Some(Rule { head, body, raw })
 }
 
@@ -547,7 +578,9 @@ fn ir_atom(a: &Json) -> Option<Atom> {
 fn ir_term(t: &Json) -> Option<Term> {
     match t.get("kind").and_then(Json::as_str)? {
         "var" => Some(Term::Var(t.get("name").and_then(Json::as_str)?.to_string())),
-        "const" => Some(Term::Const(t.get("value").and_then(Json::as_str)?.to_string())),
+        "const" => Some(Term::Const(
+            t.get("value").and_then(Json::as_str)?.to_string(),
+        )),
         _ => None,
     }
 }
@@ -692,7 +725,12 @@ fn solve_from(
 
 /// Extend every binding through one positive atom: each matching fact, or —
 /// for an entity kind — each member.
-fn extend(atom: &Atom, bindings: &[Binding], facts: &BTreeSet<Fact>, kinds: &Kinds) -> Vec<Binding> {
+fn extend(
+    atom: &Atom,
+    bindings: &[Binding],
+    facts: &BTreeSet<Fact>,
+    kinds: &Kinds,
+) -> Vec<Binding> {
     let mut next = Vec::new();
     if let Some(members) = kinds.get(&atom.rel) {
         for b in bindings {
@@ -757,7 +795,10 @@ pub fn ir_kinds(entities: Option<&Json>) -> Kinds {
                     let members = e.get("members").and_then(Json::as_array)?;
                     Some((
                         name.to_string(),
-                        members.iter().filter_map(|m| m.as_str().map(str::to_string)).collect(),
+                        members
+                            .iter()
+                            .filter_map(|m| m.as_str().map(str::to_string))
+                            .collect(),
                     ))
                 })
                 .collect()
@@ -881,7 +922,8 @@ fn substitute_vars(cel: &str, binding: &Binding) -> String {
         let in_string = mask.get(i).copied().unwrap_or(false);
         if !in_string && (c.is_ascii_alphabetic() || c == '_') {
             let start = i;
-            while i < bytes.len() && ((bytes[i] as char).is_ascii_alphanumeric() || bytes[i] == b'_')
+            while i < bytes.len()
+                && ((bytes[i] as char).is_ascii_alphanumeric() || bytes[i] == b'_')
             {
                 i += 1;
             }
@@ -924,7 +966,11 @@ fn render_atom(a: &Atom, b: &Binding) -> String {
 fn render_test(lit: &Lit, b: &Binding) -> String {
     match lit {
         Lit::Atom { atom, negated } => {
-            format!("{}{}", if *negated { "not " } else { "" }, render_atom(atom, b))
+            format!(
+                "{}{}",
+                if *negated { "not " } else { "" },
+                render_atom(atom, b)
+            )
         }
         Lit::Cmp { lhs, rhs, negated } => format!(
             "{} {} {}",

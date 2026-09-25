@@ -314,9 +314,7 @@ impl Cx<'_> {
                 continue;
             }
             let mut seen = BTreeSet::new();
-            if let Some(at) =
-                param_attr_use(&self.input.components, component, &a.key, &mut seen)
-            {
+            if let Some(at) = param_attr_use(&self.input.components, component, &a.key, &mut seen) {
                 let mut d = attr_def_dynamic_diag(&a.key, &slot.raw, a.value_span);
                 d.message = format!(
                     "{} (component `{component}` puts `@{}` into attribute `{at}`)",
@@ -349,7 +347,9 @@ fn param_attr_use(
 }
 
 fn reads_param(raw: &str, param: &str) -> bool {
-    scan_refs(raw).iter().any(|r| !r.is_dollar && r.name == param)
+    scan_refs(raw)
+        .iter()
+        .any(|r| !r.is_dollar && r.name == param)
 }
 
 fn body_attr_use(

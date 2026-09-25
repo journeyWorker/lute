@@ -107,7 +107,11 @@ pub fn speaker_display_args(
 /// VALUE-LEVEL (a string arg becomes a plain `Str` attr — what a
 /// string-typed attr position needs); a `@param` inside a larger CEL is
 /// substituted textually ([`bind_slot_raw`]).
-pub fn bind_attrs(attrs: &mut [Attr], args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
+pub fn bind_attrs(
+    attrs: &mut [Attr],
+    args: &BTreeMap<String, AttrValue>,
+    params: &[(String, Type)],
+) {
     for a in attrs {
         let AttrValue::Ref(slot) = &mut a.value else {
             continue;
@@ -391,11 +395,15 @@ fn splice_nodes(nodes: &mut Vec<Node>, components: &ComponentSet, snapshot: &Cap
                 use_writes(d, components, snapshot, &mut Vec::new())
             }
             Node::Branch(b) => {
-                b.choices.iter_mut().for_each(|c| splice_nodes(&mut c.body, components, snapshot));
+                b.choices
+                    .iter_mut()
+                    .for_each(|c| splice_nodes(&mut c.body, components, snapshot));
                 Vec::new()
             }
             Node::Hub(h) => {
-                h.choices.iter_mut().for_each(|c| splice_nodes(&mut c.body, components, snapshot));
+                h.choices
+                    .iter_mut()
+                    .for_each(|c| splice_nodes(&mut c.body, components, snapshot));
                 Vec::new()
             }
             Node::Match(m) => {
@@ -520,7 +528,11 @@ pub fn bind_set_path(path: &mut String, args: &BTreeMap<String, AttrValue>) -> b
 /// Bind every `@param` in the skeleton. An `::assert` / `::retract` whose
 /// param argument is no constant is dropped: the `::use` check reports it
 /// (`E-COMPONENT-ARG`), and an unbound atom would only pile on.
-fn bind_writes(nodes: &mut Vec<Node>, args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
+fn bind_writes(
+    nodes: &mut Vec<Node>,
+    args: &BTreeMap<String, AttrValue>,
+    params: &[(String, Type)],
+) {
     nodes.retain_mut(|node| match node {
         Node::Set(s) => {
             bind_slot_raw(&mut s.expr, args, params);

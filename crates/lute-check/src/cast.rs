@@ -97,8 +97,14 @@ fn staged_attr(tag: &str) -> Option<&'static str> {
 }
 
 fn push_staged<'a>(d: &'a Directive, out: &mut Vec<(&'static str, &'a str, Span)>) {
-    let Some(key) = staged_attr(&d.tag) else { return };
-    let what = if key == "character" { "`::auto{character}`" } else { "`::camera{focus}`" };
+    let Some(key) = staged_attr(&d.tag) else {
+        return;
+    };
+    let what = if key == "character" {
+        "`::auto{character}`"
+    } else {
+        "`::camera{focus}`"
+    };
     for a in d.attrs.iter().filter(|a| a.key == key) {
         if let AttrValue::Str(id) = &a.value {
             out.push((what, id.as_str(), a.value_span));
@@ -137,7 +143,12 @@ fn collect_staged<'a>(nodes: &'a [Node], out: &mut Vec<(&'static str, &'a str, S
     }
 }
 
-pub(crate) fn unknown(what: String, id: &str, span: Span, cast: &BTreeMap<String, CastMember>) -> Diagnostic {
+pub(crate) fn unknown(
+    what: String,
+    id: &str,
+    span: Span,
+    cast: &BTreeMap<String, CastMember>,
+) -> Diagnostic {
     let mut message = format!("{what} is not in the declared cast (dsl 0.23.0 §7)");
     let candidates = cast.keys().map(String::as_str).chain(["narrator"]);
     if let Some(near) = lute_manifest::suggest::nearest(id, candidates, 2) {
@@ -182,7 +193,13 @@ use crate::rel_schema::RelVocab;
 /// guards does not imply that condition.
 pub const W_CAST_ABSENT: &str = "W-CAST-ABSENT";
 
-fn cast_diag(code: &str, severity: Severity, layer: Layer, message: String, span: Span) -> Diagnostic {
+fn cast_diag(
+    code: &str,
+    severity: Severity,
+    layer: Layer,
+    message: String,
+    span: Span,
+) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
         severity,
@@ -240,7 +257,9 @@ pub(crate) fn validate_member(
             member.present = None;
         }
     }
-    if let (Some(emotions), Some(dom)) = (&member.emotions, domains.get("emotion").filter(|d| !d.open)) {
+    if let (Some(emotions), Some(dom)) =
+        (&member.emotions, domains.get("emotion").filter(|d| !d.open))
+    {
         for e in emotions.iter().filter(|e| !dom.members.contains(e)) {
             out.push(cast_diag(
                 "E-BAD-ENUM",
@@ -298,10 +317,13 @@ fn visit<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
 }
 
 fn literal_attr<'a>(attrs: &'a [lute_syntax::ast::Attr], key: &str) -> Option<(&'a str, Span)> {
-    attrs.iter().find(|a| a.key == key).and_then(|a| match &a.value {
-        AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
-        _ => None,
-    })
+    attrs
+        .iter()
+        .find(|a| a.key == key)
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
+            _ => None,
+        })
 }
 
 /// dsl 0.24.0 §4: `E-BAD-ENUM` for an `emotion=` outside the declared
@@ -326,7 +348,9 @@ pub fn check_emotions(
         let Some((value, span)) = literal_attr(attrs, "emotion") else {
             return;
         };
-        if allowed.iter().any(|e| e == value) || closed.is_some_and(|d| !d.members.iter().any(|m| m == value)) {
+        if allowed.iter().any(|e| e == value)
+            || closed.is_some_and(|d| !d.members.iter().any(|m| m == value))
+        {
             return;
         }
         out.push(cast_diag(
@@ -443,7 +467,10 @@ pub fn check_presence(
     for (rel, decl) in &folded.env.rel_vocab.relations {
         if decl.reserved {
             for occasion in &decl.changed_on {
-                changed_on.entry(occasion.clone()).or_default().insert(rel.clone());
+                changed_on
+                    .entry(occasion.clone())
+                    .or_default()
+                    .insert(rel.clone());
             }
         }
     }
@@ -475,8 +502,14 @@ pub fn check_presence(
     // The occasions unit `key` follows: its own (`on`), and — `check-project`
     // — every one a scenario-graph ancestor is presented on.
     let after = |key: usize, own: Option<&str>| -> Vec<String> {
-        let graph = project.and_then(|p| p.after.get(&key)).into_iter().flatten();
-        own.into_iter().map(str::to_string).chain(graph.cloned()).collect()
+        let graph = project
+            .and_then(|p| p.after.get(&key))
+            .into_iter()
+            .flatten();
+        own.into_iter()
+            .map(str::to_string)
+            .chain(graph.cloned())
+            .collect()
     };
 
     let scene_ladder = match &folded.typed.beat {
@@ -484,7 +517,14 @@ pub fn check_presence(
         None => &[],
     };
     let scene_when = w.slot_cond(folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()));
-    let scene_absent = w.absent_facts(0, folded.typed.beat.as_ref().map_or(BeatOnce::None, |b| b.once));
+    let scene_absent = w.absent_facts(
+        0,
+        folded
+            .typed
+            .beat
+            .as_ref()
+            .map_or(BeatOnce::None, |b| b.once),
+    );
     let scene_after = after(0, folded.typed.beat.as_ref().map(|b| b.on.as_str()));
     w.unit(
         scene_when.into_iter().collect(),
@@ -498,17 +538,29 @@ pub fn check_presence(
         if let Some((start, _)) = w.slot_cond(quest.start.as_ref()) {
             let mut cs = Vec::new();
             conjuncts(&start, &mut cs);
-            conds.extend(cs.into_iter().filter_map(|c| stable_text(&c).map(|t| (c, t))));
+            conds.extend(
+                cs.into_iter()
+                    .filter_map(|c| stable_text(&c).map(|t| (c, t))),
+            );
         }
         w.quest = (!quest.id.is_empty()).then(|| quest.id.clone());
         let quest_after = after(quest.span.byte_start, None);
-        w.unit(conds, &[], Vec::new(), &quest_after, std::iter::once(&quest.body[..]));
+        w.unit(
+            conds,
+            &[],
+            Vec::new(),
+            &quest_after,
+            std::iter::once(&quest.body[..]),
+        );
         w.quest = None;
     }
     for entry in &doc.entries {
         let mut conds: Vec<(Expr, String)> = w.slot_cond(entry.when.as_ref()).into_iter().collect();
         if !entry.id.is_empty() {
-            conds.extend(w.parse(&format!("entry.{0}.everRead && entry.{0}.read", entry.id), None));
+            conds.extend(w.parse(
+                &format!("entry.{0}.everRead && entry.{0}.read", entry.id),
+                None,
+            ));
         }
         let ladder = entry.on.as_ref().map_or(&[][..], |(_, s)| ladder_at(*s));
         let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
@@ -517,15 +569,33 @@ pub fn check_presence(
             _ => BeatOnce::None,
         };
         let absent = w.absent_facts(entry.span.byte_start, once);
-        let entry_after = after(entry.span.byte_start, entry.on.as_ref().map(|(o, _)| o.as_str()));
-        w.unit(conds, ladder, absent, &entry_after, std::iter::once(&entry.body[..]));
+        let entry_after = after(
+            entry.span.byte_start,
+            entry.on.as_ref().map(|(o, _)| o.as_str()),
+        );
+        w.unit(
+            conds,
+            ladder,
+            absent,
+            &entry_after,
+            std::iter::once(&entry.body[..]),
+        );
     }
     for beat in &doc.beats {
         let conds = w.slot_cond(beat.when.as_ref()).into_iter().collect();
         let ladder = beat.on.as_ref().map_or(&[][..], |(_, s)| ladder_at(*s));
         let absent = w.absent_facts(beat.span.byte_start, crate::bundles::bundle_beat_once(beat));
-        let beat_after = after(beat.span.byte_start, beat.on.as_ref().map(|(o, _)| o.as_str()));
-        w.unit(conds, ladder, absent, &beat_after, std::iter::once(&beat.body[..]));
+        let beat_after = after(
+            beat.span.byte_start,
+            beat.on.as_ref().map(|(o, _)| o.as_str()),
+        );
+        w.unit(
+            conds,
+            ladder,
+            absent,
+            &beat_after,
+            std::iter::once(&beat.body[..]),
+        );
     }
     w.out
 }
@@ -573,8 +643,16 @@ pub fn occasions_before(
         let i = docs.iter().position(|(p, _)| *p == info.path)?;
         let doc = &docs[i].1;
         match id {
-            NodeId::Scene(_) => Some((i, 0, foldeds.get(i)?.typed.beat.as_ref().map(|b| b.on.as_str()))),
-            NodeId::Quest(q) => doc.quests.iter().find(|x| x.id == *q).map(|x| (i, x.span.byte_start, None)),
+            NodeId::Scene(_) => Some((
+                i,
+                0,
+                foldeds.get(i)?.typed.beat.as_ref().map(|b| b.on.as_str()),
+            )),
+            NodeId::Quest(q) => doc
+                .quests
+                .iter()
+                .find(|x| x.id == *q)
+                .map(|x| (i, x.span.byte_start, None)),
             NodeId::Beat(key) => {
                 let doc_id = crate::connectivity::bundle_id(doc)?;
                 doc.beats
@@ -592,12 +670,18 @@ pub fn occasions_before(
     let orders = |from: &NodeId, to: &NodeId| {
         graph.edge_kinds_for(from, to).is_some_and(|ks| {
             ks.iter().any(|k| {
-                matches!(k, EdgeKind::Visited | EdgeKind::Completed | EdgeKind::Active | EdgeKind::Start)
+                matches!(
+                    k,
+                    EdgeKind::Visited | EdgeKind::Completed | EdgeKind::Active | EdgeKind::Start
+                )
             })
         })
     };
     for id in graph.nodes.keys() {
-        let Some(occasion) = unit_of(id).and_then(|(_, _, on)| on).filter(|o| named.contains(o)) else {
+        let Some(occasion) = unit_of(id)
+            .and_then(|(_, _, on)| on)
+            .filter(|o| named.contains(o))
+        else {
             continue;
         };
         let mut seen = BTreeSet::new();
@@ -629,24 +713,45 @@ pub fn occasions_before(
 #[derive(Default)]
 pub struct FactProducers(BTreeMap<String, Vec<(std::path::PathBuf, usize, Vec<Option<String>>)>>);
 
-/// The [`FactProducers`] of `docs` (one resolved root; component documents
-/// included, their sites counting as a unit of their own).
+/// The [`FactProducers`] of `docs` (one resolved root). A component
+/// document's own sites are not producers: its writes happen where a `::use`
+/// performs them, bound — the host documents carry them spliced
+/// ([`crate::component_effects::splice_component_effects`]) — so an unused
+/// component produces nothing and a used one only its bound arguments.
 pub fn fact_producers(docs: &[(std::path::PathBuf, Document)]) -> FactProducers {
     let mut out = FactProducers::default();
     for (path, doc) in docs {
+        if crate::meta::infer_meta_kind_from_shape(&doc.meta, true)
+            == Some(crate::meta::MetaKind::Component)
+        {
+            continue;
+        }
         let units = std::iter::once((0, doc.shots.iter().map(|s| &s.body[..]).collect::<Vec<_>>()))
-            .chain(doc.quests.iter().map(|q| (q.span.byte_start, vec![&q.body[..]])))
-            .chain(doc.entries.iter().map(|e| (e.span.byte_start, vec![&e.body[..]])))
-            .chain(doc.beats.iter().map(|b| (b.span.byte_start, vec![&b.body[..]])));
+            .chain(
+                doc.quests
+                    .iter()
+                    .map(|q| (q.span.byte_start, vec![&q.body[..]])),
+            )
+            .chain(
+                doc.entries
+                    .iter()
+                    .map(|e| (e.span.byte_start, vec![&e.body[..]])),
+            )
+            .chain(
+                doc.beats
+                    .iter()
+                    .map(|b| (b.span.byte_start, vec![&b.body[..]])),
+            );
         for (key, bodies) in units {
             for body in bodies {
                 visit(body, &mut |node| {
                     if let Node::Assert(a) = node {
                         if !a.pattern.relation.is_empty() {
-                            out.0
-                                .entry(a.pattern.relation.clone())
-                                .or_default()
-                                .push((path.clone(), key, pattern_args(&a.pattern)));
+                            out.0.entry(a.pattern.relation.clone()).or_default().push((
+                                path.clone(),
+                                key,
+                                pattern_args(&a.pattern),
+                            ));
                         }
                     }
                 });
@@ -662,7 +767,9 @@ fn pattern_args(pattern: &FactPattern) -> Vec<Option<String>> {
         .args
         .iter()
         .map(|a| match &a.term {
-            FactTerm::Ident(s) if s.starts_with(|c: char| c.is_ascii_alphabetic()) => Some(s.clone()),
+            FactTerm::Ident(s) if s.starts_with(|c: char| c.is_ascii_alphabetic()) => {
+                Some(s.clone())
+            }
             FactTerm::Bool(b) => Some(b.to_string()),
             _ => None,
         })
@@ -671,7 +778,10 @@ fn pattern_args(pattern: &FactPattern) -> Vec<Option<String>> {
 
 /// Two argument lists that may name the same fact.
 fn unifiable(a: &[Option<String>], b: &[Option<String>]) -> bool {
-    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.is_none() || y.is_none() || x == y)
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(x, y)| x.is_none() || y.is_none() || x == y)
 }
 
 /// dsl 0.24.0 §4, `check-project`: re-decide one document's per-file
@@ -710,7 +820,11 @@ pub fn reconcile_presence(
             None => false,
         }
     });
-    still.retain(|s| !diags.iter().any(|d| d.code == W_CAST_ABSENT && at(d) == at(s)));
+    still.retain(|s| {
+        !diags
+            .iter()
+            .any(|d| d.code == W_CAST_ABSENT && at(d) == at(s))
+    });
     still
 }
 
@@ -739,7 +853,9 @@ fn stable_text(e: &Expr) -> Option<String> {
 fn select_text(e: &Expr) -> Option<String> {
     match e {
         Expr::Ident(root) => Some(root.clone()),
-        Expr::Select(sel) if !sel.test => Some(format!("{}.{}", select_text(&sel.operand.expr)?, sel.field)),
+        Expr::Select(sel) if !sel.test => {
+            Some(format!("{}.{}", select_text(&sel.operand.expr)?, sel.field))
+        }
         _ => None,
     }
 }
@@ -763,7 +879,10 @@ fn read_paths(e: &Expr, out: &mut Vec<String>) -> bool {
             }
             ok
         }
-        Expr::List(l) => l.elements.iter().fold(true, |ok, x| read_paths(&x.expr, out) && ok),
+        Expr::List(l) => l
+            .elements
+            .iter()
+            .fold(true, |ok, x| read_paths(&x.expr, out) && ok),
         Expr::Ident(_) | Expr::Literal(_) => true,
         _ => false,
     }
@@ -812,7 +931,11 @@ impl Effect {
         self.rel == other.rel
             && self.up == other.up
             && self.args.len() == other.args.len()
-            && self.args.iter().zip(&other.args).all(|(a, b)| a.is_none() || a == b)
+            && self
+                .args
+                .iter()
+                .zip(&other.args)
+                .all(|(a, b)| a.is_none() || a == b)
     }
 }
 
@@ -855,7 +978,11 @@ fn fact_atoms(e: &Expr, pol: Pol, out: &mut Vec<Atom>) {
                         out.push(Atom {
                             rel: atom.func_name.clone(),
                             args: atom_args(atom),
-                            pol: if c.func_name == "holds" { pol } else { Pol::Both },
+                            pol: if c.func_name == "holds" {
+                                pol
+                            } else {
+                                Pol::Both
+                            },
                         });
                     }
                 }
@@ -994,7 +1121,10 @@ fn affected(effects: &[Effect], g: &Guard) -> bool {
             }
             named = true;
             a.args.len() == e.args.len()
-                && a.args.iter().zip(&e.args).all(|(x, y)| x.is_none() || y.is_none() || x == y)
+                && a.args
+                    .iter()
+                    .zip(&e.args)
+                    .all(|(x, y)| x.is_none() || y.is_none() || x == y)
                 && match a.pol {
                     Pol::Both => true,
                     Pol::Pos => !e.up,
@@ -1030,11 +1160,15 @@ fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -> Option<De
     let seeded = vocab.facts.iter().any(|f| {
         f.fact.relation == rel
             && f.fact.args.len() == args.len()
-            && f.fact.args.iter().zip(args).all(|(a, k)| match (&a.term, k) {
-                (FactTerm::Ident(i), Some(k)) => i == k,
-                (FactTerm::Bool(b), Some(k)) => b.to_string() == *k,
-                _ => true,
-            })
+            && f.fact
+                .args
+                .iter()
+                .zip(args)
+                .all(|(a, k)| match (&a.term, k) {
+                    (FactTerm::Ident(i), Some(k)) => i == k,
+                    (FactTerm::Bool(b), Some(k)) => b.to_string() == *k,
+                    _ => true,
+                })
     });
     if seeded {
         return None;
@@ -1085,8 +1219,13 @@ fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -> Option<De
                     let neg = matches!(lit, BodyLiteral::Neg(_));
                     if !vocab.relations.contains_key(&a.relation) {
                         // An entity-kind premise: static membership.
-                        let member = match (a.terms.as_slice(), vocab.kinds.get(&a.relation).map(|k| &k.shape)) {
-                            ([t], Some(KindShape::Members(ms))) => value(t).map(|v| ms.contains(&v)),
+                        let member = match (
+                            a.terms.as_slice(),
+                            vocab.kinds.get(&a.relation).map(|k| &k.shape),
+                        ) {
+                            ([t], Some(KindShape::Members(ms))) => {
+                                value(t).map(|v| ms.contains(&v))
+                            }
                             _ => None,
                         };
                         match member {
@@ -1134,7 +1273,9 @@ fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -> Option<De
                         conj.push(format!("({cel})"));
                     }
                 }
-                BodyLiteral::Cmp { lhs, rhs, negated, .. } => match (value(lhs), value(rhs)) {
+                BodyLiteral::Cmp {
+                    lhs, rhs, negated, ..
+                } => match (value(lhs), value(rhs)) {
                     (Some(l), Some(r)) => {
                         if (l == r) == *negated {
                             dead = true;
@@ -1182,7 +1323,9 @@ fn dnf(e: &Expr, neg: bool) -> Option<Vec<Vec<Expr>>> {
                         }
                         return Some(
                             l.iter()
-                                .flat_map(|x| r.iter().map(move |y| x.iter().chain(y).cloned().collect()))
+                                .flat_map(|x| {
+                                    r.iter().map(move |y| x.iter().chain(y).cloned().collect())
+                                })
                                 .collect(),
                         );
                     }
@@ -1198,16 +1341,26 @@ fn dnf(e: &Expr, neg: bool) -> Option<Vec<Vec<Expr>>> {
         }
     }
     if let Expr::Literal(Val::Boolean(b)) = e {
-        return Some(if *b != neg { vec![Vec::new()] } else { Vec::new() });
+        return Some(if *b != neg {
+            vec![Vec::new()]
+        } else {
+            Vec::new()
+        });
     }
-    let lit = if neg { call(op::LOGICAL_NOT, vec![e.clone()]) } else { e.clone() };
+    let lit = if neg {
+        call(op::LOGICAL_NOT, vec![e.clone()])
+    } else {
+        e.clone()
+    };
     Some(vec![vec![lit]])
 }
 
 /// `a && (b && (…))`.
 fn conjoin(items: &[Expr]) -> Option<Expr> {
     let (last, rest) = items.split_last()?;
-    Some(rest.iter().rev().fold(last.clone(), |acc, x| call(op::LOGICAL_AND, vec![x.clone(), acc])))
+    Some(rest.iter().rev().fold(last.clone(), |acc, x| {
+        call(op::LOGICAL_AND, vec![x.clone(), acc])
+    }))
 }
 
 /// `e` provably false: decided `false` whole, or every disjunct of its
@@ -1216,7 +1369,9 @@ fn refuted(e: &Expr, ctx: &DecideCtx<'_>) -> bool {
     if decide(e, ctx) == Some(Decided::Bool(false)) {
         return true;
     }
-    let Some(terms) = dnf(e, false) else { return false };
+    let Some(terms) = dnf(e, false) else {
+        return false;
+    };
     terms
         .iter()
         .all(|t| conjoin(t).is_some_and(|c| decide(&c, ctx) == Some(Decided::Bool(false))))
@@ -1282,7 +1437,10 @@ fn call(name: &str, args: Vec<Expr>) -> Expr {
     Expr::Call(CallExpr {
         func_name: name.to_string(),
         target: None,
-        args: args.into_iter().map(|expr| IdedExpr { id: 0, expr }).collect(),
+        args: args
+            .into_iter()
+            .map(|expr| IdedExpr { id: 0, expr })
+            .collect(),
     })
 }
 
@@ -1304,7 +1462,9 @@ fn is_condition(raw: &str, s: &str, path: Option<&str>) -> Option<String> {
             IsLiteral::Str(v) => format!("{s} == '{v}'"),
             IsLiteral::Num(n) => format!("{s} == {}", num_text(n)),
             IsLiteral::Range(r) => match (r.lo, r.hi) {
-                (Some(lo), Some(hi)) => format!("{s} >= {} && {s} <= {}", num_text(lo), num_text(hi)),
+                (Some(lo), Some(hi)) => {
+                    format!("{s} >= {} && {s} <= {}", num_text(lo), num_text(hi))
+                }
                 (Some(lo), None) => format!("{s} >= {}", num_text(lo)),
                 (None, Some(hi)) => format!("{s} <= {}", num_text(hi)),
                 (None, None) => return None,
@@ -1355,7 +1515,9 @@ impl Presence<'_> {
             return e.clone();
         }
         match (c.func_name.as_str(), c.args.as_slice()) {
-            (n, [a]) if n == op::LOGICAL_NOT => call(n, vec![self.expand(&a.expr, pol.flip(), side, depth, cels)]),
+            (n, [a]) if n == op::LOGICAL_NOT => {
+                call(n, vec![self.expand(&a.expr, pol.flip(), side, depth, cels)])
+            }
             (n, [a, b]) if n == op::LOGICAL_AND || n == op::LOGICAL_OR => call(
                 n,
                 vec![
@@ -1364,14 +1526,19 @@ impl Presence<'_> {
                 ],
             ),
             ("holds", [a]) => {
-                let Expr::Call(atom) = &a.expr else { return e.clone() };
+                let Expr::Call(atom) = &a.expr else {
+                    return e.clone();
+                };
                 if atom.target.is_some() {
                     return e.clone();
                 }
                 let vocab = &self.folded.env.rel_vocab;
                 if side == (Side::Present { assume: true })
                     && pol == Pol::Neg
-                    && vocab.relations.get(&atom.func_name).is_some_and(|d| d.reserved)
+                    && vocab
+                        .relations
+                        .get(&atom.func_name)
+                        .is_some_and(|d| d.reserved)
                     && !self.changed.contains(&atom.func_name)
                 {
                     return Expr::Literal(Val::Boolean(false));
@@ -1441,7 +1608,8 @@ impl Presence<'_> {
     /// its own assumptions and the ladder's; `absent` ([`Self::absent_facts`])
     /// holds at its start, as path state the body's writes may end. `after`
     /// are the occasions the unit follows (dsl 0.25.0 §6): the relations they
-    /// change are no longer assumed unchanged.
+    /// change are no longer assumed unchanged — nor are those its own
+    /// assumptions require a fact of ([`Self::required`]).
     fn unit<'n>(
         &mut self,
         conds: Vec<(Expr, String)>,
@@ -1456,6 +1624,8 @@ impl Presence<'_> {
             self.follow(occasion);
         }
         for c in conds {
+            let required = self.required(&c.0, EXPAND_DEPTH);
+            self.changed.extend(required);
             self.push(Some(c));
         }
         for l in ladder {
@@ -1482,10 +1652,131 @@ impl Presence<'_> {
         before
     }
 
+    /// dsl 0.25.0 §6: the `changedOn` relations `e` cannot hold without a
+    /// fact of — a positive `holds(R(…))`, a `count(R(…))` compared to be at
+    /// least one, or a derived relation every rule of which needs one, joined
+    /// through `&&` (either side) and `||` (both sides). Such a fact is the
+    /// engine's, written on one of R's occasions, so code guarded by `e` runs
+    /// after that occasion and `assume: true` no longer covers R there.
+    fn required(&self, e: &Expr, depth: u8) -> BTreeSet<String> {
+        let Expr::Call(c) = e else {
+            return BTreeSet::new();
+        };
+        if c.target.is_some() {
+            return BTreeSet::new();
+        }
+        let atom_rel = |x: &Expr| match x {
+            Expr::Call(f)
+                if f.target.is_none()
+                    && matches!(f.func_name.as_str(), "count" | "countDistinct") =>
+            {
+                match f.args.as_slice() {
+                    [a] => match &a.expr {
+                        Expr::Call(atom) if atom.target.is_none() => Some(atom.func_name.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        let num = |x: &Expr| match x {
+            Expr::Literal(Val::Int(i)) => Some(*i as f64),
+            Expr::Literal(Val::UInt(u)) => Some(*u as f64),
+            Expr::Literal(Val::Double(d)) => Some(*d),
+            _ => None,
+        };
+        let n = c.func_name.as_str();
+        match c.args.as_slice() {
+            [a, b] if n == op::LOGICAL_AND => {
+                let mut out = self.required(&a.expr, depth);
+                out.extend(self.required(&b.expr, depth));
+                out
+            }
+            [a, b] if n == op::LOGICAL_OR => {
+                let left = self.required(&a.expr, depth);
+                let right = self.required(&b.expr, depth);
+                left.intersection(&right).cloned().collect()
+            }
+            [a] if n == "holds" => match &a.expr {
+                Expr::Call(atom) if atom.target.is_none() => {
+                    self.required_rel(&atom.func_name, depth)
+                }
+                _ => BTreeSet::new(),
+            },
+            [a, b] => {
+                // `count(R) >= k` (k ≥ 1), `> k` (k ≥ 0), `== k` (k ≥ 1), either way round.
+                let (rel, k, cmp) = match (
+                    atom_rel(&a.expr),
+                    num(&b.expr),
+                    atom_rel(&b.expr),
+                    num(&a.expr),
+                ) {
+                    (Some(r), Some(k), _, _) => (r, k, n.to_string()),
+                    (_, _, Some(r), Some(k)) => {
+                        let flipped = if n == op::LESS_EQUALS {
+                            op::GREATER_EQUALS
+                        } else if n == op::LESS {
+                            op::GREATER
+                        } else {
+                            n
+                        };
+                        (r, k, flipped.to_string())
+                    }
+                    _ => return BTreeSet::new(),
+                };
+                let at_least_one = (cmp == op::GREATER_EQUALS && k >= 1.0)
+                    || (cmp == op::GREATER && k >= 0.0)
+                    || (cmp == op::EQUALS && k >= 1.0);
+                if at_least_one {
+                    self.required_rel(&rel, depth)
+                } else {
+                    BTreeSet::new()
+                }
+            }
+            _ => BTreeSet::new(),
+        }
+    }
+
+    /// [`Self::required`] for one relation's fact: the relation itself when
+    /// some occasion changes it; for a derived relation without seed facts,
+    /// what every one of its rules' positive premises requires.
+    fn required_rel(&self, rel: &str, depth: u8) -> BTreeSet<String> {
+        if self.changed_on.values().any(|rels| rels.contains(rel)) {
+            return BTreeSet::from([rel.to_string()]);
+        }
+        let vocab = &self.folded.env.rel_vocab;
+        let derived = vocab
+            .relations
+            .get(rel)
+            .is_some_and(|d| d.derive && !d.reserved);
+        if depth == 0
+            || !derived
+            || vocab.unparsed_heads.contains(rel)
+            || vocab.facts.iter().any(|f| f.fact.relation == rel)
+        {
+            return BTreeSet::new();
+        }
+        let mut out: Option<BTreeSet<String>> = None;
+        for r in vocab.rules.iter().filter(|r| r.rule.head.relation == rel) {
+            let mut needs = BTreeSet::new();
+            for lit in &r.rule.body {
+                if let BodyLiteral::Pos(a) = lit {
+                    needs.extend(self.required_rel(&a.relation, depth - 1));
+                }
+            }
+            out = Some(match out {
+                None => needs,
+                Some(acc) => acc.intersection(&needs).cloned().collect(),
+            });
+        }
+        out.unwrap_or_default()
+    }
+
     /// `check-project`: the facts known absent when unit `key` of this
     /// document starts, as `!holds(F)` — every ground `F` the unit itself
     /// asserts that no other unit of the root can assert (no unifiable site
-    /// elsewhere, component documents included), no seed names, and that
+    /// elsewhere, a `::use` site's bound component writes included), no seed names, and that
     /// cannot survive from an earlier presentation of the unit: a `tier:
     /// run` relation in a unit presented at most once per run (`once: run`
     /// or `user`), a `tier: user`/`app` one in a `once: user` unit. Derived
@@ -1497,7 +1788,9 @@ impl Presence<'_> {
         let vocab = &self.folded.env.rel_vocab;
         let mut out = BTreeSet::new();
         for (rel, sites) in &producers.0 {
-            let Some(decl) = vocab.relations.get(rel) else { continue };
+            let Some(decl) = vocab.relations.get(rel) else {
+                continue;
+            };
             if decl.derive || decl.reserved {
                 continue;
             }
@@ -1514,10 +1807,13 @@ impl Presence<'_> {
                 let Some(ground) = args.iter().cloned().collect::<Option<Vec<String>>>() else {
                     continue;
                 };
-                let elsewhere = sites.iter().any(|(p, k, a)| !here(p, *k) && unifiable(a, args));
-                let seeded = vocab.facts.iter().any(|f| {
-                    f.fact.relation == *rel && unifiable(&pattern_args(&f.fact), args)
-                });
+                let elsewhere = sites
+                    .iter()
+                    .any(|(p, k, a)| !here(p, *k) && unifiable(a, args));
+                let seeded = vocab
+                    .facts
+                    .iter()
+                    .any(|f| f.fact.relation == *rel && unifiable(&pattern_args(&f.fact), args));
                 if !elsewhere && !seeded {
                     out.insert(format!("!holds({rel}({}))", ground.join(", ")));
                 }
@@ -1531,11 +1827,15 @@ impl Presence<'_> {
     /// guards: the region runs before what follows it.
     fn region(&mut self, conds: Vec<(Expr, String)>, body: &[Node]) {
         let depth = self.guards.len();
+        let before = self.changed.clone();
         for c in conds {
+            let required = self.required(&c.0, EXPAND_DEPTH);
+            self.changed.extend(required);
             self.push(Some(c));
         }
         self.walk(body);
         self.guards.truncate(depth);
+        self.changed = before;
     }
 
     /// Alternative paths (a branch's choices, a match's arms): each starts
@@ -1561,7 +1861,13 @@ impl Presence<'_> {
     fn choice_conds(&self, choices: &[lute_syntax::ast::Choice]) -> Vec<Vec<(Expr, String)>> {
         choices
             .iter()
-            .map(|c| c.when.as_ref().and_then(|w| self.parse(&w.raw, None)).into_iter().collect())
+            .map(|c| {
+                c.when
+                    .as_ref()
+                    .and_then(|w| self.parse(&w.raw, None))
+                    .into_iter()
+                    .collect()
+            })
             .collect()
     }
 
@@ -1588,7 +1894,12 @@ impl Presence<'_> {
                 Node::Retract(r) => self.kill_fact(&r.pattern, false),
                 Node::Branch(b) => {
                     let conds = self.choice_conds(&b.choices);
-                    self.fork(conds.into_iter().zip(b.choices.iter().map(|c| &c.body[..])).collect());
+                    self.fork(
+                        conds
+                            .into_iter()
+                            .zip(b.choices.iter().map(|c| &c.body[..]))
+                            .collect(),
+                    );
                 }
                 Node::Hub(h) => {
                     // A hub body runs again and again: whatever one round
@@ -1597,7 +1908,12 @@ impl Presence<'_> {
                         self.kill_writes(&c.body);
                     }
                     let conds = self.choice_conds(&h.choices);
-                    self.fork(conds.into_iter().zip(h.choices.iter().map(|c| &c.body[..])).collect());
+                    self.fork(
+                        conds
+                            .into_iter()
+                            .zip(h.choices.iter().map(|c| &c.body[..]))
+                            .collect(),
+                    );
                 }
                 Node::Match(m) => self.match_arms(m),
                 Node::On(o) => {
@@ -1652,7 +1968,12 @@ impl Presence<'_> {
             let mut conds: Vec<(Expr, String)> = earlier
                 .iter()
                 .flatten()
-                .map(|(expr, text)| (call(op::LOGICAL_NOT, vec![expr.clone()]), format!("!({text})")))
+                .map(|(expr, text)| {
+                    (
+                        call(op::LOGICAL_NOT, vec![expr.clone()]),
+                        format!("!({text})"),
+                    )
+                })
                 .collect();
             let own = match arm {
                 Arm::When { is, test, .. } => {
@@ -1662,7 +1983,9 @@ impl Presence<'_> {
                     };
                     let test = (!test.raw.trim().is_empty()).then(|| test.raw.as_str());
                     match (is, test) {
-                        (Some(Some(is)), Some(t)) => self.parse(&format!("({is}) && ({t})"), Some(&subject)),
+                        (Some(Some(is)), Some(t)) => {
+                            self.parse(&format!("({is}) && ({t})"), Some(&subject))
+                        }
                         (Some(Some(is)), None) => self.parse(&is, Some(&subject)),
                         (Some(None), Some(t)) => self.parse(t, Some(&subject)),
                         // No pattern at all, or one that does not classify.
@@ -1693,7 +2016,9 @@ impl Presence<'_> {
     /// in, or a field under it stops counting.
     fn kill_path(&mut self, path: &str) {
         let segments: Vec<&str> = path.split('.').collect();
-        let prefixes: Vec<String> = (2..=segments.len()).map(|n| segments[..n].join(".")).collect();
+        let prefixes: Vec<String> = (2..=segments.len())
+            .map(|n| segments[..n].join("."))
+            .collect();
         for g in &mut self.guards {
             if g.text.contains(path) || prefixes.iter().any(|p| g.text.contains(p.as_str())) {
                 g.live = false;
@@ -1761,7 +2086,11 @@ impl Presence<'_> {
             }
         };
         let assume = self.folded.cast.get(speaker)?.assume == Some(true);
-        let changed = if assume { self.changed.clone() } else { BTreeSet::new() };
+        let changed = if assume {
+            self.changed.clone()
+        } else {
+            BTreeSet::new()
+        };
         let key = (speaker.to_string(), changed);
         if let Some(read) = self.reads.get(&key) {
             return Some(read.clone());
@@ -1847,17 +2176,35 @@ impl Presence<'_> {
             column: 0,
             utf16_range: (0, 0),
         };
+        let own = l.when.as_ref().and_then(|w| self.parse(&w.raw, None));
+        // dsl 0.25.0 §6: a line whose own guard needs a `changedOn` fact runs
+        // after the occasion that writes it.
+        let before = self.changed.clone();
+        if let Some((e, _)) = &own {
+            let required = self.required(e, EXPAND_DEPTH);
+            self.changed.extend(required);
+        }
+        self.decide_line(l, span, own);
+        self.changed = before;
+    }
+
+    /// [`Self::line`] once its own `when` is parsed (and [`Self::changed`]
+    /// includes what it requires).
+    fn decide_line(&mut self, l: &Line, span: Span, own: Option<(Expr, String)>) {
         let Some(present) = self.present_of(&l.speaker, span) else {
             return;
         };
-        let own = l.when.as_ref().and_then(|w| self.parse(&w.raw, None));
-        let own = own.map(|(e, _)| self.expand(&e, Pol::Pos, Side::Guard, EXPAND_DEPTH, &mut Vec::new()));
+        let own =
+            own.map(|(e, _)| self.expand(&e, Pol::Pos, Side::Guard, EXPAND_DEPTH, &mut Vec::new()));
         // The Must slot `fact_must` records for this line.
         let slot = l.when.as_ref().map_or(l.span, |w| w.span);
         if self.implied(&present, own.as_ref(), slot) {
             return;
         }
-        let raw = self.folded.cast[&l.speaker].present.clone().unwrap_or_default();
+        let raw = self.folded.cast[&l.speaker]
+            .present
+            .clone()
+            .unwrap_or_default();
         let mut message = format!(
             "`{who}` may not be here: the cast declares `present: \"{raw}\"` for `{who}`, and the \
              guards around this line do not imply it (dsl 0.24.0 §4). Guard the line — \
@@ -1872,8 +2219,9 @@ impl Presence<'_> {
             self.changed = changed;
             if assumed.is_some_and(|a| self.implied(&a, own.as_ref(), slot)) {
                 message.push_str(&format!(
-                    "; `assume: true` does not cover {}: this line follows an occasion its \
-                     `changedOn:` names (dsl 0.25.0 §6)",
+                    "; `assume: true` does not cover {}: this line runs after an occasion its \
+                     `changedOn:` names — it follows one, or its guards need a fact only one \
+                     writes (dsl 0.25.0 §6)",
                     rels.join(", ")
                 ));
             }
@@ -1884,7 +2232,13 @@ impl Presence<'_> {
                  line; `lute check-project` does)",
             );
         }
-        self.out.push(cast_diag(W_CAST_ABSENT, Severity::Warning, Layer::Logic, message, span));
+        self.out.push(cast_diag(
+            W_CAST_ABSENT,
+            Severity::Warning,
+            Layer::Logic,
+            message,
+            span,
+        ));
     }
 
     /// `true` iff the live guards (and the line's own `when`) imply every
@@ -1915,6 +2269,8 @@ impl Presence<'_> {
             items.push(call(op::LOGICAL_NOT, vec![p.clone()]));
             conjoin(&items).is_some_and(|e| refuted(&e, &ctx))
         };
-        present.iter().all(|(p, read)| refutes(p) || (read != p && refutes(read)))
+        present
+            .iter()
+            .all(|(p, read)| refutes(p) || (read != p && refutes(read)))
     }
 }

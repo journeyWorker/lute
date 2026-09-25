@@ -366,7 +366,10 @@ fn guarded_set_rhs_dollar_is_the_enclosing_subject() {
     let s = sets(&a);
     assert_eq!(s.len(), 1);
     let value = s[0]["value"].as_str().expect("set value");
-    assert!(value.contains("run.k") && !value.contains("run.b"), "{value}");
+    assert!(
+        value.contains("run.k") && !value.contains("run.b"),
+        "{value}"
+    );
     let subjects: Vec<&str> = commands(&a)
         .iter()
         .filter(|c| c["kind"] == "match")

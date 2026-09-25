@@ -81,7 +81,13 @@ fn quest_symbol(quest: &Quest, idx: &TextIndex) -> DocumentSymbol {
     let sel = keyword_range(quest.span.byte_start, "<quest", idx);
     let mut children = Vec::new();
     collect_children(&quest.body, idx, &mut children);
-    symbol(quest.id.clone(), SymbolKind::NAMESPACE, range, sel, children)
+    symbol(
+        quest.id.clone(),
+        SymbolKind::NAMESPACE,
+        range,
+        sel,
+        children,
+    )
 }
 
 /// A lore `<entry>` -> a top-level symbol named by its id (dsl 0.19.0 §3),
@@ -404,7 +410,10 @@ mod tests {
         assert_eq!(names, ["a", "dock", "z"]);
         let beat = &syms[1];
         assert_eq!(beat.kind, SymbolKind::NAMESPACE);
-        assert_eq!(beat.selection_range.start.line, 7, "selects the `<beat` keyword");
+        assert_eq!(
+            beat.selection_range.start.line, 7,
+            "selects the `<beat` keyword"
+        );
         let kids = beat.children.as_ref().expect("the beat has children");
         assert_eq!(kids.len(), 1);
         assert_eq!(kids[0].kind, SymbolKind::ENUM, "the <branch> child");

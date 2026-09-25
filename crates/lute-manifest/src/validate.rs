@@ -391,12 +391,27 @@ pub const SLOT_REQUIRES_DEFAULT: &[&str] = &["anchor"];
 /// one rule set instead of duplicating it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DomainIssue {
-    DefaultNotMember { name: String, value: String },
-    ExitNotMember { name: String, value: String },
-    MissingSemantics { name: String, key: &'static str },
-    UnexpectedSemantics { name: String, key: &'static str },
+    DefaultNotMember {
+        name: String,
+        value: String,
+    },
+    ExitNotMember {
+        name: String,
+        value: String,
+    },
+    MissingSemantics {
+        name: String,
+        key: &'static str,
+    },
+    UnexpectedSemantics {
+        name: String,
+        key: &'static str,
+    },
     /// dsl 0.24.0 §1: a `labels:` key that is not a member.
-    LabelNotMember { name: String, value: String },
+    LabelNotMember {
+        name: String,
+        value: String,
+    },
 }
 
 impl DomainIssue {
@@ -559,7 +574,11 @@ mod tests {
             issues.iter().map(|i| i.code()).collect::<Vec<_>>(),
             ["E-ENUM-LABEL-NOT-MEMBER"]
         );
-        assert!(issues[0].message().contains("`thur`"), "{}", issues[0].message());
+        assert!(
+            issues[0].message().contains("`thur`"),
+            "{}",
+            issues[0].message()
+        );
     }
 
     #[test]

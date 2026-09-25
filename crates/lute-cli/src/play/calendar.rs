@@ -51,10 +51,10 @@ use lute_trace::Value;
 use serde_json::{json, Value as Json};
 
 use super::{
-    advance_quests, compile_project, deciding_unknown, describe_atoms, domain_members,
-    eligible_at, entry_flag, execute, is_candidate, kind_label, parse_script_with, plan_steps,
-    presented, quest_state_id, render_fact, resolve_fact, resolve_state, seed_quest, seed_world,
-    unknown_id, value_to_json, PlayScript, Project, ScriptStep, Verdict, World, QUEST_STATES,
+    advance_quests, compile_project, deciding_unknown, describe_atoms, domain_members, eligible_at,
+    entry_flag, execute, is_candidate, kind_label, parse_script_with, plan_steps, presented,
+    quest_state_id, render_fact, resolve_fact, resolve_state, seed_quest, seed_world, unknown_id,
+    value_to_json, PlayScript, Project, ScriptStep, Verdict, World, QUEST_STATES,
 };
 use crate::runner::{Fact, Runner};
 
@@ -185,7 +185,10 @@ fn resolve_axis(p: &Project, path: &str, values: &[String]) -> Result<Axis, Stri
         return resolve_clock_axis(p, values).map_err(at);
     }
     let unsupported = |why: String| at(format!("{why}; an axis is one of: {AXIS_KINDS}"));
-    let apply = if let Some(inner) = path.strip_prefix("holds(").and_then(|s| s.strip_suffix(')')) {
+    let apply = if let Some(inner) = path
+        .strip_prefix("holds(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         Apply::Fact(resolve_fact(p, inner).map_err(|e| at(format!("`{inner}` {e}")))?)
     } else if let Some(id) = visited_id(path) {
         if !p.scene_ids.contains(id) {
@@ -214,7 +217,9 @@ fn resolve_axis(p: &Project, path: &str, values: &[String]) -> Result<Axis, Stri
              `quest.<id>.objectives.<oid>.done`"
         )));
     } else if path.contains('(') {
-        return Err(unsupported(format!("`{path}` is no axis the calendar can apply")));
+        return Err(unsupported(format!(
+            "`{path}` is no axis the calendar can apply"
+        )));
     } else {
         let declared = match path.strip_prefix("prev.") {
             Some(run) if run.starts_with("run.") => run,
@@ -224,9 +229,10 @@ fn resolve_axis(p: &Project, path: &str, values: &[String]) -> Result<Axis, Stri
             && entry_flag(path).is_none()
             && !p.state_table.contains_key(declared)
         {
-            let hint = lute_manifest::suggest::nearest(path, p.state_table.keys().map(String::as_str), 3)
-                .map(|k| format!(" — did you mean `{k}`?"))
-                .unwrap_or_default();
+            let hint =
+                lute_manifest::suggest::nearest(path, p.state_table.keys().map(String::as_str), 3)
+                    .map(|k| format!(" — did you mean `{k}`?"))
+                    .unwrap_or_default();
             return Err(unsupported(format!(
                 "`{path}` is not a declared state path in this project{hint}"
             )));
@@ -279,15 +285,17 @@ fn resolve_clock_axis(p: &Project, days: &[String]) -> Result<Axis, String> {
         ));
     };
     let days: Vec<i64> = if days.is_empty() {
-        let length = clock.week.as_ref().map_or(1, |w| i64::from(w.length.max(1)));
+        let length = clock
+            .week
+            .as_ref()
+            .map_or(1, |w| i64::from(w.length.max(1)));
         (1..=length).collect()
     } else {
         days.iter()
             .map(|d| {
-                d.parse::<i64>()
-                    .ok()
-                    .filter(|d| *d >= 1)
-                    .ok_or_else(|| format!("`{d}` is not a day — a clock axis takes days ≥ 1 (`clock=1..7`)"))
+                d.parse::<i64>().ok().filter(|d| *d >= 1).ok_or_else(|| {
+                    format!("`{d}` is not a day — a clock axis takes days ≥ 1 (`clock=1..7`)")
+                })
             })
             .collect::<Result<_, _>>()?
     };
@@ -295,9 +303,18 @@ fn resolve_clock_axis(p: &Project, days: &[String]) -> Result<Axis, String> {
     for day in days {
         for slot in 0..clock.slot_count() {
             let at = lute_manifest::clock::ClockAt { day, slot };
-            let label = clock.weekday_label(day).map(|l| format!(" {l}")).unwrap_or_default();
-            let name = clock.slot_name(slot).map(|n| format!(" {n}")).unwrap_or_default();
-            values.push((format!("{day}{label}{name}"), Value::Num(clock.index(at) as f64)));
+            let label = clock
+                .weekday_label(day)
+                .map(|l| format!(" {l}"))
+                .unwrap_or_default();
+            let name = clock
+                .slot_name(slot)
+                .map(|n| format!(" {n}"))
+                .unwrap_or_default();
+            values.push((
+                format!("{day}{label}{name}"),
+                Value::Num(clock.index(at) as f64),
+            ));
         }
     }
     Ok(Axis {
@@ -308,8 +325,13 @@ fn resolve_clock_axis(p: &Project, days: &[String]) -> Result<Axis, String> {
 }
 
 /// The position of a clock axis value (its `clock.index`).
-fn clock_axis_at(clock: &lute_manifest::clock::ClockDecl, value: &Value) -> lute_manifest::clock::ClockAt {
-    let Value::Num(index) = value else { unreachable!("a clock axis value is its index") };
+fn clock_axis_at(
+    clock: &lute_manifest::clock::ClockDecl,
+    value: &Value,
+) -> lute_manifest::clock::ClockAt {
+    let Value::Num(index) = value else {
+        unreachable!("a clock axis value is its index")
+    };
     let len = clock.slot_count() as i64;
     let index = *index as i64;
     lute_manifest::clock::ClockAt {
@@ -356,7 +378,11 @@ fn apply_axis(p: &Project, w: &mut World, axis: &Axis, text: &str, value: &Value
             }
         }
         Apply::Clock => {
-            let clock = p.index.clock.as_ref().expect("a clock axis was resolved against a clock");
+            let clock = p
+                .index
+                .clock
+                .as_ref()
+                .expect("a clock axis was resolved against a clock");
             let at = clock_axis_at(clock, value);
             w.state.insert(clock.day.clone(), Value::Num(at.day as f64));
             if let (Some(path), Some(name)) = (&clock.slot, clock.slot_name(at.slot)) {
@@ -373,13 +399,7 @@ fn settled_away(p: &Project, w: &World, axis: &Axis, text: &str, value: &Value) 
     match &axis.apply {
         Apply::State => {
             let now = w.state.get(&axis.path)?;
-            (now != value).then(|| {
-                format!(
-                    "{} settled to {}",
-                    axis.path,
-                    value_to_json(now)
-                )
-            })
+            (now != value).then(|| format!("{} settled to {}", axis.path, value_to_json(now)))
         }
         Apply::Quest(id) => {
             let now = w.quests.get(id).map_or("unset", String::as_str);
@@ -389,7 +409,8 @@ fn settled_away(p: &Project, w: &World, axis: &Axis, text: &str, value: &Value) 
         Apply::Clock => {
             let clock = p.index.clock.as_ref()?;
             let now = super::clock_at(p, w)?;
-            (now != clock_axis_at(clock, value)).then(|| format!("clock settled to {}", clock.describe(now)))
+            (now != clock_axis_at(clock, value))
+                .then(|| format!("clock settled to {}", clock.describe(now)))
         }
     }
 }
@@ -440,14 +461,22 @@ struct OccasionSpec<'a> {
 
 fn parse_occasion(raw: &str) -> Result<OccasionSpec<'_>, String> {
     let Some((name, list)) = raw.split_once('@') else {
-        return Ok(OccasionSpec { raw, name: raw.trim(), only: None });
+        return Ok(OccasionSpec {
+            raw,
+            name: raw.trim(),
+            only: None,
+        });
     };
     let mut only = Vec::new();
     for item in split_top(list, ',') {
         let (path, value) = match split_top(item, '=').as_slice() {
             [path] => (path.trim(), None),
             [path, value] => (path.trim(), Some(value.trim())),
-            _ => return Err(format!("`--occasion {raw}`: `{item}` has more than one `=`")),
+            _ => {
+                return Err(format!(
+                    "`--occasion {raw}`: `{item}` has more than one `=`"
+                ))
+            }
         };
         if path.is_empty() || value == Some("") {
             return Err(format!(
@@ -456,7 +485,11 @@ fn parse_occasion(raw: &str) -> Result<OccasionSpec<'_>, String> {
         }
         only.push((path, value));
     }
-    Ok(OccasionSpec { raw, name: name.trim(), only: Some(only) })
+    Ok(OccasionSpec {
+        raw,
+        name: name.trim(),
+        only: Some(only),
+    })
 }
 
 /// How a per-occasion column (`--occasion O@…`) treats one axis.
@@ -503,7 +536,9 @@ fn occasion_pins(
                 let slot = path == "clock.slot" || clock.slot.as_deref() == Some(path);
                 if day || slot {
                     if named.contains(&ci) {
-                        return Err(format!("`--occasion {raw}`: `{path}` is part of `clock`, named already"));
+                        return Err(format!(
+                            "`--occasion {raw}`: `{path}` is part of `clock`, named already"
+                        ));
                     }
                     if slot && clock.slot.is_none() {
                         return Err(format!(
@@ -526,27 +561,38 @@ fn occasion_pins(
                 .unwrap_or_default();
             return Err(format!(
                 "`--occasion {raw}`: `{path}` is no `--axis` of this calendar (axes: {}){hint}",
-                if paths.is_empty() { "none".to_string() } else { paths.join(", ") }
+                if paths.is_empty() {
+                    "none".to_string()
+                } else {
+                    paths.join(", ")
+                }
             ));
         };
-        if !named.insert(i) || (Some(i) == clock_axis && (day_part.is_some() || slot_part.is_some())) {
+        if !named.insert(i)
+            || (Some(i) == clock_axis && (day_part.is_some() || slot_part.is_some()))
+        {
             return Err(format!("`--occasion {raw}`: `{path}` is named twice"));
         }
         pins[i] = match value {
             None => Pin::Varies,
-            Some(v) => Pin::At(axes[i].values.iter().position(|(t, _)| t == v).ok_or_else(|| {
-                let vals: Vec<&str> = axes[i].values.iter().map(|(t, _)| t.as_str()).collect();
-                format!(
-                    "`--occasion {raw}`: `{v}` is not a value of `--axis {path}` ({})",
-                    vals.join(", ")
-                )
-            })?),
+            Some(v) => Pin::At(axes[i].values.iter().position(|(t, _)| t == v).ok_or_else(
+                || {
+                    let vals: Vec<&str> = axes[i].values.iter().map(|(t, _)| t.as_str()).collect();
+                    format!(
+                        "`--occasion {raw}`: `{v}` is not a value of `--axis {path}` ({})",
+                        vals.join(", ")
+                    )
+                },
+            )?),
         };
     }
     if let (Some(ci), Some(clock)) = (clock_axis, clock) {
         if day_part.is_some() || slot_part.is_some() {
-            let positions: Vec<lute_manifest::clock::ClockAt> =
-                axes[ci].values.iter().map(|(_, v)| clock_axis_at(clock, v)).collect();
+            let positions: Vec<lute_manifest::clock::ClockAt> = axes[ci]
+                .values
+                .iter()
+                .map(|(_, v)| clock_axis_at(clock, v))
+                .collect();
             let first = positions[0];
             let day = match day_part {
                 None => Some(first.day),
@@ -555,7 +601,9 @@ fn occasion_pins(
                     v.parse::<i64>()
                         .ok()
                         .filter(|d| positions.iter().any(|at| at.day == *d))
-                        .ok_or_else(|| format!("`--occasion {raw}`: `{v}` is not a day of `--axis clock`"))?,
+                        .ok_or_else(|| {
+                            format!("`--occasion {raw}`: `{v}` is not a day of `--axis clock`")
+                        })?,
                 ),
             };
             let slot = match slot_part {
@@ -571,7 +619,9 @@ fn occasion_pins(
             let allowed = positions
                 .iter()
                 .enumerate()
-                .filter(|(_, at)| day.is_none_or(|d| at.day == d) && slot.is_none_or(|s| at.slot == s))
+                .filter(|(_, at)| {
+                    day.is_none_or(|d| at.day == d) && slot.is_none_or(|s| at.slot == s)
+                })
                 .map(|(k, _)| k)
                 .collect();
             pins[ci] = Pin::Clock {
@@ -677,12 +727,10 @@ impl Origin {
 /// step `label:`.
 fn until_index(steps: &[ScriptStep], until: &str) -> Result<usize, String> {
     if let Ok(n) = until.trim().parse::<usize>() {
-        return steps.iter().position(|s| s.n == n).ok_or_else(|| {
-            format!(
-                "`--until {until}`: the script has {} step(s)",
-                steps.len()
-            )
-        });
+        return steps
+            .iter()
+            .position(|s| s.n == n)
+            .ok_or_else(|| format!("`--until {until}`: the script has {} step(s)", steps.len()));
     }
     steps
         .iter()
@@ -801,8 +849,14 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         }
     }
     // dsl 0.24.0 §1: the clock axis writes the day and slot paths itself.
-    if let (Some(clock), true) = (&p.index.clock, resolved.iter().any(|a| matches!(a.apply, Apply::Clock))) {
-        if let Some(a) = resolved.iter().find(|a| a.path == clock.day || clock.slot.as_ref() == Some(&a.path)) {
+    if let (Some(clock), true) = (
+        &p.index.clock,
+        resolved.iter().any(|a| matches!(a.apply, Apply::Clock)),
+    ) {
+        if let Some(a) = resolved
+            .iter()
+            .find(|a| a.path == clock.day || clock.slot.as_ref() == Some(&a.path))
+        {
             let paths = match &clock.slot {
                 Some(slot) => format!("`{}` and `{slot}`", clock.day),
                 None => format!("`{}`", clock.day),
@@ -908,8 +962,10 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
                     continue;
                 }
                 Err(why) => {
-                    let label: Vec<String> =
-                        at.iter().map(|(path, text, _)| format!("{path}={text}")).collect();
+                    let label: Vec<String> = at
+                        .iter()
+                        .map(|(path, text, _)| format!("{path}={text}"))
+                        .collect();
                     return usage(format!(
                         "`--where {cel}` is unknown at the cell {}: {why}",
                         label.join(" ")
@@ -919,10 +975,18 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         }
         let outcomes = columns
             .iter()
-            .map(|col| col.applies(&picks).then(|| evaluate(&p, &w, col, &mut seen)))
+            .map(|col| {
+                col.applies(&picks)
+                    .then(|| evaluate(&p, &w, col, &mut seen))
+            })
             .collect();
         let facts = cell_facts(&p, &w, &rels);
-        cells.push(Cell { at, notes, outcomes, facts });
+        cells.push(Cell {
+            at,
+            notes,
+            outcomes,
+            facts,
+        });
     }
     let listed = |keep: fn(&Seen) -> bool| -> Vec<(&IndexBeat, &Seen)> {
         seen.iter()
@@ -985,7 +1049,13 @@ fn cell_facts(p: &Project, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
         w.quests.clone(),
     );
     rels.iter()
-        .map(|r| eval.all_facts().iter().filter(|(rel, _)| *rel == r.name).cloned().collect())
+        .map(|r| {
+            eval.all_facts()
+                .iter()
+                .filter(|(rel, _)| *rel == r.name)
+                .cloned()
+                .collect()
+        })
         .collect()
 }
 
@@ -1112,7 +1182,13 @@ fn evaluate(p: &Project, w: &World, col: &Column, seen: &mut BTreeMap<usize, See
         presented(col.select, &cands)
     };
     let winner = (col.select == OccasionSelect::First)
-        .then(|| shown.iter().map(|&i| &cands[i]).find(|c| !c.also).map(|c| c.id.clone()))
+        .then(|| {
+            shown
+                .iter()
+                .map(|&i| &cands[i])
+                .find(|c| !c.also)
+                .map(|c| c.id.clone())
+        })
         .flatten();
     let presented: Vec<String> = shown.iter().map(|&i| cands[i].id.clone()).collect();
     // What a shadowed beat lost to: the winner, else the presented list.
@@ -1187,7 +1263,11 @@ fn cell_short(cell: &Cell) -> String {
     if cell.at.is_empty() {
         return "(start)".to_string();
     }
-    cell.at.iter().map(|(_, text, _)| text.as_str()).collect::<Vec<_>>().join("/")
+    cell.at
+        .iter()
+        .map(|(_, text, _)| text.as_str())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// `occasion[@target]` of a beat.
@@ -1231,15 +1311,23 @@ fn pinned(pins: &[Pin], axes: &[Axis]) -> (Vec<String>, Vec<(String, String, Val
                 let (text, value) = &axis.values[*k];
                 held.push((axis.path.clone(), text.clone(), value.clone()));
             }
-            Pin::Clock { day, slot, slotted, .. } => {
+            Pin::Clock {
+                day, slot, slotted, ..
+            } => {
                 match day {
                     None => varies.push("clock.day".to_string()),
-                    Some(d) => held.push(("clock.day".to_string(), d.to_string(), Value::Num(*d as f64))),
+                    Some(d) => held.push((
+                        "clock.day".to_string(),
+                        d.to_string(),
+                        Value::Num(*d as f64),
+                    )),
                 }
                 match slot {
                     None if !slotted => {}
                     None => varies.push("clock.slot".to_string()),
-                    Some(s) => held.push(("clock.slot".to_string(), s.clone(), Value::Str(s.clone()))),
+                    Some(s) => {
+                        held.push(("clock.slot".to_string(), s.clone(), Value::Str(s.clone())))
+                    }
                 }
             }
         }
@@ -1276,10 +1364,18 @@ fn fact_rows(ri: usize, rel: &FactsRel, cells: &[Cell]) -> Vec<(String, Vec<Stri
                         .iter()
                         .filter(|(_, args)| args[0] == first)
                         .map(|(_, args)| {
-                            if args.len() == 1 { "yes".to_string() } else { args[1..].join(", ") }
+                            if args.len() == 1 {
+                                "yes".to_string()
+                            } else {
+                                args[1..].join(", ")
+                            }
                         })
                         .collect();
-                    if here.is_empty() { "-".to_string() } else { here.join(" | ") }
+                    if here.is_empty() {
+                        "-".to_string()
+                    } else {
+                        here.join(" | ")
+                    }
                 })
                 .collect();
             (first, row)
@@ -1309,10 +1405,22 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
             continue;
         }
         let (varies, held) = pinned(pins, axes);
-        let varies = if varies.is_empty() { "no axis".to_string() } else { varies.join(", ") };
+        let varies = if varies.is_empty() {
+            "no axis".to_string()
+        } else {
+            varies.join(", ")
+        };
         let held: Vec<String> = held.iter().map(|(p, t, _)| format!("{p}={t}")).collect();
-        let held = if held.is_empty() { String::new() } else { format!(", at {}", held.join(" ")) };
-        let _ = writeln!(out, "  {}: varies over {varies} only{held}; blank elsewhere", c.occasion);
+        let held = if held.is_empty() {
+            String::new()
+        } else {
+            format!(", at {}", held.join(" "))
+        };
+        let _ = writeln!(
+            out,
+            "  {}: varies over {varies} only{held}; blank elsewhere",
+            c.occasion
+        );
     }
     out.push('\n');
     // Two header rows: the axis paths and occasions, then the targets.
@@ -1338,7 +1446,11 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
     }
     for cell in cells {
         let mut row: Vec<String> = cell.at.iter().map(|(_, text, _)| text.clone()).collect();
-        row.extend(cell.outcomes.iter().map(|o| o.as_ref().map(cell_text).unwrap_or_default()));
+        row.extend(
+            cell.outcomes
+                .iter()
+                .map(|o| o.as_ref().map(cell_text).unwrap_or_default()),
+        );
         rows.push(row);
     }
     out.push_str(&table(&rows));
@@ -1346,10 +1458,14 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
     for (ri, rel) in r.rels.iter().enumerate() {
         let _ = writeln!(out, "\nfacts {}({}):", rel.name, rel.args.join(", "));
         let first = rel.args.first().unwrap_or(&rel.name).clone();
-        let mut rows = vec![std::iter::once(first).chain(cells.iter().map(cell_short)).collect::<Vec<_>>()];
-        rows.extend(fact_rows(ri, rel, cells).into_iter().map(|(label, row)| {
-            std::iter::once(label).chain(row).collect()
-        }));
+        let mut rows = vec![std::iter::once(first)
+            .chain(cells.iter().map(cell_short))
+            .collect::<Vec<_>>()];
+        rows.extend(
+            fact_rows(ri, rel, cells)
+                .into_iter()
+                .map(|(label, row)| std::iter::once(label).chain(row).collect()),
+        );
         out.push_str(&table(&rows));
     }
 
@@ -1387,7 +1503,10 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
     }
     for (title, body) in [
         ("shadowed (eligible, not presented):", shadowed),
-        ("undecided (an unknown `when` decides the cell; play halts there):", undecided),
+        (
+            "undecided (an unknown `when` decides the cell; play halts there):",
+            undecided,
+        ),
         ("notes:", notes),
     ] {
         if !body.is_empty() {
@@ -1396,7 +1515,11 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
     }
     for (title, list, detail) in [
         ("never eligible in any cell", &r.never_eligible, "" as &str),
-        ("eligible but never presented in any cell", &r.never_presented, "lost to "),
+        (
+            "eligible but never presented in any cell",
+            &r.never_presented,
+            "lost to ",
+        ),
     ] {
         let _ = write!(out, "\n{title}: ");
         if list.is_empty() {
@@ -1405,10 +1528,14 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
         }
         let _ = writeln!(out, "{}", list.len());
         for (b, s) in list {
-            let why: Vec<&str> = if detail.is_empty() { &s.reasons } else { &s.beaten_by }
-                .iter()
-                .map(String::as_str)
-                .collect();
+            let why: Vec<&str> = if detail.is_empty() {
+                &s.reasons
+            } else {
+                &s.beaten_by
+            }
+            .iter()
+            .map(String::as_str)
+            .collect();
             let _ = writeln!(
                 out,
                 "  {} [{}, {}] {} — {detail}{}",
@@ -1519,7 +1646,15 @@ fn csv_field(s: &str) -> String {
 }
 
 fn csv_line(out: &mut String, fields: &[String]) {
-    let _ = writeln!(out, "{}", fields.iter().map(|f| csv_field(f)).collect::<Vec<_>>().join(","));
+    let _ = writeln!(
+        out,
+        "{}",
+        fields
+            .iter()
+            .map(|f| csv_field(f))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
 }
 
 /// One row per cell × evaluated column (a cell no column is evaluated at
@@ -1531,8 +1666,17 @@ fn render_csv(r: &Report<'_>) -> String {
     let mut out = String::new();
     let mut head: Vec<String> = r.axes.iter().map(|a| a.path.clone()).collect();
     head.extend(
-        ["occasion", "target", "select", "winner", "presented", "shadowed", "unknown", "notes"]
-            .map(str::to_string),
+        [
+            "occasion",
+            "target",
+            "select",
+            "winner",
+            "presented",
+            "shadowed",
+            "unknown",
+            "notes",
+        ]
+        .map(str::to_string),
     );
     head.extend(r.rels.iter().map(|rel| format!("facts:{}", rel.name)));
     csv_line(&mut out, &head);
@@ -1549,7 +1693,11 @@ fn render_csv(r: &Report<'_>) -> String {
             rows.push([
                 c.occasion.clone(),
                 c.target.clone().unwrap_or_else(|| {
-                    if c.any_target { "(any)".to_string() } else { String::new() }
+                    if c.any_target {
+                        "(any)".to_string()
+                    } else {
+                        String::new()
+                    }
                 }),
                 c.select.as_str().to_string(),
                 o.winner.clone().unwrap_or_default(),
@@ -1575,7 +1723,15 @@ fn render_csv(r: &Report<'_>) -> String {
         out.push('\n');
         csv_line(
             &mut out,
-            &["neverPresented", "kind", "document", "occasion", "target", "beatenBy"].map(str::to_string),
+            &[
+                "neverPresented",
+                "kind",
+                "document",
+                "occasion",
+                "target",
+                "beatenBy",
+            ]
+            .map(str::to_string),
         );
         for (b, s) in &r.never_presented {
             csv_line(

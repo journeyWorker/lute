@@ -124,7 +124,10 @@ fn bundle_beat_walks_the_chosen_arm_and_applies_its_effects() {
         report.steps
     );
     let decision = &report.decisions[0];
-    assert_eq!((decision.id.as_str(), decision.outcome.as_str()), ("porterTalk", "ask"));
+    assert_eq!(
+        (decision.id.as_str(), decision.outcome.as_str()),
+        ("porterTalk", "ask")
+    );
     // Coverage counts the beat's choices like a scene's.
     let cov = &report.coverage.choices["porterTalk"];
     assert_eq!((cov.visited, cov.total), (1, 2));
@@ -144,10 +147,7 @@ fn bundle_beat_accepts_the_canonical_id_and_follows_another_choice() {
     );
     assert_eq!(exit, TraceExit::Complete, "{}", report.render_human());
     assert_eq!(lines(&report.steps), vec!["You again.", "Good."]);
-    assert!(!report
-        .steps
-        .iter()
-        .any(|s| matches!(s, Step::Set { .. })));
+    assert!(!report.steps.iter().any(|s| matches!(s, Step::Set { .. })));
 }
 
 #[test]
@@ -205,7 +205,14 @@ fn bundle_beat_after_is_an_eligibility_conjunct() {
     };
     let (report, _) = trace_beat(&input_for(&src), visited, "porter");
     assert!(
-        matches!(&report.steps[0], Step::Beat { eligible: Some(true), after_unmet: false, .. }),
+        matches!(
+            &report.steps[0],
+            Step::Beat {
+                eligible: Some(true),
+                after_unmet: false,
+                ..
+            }
+        ),
         "{:?}",
         report.steps[0]
     );

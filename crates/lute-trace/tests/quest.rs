@@ -1255,7 +1255,11 @@ fn an_unvisited_scene_reads_false_never_unknown() {
         };
         let (report, exit) = trace_document(&input, mocks);
         assert_complete(&exit);
-        assert!(report.unresolved.is_empty(), "{visited:?}: {:?}", report.unresolved);
+        assert!(
+            report.unresolved.is_empty(),
+            "{visited:?}: {:?}",
+            report.unresolved
+        );
         let outcomes = objective_outcomes(&report.decisions, "sawShed");
         assert!(
             !outcomes.is_empty() && outcomes.iter().all(|o| *o == "pending"),
@@ -1290,8 +1294,14 @@ fn an_on_objective_is_not_judged_until_its_occasion_is_raised() {
         "never judged without the occasion: {:?}",
         report.decisions
     );
-    assert_eq!(count_quest_decisions(&report.decisions, "hold", "active"), 1);
-    assert_eq!(count_quest_decisions(&report.decisions, "hold", "complete"), 0);
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "hold", "active"),
+        1
+    );
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "hold", "complete"),
+        0
+    );
     assert!(
         report.notes.iter().any(|n| n.contains(
             "objective `hold.calm` is judged at occasion `runEnd`, which this walk never raised"
@@ -1307,7 +1317,10 @@ fn an_on_objective_is_not_judged_until_its_occasion_is_raised() {
     };
     let (report, _) = trace_document(&input, mocks);
     assert!(objective_outcomes(&report.decisions, "calm").is_empty());
-    assert_eq!(count_quest_decisions(&report.decisions, "hold", "complete"), 0);
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "hold", "complete"),
+        0
+    );
     assert!(
         report
             .notes
@@ -1329,7 +1342,10 @@ fn raising_the_occasion_judges_the_objective_and_completes_the_quest() {
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
     assert_eq!(objective_outcomes(&report.decisions, "calm"), ["done"]);
-    assert_eq!(count_quest_decisions(&report.decisions, "hold", "complete"), 1);
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "hold", "complete"),
+        1
+    );
     // Activation precedes the occasion's judgement, which precedes completion.
     let pos = |construct: &str, outcome: &str| {
         report
@@ -1368,7 +1384,10 @@ fn an_occasion_does_not_judge_the_objectives_of_an_inactive_quest() {
     };
     let (report, _) = trace_document(&input, mocks);
     assert_eq!(objective_outcomes(&report.decisions, "calm"), ["done"]);
-    assert_eq!(count_quest_decisions(&report.decisions, "hold", "complete"), 1);
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "hold", "complete"),
+        1
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -1395,7 +1414,11 @@ fn deadline_fixture(objectives: &str) -> String {
 
 /// [`deadline_fixture`] assembled, with the world event `bell` declared.
 fn deadline_input(objectives: &str) -> CheckInput {
-    let mut input = input_for(&deadline_fixture(objectives), "deadline.lute", Path::new("."));
+    let mut input = input_for(
+        &deadline_fixture(objectives),
+        "deadline.lute",
+        Path::new("."),
+    );
     input.snapshot.events.insert(
         "bell".to_string(),
         lute_manifest::schema::EventDecl {
@@ -1441,12 +1464,21 @@ fn a_missed_by_fails_the_objective_once_and_an_optional_miss_spares_the_quest() 
 
 #[test]
 fn a_required_by_miss_fails_the_quest_and_fires_quest_failed() {
-    let input = deadline_input("<objective id=\"main\" title=\"Main\" done=\"run.got\" by=\"run.late\"/>\n");
+    let input = deadline_input(
+        "<objective id=\"main\" title=\"Main\" done=\"run.got\" by=\"run.late\"/>\n",
+    );
     let (report, exit) = trace_document(&input, MockSet::default());
     assert_complete(&exit);
-    assert_eq!(objective_outcomes(&report.decisions, "main"), ["pending", "failed"]);
+    assert_eq!(
+        objective_outcomes(&report.decisions, "main"),
+        ["pending", "failed"]
+    );
     let quest_failed = quest_decision(&report.decisions, "failed").expect("the quest fails");
-    assert_eq!(quest_failed.guard.as_deref(), Some("run.late"), "the deadline is the reason");
+    assert_eq!(
+        quest_failed.guard.as_deref(),
+        Some("run.late"),
+        "the deadline is the reason"
+    );
     let pos = |construct: &str, outcome: &str| {
         report
             .decisions
@@ -1455,14 +1487,20 @@ fn a_required_by_miss_fails_the_quest_and_fires_quest_failed() {
             .unwrap()
     };
     assert!(pos("objective", "failed") < pos("quest", "failed"));
-    assert!(has_line_containing(&report.steps, "Too late."), "{:?}", report.steps);
+    assert!(
+        has_line_containing(&report.steps, "Too late."),
+        "{:?}",
+        report.steps
+    );
     assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 0);
 }
 
 #[test]
 fn a_by_never_fails_a_done_objective() {
     // `done` and `by` true at the same instant: `done` is judged first.
-    let input = deadline_input("<objective id=\"main\" title=\"Main\" done=\"run.early\" by=\"run.late\"/>\n");
+    let input = deadline_input(
+        "<objective id=\"main\" title=\"Main\" done=\"run.early\" by=\"run.late\"/>\n",
+    );
     let (report, exit) = trace_document(&input, MockSet::default());
     assert_complete(&exit);
     assert_eq!(objective_outcomes(&report.decisions, "main"), ["done"]);
@@ -1477,7 +1515,9 @@ fn a_by_never_fails_a_done_objective() {
          <objective id=\"main\" title=\"Main\" done=\"run.got\"/>\n",
     );
     let (report, _) = trace_document(&input, MockSet::default());
-    assert!(objective_outcomes(&report.decisions, "slow").iter().all(|o| *o != "failed"));
+    assert!(objective_outcomes(&report.decisions, "slow")
+        .iter()
+        .all(|o| *o != "failed"));
     let mocks = MockSet {
         events: vec!["bell".to_string()],
         ..Default::default()
@@ -1499,7 +1539,11 @@ fn an_on_objectives_until_is_judged_only_at_its_raise_after_done() {
         "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.early\" until=\"run.late\"/>\n",
     );
     let (report, _) = trace_document(&input, MockSet::default());
-    assert!(objective_outcomes(&report.decisions, "named").is_empty(), "{:?}", report.decisions);
+    assert!(
+        objective_outcomes(&report.decisions, "named").is_empty(),
+        "{:?}",
+        report.decisions
+    );
     assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 0);
     let raise = MockSet {
         occasions: vec!["tick".to_string()],
@@ -1516,7 +1560,10 @@ fn an_on_objectives_until_is_judged_only_at_its_raise_after_done() {
         "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.got\" until=\"run.late\"/>\n",
     );
     let (report, _) = trace_document(&input, raise);
-    assert_eq!(objective_outcomes(&report.decisions, "named"), ["pending", "failed"]);
+    assert_eq!(
+        objective_outcomes(&report.decisions, "named"),
+        ["pending", "failed"]
+    );
     assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 1);
     assert!(has_line_containing(&report.steps, "Too late."));
 }
@@ -1530,7 +1577,12 @@ fn an_on_objectives_by_is_a_moment_judged_without_its_raise() {
         "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.early\" by=\"run.late\"/>\n",
     );
     let (report, _) = trace_document(&input, MockSet::default());
-    assert_eq!(objective_outcomes(&report.decisions, "named"), ["failed"], "{:?}", report.decisions);
+    assert_eq!(
+        objective_outcomes(&report.decisions, "named"),
+        ["failed"],
+        "{:?}",
+        report.decisions
+    );
     assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 1);
     assert!(has_line_containing(&report.steps, "Too late."));
 }
@@ -1578,13 +1630,19 @@ fn a_grant_credits_its_kinds_path_as_play_does() {
     );
     let (report, exit) = trace_document(&input, MockSet::default());
     assert_complete(&exit);
-    assert_eq!(report.final_state.get("user.cases").map(String::as_str), Some("5"));
+    assert_eq!(
+        report.final_state.get("user.cases").map(String::as_str),
+        Some("5")
+    );
     let credited = report.steps.iter().find_map(|s| match s {
         Step::Grant { credited, .. } => credited.clone(),
         _ => None,
     });
     let credited = credited.expect("the grant credits its path");
-    assert_eq!((credited.path.as_str(), credited.value.as_str()), ("user.cases", "5"));
+    assert_eq!(
+        (credited.path.as_str(), credited.value.as_str()),
+        ("user.cases", "5")
+    );
     assert!(report.render_human().contains("(credits user.cases = 5)"));
 }
 
@@ -1612,8 +1670,15 @@ fn a_targeted_on_objective_is_judged_only_by_a_raise_for_its_target() {
     for occasions in [&["talk@npc.oskar"][..], &["talk"][..]] {
         let (report, exit) = raise(occasions);
         assert_complete(&exit);
-        assert!(objective_outcomes(&report.decisions, "maud").is_empty(), "{occasions:?}");
-        assert_eq!(objective_outcomes(&report.decisions, "anyone"), ["done"], "{occasions:?}");
+        assert!(
+            objective_outcomes(&report.decisions, "maud").is_empty(),
+            "{occasions:?}"
+        );
+        assert_eq!(
+            objective_outcomes(&report.decisions, "anyone"),
+            ["done"],
+            "{occasions:?}"
+        );
         assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 0);
         assert!(
             report.notes.iter().any(|n| n.contains(
@@ -1630,5 +1695,9 @@ fn a_targeted_on_objective_is_judged_only_by_a_raise_for_its_target() {
     assert_eq!(objective_outcomes(&report.decisions, "maud"), ["done"]);
     assert_eq!(objective_outcomes(&report.decisions, "anyone"), ["done"]);
     assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 1);
-    assert!(!report.notes.iter().any(|n| n.contains("never raised")), "{:?}", report.notes);
+    assert!(
+        !report.notes.iter().any(|n| n.contains("never raised")),
+        "{:?}",
+        report.notes
+    );
 }

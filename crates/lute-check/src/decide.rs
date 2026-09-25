@@ -168,12 +168,12 @@ fn domain_contains(dom: &DomainInfo, value: &Constant) -> bool {
             n.fract() == 0.0 && (*lo as f64) <= *n && *n <= (*hi as f64)
         }
         (Constant::Value(_), Domain::IntRange { .. }) => true,
-        (Constant::Value(Decided::Str(s)), Domain::Finite(vals)) => {
-            vals.iter().any(|v| matches!(v, DomainValue::Str(x) if x == s))
-        }
-        (Constant::Value(Decided::Bool(b)), Domain::Finite(vals)) => {
-            vals.iter().any(|v| matches!(v, DomainValue::Bool(x) if x == b))
-        }
+        (Constant::Value(Decided::Str(s)), Domain::Finite(vals)) => vals
+            .iter()
+            .any(|v| matches!(v, DomainValue::Str(x) if x == s)),
+        (Constant::Value(Decided::Bool(b)), Domain::Finite(vals)) => vals
+            .iter()
+            .any(|v| matches!(v, DomainValue::Bool(x) if x == b)),
         (Constant::Value(_), _) => false,
     }
 }
@@ -328,12 +328,18 @@ pub(crate) fn held_ground(e: &Expr) -> Option<GroundFact> {
 
 /// dsl 0.25.0 §1: every pair of `facts` that can never hold together — the
 /// same arguments over relations one of which `excludes:` the other.
-pub(crate) fn exclusive_pairs(facts: &[GroundFact], vocab: &RelVocab) -> Vec<(GroundFact, GroundFact)> {
+pub(crate) fn exclusive_pairs(
+    facts: &[GroundFact],
+    vocab: &RelVocab,
+) -> Vec<(GroundFact, GroundFact)> {
     let mut out = Vec::new();
     for (i, a) in facts.iter().enumerate() {
         for b in &facts[i + 1..] {
             if a.args == b.args
-                && vocab.relations.get(&a.relation).is_some_and(|d| d.args.len() == a.args.len())
+                && vocab
+                    .relations
+                    .get(&a.relation)
+                    .is_some_and(|d| d.args.len() == a.args.len())
                 && vocab.excludes(&a.relation, &b.relation)
             {
                 out.push((a.clone(), b.clone()));
@@ -352,7 +358,11 @@ pub(crate) fn and_chain_holds(expr: &Expr) -> (Vec<GroundFact>, Vec<GroundFact>)
     let (mut pos, mut neg) = (Vec::new(), Vec::new());
     for (e, positive) in literals {
         if let Some(f) = held_ground(e) {
-            if positive { pos.push(f) } else { neg.push(f) }
+            if positive {
+                pos.push(f)
+            } else {
+                neg.push(f)
+            }
         }
     }
     (pos, neg)
@@ -362,7 +372,12 @@ pub(crate) fn and_chain_holds(expr: &Expr) -> (Vec<GroundFact>, Vec<GroundFact>)
 /// (`true` = as written), pushing `!` inward by De Morgan — which CEL's
 /// commutative, error-absorbing `&&`/`||` preserve: inside an `&&` chain,
 /// `!(a || b)` contributes `!a` and `!b`.
-fn chain_literals<'e>(expr: &'e Expr, positive: bool, chain: Chain, out: &mut Vec<(&'e Expr, bool)>) {
+fn chain_literals<'e>(
+    expr: &'e Expr,
+    positive: bool,
+    chain: Chain,
+    out: &mut Vec<(&'e Expr, bool)>,
+) {
     if let Expr::Call(c) = expr {
         if c.target.is_none() {
             match (c.func_name.as_str(), c.args.as_slice()) {
@@ -393,7 +408,11 @@ fn connective(name: &str, positive: bool) -> Chain {
 /// One literal read with `positive` polarity as a solution set over one
 /// path: its key, the path's domain, and the values that make it TRUE.
 /// `None` for any other shape — it then constrains nothing.
-fn literal_truth(expr: &Expr, positive: bool, ctx: &DecideCtx<'_>) -> Option<(String, PathDomain, Truth)> {
+fn literal_truth(
+    expr: &Expr,
+    positive: bool,
+    ctx: &DecideCtx<'_>,
+) -> Option<(String, PathDomain, Truth)> {
     if let Expr::Call(c) = expr {
         if c.target.is_none() {
             match (c.func_name.as_str(), c.args.as_slice()) {
@@ -561,7 +580,8 @@ fn nested_truth(
     let any = chain == Chain::Or;
     let set = match &dom.kind {
         Kind::Finite(all) => {
-            let holds = |t: &Truth, m: &DomainValue| t.set.as_ref().is_none_or(|s| holds_member(s, m));
+            let holds =
+                |t: &Truth, m: &DomainValue| t.set.as_ref().is_none_or(|s| holds_member(s, m));
             SolutionSet::Values(
                 all.iter()
                     .filter(|m| {
@@ -576,7 +596,10 @@ fn nested_truth(
             )
         }
         Kind::Number => SolutionSet::Union(if any {
-            truths.iter().flat_map(|t| number_spans(t.set.as_ref())).collect()
+            truths
+                .iter()
+                .flat_map(|t| number_spans(t.set.as_ref()))
+                .collect()
         } else {
             truths.iter().fold(vec![REALS], |acc, t| {
                 meet_spans(&acc, &number_spans(t.set.as_ref()))
@@ -616,10 +639,12 @@ fn subject(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<(String, PathDomain)> {
             let dom = match c.func_name.as_str() {
                 "holds" if crate::cel_resolve::is_profile_fact_query(c) => PathDomain::boolean(),
                 crate::cel_resolve::VISITED_FN if c.args.len() == 1 => PathDomain::boolean(),
-                "count" | "countDistinct" if crate::cel_resolve::is_profile_fact_query(c) => PathDomain {
-                    kind: Kind::Number,
-                    maybe_unset: false,
-                },
+                "count" | "countDistinct" if crate::cel_resolve::is_profile_fact_query(c) => {
+                    PathDomain {
+                        kind: Kind::Number,
+                        maybe_unset: false,
+                    }
+                }
                 _ => return None,
             };
             Some((ground_text(expr, ctx)?, dom))
@@ -659,7 +684,9 @@ fn path_domain(path: &str, schema: &StateSchema) -> PathDomain {
     }
     let kind = match crate::set_op::resolve_type(path, schema) {
         Some(Type::Bool) => Kind::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
-        Some(Type::Enum(members)) => Kind::Finite(members.iter().cloned().map(DomainValue::Str).collect()),
+        Some(Type::Enum(members)) => {
+            Kind::Finite(members.iter().cloned().map(DomainValue::Str).collect())
+        }
         Some(Type::Number) => Kind::Number,
         _ => Kind::Open,
     };
@@ -681,7 +708,8 @@ fn ground_text(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<String> {
         Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
         Expr::Select(_) => state_path(expr),
         Expr::Call(c) if c.target.is_none() => {
-            let args: Option<Vec<String>> = c.args.iter().map(|a| ground_text(&a.expr, ctx)).collect();
+            let args: Option<Vec<String>> =
+                c.args.iter().map(|a| ground_text(&a.expr, ctx)).collect();
             Some(format!("{}({})", c.func_name, args?.join(",")))
         }
         _ => None,
@@ -773,11 +801,13 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         (op::GREATER, [a, b])
         | (op::GREATER_EQUALS, [a, b])
         | (op::LESS, [a, b])
-        | (op::LESS_EQUALS, [a, b]) => decide_count_cmp(name, &a.expr, &b.expr, ctx).or_else(|| {
-            let da = decide(&a.expr, ctx)?;
-            let db = decide(&b.expr, ctx)?;
-            apply_op(name, &[da, db])
-        }),
+        | (op::LESS_EQUALS, [a, b]) => {
+            decide_count_cmp(name, &a.expr, &b.expr, ctx).or_else(|| {
+                let da = decide(&a.expr, ctx)?;
+                let db = decide(&b.expr, ctx)?;
+                apply_op(name, &[da, db])
+            })
+        }
         _ => None, // R5: unrecognized shape (index, unknown fn, wrong arity, …)
     }
 }

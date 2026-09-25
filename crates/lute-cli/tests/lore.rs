@@ -35,16 +35,30 @@ fn stdout(out: &std::process::Output) -> String {
 #[test]
 fn new_lore_scaffolds_a_document_that_checks_clean() {
     let dir = temp_dir("new");
-    let out = run(&["new", "lore", "ship-records", "--dir", dir.to_str().unwrap()]);
+    let out = run(&[
+        "new",
+        "lore",
+        "ship-records",
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let path = dir.join("lore/ship-records.lute");
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("kind: lore\nid: lore.shipRecords\n"), "{text}");
+    assert!(
+        text.contains("kind: lore\nid: lore.shipRecords\n"),
+        "{text}"
+    );
     assert!(text.contains("<entry id=\"shipRecords\""), "{text}");
 
     let check = run(&["check", path.to_str().unwrap(), "--json"]);
-    let result: serde_json::Value = serde_json::from_slice(&check.stdout)
-        .unwrap_or_else(|e| panic!("{e}: {}{}", stdout(&check), String::from_utf8_lossy(&check.stderr)));
+    let result: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap_or_else(|e| {
+        panic!(
+            "{e}: {}{}",
+            stdout(&check),
+            String::from_utf8_lossy(&check.stderr)
+        )
+    });
     assert_eq!(check.status.code(), Some(0), "{result:#}");
     assert_eq!(
         result["diagnostics"].as_array().map(Vec::len),
@@ -53,7 +67,13 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
     );
 
     // Refuses to overwrite, like every other `lute new` kind.
-    let again = run(&["new", "lore", "ship-records", "--dir", dir.to_str().unwrap()]);
+    let again = run(&[
+        "new",
+        "lore",
+        "ship-records",
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(again.status.code(), Some(2));
 }
 
@@ -65,19 +85,44 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
 #[test]
 fn new_quest_and_lore_scaffolds_check_clean_together() {
     let dir = temp_dir("new-quest");
-    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
     let d = dir.to_str().unwrap();
-    assert_eq!(run(&["new", "quest", "ship-records", "--start", "--dir", d]).status.code(), Some(0));
-    assert_eq!(run(&["new", "lore", "ship-records", "--dir", d]).status.code(), Some(0));
+    assert_eq!(
+        run(&["new", "quest", "ship-records", "--start", "--dir", d])
+            .status
+            .code(),
+        Some(0)
+    );
+    assert_eq!(
+        run(&["new", "lore", "ship-records", "--dir", d])
+            .status
+            .code(),
+        Some(0)
+    );
     let quest = std::fs::read_to_string(dir.join("quests/ship-records.lute")).unwrap();
-    assert!(quest.contains("kind: quest\nid: quest.shipRecords\n"), "{quest}");
+    assert!(
+        quest.contains("kind: quest\nid: quest.shipRecords\n"),
+        "{quest}"
+    );
 
     let check = run(&["check-project", d, "--json"]);
-    let result: serde_json::Value = serde_json::from_slice(&check.stdout)
-        .unwrap_or_else(|e| panic!("{e}: {}{}", stdout(&check), String::from_utf8_lossy(&check.stderr)));
+    let result: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap_or_else(|e| {
+        panic!(
+            "{e}: {}{}",
+            stdout(&check),
+            String::from_utf8_lossy(&check.stderr)
+        )
+    });
     assert_eq!(check.status.code(), Some(0), "{result:#}");
     let text = result.to_string();
-    assert!(!text.contains("\"code\""), "no diagnostics at all: {result:#}");
+    assert!(
+        !text.contains("\"code\""),
+        "no diagnostics at all: {result:#}"
+    );
 }
 
 /// dsl 0.19.0 §2.1 through `check-project`: a quest document id colliding
@@ -87,8 +132,16 @@ fn new_quest_and_lore_scaffolds_check_clean_together() {
 #[test]
 fn check_project_reports_bundle_id_and_resolved_series_collisions() {
     let dir = temp_dir("bundle");
-    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
-    write(&dir, "a-scene.lute", "---\nkind: scene\nid: haven.main\n---\n## One.\n@n: hi\n");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(
+        &dir,
+        "a-scene.lute",
+        "---\nkind: scene\nid: haven.main\n---\n## One.\n@n: hi\n",
+    );
     write(
         &dir,
         "b-quest.lute",
@@ -106,8 +159,13 @@ fn check_project_reports_bundle_id_and_resolved_series_collisions() {
         "---\nkind: lore\n---\n<entry id=\"logX\" series=\"log\" order=\"2\">\n@n: c\n</entry>\n",
     );
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
-        .unwrap_or_else(|e| panic!("{e}: {}{}", stdout(&out), String::from_utf8_lossy(&out.stderr)));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+        panic!(
+            "{e}: {}{}",
+            stdout(&out),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
     let mut found: Vec<(String, String)> = Vec::new();
     fn walk(v: &serde_json::Value, found: &mut Vec<(String, String)>) {
         match v {
@@ -125,12 +183,28 @@ fn check_project_reports_bundle_id_and_resolved_series_collisions() {
         }
     }
     walk(&v, &mut found);
-    let dup: Vec<_> = found.iter().filter(|(c, _)| c == "E-CONN-EPISODE-ID-DUP").collect();
+    let dup: Vec<_> = found
+        .iter()
+        .filter(|(c, _)| c == "E-CONN-EPISODE-ID-DUP")
+        .collect();
     assert_eq!(dup.len(), 1, "{v:#}");
-    assert!(dup[0].1.starts_with("duplicate document id `haven.main` across project files"), "{}", dup[0].1);
-    let pos: Vec<_> = found.iter().filter(|(c, _)| c == "E-ENTRY-SERIES-ORDER").collect();
+    assert!(
+        dup[0]
+            .1
+            .starts_with("duplicate document id `haven.main` across project files"),
+        "{}",
+        dup[0].1
+    );
+    let pos: Vec<_> = found
+        .iter()
+        .filter(|(c, _)| c == "E-ENTRY-SERIES-ORDER")
+        .collect();
     assert_eq!(pos.len(), 1, "{v:#}");
-    assert!(pos[0].1.contains("repeats position 2 of series `log`"), "{}", pos[0].1);
+    assert!(
+        pos[0].1.contains("repeats position 2 of series `log`"),
+        "{}",
+        pos[0].1
+    );
     assert_eq!(out.status.code(), Some(1), "{v:#}");
 }
 
@@ -147,7 +221,8 @@ fn lore_report_uses_resolved_series() {
     let out = run(&["lore", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     assert!(
-        stdout(&out).contains("Series\n  captainsLog\n    1  day2  log.lute\n    2  day1  log.lute\n"),
+        stdout(&out)
+            .contains("Series\n  captainsLog\n    1  day2  log.lute\n    2  day1  log.lute\n"),
         "{}",
         stdout(&out)
     );
@@ -214,7 +289,11 @@ uses: ../world.schema.yaml
 
 fn fixture() -> PathBuf {
     let dir = temp_dir("report");
-    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
     write(&dir, "world.schema.yaml", SCHEMA);
     write(&dir, "lore/ship.lute", LORE);
     write(&dir, "scenes/lab.lute", SCENE);
@@ -354,7 +433,9 @@ fn lore_report_lists_bundle_beats_by_target_and_as_fact_sources() {
         "{text}"
     );
     assert!(
-        text.contains("    knows(vesna, reactor)  both\n      entries: log2\n      beats: lore.dock.talk\n"),
+        text.contains(
+            "    knows(vesna, reactor)  both\n      entries: log2\n      beats: lore.dock.talk\n"
+        ),
         "{text}"
     );
 }
@@ -374,7 +455,10 @@ fn lore_report_reports_unchecked_documents_and_fails_on_io() {
     let out = run(&["lore", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let text = stdout(&out);
-    assert!(text.contains("  (no target)\n    x  a.lute\n    x  a.lute\n"), "{text}");
+    assert!(
+        text.contains("  (no target)\n    x  a.lute\n    x  a.lute\n"),
+        "{text}"
+    );
 
     let missing = run(&["lore", dir.join("nope").to_str().unwrap()]);
     assert_eq!(missing.status.code(), Some(2), "{missing:?}");

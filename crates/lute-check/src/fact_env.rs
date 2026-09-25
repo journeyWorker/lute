@@ -179,7 +179,10 @@ pub fn count_query(c: &CallExpr) -> Option<(QueryPattern, Option<usize>)> {
 fn tally<'f>(facts: impl Iterator<Item = &'f [String]>, column: Option<usize>) -> usize {
     match column {
         None => facts.count(),
-        Some(i) => facts.filter_map(|a| a.get(i)).collect::<BTreeSet<_>>().len(),
+        Some(i) => facts
+            .filter_map(|a| a.get(i))
+            .collect::<BTreeSet<_>>()
+            .len(),
     }
 }
 
@@ -287,7 +290,8 @@ impl RootVocab {
                 self.rules.push(rule.rule.clone());
             }
         }
-        self.unparsed_heads.extend(vocab.unparsed_heads.iter().cloned());
+        self.unparsed_heads
+            .extend(vocab.unparsed_heads.iter().cloned());
     }
 
     /// seven F3 (dsl 0.23.1): mark the root incomplete when any of `docs`
@@ -355,7 +359,9 @@ impl RootVocab {
     /// A rule-body predicate name that denotes a member set (entity kind,
     /// enum, or domain) rather than a relation.
     fn is_predicate(&self, name: &str) -> bool {
-        self.kinds.contains_key(name) || self.enums.contains_key(name) || self.domains.contains_key(name)
+        self.kinds.contains_key(name)
+            || self.enums.contains_key(name)
+            || self.domains.contains_key(name)
     }
 }
 
@@ -428,7 +434,11 @@ impl MaySet {
         }
     }
 
-    fn build_once(vocab: &RootVocab, asserts: &[GroundFact], stable: &BTreeSet<GroundFact>) -> Self {
+    fn build_once(
+        vocab: &RootVocab,
+        asserts: &[GroundFact],
+        stable: &BTreeSet<GroundFact>,
+    ) -> Self {
         let mut may = MaySet {
             stable: stable.clone(),
             ..MaySet::default()
@@ -456,7 +466,11 @@ impl MaySet {
         if !may.stable.is_empty() {
             let mut defeats = BTreeMap::new();
             for rule in &vocab.rules {
-                if vocab.relations.get(&rule.head.relation).is_some_and(|d| d.derive) {
+                if vocab
+                    .relations
+                    .get(&rule.head.relation)
+                    .is_some_and(|d| d.derive)
+                {
                     may.apply_rule(vocab, rule, Some(&mut defeats));
                 }
             }
@@ -486,8 +500,11 @@ impl MaySet {
     /// this set's facts is sound: widening only ever adds facts.
     pub fn widened(&self, vocab: &RootVocab, open: &BTreeSet<String>) -> Self {
         let mut may = self.clone();
-        may.unbounded
-            .extend(open.iter().filter(|r| may.signature.contains_key(*r)).cloned());
+        may.unbounded.extend(
+            open.iter()
+                .filter(|r| may.signature.contains_key(*r))
+                .cloned(),
+        );
         may.stable = self.stable_seeds.clone();
         may.defeats.clear();
         may.saturate(vocab);
@@ -702,7 +719,10 @@ impl MaySet {
             return None;
         }
         Some(self.facts.get(&q.relation).map_or(0, |set| {
-            tally(set.iter().filter(|a| q.matches_args(a)).map(Vec::as_slice), column)
+            tally(
+                set.iter().filter(|a| q.matches_args(a)).map(Vec::as_slice),
+                column,
+            )
         }))
     }
 

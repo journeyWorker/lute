@@ -316,7 +316,9 @@ fn lower_auto(
         state.on_stage.remove(&character);
         state.maybe_on_stage.remove(&character);
         state.dirty.remove(&character);
-        state.exited.insert(character, Departure::Exit { line: d.span.line });
+        state
+            .exited
+            .insert(character, Departure::Exit { line: d.span.line });
         return;
     }
 
@@ -1555,14 +1557,24 @@ mod tests {
     fn a_line_after_a_scene_change_auto_hide_warns_absent() {
         let doms = action_domain_with_exits(&["go-under"]);
         let (st, hid) = lower_node(staged("vesna"), &bg("hold"), &[], &doms);
-        assert!(matches!(&hid[..], [InjectedCommand { kind: InjectKind::Hide { .. }, .. }]));
+        assert!(matches!(
+            &hid[..],
+            [InjectedCommand {
+                kind: InjectKind::Hide { .. },
+                ..
+            }]
+        ));
         let (st2, _) = lower_node(st, &plain_line("vesna"), &[], &doms);
         let d = st2
             .diags
             .iter()
             .find(|d| d.code == "W-STAGE-ABSENT")
             .unwrap_or_else(|| panic!("auto-hidden then spoke; got {:?}", st2.diags));
-        assert!(d.message.contains("auto-hidden by an earlier `::bg`"), "{}", d.message);
+        assert!(
+            d.message.contains("auto-hidden by an earlier `::bg`"),
+            "{}",
+            d.message
+        );
     }
 
     /// A scene change hides; it does not un-exit. A character who left on a
@@ -1609,13 +1621,18 @@ mod tests {
         let stayed = entry.clone();
         let joined = StageState::join(&entry, vec![stayed.clone(), left]);
         assert!(!joined.on_stage.contains_key("vesna"));
-        assert!(matches!(joined.exited.get("vesna"), Some(Departure::Exit { .. })));
+        assert!(matches!(
+            joined.exited.get("vesna"),
+            Some(Departure::Exit { .. })
+        ));
         let (after, _) = lower_node(joined, &plain_line("vesna"), &[], &doms);
         assert!(after.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"));
 
         let both = StageState::join(&entry, vec![stayed.clone(), stayed]);
         assert!(both.on_stage.contains_key("vesna") && both.exited.is_empty());
-        assert!(StageState::join(&entry, Vec::new()).on_stage.contains_key("vesna"));
+        assert!(StageState::join(&entry, Vec::new())
+            .on_stage
+            .contains_key("vesna"));
     }
 
     /// seven F7 (dsl 0.23.1): on stage in only one arm, then a `::bg` — the
@@ -1635,6 +1652,9 @@ mod tests {
             "{hid:?}"
         );
         assert!(st.maybe_on_stage.is_empty());
-        assert!(matches!(st.exited.get("pell"), Some(Departure::SceneChange { .. })));
+        assert!(matches!(
+            st.exited.get("pell"),
+            Some(Departure::SceneChange { .. })
+        ));
     }
 }

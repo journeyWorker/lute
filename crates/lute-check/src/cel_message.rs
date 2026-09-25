@@ -234,7 +234,10 @@ pub fn translate_cel_parse(
 /// The first `holds(`/`count(`/`countDistinct(`/`validAt(` whose pattern
 /// relation is a [`crate::rel_schema::RESERVED_RELATION_NAMES`] name, outside
 /// string literals: `(start, end, name)` of that relation token.
-fn scan_reserved_query_relation<'r>(raw: &'r str, mask: &[bool]) -> Option<(usize, usize, &'r str)> {
+fn scan_reserved_query_relation<'r>(
+    raw: &'r str,
+    mask: &[bool],
+) -> Option<(usize, usize, &'r str)> {
     let b = raw.as_bytes();
     let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
     let mut i = 0;

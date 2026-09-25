@@ -298,7 +298,10 @@ fn validate_value(key: &str, v: &Yaml) -> Result<(), String> {
         }
         "exit" => match scalar_text(v) {
             Some(e) if EXITS.contains(&e.as_str()) => Ok(()),
-            _ => Err(format!("`expect.exit` must be one of: {}", EXITS.join(", "))),
+            _ => Err(format!(
+                "`expect.exit` must be one of: {}",
+                EXITS.join(", ")
+            )),
         },
         "quests" => {
             let Yaml::Mapping(m) = v else {
@@ -381,8 +384,7 @@ pub(crate) fn parse_atom(text: &str) -> Option<(String, Vec<String>)> {
         }
     };
     let ident = |s: &str| {
-        !s.is_empty()
-            && !s.contains(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | ','))
+        !s.is_empty() && !s.contains(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | ','))
     };
     (ident(rel) && args.iter().all(|a| ident(a))).then(|| (rel.to_string(), args))
 }
@@ -481,7 +483,10 @@ fn check_step(
         }
     }
     let offered: BTreeSet<&str> = row.offered.iter().map(String::as_str).collect();
-    if let Some(want) = m.get("offered").and_then(|v| string_list("offered", v).ok()) {
+    if let Some(want) = m
+        .get("offered")
+        .and_then(|v| string_list("offered", v).ok())
+    {
         let missing: Vec<String> = want
             .iter()
             .filter(|w| !offered.contains(w.as_str()))
@@ -490,7 +495,11 @@ fn check_step(
         if !missing.is_empty() {
             miss(
                 "offered".into(),
-                format!("{} among the eligible beats (missing {})", list(&want), list(&missing)),
+                format!(
+                    "{} among the eligible beats (missing {})",
+                    list(&want),
+                    list(&missing)
+                ),
                 list(&row.offered),
             );
         }
@@ -513,7 +522,10 @@ fn check_step(
         }
     }
     // dsl 0.23.0 §3: the exact presentation order.
-    if let Some(want) = m.get("presented").and_then(|v| string_list("presented", v).ok()) {
+    if let Some(want) = m
+        .get("presented")
+        .and_then(|v| string_list("presented", v).ok())
+    {
         if want != row.presented {
             miss("presented".into(), list(&want), list(&row.presented));
         }
@@ -600,7 +612,10 @@ fn check_world(
             if held != want_held {
                 miss(
                     key.to_string(),
-                    format!("{atom} {}", if want_held { "holds" } else { "does not hold" }),
+                    format!(
+                        "{atom} {}",
+                        if want_held { "holds" } else { "does not hold" }
+                    ),
                     format!("{atom} {}", if held { "holds" } else { "does not hold" }),
                 );
             }
@@ -636,7 +651,10 @@ fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
             if present != want_present {
                 miss(
                     key.to_string(),
-                    format!("{sub:?} {}", if want_present { "present" } else { "absent" }),
+                    format!(
+                        "{sub:?} {}",
+                        if want_present { "present" } else { "absent" }
+                    ),
                     format!("{sub:?} {}", if present { "present" } else { "absent" }),
                 );
             }
@@ -768,14 +786,21 @@ transcriptLacks: ["Goodbye"]
     fn offered_is_a_subset_check_and_not_offered_an_exclusion() {
         let misses = check(
             &outcome(),
-            &[(1, None, y("{offered: [hub.welcome, hub.trophy], notOffered: [hub.idle]}"))],
+            &[(
+                1,
+                None,
+                y("{offered: [hub.welcome, hub.trophy], notOffered: [hub.idle]}"),
+            )],
             None,
         );
         let keys: Vec<&str> = misses.iter().map(|m| m.key.as_str()).collect();
         assert_eq!(keys, ["offered", "notOffered"]);
         assert!(misses[0].expected.contains("missing [hub.trophy]"));
         assert_eq!(misses[0].actual, "[hub.welcome, hub.idle]");
-        assert_eq!(misses[1].actual, "[hub.welcome, hub.idle] (offending [hub.idle])");
+        assert_eq!(
+            misses[1].actual,
+            "[hub.welcome, hub.idle] (offending [hub.idle])"
+        );
     }
 
     #[test]
@@ -787,7 +812,11 @@ transcriptLacks: ["Goodbye"]
         let misses = check(&o, &[(2, None, y("{winner: none}"))], None);
         assert_eq!(misses.len(), 1);
         assert_eq!(misses[0].step, Some(2));
-        assert!(misses[0].actual.contains("incomplete"), "{}", misses[0].actual);
+        assert!(
+            misses[0].actual.contains("incomplete"),
+            "{}",
+            misses[0].actual
+        );
     }
 
     #[test]
@@ -805,7 +834,9 @@ transcriptLacks: ["Goodbye"]
 
     #[test]
     fn state_compares_typed_effective_values() {
-        let top = y(r#"state: { run.day: "3", user.met: false, run.fog: x, run.none: 1, run.outcome: fell }"#);
+        let top = y(
+            r#"state: { run.day: "3", user.met: false, run.fog: x, run.none: 1, run.outcome: fell }"#,
+        );
         let misses = check(&outcome(), &[], Some(&top));
         let got: Vec<(&str, &str)> = misses
             .iter()
@@ -817,7 +848,10 @@ transcriptLacks: ["Goodbye"]
                 ("state run.day", "3"),
                 ("state user.met", "true"),
                 ("state run.fog", "unknown"),
-                ("state run.none", "no value (never written, not seeded, no default)"),
+                (
+                    "state run.none",
+                    "no value (never written, not seeded, no default)"
+                ),
             ]
         );
     }
@@ -881,7 +915,10 @@ transcriptLacks: ["Welcome"]
             ("{facts: ['knows(a']}", true),
             ("[winner]", false),
         ] {
-            assert!(validate(&y(text), top).is_err(), "{text} should be rejected");
+            assert!(
+                validate(&y(text), top).is_err(),
+                "{text} should be rejected"
+            );
         }
     }
 
@@ -893,7 +930,8 @@ transcriptLacks: ["Welcome"]
             facts: BTreeSet::from(["slew(warden)".to_string()]),
             quests: BTreeMap::from([("caseClosed".to_string(), "failed".to_string())]),
         });
-        let holds = y("{quests: {caseClosed: failed}, state: {run.accused: b}, facts: [slew(warden)]}");
+        let holds =
+            y("{quests: {caseClosed: failed}, state: {run.accused: b}, facts: [slew(warden)]}");
         assert_eq!(check(&o, &[(1, None, holds)], None), Vec::new());
         // The end world (`complete`) is not what a step judges.
         let misses = check(
@@ -914,7 +952,10 @@ transcriptLacks: ["Welcome"]
 
     #[test]
     fn occasion_keys_are_named_for_a_non_occasion_step() {
-        assert_eq!(occasion_key(&y("{quests: {q: active}, winner: a}")), Some("winner"));
+        assert_eq!(
+            occasion_key(&y("{quests: {q: active}, winner: a}")),
+            Some("winner")
+        );
         assert_eq!(occasion_key(&y("{quests: {q: active}}")), None);
         assert!(wants_world(&y("{winner: a}")).is_none());
         assert!(!wants_world(&y("{state: {run.x: 1}}")).unwrap().facts);

@@ -113,7 +113,10 @@ maintains a fact store; the artifact drives it with:
   changes the relation only while answering a raise of a listed occasion,
   before that raise presents its beats and runs its same-named `<on event>`
   handlers. It is a checker contract, not an IR field; the checker orders
-  presence (`W-CAST-ABSENT` under cast `assume: true`) by it.
+  presence (`W-CAST-ABSENT` under cast `assume: true`) by it: code presented
+  on a listed occasion, after one in the scenario graph, or under a guard
+  that needs a fact of the relation (which only such a raise can have
+  written) is checked without the assumption.
 
 Deltas are **valid-now** — Lute emits no timestamps. The DSL's temporal model
 (dsl 0.3.0 §6) keys each fact to **narrative time**: the engine stamps
@@ -131,11 +134,13 @@ symmetric closure of the authored `excludes:` (absent when empty). It is an
 invariant the author declares, not something the engine derives: the checker
 relies on it (`holds(A(x)) && holds(B(x))` is a dead guard; an `::assert{A(x)}`
 where `B(x)` holds on every route is `E-FACT-EXCLUSIVE`), and the reference
-runners check it after every write — `lute play` reports
-`✗ exclusive: fell(elias) and seenAfter(elias) both hold` at the step and
-halts, `lute trace` refuses the walk at the write. It covers derived relations
-through their derivations. An engine MAY check it the same way (a debug
-assertion); it never retracts anything on its own.
+runners check it after every write — `lute play` and `lute run` report
+`✗ exclusive: fell(elias) and seenAfter(elias) both hold` at the write (even
+when a later write of the same presentation would undo it) and halt, and
+`lute trace` refuses the walk at the write. Seeded facts (a mock, a test's or
+a play script's `facts:`) are checked before anything runs. It covers derived
+relations through their derivations. An engine MAY check it the same way (a
+debug assertion); it never retracts anything on its own.
 
 ## Datalog: the engine computes the minimal model
 

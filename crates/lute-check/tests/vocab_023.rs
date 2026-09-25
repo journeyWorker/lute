@@ -63,7 +63,11 @@ fn prev_of_an_undeclared_run_path_is_undeclared() {
     let ds = run(&src, core(), SchemaImports::default());
     let hits = with_code(&ds, "E-UNDECLARED");
     assert_eq!(hits.len(), 1, "{ds:?}");
-    assert!(hits[0].message.contains("prev.run.day"), "{}", hits[0].message);
+    assert!(
+        hits[0].message.contains("prev.run.day"),
+        "{}",
+        hits[0].message
+    );
 }
 
 #[test]
@@ -74,10 +78,7 @@ fn prev_run_is_read_only() {
     assert_eq!(hits.len(), 1, "{ds:?}");
     assert!(hits[0].message.contains("prev.run"), "{}", hits[0].message);
     // An author cannot declare the mirror either: `prev` is no state tier.
-    let decl = scene(
-        "  prev.run.day: { type: number }\n",
-        "@narrator: Hi.\n",
-    );
+    let decl = scene("  prev.run.day: { type: number }\n", "@narrator: Hi.\n");
     let ds = run(&decl, core(), SchemaImports::default());
     assert!(ds.iter().any(|d| d.code == "E-STATE-NAMESPACE"), "{ds:?}");
 }
@@ -98,7 +99,11 @@ fn cast_scene(body: &str) -> String {
 
 #[test]
 fn speakers_are_shape_only_without_a_cast() {
-    let ds = run(&cast_scene("@anyone: Hello.\n"), core(), SchemaImports::default());
+    let ds = run(
+        &cast_scene("@anyone: Hello.\n"),
+        core(),
+        SchemaImports::default(),
+    );
     assert!(with_code(&ds, "E-CAST-UNKNOWN").is_empty(), "{ds:?}");
 }
 
@@ -110,8 +115,15 @@ fn a_plugin_cast_rejects_an_unknown_speaker_with_a_suggestion() {
     let ds = run(&src, snap, SchemaImports::default());
     let hits = with_code(&ds, "E-CAST-UNKNOWN");
     assert_eq!(hits.len(), 1, "{ds:?}");
-    assert_eq!(&src[hits[0].span.byte_start..hits[0].span.byte_end], "maude");
-    assert!(hits[0].message.contains("did you mean `maud`"), "{}", hits[0].message);
+    assert_eq!(
+        &src[hits[0].span.byte_start..hits[0].span.byte_end],
+        "maude"
+    );
+    assert!(
+        hits[0].message.contains("did you mean `maud`"),
+        "{}",
+        hits[0].message
+    );
 }
 
 #[test]
@@ -137,13 +149,18 @@ fn a_schema_cast_reaches_every_importer() {
     let ds = run(&src, core(), imports);
     let hits = with_code(&ds, "E-CAST-UNKNOWN");
     assert_eq!(hits.len(), 1, "{ds:?}");
-    assert!(hits[0].message.contains("did you mean `sable`"), "{}", hits[0].message);
+    assert!(
+        hits[0].message.contains("did you mean `sable`"),
+        "{}",
+        hits[0].message
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn cast_is_a_schema_key_not_a_scene_key() {
-    let src = "---\nkind: scene\nid: a.one\ncast:\n  maud: { name: Maud }\n---\n## Shot 1.\n@maud: Hi.\n";
+    let src =
+        "---\nkind: scene\nid: a.one\ncast:\n  maud: { name: Maud }\n---\n## Shot 1.\n@maud: Hi.\n";
     let ds = run(src, core(), SchemaImports::default());
     assert!(ds.iter().any(|d| d.code == "E-META-UNKNOWN-KEY"), "{ds:?}");
 }
@@ -176,21 +193,38 @@ fn quest(handler_set: &str) -> String {
 #[test]
 fn setting_a_credited_path_in_a_handler_double_credits() {
     let src = quest("user.embers += 100");
-    let ds = run(&src, with_embers(Some("user.embers")), SchemaImports::default());
+    let ds = run(
+        &src,
+        with_embers(Some("user.embers")),
+        SchemaImports::default(),
+    );
     let hits = with_code(&ds, "W-REWARD-DOUBLE-CREDIT");
     assert_eq!(hits.len(), 1, "{ds:?}");
     assert_eq!(hits[0].severity, Severity::Warning);
-    assert_eq!(&src[hits[0].span.byte_start..hits[0].span.byte_end], "user.embers");
+    assert_eq!(
+        &src[hits[0].span.byte_start..hits[0].span.byte_end],
+        "user.embers"
+    );
 }
 
 #[test]
 fn no_double_credit_without_credits_or_for_another_path() {
-    let ds = run(&quest("user.embers += 100"), with_embers(None), SchemaImports::default());
-    assert!(with_code(&ds, "W-REWARD-DOUBLE-CREDIT").is_empty(), "{ds:?}");
+    let ds = run(
+        &quest("user.embers += 100"),
+        with_embers(None),
+        SchemaImports::default(),
+    );
+    assert!(
+        with_code(&ds, "W-REWARD-DOUBLE-CREDIT").is_empty(),
+        "{ds:?}"
+    );
     let ds = run(
         &quest("user.bond += 1"),
         with_embers(Some("user.embers")),
         SchemaImports::default(),
     );
-    assert!(with_code(&ds, "W-REWARD-DOUBLE-CREDIT").is_empty(), "{ds:?}");
+    assert!(
+        with_code(&ds, "W-REWARD-DOUBLE-CREDIT").is_empty(),
+        "{ds:?}"
+    );
 }

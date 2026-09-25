@@ -25,7 +25,11 @@ fn temp_dir(tag: &str) -> PathBuf {
 /// the arcia project (0.21.1 T3-9) and the file is clean.
 fn loose_date_minigame(tag: &str) -> PathBuf {
     let file = temp_dir(tag).join("date-minigame.lute");
-    std::fs::copy("../../docs/examples/arcia-project/date-minigame.lute", &file).unwrap();
+    std::fs::copy(
+        "../../docs/examples/arcia-project/date-minigame.lute",
+        &file,
+    )
+    .unwrap();
     file
 }
 
@@ -291,14 +295,27 @@ fn hub_prompt_checks_clean_and_runs_with_its_prompt() {
         .args(["compile", SRC, "-o", art.to_str().unwrap()])
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let run = |json: bool| {
-        let mut args = vec!["run", art.to_str().unwrap(), "--mock", mock.to_str().unwrap()];
+        let mut args = vec![
+            "run",
+            art.to_str().unwrap(),
+            "--mock",
+            mock.to_str().unwrap(),
+        ];
         if json {
             args.push("--json");
         }
         let out = Command::new(BIN).args(&args).output().unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         String::from_utf8(out.stdout).unwrap()
     };
 
@@ -312,7 +329,10 @@ fn hub_prompt_checks_clean_and_runs_with_its_prompt() {
         .collect();
     assert_eq!(
         hubs,
-        [("Where do you look?", "shore"), ("Where do you look?", "leave")],
+        [
+            ("Where do you look?", "shore"),
+            ("Where do you look?", "leave")
+        ],
         "{v}"
     );
 
@@ -1814,7 +1834,11 @@ fn coverage_names_a_def_match_as_authored() {
          state:\n  run.n: { type: number, default: 0 }\ndefs:\n  high: \"run.n >= 3\"\n---\n\n## One\n\n\
          <match on=\"@high\">\n<when is=\"true\">\n@narrator: high\n</when>\n<otherwise>\n@narrator: low\n</otherwise>\n</match>\n",
     );
-    write_at(&dir, "t.test.yaml", "file: s.lute\nexpect:\n  exit: complete\n");
+    write_at(
+        &dir,
+        "t.test.yaml",
+        "file: s.lute\nexpect:\n  exit: complete\n",
+    );
     let out = Command::new(BIN)
         .args(["test", dir.to_str().unwrap(), "--coverage"])
         .output()

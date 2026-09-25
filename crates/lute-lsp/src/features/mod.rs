@@ -325,7 +325,13 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
             }
             for arm in &m.arms {
                 match arm {
-                    Arm::When { is, test, body, span, .. } if span_contains(*span, off) => {
+                    Arm::When {
+                        is,
+                        test,
+                        body,
+                        span,
+                        ..
+                    } if span_contains(*span, off) => {
                         // Check `is` FIRST: an `is=`-only `<when>` gives `test` an
                         // empty slot spanning the WHOLE open tag (parser
                         // blocks.rs), which would otherwise swallow the `is=`
@@ -399,10 +405,7 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
             }
             // The open tag (and the gap before the first `<choice>`) is the
             // hub's attr area; past the first choice is body trivia.
-            let before_choices = h
-                .choices
-                .first()
-                .is_none_or(|c| off < c.span.byte_start);
+            let before_choices = h.choices.first().is_none_or(|c| off < c.span.byte_start);
             before_choices.then_some(Cursor::ConstructAttrArea {
                 construct: QuestConstruct::Hub,
             })
@@ -786,10 +789,19 @@ pub(crate) fn attr_enum_values(
         Type::Enum(members) => Some(members.clone()),
         Type::EnumFromOption(name) => snapshot.enums.get(name).cloned(),
         Type::Domain(name) => {
-            let zero_span = Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) };
+            let zero_span = Span {
+                byte_start: 0,
+                byte_end: 0,
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            };
             let (merged, _) =
                 lute_check::schema_import::merge_domains(snapshot, imports, meta, zero_span);
-            merged.get(name).filter(|d| !d.open).map(|d| d.members.clone())
+            merged
+                .get(name)
+                .filter(|d| !d.open)
+                .map(|d| d.members.clone())
         }
         _ => None,
     }
@@ -962,7 +974,11 @@ pub(crate) fn branch_span(doc: &Document, id: &str) -> Option<Span> {
     doc.shots
         .iter()
         .find_map(|s| branch_span_nodes(&s.body, id))
-        .or_else(|| doc.quests.iter().find_map(|q| branch_span_nodes(&q.body, id)))
+        .or_else(|| {
+            doc.quests
+                .iter()
+                .find_map(|q| branch_span_nodes(&q.body, id))
+        })
 }
 
 fn branch_span_nodes(nodes: &[Node], id: &str) -> Option<Span> {
@@ -1124,10 +1140,13 @@ fn bool_domain() -> Vec<String> {
 
 /// The `id` attribute of a `<hub>` (a string literal), if present.
 fn hub_decl_id(h: &Hub) -> Option<&str> {
-    h.attrs.iter().find(|a| a.key == "id").and_then(|a| match &a.value {
-        AttrValue::Str(s) => Some(s.as_str()),
-        _ => None,
-    })
+    h.attrs
+        .iter()
+        .find(|a| a.key == "id")
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.as_str()),
+            _ => None,
+        })
 }
 
 /// The direct choice ids of the `<branch id>` / `<hub id>` named `id`, searched
@@ -1212,12 +1231,18 @@ fn visited_in_nodes(nodes: &[Node], hub: &str, choice: &str) -> bool {
                 if hub_decl_id(h) == Some(hub) && h.choices.iter().any(|c| c.id == choice) {
                     return true;
                 }
-                if h.choices.iter().any(|c| visited_in_nodes(&c.body, hub, choice)) {
+                if h.choices
+                    .iter()
+                    .any(|c| visited_in_nodes(&c.body, hub, choice))
+                {
                     return true;
                 }
             }
             Node::Branch(b) => {
-                if b.choices.iter().any(|c| visited_in_nodes(&c.body, hub, choice)) {
+                if b.choices
+                    .iter()
+                    .any(|c| visited_in_nodes(&c.body, hub, choice))
+                {
                     return true;
                 }
             }
@@ -1282,7 +1307,10 @@ fn find_yaml_key_span(raw_yaml: &str, key: &str) -> Option<Span> {
 /// ref cursor ([`ref_at`]) uses. `None` when the interior holds no well-formed
 /// `@ref` (the checker flags that; the feature degrades to no resolution).
 pub(crate) fn interp_ref_name(raw: &str) -> Option<String> {
-    scan_refs(raw).into_iter().find(|r| !r.is_dollar).map(|r| r.name)
+    scan_refs(raw)
+        .into_iter()
+        .find(|r| !r.is_dollar)
+        .map(|r| r.name)
 }
 
 /// The byte span of an interp's referent (`i.raw`) within its `{{…}}`, located in
@@ -1292,9 +1320,10 @@ pub(crate) fn interp_ref_name(raw: &str) -> Option<String> {
 pub(crate) fn interp_referent_span(src: &str, i: &Interp) -> Span {
     let outer = &src[i.span.byte_start..i.span.byte_end];
     match outer.find(&i.raw) {
-        Some(rel) if !i.raw.is_empty() => {
-            byte_span(i.span.byte_start + rel, i.span.byte_start + rel + i.raw.len())
-        }
+        Some(rel) if !i.raw.is_empty() => byte_span(
+            i.span.byte_start + rel,
+            i.span.byte_start + rel + i.raw.len(),
+        ),
         _ => i.span,
     }
 }
@@ -1539,7 +1568,10 @@ mod tests {
         let is_off = text.find("is=\"a\"").unwrap() + "is=\"".len();
         match resolve(&doc, is_off) {
             Some(Cursor::IsPattern { subject_path }) => {
-                assert_eq!(subject_path, "scene.choices.pick", "carries the match subject");
+                assert_eq!(
+                    subject_path, "scene.choices.pick",
+                    "carries the match subject"
+                );
             }
             other => panic!("expected Cursor::IsPattern, got {other:?}"),
         }
@@ -1562,8 +1594,10 @@ mod tests {
     fn subject_domain_authored_scene_choices_enum_without_branch() {
         let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.choices.manual: { type: { enum: [a, b] } }\n---\n## Shot 1.\n<match on=\"scene.choices.manual\">\n<when is=\"a\">\n@narrator: x\n</when>\n<when is=\"b\">\n@narrator: y\n</when>\n<when is=\"unset\">\n@narrator: z\n</when>\n</match>\n";
         let (doc, _) = parse(text);
-        let (meta, _) =
-            lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
+        let (meta, _) = lute_check::parse_meta(
+            &doc.meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        );
         // No `<branch>`/`<hub>` declares `manual`, so `branch_choice_ids` is None;
         // the domain must instead come from the author-declared enum (case 3).
         assert_eq!(
@@ -1672,7 +1706,8 @@ mod tests {
         let (doc, _) = parse(QUEST_DOC);
         let uses = path_uses(&doc, "run.x");
         assert!(
-            uses.iter().any(|s| QUEST_DOC[s.byte_start..s.byte_end] == *"run.x"),
+            uses.iter()
+                .any(|s| QUEST_DOC[s.byte_start..s.byte_end] == *"run.x"),
             "got {uses:?}"
         );
     }

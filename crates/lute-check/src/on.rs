@@ -71,7 +71,9 @@ pub(crate) fn check_on_targets(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for q in quests {
-        for_each_on(&q.body, &mut |on| check_on_target(on, occasions, kinds, &mut diags));
+        for_each_on(&q.body, &mut |on| {
+            check_on_target(on, occasions, kinds, &mut diags)
+        });
     }
     diags
 }
@@ -111,11 +113,12 @@ fn check_on_target(
         return;
     } else {
         match occasions.get(event) {
-            Some(decl) if decl.target.takes_target() => match occasion_target_ok(decl, target, kinds)
-            {
-                Ok(()) => return,
-                Err(why) => why,
-            },
+            Some(decl) if decl.target.takes_target() => {
+                match occasion_target_ok(decl, target, kinds) {
+                    Ok(()) => return,
+                    Err(why) => why,
+                }
+            }
             Some(_) => format!(
                 "`<on event=\"{event}\">` `target=` needs a targeted occasion named `{event}`, but \
                  occasion `{event}` is not raised for a target (declared without `target: true`); \

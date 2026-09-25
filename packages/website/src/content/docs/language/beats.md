@@ -50,6 +50,7 @@ before, because `once: user` spends it for good the first time it plays.
 | `priority` | optional integer, default `0`; higher wins |
 | `once` | `run` (the default: at most once per run), `user` (at most once ever), or `false` (repeatable). On a project with a [clock](/language/clock/), also `day` (at most once per clock day) or `slot` (at most once per clock slot) |
 | `also` | optional `true` / `false`, default `false` (dsl 0.23.0). On a `select: first` occasion, an `also` beat is a side remark: it is presented after the winner instead of competing with it. See [Side remarks with `also`](#side-remarks-with-also) |
+| `share` | optional; a project-wide key, written beside a spending `once` (dsl 0.25.0 §2). Every beat with the same key is spent together: see [One event, several places](#one-event-several-places-share) |
 
 The beat keys are scene-only and never come from project `defaults:`. A beat belongs to one scene.
 
@@ -62,7 +63,7 @@ may not read the scene's own `scene.*` state. That state does not exist until th
 **both** `after:` and `when` hold, so put route order in `after:` and state conditions in `when`.
 
 A scene without `on:` is reached by explicit flow, as before. `when`, `target`, `priority`, `once`,
-or `also` without `on` is an error:
+`also`, or `share` without `on` is an error:
 
 ```lute expect="E-BEAT-ATTR"
 ---
@@ -133,7 +134,8 @@ without a clock, and `once=` or `priority=` without `on=`: a repetition policy b
 Before 0.22.0 the same effects were spelled as conditions, `when="!entry.<id>.read"` for once per
 run and a `user.*` flag the entry set for once ever. Those still work, but `once` says it directly.
 An entry never rides along another beat, so [`also`](#side-remarks-with-also) on an `<entry>` is
-`E-BEAT-ATTR` too.
+`E-BEAT-ATTR` too. An entry beat takes [`share=`](#one-event-several-places-share) beside its
+`once=` (dsl 0.25.0 §2): reading it spends every beat of its key.
 
 On an occasion declared without a target, an entry's `target=` is metadata (dsl 0.24.0 §6). It says
 what the entry is about, as it does on an entry the engine looks up, and the entry answers every
@@ -188,7 +190,7 @@ state:
   </branch>
 </beat>
 
-<beat id="porterAgain" on="talk" target="npc.porter" title="The porter, again" when="visited('interviews.porter') && run.porterTrust >= 1">
+<beat id="porterAgain" on="talk" target="npc.porter" title="The porter, again" after="visited('interviews.porter')" when="run.porterTrust >= 1">
   @porter: Fine. The lamps went out before ten.
 </beat>
 ```
@@ -199,7 +201,8 @@ A `<beat>` takes the scene beat keys as attributes:
 |---|---|
 | `id` | required; an identifier without `-` (`[A-Za-z][A-Za-z0-9_]*`), unique in the document |
 | `on` | required; the occasion the beat answers |
-| `target`, `when`, `priority`, `once`, `also` | as on a [scene beat](#scene-beat-keys). `once="false"` makes the beat repeatable, and `also` may be written bare |
+| `target`, `when`, `priority`, `once`, `also`, `share` | as on a [scene beat](#scene-beat-keys). `once="false"` makes the beat repeatable, and `also` may be written bare |
+| `after` | optional (dsl 0.25.0 §3); a scene `after:` formula, with the same meaning: an eligibility conjunct and an edge of the [scenario graph](/connectivity/scene-graph/) |
 | `title` | optional; the label an engine shows for the beat in a `select: all` menu, localized like an entry title |
 
 A bundle beat is a scene beat that lives in a different file:
@@ -212,18 +215,26 @@ A bundle beat is a scene beat that lives in a different file:
   spend it, because it is not an entry. With a [clock](/language/clock/), `once="day"` and
   `once="slot"` work as on a scene.
 - Presenting it marks the canonical id visited, so `visited('interviews.porter')` reads it in any
-  condition. That is how `porterAgain` waits for the first talk. A bundle beat has no `after:` of
-  its own, but since dsl 0.24.0 §2 it is a legal `after:` predecessor: a scene's
+  condition. Since dsl 0.24.0 §2 it is a legal `after:` predecessor: a scene's
   `after: "visited('interviews.porter')"`, or a quest's, names it, and connectivity routes through
   it like a scene. (Before 0.24.0 that was `E-CONN-UNKNOWN-NODE`.)
+- Since dsl 0.25.0 §3 it may declare an `after="…"` of its own, as `porterAgain` does. The formula
+  has a scene `after:`'s grammar and meaning: the beat is eligible only once it holds (`lute play`
+  and `lute calendar` list it `— after: prerequisite not satisfied`, and `lute trace --beat` notes
+  ``not eligible: `after` prerequisite not satisfied`` on the beat's head without enforcing it),
+  and `lute scenario` draws its edges. A malformed formula is `E-CONN-PROFILE`, and a
+  node no document declares is `E-CONN-UNKNOWN-NODE` at `check-project`. A `visited()` conjunct in a
+  beat's `when` still gates it, but draws no edge, so `lute scenario` lists such a beat as
+  unanchored and names the `after=` to write. Put route order in `after=` and state in `when`, as on
+  a scene.
 - It is checked like a scene beat. `E-OCCASION-UNKNOWN`, `E-BEAT-UNREACHABLE`, and the
   `check-project` warnings [below](#what-the-checker-proves) name it by its canonical id.
 - Its lines are addressed under the canonical id. The porter's first line is
   `interviews.porter.porter_0010`, and the title's `titleLineId` is `interviews.porter.title`.
 
 Shape faults are `E-BEAT-ATTR`: a missing, malformed, or duplicate `id`, a document with beats but
-no `id:`, a missing `on`, or a bad `priority`, `once`, `also`, or `target`. Any other attribute is
-`E-UNKNOWN-ATTR` (`after=` included), and a `<beat>` in a scene document is not admitted. Entries
+no `id:`, a missing `on`, or a bad `priority`, `once`, `also`, `share`, or `target`. Any other
+attribute is `E-UNKNOWN-ATTR`, and a `<beat>` in a scene document is not admitted. Entries
 and beats may interleave in any order. [Lore entries](/language/lore-entries/#entries-and-beats-in-one-file)
 covers the entry side of the file.
 
@@ -233,9 +244,10 @@ When the engine raises occasion `O`, optionally for target `T`:
 
 1. The **candidates** are the beats with `on: O` whose `target` is absent or equal to `T`. Scene,
    entry, and bundle beats on the same occasion compete in one list.
-2. A candidate is **eligible** when its `after:` and `when` hold and its `once` is not spent: a
-   scene's or bundle beat's by its presentation record, an entry's by its read flags (or, for
-   `once="day"` / `"slot"`, by when it was last presented).
+2. A candidate is **eligible** when its `after:` (a bundle beat's `after=`) and `when` hold and its
+   `once` is not spent: a scene's or bundle beat's by its presentation record, an entry's by its
+   read flags (or, for `once="day"` / `"slot"`, by when it was last presented). A beat with a
+   [`share`](#one-event-several-places-share) key is spent when any beat of its key is.
 3. Eligible beats are ordered by **priority, descending, then project order**: document path,
    then declaration order within the document. `project.index.json` lists every beat in that
    order under `beats`.
@@ -254,6 +266,59 @@ good. The next talk that run presents `achillesMorning` (priority 20). After tha
 `achillesBark3` (priority 10) for the rest of the run, and `achillesBark1` answers only while
 `user.runs` is below 3. Every later run opens with `achillesMorning` again, because a new run
 resets its `entry.achillesMorning.read`.
+
+## One event, several places: `share`
+
+Sometimes one event can happen in different places. Sol is warm with you once a day: on the radio
+in the morning, on the roof at night, whichever comes first. Two beats with `once="day"` each spend
+only themselves, so the player would get both. Beats that stand for one event may share one spend
+(dsl 0.25.0 §2):
+
+```lute
+<beat id="solRadio" on="talk" target="npc.sol" once="day" share="solWarm" when="run.slot == 'morning'">
+  @sol: The radio says clear skies. Stay a while.
+</beat>
+
+<beat id="solRoof" on="talk" target="npc.sol" once="day" share="solWarm" when="run.slot == 'night'">
+  @sol: Up here you can see the whole bay.
+</beat>
+
+<beat id="solNod" on="talk" target="npc.sol" once="false" priority="-1">
+  @sol: Hey.
+</beat>
+```
+
+Beats with the same `share` key, anywhere in the project, are spent together: once one of them is
+presented (an entry: read), every beat of the key is spent for the `once` period, exactly as if
+each had been presented. Scene beats (`share:` in frontmatter), entry beats (`share=`), and bundle
+beats (`share=`) may share one key. In the morning the radio beat plays, and the roof beat is spent
+for the rest of the day. [`lute play`](/tooling/play/) says why:
+
+```
+── step 3 · talk → npc.sol ──────────────
+  ✓ talks.solNod [beat, priority -1]
+  ✗ talks.solRadio [beat, priority 0] — once: day — already presented today
+  ✗ talks.solRoof [beat, priority 0] — once: day — `share: solWarm` already spent today by talks.solRadio
+  → talks.solNod
+```
+
+A key is an identifier (`[A-Za-z][A-Za-z0-9_-]*`). It needs a spending `once` written beside it:
+`share` with no `once`, or with `once: false`, is `E-BEAT-ATTR`, since a repeatable beat has
+nothing to spend. Every beat of one key must declare the same `once`, because the key is spent for
+one period. Add a beat `solDock` to a lore document `harbor` with `once="user" share="solWarm"`,
+and `check-project` reports the mismatch on the radio and roof beats:
+
+<!-- lute-diagnostics -->
+```
+./lore/talks.lute:7:66: error [E-BEAT-ATTR] beat `talks.solRadio` shares `solWarm` with beat `harbor.solDock`, but declares `once: day` where beat `harbor.solDock` declares `once: user`; the beats of one `share` key are spent together for one period, so every one of them declares the same `once` (dsl 0.25.0 §2)
+```
+
+The key replaces the old workaround of stamping the day into state and guarding every beat on it
+(`::set{run.solWarmDay = clock.index}`). [`lute beats`](/tooling/overviews/#lute-beats) shows the
+key in its `once` column (`day, share solWarm`), [`lute calendar`](/tooling/overviews/#lute-calendar)
+spends the key together, and `W-BEAT-PRIORITY-TIE` and cast presence read the whole key's spent
+flags. The key reaches the IR as `share` on the beat's record and on its `project.index.json` row,
+absent when unauthored.
 
 ## Composing an occasion
 
@@ -430,7 +495,7 @@ domain alike: beat, entry, and objective targets, a `lute play` step's `target:`
 
 | Code | When |
 |---|---|
-| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not an identifier, `target` not a dotted id or outside its occasion's [target domain](#target-domains), `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/)), `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
+| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not an identifier, `target` not a dotted id or outside its occasion's [target domain](#target-domains), `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/)), `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, a `share` that is not an identifier or has no spending `once` beside it, beats of one `share` key with different `once`s (`check-project`), beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
 | `E-OCCASION-UNKNOWN` | `on` names an occasion no resolved plugin declares (only once some plugin declares occasions) |
 | `E-BEAT-UNREACHABLE` | a scene or bundle beat's `when` provably never holds; see [How a `when` is decided](#how-a-when-is-decided). `lute check` decides what one file settles, and `lute check-project` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
 | `W-BEAT-SHADOWED` | `check-project` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry without `once`, or a scene or bundle beat with `once: false`). On an occasion whose target domain is closed, an untargeted beat is also reported when, at every `<prefix>.<member>`, such a beat for that member wins; the message names the shadower per target. `also` beats neither shadow nor are shadowed. |
@@ -512,7 +577,7 @@ for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
   the list with `pick: none`, and a step's `expect: { presented: [ids] }` asserts the presented
   beats in order. Bundle beats play like scene beats. See [Playing a story](/tooling/play/).
 - `lute beats <dir>` prints each occasion's (and each target's) beat ladder in selection order,
-  with priority, `once`, `also`, `after:`, `when`, title, and the `check-project` verdicts above,
+  with priority, `once` (and its `share` key), `also`, `after:`, `when`, title, and the `check-project` verdicts above,
   even for a project that does not check clean yet. `lute calendar <dir> --axis …` evaluates
   eligibility over a grid of state values, such as every day and time slot, and shows what each
   cell presents: the winner, or a sequence's whole list. `lute scenario <dir> knowledge` traces
@@ -541,4 +606,6 @@ for entry `once` and target domains,
 for `select: sequence`, `also`, beat bundles, the sharper decider, and `--wip`, and
 [`0.24.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 for `once: day` / `once: slot`, entry targets as metadata, and bundle beats as `after:`
-predecessors.
+predecessors, and the draft
+[`0.25.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
+for `share` and bundle beat `after=`.

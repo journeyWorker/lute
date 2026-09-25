@@ -89,4 +89,3 @@ pub fn code_actions_for_fixits(
 fn ranges_overlap(a: lsp_types::Range, b: lsp_types::Range) -> bool {
     a.start <= b.end && b.start <= a.end
 }
-

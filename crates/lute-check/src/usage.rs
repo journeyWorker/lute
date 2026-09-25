@@ -47,7 +47,11 @@ pub fn check_project_usage(
     docs: &[UsageDoc<'_>],
     extra_sources: &[&str],
 ) -> Vec<(PathBuf, Diagnostic)> {
-    let texts: Vec<&str> = docs.iter().map(|d| d.text).chain(extra_sources.iter().copied()).collect();
+    let texts: Vec<&str> = docs
+        .iter()
+        .map(|d| d.text)
+        .chain(extra_sources.iter().copied())
+        .collect();
     let mut out = Vec::new();
 
     // --- relations -----------------------------------------------------------
@@ -98,12 +102,26 @@ pub fn check_project_usage(
     for body in def_bodies.values() {
         queried_relations(body, &mut read);
     }
+    // dsl 0.25.0 §1 (ER C4): a relation in an `excludes:` pair is read by the
+    // exclusion itself — the checker and every runner check its facts
+    // against the partner's.
+    let owned: BTreeMap<String, lute_manifest::relations::RelationDecl> = declared
+        .iter()
+        .map(|(n, d)| (n.to_string(), (*d).clone()))
+        .collect();
+    for (name, decl) in &owned {
+        for other in &decl.excludes {
+            if lute_manifest::relations::relations_exclude(&owned, name, other) {
+                read.insert(name.clone());
+                read.insert(other.clone());
+            }
+        }
+    }
     for (name, decl) in declared {
         if decl.reserved || !written.contains(name) || read.contains(name) {
             continue;
         }
-        let Some((path, span)) = declaration(docs, DeclKind::Relation, "relations", name)
-        else {
+        let Some((path, span)) = declaration(docs, DeclKind::Relation, "relations", name) else {
             continue;
         };
         out.push((
@@ -185,7 +203,10 @@ fn declaration(
         map.get(serde_yaml::Value::String(block.to_string()))?
             .as_mapping()?
             .get(serde_yaml::Value::String(name.to_string()))?;
-        Some((d.path.to_path_buf(), crate::meta::meta_key_span(&d.doc.meta, name)))
+        Some((
+            d.path.to_path_buf(),
+            crate::meta::meta_key_span(&d.doc.meta, name),
+        ))
     })
 }
 
@@ -196,7 +217,10 @@ pub fn schema_sources(foldeds: &[&FoldedEnv]) -> BTreeSet<PathBuf> {
         .iter()
         .flat_map(|f| {
             let o = &f.env.rel_vocab.origins;
-            o.relations.values().chain(o.defs.values()).chain(o.rules.values())
+            o.relations
+                .values()
+                .chain(o.defs.values())
+                .chain(o.rules.values())
         })
         .map(|o| o.file.clone())
         .collect()
@@ -215,7 +239,9 @@ pub(crate) fn queried_relations(text: &str, out: &mut BTreeSet<String>) {
             if before.chars().next_back().is_some_and(is_ident_char) {
                 continue;
             }
-            let Some(inner) = after.trim_start().strip_prefix('(') else { continue };
+            let Some(inner) = after.trim_start().strip_prefix('(') else {
+                continue;
+            };
             let inner = inner.trim_start();
             let name: String = inner.chars().take_while(|c| is_ident_char(*c)).collect();
             if !name.is_empty() && inner[name.len()..].trim_start().starts_with('(') {
@@ -228,7 +254,10 @@ pub(crate) fn queried_relations(text: &str, out: &mut BTreeSet<String>) {
 /// Every `@name` in `text` (an identifier after `@`).
 fn ref_names(text: &str, out: &mut BTreeSet<String>) {
     for (i, _) in text.match_indices('@') {
-        let name: String = text[i + 1..].chars().take_while(|c| is_ident_char(*c)).collect();
+        let name: String = text[i + 1..]
+            .chars()
+            .take_while(|c| is_ident_char(*c))
+            .collect();
         if !name.is_empty() {
             out.insert(name);
         }

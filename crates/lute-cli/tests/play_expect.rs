@@ -19,10 +19,8 @@ fn temp_dir(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU32, Ordering};
     static N: AtomicU32 = AtomicU32::new(0);
     let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!(
-        "lute-play-expect-{tag}-{}-{n}",
-        std::process::id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("lute-play-expect-{tag}-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -104,7 +102,10 @@ fn a_failed_play_expectation_exits_one_naming_the_step_label_and_actual() {
         .find(|l| l.contains("step 2 (second visit)") && l.contains("expect winner"))
         .unwrap_or_else(|| panic!("no miss line for step 2:\n{t}"));
     assert!(line.contains("hub.idle"), "the expectation: {line}");
-    assert!(line.contains("actual hub.welcome"), "the actual winner: {line}");
+    assert!(
+        line.contains("actual hub.welcome"),
+        "the actual winner: {line}"
+    );
 
     // End-of-play misses name the actual value too.
     let out = play(
@@ -129,7 +130,12 @@ fn an_unknown_expect_key_is_a_usage_error_listing_the_legal_keys() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(2), "{t}");
     assert!(t.contains("`winer`"), "{t}");
-    assert!(t.contains("facts, notFacts, notOffered, offered, options, presented, quests, state, winner"), "{t}");
+    assert!(
+        t.contains(
+            "facts, notFacts, notOffered, offered, options, presented, quests, state, winner"
+        ),
+        "{t}"
+    );
 }
 
 #[test]
@@ -138,22 +144,36 @@ fn lute_test_runs_every_play_that_carries_an_expect() {
     write(&dir, "plays/pass.play.yaml", PASSING);
     write(&dir, "plays/fail.play.yaml", FAILING);
     // No `expect:` anywhere: `lute play` material, not a test.
-    write(&dir, "plays/tour.play.yaml", "steps:\n  - occasion: hubVisit\n");
+    write(
+        &dir,
+        "plays/tour.play.yaml",
+        "steps:\n  - occasion: hubVisit\n",
+    );
     let project = fixture();
-    let args = ["test", dir.to_str().unwrap(), "--project", project.to_str().unwrap()];
+    let args = [
+        "test",
+        dir.to_str().unwrap(),
+        "--project",
+        project.to_str().unwrap(),
+    ];
     let out = lute(&args);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(
-        t.lines().any(|l| l.starts_with("PASS") && l.contains("pass.play.yaml")),
+        t.lines()
+            .any(|l| l.starts_with("PASS") && l.contains("pass.play.yaml")),
         "{t}"
     );
     assert!(
-        t.lines().any(|l| l.starts_with("FAIL") && l.contains("fail.play.yaml")),
+        t.lines()
+            .any(|l| l.starts_with("FAIL") && l.contains("fail.play.yaml")),
         "{t}"
     );
     assert!(t.contains("step 2 (second visit)"), "{t}");
-    assert!(!t.contains("tour.play.yaml"), "a play without expect is not run: {t}");
+    assert!(
+        !t.contains("tour.play.yaml"),
+        "a play without expect is not run: {t}"
+    );
     assert!(t.contains("1 passed, 1 failed"), "{t}");
 
     let mut json_args = args.to_vec();
@@ -181,7 +201,12 @@ fn a_halted_play_fails_in_lute_test_unless_its_exit_is_declared() {
                    - occasion: talk\n    target: npc.oracle\n";
     write(&dir, "h.play.yaml", halting);
     let project = fixture();
-    let args = ["test", dir.to_str().unwrap(), "--project", project.to_str().unwrap()];
+    let args = [
+        "test",
+        dir.to_str().unwrap(),
+        "--project",
+        project.to_str().unwrap(),
+    ];
     let out = lute(&args);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
@@ -220,9 +245,18 @@ fn coverage_counts_the_documents_a_play_presented() {
         .map(|p| p.as_str().unwrap())
         .collect();
     let listed = |f: &str| untested.iter().any(|p| p.ends_with(f));
-    assert!(!listed("scenes/hub/first-ever.lute"), "presented: {untested:?}");
-    assert!(!listed("scenes/hub/welcome.lute"), "presented: {untested:?}");
-    assert!(listed("scenes/hub/idle.lute"), "offered but never presented: {untested:?}");
+    assert!(
+        !listed("scenes/hub/first-ever.lute"),
+        "presented: {untested:?}"
+    );
+    assert!(
+        !listed("scenes/hub/welcome.lute"),
+        "presented: {untested:?}"
+    );
+    assert!(
+        listed("scenes/hub/idle.lute"),
+        "offered but never presented: {untested:?}"
+    );
 }
 
 /// lighthouse N3: a scene reached only by the occasion an `advance:` step's
@@ -232,7 +266,11 @@ fn coverage_counts_the_documents_a_play_presented() {
 #[test]
 fn coverage_counts_the_documents_an_advance_step_presented() {
     let dir = temp_dir("advance-coverage");
-    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
     write(
         &dir,
         "world.schema.yaml",
@@ -270,7 +308,10 @@ fn coverage_counts_the_documents_an_advance_step_presented() {
     );
     assert!(t.contains("1 untested document"), "{t}");
     assert!(t.contains("scenes/unseen.lute"), "{t}");
-    assert!(!t.contains("scenes/dawn.lute"), "presented by the advance's raise: {t}");
+    assert!(
+        !t.contains("scenes/dawn.lute"),
+        "presented by the advance's raise: {t}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -347,7 +388,12 @@ fn a_lore_test_presents_the_named_entries_in_order() {
             "t.test.yaml",
             &format!("file: {}\n{body}", lore.display()),
         );
-        lute(&["test", dir.to_str().unwrap(), "--project", project.to_str().unwrap()])
+        lute(&[
+            "test",
+            dir.to_str().unwrap(),
+            "--project",
+            project.to_str().unwrap(),
+        ])
     };
 
     // Twice in a row: the second presentation is a re-read. The transcript
@@ -402,7 +448,10 @@ fn a_step_expect_judges_quests_and_state_right_after_that_step() {
         t.contains("step 1 (night one) at hubVisit: expect quests firstEscape: expected complete, actual active"),
         "{t}"
     );
-    assert!(t.contains("expect state run.hubVisits: expected 2, actual 1"), "{t}");
+    assert!(
+        t.contains("expect state run.hubVisits: expected 2, actual 1"),
+        "{t}"
+    );
 }
 
 #[test]
@@ -413,7 +462,10 @@ fn a_selection_expect_on_a_non_occasion_step_is_a_usage_error() {
     );
     let t = text(&out);
     assert_eq!(out.status.code(), Some(2), "{t}");
-    assert!(t.contains("`expect.winner` applies only to an `occasion` or `advance` step"), "{t}");
+    assert!(
+        t.contains("`expect.winner` applies only to an `occasion` or `advance` step"),
+        "{t}"
+    );
 }
 
 #[test]
@@ -431,7 +483,11 @@ fn a_test_asserts_facts_and_runs_alone_and_a_missing_document_is_one_failure() {
         "ok.test.yaml",
         "file: s.lute\nexpect:\n  facts: [met(meg)]\n  notFacts: [met(zag)]\n",
     );
-    write(&dir, "gone.test.yaml", "file: nope.lute\nexpect:\n  exit: complete\n");
+    write(
+        &dir,
+        "gone.test.yaml",
+        "file: nope.lute\nexpect:\n  exit: complete\n",
+    );
     // One file runs alone.
     let out = lute(&["test", t_ok.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
@@ -441,11 +497,18 @@ fn a_test_asserts_facts_and_runs_alone_and_a_missing_document_is_one_failure() {
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(t.contains("E-TEST-FILE"), "{t}");
     assert!(t.contains("1 passed, 1 failed"), "{t}");
-    write(&dir, "ok.test.yaml", "file: s.lute\nexpect:\n  notFacts: [met(meg)]\n");
+    write(
+        &dir,
+        "ok.test.yaml",
+        "file: s.lute\nexpect:\n  notFacts: [met(meg)]\n",
+    );
     let out = lute(&["test", dir.join("ok.test.yaml").to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
-    assert!(t.contains("notFacts met(meg): expected does not hold, got holds"), "{t}");
+    assert!(
+        t.contains("notFacts met(meg): expected does not hold, got holds"),
+        "{t}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -482,7 +545,12 @@ fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
     );
     let run_play = |script: &str| {
         let s = write(&project, "plays/probe.play.yaml", script);
-        let out = lute(&["play", project.to_str().unwrap(), "--script", s.to_str().unwrap()]);
+        let out = lute(&[
+            "play",
+            project.to_str().unwrap(),
+            "--script",
+            s.to_str().unwrap(),
+        ]);
         std::fs::remove_file(s).unwrap();
         out
     };
@@ -494,7 +562,10 @@ fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
     );
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
-    assert!(t.contains("skip @hypnos"), "the human transcript still shows the skip: {t}");
+    assert!(
+        t.contains("skip @hypnos"),
+        "the human transcript still shows the skip: {t}"
+    );
     assert!(t.contains("\"Never said.\" absent"), "{t}");
     let out = run_play(
         "steps:\n  - occasion: hubVisit\nexpect:\n  transcriptLacks: ['Never said.', 'step 1', 'priority']\n  \
@@ -513,7 +584,12 @@ fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
             project.join("scenes/hub/first-ever.lute").display()
         ),
     );
-    let out = lute(&["test", tests.to_str().unwrap(), "--project", project.to_str().unwrap()]);
+    let out = lute(&[
+        "test",
+        tests.to_str().unwrap(),
+        "--project",
+        project.to_str().unwrap(),
+    ]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 }
 
@@ -557,20 +633,35 @@ fn eligible_answers_its_note_and_judges_unpresented_entries() {
     let lore = project.join("lore/inbox.lute");
     let dir = temp_dir("eligible-all");
     let test = |body: &str| {
-        write(&dir, "t.test.yaml", &format!("file: {}\n{body}", lore.display()));
-        lute(&["test", dir.to_str().unwrap(), "--project", project.to_str().unwrap()])
+        write(
+            &dir,
+            "t.test.yaml",
+            &format!("file: {}\n{body}", lore.display()),
+        );
+        lute(&[
+            "test",
+            dir.to_str().unwrap(),
+            "--project",
+            project.to_str().unwrap(),
+        ])
     };
     let out = test("entry: dusaNote\nexpect:\n  eligible: { dusaNote: false }\n");
     let t = text(&out);
     assert_eq!(out.status.code(), Some(0), "{t}");
-    assert!(!t.contains("is not eligible under these mocks"), "asserted, so no note: {t}");
+    assert!(
+        !t.contains("is not eligible under these mocks"),
+        "asserted, so no note: {t}"
+    );
 
     let out = test("entry: megNote\nexpect:\n  eligible: { megNote: true, dusaNote: false }\n");
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let out = test("expect:\n  eligible: { megNote: true, dusaNote: true }\n");
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
-    assert!(t.contains("eligible dusaNote: expected true, got false"), "{t}");
+    assert!(
+        t.contains("eligible dusaNote: expected true, got false"),
+        "{t}"
+    );
     let out = test("expect:\n  eligible: { nope: true }\n");
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
@@ -601,7 +692,12 @@ fn play_harness_details() {
     );
     let run_play = |script: &str| {
         let s = write(&project, "plays/probe.play.yaml", script);
-        let out = lute(&["play", project.to_str().unwrap(), "--script", s.to_str().unwrap()]);
+        let out = lute(&[
+            "play",
+            project.to_str().unwrap(),
+            "--script",
+            s.to_str().unwrap(),
+        ]);
         std::fs::remove_file(s).unwrap();
         out
     };
@@ -648,8 +744,16 @@ fn trace_with_project_verifies_quest_existence() {
     );
     let out = lute(&["trace", scene.to_str().unwrap()]);
     let t = text(&out);
-    assert!(t.contains("quest `firstEscape`'s existence is unverified"), "{t}");
-    let out = lute(&["trace", scene.to_str().unwrap(), "--project", project.to_str().unwrap()]);
+    assert!(
+        t.contains("quest `firstEscape`'s existence is unverified"),
+        "{t}"
+    );
+    let out = lute(&[
+        "trace",
+        scene.to_str().unwrap(),
+        "--project",
+        project.to_str().unwrap(),
+    ]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(0), "{t}");
     assert!(!t.contains("existence is unverified"), "{t}");
@@ -672,7 +776,11 @@ fn play_prints_the_skipped_handler_of_a_settled_quest() {
         "id: hub.occasions\nversion: 0.1.0\nkind: capability\n\
          depends: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports:\n  occasions: occasions/\n  events: events/\n",
     );
-    write(&project, "plugins/hub.occasions/events/e.yaml", "events:\n  - name: hubVisit\n");
+    write(
+        &project,
+        "plugins/hub.occasions/events/e.yaml",
+        "events:\n  - name: hubVisit\n",
+    );
     write(
         &project,
         "quests/boss.lute",
@@ -686,9 +794,17 @@ fn play_prints_the_skipped_handler_of_a_settled_quest() {
         "plays/probe.play.yaml",
         "steps:\n  - engine: { state: { run.hubVisits: 5 } }\n  - occasion: hubVisit\n",
     );
-    let out = lute(&["play", project.to_str().unwrap(), "--script", s.to_str().unwrap()]);
+    let out = lute(&[
+        "play",
+        project.to_str().unwrap(),
+        "--script",
+        s.to_str().unwrap(),
+    ]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(0), "{t}");
-    assert!(t.contains("<on event=hubVisit> of quest boss skipped — quest complete"), "{t}");
+    assert!(
+        t.contains("<on event=hubVisit> of quest boss skipped — quest complete"),
+        "{t}"
+    );
     assert!(!t.contains("The hall remembers."), "{t}");
 }

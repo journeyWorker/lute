@@ -345,10 +345,7 @@ pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
             match segs.as_slice() {
                 ["quest", id, "state"] => {
                     if !defined.contains_key(id) {
-                        out.push((
-                            path.clone(),
-                            ref_diag(unknown(&ref_path, id), span),
-                        ));
+                        out.push((path.clone(), ref_diag(unknown(&ref_path, id), span)));
                     }
                 }
                 // dsl 0.8.0 §5: the reserved narrative-time anchor carries no
@@ -357,17 +354,11 @@ pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
                 // So does dsl 0.24.0 §2's failure reason.
                 ["quest", id, "activatedAt" | "failedBy"] => {
                     if !defined.contains_key(id) {
-                        out.push((
-                            path.clone(),
-                            ref_diag(unknown(&ref_path, id), span),
-                        ));
+                        out.push((path.clone(), ref_diag(unknown(&ref_path, id), span)));
                     }
                 }
                 ["quest", id, "objectives", oid, "done" | "failed"] => match defined.get(id) {
-                    None => out.push((
-                        path.clone(),
-                        ref_diag(unknown(&ref_path, id), span),
-                    )),
+                    None => out.push((path.clone(), ref_diag(unknown(&ref_path, id), span))),
                     Some(objectives) => {
                         if !objectives.contains(oid) {
                             out.push((
@@ -434,7 +425,9 @@ fn group_entries_by_position<'a>(
 /// Each document's validated `series:` ([`document_series`]), index-aligned
 /// with `docs` — the owner [`group_entries_by_position`] borrows from.
 fn documents_series(docs: &[(PathBuf, Document)]) -> Vec<Option<String>> {
-    docs.iter().map(|(_, doc)| document_series(&doc.meta)).collect()
+    docs.iter()
+        .map(|(_, doc)| document_series(&doc.meta))
+        .collect()
 }
 
 /// dsl 0.19.0 §3, project-wide: [`E_ENTRY_ID_DUP`] for every `<entry id>`
@@ -1280,7 +1273,9 @@ pub fn domain_reads_from_kinds<'a>(
                 BodyLiteral::Pos(a) | BodyLiteral::Neg(a) => {
                     queried.insert(a.relation.clone());
                 }
-                BodyLiteral::Guard { cel, .. } => crate::usage::queried_relations(cel, &mut queried),
+                BodyLiteral::Guard { cel, .. } => {
+                    crate::usage::queried_relations(cel, &mut queried)
+                }
                 BodyLiteral::Cmp { .. } => {}
             }
         }
@@ -2174,15 +2169,26 @@ mod tests {
         ]);
         let per_file = check_doc_quest_tiers(&same);
         assert_eq!(per_file.len(), 1, "{per_file:?}");
-        assert!(per_file[0].message.contains("`acc` resets to `unset`"), "{}", per_file[0].message);
+        assert!(
+            per_file[0].message.contains("`acc` resets to `unset`"),
+            "{}",
+            per_file[0].message
+        );
         let project = check_project_quest_tree(&[(PathBuf::from("a.lute"), same)]);
-        assert!(!project.iter().any(|(_, d)| d.code == E_QUEST_TIER_MIX), "{project:?}");
+        assert!(
+            !project.iter().any(|(_, d)| d.code == E_QUEST_TIER_MIX),
+            "{project:?}"
+        );
     }
 
     #[test]
     fn matching_tiers_are_clean() {
         let same = doc(vec![
-            run_tier(quest_with("case", 1, vec![objective("acc", Some("acc"), false, 5)])),
+            run_tier(quest_with(
+                "case",
+                1,
+                vec![objective("acc", Some("acc"), false, 5)],
+            )),
             run_tier(quest("acc", 10)),
         ]);
         assert!(check_doc_quest_tiers(&same).is_empty());

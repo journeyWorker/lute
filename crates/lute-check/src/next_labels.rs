@@ -205,7 +205,11 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
         .entries
         .iter()
         .map(|e| (e.span.byte_start, e.body.as_slice()))
-        .chain(doc.beats.iter().map(|b| (b.span.byte_start, b.body.as_slice())))
+        .chain(
+            doc.beats
+                .iter()
+                .map(|b| (b.span.byte_start, b.body.as_slice())),
+        )
         .collect();
     units.sort_by_key(|(start, _)| *start);
     for (_, body) in units {

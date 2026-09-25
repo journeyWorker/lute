@@ -48,10 +48,7 @@ fn check_scene(dir: &Path, scene: &str) -> Vec<Diagnostic> {
 }
 
 fn errors(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
-    diags
-        .iter()
-        .filter(|d| d.code.starts_with("E-"))
-        .collect()
+    diags.iter().filter(|d| d.code.starts_with("E-")).collect()
 }
 
 /// The lamplight F2 component: an enum-dispatched staging block whose last

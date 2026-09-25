@@ -31,9 +31,8 @@ fn first_line(doc: &Document) -> &Line {
 
 #[test]
 fn when_attr_is_extracted_to_slot() {
-    let doc = parse_body(
-        r#"@elena{when="run.metHelpfully" emotion="soft"}: You helped me back then."#,
-    );
+    let doc =
+        parse_body(r#"@elena{when="run.metHelpfully" emotion="soft"}: You helped me back then."#);
     let line = first_line(&doc);
     let w = line.when.as_ref().expect("when extracted");
     assert_eq!(w.raw, "run.metHelpfully");

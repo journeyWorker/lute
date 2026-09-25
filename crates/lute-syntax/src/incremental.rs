@@ -128,7 +128,10 @@ impl IncrementalContinuationParser {
         }
 
         if !self.pending_content && !self.in_block_comment && self.open_tags.is_empty() {
-            return ContinuationFinalization { units, incomplete: None };
+            return ContinuationFinalization {
+                units,
+                incomplete: None,
+            };
         }
 
         let start = self.stream_offset;
@@ -166,7 +169,11 @@ impl IncrementalContinuationParser {
         if !trimmed.is_empty() {
             self.pending_content = true;
             match tag_shape(trimmed) {
-                Some(TagShape::Open { name, self_closing, inline_closed }) => {
+                Some(TagShape::Open {
+                    name,
+                    self_closing,
+                    inline_closed,
+                }) => {
                     if !self_closing && !inline_closed {
                         self.open_tags.push(name);
                     }
@@ -219,7 +226,9 @@ impl IncrementalContinuationParser {
             return Some(NeedMoreInput::BlockComment);
         }
         if !self.open_tags.is_empty() {
-            return Some(NeedMoreInput::NestedBlock { open_tags: self.open_tags.clone() });
+            return Some(NeedMoreInput::NestedBlock {
+                open_tags: self.open_tags.clone(),
+            });
         }
         if lexical.in_string {
             return Some(NeedMoreInput::QuotedAttribute);
@@ -239,7 +248,10 @@ struct TailState {
 
 fn inspect_tail(line: &str, mut in_block_comment: bool) -> TailState {
     let (_, in_string) = blank_comments_inner(line, &mut in_block_comment);
-    TailState { in_block_comment, in_string }
+    TailState {
+        in_block_comment,
+        in_string,
+    }
 }
 
 fn blank_comments(line: &str, in_block_comment: &mut bool) -> String {
@@ -293,7 +305,8 @@ fn blank_comments_inner(line: &str, in_block_comment: &mut bool) -> (String, boo
             i += 1;
             continue;
         }
-        if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'/')
+        if bytes[i] == b'/'
+            && bytes.get(i + 1) == Some(&b'/')
             && out[..i].iter().all(|b| *b == b' ' || *b == b'\t')
         {
             out[i..].fill(b' ');
@@ -311,12 +324,19 @@ fn blank_comments_inner(line: &str, in_block_comment: &mut bool) -> (String, boo
 
     // SAFETY: non-comment bytes are unchanged UTF-8; every byte inside comments
     // is replaced with ASCII space, so the result remains valid UTF-8.
-    (String::from_utf8(out).expect("comment blanking preserves UTF-8"), in_string)
+    (
+        String::from_utf8(out).expect("comment blanking preserves UTF-8"),
+        in_string,
+    )
 }
 
 #[derive(Debug)]
 enum TagShape {
-    Open { name: String, self_closing: bool, inline_closed: bool },
+    Open {
+        name: String,
+        self_closing: bool,
+        inline_closed: bool,
+    },
     Close(String),
 }
 
@@ -352,7 +372,11 @@ fn tag_shape(line: &str) -> Option<TagShape> {
             let self_closing = i > 0 && bytes[i - 1] == b'/';
             let rest = &line[i + 1..];
             let inline_closed = !self_closing && contains_close(rest, &name);
-            return Some(TagShape::Open { name, self_closing, inline_closed });
+            return Some(TagShape::Open {
+                name,
+                self_closing,
+                inline_closed,
+            });
         }
         i += 1;
     }
@@ -413,20 +437,23 @@ mod tests {
     #[test]
     fn never_splits_a_nested_branch() {
         let mut parser = IncrementalContinuationParser::new();
-        let first = parser.push(
-            "<branch id=\"route\">\n<choice id=\"a\" label=\"A\">\n@n: A\n</choice>\n",
-        );
+        let first =
+            parser.push("<branch id=\"route\">\n<choice id=\"a\" label=\"A\">\n@n: A\n</choice>\n");
         assert!(first.units.is_empty());
         assert_eq!(
             first.need_more,
-            Some(NeedMoreInput::NestedBlock { open_tags: vec!["branch".into()] })
+            Some(NeedMoreInput::NestedBlock {
+                open_tags: vec!["branch".into()]
+            })
         );
 
         let second = parser.push(
             "<choice id=\"b\" label=\"B\">\n<on event=\"resume\">\n@n: nested\n</on>\n@n: B\n</choice>\n</branch>\n",
         );
         assert_eq!(second.units.len(), 1);
-        assert!(matches!(one_node(&second.units[0]), Node::Branch(branch) if branch.choices.len() == 2));
+        assert!(
+            matches!(one_node(&second.units[0]), Node::Branch(branch) if branch.choices.len() == 2)
+        );
     }
 
     #[test]
@@ -455,7 +482,10 @@ mod tests {
         let mut parser = IncrementalContinuationParser::new();
         let first = parser.push("<match on=\"scene.route\">\n<when is=\"a\">\n@n: A\n</when>\n");
         assert!(first.units.is_empty());
-        assert!(matches!(first.need_more, Some(NeedMoreInput::NestedBlock { .. })));
+        assert!(matches!(
+            first.need_more,
+            Some(NeedMoreInput::NestedBlock { .. })
+        ));
 
         let second = parser.push("<otherwise>\n@n: B\n</otherwise>\n</match>\n");
         assert_eq!(second.units.len(), 1);
@@ -468,14 +498,24 @@ mod tests {
         block.push("<branch id=\"route\">\n");
         let finished = block.finish();
         assert!(finished.units.is_empty());
-        let incomplete = finished.incomplete.expect("open block must remain incomplete");
-        assert!(incomplete.diagnostics.iter().any(|d| d.code == E_UNCLOSED_TAG));
+        let incomplete = finished
+            .incomplete
+            .expect("open block must remain incomplete");
+        assert!(incomplete
+            .diagnostics
+            .iter()
+            .any(|d| d.code == E_UNCLOSED_TAG));
 
         let mut comment = IncrementalContinuationParser::new();
         comment.push("/* unfinished");
         let finished = comment.finish();
-        let incomplete = finished.incomplete.expect("open comment must remain incomplete");
-        assert!(incomplete.diagnostics.iter().any(|d| d.code == E_COMMENT_UNTERMINATED));
+        let incomplete = finished
+            .incomplete
+            .expect("open comment must remain incomplete");
+        assert!(incomplete
+            .diagnostics
+            .iter()
+            .any(|d| d.code == E_COMMENT_UNTERMINATED));
     }
 
     #[test]

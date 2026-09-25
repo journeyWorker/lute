@@ -28,7 +28,11 @@ fn write(dir: &Path, rel: &str, text: &str) {
 }
 
 fn text(o: &Output) -> String {
-    format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
 }
 
 const QUESTS: &str = r#"---
@@ -115,7 +119,11 @@ fn project(tag: &str) -> PathBuf {
         "occasions:\n  hubVisit: {}\n  board: {}\n  talk: { target: { prefix: npc, entity: person } }\n  \
          chapterEnd: { judge: before }\n  nightfall: {}\n",
     );
-    write(&dir, "plugins/g.occ/events/e.yaml", "events:\n  - { name: talk }\n");
+    write(
+        &dir,
+        "plugins/g.occ/events/e.yaml",
+        "events:\n  - { name: talk }\n",
+    );
     write(
         &dir,
         "world.schema.yaml",
@@ -175,7 +183,8 @@ fn play(dir: &Path, tag: &str, script: &str, json: bool) -> Output {
     let path = dir.join(format!("{tag}.play.yaml"));
     std::fs::write(&path, script).unwrap();
     let mut cmd = Command::new(BIN);
-    cmd.args(["play", &dir.display().to_string(), "--script"]).arg(&path);
+    cmd.args(["play", &dir.display().to_string(), "--script"])
+        .arg(&path);
     if json {
         cmd.arg("--json");
     }
@@ -191,7 +200,11 @@ fn play_json(dir: &Path, tag: &str, script: &str) -> Json {
 /// Every quest transition of step `n` (`0` = the start settle), as
 /// `"<quest> -> <state>"` or `"<quest> -> failed (<reason>)"`.
 fn transitions(v: &Json, n: usize) -> Vec<String> {
-    let records = if n == 0 { &v["start"]["quests"] } else { &v["steps"][n - 1]["quests"] };
+    let records = if n == 0 {
+        &v["start"]["quests"]
+    } else {
+        &v["steps"][n - 1]["quests"]
+    };
     quest_records(records)
 }
 
@@ -204,8 +217,16 @@ fn quest_records(records: &Json) -> Vec<String> {
         .flat_map(|doc| doc["commands"].as_array().unwrap())
         .filter(|r| r["kind"] == "quest")
         .map(|r| match r["failedBy"].as_str() {
-            Some(by) => format!("{} -> {} ({by})", r["quest"].as_str().unwrap(), r["state"].as_str().unwrap()),
-            None => format!("{} -> {}", r["quest"].as_str().unwrap(), r["state"].as_str().unwrap()),
+            Some(by) => format!(
+                "{} -> {} ({by})",
+                r["quest"].as_str().unwrap(),
+                r["state"].as_str().unwrap()
+            ),
+            None => format!(
+                "{} -> {}",
+                r["quest"].as_str().unwrap(),
+                r["state"].as_str().unwrap()
+            ),
         })
         .collect()
 }
@@ -213,7 +234,11 @@ fn quest_records(records: &Json) -> Vec<String> {
 #[test]
 fn the_project_checks_clean() {
     let dir = project("check");
-    let out = Command::new(BIN).arg("check-project").arg(&dir).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("check-project")
+        .arg(&dir)
+        .output()
+        .unwrap();
     assert!(out.status.success(), "{}", text(&out));
     let t = text(&out);
     assert!(!t.contains("W-QUEST-NEVER-ACCEPTED"), "{t}");
@@ -234,7 +259,12 @@ fn accept_children_wait_and_complete_any_supersedes_the_rest() {
     // The children do not activate with their parent.
     let start = transitions(&v, 0);
     assert!(start.contains(&"road -> active".to_string()), "{start:?}");
-    assert!(!start.iter().any(|t| t.starts_with("parley") || t.starts_with("toll")), "{start:?}");
+    assert!(
+        !start
+            .iter()
+            .any(|t| t.starts_with("parley") || t.starts_with("toll")),
+        "{start:?}"
+    );
     // Each activates once accepted, the parent being active.
     assert_eq!(transitions(&v, 1), ["toll -> active"]);
     assert_eq!(transitions(&v, 2), ["parley -> active"]);
@@ -242,7 +272,11 @@ fn accept_children_wait_and_complete_any_supersedes_the_rest() {
     // (still active) is superseded.
     assert_eq!(
         transitions(&v, 4),
-        ["parley -> complete", "road -> complete", "toll -> failed (superseded)"]
+        [
+            "parley -> complete",
+            "road -> complete",
+            "toll -> failed (superseded)"
+        ]
     );
 
     let out = play(
@@ -271,8 +305,14 @@ fn a_never_accepted_alternative_stays_unset_when_the_parent_completes() {
          expect:\n  quests: { road: complete, toll: complete, parley: unset }\n",
     );
     let settled = transitions(&v, 2);
-    assert!(settled.contains(&"road -> complete".to_string()), "{settled:?}");
-    assert!(!settled.iter().any(|t| t.starts_with("parley")), "{settled:?}");
+    assert!(
+        settled.contains(&"road -> complete".to_string()),
+        "{settled:?}"
+    );
+    assert!(
+        !settled.iter().any(|t| t.starts_with("parley")),
+        "{settled:?}"
+    );
 }
 
 #[test]
@@ -309,8 +349,15 @@ fn an_any_parent_fails_only_once_every_alternative_failed() {
          expect:\n  quests: { ford: failed, ferry: failed }\n",
     );
     assert_eq!(transitions(&v, 1), ["ferry -> active"]);
-    assert!(!transitions(&v, 2).iter().any(|t| t.starts_with("ford")), "{:?}", transitions(&v, 2));
-    assert_eq!(transitions(&v, 3), ["ferry -> failed (fail)", "ford -> failed (fail)"]);
+    assert!(
+        !transitions(&v, 2).iter().any(|t| t.starts_with("ford")),
+        "{:?}",
+        transitions(&v, 2)
+    );
+    assert_eq!(
+        transitions(&v, 3),
+        ["ferry -> failed (fail)", "ford -> failed (fail)"]
+    );
 }
 
 #[test]
@@ -326,8 +373,14 @@ fn a_targeted_on_answers_only_a_raise_for_its_target() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(0), "{t}");
     let (oskar, maud) = t.split_once("── step 2").unwrap_or_else(|| panic!("{t}"));
-    assert!(oskar.contains("Any handler.") && !oskar.contains("Maud handler."), "{t}");
-    assert!(maud.contains("Maud handler.") && maud.contains("Any handler."), "{t}");
+    assert!(
+        oskar.contains("Any handler.") && !oskar.contains("Maud handler."),
+        "{t}"
+    );
+    assert!(
+        maud.contains("Maud handler.") && maud.contains("Any handler."),
+        "{t}"
+    );
 }
 
 #[test]
@@ -341,24 +394,44 @@ fn judge_before_judges_the_occasion_before_its_beats_are_presented() {
     );
     // `chapterEnd` is `judge: before`: `cross` completes first, so its
     // epilogue sees it.
-    assert_eq!(quest_records(&v["steps"][1]["judgedBefore"]), ["cross -> complete"]);
+    assert_eq!(
+        quest_records(&v["steps"][1]["judgedBefore"]),
+        ["cross -> complete"]
+    );
     assert!(transitions(&v, 2).is_empty(), "{:?}", transitions(&v, 2));
     assert_eq!(v["steps"][1]["winner"], "end.over");
     // `nightfall` judges after: its beat still reads `dusk` active.
     assert!(v["steps"][2]["winner"].is_null(), "{}", v["steps"][2]);
-    assert!(v["steps"][2].get("judgedBefore").is_none(), "{}", v["steps"][2]);
+    assert!(
+        v["steps"][2].get("judgedBefore").is_none(),
+        "{}",
+        v["steps"][2]
+    );
     assert_eq!(transitions(&v, 3), ["dusk -> complete"]);
 
     // The transcript shows the judging where it happened: before the beat;
     // the lifecycle handler it fired runs after the beat.
-    let out = play(&dir, "judge-human", "steps:\n  - engine: { state: { run.paid: true } }\n  - occasion: chapterEnd\n", false);
+    let out = play(
+        &dir,
+        "judge-human",
+        "steps:\n  - engine: { state: { run.paid: true } }\n  - occasion: chapterEnd\n",
+        false,
+    );
     let t = text(&out);
-    let judged = t.find("  quest cross -> complete\n").unwrap_or_else(|| panic!("{t}"));
+    let judged = t
+        .find("  quest cross -> complete\n")
+        .unwrap_or_else(|| panic!("{t}"));
     let chosen = t.find("  → end.over\n").unwrap_or_else(|| panic!("{t}"));
-    assert!(t.find("· chapterEnd").unwrap() < judged && judged < chosen, "{t}");
+    assert!(
+        t.find("· chapterEnd").unwrap() < judged && judged < chosen,
+        "{t}"
+    );
     let scene = t.find("Crossed.").unwrap_or_else(|| panic!("{t}"));
     let handler = t.find("Cross handler.").unwrap_or_else(|| panic!("{t}"));
-    assert!(scene < handler, "the questComplete handler runs after the beat: {t}");
+    assert!(
+        scene < handler,
+        "the questComplete handler runs after the beat: {t}"
+    );
 }
 
 /// dsl 0.24.0 §2.1 (LH N2): an `on=` objective whose `by` holds wherever its
@@ -376,7 +449,11 @@ fn deadline_project(tag: &str) -> PathBuf {
         "id: g.occ\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
          exports:\n  occasions: occasions/\n",
     );
-    write(&dir, "plugins/g.occ/occasions/o.yaml", "occasions:\n  file: {}\n  inquest: {}\n");
+    write(
+        &dir,
+        "plugins/g.occ/occasions/o.yaml",
+        "occasions:\n  file: {}\n  inquest: {}\n",
+    );
     write(
         &dir,
         "world.schema.yaml",
@@ -390,7 +467,10 @@ fn deadline_project(tag: &str) -> PathBuf {
          <objective id=\"fate\" title=\"Fate\" on=\"inquest\" done=\"run.v == 'fell'\" by=\"run.v != 'undecided'\"/>\n\
          </quest>\n",
     );
-    for (rel, id, on) in [("scenes/file.lute", "hub.file", "file"), ("scenes/hearing.lute", "end.hearing", "inquest")] {
+    for (rel, id, on) in [
+        ("scenes/file.lute", "hub.file", "file"),
+        ("scenes/hearing.lute", "end.hearing", "inquest"),
+    ] {
         write(
             &dir,
             rel,
@@ -436,8 +516,14 @@ fn an_accept_at_next_run_survives_the_new_run_reset() {
     let out = play(&dir, "next-run-human", script, false);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(0), "{t}");
-    assert!(t.contains("  quest bounty accepted (queued: applies after the next newRun)\n"), "{t}");
-    assert!(t.contains("  quest bounty accepted (queued at=\"nextRun\")\n"), "{t}");
+    assert!(
+        t.contains("  quest bounty accepted (queued: applies after the next newRun)\n"),
+        "{t}"
+    );
+    assert!(
+        t.contains("  quest bounty accepted (queued at=\"nextRun\")\n"),
+        "{t}"
+    );
     // A run-tier quest's reset clears why it failed.
     let v = play_json(
         &dir,
@@ -446,8 +532,16 @@ fn an_accept_at_next_run_survives_the_new_run_reset() {
          expect: { quests: { bounty: failed }, state: { quest.bounty.failedBy: fail } }\n  - newRun: true\n\
          expect:\n  quests: { bounty: unset }\n  state: { quest.bounty.failedBy: unset }\n",
     );
-    assert!(transitions(&v, 3).contains(&"bounty -> failed (fail)".to_string()), "{:?}", transitions(&v, 3));
+    assert!(
+        transitions(&v, 3).contains(&"bounty -> failed (fail)".to_string()),
+        "{:?}",
+        transitions(&v, 3)
+    );
     // Once applied, the queue is empty: a second run start accepts nothing.
-    let v = play_json(&dir, "next-run-twice", "steps:\n  - occasion: board\n  - newRun: true\n  - newRun: true\n");
+    let v = play_json(
+        &dir,
+        "next-run-twice",
+        "steps:\n  - occasion: board\n  - newRun: true\n  - newRun: true\n",
+    );
     assert!(v["steps"][2].get("accepted").is_none(), "{}", v["steps"][2]);
 }

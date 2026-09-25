@@ -143,7 +143,11 @@ fn non_ident_id_is_entry_attr() {
 #[test]
 fn non_string_id_is_entry_attr_once() {
     let (src, ds) = entry_attr_diags("<entry id>");
-    assert_eq!(ds.len(), 1, "a bare `id` is one fault, not also `missing`: {ds:?}");
+    assert_eq!(
+        ds.len(),
+        1,
+        "a bare `id` is one fault, not also `missing`: {ds:?}"
+    );
     assert!(anchored(&src, &ds[0]).starts_with("id"));
 }
 
@@ -185,7 +189,11 @@ fn order_must_be_a_non_negative_integer() {
 fn order_without_series_is_entry_attr() {
     let (src, ds) = entry_attr_diags("<entry id=\"e\" order=\"1\">");
     assert_eq!(ds.len(), 1, "{ds:?}");
-    assert!(ds[0].message.contains("requires `series`"), "{}", ds[0].message);
+    assert!(
+        ds[0].message.contains("requires `series`"),
+        "{}",
+        ds[0].message
+    );
     assert_eq!(anchored(&src, &ds[0]), "1");
 }
 
@@ -195,7 +203,10 @@ fn unknown_entry_attr_is_unknown_attr() {
     let ds = diags(&src);
     let u = with_code(&ds, "E-UNKNOWN-ATTR");
     assert_eq!(u.len(), 1, "{ds:?}");
-    assert_eq!(u[0].message, "`<entry>` has no attribute `anchor` (dsl 0.10.0 §4)");
+    assert_eq!(
+        u[0].message,
+        "`<entry>` has no attribute `anchor` (dsl 0.10.0 §4)"
+    );
     assert!(with_code(&ds, "E-ENTRY-ATTR").is_empty(), "{ds:?}");
 }
 
@@ -211,9 +222,7 @@ fn hyphenated_entry_id_is_path_ident() {
 
 #[test]
 fn duplicate_entry_id_in_a_document() {
-    let src = lore(
-        "<entry id=\"note\">\n@n: a\n</entry>\n<entry id=\"note\">\n@n: b\n</entry>\n",
-    );
+    let src = lore("<entry id=\"note\">\n@n: a\n</entry>\n<entry id=\"note\">\n@n: b\n</entry>\n");
     let ds = diags(&src);
     let dup = with_code(&ds, "E-ENTRY-ID-DUP");
     assert_eq!(dup.len(), 1, "{ds:?}");
@@ -233,9 +242,17 @@ fn duplicate_series_order_in_a_document() {
     );
     let ds = diags(&src);
     let dup = with_code(&ds, "E-ENTRY-SERIES-ORDER");
-    assert_eq!(dup.len(), 1, "`01` is position 1; another series is free: {ds:?}");
+    assert_eq!(
+        dup.len(),
+        1,
+        "`01` is position 1; another series is free: {ds:?}"
+    );
     assert_eq!(anchored(&src, dup[0]), "01");
-    assert!(dup[0].message.contains("`<entry id=\"a\">`"), "{}", dup[0].message);
+    assert!(
+        dup[0].message.contains("`<entry id=\"a\">`"),
+        "{}",
+        dup[0].message
+    );
 }
 
 // --- admission ---------------------------------------------------------------
@@ -261,7 +278,9 @@ fn entry_body_rejects_played_constructs() {
         let ds = not_admitted(&entry(body));
         assert_eq!(ds.len(), 1, "{body}: {ds:#?}");
         assert!(
-            ds[0].message.contains("entry bodies are looked up, not played"),
+            ds[0]
+                .message
+                .contains("entry bodies are looked up, not played"),
             "{}",
             ds[0].message
         );
@@ -287,7 +306,12 @@ fn tag_restarts_the_counter_per_entry() {
     let src = lore("<entry id=\"a\">\n@n: a\n@n: b\n</entry>\n<entry id=\"b\">\n@n: c\n</entry>\n");
     let out = lute_check::tag_document(&src);
     assert_eq!(out.added, 3);
-    assert!(out.text.contains("@n{code=\"0010\"}: a\n@n{code=\"0020\"}: b"), "{}", out.text);
+    assert!(
+        out.text
+            .contains("@n{code=\"0010\"}: a\n@n{code=\"0020\"}: b"),
+        "{}",
+        out.text
+    );
     assert!(out.text.contains("@n{code=\"0010\"}: c"), "{}", out.text);
 }
 
@@ -330,23 +354,37 @@ fn entry_body_admits_lines_match_and_effects() {
 fn lore_top_level_rejects_title_shot_and_quest() {
     let title = not_admitted(&lore("# Records\n<entry id=\"e\">\n@n: hi\n</entry>\n"));
     assert_eq!(title.len(), 1, "{title:#?}");
-    assert!(title[0].message.contains("lore document"), "{}", title[0].message);
+    assert!(
+        title[0].message.contains("lore document"),
+        "{}",
+        title[0].message
+    );
 
-    let shot = not_admitted(&lore("<entry id=\"e\">\n@n: hi\n</entry>\n## Shot 1.\n@n: x\n"));
+    let shot = not_admitted(&lore(
+        "<entry id=\"e\">\n@n: hi\n</entry>\n## Shot 1.\n@n: x\n",
+    ));
     assert_eq!(shot.len(), 1, "{shot:#?}");
 
     let quest = not_admitted(&lore(
         "<entry id=\"e\">\n@n: hi\n</entry>\n<quest id=\"q\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n",
     ));
     assert_eq!(quest.len(), 1, "{quest:#?}");
-    assert!(quest[0].message.contains("<quest id=\"q\">"), "{}", quest[0].message);
+    assert!(
+        quest[0].message.contains("<quest id=\"q\">"),
+        "{}",
+        quest[0].message
+    );
 }
 
 #[test]
 fn empty_lore_document_is_not_admitted() {
     let ds = not_admitted("---\nkind: lore\n---\n");
     assert_eq!(ds.len(), 1, "{ds:#?}");
-    assert!(ds[0].message.contains("declares no `<entry>`"), "{}", ds[0].message);
+    assert!(
+        ds[0].message.contains("declares no `<entry>`"),
+        "{}",
+        ds[0].message
+    );
 }
 
 #[test]
@@ -358,14 +396,22 @@ fn entry_in_scene_or_quest_document_is_not_admitted() {
          <entry id=\"e\">\n@n: hi\n</entry>\n## Shot 1.\n@x: hi\n",
     );
     assert_eq!(scene.len(), 1, "{scene:#?}");
-    assert!(scene[0].message.contains("scene document"), "{}", scene[0].message);
+    assert!(
+        scene[0].message.contains("scene document"),
+        "{}",
+        scene[0].message
+    );
 
     let quest = not_admitted(
         "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n\
          <entry id=\"e\">\n@n: hi\n</entry>\n",
     );
     assert_eq!(quest.len(), 1, "{quest:#?}");
-    assert!(quest[0].message.contains("quest document"), "{}", quest[0].message);
+    assert!(
+        quest[0].message.contains("quest document"),
+        "{}",
+        quest[0].message
+    );
 }
 
 // --- the entry-body walk -------------------------------------------------------
@@ -381,7 +427,9 @@ fn assert_errors_inside_an_entry_are_reported() {
 #[test]
 fn entry_when_is_a_checked_condition_slot() {
     // An undeclared read in `when` is reported like one in `<quest start>`.
-    let cs = codes(&lore("<entry id=\"e\" when=\"run.ghost\">\n@n: hi\n</entry>\n"));
+    let cs = codes(&lore(
+        "<entry id=\"e\" when=\"run.ghost\">\n@n: hi\n</entry>\n",
+    ));
     assert!(cs.contains(&"E-UNDECLARED".to_string()), "{cs:?}");
     // A maybe-unset read (no default) in `when` is E-MAYBE-UNSET.
     let cs = codes(
@@ -523,7 +571,11 @@ fn project_entry_ref_unknown() {
     assert_eq!(path, &PathBuf::from("scene.lute"));
     assert_eq!(d.code, "W-ENTRY-REF-UNKNOWN");
     assert_eq!(d.severity, Severity::Warning);
-    assert!(d.message.contains("entry.scientistLog9.read"), "{}", d.message);
+    assert!(
+        d.message.contains("entry.scientistLog9.read"),
+        "{}",
+        d.message
+    );
 
     // Every read resolves once the entry is declared.
     let fixed = scene.replace("scientistLog9", "scientistLog1");
@@ -557,7 +609,10 @@ fn series_document_checks_clean_and_orders_by_position() {
         .collect();
     assert_eq!(
         resolved,
-        vec![(Some("captainsLog"), Some(1)), (Some("captainsLog"), Some(2))]
+        vec![
+            (Some("captainsLog"), Some(1)),
+            (Some("captainsLog"), Some(2))
+        ]
     );
 }
 
@@ -602,18 +657,21 @@ fn malformed_document_series_is_meta_value_and_orders_nothing() {
 
 #[test]
 fn lore_and_quest_document_id_shape() {
-    let ok = codes(&bundle("id: haven.captainsLog\n", "<entry id=\"e\">\n@n: hi\n</entry>\n"));
+    let ok = codes(&bundle(
+        "id: haven.captainsLog\n",
+        "<entry id=\"e\">\n@n: hi\n</entry>\n",
+    ));
     assert!(ok.is_empty(), "{ok:?}");
-    let quest = |id: &str| {
-        format!("---\nkind: quest\nid: {id}\n---\n<quest id=\"q\">\n</quest>\n")
-    };
+    let quest = |id: &str| format!("---\nkind: quest\nid: {id}\n---\n<quest id=\"q\">\n</quest>\n");
     assert!(codes(&quest("haven.mainChain")).is_empty());
     let src = quest("\"haven main\"");
     let ds = diags(&src);
     let bad = with_code(&ds, "E-META-ID");
     assert_eq!(bad.len(), 1, "{ds:?}");
     assert!(
-        bad[0].message.starts_with("document `id:` `haven main` is not a valid document id"),
+        bad[0]
+            .message
+            .starts_with("document `id:` `haven main` is not a valid document id"),
         "{}",
         bad[0].message
     );
@@ -626,7 +684,11 @@ fn series_is_a_lore_only_key() {
     let ds = diags("---\nkind: quest\nseries: log\n---\n<quest id=\"q\">\n</quest>\n");
     let unknown = with_code(&ds, "E-META-UNKNOWN-KEY");
     assert_eq!(unknown.len(), 1, "{ds:?}");
-    assert!(unknown[0].message.contains("`series`"), "{}", unknown[0].message);
+    assert!(
+        unknown[0].message.contains("`series`"),
+        "{}",
+        unknown[0].message
+    );
 }
 
 #[test]

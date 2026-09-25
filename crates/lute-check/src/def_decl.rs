@@ -58,7 +58,9 @@ pub(crate) fn lift_def(name: &str, v: &Value) -> Result<Value, String> {
         .keys()
         .find(|k| !k.as_str().is_some_and(|k| DEF_KEYS.contains(&k)))
     {
-        let key = key.as_str().map_or_else(|| yaml_shape(key).to_string(), str::to_string);
+        let key = key
+            .as_str()
+            .map_or_else(|| yaml_shape(key).to_string(), str::to_string);
         return Err(format!(
             "invalid def `{name}`: `{key}:` is not a def key; a def is \
              `{{ type: bool, cel: \"…\" }}` with an optional `params: {{ p: <type> }}`, or \

@@ -129,8 +129,14 @@ fn context_json_lists_defs_ownership_tiers_builtins_and_ids() {
             .unwrap()
             .clone()
     };
-    assert_eq!((rel("met")["tier"].clone(), rel("met")["reserved"].clone()), ("user".into(), false.into()));
-    assert_eq!((rel("slew")["tier"].clone(), rel("slew")["reserved"].clone()), ("run".into(), true.into()));
+    assert_eq!(
+        (rel("met")["tier"].clone(), rel("met")["reserved"].clone()),
+        ("user".into(), false.into())
+    );
+    assert_eq!(
+        (rel("slew")["tier"].clone(), rel("slew")["reserved"].clone()),
+        ("run".into(), true.into())
+    );
 
     let builtins: Vec<&str> = v["builtinDirectives"]
         .as_array()

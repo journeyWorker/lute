@@ -731,7 +731,11 @@ mod tests {
         let mut b = CapabilitySnapshot::default();
         b.occasions.insert("talk".into(), decl(true));
         let empty = capability_version(&CapabilitySnapshot::default());
-        assert_ne!(capability_version(&a), empty, "declaring an occasion restamps");
+        assert_ne!(
+            capability_version(&a),
+            empty,
+            "declaring an occasion restamps"
+        );
         assert_ne!(
             capability_version(&a),
             capability_version(&b),
@@ -814,7 +818,10 @@ mod tests {
             stamp(OccasionSelect::All),
             "44eae9ec1c7bf2a426d3d73ffcc0dd2d1b8158eabe110d031392ff5052826d58"
         );
-        assert_ne!(stamp(OccasionSelect::Sequence), stamp(OccasionSelect::First));
+        assert_ne!(
+            stamp(OccasionSelect::Sequence),
+            stamp(OccasionSelect::First)
+        );
         assert_ne!(stamp(OccasionSelect::Sequence), stamp(OccasionSelect::All));
     }
 

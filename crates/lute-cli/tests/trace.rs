@@ -633,12 +633,18 @@ fn trace_visited_mock_makes_a_visited_objective_done() {
     // No `visited:`: closed-world false — pending, never unresolved, exit 0.
     let v = trace_quest_json(&dir, &[]);
     let saw = outcomes(&v, "objective", "sawShed");
-    assert!(!saw.is_empty() && saw.iter().all(|o| *o == "pending"), "{saw:?}");
+    assert!(
+        !saw.is_empty() && saw.iter().all(|o| *o == "pending"),
+        "{saw:?}"
+    );
     assert_eq!(v["unresolved"], serde_json::json!([]));
 
     std::fs::write(dir.join("m.yaml"), "visited: [haven.shed]\n").unwrap();
     let v = trace_quest_json(&dir, &["--mock", dir.join("m.yaml").to_str().unwrap()]);
-    assert!(outcomes(&v, "objective", "sawShed").contains(&"done"), "{v}");
+    assert!(
+        outcomes(&v, "objective", "sawShed").contains(&"done"),
+        "{v}"
+    );
 }
 
 #[test]
@@ -680,7 +686,11 @@ fn trace_judges_an_on_objective_only_when_the_occasion_is_raised() {
         let args: Vec<&str> = extra.iter().map(String::as_str).collect();
         let v = trace_quest_json(&dir, &args);
         assert_eq!(outcomes(&v, "objective", "calm"), ["done"], "{extra:?}");
-        assert_eq!(outcomes(&v, "quest", "holdLine"), ["active", "complete"], "{extra:?}");
+        assert_eq!(
+            outcomes(&v, "quest", "holdLine"),
+            ["active", "complete"],
+            "{extra:?}"
+        );
         assert!(!has_note(&v, "never raised"), "{extra:?}: {}", v["notes"]);
     }
 
@@ -798,7 +808,12 @@ fn integer_modulo_checks_and_evaluates_in_trace_and_test() {
     let f = file.to_str().unwrap();
     let transcript = |day: &str| {
         let out = trace(&[f, "--state", &format!("run.day={day}")]);
-        assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         String::from_utf8_lossy(&out.stdout).to_string()
     };
     let t = transcript("14");
@@ -811,8 +826,16 @@ fn integer_modulo_checks_and_evaluates_in_trace_and_test() {
         "file: s.lute\nstate:\n  run.day: 21\nexpect:\n  transcriptContains: [\"Sunday.\"]\n",
     )
     .unwrap();
-    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
-    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    let out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
 
     std::fs::remove_file(dir.join("t.test.yaml")).unwrap();
     std::fs::write(&file, scene("$ % 2.5 == 0")).unwrap();
@@ -823,7 +846,10 @@ fn integer_modulo_checks_and_evaluates_in_trace_and_test() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert_eq!(out.status.code(), Some(1), "{all}");
-    assert!(all.contains("E-CEL-TYPE") && all.contains("`2.5` is not an integer"), "{all}");
+    assert!(
+        all.contains("E-CEL-TYPE") && all.contains("`2.5` is not an integer"),
+        "{all}"
+    );
     assert!(!all.contains("E-CEL-PROFILE"), "{all}");
 }
 
@@ -858,13 +884,24 @@ fn trace_prints_authored_def_refs_and_expands_on_request() {
         args.extend_from_slice(extra);
         let out = trace(&args);
         let s = String::from_utf8_lossy(&out.stdout).to_string();
-        assert_eq!(out.status.code(), Some(0), "{s}{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{s}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         s
     };
 
     let authored = human(&[]);
-    assert!(authored.contains("<match @weekday>   -> otherwise"), "{authored}");
-    assert!(authored.contains("<match true>   -> arm 1 (@atLeast(3))"), "{authored}");
+    assert!(
+        authored.contains("<match @weekday>   -> otherwise"),
+        "{authored}"
+    );
+    assert!(
+        authored.contains("<match true>   -> arm 1 (@atLeast(3))"),
+        "{authored}"
+    );
     assert!(authored.contains("arms 1/2 (@weekday @"), "{authored}");
     assert!(!authored.contains("run.day"), "{authored}");
 

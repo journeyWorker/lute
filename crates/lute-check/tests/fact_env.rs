@@ -12,8 +12,8 @@ use lute_check::connectivity::{
 };
 use lute_check::fact_env::{MustFact, Provenance};
 use lute_check::{
-    check, check_fact_guards, compute_must, fold_env, stable_seeds, CheckInput, FactEnv,
-    FoldedEnv, GroundFact, MaySet, Mode, MustMap, RootVocab, SchemaImports,
+    check, check_fact_guards, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv,
+    GroundFact, MaySet, Mode, MustMap, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_syntax::ast::{Document, Node};
@@ -178,14 +178,20 @@ fn line_guard_over_never_asserted_fact_is_arm_dead() {
     let d = only(&ds, "E-ARM-DEAD");
     assert_eq!(d.severity, Severity::Error);
     assert!(
-        d.message.contains(
-            "no seed, assert, rule, or engine relation produces `knows(toma, heading)`"
-        ),
+        d.message
+            .contains("no seed, assert, rule, or engine relation produces `knows(toma, heading)`"),
         "{}",
         d.message
     );
-    assert!(d.message.contains("under your declared routes"), "{}", d.message);
-    assert_eq!(&text[d.span.byte_start..d.span.byte_end], "holds(knows(toma, heading))");
+    assert!(
+        d.message.contains("under your declared routes"),
+        "{}",
+        d.message
+    );
+    assert_eq!(
+        &text[d.span.byte_start..d.span.byte_end],
+        "holds(knows(toma, heading))"
+    );
 }
 
 #[test]
@@ -206,8 +212,7 @@ fn single_file_check_stays_undecided_for_relational_guards() {
     );
     let ds = check(&input_for(&text)).diagnostics;
     assert!(
-        !ds.iter()
-            .any(|d| d.code == "E-ARM-DEAD"),
+        !ds.iter().any(|d| d.code == "E-ARM-DEAD"),
         "single-file check has no fact envelope: {ds:?}"
     );
 }
@@ -217,10 +222,16 @@ fn single_file_check_stays_undecided_for_relational_guards() {
 #[test]
 fn fact_asserted_in_a_sibling_scene_is_silent() {
     let r = root(&[
-        ("a.lute", &scene(1, "::assert{knows(vesna, manifest)}\n@vesna: noted.")),
+        (
+            "a.lute",
+            &scene(1, "::assert{knows(vesna, manifest)}\n@vesna: noted."),
+        ),
         (
             "b.lute",
-            &scene(2, "@vesna{when=\"holds(knows(vesna, manifest))\"}: Two pods."),
+            &scene(
+                2,
+                "@vesna{when=\"holds(knows(vesna, manifest))\"}: Two pods.",
+            ),
         ),
     ]);
     assert_vocab_clean(&r);
@@ -251,13 +262,17 @@ fn unretracted_seed_is_guaranteed_and_a_retracted_one_is_possible() {
     let ds = r.guards("a.lute");
     let w = only(&ds, "W-FACT-GUARANTEED");
     assert!(
-        w.message.contains("`awake(vesna)` is a `facts:` seed that nothing retracts"),
+        w.message
+            .contains("`awake(vesna)` is a `facts:` seed that nothing retracts"),
         "{}",
         w.message
     );
     let r = root(&[
         ("a.lute", &guard),
-        ("b.lute", &scene(2, "::retract{awake(vesna)}\n@vesna: Asleep.")),
+        (
+            "b.lute",
+            &scene(2, "::retract{awake(vesna)}\n@vesna: Asleep."),
+        ),
     ]);
     assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
 }
@@ -281,11 +296,17 @@ fn derived_relation_through_rule_over_asserted_facts_is_silent() {
     let r = root(&[
         (
             "a.lute",
-            &scene(1, "::assert{awake(toma)}\n::assert{knows(toma, shed_sequence)}\n@toma: ready."),
+            &scene(
+                1,
+                "::assert{awake(toma)}\n::assert{knows(toma, shed_sequence)}\n@toma: ready.",
+            ),
         ),
         (
             "b.lute",
-            &scene(2, "@vesna{when=\"holds(can_halt(toma))\"}: Toma can halt it."),
+            &scene(
+                2,
+                "@vesna{when=\"holds(can_halt(toma))\"}: Toma can halt it.",
+            ),
         ),
     ]);
     assert_vocab_clean(&r);
@@ -299,7 +320,10 @@ fn derived_relation_over_never_asserted_facts_is_dead() {
     let r = root(&[
         (
             "a.lute",
-            &scene(1, "::assert{awake(toma)}\n::assert{knows(ilsabet, shed_sequence)}\n@toma: hi."),
+            &scene(
+                1,
+                "::assert{awake(toma)}\n::assert{knows(ilsabet, shed_sequence)}\n@toma: hi.",
+            ),
         ),
         (
             "b.lute",
@@ -312,7 +336,11 @@ fn derived_relation_over_never_asserted_facts_is_dead() {
     ]);
     let ds = r.guards("b.lute");
     assert_eq!(codes(&ds), ["E-ARM-DEAD", "E-ARM-DEAD"], "{ds:?}");
-    assert!(ds[0].message.contains("`can_halt(toma)`"), "{}", ds[0].message);
+    assert!(
+        ds[0].message.contains("`can_halt(toma)`"),
+        "{}",
+        ds[0].message
+    );
 }
 
 #[test]
@@ -343,7 +371,10 @@ fn assert_in_a_provably_unreachable_scene_is_not_a_producer() {
 fn negated_impossible_fact_decides_true_not_dead() {
     let r = root(&[(
         "a.lute",
-        &scene(1, "@vesna{when=\"!holds(knows(toma, heading))\"}: You don't know yet."),
+        &scene(
+            1,
+            "@vesna{when=\"!holds(knows(toma, heading))\"}: You don't know yet.",
+        ),
     )]);
     assert_vocab_clean(&r);
     assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
@@ -354,7 +385,10 @@ fn count_above_the_may_upper_bound_is_dead() {
     let r = root(&[
         (
             "a.lute",
-            &scene(1, "::assert{knows(vesna, manifest)}\n::assert{knows(toma, heading)}\n@vesna: hi."),
+            &scene(
+                1,
+                "::assert{knows(vesna, manifest)}\n::assert{knows(toma, heading)}\n@vesna: hi.",
+            ),
         ),
         (
             "b.lute",
@@ -383,7 +417,10 @@ fn count_distinct_is_bounded_by_distinct_values_not_tuples() {
     let r = root(&[
         (
             "a.lute",
-            &scene(1, "::assert{knows(vesna, manifest)}\n::assert{knows(vesna, heading)}\n@vesna: hi."),
+            &scene(
+                1,
+                "::assert{knows(vesna, manifest)}\n::assert{knows(vesna, heading)}\n@vesna: hi.",
+            ),
         ),
         (
             "b.lute",
@@ -396,13 +433,20 @@ fn count_distinct_is_bounded_by_distinct_values_not_tuples() {
     ]);
     let ds = r.guards("b.lute");
     assert_eq!(codes(&ds), ["E-ARM-DEAD"], "{ds:?}");
-    assert!(ds[0].message.contains("distinct values at argument 1"), "{}", ds[0].message);
+    assert!(
+        ds[0].message.contains("distinct values at argument 1"),
+        "{}",
+        ds[0].message
+    );
 }
 
 #[test]
 fn or_with_one_possible_arm_is_not_dead() {
     let r = root(&[
-        ("a.lute", &scene(1, "::assert{knows(vesna, manifest)}\n@vesna: hi.")),
+        (
+            "a.lute",
+            &scene(1, "::assert{knows(vesna, manifest)}\n@vesna: hi."),
+        ),
         (
             "b.lute",
             &scene(
@@ -427,7 +471,11 @@ fn choice_when_over_impossible_fact_is_arm_dead() {
     let r = root(&[("a.lute", &text)]);
     let ds = r.guards("a.lute");
     let d = only(&ds, "E-ARM-DEAD");
-    assert!(d.message.starts_with("choice can never fire"), "{}", d.message);
+    assert!(
+        d.message.starts_with("choice can never fire"),
+        "{}",
+        d.message
+    );
 }
 
 #[test]
@@ -437,9 +485,17 @@ fn when_test_arm_over_impossible_fact_is_arm_dead() {
         "<match on=\"run.mood\">\n<when test=\"holds(found(toma))\">\n@toma: here.\n</when>\n\
          <otherwise>\n@toma: gone.\n</otherwise>\n</match>",
     )
-    .replace("---\n## Shot", "state:\n  run.mood: { type: number, default: 0 }\n---\n## Shot");
+    .replace(
+        "---\n## Shot",
+        "state:\n  run.mood: { type: number, default: 0 }\n---\n## Shot",
+    );
     let r = root(&[("a.lute", &text)]);
-    assert_eq!(codes(&r.guards("a.lute")), ["E-ARM-DEAD"], "{:?}", r.guards("a.lute"));
+    assert_eq!(
+        codes(&r.guards("a.lute")),
+        ["E-ARM-DEAD"],
+        "{:?}",
+        r.guards("a.lute")
+    );
 }
 
 #[test]
@@ -450,7 +506,11 @@ fn objective_done_over_impossible_fact_is_unsatisfiable_once() {
     let r = root(&[("q.lute", &text)]);
     let ds = r.guards("q.lute");
     let d = only(&ds, "E-OBJECTIVE-UNSATISFIABLE");
-    assert!(d.message.contains("`knows(toma, heading)`"), "{}", d.message);
+    assert!(
+        d.message.contains("`knows(toma, heading)`"),
+        "{}",
+        d.message
+    );
     assert!(
         !r.per_file[r.index("q.lute")]
             .iter()
@@ -464,7 +524,10 @@ fn objective_done_over_impossible_fact_is_unsatisfiable_once() {
         &r.env,
         &Default::default(),
     );
-    assert!(dead.contains("q"), "connectivity sees the same verdict: {dead:?}");
+    assert!(
+        dead.contains("q"),
+        "connectivity sees the same verdict: {dead:?}"
+    );
 }
 
 #[test]
@@ -517,7 +580,11 @@ fn entry_when_over_impossible_fact_is_entry_unreachable() {
     )]);
     let ds = r.guards("notes.lute");
     let d = only(&ds, "E-ENTRY-UNREACHABLE");
-    assert!(d.message.starts_with("entry `bark` is never eligible"), "{}", d.message);
+    assert!(
+        d.message.starts_with("entry `bark` is never eligible"),
+        "{}",
+        d.message
+    );
 }
 
 // --- never a cascade onto a slot another code owns ---------------------------
@@ -570,7 +637,10 @@ fn guaranteed_fact_in_a_line_guard_is_fact_guaranteed() {
          @vesna{when=\"!holds(knows(vesna, manifest))\"}: dead.",
     );
     let mut r = root(&[
-        ("a.lute", &scene(1, "::assert{knows(vesna, manifest)}\n@vesna: hi.")),
+        (
+            "a.lute",
+            &scene(1, "::assert{knows(vesna, manifest)}\n@vesna: hi."),
+        ),
         ("b.lute", &text),
     ]);
     let i = r.index("b.lute");
@@ -593,13 +663,18 @@ fn guaranteed_fact_in_a_line_guard_is_fact_guaranteed() {
     let w = only(&ds, "W-FACT-GUARANTEED");
     assert_eq!(w.severity, Severity::Warning);
     assert!(
-        w.message
-            .contains("`knows(vesna, manifest)` is asserted on every route to here (scenes/archive.lute:21)"),
+        w.message.contains(
+            "`knows(vesna, manifest)` is asserted on every route to here (scenes/archive.lute:21)"
+        ),
         "{}",
         w.message
     );
     let e = only(&ds, "E-ARM-DEAD");
-    assert!(e.message.contains("scenes/archive.lute:21"), "{}", e.message);
+    assert!(
+        e.message.contains("scenes/archive.lute:21"),
+        "{}",
+        e.message
+    );
 }
 
 #[test]
@@ -684,12 +759,19 @@ fn assert_in_every_branch_arm_is_guaranteed_after_the_join() {
     let ds = r.guards("a.lute");
     let w = only(&ds, "W-FACT-GUARANTEED");
     let line = line_of(&text, ASSERT_KNOWS);
-    assert!(w.message.contains(&format!("(a.lute:{line})")), "{}", w.message);
+    assert!(
+        w.message.contains(&format!("(a.lute:{line})")),
+        "{}",
+        w.message
+    );
 }
 
 #[test]
 fn retract_after_assert_is_not_guaranteed() {
-    let text = scene(1, &format!("{ASSERT_KNOWS}\n::retract{{knows(vesna, _)}}\n{KNOWS}"));
+    let text = scene(
+        1,
+        &format!("{ASSERT_KNOWS}\n::retract{{knows(vesna, _)}}\n{KNOWS}"),
+    );
     let r = root(&[("a.lute", &text)]);
     assert_vocab_clean(&r);
     assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
@@ -707,7 +789,11 @@ fn keyed_assert_displaces_the_previous_value() {
     assert_vocab_clean(&r);
     let ds = r.guards("a.lute");
     assert_eq!(codes(&ds), ["W-FACT-GUARANTEED"], "{ds:?}");
-    assert!(ds[0].message.contains("`at(vesna, hold)`"), "{}", ds[0].message);
+    assert!(
+        ds[0].message.contains("`at(vesna, hold)`"),
+        "{}",
+        ds[0].message
+    );
 }
 
 #[test]
@@ -719,7 +805,11 @@ fn a_skipping_next_keeps_the_skipped_assert_out_of_the_label() {
         ),
     ));
     let r = root(&[("a.lute", &text)]);
-    assert!(r.per_file[0].iter().all(|d| d.severity != Severity::Error), "{:?}", r.per_file[0]);
+    assert!(
+        r.per_file[0].iter().all(|d| d.severity != Severity::Error),
+        "{:?}",
+        r.per_file[0]
+    );
     assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
 }
 
@@ -745,7 +835,11 @@ fn a_guard_is_an_assumption_inside_its_region() {
         assert_vocab_clean(&r);
         let ds = r.guards("a.lute");
         let w = only(&ds, "W-FACT-GUARANTEED");
-        assert_eq!(w.span.line as usize, line_of(text, KNOWS), "the inner guard, not the outer");
+        assert_eq!(
+            w.span.line as usize,
+            line_of(text, KNOWS),
+            "the inner guard, not the outer"
+        );
         assert!(
             w.message.contains(&format!(
                 "already holds here: the enclosing guard at a.lute:{} requires it",
@@ -767,7 +861,8 @@ fn fact_asserted_in_a_prerequisite_scene_is_guaranteed_downstream() {
     let w = only(&ds, "W-FACT-GUARANTEED");
     let line = line_of(&a, ASSERT_KNOWS);
     assert!(
-        w.message.contains(&format!("asserted on every route to here (a.lute:{line})")),
+        w.message
+            .contains(&format!("asserted on every route to here (a.lute:{line})")),
         "{}",
         w.message
     );
@@ -777,7 +872,9 @@ fn fact_asserted_in_a_prerequisite_scene_is_guaranteed_downstream() {
 fn a_retract_anywhere_makes_a_prerequisite_fact_non_monotone() {
     let a = scene(1, ASSERT_KNOWS);
     let b = scene_after(2, "visited(\"haven.s01ep01\")", KNOWS);
-    let lore_retract = lore("<entry id=\"e\">\n  @vesna: Forget it.\n  ::retract{knows(vesna, manifest)}\n</entry>");
+    let lore_retract = lore(
+        "<entry id=\"e\">\n  @vesna: Forget it.\n  ::retract{knows(vesna, manifest)}\n</entry>",
+    );
     let quest_retract = quest(
         "<quest id=\"q\" start=\"true\">\n<on event=\"questComplete\">\n::retract{knows(vesna, _)}\n</on>\n\
          <objective id=\"o\" done=\"true\"/>\n</quest>",
@@ -792,10 +889,18 @@ fn a_retract_anywhere_makes_a_prerequisite_fact_non_monotone() {
 fn or_of_prerequisites_guarantees_only_their_common_facts() {
     let a = scene(1, ASSERT_KNOWS);
     let c = scene(3, "@vesna: elsewhere.");
-    let either = scene_after(2, "visited(\"haven.s01ep01\") || visited(\"haven.s01ep03\")", KNOWS);
+    let either = scene_after(
+        2,
+        "visited(\"haven.s01ep01\") || visited(\"haven.s01ep03\")",
+        KNOWS,
+    );
     let r = root(&[("a.lute", &a), ("b.lute", &either), ("c.lute", &c)]);
     assert!(r.guards("b.lute").is_empty(), "{:?}", r.guards("b.lute"));
-    let both = scene_after(2, "visited(\"haven.s01ep01\") && visited(\"haven.s01ep03\")", KNOWS);
+    let both = scene_after(
+        2,
+        "visited(\"haven.s01ep01\") && visited(\"haven.s01ep03\")",
+        KNOWS,
+    );
     let r = root(&[("a.lute", &a), ("b.lute", &both), ("c.lute", &c)]);
     assert_eq!(codes(&r.guards("b.lute")), ["W-FACT-GUARANTEED"]);
 }
@@ -859,10 +964,17 @@ fn scene_entry_lists_the_facts_guaranteed_on_arrival() {
         entry,
         [
             ("awake(vesna)".to_string(), "`facts:` seed".to_string()),
-            ("knows(vesna, manifest)".to_string(), format!("a.lute:{line}")),
+            (
+                "knows(vesna, manifest)".to_string(),
+                format!("a.lute:{line}")
+            ),
         ]
     );
-    assert_eq!(r.scene_entry["haven.s01ep01"].len(), 1, "seeds only on the entry scene");
+    assert_eq!(
+        r.scene_entry["haven.s01ep01"].len(),
+        1,
+        "seeds only on the entry scene"
+    );
 }
 
 #[test]
@@ -873,7 +985,11 @@ fn entry_when_that_decides_false_is_entry_unreachable_per_file() {
     assert_eq!(d.severity, Severity::Error);
     assert_eq!(&text[d.span.byte_start..d.span.byte_end], "false");
     let r = root(&[("notes.lute", &text)]);
-    assert!(r.guards("notes.lute").is_empty(), "reported once, per file: {:?}", r.guards("notes.lute"));
+    assert!(
+        r.guards("notes.lute").is_empty(),
+        "reported once, per file: {:?}",
+        r.guards("notes.lute")
+    );
 }
 
 // --- dsl 0.23.0 §9: a negated rule atom over a stable seed ------------------
@@ -911,7 +1027,11 @@ fn negated_atom_over_a_retracted_seed_stays_possible() {
     );
     let r = root(&[("casebook.lute", &text)]);
     assert_vocab_clean(&r);
-    assert!(r.guards("casebook.lute").is_empty(), "{:?}", r.guards("casebook.lute"));
+    assert!(
+        r.guards("casebook.lute").is_empty(),
+        "{:?}",
+        r.guards("casebook.lute")
+    );
 }
 
 /// lamplight F9 (0.23.1): the alibi is DERIVED from seeds nothing removes
@@ -933,11 +1053,16 @@ fn negated_atom_over_a_stably_derived_fact_never_holds() {
     assert!(d.message.starts_with("entry `vesnaPage`"), "{}", d.message);
     // lamplight N16: the message names the defeating fact, not "no rule".
     assert!(
-        d.message.contains("`suspect(vesna)` can only come from a rule that needs `not alibi(vesna)`"),
+        d.message
+            .contains("`suspect(vesna)` can only come from a rule that needs `not alibi(vesna)`"),
         "{}",
         d.message
     );
-    assert!(!d.message.contains("no seed, assert, rule"), "{}", d.message);
+    assert!(
+        !d.message.contains("no seed, assert, rule"),
+        "{}",
+        d.message
+    );
 }
 
 #[test]
@@ -952,7 +1077,11 @@ fn negated_atom_over_a_derived_fact_with_a_retractable_premise_stays_possible() 
                 <entry id=\"recant\">\n  @toma: She lied.\n  ::retract{seen(vesna, _)}\n</entry>\n";
     let r = root(&[("casebook.lute", text)]);
     assert_vocab_clean(&r);
-    assert!(r.guards("casebook.lute").is_empty(), "{:?}", r.guards("casebook.lute"));
+    assert!(
+        r.guards("casebook.lute").is_empty(),
+        "{:?}",
+        r.guards("casebook.lute")
+    );
 }
 
 /// seven F3 (dsl 0.23.1): the only producer's frontmatter does not parse, so
@@ -961,9 +1090,14 @@ fn negated_atom_over_a_derived_fact_with_a_retractable_premise_stays_possible() 
 #[test]
 fn a_root_with_an_unparseable_frontmatter_decides_no_fact_impossible() {
     let broken = "---\nkind: scene\nid: a\nwhen: 'x == 'y''\n---\n## Shot 1.\n::assert{found(toma)}\n@vesna: hi.\n";
-    let guard = lore("<entry id=\"found\" when=\"holds(found(toma))\">\n  @vesna: Found him.\n</entry>");
+    let guard =
+        lore("<entry id=\"found\" when=\"holds(found(toma))\">\n  @vesna: Found him.\n</entry>");
     let r = root(&[("a.lute", broken), ("notes.lute", &guard)]);
-    assert!(r.guards("notes.lute").is_empty(), "{:?}", r.guards("notes.lute"));
+    assert!(
+        r.guards("notes.lute").is_empty(),
+        "{:?}",
+        r.guards("notes.lute")
+    );
     // Control: with the producer file absent, the guard is dead.
     let r = root(&[("notes.lute", &guard)]);
     assert_eq!(codes(&r.guards("notes.lute")), ["E-ENTRY-UNREACHABLE"]);
@@ -998,10 +1132,23 @@ fn wip_downgrades_only_a_guard_dead_for_want_of_any_producer() {
     );
     let plain = root(&[("notes.lute", &text)]).guards("notes.lute");
     for d in &plain {
-        assert_eq!(d.severity, Severity::Error, "without --wip every verdict is an error: {d:?}");
+        assert_eq!(
+            d.severity,
+            Severity::Error,
+            "without --wip every verdict is an error: {d:?}"
+        );
     }
-    assert_eq!(plain.iter().filter(|d| d.code == "E-ENTRY-UNREACHABLE").count(), 3, "{plain:?}");
-    let wip = root(&[("notes.lute", &text)]).with_wip().guards("notes.lute");
+    assert_eq!(
+        plain
+            .iter()
+            .filter(|d| d.code == "E-ENTRY-UNREACHABLE")
+            .count(),
+        3,
+        "{plain:?}"
+    );
+    let wip = root(&[("notes.lute", &text)])
+        .with_wip()
+        .guards("notes.lute");
     let grade = |id: &str| {
         wip.iter()
             .find(|d| d.message.starts_with(&format!("entry `{id}`")))
@@ -1011,7 +1158,10 @@ fn wip_downgrades_only_a_guard_dead_for_want_of_any_producer() {
     assert_eq!(grade("found"), Severity::Warning);
     assert_eq!(grade("heading"), Severity::Error);
     assert_eq!(grade("halt"), Severity::Error);
-    let found = wip.iter().find(|d| d.message.starts_with("entry `found`")).unwrap();
+    let found = wip
+        .iter()
+        .find(|d| d.message.starts_with("entry `found`"))
+        .unwrap();
     assert!(found.message.contains("`--wip`"), "{}", found.message);
 }
 
@@ -1019,11 +1169,20 @@ fn wip_downgrades_only_a_guard_dead_for_want_of_any_producer() {
 fn wip_follows_rules_to_the_missing_producer() {
     // `can_halt(vesna)` needs `knows(vesna, shed_sequence)`; with `knows`
     // produced nowhere, only the unwritten content makes the query dead.
-    let text = lore("<entry id=\"halt\" when=\"holds(can_halt(vesna))\">\n  @vesna: Halt.\n</entry>");
+    let text =
+        lore("<entry id=\"halt\" when=\"holds(can_halt(vesna))\">\n  @vesna: Halt.\n</entry>");
     let plain = root(&[("notes.lute", &text)]).guards("notes.lute");
-    assert_eq!(only(&plain, "E-ENTRY-UNREACHABLE").severity, Severity::Error);
-    let wip = root(&[("notes.lute", &text)]).with_wip().guards("notes.lute");
-    assert_eq!(only(&wip, "E-ENTRY-UNREACHABLE").severity, Severity::Warning);
+    assert_eq!(
+        only(&plain, "E-ENTRY-UNREACHABLE").severity,
+        Severity::Error
+    );
+    let wip = root(&[("notes.lute", &text)])
+        .with_wip()
+        .guards("notes.lute");
+    assert_eq!(
+        only(&wip, "E-ENTRY-UNREACHABLE").severity,
+        Severity::Warning
+    );
 }
 
 #[test]
@@ -1039,7 +1198,10 @@ fn wip_downgrades_a_dead_choice_and_gated_line_too() {
     let plain = root(&[("a.lute", &text)]).guards("a.lute");
     let dead: Vec<&Diagnostic> = plain.iter().filter(|d| d.code == "E-ARM-DEAD").collect();
     assert_eq!(dead.len(), 2, "{plain:?}");
-    assert!(dead.iter().all(|d| d.severity == Severity::Error), "{plain:?}");
+    assert!(
+        dead.iter().all(|d| d.severity == Severity::Error),
+        "{plain:?}"
+    );
     let wip = root(&[("a.lute", &text)]).with_wip().guards("a.lute");
     let dead: Vec<&Diagnostic> = wip.iter().filter(|d| d.code == "E-ARM-DEAD").collect();
     assert_eq!(dead.len(), 2, "{wip:?}");
@@ -1074,7 +1236,11 @@ fn a_read_entry_guarantees_what_its_body_asserts() {
     let ds = r.guards("a.lute");
     let w = only(&ds, "W-FACT-GUARANTEED");
     let line = line_of(&lore, ASSERT_KNOWS);
-    assert!(w.message.contains(&format!("(log.lute:{line})")), "{}", w.message);
+    assert!(
+        w.message.contains(&format!("(log.lute:{line})")),
+        "{}",
+        w.message
+    );
     // `== true` is the same assumption.
     let (lore, text) = read_guarded("entry.log3.read == true");
     let r = root(&[("a.lute", &text), ("log.lute", &lore)]);
@@ -1087,7 +1253,10 @@ fn an_entry_read_guarantees_nothing_its_body_only_may_assert() {
         "<entry id=\"log3\">\n  <match on=\"run.mood\">\n  <when is=\"1\">\n  {ASSERT_KNOWS}\n  \
          @narrator: a.\n  </when>\n  <otherwise>\n  @narrator: b.\n  </otherwise>\n  </match>\n</entry>"
     ));
-    let lore = lore.replace("---\n<entry", "state:\n  run.mood: { type: number, default: 0 }\n---\n<entry");
+    let lore = lore.replace(
+        "---\n<entry",
+        "state:\n  run.mood: { type: number, default: 0 }\n---\n<entry",
+    );
     let (_, text) = read_guarded("entry.log3.read");
     let r = root(&[("a.lute", &text), ("log.lute", &lore)]);
     assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
@@ -1101,7 +1270,17 @@ fn ever_read_guarantees_only_facts_a_new_run_keeps() {
     let r = root(&[("a.lute", &text), ("log.lute", &lore)]);
     assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
     // The same relation at `tier: user` survives the run boundary.
-    let user = |s: &str| s.replace("knows: { args: [crew, topic], tier: run }", "knows: { args: [crew, topic], tier: user }");
+    let user = |s: &str| {
+        s.replace(
+            "knows: { args: [crew, topic], tier: run }",
+            "knows: { args: [crew, topic], tier: user }",
+        )
+    };
     let r = root(&[("a.lute", &user(&text)), ("log.lute", &user(&lore))]);
-    assert_eq!(codes(&r.guards("a.lute")), ["W-FACT-GUARANTEED"], "{:?}", r.guards("a.lute"));
+    assert_eq!(
+        codes(&r.guards("a.lute")),
+        ["W-FACT-GUARANTEED"],
+        "{:?}",
+        r.guards("a.lute")
+    );
 }

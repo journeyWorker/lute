@@ -87,8 +87,8 @@ mod manifests;
 mod mockcheck;
 mod play;
 mod play_expect;
-mod runner;
 mod rewrite;
+mod runner;
 mod scaffold;
 mod scenario_fmt;
 mod stream;
@@ -1046,6 +1046,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-RETRACT-WILDCARD-ASSERT",
     "E-REWARD-ATTR",
     "E-REWARD-KIND",
+    "E-RULE-EXCLUSIVE",
     "E-RULE-GUARD-DEF",
     "E-SET-OP-TYPE",
     "E-SET-TYPE",
@@ -1339,7 +1340,14 @@ fn main() -> ExitCode {
             on,
             target,
             start,
-        } => scaffold::run_new(&kind, &name, dir.as_deref(), on.as_deref(), target.as_deref(), start),
+        } => scaffold::run_new(
+            &kind,
+            &name,
+            dir.as_deref(),
+            on.as_deref(),
+            target.as_deref(),
+            start,
+        ),
         Command::Lore { dir, json } => lore_report::run_lore(&dir, json),
         Command::Doctor { dir, json } => doctor::run_doctor(&dir, json),
         Command::Run {
@@ -1971,9 +1979,9 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
         lute_check::MetaKind::Schema,
     );
     for d in schema_as_imported_diags(file) {
-        let dup = diagnostics
-            .iter()
-            .any(|e| e.code == d.code && e.message == d.message && e.span.byte_start == d.span.byte_start);
+        let dup = diagnostics.iter().any(|e| {
+            e.code == d.code && e.message == d.message && e.span.byte_start == d.span.byte_start
+        });
         if !dup {
             diagnostics.push(d);
         }
@@ -2812,8 +2820,13 @@ fn reconcile_collected(
                     producers: &producers,
                     after: after.get(path).unwrap_or(&no_after),
                 };
-                let added =
-                    lute_check::cast::reconcile_presence(&mut r.diagnostics, path, doc, folded, &project);
+                let added = lute_check::cast::reconcile_presence(
+                    &mut r.diagnostics,
+                    path,
+                    doc,
+                    folded,
+                    &project,
+                );
                 if !added.is_empty() {
                     let text = std::fs::read_to_string(path).unwrap_or_default();
                     for mut d in added {
@@ -3137,6 +3150,7 @@ fn run_check_project(
         reconcile_collected(file_results, &by_root, wip);
 
     project_compile_pass(&mut file_results, &mut project_diags, &inputs);
+    fold_inherited_version_stale(&mut file_results, &mut project_diags, &inputs);
 
     // dsl 0.10.0 §9 rule 2.
     rollup_component_body_diags(&mut file_results);
@@ -3336,6 +3350,55 @@ fn run_check_project(
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
+    }
+}
+
+/// LH N18: a stale `luteVersion` a document inherits from its manifest's
+/// `defaults:` is one fact about the manifest, not one per document. Every
+/// per-file copy is dropped and one warning is reported per root, at the
+/// manifest's `luteVersion:` line, counting the documents that inherit it.
+fn fold_inherited_version_stale(
+    file_results: &mut [(PathBuf, lute_check::CheckResult)],
+    project_diags: &mut Vec<(PathBuf, Diagnostic)>,
+    inputs: &BTreeMap<PathBuf, (PathBuf, CheckInput)>,
+) {
+    let inherited = |d: &Diagnostic| {
+        d.code == lute_check::W_LUTE_VERSION_STALE
+            && d.message.starts_with(lute_check::INHERITED_LUTE_VERSION)
+    };
+    let mut roots: BTreeMap<PathBuf, (Diagnostic, usize)> = BTreeMap::new();
+    for (path, result) in file_results.iter_mut() {
+        let Some((root, _)) = inputs.get(path) else {
+            continue;
+        };
+        let Some(d) = result.diagnostics.iter().find(|d| inherited(d)).cloned() else {
+            continue;
+        };
+        result.diagnostics.retain(|d| !inherited(d));
+        roots.entry(root.clone()).or_insert((d, 0)).1 += 1;
+    }
+    for (root, (mut d, n)) in roots {
+        let manifest = root.join("lute.project.yaml");
+        let text = std::fs::read_to_string(&manifest).unwrap_or_default();
+        let at = text
+            .match_indices("luteVersion")
+            .find(|(i, _)| {
+                text[i + "luteVersion".len()..]
+                    .trim_start()
+                    .starts_with(':')
+            })
+            .map_or(0, |(i, _)| i);
+        let end = if text.is_empty() {
+            0
+        } else {
+            at + "luteVersion".len()
+        };
+        d.span = Span::from_bytes(&lute_core_span::TextIndex::new(&text), at, end);
+        d.message.push_str(&format!(
+            " — every document inherits it ({n} document{})",
+            if n == 1 { "" } else { "s" }
+        ));
+        project_diags.push((manifest, d));
     }
 }
 
@@ -4016,11 +4079,17 @@ fn unanchored_quests(
 /// requirement), plus each directly-referenced node's own reachability as
 /// supplementary context (explicitly labeled "referenced", never "route" —
 /// the formula above IS the route structure).
-fn print_prereq_structure(out: &mut String, scenario: &RootScenario, node: &lute_check::connectivity::NodeId) {
+fn print_prereq_structure(
+    out: &mut String,
+    scenario: &RootScenario,
+    node: &lute_check::connectivity::NodeId,
+) {
     use lute_check::connectivity::PrereqState;
     match scenario.graph.nodes.get(node).map(|info| &info.prereq) {
-        None if matches!(node, lute_check::connectivity::NodeId::Quest(id) if scenario.quest_ids.contains(id)) => {
-            outln!(out, 
+        None if matches!(node, lute_check::connectivity::NodeId::Quest(id) if scenario.quest_ids.contains(id)) =>
+        {
+            outln!(
+                out,
                 "  after: (none declared) — unanchored: this quest is in no prerequisite graph \
                  layer and on no edge; it is available from the start of play."
             );
@@ -4029,14 +4098,25 @@ fn print_prereq_structure(out: &mut String, scenario: &RootScenario, node: &lute
             print_bundle_beat_selection(out, scenario, node);
         }
         None | Some(PrereqState::Absent) => {
-            outln!(out, "  after: (none declared) — this node is an entry point.");
+            outln!(
+                out,
+                "  after: (none declared) — this node is an entry point."
+            );
         }
         Some(PrereqState::Invalid) => {
-            outln!(out, "  after: (malformed — E-CONN-PROFILE; structure unavailable)");
+            outln!(
+                out,
+                "  after: (malformed — E-CONN-PROFILE; structure unavailable)"
+            );
         }
         Some(prereq @ PrereqState::Valid(f)) => {
             outln!(out, "  after: {}", format_prereq(f));
-            print_referenced(out, scenario, prereq, "`after` above for the && / || structure");
+            print_referenced(
+                out,
+                scenario,
+                prereq,
+                "`after` above for the && / || structure",
+            );
         }
         Some(prereq @ PrereqState::Anchored(anchors)) => {
             outln!(
@@ -4070,26 +4150,50 @@ fn print_referenced(
         "  referenced node(s) (see {see} — this is NOT a flat requirement list):"
     );
     for target in &targets {
-        outln!(out, "    - {target}: {}", reach_verdict_text(scenario, target));
+        outln!(
+            out,
+            "    - {target}: {}",
+            reach_verdict_text(scenario, target)
+        );
     }
 }
 
-/// A bundle beat's reach report (dsl 0.23.0 §4): it has no `after` surface,
-/// so it is an entry node; what selects it is its occasion, target and
-/// `when`, printed as authored so the reader sees why it is on the graph.
+/// A bundle beat's reach report (dsl 0.23.0 §4): its `after=` (dsl 0.25.0
+/// §3) as a scene's `after:` is printed — the formula and the nodes it
+/// references — else it is an entry node; then what selects it: its
+/// occasion, target and `when`, printed as authored so the reader sees why
+/// it is on the graph.
 fn print_bundle_beat_selection(
     out: &mut String,
     scenario: &RootScenario,
     node: &lute_check::connectivity::NodeId,
 ) {
-    outln!(
-        out,
-        "  after: (a bundle beat declares no `after`) — an entry node: it plays when its occasion \
-         is raised and its `when` holds."
-    );
+    use lute_check::connectivity::PrereqState;
     let Some(info) = scenario.graph.nodes.get(node) else {
         return;
     };
+    match &info.prereq {
+        prereq @ PrereqState::Valid(f) => {
+            outln!(out, "  after: {}", format_prereq(f));
+            print_referenced(
+                out,
+                scenario,
+                prereq,
+                "`after` above for the && / || structure",
+            );
+        }
+        PrereqState::Invalid => {
+            outln!(
+                out,
+                "  after: (malformed — E-CONN-PROFILE; structure unavailable)"
+            );
+        }
+        _ => outln!(
+            out,
+            "  after: (none declared) — an entry node: it plays when its occasion is raised and \
+             its `when` holds."
+        ),
+    }
     let lute_check::connectivity::NodeId::Beat(key) = node else {
         return;
     };
@@ -4319,7 +4423,11 @@ fn run_scenario_reach(
         return ExitCode::SUCCESS;
     }
     outln!(out, "reach {node_id}:");
-    outln!(out, "  verdict: {}", reach_verdict_text(&scenario, &node_id));
+    outln!(
+        out,
+        "  verdict: {}",
+        reach_verdict_text(&scenario, &node_id)
+    );
     print_prereq_structure(out, &scenario, &node_id);
     ExitCode::SUCCESS
 }
@@ -4477,7 +4585,10 @@ fn print_facts_section(out: &mut String, scenario: &RootScenario, root: &Path) {
     let producible = lute_check::producible::producible(vocab, &live);
     let per_doc = lute_check::connectivity::assert_relations_per_doc(&scenario.docs);
 
-    outln!(out, "  Facts (the relational layer — declared relations, how each becomes true):");
+    outln!(
+        out,
+        "  Facts (the relational layer — declared relations, how each becomes true):"
+    );
     for (name, decl) in &vocab.relations {
         let prod = if producible.get(name).copied().unwrap_or(false) {
             "producible"
@@ -4531,7 +4642,8 @@ fn node_cycle_degraded(scenario: &RootScenario, node: &lute_check::connectivity:
 /// tables with no note. Prepended before the tables (which fall back to the
 /// schema-default D/D floor when this node's `envs` entry is absent).
 fn print_cycle_envelope_note(out: &mut String) {
-    outln!(out, 
+    outln!(
+        out,
         "  note: envelope unavailable — this node is on or downstream of a prerequisite cycle \
          (E-CONN-CYCLE); the Guaranteed/Possible tables below cannot be computed under your \
          declared routes and fall back to the schema-default floor."
@@ -4556,7 +4668,8 @@ fn print_scene_envelope(
     key: &str,
     root: &Path,
 ) {
-    outln!(out, 
+    outln!(
+        out,
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
          before its own writes):"
     );
@@ -4564,7 +4677,8 @@ fn print_scene_envelope(
         print_cycle_envelope_note(out);
     }
     if scenario.tainted.contains(node_id) {
-        outln!(out, 
+        outln!(
+            out,
             "  note: this node's envelope is a defaults-only placeholder -- its `after` \
              formula is malformed or references an unresolved node (E-CONN-PROFILE/\
              E-CONN-UNKNOWN-NODE)."
@@ -4579,7 +4693,10 @@ fn print_scene_envelope(
             possible: scenario.envelope_d.clone(),
         });
     let writers = writers_of(scenario, node_id);
-    outln!(out, "  Guaranteed (safe to read under your declared routes):");
+    outln!(
+        out,
+        "  Guaranteed (safe to read under your declared routes):"
+    );
     print_path_set_with_writers(out, &env.guaranteed, &writers);
     // T3-15: Possible ⊇ Guaranteed; print only what is new beside the table
     // above instead of every guaranteed path a second time.
@@ -4591,7 +4708,10 @@ fn print_scene_envelope(
          Guaranteed paths above are not repeated):"
     );
     print_path_set_with_writers(out, &possible_only, &writers);
-    outln!(out, "  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):");
+    outln!(
+        out,
+        "  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):"
+    );
     print_must_facts(out, scenario.scene_must.get(key).map_or(&[], Vec::as_slice));
 
     let mut single: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
@@ -4600,7 +4720,8 @@ fn print_scene_envelope(
     }
     let diags =
         envelope::check_envelope(&scenario.graph, &scenario.envs, &scenario.tainted, &single);
-    outln!(out, 
+    outln!(
+        out,
         "  Possible \\ Guaranteed -- warning-grade reads (set on SOME but not every declared \
          route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):"
     );
@@ -4610,7 +4731,8 @@ fn print_scene_envelope(
             continue;
         }
         any = true;
-        outln!(out, 
+        outln!(
+            out,
             "    - {}:{}:{}: {}",
             path.display(),
             d.span.line,
@@ -4640,7 +4762,8 @@ fn print_quest_envelope(
     root: &Path,
 ) {
     let node_id = lute_check::connectivity::NodeId::Quest(id.to_string());
-    outln!(out, 
+    outln!(
+        out,
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
          before its own writes):"
     );
@@ -4658,7 +4781,10 @@ fn print_quest_envelope(
     }
     let qe = envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);
     let writers = writers_of(scenario, &node_id);
-    outln!(out, "  Guaranteed (safe to read under your declared routes):");
+    outln!(
+        out,
+        "  Guaranteed (safe to read under your declared routes):"
+    );
     print_path_set_with_writers(out, &qe.env.guaranteed, &writers);
     // T3-15: Possible ⊇ Guaranteed, so the full set printed every guaranteed
     // path twice; only the difference is new information.
@@ -4684,7 +4810,8 @@ fn print_quest_envelope(
     );
     print_path_set_with_writers(out, &possible_only, &writers);
     if qe.enrichment_note {
-        outln!(out, 
+        outln!(
+            out,
             "  note: this quest declares no `after` attribute, so this is the defaults-only \
              `D` table (dsl §4.4); declaring `after` on quest:{id} would enrich this table \
              with the full project-resolved envelope."
@@ -4826,7 +4953,8 @@ fn print_graph_for_root(
             .filter(|id| !layered.contains(id))
             .map(|n| n.to_string())
             .collect();
-        outln!(out, 
+        outln!(
+            out,
             "    (unlayered -- part of a prerequisite cycle, E-CONN-CYCLE): {}",
             stuck.join(", ")
         );
@@ -4835,7 +4963,11 @@ fn print_graph_for_root(
     let mut printed_any = false;
     for (from, targets) in &graph.edges {
         for to in targets {
-            outln!(out, "    {from} -> {to} [{}]", edge_kinds_text(graph, from, to));
+            outln!(
+                out,
+                "    {from} -> {to} [{}]",
+                edge_kinds_text(graph, from, to)
+            );
             printed_any = true;
         }
     }
@@ -4858,7 +4990,8 @@ fn print_unanchored(
     if unanchored.is_empty() && when_visited.is_empty() {
         return;
     }
-    outln!(out, 
+    outln!(
+        out,
         "  unanchored (no `after` — available from the start of play; no prerequisites in this \
          graph):"
     );
@@ -4910,10 +5043,14 @@ fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedR
                  `start` anchor or `::accept`)",
                 kind.as_str()
             ),
-            OmittedRef::Visited { quest, scene } => outln!(
+            // A condition read gates the quest but is no anchor; copying it
+            // into `after` would replace the quest's real anchors (its
+            // `::accept`s, tree, `start`) with a possibly backwards edge, so
+            // the note never suggests it (summer S1).
+            OmittedRef::Visited { quest, scene, slot } => outln!(
                 out,
-                "    quest({quest}) reads visited('{scene}') outside its `start` conjuncts — \
-                 declare `after` to draw it"
+                "    quest({quest}) reads visited('{scene}') in its {slot} — a condition read, \
+                 not an anchor"
             ),
         }
     }
@@ -6046,7 +6183,11 @@ fn write_stdout(s: &str) -> std::io::Result<()> {
 /// project it sits in.
 pub(crate) fn nearest_manifest_dir(file: &Path) -> Option<PathBuf> {
     let abs = std::fs::canonicalize(file).ok()?;
-    let start = if abs.is_dir() { abs.as_path() } else { abs.parent()? };
+    let start = if abs.is_dir() {
+        abs.as_path()
+    } else {
+        abs.parent()?
+    };
     start
         .ancestors()
         .find(|d| d.join("lute.project.yaml").is_file())
@@ -6320,23 +6461,13 @@ fn run_trace(
         }
     };
     let (mut report, exit) = match (entry, beat) {
-        (Some(id), _) => lute_trace::trace_entry_with_check(
-            &input,
-            gate,
-            mocks,
-            id,
-            project_asserts.as_ref(),
-        ),
-        (None, Some(id)) => lute_trace::trace_beat_with_check(
-            &input,
-            gate,
-            mocks,
-            id,
-            project_asserts.as_ref(),
-        ),
-        (None, None) => {
-            lute_trace::trace_with_check(&input, gate, mocks, project_asserts.as_ref())
+        (Some(id), _) => {
+            lute_trace::trace_entry_with_check(&input, gate, mocks, id, project_asserts.as_ref())
         }
+        (None, Some(id)) => {
+            lute_trace::trace_beat_with_check(&input, gate, mocks, id, project_asserts.as_ref())
+        }
+        (None, None) => lute_trace::trace_with_check(&input, gate, mocks, project_asserts.as_ref()),
     };
     // T3-15: `--project` knows every quest of the project — settle the
     // "existence is unverified" notes instead of repeating them.
@@ -6362,7 +6493,9 @@ fn run_trace(
                 // dsl 0.25.0 §1: a walk-time exclusive-relations refusal keeps
                 // its transcript — the `✗ exclusive` line sits at the write.
                 let exclusive = !diags.is_empty()
-                    && diags.iter().all(|d| d.code == lute_check::fact_check::E_FACT_EXCLUSIVE);
+                    && diags
+                        .iter()
+                        .all(|d| d.code == lute_check::fact_check::E_FACT_EXCLUSIVE);
                 if exclusive && write_stdout(&report.render_human()).is_err() {
                     return ExitCode::from(2);
                 }
@@ -6682,7 +6815,12 @@ mod tests {
     /// sortedness still holds without it.
     #[test]
     fn the_harness_own_codes_are_deniable() {
-        for code in ["E-TEST-FILE", "E-TEST-KEY", "E-TEST-LORE", "E-TEST-NO-EXPECT"] {
+        for code in [
+            "E-TEST-FILE",
+            "E-TEST-KEY",
+            "E-TEST-LORE",
+            "E-TEST-NO-EXPECT",
+        ] {
             assert!(
                 DENIABLE_CODES.contains(&code),
                 "{code} is emitted by crates/lute-cli/src/testcmd.rs and MUST be deniable; \

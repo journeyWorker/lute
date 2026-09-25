@@ -176,7 +176,7 @@ A `holds(A)` guard over a derived relation also implies the bodies of A's rules:
 
 A write cancels a guard only when it can falsify it on that path. An `::assert` or `::retract` voids a guard atom of the same relation with unifiable arguments, or one derived through a rule that has the written relation as a premise, and only when it moves the atom the wrong way. Asserting `inParty(corvin)` keeps a `holds(inParty(isolde))` guard, and so does asserting a positive premise of it. A `::set` voids a guard that reads the path, including through such a rule. Each `&&` conjunct of a guard is judged on its own, and a write in one `<choice>` or `<match>` arm does not reach its siblings.
 
-A `{vo}` line is exempt, since a voiceover is not the speaker being there. An `{os}` line is still checked: the speaker is in the scene, just out of frame.
+A `{vo}` line is exempt, since a voiceover is not the speaker being there: they may speak from outside the scene's time, as a memory or a narration over it. An `{os}` line is still checked (dsl 0.25.0 D-E): `{os}` means the speaker is *in the scene*, heard but out of frame, so they must be present. There is no flag yet for a remote speaker, such as a voice over the radio or the phone.
 
 Facts are the one place where `lute check` and `check-project` differ. `check-project` also counts the facts that hold on every route to the line: asserted earlier on every path, or seeded and never retracted. So the last line above, `@isolde: Back again.` after `::assert{ inParty(isolde) }`, is clean there. A single-file `lute check` cannot see those facts, so it warns on that line too and adds a note saying that `check-project` does see them. Like any warning, `--deny W-CAST-ABSENT` makes it an error.
 
@@ -188,7 +188,8 @@ each line or beat satisfies that half, and every line by `isolde` warns. A cast 
 `present:` as true, whether it is negated directly or through a rule such as
 `inParty(P) :- recruited(P), not fell(P)`. With it, the lines above warn exactly as they did with
 the plain `holds(inParty(isolde))` condition. The price is that a line spoken after the engine event
-needs its own guard, since the checker no longer asks for one:
+needs its own guard, since the checker no longer asks for one, unless the relation names the
+events it changes on ([`changedOn`](#presence-after-engine-events-changedon), dsl 0.25.0):
 
 ```yaml
 cast:
@@ -196,6 +197,37 @@ cast:
 ```
 
 `present:`, `emotions:` and `assume:` are checker inputs. None of them reaches the compiled artifact.
+
+### Presence after engine events: `changedOn`
+
+`assume: true` is right until the engine event that the reserved relation stands for: after a battle, `fell(isolde)` may well hold, and a line there is exactly where the check matters. The reserved relation can say on which occasions the engine changes it (dsl 0.25.0 §6):
+
+```yaml
+entities:
+  companion: { members: [isolde] }
+relations:
+  inParty: { args: [companion], tier: run }
+  fell:    { args: [companion], reserved: true, changedOn: [battleEnd] }
+cast:
+  isolde: { name: Isolde, present: "holds(inParty(isolde)) && !holds(fell(isolde))", assume: true }
+```
+
+With `changedOn`, `assume: true` no longer reads `!holds(fell(…))` as true in a unit presented on one of those occasions: a scene, entry or bundle beat answering `on: battleEnd`, or a quest `<on event>` handler or `on=` objective body judged there. Under `check-project` the same holds for every **after-descendant** of such a unit in the [scenario graph](/connectivity/scene-graph/), over its `after:` / `after=` / `[start]` edges. Occasions have no static order of their own, so the graph is what says "after the battle". Take a camp scene that asserts `inParty(isolde)`, an aftermath scene on `battleEnd` with `after: 'visited("camp")'`, and a road scene with `after: 'visited("aftermath")'`:
+
+```lute
+@isolde{when="holds(inParty(isolde))"}: We should keep moving.
+@isolde{os}: Wait for me!
+@isolde{vo}: I remember that road.
+```
+
+On the road, the first two lines warn again, each with a note saying why `assume: true` did not cover them. The `{vo}` line stays exempt:
+
+<!-- lute-diagnostics unverified="verbatim lute check-project output; the W-CAST-ABSENT message is composed from a base literal plus the dsl 0.25.0 §6 changedOn suffix appended in crates/lute-check/src/cast.rs, so no single format! literal matches" -->
+```
+./scenes/road.lute:11:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde)) && !holds(fell(isolde))"` for `isolde`, and the guards around this line do not imply it (dsl 0.24.0 §4). Guard the line — `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}` — or move it under a guard that implies it; `assume: true` does not cover `fell`: this line follows an occasion its `changedOn:` names (dsl 0.25.0 §6)
+```
+
+Guard those lines with the whole condition, `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}`, and the warnings go. Lines in the camp scene, which comes before the battle in the graph, stay covered by `assume: true`. Without `changedOn`, the 0.24 behaviour is unchanged: `assume: true` covers every line. `changedOn` on a relation that is not `reserved: true` is `E-RELATION-DECL`, and so is an occasion no plugin declares, with a did-you-mean (`` `changedOn: batleEnd` is not a declared occasion — did you mean `battleEnd`? ``). In a project whose plugins declare no occasions, the names are not checked.
 
 ### Leaving the stage: `::clear`
 
@@ -267,5 +299,23 @@ negative number, renders unchanged (`2.5`, `-3`). In the artifact the line's pla
 `"format": "ordinal"`, and the engine does the rendering. A placeholder without a hint has no
 `format` key, so artifacts that use none are unchanged.
 
-`ordinal` is the only hint: `{{run.floor:roman}}` is `E-CEL-PROFILE`. The hint needs a number, so on
-a string, enum or bool path or def, or on `{{userName}}`, it is `E-REF-TYPE`.
+### Ordinal words: `{{x:ordinalWord}}`
+
+`:ordinalWord` (dsl 0.25.0 §8) renders the ordinal as a word, for text that reads better spelled out:
+
+```lute check
+---
+kind: scene
+id: road.camp
+state:
+  run.day: { type: number, default: 1 }
+---
+
+## Camp
+
+@narrator: The {{run.day:ordinalWord}} night on the road.
+```
+
+The IR placeholder carries `"format": "ordinalWord"`, and the engine localizes the word. `lute run`, `lute play`, `lute trace` and `lute test` render the English words `first` `second` … `twentieth` for 1–20, and fall back to the `:ordinal` digits outside that range (`0th`, `21st`). The checker admits `:ordinalWord` wherever it admits `:ordinal`.
+
+`ordinal` and `ordinalWord` are the only hints: `{{run.floor:roman}}` is `E-CEL-PROFILE`, and so is a misspelt `{{run.day:ordinalword}}`. Either hint needs a number, so on a string, enum or bool path or def, or on `{{userName}}`, it is `E-REF-TYPE`.

@@ -163,7 +163,9 @@ pub fn bundle_beat_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec
         if doc.beats.is_empty() || resolve_doc_kind(&doc.meta).0 != Some(DocKind::Lore) {
             continue;
         }
-        let Some(doc_id) = bundle_id(doc) else { continue };
+        let Some(doc_id) = bundle_id(doc) else {
+            continue;
+        };
         let mut seen = BTreeSet::new();
         for beat in &doc.beats {
             if !crate::lore::is_entry_ident(&beat.id) || !seen.insert(beat.id.as_str()) {
@@ -213,7 +215,9 @@ pub fn when_visited_unanchored(
         };
         let when = match id {
             NodeId::Scene(_) => scene_frontmatter_str(doc, "when"),
-            NodeId::Beat(key) => bundle_beat(doc, key).and_then(|b| b.when.as_ref()).map(|w| w.raw.clone()),
+            NodeId::Beat(key) => bundle_beat(doc, key)
+                .and_then(|b| b.when.as_ref())
+                .map(|w| w.raw.clone()),
             _ => None,
         };
         let Some(when) = when.filter(|w| w.contains(crate::cel_resolve::VISITED_FN)) else {
@@ -237,8 +241,13 @@ pub fn when_visited_unanchored(
 
 /// The `visited('<id>')` calls among the top-level `&&` conjuncts of `e`.
 fn visited_conjuncts(e: &cel_parser::ast::Expr, out: &mut Vec<String>) {
-    let cel_parser::ast::Expr::Call(c) = e else { return };
-    if c.func_name == cel_parser::ast::operators::LOGICAL_AND && c.target.is_none() && c.args.len() == 2 {
+    let cel_parser::ast::Expr::Call(c) = e else {
+        return;
+    };
+    if c.func_name == cel_parser::ast::operators::LOGICAL_AND
+        && c.target.is_none()
+        && c.args.len() == 2
+    {
         visited_conjuncts(&c.args[0].expr, out);
         visited_conjuncts(&c.args[1].expr, out);
     } else if let Some(k) = crate::cel_resolve::visited_call_target(c) {
@@ -489,9 +498,14 @@ fn check_scene_key(
     if key_set.keys.contains_key(key) || key_set.bundles.contains_key(key) || !key_set.complete {
         return;
     }
-    let mut message =
-        format!("unknown node: no scene or bundle beat resolves to key `{key}` (`visited`, {cite})");
-    let candidates = key_set.keys.keys().chain(key_set.bundles.keys()).map(String::as_str);
+    let mut message = format!(
+        "unknown node: no scene or bundle beat resolves to key `{key}` (`visited`, {cite})"
+    );
+    let candidates = key_set
+        .keys
+        .keys()
+        .chain(key_set.bundles.keys())
+        .map(String::as_str);
     if let Some(sugg) = nearest_match(key, candidates, 2) {
         message.push_str(&format!(" — did you mean `{sugg}`?"));
     }
@@ -756,9 +770,10 @@ impl PrereqState {
     pub fn referenced<V>(&self, nodes: &BTreeMap<NodeId, V>) -> BTreeSet<NodeId> {
         match self {
             PrereqState::Valid(f) => atoms(f).iter().map(|a| NodeId::of_atom(a, nodes)).collect(),
-            PrereqState::Anchored(anchors) => {
-                anchors.iter().flat_map(|a| a.from.iter().cloned()).collect()
-            }
+            PrereqState::Anchored(anchors) => anchors
+                .iter()
+                .flat_map(|a| a.from.iter().cloned())
+                .collect(),
             PrereqState::Absent | PrereqState::Invalid => BTreeSet::new(),
         }
     }
@@ -977,7 +992,10 @@ pub fn assemble_graph(
         let Some((path, span)) = occurrences.into_iter().next() else {
             continue;
         };
-        let prereq = match by_path.get(path.as_path()).and_then(|doc| bundle_beat_after(doc, &key)) {
+        let prereq = match by_path
+            .get(path.as_path())
+            .and_then(|doc| bundle_beat_after(doc, &key))
+        {
             None => PrereqState::Absent,
             Some((after, _)) if after.is_empty() => PrereqState::Absent,
             Some((after, after_span)) => match parse_prereq(after, *after_span).0 {
@@ -1105,7 +1123,13 @@ pub fn assemble_graph(
         for atom in atoms(formula) {
             let target = NodeId::of_atom(&atom, &nodes);
             if nodes.contains_key(&target) {
-                add_edge(&mut edges, &mut edge_kinds, target, &info.id, atom_edge_kind(&atom));
+                add_edge(
+                    &mut edges,
+                    &mut edge_kinds,
+                    target,
+                    &info.id,
+                    atom_edge_kind(&atom),
+                );
             }
         }
     }
@@ -1118,7 +1142,10 @@ pub fn assemble_graph(
     // quest). A child that declares its own `after` still hangs off its
     // parent (dsl 0.25.0 §4).
     for (child, parent) in &decls.parents {
-        let (from, to) = (NodeId::Quest(parent.to_string()), NodeId::Quest(child.to_string()));
+        let (from, to) = (
+            NodeId::Quest(parent.to_string()),
+            NodeId::Quest(child.to_string()),
+        );
         if nodes.contains_key(&from) && nodes.contains_key(&to) && !reaches(&edges, &to, &from) {
             add_edge(&mut edges, &mut edge_kinds, from, &to, EdgeKind::Subquest);
         }
@@ -1128,7 +1155,11 @@ pub fn assemble_graph(
             let PrereqState::Anchored(anchors) = &info.prereq else {
                 continue;
             };
-            for from in anchors.iter().filter(|a| a.kind == kind).flat_map(|a| &a.from) {
+            for from in anchors
+                .iter()
+                .filter(|a| a.kind == kind)
+                .flat_map(|a| &a.from)
+            {
                 if nodes.contains_key(from) && !reaches(&edges, &info.id, from) {
                     add_edge(&mut edges, &mut edge_kinds, from.clone(), &info.id, kind);
                 }
@@ -1213,13 +1244,17 @@ impl<'a> QuestDecls<'a> {
         let mut entries = BTreeMap::new();
         for (path, doc) in docs {
             for quest in doc.quests.iter().filter(|q| !q.id.is_empty()) {
-                first.entry(quest.id.as_str()).or_insert((path.as_path(), quest));
+                first
+                    .entry(quest.id.as_str())
+                    .or_insert((path.as_path(), quest));
                 if quest.after.is_some() {
                     with_after.insert(quest.id.as_str());
                 }
             }
             for entry in doc.entries.iter().filter(|e| !e.id.is_empty()) {
-                entries.entry(entry.id.as_str()).or_insert((path.as_path(), entry.id_span));
+                entries
+                    .entry(entry.id.as_str())
+                    .or_insert((path.as_path(), entry.id_span));
             }
         }
         let mut parents = BTreeMap::new();
@@ -1290,13 +1325,17 @@ fn quest_anchors(
 /// than `quest`, any state but `unset`) — or is an `||` of such reads (one
 /// anchor, several sources). Every other conjunct gates without anchoring;
 /// an unparseable `start` is the per-file check's and anchors nothing.
-fn start_anchors(quest: &Quest, decls: &QuestDecls<'_>, nodes: &BTreeMap<NodeId, NodeInfo>) -> Vec<Anchor> {
+fn start_anchors(
+    quest: &Quest,
+    decls: &QuestDecls<'_>,
+    nodes: &BTreeMap<NodeId, NodeInfo>,
+) -> Vec<Anchor> {
     let Some(start) = &quest.start else {
         return Vec::new();
     };
     let mut arena = lute_cel::CelArena::default();
-    let Some(root) =
-        lute_cel::parse_slot_marked_refs(&mut arena, &start.raw).and_then(|h| arena.get(h).cloned())
+    let Some(root) = lute_cel::parse_slot_marked_refs(&mut arena, &start.raw)
+        .and_then(|h| arena.get(h).cloned())
     else {
         return Vec::new();
     };
@@ -1326,7 +1365,12 @@ fn top_conjuncts<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
 
 /// The sources one `start` conjunct anchors at ([`start_anchors`]): the
 /// node it reads, or every source of an `||` whose every arm reads one.
-fn start_sources(e: &Expr, own: &str, decls: &QuestDecls<'_>, nodes: &BTreeMap<NodeId, NodeInfo>) -> Option<Vec<NodeId>> {
+fn start_sources(
+    e: &Expr,
+    own: &str,
+    decls: &QuestDecls<'_>,
+    nodes: &BTreeMap<NodeId, NodeInfo>,
+) -> Option<Vec<NodeId>> {
     if let Expr::Call(c) = e {
         if c.func_name == op::LOGICAL_OR && c.target.is_none() && c.args.len() == 2 {
             let mut from = start_sources(&c.args[0].expr, own, decls, nodes)?;
@@ -1342,7 +1386,12 @@ fn start_sources(e: &Expr, own: &str, decls: &QuestDecls<'_>, nodes: &BTreeMap<N
 }
 
 /// The graph node one anchoring read names (see [`start_anchors`]).
-fn start_source(e: &Expr, own: &str, decls: &QuestDecls<'_>, nodes: &BTreeMap<NodeId, NodeInfo>) -> Option<NodeId> {
+fn start_source(
+    e: &Expr,
+    own: &str,
+    decls: &QuestDecls<'_>,
+    nodes: &BTreeMap<NodeId, NodeInfo>,
+) -> Option<NodeId> {
     let entry = |e: &Expr| {
         let path = crate::cel_paths::select_path(e)?;
         let id = crate::cel_paths::reserved_entry_id(&path)?;
@@ -1390,8 +1439,12 @@ fn accept_sources<'a>(
     let driven = crate::accept::accept_driven_quests(docs);
     let mut sites: BTreeMap<&str, Vec<NodeId>> = BTreeMap::new();
     let mut record = |d: &lute_syntax::ast::Directive, source: &NodeId, own: Option<&str>| {
-        let Some((id, _)) = d.accept_quest() else { return };
-        let Some(id) = driven.get(id).copied() else { return };
+        let Some((id, _)) = d.accept_quest() else {
+            return;
+        };
+        let Some(id) = driven.get(id).copied() else {
+            return;
+        };
         if own == Some(id) {
             return;
         }
@@ -1401,14 +1454,21 @@ fn accept_sources<'a>(
         }
     };
     for (_, doc) in docs {
-        if let Some(source) = scene_key(doc).map(NodeId::Scene).filter(|s| nodes.contains_key(s)) {
+        if let Some(source) = scene_key(doc)
+            .map(NodeId::Scene)
+            .filter(|s| nodes.contains_key(s))
+        {
             for shot in &doc.shots {
                 crate::accept::walk(&shot.body, &mut |d| record(d, &source, None));
             }
         }
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Lore) {
             if let Some(doc_id) = bundle_id(doc) {
-                for beat in doc.beats.iter().filter(|b| crate::lore::is_entry_ident(&b.id)) {
+                for beat in doc
+                    .beats
+                    .iter()
+                    .filter(|b| crate::lore::is_entry_ident(&b.id))
+                {
                     let source = NodeId::Beat(crate::bundles::bundle_beat_key(&doc_id, &beat.id));
                     if nodes.contains_key(&source) {
                         crate::accept::walk(&beat.body, &mut |d| record(d, &source, None));
@@ -1439,11 +1499,17 @@ pub enum OmittedRef {
         kind: EdgeKind,
         quest: String,
     },
-    /// `visited('<scene>')` in a lifecycle condition (`start`, `fail`, an
-    /// objective's `done` / `when` / `by`) of `quest`, which declares no
-    /// `after`, that draws no edge — not a top-level `start` conjunct (dsl
-    /// 0.25.0 §4).
-    Visited { quest: String, scene: String },
+    /// `visited('<scene>')` in a lifecycle condition of `quest`, which
+    /// declares no `after`, that draws no edge — not a top-level `start`
+    /// conjunct (dsl 0.25.0 §4). `slot` names where it is read: `start`,
+    /// `fail`, or `objective <id> <done|when|by|until>`. A condition read
+    /// gates the quest; it is no anchor, and an `after` copying it would
+    /// replace the quest's real anchors (summer S1).
+    Visited {
+        quest: String,
+        scene: String,
+        slot: String,
+    },
 }
 
 /// Every [`OmittedRef`] of one resolved root, graph-node order for
@@ -1464,7 +1530,9 @@ pub fn omitted_refs(
             let (Atom::Completed(quest) | Atom::Active(quest)) = atom else {
                 continue;
             };
-            if quest_ids.contains(&quest) && !graph.nodes.contains_key(&NodeId::Quest(quest.clone())) {
+            if quest_ids.contains(&quest)
+                && !graph.nodes.contains_key(&NodeId::Quest(quest.clone()))
+            {
                 out.push(OmittedRef::Lifecycle {
                     from: info.id.clone(),
                     kind,
@@ -1478,15 +1546,19 @@ pub fn omitted_refs(
             if quest.after.is_some() || quest.id.is_empty() {
                 continue;
             }
-            let mut slots: Vec<&lute_syntax::ast::CelSlot> =
-                quest.start.iter().chain(&quest.fail).collect();
+            let mut slots: Vec<(String, &lute_syntax::ast::CelSlot)> = Vec::new();
+            slots.extend(quest.start.iter().map(|s| ("start".to_string(), s)));
+            slots.extend(quest.fail.iter().map(|s| ("fail".to_string(), s)));
             for node in &quest.body {
                 if let Node::Objective(o) = node {
-                    slots.push(&o.done);
-                    slots.extend(o.when.iter().chain(&o.by).chain(&o.until));
+                    let named = |key: &str| format!("objective {} {key}", o.id);
+                    slots.push((named("done"), &o.done));
+                    slots.extend(o.when.iter().map(|s| (named("when"), s)));
+                    slots.extend(o.by.iter().map(|s| (named("by"), s)));
+                    slots.extend(o.until.iter().map(|s| (named("until"), s)));
                 }
             }
-            for slot in slots {
+            for (name, slot) in slots {
                 if !slot.raw.contains(crate::cel_resolve::VISITED_FN) {
                     continue;
                 }
@@ -1498,12 +1570,16 @@ pub fn omitted_refs(
                 };
                 for scene in crate::cel_resolve::visited_targets(&root.expr) {
                     let from = NodeId::visited(&scene, &graph.nodes);
-                    if graph.edge_kinds_for(&from, &NodeId::Quest(quest.id.clone())).is_some() {
+                    if graph
+                        .edge_kinds_for(&from, &NodeId::Quest(quest.id.clone()))
+                        .is_some()
+                    {
                         continue;
                     }
                     out.push(OmittedRef::Visited {
                         quest: quest.id.clone(),
                         scene,
+                        slot: name.clone(),
                     });
                 }
             }

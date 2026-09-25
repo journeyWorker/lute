@@ -274,13 +274,14 @@ pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
             };
             // dsl 0.24.0 §3: `run.approval[P]` reads the member bound to `P`;
             // validated here, then checked below as a member path.
-            let cel = &match crate::rule_index::check_indexed_guard(&rule.rule, cel, vocab, rule.span) {
-                Ok(cel) => cel,
-                Err(ds) => {
-                    diags.extend(ds);
-                    continue;
-                }
-            };
+            let cel =
+                &match crate::rule_index::check_indexed_guard(&rule.rule, cel, vocab, rule.span) {
+                    Ok(cel) => cel,
+                    Err(ds) => {
+                        diags.extend(ds);
+                        continue;
+                    }
+                };
             let mut arena = CelArena::default();
             let Some(handle) = lute_cel::parse_slot_marked_refs(&mut arena, cel) else {
                 continue;
@@ -317,7 +318,10 @@ pub const E_RULE_GUARD_DEF: &str = "E-RULE-GUARD-DEF";
 /// naming a rule variable (`@open(L)`) is spliced as `(L)` and bound by the
 /// evaluator exactly as an inline `L` is. A guard without refs is returned
 /// verbatim. `Err` says why the guard cannot be expanded.
-pub fn expand_rule_guard(cel: &str, defs: &crate::cel_expand::DefTable<'_>) -> Result<String, String> {
+pub fn expand_rule_guard(
+    cel: &str,
+    defs: &crate::cel_expand::DefTable<'_>,
+) -> Result<String, String> {
     for r in lute_cel::scan_refs(cel) {
         if r.is_dollar {
             return Err("`$` (a match subject) has no meaning in a rule guard".to_string());
@@ -341,7 +345,10 @@ pub fn expand_rule_guard(cel: &str, defs: &crate::cel_expand::DefTable<'_>) -> R
 /// all see one expanded body, and the runtime never evaluates an `@ref` it
 /// cannot resolve. A guard that cannot be expanded keeps its text and is
 /// [`E_RULE_GUARD_DEF`].
-pub fn expand_rule_guards(vocab: &mut RelVocab, defs: &crate::cel_expand::DefTable<'_>) -> Vec<Diagnostic> {
+pub fn expand_rule_guards(
+    vocab: &mut RelVocab,
+    defs: &crate::cel_expand::DefTable<'_>,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let RelVocab { rules, origins, .. } = vocab;
     for rule in rules.iter_mut() {
@@ -400,7 +407,9 @@ pub(crate) fn check_def_body(
         ));
     }
     let mut marked = CelArena::default();
-    if let Some(root) = lute_cel::parse_slot_marked_refs(&mut marked, cel).and_then(|h| marked.get(h)) {
+    if let Some(root) =
+        lute_cel::parse_slot_marked_refs(&mut marked, cel).and_then(|h| marked.get(h))
+    {
         check_cel_profile(&root.expr, &slot, params, &mut diags);
         check_quest_state_isset(&root.expr, span, &mut diags);
         check_modulo_operands(&root.expr, span, schema, &mut diags);
@@ -1174,7 +1183,10 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
     let param_indexed = ctx.env.rel_vocab.indexed_state.contains_key(path)
         && slot.raw.match_indices(&format!("{path}[@")).any(|(at, m)| {
             let rest = &slot.raw[at + m.len()..];
-            let name_len = rest.bytes().take_while(|c| c.is_ascii_alphanumeric() || *c == b'_').count();
+            let name_len = rest
+                .bytes()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == b'_')
+                .count();
             name_len > 0
                 && rest.as_bytes().get(name_len) == Some(&b']')
                 && !ctx.env.defs.contains(&rest[..name_len])
@@ -1190,7 +1202,8 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
                  `{path}.<member>`; `{path}[P]` reads a rule variable's member only inside a \
                  rule `cel()` guard (dsl 0.24.0 §3)"
             );
-        } else if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2) {
+        } else if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2)
+        {
             msg.push_str(&format!(" — did you mean `{sugg}`?"));
         }
         diags.push(diag("E-UNDECLARED", msg, slot.span));
@@ -1656,7 +1669,8 @@ mod tests {
         let slot = cel_slot_condition("run.day % 2.5 == 0");
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
         assert!(
-            d.iter().any(|x| x.message.contains("`2.5` is not an integer")),
+            d.iter()
+                .any(|x| x.message.contains("`2.5` is not an integer")),
             "{d:?}"
         );
     }

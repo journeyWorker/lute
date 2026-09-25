@@ -42,17 +42,16 @@ use crate::decide::{
     DollarBinding,
 };
 use crate::fact_env::{
-    CountInterval, FactEnv, FactScope, GroundFact, HoldsVerdict, MustFact, Provenance,
-    QueryPattern,
+    CountInterval, FactEnv, FactScope, GroundFact, HoldsVerdict, MustFact, Provenance, QueryPattern,
 };
 use crate::match_check::{infer_domain, subject_path, DomainInfo};
 use crate::meta::StateSchema;
-use crate::rel_schema::RelVocab;
+pub use crate::reachability::E_ENTRY_UNREACHABLE;
 use crate::reachability::{
     arm_has_foreign_literal, E_ARM_DEAD, E_OBJECTIVE_UNSATISFIABLE, E_QUEST_UNREACHABLE,
     REQUIRED_QUEST_NOTE, W_OBJECTIVE_HIDDEN,
 };
-pub use crate::reachability::E_ENTRY_UNREACHABLE;
+use crate::rel_schema::RelVocab;
 
 /// `W-FACT-GUARANTEED` (dsl 0.20.0 §5): a relational query inside a guard
 /// (line `when=`, `<choice when>`, `<when test>`, entry `when`) that is
@@ -150,7 +149,11 @@ pub fn check_fact_guards(
         }
         g.walk(&beat.body, &mut out);
     }
-    out.retain(|d| !reported.iter().any(|r| r.code == d.code && r.span == d.span));
+    out.retain(|d| {
+        !reported
+            .iter()
+            .any(|r| r.code == d.code && r.span == d.span)
+    });
     out
 }
 
@@ -369,7 +372,10 @@ fn guaranteed_reason(m: &MustFact) -> String {
     let fact = &m.fact;
     match &m.provenance {
         Provenance::Assert { .. } => {
-            format!("`{fact}` is asserted on every route to here ({})", m.provenance)
+            format!(
+                "`{fact}` is asserted on every route to here ({})",
+                m.provenance
+            )
         }
         Provenance::Guard { .. } => format!(
             "`{fact}` already holds here: the enclosing guard at {} requires it",
@@ -511,7 +517,8 @@ impl<'a> Guards<'a> {
     /// the dead guard as `E-UNSET-LITERAL` (per-file); the dead-arm
     /// derivative is owned by it here too.
     fn sentinel_owns(&self, slot: &CelSlot, dollar: Option<&DomainInfo>) -> bool {
-        let a = analyze_unset_sentinel_slot(&slot.raw, &self.defs, &self.ctx(dollar, slot.span, true));
+        let a =
+            analyze_unset_sentinel_slot(&slot.raw, &self.defs, &self.ctx(dollar, slot.span, true));
         !a.hits.is_empty() && a.load_bearing_for_false
     }
 
@@ -538,7 +545,13 @@ impl<'a> Guards<'a> {
         }
     }
 
-    fn push_guaranteed(&self, v: &SlotVerdict, what: &str, slot: &CelSlot, out: &mut Vec<Diagnostic>) {
+    fn push_guaranteed(
+        &self,
+        v: &SlotVerdict,
+        what: &str,
+        slot: &CelSlot,
+        out: &mut Vec<Diagnostic>,
+    ) {
         let reasons = v.guaranteed_reasons();
         if reasons.is_empty() {
             return;
@@ -587,7 +600,10 @@ impl<'a> Guards<'a> {
         out.push(diag(
             E_QUEST_UNREACHABLE,
             Severity::Error,
-            format!("quest can never complete: {} (dsl 0.20.0 §5)", causes.join("; and ")),
+            format!(
+                "quest can never complete: {} (dsl 0.20.0 §5)",
+                causes.join("; and ")
+            ),
             // The QUEST's span, as `check_quest_reach` anchors it: the anchor
             // `connectivity::unreachable_quest_ids` matches on.
             quest.span,
@@ -608,7 +624,12 @@ impl<'a> Guards<'a> {
                 } else {
                     msg.push_str(REQUIRED_QUEST_NOTE);
                 }
-                out.push(v.grade(diag(E_OBJECTIVE_UNSATISFIABLE, Severity::Error, msg, o.span)));
+                out.push(v.grade(diag(
+                    E_OBJECTIVE_UNSATISFIABLE,
+                    Severity::Error,
+                    msg,
+                    o.span,
+                )));
             }
         }
         if o.optional {
@@ -644,7 +665,11 @@ impl<'a> Guards<'a> {
                     for arm in &m.arms {
                         match arm {
                             Arm::When {
-                                is, test, span, body, ..
+                                is,
+                                test,
+                                span,
+                                body,
+                                ..
                             } => {
                                 // D4: an arm whose `is` carries a foreign
                                 // literal is rooted by `E-WHEN-LITERAL-DOMAIN`.
@@ -731,9 +756,13 @@ impl<'a> Guards<'a> {
         let Some(fact) = GroundFact::from_pattern(&a.pattern) else {
             return;
         };
-        let Some(m) = self.env.must.at(self.path, a.span).iter().find(|m| {
-            !exclusive_pairs(&[fact.clone(), m.fact.clone()], self.vocab).is_empty()
-        }) else {
+        let Some(m) = self
+            .env
+            .must
+            .at(self.path, a.span)
+            .iter()
+            .find(|m| !exclusive_pairs(&[fact.clone(), m.fact.clone()], self.vocab).is_empty())
+        else {
             return;
         };
         out.push(diag(
@@ -756,7 +785,13 @@ impl<'a> Guards<'a> {
     fn choices(&self, choices: &[lute_syntax::ast::Choice], out: &mut Vec<Diagnostic>) {
         for c in choices {
             if let Some(when) = &c.when {
-                self.guard(when, None, |v| dead_arm(c.span, "choice", when, v), true, out);
+                self.guard(
+                    when,
+                    None,
+                    |v| dead_arm(c.span, "choice", when, v),
+                    true,
+                    out,
+                );
             }
             self.walk(&c.body, out);
         }
@@ -819,18 +854,16 @@ fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, negated: bool, out: &mut Vec<
                     if let (Some(scope), Expr::Call(p)) = (&ctx.facts, &c.args[0].expr) {
                         if let Some(pattern) = QueryPattern::from_call(p) {
                             let verdict = match scope.holds(&pattern) {
-                                HoldsVerdict::Impossible => {
-                                    HoldsOutcome::Impossible(scope.defeat(&pattern).map(
-                                        |(head, denied)| {
-                                            format!(
-                                                "`{head}` can only come from a rule that needs \
+                                HoldsVerdict::Impossible => HoldsOutcome::Impossible(
+                                    scope.defeat(&pattern).map(|(head, denied)| {
+                                        format!(
+                                            "`{head}` can only come from a rule that needs \
                                                  `not {denied}`, and `{denied}` holds throughout \
                                                  every run (a seed nothing removes, or derived \
                                                  from such seeds)"
-                                            )
-                                        },
-                                    ))
-                                }
+                                        )
+                                    }),
+                                ),
                                 HoldsVerdict::Guaranteed(m) => {
                                     HoldsOutcome::Guaranteed(guaranteed_reason(m))
                                 }

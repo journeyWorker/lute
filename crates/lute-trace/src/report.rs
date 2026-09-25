@@ -494,7 +494,11 @@ impl TraceReport {
                 if forced == 1 { "" } else { "s" }
             )
         };
-        if self.unresolved.is_empty() {
+        if self.disposition == "refused" {
+            // dsl 0.25.0 §1: an exclusive-relations refusal keeps its
+            // transcript; the walk stopped at the `✗ exclusive` line.
+            out.push_str("trace stopped at the `✗ exclusive` line above (exit 1)");
+        } else if self.unresolved.is_empty() {
             out.push_str(&format!(
                 "trace complete: {} decision{}{forced_summary}",
                 self.decisions.len(),
@@ -633,10 +637,17 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
             } else {
                 (
                     d.authored_id.as_ref().unwrap_or(&d.id),
-                    if d.authored_guard.is_some() { &d.authored_guard } else { &d.guard },
+                    if d.authored_guard.is_some() {
+                        &d.authored_guard
+                    } else {
+                        &d.guard
+                    },
                 )
             };
-            let guard = guard.as_deref().map(|g| format!(" ({g})")).unwrap_or_default();
+            let guard = guard
+                .as_deref()
+                .map(|g| format!(" ({g})"))
+                .unwrap_or_default();
             let eligible = if d.eligible.is_empty() {
                 String::new()
             } else {
@@ -671,7 +682,9 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
         } => {
             let gate = match eligible {
                 Some(true) => "",
-                Some(false) if *after_unmet => "   (not eligible: `after` prerequisite not satisfied)",
+                Some(false) if *after_unmet => {
+                    "   (not eligible: `after` prerequisite not satisfied)"
+                }
                 Some(false) => "   (not eligible: `when` is false)",
                 None => "   (eligibility unknown)",
             };
@@ -681,7 +694,11 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
             out.push_str(&format!("    ::{effect}  {text}  (skipped: re-read)\n"));
         }
         Step::Accept { quest, next_run } => {
-            let queued = if *next_run { " (queued: applies after the next run start)" } else { "" };
+            let queued = if *next_run {
+                " (queued: applies after the next run start)"
+            } else {
+                ""
+            };
             out.push_str(&format!("    quest {quest} accepted{queued}\n"))
         }
         Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),

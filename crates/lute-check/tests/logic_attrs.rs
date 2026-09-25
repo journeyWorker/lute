@@ -227,7 +227,8 @@ fn branch_empty_prompt_is_rejected_at_its_own_span() {
     assert_eq!(&t[d.span.byte_start..d.span.byte_end], "prompt=\"\"");
 }
 
-const QUEST_HDR: &str = "---\nkind: quest\nstate:\n  run.flag: { type: bool, default: false }\n---\n";
+const QUEST_HDR: &str =
+    "---\nkind: quest\nstate:\n  run.flag: { type: bool, default: false }\n---\n";
 
 fn unknown_attr_messages(text: &str) -> Vec<String> {
     run(text)

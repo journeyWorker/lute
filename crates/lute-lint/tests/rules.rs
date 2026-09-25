@@ -347,7 +347,9 @@ fn lint_default(inputs: Vec<LintDocInput>) -> Vec<(PathBuf, lute_core_span::Diag
 /// spliced into its host's staging, a quest body of narration.
 #[test]
 fn linear_vn_rules_skip_beats_components_quests_and_lore() {
-    let mut quest_body = String::from("---\nkind: quest\n---\n<quest id=\"q\" title=\"Q\">\n<on event=\"questComplete\">\n");
+    let mut quest_body = String::from(
+        "---\nkind: quest\n---\n<quest id=\"q\" title=\"Q\">\n<on event=\"questComplete\">\n",
+    );
     for i in 0..10 {
         quest_body.push_str(&format!("::set{{ run.n{i} = 1 }}\n"));
     }
@@ -392,7 +394,10 @@ fn linear_vn_rules_skip_beats_components_quests_and_lore() {
 /// ratio 6.0).
 #[test]
 fn scene_length_spread_ignores_beats() {
-    let bark = input("bark.lute", "---\nid: bark\non: talk\n---\n## Bark\n@alice: hi there\n");
+    let bark = input(
+        "bark.lute",
+        "---\nid: bark\non: talk\n---\n## Bark\n@alice: hi there\n",
+    );
     let scene_a = input(
         "a.lute",
         "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three four five six seven eight nine ten\n",
@@ -431,7 +436,10 @@ fn shot_opening_skips_control_directives() {
 /// of 3.4, and 3 vs 10 is 3.333… → `3.33`.
 #[test]
 fn scene_length_spread_message_rounds_the_ratio() {
-    let small = input("a.lute", "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three\n");
+    let small = input(
+        "a.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three\n",
+    );
     let big = input(
         "b.lute",
         "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three four five six seven eight nine ten\n",
@@ -504,10 +512,13 @@ fn emotion_distribution_skips_when_min_lines_not_met() {
 /// skipped — while one long beat is still judged on its own.
 #[test]
 fn emotion_distribution_measures_each_bundle_beat_alone_and_skips_entries() {
-    let alternating = "@alice{emotion=\"happy\"}: a\n@alice{emotion=\"sad\"}: b\n@alice{emotion=\"happy\"}: c\n";
+    let alternating =
+        "@alice{emotion=\"happy\"}: a\n@alice{emotion=\"sad\"}: b\n@alice{emotion=\"happy\"}: c\n";
     let mut bundle = String::from("---\nkind: lore\nid: talk\n---\n\n");
     for i in 0..4 {
-        bundle.push_str(&format!("<beat id=\"b{i}\" on=\"talk\">\n{alternating}</beat>\n\n"));
+        bundle.push_str(&format!(
+            "<beat id=\"b{i}\" on=\"talk\">\n{alternating}</beat>\n\n"
+        ));
     }
     for i in 0..4 {
         bundle.push_str(&format!("<entry id=\"e{i}\">\n{alternating}</entry>\n\n"));
@@ -529,7 +540,11 @@ fn emotion_distribution_measures_each_bundle_beat_alone_and_skips_entries() {
     );
     let rows = only_code(&out.diagnostics, "L-EMOTION-DISTRIBUTION");
     assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
-    assert!(rows[0].1.message.starts_with("speaker `bob`"), "{}", rows[0].1.message);
+    assert!(
+        rows[0].1.message.starts_with("speaker `bob`"),
+        "{}",
+        rows[0].1.message
+    );
 }
 
 // ---------------------------------------------------------------------------

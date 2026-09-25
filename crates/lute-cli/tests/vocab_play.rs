@@ -141,11 +141,17 @@ fn an_enum_member_label_renders_in_play_trace_and_test() {
     let script = dir.join("s.play.yaml");
     let (code, text) = lute(&["play", d, "--script", script.to_str().unwrap()]);
     assert_eq!(code, Some(0), "{text}");
-    assert!(text.contains("Today is mon.") && text.contains("Now it is Sunday."), "{text}");
+    assert!(
+        text.contains("Today is mon.") && text.contains("Now it is Sunday."),
+        "{text}"
+    );
 
     let (code, text) = lute(&["trace", scene, "--project", d]);
     assert_eq!(code, Some(0), "{text}");
-    assert!(text.contains("Today is mon.") && text.contains("Now it is Sunday."), "{text}");
+    assert!(
+        text.contains("Today is mon.") && text.contains("Now it is Sunday."),
+        "{text}"
+    );
 
     let tests = dir.join("tests");
     let (code, text) = lute(&["test", tests.to_str().unwrap(), "--project", d]);
@@ -153,8 +159,16 @@ fn an_enum_member_label_renders_in_play_trace_and_test() {
     assert!(text.contains("1 passed, 0 failed"), "{text}");
 
     // The engine contract: the path's state entry carries the labels.
-    let out = Command::new(BIN).args(["compile", scene, "--project", d]).output().unwrap();
-    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new(BIN)
+        .args(["compile", scene, "--project", d])
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let art: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let entry = art["state"]
         .as_array()
@@ -163,7 +177,11 @@ fn an_enum_member_label_renders_in_play_trace_and_test() {
         .find(|e| e["path"] == "run.wd")
         .cloned()
         .unwrap();
-    assert_eq!(entry["labels"], serde_json::json!({ "sun": "Sunday" }), "{entry}");
+    assert_eq!(
+        entry["labels"],
+        serde_json::json!({ "sun": "Sunday" }),
+        "{entry}"
+    );
 
     let (code, text) = lute(&["check-project", d]);
     assert_eq!(code, Some(0), "{text}");

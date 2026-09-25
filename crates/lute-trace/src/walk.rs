@@ -38,9 +38,8 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
     Arm, Assert, AttrValue, Branch, BundleBeat, CelSlot, Choice, ClipNode, Directive, Document,
-    Entry, Hub,
-    Interp, InterpKind, IsPattern, Line, Match, Node, Objective, Quest, Retract, Reward,
-    RewardAmount, Set, Timeline,
+    Entry, Hub, Interp, InterpKind, IsPattern, Line, Match, Node, Objective, Quest, Retract,
+    Reward, RewardAmount, Set, Timeline,
 };
 use lute_syntax::datalog::FactTerm;
 use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral};
@@ -53,8 +52,7 @@ use crate::eval::{
 use crate::mock::{self, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{
     self, ComponentBoundary, Coverage, CoverageCount, Decision, GrantCredit, GrantReward, Seeds,
-    Step,
-    TraceExit, TraceReport, UnresolvedEntry,
+    Step, TraceExit, TraceReport, UnresolvedEntry,
 };
 use crate::value::{UnresolvedAtom, Value};
 
@@ -219,7 +217,16 @@ impl<'a> Walk<'a> {
         total: usize,
     ) {
         let id = subject.raw.as_str();
-        self.push_decision("match", id, span, outcome, guard.0, false, false, Vec::new());
+        self.push_decision(
+            "match",
+            id,
+            span,
+            outcome,
+            guard.0,
+            false,
+            false,
+            Vec::new(),
+        );
         let authored_id = subject.authored.clone();
         self.author_last(authored_id.clone(), guard.1);
         // Keyed on the SITE, not the subject text. `record_choice_decision`
@@ -596,7 +603,13 @@ fn resolve_interp(interp: &Interp, w: &Walk<'_>) -> Option<String> {
             let v = eval_path_read(&interp.raw, &w.env(), &mut atoms);
             // dsl 0.24.0 §1: a value of a named enum renders its member label.
             if let Value::Str(s) = &v {
-                let label = match w.check_env.state.decls.get(interp.raw.trim()).map(|d| &d.ty) {
+                let label = match w
+                    .check_env
+                    .state
+                    .decls
+                    .get(interp.raw.trim())
+                    .map(|d| &d.ty)
+                {
                     Some(lute_manifest::types::Type::Domain(name)) => {
                         w.domains.get(name).and_then(|d| d.labels.get(s))
                     }
@@ -702,11 +715,11 @@ fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
     // `::clear` ends every presence on stage.
     let exit = d.tag == lute_manifest::core::CLEAR_DIRECTIVE
         || d.tag == "auto"
-        && d.attrs.iter().any(|a| {
-            a.key == "action"
-                && matches!(&a.value, lute_syntax::ast::AttrValue::Str(s)
+            && d.attrs.iter().any(|a| {
+                a.key == "action"
+                    && matches!(&a.value, lute_syntax::ast::AttrValue::Str(s)
                     if w.domains.get("action").is_some_and(|dom| dom.exits.iter().any(|e| e == s)))
-        });
+            });
     // #32 / T5.9: `reason` is `::end`'s entire payload.
     let reason = if d.tag == lute_manifest::core::END_DIRECTIVE {
         d.attrs
@@ -750,7 +763,12 @@ fn walk_bridge_call(d: &Directive, w: &mut Walk<'_>) {
         return;
     }
     let used = w.bridge_cursor.entry(d.tag.clone()).or_insert(0);
-    let answer = w.mocks.bridges.get(&d.tag).and_then(|list| list.get(*used)).cloned();
+    let answer = w
+        .mocks
+        .bridges
+        .get(&d.tag)
+        .and_then(|list| list.get(*used))
+        .cloned();
     if answer.is_some() {
         *used += 1;
     }
@@ -781,8 +799,10 @@ fn walk_bridge_call(d: &Directive, w: &mut Walk<'_>) {
             .map(|l| crate::eval::literal_to_value(&l))
             .unwrap_or(Value::Unknown);
         if value == Value::Unknown {
-            w.bridge_unanswered
-                .insert(path.clone(), (d.tag.clone(), field.to_string(), shape.clone()));
+            w.bridge_unanswered.insert(
+                path.clone(),
+                (d.tag.clone(), field.to_string(), shape.clone()),
+            );
         } else {
             w.bridge_unanswered.remove(&path);
         }
@@ -1100,20 +1120,11 @@ fn eval_hub_choice_eligibility(
 /// visited — evaluated before the pick's own `visited` write, so `lute
 /// test`'s `offered:` sees a hub's options as it sees a branch's (dsl 0.24.0,
 /// T1-13).
-fn record_hub_pick(
-    w: &mut Walk<'_>,
-    h: &Hub,
-    id: &str,
-    choice: &Choice,
-    forced: bool,
-    auto: bool,
-) {
+fn record_hub_pick(w: &mut Walk<'_>, h: &Hub, id: &str, choice: &Choice, forced: bool, auto: bool) {
     let eligible: Vec<String> = h
         .choices
         .iter()
-        .filter(|c| {
-            eval_hub_choice_eligibility(c, id, w, &mut Vec::new()) == Value::Bool(true)
-        })
+        .filter(|c| eval_hub_choice_eligibility(c, id, w, &mut Vec::new()) == Value::Bool(true))
         .map(|c| c.id.clone())
         .collect();
     let guard = render_choice_guard(choice.when.as_ref());
@@ -1280,7 +1291,11 @@ fn walk_node(node: &Node, w: &mut Walk<'_>, sugar_ctx: Option<&Choice>) -> Flow 
         }
         Node::Directive(d) => walk_directive(d, w),
         Node::Set(s) if !w.apply_effects => {
-            skip_effect("set", format!("{} {} {}", s.path, s.op, s.expr.raw.trim()), w);
+            skip_effect(
+                "set",
+                format!("{} {} {}", s.path, s.op, s.expr.raw.trim()),
+                w,
+            );
             Flow::Continue
         }
         Node::Assert(a) if !w.apply_effects => {
@@ -1431,7 +1446,11 @@ fn walk_bundle_beat(beat: &BundleBeat, canonical: &str, w: &mut Walk<'_>) -> Flo
         .filter(|(a, _)| !a.trim().is_empty())
         .and_then(|(a, span)| {
             let f = lute_check::parse_prereq(a, *span).0?;
-            Some(CelSlot::raw(lute_syntax::ast::CelKind::Condition, prereq_condition(&f), *span))
+            Some(CelSlot::raw(
+                lute_syntax::ast::CelKind::Condition,
+                prereq_condition(&f),
+                *span,
+            ))
         });
     let after = match &after {
         Some(slot) => eval_eligibility(Some(slot), "beat", canonical, w),
@@ -1586,11 +1605,13 @@ fn judge_deadline(o: &Objective, by: &CelSlot, w: &mut Walk<'_>) {
 fn objective_failed_by(o: &Objective, w: &Walk<'_>) -> Option<&'static str> {
     let guard = failed_decision_guard(o, w)?;
     let by = o.by.as_ref().map(|b| b.raw.trim());
-    Some(if by.is_some_and(|by| guard.as_deref().map(str::trim) == Some(by)) {
-        "by"
-    } else {
-        "until"
-    })
+    Some(
+        if by.is_some_and(|by| guard.as_deref().map(str::trim) == Some(by)) {
+            "by"
+        } else {
+            "until"
+        },
+    )
 }
 
 /// The guard of `o`'s `failed` decision (`Some(None)` when it carried
@@ -1879,7 +1900,10 @@ fn dispatch_event(quest: &Quest, event_name: &str, target: Option<&str>, w: &mut
     for node in &quest.body {
         let Node::On(on) = node else { continue };
         if on.event != event_name
-            || on.target.as_ref().is_some_and(|(t, _)| Some(t.as_str()) != target)
+            || on
+                .target
+                .as_ref()
+                .is_some_and(|(t, _)| Some(t.as_str()) != target)
         {
             continue;
         }
@@ -2002,8 +2026,10 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
             Some(o) => objective_failed_by(o, w).unwrap_or("by"),
             None => "fail",
         };
-        w.state
-            .write(&quest_failed_by_path(&quest.id), Value::Str(reason.to_string()));
+        w.state.write(
+            &quest_failed_by_path(&quest.id),
+            Value::Str(reason.to_string()),
+        );
         purge_terminal_objectives(quest, w);
         let guard = match missed {
             Some(o) => failed_decision_guard(o, w).flatten(),
@@ -2111,8 +2137,10 @@ fn cascade_terminal(
             &quest_state_path(&child.id),
             Value::Str("failed".to_string()),
         );
-        w.state
-            .write(&quest_failed_by_path(&child.id), Value::Str(reason.to_string()));
+        w.state.write(
+            &quest_failed_by_path(&child.id),
+            Value::Str(reason.to_string()),
+        );
         purge_terminal_objectives(child, w);
         w.push_decision(
             "quest",
@@ -2792,7 +2820,11 @@ fn occasion_notes(doc: &Document, occasions: &[String], decisions: &[Decision]) 
                     && d.span == o.span
                     && matches!(d.outcome.as_str(), "done" | "failed")
             });
-            if settled || occasions.iter().any(|r| crate::mock::raise_judges(r, on, target)) {
+            if settled
+                || occasions
+                    .iter()
+                    .any(|r| crate::mock::raise_judges(r, on, target))
+            {
                 continue;
             }
             let raise = target.map_or_else(|| on.clone(), |t| format!("{on}@{t}"));
@@ -3073,7 +3105,13 @@ pub fn trace_with_check(
     mocks: MockSet,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, Presentation::Document, project_asserts)
+    trace_pipeline(
+        input,
+        result,
+        mocks,
+        Presentation::Document,
+        project_asserts,
+    )
 }
 
 /// `lute trace --entry <id>` (dsl 0.19.0 §8): the SAME §4.3 pipeline as
@@ -3097,7 +3135,13 @@ pub fn trace_entry_with_check(
     entry: &str,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, Presentation::Entries(&[entry]), project_asserts)
+    trace_pipeline(
+        input,
+        result,
+        mocks,
+        Presentation::Entries(&[entry]),
+        project_asserts,
+    )
 }
 
 /// `lute test`'s `entries: [ids]` (dsl 0.22.0 §5): [`trace_entry_with_check`]
@@ -3113,7 +3157,13 @@ pub fn trace_entries_with_check(
     entries: &[&str],
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, Presentation::Entries(entries), project_asserts)
+    trace_pipeline(
+        input,
+        result,
+        mocks,
+        Presentation::Entries(entries),
+        project_asserts,
+    )
 }
 
 /// `lute trace --beat <id>` (dsl 0.23.0 §4): the SAME §4.3 pipeline as
@@ -3137,7 +3187,13 @@ pub fn trace_beat_with_check(
     beat: &str,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> (TraceReport, TraceExit) {
-    trace_pipeline(input, result, mocks, Presentation::Beat(beat), project_asserts)
+    trace_pipeline(
+        input,
+        result,
+        mocks,
+        Presentation::Beat(beat),
+        project_asserts,
+    )
 }
 
 /// What [`trace_pipeline`] walks once the document is gated and expanded.
@@ -3248,7 +3304,13 @@ fn trace_pipeline(
     if let Some(clock) = &folded.env.clock {
         let mut at = seed.clone();
         for p in std::iter::once(&clock.day).chain(&clock.slot) {
-            if let Some(d) = folded.env.state.decls.get(p).and_then(|d| d.default.as_ref()) {
+            if let Some(d) = folded
+                .env
+                .state
+                .decls
+                .get(p)
+                .and_then(|d| d.default.as_ref())
+            {
                 at.entry(p.clone())
                     .or_insert_with(|| crate::eval::literal_to_value(d));
             }
@@ -3268,7 +3330,12 @@ fn trace_pipeline(
     if mocks.derives() {
         facts = facts.with_derivation(&program);
         for fd in &folded.env.rel_vocab.facts {
-            let args: Vec<String> = fd.fact.args.iter().map(|a| fact_term_text(&a.term)).collect();
+            let args: Vec<String> = fd
+                .fact
+                .args
+                .iter()
+                .map(|a| fact_term_text(&a.term))
+                .collect();
             facts.assert(&fd.fact.relation, &args);
         }
     }
@@ -3306,39 +3373,67 @@ fn trace_pipeline(
         Presentation::Entries(_) | Presentation::Beat(_) => None,
     };
 
-    let flow = match present {
-        Presentation::Document => {
-            let flow = walk_document(&doc, &mut w);
-            if matches!(flow, Flow::Continue) {
-                walk_quests(&doc, &mocks.events, &mut w)
-            } else {
+    // dsl 0.25.0 §1 (LH N16): the seeded world — the mock's `facts:` /
+    // `--fact`, the project's seeds, and what the rules derive over them —
+    // must not already hold exclusive relations together; the walk would
+    // otherwise show content no run can reach, silently.
+    let seeded = w.facts.exclusive_violations(&w.state);
+    let flow = if !seeded.is_empty() {
+        for v in &seeded {
+            w.steps.push(Step::Exclusive { text: v.clone() });
+        }
+        Flow::Refused(vec![Diagnostic {
+            code: lute_check::fact_check::E_FACT_EXCLUSIVE.to_string(),
+            severity: Severity::Error,
+            message: format!(
+                "the seeded facts (the mock's `facts:` / `--fact`, the project's `facts:` seeds, \
+                 and what the rules derive from them) hold exclusive relations together before \
+                 the walk starts: {} (dsl 0.25.0 §1) — fix the mock (or the `excludes:` \
+                 declaration)",
+                seeded.join("; ")
+            ),
+            span: mock::synthetic_span(),
+            layer: Layer::Logic,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        }])
+    } else {
+        match present {
+            Presentation::Document => {
+                let flow = walk_document(&doc, &mut w);
+                if matches!(flow, Flow::Continue) {
+                    walk_quests(&doc, &mocks.events, &mut w)
+                } else {
+                    flow
+                }
+            }
+            Presentation::Entries(entries) => {
+                let mut flow = Flow::Continue;
+                for id in entries {
+                    // `validate_entry` proved every id is declared.
+                    let Some(e) = doc.entries.iter().find(|e| e.id == *id) else {
+                        continue;
+                    };
+                    flow = walk_entry(e, &mut w);
+                    if !matches!(flow, Flow::Continue) {
+                        break;
+                    }
+                    w.state
+                        .write(&lute_check::entry_read_path(id), Value::Bool(true));
+                    w.state
+                        .write(&format!("entry.{id}.everRead"), Value::Bool(true));
+                }
                 flow
             }
+            // `resolve_beat` proved the index; normalize/expand never reorder
+            // `doc.beats`.
+            Presentation::Beat(_) => match &beat_at {
+                Some((i, canonical)) => walk_bundle_beat(&doc.beats[*i], canonical, &mut w),
+                None => Flow::Continue,
+            },
         }
-        Presentation::Entries(entries) => {
-            let mut flow = Flow::Continue;
-            for id in entries {
-                // `validate_entry` proved every id is declared.
-                let Some(e) = doc.entries.iter().find(|e| e.id == *id) else {
-                    continue;
-                };
-                flow = walk_entry(e, &mut w);
-                if !matches!(flow, Flow::Continue) {
-                    break;
-                }
-                w.state
-                    .write(&lute_check::entry_read_path(id), Value::Bool(true));
-                w.state
-                    .write(&format!("entry.{id}.everRead"), Value::Bool(true));
-            }
-            flow
-        }
-        // `resolve_beat` proved the index; normalize/expand never reorder
-        // `doc.beats`.
-        Presentation::Beat(_) => match &beat_at {
-            Some((i, canonical)) => walk_bundle_beat(&doc.beats[*i], canonical, &mut w),
-            None => Flow::Continue,
-        },
     };
 
     let doc_quest_ids: BTreeSet<&str> = doc.quests.iter().map(|q| q.id.as_str()).collect();
@@ -3355,7 +3450,12 @@ fn trace_pipeline(
     notes.extend(unmatched_event_notes(&doc, &mocks.events));
     notes.extend(occasion_notes(&doc, &mocks.occasions, &w.decisions));
     notes.extend(std::mem::take(&mut w.spent_accepts));
-    notes.extend(mock_unproducible_notes(&mocks, &folded, &doc, project_asserts));
+    notes.extend(mock_unproducible_notes(
+        &mocks,
+        &folded,
+        &doc,
+        project_asserts,
+    ));
     // #32 / T5.9: `Ended` and `Complete` are the same EXIT CODE (see below)
     // and were therefore indistinguishable to a harness. `disposition` is the
     // additive key that separates a walk an author terminated from one that

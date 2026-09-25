@@ -42,7 +42,10 @@ fn guarded_set_is_clean() {
 #[test]
 fn guard_is_checked_as_a_bool_condition() {
     let undeclared = codes("::set{run.a += 1 when=\"run.nope\"}");
-    assert!(undeclared.contains(&"E-UNDECLARED".to_string()), "{undeclared:?}");
+    assert!(
+        undeclared.contains(&"E-UNDECLARED".to_string()),
+        "{undeclared:?}"
+    );
 
     // A guard is typed against `bool` exactly like a line `when=`: a
     // whole-slot `@ref` of another type is `E-REF-TYPE`, a bool one is clean.
@@ -74,10 +77,16 @@ fn decided_false_guard_is_arm_dead() {
 #[test]
 fn guarded_write_is_not_a_definite_assignment() {
     let guarded = codes("::set{run.tip = 5 when=\"run.flag\"}\n@x: tip {{run.tip}}");
-    assert!(guarded.contains(&"E-MAYBE-UNSET".to_string()), "{guarded:?}");
+    assert!(
+        guarded.contains(&"E-MAYBE-UNSET".to_string()),
+        "{guarded:?}"
+    );
 
     let unguarded = codes("::set{run.tip = 5}\n@x: tip {{run.tip}}");
-    assert!(!unguarded.contains(&"E-MAYBE-UNSET".to_string()), "{unguarded:?}");
+    assert!(
+        !unguarded.contains(&"E-MAYBE-UNSET".to_string()),
+        "{unguarded:?}"
+    );
 }
 
 /// The guard narrows the write's OWN reads: `isSet(run.tip)` proves the
@@ -85,8 +94,14 @@ fn guarded_write_is_not_a_definite_assignment() {
 #[test]
 fn guard_proves_the_writes_own_reads() {
     let guarded = codes("::set{run.tip += 1 when=\"isSet(run.tip)\"}");
-    assert!(!guarded.contains(&"E-MAYBE-UNSET".to_string()), "{guarded:?}");
+    assert!(
+        !guarded.contains(&"E-MAYBE-UNSET".to_string()),
+        "{guarded:?}"
+    );
 
     let unguarded = codes("::set{run.tip += 1}");
-    assert!(unguarded.contains(&"E-MAYBE-UNSET".to_string()), "{unguarded:?}");
+    assert!(
+        unguarded.contains(&"E-MAYBE-UNSET".to_string()),
+        "{unguarded:?}"
+    );
 }

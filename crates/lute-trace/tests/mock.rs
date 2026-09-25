@@ -806,10 +806,9 @@ fn every_legal_mock_key_still_parses() {
 /// admission rule (the document must reference the path) and domain for free.
 #[test]
 fn quests_and_entries_read_seed_their_reserved_paths() {
-    let m = parse_mock_yaml(
-        "quests:\n  foo: complete\nentriesRead:\n  run: [ember]\n  user: [ash]\n",
-    )
-    .expect("valid seeds");
+    let m =
+        parse_mock_yaml("quests:\n  foo: complete\nentriesRead:\n  run: [ember]\n  user: [ash]\n")
+            .expect("valid seeds");
     let seeds: Vec<(&str, &str)> = m
         .state
         .iter()

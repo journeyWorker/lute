@@ -25,7 +25,11 @@ fn write(dir: &Path, rel: &str, text: &str) {
 }
 
 fn text(o: &Output) -> String {
-    format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
 }
 
 const SCHEMA: &str = r#"state:
@@ -46,13 +50,18 @@ rules:
   - "loyal(P) :- inParty(P), cel(\"run.approval[P] >= 3\")"
 "#;
 
-const CAMP: &str = "---\nkind: scene\nid: camp.fire\nuses: ../world.schema.yaml\non: visit\n---\n\n## Camp\n\n\
+const CAMP: &str =
+    "---\nkind: scene\nid: camp.fire\nuses: ../world.schema.yaml\non: visit\n---\n\n## Camp\n\n\
                     ::set{run.approval.isolde += 3}\n\
                     @narrator{when=\"holds(loyal(isolde))\"}: Isolde keeps watch.\n";
 
 fn project(tag: &str) -> PathBuf {
     let dir = temp_dir(tag);
-    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
     write(&dir, "world.schema.yaml", SCHEMA);
     write(&dir, "scenes/camp.lute", CAMP);
     dir
@@ -61,7 +70,11 @@ fn project(tag: &str) -> PathBuf {
 #[test]
 fn a_sub_kind_predicate_and_an_indexed_rule_derive_per_member_in_play() {
     let dir = project("play");
-    let out = Command::new(BIN).arg("check-project").arg(&dir).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("check-project")
+        .arg(&dir)
+        .output()
+        .unwrap();
     assert!(out.status.success(), "{}", text(&out));
 
     write(
@@ -79,5 +92,8 @@ fn a_sub_kind_predicate_and_an_indexed_rule_derive_per_member_in_play() {
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     assert!(t.contains("Isolde keeps watch."), "{t}");
-    assert!(t.contains("[P = isolde]"), "the explanation names the grounded instance: {t}");
+    assert!(
+        t.contains("[P = isolde]"),
+        "the explanation names the grounded instance: {t}"
+    );
 }

@@ -55,7 +55,10 @@ fn scene(meta: &str, body: &str) -> String {
 }
 
 fn beat(when: &str, body: &str) -> String {
-    scene(&format!("on: hubVisit\nonce: false\nwhen: \"{when}\"\n"), body)
+    scene(
+        &format!("on: hubVisit\nonce: false\nwhen: \"{when}\"\n"),
+        body,
+    )
 }
 
 // --- T1-4: reads through `@def` ------------------------------------------------
@@ -90,7 +93,10 @@ fn a_def_body_read_is_checked_at_every_use_site() {
         "@narrator{when=\"isSet(prev.run.depth) && @lastF > 30\"}: Deep.\n",
     ] {
         let ds = run(&scene(defs, body));
-        assert!(with_code(&ds, "E-MAYBE-UNSET").is_empty(), "{body}: {ds:#?}");
+        assert!(
+            with_code(&ds, "E-MAYBE-UNSET").is_empty(),
+            "{body}: {ds:#?}"
+        );
     }
 }
 
@@ -103,7 +109,11 @@ fn a_def_subject_reads_and_narrows_like_its_path() {
     assert_eq!(with_code(&ds, "E-UNSET-UNCOVERED").len(), 1, "{ds:#?}");
     let reads = with_code(&ds, "E-MAYBE-UNSET");
     assert_eq!(reads.len(), 1, "{ds:#?}");
-    assert!(reads[0].message.contains("`@lastO`"), "{}", reads[0].message);
+    assert!(
+        reads[0].message.contains("`@lastO`"),
+        "{}",
+        reads[0].message
+    );
     let covered = format!("{open}<when is=\"unset\">\n@n: c\n</when>\n</match>\n");
     let ds = run(&scene(defs, &covered));
     assert!(ds.is_empty(), "{ds:#?}");
@@ -125,7 +135,11 @@ fn a_def_subject_takes_the_def_domain() {
     let ds = run(&scene(defs, partial));
     let d = with_code(&ds, "E-NONEXHAUSTIVE");
     assert_eq!(d.len(), 1, "{ds:#?}");
-    assert!(d[0].message.contains("`b`, `c` are not covered"), "{}", d[0].message);
+    assert!(
+        d[0].message.contains("`b`, `c` are not covered"),
+        "{}",
+        d[0].message
+    );
 
     let typo = "<match on=\"@wd2\">\n<when is=\"zz\">\n@n: zz\n</when>\n\
                 <otherwise>\n@n: other\n</otherwise>\n</match>\n";
@@ -141,7 +155,11 @@ fn nonexhaustive_names_the_missing_member() {
     ));
     let d = with_code(&ds, "E-NONEXHAUSTIVE");
     assert_eq!(d.len(), 1, "{ds:#?}");
-    assert!(d[0].message.contains("`c` is not covered"), "{}", d[0].message);
+    assert!(
+        d[0].message.contains("`c` is not covered"),
+        "{}",
+        d[0].message
+    );
 }
 
 // --- T1-7 (a): a beat's / entry's `when` is an assumption --------------------------
@@ -213,22 +231,44 @@ fn exhaustiveness_honors_the_beat_when() {
     let ds = run(&beat(when, &format!("{arms}</match>\n")));
     assert!(ds.is_empty(), "the dead arm removed is clean: {ds:#?}");
 
-    let ds = run(&beat(when, &format!("{arms}<when is=\"c\">\n@n: c\n</when>\n</match>\n")));
+    let ds = run(&beat(
+        when,
+        &format!("{arms}<when is=\"c\">\n@n: c\n</when>\n</match>\n"),
+    ));
     assert_eq!(with_code(&ds, "E-ARM-DEAD").len(), 1, "{ds:#?}");
 
-    let ds = run(&beat(when, &format!("{arms}<otherwise>\n@n: c\n</otherwise>\n</match>\n")));
+    let ds = run(&beat(
+        when,
+        &format!("{arms}<otherwise>\n@n: c\n</otherwise>\n</match>\n"),
+    ));
     let dead = with_code(&ds, "W-OTHERWISE-DEAD");
     assert_eq!(dead.len(), 1, "{ds:#?}");
-    assert!(dead[0].message.contains("the domain left by the body's `when` guard"), "{}", dead[0].message);
+    assert!(
+        dead[0]
+            .message
+            .contains("the domain left by the body's `when` guard"),
+        "{}",
+        dead[0].message
+    );
 
     // A member the guard leaves in is still required, and only it is named.
-    let ds = run(&beat(when, "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n"));
+    let ds = run(&beat(
+        when,
+        "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n",
+    ));
     let d = with_code(&ds, "E-NONEXHAUSTIVE");
     assert_eq!(d.len(), 1, "{ds:#?}");
-    assert!(d[0].message.contains("`b` is not covered"), "{}", d[0].message);
+    assert!(
+        d[0].message.contains("`b` is not covered"),
+        "{}",
+        d[0].message
+    );
 
     // A body that writes the subject keeps the whole domain.
-    let ds = run(&beat(when, &format!("::set{{run.wd = 'c'}}\n{arms}</match>\n")));
+    let ds = run(&beat(
+        when,
+        &format!("::set{{run.wd = 'c'}}\n{arms}</match>\n"),
+    ));
     assert_eq!(with_code(&ds, "E-NONEXHAUSTIVE").len(), 1, "{ds:#?}");
 }
 
@@ -291,5 +331,9 @@ fn one_present_prev_run_path_proves_every_defaulted_mirror() {
     ));
     let hits = with_code(&ds, "E-MAYBE-UNSET");
     assert_eq!(hits.len(), 1, "{ds:#?}");
-    assert!(hits[0].message.contains("`prev.run.odd`"), "{}", hits[0].message);
+    assert!(
+        hits[0].message.contains("`prev.run.odd`"),
+        "{}",
+        hits[0].message
+    );
 }

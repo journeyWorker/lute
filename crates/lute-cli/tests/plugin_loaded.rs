@@ -42,7 +42,11 @@ fn date_minigame_core_only_still_errors() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("date-minigame.lute");
-    std::fs::copy("../../docs/examples/arcia-project/date-minigame.lute", &file).unwrap();
+    std::fs::copy(
+        "../../docs/examples/arcia-project/date-minigame.lute",
+        &file,
+    )
+    .unwrap();
     let out = Command::new(lute_bin())
         .args(["check", file.to_str().unwrap(), "--json"])
         .output()

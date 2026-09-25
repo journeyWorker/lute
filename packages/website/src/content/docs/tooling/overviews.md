@@ -143,7 +143,7 @@ project root: .
 
 - **beat** — the id, followed by its `title` in quotes when it has one (a scene's `title:`, an entry's or bundle beat's `title=`).
 - **kind** — `scene`, `entry`, or `bundle` (a [bundle beat](/tooling/play/#bundle-beats), listed under its canonical `<document id>.<beat id>`).
-- **once** — `run`, `user`, `day`, `slot` (with a declared [clock](/language/clock/), for a scene, an entry, or a bundle beat's `once="day"` / `once="slot"`), or `no` (a scene's `once: false`, an entry without `once`); `, also` follows it for an [`also` beat](/tooling/play/#composing-occasions).
+- **once** — `run`, `user`, `day`, `slot` (with a declared [clock](/language/clock/), for a scene, an entry, or a bundle beat's `once="day"` / `once="slot"`), or `no` (a scene's `once: false`, an entry without `once`); `, also` follows it for an [`also` beat](/tooling/play/#composing-occasions), and `, share <key>` for a beat with a [shared spend](/language/beats/#one-event-several-places-share) (dsl 0.25.0): `day, share solWarm`.
 - **after** / **when** — the conditions as the author wrote them, `@def` references included (dsl 0.24.0; `--expand` prints each `when` expanded); `-` when absent.
 - **verdict** — the project-wide beat diagnostics `check-project` reports about this beat, by name: `unreachable` (`E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE`), `shadowed` (`W-BEAT-SHADOWED`), `tied` (`W-BEAT-PRIORITY-TIE`), and `once-run-user` (`W-BEAT-ONCE-RUN-USER`). They are the checker's own diagnostics from the same run, not a second analysis; see [Beats](/language/beats/) for what each means. Above, `dockGulls` ties `dockBo` (equal priority, conditions not provably exclusive), `dockEmpty` can never win because the always-eligible `dockGulls` outranks it, and `inn.regular` is spent once per run while its `when` reads only user state.
 
@@ -170,7 +170,7 @@ $ lute beats . --occasion daystart
 lute beats: `--occasion daystart` is not an occasion of this project (known: board, dayStart, placeVisit)
 ```
 
-`--json` emits `{ "roots": [ { "root", "ladders": [ { "occasion", "select", "target"? | "anyTarget"?, "beats": [ … ] } ] } ] }`. Each beat is `{ id, kind, document, priority, once, target?, also?, after?, when?, whenAuthored?, title?, verdicts }`, where `once` is `"run"`, `"user"`, or `"none"`, `when` carries the expansion and `whenAuthored` the author's text (dsl 0.24.0), and `verdicts` carries the full diagnostics, each `{ code, severity, message }`:
+`--json` emits `{ "roots": [ { "root", "ladders": [ { "occasion", "select", "target"? | "anyTarget"?, "beats": [ … ] } ] } ] }`. Each beat is `{ id, kind, document, priority, once, share?, target?, also?, after?, when?, whenAuthored?, title?, verdicts }`, where `once` is `"run"`, `"user"`, `"day"`, `"slot"`, or `"none"`, `share` the beat's shared-spend key (dsl 0.25.0), `when` carries the expansion and `whenAuthored` the author's text (dsl 0.24.0), and `verdicts` carries the full diagnostics, each `{ code, severity, message }`:
 
 ```json
 {
@@ -688,6 +688,13 @@ A derived defeater names the facts that join to produce it — here an entry gua
         defeated when present(bo, dock) is derived ⇐ works(bo, dock) [seed], cel("run.slot == 'morning' && run.day != 3")
 ```
 
+A fact with several derivation routes lists every one of them (dsl 0.25.0 §9), separated by ` / `, so the report shows each way the negation can fail, not only the first. Add a rule `present(P, L) :- hired(P, L)` and a scene `dock.hire` that asserts `hired(bo, dock)`:
+
+```console
+      not present(bo, dock) — holds unless defeated
+        defeated when present(bo, dock) is derived ⇐ works(bo, dock) [seed], cel("run.slot == 'morning' && run.day != 3") / ⇐ hired(bo, dock) [scene `dock.hire` (scenes/dock/hire.lute)]
+```
+
 At most three defeating facts are printed per premise, then `… and N more defeating facts`. A negated relation that may hold any tuple (an open argument domain) says so after its defeat line (`` — any `rumor` tuple may hold ``).
 
 `--for <node>` selects: a scene (every guard in it — `inn.again`), a bundle beat, an entry id (`dockBo`), a quest objective as `<quest>.<objective>` (`ferry.word`), `quest:<id>` for every objective of a quest, or `<scene>#<branch>.<choice>` for one choice's guard. With a scene `inn.ask` whose line and choice are fact-guarded:
@@ -727,26 +734,52 @@ Exit **0** on success, **2** on an I/O failure or an unmatched `--for`.
 
 ### What the scenario graph leaves out
 
-The [scenario graph](/connectivity/scene-graph/) draws only prerequisites that connectivity analyzes, and a quest joins it only by declaring `after=`. Since 0.23.0 the bare `lute scenario` view says which references it therefore did not draw — a `completed()`/`active()` in some `after:` that names a quest with no `after=`, and a `visited()` read in such a quest's `start`, `fail`, objective `done`/`by`, or `when`:
+The [scenario graph](/connectivity/scene-graph/) draws only prerequisites that connectivity analyzes. A quest's edges come from its `after=`, its subquest tree, the anchoring conjuncts of its `start`, and the `::accept`s that take it up (dsl 0.24.0 §2, 0.25.0 §4); see [Quests & scenes](/language/quests-and-scenes/#quest). The bare `lute scenario` view says what it therefore did not draw. Take a lighthouse: a quest `relight` with `start="entry.keeperLog.everRead && visited('arrival')"` and two subquests, `oil` and `wick`; a `salvage` quest the engine accepts from a board (`accept="external"`); a `lostDog` quest only a test accepts; two keeper beats, `greeting` with `after="visited('arrival')"` and `warning` gated by `when="visited('keeper.greeting')"`; and a scene `farewell` with `after: completed("salvage")`:
 
 ```console
 $ lute scenario .
 project root: .
   topological layers:
-    layer 0: scene(day.bell), scene(day.farewell), scene(day.market), scene(dock.storm), scene(inn.ada), scene(inn.regular)
-    layer 1: scene(inn.again)
+    layer 0: scene(arrival), scene(farewell), beat(keeper.warning), entry(keeperLog)
+    layer 1: quest(relight), beat(keeper.greeting)
+    layer 2: quest(oil), quest(wick)
   edges (prerequisite -> dependent) [atom kind(s)]:
-    scene(inn.ada) -> scene(inn.again) [visited]
+    scene(arrival) -> quest(relight) [start]
+    scene(arrival) -> beat(keeper.greeting) [visited]
+    quest(relight) -> quest(oil) [subquest]
+    quest(relight) -> quest(wick) [subquest]
+    entry(keeperLog) -> quest(relight) [start]
   unanchored (no `after` — available from the start of play; no prerequisites in this graph):
-    quest(ferry)
-  note: 2 `visited()`/`completed()`/`active()` reference(s) not drawn — a quest joins this graph only by declaring `after` (even `after=""`):
-    scene(day.farewell) -> completed("ferry") — quest(ferry) declares no `after`
-    quest(ferry) reads visited('inn.ada') — quest(ferry) declares no `after`
+    quest(lostDog)
+    quest(salvage)
+    beat(keeper.warning) — its `when` reads visited('keeper.greeting'), which gates it but draws no edge; write `after="visited('keeper.greeting')"` to anchor it (dsl 0.25.0 §3)
+  note: 6 `visited()`/`completed()`/`active()` reference(s) not drawn — a quest's edges come from its `after`, its subquest tree, its `start` conjuncts and its `::accept`s:
+    scene(farewell) -> completed("salvage") — quest(salvage) is on no edge (no `after`, tree, `start` anchor or `::accept`)
+    quest(relight) reads visited('keeper.warning') in its objective climb done — a condition read, not an anchor
+    quest(oil) reads visited('arrival') in its objective fetch done — a condition read, not an anchor
+    quest(wick) reads visited('arrival') in its objective trim done — a condition read, not an anchor
+    quest(salvage) reads visited('arrival') in its objective dive done — a condition read, not an anchor
+    quest(lostDog) reads visited('arrival') in its objective find done — a condition read, not an anchor
 ```
 
-`--format json` carries the same list as `omitted` on the root, each `{ from, kind, quest }` for a `completed`/`active` reference or `{ from, kind: "visited", scene }` for a quest's `visited()` read. Give `ferry` an `after=""` and both references become edges.
+`relight` is anchored by its `start` conjuncts, so it needs no `after=`, and `oil` and `wick` hang off it by `[subquest]` edges. `keeper.greeting` is ordered by its own `after=`; `keeper.warning` reads the same kind of fact in its `when`, which gates it but orders nothing, so it is listed with the `after=` to write. `salvage` and `lostDog` are on no edge, so the `completed("salvage")` in `farewell`'s `after:` is not drawn either, and an objective's `visited()` read is a condition, never an anchor.
 
-Lore entries are not graph nodes, but bundle beats are. Add the gossip beat from [above](#lute-scenario-knowledge) and layer 0 ends with `beat(town.gossip.whisper)`, an entry node with no edges: a `<beat>` declares no `after`, and its occasion, target and `when` decide when it plays. `lute scenario . reach town.gossip.whisper` (or `reach beat:town.gossip.whisper`) prints the file that declares it with its `on`, `target` and `when`; see [The scene graph](/connectivity/scene-graph/#bundle-beats).
+`--format json` carries the unanchored nodes as `unanchored` on the root, the beat hints as `unanchoredHints` (node → hint), and the undrawn references as `omitted`, each `{ from, kind, quest }` for a `completed`/`active` reference or `{ from, kind: "visited", scene, slot }` for a quest's `visited()` read. `lute scenario . reach quest:relight` lists the quest's anchors (`anchors`, each `{ kind, from }`, in JSON):
+
+```console
+$ lute scenario . reach quest:relight
+project root: .
+reach quest(relight):
+  verdict: Reachable — a satisfiable route exists under your declared routes.
+  after: (none declared) — anchored (dsl 0.24.0 §2, 0.25.0 §4); each anchor holds before it activates, through any one of its sources:
+    [start] entry(keeperLog)
+    [start] scene(arrival)
+  referenced node(s) (see the anchors above — this is NOT a flat requirement list):
+    - scene(arrival): Reachable — a satisfiable route exists under your declared routes.
+    - entry(keeperLog): Reachable — a satisfiable route exists under your declared routes.
+```
+
+Lore entries join the graph only as the source of a quest's `start` anchor, `entry(<id>)`. Bundle beats are always nodes: a beat without `after=` is an entry node, and one with `after=` is the dependent of the edges it draws. `lute scenario . reach keeper.greeting` (or `reach beat:keeper.greeting`) prints the file that declares it with its `on`, `target` and `when`; see [The scene graph](/connectivity/scene-graph/#bundle-beats).
 
 ## Beat rows in `project.index.json`
 

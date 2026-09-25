@@ -25,8 +25,8 @@
 
 use lute_check::{check, CheckInput, Mode};
 use lute_compile::{compile, LUTE_IR_VERSION, LUTE_LANG_VERSION};
-use lute_trace::{parse_mock_yaml, trace_document, TraceExit};
 use lute_manifest::core::load_core_snapshot;
+use lute_trace::{parse_mock_yaml, trace_document, TraceExit};
 use wasm_bindgen::prelude::*;
 
 /// Install the panic hook once, automatically on module init (wasm-bindgen

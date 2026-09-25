@@ -160,6 +160,8 @@ trace: lore/oskar.lute  (seeds: 0 paths, 0 facts; 0 selections)
 trace complete: 0 decisions
 ```
 
+A beat's own `after="…"` (dsl 0.25.0 §3) is shown the same way, over the mock's `visited:` and quest states, and never enforced: ``<beat keeper.greeting>   (not eligible: `after` prerequisite not satisfied)`` heads the walk when it does not hold.
+
 A lore document needs `--entry` or `--beat`, and without either the usage error (exit **2**) lists both kinds of id. A `--beat` that names no beat of the document is `E-TRACE-BEAT` (exit **1**), listing the ones it declares:
 
 <!-- lute-diagnostics -->
@@ -246,7 +248,7 @@ trace incomplete: 1 unresolved atom (exit 3)
   unresolved: match `is="true"` (scene.check.guards.passed match) — supply bridges: { check: [ { passed: <bool>, margin: <number> } ] } (plugin `check` call unanswered; `scene.check.guards.passed` reads its `passed` result) as a mock; arms 0/2 (scene.check.guards.passed @12:1)
 ```
 
-The hint is an answer the loader accepts once its placeholders are filled: it lists every field the call's result shape requires, each with its type — `<bool>`, `<number>`, `<string>`, `<one of: a|b>` for an enum, `<value>` otherwise. A mock's (or a `*.test.yaml`'s) `bridges:` answers the calls in order, one answer per call of the tag, each giving exactly the result fields the call's effects read:
+The hint is an answer the loader accepts once its placeholders are filled: it lists every field of the call's result that content reads, each with its type — `<bool>`, `<number>`, `<string>`, `<one of: a|b>` for an enum, `<value>` otherwise. A mock's (or a `*.test.yaml`'s) `bridges:` answers the calls in order, one answer per call of the tag, each giving the result fields content reads:
 
 ```yaml
 # mocks/gate.yaml
@@ -265,19 +267,22 @@ trace: scenes/gate/guards.lute  (seeds: 0 paths, 0 facts; 0 selections)
       (bridge answered: passed=true, margin=3)
   <match scene.check.guards.passed>   -> arm 1 (is="true")
     @narrator  The guards wave you through.
+  <match scene.check.guards.margin > 5>   -> otherwise
     <check>
       (bridge answered: passed=false, margin=-2)
   <match scene.check.sneak.passed>   -> arm 2 (is="false")
     @narrator  A stallholder shouts after you.
-trace complete: 2 decisions; arms 1/2 (scene.check.guards.passed @12:1), arms 1/2 (scene.check.sneak.passed @21:1)
+trace complete: 3 decisions; arms 1/2 (scene.check.guards.passed @12:1), arms 1/2 (scene.check.guards.margin > 5 @15:5), arms 1/2 (scene.check.sneak.passed @22:1)
 ```
 
-A tag no plugin call of the document reads a bridge result through, or a field no effect reads, is `E-TRACE-MOCK-UNDECLARED`; an answer that lacks a field, or a value that does not fit a result slot, is `E-TRACE-MOCK-TYPE` — a missing field's message spells the whole typed answer, and a bad value is checked against every slot the tag's calls write. Each is anchored at the offending tag key, answer or field key **in the mock file** (a `*.test.yaml`, a `--mock` file, or `mocks/*.yaml`), not at the document, and the JSON diagnostic carries `"provenance": "mock"`:
+**A field nothing reads may be left out** (dsl 0.25.0 §7). A result field that no guard, line or write in the project reads decides nothing, so an answer may omit it: its result slot simply stays unresolved. Here a line reads `scene.check.guards.margin`, so `margin` is required. Without that line, `- { passed: true }` is a complete answer, and the hint on an unanswered call lists only what content reads: `supply bridges: { check: [ { passed: <bool> } ] }`. An answer may still give an unread field the call's effects write.
+
+A tag no plugin call of the document reads a bridge result through, or a field no effect reads, is `E-TRACE-MOCK-UNDECLARED`; an answer that lacks a field content reads, or a value that does not fit a result slot, is `E-TRACE-MOCK-TYPE` — a missing field's message spells the typed answer, and a bad value is checked against every slot the tag's calls write. Each is anchored at the offending tag key, answer or field key **in the mock file** (a `*.test.yaml`, a `--mock` file, or `mocks/*.yaml`), not at the document, and the JSON diagnostic carries `"provenance": "mock"`:
 
 <!-- lute-diagnostics -->
 ```console
 $ lute trace scenes/gate/guards.lute --project . --mock lack.yaml
-lack.yaml:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin` — an answer gives every bridge result `::check` reads: `{ passed: <bool>, margin: <number> }` (dsl 0.24.0 §5)
+lack.yaml:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }` (dsl 0.25.0 §7)
 trace refused: scenes/gate/guards.lute — invalid mock input
 ```
 
@@ -291,7 +296,7 @@ trace refused: scenes/gate/guards.lute — invalid mock input
 
 `lack.yaml` gives `- { passed: true }` and `bad.yaml` `- { passed: yes, margin: 3 }`, each the fourth line of the file. Before 0.24 a missing field was `E-TRACE-MOCK-UNDECLARED`, and every one of these errors was reported at `<document>:0:0`. In a scenario test the same error lands on the test's own line — `./tests/t.test.yaml:6:9: error [E-TRACE-MOCK-TYPE] …` under its `FAIL` — and `check-project` reports a bad `mocks/*.yaml` at `./mocks/lack.yaml:4:7`.
 
-**Migrating a 0.23.1 mock.** A mock or test that answered a call by seeding its result slot — `state: { scene.check.guards.passed: true }` — no longer decides the guard: the call's answer is read from `bridges:` only, so the walk stops unresolved with the hint above. Replace the seed with `bridges: { check: [ { passed: true, margin: 3 } ] }`, one answer per call, in call order, with every field the result shape requires.
+**Migrating a 0.23.1 mock.** A mock or test that answered a call by seeding its result slot — `state: { scene.check.guards.passed: true }` — no longer decides the guard: the call's answer is read from `bridges:` only, so the walk stops unresolved with the hint above. Replace the seed with `bridges: { check: [ { passed: true, margin: 3 } ] }`, one answer per call, in call order, with every field content reads.
 
 `check-project` runs the same checks over `mocks/*.yaml`. A scenario test without the answers fails as incomplete, its hint ending `in this test`; `lute run --mock` answers calls from the same key, and [`lute play`](/tooling/play/#answering-bridge-calls) takes it at the top level and per step.
 
@@ -441,6 +446,27 @@ trace complete: 2 decisions; 1 unresolved (forced past an unknown guard — the 
 ```
 
 **Migrating from 0.21.** A test that relied on an unmocked derived atom being unknown (exit 3), or on a seeded relation reading empty, now sees the derived or seeded answer and may change verdict. Pin `derive: false` in that test or mock to keep the old one — or, better, assert what the rules conclude with `expect.facts` / `expect.notFacts`. To walk everything the old way at once, run `lute test --no-derive`, which overrides every test's and play script's own `derive:`.
+
+## Exclusive relations
+
+Relations declared [`excludes:`](/state/facts-and-datalog/#exclusive-relations-excludes) (dsl 0.25.0 §1) never hold together on the same arguments. Trace checks the facts — mocked, seeded, asserted and derived — after every write, and a write that makes two exclusive facts hold stops the walk there. Seed `panicked(maren)` and walk the dawn scene, which asserts `calm(maren)`:
+
+<!-- lute-diagnostics unverified="verbatim lute trace output; E-FACT-EXCLUSIVE is named through a constant in the trace crate, so the scraper cannot pair quote and code" -->
+```console
+$ lute trace scenes/dawn.lute --project . --fact "panicked(maren)" --choose look=nothing
+trace: scenes/dawn.lute  (seeds: 0 paths, 1 facts; 1 selection)
+  ## Shot 1.
+  <branch look>   eligible: saw, nothing   -> nothing
+    @narrator  Nobody answers.
+  <match holds(seenAfter(elias)) && !holds(fell(elias))>   -> otherwise
+    ::assert  calm(maren)
+    ✗ exclusive: calm(maren) and panicked(maren) both hold
+trace stopped at the `✗ exclusive` line above (exit 1); choices 1/2 (look), arms 1/2 (holds(seenAfter(elias)) && !holds(fell(elias)) @21:1)
+scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] this write makes exclusive relations hold together: calm(maren) and panicked(maren) both hold (dsl 0.25.0 §1)
+trace refused: scenes/dawn.lute — exclusive relations hold together (dsl 0.25.0 §1)
+```
+
+The exit is **1**, and nothing after the write is walked. A scenario test that reaches such a write fails the same way. When the seeded facts themselves — the mock's `facts:` or `--fact`, the project's `facts:` seeds, and what the rules derive from them — already break an exclusion, trace refuses before the walk starts, with an `E-FACT-EXCLUSIVE` that says so. `check-project` reports the same code statically when the other fact holds on every route to the `::assert`; trace catches the cases that are only possible, such as a fact asserted down one branch of an earlier scene, or supplied by a mock.
 
 ## The `E-TRACE-*` refusals
 

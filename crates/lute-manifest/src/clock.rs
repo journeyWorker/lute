@@ -146,7 +146,10 @@ impl ClockDecl {
             }
         }
         if self.slot.as_deref() == Some(self.day.as_str()) {
-            out.push(format!("`day:` and `slot:` are the same path `{}`", self.day));
+            out.push(format!(
+                "`day:` and `slot:` are the same path `{}`",
+                self.day
+            ));
         }
         if let Some(week) = &self.week {
             if week.length == 0 {
@@ -209,7 +212,10 @@ impl ClockDecl {
             None => 0,
             Some(_) => self.slot_index(slot?)?,
         };
-        Some(ClockAt { day: day as i64, slot })
+        Some(ClockAt {
+            day: day as i64,
+            slot,
+        })
     }
 
     /// `clock.index` of a position.
@@ -246,7 +252,10 @@ impl ClockDecl {
 
     /// The occasions an advance raises (all `None` without a `raise:`).
     pub fn raises(&self) -> RaiseMoments {
-        self.raise.as_ref().map(ClockRaise::moments).unwrap_or_default()
+        self.raise
+            .as_ref()
+            .map(ClockRaise::moments)
+            .unwrap_or_default()
     }
 
     /// `clock.weekday` of `day` (`None` without a `week:`).
@@ -280,7 +289,10 @@ impl ClockDecl {
     pub fn describe(&self, at: ClockAt) -> String {
         let slot = match &self.slot {
             None => String::new(),
-            Some(_) => format!(" {}", self.slots.get(at.slot).map(String::as_str).unwrap_or("?")),
+            Some(_) => format!(
+                " {}",
+                self.slots.get(at.slot).map(String::as_str).unwrap_or("?")
+            ),
         };
         match self.weekday_label(at.day) {
             Some(label) => format!("day {} ({label}){slot}", at.day),
@@ -309,15 +321,24 @@ mod tests {
         let d = c.at(2.0, Some("morning")).unwrap();
         assert_eq!((c.index(a), c.index(b), c.index(d)), (0, 2, 3));
         assert!(c.at(1.5, Some("morning")).is_none() && c.at(1.0, Some("dusk")).is_none());
-        assert!(c.at(1.0, None).is_none(), "a clock with a slot path needs a slot");
+        assert!(
+            c.at(1.0, None).is_none(),
+            "a clock with a slot path needs a slot"
+        );
     }
 
     #[test]
     fn advance_wraps_slots_into_the_next_day() {
         let c = clock();
         let night = c.at(1.0, Some("night")).unwrap();
-        assert_eq!(c.advance(night, Advance::Slots(1)), ClockAt { day: 2, slot: 0 });
-        assert_eq!(c.advance(night, Advance::Slots(4)), ClockAt { day: 3, slot: 0 });
+        assert_eq!(
+            c.advance(night, Advance::Slots(1)),
+            ClockAt { day: 2, slot: 0 }
+        );
+        assert_eq!(
+            c.advance(night, Advance::Slots(4)),
+            ClockAt { day: 3, slot: 0 }
+        );
         let noon = c.at(1.0, Some("afternoon")).unwrap();
         assert_eq!(c.advance(noon, Advance::Day), ClockAt { day: 2, slot: 0 });
     }
@@ -339,7 +360,9 @@ mod tests {
         .unwrap();
         let p = c.shape_problems();
         assert_eq!(p.len(), 3, "{p:?}");
-        assert!(serde_yaml::from_str::<ClockDecl>("day: a\nslot: b\nslots: [x]\norder: [x]\n").is_err());
+        assert!(
+            serde_yaml::from_str::<ClockDecl>("day: a\nslot: b\nslots: [x]\norder: [x]\n").is_err()
+        );
         let stray: ClockDecl = serde_yaml::from_str("day: a\nslots: [x]\n").unwrap();
         assert_eq!(stray.shape_problems().len(), 1, "`slots:` without `slot:`");
     }
@@ -350,7 +373,10 @@ mod tests {
         assert!(c.shape_problems().is_empty());
         let d3 = c.at(3.0, None).unwrap();
         assert_eq!(c.index(d3), 2);
-        assert_eq!(c.advance(d3, Advance::Slots(2)), ClockAt { day: 5, slot: 0 });
+        assert_eq!(
+            c.advance(d3, Advance::Slots(2)),
+            ClockAt { day: 5, slot: 0 }
+        );
         assert_eq!(c.advance(d3, Advance::Day), ClockAt { day: 4, slot: 0 });
         assert_eq!(c.describe(d3), "day 3");
         assert_eq!(c.raises().slot.as_deref(), Some("arrive"));
@@ -364,7 +390,11 @@ mod tests {
         .unwrap();
         let m = c.raises();
         assert_eq!(
-            (m.slot.as_deref(), m.day_start.as_deref(), m.day_end.as_deref()),
+            (
+                m.slot.as_deref(),
+                m.day_start.as_deref(),
+                m.day_end.as_deref()
+            ),
             (Some("slotStart"), None, Some("dayEnd"))
         );
         assert!(

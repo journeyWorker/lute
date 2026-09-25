@@ -242,9 +242,10 @@ The two kinds of block share a file but keep their own rules:
 |---|---|---|
 | Id | its own `id`, unique across the project | `<document id>.<beat id>`: `shipRecords.tomaAtTheLog` |
 | Body | content lines, `<match>`, `::set` / `::assert` / `::retract` | a scene body: lines, branches, hubs, `<match>`, directives |
-| Reached | looked up by the engine, or as an [entry beat](/language/beats/#entry-beats) | only as a beat answering its `on` occasion |
+| Reached | looked up by the engine, or as an [entry beat](/language/beats/#entry-beats) | only as a beat answering its `on` occasion, once its `when` and (dsl 0.25.0) its `after=` hold |
 | Effects | on the first read in a run | on every presentation, as a scene's |
 | Spent | by `entry.<id>.read` / `everRead` when `once=` asks (by the clock for `once="day"` / `"slot"`) | by presentation; `once` defaults to `run` |
+| Shared spend (dsl 0.25.0) | `share=` beside `once=`: reading it spends every beat of the key | `share=` beside `once`: presenting it spends every beat of the key |
 | Read by conditions | `entry.<id>.read`, `entry.<id>.everRead` | `visited('<document id>.<beat id>')` |
 
 Entries and beats may come in any order. In the compiled lore artifact each one heads its own
@@ -261,7 +262,7 @@ the `<beat>` attributes, the canonical id, and how a bundle beat is checked and 
   it. `lute run <artifact> --entry <id>` does the same over a compiled lore artifact.
 - `lute trace <doc> --beat <id> --mock m.yaml` previews one `<beat>` by its local or canonical id,
   with the mock's `choose:` picking its branches; `lute run <artifact> --beat <id>` does the same
-  over a compiled lore artifact. The beat's `when` is shown, not enforced. An id that names no beat
+  over a compiled lore artifact. The beat's `when` and `after=` are shown, not enforced. An id that names no beat
   is `E-TRACE-BEAT` in `trace` and a usage error in `run`; both list the document's beats. See
   [Tracing](/tooling/tracing/#bundle-beats).
 - `lute test` tests a lore document too (dsl 0.22.0). The test names the entries to present, with

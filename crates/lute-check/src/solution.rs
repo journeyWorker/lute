@@ -64,7 +64,10 @@ pub(crate) fn number_spans(set: Option<&SolutionSet>) -> Vec<Span> {
     match set {
         None | Some(SolutionSet::Except(Decided::Str(_) | Decided::Bool(_))) => vec![REALS],
         Some(SolutionSet::Except(Decided::Num(c))) => {
-            vec![(f64::NEG_INFINITY, false, *c, false), (*c, false, f64::INFINITY, false)]
+            vec![
+                (f64::NEG_INFINITY, false, *c, false),
+                (*c, false, f64::INFINITY, false),
+            ]
         }
         Some(SolutionSet::Interval {
             lo,
@@ -371,7 +374,11 @@ pub(crate) fn number_set(opname: &str, v: f64) -> Option<SolutionSet> {
 }
 
 /// `==` / `!=` of `value` over the finite member set `all`.
-pub(crate) fn finite_set(all: &[DomainValue], value: &DomainValue, opname: &str) -> Option<SolutionSet> {
+pub(crate) fn finite_set(
+    all: &[DomainValue],
+    value: &DomainValue,
+    opname: &str,
+) -> Option<SolutionSet> {
     let set: BTreeSet<DomainValue> = match opname {
         op::EQUALS => std::iter::once(value.clone()).collect(),
         op::NOT_EQUALS => all.iter().filter(|m| *m != value).cloned().collect(),
@@ -401,13 +408,23 @@ mod tests {
     #[test]
     fn complementary_half_lines_cover_the_reals_only_when_they_meet() {
         let d = numbers(false);
-        assert!(covers(&d, &[num(op::LESS, 5.0), num(op::GREATER_EQUALS, 5.0)]));
-        assert!(covers(&d, &[num(op::LESS_EQUALS, 5.0), num(op::GREATER, 5.0)]));
+        assert!(covers(
+            &d,
+            &[num(op::LESS, 5.0), num(op::GREATER_EQUALS, 5.0)]
+        ));
+        assert!(covers(
+            &d,
+            &[num(op::LESS_EQUALS, 5.0), num(op::GREATER, 5.0)]
+        ));
         // `x < 5 || x > 5` misses 5 itself; the point closes it.
         assert!(!covers(&d, &[num(op::LESS, 5.0), num(op::GREATER, 5.0)]));
         assert!(covers(
             &d,
-            &[num(op::LESS, 5.0), num(op::GREATER, 5.0), num(op::EQUALS, 5.0)]
+            &[
+                num(op::LESS, 5.0),
+                num(op::GREATER, 5.0),
+                num(op::EQUALS, 5.0)
+            ]
         ));
         // A gap in the middle.
         assert!(!covers(&d, &[num(op::LESS, 3.0), num(op::GREATER, 5.0)]));
@@ -418,7 +435,10 @@ mod tests {
     fn a_maybe_unset_path_needs_a_set_true_on_unset() {
         let halves = [num(op::LESS, 5.0), num(op::GREATER_EQUALS, 5.0)];
         assert!(!covers(&numbers(true), &halves));
-        assert!(covers(&numbers(true), &[num(op::NOT_EQUALS, 5.0), num(op::EQUALS, 5.0)]));
+        assert!(covers(
+            &numbers(true),
+            &[num(op::NOT_EQUALS, 5.0), num(op::EQUALS, 5.0)]
+        ));
     }
 
     #[test]
@@ -447,6 +467,9 @@ mod tests {
             ]
         ));
         // An open domain is never covered by positive sets alone.
-        assert!(!covers(&open, &[num(op::LESS, 5.0), num(op::GREATER_EQUALS, 5.0)]));
+        assert!(!covers(
+            &open,
+            &[num(op::LESS, 5.0), num(op::GREATER_EQUALS, 5.0)]
+        ));
     }
 }

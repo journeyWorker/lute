@@ -63,7 +63,8 @@ fn compile_body(body: &str) -> serde_json::Value {
     serde_json::to_value(&artifact).unwrap()
 }
 
-const REACTION: &str = "---\ncomponent: reaction\neffects: true\nparams:\n  who: speaker\n  delta: number\n---\n\
+const REACTION: &str =
+    "---\ncomponent: reaction\neffects: true\nparams:\n  who: speaker\n  delta: number\n---\n\
 ## Scene 1.\n@narrator: {{@who}} approves.\n<match on=\"@who\">\n\
 <when is=\"isolde\">\n::set{run.approval.isolde += @delta}\n</when>\n\
 <when is=\"corvin\">\n::set{run.approval.corvin += @delta}\n</when>\n\
@@ -98,7 +99,11 @@ fn texts(a: &serde_json::Value) -> Vec<&str> {
 #[test]
 fn speaker_param_renders_the_cast_name_and_the_write_lands_in_the_host() {
     let a = compile_body("::use{component=\"reaction\" who=\"isolde\" delta=\"2\"}");
-    assert!(texts(&a).contains(&"Isolde Vane approves."), "{:#?}", texts(&a));
+    assert!(
+        texts(&a).contains(&"Isolde Vane approves."),
+        "{:#?}",
+        texts(&a)
+    );
     assert_eq!(
         sets(&a),
         vec![("run.approval.isolde".into(), "+=".into(), "2".into())],

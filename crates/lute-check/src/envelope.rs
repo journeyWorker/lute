@@ -815,7 +815,8 @@ mod tests {
         // proving `P` captures may-only writes `G` deliberately discards.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.a: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\">\n::set{run.a = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n@narrator: skip\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
+        let (errs, assigned, _reads) =
+            check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
 
         let g = guaranteed(&assigned);
@@ -846,7 +847,8 @@ mod tests {
         // three arms never wrote it), and `P` must remain a superset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
+        let (errs, assigned, _reads) =
+            check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
         assert!(
             errs.is_empty(),
             "guard-proven read should not flag E-MAYBE-UNSET, got {errs:?}"
@@ -872,7 +874,8 @@ mod tests {
         // superset. `into=` alone drives the record now.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
+        let (errs, assigned, _reads) =
+            check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
 
         let g = guaranteed(&assigned);

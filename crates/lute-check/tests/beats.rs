@@ -80,7 +80,9 @@ fn only<'a>(ds: &'a [Diagnostic], code: &str) -> &'a Diagnostic {
 }
 
 fn errors(ds: &[Diagnostic]) -> Vec<&Diagnostic> {
-    ds.iter().filter(|d| d.severity == Severity::Error).collect()
+    ds.iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect()
 }
 
 /// The source text a diagnostic is anchored at.
@@ -141,7 +143,10 @@ fn scene_beat_defaults_are_priority_zero_and_once_run() {
     let beat = typed_beat(&scene("a.b", "on: hubVisit\nonce: false\n"), core()).unwrap();
     assert_eq!(beat.once, BeatOnce::None);
     assert_eq!(BeatOnce::None.as_str(), "none");
-    assert!(typed_beat(&scene("a.b", ""), core()).is_none(), "no `on:`, no beat");
+    assert!(
+        typed_beat(&scene("a.b", ""), core()).is_none(),
+        "no `on:`, no beat"
+    );
 }
 
 #[test]
@@ -151,7 +156,10 @@ fn non_identifier_on_is_beat_attr_at_the_value() {
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
         assert_eq!(anchored(&src, d), value, "{d:?}");
-        assert!(typed_beat(&src, core()).is_none(), "an invalid `on` lifts no beat");
+        assert!(
+            typed_beat(&src, core()).is_none(),
+            "an invalid `on` lifts no beat"
+        );
     }
 }
 
@@ -161,7 +169,11 @@ fn malformed_target_is_beat_attr() {
         let src = scene("a.b", &format!("on: talk\ntarget: {target}\n"));
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
-        assert!(d.message.contains("`target:` must be a dotted id"), "{}", d.message);
+        assert!(
+            d.message.contains("`target:` must be a dotted id"),
+            "{}",
+            d.message
+        );
     }
 }
 
@@ -171,10 +183,17 @@ fn non_integer_priority_is_beat_attr() {
         let src = scene("a.b", &format!("on: talk\npriority: {p}\n"));
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
-        assert!(d.message.contains("`priority:` must be an integer"), "{p}: {}", d.message);
+        assert!(
+            d.message.contains("`priority:` must be an integer"),
+            "{p}: {}",
+            d.message
+        );
     }
     let src = scene("a.b", "on: talk\npriority: -3\n");
-    assert!(errors(&diags(&src)).is_empty(), "negative priority is an integer");
+    assert!(
+        errors(&diags(&src)).is_empty(),
+        "negative priority is an integer"
+    );
     assert_eq!(typed_beat(&src, core()).unwrap().priority, -3);
 }
 
@@ -184,7 +203,11 @@ fn once_outside_run_user_false_is_beat_attr() {
         let src = scene("a.b", &format!("on: talk\nonce: {once}\n"));
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
-        assert!(d.message.contains("`once:` must be `run`"), "{once}: {}", d.message);
+        assert!(
+            d.message.contains("`once:` must be `run`"),
+            "{once}: {}",
+            d.message
+        );
     }
     for once in ["run", "user", "false"] {
         let src = scene("a.b", &format!("on: talk\nonce: {once}\n"));
@@ -223,8 +246,13 @@ fn beat_keys_on_a_quest_or_lore_document_are_unknown_keys() {
     let ds = diags(quest);
     let unknown = with_code(&ds, "E-META-UNKNOWN-KEY");
     assert_eq!(unknown.len(), 2, "{ds:?}");
-    assert!(unknown[0].message.contains("only a scene's frontmatter declares a beat"));
-    assert!(with_code(&ds, "E-BEAT-ATTR").is_empty(), "never a beat off a scene: {ds:?}");
+    assert!(unknown[0]
+        .message
+        .contains("only a scene's frontmatter declares a beat"));
+    assert!(
+        with_code(&ds, "E-BEAT-ATTR").is_empty(),
+        "never a beat off a scene: {ds:?}"
+    );
 
     let lore_doc = "---\nkind: lore\non: talk\n---\n<entry id=\"e\">\n@narrator: hi\n</entry>\n";
     let ds = diags(lore_doc);
@@ -248,7 +276,8 @@ fn beat_keys_are_never_defaultable() {
 fn shape_only_when_no_plugin_declares_occasions() {
     let src = scene("a.b", "on: anythingGoes\ntarget: npc.a\n");
     assert!(errors(&diags(&src)).is_empty(), "{:?}", diags(&src));
-    let entry = lore("<entry id=\"e\" on=\"whatever\" target=\"npc.a\">\n@narrator: hi\n</entry>\n");
+    let entry =
+        lore("<entry id=\"e\" on=\"whatever\" target=\"npc.a\">\n@narrator: hi\n</entry>\n");
     assert!(errors(&diags(&entry)).is_empty(), "{:?}", diags(&entry));
 }
 
@@ -259,7 +288,11 @@ fn undeclared_occasion_is_occasion_unknown_with_a_suggestion() {
     let d = only(&ds, "E-OCCASION-UNKNOWN");
     assert_eq!(anchored(&src, d), "tlak");
     assert!(d.message.contains("did you mean `talk`?"), "{}", d.message);
-    assert!(d.message.contains("`hubVisit`, `inbox`, `talk`"), "{}", d.message);
+    assert!(
+        d.message.contains("`hubVisit`, `inbox`, `talk`"),
+        "{}",
+        d.message
+    );
 
     let entry = lore("<entry id=\"e\" on=\"shout\">\n@narrator: hi\n</entry>\n");
     let ds = diags_with(&entry, with_occasions());
@@ -276,7 +309,11 @@ fn target_on_an_untargeted_occasion_is_beat_attr() {
     let ds = diags_with(&src, with_occasions());
     let d = only(&ds, "E-BEAT-ATTR");
     assert_eq!(anchored(&src, d), "npc.a");
-    assert!(d.message.contains("declared without `target: true`"), "{}", d.message);
+    assert!(
+        d.message.contains("declared without `target: true`"),
+        "{}",
+        d.message
+    );
 
     // dsl 0.24.0 §6: an entry's `target=` there is metadata, not a restriction.
     let entry = lore("<entry id=\"e\" on=\"inbox\" target=\"npc.a\">\n@narrator: hi\n</entry>\n");
@@ -308,17 +345,29 @@ fn entry_beat_shape_faults_are_beat_attr() {
         ("priority=\"3\"", "3"),
     ];
     for (attrs, anchor) in cases {
-        let src = lore(&format!("<entry id=\"e\" {attrs}>\n@narrator: hi\n</entry>\n"));
+        let src = lore(&format!(
+            "<entry id=\"e\" {attrs}>\n@narrator: hi\n</entry>\n"
+        ));
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
         assert_eq!(anchored(&src, d), anchor, "{attrs}: {ds:?}");
-        assert!(with_code(&ds, "E-UNKNOWN-ATTR").is_empty(), "on/priority are in the closure");
+        assert!(
+            with_code(&ds, "E-UNKNOWN-ATTR").is_empty(),
+            "on/priority are in the closure"
+        );
     }
     let src = lore("<entry id=\"e\" on=\"talk\" priority>\n@narrator: hi\n</entry>\n");
     let ds = diags(&src);
     let d = only(&ds, "E-BEAT-ATTR");
-    assert!(d.message.contains("must be a quoted string"), "{}", d.message);
-    assert!(with_code(&ds, "E-ENTRY-ATTR").is_empty(), "the beat key owns its shape: {ds:?}");
+    assert!(
+        d.message.contains("must be a quoted string"),
+        "{}",
+        d.message
+    );
+    assert!(
+        with_code(&ds, "E-ENTRY-ATTR").is_empty(),
+        "the beat key owns its shape: {ds:?}"
+    );
 }
 
 #[test]
@@ -341,7 +390,12 @@ fn when_joins_the_cel_slot_registry() {
     let guarded = scene("a.b", "on: talk\nwhen: 'isSet(run.mood) && run.mood > 1'\n");
     assert!(with_code(&diags(&guarded), "E-MAYBE-UNSET").is_empty());
     let broken = scene("a.b", "on: talk\nwhen: 'user.runs >'\n");
-    assert_eq!(with_code(&diags(&broken), "E-CEL-PARSE").len(), 1, "{:?}", diags(&broken));
+    assert_eq!(
+        with_code(&diags(&broken), "E-CEL-PARSE").len(),
+        1,
+        "{:?}",
+        diags(&broken)
+    );
     let not_bool = scene("a.b", "on: talk\nwhen: '@nope'\n");
     assert_eq!(with_code(&diags(&not_bool), "E-UNDECLARED-REF").len(), 1);
     // 0.21.1 T1-1: `unset` is a member of the always-assigned quest state, so
@@ -362,7 +416,10 @@ fn when_reading_scene_state_is_beat_attr_without_a_cascade() {
     let undeclared = scene("a.b", "on: talk\nwhen: 'scene.missing'\n");
     let ds = diags(&undeclared);
     only(&ds, "E-BEAT-ATTR");
-    assert!(with_code(&ds, "E-UNDECLARED").is_empty(), "the beat rule is the root: {ds:?}");
+    assert!(
+        with_code(&ds, "E-UNDECLARED").is_empty(),
+        "the beat rule is the root: {ds:?}"
+    );
 }
 
 #[test]
@@ -372,7 +429,11 @@ fn when_that_decides_false_is_beat_unreachable_per_file() {
     let d = only(&ds, "E-BEAT-UNREACHABLE");
     assert_eq!(d.severity, Severity::Error);
     assert_eq!(anchored(&src, d), "user.runs > 1 && false");
-    assert!(d.message.starts_with("beat `hades.a` is never eligible"), "{}", d.message);
+    assert!(
+        d.message.starts_with("beat `hades.a` is never eligible"),
+        "{}",
+        d.message
+    );
 
     // An entry beat keeps its own code.
     let entry = lore("<entry id=\"bark\" on=\"talk\" when=\"false\">\n@narrator: hi\n</entry>\n");
@@ -477,7 +538,12 @@ fn when_over_an_impossible_fact_is_beat_unreachable_in_the_project() {
     let ds = p.guards("a.lute");
     let d = only(&ds, "E-BEAT-UNREACHABLE");
     assert_eq!(anchored(&src, d), "holds(found(toma))");
-    assert!(d.message.contains("no seed, assert, rule, or engine relation produces"), "{}", d.message);
+    assert!(
+        d.message
+            .contains("no seed, assert, rule, or engine relation produces"),
+        "{}",
+        d.message
+    );
 }
 
 #[test]
@@ -486,7 +552,11 @@ fn when_over_a_guaranteed_fact_is_fact_guaranteed() {
     let p = project(&[("a.lute", &src)], core());
     let ds = p.guards("a.lute");
     let w = only(&ds, "W-FACT-GUARANTEED");
-    assert!(w.message.contains("`awake(vesna)` is a `facts:` seed"), "{}", w.message);
+    assert!(
+        w.message.contains("`awake(vesna)` is a `facts:` seed"),
+        "{}",
+        w.message
+    );
 }
 
 #[test]
@@ -509,14 +579,24 @@ fn shadow_codes(p: &Project) -> Vec<(String, String)> {
 
 #[test]
 fn an_always_eligible_repeatable_beat_shadows_a_lower_priority_one() {
-    let a = scene("hades.a", "on: talk\ntarget: npc.achilles\npriority: 10\nonce: false\n");
-    let b = scene("hades.b", "on: talk\ntarget: npc.achilles\npriority: 5\nwhen: 'user.runs > 3'\n");
+    let a = scene(
+        "hades.a",
+        "on: talk\ntarget: npc.achilles\npriority: 10\nonce: false\n",
+    );
+    let b = scene(
+        "hades.b",
+        "on: talk\ntarget: npc.achilles\npriority: 5\nwhen: 'user.runs > 3'\n",
+    );
     let p = project(&[("a.lute", &a), ("b.lute", &b)], with_occasions());
     let shadowed = p.shadowed();
     assert_eq!(shadowed.len(), 1, "{shadowed:?}");
     let (path, d) = &shadowed[0];
     assert_eq!(path, Path::new("b.lute"));
-    assert_eq!(anchored(&b, d), "on", "anchored at the shadowed beat's `on`");
+    assert_eq!(
+        anchored(&b, d),
+        "on",
+        "anchored at the shadowed beat's `on`"
+    );
     assert!(
         d.message.starts_with(
             "scene `hades.b` can never win occasion `talk` for `npc.achilles`: scene `hades.a` \
@@ -537,7 +617,10 @@ fn an_untargeted_always_beat_shadows_a_targeted_one_but_not_the_reverse() {
     let a = scene("hades.a", "on: talk\ntarget: npc.achilles\nonce: false\n");
     let b = scene("hades.b", "on: talk\n");
     let p = project(&[("a.lute", &a), ("b.lute", &b)], with_occasions());
-    assert!(shadow_codes(&p).is_empty(), "B still wins for other targets");
+    assert!(
+        shadow_codes(&p).is_empty(),
+        "B still wins for other targets"
+    );
 }
 
 #[test]
@@ -562,18 +645,29 @@ fn priority_orders_before_document_order() {
 fn a_spendable_conditional_or_gated_beat_never_shadows() {
     let b = scene("hades.b", "on: hubVisit\n");
     for a_fm in [
-        "on: hubVisit\npriority: 9\n",                               // once: run
-        "on: hubVisit\npriority: 9\nonce: user\n",                   // once: user
+        "on: hubVisit\npriority: 9\n",             // once: run
+        "on: hubVisit\npriority: 9\nonce: user\n", // once: user
         "on: hubVisit\npriority: 9\nonce: false\nwhen: 'user.runs > 1'\n", // undecided
         "on: hubVisit\npriority: 9\nonce: false\nafter: 'visited(\"hades.b\")'\n", // gated
     ] {
         let a = scene("hades.a", a_fm);
         let p = project(&[("a.lute", &a), ("b.lute", &b)], with_occasions());
-        assert!(shadow_codes(&p).is_empty(), "{a_fm}: {:?}", shadow_codes(&p));
+        assert!(
+            shadow_codes(&p).is_empty(),
+            "{a_fm}: {:?}",
+            shadow_codes(&p)
+        );
     }
-    let a = scene("hades.a", "on: hubVisit\npriority: 9\nonce: false\nwhen: 'true'\n");
+    let a = scene(
+        "hades.a",
+        "on: hubVisit\npriority: 9\nonce: false\nwhen: 'true'\n",
+    );
     let p = project(&[("a.lute", &a), ("b.lute", &b)], with_occasions());
-    assert_eq!(shadow_codes(&p).len(), 1, "a `when` deciding true is always eligible");
+    assert_eq!(
+        shadow_codes(&p).len(),
+        1,
+        "a `when` deciding true is always eligible"
+    );
 }
 
 #[test]
@@ -581,7 +675,10 @@ fn select_all_occasions_are_never_shadowed() {
     let a = scene("hades.a", "on: inbox\npriority: 9\nonce: false\n");
     let b = scene("hades.b", "on: inbox\n");
     let p = project(&[("a.lute", &a), ("b.lute", &b)], with_occasions());
-    assert!(shadow_codes(&p).is_empty(), "the player picks from the whole list");
+    assert!(
+        shadow_codes(&p).is_empty(),
+        "the player picks from the whole list"
+    );
 }
 
 #[test]
@@ -597,16 +694,38 @@ fn an_unconditional_entry_beat_shadows_because_entries_never_spend() {
     let got = shadow_codes(&p);
     assert_eq!(got.len(), 2, "{got:?}");
     assert_eq!(got[0].0, "b.lute");
-    assert!(got[0].1.starts_with("scene `hades.b` can never win"), "{}", got[0].1);
-    assert!(got[0].1.contains("entry `bark` (priority 20)"), "{}", got[0].1);
-    assert!(got[0].1.contains("(an entry without `once`)"), "{}", got[0].1);
+    assert!(
+        got[0].1.starts_with("scene `hades.b` can never win"),
+        "{}",
+        got[0].1
+    );
+    assert!(
+        got[0].1.contains("entry `bark` (priority 20)"),
+        "{}",
+        got[0].1
+    );
+    assert!(
+        got[0].1.contains("(an entry without `once`)"),
+        "{}",
+        got[0].1
+    );
     assert_eq!(got[1].0, "barks.lute");
-    assert!(got[1].1.starts_with("entry `later` can never win"), "{}", got[1].1);
+    assert!(
+        got[1].1.starts_with("entry `later` can never win"),
+        "{}",
+        got[1].1
+    );
 
     let guarded = lore(
         "<entry id=\"bark\" on=\"talk\" priority=\"20\" when=\"entry.bark.read == false\">\n\
          @narrator: Lad.\n</entry>\n",
     );
-    let p = project(&[("barks.lute", &guarded), ("b.lute", &b)], with_occasions());
-    assert!(shadow_codes(&p).is_empty(), "an entry heard once guards on its own read");
+    let p = project(
+        &[("barks.lute", &guarded), ("b.lute", &b)],
+        with_occasions(),
+    );
+    assert!(
+        shadow_codes(&p).is_empty(),
+        "an entry heard once guards on its own read"
+    );
 }

@@ -59,7 +59,8 @@ fn input(text: &str) -> CheckInput {
 const VOCAB: &str = "entities:\n  person: { members: [maud, oskar] }\n  \
                      location: { members: [radio, deck] }\n  zone: { open: true }\n";
 
-const STATE: &str = "state:\n  run.slot: { type: { enum: [morning, afternoon, night] }, default: morning }\n  \
+const STATE: &str =
+    "state:\n  run.slot: { type: { enum: [morning, afternoon, night] }, default: morning }\n  \
                      user.bond: { type: number, default: 0 }\n";
 
 fn scene(id: &str, fm: &str) -> String {
@@ -93,7 +94,10 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
 }
 
 fn with_code<'a>(out: &'a [(PathBuf, Diagnostic)], code: &str) -> Vec<&'a Diagnostic> {
-    out.iter().filter(|(_, d)| d.code == code).map(|(_, d)| d).collect()
+    out.iter()
+        .filter(|(_, d)| d.code == code)
+        .map(|(_, d)| d)
+        .collect()
 }
 
 fn entry(id: &str, attrs: &str) -> String {
@@ -167,12 +171,18 @@ fn once_folds_into_eligibility_before_the_tie_check() {
     assert_eq!(with_code(&out, "W-BEAT-PRIORITY-TIE").len(), 1, "{out:?}");
     // A scene's `once: user` is `!visited('<id>')`.
     let out = project_beats(&[
-        &scene("a.first", "on: hubVisit\nonce: user\nwhen: 'user.bond >= 1'\n"),
+        &scene(
+            "a.first",
+            "on: hubVisit\nonce: user\nwhen: 'user.bond >= 1'\n",
+        ),
         &scene("a.after", "on: hubVisit\nwhen: \"visited('a.first')\"\n"),
     ]);
     assert!(with_code(&out, "W-BEAT-PRIORITY-TIE").is_empty(), "{out:?}");
     let out = project_beats(&[
-        &scene("a.first", "on: hubVisit\nonce: run\nwhen: 'user.bond >= 1'\n"),
+        &scene(
+            "a.first",
+            "on: hubVisit\nonce: run\nwhen: 'user.bond >= 1'\n",
+        ),
         &scene("a.after", "on: hubVisit\nwhen: \"visited('a.first')\"\n"),
     ]);
     assert_eq!(with_code(&out, "W-BEAT-PRIORITY-TIE").len(), 1, "{out:?}");
@@ -205,20 +215,31 @@ fn a_pure_schedule_atom_contributes_its_rule_guards_to_exclusivity() {
         "at(maud, radio) :- cel(\\\"run.slot == 'morning'\\\")",
         "at(oskar, radio) :- cel(\\\"run.slot == 'afternoon'\\\")",
     ]);
-    assert!(with_code(&exclusive, "W-BEAT-PRIORITY-TIE").is_empty(), "{exclusive:?}");
+    assert!(
+        with_code(&exclusive, "W-BEAT-PRIORITY-TIE").is_empty(),
+        "{exclusive:?}"
+    );
     // Every rule is a disjunct: an `oskar` rule that overlaps `maud`'s keeps the tie.
     let overlap = beats(&[
         "at(maud, radio) :- cel(\\\"run.slot == 'morning'\\\")",
         "at(oskar, radio) :- cel(\\\"run.slot == 'afternoon'\\\")",
         "at(oskar, radio) :- cel(\\\"run.slot == 'morning'\\\")",
     ]);
-    assert_eq!(with_code(&overlap, "W-BEAT-PRIORITY-TIE").len(), 1, "{overlap:?}");
+    assert_eq!(
+        with_code(&overlap, "W-BEAT-PRIORITY-TIE").len(),
+        1,
+        "{overlap:?}"
+    );
     // A body atom makes it no pure schedule.
     let gated = beats(&[
         "at(maud, radio) :- cel(\\\"run.slot == 'morning'\\\")",
         "at(oskar, radio) :- awake(oskar), cel(\\\"run.slot == 'afternoon'\\\")",
     ]);
-    assert_eq!(with_code(&gated, "W-BEAT-PRIORITY-TIE").len(), 1, "{gated:?}");
+    assert_eq!(
+        with_code(&gated, "W-BEAT-PRIORITY-TIE").len(),
+        1,
+        "{gated:?}"
+    );
 }
 
 // --- T3-4: user-tier relations and quests -------------------------------------
@@ -235,9 +256,17 @@ fn once_run_user_counts_user_tier_relations_and_quests() {
         let src = scene("a.one", &format!("on: hubVisit\nwhen: \"{when}\"\n{rels}"));
         project_beats(&[&src, &quests])
     };
-    for when in ["holds(felled(maud))", "quest.chart.state == 'active'", "count(felled(maud)) >= 1"] {
+    for when in [
+        "holds(felled(maud))",
+        "quest.chart.state == 'active'",
+        "count(felled(maud)) >= 1",
+    ] {
         let out = run(when);
-        assert_eq!(with_code(&out, "W-BEAT-ONCE-RUN-USER").len(), 1, "{when}: {out:?}");
+        assert_eq!(
+            with_code(&out, "W-BEAT-ONCE-RUN-USER").len(),
+            1,
+            "{when}: {out:?}"
+        );
     }
     for when in [
         "holds(seen(maud))",
@@ -245,7 +274,10 @@ fn once_run_user_counts_user_tier_relations_and_quests() {
         "holds(felled(maud)) && holds(seen(oskar))",
     ] {
         let out = run(when);
-        assert!(with_code(&out, "W-BEAT-ONCE-RUN-USER").is_empty(), "{when}: {out:?}");
+        assert!(
+            with_code(&out, "W-BEAT-ONCE-RUN-USER").is_empty(),
+            "{when}: {out:?}"
+        );
     }
 }
 
@@ -268,30 +300,35 @@ fn frontmatter_when_quest_and_entry_typos_are_reported_at_the_id() {
     assert_eq!(path, &PathBuf::from("2.lute"));
     assert_eq!(d.code, "W-QUEST-REF-UNKNOWN");
     assert_eq!(&typo[d.span.byte_start..d.span.byte_end], "lampOot");
-    assert!(d.message.contains("did you mean `lampOut`?"), "{}", d.message);
+    assert!(
+        d.message.contains("did you mean `lampOut`?"),
+        "{}",
+        d.message
+    );
     let e = check_project_entry_refs(&docs);
     assert_eq!(e.len(), 1, "{e:?}");
     let (_, d) = &e[0];
     assert_eq!(&typo[d.span.byte_start..d.span.byte_end], "tomasOyl");
-    assert!(d.message.contains("did you mean `tomasOil`?"), "{}", d.message);
+    assert!(
+        d.message.contains("did you mean `tomasOil`?"),
+        "{}",
+        d.message
+    );
 }
 
 // --- §6: entry target on an untargeted occasion --------------------------------
 
 #[test]
 fn an_entry_target_on_an_untargeted_occasion_is_metadata() {
-    let src = lore("", &entry("keepsake", "on=\"hubVisit\" target=\"item.compass\""));
-    let ds = check(&input(&src)).diagnostics;
-    assert!(
-        ds.iter().all(|d| d.severity != Severity::Error),
-        "{ds:?}"
+    let src = lore(
+        "",
+        &entry("keepsake", "on=\"hubVisit\" target=\"item.compass\""),
     );
+    let ds = check(&input(&src)).diagnostics;
+    assert!(ds.iter().all(|d| d.severity != Severity::Error), "{ds:?}");
     // It answers every raise: an always-eligible repeatable entry shadows a
     // later untargeted beat, exactly as an untargeted one would.
-    let out = project_beats(&[
-        &src,
-        &scene("hub.later", "on: hubVisit\npriority: -1\n"),
-    ]);
+    let out = project_beats(&[&src, &scene("hub.later", "on: hubVisit\npriority: -1\n")]);
     assert_eq!(with_code(&out, "W-BEAT-SHADOWED").len(), 1, "{out:?}");
     // A scene's target there is still a restriction it cannot make.
     let scene_src = scene("hub.x", "on: hubVisit\ntarget: npc.maud\n");
@@ -328,24 +365,41 @@ fn usage_scene(decls: &str, when: &str, body: &str) -> String {
     )
 }
 
-const MET: &str = "relations:\n  met: { args: [person], tier: run }\n  seen: { args: [person], tier: run }\n";
+const MET: &str =
+    "relations:\n  met: { args: [person], tier: run }\n  seen: { args: [person], tier: run }\n";
 
 #[test]
 fn a_relation_written_but_never_read_warns_once_at_its_declaration() {
     let src = usage_scene(MET, "user.bond >= 0", "");
     let out = usage(&[&src]);
-    let hits: Vec<_> = out.iter().filter(|(_, d)| d.code == "W-RELATION-UNREAD").collect();
+    let hits: Vec<_> = out
+        .iter()
+        .filter(|(_, d)| d.code == "W-RELATION-UNREAD")
+        .collect();
     assert_eq!(hits.len(), 1, "{out:?}");
-    assert_eq!(&src[hits[0].1.span.byte_start..hits[0].1.span.byte_end], "met");
-    assert!(hits[0].1.message.contains("relation `met`"), "{}", hits[0].1.message);
+    assert_eq!(
+        &src[hits[0].1.span.byte_start..hits[0].1.span.byte_end],
+        "met"
+    );
+    assert!(
+        hits[0].1.message.contains("relation `met`"),
+        "{}",
+        hits[0].1.message
+    );
     // `seen` is never written: not this advisory's business.
-    assert!(!out.iter().any(|(_, d)| d.message.contains("`seen`")), "{out:?}");
+    assert!(
+        !out.iter().any(|(_, d)| d.message.contains("`seen`")),
+        "{out:?}"
+    );
     // Read by a query, a rule body atom, or a rule guard: silent.
     for (decls, when) in [
         (MET.to_string(), "holds(met(maud))"),
         (MET.to_string(), "count(met(maud)) >= 1"),
         (MET.to_string(), "countDistinct(met(P), P) >= 1"),
-        (format!("{MET}rules:\n  - \"seen(P) :- met(P)\"\n"), "user.bond >= 0"),
+        (
+            format!("{MET}rules:\n  - \"seen(P) :- met(P)\"\n"),
+            "user.bond >= 0",
+        ),
         (
             format!("{MET}rules:\n  - \"seen(maud) :- cel(\\\"holds(met(maud))\\\")\"\n"),
             "user.bond >= 0",
@@ -353,14 +407,18 @@ fn a_relation_written_but_never_read_warns_once_at_its_declaration() {
     ] {
         let out = usage(&[&usage_scene(&decls, when, "")]);
         assert!(
-            !out.iter().any(|(_, d)| d.code == "W-RELATION-UNREAD" && d.message.contains("`met`")),
+            !out.iter()
+                .any(|(_, d)| d.code == "W-RELATION-UNREAD" && d.message.contains("`met`")),
             "{when} / {decls}: {out:?}"
         );
     }
     // Reserved (engine-asserted) relations are the engine's to read.
     let reserved = "relations:\n  met: { args: [person], tier: run, reserved: true }\n";
     let out = usage(&[&usage_scene(reserved, "user.bond >= 0", "")]);
-    assert!(!out.iter().any(|(_, d)| d.code == "W-RELATION-UNREAD"), "{out:?}");
+    assert!(
+        !out.iter().any(|(_, d)| d.code == "W-RELATION-UNREAD"),
+        "{out:?}"
+    );
 }
 
 #[test]
@@ -368,16 +426,28 @@ fn a_def_no_reference_uses_warns_once_at_its_declaration() {
     let defs = |extra: &str| format!("{MET}defs:\n  quiet: \"user.bond == 0\"\n{extra}");
     let src = usage_scene(&defs(""), "holds(met(maud))", "");
     let out = usage(&[&src]);
-    let hits: Vec<_> = out.iter().filter(|(_, d)| d.code == "W-DEF-UNUSED").collect();
+    let hits: Vec<_> = out
+        .iter()
+        .filter(|(_, d)| d.code == "W-DEF-UNUSED")
+        .collect();
     assert_eq!(hits.len(), 1, "{out:?}");
-    assert_eq!(&src[hits[0].1.span.byte_start..hits[0].1.span.byte_end], "quiet");
+    assert_eq!(
+        &src[hits[0].1.span.byte_start..hits[0].1.span.byte_end],
+        "quiet"
+    );
     // Used in content, by another def, or in a rule guard: silent.
     for (extra, when) in [
         ("", "@quiet && holds(met(maud))"),
         ("  calm: \"@quiet\"\n", "@calm && holds(met(maud))"),
-        ("rules:\n  - \"seen(maud) :- cel(\\\"@quiet\\\")\"\n", "holds(met(maud))"),
+        (
+            "rules:\n  - \"seen(maud) :- cel(\\\"@quiet\\\")\"\n",
+            "holds(met(maud))",
+        ),
     ] {
         let out = usage(&[&usage_scene(&defs(extra), when, "")]);
-        assert!(!out.iter().any(|(_, d)| d.code == "W-DEF-UNUSED"), "{extra} / {when}: {out:?}");
+        assert!(
+            !out.iter().any(|(_, d)| d.code == "W-DEF-UNUSED"),
+            "{extra} / {when}: {out:?}"
+        );
     }
 }

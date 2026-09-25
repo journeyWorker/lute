@@ -95,10 +95,13 @@ impl Directive {
         if !self.is_accept() {
             return None;
         }
-        self.attrs.iter().find(|a| a.key == "quest").and_then(|a| match &a.value {
-            AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
-            _ => None,
-        })
+        self.attrs
+            .iter()
+            .find(|a| a.key == "quest")
+            .and_then(|a| match &a.value {
+                AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
+                _ => None,
+            })
     }
 
     /// dsl 0.24.0 §2: `::accept{… at="nextRun"}` — the `at` attribute's
@@ -108,10 +111,13 @@ impl Directive {
         if !self.is_accept() {
             return None;
         }
-        self.attrs.iter().find(|a| a.key == "at").and_then(|a| match &a.value {
-            AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
-            _ => None,
-        })
+        self.attrs
+            .iter()
+            .find(|a| a.key == "at")
+            .and_then(|a| match &a.value {
+                AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
+                _ => None,
+            })
     }
 }
 
@@ -603,9 +609,26 @@ pub fn english_ordinal(n: f64) -> Option<String> {
 /// otherwise. `None` exactly where [`english_ordinal`] is.
 pub fn english_ordinal_word(n: f64) -> Option<String> {
     const WORDS: [&str; 20] = [
-        "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth",
-        "tenth", "eleventh", "twelfth", "thirteenth", "fourteenth", "fifteenth", "sixteenth",
-        "seventeenth", "eighteenth", "nineteenth", "twentieth",
+        "first",
+        "second",
+        "third",
+        "fourth",
+        "fifth",
+        "sixth",
+        "seventh",
+        "eighth",
+        "ninth",
+        "tenth",
+        "eleventh",
+        "twelfth",
+        "thirteenth",
+        "fourteenth",
+        "fifteenth",
+        "sixteenth",
+        "seventeenth",
+        "eighteenth",
+        "nineteenth",
+        "twentieth",
     ];
     let digits = english_ordinal(n)?;
     Some(match n as usize {

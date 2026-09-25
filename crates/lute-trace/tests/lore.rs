@@ -218,7 +218,10 @@ fn unknown_entry_id_or_non_lore_document_is_e_trace_entry() {
     };
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].code, E_TRACE_ENTRY);
-    assert!(diags[0].message.contains("scientistLog1, rustyKey"), "{diags:?}");
+    assert!(
+        diags[0].message.contains("scientistLog1, rustyKey"),
+        "{diags:?}"
+    );
 
     let scene = "---\nkind: scene\nid: a.b\n---\n\n## One\n@narrator: Hi.\n";
     let (_, exit) = trace_entry(&input_for(scene), MockSet::default(), "scientistLog1");

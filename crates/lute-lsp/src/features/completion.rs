@@ -187,7 +187,10 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("title", "string"),
             ("when", "cel<bool>"),
             ("priority", "integer"),
-            ("once", "\"run\" | \"user\" | \"false\" | \"day\" | \"slot\""),
+            (
+                "once",
+                "\"run\" | \"user\" | \"false\" | \"day\" | \"slot\"",
+            ),
             ("also", "bool"),
             ("share", "string"),
             ("after", "prereq"),
@@ -271,9 +274,14 @@ fn speaker_items(
     cast: &std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
 ) -> Vec<CompletionItem> {
     let ids: Vec<(String, Option<String>)> = if cast.is_empty() {
-        character_ids(providers).into_iter().map(|id| (id, None)).collect()
+        character_ids(providers)
+            .into_iter()
+            .map(|id| (id, None))
+            .collect()
     } else {
-        cast.values().map(|c| (c.id.clone(), c.name.clone())).collect()
+        cast.values()
+            .map(|c| (c.id.clone(), c.name.clone()))
+            .collect()
     };
     ids.into_iter()
         .map(|(id, name)| CompletionItem {
@@ -1468,8 +1476,10 @@ mod tests {
             (QuestConstruct::Beat, BUNDLE_BEAT_ATTRS),
             (QuestConstruct::Hub, HUB_ATTRS),
         ] {
-            let mut offered: Vec<&str> =
-                construct_attr_keys(construct).iter().map(|(k, _)| *k).collect();
+            let mut offered: Vec<&str> = construct_attr_keys(construct)
+                .iter()
+                .map(|(k, _)| *k)
+                .collect();
             let mut permitted = table.to_vec();
             offered.sort_unstable();
             permitted.sort_unstable();
@@ -1482,10 +1492,14 @@ mod tests {
     /// no hub attr keys.
     #[test]
     fn hub_attr_area_completion_offers_prompt() {
-        let text = "## Shot 1.\n<hub id=\"h\" >\n<choice id=\"a\" label=\"A\" once>\n@f: a.\n</choice>\n\
+        let text =
+            "## Shot 1.\n<hub id=\"h\" >\n<choice id=\"a\" label=\"A\" once>\n@f: a.\n</choice>\n\
                     \n<choice id=\"leave\" label=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n";
         let off = text.find("\" >").unwrap() + 2;
-        let ls: Vec<String> = labels(&complete(text, off)).into_iter().map(str::to_string).collect();
+        let ls: Vec<String> = labels(&complete(text, off))
+            .into_iter()
+            .map(str::to_string)
+            .collect();
         assert_eq!(ls, vec!["id".to_string(), "prompt".to_string()]);
         let between = text.find("\n\n<choice id=\"leave\"").unwrap() + 1;
         assert!(complete(text, between).is_empty());
@@ -1532,7 +1546,10 @@ mod tests {
         let off = text.find("\" >").unwrap() + 2;
         let items = complete(text, off);
         let ls = labels(&items);
-        for k in ["id", "target", "category", "title", "series", "order", "when", "on", "priority", "once"] {
+        for k in [
+            "id", "target", "category", "title", "series", "order", "when", "on", "priority",
+            "once",
+        ] {
             assert!(ls.contains(&k), "missing {k}: {ls:?}");
         }
     }
@@ -1542,11 +1559,14 @@ mod tests {
     /// adds the clock's `day`/`slot`) — and never an entry-only key.
     #[test]
     fn beat_attr_area_completion_lists_beat_attrs() {
-        let text = "---\nid: ship.records\nkind: lore\n---\n<beat id=\"b\" >\n@narrator: hi\n</beat>\n";
+        let text =
+            "---\nid: ship.records\nkind: lore\n---\n<beat id=\"b\" >\n@narrator: hi\n</beat>\n";
         let off = text.find("\" >").unwrap() + 2;
         let items = complete(text, off);
         let ls = labels(&items);
-        for k in ["id", "on", "target", "title", "when", "priority", "once", "also"] {
+        for k in [
+            "id", "on", "target", "title", "when", "priority", "once", "also",
+        ] {
             assert!(ls.contains(&k), "missing {k}: {ls:?}");
         }
         for k in ["category", "series", "order"] {

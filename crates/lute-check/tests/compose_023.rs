@@ -5,7 +5,9 @@
 
 use std::path::PathBuf;
 
-use lute_check::{check, check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, SchemaImports};
+use lute_check::{
+    check, check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, SchemaImports,
+};
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -18,11 +20,23 @@ fn snapshot() -> CapabilitySnapshot {
         members: None,
     };
     for (name, select, target) in [
-        ("hubVisit", OccasionSelect::First, OccasionTarget::Shape(false)),
+        (
+            "hubVisit",
+            OccasionSelect::First,
+            OccasionTarget::Shape(false),
+        ),
         ("talk", OccasionSelect::First, npc),
-        ("examine", OccasionSelect::First, OccasionTarget::Shape(true)),
+        (
+            "examine",
+            OccasionSelect::First,
+            OccasionTarget::Shape(true),
+        ),
         ("board", OccasionSelect::All, OccasionTarget::Shape(false)),
-        ("evening", OccasionSelect::Sequence, OccasionTarget::Shape(false)),
+        (
+            "evening",
+            OccasionSelect::Sequence,
+            OccasionTarget::Shape(false),
+        ),
     ] {
         snap.occasions.insert(
             name.into(),
@@ -66,7 +80,9 @@ fn only<'a>(ds: &'a [Diagnostic], code: &str) -> &'a Diagnostic {
 }
 
 fn errors(ds: &[Diagnostic]) -> Vec<&Diagnostic> {
-    ds.iter().filter(|d| d.severity == Severity::Error).collect()
+    ds.iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect()
 }
 
 fn anchored<'s>(src: &'s str, d: &Diagnostic) -> &'s str {
@@ -102,7 +118,10 @@ fn by_is_a_bool_condition_slot_like_done() {
             "---\nkind: quest\n{VOCAB}---\n<quest id=\"q\" title=\"Q\">\n\
              <objective id=\"o\" title=\"O\" done=\"{bad}\"/>\n</quest>\n"
         );
-        let want: Vec<String> = errors(&diags(&as_done)).iter().map(|d| d.code.to_string()).collect();
+        let want: Vec<String> = errors(&diags(&as_done))
+            .iter()
+            .map(|d| d.code.to_string())
+            .collect();
         assert!(!want.is_empty(), "`{bad}` must be an error as `done`");
         let src = quest(&format!("by=\"{bad}\""));
         let ds = diags(&src);
@@ -130,7 +149,11 @@ fn an_on_objective_whose_done_implies_its_by_warns_at_by() {
     let d = only(&ds, "W-DEADLINE-BEFORE-DONE");
     assert_eq!(d.severity, Severity::Warning);
     assert_eq!(anchored(&src, d), "run.v != 'undecided'");
-    assert!(d.message.contains("until=\"run.v != 'undecided'\""), "{}", d.message);
+    assert!(
+        d.message.contains("until=\"run.v != 'undecided'\""),
+        "{}",
+        d.message
+    );
     assert!(d.message.contains("occasion `hubVisit`"), "{}", d.message);
     assert!(errors(&ds).is_empty(), "{ds:?}");
 }
@@ -147,7 +170,10 @@ fn deadline_before_done_needs_on_by_without_until_and_a_proven_implication() {
     ] {
         let src = verdict(attrs);
         let ds = diags(&src);
-        assert!(with_code(&ds, "W-DEADLINE-BEFORE-DONE").is_empty(), "{attrs}: {ds:?}");
+        assert!(
+            with_code(&ds, "W-DEADLINE-BEFORE-DONE").is_empty(),
+            "{attrs}: {ds:?}"
+        );
         assert!(errors(&ds).is_empty(), "{attrs}: {ds:?}");
     }
 }
@@ -162,35 +188,58 @@ fn objective_target_follows_the_beat_target_rule() {
     assert!(errors(&diags(&open)).is_empty(), "{:?}", diags(&open));
 
     for (attrs, anchor, needle) in [
-        ("on=\"talk\" target=\"npc maud\"", "npc maud", "must be a dotted id"),
+        (
+            "on=\"talk\" target=\"npc maud\"",
+            "npc maud",
+            "must be a dotted id",
+        ),
         ("target=\"npc.maud\"", "npc.maud", "`target` requires `on`"),
-        ("on=\"hubVisit\" target=\"npc.maud\"", "npc.maud", "declared without `target: true`"),
+        (
+            "on=\"hubVisit\" target=\"npc.maud\"",
+            "npc.maud",
+            "declared without `target: true`",
+        ),
     ] {
         let src = quest(attrs);
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
         assert_eq!(anchored(&src, d), anchor, "{attrs}: {ds:?}");
         assert!(d.message.contains(needle), "{attrs}: {}", d.message);
-        assert!(with_code(&ds, "E-UNKNOWN-ATTR").is_empty(), "{attrs}: {ds:?}");
+        assert!(
+            with_code(&ds, "E-UNKNOWN-ATTR").is_empty(),
+            "{attrs}: {ds:?}"
+        );
     }
 
     // Outside the occasion's domain, as for a beat.
     let src = quest("on=\"talk\" target=\"npc.vesna\"");
     let ds = diags(&src);
-    assert_eq!(anchored(&src, only(&ds, "E-BEAT-ATTR")), "npc.vesna", "{ds:?}");
+    assert_eq!(
+        anchored(&src, only(&ds, "E-BEAT-ATTR")),
+        "npc.vesna",
+        "{ds:?}"
+    );
 
     // Not a quoted string.
     let src = quest("on=\"talk\" target=@x");
     let ds = diags(&src);
     let d = only(&ds, "E-BEAT-ATTR");
-    assert!(d.message.contains("attribute `target` must be a quoted string"), "{}", d.message);
+    assert!(
+        d.message
+            .contains("attribute `target` must be a quoted string"),
+        "{}",
+        d.message
+    );
 }
 
 // --- §3 `also` ----------------------------------------------------------------
 
 #[test]
 fn also_on_a_select_first_occasion_is_clean_and_lifted() {
-    for fm in ["on: hubVisit\nalso: true\n", "on: talk\ntarget: npc.maud\nalso: false\n"] {
+    for fm in [
+        "on: hubVisit\nalso: true\n",
+        "on: talk\ntarget: npc.maud\nalso: false\n",
+    ] {
         let src = scene("a.b", fm);
         assert!(errors(&diags(&src)).is_empty(), "{fm}: {:?}", diags(&src));
     }
@@ -205,13 +254,22 @@ fn also_shape_faults_are_beat_attr() {
         let src = scene("a.b", &format!("on: hubVisit\nalso: {value}\n"));
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
-        assert!(d.message.contains("`also:` must be `true`"), "{value}: {}", d.message);
+        assert!(
+            d.message.contains("`also:` must be `true`"),
+            "{value}: {}",
+            d.message
+        );
     }
     for occasion in ["board", "evening"] {
         let src = scene("a.b", &format!("on: {occasion}\nalso: true\n"));
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
-        assert!(d.message.contains("applies only to a `select: first` occasion"), "{}", d.message);
+        assert!(
+            d.message
+                .contains("applies only to a `select: first` occasion"),
+            "{}",
+            d.message
+        );
         assert_eq!(anchored(&src, d), "true", "anchored at the value: {ds:?}");
     }
     // `also: false` on those occasions says nothing wrong.
@@ -226,7 +284,11 @@ fn also_on_an_entry_is_beat_attr_only() {
     );
     let ds = diags(&src);
     let d = only(&ds, "E-BEAT-ATTR");
-    assert!(d.message.contains("an `<entry>` beat cannot ride along"), "{}", d.message);
+    assert!(
+        d.message.contains("an `<entry>` beat cannot ride along"),
+        "{}",
+        d.message
+    );
     assert!(with_code(&ds, "E-UNKNOWN-ATTR").is_empty(), "{ds:?}");
 }
 
@@ -259,7 +321,10 @@ fn an_also_beat_neither_shadows_nor_is_shadowed() {
     assert_eq!(codes(&out, "W-BEAT-SHADOWED"), 1, "{out:?}");
     // An always-eligible, never-spent `also` beat ranked first shadows nothing.
     let out = project_beats(&[
-        &scene("a.one", "on: hubVisit\npriority: 5\nonce: false\nalso: true\n"),
+        &scene(
+            "a.one",
+            "on: hubVisit\npriority: 5\nonce: false\nalso: true\n",
+        ),
         &scene("a.two", "on: hubVisit\n"),
     ]);
     assert_eq!(codes(&out, "W-BEAT-SHADOWED"), 0, "{out:?}");
@@ -279,9 +344,21 @@ fn an_also_beat_never_ties() {
             &scene("a.two", &format!("on: hubVisit\nwhen: 'run.day >= 3'\n{b}")),
         ])
     };
-    assert_eq!(codes(&overlapping("", ""), "W-BEAT-PRIORITY-TIE"), 1, "the control ties");
-    for (a, b) in [("also: true\n", ""), ("", "also: true\n"), ("also: true\n", "also: true\n")] {
+    assert_eq!(
+        codes(&overlapping("", ""), "W-BEAT-PRIORITY-TIE"),
+        1,
+        "the control ties"
+    );
+    for (a, b) in [
+        ("also: true\n", ""),
+        ("", "also: true\n"),
+        ("also: true\n", "also: true\n"),
+    ] {
         let out = overlapping(a, b);
-        assert_eq!(codes(&out, "W-BEAT-PRIORITY-TIE"), 0, "{a:?}/{b:?}: {out:?}");
+        assert_eq!(
+            codes(&out, "W-BEAT-PRIORITY-TIE"),
+            0,
+            "{a:?}/{b:?}: {out:?}"
+        );
     }
 }

@@ -225,7 +225,11 @@ fn lore_entry_lines_round_trip_under_the_entry_prefix() {
     let ids: Vec<&str> = rows.iter().map(|r| r["lineId"].as_str().unwrap()).collect();
     assert_eq!(
         ids,
-        ["log1.scientist_0010", "key.narrator_0010", "key.narrator_0020"],
+        [
+            "log1.scientist_0010",
+            "key.narrator_0010",
+            "key.narrator_0020"
+        ],
         "each entry is its own prefix scope, in document order"
     );
 
@@ -273,7 +277,10 @@ fn lore_entry_lines_round_trip_under_the_entry_prefix() {
     assert_eq!(maps.len(), 3, "{maps:#?}");
     for (id, texts) in maps {
         assert!(
-            texts["ja-JP"].as_str().unwrap_or_default().starts_with("[ja] "),
+            texts["ja-JP"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("[ja] "),
             "{id} not localized: {texts}"
         );
     }
@@ -336,7 +343,10 @@ fn lore_bundle_beat_lines_export_under_the_canonical_beat_prefix() {
     let mut exported_ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
     compiled_ids.sort();
     exported_ids.sort();
-    assert_eq!(exported_ids, compiled_ids, "export lineIds == compiled lineIds");
+    assert_eq!(
+        exported_ids, compiled_ids,
+        "export lineIds == compiled lineIds"
+    );
 }
 
 #[test]

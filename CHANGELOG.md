@@ -61,7 +61,8 @@ table.
   scene `after:`'s meaning — an eligibility conjunct (`lute play`,
   `lute calendar`, `lute trace --beat`: `not eligible: \`after\` prerequisite
   not satisfied`) and a scenario edge (`E-CONN-PROFILE`,
-  `E-CONN-UNKNOWN-NODE`, cycles, envelopes as for a scene). IR:
+  `E-CONN-UNKNOWN-NODE`, cycles, envelopes as for a scene; `scenario reach`
+  prints the `after:` formula and its referenced nodes). IR:
   `BeatCmd.after` plus a `prereqEdges` row keyed by the beat's canonical id.
   `lute scenario` lists a scene or bundle beat whose `when` has a
   `visited()` conjunct but no `after` as unanchored, with the `after` to
@@ -74,13 +75,24 @@ table.
   `E-ARM-DEAD` / `E-BEAT-UNREACHABLE` naming the exclusion) and
   `!holds(B(x))` as following from `holds(A(x))` — in the same guard, an
   enclosing one, or anything else on every route — so such a guard is
-  `W-FACT-GUARANTEED`, and cast presence uses it too. An `::assert{A(x)}`
-  where `B(x)` holds on every route to it is the new **`E-FACT-EXCLUSIVE`**.
-  Where both are only possible, `lute play` reports
-  `✗ exclusive: fell(elias) and seenAfter(elias) both hold` at the step and
-  halts (exit 1); `lute trace` / `lute test` record the same `✗ exclusive`
-  line at the write and refuse the walk there (`E-FACT-EXCLUSIVE`, exit 1).
-  Derived relations are covered through their derivations. The IR's
+  `W-FACT-GUARANTEED`, and cast presence uses it too. A guard's
+  `holds(dead(x))` counts inside its region even when `dead` is
+  engine-`reserved` (crown M1). An `::assert{A(x)}`
+  where `B(x)` holds on every route to it is the new **`E-FACT-EXCLUSIVE`**,
+  and a rule that derives `A` from `B` on the head's own arguments
+  (`dark(X) :- lit(X)` with `dark` excluding `lit`) is the new
+  **`E-RULE-EXCLUSIVE`**, reported at the rule (LH N17). Where both are
+  only possible, `lute play` reports
+  `✗ exclusive: fell(elias) and seenAfter(elias) both hold` at the write
+  that made them hold — even when a later write of the same presentation
+  undoes it (ER C3) — or, for an `engine:` write, at the step, and halts
+  (exit 1); `lute trace` / `lute test` record the same `✗ exclusive` line at
+  the write and refuse the walk there (`E-FACT-EXCLUSIVE`, exit 1). Seeded
+  facts are checked before anything runs (LH N16): a trace `--fact` / mock
+  or test `facts:` that already breaks an exclusion refuses the trace, and
+  a play script's `facts:` halts the play before step 1. Derived relations
+  are covered through their derivations. A relation in an exclusion is read
+  by it — no `W-RELATION-UNREAD` (ER C4). The IR's
   `RelationEntry` carries `excludes` (the symmetric closure, sorted; absent
   when empty).
 - **Presence after engine events** (dsl 0.25.0 §6): an engine-`reserved`
@@ -90,9 +102,12 @@ table.
   presented on one of those occasions (a scene / entry / bundle beat `on`,
   a quest `<on event>` handler or `on=` objective body on it) nor, in
   `check-project`, in any after-descendant of such a unit over the scenario
-  graph's `after:` / `after=` / `[start]` edges: `W-CAST-ABSENT` reports the
-  post-battle line again and says `assume: true` does not cover `fell`
-  there. Without `changedOn` nothing changes. `changedOn` on a relation that
+  graph's `after:` / `after=` / `[start]` edges, nor under a guard (a unit's
+  `when`, a choice / arm / handler / line `when`) that needs a fact of it —
+  `holds(fell(isolde))`, `count(fell(_)) >= 1`, or a derived relation every
+  rule of which needs one (ER C2): `W-CAST-ABSENT` reports the post-battle
+  line again and says `assume: true` does not cover `fell` there. Without
+  `changedOn` nothing changes. `changedOn` on a relation that
   is not `reserved: true`, or naming an undeclared occasion (with a
   did-you-mean), is `E-RELATION-DECL`.
 - **Quest graph edges** (dsl 0.25.0 §4, ER F17 / N13): `lute scenario`
@@ -129,13 +144,34 @@ table.
   derivation route of the defeating fact (`⇐ … / ⇐ …`), not only the first.
 - The `lute scenario` note on undrawn references now says a quest's edges
   come from its `after`, subquest tree, `start` conjuncts and `::accept`s.
+  A quest's `visited()` read outside its top-level `start` conjuncts (in
+  `fail`, or an objective's `done` / `when` / `by` / `until`) is noted as
+  `reads visited('…') in its objective watch done — a condition read, not an
+  anchor` and no longer suggests declaring `after`: copying such a read into
+  `after=` replaced the quest's real anchor (its `::accept`) with a backwards
+  edge (summer S1). `--format json` gives the read's `slot`.
+- `W-LUTE-VERSION-STALE` for a stamp inherited from the manifest's
+  `defaults: luteVersion` (LH N18): `check-project` reports it once, at the
+  manifest's `luteVersion:` line, with the number of documents inheriting
+  it, instead of once per document at `1:1`; a single-file `lute check`
+  says the stamp comes from the manifest's `defaults:`.
 
 ### Fixed
 
+- A `share` without a written `once` (or with `once` `false`) is reported
+  once — the per-file `E-BEAT-ATTR` "without `once`" — and no longer also as
+  a project-wide `E-BEAT-ATTR` claiming the beat declares a different
+  `once: run` than its key (dsl 0.25.0 §2, summer S2). Such a beat joins
+  no key.
 - An undeclared `<match on>` subject is no longer also `E-NONEXHAUSTIVE`
   (dsl 0.25.0 §9, SU N8): its read is reported once — `E-UNDECLARED`, or,
   while a schema import is broken, the import error (a `clock:` that
   swallowed the state entry left only a misleading `E-NONEXHAUSTIVE`).
+- `W-CAST-ABSENT` in `check-project` no longer counts an effects
+  component's `::assert{rel(@param)}` as a producer of every member: a
+  component's writes produce facts only at its `::use` sites, with the bound
+  arguments (ER C1). An unused `joins` component no longer made a
+  character's pre-recruitment lines warn.
 
 ## [0.24.0] - 2026-09-25
 

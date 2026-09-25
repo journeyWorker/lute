@@ -51,7 +51,8 @@ pub fn walk_seq(
     for (i, node) in nodes.iter().enumerate() {
         match node {
             Node::Directive(d) if d.tag == COMPONENT_BEGIN => {
-                cx.components.push((component_attr(d), component_scope(d).to_string()));
+                cx.components
+                    .push((component_attr(d), component_scope(d).to_string()));
             }
             Node::Directive(d) if d.tag == COMPONENT_END => {
                 cx.components.pop();
@@ -863,7 +864,11 @@ pub fn walk_bundle_beat(
     let mut cmd = Command::Beat(BeatCmd {
         addr: String::new(),
         id: key.to_string(),
-        on: beat.on.as_ref().map(|(on, _)| on.clone()).unwrap_or_default(),
+        on: beat
+            .on
+            .as_ref()
+            .map(|(on, _)| on.clone())
+            .unwrap_or_default(),
         target: beat.target.as_ref().map(|(t, _)| t.clone()),
         title_line_id: title.as_ref().map(|_| format!("{key}.title")),
         title,

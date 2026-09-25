@@ -80,13 +80,22 @@ fn a_component_line_keeps_its_source_code_whatever_the_argument_form() {
     let ids = settles_ids(&dir);
     assert_eq!(
         ids,
-        ["x.s01ep01.fire#1.narrator_0020", "x.s01ep01.fire#2.narrator_0020"],
+        [
+            "x.s01ep01.fire#1.narrator_0020",
+            "x.s01ep01.fire#2.narrator_0020"
+        ],
         "the `low` arm's line is the component's second narrator line at both call sites"
     );
 
     // `lute tag` on the component writes that same code: tagging renames nothing.
     let tagged = lute_check::tag_document(FIRE);
-    assert!(tagged.text.contains("@narrator{code=\"0020\"}: It settles."), "{}", tagged.text);
+    assert!(
+        tagged
+            .text
+            .contains("@narrator{code=\"0020\"}: It settles."),
+        "{}",
+        tagged.text
+    );
     std::fs::write(dir.join("fire.component.lute"), &tagged.text).unwrap();
     assert_eq!(settles_ids(&dir), ids);
 }

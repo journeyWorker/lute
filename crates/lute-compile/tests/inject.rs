@@ -319,7 +319,10 @@ fn clear_lowers_to_one_exit_per_character_on_stage() {
             _ => "other",
         })
         .collect();
-    assert_eq!(kinds, ["sprite", "sprite", "line", "sprite", "sprite", "line"]);
+    assert_eq!(
+        kinds,
+        ["sprite", "sprite", "line", "sprite", "sprite", "line"]
+    );
     let authored: Vec<Option<&str>> = recs[3..5]
         .iter()
         .map(|r| r.cmd.authored().map(|(_, text)| text))
@@ -328,7 +331,10 @@ fn clear_lowers_to_one_exit_per_character_on_stage() {
     assert!(state.on_stage.is_empty(), "{state:#?}");
     // Nobody on stage: `::clear` emits nothing at all.
     let (recs, _) = walk("::clear\n@narrator: Nothing.");
-    assert!(recs.iter().all(|r| !matches!(r.cmd, Command::Sprite(_))), "{recs:#?}");
+    assert!(
+        recs.iter().all(|r| !matches!(r.cmd, Command::Sprite(_))),
+        "{recs:#?}"
+    );
 }
 
 #[test]

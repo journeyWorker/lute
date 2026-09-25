@@ -619,8 +619,7 @@ fn defaults_id_is_e_defaults_key() {
 }
 
 fn permission_project(tag: &str, body: &str) -> std::path::PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("lute-permissions-{tag}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("lute-permissions-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("lute.project.yaml"), body).unwrap();
@@ -635,12 +634,8 @@ fn absent_permissions_are_unrestricted_and_preserve_snapshot_hash() {
     );
     let project = load_project(&dir).unwrap().unwrap();
     assert_eq!(project.permissions, Default::default());
-    assert_eq!(
-        project.profile_permissions["authored"],
-        Default::default()
-    );
-    let permissions =
-        lute_manifest::project::resolve_permissions(&project, "authored").unwrap();
+    assert_eq!(project.profile_permissions["authored"], Default::default());
+    let permissions = lute_manifest::project::resolve_permissions(&project, "authored").unwrap();
     assert!(permissions.is_unrestricted());
 
     let baseline = lute_manifest::core::load_core_snapshot();
@@ -750,9 +745,7 @@ fn malformed_unknown_and_null_project_permissions_fail_loading() {
     ] {
         let dir = permission_project(
             tag,
-            &format!(
-                "defaultProfile: p\nprofiles:\n  p:\n    plugins: {{}}\n{fragment}"
-            ),
+            &format!("defaultProfile: p\nprofiles:\n  p:\n    plugins: {{}}\n{fragment}"),
         );
         assert!(load_project(&dir).is_err(), "must reject {tag}");
         fs::remove_dir_all(&dir).ok();

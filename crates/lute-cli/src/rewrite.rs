@@ -181,7 +181,9 @@ fn tag_file(file: &Path, force: bool, scope: Scope<'_>) -> (Outcome, usize) {
                     Outcome::Unchanged
                 };
                 if skipped > 0 {
-                    scope.say(&format!("{skipped} line(s) skipped (non-string `code` value)"));
+                    scope.say(&format!(
+                        "{skipped} line(s) skipped (non-string `code` value)"
+                    ));
                 }
                 (outcome, renumbered)
             }

@@ -77,7 +77,7 @@ project root: .
     quest(findkai) -> scene(narrator.s01ep03) [completed]
 ```
 
-A quest becomes a graph node by declaring `after` (even `after=""`); a quest that never opts into a graph position is still addressable by `lute scenario <dir> envelope quest:<id>`, but contributes no edges.
+A quest joins the graph by declaring `after` (even `after=""`), or, without one, through its anchors: the `::accept`s that take it up (`[accept]`, dsl 0.24.0 §2), its parent quest (`[subquest]`, dsl 0.25.0 §4), and the `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` conjuncts of its `start` (`[start]`, dsl 0.25.0 §4; an entry becomes the node `entry(X)`). See [Quests & scenes](/language/quests-and-scenes/#quest). A quest with none of these is listed as unanchored; it is still addressable by `lute scenario <dir> envelope quest:<id>`, but contributes no edges.
 
 ### Edge kinds
 
@@ -87,11 +87,11 @@ A quest becomes a graph node by declaring `after` (even `after=""`); a quest tha
 - **`json`** — each edge is `{"from":…,"to":…,"kinds":[…]}`; `kinds` is an array for the same reason.
 - **`dot`** — an edge justified **only** by `active` atoms renders `[style=dashed]`; anything carrying a `visited` or `completed` atom stays solid, because the stronger claim is what a reader should see.
 
-The kind is presentational and analytical, never structural: the DAG shape is identical either way, since an `active` edge constrains ordering exactly as a `completed` edge does.
+The kind is presentational and analytical, never structural: the DAG shape is identical either way, since an `active` edge constrains ordering exactly as a `completed` edge does. Besides the three atom kinds, an edge may be an anchor that no `after` formula wrote: `[accept]` from a unit that `::accept`s a quest, `[subquest]` from a parent quest to its child, and `[start]` from a source its `start` reads (dsl 0.24.0, 0.25.0).
 
 ### Bundle beats
 
-A lore document's [bundle beats](/tooling/play/#bundle-beats) (dsl 0.23.0) are nodes too, each drawn `beat(<document id>.<beat id>)`. A `<beat>` has no `after` surface — its occasion, target and `when` decide when it plays — so every bundle beat is an entry node in layer 0, with no edges. Add a porter's line to the project above, in a lore document with `id: harbor`:
+A lore document's [bundle beats](/tooling/play/#bundle-beats) (dsl 0.23.0) are nodes too, each drawn `beat(<document id>.<beat id>)`. A `<beat>` without `after=` is an entry node in layer 0, with no edges of its own: its occasion, target and `when` decide when it plays. Add a porter's line to the project above, in a lore document with `id: harbor`:
 
 ```lute
 <beat id="porter" on="talk" target="npc.porter" when="visited('narrator.s01ep02')">
@@ -112,20 +112,22 @@ project root: .
     scene(narrator.s01ep02) -> scene(narrator.s01ep03) [visited]
     quest(findkai) -> scene(narrator.s01ep02) [active]
     quest(findkai) -> scene(narrator.s01ep03) [completed]
+  unanchored (no `after` — available from the start of play; no prerequisites in this graph):
+    beat(harbor.porter) — its `when` reads visited('narrator.s01ep02'), which gates it but draws no edge; write `after="visited('narrator.s01ep02')"` to anchor it (dsl 0.25.0 §3)
 ```
 
-The `visited()` in its `when` draws no edge: a `when` is a runtime condition, not a prerequisite. In `--format json` the node's `kind` is `beat` (its `prereq` is `null`), and in `--format dot` it is drawn `shape=note`. `lute scenario <dir> reach` and `envelope` take its canonical id, bare or as `beat:<id>`, and `reach` names where the beat is declared and what selects it:
+The `visited()` in its `when` draws no edge: a `when` is a runtime condition, not a prerequisite. Since dsl 0.25.0 the bare view therefore lists the beat as unanchored, with the `after=` that would order it (`unanchoredHints` in `--format json`). In `--format json` the node's `kind` is `beat` (its `prereq` is `null`), and in `--format dot` it is drawn `shape=note`. `lute scenario <dir> reach` and `envelope` take its canonical id, bare or as `beat:<id>`, and `reach` names where the beat is declared and what selects it:
 
 ```console
 $ lute scenario . reach harbor.porter
 project root: .
 reach beat(harbor.porter):
   verdict: Reachable — a satisfiable route exists under your declared routes.
-  after: (a bundle beat declares no `after`) — an entry node: it plays when its occasion is raised and its `when` holds.
+  after: (none declared) — an entry node: it plays when its occasion is raised and its `when` holds.
   declared in: ./lore/harbor.lute
   on: talk
   target: npc.porter
   when: visited('narrator.s01ep02')
 ```
 
-The graph orders scenes and quests only, so an `after:` cannot name a bundle beat: `visited('harbor.porter')` there is `E-CONN-UNKNOWN-NODE`, and the message says to gate on `visited('harbor.porter')` in a `when` instead.
+Since dsl 0.25.0 §3 a bundle beat may declare `after="…"` itself, with a scene `after:`'s grammar and meaning. Written `<beat id="porter" on="talk" target="npc.porter" after="visited('narrator.s01ep02')">`, the porter moves out of layer 0 and the graph gains `scene(narrator.s01ep02) -> beat(harbor.porter) [visited]`; the beat is then eligible only once the prerequisite holds. `reach harbor.porter` then prints the formula on its `after:` line (`after: visited("narrator.s01ep02")`) instead of `(none declared)`. A bundle beat is also a legal `after:` predecessor (dsl 0.24.0 §2): a scene's or quest's `visited('harbor.porter')` names it, and connectivity routes through it like a scene.

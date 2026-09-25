@@ -206,7 +206,9 @@ fn is_operand(arg: &str) -> bool {
     let (Some(&first), Some(&last)) = (b.first(), b.last()) else {
         return false;
     };
-    if b.iter().all(|&c| c.is_ascii_alphanumeric() || c == b'_' || c == b'.') {
+    if b.iter()
+        .all(|&c| c.is_ascii_alphanumeric() || c == b'_' || c == b'.')
+    {
         return first != b'.' && last != b'.';
     }
     if (first == b'\'' || first == b'"') && last == first && b.len() >= 2 {
@@ -321,10 +323,16 @@ mod tests {
         let t = tables(&[("f", "x * n")], &[("f", &["n"])]);
         assert_eq!(expand("@f(a + 1)", &t, None).unwrap(), "(x * (a + 1))");
         assert_eq!(expand("@f(-2)", &t, None).unwrap(), "(x * (-2))");
-        assert_eq!(expand("@f((a) + (b))", &t, None).unwrap(), "(x * ((a) + (b)))");
+        assert_eq!(
+            expand("@f((a) + (b))", &t, None).unwrap(),
+            "(x * ((a) + (b)))"
+        );
         assert_eq!(expand("@f(run.a.b)", &t, None).unwrap(), "(x * run.a.b)");
         assert_eq!(expand("@f('mon')", &t, None).unwrap(), "(x * 'mon')");
-        assert_eq!(expand("@f('a' + 'b')", &t, None).unwrap(), "(x * ('a' + 'b'))");
+        assert_eq!(
+            expand("@f('a' + 'b')", &t, None).unwrap(),
+            "(x * ('a' + 'b'))"
+        );
         assert_eq!(expand("@f(size(a))", &t, None).unwrap(), "(x * (size(a)))");
     }
 

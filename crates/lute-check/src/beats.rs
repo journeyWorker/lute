@@ -135,7 +135,13 @@ pub(crate) fn lift_scene_beat(
 ) -> Option<BeatMeta> {
     let get = |key: &str| map.get(serde_yaml::Value::String(key.to_string()));
     let mut push = |message: String, span: Span| {
-        diags.push(beat_diag(E_BEAT_ATTR, Severity::Error, message, span, Layer::Content));
+        diags.push(beat_diag(
+            E_BEAT_ATTR,
+            Severity::Error,
+            message,
+            span,
+            Layer::Content,
+        ));
     };
 
     let on = match get("on") {
@@ -299,7 +305,10 @@ pub(crate) fn lift_scene_beat(
     // `select: all` / `sequence` occasion every eligible beat is already
     // offered or presented, so `also` means nothing there.
     if also {
-        if let Some(decl) = occasions.get(&on).filter(|d| d.select != OccasionSelect::First) {
+        if let Some(decl) = occasions
+            .get(&on)
+            .filter(|d| d.select != OccasionSelect::First)
+        {
             diags.push(beat_diag(
                 E_BEAT_ATTR,
                 Severity::Error,
@@ -332,7 +341,13 @@ pub(crate) fn lift_scene_beat(
 /// `crate::lore`'s per-entry shape check.
 pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>) {
     let mut push = |message: String, span: Span| {
-        diags.push(beat_diag(E_BEAT_ATTR, Severity::Error, message, span, Layer::Logic));
+        diags.push(beat_diag(
+            E_BEAT_ATTR,
+            Severity::Error,
+            message,
+            span,
+            Layer::Logic,
+        ));
     };
     // A non-string value leaves the key residual (the parser extracts only
     // quoted strings); the shape fault is the beat's own.
@@ -464,7 +479,11 @@ pub(crate) fn check_objective_occasions(
     let mut diags = Vec::new();
     for node in quests.iter().flat_map(|q| &q.body) {
         let Node::Objective(o) = node else { continue };
-        for attr in o.attrs.iter().filter(|a| matches!(a.key.as_str(), "on" | "target")) {
+        for attr in o
+            .attrs
+            .iter()
+            .filter(|a| matches!(a.key.as_str(), "on" | "target"))
+        {
             // A non-string value stays residual (the parser extracts only
             // quoted strings).
             diags.push(beat_diag(
@@ -693,7 +712,9 @@ pub(crate) fn check_beat_target_domains(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let mut judge = |on: &str, target: &str, span: Span, layer: Layer| {
-        let Some(decl) = occasions.get(on) else { return };
+        let Some(decl) = occasions.get(on) else {
+            return;
+        };
         if let Err(why) = occasion_target_ok(decl, target, kinds) {
             diags.push(beat_diag(E_BEAT_ATTR, Severity::Error, why, span, layer));
         }
@@ -704,7 +725,12 @@ pub(crate) fn check_beat_target_domains(
         ..
     }) = beat
     {
-        judge(on, target, top_value_span(&doc.meta, "target"), Layer::Content);
+        judge(
+            on,
+            target,
+            top_value_span(&doc.meta, "target"),
+            Layer::Content,
+        );
     }
     for entry in &doc.entries {
         let (Some((on, _)), Some((target, span))) = (&entry.on, &entry.target) else {
@@ -879,8 +905,18 @@ pub fn project_beats<'a>(
                 once: beat.once,
                 once_authored: beat.once_authored,
                 also: beat.also,
-                after: folded.typed.after.as_deref().filter(|a| !a.trim().is_empty()),
-                share: beat.share.as_deref().map(|k| (k, top_value_span(&doc.meta, "share"))),
+                after: folded
+                    .typed
+                    .after
+                    .as_deref()
+                    .filter(|a| !a.trim().is_empty()),
+                // dsl 0.25.0 §2: a `share` without a written, spending `once`
+                // is `E-BEAT-ATTR`'s alone; it joins no key.
+                share: beat
+                    .share
+                    .as_deref()
+                    .filter(|_| beat.once_authored && beat.once != BeatOnce::None)
+                    .map(|k| (k, top_value_span(&doc.meta, "share"))),
                 when_slot: beat.when.as_ref(),
                 when: expand(beat.when.as_ref()),
                 title,
@@ -891,8 +927,7 @@ pub fn project_beats<'a>(
         // A lore document's entry beats and bundle beats, by source position.
         let mut lore: Vec<(usize, ProjectBeat<'a>)> = Vec::new();
         for entry in &doc.entries {
-            let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_entry_ident(on))
-            else {
+            let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_entry_ident(on)) else {
                 continue;
             };
             let priority = match &entry.priority {
@@ -919,24 +954,28 @@ pub fn project_beats<'a>(
                 Some("slot") => BeatOnce::Slot,
                 Some(_) => continue,
             };
-            lore.push((entry.span.byte_start, ProjectBeat {
-                path,
-                kind: ProjectBeatKind::Entry,
-                id: entry.id.clone(),
-                on,
-                target,
-                priority,
-                once,
-                once_authored: entry.once.is_some(),
-                also: false,
-                after: None,
-                share: well_formed_share(entry.share.as_ref()),
-                when_slot: entry.when.as_ref(),
-                when: expand(entry.when.as_ref()),
-                title: entry.title.as_ref().map(|(t, _)| t.clone()),
-                anchor: *on_span,
-                folded,
-            }));
+            lore.push((
+                entry.span.byte_start,
+                ProjectBeat {
+                    path,
+                    kind: ProjectBeatKind::Entry,
+                    id: entry.id.clone(),
+                    on,
+                    target,
+                    priority,
+                    once,
+                    once_authored: entry.once.is_some(),
+                    also: false,
+                    after: None,
+                    share: well_formed_share(entry.share.as_ref())
+                        .filter(|_| once != BeatOnce::None),
+                    when_slot: entry.when.as_ref(),
+                    when: expand(entry.when.as_ref()),
+                    title: entry.title.as_ref().map(|(t, _)| t.clone()),
+                    anchor: *on_span,
+                    folded,
+                },
+            ));
         }
         // dsl 0.23.0 §4: bundle beats — skipped without a document `id:`
         // (their canonical id hangs off it; `E-BEAT-ATTR`) or with a
@@ -948,33 +987,46 @@ pub fn project_beats<'a>(
                     continue;
                 };
                 if beat.id.is_empty()
-                    || beat.target.as_ref().is_some_and(|(t, _)| !is_entry_target(t))
-                    || beat.priority.as_ref().is_some_and(|(p, _)| parse_beat_priority(p).is_none())
                     || beat
-                        .once
+                        .target
                         .as_ref()
-                        .is_some_and(|(o, _)| !matches!(o.as_str(), "run" | "user" | "false" | "day" | "slot"))
+                        .is_some_and(|(t, _)| !is_entry_target(t))
+                    || beat
+                        .priority
+                        .as_ref()
+                        .is_some_and(|(p, _)| parse_beat_priority(p).is_none())
+                    || beat.once.as_ref().is_some_and(|(o, _)| {
+                        !matches!(o.as_str(), "run" | "user" | "false" | "day" | "slot")
+                    })
                 {
                     continue;
                 }
-                lore.push((beat.span.byte_start, ProjectBeat {
-                    path,
-                    kind: ProjectBeatKind::Bundle,
-                    id: crate::bundles::bundle_beat_key(doc_id, &beat.id),
-                    on,
-                    target: beat.target.as_ref().map(|(t, _)| t.as_str()),
-                    priority: crate::bundles::bundle_beat_priority(beat),
-                    once: crate::bundles::bundle_beat_once(beat),
-                    once_authored: beat.once.is_some(),
-                    also: crate::bundles::bundle_beat_also(beat),
-                    after: beat.after.as_ref().map(|(a, _)| a.as_str()).filter(|a| !a.trim().is_empty()),
-                    share: well_formed_share(beat.share.as_ref()),
-                    when_slot: beat.when.as_ref(),
-                    when: expand(beat.when.as_ref()),
-                    title: beat.title.as_ref().map(|(t, _)| t.clone()),
-                    anchor: *on_span,
-                    folded,
-                }));
+                lore.push((
+                    beat.span.byte_start,
+                    ProjectBeat {
+                        path,
+                        kind: ProjectBeatKind::Bundle,
+                        id: crate::bundles::bundle_beat_key(doc_id, &beat.id),
+                        on,
+                        target: beat.target.as_ref().map(|(t, _)| t.as_str()),
+                        priority: crate::bundles::bundle_beat_priority(beat),
+                        once: crate::bundles::bundle_beat_once(beat),
+                        once_authored: beat.once.is_some(),
+                        also: crate::bundles::bundle_beat_also(beat),
+                        after: beat
+                            .after
+                            .as_ref()
+                            .map(|(a, _)| a.as_str())
+                            .filter(|a| !a.trim().is_empty()),
+                        share: well_formed_share(beat.share.as_ref())
+                            .filter(|_| beat.once.as_ref().is_some_and(|(o, _)| o != "false")),
+                        when_slot: beat.when.as_ref(),
+                        when: expand(beat.when.as_ref()),
+                        title: beat.title.as_ref().map(|(t, _)| t.clone()),
+                        anchor: *on_span,
+                        folded,
+                    },
+                ));
             }
         }
         lore.sort_by_key(|(at, _)| *at);
@@ -985,7 +1037,9 @@ pub fn project_beats<'a>(
 
 /// A lore beat's `share` attribute when it is a well-formed key.
 fn well_formed_share(share: Option<&(String, Span)>) -> Option<(&str, Span)> {
-    share.filter(|(k, _)| is_entry_ident(k)).map(|(k, s)| (k.as_str(), *s))
+    share
+        .filter(|(k, _)| is_entry_ident(k))
+        .map(|(k, s)| (k.as_str(), *s))
 }
 
 /// dsl 0.25.0 §2: what each beat's shared spend holds — `share key → the
@@ -1121,7 +1175,12 @@ pub fn check_project_beats(
         .iter()
         .flat_map(|(_, doc)| &doc.quests)
         .filter(|q| !q.id.is_empty())
-        .map(|q| (q.id.as_str(), !q.tier.as_ref().is_some_and(|(t, _)| t == "run")))
+        .map(|q| {
+            (
+                q.id.as_str(),
+                !q.tier.as_ref().is_some_and(|(t, _)| t == "run"),
+            )
+        })
         .collect();
     let pbs = project_beats(docs, foldeds);
     let groups = share_groups(&pbs);
@@ -1165,7 +1224,10 @@ pub fn check_project_beats(
                 unspent: pb.once == BeatOnce::None,
                 run_once_user_when: pb.once == BeatOnce::Run
                     && !pb.once_authored
-                    && pb.when.as_deref().is_some_and(|w| reads_only_user(w, &user_tier)),
+                    && pb
+                        .when
+                        .as_deref()
+                        .is_some_and(|w| reads_only_user(w, &user_tier)),
                 conjuncts: eligible.as_deref().map_or_else(Default::default, |e| {
                     crate::reachability::when_conjuncts(
                         e,
@@ -1414,7 +1476,10 @@ fn spent_condition(
     beats: &[ProjectBeat<'_>],
     groups: &BTreeMap<String, Vec<usize>>,
 ) -> Option<String> {
-    let flags: Option<Vec<String>> = spenders(pb, beats, groups).into_iter().map(spend_flag).collect();
+    let flags: Option<Vec<String>> = spenders(pb, beats, groups)
+        .into_iter()
+        .map(spend_flag)
+        .collect();
     match flags?.as_slice() {
         [] => None,
         [one] => Some(one.clone()),
@@ -1438,8 +1503,10 @@ pub fn presence_ladder(
     let params = BTreeMap::new();
     let pbs = project_beats(docs, foldeds);
     let groups = share_groups(&pbs);
-    let spent_conds: Vec<Option<String>> =
-        pbs.iter().map(|pb| spent_condition(pb, &pbs, &groups)).collect();
+    let spent_conds: Vec<Option<String>> = pbs
+        .iter()
+        .map(|pb| spent_condition(pb, &pbs, &groups))
+        .collect();
     let mut beats: Vec<(ProjectBeat<'_>, bool, Option<String>)> = pbs
         .into_iter()
         .zip(spent_conds)
@@ -1465,17 +1532,25 @@ pub fn presence_ladder(
     beats.sort_by(|a, b| b.0.priority.cmp(&a.0.priority));
     let mut out: BTreeMap<PathBuf, BTreeMap<usize, Vec<String>>> = BTreeMap::new();
     for (j, (b, _, _)) in beats.iter().enumerate() {
-        let select = b.folded.occasions.get(b.on).map_or(OccasionSelect::First, |o| o.select);
+        let select = b
+            .folded
+            .occasions
+            .get(b.on)
+            .map_or(OccasionSelect::First, |o| o.select);
         if select != OccasionSelect::First || b.also {
             continue;
         }
         let spent: Vec<String> = beats[..j]
             .iter()
-            .filter(|(a, always, _)| *always && !a.also && a.on == b.on && (a.target.is_none() || a.target == b.target))
+            .filter(|(a, always, _)| {
+                *always && !a.also && a.on == b.on && (a.target.is_none() || a.target == b.target)
+            })
             .filter_map(|(_, _, spent)| spent.clone())
             .collect();
         if !spent.is_empty() {
-            out.entry(b.path.clone()).or_default().insert(b.anchor.byte_start, spent);
+            out.entry(b.path.clone())
+                .or_default()
+                .insert(b.anchor.byte_start, spent);
         }
     }
     out
@@ -1540,7 +1615,9 @@ fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
                 *reads += usize::from(user);
                 user
             }
-            Expr::Call(c) if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct") => {
+            Expr::Call(c)
+                if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct") =>
+            {
                 let user = c.target.is_none()
                     && matches!(c.args.first().map(|a| &a.expr), Some(Expr::Call(atom))
                         if tiers.relations.get(&atom.func_name)
@@ -1559,8 +1636,7 @@ fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
         }
     }
     let mut arena = lute_cel::CelArena::default();
-    let Some(ided) =
-        lute_cel::parse_slot_marked_refs(&mut arena, when).and_then(|h| arena.get(h))
+    let Some(ided) = lute_cel::parse_slot_marked_refs(&mut arena, when).and_then(|h| arena.get(h))
     else {
         return false;
     };
@@ -1585,8 +1661,7 @@ fn describe(v: &serde_yaml::Value) -> String {
 /// [`crate::meta::meta_key_span`] for the envelope rule).
 fn interior_base(meta: &Meta) -> usize {
     const OPENER_LEN: usize = 4; // "---\n"
-    let enveloped =
-        meta.span.byte_end.saturating_sub(meta.span.byte_start) != meta.raw_yaml.len();
+    let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != meta.raw_yaml.len();
     meta.span.byte_start + if enveloped { OPENER_LEN } else { 0 }
 }
 
@@ -1659,7 +1734,13 @@ pub(crate) fn top_value_span(meta: &Meta, key: &str) -> Span {
     bare_span(begin, begin + len)
 }
 
-fn beat_diag(code: &str, severity: Severity, message: String, span: Span, layer: Layer) -> Diagnostic {
+fn beat_diag(
+    code: &str,
+    severity: Severity,
+    message: String,
+    span: Span,
+    layer: Layer,
+) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
         severity,

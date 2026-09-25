@@ -99,7 +99,10 @@ pub fn at_origin(d: Diagnostic, origin: Option<&DeclOrigin>) -> Diagnostic {
         message: format!(
             "{} (declared in schema import `{}`)",
             d.message,
-            origin.file.file_name().map_or(file.clone(), |n| n.to_string_lossy().into_owned())
+            origin
+                .file
+                .file_name()
+                .map_or(file.clone(), |n| n.to_string_lossy().into_owned())
         ),
         span: Span {
             byte_start: 0,
@@ -159,16 +162,51 @@ pub const E_RELATION_RESERVED_NAME: &str = "E-RELATION-RESERVED-NAME";
 /// that is not engine-`reserved` or names an undeclared occasion.
 pub const E_RELATION_DECL: &str = "E-RELATION-DECL";
 
+/// dsl 0.25.0 §1 (LH N17): a rule whose head relation excludes a relation its
+/// positive body requires on the head's arguments — every firing makes both
+/// hold.
+pub const E_RULE_EXCLUSIVE: &str = "E-RULE-EXCLUSIVE";
+
 /// Names a relation may not take (dsl 0.24 T3-8): the Lute-CEL profile's
 /// calls (`isSet`, `holds`, `count`, `countDistinct`, `validAt`, `now`,
 /// `visited`), CEL's macros (`has`, `all`, `exists`, `exists_one`, `map`,
 /// `filter`) and CEL's reserved words — each either parses as something
 /// else inside a fact query or is not an identifier at all.
 pub const RESERVED_RELATION_NAMES: &[&str] = &[
-    "all", "as", "break", "const", "continue", "count", "countDistinct", "else", "exists",
-    "exists_one", "false", "filter", "for", "function", "has", "holds", "if", "import", "in",
-    "isSet", "let", "loop", "map", "namespace", "now", "null", "package", "return", "true",
-    "validAt", "var", "visited", "void", "while",
+    "all",
+    "as",
+    "break",
+    "const",
+    "continue",
+    "count",
+    "countDistinct",
+    "else",
+    "exists",
+    "exists_one",
+    "false",
+    "filter",
+    "for",
+    "function",
+    "has",
+    "holds",
+    "if",
+    "import",
+    "in",
+    "isSet",
+    "let",
+    "loop",
+    "map",
+    "namespace",
+    "now",
+    "null",
+    "package",
+    "return",
+    "true",
+    "validAt",
+    "var",
+    "visited",
+    "void",
+    "while",
 ];
 
 /// Build a `Layer::Logic` error diagnostic — rel_schema.rs's checks are
@@ -335,9 +373,14 @@ pub fn check_changed_on(
     }
     let mut out = Vec::new();
     for (name, decl) in &vocab.relations {
-        for occasion in decl.changed_on.iter().filter(|o| !occasions.contains_key(*o)) {
-            let hint = lute_manifest::suggest::nearest(occasion, occasions.keys().map(String::as_str), 2)
-                .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+        for occasion in decl
+            .changed_on
+            .iter()
+            .filter(|o| !occasions.contains_key(*o))
+        {
+            let hint =
+                lute_manifest::suggest::nearest(occasion, occasions.keys().map(String::as_str), 2)
+                    .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
             out.push(at_origin(
                 diag(
                     E_RELATION_DECL,
@@ -501,13 +544,14 @@ pub fn build_rel_vocab(
     for (name, decl) in &relations {
         for other in &decl.excludes {
             let problem = match relations.get(other) {
-                _ if other == name => {
-                    "a relation cannot exclude itself".to_string()
-                }
+                _ if other == name => "a relation cannot exclude itself".to_string(),
                 None => {
                     let hint = lute_manifest::suggest::nearest(
                         other,
-                        relations.keys().map(String::as_str).filter(|n| *n != name.as_str()),
+                        relations
+                            .keys()
+                            .map(String::as_str)
+                            .filter(|n| *n != name.as_str()),
                         2,
                     )
                     .map(|s| format!(" — did you mean `{s}`?"))
@@ -591,8 +635,49 @@ pub fn build_rel_vocab(
     facts.extend(typed.rel_facts.iter().cloned());
     let mut rules = imports.rel.rules.clone();
     rules.extend(typed.rel_rules.iter().cloned());
+    // dsl 0.25.0 §1 (LH N17): a rule whose head relation excludes a relation
+    // its positive body requires on the head's own arguments derives, every
+    // time it fires, a fact whose excluded partner holds — the rule and the
+    // declaration contradict each other by construction (E-RULE-EXCLUSIVE).
+    for r in &rules {
+        let head = &r.rule.head;
+        for lit in &r.rule.body {
+            let lute_syntax::datalog::BodyLiteral::Pos(b) = lit else {
+                continue;
+            };
+            if b.terms != head.terms
+                || !lute_manifest::relations::relations_exclude(
+                    &relations,
+                    &head.relation,
+                    &b.relation,
+                )
+            {
+                continue;
+            }
+            let h = &head.relation;
+            let p = &b.relation;
+            diags.push(at_origin(
+                diag(
+                    E_RULE_EXCLUSIVE,
+                    format!(
+                        "rule `{}` derives `{h}` only where `{p}` holds on the same arguments, but \
+                         `{h}` and `{p}` are declared exclusive — every derivation breaks the \
+                         exclusion (dsl 0.25.0 §1); fix the rule or the `excludes:` declaration",
+                        r.raw.trim()
+                    ),
+                    r.span,
+                ),
+                origins.rules.get(&r.raw),
+            ));
+        }
+    }
     let mut indexed_state = imports.rel.indexed_state.clone();
-    indexed_state.extend(typed.state_index.iter().map(|(p, k)| (p.clone(), k.clone())));
+    indexed_state.extend(
+        typed
+            .state_index
+            .iter()
+            .map(|(p, k)| (p.clone(), k.clone())),
+    );
 
     let vocab = RelVocab {
         kinds,

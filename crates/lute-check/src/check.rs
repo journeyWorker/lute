@@ -90,8 +90,7 @@ use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
     check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
-    check_quest, check_quest_guard_defassign, check_quest_rewards, check_set,
-    DomainInfo,
+    check_quest, check_quest_guard_defassign, check_quest_rewards, check_set, DomainInfo,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
@@ -206,7 +205,12 @@ fn def_body_diagnostics(
             .get(name)
             .map(|p| p.display().to_string())
             .unwrap_or_default();
-        check_one(name, def, doc.meta.span, &format!("schema import `{origin}`: "));
+        check_one(
+            name,
+            def,
+            doc.meta.span,
+            &format!("schema import `{origin}`: "),
+        );
     }
     out
 }
@@ -398,8 +402,7 @@ pub struct FoldedEnv {
     /// checked against (the snapshot's `occasions`; empty = shape-only) —
     /// what the project beat pass (`crate::beats::check_project_beats`) reads
     /// each occasion's `select` from.
-    pub occasions:
-        std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+    pub occasions: std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
     /// The cast this document is checked against (dsl 0.23.0 §7,
     /// [`crate::cast::declared_cast`]) — what the project presence pass
     /// (`crate::cast::reconcile_presence`, dsl 0.24.0 §4) reads `present:`
@@ -693,7 +696,13 @@ pub fn fold_env(
             (crate::clock::ClockSite { name, at }, c.clone())
         })
         .chain(typed.clock.clone().map(|c| {
-            (crate::clock::ClockSite { name: "this schema".to_string(), at: None }, c)
+            (
+                crate::clock::ClockSite {
+                    name: "this schema".to_string(),
+                    at: None,
+                },
+                c,
+            )
         }))
         .collect();
     // A schema document's own clock is reported at its `clock:` key.
@@ -711,7 +720,9 @@ pub fn fold_env(
     );
     fold_diags.extend(clock_diags);
     if let Some(clock) = &clock {
-        schema.decls.extend(crate::clock::reserved_decls(clock, &schema));
+        schema
+            .decls
+            .extend(crate::clock::reserved_decls(clock, &schema));
         if let Some(range) = crate::clock::weekday_range(clock) {
             schema
                 .int_ranges
@@ -931,7 +942,10 @@ pub fn fold_env(
     // IR and trace's evaluator all read the expanded body.
     fold_diags.extend(crate::cel_resolve::expand_rule_guards(
         &mut vocab,
-        &crate::cel_expand::DefTable { bodies: &def_bodies, params: &def_params },
+        &crate::cel_expand::DefTable {
+            bodies: &def_bodies,
+            params: &def_params,
+        },
     ));
 
     let env = Env {
@@ -1029,31 +1043,32 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // `fill_document` (which walks the node tree) never saw it — parse it into
     // the same arena here, reporting a failure as the ordinary `E-CEL-PARSE`.
     let mut beat_when_parse_diags: Vec<Diagnostic> = Vec::new();
-    let beat_when: Option<CelSlot> = folded
-        .typed
-        .beat
-        .as_ref()
-        .and_then(|b| b.when.clone())
-        .map(|mut slot| {
-            match parse_slot(&mut arena, &slot.raw, slot.span.byte_start) {
-                Ok(handle) => slot.ast = Some(handle),
-                Err(err) => {
-                    let t = translate_cel_parse(&slot.raw, slot.span, &err, slot.kind);
-                    beat_when_parse_diags.push(Diagnostic {
-                        code: E_CEL_PARSE.to_string(),
-                        severity: Severity::Error,
-                        message: t.message,
-                        span: t.span.unwrap_or(slot.span),
-                        layer: Layer::Cel,
-                        fixits: t.fixits,
-                        provenance: None,
-                        covered: Vec::new(),
-                        related: Vec::new(),
-                    });
+    let beat_when: Option<CelSlot> =
+        folded
+            .typed
+            .beat
+            .as_ref()
+            .and_then(|b| b.when.clone())
+            .map(|mut slot| {
+                match parse_slot(&mut arena, &slot.raw, slot.span.byte_start) {
+                    Ok(handle) => slot.ast = Some(handle),
+                    Err(err) => {
+                        let t = translate_cel_parse(&slot.raw, slot.span, &err, slot.kind);
+                        beat_when_parse_diags.push(Diagnostic {
+                            code: E_CEL_PARSE.to_string(),
+                            severity: Severity::Error,
+                            message: t.message,
+                            span: t.span.unwrap_or(slot.span),
+                            layer: Layer::Cel,
+                            fixits: t.fixits,
+                            provenance: None,
+                            covered: Vec::new(),
+                            related: Vec::new(),
+                        });
+                    }
                 }
-            }
-            slot
-        });
+                slot
+            });
     let mut def_body_diags =
         def_body_diagnostics(&doc, &folded.typed.defs, &input.imports, &folded.env.state);
     check_use_def_enum_args(
@@ -1097,25 +1112,24 @@ pub fn check(input: &CheckInput) -> CheckResult {
     } else {
         std::collections::BTreeMap::new()
     };
-    let param_domains: std::collections::BTreeMap<String, DomainInfo> =
-        if folded.typed.component.is_some() {
-            let params: Vec<(String, Type)> = folded
-                .typed
-                .params
-                .iter()
-                .map(|p| (p.name.clone(), p.ty.clone()))
-                .collect();
-            crate::component_effects::host_param_types(
-                &params,
-                &folded.typed.speaker_params,
-                &own_cast,
-            )
+    let param_domains: std::collections::BTreeMap<String, DomainInfo> = if folded
+        .typed
+        .component
+        .is_some()
+    {
+        let params: Vec<(String, Type)> = folded
+            .typed
+            .params
+            .iter()
+            .map(|p| (p.name.clone(), p.ty.clone()))
+            .collect();
+        crate::component_effects::host_param_types(&params, &folded.typed.speaker_params, &own_cast)
             .into_iter()
             .map(|(name, ty)| (name, param_domain(&ty)))
             .collect()
-        } else {
-            std::collections::BTreeMap::new()
-        };
+    } else {
+        std::collections::BTreeMap::new()
+    };
     // dsl 0.24.0: every `@def` use is checked on its expansion, and a beat's
     // / entry's `when` is an assumption for its body.
     let scope = crate::defassign::Scope::of(&folded);
@@ -1447,7 +1461,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
             .entries
             .iter()
             .flat_map(|e| e.body.iter().map(node_summary))
-            .chain(doc.beats.iter().flat_map(|b| b.body.iter().map(node_summary)))
+            .chain(
+                doc.beats
+                    .iter()
+                    .flat_map(|b| b.body.iter().map(node_summary)),
+            )
             .collect(),
     };
 
@@ -1678,7 +1696,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 .iter()
                 .map(|(n, o)| (n.clone(), DomainHome::Imported(o.clone())))
                 .chain(folded.typed.domains.keys().map(|n| {
-                    (n.clone(), DomainHome::Local(crate::meta::meta_key_span(&doc.meta, n)))
+                    (
+                        n.clone(),
+                        DomainHome::Local(crate::meta::meta_key_span(&doc.meta, n)),
+                    )
                 }))
                 .collect(),
         },
@@ -1729,6 +1750,11 @@ fn check_beat_when(
 /// differs from the toolchain's [`crate::LUTE_LANG_VERSION`].
 pub const W_LUTE_VERSION_STALE: &str = "W-LUTE-VERSION-STALE";
 
+/// LH N18: how a [`W_LUTE_VERSION_STALE`] message opens when the stamp is
+/// inherited from the manifest's `defaults:` rather than written by the
+/// document — `check-project` folds those into one report at the manifest.
+pub const INHERITED_LUTE_VERSION: &str = "the project manifest's `defaults: luteVersion";
+
 /// dsl 0.6.1 §3: the freshness signal. Fires `W-LUTE-VERSION-STALE` when the
 /// frontmatter `luteVersion` stamp is PRESENT and differs from the toolchain's
 /// [`crate::LUTE_LANG_VERSION`] — a warning-grade catch for a model
@@ -1758,14 +1784,26 @@ fn check_lute_version_stale(
         (version_triple(stamped), version_triple(current)),
         (Some(s), Some(c)) if s > c
     );
+    // LH N18: a stamp the document does not write itself comes from the
+    // manifest's `defaults: luteVersion` — say so, so `check-project` can fold
+    // every document's copy into one report at the manifest line.
+    let own = meta.raw_yaml.lines().any(|l| {
+        l.strip_prefix("luteVersion")
+            .is_some_and(|rest| rest.trim_start().starts_with(':'))
+    });
+    let what = if own {
+        "frontmatter `luteVersion"
+    } else {
+        INHERITED_LUTE_VERSION
+    };
     let message = if newer {
         format!(
-            "frontmatter `luteVersion: \"{stamped}\"` is newer than this toolchain (Lute \
+            "{what}: \"{stamped}\"` is newer than this toolchain (Lute \
              {current}) — upgrade the toolchain; do not downgrade the stamp (dsl 0.6.1 §3)"
         )
     } else {
         format!(
-            "frontmatter `luteVersion: \"{stamped}\"` is stale — this toolchain is Lute \
+            "{what}: \"{stamped}\"` is stale — this toolchain is Lute \
              {current}; update the stamp to `luteVersion: \"{current}\"` (dsl 0.6.1 §3)"
         )
     };
@@ -2040,17 +2078,19 @@ impl Walker<'_> {
                             );
                             let assume = self.assume.as_ref();
                             let ruled_out = |item: &crate::match_check::CoverItem| {
-                                subject.as_deref().zip(assume).is_some_and(|(p, a)| {
-                                    a.rules_out(p, item, &ctx.env.state)
-                                })
+                                subject
+                                    .as_deref()
+                                    .zip(assume)
+                                    .is_some_and(|(p, a)| a.rules_out(p, item, &ctx.env.state))
                             };
-                            self.diags.extend(crate::match_check::check_match_with_domain(
-                                m,
-                                subject.as_deref(),
-                                info,
-                                ctx,
-                                &ruled_out,
-                            ));
+                            self.diags
+                                .extend(crate::match_check::check_match_with_domain(
+                                    m,
+                                    subject.as_deref(),
+                                    info,
+                                    ctx,
+                                    &ruled_out,
+                                ));
                         }
                     }
                     // Arms (tests + bodies) evaluate WITHIN match scope: `$` binds
@@ -2088,12 +2128,7 @@ impl Walker<'_> {
                             match &clip.node {
                                 ClipNode::Directive(d) if d.tag == "use" => {
                                     check_use(d, self.components, ctx, &mut self.diags);
-                                    check_use_interp_args(
-                                        d,
-                                        self.components,
-                                        ctx,
-                                        &mut self.diags,
-                                    );
+                                    check_use_interp_args(d, self.components, ctx, &mut self.diags);
                                     self.check_attr_refs(&d.attrs, ctx, None);
                                 }
                                 // dsl 0.8.0: `::end` is a walk TERMINATOR, not
@@ -2751,11 +2786,11 @@ fn check_use(
         .filter(|a| fact_params.contains_key(&a.key) || index_params.contains_key(&a.key))
     {
         let pass_through = matches!(&attr.value, AttrValue::Ref(s)
-            if s.raw.trim().strip_prefix('@').is_some_and(|p| {
-                !p.is_empty()
-                    && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                    && !ctx.env.defs.contains(p)
-            }));
+        if s.raw.trim().strip_prefix('@').is_some_and(|p| {
+            !p.is_empty()
+                && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !ctx.env.defs.contains(p)
+        }));
         if pass_through {
             continue;
         }
@@ -2795,10 +2830,14 @@ fn check_use(
         let problem = match &constant {
             Ok(lute_syntax::datalog::FactTerm::Ident(m)) if members.contains(m) => continue,
             Ok(lute_syntax::datalog::FactTerm::Ident(m)) => {
-                let hint = lute_manifest::suggest::nearest(m, members.iter().map(String::as_str), 2)
-                    .map(|n| format!(" — did you mean `{n}`?"))
-                    .unwrap_or_default();
-                format!("`{m}` is not a member of entity kind `{kind}` [{}]{hint}", members.join(", "))
+                let hint =
+                    lute_manifest::suggest::nearest(m, members.iter().map(String::as_str), 2)
+                        .map(|n| format!(" — did you mean `{n}`?"))
+                        .unwrap_or_default();
+                format!(
+                    "`{m}` is not a member of entity kind `{kind}` [{}]{hint}",
+                    members.join(", ")
+                )
             }
             Ok(_) => "a boolean is no member id".to_string(),
             Err(why) => why.clone(),
@@ -2822,7 +2861,10 @@ fn check_use(
 /// family path).
 fn component_bound_params(
     body: &Document,
-) -> (std::collections::BTreeMap<String, String>, std::collections::BTreeMap<String, String>) {
+) -> (
+    std::collections::BTreeMap<String, String>,
+    std::collections::BTreeMap<String, String>,
+) {
     type Out = std::collections::BTreeMap<String, String>;
     fn walk(nodes: &[Node], facts: &mut Out, index: &mut Out) {
         for node in nodes {
@@ -2837,7 +2879,9 @@ fn component_bound_params(
                 }
                 Node::Set(s) => {
                     if let Some((family, p)) = crate::component_effects::set_path_index(&s.path) {
-                        index.entry(p.to_string()).or_insert_with(|| family.to_string());
+                        index
+                            .entry(p.to_string())
+                            .or_insert_with(|| family.to_string());
                     }
                 }
                 Node::Match(m) => {
@@ -3051,9 +3095,10 @@ fn body_interpolates(
     seen: &mut Vec<(String, String)>,
 ) -> bool {
     nodes.iter().any(|node| match node {
-        Node::Line(l) => l.interps.iter().any(|i| {
-            i.kind == InterpKind::Ref && bare_param_ref(&i.raw).as_deref() == Some(param)
-        }),
+        Node::Line(l) => l
+            .interps
+            .iter()
+            .any(|i| i.kind == InterpKind::Ref && bare_param_ref(&i.raw).as_deref() == Some(param)),
         Node::Match(m) => m.arms.iter().any(|arm| {
             let body = match arm {
                 Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
@@ -3101,8 +3146,7 @@ fn validate_components(
     let mut out = Vec::new();
     for (name, def) in &components.table {
         // dsl 0.24.0 §4: a `speaker` param is this host's cast ids.
-        let params =
-            crate::component_effects::host_param_types(&def.params, &def.speakers, cast);
+        let params = crate::component_effects::host_param_types(&def.params, &def.speakers, cast);
         let env = component_env(&params);
         let ctx = Ctx {
             env: &env,
@@ -3374,8 +3418,14 @@ fn collect_use_directives<'a>(nodes: &'a [Node], out: &mut Vec<&'a Directive>) {
         match node {
             Node::Directive(d) if d.tag == "use" => out.push(d),
             Node::Directive(_) => {}
-            Node::Branch(b) => b.choices.iter().for_each(|c| collect_use_directives(&c.body, out)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| collect_use_directives(&c.body, out)),
+            Node::Branch(b) => b
+                .choices
+                .iter()
+                .for_each(|c| collect_use_directives(&c.body, out)),
+            Node::Hub(h) => h
+                .choices
+                .iter()
+                .for_each(|c| collect_use_directives(&c.body, out)),
             Node::On(o) => collect_use_directives(&o.body, out),
             Node::Objective(o) => collect_use_directives(&o.body, out),
             Node::Match(m) => {
@@ -3430,18 +3480,16 @@ fn check_use_def_enum_args(
         collect_use_directives(body, &mut dirs);
     }
     for dir in dirs {
-        let Some((name, def)) = dir
-            .attrs
-            .iter()
-            .find_map(|a| match (&*a.key, &a.value) {
-                ("component", AttrValue::Str(s)) => components.table.get(s).map(|d| (s, d)),
-                _ => None,
-            })
-        else {
+        let Some((name, def)) = dir.attrs.iter().find_map(|a| match (&*a.key, &a.value) {
+            ("component", AttrValue::Str(s)) => components.table.get(s).map(|d| (s, d)),
+            _ => None,
+        }) else {
             continue; // unknown component: `check_use` owns it
         };
         for attr in &dir.attrs {
-            let AttrValue::Ref(slot) = &attr.value else { continue };
+            let AttrValue::Ref(slot) = &attr.value else {
+                continue;
+            };
             let Some((_, Type::Enum(members))) = def.params.iter().find(|(p, _)| p == &attr.key)
             else {
                 continue;
@@ -3461,10 +3509,12 @@ fn check_use_def_enum_args(
                     "the values `@{}` (`{body}`) can produce cannot be proven to be members",
                     r.name
                 )),
-                Some(vals) => vals
-                    .into_iter()
-                    .find(|v| !members.contains(v))
-                    .map(|v| format!("`@{}` (`{body}`) can produce `{v}`, which is not a member", r.name)),
+                Some(vals) => vals.into_iter().find(|v| !members.contains(v)).map(|v| {
+                    format!(
+                        "`@{}` (`{body}`) can produce `{v}`, which is not a member",
+                        r.name
+                    )
+                }),
             };
             if let Some(problem) = problem {
                 diags.push(use_diag(

@@ -106,7 +106,13 @@ fn a_character_shown_in_some_match_arms_is_hidden_at_the_next_bg() {
                 ::bg{location=\"slipway\"}\n@pell: Still here?";
     let ds = absent(body);
     assert_eq!(ds.len(), 1, "{ds:#?}");
-    assert!(ds[0].message.starts_with("`pell` was auto-hidden by an earlier `::bg`"), "{}", ds[0].message);
+    assert!(
+        ds[0]
+            .message
+            .starts_with("`pell` was auto-hidden by an earlier `::bg`"),
+        "{}",
+        ds[0].message
+    );
     // Re-shown after the cut: silent.
     let ds = absent(&format!(
         "{}\n::auto{{character=\"pell\" action=\"show\"}}\n@pell: Back.",
@@ -122,8 +128,14 @@ fn an_exit_after_a_bg_auto_hide_is_named_redundant() {
     let ds = absent("::bg{location=\"cafe\"}\n::auto{character=\"vesna\" action=\"hide\"}");
     assert_eq!(ds.len(), 1, "{ds:#?}");
     let m = &ds[0].message;
-    assert!(m.starts_with("`vesna` is already off stage (hidden by the `::bg` at line 18)"), "{m}");
-    assert!(m.contains("this exit does nothing. Move it before the `::bg`, or delete it"), "{m}");
+    assert!(
+        m.starts_with("`vesna` is already off stage (hidden by the `::bg` at line 18)"),
+        "{m}"
+    );
+    assert!(
+        m.contains("this exit does nothing. Move it before the `::bg`, or delete it"),
+        "{m}"
+    );
     assert!(!m.contains("stages"), "{m}");
 }
 
@@ -152,9 +164,7 @@ fn a_line_after_a_clear_warns_naming_the_clear() {
 /// other one, not re-shown, still warns.
 #[test]
 fn a_reshow_after_a_clear_is_clean() {
-    let ds = absent(
-        "::clear\n::auto{character=\"vesna\" action=\"show\"}\n@vesna: Back.",
-    );
+    let ds = absent("::clear\n::auto{character=\"vesna\" action=\"show\"}\n@vesna: Back.");
     assert!(ds.is_empty(), "{ds:#?}");
 }
 
@@ -170,7 +180,9 @@ fn a_clear_takes_off_a_character_on_stage_on_some_paths() {
     let ds = absent(body);
     assert_eq!(ds.len(), 1, "{ds:#?}");
     assert!(
-        ds[0].message.starts_with("`pell` was taken off stage by an earlier `::clear`"),
+        ds[0]
+            .message
+            .starts_with("`pell` was taken off stage by an earlier `::clear`"),
         "{}",
         ds[0].message
     );
@@ -182,6 +194,12 @@ fn an_exit_after_a_clear_is_named_redundant() {
     let ds = absent("::clear\n::auto{character=\"vesna\" action=\"hide\"}");
     assert_eq!(ds.len(), 1, "{ds:#?}");
     let m = &ds[0].message;
-    assert!(m.starts_with("`vesna` is already off stage (taken off by the `::clear` at line 18)"), "{m}");
-    assert!(m.contains("Move it before the `::clear`, or delete it"), "{m}");
+    assert!(
+        m.starts_with("`vesna` is already off stage (taken off by the `::clear` at line 18)"),
+        "{m}"
+    );
+    assert!(
+        m.contains("Move it before the `::clear`, or delete it"),
+        "{m}"
+    );
 }

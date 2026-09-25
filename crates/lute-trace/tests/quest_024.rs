@@ -11,7 +11,10 @@ use lute_trace::{trace_document, Decision, MockSet, Step, TraceExit, TraceReport
 
 fn input_for(text: &str) -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(text);
-    assert!(parse_diags.is_empty(), "fixture must parse clean: {parse_diags:?}");
+    assert!(
+        parse_diags.is_empty(),
+        "fixture must parse clean: {parse_diags:?}"
+    );
     let (meta0, _) = lute_check::parse_meta(
         &doc.meta,
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
@@ -130,8 +133,14 @@ fn an_accept_activated_child_waits_for_its_accept() {
     // Nothing accepted: the parent runs, neither alternative activates.
     let report = road(&[("run.talked", "true")], &[]);
     assert_eq!(quest_outcomes(&report.decisions, "road"), ["active"]);
-    assert_eq!(quest_outcomes(&report.decisions, "parley"), ["awaiting accept"]);
-    assert_eq!(quest_outcomes(&report.decisions, "toll"), ["awaiting accept"]);
+    assert_eq!(
+        quest_outcomes(&report.decisions, "parley"),
+        ["awaiting accept"]
+    );
+    assert_eq!(
+        quest_outcomes(&report.decisions, "toll"),
+        ["awaiting accept"]
+    );
     assert_ne!(final_state(&report, "quest.parley.state"), Some("active"));
 
     // `--accept` on an `activate="accept"` child is legal and activates it
@@ -139,25 +148,50 @@ fn an_accept_activated_child_waits_for_its_accept() {
     let report = road(&[], &["toll"]);
     assert_eq!(quest_outcomes(&report.decisions, "toll"), ["active"]);
     assert_eq!(final_state(&report, "quest.toll.state"), Some("active"));
-    assert_eq!(quest_outcomes(&report.decisions, "parley"), ["awaiting accept"]);
+    assert_eq!(
+        quest_outcomes(&report.decisions, "parley"),
+        ["awaiting accept"]
+    );
 }
 
 #[test]
 fn complete_any_completes_on_one_alternative_and_supersedes_the_others() {
     let report = road(&[("run.talked", "true")], &["parley", "toll"]);
-    assert_eq!(quest_outcomes(&report.decisions, "parley"), ["active", "complete"]);
-    assert_eq!(quest_outcomes(&report.decisions, "road"), ["active", "complete"]);
+    assert_eq!(
+        quest_outcomes(&report.decisions, "parley"),
+        ["active", "complete"]
+    );
+    assert_eq!(
+        quest_outcomes(&report.decisions, "road"),
+        ["active", "complete"]
+    );
     let toll = quest_failed(&report.decisions, "toll");
     assert_eq!(toll.guard.as_deref(), Some("superseded from quest.road"));
-    assert_eq!(final_state(&report, "quest.toll.failedBy"), Some("superseded"));
+    assert_eq!(
+        final_state(&report, "quest.toll.failedBy"),
+        Some("superseded")
+    );
     assert_eq!(final_state(&report, "quest.toll.state"), Some("failed"));
-    assert!(said(&report, "toll moot"), "a superseded child fires questFailed: {:?}", report.steps);
-    assert_ne!(final_state(&report, "quest.parley.failedBy"), Some("superseded"));
+    assert!(
+        said(&report, "toll moot"),
+        "a superseded child fires questFailed: {:?}",
+        report.steps
+    );
+    assert_ne!(
+        final_state(&report, "quest.parley.failedBy"),
+        Some("superseded")
+    );
 
     // A never-accepted alternative is not superseded: it stays unset.
     let report = road(&[("run.talked", "true")], &["parley"]);
-    assert_eq!(quest_outcomes(&report.decisions, "road"), ["active", "complete"]);
-    assert_eq!(quest_outcomes(&report.decisions, "toll"), ["awaiting accept"]);
+    assert_eq!(
+        quest_outcomes(&report.decisions, "road"),
+        ["active", "complete"]
+    );
+    assert_eq!(
+        quest_outcomes(&report.decisions, "toll"),
+        ["awaiting accept"]
+    );
     assert!(!said(&report, "toll moot"));
     assert_ne!(final_state(&report, "quest.toll.state"), Some("failed"));
 }
@@ -166,7 +200,10 @@ fn complete_any_completes_on_one_alternative_and_supersedes_the_others() {
 fn one_failed_alternative_leaves_an_any_parent_open_and_all_of_them_fail_it() {
     // `parley` fails; `toll` is still open, so `road` stays active.
     let report = road(&[("run.refused", "true")], &["parley", "toll"]);
-    assert_eq!(quest_outcomes(&report.decisions, "parley"), ["active", "failed"]);
+    assert_eq!(
+        quest_outcomes(&report.decisions, "parley"),
+        ["active", "failed"]
+    );
     assert_eq!(final_state(&report, "quest.parley.failedBy"), Some("fail"));
     assert_eq!(quest_outcomes(&report.decisions, "road"), ["active"]);
     assert_eq!(quest_outcomes(&report.decisions, "toll"), ["active"]);
@@ -196,13 +233,19 @@ state:
 "#;
     // Only the deadline missed: `parley` was never accepted, so it is open.
     let report = trace(text, MockSet::default());
-    assert_eq!(final_state(&report, "quest.road.objectives.storm.failed"), Some("true"));
+    assert_eq!(
+        final_state(&report, "quest.road.objectives.storm.failed"),
+        Some("true")
+    );
     assert_eq!(quest_outcomes(&report.decisions, "road"), ["active"]);
     assert!(!said(&report, "road lost"));
     // Both alternatives failed: the parent fails.
     let report = trace(text, accepts(&["parley"]));
     assert_eq!(final_state(&report, "quest.parley.failedBy"), Some("fail"));
-    assert_eq!(quest_outcomes(&report.decisions, "road"), ["active", "failed"]);
+    assert_eq!(
+        quest_outcomes(&report.decisions, "road"),
+        ["active", "failed"]
+    );
     assert_eq!(final_state(&report, "quest.road.failedBy"), Some("fail"));
     assert!(said(&report, "road lost"));
 }
@@ -237,9 +280,19 @@ state:
 "#;
     let report = trace(text, MockSet::default());
     assert_eq!(final_state(&report, "quest.errand.failedBy"), Some("by"));
-    assert_eq!(final_state(&report, "quest.errand.objectives.letter.failed"), Some("true"));
-    assert!(said(&report, "letter failed true by by"), "{:?}", report.steps);
-    assert_eq!(final_state(&report, "quest.child.failedBy"), Some("cascade"));
+    assert_eq!(
+        final_state(&report, "quest.errand.objectives.letter.failed"),
+        Some("true")
+    );
+    assert!(
+        said(&report, "letter failed true by by"),
+        "{:?}",
+        report.steps
+    );
+    assert_eq!(
+        final_state(&report, "quest.child.failedBy"),
+        Some("cascade")
+    );
     assert_eq!(
         quest_failed(&report.decisions, "child").guard.as_deref(),
         Some("cascade from quest.errand")
@@ -269,7 +322,10 @@ state:
         },
     );
     assert_eq!(final_state(&report, "quest.fest.failedBy"), Some("until"));
-    assert_eq!(final_state(&report, "quest.fest.objectives.go.failed"), Some("true"));
+    assert_eq!(
+        final_state(&report, "quest.fest.objectives.go.failed"),
+        Some("true")
+    );
 }
 
 /// dsl 0.24.0 §2.1 (lighthouse N2): an `on=` objective whose `by` holds
@@ -293,11 +349,20 @@ state:
         ..Default::default()
     };
     let report = trace(text, raised);
-    assert_eq!(quest_outcomes(&report.decisions, "verdict"), ["active", "complete"]);
-    assert_ne!(final_state(&report, "quest.verdict.objectives.fate.failed"), Some("true"));
+    assert_eq!(
+        quest_outcomes(&report.decisions, "verdict"),
+        ["active", "complete"]
+    );
+    assert_ne!(
+        final_state(&report, "quest.verdict.objectives.fate.failed"),
+        Some("true")
+    );
 
     let report = trace(text, MockSet::default());
-    assert_eq!(quest_outcomes(&report.decisions, "verdict"), ["active", "failed"]);
+    assert_eq!(
+        quest_outcomes(&report.decisions, "verdict"),
+        ["active", "failed"]
+    );
     assert_eq!(final_state(&report, "quest.verdict.failedBy"), Some("by"));
 }
 
@@ -313,15 +378,21 @@ fn an_accept_spent_by_an_inactive_parent_is_noted() {
     assert_eq!(quest_outcomes(&report.decisions, "road"), ["never"]);
     assert!(quest_outcomes(&report.decisions, "toll").is_empty());
     assert!(
-        report.notes.iter().any(|n| n.starts_with(
-            "accept of `toll` spent: its parent quest `road` is never active"
-        )),
+        report
+            .notes
+            .iter()
+            .any(|n| n
+                .starts_with("accept of `toll` spent: its parent quest `road` is never active")),
         "{:?}",
         report.notes
     );
     // Accepted under an active parent: no note.
     let report = road(&[], &["toll"]);
-    assert!(!report.notes.iter().any(|n| n.starts_with("accept of")), "{:?}", report.notes);
+    assert!(
+        !report.notes.iter().any(|n| n.starts_with("accept of")),
+        "{:?}",
+        report.notes
+    );
 }
 
 #[test]
@@ -348,7 +419,11 @@ state:
         ..Default::default()
     };
     let report = trace(text, raise("talk@npc.maud"));
-    assert!(said(&report, "maud handler") && said(&report, "any handler"), "{:?}", report.steps);
+    assert!(
+        said(&report, "maud handler") && said(&report, "any handler"),
+        "{:?}",
+        report.steps
+    );
     let report = trace(text, raise("talk@npc.oskar"));
     assert!(!said(&report, "maud handler") && said(&report, "any handler"));
     let report = trace(text, raise("talk"));
@@ -406,6 +481,10 @@ state:
         .iter()
         .filter(|s| s.get("nextRun").is_some())
         .collect();
-    assert_eq!(queued.len(), 1, "only the queued accept carries nextRun: {json}");
+    assert_eq!(
+        queued.len(),
+        1,
+        "only the queued accept carries nextRun: {json}"
+    );
     assert_ne!(final_state(&report, "quest.bounty.state"), Some("active"));
 }

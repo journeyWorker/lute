@@ -546,7 +546,11 @@ pub fn compile_with_check(
     };
     diags.extend(addr_diags);
     // 0.21.1 T1-3: `{{@def}}` placeholders carry their inlined def body.
-    diags.extend(expand::inline_ref_placeholders(&mut commands, &table, doc.meta.span));
+    diags.extend(expand::inline_ref_placeholders(
+        &mut commands,
+        &table,
+        doc.meta.span,
+    ));
     stamp_reward_credits(&mut commands, &input.snapshot);
 
     if diags.iter().any(|d| d.severity == Severity::Error) {
@@ -1090,8 +1094,7 @@ fn state_entries(
         // dsl 0.24.0 §1's `clock.*` decls by the artifact's `clock` — so the
         // table carries only what content declares or quests reserve.
         .filter(|(path, _)| {
-            !lute_check::cel_paths::is_prev_path(path)
-                && !lute_manifest::clock::is_clock_path(path)
+            !lute_check::cel_paths::is_prev_path(path) && !lute_manifest::clock::is_clock_path(path)
         })
         .map(|(path, decl)| {
             // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is

@@ -10,7 +10,10 @@ use lute_trace::{trace_document, MockSet, TraceExit, TraceReport};
 
 fn input_for(text: &str, uri: &str, base: &Path) -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(text);
-    assert!(parse_diags.is_empty(), "fixture must parse clean: {parse_diags:?}");
+    assert!(
+        parse_diags.is_empty(),
+        "fixture must parse clean: {parse_diags:?}"
+    );
     let (meta0, _) = lute_check::parse_meta(
         &doc.meta,
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
@@ -64,11 +67,31 @@ fn decided(report: &TraceReport, construct: &str, id: &str, outcome: &str) -> bo
 #[test]
 fn rule_derived_facts_complete_objectives_without_mocking_the_conclusion() {
     let (report, exit) = trace_document(&halsin(), MockSet::default());
-    assert!(matches!(exit, TraceExit::Complete), "{exit:?} {:?}", report.unresolved);
-    assert!(decided(&report, "objective", "reach", "done"), "{:?}", report.decisions);
-    assert!(decided(&report, "objective", "learn", "done"), "{:?}", report.decisions);
-    assert!(decided(&report, "quest", "rescueHalsin", "complete"), "{:?}", report.decisions);
-    assert!(report.notes.is_empty(), "seeds loaded, rules applied: {:?}", report.notes);
+    assert!(
+        matches!(exit, TraceExit::Complete),
+        "{exit:?} {:?}",
+        report.unresolved
+    );
+    assert!(
+        decided(&report, "objective", "reach", "done"),
+        "{:?}",
+        report.decisions
+    );
+    assert!(
+        decided(&report, "objective", "learn", "done"),
+        "{:?}",
+        report.decisions
+    );
+    assert!(
+        decided(&report, "quest", "rescueHalsin", "complete"),
+        "{:?}",
+        report.decisions
+    );
+    assert!(
+        report.notes.is_empty(),
+        "seeds loaded, rules applied: {:?}",
+        report.notes
+    );
 }
 
 /// `derive: false` is the 0.21 model: the seeds are not loaded, derived
@@ -88,7 +111,8 @@ fn derive_false_leaves_derived_atoms_unknown_and_notes_each_derived_read() {
             report
                 .notes
                 .iter()
-                .any(|n| n.contains(&format!("derived relation `{rel}`")) && n.contains("derive: false")),
+                .any(|n| n.contains(&format!("derived relation `{rel}`"))
+                    && n.contains("derive: false")),
             "expected a derived-read note for {rel}: {:?}",
             report.notes
         );
@@ -147,7 +171,10 @@ fn negated_premise_absent_derives_the_conclusion() {
         .find(|d| d.id == "verdict")
         .expect("verdict decision");
     assert_eq!(d.outcome, "accuse");
-    assert!(!d.forced, "the guard decided true, nothing was forced: {d:?}");
+    assert!(
+        !d.forced,
+        "the guard decided true, nothing was forced: {d:?}"
+    );
     assert!(d.eligible.contains(&"accuse".to_string()), "{d:?}");
 }
 
@@ -159,7 +186,10 @@ fn negated_premise_present_makes_the_conclusion_definitely_false() {
     let TraceExit::Refused(diags) = exit else {
         panic!("expected E-TRACE-CHOICE refusal, got {exit:?}");
     };
-    assert!(diags.iter().any(|d| d.code == lute_trace::E_TRACE_CHOICE), "{diags:?}");
+    assert!(
+        diags.iter().any(|d| d.code == lute_trace::E_TRACE_CHOICE),
+        "{diags:?}"
+    );
 }
 
 /// A rule guard over undecided state decides nothing: the conclusion is
@@ -216,7 +246,11 @@ rules:
     };
     let (report, exit) = trace_document(&input, decided_day);
     assert!(matches!(exit, TraceExit::Complete), "{exit:?}");
-    assert!(report.forced_unknown.is_empty(), "{:?}", report.forced_unknown);
+    assert!(
+        report.forced_unknown.is_empty(),
+        "{:?}",
+        report.forced_unknown
+    );
 }
 
 /// dsl 0.24 T1-1/T3-9: a rule guard's `@def` is expanded (it used to stay
@@ -276,12 +310,26 @@ fn anonymous_rule_variables_defs_in_rule_guards_and_count_distinct_evaluate() {
         ..Default::default()
     };
     let (report, exit) = trace_document(&input, pick("yes"));
-    assert!(matches!(exit, TraceExit::Complete), "{exit:?} {:?}", report.unresolved);
-    let d = report.decisions.iter().find(|d| d.id == "count").expect("decision");
-    assert!(!d.forced && d.eligible.contains(&"yes".to_string()), "{d:?}");
+    assert!(
+        matches!(exit, TraceExit::Complete),
+        "{exit:?} {:?}",
+        report.unresolved
+    );
+    let d = report
+        .decisions
+        .iter()
+        .find(|d| d.id == "count")
+        .expect("decision");
+    assert!(
+        !d.forced && d.eligible.contains(&"yes".to_string()),
+        "{d:?}"
+    );
     assert!(!d.eligible.contains(&"no".to_string()), "{d:?}");
     let (_, exit) = trace_document(&input, pick("no"));
-    assert!(matches!(exit, TraceExit::Refused(_)), "three tuples are two witnesses: {exit:?}");
+    assert!(
+        matches!(exit, TraceExit::Refused(_)),
+        "three tuples are two witnesses: {exit:?}"
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -316,7 +364,10 @@ mod explain {
     use lute_trace::EffectiveState;
 
     fn fact(rel: &str, args: &[&str]) -> Fact {
-        (rel.to_string(), args.iter().map(|a| a.to_string()).collect())
+        (
+            rel.to_string(),
+            args.iter().map(|a| a.to_string()).collect(),
+        )
     }
 
     /// The NEGATION fixture's rules, through the compiler's IR — the

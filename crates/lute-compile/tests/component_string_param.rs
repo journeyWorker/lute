@@ -97,7 +97,11 @@ fn each_use_site_ships_its_own_sentence_under_its_own_line_id() {
     // sentence separately.
     let bundle = LocaleBundle::from_triples([
         (ids[0].to_string(), "ko".to_string(), "4분.".to_string()),
-        (ids[1].to_string(), "ko".to_string(), "오서리의 등불.".to_string()),
+        (
+            ids[1].to_string(),
+            "ko".to_string(),
+            "오서리의 등불.".to_string(),
+        ),
     ]);
     merge_locales(&mut artifact, &bundle);
     let texts: Vec<serde_json::Value> = artifact
