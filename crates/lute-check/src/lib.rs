@@ -85,7 +85,7 @@ pub use cel_resolve::{
     E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,
 };
 pub use check::{
-    check, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved,
+    check, check_parsed, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved,
     INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
 };
 pub use component_effects::{speaker_display_args, splice_component_effects};
@@ -142,7 +142,7 @@ pub use project_check::{
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;
-pub use schema_import::{resolve_imports, RelImports, SchemaImports};
+pub use schema_import::{resolve_imports, ImportCache, Memo, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner, E_ENGINE_OWNED_WRITE};
 pub use tag::{codes_locked, retag_document, tag_document, RetagOutcome, TagOutcome};
 pub use temporal::{check_temporal, E_TEMPORAL_ARG};

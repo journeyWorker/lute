@@ -473,6 +473,8 @@ struct ProducerCache {
     /// Project roots a scenario test discovered (nearest `lute.project.yaml`,
     /// no `--project`) and already announced on stderr — one note per root.
     noted: BTreeSet<PathBuf>,
+    /// Per-run memo of the shared document inputs every traced document resolves.
+    inputs: crate::InputCache,
 }
 
 impl ProducerCache {
@@ -681,7 +683,9 @@ fn run_one_test(
     }
     let resolve_with = project.or(discovered.as_deref());
 
-    let Some(built) = crate::build_input(&lute_path, providers, resolve_with, None) else {
+    let Some(built) =
+        crate::build_input_with(&producers.inputs, &lute_path, providers, resolve_with, None)
+    else {
         // build_input already printed the read error.
         return Err(ExitCode::from(2));
     };

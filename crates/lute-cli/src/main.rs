@@ -59,6 +59,7 @@ use lute_manifest::relations::KindShape;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
+use rayon::prelude::*;
 
 /// Append one formatted line to an output buffer — the EPIPE-safe
 /// replacement for `println!` in a report that is written once through
@@ -79,6 +80,7 @@ mod compile_all;
 mod context;
 mod doctor;
 mod explain;
+mod input_cache;
 mod knowledge;
 mod lint;
 mod loc;
@@ -93,6 +95,8 @@ mod scaffold;
 mod scenario_fmt;
 mod stream;
 mod testcmd;
+
+use input_cache::InputCache;
 
 #[derive(Parser)]
 #[command(
@@ -1528,29 +1532,66 @@ fn build_input(
     project: Option<&Path>,
     permission_profile: Option<&str>,
 ) -> Option<BuiltInput> {
-    let text = match std::fs::read_to_string(file) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("lute: cannot read {}: {e}", file.display());
-            return None;
-        }
-    };
+    build_input_with(
+        &InputCache::default(),
+        file,
+        providers,
+        project,
+        permission_profile,
+    )
+}
 
+/// [`build_input`] against a per-run [`InputCache`], for a caller that
+/// assembles many documents' inputs in one invocation.
+fn build_input_with(
+    cache: &InputCache,
+    file: &Path,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+    permission_profile: Option<&str>,
+) -> Option<BuiltInput> {
+    match read_document(file) {
+        Ok(text) => {
+            Some(assemble_input(cache, file, text, providers, project, permission_profile).0)
+        }
+        Err(message) => {
+            eprintln!("{message}");
+            None
+        }
+    }
+}
+
+/// `file`'s text, or the `lute: cannot read …` line [`build_input`] prints.
+fn read_document(file: &Path) -> Result<String, String> {
+    std::fs::read_to_string(file).map_err(|e| format!("lute: cannot read {}: {e}", file.display()))
+}
+
+/// The body of [`build_input`] over already-read `text`, also handing back
+/// `lute_syntax::parse(&text)` — parsed here to lift the frontmatter — so a
+/// caller can reuse it (`lute_check::check_parsed`) instead of re-parsing.
+fn assemble_input(
+    cache: &InputCache,
+    file: &Path,
+    text: String,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+    permission_profile: Option<&str>,
+) -> (BuiltInput, (lute_syntax::ast::Document, Vec<Diagnostic>)) {
     // Resolve the capability snapshot the document is validated against. With
     // `--project`, load the project and assemble the scene's activated snapshot
     // (plugin §4/§11); without it, `resolve_document_snapshot(None, ..)` returns
     // the core-only `lute.core` baseline — behavior identical to before.
     let mut project_diags: Vec<String> = Vec::new();
-    let project = match project {
-        Some(dir) => match load_project(dir) {
-            Ok(p) => p,
-            Err(e) => {
-                // A malformed project must not silently mis-validate: surface it
-                // and fall back to core-only rather than pretending it loaded.
-                project_diags.push(e);
-                None
-            }
-        },
+    let root = project;
+    let loaded = root.map(|dir| cache.project(dir));
+    let project = match loaded.as_deref() {
+        Some(Ok(p)) => p.as_ref(),
+        Some(Err(e)) => {
+            // A malformed project must not silently mis-validate: surface it
+            // and fall back to core-only rather than pretending it loaded.
+            project_diags.push(e.clone());
+            None
+        }
         None => None,
     };
 
@@ -1558,22 +1599,17 @@ fn build_input(
     // wins; otherwise auto-discover the project's pinned catalog through the
     // SAME shared helper the LSP uses, so the two surfaces resolve the same ids
     // for the same project; with neither, an empty set.
-    let providers = match providers {
-        Some(dir) => ProviderSet::load(dir),
-        None => lute_manifest::project::project_providers(project.as_ref()),
-    };
+    let providers = ProviderSet::clone(&cache.providers(providers, root, project));
 
     // 0.10.0 §6: the governing manifest's `defaults:`, already canonicalised
     // at load (D-Z). Lifted BEFORE the frontmatter parse, because a defaulted
     // `uses:` has to reach `resolve_imports` below.
-    let defaults = project
-        .as_ref()
-        .map(|p| p.defaults.clone())
-        .unwrap_or_default();
+    let defaults = project.map(|p| p.defaults.clone()).unwrap_or_default();
 
     // Lift the scene's frontmatter `profile`/`plugins` — both built-in keys, so a
     // default snapshot suffices to type them (they are not capability-gated).
-    let (doc, _) = lute_syntax::parse(&text);
+    let parsed = lute_syntax::parse(&text);
+    let doc = &parsed.0;
     let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
         &doc.meta,
         &CapabilitySnapshot::default(),
@@ -1581,8 +1617,8 @@ fn build_input(
         &defaults,
     );
 
-    let (mut snapshot, mut rdiags) =
-        resolve_document_snapshot(project.as_ref(), meta0.profile.as_deref(), &meta0.plugins);
+    let resolved = cache.snapshot(root, project, meta0.profile.as_deref(), &meta0.plugins);
+    let (mut snapshot, mut rdiags) = (resolved.0.clone(), resolved.1.clone());
     if let Some(name) = permission_profile {
         match project.as_ref() {
             Some(config) => match resolve_permissions(config, name) {
@@ -1620,10 +1656,14 @@ fn build_input(
     // component imports (dsl §13) relative to the scene's own directory; the LSP
     // resolves identically -> no divergence.
     let base = file.parent().unwrap_or_else(|| Path::new("."));
-    let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
-    let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
+    let imports = cache
+        .imports
+        .resolve(base, &meta0.uses, &meta0.extends, doc.meta.span);
+    let components = cache
+        .imports
+        .resolve_components(base, &meta0.components, doc.meta.span);
 
-    Some(BuiltInput {
+    let built = BuiltInput {
         input: CheckInput {
             text,
             uri: file.display().to_string(),
@@ -1641,7 +1681,8 @@ fn build_input(
         meta: meta0,
         defaults,
         identity,
-    })
+    };
+    (built, parsed)
 }
 
 /// Every document under `root` whose `::use` names component `name`
@@ -1901,8 +1942,9 @@ fn caller_resolved_common(
 
     let mut per_caller: Vec<BTreeSet<(String, String)>> = Vec::new();
     let mut sample: BTreeMap<(String, String), Diagnostic> = BTreeMap::new();
+    let cache = InputCache::default();
     for caller in callers {
-        let Some(built) = build_input(caller, providers, Some(root), None) else {
+        let Some(built) = build_input_with(&cache, caller, providers, Some(root), None) else {
             continue;
         };
         let res = check(&built.input);
@@ -2359,29 +2401,64 @@ fn collect_project_inputs(
         ExitCode::from(2)
     })?;
 
-    let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> = Vec::with_capacity(files.len());
-    let mut docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::with_capacity(files.len());
-    let mut foldeds: Vec<lute_check::FoldedEnv> = Vec::with_capacity(files.len());
-    let mut roots: Vec<PathBuf> = Vec::with_capacity(files.len());
-    let mut inputs: Vec<(PathBuf, CheckInput)> = Vec::with_capacity(files.len());
+    // One document's contribution, computed independently of every other —
+    // so the files are checked in parallel against one shared per-run
+    // [`InputCache`], then folded back IN WALK ORDER below: stderr lines,
+    // early exits, and every returned vector are exactly the sequential ones.
+    struct Checked {
+        root: PathBuf,
+        built: BuiltInput,
+        /// `None` when the resolve-error gate below stops at this file.
+        analysis: Option<(
+            lute_syntax::ast::Document,
+            lute_check::FoldedEnv,
+            lute_check::CheckResult,
+        )>,
+    }
+    let cache = InputCache::default();
+    let checked: Vec<Result<Checked, String>> = files
+        .par_iter()
+        .map(|file| {
+            let root = if single_root {
+                dir.to_path_buf()
+            } else {
+                project_root_for(file, dir)
+            };
+            let text = read_document(file)?;
+            let (built, parsed) = assemble_input(&cache, file, text, providers, Some(&root), None);
+            let analysis = (!built.resolve_error || single_root).then(|| {
+                let input = &built.input;
+                let mut doc = parsed.0.clone();
+                // dsl 0.24.0 §4: the project passes (fact Must/may, connectivity)
+                // see an effects component's writes where its `::use` performs them.
+                lute_check::splice_component_effects(&mut doc, &input.components, &input.snapshot);
+                let (folded, _, _) = fold_env(&doc, input);
+                let result = lute_check::check_parsed(input, parsed);
+                (doc, folded, result)
+            });
+            Ok(Checked {
+                root,
+                built,
+                analysis,
+            })
+        })
+        .collect();
 
-    for file in &files {
-        let root = if single_root {
-            dir.to_path_buf()
-        } else {
-            project_root_for(file, dir)
-        };
-        let Some(built) = build_input(file, providers, Some(&root), None) else {
-            return Err(ExitCode::from(2));
-        };
+    let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> = Vec::with_capacity(files.len());
+    let mut by_root: ByRoot = BTreeMap::new();
+    let mut inputs: Vec<(PathBuf, CheckInput)> = Vec::with_capacity(files.len());
+    for (file, checked) in files.iter().zip(checked) {
+        let Checked {
+            root,
+            built,
+            analysis,
+        } = checked.map_err(|message| {
+            eprintln!("{message}");
+            ExitCode::from(2)
+        })?;
         // Per file, exactly as `build_input` printed them before: this loop
         // resolves each document's own root, so the lines stay one-per-document.
         built.report_project_diags();
-        let BuiltInput {
-            input,
-            resolve_error,
-            ..
-        } = built;
         // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
         // option, missing active plugin, bad identity template) is a
         // build-failing error; it printed above, and it MUST gate or it would
@@ -2396,30 +2473,15 @@ fn collect_project_inputs(
         // does define. That is an artifact of the forced root, not a fault of
         // the document being compiled, and must not fail it. `check-project`
         // (which uses each file's own nearest root) still catches the real ones.
-        if resolve_error && !single_root {
+        let Some((doc, folded, result)) = analysis else {
             return Err(ExitCode::from(1));
-        }
-        let (mut doc, _) = lute_syntax::parse(&input.text);
-        // dsl 0.24.0 §4: the project passes (fact Must/may, connectivity)
-        // see an effects component's writes where its `::use` performs them.
-        lute_check::splice_component_effects(&mut doc, &input.components, &input.snapshot);
-        let (folded, _, _) = fold_env(&doc, &input);
-        foldeds.push(folded);
-        docs.push((file.clone(), doc));
-
-        let result = check(&input);
+        };
+        by_root
+            .entry(root.clone())
+            .or_default()
+            .push((file.clone(), doc, folded));
         file_results.push((file.clone(), result));
-        inputs.push((root.clone(), input));
-        roots.push(root);
-    }
-
-    let mut by_root: ByRoot = BTreeMap::new();
-    for (idx, entry) in docs.iter().enumerate() {
-        by_root.entry(roots[idx].clone()).or_default().push((
-            entry.0.clone(),
-            entry.1.clone(),
-            foldeds[idx].clone(),
-        ));
+        inputs.push((root, built.input));
     }
 
     Ok((file_results, by_root, inputs))
@@ -2701,44 +2763,110 @@ fn reconcile_collected(
     // by topological-order exclusion in `reconciled_project_results`.
     let mut nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>> =
         BTreeMap::new();
+    // First result index per path — the answer `iter().find(p == path)`
+    // gave, without an O(files) scan per document.
+    let mut result_ix: std::collections::HashMap<PathBuf, usize> =
+        std::collections::HashMap::with_capacity(file_results.len());
+    for (i, (p, _)) in file_results.iter().enumerate() {
+        result_ix.entry(p.clone()).or_insert(i);
+    }
     for (root, group_full) in by_root {
         let plain_group: Vec<(PathBuf, lute_syntax::ast::Document)> = group_full
             .iter()
             .map(|(p, d, _)| (p.clone(), d.clone()))
             .collect();
         let group = &plain_group;
-        project_diags.extend(check_project_quest_ids(group));
-        project_diags.extend(check_project_quest_refs(group));
-        // dsl 0.21.0 §7a.3: every `::accept` names an accept-driven quest.
-        project_diags.extend(lute_check::check_project_accepts(group));
-        // dsl 0.24.0 §2: an accept-driven quest no `::accept`, mock, or test accepts.
-        project_diags.extend(lute_check::check_project_never_accepted(
-            group,
-            &mockcheck::mocked_accepts_under(root),
-        ));
-        // dsl 0.19.0 §3/§5: project-wide entry id / series-order uniqueness
-        // and `entry.<id>.read` references (the quest passes' lore mirror).
-        project_diags.extend(lute_check::check_project_entry_ids(group));
-        project_diags.extend(lute_check::check_project_entry_refs(group));
-        // dsl 2026-08-31 §4 (subquest design): structural checks over the
-        // parent→child tree implied by every `<objective quest="c">`. Sits
-        // next to the existing quest-ref pass because the two ask the same
-        // question at two different depths -- ref pass on the READ side
-        // (`quest.<id>.state` from anywhere), tree pass on the STRUCTURAL
-        // side (parent quest naming the child). Both are project-wide
-        // because a `quest=` reference can name a quest in a sibling file.
-        project_diags.extend(lute_check::check_project_quest_tree(group));
-        // dsl 0.22.0 §7: `<on event="questFailed">` on a quest that cannot
-        // fail (project-wide: a parent in another file can cascade-fail it).
-        project_diags.extend(lute_check::check_project_quest_handlers(group));
-        project_diags.extend(lute_check::connectivity::check_conn_episode_dup(group));
-        let key_set = lute_check::connectivity::scene_key_set(group);
-        let quest_ids = lute_check::connectivity::quest_id_set(group);
-        project_diags.extend(lute_check::connectivity::resolve_nodes(
-            group, &key_set, &quest_ids,
-        ));
-        let (conn_graph, cycle_diags) =
-            lute_check::connectivity::assemble_graph(group, &key_set, &quest_ids);
+        let mut group_ix: std::collections::HashMap<&Path, usize> =
+            std::collections::HashMap::with_capacity(group_full.len());
+        for (i, (p, _, _)) in group_full.iter().enumerate() {
+            group_ix.entry(p.as_path()).or_insert(i);
+        }
+        let beat_foldeds: Vec<&lute_check::FoldedEnv> =
+            group_full.iter().map(|(_, _, f)| f).collect();
+        let mocked = mockcheck::mocked_accepts_under(root);
+        // The standalone project passes read only this root's documents —
+        // never one another's output or the connectivity chain's — so they
+        // run in parallel with it; every result is appended below in the
+        // fixed order the passes always ran in.
+        type Pass<'a> = Box<dyn Fn() -> Vec<(PathBuf, Diagnostic)> + Send + Sync + 'a>;
+        let standalone: Vec<Pass<'_>> = vec![
+            Box::new(|| check_project_quest_ids(group)),
+            Box::new(|| check_project_quest_refs(group)),
+            // dsl 0.21.0 §7a.3: every `::accept` names an accept-driven quest.
+            Box::new(|| lute_check::check_project_accepts(group)),
+            // dsl 0.24.0 §2: an accept-driven quest no `::accept`, mock, or test accepts.
+            Box::new(|| lute_check::check_project_never_accepted(group, &mocked)),
+            // dsl 0.19.0 §3/§5: project-wide entry id / series-order uniqueness
+            // and `entry.<id>.read` references (the quest passes' lore mirror).
+            Box::new(|| lute_check::check_project_entry_ids(group)),
+            Box::new(|| lute_check::check_project_entry_refs(group)),
+            // dsl 2026-08-31 §4 (subquest design): structural checks over the
+            // parent→child tree implied by every `<objective quest="c">`. Sits
+            // next to the existing quest-ref pass because the two ask the same
+            // question at two different depths -- ref pass on the READ side
+            // (`quest.<id>.state` from anywhere), tree pass on the STRUCTURAL
+            // side (parent quest naming the child). Both are project-wide
+            // because a `quest=` reference can name a quest in a sibling file.
+            Box::new(|| lute_check::check_project_quest_tree(group)),
+            // dsl 0.22.0 §7: `<on event="questFailed">` on a quest that cannot
+            // fail (project-wide: a parent in another file can cascade-fail it).
+            Box::new(|| lute_check::check_project_quest_handlers(group)),
+            Box::new(|| lute_check::connectivity::check_conn_episode_dup(group)),
+            // dsl 0.21.0 §5: `W-BEAT-SHADOWED` — a `select: first` beat an
+            // earlier-ordered, always-eligible, never-spent beat on the same
+            // occasion always beats. Project order is the selection tiebreak.
+            // Appended after the fact-guard pass below, where it always was.
+            Box::new(|| lute_check::check_project_beats(group, &beat_foldeds)),
+        ];
+        let (chain, (mut standalone_diags, (ladder, producers))) = rayon::join(
+            || {
+                let key_set = lute_check::connectivity::scene_key_set(group);
+                let quest_ids = lute_check::connectivity::quest_id_set(group);
+                let node_diags =
+                    lute_check::connectivity::resolve_nodes(group, &key_set, &quest_ids);
+                let (conn_graph, cycle_diags) =
+                    lute_check::connectivity::assemble_graph(group, &key_set, &quest_ids);
+                // T7/T14/Fix2 wiring: `compute_conn_fixpoint` iterates the
+                // reach/live-assert/may-set/dead-quest composition to a finite
+                // fixpoint (see its own doc comment for the termination + soundness
+                // argument) -- `ambiguous_quests` is shared with the envelope wiring
+                // below.
+                let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(group);
+                let fp = compute_conn_fixpoint(
+                    group,
+                    group_full,
+                    &file_results,
+                    &conn_graph,
+                    &quest_ids,
+                    &ambiguous_quests,
+                );
+                (
+                    key_set,
+                    node_diags,
+                    conn_graph,
+                    cycle_diags,
+                    ambiguous_quests,
+                    fp,
+                )
+            },
+            || {
+                rayon::join(
+                    || standalone.par_iter().map(|pass| pass()).collect::<Vec<_>>(),
+                    || {
+                        (
+                            lute_check::beats::presence_ladder(group, &beat_foldeds),
+                            lute_check::cast::fact_producers(group),
+                        )
+                    },
+                )
+            },
+        );
+        let (key_set, node_diags, conn_graph, cycle_diags, ambiguous_quests, fp) = chain;
+        let beat_diags = standalone_diags.pop().expect("the beats pass is last");
+        for diags in standalone_diags {
+            project_diags.extend(diags);
+        }
+        project_diags.extend(node_diags);
         project_diags.extend(cycle_diags);
         // Spec §5 gate side channel (additive, no diagnostic effect): record
         // every node's (id, span) keyed by its declaring file, so the gate can
@@ -2750,20 +2878,6 @@ fn reconcile_collected(
                 .or_default()
                 .push((info.id.clone(), info.span));
         }
-        // T7/T14/Fix2 wiring: `compute_conn_fixpoint` iterates the
-        // reach/live-assert/may-set/dead-quest composition to a finite
-        // fixpoint (see its own doc comment for the termination + soundness
-        // argument) -- `ambiguous_quests` is shared with the envelope wiring
-        // below.
-        let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(group);
-        let fp = compute_conn_fixpoint(
-            group,
-            group_full,
-            &file_results,
-            &conn_graph,
-            &quest_ids,
-            &ambiguous_quests,
-        );
         project_diags.extend(fp.reach_diags);
         // dsl 2026-08-31 §4 extension: `E-QUEST-UNREACHABLE` propagates one
         // edge UP a subquest tree — a required `<objective quest="c">` on a
@@ -2790,30 +2904,33 @@ fn reconcile_collected(
             fp.fact_env.clone().with_wip(&vocab, &unproduced)
         });
         let fact_env = wip_env.as_ref().unwrap_or(&fp.fact_env);
-        for (path, doc, folded) in group_full {
-            let reported = file_results
-                .iter()
-                .find(|(p, _)| p == path)
-                .map_or(&[][..], |(_, r)| r.diagnostics.as_slice());
-            for d in lute_check::check_fact_guards(path, doc, folded, fact_env, reported) {
+        // Per document, independent: in parallel, appended in walk order.
+        let guard_diags: Vec<Vec<Diagnostic>> = group_full
+            .par_iter()
+            .map(|(path, doc, folded)| {
+                let reported = result_ix
+                    .get(path)
+                    .map_or(&[][..], |&i| file_results[i].1.diagnostics.as_slice());
+                lute_check::check_fact_guards(path, doc, folded, fact_env, reported)
+            })
+            .collect();
+        for ((path, _, _), diags) in group_full.iter().zip(guard_diags) {
+            for d in diags {
                 project_diags.push((path.clone(), d));
             }
         }
-        let beat_foldeds: Vec<&lute_check::FoldedEnv> =
-            group_full.iter().map(|(_, _, f)| f).collect();
         // dsl 0.24.0 §4: `W-CAST-ABSENT` re-decided under the fact envelope,
         // the beat ladders and the root's assert sites — a line the Must set,
         // the beats a ladder must have spent first, or a fact only its own
         // unit produces shows its speaker present at is dropped. dsl 0.25.0
         // §6: a line that follows a `changedOn` occasion in the scenario
         // graph is decided without `assume: true` for that relation — added.
-        let ladder = lute_check::beats::presence_ladder(group, &beat_foldeds);
-        let producers = lute_check::cast::fact_producers(group);
+        // (`ladder` and `producers` were computed alongside the fixpoint.)
         let after = lute_check::cast::occasions_before(group, &beat_foldeds, &conn_graph);
         let no_ladder = BTreeMap::new();
         let no_after = BTreeMap::new();
         for (path, doc, folded) in group_full {
-            if let Some((_, r)) = file_results.iter_mut().find(|(p, _)| p == path) {
+            if let Some(r) = result_ix.get(path).map(|&i| &mut file_results[i].1) {
                 let project = lute_check::cast::PresenceProject {
                     env: fact_env,
                     ladder: ladder.get(path).unwrap_or(&no_ladder),
@@ -2839,10 +2956,7 @@ fn reconcile_collected(
                 }
             }
         }
-        // dsl 0.21.0 §5: `W-BEAT-SHADOWED` — a `select: first` beat an
-        // earlier-ordered, always-eligible, never-spent beat on the same
-        // occasion always beats. Project order is the selection tiebreak.
-        project_diags.extend(lute_check::check_project_beats(group, &beat_foldeds));
+        project_diags.extend(beat_diags);
         // T10/T11: connectivity envelope (dsl §4.3). `PerDocEffects`
         // populated from T8 (per-scene `guaranteed`/`possible_writes`,
         // recomputed here from this root's own docs+resolved schema, keyed
@@ -2882,7 +2996,9 @@ fn reconcile_collected(
             let Some((scene_path, _)) = occurrences.first() else {
                 continue;
             };
-            let Some((_, doc, folded)) = group_full.iter().find(|(p, _, _)| p == scene_path) else {
+            let Some((_, doc, folded)) =
+                group_ix.get(scene_path.as_path()).map(|&i| &group_full[i])
+            else {
                 continue;
             };
             let all_nodes: Vec<lute_syntax::ast::Node> = doc
@@ -3431,7 +3547,16 @@ fn project_compile_pass(
     }
     let mut roots: BTreeMap<PathBuf, RootBuild> = BTreeMap::new();
     let mut identities = BTreeMap::new();
-    for (path, result) in file_results.iter_mut() {
+    // Every file an `E-` project diagnostic is anchored on: its compile is
+    // blocked like a failing per-file check.
+    let error_paths: BTreeSet<&PathBuf> = project_diags
+        .iter()
+        .filter(|(_, d)| d.severity == Severity::Error)
+        .map(|(p, _)| p)
+        .collect();
+    // `(file index, root, rel, component)` of every unblocked document.
+    let mut jobs: Vec<(usize, &PathBuf, String, bool)> = Vec::new();
+    for (i, (path, result)) in file_results.iter().enumerate() {
         let Some((root, input)) = inputs.get(path) else {
             continue;
         };
@@ -3447,27 +3572,45 @@ fn project_compile_pass(
                 .snapshots
                 .push((rel.clone(), input.snapshot.version.clone()));
         }
-        let blocked = !result.ok
-            || project_diags
-                .iter()
-                .any(|(p, d)| p == path && d.severity == Severity::Error);
-        if blocked {
+        if !result.ok || error_paths.contains(path) {
             continue;
         }
-        if component {
-            merge_gate_diags(result, compile_gate_diags(input));
-            continue;
+        if !component {
+            identities.entry(root.clone()).or_insert_with(|| {
+                load_project(root)
+                    .ok()
+                    .flatten()
+                    .map(|p| p.identity)
+                    .unwrap_or_default()
+            });
         }
-        let identity = identities.entry(root.clone()).or_insert_with(|| {
-            load_project(root)
-                .ok()
-                .flatten()
-                .map(|p| p.identity)
-                .unwrap_or_default()
-        });
-        match lute_compile::compile_with_check(input, result.clone(), identity) {
-            Ok(artifact) => build.artifacts.push((rel, artifact)),
-            Err(diags) => merge_gate_diags(result, diags),
+        jobs.push((i, root, rel, component));
+    }
+
+    // Each document compiles independently of every other: in parallel, then
+    // applied in file order so artifacts and merged diagnostics are exactly
+    // the sequential ones.
+    let results: &[(PathBuf, lute_check::CheckResult)] = file_results;
+    let outcomes: Vec<Result<lute_compile::Artifact, Vec<Diagnostic>>> = jobs
+        .par_iter()
+        .map(|&(i, root, _, component)| {
+            let (path, result) = &results[i];
+            let input = &inputs[path].1;
+            if component {
+                Err(compile_gate_diags(input))
+            } else {
+                lute_compile::compile_with_check(input, result.clone(), &identities[root])
+            }
+        })
+        .collect();
+    for ((i, root, rel, _), outcome) in jobs.into_iter().zip(outcomes) {
+        match outcome {
+            Ok(artifact) => roots
+                .get_mut(root)
+                .expect("every job's root was entered above")
+                .artifacts
+                .push((rel, artifact)),
+            Err(diags) => merge_gate_diags(&mut file_results[i].1, diags),
         }
     }
 
@@ -3844,11 +3987,17 @@ fn assemble_root_scenario(
             );
         }
     }
+    let mut group_ix: std::collections::HashMap<&Path, usize> =
+        std::collections::HashMap::with_capacity(group_full.len());
+    for (i, (p, _, _)) in group_full.iter().enumerate() {
+        group_ix.entry(p.as_path()).or_insert(i);
+    }
     for (key, occurrences) in &key_set {
         let Some((scene_path, _)) = occurrences.first() else {
             continue;
         };
-        let Some((_, doc, folded)) = group_full.iter().find(|(p, _, _)| p == scene_path) else {
+        let Some((_, doc, folded)) = group_ix.get(scene_path.as_path()).map(|&i| &group_full[i])
+        else {
             continue;
         };
         let all_nodes: Vec<lute_syntax::ast::Node> = doc

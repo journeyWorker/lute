@@ -857,6 +857,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
     let mut failures: BTreeMap<PathBuf, String> = BTreeMap::new();
     let policy = crate::DenyPolicy::default();
     let mut world_events: BTreeSet<String> = BTreeSet::new();
+    let cache = crate::InputCache::default();
 
     for (file, base) in &reconciled.per_doc {
         if crate::compile_all::is_component_file(file) {
@@ -870,7 +871,8 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
             );
             return Err(ExitCode::from(2));
         };
-        let Some(built) = crate::build_input(file, None, Some(project_dir), None) else {
+        let Some(built) = crate::build_input_with(&cache, file, None, Some(project_dir), None)
+        else {
             return Err(ExitCode::from(2));
         };
         built.report_project_diags();

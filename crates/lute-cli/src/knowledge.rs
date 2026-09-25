@@ -29,6 +29,7 @@ use cel_parser::ast::operators as op;
 use lute_check::{GroundFact, MaySet, ProjectBeatKind, RelVocab};
 use lute_syntax::ast::{Arm, CelSlot, Choice, Document, Node, Objective, Reward};
 use lute_syntax::datalog::{BodyLiteral, Rule, RuleAtom, RuleTerm};
+use rayon::prelude::*;
 use serde_json::{json, Map, Value as Json};
 
 use crate::{ByRoot, DocGroup};
@@ -386,96 +387,103 @@ fn frontmatter_when(doc: &Document) -> Option<String> {
 fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<Guarded> {
     let foldeds: Vec<&lute_check::FoldedEnv> = group.iter().map(|(_, _, f)| f).collect();
     let beats = lute_check::project_beats(docs, &foldeds);
-    let mut out = Vec::new();
-    for (path, doc, folded) in group {
-        let mut w = Walk {
-            document: rel_path(root, path),
-            folded,
-            quest: None,
-            out: Vec::new(),
-        };
-        for b in beats
-            .iter()
-            .filter(|b| b.path == path && b.kind == ProjectBeatKind::Scene)
-        {
-            if let Some(when) = &b.when {
-                let authored = frontmatter_when(doc).unwrap_or_else(|| when.clone());
-                w.push_expanded(
-                    b.name(),
-                    None,
-                    vec![b.id.clone()],
-                    vec![("when", authored, when.clone())],
-                );
-            }
-        }
-        let scene: Vec<String> = lute_check::connectivity::scene_key(doc)
-            .into_iter()
-            .collect();
-        for shot in &doc.shots {
-            w.body(&shot.body, &scene);
-        }
-        // Entries and bundle beats interleave in source order.
-        enum Top<'d> {
-            Entry(&'d lute_syntax::ast::Entry),
-            Beat(&'d lute_syntax::ast::BundleBeat),
-        }
-        let mut tops: Vec<(usize, Top<'_>)> = doc
-            .entries
-            .iter()
-            .map(|e| (e.span.byte_start, Top::Entry(e)))
-            .chain(doc.beats.iter().map(|b| (b.span.byte_start, Top::Beat(b))))
-            .collect();
-        tops.sort_by_key(|(at, _)| *at);
-        let bundle = lute_check::connectivity::bundle_id(doc);
-        for (_, top) in tops {
-            match top {
-                Top::Entry(e) => {
-                    let handles = vec![e.id.clone()];
-                    if let Some(when) = &e.when {
-                        w.push(
-                            format!("entry `{}`", e.id),
-                            None,
-                            handles.clone(),
-                            vec![("when", when)],
-                        );
-                    }
-                    w.body(&e.body, &handles);
-                }
-                Top::Beat(b) => {
-                    let key = match &bundle {
-                        Some(d) => lute_check::bundle_beat_key(d, &b.id),
-                        None => b.id.clone(),
-                    };
-                    let handles = vec![key.clone()];
-                    if let Some(when) = &b.when {
-                        w.push(
-                            format!("beat `{key}`"),
-                            None,
-                            handles.clone(),
-                            vec![("when", when)],
-                        );
-                    }
-                    w.body(&b.body, &handles);
-                }
-            }
-        }
-        for q in &doc.quests {
-            let handles = vec![format!("quest:{}", q.id)];
-            let slots: Vec<(&'static str, &CelSlot)> = q
-                .start
-                .iter()
-                .map(|s| ("start", s))
-                .chain(q.fail.iter().map(|s| ("fail", s)))
-                .collect();
-            w.push(format!("quest `{}`", q.id), None, handles.clone(), slots);
-            w.rewards(&q.rewards, &handles);
-            w.quest = Some(q.id.clone());
-            w.body(&q.body, &handles);
-            w.quest = None;
-        }
-        out.extend(w.out);
+    // Each document's scene beats, in `beats` order — the `filter` a scan per
+    // document used to rebuild.
+    let mut scene_beats: std::collections::HashMap<&Path, Vec<&lute_check::ProjectBeat>> =
+        std::collections::HashMap::new();
+    for b in beats.iter().filter(|b| b.kind == ProjectBeatKind::Scene) {
+        scene_beats.entry(b.path.as_path()).or_default().push(b);
     }
-    out
+    // Every document walks independently: in parallel, concatenated in walk order.
+    let per_doc: Vec<Vec<Guarded>> = group
+        .par_iter()
+        .map(|(path, doc, folded)| {
+            let mut w = Walk {
+                document: rel_path(root, path),
+                folded,
+                quest: None,
+                out: Vec::new(),
+            };
+            for b in scene_beats.get(path.as_path()).into_iter().flatten() {
+                if let Some(when) = &b.when {
+                    let authored = frontmatter_when(doc).unwrap_or_else(|| when.clone());
+                    w.push_expanded(
+                        b.name(),
+                        None,
+                        vec![b.id.clone()],
+                        vec![("when", authored, when.clone())],
+                    );
+                }
+            }
+            let scene: Vec<String> = lute_check::connectivity::scene_key(doc)
+                .into_iter()
+                .collect();
+            for shot in &doc.shots {
+                w.body(&shot.body, &scene);
+            }
+            // Entries and bundle beats interleave in source order.
+            enum Top<'d> {
+                Entry(&'d lute_syntax::ast::Entry),
+                Beat(&'d lute_syntax::ast::BundleBeat),
+            }
+            let mut tops: Vec<(usize, Top<'_>)> = doc
+                .entries
+                .iter()
+                .map(|e| (e.span.byte_start, Top::Entry(e)))
+                .chain(doc.beats.iter().map(|b| (b.span.byte_start, Top::Beat(b))))
+                .collect();
+            tops.sort_by_key(|(at, _)| *at);
+            let bundle = lute_check::connectivity::bundle_id(doc);
+            for (_, top) in tops {
+                match top {
+                    Top::Entry(e) => {
+                        let handles = vec![e.id.clone()];
+                        if let Some(when) = &e.when {
+                            w.push(
+                                format!("entry `{}`", e.id),
+                                None,
+                                handles.clone(),
+                                vec![("when", when)],
+                            );
+                        }
+                        w.body(&e.body, &handles);
+                    }
+                    Top::Beat(b) => {
+                        let key = match &bundle {
+                            Some(d) => lute_check::bundle_beat_key(d, &b.id),
+                            None => b.id.clone(),
+                        };
+                        let handles = vec![key.clone()];
+                        if let Some(when) = &b.when {
+                            w.push(
+                                format!("beat `{key}`"),
+                                None,
+                                handles.clone(),
+                                vec![("when", when)],
+                            );
+                        }
+                        w.body(&b.body, &handles);
+                    }
+                }
+            }
+            for q in &doc.quests {
+                let handles = vec![format!("quest:{}", q.id)];
+                let slots: Vec<(&'static str, &CelSlot)> = q
+                    .start
+                    .iter()
+                    .map(|s| ("start", s))
+                    .chain(q.fail.iter().map(|s| ("fail", s)))
+                    .collect();
+                w.push(format!("quest `{}`", q.id), None, handles.clone(), slots);
+                w.rewards(&q.rewards, &handles);
+                w.quest = Some(q.id.clone());
+                w.body(&q.body, &handles);
+                w.quest = None;
+            }
+            w.out
+        })
+        .collect();
+    per_doc.into_iter().flatten().collect()
 }
 
 /// Every asserting site in one root: ``scene `key` (path)``, ``quest `id` ``,

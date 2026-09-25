@@ -35,9 +35,10 @@ use lute_compile::locale::LocaleBundle;
 use lute_compile::Artifact;
 use lute_manifest::project::load_project;
 
-use crate::{
-    build_input, gate_for_doc, reconciled_project_results, render_diagnostics, DenyPolicy,
-};
+use rayon::prelude::*;
+
+use crate::input_cache::InputCache;
+use crate::{gate_for_doc, reconciled_project_results, render_diagnostics, DenyPolicy};
 
 /// The project index's fixed file name inside the output directory.
 const INDEX_FILE: &str = "project.index.json";
@@ -141,11 +142,42 @@ pub fn run(
 
     // `per_doc` is a `BTreeMap` — already path-sorted, so `documents` and every
     // conflict message below is deterministic without a second sort.
-    for (file, base) in &reconciled.per_doc {
-        if is_component_file(file) {
-            continue;
-        }
-        let Some(rel) = rel_slash(file, project) else {
+    //
+    // Every document's input and compile are independent of every other: they
+    // run in parallel against one per-run [`InputCache`], then fold back in
+    // path order below, so stderr, early exits, and the output are exactly
+    // the sequential ones.
+    let cache = InputCache::default();
+    type Built = (
+        crate::BuiltInput,
+        Option<Result<Artifact, Vec<lute_core_span::Diagnostic>>>,
+    );
+    let prepared: Vec<(&PathBuf, Option<String>, Result<Built, String>)> = reconciled
+        .per_doc
+        .par_iter()
+        .filter(|(file, _)| !is_component_file(file))
+        .map(|(file, base)| {
+            let rel = rel_slash(file, project);
+            let built = crate::read_document(file).map(|text| {
+                let (built, _) = crate::assemble_input(
+                    &cache,
+                    file,
+                    text,
+                    providers,
+                    Some(project),
+                    permission_profile,
+                );
+                let outcome = (rel.is_some() && !built.resolve_error).then(|| {
+                    let gate = gate_for_doc(&reconciled, file, base);
+                    lute_compile::compile_with_check(&built.input, gate, &identity)
+                });
+                (built, outcome)
+            });
+            (file, rel, built)
+        })
+        .collect();
+    for (file, rel, built) in prepared {
+        let Some(rel) = rel else {
             eprintln!(
                 "lute compile --all: {} is not under --project {}",
                 file.display(),
@@ -153,23 +185,21 @@ pub fn run(
             );
             return ExitCode::from(2);
         };
-        let Some(built) = build_input(file, providers, Some(project), permission_profile) else {
-            return ExitCode::from(2);
+        let (built, outcome) = match built {
+            Ok(b) => b,
+            Err(message) => {
+                eprintln!("{message}");
+                return ExitCode::from(2);
+            }
         };
         built.report_project_diags();
-        let crate::BuiltInput {
-            input,
-            resolve_error,
-            ..
-        } = built;
         // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
         // option, missing active plugin, bad identity template) is a build-failing
         // error; it printed above, and it MUST gate here or it would pass silently.
-        if resolve_error {
+        let Some(outcome) = outcome else {
             return ExitCode::from(1);
-        }
-        let gate = gate_for_doc(&reconciled, file, base);
-        match lute_compile::compile_with_check(&input, gate, &identity) {
+        };
+        match outcome {
             Ok(mut artifact) => {
                 if let Some(bundle) = bundle {
                     let missing = lute_compile::locale::merge_locales(&mut artifact, bundle);
