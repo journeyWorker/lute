@@ -32,6 +32,12 @@ pub type Fact = (String, Vec<String>);
 /// A variable binding produced by the body join.
 pub type Binding = BTreeMap<String, String>;
 
+/// Closed entity kinds, name → members. A rule-body atom naming a kind is a
+/// membership test (`companion(P)` binds `P` to each member), never a fact
+/// lookup: kinds and relations share one predicate namespace
+/// (`E-KIND-NAME-CLASH`), and no fact is ever asserted under a kind's name.
+pub type Kinds = BTreeMap<String, Vec<String>>;
+
 /// A rule term: a variable (bound during the join) or a ground constant.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Term {
@@ -68,6 +74,8 @@ pub struct Program {
     rules: Vec<Rule>,
     /// Least stratum per derived relation.
     strata: BTreeMap<String, usize>,
+    /// Closed entity kinds the rule bodies may name as domain predicates.
+    kinds: Kinds,
 }
 
 /// The least fixpoint over one base fact set.
@@ -147,10 +155,11 @@ impl Program {
 
     /// The checker's merged rules (`RelVocab.rules`), lowered exactly as
     /// `lute-compile` lowers them to the IR (`RuleTerm::Bool` → a `"true"` /
-    /// `"false"` constant).
+    /// `"false"` constant; a rule reading entity-indexed state by a rule
+    /// variable grounded per member, `lute_check::evaluable_rules`), with the
+    /// vocabulary's closed entity kinds.
     pub fn from_vocab(vocab: &RelVocab) -> Self {
-        let rules = vocab
-            .rules
+        let rules = lute_check::evaluable_rules(vocab)
             .iter()
             .map(|r| Rule {
                 head: syntax_atom(&r.rule.head),
@@ -158,13 +167,23 @@ impl Program {
                 raw: r.raw.clone(),
             })
             .collect();
-        Self::new(rules)
+        Self::new(rules).with_kinds(closed_kinds(&vocab.kinds))
     }
 
     fn new(rules: Vec<Rule>) -> Self {
         let derived: BTreeSet<String> = rules.iter().map(|r| r.head.rel.clone()).collect();
         let strata = compute_strata(&rules, &derived);
-        Self { rules, strata }
+        Self {
+            rules,
+            strata,
+            kinds: Kinds::new(),
+        }
+    }
+
+    /// The closed entity kinds rule bodies read as membership tests.
+    pub fn with_kinds(mut self, kinds: Kinds) -> Self {
+        self.kinds = kinds;
+        self
     }
 
     pub fn is_empty(&self) -> bool {
@@ -197,7 +216,7 @@ impl Program {
                         continue;
                     }
                     let mut unknown = Vec::new();
-                    for binding in solve_body(&rule.body, &out.facts, state, &mut unknown) {
+                    for binding in solve_body(&rule.body, &out.facts, &self.kinds, state, &mut unknown) {
                         if let Some(args) = ground_atom(&rule.head, &binding) {
                             let fact = (rule.head.rel.clone(), args);
                             if !out.facts.contains(&fact) {
@@ -281,7 +300,7 @@ impl Program {
                 continue;
             };
             let mut unknown = Vec::new();
-            let sols = solve_from(&rule.body, &closure.facts, state, &mut unknown, seed);
+            let sols = solve_from(&rule.body, &closure.facts, &self.kinds, state, &mut unknown, seed);
             let Some(b) = sols.into_iter().find(|b| {
                 positive_atoms(&rule.body)
                     .filter_map(|a| ground_atom(a, b).map(|args| (a.rel.clone(), args)))
@@ -295,8 +314,16 @@ impl Program {
                 .map(|lit| match lit {
                     Lit::Atom { atom, negated } => {
                         let f = (atom.rel.clone(), ground_atom(atom, &b).unwrap_or_default());
-                        if *negated {
+                        if *negated && f.1.len() != atom.terms.len() {
+                            // `not rel(…, _)` (dsl 0.24 T3-9): no tuple matched.
+                            Premise::Test {
+                                text: render_test(lit, &b),
+                                holds: Some(true),
+                            }
+                        } else if *negated {
                             Premise::Absent(f)
+                        } else if self.kinds.contains_key(&atom.rel) {
+                            kind_premise(atom, &b, true)
                         } else {
                             Premise::Holds(Box::new(self.prove(closure, &f, state)))
                         }
@@ -365,7 +392,7 @@ impl Program {
                 negated: false,
             } = lit
             {
-                let next = extend(atom, &bindings, &closure.facts);
+                let next = extend(atom, &bindings, &closure.facts, &self.kinds);
                 if next.is_empty() {
                     failed_at = Some(i);
                     break;
@@ -380,7 +407,7 @@ impl Program {
                     rule.body
                         .iter()
                         .filter(|lit| {
-                            test_holds(lit, b, &closure.facts, state, &mut Vec::new())
+                            test_holds(lit, b, &closure.facts, &self.kinds, state, &mut Vec::new())
                                 != Some(true)
                         })
                         .count()
@@ -395,6 +422,12 @@ impl Program {
         let mut premises = Vec::with_capacity(rule.body.len());
         for (i, lit) in rule.body.iter().enumerate() {
             let premise = match lit {
+                Lit::Atom {
+                    atom,
+                    negated: false,
+                } if self.kinds.contains_key(&atom.rel) && (failed_at == Some(i) || reached(i)) => {
+                    kind_premise(atom, &b, failed_at != Some(i))
+                }
                 Lit::Atom {
                     atom,
                     negated: false,
@@ -423,9 +456,22 @@ impl Program {
                 }
                 // Filters are judged only once the join completed.
                 other if failed_at.is_some() => Premise::Unreached(render_test(other, &b)),
+                Lit::Atom { atom, .. } if ground_atom(atom, &b).is_none() => Premise::Test {
+                    text: render_test(lit, &b),
+                    holds: test_holds(lit, &b, &closure.facts, &self.kinds, state, &mut Vec::new()),
+                },
                 Lit::Atom { atom, .. } => {
                     let f = (atom.rel.clone(), ground_atom(atom, &b).unwrap_or_default());
-                    if closure.facts.contains(&f) {
+                    if self.kinds.contains_key(&atom.rel) {
+                        if atom_holds(&f, &closure.facts, &self.kinds) {
+                            Premise::Test {
+                                text: format!("not {}", render_atom(atom, &b)),
+                                holds: Some(false),
+                            }
+                        } else {
+                            Premise::Absent(f)
+                        }
+                    } else if closure.facts.contains(&f) {
                         Premise::Present(Box::new(self.prove(closure, &f, state)))
                     } else {
                         Premise::Absent(f)
@@ -433,7 +479,7 @@ impl Program {
                 }
                 other => Premise::Test {
                     text: render_test(other, &b),
-                    holds: test_holds(other, &b, &closure.facts, state, &mut Vec::new()),
+                    holds: test_holds(other, &b, &closure.facts, &self.kinds, state, &mut Vec::new()),
                 },
             };
             premises.push(premise);
@@ -613,22 +659,24 @@ fn positive_atoms(body: &[Lit]) -> impl Iterator<Item = &Atom> {
 fn solve_body(
     body: &[Lit],
     facts: &BTreeSet<Fact>,
+    kinds: &Kinds,
     state: &EffectiveState<'_>,
     unknown: &mut Vec<UnresolvedAtom>,
 ) -> Vec<Binding> {
-    solve_from(body, facts, state, unknown, Binding::new())
+    solve_from(body, facts, kinds, state, unknown, Binding::new())
 }
 
 fn solve_from(
     body: &[Lit],
     facts: &BTreeSet<Fact>,
+    kinds: &Kinds,
     state: &EffectiveState<'_>,
     unknown: &mut Vec<UnresolvedAtom>,
     seed: Binding,
 ) -> Vec<Binding> {
     let mut bindings = vec![seed];
     for atom in positive_atoms(body) {
-        bindings = extend(atom, &bindings, facts);
+        bindings = extend(atom, &bindings, facts, kinds);
         if bindings.is_empty() {
             return bindings;
         }
@@ -636,14 +684,26 @@ fn solve_from(
     bindings.retain(|b| {
         body.iter().all(|lit| match lit {
             Lit::Atom { negated: false, .. } => true,
-            other => test_holds(other, b, facts, state, unknown) == Some(true),
+            other => test_holds(other, b, facts, kinds, state, unknown) == Some(true),
         })
     });
     bindings
 }
 
-fn extend(atom: &Atom, bindings: &[Binding], facts: &BTreeSet<Fact>) -> Vec<Binding> {
+/// Extend every binding through one positive atom: each matching fact, or —
+/// for an entity kind — each member.
+fn extend(atom: &Atom, bindings: &[Binding], facts: &BTreeSet<Fact>, kinds: &Kinds) -> Vec<Binding> {
     let mut next = Vec::new();
+    if let Some(members) = kinds.get(&atom.rel) {
+        for b in bindings {
+            for m in members {
+                if let Some(ext) = unify(&atom.terms, std::slice::from_ref(m), b) {
+                    next.push(ext);
+                }
+            }
+        }
+        return next;
+    }
     for b in bindings {
         for (rel, args) in facts {
             if rel != &atom.rel || args.len() != atom.terms.len() {
@@ -657,20 +717,71 @@ fn extend(atom: &Atom, bindings: &[Binding], facts: &BTreeSet<Fact>) -> Vec<Bind
     next
 }
 
+/// A ground atom holds: a member of the entity kind it names, else a fact.
+fn atom_holds(f: &Fact, facts: &BTreeSet<Fact>, kinds: &Kinds) -> bool {
+    match kinds.get(&f.0) {
+        Some(members) => f.1.len() == 1 && members.contains(&f.1[0]),
+        None => facts.contains(f),
+    }
+}
+
+/// An entity-kind atom as a proof premise: membership, not a fact.
+fn kind_premise(atom: &Atom, b: &Binding, holds: bool) -> Premise {
+    Premise::Test {
+        text: format!("{} — entity kind `{}`", render_atom(atom, b), atom.rel),
+        holds: Some(holds),
+    }
+}
+
+/// The closed kinds of a checker vocabulary (an `open:` kind's members are
+/// engine-registered, never enumerable here).
+pub fn closed_kinds(kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>) -> Kinds {
+    kinds
+        .iter()
+        .filter_map(|(name, d)| match &d.shape {
+            lute_manifest::relations::KindShape::Members(ms) => Some((name.clone(), ms.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The closed kinds of an artifact / project-index `entities` array (IR
+/// `EntityKindEntry`: `{name, members?, open}`).
+pub fn ir_kinds(entities: Option<&Json>) -> Kinds {
+    entities
+        .and_then(Json::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|e| {
+                    let name = e.get("name").and_then(Json::as_str)?;
+                    let members = e.get("members").and_then(Json::as_array)?;
+                    Some((
+                        name.to_string(),
+                        members.iter().filter_map(|m| m.as_str().map(str::to_string)).collect(),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// A filter literal under `b`: a negated atom (absent from `facts`), a
 /// comparison or a guard. `None` only for a guard that decided neither way.
 fn test_holds(
     lit: &Lit,
     b: &Binding,
     facts: &BTreeSet<Fact>,
+    kinds: &Kinds,
     state: &EffectiveState<'_>,
     unknown: &mut Vec<UnresolvedAtom>,
 ) -> Option<bool> {
     match lit {
         Lit::Atom { negated: false, .. } => Some(true),
         Lit::Atom { atom, .. } => Some(match ground_atom(atom, b) {
-            Some(args) => !facts.contains(&(atom.rel.clone(), args)),
-            None => true, // unbound: safety-checked away in practice
+            Some(args) => !atom_holds(&(atom.rel.clone(), args), facts, kinds),
+            // An anonymous `_` (dsl 0.24 T3-9) — the only variable safety
+            // leaves unbound here — is existential: no matching tuple at all.
+            None => extend(atom, std::slice::from_ref(b), facts, kinds).is_empty(),
         }),
         Lit::Cmp { lhs, rhs, negated } => match (ground_term(lhs, b), ground_term(rhs, b)) {
             (Some(l), Some(r)) => Some((l == r) != *negated),
@@ -795,7 +906,13 @@ fn substitute_vars(cel: &str, binding: &Binding) -> String {
 fn render_term(t: &Term, b: &Binding) -> String {
     match t {
         Term::Const(c) => c.clone(),
-        Term::Var(v) => b.get(v).cloned().unwrap_or_else(|| v.clone()),
+        Term::Var(v) => b.get(v).cloned().unwrap_or_else(|| {
+            if lute_syntax::datalog::is_anonymous_var(v) {
+                "_".to_string()
+            } else {
+                v.clone()
+            }
+        }),
     }
 }
 

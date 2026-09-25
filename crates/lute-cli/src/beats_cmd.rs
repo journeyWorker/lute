@@ -66,6 +66,8 @@ fn once_label(once: BeatOnce) -> &'static str {
         BeatOnce::Run => "run",
         BeatOnce::User => "user",
         BeatOnce::None => "no",
+        BeatOnce::Day => "day",
+        BeatOnce::Slot => "slot",
     }
 }
 
@@ -74,8 +76,24 @@ fn one_line(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// A beat's `when` as the author wrote it (`@runsAtLeast(2)`), or — with
+/// `--expand` — with its `@def`s expanded (dsl 0.24.0 T3-12).
+fn when_text(b: &ProjectBeat<'_>, expand: bool) -> Option<String> {
+    if expand {
+        b.when.as_deref().map(one_line)
+    } else {
+        b.when_slot.map(|s| one_line(&s.raw))
+    }
+}
+
 /// See [`crate::Command::Beats`].
-pub(crate) fn run_beats(dir: &Path, occasions: &[String], targets: &[String], json_out: bool) -> ExitCode {
+pub(crate) fn run_beats(
+    dir: &Path,
+    occasions: &[String],
+    targets: &[String],
+    json_out: bool,
+    expand: bool,
+) -> ExitCode {
     let (file_results, by_root) = match crate::collect_project_docs(dir, None, false) {
         Ok(v) => v,
         Err(code) => return code,
@@ -120,7 +138,7 @@ pub(crate) fn run_beats(dir: &Path, occasions: &[String], targets: &[String], js
         if json_out {
             roots_json.push(root_json(root, &beats, &verdicts, &ladders));
         } else {
-            render_root(&mut text, root, &beats, &verdicts, &ladders);
+            render_root(&mut text, root, &beats, &verdicts, &ladders, expand);
         }
     }
     if let Some(o) = occasions.iter().find(|o| !known_occasions.contains(*o)) {
@@ -217,6 +235,7 @@ fn render_root(
     beats: &[ProjectBeat<'_>],
     verdicts: &[Vec<&Diagnostic>],
     ladders: &[Ladder<'_>],
+    expand: bool,
 ) {
     let _ = writeln!(out, "project root: {}", root.display());
     if ladders.is_empty() {
@@ -263,7 +282,7 @@ fn render_root(
                 once,
                 verdict_words(&verdicts[i]),
                 b.after.map_or_else(|| "-".to_string(), one_line),
-                b.when.as_deref().map_or_else(|| "-".to_string(), one_line),
+                when_text(b, expand).unwrap_or_else(|| "-".to_string()),
             ]);
         }
         let widths: Vec<usize> = (0..8)
@@ -318,6 +337,10 @@ fn root_json(
                     }
                     if let Some(w) = &b.when {
                         m.insert("when".into(), json!(w));
+                    }
+                    // T3-12: the author's text beside the expansion.
+                    if let Some(w) = when_text(b, false) {
+                        m.insert("whenAuthored".into(), json!(w));
                     }
                     if let Some(t) = &b.title {
                         m.insert("title".into(), json!(t));

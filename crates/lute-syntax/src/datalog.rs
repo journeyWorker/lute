@@ -13,7 +13,9 @@
 //! Rule        ::= Atom ":-" Literal ("," Literal)*
 //! Literal     ::= "not" WS Atom | "cel(" CelString ")" | Term ("="|"!=") Term | Atom
 //! Atom        ::= Ident "(" Term ("," Term)* ")"
-//! Term        ::= Ident | "true" | "false"   (* "_" is FACT-pattern-only; in a rule it is Malformed *)
+//! Term        ::= Ident | "true" | "false" | "_"
+//!                 (* "_" in a rule BODY atom is a fresh anonymous variable (dsl 0.24 T3-9);
+//!                    it is Malformed in a rule head and in a comparison *)
 //! Ident       ::= [A-Za-z][A-Za-z0-9_]*       (* CelIdent — no "-" *)
 //! CelString   ::= "\"" ([^"\\] | \\.)* "\""
 //! ```
@@ -58,11 +60,22 @@ pub struct RuleAtom {
 }
 
 /// Var = leading ASCII uppercase ident; `true`/`false` = Bool; other idents = Const (§7.1).
+/// A `_` in a rule body atom becomes a fresh anonymous `Var` named `_0`, `_1`, …
+/// in rule order ([`is_anonymous_var`]) — each `_` distinct, never nameable by
+/// the author (an authored ident starts with a letter).
 #[derive(Clone, Debug, PartialEq)]
 pub enum RuleTerm {
     Var(String),
     Const(String),
     Bool(bool),
+}
+
+/// `true` for the fresh variable a body-atom `_` parses to (dsl 0.24 T3-9).
+/// It is bound by its positive atom like any variable but never read
+/// elsewhere; in a negated atom it is existential (`not seen(W, _)`: no
+/// `seen(W, …)` tuple at all).
+pub fn is_anonymous_var(name: &str) -> bool {
+    name.starts_with('_')
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -85,7 +98,7 @@ pub enum DatalogError {
 
 /// Parses a fact pattern: `rel(a, b)` / `rel(a, _)`. Total — never panics.
 pub fn parse_fact(input: &str) -> Result<FactPattern, DatalogError> {
-    let mut c = Cur { b: input.as_bytes(), i: 0 };
+    let mut c = Cur { b: input.as_bytes(), i: 0, anon: 0 };
     c.ws();
     let pattern_start = c.i;
     let (relation, relation_span) = c.ident().ok_or_else(|| DatalogError::Malformed {
@@ -110,9 +123,18 @@ pub fn parse_fact(input: &str) -> Result<FactPattern, DatalogError> {
 
 /// Parses one Horn-clause rule: `Head :- Body`. Total — never panics.
 pub fn parse_rule(input: &str) -> Result<Rule, DatalogError> {
-    let mut c = Cur { b: input.as_bytes(), i: 0 };
+    let mut c = Cur { b: input.as_bytes(), i: 0, anon: 0 };
     c.ws();
+    let head_start = c.i;
     let head = parse_rule_atom(&mut c)?;
+    if head.terms.iter().any(|t| matches!(t, RuleTerm::Var(v) if is_anonymous_var(v))) {
+        return Err(DatalogError::Malformed {
+            at: head_start,
+            msg: "`_` cannot appear in a rule head: every head argument must be a bound \
+                  variable or a constant (dsl 0.24 T3-9)"
+                .to_string(),
+        });
+    }
     c.ws();
     if !eat_str(&mut c, ":-") {
         return Err(DatalogError::Malformed {
@@ -143,6 +165,8 @@ pub fn parse_rule(input: &str) -> Result<Rule, DatalogError> {
 struct Cur<'a> {
     b: &'a [u8],
     i: usize,
+    /// The next anonymous-variable index of the rule being parsed.
+    anon: usize,
 }
 
 impl<'a> Cur<'a> {
@@ -272,11 +296,17 @@ fn classify_rule_term(name: String) -> RuleTerm {
 
 fn parse_rule_term(c: &mut Cur) -> Result<RuleTerm, DatalogError> {
     if c.peek() == Some(b'_') {
-        return Err(DatalogError::Malformed {
-            at: c.i,
-            msg: "`_` is retract-pattern-only; rule terms are Var or Const (dsl 0.3.0 §7.1)"
-                .to_string(),
-        });
+        let at = c.i;
+        c.i += 1;
+        if c.peek().is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_') {
+            return Err(DatalogError::Malformed {
+                at,
+                msg: "a rule term is an identifier, `true`, `false`, or a lone `_`".to_string(),
+            });
+        }
+        let name = format!("_{}", c.anon);
+        c.anon += 1;
+        return Ok(RuleTerm::Var(name));
     }
     let at = c.i;
     let (name, _) = c.ident().ok_or_else(|| DatalogError::Malformed {
@@ -412,7 +442,16 @@ fn parse_body_literal(c: &mut Cur) -> Result<BodyLiteral, DatalogError> {
         });
     };
     c.ws();
+    let rhs_at = c.i;
     let rhs = parse_rule_term(c)?;
+    if matches!(&rhs, RuleTerm::Var(v) if is_anonymous_var(v)) {
+        return Err(DatalogError::Malformed {
+            at: rhs_at,
+            msg: "`_` is only an atom argument; a comparison needs a variable or a constant \
+                  (dsl 0.24 T3-9)"
+                .to_string(),
+        });
+    }
     Ok(BodyLiteral::Cmp { lhs, rhs, negated, span: (lit_start, c.i) })
 }
 
@@ -485,19 +524,33 @@ mod tests {
     }
 
     #[test]
-    fn rule_function_term_and_wildcard_are_errors() {
+    fn rule_function_term_is_an_error() {
         assert!(matches!(
             parse_rule("d(X) :- b(f(X))"),
             Err(DatalogError::FunctionTerm { .. })
         ));
         assert!(matches!(
-            parse_rule("d(X) :- b(X), c(_)"),
-            Err(DatalogError::Malformed { .. })
-        ));
-        assert!(matches!(
             parse_rule("d(X) :- b(X + 1)"),
             Err(DatalogError::FunctionTerm { .. })
         ));
+    }
+
+    /// dsl 0.24 T3-9: every body `_` is its own fresh variable; `_` stays
+    /// illegal where it could never be bound (head, comparison).
+    #[test]
+    fn body_wildcards_are_distinct_anonymous_variables() {
+        let r = parse_rule("testified(W) :- sawAt(W, _, _), not hid(W, _)").unwrap();
+        let BodyLiteral::Pos(a) = &r.body[0] else { panic!("{r:?}") };
+        assert_eq!(
+            a.terms,
+            vec![RuleTerm::Var("W".into()), RuleTerm::Var("_0".into()), RuleTerm::Var("_1".into())]
+        );
+        let BodyLiteral::Neg(n) = &r.body[1] else { panic!("{r:?}") };
+        assert_eq!(n.terms[1], RuleTerm::Var("_2".into()));
+        assert!(is_anonymous_var("_2") && !is_anonymous_var("W"));
+        for bad in ["d(_) :- b(X)", "d(X) :- b(X), X = _", "d(X) :- b(X, _y)"] {
+            assert!(matches!(parse_rule(bad), Err(DatalogError::Malformed { .. })), "{bad}");
+        }
     }
 
     #[test]

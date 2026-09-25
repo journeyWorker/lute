@@ -203,6 +203,7 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
     };
     let installed = InstalledPlugins {
         by_id: BTreeMap::from([("third.party".to_string(), InstalledPlugin { loaded: pkg })]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {

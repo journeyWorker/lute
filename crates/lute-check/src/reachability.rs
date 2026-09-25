@@ -42,14 +42,17 @@
 //! independently dead for another reason. `E-MAYBE-UNSET` is NOT a
 //! derivative — it stays independent (§4).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cel_parser::ast::{operators as op, Expr};
 use cel_parser::reference::Val;
+use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, CelSlot, Document, Match, Node, Objective, Quest};
+use lute_syntax::ast::{
+    Arm, AttrValue, CelSlot, Choice, ClipNode, Document, Match, Node, Objective, Quest,
+};
 
 use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
@@ -57,7 +60,7 @@ use crate::decide::{
     analyze_unset_sentinel_slot, decide_slot, DecideCtx, Decided, DollarBinding, UnsetSentinelHit,
 };
 use crate::match_check::{
-    infer_domain, is_pattern_literals, literal_is_foreign, param_domain, quest_state_is_literal,
+    is_pattern_literals, literal_is_foreign, param_domain, quest_state_is_literal,
     subject_path, Domain, DomainInfo, DomainValue, Interval, NumCoverage,
 };
 use crate::solution::{disjoint, solution_set, SolutionSet};
@@ -216,7 +219,13 @@ fn check_code_after_next(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
 /// arms and are skipped. `DefTable` is built from `folded.def_bodies` +
 /// `folded.env.def_params` (D2) so a `test="@never"` guard hidden behind a
 /// frontmatter `defs:` entry is caught exactly like an inline literal guard.
-pub(crate) fn check_reachability(doc: &Document, folded: &FoldedEnv) -> Vec<Diagnostic> {
+/// `snapshot` tells which directives write state (a body running one makes
+/// no scalar [`Assumption`], dsl 0.24.0).
+pub(crate) fn check_reachability(
+    doc: &Document,
+    folded: &FoldedEnv,
+    snapshot: &CapabilitySnapshot,
+) -> Vec<Diagnostic> {
     let defs = DefTable {
         bodies: &folded.def_bodies,
         params: &folded.env.def_params,
@@ -248,7 +257,12 @@ pub(crate) fn check_reachability(doc: &Document, folded: &FoldedEnv) -> Vec<Diag
         params: &param_domains,
         facts: None,
     };
-    let mut diags = check_reachability_in(doc, &defs, &base_ctx);
+    let env = ReachEnv {
+        def_types: &folded.env.def_types,
+        beat_when: folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()),
+        snapshot: Some(snapshot),
+    };
+    let mut diags = check_reachability_in(doc, &defs, &base_ctx, &env);
     // dsl 0.21.0 §5: a scene beat's `when` is a listed guard slot (the
     // `<quest start>` treatment: `E-UNSET-LITERAL` independently, no
     // suppression) and a `when` that decides false never lets the beat be
@@ -320,15 +334,31 @@ pub(crate) fn check_reachability_in(
     doc: &Document,
     defs: &DefTable<'_>,
     base_ctx: &DecideCtx<'_>,
+    env: &ReachEnv<'_>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for shot in &doc.shots {
-        walk_reach(&shot.body, defs, base_ctx, &mut diags);
-    }
+    // One body's walk under the `when` it runs behind (dsl 0.24.0).
+    let walk_body =
+        |bodies: &[&[Node]], when: Option<&CelSlot>, diags: &mut Vec<Diagnostic>| {
+            let assumption = when.zip(env.snapshot).and_then(|(when, snapshot)| {
+                Assumption::new(when, bodies, defs, env.def_types, base_ctx.schema, snapshot)
+            });
+            let rx = Reach {
+                def_types: env.def_types,
+                assume: assumption.as_ref(),
+            };
+            for body in bodies {
+                walk_reach(body, defs, &rx, base_ctx, diags);
+            }
+        };
+    // A scene's shots are one body: `scene.*`/`run.*` persist across shots.
+    let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
+    walk_body(&shots, env.beat_when, &mut diags);
     for quest in &doc.quests {
         diags.extend(check_quest_reach(quest, defs, base_ctx));
         diags.extend(check_objective_contradiction(quest, defs, base_ctx));
-        walk_reach(&quest.body, defs, base_ctx, &mut diags);
+        diags.extend(check_handler_after_completion(quest, defs));
+        walk_body(&[&quest.body], None, &mut diags);
     }
     // dsl 0.19.0 §4: an entry body is an ordinary node stream — its
     // `<match>` arms get the same dead-arm / dead-otherwise verdicts.
@@ -349,13 +379,187 @@ pub(crate) fn check_reachability_in(
                 ));
             }
         }
-        walk_reach(&entry.body, defs, base_ctx, &mut diags);
+        walk_body(&[&entry.body], entry.when.as_ref(), &mut diags);
     }
     // dsl 0.23.0 §4: a bundle beat body is a scene body.
     for beat in &doc.beats {
-        walk_reach(&beat.body, defs, base_ctx, &mut diags);
+        walk_body(&[&beat.body], beat.when.as_ref(), &mut diags);
     }
     diags
+}
+
+/// What [`check_reachability_in`] needs beyond the decide context (dsl
+/// 0.24.0): the def result types a `<match on="@def">` subject takes its
+/// domain from, the scene beat's `when` (a frontmatter slot, outside the
+/// document tree), and the snapshot a body's directives are looked up in —
+/// `None` (a component body) makes no [`Assumption`].
+pub(crate) struct ReachEnv<'a> {
+    pub(crate) def_types: &'a BTreeMap<String, Type>,
+    pub(crate) beat_when: Option<&'a CelSlot>,
+    pub(crate) snapshot: Option<&'a CapabilitySnapshot>,
+}
+
+/// One body's walk context: [`ReachEnv::def_types`] and the body's own
+/// [`Assumption`].
+struct Reach<'a> {
+    def_types: &'a BTreeMap<String, Type>,
+    assume: Option<&'a Assumption>,
+}
+
+/// A beat's / entry's `when` as an assumption over the body it guards (dsl
+/// 0.24.0): the body runs only once the guard held, so a `<match>` literal
+/// the guard rules out can never be the subject's value there. Kept to what
+/// the body cannot change: the guard's top-level conjuncts over `run.*` /
+/// `user.*` / `prev.*` paths no `::set` / `<choice into>` in the body writes
+/// — none at all once the body runs a `::use` or a state-writing directive —
+/// plus the paths its presence guards prove (nothing unsets a path).
+struct Assumption {
+    raw: String,
+    conjuncts: Vec<(String, SolutionSet)>,
+    present: crate::defassign::Assigned,
+}
+
+impl Assumption {
+    fn new(
+        when: &CelSlot,
+        bodies: &[&[Node]],
+        defs: &DefTable<'_>,
+        def_types: &BTreeMap<String, Type>,
+        schema: &crate::meta::StateSchema,
+        snapshot: &CapabilitySnapshot,
+    ) -> Option<Self> {
+        let raw = when.raw.trim();
+        if raw.is_empty() {
+            return None;
+        }
+        let mut written = BTreeSet::new();
+        let mut opaque = false;
+        for body in bodies {
+            opaque |= scan_writes(body, snapshot, &mut written);
+        }
+        let conjuncts = if opaque {
+            Vec::new()
+        } else {
+            let overlaps = |p: &str, w: &str| {
+                p == w || p.starts_with(&format!("{w}.")) || w.starts_with(&format!("{p}."))
+            };
+            when_conjuncts(raw, defs, schema, None)
+                .0
+                .into_iter()
+                .filter(|(p, _)| {
+                    matches!(p.split('.').next(), Some("run" | "user" | "prev"))
+                        && !written.iter().any(|w| overlaps(p, w))
+                })
+                .collect()
+        };
+        let scope = crate::defassign::Scope {
+            schema,
+            defs: DefTable {
+                bodies: defs.bodies,
+                params: defs.params,
+            },
+            def_types,
+        };
+        let present = crate::defassign::assumed_present(Some(when), &scope);
+        (!conjuncts.is_empty() || !present.is_empty()).then(|| Self {
+            raw: raw.to_string(),
+            conjuncts,
+            present,
+        })
+    }
+
+    /// Whether the guard rules out `item` as the value of `path`.
+    fn rules_out(&self, path: &str, item: &CoverItem, schema: &crate::meta::StateSchema) -> bool {
+        let mut on_path = self
+            .conjuncts
+            .iter()
+            .filter(|(p, _)| p == path)
+            .map(|(_, set)| set);
+        match item {
+            // A comparison, an ordering, or a bare bool read is true only on
+            // a value (`!=` is true on `unset`, dsl 0.23.0 §9).
+            CoverItem::Unset => {
+                crate::defassign::is_present(path, &self.present, schema)
+                    || on_path.any(|set| !matches!(set, SolutionSet::Except(_)))
+            }
+            CoverItem::Value(v) => {
+                let lit = SolutionSet::Values(std::iter::once(v.clone()).collect());
+                on_path.any(|set| disjoint(set, &lit))
+            }
+            CoverItem::Num(iv) => {
+                let lit = SolutionSet::Interval {
+                    lo: iv.lo,
+                    lo_inc: iv.lo.is_finite(),
+                    hi: iv.hi,
+                    hi_inc: iv.hi.is_finite(),
+                };
+                on_path.any(|set| disjoint(set, &lit))
+            }
+        }
+    }
+}
+
+/// Every state path a `::set` / `<choice into>` in `nodes` writes (at any
+/// depth), into `out`; `true` when the body also runs something whose writes
+/// are not spelled out here — a `::use` or a directive that writes state.
+fn scan_writes(
+    nodes: &[Node],
+    snapshot: &CapabilitySnapshot,
+    out: &mut BTreeSet<String>,
+) -> bool {
+    let opaque_directive = |tag: &str| {
+        tag == "use" || crate::check::directive_writes_state(snapshot, tag)
+    };
+    let mut opaque = false;
+    for node in nodes {
+        match node {
+            Node::Set(s) => {
+                out.insert(s.path.clone());
+            }
+            Node::Directive(d) => opaque |= opaque_directive(&d.tag),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    opaque |= scan_choice_writes(c, snapshot, out);
+                }
+            }
+            Node::Hub(h) => {
+                for c in &h.choices {
+                    opaque |= scan_choice_writes(c, snapshot, out);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    opaque |= scan_writes(body, snapshot, out);
+                }
+            }
+            Node::On(o) => opaque |= scan_writes(&o.body, snapshot, out),
+            Node::Objective(o) => opaque |= scan_writes(&o.body, snapshot, out),
+            Node::Timeline(tl) => {
+                for clip in tl.tracks.iter().flat_map(|t| &t.clips) {
+                    match &clip.node {
+                        ClipNode::Set(s) => {
+                            out.insert(s.path.clone());
+                        }
+                        ClipNode::Directive(d) => opaque |= opaque_directive(&d.tag),
+                    }
+                }
+            }
+            Node::Line(_) | Node::Assert(_) | Node::Retract(_) => {}
+        }
+    }
+    opaque
+}
+
+fn scan_choice_writes(
+    choice: &Choice,
+    snapshot: &CapabilitySnapshot,
+    out: &mut BTreeSet<String>,
+) -> bool {
+    if let Some(AttrValue::Str(into)) = choice.attrs.iter().find(|a| a.key == "into").map(|a| &a.value) {
+        out.insert(into.clone());
+    }
+    scan_writes(&choice.body, snapshot, out)
 }
 
 /// Recurse a node stream exactly like `check_admission`'s `walk`
@@ -374,6 +578,7 @@ pub(crate) fn check_reachability_in(
 fn walk_reach(
     nodes: &[Node],
     defs: &DefTable<'_>,
+    rx: &Reach<'_>,
     ctx: &DecideCtx<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -388,13 +593,16 @@ fn walk_reach(
                 // (`check_reachability`, seeded from `folded.typed.component`)
                 // — mirroring the TRANSITIVE `::use` walk's
                 // `walk_component_body` (`param_domains.get(&name)`). A
-                // state/path subject, or an `@param` name `ctx.params`
-                // doesn't carry (an ordinary Scene/Quest walk, where
-                // `ctx.params` is always empty), falls back to the ordinary
-                // state-path `infer_domain`.
-                let dom = crate::check::bare_param_ref(&m.subject.raw)
+                // state/path subject, a `@def` subject (dsl 0.24.0), or an
+                // `@param` name `ctx.params` doesn't carry (an ordinary
+                // Scene/Quest walk, where `ctx.params` is always empty), is
+                // resolved like the checker's own `<match>` pass does.
+                let (subject, dom) = match crate::check::bare_param_ref(&m.subject.raw)
                     .and_then(|name| ctx.params.get(&name).cloned())
-                    .unwrap_or_else(|| infer_domain(subject_path(m).as_deref(), ctx.schema));
+                {
+                    Some(dom) => (subject_path(m), dom),
+                    None => crate::match_check::resolve_subject(m, defs, rx.def_types, ctx.schema),
+                };
                 // dsl 0.5.2 §2.1: the `<match on>` SUBJECT is itself a
                 // listed guard slot — checked against the OUTER `ctx` (the
                 // subject's own comparison, if any, is evaluated BEFORE `$`
@@ -409,12 +617,18 @@ fn walk_reach(
                     params: ctx.params,
                     facts: ctx.facts,
                 };
-                diags.extend(check_match_reach(m, defs, &match_ctx));
+                diags.extend(check_match_reach(
+                    m,
+                    subject.as_deref(),
+                    defs,
+                    &match_ctx,
+                    rx.assume,
+                ));
                 for arm in &m.arms {
                     let body = match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
                     };
-                    walk_reach(body, defs, ctx, diags);
+                    walk_reach(body, defs, rx, ctx, diags);
                 }
             }
             Node::Branch(b) => {
@@ -426,7 +640,7 @@ fn walk_reach(
                     ctx,
                 ));
                 for choice in &b.choices {
-                    walk_reach(&choice.body, defs, ctx, diags);
+                    walk_reach(&choice.body, defs, rx, ctx, diags);
                 }
             }
             Node::Hub(h) => {
@@ -438,7 +652,7 @@ fn walk_reach(
                     ctx,
                 ));
                 for choice in &h.choices {
-                    walk_reach(&choice.body, defs, ctx, diags);
+                    walk_reach(&choice.body, defs, rx, ctx, diags);
                 }
             }
             Node::On(o) => {
@@ -452,11 +666,11 @@ fn walk_reach(
                     let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
                     push_unset_literal_diags(diags, &analysis.hits, when.span);
                 }
-                walk_reach(&o.body, defs, ctx, diags);
+                walk_reach(&o.body, defs, rx, ctx, diags);
             }
             Node::Objective(o) => {
                 diags.extend(check_objective_reach(o, defs, ctx));
-                walk_reach(&o.body, defs, ctx, diags);
+                walk_reach(&o.body, defs, rx, ctx, diags);
             }
             Node::Line(l) => {
                 // dsl 0.4.0 §7.2: a gated line (`when=`) is a one-arm
@@ -507,6 +721,27 @@ fn walk_reach(
                                 E_ARM_DEAD,
                                 Severity::Error,
                                 "this `::next` never fires: its `when` guard is provably false (dsl 0.12.0)".to_string(),
+                                when.span,
+                            ));
+                        }
+                    }
+                }
+            }
+            // dsl 0.24.0 §1: a guarded `::set{… when=}` is the same one-arm
+            // construct — a decided-false guard makes the write provably dead.
+            Node::Set(s) if s.when.is_some() => {
+                let when = s.when.as_ref().expect("guarded above");
+                if !when.raw.trim().is_empty() {
+                    let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
+                    push_unset_literal_diags(diags, &analysis.hits, when.span);
+                    let suppress_arm_dead =
+                        !analysis.hits.is_empty() && analysis.load_bearing_for_false;
+                    if !suppress_arm_dead {
+                        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
+                            diags.push(diag(
+                                E_ARM_DEAD,
+                                Severity::Error,
+                                "this `::set` never writes: its `when` guard is provably false (dsl 0.24.0 §1)".to_string(),
                                 when.span,
                             ));
                         }
@@ -636,13 +871,21 @@ impl Coverage {
 }
 
 /// Per-`<match>` engine (dsl 0.4.0 §5.2). `ctx.dollar` MUST be
-/// `Domain(&infer_domain(subject))` — [`walk_reach`], the sole caller, builds
-/// it, for a root document and for a component body alike (Task 7e: the
-/// arm-local call `walk_component_body` used to make was folded into the
-/// whole-body [`check_reachability_in`] walk). An unexpected shape
+/// `Domain(&dom)` for the subject's resolved domain — [`walk_reach`], the sole
+/// caller, builds it, for a root document and for a component body alike
+/// (Task 7e: the arm-local call `walk_component_body` used to make was folded
+/// into the whole-body [`check_reachability_in`] walk). An unexpected shape
 /// (`None`/`Value`) degrades to an unresolved domain rather than panicking, so
-/// no literal-domain claim is ever made without proof.
-fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec<Diagnostic> {
+/// no literal-domain claim is ever made without proof. `subject` is the
+/// resolved subject path; `assume` the enclosing body's [`Assumption`] (dsl
+/// 0.24.0): a literal it rules out is as dead as one an earlier arm covers.
+fn check_match_reach(
+    m: &Match,
+    subject: Option<&str>,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+    assume: Option<&Assumption>,
+) -> Vec<Diagnostic> {
     let dom = match &ctx.dollar {
         Some(DollarBinding::Domain(d)) => (*d).clone(),
         _ => DomainInfo {
@@ -652,7 +895,9 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
         },
     };
     let mut diags = Vec::new();
-    let subject = subject_path(m);
+    let ruled_out = |item: &CoverItem| {
+        subject.is_some_and(|p| assume.is_some_and(|a| a.rules_out(p, item, ctx.schema)))
+    };
     let mut u = Coverage::default();
     let mut otherwise_span: Option<Span> = None;
 
@@ -689,7 +934,7 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                 // comparison is ALSO present.
                 let foreign_literal = is
                     .as_ref()
-                    .is_some_and(|pat| arm_has_foreign_literal(pat, &dom, subject.as_deref()));
+                    .is_some_and(|pat| arm_has_foreign_literal(pat, &dom, subject));
                 let sentinel_load_bearing = analysis
                     .as_ref()
                     .is_some_and(|a| !a.hits.is_empty() && a.load_bearing_for_false);
@@ -713,7 +958,7 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                     if let Some(pat) = is {
                         let residual: Vec<CoverItem> = is_pattern_literals(&pat.raw, pat.span)
                             .into_iter()
-                            .filter_map(|(lit, _)| domain_valid_item(&lit, &dom, subject.as_deref()))
+                            .filter_map(|(lit, _)| domain_valid_item(&lit, &dom, subject))
                             .collect();
                         // A fully-foreign residual (D4-rooted) is skipped —
                         // `is_empty` covers both "no `is` literal survived
@@ -724,7 +969,12 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                             let mut covering: Option<&(Span, String)> = None;
                             let mut joint = false;
                             let mut fully_covered = true;
+                            let mut by_assumption = false;
                             for item in &residual {
+                                if ruled_out(item) {
+                                    by_assumption = true;
+                                    continue;
+                                }
                                 match u.source(item) {
                                     Some((src, item_joint)) => {
                                         joint |=
@@ -741,20 +991,32 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                                     }
                                 }
                             }
-                            if fully_covered {
-                                if let Some((cov_span, cov_pattern)) = covering {
-                                    diags.push(diag(
-                                        E_ARM_DEAD,
-                                        Severity::Error,
-                                        subsumption_message(
-                                            pat.raw.trim(),
-                                            *cov_span,
-                                            cov_pattern,
-                                            joint,
-                                        ),
-                                        *span,
-                                    ));
+                            let assumed = assume.filter(|_| by_assumption);
+                            let message = match (fully_covered, covering, assumed) {
+                                (false, _, _) => None,
+                                (true, Some((cov_span, cov_pattern)), assumed) => {
+                                    let mut msg = subsumption_message(
+                                        pat.raw.trim(),
+                                        *cov_span,
+                                        cov_pattern,
+                                        joint,
+                                    );
+                                    if let Some(a) = assumed {
+                                        msg.push_str(&format!(
+                                            "; the rest is ruled out by the body's `when` guard \
+                                             `{}`",
+                                            a.raw
+                                        ));
+                                    }
+                                    Some(msg)
                                 }
+                                (true, None, Some(a)) => {
+                                    Some(assumed_dead_message(pat.raw.trim(), &a.raw))
+                                }
+                                (true, None, None) => None,
+                            };
+                            if let Some(message) = message {
+                                diags.push(diag(E_ARM_DEAD, Severity::Error, message, *span));
                             }
                         }
                     }
@@ -768,7 +1030,7 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                 if test.raw.trim().is_empty() {
                     if let Some(pat) = is {
                         for (lit, _) in is_pattern_literals(&pat.raw, pat.span) {
-                            if let Some(item) = domain_valid_item(&lit, &dom, subject.as_deref()) {
+                            if let Some(item) = domain_valid_item(&lit, &dom, subject) {
                                 u.add(item, *span, pat.raw.trim());
                             }
                         }
@@ -781,15 +1043,18 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
     // `W-OTHERWISE-DEAD` (dsl 0.4.0 §5.2 rule 3): requires a resolved FINITE
     // domain, or a `number` subject whose whole real line is covered (dsl
     // 0.18.0 §4) — an unresolved/infinite subject makes no "whole domain"
-    // claim to violate.
+    // claim to violate. A member the body's `when` rules out (dsl 0.24.0)
+    // needs no arm.
     let domain_covered = dom.resolved
         && match &dom.domain {
-            Domain::Finite(vals) => vals.iter().all(|v| u.values.contains_key(v)),
+            Domain::Finite(vals) => vals
+                .iter()
+                .all(|v| u.values.contains_key(v) || ruled_out(&CoverItem::Value(v.clone()))),
             Domain::Number => u.num.covers_all(),
             Domain::Infinite => false,
         };
     if let (Some(span), true) = (otherwise_span, domain_covered) {
-        if u.unset.is_some() || !dom.maybe_unset {
+        if u.unset.is_some() || !dom.maybe_unset || ruled_out(&CoverItem::Unset) {
             diags.push(diag(
                 W_OTHERWISE_DEAD,
                 Severity::Warning,
@@ -876,6 +1141,174 @@ fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) ->
         quest.span,
     ));
     diags
+}
+
+/// dsl 0.24.0 (round-3 T3-11): `W-QUEST-HANDLER-DEAD` for an `<on event="E"
+/// when="G">` whose `G` implies the quest's completion — every REQUIRED
+/// objective's `done` (any one of them under `complete="any"`). Quests
+/// settle after every write, and a world event reaches a quest's handlers
+/// only while it is active, so whenever `G` holds the quest has already
+/// completed and the body never runs. The lifecycle events (`questComplete`,
+/// `questFailed`) are dispatched by the transition itself and are exempt.
+/// Decided only where it is certain: the quest has a required objective and
+/// every one counted is settle-judged (no `on=` occasion objective, no
+/// `quest=` child), and implication is conjunct containment after `@def`
+/// expansion — each top-level `&&` conjunct of `done` is literally a
+/// conjunct of `G`.
+fn check_handler_after_completion(quest: &Quest, defs: &DefTable<'_>) -> Vec<Diagnostic> {
+    let required: Vec<&Objective> = quest
+        .body
+        .iter()
+        .filter_map(|n| match n {
+            Node::Objective(o) if !o.optional => Some(o),
+            _ => None,
+        })
+        .collect();
+    if required.is_empty() || required.iter().any(|o| o.on.is_some() || o.quest.is_some()) {
+        return Vec::new();
+    }
+    let any = quest.completes_on_any();
+    let mut diags = Vec::new();
+    for node in &quest.body {
+        let Node::On(on) = node else { continue };
+        if matches!(on.event.as_str(), "questComplete" | "questFailed") {
+            continue;
+        }
+        let Some(when) = on.when.as_ref().filter(|w| !w.raw.trim().is_empty()) else {
+            continue;
+        };
+        let guard = text_conjuncts(&expand_text(&when.raw, defs));
+        let implied = |o: &&Objective| {
+            let done = text_conjuncts(&expand_text(&o.done.raw, defs));
+            !done.is_empty() && done.iter().all(|c| guard.contains(c))
+        };
+        let completes = if any { required.iter().any(implied) } else { required.iter().all(implied) };
+        if !completes {
+            continue;
+        }
+        diags.push(diag(
+            crate::project_check::W_QUEST_HANDLER_DEAD,
+            Severity::Warning,
+            format!(
+                "`<on event=\"{}\">` never runs: its `when` implies {} of quest `{}` is done, so \
+                 the quest has already completed when it holds, and an event reaches only an \
+                 active quest's handlers; move the body to `<on event=\"questComplete\">` or \
+                 the objective's own body (dsl 0.24.0)",
+                on.event,
+                if any { "a required objective" } else { "every required objective" },
+                quest.id
+            ),
+            on.event_span,
+        ));
+    }
+    diags
+}
+
+/// `raw` with its `@def`s expanded (the raw text when expansion fails).
+fn expand_text(raw: &str, defs: &DefTable<'_>) -> String {
+    let mut stack = Vec::new();
+    crate::cel_expand::expand_cel(raw, defs, None, &mut stack).unwrap_or_else(|_| raw.to_string())
+}
+
+/// The top-level `&&` conjuncts of CEL text, each with whitespace outside
+/// string literals removed and redundant outer parentheses stripped, a
+/// parenthesized conjunction flattened. A text with a top-level `||` or
+/// `?:` is one conjunct (`&&` binds tighter, so splitting it would be
+/// wrong).
+fn text_conjuncts(raw: &str) -> Vec<String> {
+    fn normalize(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut quote: Option<char> = None;
+        let mut esc = false;
+        for c in s.chars() {
+            match quote {
+                Some(q) => {
+                    out.push(c);
+                    if esc {
+                        esc = false;
+                    } else if c == '\\' {
+                        esc = true;
+                    } else if c == q {
+                        quote = None;
+                    }
+                }
+                None if c.is_whitespace() => {}
+                None => {
+                    if c == '\'' || c == '"' {
+                        quote = Some(c);
+                    }
+                    out.push(c);
+                }
+            }
+        }
+        out
+    }
+    /// Byte offsets of the depth-0 `&&`s, and whether a depth-0 `||`/`?`
+    /// occurs, in normalized text; `None` when brackets are unbalanced.
+    fn top_level(s: &str) -> Option<(Vec<usize>, bool)> {
+        let b = s.as_bytes();
+        let (mut depth, mut quote, mut esc) = (0i32, None::<u8>, false);
+        let (mut ands, mut other) = (Vec::new(), false);
+        let mut i = 0;
+        while i < b.len() {
+            let c = b[i];
+            if let Some(q) = quote {
+                if esc {
+                    esc = false;
+                } else if c == b'\\' {
+                    esc = true;
+                } else if c == q {
+                    quote = None;
+                }
+                i += 1;
+                continue;
+            }
+            match c {
+                b'\'' | b'"' => quote = Some(c),
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => {
+                    depth -= 1;
+                    if depth < 0 {
+                        return None;
+                    }
+                }
+                b'&' if depth == 0 && b.get(i + 1) == Some(&b'&') => {
+                    ands.push(i);
+                    i += 1;
+                }
+                b'|' | b'?' if depth == 0 => other = true,
+                _ => {}
+            }
+            i += 1;
+        }
+        (depth == 0 && quote.is_none()).then_some((ands, other))
+    }
+    /// `s` without one pair of parentheses enclosing all of it.
+    fn unwrap(s: &str) -> Option<&str> {
+        let inner = s.strip_prefix('(')?.strip_suffix(')')?;
+        top_level(inner).map(|_| inner)
+    }
+    fn split(s: &str, out: &mut Vec<String>) {
+        let mut s = s;
+        while let Some(inner) = unwrap(s) {
+            s = inner;
+        }
+        match top_level(s) {
+            Some((ands, false)) if !ands.is_empty() => {
+                let mut start = 0;
+                for at in ands {
+                    split(&s[start..at], out);
+                    start = at + 2;
+                }
+                split(&s[start..], out);
+            }
+            _ if !s.is_empty() => out.push(s.to_string()),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    split(&normalize(raw), &mut out);
+    out
 }
 
 /// Per-`<objective>` engine (dsl 0.4.0 §5.3 rules 1 and 3). `done` deciding
@@ -1047,9 +1480,13 @@ fn comparison_set(expr: &Expr, schema: &crate::meta::StateSchema) -> Option<(Str
 }
 
 /// The top-level `&&` conjuncts of a condition that are in-domain comparisons
-/// (dsl 0.22.0 §13, `W-BEAT-PRIORITY-TIE`): each `path op literal`, and a
-/// bare `bool` path / its `!` as `== true` / `== false`. Every other conjunct
-/// constrains nothing here — which only makes exclusivity harder to prove.
+/// (dsl 0.22.0 §13, `W-BEAT-PRIORITY-TIE`): each `path op literal`, a bare
+/// `bool` path / its `!` as `== true` / `== false` — the reserved
+/// `entry.<id>.read` / `entry.<id>.everRead` flags and a ground `holds(…)` /
+/// `visited('…')` query included, as pseudo-paths — and (dsl 0.24.0, T3-3)
+/// what a positive `holds(A)` of a pure-schedule derived atom implies about
+/// state ([`schedule_conjuncts`]). Every other conjunct constrains nothing
+/// here — which only makes exclusivity harder to prove.
 ///
 /// Pairwise disjoint TRUE sets mean "never both true" — weaker than the
 /// conjunction deciding `false` (dsl 0.23.0 §9), which an erring read of an
@@ -1057,41 +1494,53 @@ fn comparison_set(expr: &Expr, schema: &crate::meta::StateSchema) -> Option<(Str
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Conjuncts(Vec<(String, SolutionSet)>);
 
-/// [`Conjuncts`] of `raw` after `@def` expansion, typed against `schema`.
+/// [`Conjuncts`] of `raw` after `@def` expansion, typed against `schema`;
+/// `vocab` (the document's relational vocabulary) lets a `holds(A)` conjunct
+/// contribute its schedule's state constraints.
 pub(crate) fn when_conjuncts(
     raw: &str,
     defs: &DefTable<'_>,
     schema: &crate::meta::StateSchema,
+    vocab: Option<&crate::rel_schema::RelVocab>,
 ) -> Conjuncts {
+    let mut out = Vec::new();
+    if let Some(expr) = parse_expanded(raw, defs) {
+        let ctx = ConjunctCtx { defs, schema, vocab };
+        collect_conjuncts(&expr, &ctx, &mut out);
+    }
+    Conjuncts(out)
+}
+
+fn parse_expanded(raw: &str, defs: &DefTable<'_>) -> Option<Expr> {
     let mut stack = Vec::new();
     let expanded = crate::cel_expand::expand_cel(raw, defs, None, &mut stack)
         .unwrap_or_else(|_| raw.to_string());
     let mut arena = lute_cel::CelArena::default();
-    let Some(ided) = lute_cel::parse_slot_marked_refs(&mut arena, &expanded)
-        .and_then(|h| arena.get(h))
-    else {
-        return Conjuncts::default();
-    };
-    let mut out = Vec::new();
-    collect_conjuncts(&ided.expr, schema, &mut out);
-    Conjuncts(out)
+    let handle = lute_cel::parse_slot_marked_refs(&mut arena, &expanded)?;
+    arena.get(handle).map(|ided| ided.expr.clone())
 }
 
-fn collect_conjuncts(
-    expr: &Expr,
-    schema: &crate::meta::StateSchema,
-    out: &mut Vec<(String, SolutionSet)>,
-) {
+struct ConjunctCtx<'a> {
+    defs: &'a DefTable<'a>,
+    schema: &'a crate::meta::StateSchema,
+    vocab: Option<&'a crate::rel_schema::RelVocab>,
+}
+
+fn collect_conjuncts(expr: &Expr, ctx: &ConjunctCtx<'_>, out: &mut Vec<(String, SolutionSet)>) {
     if let Expr::Call(c) = expr {
         if c.target.is_none() && c.func_name == op::LOGICAL_AND && c.args.len() == 2 {
-            collect_conjuncts(&c.args[0].expr, schema, out);
-            collect_conjuncts(&c.args[1].expr, schema, out);
+            collect_conjuncts(&c.args[0].expr, ctx, out);
+            collect_conjuncts(&c.args[1].expr, ctx, out);
             return;
         }
     }
     let bool_path = |e: &Expr| {
         let path = crate::cel_paths::select_path(e)?;
-        matches!(crate::set_op::resolve_type(&path, schema)?, Type::Bool).then_some(path)
+        // The reserved entry flags are engine-written bools (dsl 0.19.0 §5,
+        // 0.22.0 §7), undeclared in `state:`.
+        (crate::cel_paths::reserved_entry_id(&path).is_some()
+            || matches!(crate::set_op::resolve_type(&path, ctx.schema)?, Type::Bool))
+        .then_some(path)
     };
     let flag = |path: String, value: bool| {
         (
@@ -1099,10 +1548,13 @@ fn collect_conjuncts(
             SolutionSet::Values(std::iter::once(DomainValue::Bool(value)).collect()),
         )
     };
-    if let Some(hit) = comparison_set(expr, schema) {
+    if let Some(hit) = comparison_set(expr, ctx.schema) {
         out.push(hit);
     } else if let Some(path) = bool_path(expr).or_else(|| holds_key(expr)) {
         out.push(flag(path, true));
+        if let Some(vocab) = ctx.vocab {
+            out.extend(schedule_conjuncts(expr, vocab, ctx));
+        }
     } else if let Expr::Call(c) = expr {
         if c.target.is_none() && c.func_name == op::LOGICAL_NOT && c.args.len() == 1 {
             if let Some(path) = bool_path(&c.args[0].expr).or_else(|| holds_key(&c.args[0].expr)) {
@@ -1112,25 +1564,155 @@ fn collect_conjuncts(
     }
 }
 
-/// A ground `holds(rel(args…))` query as a pseudo-path (`holds(rel(a,b))`),
-/// so `holds(P)` and `!holds(P)` are exclusive like `x` and `!x`.
+/// A ground `holds(rel(args…))` or `visited('id')` query as a pseudo-path
+/// (`holds(rel(a,b))`, `visited('id')`), so `holds(P)` and `!holds(P)` are
+/// exclusive like `x` and `!x`.
 fn holds_key(expr: &Expr) -> Option<String> {
-    fn term(e: &Expr) -> Option<String> {
-        match e {
-            Expr::Ident(name) => Some(name.clone()),
-            Expr::Literal(Val::String(s)) => Some(format!("'{s}'")),
-            Expr::Literal(Val::Int(i)) => Some(i.to_string()),
-            Expr::Call(c) if c.target.is_none() => {
-                let args: Option<Vec<String>> = c.args.iter().map(|a| term(&a.expr)).collect();
-                Some(format!("{}({})", c.func_name, args?.join(",")))
-            }
+    let Expr::Call(c) = expr else { return None };
+    (c.target.is_none() && matches!(c.func_name.as_str(), "holds" | "visited") && c.args.len() == 1)
+        .then(|| term_key(&c.args[0].expr).map(|t| format!("{}({t})", c.func_name)))
+        .flatten()
+}
+
+fn term_key(e: &Expr) -> Option<String> {
+    match e {
+        Expr::Ident(name) => Some(name.clone()),
+        Expr::Literal(Val::String(s)) => Some(format!("'{s}'")),
+        Expr::Literal(Val::Int(i)) => Some(i.to_string()),
+        Expr::Call(c) if c.target.is_none() => {
+            let args: Option<Vec<String>> = c.args.iter().map(|a| term_key(&a.expr)).collect();
+            Some(format!("{}({})", c.func_name, args?.join(",")))
+        }
+        _ => None,
+    }
+}
+
+/// dsl 0.24.0 (T3-3): what a positive `holds(rel(c…))` implies about state
+/// when the atom is a pure schedule — `rel` is `derive: true` and not
+/// engine-`reserved`, no seed fact is the atom, and EVERY rule whose head
+/// unifies with it is a ground head over `cel()` guards only (`at(sol,
+/// radio) :- cel("run.slot == 'morning'")`). The atom then holds exactly when
+/// one of those guards does, so a path every guard constrains is constrained
+/// to the union of their sets. Anything else (a variable head, a body atom,
+/// a comparison literal, no rule at all) implies nothing.
+fn schedule_conjuncts(
+    expr: &Expr,
+    vocab: &crate::rel_schema::RelVocab,
+    ctx: &ConjunctCtx<'_>,
+) -> Vec<(String, SolutionSet)> {
+    use lute_syntax::datalog::{BodyLiteral, FactTerm, RuleTerm};
+    let Expr::Call(c) = expr else { return Vec::new() };
+    if c.target.is_some() || c.func_name != "holds" || c.args.len() != 1 {
+        return Vec::new();
+    }
+    let Expr::Call(atom) = &c.args[0].expr else { return Vec::new() };
+    if atom.target.is_some() {
+        return Vec::new();
+    }
+    let Some(consts) = atom
+        .args
+        .iter()
+        .map(|a| match &a.expr {
+            Expr::Ident(n) => Some(n.clone()),
+            Expr::Literal(Val::String(s)) => Some(s.to_string()),
+            Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
             _ => None,
+        })
+        .collect::<Option<Vec<String>>>()
+    else {
+        return Vec::new();
+    };
+    let rel = atom.func_name.as_str();
+    if !vocab.relations.get(rel).is_some_and(|d| d.derive && !d.reserved) {
+        return Vec::new();
+    }
+    let seeded = vocab.facts.iter().any(|f| {
+        f.fact.relation == rel
+            && f.fact.args.len() == consts.len()
+            && f.fact.args.iter().zip(&consts).all(|(a, k)| match &a.term {
+                FactTerm::Ident(i) => i == k,
+                FactTerm::Bool(b) => b.to_string() == *k,
+                FactTerm::Wildcard => true,
+            })
+    });
+    if seeded {
+        return Vec::new();
+    }
+    // One unifying rule is one disjunct: the conjunction of its guards.
+    let inner = ConjunctCtx { vocab: None, ..*ctx };
+    let mut per_rule: Vec<Vec<(String, SolutionSet)>> = Vec::new();
+    for r in vocab.rules.iter().filter(|r| r.rule.head.relation == rel) {
+        let head = &r.rule.head.terms;
+        if head.len() != consts.len() {
+            continue;
+        }
+        let mut unifies = true;
+        for (t, k) in head.iter().zip(&consts) {
+            match t {
+                // A variable head (bound by a body atom) is not a schedule.
+                RuleTerm::Var(_) => return Vec::new(),
+                RuleTerm::Const(v) => unifies &= v == k,
+                RuleTerm::Bool(b) => unifies &= b.to_string() == *k,
+            }
+        }
+        if !unifies {
+            continue;
+        }
+        if r.rule.body.is_empty() {
+            return Vec::new();
+        }
+        let mut sets = Vec::new();
+        for lit in &r.rule.body {
+            let BodyLiteral::Guard { cel, .. } = lit else {
+                return Vec::new();
+            };
+            if let Some(e) = parse_expanded(cel, ctx.defs) {
+                collect_conjuncts(&e, &inner, &mut sets);
+            }
+        }
+        per_rule.push(sets);
+    }
+    if per_rule.is_empty() {
+        return Vec::new();
+    }
+    let mut acc: Vec<(String, SolutionSet)> = Vec::new();
+    for (path, set) in &per_rule[0] {
+        if acc.iter().any(|(p, _)| p == path) {
+            continue;
+        }
+        let mut joined = Some(set.clone());
+        for other in &per_rule[1..] {
+            joined = match (joined, other.iter().find(|(p, _)| p == path)) {
+                (Some(j), Some((_, s))) => join(&j, s),
+                _ => None,
+            };
+        }
+        if let Some(j) = joined {
+            acc.push((path.clone(), j));
         }
     }
-    let Expr::Call(c) = expr else { return None };
-    (c.target.is_none() && c.func_name == "holds" && c.args.len() == 1)
-        .then(|| term(&c.args[0].expr).map(|t| format!("holds({t})")))
-        .flatten()
+    acc
+}
+
+/// The union of two solution sets of one path, when representable: two
+/// finite value sets, or two number sets. `None` otherwise (the path is then
+/// not constrained).
+fn join(a: &SolutionSet, b: &SolutionSet) -> Option<SolutionSet> {
+    use crate::solution::number_spans;
+    match (a, b) {
+        (SolutionSet::Values(x), SolutionSet::Values(y)) => {
+            Some(SolutionSet::Values(x.union(y).cloned().collect()))
+        }
+        (
+            SolutionSet::Interval { .. } | SolutionSet::Union(_),
+            SolutionSet::Interval { .. } | SolutionSet::Union(_),
+        ) => {
+            let mut spans = number_spans(Some(a));
+            spans.extend(number_spans(Some(b)));
+            Some(SolutionSet::Union(spans))
+        }
+        _ => None,
+    }
 }
 
 /// Two conditions that cannot both hold: some pair of their conjuncts
@@ -1250,6 +1832,15 @@ fn subsumption_message(pattern: &str, cov_span: Span, cov_pattern: &str, joint: 
         "arm can never fire: its pattern `{pattern}` is fully covered by the {by} {}:{} \
          (`{cov_pattern}`) — first-match-wins (dsl 0.4 §5.2)",
         cov_span.line, cov_span.column
+    )
+}
+
+/// dsl 0.24.0: an arm every literal of which the enclosing body's `when`
+/// rules out — the body runs only once that guard held.
+fn assumed_dead_message(pattern: &str, when: &str) -> String {
+    format!(
+        "arm can never fire: its pattern `{pattern}` is ruled out by the body's `when` guard \
+         `{when}`, which holds whenever this body runs (dsl 0.24.0)"
     )
 }
 

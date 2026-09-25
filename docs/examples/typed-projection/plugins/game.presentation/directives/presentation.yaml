@@ -33,4 +33,3 @@ directives:
       - { name: resultKey, required: true, type: string }
       - { name: assetId, required: true, type: { providerRef: assetId } }
       - { name: text, type: string }
-    lower: { kind: builtin, name: bridgeHostPanel }

@@ -445,6 +445,7 @@ fn envelope_serializes_with_state_entries() {
             domain: Some(vec!["blunt".into(), "soft".into(), "unset".into()]),
             default: None,
             provenance: Some("branch:number".into()),
+            labels: BTreeMap::new(),
         }],
         entities: Vec::new(),
         enums: Vec::new(),
@@ -454,6 +455,7 @@ fn envelope_serializes_with_state_entries() {
         commands: Vec::new(),
         prereq_edges: Vec::new(),
         shots: Vec::new(),
+        clock: None,
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
@@ -489,9 +491,12 @@ fn quest_record_serializes_per_spec() {
             on: None,
             by: None,
             target: None,
+            until: None,
         }],
         rewards: Vec::new(),
         tier: None,
+        activate: None,
+        complete: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
@@ -639,10 +644,57 @@ fn on_record_serializes_per_spec() {
         event: "questComplete".into(),
         when: None,
         body: "001-0500".into(),
+        target: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&cmd),
         r#"{"kind":"on","addr":"001-0400","event":"questComplete","body":"001-0500"}"#
+    );
+}
+
+/// dsl 0.24.0 §2: the quest modes, an `<on target>` and a queued accept
+/// serialize their non-default values, appended after the 0.23 fields.
+#[test]
+fn quest_structure_fields_serialize_when_authored() {
+    let quest = Command::Quest(QuestCmd {
+        addr: "001-0100".into(),
+        id: "toll".into(),
+        title: None,
+        title_line_id: None,
+        start: None,
+        fail: None,
+        objectives: Vec::new(),
+        rewards: Vec::new(),
+        tier: None,
+        activate: Some(lute_compile::ir::QuestActivate::Accept),
+        complete: Some(lute_compile::ir::QuestComplete::Any),
+        stamp: Stamp::default(),
+    });
+    assert_eq!(
+        j(&quest),
+        r#"{"kind":"quest","addr":"001-0100","id":"toll","objectives":[],"activate":"accept","complete":"any"}"#
+    );
+    let on = Command::On(OnCmd {
+        addr: "001-0400".into(),
+        event: "bossDefeated".into(),
+        when: None,
+        body: "001-0500".into(),
+        target: Some("foe.regent".into()),
+        stamp: Stamp::default(),
+    });
+    assert_eq!(
+        j(&on),
+        r#"{"kind":"on","addr":"001-0400","event":"bossDefeated","body":"001-0500","target":"foe.regent"}"#
+    );
+    let accept = Command::Accept(lute_compile::ir::AcceptCmd {
+        addr: "001-0100".into(),
+        quest: "eelBounty".into(),
+        applies: Some(lute_compile::ir::AcceptAt::NextRun),
+        stamp: Stamp::default(),
+    });
+    assert_eq!(
+        j(&accept),
+        r#"{"kind":"accept","addr":"001-0100","quest":"eelBounty","applies":"nextRun"}"#
     );
 }

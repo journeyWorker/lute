@@ -61,6 +61,7 @@ fn active_plugin_directive_lands_in_snapshot() {
                 loaded: plugin_with_directive("arcia.minigame", "minigame"),
             },
         )]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -91,6 +92,7 @@ fn inactive_plugin_is_indexed_not_merged() {
                 loaded: plugin_with_directive("arcia.minigame", "minigame"),
             },
         )]),
+        ..Default::default()
     };
     // only core active
     let active = vec![ActivePlugin {
@@ -115,6 +117,7 @@ fn plugin_directive_with_bad_semantics_flag_is_rejected() {
     pkg.directives[0].semantics = vec!["totallyMadeUp".into()];
     let reg = InstalledPlugins {
         by_id: BTreeMap::from([("a.bad".to_string(), InstalledPlugin { loaded: pkg })]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -164,6 +167,7 @@ fn cyclic_state_shapes_are_rejected() {
     });
     let reg = InstalledPlugins {
         by_id: BTreeMap::from([("a.cyc".to_string(), InstalledPlugin { loaded: pkg })]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -214,6 +218,7 @@ fn self_cycle_state_shape_reports_single_member() {
     });
     let reg = InstalledPlugins {
         by_id: BTreeMap::from([("a.self".to_string(), InstalledPlugin { loaded: pkg })]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -267,6 +272,7 @@ fn acyclic_diamond_state_shapes_report_no_cycle() {
     pkg.state_shapes.push(shape("D", &[]));
     let reg = InstalledPlugins {
         by_id: BTreeMap::from([("a.dia".to_string(), InstalledPlugin { loaded: pkg })]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -311,6 +317,7 @@ fn assemble_merges_asset_kinds() {
             "arcia.minigame".to_string(),
             InstalledPlugin { loaded: pkg },
         )]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -341,6 +348,7 @@ fn assemble_rejects_cross_plugin_asset_kind_dup() {
             ("plug.a".to_string(), InstalledPlugin { loaded: a }),
             ("plug.b".to_string(), InstalledPlugin { loaded: b }),
         ]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -393,6 +401,7 @@ fn assemble_rejects_cross_plugin_domain_dup() {
             ("plug.a".to_string(), InstalledPlugin { loaded: a }),
             ("plug.b".to_string(), InstalledPlugin { loaded: b }),
         ]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -431,6 +440,7 @@ fn assemble_unions_distinct_domain_names() {
             ("plug.a".to_string(), InstalledPlugin { loaded: a }),
             ("plug.b".to_string(), InstalledPlugin { loaded: b }),
         ]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -499,6 +509,7 @@ fn assemble_rejects_unknown_asset_kind() {
             "arcia.minigame".to_string(),
             InstalledPlugin { loaded: pkg },
         )]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -550,6 +561,7 @@ fn assemble_merges_events() {
             "arcia.minigame".to_string(),
             InstalledPlugin { loaded: pkg },
         )]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -580,6 +592,7 @@ fn assemble_rejects_cross_plugin_event_dup() {
             ("plug.a".to_string(), InstalledPlugin { loaded: a }),
             ("plug.b".to_string(), InstalledPlugin { loaded: b }),
         ]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -615,6 +628,7 @@ fn assemble_rejects_reserved_builtin_event_name() {
             "arcia.minigame".to_string(),
             InstalledPlugin { loaded: pkg },
         )]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -649,6 +663,7 @@ fn assemble_rejects_reserved_quest_surface_tags_as_plugin_directive_names() {
                     loaded: plugin_with_directive("arcia.minigame", reserved),
                 },
             )]),
+            ..Default::default()
         };
         let active = vec![
             ActivePlugin {
@@ -707,6 +722,7 @@ fn assemble_rejects_reserved_stamp_attr_names_on_plugin_directives() {
                     loaded: plugin_with_directive_attr("arcia.minigame", "minigame", reserved),
                 },
             )]),
+            ..Default::default()
         };
         let active = vec![
             ActivePlugin {
@@ -776,6 +792,7 @@ fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
         ];
         let reg = InstalledPlugins {
             by_id: BTreeMap::from([("arcia.minigame".to_string(), InstalledPlugin { loaded: p })]),
+            ..Default::default()
         };
         let active = vec![
             ActivePlugin {
@@ -839,6 +856,7 @@ fn stamp_attrs_merge_and_participate_in_capability_version() {
     let assemble = |loaded: LoadedPlugin| {
         let reg = InstalledPlugins {
             by_id: BTreeMap::from([("arcia.minigame".to_string(), InstalledPlugin { loaded })]),
+            ..Default::default()
         };
         assemble_snapshot(&active, &reg)
     };
@@ -888,6 +906,7 @@ fn assemble_leaves_core_timing_attrs_and_normal_plugin_attrs_untouched() {
                 loaded: plugin_with_directive("arcia.minigame", "minigame"),
             },
         )]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -954,6 +973,7 @@ fn assemble_merges_reward_kinds() {
             "arcia.minigame".to_string(),
             InstalledPlugin { loaded: pkg },
         )]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -993,6 +1013,7 @@ fn assemble_rejects_cross_plugin_reward_kind_dup() {
             ("plug.a".to_string(), InstalledPlugin { loaded: a }),
             ("plug.b".to_string(), InstalledPlugin { loaded: b }),
         ]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -1031,6 +1052,7 @@ fn assemble_rejects_reward_kind_with_unknown_target_provider() {
             "arcia.minigame".to_string(),
             InstalledPlugin { loaded: pkg },
         )]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -1088,6 +1110,7 @@ fn assemble_reward_kind_resolves_peer_declared_provider() {
                 InstalledPlugin { loaded: prov_pkg },
             ),
         ]),
+        ..Default::default()
     };
     // `rewards` is active BEFORE `items` — verifies the post-loop validation.
     let active = vec![
@@ -1133,6 +1156,7 @@ fn reward_kinds_merge_and_participate_in_capability_version() {
     let assemble = |loaded: LoadedPlugin| {
         let reg = InstalledPlugins {
             by_id: BTreeMap::from([("arcia.minigame".to_string(), InstalledPlugin { loaded })]),
+            ..Default::default()
         };
         assemble_snapshot(&active, &reg)
     };
@@ -1178,10 +1202,16 @@ fn occasion(name: &str, select: OccasionSelect, target: bool) -> OccasionDecl {
         select,
         target: target.into(),
         description: None,
+        ..Default::default()
     }
 }
 
-fn assemble_core_plus(plugins: Vec<LoadedPlugin>) -> (lute_manifest::snapshot::CapabilitySnapshot, Vec<lute_manifest::assemble::AssembleError>) {
+fn assemble_core_plus(
+    plugins: Vec<LoadedPlugin>,
+) -> (
+    lute_manifest::snapshot::CapabilitySnapshot,
+    Vec<lute_manifest::assemble::AssembleError>,
+) {
     let mut active = vec![ActivePlugin {
         id: "lute.core".into(),
         options: BTreeMap::new(),
@@ -1194,15 +1224,25 @@ fn assemble_core_plus(plugins: Vec<LoadedPlugin>) -> (lute_manifest::snapshot::C
         });
         by_id.insert(loaded.manifest.id.clone(), InstalledPlugin { loaded });
     }
-    assemble_snapshot(&active, &InstalledPlugins { by_id })
+    assemble_snapshot(
+        &active,
+        &InstalledPlugins {
+            by_id,
+            ..Default::default()
+        },
+    )
 }
 
 #[test]
 fn occasions_merge_and_move_capability_version() {
     let base = plugin_with_directive("hades.engine", "boon");
     let mut with_oc = base.clone();
-    with_oc.occasions.push(occasion("talk", OccasionSelect::First, true));
-    with_oc.occasions.push(occasion("inbox", OccasionSelect::All, false));
+    with_oc
+        .occasions
+        .push(occasion("talk", OccasionSelect::First, true));
+    with_oc
+        .occasions
+        .push(occasion("inbox", OccasionSelect::All, false));
 
     let (plain, errs) = assemble_core_plus(vec![base]);
     assert!(errs.is_empty(), "{errs:?}");
@@ -1233,9 +1273,11 @@ fn occasions_merge_and_move_capability_version() {
 #[test]
 fn assemble_rejects_cross_plugin_occasion_dup() {
     let mut a = plugin_with_directive("plug.a", "da");
-    a.occasions.push(occasion("talk", OccasionSelect::First, true));
+    a.occasions
+        .push(occasion("talk", OccasionSelect::First, true));
     let mut b = plugin_with_directive("plug.b", "db");
-    b.occasions.push(occasion("talk", OccasionSelect::All, false));
+    b.occasions
+        .push(occasion("talk", OccasionSelect::All, false));
     let (snap, errs) = assemble_core_plus(vec![a, b]);
     assert!(
         errs.iter().any(|e| matches!(
@@ -1245,5 +1287,8 @@ fn assemble_rejects_cross_plugin_occasion_dup() {
         )),
         "cross-plugin dup occasion must be DuplicateAcrossPlugins with owner attribution: {errs:?}"
     );
-    assert!(snap.occasions["talk"].target.takes_target(), "first owner wins");
+    assert!(
+        snap.occasions["talk"].target.takes_target(),
+        "first owner wins"
+    );
 }

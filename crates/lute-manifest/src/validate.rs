@@ -395,6 +395,8 @@ pub enum DomainIssue {
     ExitNotMember { name: String, value: String },
     MissingSemantics { name: String, key: &'static str },
     UnexpectedSemantics { name: String, key: &'static str },
+    /// dsl 0.24.0 §1: a `labels:` key that is not a member.
+    LabelNotMember { name: String, value: String },
 }
 
 impl DomainIssue {
@@ -404,6 +406,7 @@ impl DomainIssue {
             DomainIssue::ExitNotMember { .. } => "E-ENUM-EXITS-NOT-MEMBER",
             DomainIssue::MissingSemantics { .. } => "E-ENUM-MISSING-SEMANTICS",
             DomainIssue::UnexpectedSemantics { .. } => "E-ENUM-UNEXPECTED-SEMANTICS",
+            DomainIssue::LabelNotMember { .. } => "E-ENUM-LABEL-NOT-MEMBER",
         }
     }
 
@@ -422,6 +425,10 @@ impl DomainIssue {
             DomainIssue::UnexpectedSemantics { name, key } => format!(
                 "domain `{name}` declares `{key}:`, which has no meaning for this slot \
                  (dsl 0.9.0 D-D)"
+            ),
+            DomainIssue::LabelNotMember { name, value } => format!(
+                "domain `{name}` declares a label for `{value}` in `labels:`, which is not one \
+                 of its members (dsl 0.24.0 §1)"
             ),
         }
     }
@@ -479,6 +486,15 @@ pub fn validate_domain(name: &str, d: &crate::snapshot::Domain) -> Vec<DomainIss
             key: "exits",
         });
     }
+    // dsl 0.24.0 §1: labels are display text for members, legal on any slot.
+    for member in d.labels.keys() {
+        if !d.members.contains(member) {
+            out.push(DomainIssue::LabelNotMember {
+                name: name.to_string(),
+                value: member.clone(),
+            });
+        }
+    }
     out
 }
 
@@ -494,6 +510,7 @@ mod tests {
             open: false,
             default: default.map(str::to_string),
             exits: exits.iter().map(|s| s.to_string()).collect(),
+            labels: Default::default(),
         }
     }
 
@@ -529,6 +546,20 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["E-ENUM-DEFAULT-NOT-MEMBER"]
         );
+    }
+
+    #[test]
+    fn labels_must_name_members_on_any_slot() {
+        let mut d = dom(&["mon", "sun"], None, &[]);
+        d.labels.insert("sun".into(), "Sunday".into());
+        assert!(validate_domain("weekday", &d).is_empty());
+        d.labels.insert("thur".into(), "Thursday".into());
+        let issues = validate_domain("weekday", &d);
+        assert_eq!(
+            issues.iter().map(|i| i.code()).collect::<Vec<_>>(),
+            ["E-ENUM-LABEL-NOT-MEMBER"]
+        );
+        assert!(issues[0].message().contains("`thur`"), "{}", issues[0].message());
     }
 
     #[test]

@@ -1,0 +1,13 @@
+---
+kind: scene
+id: hub.morning
+title: Another morning
+# Repeatable (`once: false`) and only after the first day.
+on: hubVisit
+once: false
+when: '!@firstDay'
+---
+
+## Morning
+
+@narrator: Day {{run.day}}. The square is already awake.

@@ -1,5 +1,6 @@
 //! dsl 0.23.0 under `lute play`: `prev.run.*` is snapshotted at `newRun`
 //! (§6) and a reward kind's `credits:` path receives the granted amount (§8).
+//! dsl 0.24.0 §1: an enum member's display label renders in `{{…}}`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -87,5 +88,85 @@ fn new_run_snapshots_prev_run_and_a_grant_credits_its_path() {
     );
     // The guarded `prev.run.floor` line played in the new run.
     assert!(text.contains("High last time."), "{text}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// dsl 0.24.0 §1: a state path typed against a named enum renders the
+/// member's declared label in `{{…}}` — in `lute play` (the reference runner,
+/// reading the artifact's `state[].labels`) and in `lute trace`/`lute test`
+/// (reading the checker's merged vocabulary) alike; a member without a label
+/// renders its id. The typed path reads the domain, so it is not unread.
+#[test]
+fn an_enum_member_label_renders_in_play_trace_and_test() {
+    let dir = std::env::temp_dir().join(format!("lute-vocab-labels-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "enums:\n  weekday:\n    members: [mon, sun]\n    labels: { sun: Sunday }\n\
+         state:\n  run.wd: { type: { domain: weekday }, default: mon }\n",
+    );
+    write(
+        &dir,
+        "scenes/day.lute",
+        "---\nkind: scene\nid: town.day\non: dawn\n---\n\n## Day\n\n\
+         @narrator: Today is {{run.wd}}.\n::set{run.wd = \"sun\"}\n@narrator: Now it is {{run.wd}}.\n",
+    );
+    write(&dir, "s.play.yaml", "steps:\n  - occasion: dawn\n");
+    write(
+        &dir,
+        "tests/day.test.yaml",
+        "file: ../scenes/day.lute\nexpect:\n  transcriptContains:\n    \
+         - \"Today is mon.\"\n    - \"Now it is Sunday.\"\n",
+    );
+    let lute = |args: &[&str]| {
+        let out = Command::new(BIN).args(args).output().unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        (out.status.code(), text)
+    };
+    let d = dir.to_str().unwrap();
+    let scene = dir.join("scenes/day.lute");
+    let scene = scene.to_str().unwrap();
+
+    let script = dir.join("s.play.yaml");
+    let (code, text) = lute(&["play", d, "--script", script.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("Today is mon.") && text.contains("Now it is Sunday."), "{text}");
+
+    let (code, text) = lute(&["trace", scene, "--project", d]);
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("Today is mon.") && text.contains("Now it is Sunday."), "{text}");
+
+    let tests = dir.join("tests");
+    let (code, text) = lute(&["test", tests.to_str().unwrap(), "--project", d]);
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("1 passed, 0 failed"), "{text}");
+
+    // The engine contract: the path's state entry carries the labels.
+    let out = Command::new(BIN).args(["compile", scene, "--project", d]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let art: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let entry = art["state"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["path"] == "run.wd")
+        .cloned()
+        .unwrap();
+    assert_eq!(entry["labels"], serde_json::json!({ "sun": "Sunday" }), "{entry}");
+
+    let (code, text) = lute(&["check-project", d]);
+    assert_eq!(code, Some(0), "{text}");
+    assert!(!text.contains("W-DOMAIN-UNREAD"), "{text}");
     let _ = std::fs::remove_dir_all(&dir);
 }

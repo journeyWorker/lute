@@ -172,7 +172,7 @@ fn substitute_params(body: &str, params: &[(String, Type)], args: &[String]) -> 
             let prev_ok = start == 0 || bytes[start - 1] != b'.';
             if prev_ok && !mask[start] {
                 if let Some(arg) = binding.get(&body[start..i]) {
-                    edits.push((start, i, format!("({arg})")));
+                    edits.push((start, i, arg_text(arg)));
                 }
             }
         } else {
@@ -184,6 +184,57 @@ fn substitute_params(body: &str, params: &[(String, Type)], args: &[String]) -> 
         out.replace_range(start..end, &replacement);
     }
     out
+}
+
+/// A bound argument's substitution text: verbatim when it is already one
+/// operand — a path/identifier/number, a plain string literal, or a group
+/// whose outer parentheses close at its last byte (an expanded def body) —
+/// parenthesized otherwise, for precedence safety (dsl 0.24.0 T3-12: the
+/// expansion reads `>= 2`, not `>= (2)`). A leading `-` is never an atom
+/// (`n - -2` would splice as `n--2`).
+fn arg_text(arg: &str) -> String {
+    let t = arg.trim();
+    if is_operand(t) {
+        t.to_string()
+    } else {
+        format!("({arg})")
+    }
+}
+
+fn is_operand(arg: &str) -> bool {
+    let b = arg.as_bytes();
+    let (Some(&first), Some(&last)) = (b.first(), b.last()) else {
+        return false;
+    };
+    if b.iter().all(|&c| c.is_ascii_alphanumeric() || c == b'_' || c == b'.') {
+        return first != b'.' && last != b'.';
+    }
+    if (first == b'\'' || first == b'"') && last == first && b.len() >= 2 {
+        let inner = &b[1..b.len() - 1];
+        return !inner.iter().any(|&c| c == first || c == b'\\');
+    }
+    if first == b'(' && last == b')' {
+        // The opening paren must close exactly at the end (`(a) + (b)` is
+        // not one group). Parens inside string literals are masked.
+        let mask = cel_string_mask(arg);
+        let mut depth = 0usize;
+        for (i, &c) in b.iter().enumerate() {
+            if mask[i] {
+                continue;
+            }
+            match c {
+                b'(' => depth += 1,
+                b')' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return i == b.len() - 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    false
 }
 
 /// `$` substitution text (§4.5): a bare dotted path goes in verbatim; anything
@@ -248,18 +299,33 @@ mod tests {
     }
 
     #[test]
-    fn fn_ref_binds_args_positionally_and_parenthesized() {
+    fn fn_ref_binds_args_positionally() {
         let t = tables(
             &[("atLeast", "scene.affect.marina >= n")],
             &[("atLeast", &["n"])],
         );
+        // T3-12: an atomic arg splices bare — `>= 2`, not `>= (2)`.
         assert_eq!(
             expand("@atLeast(2)", &t, None).unwrap(),
-            "(scene.affect.marina >= (2))"
+            "(scene.affect.marina >= 2)"
         );
         // Param ident boundaries: `n` inside `scene.n`/`none` must NOT bind.
         let t = tables(&[("f", "scene.n + none + n")], &[("f", &["n"])]);
-        assert_eq!(expand("@f(9)", &t, None).unwrap(), "(scene.n + none + (9))");
+        assert_eq!(expand("@f(9)", &t, None).unwrap(), "(scene.n + none + 9)");
+    }
+
+    /// T3-12: only a single operand drops its parentheses; anything an
+    /// operator could re-associate keeps them.
+    #[test]
+    fn compound_args_stay_parenthesized() {
+        let t = tables(&[("f", "x * n")], &[("f", &["n"])]);
+        assert_eq!(expand("@f(a + 1)", &t, None).unwrap(), "(x * (a + 1))");
+        assert_eq!(expand("@f(-2)", &t, None).unwrap(), "(x * (-2))");
+        assert_eq!(expand("@f((a) + (b))", &t, None).unwrap(), "(x * ((a) + (b)))");
+        assert_eq!(expand("@f(run.a.b)", &t, None).unwrap(), "(x * run.a.b)");
+        assert_eq!(expand("@f('mon')", &t, None).unwrap(), "(x * 'mon')");
+        assert_eq!(expand("@f('a' + 'b')", &t, None).unwrap(), "(x * ('a' + 'b'))");
+        assert_eq!(expand("@f(size(a))", &t, None).unwrap(), "(x * (size(a)))");
     }
 
     #[test]
@@ -310,8 +376,8 @@ mod tests {
             &[("f", "a * 2"), ("g", "b + 1")],
             &[("f", &["a"]), ("g", &["b"])],
         );
-        // g(1) = (1)+1, f(that) = that*2 — fully parenthesized, correct.
-        assert_eq!(expand("@f(@g(1))", &t, None).unwrap(), "((((1) + 1)) * 2)");
+        // g(1) = (1 + 1), f(that) = that * 2 — the group splices as one operand.
+        assert_eq!(expand("@f(@g(1))", &t, None).unwrap(), "((1 + 1) * 2)");
 
         // A deeper nest must not panic (exercises shorter/longer replacements).
         let deep = tables(&[("id", "x"), ("h", "y")], &[("id", &["x"]), ("h", &["y"])]);
@@ -336,14 +402,14 @@ mod tests {
 
     // Finding 3 (Important): params bind SIMULTANEOUSLY. Non-hygienic one-at-a-
     // time binding let f's later param `b` rewrite the arg text `b` (outer's
-    // param), collapsing `@outer(2)` to `1 + 1`; it must stay `(2) + (1)`.
+    // param), collapsing `@outer(2)` to `1 + 1`; it must stay `2 + 1`.
     #[test]
     fn param_binding_is_hygienic_no_arg_recapture() {
         let t = tables(
             &[("outer", "@f(b, 1)"), ("f", "a + b")],
             &[("outer", &["b"]), ("f", &["a", "b"])],
         );
-        assert_eq!(expand("@outer(2)", &t, None).unwrap(), "((((2)) + (1)))");
+        assert_eq!(expand("@outer(2)", &t, None).unwrap(), "((2 + 1))");
     }
 
     // 0.4.0 T1: proves the moved expander works standalone from lute-check,

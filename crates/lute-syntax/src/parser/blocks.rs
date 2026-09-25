@@ -199,11 +199,13 @@ impl Parser<'_> {
         let (event, event_span) = take_str_spanned(&mut attrs, "event")
             .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let target = take_str_spanned(&mut attrs, "target");
         let (body, end_o) = self.parse_block_body("on", &open);
         On {
             event,
             event_span,
             when,
+            target,
             attrs,
             body,
             span: self.span_o(open.start_o, end_o),
@@ -228,6 +230,8 @@ impl Parser<'_> {
             .map(|(s, sp)| (Some(s), sp))
             .unwrap_or_else(|| (None, self.span_o(open.start_o, open.end_o)));
         let tier = take_str_spanned(&mut attrs, "tier");
+        let activate = take_str_spanned(&mut attrs, "activate");
+        let complete = take_str_spanned(&mut attrs, "complete");
         let outer = self.enter_top_block("quest", &id, &open);
         let (body, rewards, end_o) = self.parse_owner_body("quest", &open);
         self.top_block = outer;
@@ -240,6 +244,8 @@ impl Parser<'_> {
             after,
             after_span,
             tier,
+            activate,
+            complete,
             attrs,
             body,
             rewards,
@@ -417,6 +423,7 @@ impl Parser<'_> {
         let on = take_str_spanned(&mut attrs, "on");
         let by = take_cel(&mut attrs, "by", CelKind::Condition);
         let target = take_str_spanned(&mut attrs, "target");
+        let until = take_cel(&mut attrs, "until", CelKind::Condition);
         let (body, rewards, end_o) = if open.self_closing {
             (Vec::new(), Vec::new(), open.end_o)
         } else {
@@ -434,6 +441,7 @@ impl Parser<'_> {
             on,
             by,
             target,
+            until,
             attrs,
             body,
             rewards,
@@ -658,7 +666,20 @@ impl Parser<'_> {
             }
             let trimmed = self.trimmed(self.cursor);
             if trimmed.starts_with("::set{") {
-                if let Node::Set(set) = self.parse_set() {
+                let line = self.cursor;
+                if let Node::Set(mut set) = self.parse_set() {
+                    // dsl 0.24.0 §1: a guarded write is logic, and a track
+                    // holds no logic (§7.4) — reject it and keep the clip
+                    // unguarded so no consumer ever sees a clip `when`.
+                    if set.when.take().is_some() {
+                        self.emit_line(
+                            E_TIMELINE_CONTENT,
+                            "a <track> `::set` cannot carry `when=` — a conditional write is \
+                             logic; move it outside the <timeline>",
+                            line,
+                            Layer::Logic,
+                        );
+                    }
                     last_end = set.span.byte_end;
                     clips.push(Clip {
                         at: None,

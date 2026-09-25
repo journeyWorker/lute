@@ -272,6 +272,8 @@ params: {}
             "sound".into(),
             ComponentDef {
                 params: Vec::new(),
+                speakers: Vec::new(),
+                effects: false,
                 body: component,
                 src: PathBuf::from("sound.component.lute"),
             },

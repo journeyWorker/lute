@@ -259,23 +259,24 @@ cascades to its still-active subquests. A failed `optional` objective leaves its
 
 - In every settle `done` is judged before `by`. So an objective whose `done` and `by` become true
   at the same moment counts as done, and a done objective never fails later.
-- An objective without `on=` has its `by` judged at every lifecycle settle. An `on=` objective has
-  its `by` judged only when its occasion is raised (for its target, when it names one), right
-  after its `done`: the moment the occasion answers is both the judgement and the deadline. A beat
-  on that occasion that writes the state `by` reads therefore cannot fail a correct answer. Given
-  `by="run.day >= 4"`, `thank` above would fail only at a `talk` with Maud on day four or later
-  that finds `run.answered` still false. (Before 0.23.1 an `on=` objective's `by` was judged at
-  every settle.)
-- Quests settle after every beat an occasion presents, so a deadline without `on=` can pass
-  between two beats of one [`select: sequence`](/language/beats/#a-routine-then-the-days-event)
-  occasion.
-- The failure is lifecycle state, not a state path, so content cannot read it. A failed required
-  objective shows as its quest's `failed` state. A new run clears it for a `tier="run"` quest.
-- `by` is checked like `done`: an undeclared path is `E-UNDECLARED`, and a read that may be unset
-  is `E-MAYBE-UNSET`.
+- `by` is a moment: it is judged at every lifecycle settle, for every objective, `on=` or not
+  (dsl 0.24.0 §2.1). Given `by="run.day >= 4"`, `thank` above fails in the settle that reaches day
+  four with `run.answered` still false — whether or not the player ever talks to Maud again.
+  (0.23.1 judged an `on=` objective's `by` only at its occasion; 0.24.0 reverses that.)
+- `until="<condition>"` is the place-bound deadline, legal only beside `on=`: it is judged only
+  when the objective's occasion is raised (for its target, when it names one), right after its
+  `done`, so the moment the occasion answers is both the judgement and the deadline, and a beat on
+  that occasion that writes the state `until` reads cannot fail a correct answer.
+- Quests settle after every beat an occasion presents, so a `by` can pass between two beats of one
+  [`select: sequence`](/language/beats/#a-routine-then-the-days-event) occasion.
+- The failure is readable: `quest.<id>.objectives.<oid>.failed` is `true` from then on, and a
+  failed required objective sets its quest's `failedBy` to `by` or `until`. A new run clears both
+  for a `tier="run"` quest.
+- `by` and `until` are checked like `done`: an undeclared path is `E-UNDECLARED`, and a read that
+  may be unset is `E-MAYBE-UNSET`.
 
 `lute trace` records the objective's decision as `failed`, and `lute run` / `lute play` print
-`failed (by)`; all three judge `done` and `by` in the same order. See
+`failed (by)` or `failed (until)`; all three judge `done` and the deadlines in the same order. See
 [Playing a story](/tooling/play/#deadlines-and-targeted-objectives).
 
 ### Subquests

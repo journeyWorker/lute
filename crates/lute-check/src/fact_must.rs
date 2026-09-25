@@ -55,6 +55,13 @@
 //! `<objective done>` inside their own bodies); a lore entry body starts from
 //! the seeds plus its `when`'s assumptions. Quest `start`/`fail` and entry
 //! `when` slots see the seeds.
+//!
+//! **Entry reads (dsl 0.24.0 §6).** A guard conjunct `entry.X.read` (or
+//! `== true`) assumes the crossing facts entry X's body guarantees on every
+//! route through it — its effects run on the first read of each run, and a
+//! crossing fact nothing removes still holds afterwards. `entry.X.everRead`
+//! assumes only the `tier: user` / `tier: app` ones: a later run's
+//! `everRead` does not re-run the effects, and the run tier has been reset.
 
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
@@ -104,7 +111,8 @@ pub fn compute_must(
     vocab: &RootVocab,
     may: &MaySet,
 ) -> FactMust {
-    let root = Root::new(docs, vocab, may);
+    let mut root = Root::new(docs, vocab, may);
+    root.entry_reads = entry_outcomes(&root, docs, foldeds);
     let mut out = FactMust::default();
     let mut must_out: BTreeMap<String, Facts> = BTreeMap::new();
     let mut walked = vec![false; docs.len()];
@@ -229,6 +237,43 @@ struct Root<'a> {
     asserted: BTreeSet<String>,
     /// The monotone, crossing seeds.
     seeds: Facts,
+    /// Entry id → the crossing facts its body guarantees on every route
+    /// (§6); empty until [`entry_outcomes`] fills it.
+    entry_reads: BTreeMap<String, Facts>,
+}
+
+/// dsl 0.24.0 §6: for every lore entry of the root, the crossing facts its
+/// body guarantees on every route (seeds and `when` assumptions included —
+/// they held when it was read and nothing removes a crossing fact). An entry
+/// id declared twice keeps the facts both guarantee.
+fn entry_outcomes(
+    root: &Root<'_>,
+    docs: &[(PathBuf, Document)],
+    foldeds: &[&FoldedEnv],
+) -> BTreeMap<String, Facts> {
+    let mut out: BTreeMap<String, Facts> = BTreeMap::new();
+    for ((path, doc), folded) in docs.iter().zip(foldeds) {
+        for entry in doc.entries.iter().filter(|e| !e.id.is_empty()) {
+            let mut w = Walk::new(root, path, folded);
+            let mut flow = Some(root.seeds.clone());
+            if let Some(when) = &entry.when {
+                w.assume(when, &mut flow);
+            }
+            w.body_base = flow.clone().unwrap_or_default();
+            w.walk(&entry.body, &mut flow);
+            let mut end = w.exit.take();
+            meet(&mut end, flow);
+            let mut end = end.unwrap_or_default();
+            end.retain(|f, _| root.crosses(f));
+            match out.entry(entry.id.clone()) {
+                Entry::Vacant(v) => {
+                    v.insert(end);
+                }
+                Entry::Occupied(mut o) => o.get_mut().retain(|f, _| end.contains_key(f)),
+            }
+        }
+    }
+    out
 }
 
 /// dsl 0.23.0 §9: the seeds that hold at every point of every run of the
@@ -292,6 +337,7 @@ impl<'a> Root<'a> {
             produced,
             asserted,
             seeds: Facts::new(),
+            entry_reads: BTreeMap::new(),
         };
         root.seeds = vocab
             .seeds
@@ -403,20 +449,7 @@ fn walk_doc(
     entry: Facts,
     slots: &mut MustMap,
 ) -> Facts {
-    let mut w = Walk {
-        root,
-        path,
-        defs: DefTable {
-            bodies: &folded.def_bodies,
-            params: &folded.env.def_params,
-        },
-        schema: &folded.env.state,
-        vocab: &folded.env.rel_vocab,
-        slots: BTreeMap::new(),
-        pending: BTreeMap::new(),
-        exit: None,
-        body_base: root.seeds.clone(),
-    };
+    let mut w = Walk::new(root, path, folded);
     let mut flow = Some(entry);
     if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
         w.guard(when, &mut flow);
@@ -434,9 +467,9 @@ fn walk_doc(
         }
         let mut base = root.seeds.clone();
         if let Some(start) = &quest.start {
-            for fact in w.assumptions(start) {
+            for (fact, provenance) in w.assumptions(start) {
                 if root.crosses(&fact) {
-                    base.entry(fact).or_insert_with(|| w.guard_provenance(start));
+                    base.entry(fact).or_insert(provenance);
                 }
             }
         }
@@ -490,7 +523,24 @@ struct Walk<'a> {
     body_base: Facts,
 }
 
-impl Walk<'_> {
+impl<'a> Walk<'a> {
+    fn new(root: &'a Root<'a>, path: &'a Path, folded: &'a FoldedEnv) -> Self {
+        Walk {
+            root,
+            path,
+            defs: DefTable {
+                bodies: &folded.def_bodies,
+                params: &folded.env.def_params,
+            },
+            schema: &folded.env.state,
+            vocab: &folded.env.rel_vocab,
+            slots: BTreeMap::new(),
+            pending: BTreeMap::new(),
+            exit: None,
+            body_base: root.seeds.clone(),
+        }
+    }
+
     fn guard_provenance(&self, slot: &CelSlot) -> Provenance {
         Provenance::Guard {
             path: self.path.to_path_buf(),
@@ -500,12 +550,17 @@ impl Walk<'_> {
 
     /// Record the set reaching guard `slot` (before its own assumption).
     fn record(&mut self, slot: &CelSlot, flow: &Flow) {
+        self.record_span(slot.span, flow);
+    }
+
+    /// Record the set reaching the slot at `span`.
+    fn record_span(&mut self, span: Span, flow: &Flow) {
         let Some(facts) = flow else {
             return;
         };
-        match self.slots.entry((slot.span.byte_start, slot.span.byte_end)) {
+        match self.slots.entry((span.byte_start, span.byte_end)) {
             Entry::Vacant(v) => {
-                v.insert((slot.span, facts.clone()));
+                v.insert((span, facts.clone()));
             }
             Entry::Occupied(mut o) => o.get_mut().1.retain(|f, _| facts.contains_key(f)),
         }
@@ -516,10 +571,8 @@ impl Walk<'_> {
         let Some(facts) = flow else {
             return;
         };
-        for fact in self.assumptions(slot) {
-            facts
-                .entry(fact)
-                .or_insert_with(|| self.guard_provenance(slot));
+        for (fact, provenance) in self.assumptions(slot) {
+            facts.entry(fact).or_insert(provenance);
         }
     }
 
@@ -530,8 +583,10 @@ impl Walk<'_> {
     }
 
     /// The ground facts `slot`'s positive top-level `holds(F)` conjuncts
-    /// require, restricted to [`Self::trackable`] ones.
-    fn assumptions(&self, slot: &CelSlot) -> Vec<GroundFact> {
+    /// require (provenance: this guard), plus what its `entry.X.read` /
+    /// `entry.X.everRead` conjuncts guarantee (§6; provenance: where X's body
+    /// establishes them), restricted to [`Self::trackable`] ones.
+    fn assumptions(&self, slot: &CelSlot) -> Vec<(GroundFact, Provenance)> {
         if slot.raw.trim().is_empty() {
             return Vec::new();
         }
@@ -547,10 +602,32 @@ impl Walk<'_> {
         };
         let mut conj = Vec::new();
         conjuncts(&node.expr, &mut conj);
-        conj.into_iter()
-            .filter_map(held_fact)
-            .filter(|f| self.trackable(f))
-            .collect()
+        let mut facts: Vec<(GroundFact, Provenance)> = Vec::new();
+        for c in conj {
+            if let Some(f) = held_fact(c) {
+                facts.push((f, self.guard_provenance(slot)));
+            } else if let Some((id, ever)) = entry_read(c) {
+                let Some(read) = self.root.entry_reads.get(&id) else {
+                    continue;
+                };
+                facts.extend(
+                    read.iter()
+                        .filter(|(f, _)| !ever || self.user_tier(f))
+                        .map(|(f, p)| (f.clone(), p.clone())),
+                );
+            }
+        }
+        facts.retain(|(f, _)| self.trackable(f));
+        facts
+    }
+
+    /// A fact of a `tier: user` / `tier: app` relation — one a new run keeps.
+    fn user_tier(&self, f: &GroundFact) -> bool {
+        self.root
+            .vocab
+            .relations
+            .get(&f.relation)
+            .is_some_and(|d| matches!(d.tier.as_deref(), Some("user" | "app")))
     }
 
     /// A fact the must set may carry: a relation this document declares
@@ -596,8 +673,11 @@ impl Walk<'_> {
                     if let Some(id) = attr_str(&l.attrs, "id") {
                         self.label(id, flow);
                     }
-                    if let Some(when) = &l.when {
-                        self.record(when, flow);
+                    // dsl 0.24.0 §4: an unguarded line is its own slot —
+                    // `W-CAST-ABSENT` reads the facts guaranteed there.
+                    match &l.when {
+                        Some(when) => self.record(when, flow),
+                        None => self.record_span(l.span, flow),
                     }
                 }
                 Node::Directive(d) => self.directive(d, flow),
@@ -619,8 +699,8 @@ impl Walk<'_> {
                     if let Some(when) = &o.when {
                         self.record(when, &base);
                     }
-                    if let Some(by) = &o.by {
-                        self.record(by, &base);
+                    for deadline in o.by.iter().chain(&o.until) {
+                        self.record(deadline, &base);
                     }
                     let mut body = base;
                     self.assume(&o.done, &mut body);
@@ -787,4 +867,23 @@ fn held_fact(e: &Expr) -> Option<GroundFact> {
         return None;
     };
     QueryPattern::from_call(p)?.ground()
+}
+
+/// `entry.X.read` / `entry.X.everRead` as a conjunct — bare or `== true` —
+/// as `(X, is_ever_read)`.
+fn entry_read(e: &Expr) -> Option<(String, bool)> {
+    let e = match e {
+        Expr::Call(c)
+            if c.func_name == op::EQUALS
+                && c.target.is_none()
+                && c.args.len() == 2
+                && matches!(c.args[1].expr, Expr::Literal(cel_parser::reference::Val::Boolean(true))) =>
+        {
+            &c.args[0].expr
+        }
+        other => other,
+    };
+    let path = crate::cel_paths::select_path(e)?;
+    let id = crate::cel_paths::reserved_entry_id(&path)?.to_string();
+    Some((id, crate::cel_paths::is_entry_ever_read(&path)))
 }

@@ -293,6 +293,158 @@ fn calendar_replays_the_route_and_applies_quest_fact_and_where_axes() {
     }
 }
 
+fn stderr(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stderr).to_string()
+}
+
+#[test]
+fn calendar_visited_axis_gates_after_and_bad_axes_name_the_kinds() {
+    let dir = town("cal-visited");
+    let d = dir.to_str().unwrap();
+    // `inn.again` needs `after: visited("inn.ada")` and a trusted ada.
+    let save = write(&dir, "met.play.yaml", "facts: [\"met(ada)\"]\n");
+    let args = [
+        "--script", save.to_str().unwrap(), "--occasion", "placeVisit", "--target", "place.inn",
+        "--axis", "visited('inn.ada')=true,false",
+    ];
+    let mut full = vec!["calendar", d, "--json"];
+    full.extend(args);
+    let out = lute(&full);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["cells"][0]["at"]["visited('inn.ada')"], true);
+    assert_eq!(result(&v, 0, "placeVisit", Some("place.inn"))["winner"], "inn.again");
+    assert_ne!(result(&v, 1, "placeVisit", Some("place.inn"))["winner"], "inn.again");
+
+    let err = |args: &[&str]| {
+        let mut full = vec!["calendar", d];
+        full.extend_from_slice(args);
+        let out = lute(&full);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", text(&out));
+        stderr(&out)
+    };
+    let typo = err(&["--axis", "visited('inn.adda')=true"]);
+    assert!(typo.contains("did you mean `inn.ada`?"), "{typo}");
+    let maybe = err(&["--axis", "visited(\"inn.ada\")=maybe"]);
+    assert!(maybe.contains("takes `true` (visited) and `false` (absent), not `maybe`"), "{maybe}");
+
+    // An axis of no supported kind lists the kinds.
+    let kinds = "an axis is one of: a declared state path (`run.day=1..7`), `quest.<id>.state=<status>,…`, \
+                 `quest.<id>.objectives.<oid>.done=true,false`, `holds(<fact>)=true,false`, \
+                 `visited('<scene or bundle-beat id>')=true,false`, \
+                 `clock[=<d1>..<d2>]` (every slot of those days, in order)";
+    let call = err(&["--axis", "completed('errand')=true"]);
+    assert!(call.contains("`completed('errand')` is no axis the calendar can apply; ") && call.contains(kinds), "{call}");
+    let path = err(&["--axis", "run.dy=1..2"]);
+    assert!(path.contains("`run.dy` is not a declared state path in this project — did you mean `run.day`?"), "{path}");
+    assert!(path.contains(kinds), "{path}");
+
+    // A derived atom is named once.
+    let derived = err(&["--axis", "holds(trusted(ada))=true"]);
+    assert!(
+        derived.contains("`--axis holds(trusted(ada))`: `trusted(ada)` is derived by rules and cannot be asserted"),
+        "{derived}"
+    );
+}
+
+#[test]
+fn calendar_per_occasion_axes_evaluate_an_occasion_once_per_value() {
+    let dir = town("cal-per-occasion");
+    let v = calendar_json(&dir, &["--occasion", "dayStart@run.day", "--occasion", "placeVisit"]);
+    let has = |n: usize, occ: &str| {
+        v["cells"][n]["results"].as_array().unwrap().iter().any(|r| r["occasion"] == occ)
+    };
+    // Held at the first slot: once per day, in the morning cells only.
+    assert_eq!((0..4).map(|n| has(n, "dayStart")).collect::<Vec<_>>(), [true, false, true, false]);
+    assert!((0..4).all(|n| has(n, "placeVisit")), "an unrestricted occasion varies over every axis");
+    let col = v["columns"].as_array().unwrap().iter().find(|c| c["occasion"] == "dayStart").unwrap();
+    assert_eq!(col["varies"], serde_json::json!(["run.day"]));
+    assert_eq!(col["heldAt"], serde_json::json!({ "run.slot": "morning" }));
+    assert_eq!(result(&v, 2, "dayStart", None)["winner"], "town.day2");
+
+    // `=value` holds the axis at another value.
+    let v = calendar_json(&dir, &["--occasion", "dayStart@run.day,run.slot=night"]);
+    assert_eq!(v["cells"][0]["results"].as_array().unwrap().len(), 0);
+    assert_eq!(result(&v, 1, "dayStart", None)["winner"], "town.memo");
+
+    let d = dir.to_str().unwrap();
+    let base = ["calendar", d, "--axis", "run.day=1..2", "--axis", "run.slot=morning,night"];
+    let mut args = base.to_vec();
+    args.extend(["--occasion", "dayStart@run.day", "--occasion", "placeVisit"]);
+    let out = lute(&args);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("  dayStart: varies over run.day only, at run.slot=morning; blank elsewhere\n"), "{s}");
+    let night = s.lines().find(|l| l.starts_with("1        night")).unwrap_or_else(|| panic!("{s}"));
+    assert!(!night.contains("town."), "the night row leaves dayStart blank: {night}");
+    args.push("--csv");
+    let csv = String::from_utf8_lossy(&lute(&args).stdout).to_string();
+    assert_eq!(csv.lines().filter(|l| l.contains(",dayStart,,first,")).count(), 2, "{csv}");
+
+    for (extra, want) in [
+        (["--occasion", "dayStart@run.dy"], "did you mean `run.day`?"),
+        (["--occasion", "dayStart@run.slot=noon"], "`noon` is not a value of `--axis run.slot` (morning, night)"),
+    ] {
+        let mut full = base.to_vec();
+        full.extend(extra);
+        let out = lute(&full);
+        assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+        assert!(stderr(&out).contains(want), "{}", text(&out));
+    }
+}
+
+#[test]
+fn calendar_facts_grid_and_never_presented_list() {
+    let dir = town("cal-facts");
+    let d = dir.to_str().unwrap();
+    let base = ["calendar", d, "--axis", "run.day=1..2", "--axis", "run.slot=morning,night", "--occasion", "dayStart"];
+    let mut args = base.to_vec();
+    args.extend(["--facts", "present"]);
+    let out = lute(&args);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        s.contains(
+            "facts present(person, place):\n\
+             person  1/morning  1/night  2/morning  2/night\n\
+             ada     -          inn      -          inn\n\
+             bo      dock       -        -          -\n"
+        ),
+        "{s}"
+    );
+    // Always outranked on `select: first`: eligible everywhere, presented
+    // nowhere, and what beat it.
+    assert!(
+        s.contains("  town.never [scene, scenes/never.lute] dayStart — lost to town.dawn; town.day2; town.memo\n"),
+        "{s}"
+    );
+    assert!(s.contains("eligible but never presented in any cell: 2\n"), "{s}");
+
+    let v = calendar_json(&dir, &["--occasion", "dayStart", "--facts", "present"]);
+    assert_eq!(v["cells"][1]["facts"]["present"], serde_json::json!(["present(ada, inn)"]));
+    assert_eq!(v["cells"][2]["facts"]["present"], serde_json::json!([]));
+    let never = v["neverPresented"].as_array().unwrap();
+    let ids: Vec<&str> = never.iter().map(|b| b["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["town.idle", "town.never"], "{never:?}");
+    assert_eq!(never[1]["beatenBy"], serde_json::json!(["town.dawn", "town.day2", "town.memo"]));
+
+    args.push("--csv");
+    let csv = String::from_utf8_lossy(&lute(&args).stdout).to_string();
+    assert!(csv.starts_with("run.day,run.slot,occasion,target,select,winner,presented,shadowed,unknown,notes,facts:present\n"), "{csv}");
+    assert!(csv.contains("1,night,dayStart,,first,town.memo,town.memo,town.idle;town.never,,,\"present(ada, inn)\"\n"), "{csv}");
+    assert!(
+        csv.contains("\nneverPresented,kind,document,occasion,target,beatenBy\n\
+                      town.idle,scene,scenes/idle.lute,dayStart,,town.dawn;town.day2;town.memo\n"),
+        "{csv}"
+    );
+
+    let mut bad = base.to_vec();
+    bad.extend(["--facts", "presnt"]);
+    let out = lute(&bad);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(stderr(&out).contains("`--facts` names `presnt`, which is no relation in this project — did you mean `present`?"), "{}", text(&out));
+}
+
 #[test]
 fn beats_ladder_lists_selection_order_and_check_verdicts() {
     let dir = town("beats");
@@ -352,18 +504,22 @@ fn knowledge_traces_a_fact_guard_through_rules_to_producers() {
     let out = lute(&["scenario", d, "knowledge", "--for", "inn.again"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("scene `inn.again` (scenes/inn-again.lute)"), "{s}");
+    // dsl 0.24.0 T3-1: grouped by document; a negated premise nothing
+    // produces is the good case and says so (was `NO PRODUCER`).
+    assert!(s.contains("  scenes/inn-again.lute\n    scene `inn.again`\n"), "{s}");
     assert!(s.contains("trusted(ada) — derived by 1 rule"), "{s}");
     assert!(s.contains("rule: trusted(P) :- met(P), not rumor(P)"), "{s}");
     assert!(s.contains("met(ada) — asserted by scene `inn.ada` (scenes/inn-ada.lute)"), "{s}");
-    assert!(s.contains("not rumor(ada) — NO PRODUCER"), "{s}");
-    assert!(!s.contains("defeated"), "nothing produces rumor(ada) yet: {s}");
+    assert!(s.contains("not rumor(ada) — always holds (nothing produces rumor(ada)"), "{s}");
+    assert!(s.contains("— cannot be defeated"), "{s}");
+    assert!(!s.contains("defeated when"), "nothing produces rumor(ada) yet: {s}");
     assert!(!s.contains("innShut"), "--for selects one node: {s}");
 
     // A ground query follows only the rules that can conclude it.
     let all = String::from_utf8_lossy(&lute(&["scenario", d, "knowledge"]).stdout).to_string();
     let inn_shut = all.split("entry `innShut`").nth(1).unwrap().split("\n\n").next().unwrap();
-    assert!(inn_shut.contains("present(ada, inn) — derived by 1 rule"), "{inn_shut}");
+    assert!(inn_shut.contains("not present(ada, inn) — holds unless defeated"), "{inn_shut}");
+    assert!(inn_shut.contains("rule: present(ada, inn) :-"), "{inn_shut}");
     assert!(!inn_shut.contains("present(bo, dock) :-"), "{inn_shut}");
 
     let json = lute(&["scenario", d, "--format", "json", "knowledge"]);
@@ -389,12 +545,9 @@ fn knowledge_traces_a_fact_guard_through_rules_to_producers() {
     let out = lute(&["scenario", d, "knowledge", "--for", "inn.again"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("not rumor(ada) — holds unless defeated\n"), "{s}");
     assert!(
-        s.contains("not rumor(ada) — asserted by beat `town.gossip.whisper` (lore/gossip.lute)"),
-        "{s}"
-    );
-    assert!(
-        s.contains("can be defeated by rumor(ada) [beat `town.gossip.whisper` (lore/gossip.lute)]"),
+        s.contains("defeated when rumor(ada) is asserted by beat `town.gossip.whisper` (lore/gossip.lute)"),
         "{s}"
     );
 }
@@ -451,4 +604,46 @@ fn play_marks_an_already_read_entry_candidate() {
         "{}",
         text(&human)
     );
+}
+
+/// dsl 0.24.0 T3-12: `lute beats` shows a beat's `when` as the author wrote
+/// it; `--expand` shows the expansion (no parentheses around an atomic
+/// argument); `--json` carries both.
+#[test]
+fn beats_show_the_authored_when_and_expand_on_request() {
+    let dir = town("beats-authored");
+    let world = std::fs::read_to_string(dir.join("world.schema.yaml")).unwrap();
+    write(
+        &dir,
+        "world.schema.yaml",
+        &format!("{world}defs:\n  daysAtLeast: {{ type: bool, cel: \"run.day >= n\", params: {{ n: number }} }}\n"),
+    );
+    write(
+        &dir,
+        "scenes/late.lute",
+        &scene("town.late", "on: dayStart\nonce: false\nwhen: '@daysAtLeast(2)'\npriority: 3\n", "@narrator: Late."),
+    );
+    let d = dir.to_str().unwrap();
+    let row = |args: &[&str]| {
+        let out = lute(args);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+        let s = String::from_utf8_lossy(&out.stdout).to_string();
+        s.lines().find(|l| l.contains("town.late")).map(str::to_string).unwrap_or_else(|| panic!("{s}"))
+    };
+    let authored = row(&["beats", d, "--occasion", "dayStart"]);
+    assert!(authored.trim_end().ends_with("@daysAtLeast(2)"), "{authored}");
+    let expanded = row(&["beats", d, "--occasion", "dayStart", "--expand"]);
+    assert!(expanded.trim_end().ends_with("(run.day >= 2)"), "{expanded}");
+
+    let out = lute(&["beats", d, "--occasion", "dayStart", "--json"]);
+    let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+    let late = v["roots"][0]["ladders"][0]["beats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == "town.late")
+        .unwrap()
+        .clone();
+    assert_eq!(late["when"], "(run.day >= 2)");
+    assert_eq!(late["whenAuthored"], "@daysAtLeast(2)");
 }

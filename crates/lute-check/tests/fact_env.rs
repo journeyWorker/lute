@@ -375,6 +375,30 @@ fn count_above_the_may_upper_bound_is_dead() {
     );
 }
 
+/// dsl 0.24 T3-9: `countDistinct` counts witnesses, not tuples — one witness
+/// asserting two facts can never make two distinct witnesses, while the
+/// plain tuple `count` of the same facts reaches two.
+#[test]
+fn count_distinct_is_bounded_by_distinct_values_not_tuples() {
+    let r = root(&[
+        (
+            "a.lute",
+            &scene(1, "::assert{knows(vesna, manifest)}\n::assert{knows(vesna, heading)}\n@vesna: hi."),
+        ),
+        (
+            "b.lute",
+            &scene(
+                2,
+                "@vesna{when=\"countDistinct(knows(W, _), W) >= 2\"}: dead.\n\
+                 @vesna{when=\"count(knows(_, _)) >= 2\"}: possible.",
+            ),
+        ),
+    ]);
+    let ds = r.guards("b.lute");
+    assert_eq!(codes(&ds), ["E-ARM-DEAD"], "{ds:?}");
+    assert!(ds[0].message.contains("distinct values at argument 1"), "{}", ds[0].message);
+}
+
 #[test]
 fn or_with_one_possible_arm_is_not_dead() {
     let r = root(&[
@@ -1023,4 +1047,61 @@ fn wip_downgrades_a_dead_choice_and_gated_line_too() {
         assert_eq!(d.severity, Severity::Warning, "{d:?}");
         assert!(d.message.contains("`--wip`"), "{}", d.message);
     }
+}
+
+// --- dsl 0.24.0 §6: an entry read joins the must set (round-3 T2-14) --------
+
+/// A lore entry `log3` whose body asserts `knows(vesna, manifest)` on every
+/// route, and a scene whose choice is guarded by `guard` and re-checks it.
+fn read_guarded(guard: &str) -> (String, String) {
+    let lore = lore(&format!(
+        "<entry id=\"log3\">\n  {ASSERT_KNOWS}\n  @narrator: The keeper's log.\n</entry>"
+    ));
+    let text = scene(
+        1,
+        &format!(
+            "<branch id=\"b\">\n<choice id=\"x\" label=\"X\" when=\"{guard}\">\n{KNOWS}\n</choice>\n\
+             <choice id=\"y\" label=\"Y\">\n@vesna: y.\n</choice>\n</branch>"
+        ),
+    );
+    (lore, text)
+}
+
+#[test]
+fn a_read_entry_guarantees_what_its_body_asserts() {
+    let (lore, text) = read_guarded("entry.log3.read");
+    let r = root(&[("a.lute", &text), ("log.lute", &lore)]);
+    let ds = r.guards("a.lute");
+    let w = only(&ds, "W-FACT-GUARANTEED");
+    let line = line_of(&lore, ASSERT_KNOWS);
+    assert!(w.message.contains(&format!("(log.lute:{line})")), "{}", w.message);
+    // `== true` is the same assumption.
+    let (lore, text) = read_guarded("entry.log3.read == true");
+    let r = root(&[("a.lute", &text), ("log.lute", &lore)]);
+    assert_eq!(codes(&r.guards("a.lute")), ["W-FACT-GUARANTEED"]);
+}
+
+#[test]
+fn an_entry_read_guarantees_nothing_its_body_only_may_assert() {
+    let lore = lore(&format!(
+        "<entry id=\"log3\">\n  <match on=\"run.mood\">\n  <when is=\"1\">\n  {ASSERT_KNOWS}\n  \
+         @narrator: a.\n  </when>\n  <otherwise>\n  @narrator: b.\n  </otherwise>\n  </match>\n</entry>"
+    ));
+    let lore = lore.replace("---\n<entry", "state:\n  run.mood: { type: number, default: 0 }\n---\n<entry");
+    let (_, text) = read_guarded("entry.log3.read");
+    let r = root(&[("a.lute", &text), ("log.lute", &lore)]);
+    assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
+}
+
+#[test]
+fn ever_read_guarantees_only_facts_a_new_run_keeps() {
+    // `knows` is run-tier: an `everRead` from an earlier run says nothing
+    // about this run's store.
+    let (lore, text) = read_guarded("entry.log3.everRead");
+    let r = root(&[("a.lute", &text), ("log.lute", &lore)]);
+    assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
+    // The same relation at `tier: user` survives the run boundary.
+    let user = |s: &str| s.replace("knows: { args: [crew, topic], tier: run }", "knows: { args: [crew, topic], tier: user }");
+    let r = root(&[("a.lute", &user(&text)), ("log.lute", &user(&lore))]);
+    assert_eq!(codes(&r.guards("a.lute")), ["W-FACT-GUARANTEED"], "{:?}", r.guards("a.lute"));
 }

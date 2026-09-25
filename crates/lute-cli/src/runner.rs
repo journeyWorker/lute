@@ -69,14 +69,16 @@
 //!   note — it honors no `at`/`duration`/`delay` wall-clock timing and
 //!   simulates no frame pacing or track concurrency.
 //! - **No real bridges.** A `plugin` command (bridge-protocol.md) is recorded
-//!   as an external call; its `op`/literal effects ARE applied, but a
-//!   `bridgeResult` effect has no mock surface to read from and is recorded
-//!   unresolved (the runner invokes no host service and ignores `wait`).
+//!   as an external call; its `op`/literal effects ARE applied. A
+//!   `bridgeResult` effect reads the mock's `bridges:` answer for the call
+//!   (dsl 0.24.0 §5, one per call of the tag, in order); with none it is
+//!   recorded unresolved and the walk goes on — `lute play` instead halts at
+//!   the call. The runner invokes no host service and ignores `wait`.
 //! - **No narrative-time history.** `now()` / `validAt(...)` have no mock
 //!   surface and read unknown; the fact store is valid-now (`holds`/`count`
 //!   over the current least-fixpoint).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -248,6 +250,12 @@ struct QuestDecl {
     /// transitions (spec §3 D-D) — [`Runner::emit_quest_grants`] filters
     /// by the per-entry `on=` marker.
     rewards: Vec<RewardRec>,
+    /// dsl 0.24.0 §2: `QuestCmd.activate == "accept"` — a subquest child
+    /// that activates only once accepted while its parent is active.
+    accept_activated: bool,
+    /// dsl 0.24.0 §2: `QuestCmd.complete == "any"` — ANY required
+    /// objective done completes the quest.
+    complete_any: bool,
 }
 
 struct Obj {
@@ -269,6 +277,9 @@ struct Obj {
     /// dsl 0.23.0 §2: `ObjectiveEntry.by` raw — while not done, the first
     /// time it is true the objective fails.
     by: Option<String>,
+    /// dsl 0.24.0 §2.1: `ObjectiveEntry.until` raw — judged only when the
+    /// objective's occasion (and target) is raised, after its `done`.
+    until: Option<String>,
     /// dsl 0.23.0 §2: `ObjectiveEntry.target` — with `on`, judged only by a
     /// raise for this target.
     target: Option<String>,
@@ -317,6 +328,9 @@ struct Handler {
     when: Option<String>,
     body: String,
     quest: Option<String>,
+    /// dsl 0.24.0 §2: `OnCmd.target` — fires only for a raise of the
+    /// same-named occasion for this target.
+    target: Option<String>,
 }
 
 /// The bounded step outcome of the dispatcher.
@@ -342,6 +356,9 @@ pub(crate) struct Runner {
     /// Declared value-type per state path (from the artifact `state` table),
     /// so a mock literal is coerced against the same type the compiler folded.
     types: BTreeMap<String, String>,
+    /// dsl 0.24.0 §1: per state path, the member → display-label map its
+    /// artifact `state[].labels` declares; `{{path}}` renders through it.
+    labels: BTreeMap<String, BTreeMap<String, String>>,
 
     // Evaluation environments — empty by construction: all live state lives in
     // `state`, so an empty `StateSchema` never shadows a read; an empty
@@ -360,6 +377,10 @@ pub(crate) struct Runner {
     base_facts: BTreeSet<Fact>,
     /// `base_facts` ∪ the derived least-fixpoint — what guards query.
     all_facts: BTreeSet<Fact>,
+    /// Derived relations whose last fixpoint read an undecided rule guard
+    /// (dsl 0.24 T1-1): a guard querying one is unknown, so `lute play`
+    /// halts on it instead of reading the relation as silently empty.
+    undecided: BTreeMap<String, Vec<UnresolvedAtom>>,
 
     mock: lute_trace::MockSet,
 
@@ -434,11 +455,22 @@ pub(crate) struct Runner {
     /// activates from it on the next lifecycle round; `lute play` carries
     /// the rest to the quest documents via [`RunnerOutcome::accepted`].
     accepted: Vec<String>,
+    /// dsl 0.24.0 §2: the quest ids every `accept` record with `applies:
+    /// "nextRun"` named — queued; `lute play` applies them after the next
+    /// run-start reset ([`RunnerOutcome::accepted_next_run`]).
+    accepted_next_run: Vec<String>,
     /// dsl 0.23.0 §2: `<quest>.<objective>` ids whose `by` came true while
     /// they were not done — failed, never judged again. `lute play` carries
     /// them across advances ([`Runner::with_failed_objectives`],
     /// [`RunnerOutcome::failed_objectives`]).
     failed_objectives: BTreeSet<String>,
+    /// dsl 0.24.0 §5: the `bridges:` answers plugin calls consume — the
+    /// mock's (`lute run`), or the playthrough's queue ([`Runner::with_bridges`]).
+    bridges: BridgeAnswers,
+    /// dsl 0.24.0 §2: why each `<quest>.<objective>` in `failed_objectives`
+    /// failed (`by` / `until`) — read when a required objective's failure
+    /// fails its quest, to stamp `quest.<id>.failedBy`.
+    objective_failed_by: BTreeMap<String, &'static str>,
 }
 
 /// `lute play`'s per-presentation carryover + transcript-reuse surface:
@@ -459,6 +491,8 @@ pub(crate) struct RunnerOutcome {
     /// See [`Runner::accepted`] — the accepts a presentation made, which the
     /// playthrough hands to the next quest advance.
     pub accepted: Vec<String>,
+    /// See [`Runner::accepted_next_run`].
+    pub accepted_next_run: Vec<String>,
     /// See [`Runner::refused`].
     pub refused: bool,
     /// See [`Runner::choice_cursor`] — the consumption the next
@@ -466,6 +500,47 @@ pub(crate) struct RunnerOutcome {
     pub choice_cursor: BTreeMap<String, usize>,
     /// See [`Runner::failed_objectives`].
     pub failed_objectives: BTreeSet<String>,
+    /// See [`Runner::bridges`] — the answers later walks consume.
+    pub bridges: BridgeAnswers,
+}
+
+/// dsl 0.24.0 §5: the bridge answers a walk consumes — per plugin directive
+/// tag, one answer per call, in call order. `step` (a `lute play` step's own
+/// `bridges:`) is consumed before `top` (the play's top-level `bridges:`, or
+/// a `lute run --mock`'s).
+#[derive(Clone, Debug, Default)]
+pub(crate) struct BridgeAnswers {
+    pub step: BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
+    pub top: BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
+}
+
+impl BridgeAnswers {
+    /// A `bridges:` surface as a queue.
+    pub(crate) fn queue(
+        answers: &BTreeMap<String, Vec<lute_trace::BridgeAnswer>>,
+    ) -> BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>> {
+        answers
+            .iter()
+            .filter(|(_, list)| !list.is_empty())
+            .map(|(tag, list)| (tag.clone(), list.iter().cloned().collect()))
+            .collect()
+    }
+
+    /// The next answer for a call of `tag`: the step's first, then the top
+    /// level's.
+    fn next(&mut self, tag: &str) -> Option<lute_trace::BridgeAnswer> {
+        for tier in [&mut self.step, &mut self.top] {
+            if let Some(q) = tier.get_mut(tag) {
+                if let Some(a) = q.pop_front() {
+                    if q.is_empty() {
+                        tier.remove(tag);
+                    }
+                    return Some(a);
+                }
+            }
+        }
+        None
+    }
 }
 
 impl Runner {
@@ -502,6 +577,7 @@ impl Runner {
 
         // Declared types + initial state defaults (state-lifecycle.md).
         let mut types = BTreeMap::new();
+        let mut labels = BTreeMap::new();
         let mut state = BTreeMap::new();
         if let Some(entries) = art.get("state").and_then(Json::as_array) {
             for e in entries {
@@ -511,6 +587,13 @@ impl Runner {
                 }
                 let ty = e.get("type").and_then(Json::as_str).unwrap_or("string");
                 types.insert(path.to_string(), ty.to_string());
+                if let Some(map) = e.get("labels").and_then(Json::as_object) {
+                    let map: BTreeMap<String, String> = map
+                        .iter()
+                        .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+                        .collect();
+                    labels.insert(path.to_string(), map);
+                }
                 if let Some(default) = e.get("default") {
                     if let Some(v) = json_to_value(default) {
                         state.insert(path.to_string(), v);
@@ -538,7 +621,8 @@ impl Runner {
         // Parsed rules (the shared evaluator). Under `derive: false` every
         // derived relation — declared `derive: true` or concluded by a rule —
         // is marked so, making an unmatched query unknown, not false.
-        let program = Program::from_ir(art.get("rules"));
+        let program = Program::from_ir(art.get("rules"))
+            .with_kinds(lute_trace::datalog::ir_kinds(art.get("entities")));
         let mut vocab = RelVocab::default();
         if !mock.derives() {
             let declared = art
@@ -566,6 +650,11 @@ impl Runner {
         }
         // dsl 0.21.0 §7a.1: the mock's `visited:` seeds the presented set.
         let visited = mock.visited.iter().cloned().collect();
+        // dsl 0.24.0 §5: the mock's `bridges:` answer this walk's calls.
+        let bridges = BridgeAnswers {
+            top: BridgeAnswers::queue(&mock.bridges),
+            ..BridgeAnswers::default()
+        };
 
         Runner {
             kind,
@@ -573,12 +662,14 @@ impl Runner {
             addr_index,
             addr_order,
             types,
+            labels,
             schema: StateSchema::default(),
             vocab,
             program,
             state,
             base_facts,
             all_facts: BTreeSet::new(),
+            undecided: BTreeMap::new(),
             mock,
             transcript: Vec::new(),
             quest_status: BTreeMap::new(),
@@ -595,13 +686,17 @@ impl Runner {
             apply_effects: true,
             visited,
             accepted: Vec::new(),
+            accepted_next_run: Vec::new(),
             failed_objectives: BTreeSet::new(),
+            objective_failed_by: BTreeMap::new(),
+            bridges,
         }
     }
 
     fn new(art: &Json, mock: lute_trace::MockSet) -> Self {
         let mut runner = Self::blank(art, mock);
         runner.apply_mock_seeds();
+        refresh_clock(art, &mut runner.state);
         runner.recompute_facts();
         runner
     }
@@ -629,6 +724,7 @@ impl Runner {
         runner.quest_status = initial_quests;
         runner.play = true;
         runner.apply_mock_seeds();
+        refresh_clock(art, &mut runner.state);
         runner.recompute_facts();
         runner
     }
@@ -668,6 +764,15 @@ impl Runner {
     /// again.
     pub(crate) fn with_failed_objectives(mut self, failed: &BTreeSet<String>) -> Self {
         self.failed_objectives.extend(failed.iter().cloned());
+        self
+    }
+
+    /// `lute play` (dsl 0.24.0 §5): the playthrough's bridge answers — the
+    /// current step's, then the top level's — which this walk's plugin calls
+    /// consume ([`RunnerOutcome::bridges`] hands back the rest). Under play
+    /// a call left without an answer halts the walk at the call.
+    pub(crate) fn with_bridges(mut self, bridges: &BridgeAnswers) -> Self {
+        self.bridges = bridges.clone();
         self
     }
 
@@ -727,12 +832,15 @@ impl Runner {
     /// derived relations are marked in `vocab`, so an unmatched one reads
     /// unknown ([`Runner::blank`]).
     fn recompute_facts(&mut self) {
-        self.all_facts = if self.mock.derives() {
+        if self.mock.derives() {
             let eff = EffectiveState::new(&self.schema, self.state.clone());
-            self.program.fixpoint(&self.base_facts, &eff).facts
+            let closure = self.program.fixpoint(&self.base_facts, &eff);
+            self.all_facts = closure.facts;
+            self.undecided = closure.undecided;
         } else {
-            self.base_facts.clone()
-        };
+            self.all_facts = self.base_facts.clone();
+            self.undecided.clear();
+        }
     }
 
     /// Evaluate a `raw` CEL fragment over live state + the current fixpoint.
@@ -758,7 +866,7 @@ impl Runner {
             None => return Value::Unknown,
         };
         let eff = EffectiveState::new(&self.schema, self.state.clone());
-        let mut fs = FactStore::new(&self.vocab);
+        let mut fs = FactStore::new(&self.vocab).with_undecided(self.undecided.clone());
         for (rel, args) in &self.all_facts {
             fs.assert(rel, args);
         }
@@ -880,7 +988,13 @@ impl Runner {
                         "-" => Value::Num(a - b),
                         "*" => Value::Num(a * b),
                         "/" if b != 0.0 => Value::Num(a / b),
-                        "%" if b != 0.0 => Value::Num(a % b),
+                        // dsl 0.24.0 §1: integer `%` — the truncated
+                        // remainder of two integral values (`+ 0.0` folds
+                        // `-0`); a fractional operand or a zero divisor is
+                        // unknown, as in trace (`lute_check::apply_op`).
+                        "%" if a.fract() == 0.0 && b.fract() == 0.0 && b != 0.0 => {
+                            Value::Num(a % b + 0.0)
+                        }
                         _ => Value::Unknown,
                     },
                     _ => Value::Unknown,
@@ -943,9 +1057,11 @@ impl Runner {
             unresolved: self.unresolved,
             transcript: self.transcript,
             accepted: self.accepted,
+            accepted_next_run: self.accepted_next_run,
             refused: self.refused,
             choice_cursor: self.choice_cursor,
             failed_objectives: self.failed_objectives,
+            bridges: self.bridges,
         }
     }
 
@@ -1031,8 +1147,11 @@ impl Runner {
                 Step::Halt
             }
             "plugin" => {
-                self.exec_plugin(&cmd);
-                Step::Next(pc + 1)
+                if self.exec_plugin(&cmd) {
+                    Step::Next(pc + 1)
+                } else {
+                    Step::Halt
+                }
             }
             "accept" => {
                 self.exec_accept(&cmd);
@@ -1059,7 +1178,9 @@ impl Runner {
     /// quest of THIS artifact activates on the next lifecycle round
     /// ([`Runner::is_accepted`]), and `lute play` hands the id to the quest
     /// documents' next advance. A quest this walk already knows to be past
-    /// `unset` is left alone, and the record says so.
+    /// `unset` is left alone, and the record says so. dsl 0.24.0 §2: an
+    /// accept with `applies: "nextRun"` is queued instead
+    /// ([`Runner::accepted_next_run`]) and recorded with `at: "nextRun"`.
     fn exec_accept(&mut self, cmd: &Json) {
         let quest = cmd
             .get("quest")
@@ -1070,6 +1191,12 @@ impl Runner {
         rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("accept".into()));
         rec.insert("quest".into(), Json::String(quest.clone()));
+        if cmd.get("applies").and_then(Json::as_str) == Some("nextRun") {
+            rec.insert("at".into(), Json::String("nextRun".into()));
+            self.transcript.push(Json::Object(rec));
+            self.accepted_next_run.push(quest);
+            return;
+        }
         if let Some(state) = self
             .quest_status
             .get(&quest)
@@ -1123,7 +1250,9 @@ impl Runner {
     /// Substitute `{{…}}` markers: a `path` with its live value, a `ref` by
     /// evaluating its inlined def body (`expr.raw`, lute 0.21.1). A marker whose
     /// value is unknown (unset path, undecided ref) or a reserved token keeps
-    /// its verbatim text (state-lifecycle.md).
+    /// its verbatim text (state-lifecycle.md). A placeholder's `format`
+    /// (dsl 0.24.0 §4) applies to the value: `ordinal` renders a number as an
+    /// English ordinal ([`formatted`]).
     fn interpolate(&mut self, text: &str, placeholders: Option<&Vec<Json>>) -> String {
         let Some(phs) = placeholders else {
             return text.to_string();
@@ -1145,7 +1274,7 @@ impl Runner {
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("path") => {
                     let path = ph.get("path").and_then(Json::as_str).unwrap_or("");
                     match self.state.get(path) {
-                        Some(v) => value_to_string(v),
+                        Some(v) => formatted(ph, v).unwrap_or_else(|| self.path_text(path, v)),
                         None => marker.to_string(),
                     }
                 }
@@ -1153,7 +1282,7 @@ impl Runner {
                     let raw = ph.pointer("/expr/raw").and_then(Json::as_str).unwrap_or("");
                     match self.eval_raw(raw) {
                         Value::Unknown => marker.to_string(),
-                        v => value_to_string(&v),
+                        v => formatted(ph, &v).unwrap_or_else(|| value_to_string(&v)),
                     }
                 }
                 _ => marker.to_string(),
@@ -1163,6 +1292,22 @@ impl Runner {
         }
         out.push_str(rest);
         out
+    }
+
+    /// A `{{path}}` value as text: an enum member with a declared label
+    /// renders the label (dsl 0.24.0 §1) — `prev.run.X` shares `run.X`'s —
+    /// anything else its plain value.
+    fn path_text(&self, path: &str, v: &Value) -> String {
+        if let Value::Str(s) = v {
+            let labels = self
+                .labels
+                .get(path)
+                .or_else(|| path.strip_prefix("prev.").and_then(|p| self.labels.get(p)));
+            if let Some(label) = labels.and_then(|l| l.get(s)) {
+                return label.clone();
+            }
+        }
+        value_to_string(v)
     }
 
     // ── state & facts ──────────────────────────────────────────────────
@@ -1664,57 +1809,179 @@ impl Runner {
         }));
     }
 
-    fn exec_plugin(&mut self, cmd: &Json) {
+    /// A `plugin` command (bridge-protocol.md). Effects that need no bridge
+    /// result apply. A `bridgeResult` effect reads the call's `bridges:`
+    /// answer (dsl 0.24.0 §5), the next one queued for its tag: the answered
+    /// values are written, typed by each result slot's declared type. With
+    /// no answer, `lute run` records the effects unresolved and walks on (no
+    /// host bridge is invoked); `lute play` halts the walk AT the call,
+    /// incomplete, before anything after it — a default arm over the result
+    /// slot included — is walked. `false` = the walk stops here (that halt,
+    /// or an answer that does not fit the call, which is fatal).
+    fn exec_plugin(&mut self, cmd: &Json) -> bool {
         let tag = cmd
             .get("tag")
             .and_then(Json::as_str)
             .unwrap_or("")
             .to_string();
-        // Apply effects that need no bridge result; record a `bridgeResult`
-        // effect as unresolved (no host bridge is invoked).
+        let effects = cmd
+            .get("effects")
+            .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let reads: Vec<(String, String)> = effects
+            .iter()
+            .filter_map(|e| {
+                let field = e.get("from")?.get("bridgeResult")?.as_str()?;
+                let path = e.get("path").and_then(Json::as_str).unwrap_or("");
+                Some((field.to_string(), path.to_string()))
+            })
+            .collect();
+        let answer = if reads.is_empty() {
+            None
+        } else {
+            self.bridges.next(&tag)
+        };
+        let answered = match &answer {
+            Some(a) => match self.bridge_values(&tag, &reads, a) {
+                Ok(values) => Some(values),
+                Err(msg) => {
+                    self.fatal = Some(msg);
+                    return false;
+                }
+            },
+            None if !reads.is_empty() && self.play => {
+                self.incomplete = true;
+                let paths: Vec<&str> = reads.iter().map(|(_, p)| p.as_str()).collect();
+                let fields: Vec<&str> = reads.iter().map(|(f, _)| f.as_str()).collect();
+                self.transcript.push(json!({
+                    "addr": addr(cmd),
+                    "kind": "plugin",
+                    "tag": tag,
+                    "external": true,
+                    "unresolvedEffects": paths,
+                    "unanswered": fields,
+                    "note": "external bridge call — no `bridges:` answer; halted at the call",
+                }));
+                return false;
+            }
+            None => None,
+        };
         let mut unresolved = Vec::new();
-        if let Some(effects) = cmd.get("effects").and_then(Json::as_array) {
-            for e in effects {
-                let path = e
-                    .get("path")
-                    .and_then(Json::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                let from = e.get("from");
-                if let Some(from) = from {
-                    if let Some(lit) = from.as_bool() {
-                        self.state.insert(path, Value::Bool(lit));
-                    } else if let Some(n) = from.as_f64() {
-                        self.state.insert(path, Value::Num(n));
-                    } else if let Some(s) = from.as_str() {
-                        self.state.insert(path, Value::Str(s.to_string()));
-                    } else if from.get("op").is_some() {
-                        let by = from.get("by").and_then(Json::as_f64).unwrap_or(0.0);
-                        let cur = match self.state.get(&path) {
-                            Some(Value::Num(n)) => *n,
-                            _ => 0.0,
-                        };
-                        let op = from.get("op").and_then(Json::as_str).unwrap_or("");
-                        let v = match op {
-                            "increment" => cur + by,
-                            "decrement" => cur - by,
-                            _ => cur,
-                        };
-                        self.state.insert(path, Value::Num(v));
-                    } else if from.get("bridgeResult").is_some() {
-                        unresolved.push(path);
+        for e in &effects {
+            let path = e
+                .get("path")
+                .and_then(Json::as_str)
+                .unwrap_or("")
+                .to_string();
+            let Some(from) = e.get("from") else {
+                continue;
+            };
+            if let Some(lit) = from.as_bool() {
+                self.state.insert(path, Value::Bool(lit));
+            } else if let Some(n) = from.as_f64() {
+                self.state.insert(path, Value::Num(n));
+            } else if let Some(s) = from.as_str() {
+                self.state.insert(path, Value::Str(s.to_string()));
+            } else if from.get("op").is_some() {
+                let by = from.get("by").and_then(Json::as_f64).unwrap_or(0.0);
+                let cur = match self.state.get(&path) {
+                    Some(Value::Num(n)) => *n,
+                    _ => 0.0,
+                };
+                let op = from.get("op").and_then(Json::as_str).unwrap_or("");
+                let v = match op {
+                    "increment" => cur + by,
+                    "decrement" => cur - by,
+                    _ => cur,
+                };
+                self.state.insert(path, Value::Num(v));
+            } else if let Some(field) = from.get("bridgeResult").and_then(Json::as_str) {
+                match answered.as_ref().and_then(|a| a.iter().find(|(f, _)| f == field)) {
+                    Some((_, v)) => {
+                        self.state.insert(path, v.clone());
                     }
+                    None => unresolved.push(path),
                 }
             }
         }
-        self.transcript.push(json!({
-            "addr": addr(cmd),
-            "kind": "plugin",
-            "tag": tag,
-            "external": true,
-            "unresolvedEffects": unresolved,
-            "note": "external bridge call — not invoked; bridgeResult effects unresolved",
-        }));
+        let rec = match answered {
+            Some(values) => {
+                let fields: Vec<Json> = values
+                    .iter()
+                    .map(|(f, v)| json!({ "field": f, "value": value_to_json(v) }))
+                    .collect();
+                json!({
+                    "addr": addr(cmd),
+                    "kind": "plugin",
+                    "tag": tag,
+                    "external": true,
+                    "unresolvedEffects": unresolved,
+                    "answered": fields,
+                    "note": "external bridge call — answered from `bridges:`",
+                })
+            }
+            None => json!({
+                "addr": addr(cmd),
+                "kind": "plugin",
+                "tag": tag,
+                "external": true,
+                "unresolvedEffects": unresolved,
+                "note": "external bridge call — not invoked; bridgeResult effects unresolved",
+            }),
+        };
+        self.transcript.push(rec);
+        true
+    }
+
+    /// One `bridges:` answer against the call it answers (dsl 0.24.0 §5):
+    /// exactly the `bridgeResult` fields the call's effects read, each a
+    /// literal of its result slot's declared type. `(field, value)` in the
+    /// effects' order; `Err` names the misfit (a usage error).
+    fn bridge_values(
+        &self,
+        tag: &str,
+        reads: &[(String, String)],
+        answer: &lute_trace::BridgeAnswer,
+    ) -> Result<Vec<(String, Value)>, String> {
+        let fields: Vec<&str> = reads.iter().map(|(f, _)| f.as_str()).collect();
+        let at = format!("the `bridges.{tag}` answer to plugin call `{tag}`");
+        if let Some((extra, _)) = answer.iter().find(|(f, _)| !fields.contains(&f.as_str())) {
+            return Err(format!(
+                "{at} gives `{extra}`, which no effect of the call reads (it reads: {})",
+                fields.join(", ")
+            ));
+        }
+        let mut out = Vec::with_capacity(reads.len());
+        for (field, path) in reads {
+            if out.iter().any(|(f, _): &(String, Value)| f == field) {
+                continue;
+            }
+            let Some((_, lit)) = answer.iter().find(|(f, _)| f == field) else {
+                return Err(format!(
+                    "{at} lacks `{field}` — an answer gives every bridge result the call reads ({})",
+                    fields.join(", ")
+                ));
+            };
+            let ty = self.types.get(path).map(String::as_str);
+            let v = match ty {
+                Some("bool") => match lit.as_str() {
+                    "true" => Some(Value::Bool(true)),
+                    "false" => Some(Value::Bool(false)),
+                    _ => None,
+                },
+                Some("number") => lit.parse::<f64>().ok().map(Value::Num),
+                _ => Some(Value::Str(lit.clone())),
+            };
+            let Some(v) = v else {
+                return Err(format!(
+                    "{at}: `{field}: {lit}` does not fit `{path}`, a `{}`",
+                    ty.unwrap_or("?")
+                ));
+            };
+            out.push((field.clone(), v));
+        }
+        Ok(out)
     }
 
     // ── quest lifecycle (quest-lifecycle.md) ────────────────────────────
@@ -1743,6 +2010,7 @@ impl Runner {
                         // record is emitted inside its quest's walk, after the
                         // quest declaration head (stage.rs `walk_quest`).
                         quest: quests.last().map(|q| q.id.clone()),
+                        target: cmd.get("target").and_then(Json::as_str).map(str::to_string),
                     });
                 }
                 _ => {}
@@ -1809,7 +2077,7 @@ impl Runner {
             } || self.is_accepted(&q.id);
             if activate {
                 self.set_quest_state(&q.id, "active");
-                self.fire_event("questActive", Some(&q.id), &handlers, &seg_starts);
+                self.fire_event("questActive", Some(&q.id), None, &handlers, &seg_starts);
             }
         }
 
@@ -1837,7 +2105,7 @@ impl Runner {
             if self.terminated {
                 break;
             }
-            self.fire_event(&ev, None, &handlers, &seg_starts);
+            self.fire_event(&ev, None, None, &handlers, &seg_starts);
             self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
         }
 
@@ -1862,7 +2130,9 @@ impl Runner {
                 self.transcript.push(rec);
             }
             if !lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&name) {
-                self.fire_event(name, None, &handlers, &seg_starts);
+                // dsl 0.24.0 §2: an `<on target>` answers only a raise for
+                // its target.
+                self.fire_event(name, None, target, &handlers, &seg_starts);
                 if self.terminated {
                     break;
                 }
@@ -1895,13 +2165,16 @@ impl Runner {
                             .iter()
                             .any(|r| lute_trace::raise_judges(r, on, o.target.as_deref()))
                     });
-                    // dsl 0.23.0 §2: an undecidable `by` could still fail the
-                    // quest — as stuck as an undecidable `done`.
+                    // dsl 0.23.0 §2 / 0.24.0 §2.1: an undecidable deadline
+                    // could still fail the quest — as stuck as an undecidable
+                    // `done`. `by` is judged at every settle; `until` only
+                    // where the objective is judged.
+                    let unknown = |this: &mut Self, slot: &Option<String>| {
+                        slot.as_ref().is_some_and(|c| this.eval_raw(c) == Value::Unknown)
+                    };
                     let (key, stuck) = if judged && self.eval_raw(&o.done) == Value::Unknown {
                         ("done", true)
-                    } else if judged
-                        && o.by.as_ref().is_some_and(|by| self.eval_raw(by) == Value::Unknown)
-                    {
+                    } else if unknown(self, &o.by) || (judged && unknown(self, &o.until)) {
                         ("failed", true)
                     } else {
                         ("done", false)
@@ -1981,9 +2254,11 @@ impl Runner {
             // 0. referenced-child activation (§2.4): a pending child whose
             // parent is `active` activates — immediately without `start`, or
             // when its `start` predicate holds (evaluated only while the
-            // parent is active). An unreferenced accept-driven quest
-            // activates once an `accept` record this walk ran names it
-            // (dsl 0.21.0 §7a.3 — an accept inside a handler/objective body).
+            // parent is active). dsl 0.24.0 §2: an `activate="accept"`
+            // child additionally waits for an accept naming it. An
+            // unreferenced accept-driven quest activates once an `accept`
+            // record this walk ran names it (dsl 0.21.0 §7a.3 — an accept
+            // inside a handler/objective body).
             for q in quests {
                 if self.quest_status.get(&q.id).map(String::as_str) != Some("unset") {
                     continue;
@@ -1994,6 +2269,7 @@ impl Runner {
                             continue;
                         }
                         match &q.start {
+                            None if q.accept_activated => self.is_accepted(&q.id),
                             None => true,
                             Some(raw) => self.truthy(raw) == Some(true),
                         }
@@ -2002,7 +2278,7 @@ impl Runner {
                 };
                 if activate {
                     self.set_quest_state(&q.id, "active");
-                    self.fire_event("questActive", Some(&q.id), handlers, seg_starts);
+                    self.fire_event("questActive", Some(&q.id), None, handlers, seg_starts);
                     changed = true;
                 }
             }
@@ -2026,50 +2302,72 @@ impl Runner {
                         changed = true;
                     }
                 }
-                // 1b. dsl 0.23.0 §2: deadlines, after the objectives were
-                // judged (`done` wins a tie) — a not-done objective whose
-                // `by` is true fails the first time. An `on=` objective's
-                // deadline is judged only at its occasion, after its `done`
-                // ([`Runner::judge_occasion`]).
-                for (oi, o) in q.objectives.iter().enumerate() {
-                    if o.on.is_some() {
-                        continue;
-                    }
-                    changed |= self.judge_deadline(q, qi, oi, done);
+                // 1b. dsl 0.23.0 §2, 0.24.0 §2.1: deadlines, after the
+                // objectives were judged (`done` wins a tie) — a not-done
+                // objective whose `by` is true fails the first time, `on=`
+                // or not: a deadline is a moment, not a place. (`until` is
+                // judged only at the occasion, [`Runner::judge_occasion`].)
+                for oi in 0..q.objectives.len() {
+                    changed |= self.judge_deadline(q, qi, oi, done, "by");
                 }
                 // 2. fail BEFORE derived completion (§6.3 precedence): an
                 // authored `fail`, or a required objective whose `by`
                 // failed it (in this settle or at the raise before it).
-                let missed = q.objectives.iter().any(|o| {
-                    !o.optional && self.failed_objectives.contains(&format!("{}.{}", q.id, o.id))
-                });
-                let failed = missed
-                    || q.fail.as_ref().is_some_and(|fail| self.truthy(fail) == Some(true));
-                if failed {
-                    self.set_quest_state(&q.id, "failed");
+                // dsl 0.24.0 §2: a `complete="any"` quest is not failed by
+                // one missed alternative — its synthesized `fail` fails it
+                // once every required objective has failed.
+                let missed = if q.complete_any {
+                    None
+                } else {
+                    q.objectives.iter().find_map(|o| {
+                        let key = format!("{}.{}", q.id, o.id);
+                        (!o.optional && self.failed_objectives.contains(&key))
+                            .then(|| self.objective_failed_by.get(&key).copied().unwrap_or("by"))
+                    })
+                };
+                let failed_by = match missed {
+                    Some(kind) => Some(kind),
+                    None => q
+                        .fail
+                        .as_ref()
+                        .is_some_and(|fail| self.truthy(fail) == Some(true))
+                        .then_some("fail"),
+                };
+                if let Some(reason) = failed_by {
+                    self.set_quest_failed(&q.id, reason);
                     // dsl 0.16.0 §3 D-D: fresh `failed` → grant
                     // `on="failed"` quest rewards BEFORE `questFailed`
                     // handlers and BEFORE the §2.3 downward cascade.
                     self.emit_grants(&q.id, None, &q.rewards, GrantEvent::Failed);
-                    self.fire_event("questFailed", Some(&q.id), handlers, seg_starts);
-                    self.cascade_children(&q.id, quests, parent_of, handlers, seg_starts);
+                    self.fire_event("questFailed", Some(&q.id), None, handlers, seg_starts);
+                    self.cascade_children(&q.id, "cascade", quests, parent_of, handlers, seg_starts);
                     changed = true;
                     continue;
                 }
-                // 3. derived completion: all non-optional objectives done.
-                let complete = q
-                    .objectives
-                    .iter()
-                    .enumerate()
-                    .all(|(oi, o)| o.optional || done.contains(&(qi, oi)));
+                // 3. derived completion: all non-optional objectives done —
+                // or, for `complete="any"` (dsl 0.24.0 §2), any one of them.
+                let complete = if q.complete_any {
+                    q.objectives
+                        .iter()
+                        .enumerate()
+                        .any(|(oi, o)| !o.optional && done.contains(&(qi, oi)))
+                } else {
+                    q.objectives
+                        .iter()
+                        .enumerate()
+                        .all(|(oi, o)| o.optional || done.contains(&(qi, oi)))
+                };
                 if complete {
                     self.set_quest_state(&q.id, "complete");
                     // dsl 0.16.0 §3 D-D: fresh `complete` → grant this
                     // quest's default-on rewards BEFORE `questComplete`
                     // handlers play.
                     self.emit_grants(&q.id, None, &q.rewards, GrantEvent::Complete);
-                    self.fire_event("questComplete", Some(&q.id), handlers, seg_starts);
-                    self.cascade_children(&q.id, quests, parent_of, handlers, seg_starts);
+                    self.fire_event("questComplete", Some(&q.id), None, handlers, seg_starts);
+                    // dsl 0.24.0 §2: the alternatives an `any` quest did not
+                    // take are superseded, not cascaded.
+                    let reason = if q.complete_any { "superseded" } else { "cascade" };
+                    self.cascade_children(&q.id, reason, quests, parent_of, handlers, seg_starts);
                     changed = true;
                 }
             }
@@ -2154,39 +2452,58 @@ impl Runner {
                 {
                     break;
                 }
-                self.judge_deadline(q, qi, oi, done);
+                self.judge_deadline(q, qi, oi, done, "until");
             }
         }
     }
 
-    /// dsl 0.23.0 §2: judge objective `oi`'s `by` — skipped when it has none,
-    /// is done, or already failed. The first time it is true the objective
-    /// fails (recorded); a failed required objective fails its quest at the
-    /// next settle. `true` when it failed now.
+    /// dsl 0.23.0 §2, 0.24.0 §2.1: judge objective `oi`'s deadline `kind` —
+    /// `by` (every settle) or `until` (at its occasion's raise) — skipped
+    /// when it has none, is done, or already failed. The first time it is
+    /// true the objective fails (recorded with the kind as its `failedBy`);
+    /// a failed required objective fails its quest at the next settle.
+    /// `true` when it failed now.
     fn judge_deadline(
         &mut self,
         q: &QuestDecl,
         qi: usize,
         oi: usize,
         done: &BTreeSet<(usize, usize)>,
+        kind: &'static str,
     ) -> bool {
         let o = &q.objectives[oi];
-        let Some(by) = &o.by else { return false };
+        let slot = if kind == "until" { &o.until } else { &o.by };
+        let Some(cond) = slot else { return false };
         let key = format!("{}.{}", q.id, o.id);
         if done.contains(&(qi, oi)) || self.failed_objectives.contains(&key) {
             return false;
         }
-        if self.truthy(by) != Some(true) {
+        if self.truthy(cond) != Some(true) {
             return false;
         }
-        self.failed_objectives.insert(key);
+        self.record_objective_failure(&q.id, &o.id, kind);
         self.transcript.push(json!({
             "kind": "objective",
             "quest": q.id,
             "objective": o.id,
             "failed": true,
+            "failedBy": kind,
         }));
         true
+    }
+
+    /// dsl 0.24.0 §2: objective `objective` of `quest` failed for `kind`
+    /// (`by` / `until`): never judged again, the reserved
+    /// `quest.<id>.objectives.<oid>.failed` reads `true`, and a required
+    /// one fails its quest with that `failedBy`.
+    fn record_objective_failure(&mut self, quest: &str, objective: &str, kind: &'static str) {
+        let key = format!("{quest}.{objective}");
+        self.state.insert(
+            format!("quest.{quest}.objectives.{objective}.failed"),
+            Value::Bool(true),
+        );
+        self.objective_failed_by.insert(key.clone(), kind);
+        self.failed_objectives.insert(key);
     }
 
     /// Downward cascade (subquest design 2026-08-31 §2.3): on `terminal`'s
@@ -2195,17 +2512,20 @@ impl Runner {
     /// cascaded failure is itself a terminal transition). A required child
     /// cannot be `active` when its parent completes (its completion is part
     /// of the parent's derived completion), so the `complete` arm only ever
-    /// fails running optionals.
+    /// fails running optionals. dsl 0.24.0 §2: `reason` is the direct
+    /// children's `failedBy` — `cascade`, or `superseded` when a
+    /// `complete="any"` parent completed; deeper levels are `cascade`.
     fn cascade_children(
         &mut self,
         terminal: &str,
+        reason: &'static str,
         quests: &[QuestDecl],
         parent_of: &BTreeMap<String, String>,
         handlers: &[Handler],
         seg_starts: &[usize],
     ) {
-        let mut stack = vec![terminal.to_string()];
-        while let Some(parent) = stack.pop() {
+        let mut stack = vec![(terminal.to_string(), reason)];
+        while let Some((parent, reason)) = stack.pop() {
             if self.terminated {
                 return;
             }
@@ -2228,11 +2548,24 @@ impl Runner {
                     .find(|q| q.id == child)
                     .map(|q| q.rewards.as_slice())
                     .unwrap_or(&[]);
-                self.set_quest_state(&child, "failed");
+                self.set_quest_failed(&child, reason);
                 self.emit_grants(&child, None, child_rewards, GrantEvent::Failed);
-                self.fire_event("questFailed", Some(&child), handlers, seg_starts);
-                stack.push(child);
+                self.fire_event("questFailed", Some(&child), None, handlers, seg_starts);
+                stack.push((child, "cascade"));
             }
+        }
+    }
+
+    /// The `→ failed` transition with its reason (dsl 0.24.0 §2): the
+    /// reserved `quest.<id>.failedBy` reads `fail`, `by`, `until`,
+    /// `cascade` or `superseded` from here on; the transcript record
+    /// carries it as `failedBy`.
+    fn set_quest_failed(&mut self, id: &str, reason: &str) {
+        self.set_quest_state(id, "failed");
+        self.state
+            .insert(format!("quest.{id}.failedBy"), Value::Str(reason.to_string()));
+        if let Some(rec) = self.transcript.last_mut() {
+            rec["failedBy"] = json!(reason);
         }
     }
 
@@ -2330,11 +2663,14 @@ impl Runner {
     /// those fire ONLY for their own enclosing quest (quest-lifecycle.md);
     /// `None` (a mock world event) fires every matching handler — under
     /// `lute play` (dsl 0.22.0 §9) only those of an ACTIVE quest, as `lute
-    /// trace` delivers `events:`.
+    /// trace` delivers `events:`. `target` is the target an occasion was
+    /// raised for (dsl 0.24.0 §2): a handler with a `target` fires only for
+    /// that target, never for a plain event or a lifecycle transition.
     fn fire_event(
         &mut self,
         event: &str,
         scope: Option<&str>,
+        target: Option<&str>,
         handlers: &[Handler],
         seg_starts: &[usize],
     ) {
@@ -2343,6 +2679,7 @@ impl Runner {
             .enumerate()
             .filter(|(_, h)| {
                 h.event == event
+                    && h.target.as_deref().is_none_or(|t| Some(t) == target)
                     && match scope {
                         Some(s) => h.quest.as_deref() == Some(s),
                         None => {
@@ -2610,8 +2947,9 @@ impl Runner {
                     None => format!("  {a}  end"),
                 },
                 "plugin" => format!(
-                    "  {a}  plugin {} (external call, not invoked)",
-                    e.get("tag").and_then(Json::as_str).unwrap_or("")
+                    "  {a}  plugin {} {}",
+                    e.get("tag").and_then(Json::as_str).unwrap_or(""),
+                    plugin_call_note(e)
                 ),
                 "accept" => {
                     let ignored = e
@@ -2634,22 +2972,31 @@ impl Runner {
                         e.get("occasion").and_then(Json::as_str).unwrap_or("")
                     )
                 }
-                "objective" => format!(
-                    "  {}.{} {}",
-                    e.get("quest").and_then(Json::as_str).unwrap_or(""),
-                    e.get("objective").and_then(Json::as_str).unwrap_or(""),
-                    // dsl 0.23.0 §2: a `by` deadline passed first.
-                    if e.get("failed").and_then(Json::as_bool) == Some(true) {
-                        "failed (by)"
-                    } else {
-                        "done"
+                "objective" => {
+                    let quest = e.get("quest").and_then(Json::as_str).unwrap_or("");
+                    let objective = e.get("objective").and_then(Json::as_str).unwrap_or("");
+                    // dsl 0.23.0 §2 / 0.24.0 §2.1: a `by` (or `until`)
+                    // deadline passed first.
+                    match e.get("failedBy").and_then(Json::as_str) {
+                        Some(by) if e.get("failed").and_then(Json::as_bool) == Some(true) => {
+                            format!("  {quest}.{objective} failed ({by})")
+                        }
+                        _ => format!("  {quest}.{objective} done"),
                     }
-                ),
-                "quest" => format!(
-                    "  quest {} -> {}",
-                    e.get("quest").and_then(Json::as_str).unwrap_or(""),
-                    e.get("state").and_then(Json::as_str).unwrap_or("")
-                ),
+                }
+                // dsl 0.24.0 §2: a failure names its reason (`failedBy`).
+                "quest" => {
+                    let reason = e
+                        .get("failedBy")
+                        .and_then(Json::as_str)
+                        .map(|by| format!(" ({by})"))
+                        .unwrap_or_default();
+                    format!(
+                        "  quest {} -> {}{reason}",
+                        e.get("quest").and_then(Json::as_str).unwrap_or(""),
+                        e.get("state").and_then(Json::as_str).unwrap_or("")
+                    )
+                }
                 "grant" => {
                     let quest = e.get("quest").and_then(Json::as_str).unwrap_or("");
                     let owner = match e.get("objective").and_then(Json::as_str) {
@@ -2739,6 +3086,20 @@ fn addr(cmd: &Json) -> &str {
     cmd.get("addr").and_then(Json::as_str).unwrap_or("")
 }
 
+/// dsl 0.24.0 §1: the artifact's declared clock (`clock`), if any.
+pub(crate) fn artifact_clock(art: &Json) -> Option<lute_manifest::clock::ClockDecl> {
+    serde_json::from_value(art.get("clock")?.clone()).ok()
+}
+
+/// dsl 0.24.0 §1: re-derive the reserved `clock.*` values from the live
+/// `day` / `slot` state — a runner starts from whatever the carried state
+/// holds, and the clock paths are never stored, only derived.
+fn refresh_clock(art: &Json, state: &mut BTreeMap<String, Value>) {
+    if let Some(clock) = artifact_clock(art) {
+        lute_trace::clock::refresh(&clock, state);
+    }
+}
+
 /// The `raw` of a `{raw, expr}` CEL pair, when present and non-empty.
 fn cel_raw(pair: Option<&Json>) -> Option<String> {
     pair.and_then(|p| p.get("raw"))
@@ -2773,6 +3134,7 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
                     on: o.get("on").and_then(Json::as_str).map(str::to_string),
                     by: cel_raw(o.get("by")),
                     target: o.get("target").and_then(Json::as_str).map(str::to_string),
+                    until: cel_raw(o.get("until")),
                 })
                 .collect()
         })
@@ -2783,6 +3145,8 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
         fail: cel_raw(cmd.get("fail")),
         objectives,
         rewards: parse_rewards(cmd),
+        accept_activated: cmd.get("activate").and_then(Json::as_str) == Some("accept"),
+        complete_any: cmd.get("complete").and_then(Json::as_str) == Some("any"),
     }
 }
 
@@ -2863,6 +3227,31 @@ fn json_arg_to_string(j: &Json) -> String {
     }
 }
 
+/// The human annotation of a `plugin` transcript record (dsl 0.24.0 §5):
+/// `(bridge answered: passed=true, margin=3)` when a `bridges:` answer
+/// decided it, `(bridge unanswered: passed, margin)` when `lute play`
+/// halted at it, `(external call, not invoked)` otherwise.
+pub(crate) fn plugin_call_note(rec: &Json) -> String {
+    if let Some(Json::Array(fields)) = rec.get("answered") {
+        let parts: Vec<String> = fields
+            .iter()
+            .map(|a| {
+                format!(
+                    "{}={}",
+                    a.get("field").and_then(Json::as_str).unwrap_or(""),
+                    a.get("value").unwrap_or(&Json::Null)
+                )
+            })
+            .collect();
+        return format!("(bridge answered: {})", parts.join(", "));
+    }
+    if let Some(Json::Array(fields)) = rec.get("unanswered") {
+        let parts: Vec<&str> = fields.iter().filter_map(Json::as_str).collect();
+        return format!("(bridge unanswered: {})", parts.join(", "));
+    }
+    "(external call, not invoked)".to_string()
+}
+
 /// A trace [`Value`] → JSON (integral numbers collapse to integers).
 fn value_to_json(v: &Value) -> Json {
     match v {
@@ -2876,6 +3265,19 @@ fn value_to_json(v: &Value) -> Json {
         }
         Value::Str(s) => json!(s),
         Value::Unknown => Json::Null,
+    }
+}
+
+/// dsl 0.24.0 §4: a placeholder's `format` applied to its value — `ordinal`
+/// renders a number as an English ordinal (`3rd`, `11th`, `22nd`). `None`
+/// when the placeholder carries no format or the value has no ordinal (a
+/// fraction, a negative number): the value then renders unchanged.
+fn formatted(ph: &Json, v: &Value) -> Option<String> {
+    match (ph.get("format").and_then(Json::as_str), v) {
+        (Some(lute_syntax::ast::INTERP_FORMAT_ORDINAL), Value::Num(n)) => {
+            lute_syntax::ast::english_ordinal(*n)
+        }
+        _ => None,
     }
 }
 

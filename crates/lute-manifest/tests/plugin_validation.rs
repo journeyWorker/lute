@@ -79,6 +79,7 @@ fn assemble_with(lower: Lowering) -> Vec<AssembleError> {
                 loaded: backdrop_plugin(lower),
             },
         )]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -164,6 +165,7 @@ fn semantics_error_keeps_the_generic_code() {
     pkg.directives[0].semantics = vec!["totallyMadeUp".into()];
     let reg = InstalledPlugins {
         by_id: BTreeMap::from([("arcia.vn".to_string(), InstalledPlugin { loaded: pkg })]),
+        ..Default::default()
     };
     let active = vec![
         ActivePlugin {
@@ -192,6 +194,7 @@ fn option_validation_reads_the_manifest_of_the_active_plugin() {
                 }),
             },
         )]),
+        ..Default::default()
     };
     let active = vec![ActivePlugin {
         id: "arcia.vn".into(),

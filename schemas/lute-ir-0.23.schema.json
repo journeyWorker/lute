@@ -100,6 +100,10 @@
         "$ref": "#/$defs/shotEntry"
       },
       "description": "dsl 0.8.0 §6: authored `## ` shot headings, in document order. Omitted when no shot carries a heading. Quest documents have no shots."
+    },
+    "clock": {
+      "$ref": "#/$defs/clockDecl",
+      "description": "dsl 0.24.0 §1: the declared clock the document was compiled against. Omitted when the project declares none. Serialized last, after `shots`."
     }
   },
   "allOf": [
@@ -259,6 +263,7 @@
                 "-",
                 "*",
                 "/",
+                "%",
                 "in"
               ]
             },
@@ -367,6 +372,9 @@
             },
             "path": {
               "type": "string"
+            },
+            "format": {
+              "$ref": "#/$defs/placeholderFormat"
             }
           },
           "additionalProperties": true,
@@ -388,6 +396,9 @@
             "expr": {
               "$ref": "#/$defs/celPair",
               "description": "The referenced def body, inlined at compile time (the artifact has no defs table). The engine renders the placeholder by evaluating it like any other CEL slot. Always emitted by lute 0.21.1+ compilers; optional so 0.21.0 artifacts stay valid."
+            },
+            "format": {
+              "$ref": "#/$defs/placeholderFormat"
             }
           },
           "additionalProperties": true,
@@ -413,6 +424,12 @@
             "token"
           ]
         }
+      ]
+    },
+    "placeholderFormat": {
+      "description": "dsl 0.24.0 §4: the interpolation's format hint ({{user.deaths:ordinal}}), omitted when none was written. The engine renders the value in that format. `ordinal`: a non-negative integer as an English ordinal (1st 2nd 3rd 4th … 11th 12th 13th … 21st 22nd … 101st 111th); any other value renders unchanged.",
+      "enum": [
+        "ordinal"
       ]
     },
     "role": {
@@ -786,9 +803,11 @@
           "enum": [
             "run",
             "user",
-            "none"
+            "none",
+            "day",
+            "slot"
           ],
-          "description": "repetition policy: `run` (default — presented at most once per run), `user` (at most once ever), `none` (repeatable; source `once: false`)."
+          "description": "repetition policy: `run` (default — presented at most once per run), `user` (at most once ever), `none` (repeatable; source `once: false`), `day` / `slot` (dsl 0.24.0 §1: spent until the declared clock's day / slot changes — the artifact's `clock` names the paths)."
         },
         "also": {
           "const": true,
@@ -871,6 +890,13 @@
         "provenance": {
           "type": "string",
           "description": "\"branch:<id>\" for an implicit choice slot, \"quest:<id>\" for a reserved quest slot; absent for an author-declared slot."
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "dsl 0.24.0 §1: value -> display label, from the named enum the path is typed against (`{ domain: <name> }`). A `{{path}}` interpolation renders the label when the value has one, the value otherwise. Absent when the enum declares no labels."
         }
       },
       "additionalProperties": true,
@@ -1148,11 +1174,15 @@
         },
         "by": {
           "$ref": "#/$defs/celPair",
-          "description": "dsl 0.23.0 §2: while the objective is not done, the first time this condition is true the objective FAILS (a required objective fails its quest). Judged at every lifecycle settle, `on` or not. Absent when not authored."
+          "description": "dsl 0.23.0 §2, 0.24.0 §2.1: while the objective is not done, the first time this condition is true the objective FAILS (a required objective fails its quest; `quest.<id>.failedBy` = `by`). Judged at every lifecycle settle, `on` or not — a deadline is a moment, not a place; `done` wins a tie in the same settle. Absent when not authored."
         },
         "target": {
           "type": "string",
           "description": "dsl 0.23.0 §2: with `on`, the objective is judged only when the occasion is raised for this target (the beat target rule). Absent when not authored: judged whenever the occasion is raised, for any target."
+        },
+        "until": {
+          "$ref": "#/$defs/celPair",
+          "description": "dsl 0.24.0 §2.1: the place-bound deadline (the checker requires `on`). Judged only when the objective's `on` occasion is raised (for `target`, when present) while the quest is `active`, after its `done`; the first time it is true there the objective FAILS (a required objective fails its quest; `quest.<id>.failedBy` = `until`). Absent when not authored."
         }
       },
       "additionalProperties": true,
@@ -2158,6 +2188,14 @@
           "enum": ["run"],
           "description": "dsl 0.22.0 §7: `run` for a `<quest tier=\"run\">` — its status and objectives reset to `unset` when a run starts (`newRun`). Omitted for the default `user` tier (status persists across runs)."
         },
+        "activate": {
+          "enum": ["accept"],
+          "description": "dsl 0.24.0 §2: `accept` for a `<quest activate=\"accept\">` subquest child — it does not activate with its parent; an accept activates it while the parent is `active`. Omitted by default (the child activates with its parent)."
+        },
+        "complete": {
+          "enum": ["any"],
+          "description": "dsl 0.24.0 §2: `any` for a `<quest complete=\"any\">` — the quest completes when ANY required objective is done, and every other still-active child fails with `failedBy: superseded`. Omitted for the default `all`."
+        },
         "wait": {
           "type": "boolean"
         },
@@ -2209,6 +2247,10 @@
         "body": {
           "type": "string",
           "description": "addr of the action body segment."
+        },
+        "target": {
+          "type": "string",
+          "description": "dsl 0.24.0 §2: the handler fires only when the same-named occasion is raised for this target. Omitted when unauthored (the handler answers every raise)."
         },
         "wait": {
           "type": "boolean"
@@ -2294,8 +2336,8 @@
           "description": "dsl 0.21.0 §3.2: the entry beat's authored priority (higher wins). Absent when not authored; the engine reads an absent priority as 0."
         },
         "once": {
-          "enum": ["run", "user"],
-          "description": "dsl 0.22.0 §7: the entry beat's repetition policy — `run`: not eligible while `entry.<id>.read` is true; `user`: not eligible once `entry.<id>.everRead` is true. Absent when not authored: repeatable, as in 0.21."
+          "enum": ["run", "user", "day", "slot"],
+          "description": "dsl 0.22.0 §7, 0.24.0 §1: the entry beat's repetition policy — `run`: not eligible while `entry.<id>.read` is true; `user`: not eligible once `entry.<id>.everRead` is true; `day` / `slot`: not eligible again until the declared clock's day / slot changes after it was read. Absent when not authored: repeatable, as in 0.21."
         },
         "body": {
           "type": "string",
@@ -2346,6 +2388,10 @@
         "quest": {
           "type": "string",
           "description": "id of an accept-driven quest (one with no `start`) in the project; checked by `check-project` (`E-ACCEPT-TARGET`)."
+        },
+        "applies": {
+          "enum": ["nextRun"],
+          "description": "dsl 0.24.0 §2: `nextRun` for `::accept{… at=\"nextRun\"}` — the acceptance is queued and applies after the next run-start reset. Omitted for an immediate accept."
         },
         "wait": {
           "type": "boolean"
@@ -2421,9 +2467,11 @@
           "enum": [
             "run",
             "user",
-            "none"
+            "none",
+            "day",
+            "slot"
           ],
-          "description": "repetition policy, as sceneBeat.once: `run` (default), `user`, `none` (source `once=false`). Spent when the beat is presented."
+          "description": "repetition policy, as sceneBeat.once: `run` (default), `user`, `none` (source `once=false`), `day` / `slot` (dsl 0.24.0 §1). Spent when the beat is presented."
         },
         "also": {
           "const": true,
@@ -2715,9 +2763,11 @@
           "enum": [
             "run",
             "user",
-            "none"
+            "none",
+            "day",
+            "slot"
           ],
-          "description": "the beat's repetition policy: always present on a scene or bundle row; on an entry row the authored `once` (`run`/`user`, dsl 0.22.0 §7), absent = repeatable."
+          "description": "the beat's repetition policy: always present on a scene or bundle row; on an entry row the authored `once` (`run`/`user`, dsl 0.22.0 §7; `day`/`slot`, dsl 0.24.0 §1), absent = repeatable."
         },
         "when": {
           "type": "string",
@@ -2757,6 +2807,67 @@
         "heading"
       ],
       "description": "dsl 0.8.0 §6: one authored shot heading. Purely descriptive — control flow never references it."
+    },
+    "clockDecl": {
+      "type": "object",
+      "properties": {
+        "day": {
+          "type": "string",
+          "description": "the day path — a `number` state path declared `owner: engine` (else `E-CLOCK-DECL`). Day 1 is the first day."
+        },
+        "slot": {
+          "type": "string",
+          "description": "the slot path — an enum state path declared `owner: engine`."
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "the slot order within a day; exactly the slot enum's members, each once."
+        },
+        "raise": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "the occasion the engine raises after every advance of the clock. Absent when not declared."
+        },
+        "week": {
+          "type": "object",
+          "properties": {
+            "length": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "days per week."
+            },
+            "first": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "the 0-based weekday index of day 1 (below `length`); always serialized, `0` when not declared."
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "one display label per weekday, in weekday order (exactly `length` of them). Omitted when not declared."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "length",
+            "first"
+          ],
+          "description": "the optional week. Absent when not declared."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "day",
+        "slot",
+        "slots"
+      ],
+      "description": "dsl 0.24.0 §1: the project's declared clock, verbatim from the schema's `clock:` block. Carried on the artifact root and on `project.index.json` (`lute compile --all`) as `clock`. The engine derives the reserved read-only paths from it — `clock.index` = `(day - 1) * len(slots) + slotIndex` (monotone), `clock.weekday` = `(week.first + day - 1) mod week.length`, `clock.weekdayLabel` = `week.labels[clock.weekday]` — none of which is a `state` row, and spends `once: day|slot` beats by it. An advance moves the clock forward only (the last slot wraps to the first slot of the next day), settles quests and raises `raise` when declared."
     }
   }
 }

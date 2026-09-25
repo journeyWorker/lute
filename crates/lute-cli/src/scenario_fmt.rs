@@ -88,7 +88,9 @@ fn reach_token(scenario: &RootScenario, node: &NodeId) -> &'static str {
 /// never flattened into a misleading joint requirement).
 fn prereq_json(scenario: &RootScenario, node: &NodeId) -> Value {
     match scenario.graph.nodes.get(node).map(|info| &info.prereq) {
-        None | Some(PrereqState::Absent) => Value::Null,
+        // An accept-anchored quest declares no `after`; its anchors are its
+        // `accept` edges and `referenced` nodes (dsl 0.24.0 §2).
+        None | Some(PrereqState::Absent | PrereqState::Accepted(_)) => Value::Null,
         Some(PrereqState::Invalid) => Value::String("(malformed — E-CONN-PROFILE)".to_string()),
         Some(PrereqState::Valid(f)) => Value::String(format_prereq(f)),
     }
@@ -309,16 +311,13 @@ fn reach_json(
     // each with its own verdict, so a disjunction's alternatives are visible
     // without pretending the `after` formula is a flat requirement list (the
     // `prereq` string above carries the real && / || structure).
-    if let Some(PrereqState::Valid(f)) = scenario.graph.nodes.get(&node_id).map(|i| &i.prereq) {
-        let mut targets: std::collections::BTreeSet<NodeId> = std::collections::BTreeSet::new();
-        for atom in lute_check::atoms(f) {
-            targets.insert(match atom {
-                lute_check::Atom::Visited(key) => NodeId::Scene(key),
-                // Both quest-lifecycle atoms name the SAME node; the
-                // `completed`/`active` distinction lives on the graph edge.
-                lute_check::Atom::Completed(id) | lute_check::Atom::Active(id) => NodeId::Quest(id),
-            });
-        }
+    if let Some(f) = scenario.graph.nodes.get(&node_id).and_then(|i| i.prereq.formula()) {
+        // Both quest-lifecycle atoms name the SAME node; the
+        // `completed`/`active` distinction lives on the graph edge.
+        let targets: std::collections::BTreeSet<NodeId> = lute_check::atoms(f)
+            .iter()
+            .map(|atom| NodeId::of_atom(atom, &scenario.graph.nodes))
+            .collect();
         let referenced: Vec<Value> = targets
             .iter()
             .map(|t| {

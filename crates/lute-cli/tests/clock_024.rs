@@ -1,0 +1,324 @@
+//! dsl 0.24.0 §1 (the declared clock) and §2.1 (`by=` at every settle,
+//! `until=` at the raise), through the built `lute` binary over a small
+//! temp project whose schema declares the clock.
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+const BIN: &str = env!("CARGO_BIN_EXE_lute");
+
+fn temp_dir(tag: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("lute-clock-{tag}-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn write(dir: &Path, rel: &str, text: &str) {
+    let p = dir.join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(&p, text).unwrap();
+}
+
+fn text(o: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
+}
+
+const CLOCK: &str = "clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, afternoon, night]\n  \
+                     week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }\n";
+
+/// A project: `world.schema.yaml` with `state` and a clock, plus every
+/// `(path, text)` document.
+fn project(tag: &str, state_owner: &str, docs: &[(&str, &str)]) -> PathBuf {
+    project_with(tag, state_owner, CLOCK, docs)
+}
+
+/// [`project`] with the schema's `clock:` text (`""` for none).
+fn project_with(tag: &str, state_owner: &str, clock: &str, docs: &[(&str, &str)]) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "world.schema.yaml",
+        &format!(
+            "state:\n  run.day: {{ type: number, default: 1{state_owner} }}\n  \
+             run.slot: {{ type: {{ enum: [morning, afternoon, night] }}, default: morning{state_owner} }}\n\
+             {clock}"
+        ),
+    );
+    for (rel, body) in docs {
+        write(&dir, rel, body);
+    }
+    dir
+}
+
+fn check_project(dir: &Path) -> Output {
+    Command::new(BIN).arg("check-project").arg(dir).output().unwrap()
+}
+
+fn play(dir: &Path, script: &str) -> Output {
+    write(dir, "s.play.yaml", script);
+    Command::new(BIN)
+        .args(["play", &dir.display().to_string(), "--script"])
+        .arg(dir.join("s.play.yaml"))
+        .output()
+        .unwrap()
+}
+
+const SCENE: &str = "---\nkind: scene\nid: hall.morning\nuses: ../world.schema.yaml\non: visit\nonce: day\n\
+                     when: 'clock.index >= 0'\n---\n\n## Hall\n\n\
+                     @narrator: Today is {{clock.weekdayLabel}}.\n";
+
+#[test]
+fn a_declared_clock_gives_readable_clock_paths_and_once_day() {
+    let dir = project("ok", ", owner: engine", &[("scenes/hall.lute", SCENE)]);
+    let out = check_project(&dir);
+    assert!(out.status.success(), "{}", text(&out));
+    // `once: day` spends the scene until the day changes (a second visit the
+    // same day finds it spent); `clock.weekdayLabel` renders the live day.
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: visit\n  - occasion: visit\n  - engine: { state: { run.day: 2 } }\n  \
+         - occasion: visit\n",
+    );
+    let t = text(&out);
+    assert!(t.contains("Today is Mon."), "{t}");
+    assert!(t.contains("once: day — already presented today"), "{t}");
+    assert!(t.contains("Today is Tue."), "{t}");
+    assert_eq!(t.matches("Today is").count(), 2, "{t}");
+}
+
+#[test]
+fn clock_paths_must_be_engine_owned() {
+    let dir = project("owner", "", &[("scenes/hall.lute", SCENE)]);
+    let t = text(&check_project(&dir));
+    assert!(t.contains("E-CLOCK-DECL"), "{t}");
+    assert!(t.contains("must be declared `owner: engine`"), "{t}");
+}
+
+#[test]
+fn once_day_needs_a_clock() {
+    let dir = temp_dir("noclock");
+    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "scenes/hall.lute",
+        "---\nkind: scene\nid: hall.morning\non: visit\nonce: day\n---\n\n## Hall\n\n@narrator: Hi.\n",
+    );
+    let t = text(&check_project(&dir));
+    assert!(t.contains("E-BEAT-ATTR") && t.contains("declares no `clock:`"), "{t}");
+}
+
+const QUEST_BY: &str = "---\nkind: quest\nuses: ../world.schema.yaml\n---\n\n\
+                        <quest id=\"fest\" title=\"Festival\" start=\"true\">\n\
+                        <objective id=\"go\" on=\"visit\" done=\"true\" by=\"run.day >= 3\"/>\n\
+                        </quest>\n";
+
+const QUEST_UNTIL: &str = "---\nkind: quest\nuses: ../world.schema.yaml\n---\n\n\
+                           <quest id=\"fest\" title=\"Festival\" start=\"true\">\n\
+                           <objective id=\"go\" on=\"visit\" done=\"run.day >= 9\" until=\"run.day >= 3\"/>\n\
+                           </quest>\n";
+
+/// 0.23.1 judged an `on=` objective's `by` only when its occasion was raised,
+/// so a player who never went there escaped the deadline. 0.24.0 §2.1: a
+/// deadline is a moment — the settle after the clock passes it fails it.
+#[test]
+fn by_fails_an_on_objective_without_its_occasion() {
+    let dir = project("by", ", owner: engine", &[("quests/fest.lute", QUEST_BY)]);
+    let out = play(
+        &dir,
+        "steps:\n  - engine: { state: { run.day: 3 } }\nexpect:\n  quests: { fest: failed }\n",
+    );
+    assert!(out.status.success(), "{}", text(&out));
+}
+
+/// `until=` keeps the 0.23.1 place-bound rule: judged only at the raise.
+#[test]
+fn until_is_judged_only_at_the_raise() {
+    let dir = project("until", ", owner: engine", &[("quests/fest.lute", QUEST_UNTIL)]);
+    let out = play(
+        &dir,
+        "steps:\n  - engine: { state: { run.day: 3 } }\n    expect: { quests: { fest: active } }\n  \
+         - occasion: visit\nexpect:\n  quests: { fest: failed }\n",
+    );
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("  fest.go failed (until)\n  quest fest -> failed (until)\n"), "{}", text(&out));
+    // Without `on=` there is no place to judge it.
+    let bad = QUEST_UNTIL.replace(" on=\"visit\"", "");
+    let dir = project("until-on", ", owner: engine", &[("quests/fest.lute", &bad)]);
+    let t = text(&check_project(&dir));
+    assert!(t.contains("`until` requires `on`"), "{t}");
+}
+
+const RAISING_CLOCK: &str = "clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, afternoon, night]\n  \
+                             raise: slotStart\n  \
+                             week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }\n";
+
+const SLOT_SCENE: &str = "---\nkind: scene\nid: day.slot\nuses: ../world.schema.yaml\non: slotStart\nonce: slot\n\
+                          when: 'run.slot != \"night\"'\n---\n\n## Slot\n\n\
+                          @narrator: It is {{run.slot}} on {{clock.weekdayLabel}}.\n";
+
+fn clock_play(tag: &str, clock: &str, script: &str) -> Output {
+    let dir = project_with(
+        tag,
+        ", owner: engine",
+        clock,
+        &[("scenes/slot.lute", SLOT_SCENE), ("quests/fest.lute", QUEST_BY)],
+    );
+    play(&dir, script)
+}
+
+/// dsl 0.24.0 §1: `advance:` writes the clock's paths (wrapping slots into
+/// the next day), settles the quests — a `by` the new time passes fails
+/// there, before anything is presented — then raises the clock's `raise`.
+#[test]
+fn advance_moves_the_clock_settles_the_quests_then_raises_its_occasion() {
+    let out = clock_play(
+        "advance",
+        RAISING_CLOCK,
+        "steps:\n  \
+         - advance: slot\n    \
+           expect: { presented: [day.slot], state: { run.day: 1, run.slot: afternoon, clock.index: 1 } }\n  \
+         - advance: 2\n    \
+           expect: { state: { run.day: 2, run.slot: morning, clock.index: 3 }, quests: { fest: active } }\n  \
+         - advance: slot\n  \
+         - advance: slot\n    \
+           expect: { presented: [], winner: none }\n  \
+         - advance: day\n    \
+           expect: { presented: [day.slot], state: { run.day: 3, run.slot: morning }, quests: { fest: failed } }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(t.contains("── step 1 · advance slot: day 1 (Mon) morning → day 1 (Mon) afternoon"), "{t}");
+    assert!(t.contains("  set run.slot = \"afternoon\""), "{t}");
+    assert!(t.contains("── step 1 · slotStart"), "{t}");
+    assert!(t.contains("It is afternoon on Mon."), "{t}");
+    assert!(t.contains("── step 2 · advance 2: day 1 (Mon) afternoon → day 2 (Tue) morning"), "{t}");
+    assert!(t.contains("── step 5 · advance day: day 2 (Tue) night → day 3 (Wed) morning"), "{t}");
+    // The deadline fails at the settle, before the raised occasion presents.
+    let failed = t.find("fest.go failed (by)").unwrap_or_else(|| panic!("{t}"));
+    let wed = t.find("It is morning on Wed.").unwrap_or_else(|| panic!("{t}"));
+    assert!(failed < wed, "{t}");
+}
+
+#[test]
+fn advance_needs_a_clock_and_moves_only_forward() {
+    // A clock without `raise:` moves and settles, and presents nothing — so
+    // a selection expectation or a `pick` on it is refused.
+    let out = clock_play(
+        "advance-noraise",
+        CLOCK,
+        "steps:\n  - advance: day\n    expect: { state: { run.day: 2, run.slot: morning } }\n",
+    );
+    assert!(out.status.success(), "{}", text(&out));
+    let out = clock_play(
+        "advance-noraise-expect",
+        CLOCK,
+        "steps:\n  - advance: slot\n    expect: { presented: [day.slot] }\n",
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(text(&out).contains("`expect.presented` judges the occasion an `advance:` raises, and the clock declares no `raise:`"), "{}", text(&out));
+    let dir = project_with("advance-noclock", ", owner: engine", "", &[("quests/fest.lute", QUEST_BY)]);
+    let out = play(&dir, "steps:\n  - advance: slot\n");
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(text(&out).contains("no schema of this project declares a `clock:`"), "{}", text(&out));
+    let out = clock_play("advance-zero", RAISING_CLOCK, "steps:\n  - advance: 0\n");
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(text(&out).contains("a slot count is a whole number ≥ 1"), "{}", text(&out));
+}
+
+/// dsl 0.24.0 §1: an `engine:` step moving `clock.index` backward is a
+/// usage error; forward is legal, and a `newRun` starts the clock over.
+#[test]
+fn an_engine_step_moving_the_clock_backward_is_a_usage_error() {
+    let out = clock_play(
+        "backward",
+        CLOCK,
+        "state: { run.day: 2, run.slot: afternoon }\nsteps:\n  - engine: { state: { run.slot: night } }\n  \
+         - newRun: true\n    expect: { state: { run.day: 1, clock.index: 0 } }\n  \
+         - engine: { state: { run.day: 3 } }\n  - engine: { state: { run.slot: afternoon, run.day: 2 } }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(
+        t.contains("step 4: `engine:` moves the clock backward, from day 3 (Wed) morning to day 2 (Tue) afternoon (clock.index 6 → 4)"),
+        "{t}"
+    );
+}
+
+/// dsl 0.24.0 §1: `- include: <file>` splices that file's steps in place,
+/// resolved against the including file; steps are numbered after the splice.
+#[test]
+fn include_splices_steps_and_refuses_a_cycle() {
+    let dir = project_with(
+        "include",
+        ", owner: engine",
+        RAISING_CLOCK,
+        &[("scenes/slot.lute", SLOT_SCENE), ("quests/fest.lute", QUEST_BY)],
+    );
+    write(&dir, "parts/morning.yaml", "- advance: slot\n- include: evening.yaml\n");
+    write(&dir, "parts/evening.yaml", "steps:\n  - advance: slot\n    label: evening\n");
+    let out = play(
+        &dir,
+        "steps:\n  - include: parts/morning.yaml\n  - advance: slot\n    \
+         expect: { state: { run.day: 2, run.slot: morning } }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(t.contains("── step 2 (evening) · advance slot"), "{t}");
+    assert!(t.contains("── step 3 · advance slot: day 1 (Mon) night → day 2 (Tue) morning"), "{t}");
+
+    write(&dir, "parts/loop.yaml", "- advance: slot\n- include: ../parts/loop.yaml\n");
+    let out = play(&dir, "steps:\n  - include: parts/loop.yaml\n");
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(text(&out).contains("`include: ../parts/loop.yaml` is a cycle"), "{}", text(&out));
+    let out = play(&dir, "steps:\n  - include: parts/missing.yaml\n");
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(text(&out).contains("cannot read `include: parts/missing.yaml`"), "{}", text(&out));
+}
+
+/// dsl 0.24.0 §1: `--axis clock=d1..d2` is day × slot in clock order; bare
+/// `clock` is one week.
+#[test]
+fn calendar_clock_axis_expands_day_by_slot_in_order() {
+    let dir = project_with("calendar", ", owner: engine", RAISING_CLOCK, &[("scenes/slot.lute", SLOT_SCENE)]);
+    let calendar = |args: &[&str]| {
+        Command::new(BIN)
+            .arg("calendar")
+            .arg(&dir)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let out = calendar(&["--axis", "clock=1..2", "--occasion", "slotStart", "--csv"]);
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    let order = [
+        "1 Mon morning",
+        "1 Mon afternoon",
+        "1 Mon night",
+        "2 Tue morning",
+        "2 Tue afternoon",
+        "2 Tue night",
+    ];
+    let mut last = 0;
+    for cell in order {
+        let at = t[last..].find(cell).unwrap_or_else(|| panic!("{cell} after byte {last}: {t}")) + last;
+        last = at + cell.len();
+    }
+    // The night cells present nothing; the others the slot scene.
+    assert_eq!(t.lines().filter(|l| l.contains("day.slot")).count(), 4, "{t}");
+
+    let out = calendar(&["--axis", "clock", "--occasion", "slotStart", "--csv"]);
+    assert!(text(&out).contains("7 Sun night"), "{}", text(&out));
+    let out = calendar(&["--axis", "clock", "--axis", "run.day=1..2"]);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(text(&out).contains("both set the clock"), "{}", text(&out));
+}

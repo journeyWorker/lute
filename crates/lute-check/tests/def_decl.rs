@@ -267,18 +267,21 @@ fn an_undecidable_imported_shorthand_is_named_in_the_importer() {
 
 /// 0.21.1 T1-6: a def body is CEL that lands in every slot using it, but the
 /// `@name` use site is exempt from the gates as a macro and nothing looked at
-/// the body: `%` / `size()` / unparseable CEL all passed `check`. The body now
+/// the body: `size()` / unparseable CEL all passed `check`. The body now
 /// gets the inline slot's profile gate, at the def's own key; a def's own
-/// `params:` stay legal bare identifiers.
+/// `params:` stay legal bare identifiers. dsl 0.24.0 §1 (T2-1): integer `%`
+/// is in the profile, so `wd` — `E-CEL-PROFILE` before 0.24 — is clean, and
+/// the body's operand typing (`E-CEL-TYPE`) is checked at the def's key too.
 #[test]
 fn def_body_gets_the_cel_profile_gate() {
     let t = format!(
         "{HDR}defs:\n  wd: {{ type: number, cel: \"scene.n % 7\" }}\n  \
          sz: {{ type: number, cel: \"size(scene.n)\" }}\n  \
          broken: {{ type: bool, cel: \"scene.n ==\" }}\n  \
+         half: {{ type: number, cel: \"scene.n % 2.5\" }}\n  \
          ok: {{ type: bool, params: {{ k: number }}, cel: \"scene.n >= k\" }}\n---\n\
          ## Shot 1.\n@x{{when=\"@wd == 3\"}}: a\n@x{{when=\"@sz == 3\"}}: b\n\
-         @x{{when=\"@broken\"}}: c\n@x{{when=\"@ok(2)\"}}: d\n"
+         @x{{when=\"@broken\"}}: c\n@x{{when=\"@ok(2)\"}}: d\n@x{{when=\"@half == 1\"}}: e\n"
     );
     let ds = diags(&t);
     let of = |code: &str| {
@@ -288,19 +291,32 @@ fn def_body_gets_the_cel_profile_gate() {
             .collect::<Vec<_>>()
     };
     let profile = of("E-CEL-PROFILE");
-    assert_eq!(profile.len(), 2, "{ds:?}");
-    assert!(profile.iter().any(|m| m.starts_with("def `wd`:")), "{profile:?}");
-    assert!(profile.iter().any(|m| m.starts_with("def `sz`:")), "{profile:?}");
+    assert_eq!(profile.len(), 1, "{ds:?}");
+    assert!(profile[0].starts_with("def `sz`:"), "{profile:?}");
     let parse = of("E-CEL-PARSE");
     assert_eq!(parse.len(), 1, "{ds:?}");
     assert!(parse[0].starts_with("def `broken`:"), "{parse:?}");
+    let ty = of("E-CEL-TYPE");
+    assert_eq!(ty.len(), 1, "{ds:?}");
+    assert!(ty[0].starts_with("def `half`:") && ty[0].contains("`2.5`"), "{ty:?}");
 }
 
-/// 0.21.1 T1-6: the undecidable-type hint used to guess `type: bool` (wrong
-/// for `% 7`); it names the choice as a placeholder instead.
+/// dsl 0.24.0 §1: `%` produces a number, so a shorthand `wd: "run.day % 7"`
+/// (T2-1's weekday def) is typed by inference and clean.
+#[test]
+fn shorthand_integer_modulo_def_is_a_clean_number() {
+    let ds = diags(&format!(
+        "{HDR}defs:\n  wd: \"scene.n % 7\"\n---\n## Shot 1.\n@x{{when=\"@wd == 0\"}}: a\n"
+    ));
+    assert!(ds.is_empty(), "{ds:#?}");
+}
+
+/// 0.21.1 T1-6: the undecidable-type hint used to guess `type: bool`; it
+/// names the choice as a placeholder instead. (Its old example, `% 7`, types
+/// as a number since dsl 0.24.0 §1, so a mixed-type ternary stands in.)
 #[test]
 fn undecidable_def_type_hint_does_not_guess_bool() {
-    let t = format!("{HDR}defs:\n  wd: \"scene.n % 7\"\n---\n## Shot 1.\n@x: a\n");
+    let t = format!("{HDR}defs:\n  wd: \"scene.n > 0 ? 1 : 'none'\"\n---\n## Shot 1.\n@x: a\n");
     let ds = diags(&t);
     let d = ds.iter().find(|d| d.code == "E-DEF-DECL").expect("E-DEF-DECL");
     assert!(d.message.contains("type: <bool|number|enum>"), "{}", d.message);

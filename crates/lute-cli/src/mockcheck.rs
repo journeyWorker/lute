@@ -36,7 +36,7 @@
 //! anchor. Nothing here moves a correctly anchored document diagnostic into a
 //! YAML file.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use lute_core_span::Diagnostic;
@@ -85,14 +85,23 @@ fn find_mocks(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 pub fn check_mocks_under(
     dir: &Path,
     by_root: &crate::ByRoot,
+    inputs: &BTreeMap<PathBuf, (PathBuf, lute_check::CheckInput)>,
 ) -> std::io::Result<Vec<(PathBuf, Diagnostic)>> {
-    // Canonical path -> the already-parsed document and its folded env.
-    let mut docs: BTreeMap<PathBuf, (&lute_syntax::ast::Document, &lute_check::FoldedEnv)> =
-        BTreeMap::new();
+    // Canonical path -> the already-parsed document, its folded env, and the
+    // capability snapshot it resolved (the plugin calls `bridges:` answers).
+    let mut docs: BTreeMap<
+        PathBuf,
+        (
+            &lute_syntax::ast::Document,
+            &lute_check::FoldedEnv,
+            Option<&lute_manifest::snapshot::CapabilitySnapshot>,
+        ),
+    > = BTreeMap::new();
     for group in by_root.values() {
         for (path, doc, folded) in group {
             if let Ok(c) = std::fs::canonicalize(path) {
-                docs.insert(c, (doc, folded));
+                let snapshot = inputs.get(path).map(|(_, input)| &input.snapshot);
+                docs.insert(c, (doc, folded, snapshot));
             }
         }
     }
@@ -145,7 +154,7 @@ pub fn check_mocks_under(
             ));
             continue;
         };
-        let Some((doc, folded)) = docs.get(&subject) else {
+        let Some((doc, folded, snapshot)) = docs.get(&subject) else {
             out.push((
                 mock.clone(),
                 crate::manifests::as_diagnostic(
@@ -167,7 +176,11 @@ pub fn check_mocks_under(
                 continue;
             }
         };
-        for mut d in lute_trace::validate(&mocks, folded, doc) {
+        let mut diags = lute_trace::validate(&mocks, folded, doc);
+        if let Some(snapshot) = snapshot {
+            diags.extend(lute_trace::validate_bridges(&mocks, folded, snapshot));
+        }
+        for mut d in diags {
             // Right file, offending key named, impossible position gone: the
             // span the validator produced is `synthetic_span()`'s all-zeros,
             // and pairing it with the MOCK's path is what makes it correct.
@@ -176,4 +189,48 @@ pub fn check_mocks_under(
         }
     }
     Ok(out)
+}
+
+/// dsl 0.24.0 §2: every quest id a trace mock (`mocks/*.yaml`) or a
+/// scenario test (`*.test.yaml`) under the project root `root` accepts
+/// through its top-level `accept:` / `accepts:` list — the reaches
+/// `W-QUEST-NEVER-ACCEPTED` counts beside the `::accept` sites. Best
+/// effort: an unreadable or malformed file contributes nothing (the mock
+/// pass above and `lute test` report it), and a nested project root (a
+/// subdirectory with its own `lute.project.yaml`) is left to its own pass.
+pub fn mocked_accepts_under(root: &Path) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                if !path.join("lute.project.yaml").is_file() {
+                    stack.push(path);
+                }
+                continue;
+            }
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            let in_mocks =
+                path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()) == Some("mocks");
+            if !(name.ends_with(".test.yaml") || (in_mocks && name.ends_with(".yaml"))) {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(serde_yaml::Value::Mapping(top)) = serde_yaml::from_str(&text) else {
+                continue;
+            };
+            for key in ["accept", "accepts"] {
+                if let Some(serde_yaml::Value::Sequence(items)) = top.get(key) {
+                    out.extend(items.iter().filter_map(|i| i.as_str()).map(str::to_string));
+                }
+            }
+        }
+    }
+    out
 }

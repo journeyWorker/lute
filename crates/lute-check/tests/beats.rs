@@ -41,6 +41,7 @@ fn with_occasions() -> CapabilitySnapshot {
                 select,
                 target: target.into(),
                 description: None,
+                ..Default::default()
             },
         );
     }
@@ -277,9 +278,10 @@ fn target_on_an_untargeted_occasion_is_beat_attr() {
     assert_eq!(anchored(&src, d), "npc.a");
     assert!(d.message.contains("declared without `target: true`"), "{}", d.message);
 
+    // dsl 0.24.0 §6: an entry's `target=` there is metadata, not a restriction.
     let entry = lore("<entry id=\"e\" on=\"inbox\" target=\"npc.a\">\n@narrator: hi\n</entry>\n");
     let ds = diags_with(&entry, with_occasions());
-    assert_eq!(anchored(&entry, only(&ds, "E-BEAT-ATTR")), "npc.a");
+    assert!(with_code(&ds, "E-BEAT-ATTR").is_empty(), "{ds:?}");
 
     let targeted = scene("a.b", "on: talk\ntarget: npc.a\n");
     assert!(errors(&diags_with(&targeted, with_occasions())).is_empty());

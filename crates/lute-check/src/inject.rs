@@ -29,6 +29,8 @@
 //!    - [`stage_bookkeeping`] — thread `on_stage`/`dirty`/`bg`/`music`, and
 //!      auto-hide sprites left on stage across a scene change (`::bg`), the one
 //!      implicit command this rule emits (`by = "stage-bookkeeping"`);
+//!    - [`stage_clear`] — `::clear` (dsl 0.24.0 §4) takes every character on
+//!      stage off it, one hide per character (`by = "stage-clear"`);
 //! 4. [`Provenance`] `{ injected, by, explanation }` on every injected command.
 //!
 //! ## Implicit vocabulary reads are CHECKED reads
@@ -96,8 +98,9 @@ pub struct StageState {
     /// Characters whose pose changed and hasn't been reset yet.
     pub dirty: BTreeSet<String>,
     /// Characters taken off stage — by an **explicit declared exit** (dsl
-    /// 0.10.0 §11.2, **D-X**) or by a `::bg` scene change's auto-hide (dsl
-    /// 0.22.0 §12) — and not re-shown since, with how they left.
+    /// 0.10.0 §11.2, **D-X**), by a `::bg` scene change's auto-hide (dsl
+    /// 0.22.0 §12) or by a `::clear` (dsl 0.24.0 §4) — and not re-shown since,
+    /// with how they left.
     ///
     /// `on_stage` cannot answer this on its own: a character who has never been
     /// shown and one who has left are both simply absent from it, and only the
@@ -124,13 +127,15 @@ pub struct StageState {
 }
 
 /// How a character in [`StageState::exited`] left the stage — names the cause
-/// in `W-STAGE-ABSENT`, with the 1-based line of the exit / `::bg`.
+/// in `W-STAGE-ABSENT`, with the 1-based line of the exit / `::bg` / `::clear`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Departure {
     /// An `::auto` whose `action` is a declared exit member.
     Exit { line: u32 },
     /// Auto-hidden by a `::bg` scene change while on stage.
     SceneChange { line: u32 },
+    /// Taken off stage by a `::clear` (dsl 0.24.0 §4).
+    Clear { line: u32 },
 }
 
 impl StageState {
@@ -264,6 +269,9 @@ pub fn lower_node(
             lower_auto(&mut state, d, lookahead, &mut emit, domains)
         }
         Node::Directive(d) if d.tag == "bg" => stage_bookkeeping_bg(&mut state, d, &mut emit),
+        Node::Directive(d) if d.tag == lute_manifest::core::CLEAR_DIRECTIVE => {
+            stage_clear(&mut state, d, &mut emit)
+        }
         Node::Directive(d) if d.tag == "music" => {
             // Bookkeeping only: no implicit command.
             state.music = attr_str(&d.attrs, "mood").or_else(|| attr_str(&d.attrs, "action"));
@@ -503,39 +511,79 @@ fn lower_line(
 /// character on stage on only SOME path here is hidden too (seven F7, dsl
 /// 0.23.1): on the paths where they are, their sprite must not survive the cut.
 fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<InjectedCommand>) {
+    hide_everyone(
+        state,
+        Departure::SceneChange { line: d.span.line },
+        "stage-bookkeeping",
+        |character, some_paths| {
+            if some_paths {
+                format!(
+                    "auto-hiding `{character}`, on stage on some paths to here, across a scene \
+                     change"
+                )
+            } else {
+                format!("auto-hiding `{character}` left on stage across a scene change")
+            }
+        },
+        emit,
+    );
+    state.bg = attr_str(&d.attrs, "location").or_else(|| attr_str(&d.attrs, "assetId"));
+}
+
+/// Rule `stage-clear` (dsl 0.24.0 §4): `::clear` takes every character on
+/// stage off it — exactly the `::bg` auto-hide without the scene change (the
+/// background and music stay). Each character leaves as a `Hide`, the same
+/// per-character exit record, and is recorded as exited, so a later line by
+/// them without a re-show is `W-STAGE-ABSENT` naming the `::clear`. A
+/// character on stage on only SOME path here leaves too, as at a `::bg`. An
+/// empty stage emits nothing and says nothing: there is nobody to take off.
+fn stage_clear(state: &mut StageState, d: &Directive, emit: &mut Vec<InjectedCommand>) {
+    hide_everyone(
+        state,
+        Departure::Clear { line: d.span.line },
+        "stage-clear",
+        |character, some_paths| {
+            if some_paths {
+                format!("`::clear` takes `{character}`, on stage on some paths to here, off stage")
+            } else {
+                format!("`::clear` takes `{character}` off stage")
+            }
+        },
+        emit,
+    );
+}
+
+/// Take every character on stage off it — those provably on stage, then those
+/// on stage on only some path here — as one `Hide` each, stamped `by` and
+/// explained by `explain(character, on_some_paths_only)`, and record each as
+/// exited `how`. A departure an earlier node already recorded on some path
+/// stays the named cause. Shared by the `::bg` auto-hide and `::clear`.
+fn hide_everyone(
+    state: &mut StageState,
+    how: Departure,
+    by: &str,
+    explain: impl Fn(&str, bool) -> String,
+    emit: &mut Vec<InjectedCommand>,
+) {
     let maybe = std::mem::take(&mut state.maybe_on_stage);
-    let present: Vec<String> = state.on_stage.keys().cloned().collect();
+    let present = std::mem::take(&mut state.on_stage).into_keys();
     for (character, some_paths) in present
-        .into_iter()
         .map(|c| (c, false))
         .chain(maybe.into_iter().map(|c| (c, true)))
     {
-        let explanation = if some_paths {
-            format!(
-                "auto-hiding `{character}`, on stage on some paths to here, across a scene change"
-            )
-        } else {
-            format!("auto-hiding `{character}` left on stage across a scene change")
-        };
         emit.push(InjectedCommand {
             kind: InjectKind::Hide {
                 character: character.clone(),
             },
             provenance: Provenance {
                 injected: true,
-                by: "stage-bookkeeping".to_string(),
-                explanation,
+                by: by.to_string(),
+                explanation: explain(&character, some_paths),
             },
         });
-        // A declared exit on some path stays the named cause.
-        state
-            .exited
-            .entry(character)
-            .or_insert(Departure::SceneChange { line: d.span.line });
+        state.exited.entry(character).or_insert(how);
     }
-    state.on_stage.clear();
     state.dirty.clear();
-    state.bg = attr_str(&d.attrs, "location").or_else(|| attr_str(&d.attrs, "assetId"));
 }
 
 /// Rule `stage-bookkeeping` (show arm): record the entering character on stage
@@ -649,8 +697,8 @@ fn attr_value_str(value: &AttrValue) -> Option<String> {
 /// [`W_EXIT_INERT`] — so without this the message would name a remedy that does
 /// not work, which is the exact defect §12.3 removes a code for. Anything else
 /// the character does first (speaking again, being re-posed, or a `::bg` scene
-/// change that auto-hides the whole stage) means the later exit is not this
-/// line's departure, and the value on this line really is a pose.
+/// change / `::clear` that takes the whole stage off) means the later exit is
+/// not this line's departure, and the value on this line really is a pose.
 fn exit_is_written_next(
     speaker: &str,
     lookahead: &[Node],
@@ -658,7 +706,11 @@ fn exit_is_written_next(
 ) -> bool {
     for node in lookahead {
         match node {
-            Node::Directive(d) if d.tag == "bg" => return false,
+            Node::Directive(d)
+                if d.tag == "bg" || d.tag == lute_manifest::core::CLEAR_DIRECTIVE =>
+            {
+                return false
+            }
             Node::Directive(d) if d.tag == "auto" => {
                 if attr_str(&d.attrs, "character").as_deref() == Some(speaker) {
                     return attr_str(&d.attrs, "action")
@@ -709,7 +761,8 @@ fn exit_inert_diag(speaker: &str, action: &str, span: Span) -> Diagnostic {
 
 /// `W-STAGE-ABSENT`: a staging event for a character the threaded stage state
 /// records as off stage — after an explicit declared exit (dsl 0.10.0 §11.2,
-/// **D-X**) or a `::bg` auto-hide, on some path reaching it (dsl 0.22.0 §12).
+/// **D-X**), a `::bg` auto-hide or a `::clear` (dsl 0.24.0 §4), on some path
+/// reaching it (dsl 0.22.0 §12).
 pub const W_STAGE_ABSENT: &str = "W-STAGE-ABSENT";
 
 /// The staging event `W-STAGE-ABSENT` is about.
@@ -750,6 +803,17 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
             "`{character}` is already off stage (hidden by the `::bg` at line {line}) on a path \
              that reaches here, so this exit does nothing. Move it before the `::bg`, or delete \
              it (dsl 0.10.0 §11.2, 0.22.0 §12)"
+        ),
+        (Staged::Line, Departure::Clear { line }) => format!(
+            "`{character}` was taken off stage by an earlier `::clear` (line {line}) on a path \
+             that reaches here and has not been shown again, so a spoken line here stages \
+             someone who is not present. Show them again with an `::auto` after the `::clear` \
+             (dsl 0.24.0 §4)"
+        ),
+        (Staged::Exit, Departure::Clear { line }) => format!(
+            "`{character}` is already off stage (taken off by the `::clear` at line {line}) on a \
+             path that reaches here, so this exit does nothing. Move it before the `::clear`, or \
+             delete it (dsl 0.24.0 §4)"
         ),
     };
     Diagnostic {
@@ -1095,6 +1159,7 @@ mod tests {
                 open: false,
                 default: Some(default.to_string()),
                 exits: Vec::new(),
+                labels: BTreeMap::new(),
             },
         );
         d.insert(
@@ -1104,6 +1169,7 @@ mod tests {
                 open: false,
                 default: None,
                 exits: vec!["vanish".into()],
+                labels: BTreeMap::new(),
             },
         );
         d
@@ -1146,6 +1212,7 @@ mod tests {
                 open: false,
                 default: None,
                 exits: Vec::new(),
+                labels: BTreeMap::new(),
             },
         );
         let (st, injected) =
@@ -1240,6 +1307,7 @@ mod tests {
                 open: false,
                 default: None,
                 exits: exits.iter().map(|s| (*s).to_string()).collect(),
+                labels: BTreeMap::new(),
             },
         );
         m

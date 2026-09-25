@@ -274,3 +274,54 @@ fn choice_label_interp_username_clean() {
         );
     }
 }
+
+// --- dsl 0.24.0 §4: the `:ordinal` format hint ---
+
+const ORDINAL_STATE: &str = "state:\n  user.deaths: { type: number, default: 0 }\n  \
+     run.name: { type: string, default: x }\n  \
+     run.mood: { type: { enum: [calm, tense] }, default: calm }\n\
+     defs:\n  next: { type: number, cel: \"user.deaths + 1\" }\n  \
+     alive: { type: bool, cel: \"user.deaths == 0\" }\n  \
+     title: { type: string, cel: \"'x'\" }\n";
+
+fn ordinal_codes(text: &str) -> Vec<String> {
+    codes(&format!("{HDR}{ORDINAL_STATE}---\n## Shot 1.\n@marina: {text}\n"))
+}
+
+/// A number path and a number def take the hint cleanly, in a line and in a
+/// choice label.
+#[test]
+fn ordinal_on_a_number_is_clean() {
+    let c = ordinal_codes("Your {{user.deaths:ordinal}} death, the {{ @next : ordinal }} soon.");
+    assert!(c.is_empty(), "got {c:?}");
+    let c = codes(&format!(
+        "{HDR}{ORDINAL_STATE}---\n## Shot 1.\n<branch id=\"b\">\n\
+         <choice id=\"c\" label=\"Try a {{{{@next:ordinal}}}} time\">\n@marina: hi\n</choice>\n\
+         </branch>\n"
+    ));
+    assert!(c.is_empty(), "got {c:?}");
+}
+
+/// `ordinal` is the only hint; any other is the interpolation-grammar code.
+#[test]
+fn an_unknown_hint_is_rejected() {
+    let c = ordinal_codes("{{user.deaths:plural}}");
+    assert_eq!(c, ["E-CEL-PROFILE"], "got {c:?}");
+}
+
+/// `ordinal` formats a number: a string / enum path, a bool def and the
+/// reserved `userName` are `E-REF-TYPE`, once each.
+#[test]
+fn ordinal_on_a_non_number_is_a_type_error() {
+    for text in [
+        "{{run.name:ordinal}}",
+        "{{run.mood:ordinal}}",
+        "{{@alive:ordinal}}",
+        "{{userName:ordinal}}",
+        // Already non-renderable: still one diagnostic, not two.
+        "{{@title:ordinal}}",
+    ] {
+        let c = ordinal_codes(text);
+        assert_eq!(c, ["E-REF-TYPE"], "{text}: got {c:?}");
+    }
+}

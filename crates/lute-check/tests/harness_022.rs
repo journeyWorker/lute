@@ -49,6 +49,7 @@ fn snapshot() -> CapabilitySnapshot {
                 select,
                 target,
                 description: None,
+                ..Default::default()
             },
         );
     }
@@ -223,6 +224,7 @@ fn occasion_target_ok_is_shared_with_play() {
         "person".to_string(),
         lute_manifest::relations::EntityKindDecl {
             shape: lute_manifest::relations::KindShape::Members(vec!["maud".into()]),
+            subset_of: None,
         },
     );
     let talk = &snap.occasions["talk"];

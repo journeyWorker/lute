@@ -1,0 +1,14 @@
+---
+kind: scene
+id: mara.idle
+title: Mara, any other time
+# The fallback for `talk` at npc.mara: lowest priority, repeatable.
+on: talk
+target: npc.mara
+once: false
+---
+
+## Mara
+
+@mara{emotion="shy" when="@trusted"}: Any luck with the lamp?
+@mara{when="!@trusted"}: Mm.

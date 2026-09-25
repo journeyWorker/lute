@@ -12,7 +12,7 @@
 //! - [`Node::Line`] → `when` (if any), then each `AttrValue::Ref` slot in
 //!   `attrs` order. [`Node::Directive`] → `when` (if any — only ever
 //!   `::next`, dsl 0.12.0), then each `AttrValue::Ref` slot in `attrs` order.
-//! - [`Node::Set`] → `expr`.
+//! - [`Node::Set`] → `expr`; then `when` (if any, dsl 0.24.0 §1).
 //! - [`Node::Branch`] → `attrs` refs; then per `choice`: `choice.when` (if any),
 //!   `choice.attrs` refs, then recurse `choice.body`.
 //! - [`Node::Match`] → `subject`; then per arm: `When{test, body}` → `test` then
@@ -20,7 +20,7 @@
 //! - [`Node::Timeline`] → `duration` (if any); then per track, per clip:
 //!   `ClipNode::Directive` → attr refs; `ClipNode::Set` → `expr`.
 //! - [`Node::Objective`] → `done`; `when` (if any); `by` (if any, dsl
-//!   0.23.0 §2); `attrs` refs; then `body`.
+//!   0.23.0 §2); `until` (if any, dsl 0.24.0 §2.1); `attrs` refs; then `body`.
 //! - [`Node::On`] → `when` (if any); `attrs` refs; then `body`.
 //! - [`Node::Assert`] / [`Node::Retract`] → no `CelSlot`s (args are
 //!   compile-time-ground; 0.3.0 T2). No-op.
@@ -78,7 +78,12 @@ fn node<'a>(n: &'a Node, f: &mut impl FnMut(&'a CelSlot)) {
     match n {
         Node::Line(l) => line(l, f),
         Node::Directive(d) => directive(d, f),
-        Node::Set(s) => f(&s.expr),
+        Node::Set(s) => {
+            f(&s.expr);
+            if let Some(w) = &s.when {
+                f(w);
+            }
+        }
         Node::Branch(b) => branch(b, f),
         Node::Match(m) => match_node(m, f),
         Node::Timeline(t) => timeline(t, f),
@@ -165,6 +170,9 @@ fn objective<'a>(o: &'a Objective, f: &mut impl FnMut(&'a CelSlot)) {
     }
     if let Some(b) = &o.by {
         f(b);
+    }
+    if let Some(u) = &o.until {
+        f(u);
     }
     attrs(&o.attrs, f);
     body(&o.body, f);
@@ -255,7 +263,12 @@ fn node_mut(n: &mut Node, f: &mut impl FnMut(&mut CelSlot)) {
     match n {
         Node::Line(l) => line_mut(l, f),
         Node::Directive(d) => directive_mut(d, f),
-        Node::Set(s) => f(&mut s.expr),
+        Node::Set(s) => {
+            f(&mut s.expr);
+            if let Some(w) = &mut s.when {
+                f(w);
+            }
+        }
         Node::Branch(b) => branch_mut(b, f),
         Node::Match(m) => match_node_mut(m, f),
         Node::Timeline(t) => timeline_mut(t, f),
@@ -339,6 +352,9 @@ fn objective_mut(o: &mut Objective, f: &mut impl FnMut(&mut CelSlot)) {
     }
     if let Some(b) = &mut o.by {
         f(b);
+    }
+    if let Some(u) = &mut o.until {
+        f(u);
     }
     attrs_mut(&mut o.attrs, f);
     body_mut(&mut o.body, f);
@@ -440,6 +456,7 @@ mod tests {
             op: "=".to_string(),
             expr: slot(raw),
             span: span(),
+            when: None,
         })
     }
 
@@ -551,6 +568,7 @@ mod tests {
                                 op: "=".to_string(),
                                 expr: slot("s17"),
                                 span: span(),
+                                when: None,
                             }),
                             at: None,
                             span: span(),

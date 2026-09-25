@@ -8,6 +8,8 @@ pub mod cel_message;
 pub mod cel_paths;
 pub mod cel_resolve;
 pub mod check;
+pub mod clock;
+pub mod component_effects;
 pub mod component_import;
 pub mod connectivity;
 pub mod content_line;
@@ -37,6 +39,7 @@ pub mod producible;
 pub mod project_check;
 pub mod reachability;
 pub mod rel_schema;
+pub mod rule_index;
 pub mod schema_import;
 pub mod set_op;
 pub mod set_type;
@@ -45,6 +48,7 @@ pub mod tag;
 pub mod temporal;
 pub mod time;
 pub mod timeline;
+pub mod usage;
 pub mod when_test_literal;
 
 /// The canonical Lute language-version string (dsl 0.6.1 §3, Appendix B).
@@ -56,14 +60,18 @@ pub mod when_test_literal;
 /// dependency runs the other way (`lute-compile` → `lute-check`).
 pub const LUTE_LANG_VERSION: &str = "0.23.1";
 
-pub use accept::{check_accept_directive, check_project_accepts, E_ACCEPT_TARGET};
+pub use accept::{
+    check_accept_directive, check_project_accepts, check_project_never_accepted,
+    E_ACCEPT_TARGET, W_QUEST_NEVER_ACCEPTED,
+};
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use bundles::{
     bundle_beat_also, bundle_beat_key, bundle_beat_once, bundle_beat_priority, check_bundle_beats,
     BUNDLE_BEAT_ATTRS,
 };
 pub use beats::{
-    check_project_beats, occasion_target_ok, parse_beat_priority, project_beats, BeatMeta,
+    beat_target_restricts, check_project_beats, occasion_target_ok, parse_beat_priority,
+    project_beats, BeatMeta,
     BeatOnce, ProjectBeat, ProjectBeatKind, BEAT_KEYS,
     E_BEAT_ATTR, E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_ONCE_RUN_USER,
     W_BEAT_PRIORITY_TIE, W_BEAT_SHADOWED,
@@ -79,6 +87,7 @@ pub use cel_resolve::{
 pub use check::{
     check, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved, W_LUTE_VERSION_STALE,
 };
+pub use component_effects::{splice_component_effects, speaker_display_args};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use datalog_check::{
@@ -132,6 +141,7 @@ pub use project_check::{
     W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN,
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
+pub use rule_index::evaluable_rules;
 pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner, E_ENGINE_OWNED_WRITE};
 pub use tag::{codes_locked, retag_document, tag_document, RetagOutcome, TagOutcome};
@@ -141,4 +151,5 @@ pub use timeline::{
     resolve_timeline, time_resolution_diag, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING,
     E_TIMELINE_DURATION, E_TIME_RESOLUTION,
 };
+pub use usage::{check_project_usage, schema_sources, UsageDoc, W_DEF_UNUSED, W_RELATION_UNREAD};
 pub use when_test_literal::{check_when_test_literals, test_as_is_pattern, W_WHEN_TEST_LITERAL};

@@ -288,6 +288,49 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
     assert_eq!(pos_resets, vec!["auto-pose-reset"], "{recs:#?}");
 }
 
+/// dsl 0.24.0 §4: `::clear` lowers to one `sprite` exit per character on
+/// stage — no record of its own, no background change — and clears the
+/// stage. The first exit carries `::clear` as authored (what `lute play`
+/// prints); the IR itself is the exits alone.
+#[test]
+fn clear_lowers_to_one_exit_per_character_on_stage() {
+    let body = "::auto{character=\"marina\" anchor=\"left\" action=\"fade-in-up\"}\n\
+::auto{character=\"kenshi\" anchor=\"right\" action=\"fade-in-up\"}\n\
+@marina: Both of us.\n\
+::clear\n\
+@narrator: Empty.";
+    let (recs, state) = walk(body);
+    let sprites: Vec<String> = recs.iter().filter_map(|r| sprite_desc(&r.cmd)).collect();
+    assert_eq!(
+        sprites,
+        [
+            "marina:show:authored",
+            "kenshi:show:authored",
+            "kenshi:exit:stage-clear",
+            "marina:exit:stage-clear",
+        ],
+        "{recs:#?}"
+    );
+    let kinds: Vec<&str> = recs
+        .iter()
+        .map(|r| match &r.cmd {
+            Command::Sprite(_) => "sprite",
+            Command::Line(_) => "line",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["sprite", "sprite", "line", "sprite", "sprite", "line"]);
+    let authored: Vec<Option<&str>> = recs[3..5]
+        .iter()
+        .map(|r| r.cmd.authored().map(|(_, text)| text))
+        .collect();
+    assert_eq!(authored, [Some("::clear"), None]);
+    assert!(state.on_stage.is_empty(), "{state:#?}");
+    // Nobody on stage: `::clear` emits nothing at all.
+    let (recs, _) = walk("::clear\n@narrator: Nothing.");
+    assert!(recs.iter().all(|r| !matches!(r.cmd, Command::Sprite(_))), "{recs:#?}");
+}
+
 #[test]
 fn join_unions_dirty_but_only_over_carried_characters() {
     let sprite = |pose: Option<&str>| SpriteState {

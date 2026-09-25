@@ -64,16 +64,33 @@
 //! ## Spans (cel-parser 0.10.1 carry-forward, T3.1/T4.3)
 //! Per-node CEL byte offsets are unavailable, so a read diagnostic falls back to
 //! the enclosing slot's span; a target-path diagnostic uses the `::set` path span.
+//! A read reached through a `@def` anchors at that `@def` token instead.
+//!
+//! ## Defs, assumptions, short-circuits (dsl 0.24.0)
+//! - A `@def` is a macro: every use site — a CEL slot, a `{{@def}}`
+//!   interpolation, a `::use` argument, a `<match on="@def">` subject — is
+//!   checked on its EXPANDED text, so a maybe-unset read inside a def body is
+//!   `E-MAYBE-UNSET` at the use, naming the def.
+//! - A beat `when:` / bundle `<beat when>` / entry `when=` is an assumption
+//!   for its body: its dominating guards seed the `available` set
+//!   ([`check_definite_assignment`]'s `assume`).
+//! - A presence guard proves the reads its short-circuit protects inside the
+//!   expression ([`crate::cel_paths::PathUse::local`]) without proving the body.
+//! - `prev.run.*` is one snapshot taken at run end: once any `prev.run.<p>` is
+//!   proven present, every `prev.run.<q>` whose `run.<q>` has a `default` is
+//!   present too (a defaulted `run.*` path always holds a value at run end).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::types::Type;
 use lute_syntax::ast::{
-    Arm, AttrValue, Branch, CelSlot, Choice, ClipNode, Hub, InterpKind, Match, Node, Objective, On,
-    Set, Timeline,
+    Arm, Attr, AttrValue, Branch, CelSlot, Choice, ClipNode, Hub, Interp, InterpKind, Match, Node,
+    Objective, On, Set, Timeline,
 };
 
+use crate::cel_expand::{expand_cel, DefTable};
 use crate::cel_paths::{
     collect_path_uses, is_entry_path, is_reserved_entry_read, is_reserved_quest_activated_at,
     is_reserved_quest_objective_done, is_reserved_quest_path, is_reserved_quest_state,
@@ -83,6 +100,45 @@ use crate::meta::StateSchema;
 // (no `Ctx` import — `check_definite_assignment`'s `_ctx` param was always
 // dead; connectivity T11 dropped it so `lute-cli`'s project-wide envelope
 // wiring needs no throwaway `Ctx`/`Env` construction at all.)
+
+/// What a definite-assignment walk resolves names against: the folded state
+/// schema, the def table every `@def` use expands through, and the def result
+/// types a `<match on="@def">` subject takes its domain from (dsl 0.24.0).
+pub struct Scope<'a> {
+    pub schema: &'a StateSchema,
+    pub defs: DefTable<'a>,
+    pub def_types: &'a BTreeMap<String, Type>,
+}
+
+static NO_BODIES: BTreeMap<String, String> = BTreeMap::new();
+static NO_PARAMS: BTreeMap<String, Vec<(String, Type)>> = BTreeMap::new();
+static NO_TYPES: BTreeMap<String, Type> = BTreeMap::new();
+
+impl<'a> Scope<'a> {
+    /// A document's scope: its folded schema and merged def tables.
+    pub fn of(folded: &'a crate::check::FoldedEnv) -> Self {
+        Self {
+            schema: &folded.env.state,
+            defs: DefTable {
+                bodies: &folded.def_bodies,
+                params: &folded.env.def_params,
+            },
+            def_types: &folded.env.def_types,
+        }
+    }
+
+    /// `schema` with no defs in scope.
+    pub fn bare(schema: &'a StateSchema) -> Self {
+        Self {
+            schema,
+            defs: DefTable {
+                bodies: &NO_BODIES,
+                params: &NO_PARAMS,
+            },
+            def_types: &NO_TYPES,
+        }
+    }
+}
 
 /// Set of provably-assigned state paths on the current execution path.
 pub(crate) type Assigned = BTreeSet<String>;
@@ -120,15 +176,42 @@ struct Flow {
 /// against a node's project-wide `Env` instead of re-deriving its own
 /// read-collection walk — see [`check_read`]'s doc comment for why a
 /// schema-defaulted read is safely excluded here too).
+///
+/// `assume` is the condition the whole node stream runs under (dsl 0.24.0): a
+/// scene's beat `when:`, a bundle `<beat when>`, an entry `when=`. Its
+/// dominating guards seed `available` — never `writes` — and its own reads
+/// are that slot's own check ([`check_quest_guard_defassign`]), not repeated
+/// here.
 pub fn check_definite_assignment(
     nodes: &[Node],
-    schema: &StateSchema,
+    cx: &Scope<'_>,
+    assume: Option<&CelSlot>,
 ) -> (Vec<Diagnostic>, Assigned, Vec<(String, Span)>) {
     let mut diags = Vec::new();
     let mut reads = Vec::new();
-    let mut flow = Flow::default();
-    walk_nodes(nodes, schema, &mut flow, &mut diags, &mut reads);
+    let mut flow = Flow {
+        available: assumed_present(assume, cx),
+        writes: Assigned::new(),
+    };
+    walk_nodes(nodes, cx, &mut flow, &mut diags, &mut reads);
     (diags, flow.writes, reads)
+}
+
+/// The state paths `assume` proves present for the body it guards (its
+/// dominating `isSet`/`has` guards, `@def`s expanded) — empty for `None`.
+pub(crate) fn assumed_present(assume: Option<&CelSlot>, cx: &Scope<'_>) -> Assigned {
+    let mut assigned = Assigned::new();
+    if let Some(slot) = assume {
+        apply_condition(slot, cx, &mut assigned, &mut Vec::new(), &mut Vec::new());
+    }
+    assigned
+}
+
+/// Whether `path` is provably present given the `assigned` set: an entry is
+/// the path or an ancestor of it, or `path` is a `prev.run.*` mirror the
+/// atomic run-end snapshot covers (see the module doc).
+pub(crate) fn is_present(path: &str, assigned: &Assigned, schema: &StateSchema) -> bool {
+    proven(path, assigned, &[], schema)
 }
 
 /// Recursively collect the subject `Span` of every domain-exhaustive
@@ -154,35 +237,41 @@ pub fn check_definite_assignment(
 /// project-wide read set and risk a false `E-STATE-MAYBE-UNAVAILABLE`,
 /// violating the dsl §7 soundness invariant (a project run must never newly
 /// error a file single-file `check` reports clean).
-pub fn exhaustive_match_subject_spans(nodes: &[Node], schema: &StateSchema) -> Vec<Span> {
+pub fn exhaustive_match_subject_spans(nodes: &[Node], cx: &Scope<'_>) -> Vec<Span> {
     let mut spans = Vec::new();
-    collect_exhaustive_spans(nodes, schema, &mut spans);
+    collect_exhaustive_spans(nodes, cx, &mut spans);
     spans
 }
 
-fn collect_exhaustive_spans(nodes: &[Node], schema: &StateSchema, spans: &mut Vec<Span>) {
+fn collect_exhaustive_spans(nodes: &[Node], cx: &Scope<'_>, spans: &mut Vec<Span>) {
     for node in nodes {
         match node {
             Node::Branch(b) => {
                 for choice in &b.choices {
-                    collect_exhaustive_spans(&choice.body, schema, spans);
+                    collect_exhaustive_spans(&choice.body, cx, spans);
                 }
             }
             Node::Hub(h) => {
                 for choice in &h.choices {
-                    collect_exhaustive_spans(&choice.body, schema, spans);
+                    collect_exhaustive_spans(&choice.body, cx, spans);
                 }
             }
-            Node::On(o) => collect_exhaustive_spans(&o.body, schema, spans),
-            Node::Objective(o) => collect_exhaustive_spans(&o.body, schema, spans),
+            Node::On(o) => collect_exhaustive_spans(&o.body, cx, spans),
+            Node::Objective(o) => collect_exhaustive_spans(&o.body, cx, spans),
             Node::Match(m) => {
-                if crate::match_check::is_exhaustive(m, schema) {
+                let (subject, info) = resolve_subject(m, cx);
+                if crate::match_check::is_exhaustive_resolved(
+                    m,
+                    subject.as_deref(),
+                    &info,
+                    cx.schema,
+                ) {
                     spans.push(m.subject.span);
                 }
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_exhaustive_spans(body, schema, spans);
+                            collect_exhaustive_spans(body, cx, spans);
                         }
                     }
                 }
@@ -195,6 +284,12 @@ fn collect_exhaustive_spans(nodes: &[Node], schema: &StateSchema, spans: &mut Ve
             | Node::Retract(_) => {}
         }
     }
+}
+
+/// `m`'s subject resolved for domain inference in `cx`
+/// ([`crate::match_check::resolve_subject`]).
+fn resolve_subject(m: &Match, cx: &Scope<'_>) -> (Option<String>, crate::match_check::DomainInfo) {
+    crate::match_check::resolve_subject(m, &cx.defs, cx.def_types, cx.schema)
 }
 
 /// Definite-assignment for a quest's `start`/`fail` CEL guard (dsl 0.2.0 §6.3,
@@ -220,34 +315,35 @@ fn collect_exhaustive_spans(nodes: &[Node], schema: &StateSchema, spans: &mut Ve
 ///
 /// Quest guards stay OUTSIDE the envelope's read-collection (connectivity T11,
 /// dsl §4.4): only the diagnostics are returned.
-pub fn check_quest_guard_defassign(slot: &CelSlot, schema: &StateSchema) -> Vec<Diagnostic> {
+pub fn check_quest_guard_defassign(slot: &CelSlot, cx: &Scope<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let mut assigned = Assigned::new();
     let mut reads = Vec::new();
-    apply_condition(slot, schema, &mut assigned, &mut diags, &mut reads);
+    apply_condition(slot, cx, &mut assigned, &mut diags, &mut reads);
     diags
 }
 
 /// Forward-walk a node sequence, threading the assigned set through in order.
 fn walk_nodes(
     nodes: &[Node],
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     flow: &mut Flow,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
     for node in nodes {
         match node {
-            Node::Set(set) => walk_set(set, schema, flow, diags, reads),
-            Node::Branch(branch) => walk_branch(branch, schema, flow, diags, reads),
-            Node::Match(m) => walk_match(m, schema, flow, diags, reads),
-            Node::Timeline(tl) => walk_timeline(tl, schema, flow, diags, reads),
-            Node::Hub(hub) => walk_hub(hub, schema, flow, diags, reads),
+            Node::Set(set) => walk_set(set, cx, flow, diags, reads),
+            Node::Branch(branch) => walk_branch(branch, cx, flow, diags, reads),
+            Node::Match(m) => walk_match(m, cx, flow, diags, reads),
+            Node::Timeline(tl) => walk_timeline(tl, cx, flow, diags, reads),
+            Node::Hub(hub) => walk_hub(hub, cx, flow, diags, reads),
             // A `{{path}}` interpolation on a content line is a state READ at the
             // line's position (dsl §7.6, §9.4): give it the SAME definite-
             // assignment treatment as a guard / `::set` read — a maybe-unset path
             // (declared, no default, no dominating write, no guard) is
-            // `E-MAYBE-UNSET`. `Ref`/`Reserved` interps carry no state path.
+            // `E-MAYBE-UNSET`. A `{{@def}}` reads what its expanded body reads
+            // (dsl 0.24.0); `Reserved` interps carry no state path.
             // (`E-UNDECLARED` for the path and `E-UNDECLARED-REF` for the ref are
             // the cel-layer resolver's job, mirroring how guard reads split.)
             //
@@ -261,27 +357,10 @@ fn walk_nodes(
             Node::Line(line) => match &line.when {
                 Some(when) => {
                     let mut fork = flow.available.clone();
-                    apply_condition(when, schema, &mut fork, diags, reads);
-                    for interp in &line.interps {
-                        if interp.kind == InterpKind::Path {
-                            check_read(&interp.raw, schema, &fork, interp.span, diags, reads);
-                        }
-                    }
+                    apply_condition(when, cx, &mut fork, diags, reads);
+                    check_interp_reads(&line.interps, cx, &fork, diags, reads);
                 }
-                None => {
-                    for interp in &line.interps {
-                        if interp.kind == InterpKind::Path {
-                            check_read(
-                                &interp.raw,
-                                schema,
-                                &flow.available,
-                                interp.span,
-                                diags,
-                                reads,
-                            );
-                        }
-                    }
-                }
+                None => check_interp_reads(&line.interps, cx, &flow.available, diags, reads),
             },
             // dsl 0.12.0: `::next{when=}` is a one-arm, NON-DOMINATING
             // construct — the SAME treatment a gated line's `when=` gets
@@ -290,16 +369,19 @@ fn walk_nodes(
             // state of its own, so unlike a line there is no further body
             // to check against the fork — no `interps` on a directive).
             // `None` for every other directive tag (only `next` ever
-            // populates `.when`), so this is byte-identical to the old
-            // unconditional `Node::Directive(_) => {}` for everything else.
+            // populates `.when`). A `::use` `@def` argument is spliced into
+            // the component body, so it is read here, at the call.
             Node::Directive(d) => {
                 if let Some(when) = &d.when {
                     let mut fork = flow.available.clone();
-                    apply_condition(when, schema, &mut fork, diags, reads);
+                    apply_condition(when, cx, &mut fork, diags, reads);
+                }
+                if d.tag == "use" {
+                    check_use_arg_reads(&d.attrs, cx, &flow.available, diags, reads);
                 }
             }
-            Node::On(on) => walk_on(on, schema, flow, diags, reads),
-            Node::Objective(o) => walk_objective(o, schema, flow, diags, reads),
+            Node::On(on) => walk_on(on, cx, flow, diags, reads),
+            Node::Objective(o) => walk_objective(o, cx, flow, diags, reads),
             // Fact args are ground (entity ids / bools), never `state:` paths —
             // no definite-assignment read/write to track (0.3.0 T2; write
             // policy is Task 10).
@@ -308,40 +390,102 @@ fn walk_nodes(
     }
 }
 
+/// The reads of a line's (or label's) `{{…}}` interpolations: a `{{path}}`
+/// reads its path; a `{{@def}}` reads its expanded body, anchored at the
+/// interpolation.
+fn check_interp_reads(
+    interps: &[Interp],
+    cx: &Scope<'_>,
+    assigned: &Assigned,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
+    for interp in interps {
+        match interp.kind {
+            InterpKind::Path => check_read(
+                &Use::plain(interp.raw.clone(), interp.span),
+                cx,
+                assigned,
+                diags,
+                reads,
+            ),
+            InterpKind::Ref => {
+                for u in uses_of(&interp.raw, interp.span, cx) {
+                    if u.role == PathRole::Read {
+                        check_read(&u, cx, assigned, diags, reads);
+                    }
+                }
+            }
+            InterpKind::Reserved => {}
+        }
+    }
+}
+
+/// The reads of a `::use`'s `@def` arguments (dsl 0.24.0).
+fn check_use_arg_reads(
+    attrs: &[Attr],
+    cx: &Scope<'_>,
+    assigned: &Assigned,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
+    for attr in attrs {
+        if let AttrValue::Ref(slot) = &attr.value {
+            check_reads(slot, cx, assigned, diags, reads);
+        }
+    }
+}
+
 /// A `::set{path op expr}` (dsl §7.3.4). The RHS reads are checked; a compound
 /// op additionally reads the OLD target value; then the target is assigned —
 /// into BOTH `flow.available` (read-satisfaction) and `flow.writes` (the
 /// envelope guaranteed-write must-set): a `::set` is unconditionally a WRITE.
+///
+/// dsl 0.24.0 §1: a GUARDED `::set{… when="g"}` is a one-arm, NON-DOMINATING
+/// write — the same treatment a gated line gets in [`walk_nodes`]: `g`'s
+/// reads are checked and its `has(p)`/`isSet(p)` proofs narrow THIS set's
+/// own RHS/compound reads on a discarded fork, and the target is assigned in
+/// NEITHER lattice (the write may not happen, so a later read stays
+/// maybe-unset and the path never enters the guaranteed-write set).
 fn walk_set(
     set: &Set,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     flow: &mut Flow,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
+    let guarded = set.when.as_ref().map(|when| {
+        let mut fork = flow.available.clone();
+        apply_condition(when, cx, &mut fork, diags, reads);
+        fork
+    });
+    let available = guarded.as_ref().unwrap_or(&flow.available);
     // RHS value reads (guards here don't gate the arm; only their unset-safety).
-    check_reads(&set.expr, schema, &flow.available, diags, reads);
+    check_reads(&set.expr, cx, available, diags, reads);
 
     let target = &set.path;
     if is_state_path(target) {
         // Compound assignment reads the old value first (dsl §9.4).
         if set.op != "=" {
-            check_read(target, schema, &flow.available, set.span, diags, reads);
+            check_read(&Use::plain(target.clone(), set.span), cx, available, diags, reads);
         }
         // The write target itself must be declared (T4.3 covers read sites; the
         // `::set` LHS path is this pass's responsibility). An `entry.*` target
         // is not "undeclared" but unwritable — `set_op`'s reserved-write
         // rejection (dsl 0.19.0 §5) is its one report.
-        if !is_declared(target, schema) && !is_entry_path(target) {
+        if !is_declared(target, cx.schema) && !is_entry_path(target) {
             let mut msg = format!("state path `{target}` is not declared in `state:` (dsl §9.4)");
-            if let Some(sugg) = crate::cel_paths::nearest_declared_path(target, schema, 2) {
+            if let Some(sugg) = crate::cel_paths::nearest_declared_path(target, cx.schema, 2) {
                 msg.push_str(&format!(" — did you mean `{sugg}`?"));
             }
             diags.push(diag("E-UNDECLARED", msg, set.path_span));
         }
-        // Assign regardless of declaredness so later reads don't cascade.
-        flow.available.insert(target.clone());
-        flow.writes.insert(target.clone());
+        // Assign regardless of declaredness so later reads don't cascade —
+        // but only an unguarded write is definite.
+        if guarded.is_none() {
+            flow.available.insert(target.clone());
+            flow.writes.insert(target.clone());
+        }
     }
 }
 
@@ -379,7 +523,7 @@ fn apply_choice_record(choice: &Choice, flow: &mut Flow) {
 /// some choice is unconditional (one arm always runs), else the pre-block set.
 fn walk_branch(
     branch: &Branch,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     flow: &mut Flow,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
@@ -389,7 +533,7 @@ fn walk_branch(
     for choice in &branch.choices {
         let mut arm = flow.clone();
         match &choice.when {
-            Some(cond) => apply_condition(cond, schema, &mut arm.available, diags, reads),
+            Some(cond) => apply_condition(cond, cx, &mut arm.available, diags, reads),
             None => has_unconditional = true,
         }
         // §7.6: a `{{path}}` in the choice LABEL is a READ at the point the choice
@@ -397,13 +541,13 @@ fn walk_branch(
         // shows only when the guard holds), so check against the post-guard arm.
         check_label_reads(
             &choice.label,
-            schema,
+            cx,
             &arm.available,
             choice.span,
             diags,
             reads,
         );
-        walk_nodes(&choice.body, schema, &mut arm, diags, reads);
+        walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
         arm_finals.push(arm);
     }
@@ -422,7 +566,7 @@ fn walk_branch(
 /// proves a path assigned past the block) — for EITHER lattice.
 fn walk_hub(
     hub: &Hub,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     flow: &mut Flow,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
@@ -433,19 +577,19 @@ fn walk_hub(
         // choice `when` must not escape defassign. The arm is discarded, so a
         // guard-proven path never survives past the block (conservative).
         if let Some(cond) = &choice.when {
-            apply_condition(cond, schema, &mut arm.available, diags, reads);
+            apply_condition(cond, cx, &mut arm.available, diags, reads);
         }
         // Label reads (§7.6): checked against the post-guard arm, then discarded
         // with the rest of the fork.
         check_label_reads(
             &choice.label,
-            schema,
+            cx,
             &arm.available,
             choice.span,
             diags,
             reads,
         );
-        walk_nodes(&choice.body, schema, &mut arm, diags, reads);
+        walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
         // arm (and any record write) discarded — a hub never folds back.
     }
@@ -460,16 +604,16 @@ fn walk_hub(
 /// every arm writes it or it carries a schema `default`).
 fn walk_on(
     on: &On,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     flow: &Flow,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
     let mut arm = flow.clone();
     if let Some(cond) = &on.when {
-        apply_condition(cond, schema, &mut arm.available, diags, reads);
+        apply_condition(cond, cx, &mut arm.available, diags, reads);
     }
-    walk_nodes(&on.body, schema, &mut arm, diags, reads);
+    walk_nodes(&on.body, cx, &mut arm, diags, reads);
 }
 
 /// An `<objective>` (dsl 0.2.0 §6.4): the body emits ONCE, when `done` first
@@ -481,7 +625,7 @@ fn walk_on(
 /// paths for this arm only.
 fn walk_objective(
     o: &Objective,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     flow: &Flow,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
@@ -499,16 +643,17 @@ fn walk_objective(
     // proves the read, exactly as `check_reads(&o.done, …, &arm.available, …)`
     // did before.
     let mut done_assigned = arm.available.clone();
-    apply_condition(&o.done, schema, &mut done_assigned, diags, reads);
-    // dsl 0.23.0 §2: `by=` is read like `done=` — slot-local narrowing only.
-    if let Some(by) = &o.by {
-        let mut by_assigned = arm.available.clone();
-        apply_condition(by, schema, &mut by_assigned, diags, reads);
+    apply_condition(&o.done, cx, &mut done_assigned, diags, reads);
+    // dsl 0.23.0 §2 / 0.24.0 §2.1: `by=` / `until=` are read like `done=` —
+    // slot-local narrowing only.
+    for deadline in o.by.iter().chain(&o.until) {
+        let mut deadline_assigned = arm.available.clone();
+        apply_condition(deadline, cx, &mut deadline_assigned, diags, reads);
     }
     if let Some(cond) = &o.when {
-        apply_condition(cond, schema, &mut arm.available, diags, reads);
+        apply_condition(cond, cx, &mut arm.available, diags, reads);
     }
-    walk_nodes(&o.body, schema, &mut arm, diags, reads);
+    walk_nodes(&o.body, cx, &mut arm, diags, reads);
     // dsl 0.16.0 §2: an objective `reward.when` is a slot-LOCAL guard —
     // same intra-expression narrowing `done=`/`when=` get, discarded so it
     // can never leak into the surviving set (a reward may or may not fire,
@@ -517,31 +662,27 @@ fn walk_objective(
     for r in &o.rewards {
         if let Some(cond) = &r.when {
             let mut fork = arm.available.clone();
-            apply_condition(cond, schema, &mut fork, diags, reads);
+            apply_condition(cond, cx, &mut fork, diags, reads);
         }
     }
 }
 
-/// Definite-assignment for a `<choice label>`'s `{{path}}` interpolations (dsl
+/// Definite-assignment for a `<choice label>`'s `{{…}}` interpolations (dsl
 /// §7.6, §9.4). Choice labels are String attrs (not in the AST like content-line
 /// interps), so they are recovered via the shared [`crate::check::scan_label_interps`]
-/// scan. Only `Path` interps carry a state path; a declared-but-maybe-unset label
-/// read (no default, no dominating write, no guard) is `E-MAYBE-UNSET`. Undeclared
-/// paths and `Ref`/`Reserved` interps are the cel-layer resolver's job (mirroring
-/// content-line interps), so `check_read` no-ops on them here.
+/// scan and read exactly like a content line's ([`check_interp_reads`]).
+/// Undeclared paths are the cel-layer resolver's job, so `check_read` no-ops
+/// on them here.
 fn check_label_reads(
     label: &str,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     assigned: &Assigned,
     span: Span,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
-    for interp in crate::check::scan_label_interps(label, span) {
-        if interp.kind == InterpKind::Path {
-            check_read(&interp.raw, schema, assigned, interp.span, diags, reads);
-        }
-    }
+    let interps = crate::check::scan_label_interps(label, span);
+    check_interp_reads(&interps, cx, assigned, diags, reads);
 }
 
 /// A `<match>`: the `on=` subject is checked for value-reads (it dominates every
@@ -556,19 +697,22 @@ fn check_label_reads(
 /// `<when is="x">` (no `unset` alternative) the subject equals a named value,
 /// so it is set; once an arm has taken every unset value (`is="unset"` with no
 /// narrowing `test`), every later arm and the `<otherwise>` see it set. The
-/// proof is arm-local (`available` only, never `writes`).
+/// proof is arm-local (`available` only, never `writes`). dsl 0.24.0: a
+/// `@def` subject whose body is one state path narrows that path.
 fn walk_match(
     m: &Match,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     flow: &mut Flow,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
     // Subject is a value-read check only; subject-position guards do NOT prove.
-    check_reads(&m.subject, schema, &flow.available, diags, reads);
+    check_reads(&m.subject, cx, &flow.available, diags, reads);
 
-    let subject = crate::match_check::subject_path(m)
-        .filter(|p| is_declared(p, schema) && !is_choicelog(p));
+    let (resolved, info) = resolve_subject(m, cx);
+    let exhaustive =
+        crate::match_check::is_exhaustive_resolved(m, resolved.as_deref(), &info, cx.schema);
+    let subject = resolved.filter(|p| is_declared(p, cx.schema) && !is_choicelog(p));
     let mut unset_taken = false;
     let mut arm_finals: Vec<Flow> = Vec::new();
     for arm in &m.arms {
@@ -582,17 +726,17 @@ fn walk_match(
                         branch.available.insert(p.clone());
                     }
                 }
-                apply_condition(test, schema, &mut branch.available, diags, reads);
-                walk_nodes(body, schema, &mut branch, diags, reads);
+                apply_condition(test, cx, &mut branch.available, diags, reads);
+                walk_nodes(body, cx, &mut branch, diags, reads);
                 unset_taken |= subject.as_deref().is_some_and(|p| {
-                    crate::match_check::arm_takes_unset(is.as_ref(), &test.raw, Some(p), schema)
+                    crate::match_check::arm_takes_unset(is.as_ref(), &test.raw, Some(p), cx.schema)
                 });
             }
             Arm::Otherwise { body, .. } => {
                 if let (Some(p), true) = (&subject, unset_taken) {
                     branch.available.insert(p.clone());
                 }
-                walk_nodes(body, schema, &mut branch, diags, reads);
+                walk_nodes(body, cx, &mut branch, diags, reads);
             }
         }
         arm_finals.push(branch);
@@ -602,7 +746,7 @@ fn walk_match(
     // path then flows through exactly one arm, so the intersection of arm-final
     // sets is provably assigned afterward. A non-exhaustive match may match
     // nothing, so its pre-block set survives unchanged (dsl §9.4/§11.2).
-    if !arm_finals.is_empty() && crate::match_check::is_exhaustive(m, schema) {
+    if !arm_finals.is_empty() && exhaustive {
         *flow = intersect_flows(arm_finals);
     }
 }
@@ -612,18 +756,22 @@ fn walk_match(
 /// for "was it ever set").
 fn walk_timeline(
     tl: &Timeline,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     flow: &mut Flow,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
     if let Some(dur) = &tl.duration {
-        check_reads(dur, schema, &flow.available, diags, reads);
+        check_reads(dur, cx, &flow.available, diags, reads);
     }
     for track in &tl.tracks {
         for clip in &track.clips {
-            if let ClipNode::Set(set) = &clip.node {
-                walk_set(set, schema, flow, diags, reads);
+            match &clip.node {
+                ClipNode::Set(set) => walk_set(set, cx, flow, diags, reads),
+                ClipNode::Directive(d) if d.tag == "use" => {
+                    check_use_arg_reads(&d.attrs, cx, &flow.available, diags, reads);
+                }
+                ClipNode::Directive(_) => {}
             }
         }
     }
@@ -632,24 +780,27 @@ fn walk_timeline(
 /// Evaluate a condition/guard slot: value reads are checked, then guard paths
 /// (`has(p)`/`isSet(p)`) are added to the (arm-local) assigned set. Guard paths
 /// are added AFTER checking reads so a guard never masks a value read of the
-/// same slot; a guard only proves the path for the guarded body.
+/// same slot; a guard only proves the path for the guarded body. A read its
+/// own short-circuit protects ([`crate::cel_paths::PathUse::local`]) is proven
+/// there.
 fn apply_condition(
     slot: &CelSlot,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     assigned: &mut Assigned,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
-    for use_ in slot_uses(slot) {
-        match use_.role {
-            PathRole::Read => check_read(&use_.path, schema, assigned, slot.span, diags, reads),
+    for u in slot_uses(slot, cx) {
+        match u.role {
+            PathRole::Read => check_read(&u, cx, assigned, diags, reads),
             PathRole::Guard => {
                 // A guard on an undeclared path is a read-site concern (T4.3).
-                if is_declared(&use_.path, schema) && !is_choicelog(&use_.path) {
-                    assigned.insert(use_.path);
+                if is_declared(&u.path, cx.schema) && !is_choicelog(&u.path) {
+                    assigned.insert(u.path);
                 }
             }
-            // A non-dominating presence test (under `||`/`!`) proves nothing.
+            // A non-dominating presence test (under `||`/`!`/`?:`) proves
+            // nothing for the body; its short-circuit reads carry it locally.
             PathRole::WeakGuard => {}
         }
     }
@@ -658,14 +809,14 @@ fn apply_condition(
 /// Check every value read in `slot` (guards are ignored — they tolerate unset).
 fn check_reads(
     slot: &CelSlot,
-    schema: &StateSchema,
+    cx: &Scope<'_>,
     assigned: &Assigned,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
-    for use_ in slot_uses(slot) {
-        if use_.role == PathRole::Read {
-            check_read(&use_.path, schema, assigned, slot.span, diags, reads);
+    for u in slot_uses(slot, cx) {
+        if u.role == PathRole::Read {
+            check_read(&u, cx, assigned, diags, reads);
         }
     }
 }
@@ -685,59 +836,197 @@ fn check_reads(
 /// classify clean regardless — omitting it here changes no downstream
 /// diagnostic, only avoids a redundant lookup.
 fn check_read(
-    path: &str,
-    schema: &StateSchema,
+    u: &Use,
+    cx: &Scope<'_>,
     assigned: &Assigned,
-    span: Span,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
+    let path = u.path.as_str();
     // `run.choiceLog.*` reads are T4.3's territory; an undeclared (non-reserved)
     // path is ALSO T4.3's territory (`E-UNDECLARED`) -- but a reserved
     // `quest.<id>.*` read is always declared (dsl 0.2.0 §5.2, mirrors
     // `is_declared` below), so it falls through to `has_default`, which
     // treats every reserved quest shape as definite.
-    if is_choicelog(path) || !is_declared(path, schema) {
+    if is_choicelog(path) || !is_declared(path, cx.schema) {
         return;
     }
-    if has_default(path, schema) || proven(path, assigned) {
+    if has_default(path, cx.schema) || proven(path, assigned, &u.local, cx.schema) {
         return;
     }
-    reads.push((path.to_string(), span));
+    let through = u
+        .via
+        .as_deref()
+        .map(|def| format!(", read through `@{def}`"))
+        .unwrap_or_default();
+    reads.push((path.to_string(), u.span));
     diags.push(diag(
         "E-MAYBE-UNSET",
         format!(
-            "state path `{path}` may be read before it is set \
+            "state path `{path}` may be read before it is set{through} \
              (no default, no dominating `::set`, no guard) (dsl §9.4)"
         ),
-        span,
+        u.span,
     ));
 }
 
-/// Reconstruct a slot's path uses by re-parsing its raw CEL into a fresh arena.
-/// (The check entrypoint takes no arena; per T4.3 the AST is structure-only, so a
-/// throwaway parse is sound and yields identical `Select`/`Ident` chains.)
-fn slot_uses(slot: &CelSlot) -> Vec<crate::cel_paths::PathUse> {
-    if slot.raw.trim().is_empty() {
+/// One state-path use at a use site: its role, the paths its enclosing
+/// short-circuits prove there, where a diagnostic about it anchors, and the
+/// `@def` it was read through (`None` for the site's own text).
+struct Use {
+    path: String,
+    role: PathRole,
+    local: Vec<String>,
+    span: Span,
+    via: Option<String>,
+}
+
+impl Use {
+    /// A bare read of `path` (a `{{path}}`, a compound `::set` target).
+    fn plain(path: String, span: Span) -> Self {
+        Self {
+            path,
+            role: PathRole::Read,
+            local: Vec::new(),
+            span,
+            via: None,
+        }
+    }
+}
+
+/// A slot's path uses, `@def`s expanded ([`uses_of`]).
+fn slot_uses(slot: &CelSlot, cx: &Scope<'_>) -> Vec<Use> {
+    uses_of(&slot.raw, slot.span, cx)
+}
+
+/// The path uses of `raw` — a CEL slot's text or a `{{@def}}` referent —
+/// with every `@def` expanded (dsl 0.24.0: a def is a macro, so its body's
+/// reads are reads at the use site), all anchored at `span`. A read the
+/// site's own text does not make is attributed to the first top-level `@def`
+/// whose expansion makes it. A slot whose defs cannot be expanded (a cycle, a
+/// bodiless component param) is read as written; that failure is another
+/// pass's diagnostic.
+///
+/// Re-parses into a fresh arena: the check entrypoint takes no arena, and per
+/// T4.3 the AST is structure-only, so a throwaway parse yields identical
+/// `Select`/`Ident` chains.
+fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
+    let refs: Vec<lute_cel::RefUse> = lute_cel::scan_refs(raw)
+        .into_iter()
+        .filter(|r| !r.is_dollar)
+        .collect();
+    let expanded = if refs.is_empty() {
+        None
+    } else {
+        expand_cel(raw, &cx.defs, Some("$"), &mut Vec::new()).ok()
+    };
+    let Some(expanded) = expanded else {
+        return parse_uses(raw)
+            .into_iter()
+            .map(|u| Use {
+                path: u.path,
+                role: u.role,
+                local: u.local,
+                span,
+                via: None,
+            })
+            .collect();
+    };
+    let own: Vec<String> = parse_uses(raw).into_iter().map(|u| u.path).collect();
+    // Top-level refs only: a ref nested in another's `(args)` expands with it.
+    let calls: Vec<(usize, usize)> = refs
+        .iter()
+        .filter_map(|r| r.call.as_ref())
+        .map(|c| (c.span.byte_start, c.span.byte_end))
+        .collect();
+    let top: Vec<(&str, Vec<String>)> = refs
+        .iter()
+        .filter(|r| {
+            !calls
+                .iter()
+                .any(|&(s, e)| s <= r.span.byte_start && r.span.byte_end <= e)
+        })
+        .map(|r| {
+            let end = r.call.as_ref().map_or(r.span.byte_end, |c| c.span.byte_end);
+            let paths = expand_cel(&raw[r.span.byte_start..end], &cx.defs, Some("$"), &mut Vec::new())
+                .map(|text| parse_uses(&text).into_iter().map(|u| u.path).collect())
+                .unwrap_or_default();
+            (r.name.as_str(), paths)
+        })
+        .collect();
+    parse_uses(&expanded)
+        .into_iter()
+        .map(|u| {
+            let via = (u.role == PathRole::Read && !own.contains(&u.path))
+                .then(|| {
+                    top.iter()
+                        .find(|(_, paths)| paths.contains(&u.path))
+                        .map(|(name, _)| (*name).to_string())
+                })
+                .flatten();
+            Use {
+                path: u.path,
+                role: u.role,
+                local: u.local,
+                span,
+                via,
+            }
+        })
+        .collect()
+}
+
+/// The path uses of CEL text, or none when it does not parse (malformed CEL
+/// is already reported in Phase 3).
+fn parse_uses(text: &str) -> Vec<crate::cel_paths::PathUse> {
+    if text.trim().is_empty() {
         return Vec::new();
     }
     let mut arena = CelArena::default();
-    match lute_cel::parse_slot(&mut arena, &slot.raw, slot.span.byte_start) {
+    match lute_cel::parse_slot(&mut arena, text, 0) {
         Ok(handle) => arena
             .get(handle)
             .map(|root| collect_path_uses(&root.expr))
             .unwrap_or_default(),
-        Err(_) => Vec::new(), // malformed CEL already reported in Phase 3.
+        Err(_) => Vec::new(),
     }
 }
 
-/// A path is proven when some assigned entry is it or an ancestor of it
-/// (`run.x` proves `run.x` and `run.x.hp`; a write to `run.x.a` does NOT prove
-/// the parent `run.x`).
-fn proven(path: &str, assigned: &Assigned) -> bool {
-    assigned
+/// A path is proven when some assigned entry — or some path its own
+/// short-circuit proves (`local`) — is it or an ancestor of it (`run.x` proves
+/// `run.x` and `run.x.hp`; a write to `run.x.a` does NOT prove the parent
+/// `run.x`). dsl 0.24.0: `prev.run.*` is one snapshot, copied at run end from
+/// every `run.*` value, and a `run.*` path with a `default` always holds a
+/// value then — so once ANY `prev.run.*` path is proven present, a run has
+/// ended and every `prev.run.<q>` whose `run.<q>` is defaulted is present.
+fn proven(path: &str, assigned: &Assigned, local: &[String], schema: &StateSchema) -> bool {
+    let covers = |a: &String| {
+        path.strip_prefix(a.as_str())
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('.'))
+    };
+    if assigned.iter().any(covers) || local.iter().any(covers) {
+        return true;
+    }
+    let Some(run_path) = path.strip_prefix("prev.") else {
+        return false;
+    };
+    let snapshot_taken = assigned
         .iter()
-        .any(|a| path == a || path.starts_with(&format!("{a}.")))
+        .chain(local)
+        .any(|a| a.starts_with("prev.run."));
+    snapshot_taken && run_path.starts_with("run.") && has_default(run_path, schema)
+}
+
+/// Whether evaluating `expr` from entry state may read an unset path: a
+/// declared, undefaulted read its own short-circuits do not prove (a
+/// `<match on="@def">` domain's `unset` case, dsl 0.24.0).
+pub(crate) fn may_read_unset(expr: &cel_parser::ast::Expr, schema: &StateSchema) -> bool {
+    collect_path_uses(expr).iter().any(|u| {
+        u.role == PathRole::Read
+            && !is_choicelog(&u.path)
+            && is_declared(&u.path, schema)
+            && !has_default(&u.path, schema)
+            && !proven(&u.path, &Assigned::new(), &u.local, schema)
+    })
 }
 
 /// A path is declared when it exactly matches a `state:` key or is a
@@ -780,6 +1069,10 @@ fn is_declared(path: &str, schema: &StateSchema) -> bool {
 ///   quest before activation, so a read is definite and `'unset'` is a value
 ///   (`crate::cel_paths::is_reserved_quest_state`). This used to be
 ///   `E-MAYBE-UNSET` on every read, with a message about `::set`.
+/// * `quest.<id>.failedBy` / `quest.<id>.objectives.<oid>.failed` (dsl
+///   0.24.0 §2) — engine-derived and always assigned: `failedBy` holds
+///   `unset` until the quest fails, `failed` is `false` until the objective
+///   fails.
 ///
 /// `entry.<id>.read` (dsl 0.19.0 §5) always defaults to
 /// `false` — the decl `crate::lore::entry_read_decl` folds for a local entry
@@ -788,6 +1081,8 @@ fn has_default(path: &str, schema: &StateSchema) -> bool {
     is_reserved_quest_objective_done(path)
         || is_reserved_quest_activated_at(path)
         || is_reserved_quest_state(path)
+        || crate::cel_paths::is_reserved_quest_failed_by(path)
+        || crate::cel_paths::is_reserved_quest_objective_failed(path)
         || is_reserved_entry_read(path)
         || schema
             .decls
@@ -897,7 +1192,7 @@ mod tests {
     fn quest_guard_narrows_within_the_expression() {
         let schema = schema_with_undefaulted("run.ending");
         let slot = condition_slot("isSet(run.ending) && run.ending == 'a'");
-        let diags = check_quest_guard_defassign(&slot, &schema);
+        let diags = check_quest_guard_defassign(&slot, &Scope::bare(&schema));
         assert!(
             diags.is_empty(),
             "`isSet(p) && …` is ok in every slot as of §12.2; got {:?}",
@@ -916,7 +1211,7 @@ mod tests {
             "quest.q.state == 'unset'",
             "quest.q.state != 'complete' && quest.q.state != 'failed'",
         ] {
-            let diags = check_quest_guard_defassign(&condition_slot(raw), &schema);
+            let diags = check_quest_guard_defassign(&condition_slot(raw), &Scope::bare(&schema));
             assert!(
                 diags.iter().all(|d| d.code != "E-MAYBE-UNSET"),
                 "{raw}: {diags:?}"
@@ -930,7 +1225,7 @@ mod tests {
     fn ordinary_path_keeps_the_definite_assignment_message() {
         let schema = schema_with_undefaulted("run.ending");
         let slot = condition_slot("run.ending == 'a'");
-        let diags = check_quest_guard_defassign(&slot, &schema);
+        let diags = check_quest_guard_defassign(&slot, &Scope::bare(&schema));
         let d = diags
             .iter()
             .find(|d| d.code == "E-MAYBE-UNSET")
@@ -948,7 +1243,7 @@ mod tests {
     fn quest_guard_still_reports_an_unguarded_read() {
         let schema = schema_with_undefaulted("run.ending");
         let slot = condition_slot("run.ending == 'a'");
-        let diags = check_quest_guard_defassign(&slot, &schema);
+        let diags = check_quest_guard_defassign(&slot, &Scope::bare(&schema));
         assert!(
             diags.iter().any(|d| d.code == "E-MAYBE-UNSET"),
             "an unguarded read is unchanged; got {diags:?}"
@@ -961,7 +1256,7 @@ mod tests {
     fn quest_guard_does_not_narrow_under_or() {
         let schema = schema_with_undefaulted("run.ending");
         let slot = condition_slot("isSet(run.ending) || run.ending == 'a'");
-        let diags = check_quest_guard_defassign(&slot, &schema);
+        let diags = check_quest_guard_defassign(&slot, &Scope::bare(&schema));
         assert!(
             diags.iter().any(|d| d.code == "E-MAYBE-UNSET"),
             "`||` does not dominate its right operand; got {diags:?}"
@@ -974,7 +1269,7 @@ mod tests {
         // the envelope layer's `guaranteed()` (T8/§4.3) reuses this exact set.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
         assert!(assigned.contains("run.x"));
     }
@@ -985,7 +1280,7 @@ mod tests {
         // body with no prior `::set` and no guard on THIS path.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "expected E-MAYBE-UNSET, got {errs:?}"
@@ -997,7 +1292,7 @@ mod tests {
         // `::set{run.x = 1}` dominates the later read `run.x` in the `<when>` test.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n@narrator: hi\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "dominating write should prove the path, got {errs:?}"
@@ -1010,7 +1305,7 @@ mod tests {
         // prior write -> the old-value read is maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x += 1}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "compound += reads old value, expected E-MAYBE-UNSET, got {errs:?}"
@@ -1036,7 +1331,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         errs.into_iter()
             .filter(|e| e.code == "E-MAYBE-UNSET" && !subjects.contains(&e.span))
             .map(|e| e.message)
@@ -1088,7 +1383,7 @@ mod tests {
         // block. A later read of `run.x` is therefore maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n@narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "subject isSet-guard must not prove run.x past a non-exhaustive match, got {errs:?}"
@@ -1102,7 +1397,7 @@ mod tests {
         // A later read of `run.x` is maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "subject has-guard must not survive intersect_all, got {errs:?}"
@@ -1117,7 +1412,7 @@ mod tests {
         // path-sensitive analysis (§9.4) -> maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "non-defaulted scene.s read before write should flag, got {errs:?}"
@@ -1129,7 +1424,7 @@ mod tests {
         // A schema-defaulted `scene.d` read is seeded at scene entry -> no error.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.d: { type: number, default: 0 }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.d}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "defaulted scene.d read should be safe, got {errs:?}"
@@ -1141,7 +1436,7 @@ mod tests {
         // A dominating `::set{scene.s = 1}` proves the later read -> no error.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.s = 1}\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "dominating scene write should prove the path, got {errs:?}"
@@ -1164,7 +1459,7 @@ mod tests {
         // guaranteed WRITTEN when two of three arms never wrote it (RevT8 P1).
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "exhaustive arm-level isSet guard should still prove the later read, got {errs:?}"
@@ -1186,7 +1481,7 @@ mod tests {
         // guaranteed WRITE set. `into=` alone drives the record now.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.x\" value=\"1\">\n@narrator: pick\n</choice>\n</branch>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "unconditional record should satisfy the later read (no false positive), got {errs:?}"
@@ -1204,7 +1499,7 @@ mod tests {
         // satisfy a read of the same path INSIDE that same body.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.x\" value=\"1\">\n::set{run.out = run.x}\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "a read inside the recording choice's own body must still flag, got {errs:?}"
@@ -1218,7 +1513,7 @@ mod tests {
         // guaranteed WRITE set, exactly like an exhaustive `::set`.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
         assert!(
             assigned.contains("run.x"),

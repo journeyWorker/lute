@@ -64,6 +64,17 @@ What the DSL *does* pin, and the engine must honor:
 
 - **`app.*`** is the widest tier; its persistence and sharing are host-defined.
 
+## Guarded writes (`::set{… when}`)
+
+`::set{run.aff.wren += 1 when="run.warmed.wren < run.day"}` (dsl 0.24.0 §1)
+writes only when its `when` condition holds. It carries no IR field of its
+own: the compiler lowers it to the same one-arm `match` a `when=`-gated line
+becomes (subject = the guard, one `$` arm holding the `set`, an empty
+`otherwise`), so an engine runs it with its ordinary `match`, and an
+undecided guard is an undecided match subject. A guarded write is never a
+definite assignment: a later read of a path with no `default` stays
+maybe-unset unless something unconditional writes it.
+
 ## Reserved quest slots
 
 Two families of `quest.<id>.*` paths are **engine-owned**, not author-written
@@ -132,6 +143,61 @@ every write it sees there is its own. `reserved: true` relations
 (`RelationEntry.reserved`) are the fact-store analogue: the engine alone
 asserts and retracts their facts.
 
+## The clock
+
+A schema MAY declare one clock (dsl 0.24.0 §1) over two existing
+engine-owned paths — it adds meaning, not storage (D-B):
+
+```yaml
+clock:
+  day: run.day            # number path, owner: engine
+  slot: run.slot          # enum path, owner: engine
+  slots: [morning, afternoon, night]   # order; the slot enum's members
+  raise: slotStart        # optional: the occasion raised after every advance
+  week: { length: 7, first: 1, labels: [Sun, Mon, Tue, Wed, Thu, Fri, Sat] }  # optional
+```
+
+The declaration is carried verbatim as `clock` on the artifact and on
+`ProjectIndex` (absent without one; two different clocks in one project are
+an index conflict). `day` and `slot` stay ordinary `StateEntry` rows,
+initialized and reset by their tier; the checker requires both
+`owner: engine`, a number `day`, an enum `slot` whose members are exactly
+`slots`, and a declared `raise` occasion (`E-CLOCK-DECL`).
+
+**Reserved read-only paths.** The engine derives these from the live `day`
+and `slot` — they are not rows of the state table, content never writes
+them (`E-QUEST-RESERVED-WRITE`), and they are unset while `day` is not a
+whole number or `slot` not one of `slots`:
+
+| path | value |
+| ---- | ----- |
+| `clock.index` | `(day - 1) * len(slots) + index of slot in slots` — monotone in time |
+| `clock.weekday` | `(week.first + day - 1) mod week.length` (only with `week:`) |
+| `clock.weekdayLabel` | `week.labels[clock.weekday]`, renderable (only with `week.labels`) |
+
+**`once: day` / `once: slot`.** A scene beat (`meta.beat.once`) or entry
+(`EntryCmd.once`) with `day` / `slot` is spent from its presentation until
+the clock's day (for `slot`: day and slot) changes; the engine keeps the
+position of the last presentation per beat. A project without a clock may
+not use them (`E-BEAT-ATTR`).
+
+**The engine moves the clock forward only.** `clock.index` never
+decreases within a run; a run start resets `day` / `slot` to their
+defaults by the tier rule. After every advance the engine settles the quest
+lifecycles — a `by` deadline over the clock fails at the advance that passes
+it (`quest-lifecycle.md` §Objectives) — and then raises `raise`, when
+declared, as an ordinary occasion.
+
+The reference tooling models exactly this. A `lute play` step `advance:
+slot` (one slot), `advance: <n>` (`n` slots) or `advance: day` (the first
+slot of the next day) writes the two paths — wrapping past the last slot
+into the next day — settles, then raises `raise` with the step's `pick:` /
+`choose:` and selection `expect:` (refused when the clock raises nothing).
+An `engine:` step that moves `clock.index` backward is a usage error (exit
+2); `newRun` starts the clock over. `lute calendar --axis clock=d1..d2`
+expands to every slot of those days in clock order (bare `clock`: one week
+from day 1, or day 1 without a `week:`).
+
 ## Previous run (`prev.run.*`)
 
 `prev.run.<path>` (dsl 0.23.0 §6) is a reserved, read-only mirror of every
@@ -146,6 +212,12 @@ reset the run tier. Before the first run ends every `prev.run.*` read is
 table — it is implied by the `run.*` entries. `lute play` snapshots at
 `newRun` and a play script's `state:` may seed `prev.run.*` (a save made
 after a run ended); a `lute trace` / `lute test` mock may seed it too.
+
+The snapshot MUST be atomic: all mirrors are written together, and a `run.*`
+path with a `default` always holds a value at run end. The checker relies on
+this (dsl 0.24.0): once any `prev.run.<p>` is known present (`isSet`, an arm
+narrowing it, a beat `when:`), every `prev.run.<q>` whose `run.<q>` has a
+`default` is treated as present too.
 
 ## Rewards that credit state
 
@@ -174,3 +246,34 @@ state, exactly as it would a guard. A component `{{@param}}` never reaches the
 artifact as a placeholder: a param is a compile-time constant, so each `::use`
 expansion's text already contains the bound literal (`Outside: grey.`). A
 param bound to a caller-side def stays a `ref` placeholder naming that def.
+A `speaker` param (dsl 0.24.0 §4) is likewise spliced as the bound cast
+member's display `name` (its id when it has none), so the artifact carries
+plain text. The writes of an `effects: true` component are ordinary `set` /
+`assert` / `retract` commands in the host's stream, inside the component's
+`source { component }` region; the IR has no separate record for them.
+
+An interpolation MAY carry a format hint (dsl 0.24.0 §4):
+`{{user.deaths:ordinal}}`. Its `path` or `ref` placeholder then carries
+`format: "ordinal"` (absent when the author wrote none; the marker in `text`
+keeps the hint), and the engine renders the value in that format — a
+locale-aware engine may render its locale's ordinal. The reference runner
+(`lute run`, `lute play`) and `lute trace` render English ordinals: a
+non-negative integer `n` gets the suffix of its last digit — `1st`, `2nd`,
+`3rd`, `4th` … `0th` — except that last two digits `11`–`13` take `th`
+(`11th`, `12th`, `13th`, `111th`, `112th`; `21st`, `22nd`, `101st`). Any
+other number (a fraction, a negative number) renders unchanged, as it
+would without the hint. The checker admits `ordinal` only on a
+number-typed referent (`E-REF-TYPE` otherwise) and no other hint
+(`E-CEL-PROFILE`). A component `{{@n:ordinal}}` bound to a literal
+number is rendered at compile time (`3rd`), since no placeholder survives
+the splice.
+
+A state path typed against a named enum (`run.wd: { type: { domain: weekday } }`)
+whose declaration carries `labels:` (`enums: { weekday: { members: [mon, sun],
+labels: { sun: Sunday } } }`, dsl 0.24.0 §1) has those labels on its state
+entry (`state[].labels`, member → display text). A `path` placeholder renders
+`labels[value]` when the current value has a label and the value itself
+otherwise, so `Today is {{run.wd}}.` reads `Today is Sunday.` for `sun` and
+`Today is mon.` for `mon`. A `prev.run.*` read renders with its `run.*`
+path's labels. `lute run`, `lute play`, `lute trace` and `lute test` all render
+this way.

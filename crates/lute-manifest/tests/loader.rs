@@ -10,9 +10,9 @@ fn write_pkg(root: &std::path::Path, dup: bool) {
     )
     .unwrap();
     let d = if dup {
-        "directives:\n  - { name: foo, attrs: [], lower: { kind: builtin, name: n } }\n  - { name: foo, attrs: [], lower: { kind: builtin, name: n } }\n"
+        "directives:\n  - { name: foo, attrs: [] }\n  - { name: foo, attrs: [] }\n"
     } else {
-        "directives:\n  - { name: foo, attrs: [ { name: x, type: bool } ], lower: { kind: builtin, name: n } }\n"
+        "directives:\n  - { name: foo, attrs: [ { name: x, type: bool } ] }\n"
     };
     fs::write(root.join("directives/a.yaml"), d).unwrap();
 }
@@ -661,7 +661,7 @@ fn lints_do_not_participate_in_capability_version() {
     .unwrap();
     fs::write(
         root_a.join("t.plug/directives/a.yaml"),
-        "directives:\n  - { name: foo, attrs: [ { name: x, type: bool } ], lower: { kind: builtin, name: n } }\n",
+        "directives:\n  - { name: foo, attrs: [ { name: x, type: bool } ] }\n",
     )
     .unwrap();
 
@@ -677,7 +677,7 @@ fn lints_do_not_participate_in_capability_version() {
     .unwrap();
     fs::write(
         root_b.join("t.plug/directives/a.yaml"),
-        "directives:\n  - { name: foo, attrs: [ { name: x, type: bool } ], lower: { kind: builtin, name: n } }\n",
+        "directives:\n  - { name: foo, attrs: [ { name: x, type: bool } ] }\n",
     )
     .unwrap();
     fs::write(
@@ -882,8 +882,11 @@ fn loads_occasions_export() {
     )
     .unwrap();
     let loaded = load_plugin_dir(&tmp).expect("valid occasions package loads");
-    let by_name: std::collections::BTreeMap<_, _> =
-        loaded.occasions.iter().map(|o| (o.name.as_str(), o)).collect();
+    let by_name: std::collections::BTreeMap<_, _> = loaded
+        .occasions
+        .iter()
+        .map(|o| (o.name.as_str(), o))
+        .collect();
     assert_eq!(by_name.len(), 4);
     let hub = by_name["hubVisit"];
     assert_eq!(
@@ -917,10 +920,15 @@ fn loads_occasions_export() {
         "{errs:?}"
     );
 
-    fs::write(tmp.join("occasions/b.yaml"), "occasions:\n  map: { select: random }\n").unwrap();
+    fs::write(
+        tmp.join("occasions/b.yaml"),
+        "occasions:\n  map: { select: random }\n",
+    )
+    .unwrap();
     let errs = load_plugin_dir(&tmp).expect_err("`select` is a closed enum");
     assert!(
-        errs.iter().any(|e| matches!(e, lute_manifest::loader::LoadError::Parse { .. })),
+        errs.iter()
+            .any(|e| matches!(e, lute_manifest::loader::LoadError::Parse { .. })),
         "{errs:?}"
     );
 
@@ -932,7 +940,8 @@ fn loads_occasions_export() {
     .unwrap();
     let errs = load_plugin_dir(&tmp).expect_err("a half domain fails the load");
     assert!(
-        errs.iter().any(|e| matches!(e, lute_manifest::loader::LoadError::Parse { .. })),
+        errs.iter()
+            .any(|e| matches!(e, lute_manifest::loader::LoadError::Parse { .. })),
         "{errs:?}"
     );
 
@@ -943,7 +952,11 @@ fn loads_occasions_export() {
     )
     .unwrap();
     let loaded = load_plugin_dir(&tmp).expect("a member subset loads");
-    let boss = loaded.occasions.iter().find(|o| o.name == "bossDefeated").unwrap();
+    let boss = loaded
+        .occasions
+        .iter()
+        .find(|o| o.name == "bossDefeated")
+        .unwrap();
     assert_eq!(
         boss.target,
         OccasionTarget::Domain {
@@ -954,7 +967,10 @@ fn loads_occasions_export() {
     );
 
     // An empty or repeating member list fails the load, naming the occasion.
-    for (list, why) in [("[]", "is empty"), ("[warden, warden]", "`warden` more than once")] {
+    for (list, why) in [
+        ("[]", "is empty"),
+        ("[warden, warden]", "`warden` more than once"),
+    ] {
         fs::write(
             tmp.join("occasions/b.yaml"),
             format!("occasions:\n  bossDefeated: {{ target: {{ prefix: boss, entity: foe, members: {list} }} }}\n"),
@@ -971,5 +987,221 @@ fn loads_occasions_export() {
             "{list}: {errs:?}"
         );
     }
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// A one-export package at a fresh temp dir: `plugin.yaml` exporting
+/// `<export>: <export>/` plus `<export>/a.yaml` = `body`.
+fn one_export_pkg(tag: &str, export: &str, body: &str) -> std::path::PathBuf {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_{tag}_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(tmp.join(export)).unwrap();
+    fs::write(
+        tmp.join("plugin.yaml"),
+        format!("id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  {export}: {export}/\n"),
+    )
+    .unwrap();
+    fs::write(tmp.join(export).join("a.yaml"), body).unwrap();
+    tmp
+}
+
+fn only_parse_msg(errs: &[LoadError]) -> &str {
+    match errs {
+        [LoadError::Parse { msg, .. }] => msg,
+        other => panic!("expected one E-PLUGIN-PARSE, got {other:?}"),
+    }
+}
+
+/// dsl 0.24.0 T1-3: `selct: all` used to load silently as `select: first`.
+#[test]
+fn unknown_occasion_key_is_rejected_with_did_you_mean() {
+    let tmp = one_export_pkg(
+        "oc_typo",
+        "occasions",
+        "occasions:\n  report: { selct: all, description: Pick one }\n",
+    );
+    let errs = load_plugin_dir(&tmp).unwrap_err();
+    assert_eq!(errs[0].code(), "E-PLUGIN-PARSE");
+    let msg = only_parse_msg(&errs);
+    assert!(msg.contains("unknown field `selct`"), "{msg}");
+    assert!(msg.contains("did you mean `select`?"), "{msg}");
+    fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn unknown_key_in_other_export_bodies_is_rejected() {
+    for (tag, export, body, key, suggestion) in [
+        (
+            "rk_typo",
+            "rewardkinds",
+            "rewardKinds:\n  gold: { credit: run.gold }\n",
+            "credit",
+            "credits",
+        ),
+        (
+            "dir_typo",
+            "directives",
+            "directives:\n  - { name: x, attrs: [], efects: { writes: [] } }\n",
+            "efects",
+            "effects",
+        ),
+        (
+            "br_typo",
+            "bridge",
+            "bridgeCapabilities:\n  - { service: dice, operation: roll, replays: live }\n",
+            "replays",
+            "replay",
+        ),
+    ] {
+        let tmp = one_export_pkg(tag, export, body);
+        let errs = load_plugin_dir(&tmp).unwrap_err();
+        let msg = only_parse_msg(&errs);
+        assert!(
+            msg.contains(&format!("unknown field `{key}`")),
+            "{export}: {msg}"
+        );
+        assert!(
+            msg.contains(&format!("did you mean `{suggestion}`?")),
+            "{export}: {msg}"
+        );
+        fs::remove_dir_all(&tmp).ok();
+    }
+}
+
+/// An unquoted flow-map description split at its comma leaves a null-valued
+/// key; the error says to quote the description, spelled out in full.
+#[test]
+fn null_valued_key_hints_to_quote_the_description() {
+    let tmp = one_export_pkg(
+        "oc_comma",
+        "occasions",
+        "occasions:\n  report: { select: all, description: Pick one, the player picks one }\n",
+    );
+    let errs = load_plugin_dir(&tmp).unwrap_err();
+    let msg = only_parse_msg(&errs);
+    assert!(
+        msg.contains("unknown field `the player picks one`"),
+        "{msg}"
+    );
+    assert!(msg.contains("`the player picks one` has no value"), "{msg}");
+    assert!(
+        msg.contains(r#"quote the description: `description: "Pick one, the player picks one"`"#),
+        "{msg}"
+    );
+    assert!(!msg.contains("did you mean"), "{msg}");
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// dsl 0.24.0 T3-7: `lower:` is optional; absent means the passthrough.
+#[test]
+fn directive_without_lower_loads_as_passthrough() {
+    let tmp = one_export_pkg(
+        "dir_nolower",
+        "directives",
+        "directives:\n  - { name: encounter, attrs: [ { name: id, required: true, type: string } ] }\n",
+    );
+    let loaded = load_plugin_dir(&tmp).expect("a directive without `lower:` loads");
+    assert!(loaded.directives[0].lower.is_passthrough());
+    fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn unregistered_builtin_hook_is_a_parse_error() {
+    let tmp = one_export_pkg(
+        "dir_hook",
+        "directives",
+        "directives:\n  - { name: encounter, attrs: [], lower: { kind: builtin, name: encounter } }\n",
+    );
+    let errs = load_plugin_dir(&tmp).unwrap_err();
+    let msg = only_parse_msg(&errs);
+    assert!(
+        msg.contains("`encounter` is not a builtin lowering hook"),
+        "{msg}"
+    );
+    assert!(
+        msg.contains(&lute_manifest::schema::BUILTIN_LOWERING_HOOKS.join(", ")),
+        "{msg}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// A package whose manifest parsed but whose export failed is reported by
+/// assembly as failed to load (naming the load error's code), not as a
+/// plugin that is not installed.
+#[test]
+fn failed_export_plugin_is_reported_as_failed_not_missing() {
+    use lute_manifest::assemble::assemble_snapshot;
+    use lute_manifest::resolve::ActivePlugin;
+    let root = std::env::temp_dir().join(format!("lute_plugins_failed_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).unwrap();
+    let pkg = one_export_pkg(
+        "failed_member",
+        "occasions",
+        "occasions:\n  report: { selct: all }\n",
+    );
+    fs::rename(&pkg, root.join("t.plug")).unwrap();
+    let (reg, errs) = lute_manifest::loader::load_plugins_dir(&root);
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    assert!(reg.get("t.plug").is_none());
+    let active = [ActivePlugin {
+        id: "t.plug".into(),
+        options: Default::default(),
+    }];
+    let (_snap, aerrs) = assemble_snapshot(&active, &reg);
+    assert_eq!(aerrs.len(), 1, "{aerrs:?}");
+    assert_eq!(aerrs[0].code(), "E-PLUGIN-MISSING-ACTIVE");
+    let msg = aerrs[0].to_string();
+    assert!(
+        msg.contains("failed to load (see E-PLUGIN-PARSE above)"),
+        "{msg}"
+    );
+    assert!(!msg.contains("not installed"), "{msg}");
+    // A plugin no package declares still reads as not installed.
+    let (_snap, aerrs) = assemble_snapshot(
+        &[ActivePlugin {
+            id: "t.absent".into(),
+            options: Default::default(),
+        }],
+        &reg,
+    );
+    assert!(
+        aerrs[0].to_string().contains("is not installed"),
+        "{aerrs:?}"
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+/// dsl 0.24.0 §4: a plugin cast entry carries `present:` and `emotions:`
+/// through to the loaded member; any other key is still `E-PLUGIN-PARSE`.
+#[test]
+fn cast_export_carries_present_and_emotions_and_rejects_unknown_keys() {
+    let tmp = one_export_pkg(
+        "cast_party",
+        "cast",
+        "cast:\n  isolde:\n    name: Isolde\n    present: \"holds(inParty(isolde))\"\n    \
+         emotions: [calm, fierce]\n  maud: { name: Maud }\n",
+    );
+    let p = load_plugin_dir(&tmp).expect("valid cast export loads");
+    let isolde = p.cast.iter().find(|c| c.id == "isolde").expect("isolde");
+    assert_eq!(isolde.name.as_deref(), Some("Isolde"));
+    assert_eq!(isolde.present.as_deref(), Some("holds(inParty(isolde))"));
+    assert_eq!(
+        isolde.emotions.as_deref(),
+        Some(&["calm".to_string(), "fierce".to_string()][..])
+    );
+    let maud = p.cast.iter().find(|c| c.id == "maud").expect("maud");
+    assert_eq!((maud.present.as_deref(), maud.emotions.as_deref()), (None, None));
+    fs::remove_dir_all(&tmp).ok();
+
+    let tmp = one_export_pkg(
+        "cast_typo",
+        "cast",
+        "cast:\n  isolde: { name: Isolde, presnt: \"holds(inParty(isolde))\" }\n",
+    );
+    let errs = load_plugin_dir(&tmp).unwrap_err();
+    let msg = only_parse_msg(&errs);
+    assert!(msg.contains("unknown field `presnt`"), "{msg}");
+    assert!(msg.contains("did you mean `present`?"), "{msg}");
     fs::remove_dir_all(&tmp).ok();
 }

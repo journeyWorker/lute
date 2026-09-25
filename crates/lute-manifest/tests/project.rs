@@ -15,7 +15,7 @@ fn write_project(root: &std::path::Path) {
     .unwrap();
     fs::write(
         pdir.join("d.yaml"),
-        "directives:\n  - { name: minigame, attrs: [ { name: kind, type: string } ], lower: { kind: builtin, name: n } }\n",
+        "directives:\n  - { name: minigame, attrs: [ { name: kind, type: string } ] }\n",
     )
     .unwrap();
     // project config

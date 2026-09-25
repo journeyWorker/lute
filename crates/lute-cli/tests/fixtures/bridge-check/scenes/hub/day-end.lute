@@ -1,0 +1,11 @@
+---
+kind: scene
+id: hub.dayEnd
+title: Lamps out
+on: dayEnd
+once: false
+---
+
+## Night
+
+@narrator: One by one, the lamps go out.

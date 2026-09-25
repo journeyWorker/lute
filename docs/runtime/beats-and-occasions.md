@@ -50,18 +50,29 @@ occasions:
   error of the declaration file. The subset narrows every consumer alike:
   beat and objective targets, `lute play` step targets, `lute calendar`
   columns.
+- `judge: before` (dsl 0.24.0 §2) — the occasion judges its objectives
+  **before** presenting its beats (§Occasions judge objectives below). The
+  default `judge: after` keeps the 0.21 order. Use it for a closing moment
+  whose beats read the verdict: an epilogue on `chapterEnd` that sees
+  `quest.<id>.state` / `failedBy` already settled by the chapter's `on=`
+  objectives.
 
 Occasion declarations are not in the artifact; they are part of the capability
 snapshot (`capabilityVersion`), where an occasion's `target` serializes as
 `false`, `true`, `{ "prefix", "entity" }`, or `{ "prefix", "entity",
 "members" }`. A domain changes the stamp, and so does its member list; a
 domain without `members` keeps its 0.22 stamp, and an occasion declared only
-with `target: true` / `false` keeps its 0.21 stamp. An
+with `target: true` / `false` keeps its 0.21 stamp. `judge: before` changes
+the stamp; an occasion that never declares `judge:` keeps its 0.23 stamp. An
 engine raising an occasion that no resolved plugin declares uses
 `select: first`. The checker guarantees every compiled beat names a declared
-occasion once any plugin declares one (`E-OCCASION-UNKNOWN`), a target only on
-an occasion declared with `target: true` or a domain (`E-BEAT-ATTR`), and, on
-a domain occasion, only a target inside the domain (`E-BEAT-ATTR`).
+occasion once any plugin declares one (`E-OCCASION-UNKNOWN`), a scene or
+bundle beat target only on an occasion declared with `target: true` or a
+domain (`E-BEAT-ATTR`), and, on a domain occasion, only a target inside the
+domain (`E-BEAT-ATTR`). An entry beat MAY carry `target` on an occasion
+declared without one (dsl 0.24.0 §6): there it is the entry's metadata (what
+the entry is about, its lookup key), not a candidate restriction — see
+[Selection](#selection).
 
 ## Beats in the IR
 
@@ -95,7 +106,9 @@ type EntryCmd = {
 };
 ```
 
-An entry beat's candidate target is its ordinary `target`, and its
+An entry beat's candidate target is its ordinary `target` — on an occasion
+declared with a target; on one declared without, the `target` is metadata
+and the entry answers every raise (dsl 0.24.0 §6) — and its
 eligibility is its ordinary `when` plus its `once`. Re-presentation is an
 entry's nature, so without `once` an entry beat is never spent, as in 0.21.
 With `once` (dsl 0.22.0 §7) it is spent by its own read flags
@@ -172,7 +185,11 @@ When the engine raises occasion `O`, optionally for target `T`:
 
 1. **Candidates** are the beats with `on == O` whose `target` is absent or
    equal to `T`. An occasion raised without a target has only untargeted
-   candidates.
+   candidates. On an occasion declared **without** a target (`target: false`
+   or absent), a beat's `target` restricts nothing: it can only be an entry's
+   metadata there (dsl 0.24.0 §6), and that entry is a candidate at every
+   raise. An occasion no plugin declares keeps the 0.21 rule (a target
+   restricts).
 2. A candidate is **eligible** when all of these hold:
    - a scene beat's `after:` holds — the artifact's `prereqEdges` row whose
      `node` is the scene's `meta.id`, evaluated as it is for any scene
@@ -218,7 +235,9 @@ function raise(index: ProjectIndex, occasion: string, target: string | undefined
   const eligible = index.beats
     .map((beat, order) => ({ beat, order }))
     .filter(({ beat }) => beat.on === occasion &&
-                          (beat.target === undefined || beat.target === target))
+                          (beat.target === undefined || beat.target === target ||
+                           // dsl 0.24.0 §6: an entry's metadata target
+                           declaredOccasion(occasion)?.target === false))
     .filter(({ beat }) => isEligible(beat, state, facts, presented))
     .sort((a, b) => b.beat.priority - a.beat.priority || a.order - b.order)
     .map(({ beat }) => beat);
@@ -310,24 +329,31 @@ An entry beat cannot ride along (`<entry also>` is `E-BEAT-ATTR`).
 An occasion also judges quest objectives that name it (dsl 0.21.0 §7a.2): an
 `ObjectiveEntry` with `on` is evaluated only when its occasion is raised
 while its quest is `active` (`quest-lifecycle.md`). Raising an occasion
-therefore does two things, in this order: select and present a beat as
-above, then answer the raise in every active quest and settle those quests.
-Answering the raise is itself two steps, in this order (0.23.1): when a world
-event of the same name is declared, the engine fires it — every active
-quest's `<on event>` handler for that name runs, once, and the event carries
-no target — and then every active quest's objectives with that `on` are
-evaluated, so an objective can read what the handler wrote. An occasion
-referenced only by objectives or same-named handlers is still raised — with
-no beat to present, only the second step runs, and so does a `select: all`
-list the player closed without picking. An occasion never fires a quest
-lifecycle event (`questActive`, `questComplete`, `questFailed`). An objective's
-occasion is checked against the vocabulary exactly as a beat's `on`
+therefore does two things, by default in this order: select and present a
+beat as above, then answer the raise in every active quest and settle those
+quests. An occasion declared `judge: before` (dsl 0.24.0 §2) swaps the two:
+it answers the raise and settles the quests first, then selects its beats —
+whose `when` and bodies therefore read the judged quests. Answering the raise
+is itself two steps, in this order (0.23.1): when a world event of the same
+name is declared, the engine fires it — every active quest's `<on event>`
+handler for that name runs, once — and then every active quest's objectives
+with that `on` are evaluated, so an objective can read what the handler
+wrote. A handler without `target` answers every raise of its event; an
+`<on event="E" target="T">` (dsl 0.24.0 §2, `OnCmd.target`) runs only when
+`E` is raised **for `T`** — the beat target rule — never for a plain world
+event nor for a raise for another target. An occasion referenced only by
+objectives or same-named handlers is still raised — with no beat to present,
+only the answering step runs, and so does a `select: all` list the player
+closed without picking. An occasion never fires a quest lifecycle event
+(`questActive`, `questComplete`, `questFailed`). An objective's occasion is
+checked against the vocabulary exactly as a beat's `on`
 (`E-OCCASION-UNKNOWN`, `E-BEAT-ATTR`). An objective without `target` is
 judged whenever its occasion is raised, whatever the target. An objective
 with `target=` (dsl 0.23.0 §2) follows the beat target rule: it is judged only
-when the occasion is raised for that target. Its target is checked like a
-beat's: `E-BEAT-ATTR` when it is not a quoted dotted id, has no `on`, sits on
-an occasion that takes no target, or lies outside the occasion's domain.
+when the occasion is raised for that target. Its target — and an `<on>`
+handler's — is checked like a beat's: `E-BEAT-ATTR` when it is not a quoted
+dotted id, names no occasion, sits on an occasion that takes no target, or
+lies outside the occasion's domain.
 
 ## Static guarantees
 
@@ -349,14 +375,22 @@ An artifact that compiled cleanly carries these guarantees:
 Three `check-project` warnings are advisory. `W-BEAT-SHADOWED` names a
 `select: first` beat that an earlier-ordered, always-eligible, never-spent
 beat (a scene with `once: false`, an entry without `once`) on the same
-occasion and target beats every time. `W-BEAT-PRIORITY-TIE` names beats on
-one `select: first` occasion, either untargeted or for the same target, with
-equal priority and `when`s not provably exclusive, whose winner therefore
-falls to `ProjectIndex.beats` order. Both ignore `also` beats, which never
-compete for the win: an `also` beat is never shadowed, never shadows, and
-never ties. `W-BEAT-ONCE-RUN-USER` names a beat whose `once` is defaulted to
-`run` and whose `when` reads only user-tier state, so once it holds it
-replays every run; an authored `once: run` (an entry's `once="run"`)
+occasion and target beats every time — and (dsl 0.24.0) an untargeted beat on
+an occasion whose target domain is closed when, on every target of the
+domain, such a beat for that target beats it. `W-BEAT-PRIORITY-TIE` names
+beats on one `select: first` occasion, either untargeted or for the same
+target, with equal priority and eligibilities not provably exclusive, whose
+winner therefore falls to `ProjectIndex.beats` order. A beat's eligibility
+there is its `when` and its `once` (an entry's `once="user"` requires
+`!entry.<id>.everRead`, `once="run"` `!entry.<id>.read`, a scene's or bundle
+beat's `once: user` `!visited('<id>')`), and a `holds(A)` of a derived atom
+whose every rule is ground and `cel()`-only stands for its rules' guards.
+Both ignore `also` beats, which never compete for the win: an `also` beat is
+never shadowed, never shadows, and never ties. `W-BEAT-ONCE-RUN-USER` names a
+beat whose `once` is defaulted to `run` and whose `when` reads only user-tier
+state (`user.*`, `entry.<id>.everRead`, `quest.<id>.*` of a quest without
+`tier="run"`, `holds` / `count` of a `tier: user` relation), so once it holds
+it replays every run; an authored `once: run` (an entry's `once="run"`)
 acknowledges that and silences it, and a `prev.run.*` read counts as run
 history, not user state.
 
@@ -376,6 +410,9 @@ history, not user state.
   the presented beats exactly and in order. `--json` emits the same
   transcript: `presented` is the first presentation and `then` lists the rest
   in order; a candidate or presentation that rides along carries `also: true`.
+  On a `judge: before` occasion the quest transitions its raise made print
+  under the step header, before the candidates (`--json`: the step's
+  `judgedBefore`, while its `quests` are the ones after the presentations).
 - In `lute play`, a `::end` ends only the presentation (or quest handler) it
   runs in; the playthrough goes on with the next step. A step `end: true`
   ends the playthrough: exit 0, and every later step is listed as skipped
@@ -393,6 +430,25 @@ history, not user state.
   settle — independent axes otherwise combine into saves no run reaches. A
   targeted occasion gets one column per target its beats name (or per
   `--target`), never the unanswered rest of its declared domain.
+- `lute calendar` axes (dsl 0.24.0): besides a declared state path,
+  `quest.<id>.state`, `quest.<id>.objectives.<oid>.done` and
+  `holds(<fact>)`, an axis `visited('<id>')=true,false` puts a scene or
+  bundle-beat id in or out of the save's visited set (what `after:` and CEL
+  `visited()` read; an unknown id is a usage error with a did-you-mean). An
+  axis of none of these kinds is a usage error that lists them.
+  `--occasion <name>@<axis>[=<value>],…` varies only the named axes for that
+  occasion: it is evaluated in the cells where every other axis is at its
+  first value (or the named `=<value>`) and left out elsewhere — blank in
+  the text grid, no result in `--json`, no row in `--csv` — so an occasion
+  the engine raises once per day (`dayEnd@run.day`) is read once per day.
+  `--facts <relation>` (repeatable) shows, per cell, the facts of that
+  relation that hold once the cell has settled (the runner's fixpoint): a
+  table with a row per first argument and a column per cell in text, a
+  per-cell `facts` map in `--json`, a `facts:<relation>` column in `--csv`.
+  After the beats never eligible in any cell, the report lists the beats
+  eligible in some cell but presented in none, with what was presented over
+  them (`?` where an unknown `when` decided the cell) — `neverPresented`
+  with `beatenBy` in `--json`, a second table after a blank line in `--csv`.
 - `lute scenario <dir>` draws every bundle beat as an edgeless entry node
   `beat(<doc>.<beat>)`; `scenario reach|envelope` accept its canonical id,
   bare or `beat:`-prefixed.

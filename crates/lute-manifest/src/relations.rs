@@ -31,9 +31,14 @@ pub enum KindShape {
     Invalid,
 }
 
+/// One `entities:` entry. `subset_of` is dsl 0.24.0 §3's `subsetOf: <kind>`:
+/// every member is also a member of the named parent kind, so a sub-kind is
+/// legal wherever a kind is and an argument of the sub-kind is also of the
+/// parent. Raw — the checker validates the parent (`E-ENTITY-KIND-SHAPE`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityKindDecl {
     pub shape: KindShape,
+    pub subset_of: Option<String>,
 }
 
 /// A `relations:` entry (spec §4). Raw — nothing here is validated; the
@@ -125,10 +130,28 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
             name.to_string(),
             EntityKindDecl {
                 shape: kind_shape(v),
+                subset_of: v.get("subsetOf").map(|p| p.as_str().unwrap_or_default().to_string()),
             },
         );
     }
     out
+}
+
+/// `true` when `kind` is `ancestor` or a (transitive) `subsetOf` descendant of
+/// it (dsl 0.24.0 §3). Cycle-safe: a malformed `subsetOf` loop stops after one
+/// visit per kind (the checker reports the loop itself).
+pub fn kind_within(kinds: &BTreeMap<String, EntityKindDecl>, kind: &str, ancestor: &str) -> bool {
+    let mut cur = kind;
+    for _ in 0..=kinds.len() {
+        if cur == ancestor {
+            return true;
+        }
+        match kinds.get(cur).and_then(|d| d.subset_of.as_deref()) {
+            Some(parent) => cur = parent,
+            None => return false,
+        }
+    }
+    false
 }
 
 /// Parse one `relations:` entry into a [`RelationDecl`]. A non-mapping decl
@@ -306,5 +329,20 @@ mod tests {
         assert_eq!(d["character"].members, vec!["a"]);
         assert!(d["npc"].open && d["npc"].members.is_empty());
         assert!(!d.contains_key("bad"));
+    }
+
+    #[test]
+    fn parses_sub_kinds_and_follows_the_chain() {
+        let p = parse_entity_kinds(&yaml(
+            "person: { members: [a, b, c] }\ncompanion: { subsetOf: person, members: [a, b] }\n\
+             sworn: { subsetOf: companion, members: [a] }\nloop: { subsetOf: loop, members: [x] }",
+        ));
+        assert_eq!(p.kinds["companion"].subset_of.as_deref(), Some("person"));
+        assert_eq!(p.kinds["companion"].shape, KindShape::Members(vec!["a".into(), "b".into()]));
+        assert_eq!(p.kinds["person"].subset_of, None);
+        assert!(kind_within(&p.kinds, "sworn", "person"));
+        assert!(kind_within(&p.kinds, "companion", "companion"));
+        assert!(!kind_within(&p.kinds, "person", "companion"));
+        assert!(!kind_within(&p.kinds, "loop", "person"), "a loop terminates");
     }
 }

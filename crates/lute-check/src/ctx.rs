@@ -79,6 +79,11 @@ pub struct Env {
     /// relation arg typed against a plugin/core/project domain (as opposed
     /// to a RelVocab entity kind or `enums:` name) inside a query.
     pub domains: BTreeMap<String, Domain>,
+    /// dsl 0.24.0 §1: the project's declared clock (one), as settled by
+    /// [`crate::clock::check_clock`] — `None` without one. Its reserved
+    /// `clock.*` decls are already in [`Self::state`]; trace derives their
+    /// values from the `day`/`slot` paths through it.
+    pub clock: Option<lute_manifest::clock::ClockDecl>,
 }
 
 /// Checker context threaded through the directive/CEL/state validators.

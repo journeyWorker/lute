@@ -405,6 +405,12 @@ enum Command {
         /// read is noted, as in 0.21. Overrides the mock's `derive:`.
         #[arg(long)]
         no_derive: bool,
+        /// Show every `<match>` subject and guard with its `@def`/`$`
+        /// expanded, as the walk evaluated it; by default they read as the
+        /// author wrote them (`@weekday`, `@atLeast(2)`). `--json` always
+        /// carries the expansion, plus `authoredId`/`authoredGuard`.
+        #[arg(long)]
+        expand: bool,
     },
     /// Provider-catalog maintenance.
     #[command(subcommand)]
@@ -415,24 +421,32 @@ enum Command {
     Init {
         /// Directory to create (must not already contain a `lute.project.yaml`).
         dir: PathBuf,
-        /// Project template: `minimal` (default), `investigation`, or `beats`
-        /// (an occasions plugin, beats with `id:`, a quest, lore, a play
-        /// script and scenario tests, dsl 0.22.0 §13).
+        /// Project template: `minimal` (default), `investigation` (a
+        /// whodunit on the `beats` skeleton: `examine`/`interview`
+        /// occasions, evidence lore, a negated derived rule, an accusation
+        /// guarded by derived facts), or `beats` (an occasions plugin, beats
+        /// with `id:`, a quest, lore, a play script and scenario tests, dsl
+        /// 0.22.0 §13).
         #[arg(long, value_name = "NAME")]
         template: Option<String>,
     },
     /// Scaffold one new document into an existing project: `lute new scene
     /// <name> [--on <occasion> [--target <target>]]` / `lute new quest
-    /// <name>` / `lute new lore <name>` / `lute new schema <name>`. Documents
-    /// carry an `id:` and omit what the manifest's `defaults:` supplies;
-    /// outside a project `lute new` says so (and `--on` is refused).
+    /// <name> [--start]` / `lute new lore <name>` / `lute new schema <name>`.
+    /// Documents carry an `id:` (a dotted name keeps its dots: `isolde.night`
+    /// → `id: isolde.night`) and omit what the manifest's `defaults:`
+    /// supplies; outside a project `lute new` says so (and `--on` is
+    /// refused).
     New {
         /// Document kind: `scene`, `quest`, `lore`, or `schema`.
         kind: String,
-        /// The new document's name (file stem; `/` nests it in a subfolder).
+        /// The new document's name (file stem; `/` nests it in a subfolder:
+        /// `lute new scene talk/tomas-evening`).
         name: String,
-        /// Project directory to scaffold into (default: current directory).
-        #[arg(long, value_name = "DIR", default_value = ".")]
+        /// The PROJECT directory (default: current directory) — not the
+        /// destination folder. A directory inside a project that is not its
+        /// root is refused with the `<sub>/<name>` spelling to use instead.
+        #[arg(long, value_name = "PROJECT", default_value = ".")]
         dir: PathBuf,
         /// Make the scene a beat answering this occasion (dsl 0.21.0 §3).
         #[arg(long, value_name = "OCCASION")]
@@ -441,6 +455,10 @@ enum Command {
         /// `<prefix>.<member>`).
         #[arg(long, value_name = "TARGET", requires = "on")]
         target: Option<String>,
+        /// `new quest` only: scaffold an auto-starting quest (`start="true"`)
+        /// instead of the default accept-driven stub.
+        #[arg(long)]
+        start: bool,
     },
     /// Diagnose the local toolchain + project setup: versions, project
     /// manifest, provider snapshots, vocabulary slots, and editor integration
@@ -629,29 +647,48 @@ enum Command {
         /// Emit the report as JSON instead of human-readable lines.
         #[arg(long)]
         json: bool,
+        /// Show each `when:` with its `@def`s expanded instead of as the
+        /// author wrote it (`--json` always carries both).
+        #[arg(long)]
+        expand: bool,
     },
     /// Evaluate beat eligibility over a grid of state values (dsl 0.23.0
     /// §1): for every cell of the `--axis` product, starting from the
     /// `--script` (its save, then its steps replayed) or the declared
     /// defaults, the winner and the eligible beats it shadows for every
     /// listed occasion — play's own eligibility, no presentation. Beats
-    /// never eligible in any cell are listed at the end. Exit `0` on
-    /// success, `1` when the project does not compile, `2` on an I/O or
-    /// usage failure (including an axis that cannot be applied).
+    /// never eligible in any cell, and beats eligible somewhere but
+    /// presented in no cell (with what was presented over them), are listed
+    /// at the end. Exit `0` on success, `1` when the project does not
+    /// compile, `2` on an I/O or usage failure (including an axis that
+    /// cannot be applied).
     Calendar {
         /// Project directory (`lute.project.yaml`).
         dir: PathBuf,
-        /// One grid axis: a declared state path and its values, an
-        /// inclusive integer range `run.day=1..7` or a list
-        /// `run.slot=morning,afternoon,night`; `quest.<id>.state=…` seeds
-        /// the quest's status, `holds(<fact>)=true,false` asserts or
-        /// retracts a base fact (repeatable; the first axis varies slowest).
-        #[arg(long, value_name = "PATH=VALUES", value_parser = play::calendar::parse_axis_flag)]
+        /// One grid axis and its values, an inclusive integer range
+        /// `run.day=1..7` or a list `run.slot=morning,afternoon,night`. The
+        /// axis is a declared state path; `quest.<id>.state=…` seeds the
+        /// quest's status; `quest.<id>.objectives.<oid>.done=true,false`
+        /// sets objective progress; `holds(<fact>)=true,false` asserts or
+        /// retracts a base fact; `visited('<id>')=true,false` puts a scene
+        /// or bundle beat in or out of the visited set (repeatable; the
+        /// first axis varies slowest).
+        #[arg(long, value_name = "AXIS=VALUES", value_parser = play::calendar::parse_axis_flag)]
         axis: Vec<(String, Vec<String>)>,
         /// An occasion to evaluate (repeatable; default: every occasion a
-        /// beat answers).
-        #[arg(long, value_name = "OCCASION")]
+        /// beat answers). `O@<axis>,…` varies only the named axes for `O`:
+        /// it is evaluated where every other axis is at its first value
+        /// (`O@run.day,run.slot=night` holds `run.slot` at `night`
+        /// instead) and left blank elsewhere — `dayEnd@run.day` reads a
+        /// once-a-day occasion once per day.
+        #[arg(long, value_name = "OCCASION[@AXIS[=VALUE],…]")]
         occasion: Vec<String>,
+        /// A relation whose facts to show per cell once it has settled
+        /// (repeatable): in text a table with a row per first argument and a
+        /// column per cell (`--facts at`: who is where, when); a per-cell
+        /// list in `--json` / `--csv`.
+        #[arg(long, value_name = "RELATION")]
+        facts: Vec<String>,
         /// A target to raise targeted occasions for (repeatable; default:
         /// every target the occasion's beats name).
         #[arg(long, value_name = "TARGET")]
@@ -715,13 +752,15 @@ enum ScenarioCommand {
         /// id>`, or `quest:<id>` for a quest.
         node_id: String,
     },
-    /// Trace every fact-guarded beat, entry and objective to the relations
-    /// its condition reads, and each relation to its producers through the
-    /// rules: asserting documents, seed facts, the engine (reserved), or
-    /// nothing (dsl 0.23.0 §1).
+    /// Trace every fact-guarded condition — beat, entry, quest, objective,
+    /// line, choice, arm, handler — grouped by document, to the relations it
+    /// reads, and each relation to its producers through the rules:
+    /// asserting documents, seed facts, the engine (reserved), or nothing
+    /// (dsl 0.23.0 §1, 0.24.0 T3-1).
     Knowledge {
-        /// Only this node: a scene key, an entry id, a `<quest>.<objective>`
-        /// id, or `quest:<id>` for every objective of a quest.
+        /// Only this node: a scene key (every guard in the scene), a bundle
+        /// beat key, an entry id, `<scene>#<branch>.<choice>` for one
+        /// choice, a `<quest>.<objective>` id, or `quest:<id>`.
         #[arg(long = "for", value_name = "NODE")]
         for_node: Option<String>,
     },
@@ -854,11 +893,13 @@ const DENIABLE_CODES: &[&str] = &[
     "E-CAST-UNKNOWN",
     "E-CEL-PARSE",
     "E-CEL-PROFILE",
+    "E-CEL-TYPE",
     "E-CHOICE-DUP",
     "E-CHOICE-ID-RESERVED",
     "E-CHOICELOG-READ",
     "E-CLIP-OVERLAP",
     "E-CLIP-TIMING",
+    "E-CLOCK-DECL",
     "E-COMMENT-UNTERMINATED",
     "E-COMPILE-COMPONENT",
     "E-COMPILE-EXPAND",
@@ -910,6 +951,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-ENTRY-UNREACHABLE",
     "E-ENUM-DEFAULT-NOT-MEMBER",
     "E-ENUM-EXITS-NOT-MEMBER",
+    "E-ENUM-LABEL-NOT-MEMBER",
     "E-ENUM-MISSING-SEMANTICS",
     "E-ENUM-UNEXPECTED-SEMANTICS",
     "E-EXTENDS-RELATION-SIG",
@@ -996,11 +1038,13 @@ const DENIABLE_CODES: &[&str] = &[
     "E-RELATION-DOMAIN",
     "E-RELATION-DUP",
     "E-RELATION-EMPTY",
+    "E-RELATION-RESERVED-NAME",
     "E-RELATION-RESERVED-WRITE",
     "E-RELATION-UNKNOWN",
     "E-RETRACT-WILDCARD-ASSERT",
     "E-REWARD-ATTR",
     "E-REWARD-KIND",
+    "E-RULE-GUARD-DEF",
     "E-SET-OP-TYPE",
     "E-SET-TYPE",
     "E-STATE-COLLECTION",
@@ -1062,10 +1106,12 @@ const DENIABLE_CODES: &[&str] = &[
     "W-BEAT-ONCE-RUN-USER",
     "W-BEAT-PRIORITY-TIE",
     "W-BEAT-SHADOWED",
+    "W-CAST-ABSENT",
     "W-CATALOG-STALE",
     "W-CODE-AFTER-END",
     "W-CODE-AFTER-NEXT",
     "W-COMPONENT-UNVERIFIED",
+    "W-DEF-UNUSED",
     "W-DERIVE-NO-RULES",
     "W-DOMAIN-UNREAD",
     "W-ENTRY-REF-UNKNOWN",
@@ -1080,8 +1126,10 @@ const DENIABLE_CODES: &[&str] = &[
     "W-OVERLAP-ARMS",
     "W-PROJECT-INERT",
     "W-QUEST-HANDLER-DEAD",
+    "W-QUEST-NEVER-ACCEPTED",
     "W-QUEST-REF-UNKNOWN",
     "W-QUEST-STATE-ISSET",
+    "W-RELATION-UNREAD",
     "W-REWARD-DOUBLE-CREDIT",
     "W-STAGE-ABSENT",
     "W-TEXT-LOOKS-LIKE-REF",
@@ -1257,6 +1305,7 @@ fn main() -> ExitCode {
             entry,
             beat,
             no_derive,
+            expand,
         } => run_trace(
             &file,
             state,
@@ -1272,6 +1321,7 @@ fn main() -> ExitCode {
             entry.as_deref(),
             beat.as_deref(),
             no_derive,
+            expand,
         ),
         Command::Tag { path, force } => rewrite::run_tag(&path, force),
         Command::Fix { path } => rewrite::run_fix(&path),
@@ -1285,7 +1335,8 @@ fn main() -> ExitCode {
             dir,
             on,
             target,
-        } => scaffold::run_new(&kind, &name, &dir, on.as_deref(), target.as_deref()),
+            start,
+        } => scaffold::run_new(&kind, &name, &dir, on.as_deref(), target.as_deref(), start),
         Command::Lore { dir, json } => lore_report::run_lore(&dir, json),
         Command::Doctor { dir, json } => doctor::run_doctor(&dir, json),
         Command::Run {
@@ -1345,11 +1396,13 @@ fn main() -> ExitCode {
             occasion,
             target,
             json,
-        } => beats_cmd::run_beats(&dir, &occasion, &target, json),
+            expand,
+        } => beats_cmd::run_beats(&dir, &occasion, &target, json, expand),
         Command::Calendar {
             dir,
             axis,
             occasion,
+            facts,
             target,
             script,
             until,
@@ -1361,6 +1414,7 @@ fn main() -> ExitCode {
             &play::calendar::CalendarArgs {
                 axes: &axis,
                 occasions: &occasion,
+                facts: &facts,
                 targets: &target,
                 script: script.as_deref(),
                 until: until.as_deref(),
@@ -1709,8 +1763,13 @@ fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
     let mut arena = lute_cel::CelArena::default();
     let _ = lute_cel::fill_document(&mut arena, &mut doc);
     let (folded, _, _) = fold_env(&doc, input);
-    let mut diags =
-        lute_compile::normalize::normalize_document(&mut doc, &input.components, &folded.env.state);
+    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
+    let mut diags = lute_compile::normalize::normalize_document(
+        &mut doc,
+        &input.components,
+        &cast,
+        &folded.env.state,
+    );
     let bodies = if folded.typed.component.is_some() {
         let mut bodies = folded.def_bodies.clone();
         for p in &folded.typed.params {
@@ -2273,7 +2332,10 @@ fn collect_project_inputs(
         if resolve_error && !single_root {
             return Err(ExitCode::from(1));
         }
-        let (doc, _) = lute_syntax::parse(&input.text);
+        let (mut doc, _) = lute_syntax::parse(&input.text);
+        // dsl 0.24.0 §4: the project passes (fact Must/may, connectivity)
+        // see an effects component's writes where its `::use` performs them.
+        lute_check::splice_component_effects(&mut doc, &input.components, &input.snapshot);
         let (folded, _, _) = fold_env(&doc, &input);
         foldeds.push(folded);
         docs.push((file.clone(), doc));
@@ -2572,7 +2634,7 @@ fn reconcile_collected(
     // by topological-order exclusion in `reconciled_project_results`.
     let mut nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>> =
         BTreeMap::new();
-    for group_full in by_root.values() {
+    for (root, group_full) in by_root {
         let plain_group: Vec<(PathBuf, lute_syntax::ast::Document)> = group_full
             .iter()
             .map(|(p, d, _)| (p.clone(), d.clone()))
@@ -2582,6 +2644,11 @@ fn reconcile_collected(
         project_diags.extend(check_project_quest_refs(group));
         // dsl 0.21.0 §7a.3: every `::accept` names an accept-driven quest.
         project_diags.extend(lute_check::check_project_accepts(group));
+        // dsl 0.24.0 §2: an accept-driven quest no `::accept`, mock, or test accepts.
+        project_diags.extend(lute_check::check_project_never_accepted(
+            group,
+            &mockcheck::mocked_accepts_under(root),
+        ));
         // dsl 0.19.0 §3/§5: project-wide entry id / series-order uniqueness
         // and `entry.<id>.read` references (the quest passes' lore mirror).
         project_diags.extend(lute_check::check_project_entry_ids(group));
@@ -2665,6 +2732,13 @@ fn reconcile_collected(
                 project_diags.push((path.clone(), d));
             }
         }
+        // dsl 0.24.0 §4: `W-CAST-ABSENT` re-decided under the fact envelope
+        // — a line the Must set shows its speaker present at is dropped.
+        for (path, doc, folded) in group_full {
+            if let Some((_, r)) = file_results.iter_mut().find(|(p, _)| p == path) {
+                lute_check::cast::reconcile_presence(&mut r.diagnostics, path, doc, folded, fact_env);
+            }
+        }
         // dsl 0.21.0 §5: `W-BEAT-SHADOWED` — a `select: first` beat an
         // earlier-ordered, always-eligible, never-spent beat on the same
         // occasion always beats. Project order is the selection tiebreak.
@@ -2718,8 +2792,12 @@ fn reconcile_collected(
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();
+            // dsl 0.24.0: the same scope and beat-`when` assumption `check()`
+            // walks with, so both passes see the same entry-dependent reads.
+            let scope = defassign::Scope::of(folded);
+            let beat_when = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref());
             let (local_diags, assigned, reads) =
-                check_definite_assignment(&all_nodes, &folded.env.state);
+                check_definite_assignment(&all_nodes, &scope, beat_when);
             // T4.4/T4.6 carry-forward parity (dsl §7 soundness invariant): the
             // real `check()` pipeline (`check.rs::suppress_exhaustive_subject_reads`)
             // drops any `E-MAYBE-UNSET` whose span is a domain-exhaustive
@@ -2729,8 +2807,7 @@ fn reconcile_collected(
             // this project-level recomputation (which calls
             // `check_definite_assignment` raw, unaware of that later
             // suppression) would newly error a file `check()` reports clean.
-            let exhaustive_spans =
-                defassign::exhaustive_match_subject_spans(&all_nodes, &folded.env.state);
+            let exhaustive_spans = defassign::exhaustive_match_subject_spans(&all_nodes, &scope);
             let is_exhaustive_subject = |span: &Span| {
                 exhaustive_spans
                     .iter()
@@ -2997,11 +3074,52 @@ fn run_check_project(
         project_diags.extend(lute_check::check_project_domain_reads(&per_file));
     }
 
+    // dsl 0.24.0 (round-3 T3-16): `W-RELATION-UNREAD` / `W-DEF-UNUSED`, once
+    // over the whole walk (every root: a schema shared by two roots is used
+    // if either uses it), anchored at the declaring schema file or document
+    // — outside `reconcile_collected` for the same D-V reason as above.
+    {
+        let texts: BTreeMap<&Path, String> = by_root
+            .values()
+            .flatten()
+            .map(|(p, _, _)| (p.as_path(), std::fs::read_to_string(p).unwrap_or_default()))
+            .collect();
+        let docs: Vec<lute_check::UsageDoc<'_>> = by_root
+            .values()
+            .flatten()
+            .map(|(p, doc, folded)| lute_check::UsageDoc {
+                path: p,
+                text: texts.get(p.as_path()).map_or("", String::as_str),
+                doc,
+                folded,
+            })
+            .collect();
+        let foldeds: Vec<&lute_check::FoldedEnv> =
+            by_root.values().flatten().map(|(_, _, f)| f).collect();
+        let schema_texts: Vec<String> = lute_check::schema_sources(&foldeds)
+            .iter()
+            .map(|p| std::fs::read_to_string(p).unwrap_or_default())
+            .collect();
+        let extra: Vec<&str> = schema_texts.iter().map(String::as_str).collect();
+        // An origin is the canonical schema path; print it walk-relative like
+        // every other check-project diagnostic (`./world.schema.yaml:73:3`).
+        let canon_dir = std::fs::canonicalize(dir).ok();
+        for (path, mut d) in lute_check::check_project_usage(&docs, &extra) {
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            d.span = normalize_span_from_text(&text, d.span);
+            let shown = canon_dir
+                .as_deref()
+                .and_then(|c| path.strip_prefix(c).ok())
+                .map_or_else(|| path.clone(), |rel| dir.join(rel));
+            project_diags.push((shown, d));
+        }
+    }
+
     // 0.10.0 §8 (#31, D-E): every `mocks/*.yaml` under the root, validated
     // against the schema resolved for its `file:` subject. Anchored at the
     // mock, which is the file at fault — not at the subject scene, which is
     // where these diagnostics rendered before, at `:0:0`.
-    match mockcheck::check_mocks_under(dir, &by_root) {
+    match mockcheck::check_mocks_under(dir, &by_root, &inputs) {
         Ok(diags) => project_diags.extend(diags),
         Err(e) => {
             eprintln!("lute: cannot walk {} for mocks: {e}", dir.display());
@@ -3581,14 +3699,15 @@ fn assemble_root_scenario(
             .iter()
             .flat_map(|s| s.body.iter().cloned())
             .collect();
+        let scope = defassign::Scope::of(folded);
+        let beat_when = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref());
         let (_local_diags, assigned, reads) =
-            check_definite_assignment(&all_nodes, &folded.env.state);
+            check_definite_assignment(&all_nodes, &scope, beat_when);
         // Same T4.4/T4.6 carry-forward parity fix as `run_check_project`'s
         // T11 wiring above (dsl §7 soundness invariant) -- `lute scenario
         // envelope`/`reach` must not classify a domain-exhaustive `<match>`
         // subject read as entry-dependent either.
-        let exhaustive_spans =
-            defassign::exhaustive_match_subject_spans(&all_nodes, &folded.env.state);
+        let exhaustive_spans = defassign::exhaustive_match_subject_spans(&all_nodes, &scope);
         let reads: Vec<(String, Span)> = reads
             .into_iter()
             .filter(|(_, span)| {
@@ -3782,8 +3901,9 @@ const UNANCHORED_VERDICT: &str = "Unanchored — a quest with no declared `after
      only its quest lifecycle (`start`, or an accept) decides when it activates.";
 
 /// dsl 0.21.0 §7a.5: the declared quests the prerequisite graph does not
-/// hold (no `after=`), in id order — the `unanchored` list every `lute
-/// scenario` graph view prints beside the layers.
+/// hold (no `after=`, and no `::accept` anchor — dsl 0.24.0 §2), in id
+/// order — the `unanchored` list every `lute scenario` graph view prints
+/// beside the layers.
 fn unanchored_quests(
     quest_ids: &BTreeSet<String>,
     graph: &lute_check::connectivity::ConnGraph,
@@ -3819,19 +3939,20 @@ fn print_prereq_structure(out: &mut String, scenario: &RootScenario, node: &lute
         Some(PrereqState::Invalid) => {
             outln!(out, "  after: (malformed — E-CONN-PROFILE; structure unavailable)");
         }
-        Some(PrereqState::Valid(f)) => {
-            outln!(out, "  after: {}", format_prereq(f));
-            let mut targets: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
-            for atom in lute_check::atoms(f) {
-                targets.insert(match atom {
-                    lute_check::Atom::Visited(key) => lute_check::connectivity::NodeId::Scene(key),
-                    // Both quest-lifecycle atoms resolve to the same node;
-                    // the per-edge kind is reported by the graph views.
-                    lute_check::Atom::Completed(id) | lute_check::Atom::Active(id) => {
-                        lute_check::connectivity::NodeId::Quest(id)
-                    }
-                });
+        Some(prereq @ (PrereqState::Valid(f) | PrereqState::Accepted(f))) => {
+            if matches!(prereq, PrereqState::Accepted(_)) {
+                outln!(
+                    out,
+                    "  after: (none declared) — anchored at its `::accept`s (dsl 0.24.0 §2): {}",
+                    format_prereq(f)
+                );
+            } else {
+                outln!(out, "  after: {}", format_prereq(f));
             }
+            let targets: BTreeSet<lute_check::connectivity::NodeId> = lute_check::atoms(f)
+                .iter()
+                .map(|atom| lute_check::connectivity::NodeId::of_atom(atom, &scenario.graph.nodes))
+                .collect();
             if !targets.is_empty() {
                 outln!(out, 
                     "  referenced node(s) (see `after` above for the && / || structure — this \
@@ -4227,11 +4348,13 @@ fn print_path_set_with_writers(out: &mut String, paths: &BTreeSet<String>, write
 }
 
 /// The relational layer the scalar envelope tables cannot show: every
-/// declared relation, whether static analysis can produce it, and which
-/// documents assert it. `producible` reads the SAME reachability-gated
-/// assert sites (`live_assert_relations`) the `check-project` fact envelope
-/// seeds from; this renders relation-level facts rather than deciding
-/// anything (#15, T4.7).
+/// declared relation, whether static analysis can produce it, and who makes
+/// it true — in `lute scenario knowledge`'s words (T3-2: asserting
+/// documents, seed facts, the engine for a `reserved` relation, the rules).
+/// `producible` reads the SAME reachability-gated assert sites
+/// (`live_assert_relations`) the `check-project` fact envelope seeds from;
+/// this renders relation-level facts rather than deciding anything (#15,
+/// T4.7).
 fn print_facts_section(out: &mut String, scenario: &RootScenario, root: &Path) {
     let vocab = &scenario.rel_vocab;
     if vocab.relations.is_empty() {
@@ -4245,34 +4368,22 @@ fn print_facts_section(out: &mut String, scenario: &RootScenario, root: &Path) {
     );
     let producible = lute_check::producible::producible(vocab, &live);
     let per_doc = lute_check::connectivity::assert_relations_per_doc(&scenario.docs);
-    let seeded: BTreeSet<&str> = vocab
-        .facts
-        .iter()
-        .map(|f| f.fact.relation.as_str())
-        .collect();
 
     outln!(out, "  Facts (the relational layer — declared relations, how each becomes true):");
     for (name, decl) in &vocab.relations {
-        let kind = if decl.derive { "derived" } else { "asserted" };
         let prod = if producible.get(name).copied().unwrap_or(false) {
             "producible"
         } else {
             "NOT producible by any declared route"
         };
-        let mut writers: Vec<String> = per_doc
+        let writers: Vec<String> = per_doc
             .iter()
             .filter(|(_, rels)| rels.contains(name))
             .map(|(p, _)| p.strip_prefix(root).unwrap_or(p).display().to_string())
             .collect();
-        if seeded.contains(name.as_str()) {
-            writers.push("facts: seed".to_string());
-        }
-        let by = if writers.is_empty() {
-            String::new()
-        } else {
-            format!("   asserted by: {}", writers.join(", "))
-        };
-        outln!(out, "    - {name}/{} ({kind}, {prod}){by}", decl.args.len());
+        let sites: Vec<&str> = writers.iter().map(String::as_str).collect();
+        let by = knowledge::relation_producers(name, vocab, &sites);
+        outln!(out, "    - {name}/{} ({prod}) — {by}", decl.args.len());
     }
     if !vocab.rules.is_empty() {
         outln!(out, "  Rules:");
@@ -5821,6 +5932,19 @@ pub(crate) fn project_assert_relations(
     ))
 }
 
+/// dsl 0.24.0 T3-15: every `<quest id>` declared under the `--project`
+/// root — what `lute trace --project` settles its "existence is unverified"
+/// notes against. `None` when the project cannot be collected.
+fn project_quest_ids(root: &Path, providers: Option<&Path>) -> Option<BTreeSet<String>> {
+    let (_, by_root) = collect_project_docs(root, providers, true).ok()?;
+    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = by_root
+        .get(root)?
+        .iter()
+        .map(|(p, d, _)| (p.clone(), d.clone()))
+        .collect();
+    Some(lute_check::connectivity::quest_id_set(&docs))
+}
+
 /// Run `trace` over one file (dsl 0.4.0 §4.3/§4.5): resolve the document
 /// IDENTICALLY to `check`/`compile` ([`build_input`]), load + merge the
 /// `--mock` file with the CLI's own `--state`/`--fact`/`--choose`/`--event`/
@@ -5855,6 +5979,7 @@ fn run_trace(
     entry: Option<&str>,
     beat: Option<&str>,
     no_derive: bool,
+    expand: bool,
 ) -> ExitCode {
     let Some(built) = build_input(file, providers, project, None) else {
         return ExitCode::from(2);
@@ -5992,6 +6117,7 @@ fn run_trace(
         occasions: occasion,
         visited: Vec::new(),
         derive: no_derive.then_some(false),
+        bridges: Default::default(),
     };
 
     let mocks = merge(file_mocks, flag_mocks);
@@ -6046,7 +6172,7 @@ fn run_trace(
                 .and_then(|root| project_assert_relations(&root, false, providers)),
         }
     };
-    let (report, exit) = match (entry, beat) {
+    let (mut report, exit) = match (entry, beat) {
         (Some(id), _) => lute_trace::trace_entry_with_check(
             &input,
             gate,
@@ -6065,10 +6191,17 @@ fn run_trace(
             lute_trace::trace_with_check(&input, gate, mocks, project_asserts.as_ref())
         }
     };
+    // T3-15: `--project` knows every quest of the project — settle the
+    // "existence is unverified" notes instead of repeating them.
+    if !report.foreign_quests.is_empty() {
+        if let Some(declared) = project.and_then(|dir| project_quest_ids(dir, providers)) {
+            report.verify_quests(&declared);
+        }
+    }
 
     match exit {
-        TraceExit::Complete => print_trace_report(&report, json, ExitCode::SUCCESS),
-        TraceExit::Incomplete => print_trace_report(&report, json, ExitCode::from(3)),
+        TraceExit::Complete => print_trace_report(&report, json, expand, ExitCode::SUCCESS),
+        TraceExit::Incomplete => print_trace_report(&report, json, expand, ExitCode::from(3)),
         TraceExit::Refused(diags) => {
             if json {
                 match serde_json::to_string_pretty(&diags) {
@@ -6106,12 +6239,15 @@ fn run_trace(
 
 /// Render one [`TraceReport`] to stdout — `--json` -> [`TraceReport::render_json`]
 /// (§4.5 machine form), otherwise [`TraceReport::render_human`] (the
-/// transcript already ends in `\n`) — through [`write_stdout`], so a closed
-/// pipe is an I/O exit `2` rather than a panic. `code` is the verdict to
-/// return when the write succeeds.
-fn print_trace_report(report: &TraceReport, json: bool, code: ExitCode) -> ExitCode {
+/// transcript already ends in `\n`; `--expand` →
+/// [`TraceReport::render_human_expanded`]) — through [`write_stdout`], so a
+/// closed pipe is an I/O exit `2` rather than a panic. `code` is the verdict
+/// to return when the write succeeds.
+fn print_trace_report(report: &TraceReport, json: bool, expand: bool, code: ExitCode) -> ExitCode {
     let text = if json {
         format!("{}\n", report.render_json())
+    } else if expand {
+        report.render_human_expanded()
     } else {
         report.render_human()
     };

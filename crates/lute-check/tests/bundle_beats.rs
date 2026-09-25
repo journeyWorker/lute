@@ -126,8 +126,10 @@ fn an_always_eligible_repeatable_beat_shadows_a_later_one() {
     assert!(shadowed[0].1.message.contains("beat `interviews.second`"), "{}", shadowed[0].1.message);
 }
 
+/// dsl 0.24.0 §2: a bundle beat is a graph node, so `visited()` resolves it
+/// in an `after:` exactly as in a condition slot.
 #[test]
-fn visited_resolves_a_bundle_beat_in_a_condition_but_not_in_after() {
+fn visited_resolves_a_bundle_beat_in_a_condition_and_in_after() {
     let lore = doc(PORTER);
     let when = "---\nkind: scene\nid: next\non: talk\nwhen: \"visited('interviews.porter')\"\n---\n## Shot 1.\n@n: hi\n";
     let after = "---\nkind: scene\nid: later\nafter: \"visited('interviews.porter')\"\n---\n## Shot 1.\n@n: hi\n";
@@ -138,6 +140,6 @@ fn visited_resolves_a_bundle_beat_in_a_condition_but_not_in_after() {
         out.iter().filter(|(p, _)| p == &PathBuf::from(file)).map(|(_, d)| d).collect()
     };
     assert!(at("n.lute").is_empty(), "{out:#?}");
-    assert!(at("l.lute").iter().any(|d| d.message.contains("is a bundle beat")), "{out:#?}");
+    assert!(at("l.lute").is_empty(), "{out:#?}");
     assert!(at("t.lute").iter().any(|d| d.message.contains("did you mean `interviews.porter`")), "{out:#?}");
 }

@@ -100,12 +100,21 @@ pub enum Step {
         /// `action=` value is in the resolved `action` domain's `exits:`.
         /// The entrance and the exit are the same construct with the same
         /// attribute names, and the entire difference lives in a list in
-        /// another file (#32, T2.5).
+        /// another file (#32, T2.5). Also `true` on a `::clear` (dsl 0.24.0
+        /// §4), which ends every presence on stage.
         exit: bool,
         /// `::end`'s `reason=`. Not one attribute among several: it is the
         /// terminator's entire payload, the only thing distinguishing it from
         /// falling off the end of the document (#32, T5.9).
         reason: Option<String>,
+    },
+    /// dsl 0.24.0 §5: the plugin call just recorded as a [`Step::Directive`]
+    /// reads a bridge result. `answered` is the `bridges:` answer it consumed
+    /// (`(field, literal)`, the mock's order), `None` when the mock gave it
+    /// none — its result slots then read unknown.
+    Bridge {
+        tag: String,
+        answered: Option<Vec<(String, String)>>,
     },
     /// dsl 0.16.0 §3 D-D: a declarative `<reward/>` fires at a fresh
     /// lifecycle transition — objective grants at first `done`, quest
@@ -165,9 +174,13 @@ pub enum Step {
     },
     /// dsl 0.21.0 §7a.3: an `::accept{quest="<id>"}` — the player accepts
     /// an accept-driven quest here. A trace walks one document, and a scene
-    /// never holds quests, so the accept is recorded, not applied.
+    /// never holds quests, so the accept is recorded, not applied. dsl
+    /// 0.24.0 §2: `next_run` marks `at="nextRun"` — queued until the next
+    /// run start (serialized `nextRun: true` only then).
     Accept {
         quest: String,
+        #[serde(rename = "nextRun", skip_serializing_if = "std::ops::Not::not")]
+        next_run: bool,
     },
 }
 
@@ -236,6 +249,14 @@ pub struct Decision {
     /// decision (arm eligibility is inherently first-match-wins, not a
     /// menu).
     pub eligible: Vec<String>,
+    /// dsl 0.24.0 T3-12: the author's text for `id` (a `<match>` subject)
+    /// when `@def`/`$` expansion rewrote it — what the human transcript
+    /// shows unless asked to expand. Additive key, absent when unchanged.
+    #[serde(rename = "authoredId", skip_serializing_if = "Option::is_none")]
+    pub authored_id: Option<String>,
+    /// The same for `guard`.
+    #[serde(rename = "authoredGuard", skip_serializing_if = "Option::is_none")]
+    pub authored_guard: Option<String>,
 }
 
 /// Why a construct HALTED the walk (§4.4/§4.5: "unresolved\[\] carries the
@@ -293,6 +314,10 @@ pub struct CoverageCount {
     /// A `<branch>`/`<hub>`'s declared `id`, or a `<match>` subject's raw
     /// (post-expand) CEL text. Rendered beside the site; never keyed on.
     pub label: String,
+    /// dsl 0.24.0 T3-12: a `<match>` subject's authored text when expansion
+    /// rewrote it (see [`Decision::authored_id`]).
+    #[serde(rename = "authoredLabel", skip_serializing_if = "Option::is_none")]
+    pub authored_label: Option<String>,
 }
 
 /// Coverage counters per construct. `choices` keys a `<branch>`/`<hub>` by its
@@ -374,6 +399,12 @@ pub struct TraceReport {
     /// a fact of one neither holds nor fails to hold.
     #[serde(skip)]
     pub final_undecided: BTreeSet<String>,
+    /// The foreign quest ids (read or mocked, declared by no `<quest>` of
+    /// this document) the "existence is unverified" notes name — what
+    /// [`TraceReport::verify_quests`] settles against a project. Never
+    /// serialized.
+    #[serde(skip)]
+    pub foreign_quests: BTreeSet<String>,
 }
 
 /// Render a decided [`Value`] to display text; `Unknown` has no decided
@@ -413,8 +444,20 @@ impl TraceReport {
     /// [`Step`] (shots, content lines with interpolations already resolved
     /// where decided, staging directives, state writes, decisions) — plus a
     /// trailing summary of decisions taken, coverage, and any unresolved
-    /// atoms.
+    /// atoms. A `<match>` subject and a guard read as the author wrote them
+    /// (`@weekday`, `@atLeast(2)`, dsl 0.24.0 T3-12); see
+    /// [`Self::render_human_expanded`].
     pub fn render_human(&self) -> String {
+        self.render(false)
+    }
+
+    /// [`Self::render_human`] with every `@def`/`$` shown expanded — the
+    /// text the walk evaluated (`lute trace --expand`).
+    pub fn render_human_expanded(&self) -> String {
+        self.render(true)
+    }
+
+    fn render(&self, expand: bool) -> String {
         let mut out = String::new();
         out.push_str(&format!(
             "trace: {}  (seeds: {} paths, {} facts; {} selection{})\n",
@@ -428,7 +471,7 @@ impl TraceReport {
             out.push_str(&format!("note: {note}\n"));
         }
         for step in &self.steps {
-            render_step(step, &mut out);
+            render_step(step, &mut out, expand);
         }
         let forced = self.forced_unknown.len();
         let forced_summary = if forced == 0 {
@@ -462,10 +505,11 @@ impl TraceReport {
                 parts.push(format!("choices {}/{} ({})", c.visited, c.total, c.label));
             }
             for (site, c) in &self.coverage.arms {
-                parts.push(format!(
-                    "arms {}/{} ({} @{site})",
-                    c.visited, c.total, c.label
-                ));
+                let label = match (&c.authored_label, expand) {
+                    (Some(a), false) => a,
+                    _ => &c.label,
+                };
+                parts.push(format!("arms {}/{} ({label} @{site})", c.visited, c.total));
             }
             out.push_str(&format!("; {}", parts.join(", ")));
         }
@@ -475,9 +519,49 @@ impl TraceReport {
         }
         out
     }
+
+    /// The walk's presented content lines, one `@speaker: text` per content
+    /// line the walk played, in order — the canonical form `lute test`'s
+    /// `transcriptContains` / `transcriptLacks` match (dsl 0.24.0, T1-2),
+    /// identical to what `lute play` matches its own presentations against.
+    /// No header, notes, staging, writes or decisions.
+    pub fn said(&self) -> String {
+        let mut out = String::new();
+        for step in &self.steps {
+            if let Step::Line { speaker, text } = step {
+                out.push_str(&format!("@{speaker}: {text}\n"));
+            }
+        }
+        out
+    }
+
+    /// `lute trace --project` (dsl 0.24.0, T3-15): settle every "quest
+    /// `<id>`'s existence is unverified" note against the project's declared
+    /// quest ids. A declared quest's note is dropped — its existence IS
+    /// verified; an undeclared one's note says so, naming the nearest
+    /// declared id when one is close.
+    pub fn verify_quests(&mut self, declared: &BTreeSet<String>) {
+        for id in std::mem::take(&mut self.foreign_quests) {
+            let head = crate::walk::unverified_quest_note_head(&id);
+            let Some(at) = self.notes.iter().position(|n| n.starts_with(&head)) else {
+                continue;
+            };
+            if declared.contains(&id) {
+                self.notes.remove(at);
+                continue;
+            }
+            let hint = lute_manifest::suggest::nearest(&id, declared.iter().map(String::as_str), 2)
+                .map(|s| format!(" — did you mean `{s}`?"))
+                .unwrap_or_default();
+            self.notes[at] = format!(
+                "quest `{id}` is declared by no quest document of the project{hint} (every read \
+                 of `quest.{id}.*` takes its reserved default)"
+            );
+        }
+    }
 }
 
-fn render_step(step: &Step, out: &mut String) {
+fn render_step(step: &Step, out: &mut String, expand: bool) {
     match step {
         Step::Shot { number, heading } => {
             if heading.is_empty() {
@@ -515,6 +599,15 @@ fn render_step(step: &Step, out: &mut String) {
                 out.push_str(&format!("    <{tag}{annot}>\n"));
             }
         },
+        Step::Bridge { tag, answered } => match answered {
+            Some(fields) => {
+                let fields: Vec<String> = fields.iter().map(|(f, v)| format!("{f}={v}")).collect();
+                out.push_str(&format!("      (bridge answered: {})\n", fields.join(", ")));
+            }
+            None => out.push_str(&format!(
+                "      (bridge unanswered: no `bridges.{tag}` answer — its results read unknown)\n"
+            )),
+        },
         Step::Decision(d) => {
             let annot = if d.forced {
                 " (forced)"
@@ -523,11 +616,16 @@ fn render_step(step: &Step, out: &mut String) {
             } else {
                 ""
             };
-            let guard = d
-                .guard
-                .as_deref()
-                .map(|g| format!(" ({g})"))
-                .unwrap_or_default();
+            // T3-12: the author's `@def(args)` unless `--expand`.
+            let (id, guard) = if expand {
+                (&d.id, &d.guard)
+            } else {
+                (
+                    d.authored_id.as_ref().unwrap_or(&d.id),
+                    if d.authored_guard.is_some() { &d.authored_guard } else { &d.guard },
+                )
+            };
+            let guard = guard.as_deref().map(|g| format!(" ({g})")).unwrap_or_default();
             let eligible = if d.eligible.is_empty() {
                 String::new()
             } else {
@@ -535,7 +633,7 @@ fn render_step(step: &Step, out: &mut String) {
             };
             out.push_str(&format!(
                 "  <{} {}>{}   -> {}{}{}\n",
-                d.construct, d.id, eligible, d.outcome, guard, annot
+                d.construct, id, eligible, d.outcome, guard, annot
             ));
         }
         Step::Entry {
@@ -566,7 +664,10 @@ fn render_step(step: &Step, out: &mut String) {
         Step::Skipped { effect, text } => {
             out.push_str(&format!("    ::{effect}  {text}  (skipped: re-read)\n"));
         }
-        Step::Accept { quest } => out.push_str(&format!("    quest {quest} accepted\n")),
+        Step::Accept { quest, next_run } => {
+            let queued = if *next_run { " (queued: applies after the next run start)" } else { "" };
+            out.push_str(&format!("    quest {quest} accepted{queued}\n"))
+        }
         Step::Grant {
             quest,
             objective,

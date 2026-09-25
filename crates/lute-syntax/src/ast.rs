@@ -100,6 +100,19 @@ impl Directive {
             _ => None,
         })
     }
+
+    /// dsl 0.24.0 §2: `::accept{… at="nextRun"}` — the `at` attribute's
+    /// quoted value and value span; `None` when absent (accept now) or not
+    /// a quoted string. Value validity is the checker's (`E-ACCEPT-TARGET`).
+    pub fn accept_at(&self) -> Option<(&str, Span)> {
+        if !self.is_accept() {
+            return None;
+        }
+        self.attrs.iter().find(|a| a.key == "at").and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
+            _ => None,
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -109,6 +122,10 @@ pub struct Set {
     pub op: String,
     pub expr: CelSlot,
     pub span: Span,
+    /// dsl 0.24.0 §1: `::set{… when="…"}` — the write applies only when this
+    /// condition holds. `None` when unguarded. Never set on a `<timeline>`
+    /// clip (`E-TIMELINE-CONTENT`: a conditional write is logic).
+    pub when: Option<CelSlot>,
 }
 
 /// `::assert{ rel(a, b) }` (dsl 0.3.0 §5) — a pure leaf; args are compile-time-ground
@@ -199,12 +216,34 @@ pub struct Quest {
     /// (`"run"` resets at `newRun`; absent = `user`). The checker validates
     /// the value (`E-ATTR-TYPE`).
     pub tier: Option<(String, Span)>,
+    /// dsl 0.24.0 §2: `activate="accept"` — a subquest child that does NOT
+    /// activate with its parent but waits for `::accept`. Raw text + value
+    /// span; the checker validates the value (`E-ATTR-TYPE`).
+    pub activate: Option<(String, Span)>,
+    /// dsl 0.24.0 §2: `complete="all" | "any"` — how a parent's derived
+    /// completion reads its required objectives. Raw text + value span; the
+    /// checker validates the value (`E-ATTR-TYPE`).
+    pub complete: Option<(String, Span)>,
     /// Residual (post-extraction) attrs, mirroring [`Branch`]; normally empty.
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
     /// Self-closing `<reward/>` children in declaration order (dsl 0.16.0 §2).
     pub rewards: Vec<Reward>,
     pub span: Span,
+}
+
+impl Quest {
+    /// dsl 0.24.0 §2: `activate="accept"` — the child waits for `::accept`
+    /// instead of activating with its parent.
+    pub fn activates_on_accept(&self) -> bool {
+        self.activate.as_ref().is_some_and(|(v, _)| v == "accept")
+    }
+
+    /// dsl 0.24.0 §2: `complete="any"` — ANY required objective done
+    /// completes the quest (the other open children fail `superseded`).
+    pub fn completes_on_any(&self) -> bool {
+        self.complete.as_ref().is_some_and(|(v, _)| v == "any")
+    }
 }
 
 /// `<entry id …> EntryBody </entry>` (dsl 0.19.0 §3–§4). A TOP-LEVEL
@@ -312,6 +351,10 @@ pub struct Objective {
     /// occasion is raised for that target (the beat target rule). Raw text +
     /// value span like [`Entry::target`].
     pub target: Option<(String, Span)>,
+    /// dsl 0.24.0 §2.1: `until="<condition>"` — the place-bound deadline:
+    /// judged only when the objective's `on` occasion (and `target`) is
+    /// raised, after `done`. A condition slot like `by`.
+    pub until: Option<CelSlot>,
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
     /// Self-closing `<reward/>` children in declaration order (dsl 0.16.0 §2).
@@ -381,6 +424,9 @@ pub struct On {
     pub event: String,
     pub event_span: Span,
     pub when: Option<CelSlot>,
+    /// dsl 0.24.0 §2: `target=` — the handler fires only when the
+    /// same-named occasion is raised for this target. Raw text + value span.
+    pub target: Option<(String, Span)>,
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
     pub span: Span,
@@ -390,10 +436,16 @@ pub struct On {
 #[derive(Clone, Debug)]
 pub struct Interp {
     pub kind: InterpKind,
-    /// Interior text, trimmed (e.g. `run.coins`, `@fond`, `userName`).
+    /// The referent, trimmed (e.g. `run.coins`, `@fond`, `userName`) — the
+    /// interior text without any `:hint` suffix ([`Interp::format`]).
     pub raw: String,
     /// Span of the whole `{{…}}` in the original source.
     pub span: Span,
+    /// dsl 0.24.0 §4: the format hint after the referent, trimmed —
+    /// `ordinal` in `{{user.deaths:ordinal}}`. The parser keeps any
+    /// identifier here; the checker rejects one that is not a known hint
+    /// ([`INTERP_FORMAT_ORDINAL`] is the only one).
+    pub format: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -422,6 +474,90 @@ pub fn classify_interp(inner: &str) -> InterpKind {
     }
 }
 
+/// dsl 0.24.0 §4: the one interpolation format hint the language defines —
+/// `{{user.deaths:ordinal}}` renders the number as an English ordinal
+/// ([`english_ordinal`]).
+pub const INTERP_FORMAT_ORDINAL: &str = "ordinal";
+
+/// Build the [`Interp`] for one `{{…}}` interior (untrimmed `inner`),
+/// spanned at `span`: a trailing `:hint` is split off into
+/// [`Interp::format`] and the referent before it classified
+/// ([`classify_interp`]). The hint is the text after the LAST `:` that sits
+/// outside quotes and brackets, when that text is an identifier — so a
+/// `@fn(a ? b : c)` argument never splits. Anything else stays in `raw`,
+/// where the checker's grammar rule owns it. Shared by the content-line scan
+/// (parser) and [`scan_label_interps`].
+pub fn interp_from_inner(inner: &str, span: Span) -> Interp {
+    let (referent, format) = match top_level_colon(inner) {
+        Some(at) if is_hint_ident(inner[at + 1..].trim()) => {
+            (inner[..at].trim(), Some(inner[at + 1..].trim().to_string()))
+        }
+        _ => (inner.trim(), None),
+    };
+    Interp {
+        kind: classify_interp(referent),
+        raw: referent.to_string(),
+        span,
+        format,
+    }
+}
+
+/// Byte offset of the last `:` in `s` outside quotes and `()`/`[]`/`{}`.
+fn top_level_colon(s: &str) -> Option<usize> {
+    let (mut depth, mut quote, mut last) = (0usize, None::<u8>, None);
+    let mut escaped = false;
+    for (i, c) in s.bytes().enumerate() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if c == b'\\' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            b'"' | b'\'' => quote = Some(c),
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            b':' if depth == 0 => last = Some(i),
+            _ => {}
+        }
+    }
+    last
+}
+
+/// A format-hint name: an ASCII letter, then letters, digits, `_` or `-`.
+fn is_hint_ident(s: &str) -> bool {
+    let mut it = s.bytes();
+    matches!(it.next(), Some(c) if c.is_ascii_alphabetic())
+        && it.all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+}
+
+/// dsl 0.24.0 §4: `n` as an English ordinal — `1st 2nd 3rd 4th … 11th 12th
+/// 13th … 21st 22nd 23rd … 101st 111th 112th`. The suffix follows the last
+/// digit, except that a number whose last two digits are `11`–`13` takes
+/// `th`; `0` is `0th`. Defined for a non-negative integer only: any other
+/// number (fractional, negative, non-finite, or ≥ 10^15 where a float stops
+/// being an exact integer) is `None`, and the renderer then shows the number
+/// unchanged. The one rule the reference runner, `lute trace` and a
+/// component's compile-time literal splice all render with.
+pub fn english_ordinal(n: f64) -> Option<String> {
+    if !(n.is_finite() && n >= 0.0 && n.fract() == 0.0 && n < 1e15) {
+        return None;
+    }
+    let i = n as u64;
+    let suffix = match (i % 10, i % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    Some(format!("{i}{suffix}"))
+}
+
 /// Scan a `<choice label>` / `<hub label>` string for `{{…}}` interpolations
 /// (dsl §7.6). Labels are String attrs, so — unlike content-line interps — their
 /// `{{…}}` are NOT captured into the AST at parse time; this recovers them on
@@ -445,13 +581,7 @@ pub fn scan_label_interps(label: &str, span: Span) -> Vec<Interp> {
         if b[j] == b'{' && b[j + 1] == b'{' {
             match label[j + 2..].find("}}") {
                 Some(rel) => {
-                    let inner = label[j + 2..j + 2 + rel].trim().to_string();
-                    let kind = classify_interp(&inner);
-                    out.push(Interp {
-                        kind,
-                        raw: inner,
-                        span,
-                    });
+                    out.push(interp_from_inner(&label[j + 2..j + 2 + rel], span));
                     j = j + 2 + rel + 2;
                     continue;
                 }
@@ -581,6 +711,10 @@ pub struct CelSlot {
     pub ast: Option<crate::cel_ast::CelAstHandle>, // filled by lute-cel
     pub span: Span,
     pub id: StableId,
+    /// The author's text before `@def`/`$` expansion rewrote `raw` (dsl
+    /// 0.24.0 T3-12) — `None` until an expansion changed it. Tools show this
+    /// by default and the expansion on request.
+    pub authored: Option<String>,
 }
 
 impl CelSlot {
@@ -591,6 +725,7 @@ impl CelSlot {
             ast: None,
             span,
             id: StableId(0),
+            authored: None,
         }
     }
 }
@@ -604,6 +739,43 @@ mod tests {
         assert!(s.ast.is_none());
         assert_eq!(s.raw, "$ == 'gold'");
         assert_eq!(s.kind, CelKind::Condition);
+    }
+
+    /// dsl 0.24.0 §4: the suffix follows the last digit, except 11–13 in the
+    /// last two digits.
+    #[test]
+    fn english_ordinal_suffixes() {
+        let cases = [
+            (0.0, "0th"),
+            (1.0, "1st"),
+            (2.0, "2nd"),
+            (3.0, "3rd"),
+            (4.0, "4th"),
+            (10.0, "10th"),
+            (11.0, "11th"),
+            (12.0, "12th"),
+            (13.0, "13th"),
+            (21.0, "21st"),
+            (22.0, "22nd"),
+            (23.0, "23rd"),
+            (100.0, "100th"),
+            (101.0, "101st"),
+            (111.0, "111th"),
+            (112.0, "112th"),
+            (113.0, "113th"),
+            (1002.0, "1002nd"),
+        ];
+        for (n, want) in cases {
+            assert_eq!(english_ordinal(n).as_deref(), Some(want), "{n}");
+        }
+    }
+
+    /// A number with no ordinal renders unchanged: the function says so.
+    #[test]
+    fn english_ordinal_is_undefined_off_the_non_negative_integers() {
+        for n in [-1.0, 2.5, f64::NAN, f64::INFINITY, 1e15] {
+            assert_eq!(english_ordinal(n), None, "{n}");
+        }
     }
     fn test_span() -> lute_core_span::Span {
         lute_core_span::Span {

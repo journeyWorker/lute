@@ -1355,6 +1355,7 @@ type OccasionStep = {
     also?: true;                           // an `also` beat
     read?: true;                           // an entry already read in this run
   }[];
+  judgedBefore?: QuestGroup[];             // a `judge: before` occasion's quest transitions, made before the candidates were decided
   winner: string | null;
   presented?: Presentation;                // the winner, else the first `also` beat; a sequence's first beat
   then?: Presentation[];                   // the beats presented after it, in order
@@ -1374,6 +1375,7 @@ type NewRunStep = {
   newRun: true;
   seed: WriteRecord[];
   resetQuests?: Record<string, string>;    // run-tier quest -> the status it had before the reset
+  accepted?: string[];                     // the `::accept{… at="nextRun"}` quests applied at this run start
 };
 type EventStep = { event: string };
 type EndStep = { end: true };

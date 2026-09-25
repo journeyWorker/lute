@@ -23,8 +23,13 @@ pub enum AssembleError {
         id: String,
         plugin: String,
     },
+    /// An active plugin absent from the installed set. `failed_with` is
+    /// empty when no package declares the id, else the codes of the load
+    /// errors its package failed with (already reported): the plugin IS
+    /// installed, it just did not load.
     MissingActivePlugin {
         id: String,
+        failed_with: Vec<&'static str>,
     },
     /// A directive declaration rejected by [`crate::validate::validate_directive`].
     /// `code` is the WRAPPED [`crate::validate::ManifestError`]'s own code — the
@@ -126,11 +131,19 @@ impl std::fmt::Display for AssembleError {
                 "plugin `{plugin}` declares `{id}`, a name the core vocabulary \
                  reserves (dsl §10)"
             ),
-            AssembleError::MissingActivePlugin { id } => write!(
+            AssembleError::MissingActivePlugin { id, failed_with } if failed_with.is_empty() => {
+                write!(
+                    f,
+                    "plugin `{id}` is activated by the project manifest but is not \
+                     installed; add it under the plugins directory or drop it from \
+                     the profile"
+                )
+            }
+            AssembleError::MissingActivePlugin { id, failed_with } => write!(
                 f,
-                "plugin `{id}` is activated by the project manifest but is not \
-                 installed; add it under the plugins directory or drop it from \
-                 the profile"
+                "plugin `{id}` is activated by the project manifest but failed to load \
+                 (see {} above); fix its package",
+                failed_with.join(", ")
             ),
             AssembleError::CyclicStateShape { shape } => write!(
                 f,
@@ -241,7 +254,10 @@ pub fn assemble_snapshot(
             continue;
         }
         let Some(inst) = installed.get(&ap.id) else {
-            errs.push(AssembleError::MissingActivePlugin { id: ap.id.clone() });
+            errs.push(AssembleError::MissingActivePlugin {
+                id: ap.id.clone(),
+                failed_with: installed.failed.get(&ap.id).cloned().unwrap_or_default(),
+            });
             continue;
         };
         let pkg = &inst.loaded;

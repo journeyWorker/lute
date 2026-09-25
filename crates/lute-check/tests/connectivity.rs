@@ -1378,8 +1378,10 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
             .iter()
             .flat_map(|s| s.body.iter().cloned())
             .collect();
+        let scope = lute_check::defassign::Scope::of(folded);
+        let beat_when = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref());
         let (_diags, assigned, reads) =
-            lute_check::check_definite_assignment(&all_nodes, &folded.env.state);
+            lute_check::check_definite_assignment(&all_nodes, &scope, beat_when);
         // T4.4/T4.6 carry-forward parity (dsl §7 soundness invariant), same
         // fix as `lute-cli::run_check_project`'s T11 wiring: a read whose
         // span is a domain-exhaustive `<match>` subject never earns a
@@ -1387,7 +1389,7 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         // `suppress_exhaustive_subject_reads`), so it must never be
         // reclassified as entry-dependent here either.
         let exhaustive_spans =
-            lute_check::defassign::exhaustive_match_subject_spans(&all_nodes, &folded.env.state);
+            lute_check::defassign::exhaustive_match_subject_spans(&all_nodes, &scope);
         let reads: Vec<(String, Span)> = reads
             .into_iter()
             .filter(|(_, span)| {
@@ -2043,7 +2045,10 @@ fn exhaustive_match_subject_spans_recurses_into_nested_constructs() {
         ),
     ] {
         let spans =
-            lute_check::defassign::exhaustive_match_subject_spans(&nodes, &folded.env.state);
+            lute_check::defassign::exhaustive_match_subject_spans(
+                &nodes,
+                &lute_check::defassign::Scope::of(&folded),
+            );
         assert_eq!(
             spans.len(),
             1,
@@ -2459,4 +2464,145 @@ fn meta_parse_failure_stops_semantic_checks() {
         .map(|d| d.code)
         .collect();
     assert_eq!(codes, vec!["E-META-PARSE".to_string()], "{codes:?}");
+}
+
+// ── dsl 0.24.0 §2 (T2-13): bundle beats as predecessors, accept anchors ──
+
+const CAMP_TALKS: &str = "---\nkind: lore\nid: camp.talks\n---\n\
+    <beat id=\"corvinScheme\" on=\"talk\">\n@corvin: Listen.\n</beat>\n";
+
+fn accepting_scene(id: &str, after: &str, quest: &str) -> String {
+    format!("---\nkind: scene\nid: {id}\n{after}---\n## Shot 1.\n::accept{{quest=\"{quest}\"}}\n@a: hi\n")
+}
+
+fn graph_of(docs: &[(PathBuf, lute_syntax::ast::Document)]) -> lute_check::connectivity::ConnGraph {
+    let (g, diags) = assemble_graph(docs, &scene_key_set(docs), &quest_id_set(docs));
+    assert!(diags.is_empty(), "{diags:?}");
+    g
+}
+
+fn kinds(g: &lute_check::connectivity::ConnGraph, from: &NodeId, to: &NodeId) -> Option<Vec<EdgeKind>> {
+    g.edge_kinds_for(from, to).map(|k| k.iter().copied().collect())
+}
+
+#[test]
+fn a_bundle_beat_is_a_legal_after_predecessor_of_a_quest_and_a_scene() {
+    let quest = "---\nkind: quest\n---\n<quest id=\"scheme\" start=\"true\" \
+                 after=\"visited('camp.talks.corvinScheme')\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let scene = "---\nkind: scene\nid: camp.after\nafter: \"visited('camp.talks.corvinScheme')\"\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("camp.lute", CAMP_TALKS), ("q.lute", quest), ("s.lute", scene)]);
+    let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    assert!(
+        !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
+        "a bundle beat resolves in `after`: {res:?}"
+    );
+
+    let g = graph_of(&docs);
+    let beat = NodeId::Beat("camp.talks.corvinScheme".into());
+    let q = NodeId::Quest("scheme".into());
+    let s = NodeId::Scene("camp.after".into());
+    assert_eq!(kinds(&g, &beat, &q), Some(vec![EdgeKind::Visited]), "{g:?}");
+    assert_eq!(kinds(&g, &beat, &s), Some(vec![EdgeKind::Visited]), "{g:?}");
+    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+    assert!(diags.is_empty(), "{diags:?}");
+    assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
+    assert_eq!(reach.get(&s), Some(&Reachability::Reachable));
+}
+
+#[test]
+fn an_accept_driven_quest_is_anchored_at_every_accepting_node() {
+    let quest = "---\nkind: quest\n---\n\
+        <quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n\
+        <quest id=\"main\" start=\"true\" after=\"\">\n\
+        <on event=\"questActive\">\n::accept{quest=\"helpVesna\"}\n</on>\n\
+        <objective id=\"m\" done=\"true\"/>\n</quest>\n";
+    let lore = "---\nkind: lore\nid: camp.talks\n---\n\
+        <beat id=\"corvinScheme\" on=\"talk\">\n::accept{quest=\"helpVesna\"}\n@corvin: Listen.\n</beat>\n";
+    let scene = accepting_scene("camp.night", "", "helpVesna");
+    let docs = docs_for(&[("q.lute", quest), ("camp.lute", lore), ("s.lute", &scene)]);
+    let g = graph_of(&docs);
+    let q = NodeId::Quest("helpVesna".into());
+    let info = g.nodes.get(&q).expect("the accepted quest is a node");
+    assert!(matches!(info.prereq, PrereqState::Accepted(_)), "{:?}", info.prereq);
+    for anchor in [
+        NodeId::Scene("camp.night".into()),
+        NodeId::Beat("camp.talks.corvinScheme".into()),
+        NodeId::Quest("main".into()),
+    ] {
+        assert_eq!(kinds(&g, &anchor, &q), Some(vec![EdgeKind::Accept]), "{anchor}: {g:?}");
+    }
+    let (reach, _) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+    assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
+}
+
+#[test]
+fn an_accept_activated_child_is_anchored_and_an_auto_child_is_not() {
+    let quest = "---\nkind: quest\n---\n\
+        <quest id=\"main\" start=\"true\">\n\
+        <objective id=\"a\" quest=\"side\"/>\n<objective id=\"b\" quest=\"auto\"/>\n</quest>\n\
+        <quest id=\"side\" activate=\"accept\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n\
+        <quest id=\"auto\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
+    let scene = "---\nkind: scene\nid: camp.night\n---\n## Shot 1.\n\
+        ::accept{quest=\"side\"}\n::accept{quest=\"auto\"}\n@a: hi\n";
+    let docs = docs_for(&[("q.lute", quest), ("s.lute", scene)]);
+    let g = graph_of(&docs);
+    let night = NodeId::Scene("camp.night".into());
+    assert_eq!(kinds(&g, &night, &NodeId::Quest("side".into())), Some(vec![EdgeKind::Accept]));
+    assert!(!g.nodes.contains_key(&NodeId::Quest("auto".into())), "{g:?}");
+}
+
+#[test]
+fn an_accept_anchor_reads_the_anchor_reachability_but_never_proves_the_quest_dead() {
+    let quest = "---\nkind: quest\n---\n<quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n\
+        <quest id=\"deadQ\" start=\"true\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let scene = accepting_scene("camp.night", "after: \"completed('deadQ')\"\n", "helpVesna");
+    let docs = docs_for(&[("q.lute", quest), ("s.lute", &scene)]);
+    let g = graph_of(&docs);
+    let dead = BTreeSet::from(["deadQ".to_string()]);
+    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &dead);
+    assert_eq!(reach.get(&NodeId::Scene("camp.night".into())), Some(&Reachability::Unreachable));
+    let q = NodeId::Quest("helpVesna".into());
+    assert_eq!(reach.get(&q), Some(&Reachability::Unknown), "the engine may accept it elsewhere");
+    assert_eq!(diags.len(), 1, "only the dead scene is E-CONN-UNREACHABLE: {diags:?}");
+}
+
+#[test]
+fn a_quest_with_an_explicit_after_keeps_only_its_declared_edges() {
+    let quest = "---\nkind: quest\n---\n<quest id=\"helpVesna\" after=\"visited('camp.day')\">\n\
+        <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
+    let day = "---\nkind: scene\nid: camp.day\n---\n## Shot 1.\n@a: hi\n";
+    let night = accepting_scene("camp.night", "", "helpVesna");
+    let docs = docs_for(&[("q.lute", quest), ("d.lute", day), ("n.lute", &night)]);
+    let g = graph_of(&docs);
+    let q = NodeId::Quest("helpVesna".into());
+    assert!(matches!(g.nodes[&q].prereq, PrereqState::Valid(_)));
+    assert_eq!(kinds(&g, &NodeId::Scene("camp.day".into()), &q), Some(vec![EdgeKind::Visited]));
+    assert_eq!(kinds(&g, &NodeId::Scene("camp.night".into()), &q), None, "{g:?}");
+}
+
+#[test]
+fn an_accept_anchor_that_would_close_a_cycle_is_not_drawn() {
+    // The accepting scene itself waits on the quest: the anchor cannot be the
+    // quest's way in, and an anchor is no `after` clause for E-CONN-CYCLE.
+    let quest = "---\nkind: quest\n---\n<quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
+    let scene = accepting_scene("camp.night", "after: \"active('helpVesna')\"\n", "helpVesna");
+    let docs = docs_for(&[("q.lute", quest), ("s.lute", &scene)]);
+    let g = graph_of(&docs);
+    let q = NodeId::Quest("helpVesna".into());
+    let night = NodeId::Scene("camp.night".into());
+    assert_eq!(kinds(&g, &q, &night), Some(vec![EdgeKind::Active]));
+    assert_eq!(kinds(&g, &night, &q), None, "{g:?}");
+    assert!(g.topo_order.contains(&q) && g.topo_order.contains(&night), "{g:?}");
+}
+
+#[test]
+fn an_unresolvable_quest_after_suggests_dropping_after_not_when() {
+    let quest = "---\nkind: quest\n---\n<quest id=\"scheme\" after=\"visited('camp.talks.nope')\">\n\
+        <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
+    let docs = docs_for(&[("camp.lute", CAMP_TALKS), ("q.lute", quest)]);
+    let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    let [(_, d)] = res.as_slice() else { panic!("one miss: {res:?}") };
+    assert_eq!(d.code, "E-CONN-UNKNOWN-NODE");
+    assert!(d.message.contains("drop `after=`"), "{}", d.message);
+    assert!(!d.message.contains("`when`"), "{}", d.message);
 }

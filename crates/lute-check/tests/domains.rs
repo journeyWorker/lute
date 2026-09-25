@@ -978,3 +978,28 @@ fn inline_and_imported_declarations_check_identically() {
         }
     }
 }
+
+/// dsl 0.24.0 §1: an enum's `labels:` keys are members — a label for a
+/// non-member is `E-ENUM-LABEL-NOT-MEMBER` on the inline AND the imported
+/// route (the shared `validate_domain` rules) — and each label is a string
+/// (`E-META-VALUE`, the frontmatter value-shape code).
+#[test]
+fn enum_labels_must_name_members_and_be_strings() {
+    let labelled = |labels: &str| {
+        format!("enums:\n  weekday:\n    members: [mon, sun]\n    labels: {labels}\n")
+    };
+    let codes = |front: &str| {
+        scene_codes(&unique_dir(), &scene(front, "@marina: line."), load_core_snapshot())
+    };
+    let ok = codes(&labelled("{ sun: Sunday }"));
+    assert!(ok.is_empty(), "a label per member is clean: {ok:?}");
+    let typo = codes(&labelled("{ sunday: Sunday }"));
+    assert!(typo.contains(&"E-ENUM-LABEL-NOT-MEMBER".to_string()), "{typo:?}");
+    let number = codes(&labelled("{ sun: 7 }"));
+    assert!(number.contains(&"E-META-VALUE".to_string()), "{number:?}");
+
+    let dir = unique_dir();
+    write_lute(&dir, "week.lute", &format!("---\n{}---\n", labelled("{ thu: Thursday }")));
+    let imported = scene_codes(&dir, &scene("uses: week.lute\n", "@marina: line."), load_core_snapshot());
+    assert!(imported.contains(&"E-ENUM-LABEL-NOT-MEMBER".to_string()), "{imported:?}");
+}

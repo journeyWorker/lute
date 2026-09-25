@@ -42,6 +42,7 @@
 //! [`value::Value::Unknown`] here ([`eval::eval`]'s doc comment spells out
 //! the K3 lift).
 
+pub mod clock;
 pub mod datalog;
 pub mod eval;
 pub mod mock;
@@ -52,8 +53,8 @@ pub mod walk;
 
 pub use eval::{eval, EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use mock::{
-    merge, mock_subject, parse_mock_surfaces, parse_mock_yaml, raise_judges, split_occasion,
-    validate, MockSet, E_MOCK_SUBJECT,
+    bridge_result_writes, merge, mock_subject, parse_bridges, parse_mock_surfaces, parse_mock_yaml,
+    raise_judges, split_occasion, validate, validate_bridges, BridgeAnswer, MockSet, E_MOCK_SUBJECT,
     E_TRACE_ACCEPT, E_TRACE_BEAT, E_TRACE_CHOICE, E_TRACE_ENTRY, E_TRACE_EVENT, E_TRACE_MOCK_FACT,
     E_TRACE_MOCK_PARSE, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED, MOCK_TOP_KEYS,
     W_TRACE_MOCK_UNPRODUCIBLE,

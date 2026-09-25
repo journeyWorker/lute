@@ -1,41 +1,55 @@
 use crate::types::{Field, Literal, PathSegment, Type};
 use serde::{Deserialize, Serialize};
 
+// Every struct below that a plugin export file deserializes into denies
+// unknown keys (dsl 0.24.0 T1-3): a typo'd key (`selct: all`) or a flow-map
+// value split at a comma (`description: Pick one, the player picks one`
+// yields a null-valued key `the player picks one`) is an `E-PLUGIN-PARSE`
+// naming the key, never a silently defaulted field. The loader
+// (`loader::parse_error_msg`) adds the did-you-mean / quoting hint.
+
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DirectivesFile {
     pub directives: Vec<DirectiveDecl>,
 }
+
+/// A `state/*.yaml` export file: `stateShapes:` and/or `stateTemplates:`.
+/// At least one must be present (the loader rejects a file with neither).
 #[derive(Debug, Deserialize)]
-pub struct ShapesFile {
-    #[serde(rename = "stateShapes")]
-    pub state_shapes: Vec<StateShape>,
+#[serde(deny_unknown_fields)]
+pub struct StateFile {
+    #[serde(default, rename = "stateShapes")]
+    pub state_shapes: Option<Vec<StateShape>>,
+    #[serde(default, rename = "stateTemplates")]
+    pub state_templates: Option<Vec<StateTemplate>>,
 }
 #[derive(Debug, Deserialize)]
-pub struct TemplatesFile {
-    #[serde(rename = "stateTemplates")]
-    pub state_templates: Vec<StateTemplate>,
-}
-#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProvidersFile {
     pub providers: Vec<ProviderDecl>,
 }
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BridgeFile {
     #[serde(rename = "bridgeCapabilities")]
     pub bridge: Vec<BridgeCapability>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DefsFile {
     pub defs: Vec<DefDecl>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FrontmatterFile {
     pub frontmatter: Vec<FrontmatterDecl>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FrontmatterDecl {
     pub key: String,
     pub schema: Type,
@@ -43,8 +57,10 @@ pub struct FrontmatterDecl {
 
 /// One `enums:` entry. A bare sequence is shorthand for `{ members: […] }`
 /// (dsl 0.9.0 D-D), so every pre-0.9.0 `enums.yaml` keeps parsing byte-for-byte.
+/// The long form MAY carry `labels: { <member>: <display text> }` (dsl 0.24.0
+/// §1); a non-string label fails this deserialization.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum EnumDecl {
     Members(Vec<String>),
     Long {
@@ -53,6 +69,8 @@ pub enum EnumDecl {
         default: Option<String>,
         #[serde(default)]
         exits: Vec<String>,
+        #[serde(default)]
+        labels: std::collections::BTreeMap<String, String>,
     },
 }
 
@@ -68,22 +86,26 @@ impl EnumDecl {
                 members,
                 default,
                 exits,
+                labels,
             } => crate::snapshot::Domain {
                 members,
                 open: false,
                 default,
                 exits,
+                labels,
             },
         }
     }
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EnumsFile {
     pub enums: std::collections::BTreeMap<String, EnumDecl>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EventsFile {
     pub events: Vec<EventDecl>,
 }
@@ -105,6 +127,7 @@ pub struct EventsFile {
 /// stamp attr is NOT default-injected — absent means absent, so a document
 /// that authors none produces a byte-identical artifact.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StampAttrsFile {
     #[serde(rename = "stampAttrs")]
     pub stamp_attrs: Vec<AttrDecl>,
@@ -121,11 +144,13 @@ pub struct StampAttrsFile {
 /// file (or [`crate::loader::LoadedPlugin::lints`]), so a plugin can add,
 /// remove, or change lints without perturbing artifact identity.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LintsFile {
     pub lints: Vec<crate::lint::LintRuleDecl>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DirectiveDecl {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -139,10 +164,14 @@ pub struct DirectiveDecl {
     pub effects: Option<DirectiveEffects>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bridge: Option<BridgeRef>,
+    /// How the directive lowers. Absent (`Lowering::Passthrough`) means the
+    /// generic `kind: "plugin"` passthrough record (dsl 0.24.0 T3-7).
+    #[serde(default, skip_serializing_if = "Lowering::is_passthrough")]
     pub lower: Lowering,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AttrDecl {
     pub name: String,
     #[serde(default)]
@@ -154,11 +183,13 @@ pub struct AttrDecl {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DirectiveState {
     pub declares: Vec<SlotDecl>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SlotDecl {
     pub scope: String,
     pub path: Vec<PathSegment>,
@@ -166,11 +197,13 @@ pub struct SlotDecl {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DirectiveEffects {
     pub writes: Vec<WriteDecl>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WriteDecl {
     pub scope: String,
     pub path: Vec<PathSegment>,
@@ -192,13 +225,23 @@ pub enum WriteValue {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BridgeRef {
     pub service: String,
     pub operation: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+/// A directive's `lower:` (plugin §8.2): `{ record, fields }` (declarative,
+/// one core staging record), `{ kind: builtin, name }` (a named hook from
+/// the core registry, [`BUILTIN_LOWERING_HOOKS`]), or — when `lower:` is
+/// absent — the generic `kind: "plugin"` passthrough.
+///
+/// Deserialized through [`RawLowering`] so a malformed `lower:` names what
+/// is wrong (unknown key, unknown `kind`, unregistered hook) instead of
+/// serde's "did not match any variant". `Record`/`Builtin` keep their
+/// derived `Debug`, which `capabilityVersion` hashes.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(untagged, try_from = "RawLowering")]
 pub enum Lowering {
     Record {
         record: String,
@@ -208,15 +251,105 @@ pub enum Lowering {
         kind: String,
         name: String,
     },
+    /// No `lower:` declared: the generic passthrough. Never serialized.
+    #[default]
+    Passthrough,
+}
+
+impl Lowering {
+    pub fn is_passthrough(&self) -> bool {
+        matches!(self, Lowering::Passthrough)
+    }
+}
+
+/// The core's closed registry of builtin lowering hooks (plugin §8.2: "`name`
+/// MUST resolve to a registered hook"), exactly the hooks the `lute.core`
+/// staging manifest names. Adding one is a core code change.
+pub const BUILTIN_LOWERING_HOOKS: &[&str] =
+    &["autoStage", "cameraTransform", "clearStage", "end", "mark", "next"];
+
+/// The wire shape of `lower:`, validated into a [`Lowering`].
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawLowering {
+    record: Option<String>,
+    fields: Option<serde_yaml::Value>,
+    kind: Option<String>,
+    name: Option<String>,
+}
+
+const OMIT_LOWER: &str = "omit `lower:` for the generic `kind: \"plugin\"` passthrough";
+
+impl TryFrom<RawLowering> for Lowering {
+    type Error = String;
+
+    fn try_from(raw: RawLowering) -> Result<Self, String> {
+        match raw {
+            RawLowering {
+                record: Some(record),
+                fields,
+                kind: None,
+                name: None,
+            } => match fields {
+                Some(fields) => Ok(Lowering::Record { record, fields }),
+                None => Err(format!(
+                    "`lower: {{ record: {record} }}` needs `fields:` (write `fields: {{}}` for none)"
+                )),
+            },
+            RawLowering {
+                record: None,
+                fields: None,
+                kind: Some(kind),
+                name,
+            } => {
+                if kind != "builtin" {
+                    return Err(format!(
+                        "`lower.kind` is `{kind}`, but the only kind is `builtin` \
+                         (or write `{{ record, fields }}`); {OMIT_LOWER}"
+                    ));
+                }
+                let Some(name) = name else {
+                    return Err(format!(
+                        "`lower: {{ kind: builtin }}` needs `name:` (one of {}); {OMIT_LOWER}",
+                        BUILTIN_LOWERING_HOOKS.join(", ")
+                    ));
+                };
+                if !BUILTIN_LOWERING_HOOKS.contains(&name.as_str()) {
+                    let max = (name.chars().count() / 3).clamp(1, 3);
+                    let hint = crate::suggest::nearest(&name, BUILTIN_LOWERING_HOOKS.iter().copied(), max)
+                        .map(|s| format!(" (did you mean `{s}`?)"))
+                        .unwrap_or_default();
+                    return Err(format!(
+                        "`{name}` is not a builtin lowering hook{hint}; the core registers {}; {OMIT_LOWER}",
+                        BUILTIN_LOWERING_HOOKS.join(", ")
+                    ));
+                }
+                Ok(Lowering::Builtin { kind, name })
+            }
+            RawLowering {
+                record: None,
+                fields: None,
+                kind: None,
+                name: None,
+            } => Err(format!(
+                "`lower:` is empty; write `{{ record, fields }}` or `{{ kind: builtin, name }}`, or {OMIT_LOWER}"
+            )),
+            _ => Err(format!(
+                "`lower:` is either `{{ record, fields }}` or `{{ kind: builtin, name }}`, not a mix; {OMIT_LOWER}"
+            )),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StateShape {
     pub name: String,
     pub fields: Vec<Field>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StateTemplate {
     pub name: String,
     pub scope: String,
@@ -225,6 +358,7 @@ pub struct StateTemplate {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderDecl {
     pub name: String,
     #[serde(rename = "idShape", default, skip_serializing_if = "Option::is_none")]
@@ -233,6 +367,7 @@ pub struct ProviderDecl {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BridgeCapability {
     pub service: String,
     pub operation: String,
@@ -253,6 +388,7 @@ pub struct DefParam {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DefDecl {
     pub name: String,
     #[serde(rename = "type")]
@@ -273,6 +409,7 @@ pub struct DefDecl {
 /// ordinary plugin `state`, written by the engine before the event fires — NOT
 /// part of this declaration. Name is a `CelIdent`-shaped event kind.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EventDecl {
     pub name: String,
 }
@@ -296,6 +433,7 @@ pub struct EventDecl {
 /// (`kind = "rewardKind"`), same shape every other cross-plugin vocabulary
 /// duplicate uses.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RewardKindsFile {
     #[serde(rename = "rewardKinds")]
     pub reward_kinds: std::collections::BTreeMap<String, RewardKindBody>,
@@ -305,6 +443,7 @@ pub struct RewardKindsFile {
 /// are NOT the kind id (the id is the map key, materialized onto
 /// [`RewardKindDecl::name`] by the loader).
 #[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RewardKindBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<RewardTarget>,
@@ -321,6 +460,7 @@ pub struct RewardKindBody {
 /// rejects a kind that pins a provider no active plugin declares (parallels
 /// [`crate::assemble::AssembleError::UnknownAssetKind`]).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RewardTarget {
     pub provider: String,
 }
@@ -364,6 +504,7 @@ impl std::fmt::Debug for RewardKindDecl {
 /// dsl 0.23.0 §7 cast declaration file (export `cast/*.yaml`, or a schema
 /// document's `cast:` key): a `cast:` mapping keyed by the speaker id.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CastFile {
     pub cast: std::collections::BTreeMap<String, CastBody>,
 }
@@ -374,15 +515,58 @@ pub struct CastFile {
 pub struct CastBody {
     #[serde(default)]
     pub name: Option<String>,
+    /// dsl 0.24.0 §4: the CEL condition under which this speaker is present
+    /// (`present: "holds(inParty(isolde))"`).
+    #[serde(default)]
+    pub present: Option<String>,
+    /// dsl 0.24.0 §4: the `emotion=` values this speaker takes.
+    #[serde(default)]
+    pub emotions: Option<Vec<String>>,
+}
+
+impl CastBody {
+    /// The member this entry declares under `id`.
+    pub fn into_member(self, id: String) -> CastMember {
+        CastMember {
+            id,
+            name: self.name,
+            present: self.present,
+            emotions: self.emotions,
+        }
+    }
 }
 
 /// One declared cast member (dsl 0.23.0 §7): a speaker id and its display
 /// name. When any cast is declared, a speaker outside it is `E-CAST-UNKNOWN`.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// dsl 0.24.0 §4: `present` — a line by this speaker whose enclosing guards
+/// do not imply it is `W-CAST-ABSENT`; `emotions` — the `emotion=` values the
+/// speaker takes (`E-BAD-ENUM` outside it).
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CastMember {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub present: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emotions: Option<Vec<String>>,
+}
+
+/// Hand-written so a member without `present`/`emotions` prints exactly as
+/// it did before those fields existed: `capabilityVersion` hashes this
+/// `Debug`, and a cast that declares neither must keep its stamp.
+impl std::fmt::Debug for CastMember {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("CastMember");
+        s.field("id", &self.id).field("name", &self.name);
+        if let Some(present) = &self.present {
+            s.field("present", present);
+        }
+        if let Some(emotions) = &self.emotions {
+            s.field("emotions", emotions);
+        }
+        s.finish()
+    }
 }
 
 /// dsl 0.21.0 §2 occasion declaration file (export `occasions/*.yaml`): an
@@ -395,6 +579,7 @@ pub struct CastMember {
 /// [`crate::assemble::AssembleError::DuplicateAcrossPlugins`] — the
 /// `rewardKinds` treatment.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OccasionsFile {
     pub occasions: std::collections::BTreeMap<String, OccasionBody>,
 }
@@ -402,6 +587,7 @@ pub struct OccasionsFile {
 /// The value half of an `occasions:` map entry (the name is the map key,
 /// materialized onto [`OccasionDecl::name`] by the loader).
 #[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OccasionBody {
     #[serde(default)]
     pub select: OccasionSelect,
@@ -409,6 +595,10 @@ pub struct OccasionBody {
     pub target: OccasionTarget,
     #[serde(default)]
     pub description: Option<String>,
+    /// dsl 0.24.0 §2: `judge: before` — the occasion's `on=` objectives are
+    /// judged before its beats are presented (default `after`).
+    #[serde(default)]
+    pub judge: OccasionJudge,
 }
 
 /// How the engine presents an occasion's eligible beats (dsl 0.21.0 §2):
@@ -437,12 +627,34 @@ impl OccasionSelect {
     }
 }
 
+/// When an occasion judges its `on=` objectives relative to presenting its
+/// beats (dsl 0.24.0 §2): `after` (default, the 0.21 order) or `before`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OccasionJudge {
+    #[default]
+    After,
+    Before,
+}
+
+impl OccasionJudge {
+    /// `true` for the default `after` (skipped when serialized).
+    pub fn is_after(&self) -> bool {
+        *self == OccasionJudge::After
+    }
+}
+
 /// A capability-declared occasion (dsl 0.21.0 §2): the vocabulary a plugin's
 /// `occasions:` export contributes, consumed by the checker's
 /// `E-OCCASION-UNKNOWN` closure and beat-target / shadowing analysis.
 /// A targeted occasion is raised FOR something, so a beat may restrict
 /// itself to one target (dsl 0.22.0 §8: optionally from a closed domain).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+///
+/// `Debug` is written by hand: it prints exactly the derived form of the
+/// 0.23 four-field struct and adds `judge` only when it is `before`, so a
+/// snapshot that never declares `judge:` keeps its `capabilityVersion` (the
+/// hash folds this `Debug`).
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct OccasionDecl {
     pub name: String,
     #[serde(default)]
@@ -451,6 +663,23 @@ pub struct OccasionDecl {
     pub target: OccasionTarget,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// dsl 0.24.0 §2: see [`OccasionJudge`].
+    #[serde(default, skip_serializing_if = "OccasionJudge::is_after")]
+    pub judge: OccasionJudge,
+}
+
+impl std::fmt::Debug for OccasionDecl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("OccasionDecl");
+        s.field("name", &self.name)
+            .field("select", &self.select)
+            .field("target", &self.target)
+            .field("description", &self.description);
+        if !self.judge.is_after() {
+            s.field("judge", &self.judge);
+        }
+        s.finish()
+    }
 }
 
 /// An occasion's `target:` (dsl 0.21.0 §2, dsl 0.22.0 §8): `true` / `false`
@@ -465,7 +694,7 @@ pub struct OccasionDecl {
 /// domain without `members` prints exactly as the 0.22 `{ prefix, entity }`
 /// did, for the same reason.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum OccasionTarget {
     Shape(bool),
     Domain {
@@ -600,7 +829,7 @@ pub struct OptionDecl {
 
 /// plugin §6.9 asset-kind declaration (export file `assetkinds/*.yaml`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetKindDecl {
     pub kind: String,
     #[serde(default = "default_sep")]
@@ -630,7 +859,7 @@ pub enum AssetResolve {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetSegment {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -640,7 +869,7 @@ pub struct AssetSegment {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetMatch {
     pub attr: String,
     pub field: String,
@@ -649,6 +878,7 @@ pub struct AssetMatch {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AssetKindsFile {
     #[serde(rename = "assetKinds")]
     pub asset_kinds: Vec<AssetKindDecl>,
@@ -672,7 +902,7 @@ directives:
       - { name: wait, type: bool, default: true }
     semantics: [ "writes.sceneState", "bridgeCall" ]
     bridge: { service: minigame, operation: play }
-    lower: { kind: builtin, name: bridgeMinigame }
+    lower: { kind: builtin, name: autoStage }
 "#;
 
     #[test]
@@ -693,8 +923,8 @@ stateShapes:
     fields:
       - { name: rank, type: { enum: [fail, gold] }, default: fail }
 "#;
-        let f: ShapesFile = serde_yaml::from_str(y).unwrap();
-        assert_eq!(f.state_shapes[0].fields[0].name, "rank");
+        let f: StateFile = serde_yaml::from_str(y).unwrap();
+        assert_eq!(f.state_shapes.unwrap()[0].fields[0].name, "rank");
     }
     #[test]
     fn write_value_untagged_variants_bind() {
@@ -718,6 +948,86 @@ writes:
         let y = "record: setBackground\nfields: {}";
         let l: Lowering = serde_yaml::from_str(y).unwrap();
         assert!(matches!(l, Lowering::Record { .. }));
+    }
+
+    #[test]
+    fn absent_lower_is_the_generic_passthrough() {
+        let y = "directives:\n  - { name: encounter, attrs: [ { name: id, type: string } ] }\n";
+        let file: DirectivesFile = serde_yaml::from_str(y).unwrap();
+        assert!(file.directives[0].lower.is_passthrough());
+        // …and it serializes as no `lower:` at all.
+        let back = serde_yaml::to_string(&file.directives[0]).unwrap();
+        assert!(!back.contains("lower"), "{back}");
+    }
+
+    #[test]
+    fn unregistered_builtin_hook_is_rejected_naming_the_registry() {
+        let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: encounter }")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("`encounter` is not a builtin lowering hook"), "{err}");
+        assert!(err.contains(&BUILTIN_LOWERING_HOOKS.join(", ")), "{err}");
+        assert!(err.contains("omit `lower:`"), "{err}");
+        let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: autoStag }")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("did you mean `autoStage`?"), "{err}");
+    }
+
+    #[test]
+    fn malformed_lowering_shapes_are_named() {
+        for (y, want) in [
+            ("{ kind: record, name: background }", "the only kind is `builtin`"),
+            ("{ kind: builtin }", "needs `name:`"),
+            ("{ record: background }", "needs `fields:`"),
+            ("{ record: background, fields: {}, kind: builtin, name: end }", "not a mix"),
+            ("{}", "`lower:` is empty"),
+            ("{ record: background, feilds: {} }", "unknown field `feilds`"),
+        ] {
+            let err = serde_yaml::from_str::<Lowering>(y).unwrap_err().to_string();
+            assert!(err.contains(want), "{y}: {err}");
+        }
+    }
+
+    #[test]
+    fn builtin_hook_registry_is_exactly_the_core_hooks() {
+        // The registry is the set of hooks the embedded `lute.core` manifest
+        // names; a hook added to one without the other fails here.
+        let core: DirectivesFile =
+            serde_yaml::from_str(include_str!("../assets/lute.core/directives/staging.yaml"))
+                .unwrap();
+        let mut named: Vec<String> = core
+            .directives
+            .iter()
+            .filter_map(|d| match &d.lower {
+                Lowering::Builtin { name, .. } => Some(name.clone()),
+                _ => None,
+            })
+            .collect();
+        named.sort();
+        assert_eq!(named, BUILTIN_LOWERING_HOOKS);
+    }
+
+    #[test]
+    fn export_bodies_reject_unknown_keys() {
+        let occ = serde_yaml::from_str::<OccasionsFile>("occasions:\n  report: { selct: all }\n")
+            .unwrap_err()
+            .to_string();
+        assert!(occ.contains("unknown field `selct`"), "{occ}");
+        let rk = serde_yaml::from_str::<RewardKindsFile>("rewardKinds:\n  gold: { credit: run.gold }\n")
+            .unwrap_err()
+            .to_string();
+        assert!(rk.contains("unknown field `credit`"), "{rk}");
+        let dir = serde_yaml::from_str::<DirectivesFile>(
+            "directives:\n  - { name: x, attrs: [ { name: a, type: string, requird: true } ] }\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(dir.contains("unknown field `requird`"), "{dir}");
+        let target = serde_yaml::from_str::<OccasionsFile>(
+            "occasions:\n  talk: { target: { prefix: npc, entity: npc, member: [a] } }\n",
+        );
+        assert!(target.is_err(), "a typo'd target domain key must not parse");
     }
 
     #[test]

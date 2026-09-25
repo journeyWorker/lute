@@ -36,11 +36,12 @@ fn run(args: &[&str]) -> std::process::Output {
 
 /// A self-contained, otherwise-CLEAN `kind: quest` doc declaring exactly one
 /// quest id (its own state decl + a `done` slot that reads it, so no other
-/// diagnostic — E-UNDECLARED/E-MAYBE-UNSET/etc — fires).
+/// diagnostic — E-UNDECLARED/E-MAYBE-UNSET/etc — fires). `start="true"`: an
+/// accept-driven quest nothing accepts is W-QUEST-NEVER-ACCEPTED (dsl 0.24.0).
 fn clean_quest_doc(quest_id: &str, state_path: &str) -> String {
     format!(
         "---\nkind: quest\nstate:\n  {state_path}: {{ type: bool, default: false }}\n---\n\
-         <quest id=\"{quest_id}\">\n<objective id=\"o\" done=\"{state_path}\"/>\n</quest>\n"
+         <quest id=\"{quest_id}\" start=\"true\">\n<objective id=\"o\" done=\"{state_path}\"/>\n</quest>\n"
     )
 }
 
@@ -278,7 +279,7 @@ fn check_project_flags_import_graph_dup_reaching_outside_walked_dir() {
         "scene.lute",
         "---\nkind: quest\nuses:\n  - ../outside/doc1.lute\n  - ../outside/doc2.lute\n\
          state:\n  run.scene: { type: bool, default: false }\n---\n\
-         <quest id=\"scene_q\">\n<objective id=\"oscene\" done=\"run.scene\"/>\n</quest>\n",
+         <quest id=\"scene_q\" start=\"true\">\n<objective id=\"oscene\" done=\"run.scene\"/>\n</quest>\n",
     );
 
     let out = run(&["check-project", dir.to_str().unwrap()]);
@@ -396,11 +397,12 @@ fn check_project_empty_dir_exits_zero() {
 
 /// A self-contained `kind: quest` doc declaring `<quest id quest_id>` with
 /// exactly one `<objective id objective_id>` (its own state decl + a `done`
-/// slot that reads it, so no other diagnostic fires).
+/// slot that reads it, and `start="true"` so W-QUEST-NEVER-ACCEPTED stays
+/// quiet — no other diagnostic fires).
 fn quest_doc_with(quest_id: &str, objective_id: &str, state_path: &str) -> String {
     format!(
         "---\nkind: quest\nstate:\n  {state_path}: {{ type: bool, default: false }}\n---\n\
-         <quest id=\"{quest_id}\">\n<objective id=\"{objective_id}\" done=\"{state_path}\"/>\n</quest>\n"
+         <quest id=\"{quest_id}\" start=\"true\">\n<objective id=\"{objective_id}\" done=\"{state_path}\"/>\n</quest>\n"
     )
 }
 

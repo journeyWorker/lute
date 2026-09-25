@@ -1062,3 +1062,46 @@ fn a_branch_choose_list_is_consumed_in_presentation_order() {
         report.unresolved
     );
 }
+
+/// dsl 0.24.0 §1: `::set{… when="…"}` — the trace applies the write when
+/// the guard decides true, and on false records the guard's decision but
+/// no `set` step (no phantom write), so a later read sees the old value.
+#[test]
+fn guarded_set_writes_only_when_its_guard_holds() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+                run.flag: { type: bool, default: false }\n  run.n: { type: number, default: 1 }\n---\n\
+                ## Shot 1.\n\
+                ::set{run.n += 4 when=\"run.flag\"}\n\
+                <match on=\"run.n\">\n<when test=\"$ == 5\">\n@narrator: five\n</when>\n\
+                <otherwise>\n@narrator: other\n</otherwise>\n</match>\n";
+    let sets = |report: &lute_trace::TraceReport| -> Vec<String> {
+        report
+            .steps
+            .iter()
+            .filter_map(|s| match s {
+                lute_trace::Step::Set { path, value, .. } => Some(format!("{path}={value}")),
+                _ => None,
+            })
+            .collect()
+    };
+    let outcomes = |report: &lute_trace::TraceReport| -> Vec<String> {
+        report
+            .decisions
+            .iter()
+            .filter(|d| d.construct == "match")
+            .map(|d| d.outcome.clone())
+            .collect()
+    };
+
+    let input = input_for(text, "set-when-true", Path::new("."));
+    let (report, exit) = trace_document(&input, state_mocks(&[("run.flag", "true")]));
+    assert_complete(&exit);
+    assert_eq!(sets(&report), ["run.n=5"], "{report:#?}");
+    assert_eq!(outcomes(&report), ["arm 1", "arm 1"], "{report:#?}");
+
+    let input = input_for(text, "set-when-false", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+    assert!(sets(&report).is_empty(), "{report:#?}");
+    assert_eq!(outcomes(&report), ["otherwise", "otherwise"], "{report:#?}");
+}

@@ -119,17 +119,18 @@ pub fn translate_cel_parse(
     if let Some(pos) = scan_bare_eq(raw, &mask) {
         // dsl 0.10.0 §12.1: inside a `::set` BODY the `=` is almost never a
         // mistyped comparison — it is an `attr="…"` the author expected `::set`
-        // to accept. `Set ::= "::set{" Path WS AssignOp WS CelExpr "}"`
-        // (0.1.0 §7.3.3): everything after the operator is expression text, so
-        // the `when=` was swallowed whole, and rule 4's rewrite is then a
-        // suggestion that does not parse when applied. Did-you-mean is usually
-        // good enough here that following it is reasonable, which is precisely
-        // what makes the wrong one expensive. Say what is actually wrong and
-        // offer no edit.
+        // to accept. `Set ::= "::set{" Path WS AssignOp WS CelExpr (WS
+        // "when=" Quoted)? "}"` (dsl 0.24.0 §1): everything after the operator
+        // except ONE trailing `when="…"` is expression text, so any other
+        // attr (or a non-trailing `when=`) was swallowed whole, and rule 4's
+        // rewrite is then a suggestion that does not parse when applied.
+        // Did-you-mean is usually good enough here that following it is
+        // reasonable, which is precisely what makes the wrong one expensive.
+        // Say what is actually wrong and offer no edit.
         if kind == CelKind::SetExpr {
             return Translation {
-                message: "`::set` takes no attributes; everything after the operator is the \
-                          expression — guard a write with `<match>`/`<when>` (dsl 0.10.0 §12.1)"
+                message: "`::set` takes no attributes other than one trailing `when=\"…\"`; \
+                          everything else after the operator is the expression (dsl 0.24.0 §1)"
                     .to_string(),
                 fixits: Vec::new(),
                 span: Some(rebase(slot_span, pos, pos + 1)),
@@ -198,6 +199,20 @@ pub fn translate_cel_parse(
         };
     }
 
+    // Rule 7 (dsl 0.24 T3-8): a fact query over a relation named like a CEL
+    // macro/keyword (`holds(has(lamp))`) — the declaration is
+    // `E-RELATION-RESERVED-NAME`; say why this use cannot parse.
+    if let Some((start, end, name)) = scan_reserved_query_relation(raw, &mask) {
+        return Translation {
+            message: format!(
+                "`{name}` is a reserved CEL name, so `{name}(…)` cannot be queried as a \
+                 relation — rename the relation (dsl 0.24 T3-8)"
+            ),
+            fixits: Vec::new(),
+            span: Some(rebase(slot_span, start, end)),
+        };
+    }
+
     // T3 fallback: neutral, names the slot text, never the backend's message.
     // Use the backend's recovered position only when it plausibly lands inside
     // THIS slot (lute-cel always populates it validly today, but the check is
@@ -214,6 +229,53 @@ pub fn translate_cel_parse(
         fixits: Vec::new(),
         span,
     }
+}
+
+/// The first `holds(`/`count(`/`countDistinct(`/`validAt(` whose pattern
+/// relation is a [`crate::rel_schema::RESERVED_RELATION_NAMES`] name, outside
+/// string literals: `(start, end, name)` of that relation token.
+fn scan_reserved_query_relation<'r>(raw: &'r str, mask: &[bool]) -> Option<(usize, usize, &'r str)> {
+    let b = raw.as_bytes();
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut i = 0;
+    while i < b.len() {
+        if mask.get(i).copied().unwrap_or(false) || !(b[i].is_ascii_alphabetic() || b[i] == b'_') {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < b.len() && is_ident(b[i]) {
+            i += 1;
+        }
+        let word = &raw[start..i];
+        let after_dot = start > 0 && b[start - 1] == b'.';
+        if after_dot || !matches!(word, "holds" | "count" | "countDistinct" | "validAt") {
+            continue;
+        }
+        let mut j = i;
+        while j < b.len() && b[j] == b' ' {
+            j += 1;
+        }
+        if b.get(j) != Some(&b'(') {
+            continue;
+        }
+        j += 1;
+        while j < b.len() && b[j] == b' ' {
+            j += 1;
+        }
+        let rs = j;
+        while j < b.len() && is_ident(b[j]) {
+            j += 1;
+        }
+        let rel = &raw[rs..j];
+        while j < b.len() && b[j] == b' ' {
+            j += 1;
+        }
+        if b.get(j) == Some(&b'(') && crate::rel_schema::RESERVED_RELATION_NAMES.contains(&rel) {
+            return Some((rs, rs + rel.len(), rel));
+        }
+    }
+    None
 }
 
 /// Rebase a LOCAL `raw`-relative byte range onto `slot_span`'s document

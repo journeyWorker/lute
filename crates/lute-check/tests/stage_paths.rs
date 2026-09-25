@@ -126,3 +126,62 @@ fn an_exit_after_a_bg_auto_hide_is_named_redundant() {
     assert!(m.contains("this exit does nothing. Move it before the `::bg`, or delete it"), "{m}");
     assert!(!m.contains("stages"), "{m}");
 }
+
+/// dsl 0.24.0 §4: `::clear` takes every character on stage off it, so a later
+/// line by any of them without a re-show warns and names the `::clear`.
+#[test]
+fn a_line_after_a_clear_warns_naming_the_clear() {
+    let ds = absent(
+        "::auto{character=\"pell\" action=\"show\"}\n@pell: Both here.\n::clear\n\
+         @vesna: Hello?\n@pell: Anyone?",
+    );
+    assert_eq!(ds.len(), 2, "{ds:#?}");
+    for (d, who) in ds.iter().zip(["vesna", "pell"]) {
+        assert!(
+            d.message.starts_with(&format!(
+                "`{who}` was taken off stage by an earlier `::clear` (line 20)"
+            )),
+            "{}",
+            d.message
+        );
+        assert!(d.message.contains("after the `::clear`"), "{}", d.message);
+    }
+}
+
+/// A character shown again after the `::clear` is on stage: silent. The
+/// other one, not re-shown, still warns.
+#[test]
+fn a_reshow_after_a_clear_is_clean() {
+    let ds = absent(
+        "::clear\n::auto{character=\"vesna\" action=\"show\"}\n@vesna: Back.",
+    );
+    assert!(ds.is_empty(), "{ds:#?}");
+}
+
+/// Shown in only some match arms, a character still leaves at the `::clear`,
+/// as at a `::bg`.
+#[test]
+fn a_clear_takes_off_a_character_on_stage_on_some_paths() {
+    let body = "::auto{character=\"vesna\" action=\"hide\"}\n\
+                <match on=\"run.mood\">\n\
+                <when is=\"calm\">\n::auto{character=\"pell\" action=\"show\"}\n@pell: Here.\n</when>\n\
+                <when is=\"tense\">\n@narrator: Nobody.\n</when>\n</match>\n\
+                ::clear\n@pell: Still here?";
+    let ds = absent(body);
+    assert_eq!(ds.len(), 1, "{ds:#?}");
+    assert!(
+        ds[0].message.starts_with("`pell` was taken off stage by an earlier `::clear`"),
+        "{}",
+        ds[0].message
+    );
+}
+
+/// An exit after a `::clear` does nothing, and the warning says so.
+#[test]
+fn an_exit_after_a_clear_is_named_redundant() {
+    let ds = absent("::clear\n::auto{character=\"vesna\" action=\"hide\"}");
+    assert_eq!(ds.len(), 1, "{ds:#?}");
+    let m = &ds[0].message;
+    assert!(m.starts_with("`vesna` is already off stage (taken off by the `::clear` at line 18)"), "{m}");
+    assert!(m.contains("Move it before the `::clear`, or delete it"), "{m}");
+}

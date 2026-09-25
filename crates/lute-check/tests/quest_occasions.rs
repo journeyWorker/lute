@@ -28,6 +28,7 @@ fn with_occasions() -> CapabilitySnapshot {
                 select: OccasionSelect::First,
                 target: false.into(),
                 description: None,
+                ..Default::default()
             },
         );
     }

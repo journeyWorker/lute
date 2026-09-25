@@ -166,6 +166,12 @@ impl std::fmt::Display for LoadError {
 
 /// Read one plugin package. `dir` MUST contain `plugin.yaml`.
 pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
+    load_package(dir).map_err(|(_, errs)| errs)
+}
+
+/// [`load_plugin_dir`], but a failure also carries the manifest id when the
+/// manifest itself parsed (only an export failed).
+fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadError>)> {
     let mut errs = Vec::new();
 
     let manifest_path = dir.join("plugin.yaml");
@@ -173,17 +179,23 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
         Ok(s) => match serde_yaml::from_str(&s) {
             Ok(m) => m,
             Err(e) => {
-                return Err(vec![LoadError::Manifest {
-                    dir: dir.display().to_string(),
-                    msg: e.to_string(),
-                }])
+                return Err((
+                    None,
+                    vec![LoadError::Manifest {
+                        dir: dir.display().to_string(),
+                        msg: e.to_string(),
+                    }],
+                ))
             }
         },
         Err(e) => {
-            return Err(vec![LoadError::Manifest {
-                dir: dir.display().to_string(),
-                msg: e.to_string(),
-            }])
+            return Err((
+                None,
+                vec![LoadError::Manifest {
+                    dir: dir.display().to_string(),
+                    msg: e.to_string(),
+                }],
+            ))
         }
     };
 
@@ -296,6 +308,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                         select: body.select,
                         target: body.target,
                         description: body.description,
+                        judge: body.judge,
                     })
                     .collect();
                 merge_named(&mut out.occasions, decls, "occasion", |o| o.name.clone(), e)
@@ -307,7 +320,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                 let decls: Vec<CastMember> = f
                     .cast
                     .into_iter()
-                    .map(|(id, body)| CastMember { id, name: body.name })
+                    .map(|(id, body)| body.into_member(id))
                     .collect();
                 merge_named(&mut out.cast, decls, "cast", |c| c.id.clone(), e)
             }),
@@ -320,7 +333,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
     if errs.is_empty() {
         Ok(out)
     } else {
-        Err(errs)
+        Err((Some(out.manifest.id), errs))
     }
 }
 
@@ -444,7 +457,10 @@ fn check_occasion_members(
 /// Scan `dir` for plugin packages (each immediate subdirectory containing a
 /// `plugin.yaml`), in sorted order, and index by manifest id. A duplicate id
 /// across packages is a `LoadError::DuplicateId { kind: "plugin", .. }` (the
-/// later package is dropped). A missing `dir` yields an empty registry.
+/// later package is dropped). A package whose manifest parsed but whose
+/// exports failed lands in [`crate::resolve::InstalledPlugins::failed`], so
+/// assembly can say it failed to load rather than that it is not installed.
+/// A missing `dir` yields an empty registry.
 pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<LoadError>) {
     use crate::resolve::{InstalledPlugin, InstalledPlugins};
     let mut reg = InstalledPlugins::default();
@@ -461,7 +477,7 @@ pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<Lo
         if !sub.join("plugin.yaml").is_file() {
             continue;
         }
-        match load_plugin_dir(&sub) {
+        match load_package(&sub) {
             Ok(loaded) => {
                 let id = loaded.manifest.id.clone();
                 match reg.by_id.entry(id) {
@@ -476,7 +492,17 @@ pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<Lo
                     }
                 }
             }
-            Err(mut e) => errs.append(&mut e),
+            Err((id, mut e)) => {
+                if let Some(id) = id {
+                    let codes = reg.failed.entry(id).or_default();
+                    for err in &e {
+                        if !codes.contains(&err.code()) {
+                            codes.push(err.code());
+                        }
+                    }
+                }
+                errs.append(&mut e);
+            }
         }
     }
     (reg, errs)
@@ -504,48 +530,121 @@ where
             Ok(f) => merge(f, &file, errs),
             Err(e) => errs.push(LoadError::Parse {
                 file: file.display().to_string(),
-                msg: e.to_string(),
+                msg: parse_error_msg(&s, &e),
             }),
         }
     }
 }
 
-/// `state/` holds `shapes.yaml` (stateShapes) and/or `templates.yaml` (stateTemplates).
-fn read_state(path: &Path, out: &mut LoadedPlugin, errs: &mut Vec<LoadError>) {
-    for file in yaml_files(path, errs) {
-        let s = match std::fs::read_to_string(&file) {
-            Ok(s) => s,
-            Err(e) => {
-                errs.push(LoadError::Io {
-                    path: file.display().to_string(),
-                    msg: e.to_string(),
-                });
-                continue;
+/// The `E-PLUGIN-PARSE` message for a failed export file: serde's own text,
+/// plus — for an unknown key — a did-you-mean against the accepted keys, and,
+/// when the offending mapping holds a key with no value, the hint that an
+/// unquoted flow-map value ended at a comma (`{ description: Pick one, the
+/// player picks one }` parses as `description: Pick one` plus a null-valued
+/// key `the player picks one`).
+fn parse_error_msg(src: &str, e: &serde_yaml::Error) -> String {
+    let mut msg = e.to_string();
+    let Some((key, expected)) = unknown_field(&msg) else {
+        return msg;
+    };
+    let max = (key.chars().count() / 3).clamp(1, 2);
+    if let Some(s) = crate::suggest::nearest(&key, expected.iter().map(String::as_str), max) {
+        msg.push_str(&format!("; did you mean `{s}`?"));
+    }
+    if let Some(hint) = serde_yaml::from_str::<serde_yaml::Value>(src)
+        .ok()
+        .and_then(|doc| null_key_hint(&doc, &key, &expected))
+    {
+        msg.push_str("; ");
+        msg.push_str(&hint);
+    }
+    msg
+}
+
+/// Split serde's "unknown field `k`, expected one of `a`, `b`" (or "expected
+/// `a`", or "there are no fields") into the key and the accepted names.
+fn unknown_field(msg: &str) -> Option<(String, Vec<String>)> {
+    let rest = &msg[msg.find("unknown field `")? + "unknown field `".len()..];
+    let end = rest.find('`')?;
+    let key = rest[..end].to_string();
+    let tail = &rest[end + 1..];
+    let tail = tail.find(" at line ").map_or(tail, |i| &tail[..i]);
+    let expected = tail
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect();
+    Some((key, expected))
+}
+
+/// The first mapping in `doc` holding `key`; if it also holds keys with no
+/// value that are not accepted fields, the "quote it" hint naming them.
+fn null_key_hint(doc: &serde_yaml::Value, key: &str, expected: &[String]) -> Option<String> {
+    fn find<'a>(v: &'a serde_yaml::Value, key: &str) -> Option<&'a serde_yaml::Mapping> {
+        match v {
+            serde_yaml::Value::Mapping(m) => {
+                if m.contains_key(key) {
+                    return Some(m);
+                }
+                m.values().find_map(|v| find(v, key))
             }
-        };
-        if let Ok(f) = serde_yaml::from_str::<ShapesFile>(&s) {
-            merge_named(
-                &mut out.state_shapes,
-                f.state_shapes,
-                "shape",
-                |s| s.name.clone(),
-                errs,
-            );
-        } else if let Ok(f) = serde_yaml::from_str::<TemplatesFile>(&s) {
-            merge_named(
-                &mut out.state_templates,
-                f.state_templates,
-                "template",
-                |t| t.name.clone(),
-                errs,
-            );
-        } else {
-            errs.push(LoadError::Parse {
-                file: file.display().to_string(),
-                msg: "not a state shapes/templates file".into(),
-            });
+            serde_yaml::Value::Sequence(s) => s.iter().find_map(|v| find(v, key)),
+            _ => None,
         }
     }
+    let map = find(doc, key)?;
+    let stray: Vec<&str> = map
+        .iter()
+        .filter(|(_, v)| v.is_null())
+        .filter_map(|(k, _)| k.as_str())
+        .filter(|k| !expected.iter().any(|e| e == k))
+        .collect();
+    if stray.is_empty() {
+        return None;
+    }
+    let named = stray
+        .iter()
+        .map(|k| format!("`{k}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let fix = match map.get("description").and_then(|d| d.as_str()) {
+        Some(desc) => format!(
+            "quote the description: `description: \"{desc}, {}\"`",
+            stray.join(", ")
+        ),
+        None => "quote the value that contains the comma".to_string(),
+    };
+    Some(format!(
+        "{named} has no value — in a flow map `{{ … }}` an unquoted value ends at the \
+         first comma, so the rest became a key; {fix}"
+    ))
+}
+
+/// `state/` holds `stateShapes:` and/or `stateTemplates:` files.
+fn read_state(path: &Path, out: &mut LoadedPlugin, errs: &mut Vec<LoadError>) {
+    read_kind::<StateFile, _>(path, errs, |f, file, e| {
+        if f.state_shapes.is_none() && f.state_templates.is_none() {
+            e.push(LoadError::Parse {
+                file: file.display().to_string(),
+                msg: "not a state file: declare `stateShapes:` and/or `stateTemplates:`".into(),
+            });
+        }
+        merge_named(
+            &mut out.state_shapes,
+            f.state_shapes.unwrap_or_default(),
+            "shape",
+            |s| s.name.clone(),
+            e,
+        );
+        merge_named(
+            &mut out.state_templates,
+            f.state_templates.unwrap_or_default(),
+            "template",
+            |t| t.name.clone(),
+            e,
+        );
+    })
 }
 
 fn read_enums(
@@ -553,34 +652,16 @@ fn read_enums(
     dst: &mut BTreeMap<String, crate::snapshot::Domain>,
     errs: &mut Vec<LoadError>,
 ) {
-    for file in yaml_files(path, errs) {
-        let s = match std::fs::read_to_string(&file) {
-            Ok(s) => s,
-            Err(e) => {
-                errs.push(LoadError::Io {
-                    path: file.display().to_string(),
-                    msg: e.to_string(),
+    read_kind::<EnumsFile, _>(path, errs, |f, _file, e| {
+        for (k, v) in f.enums {
+            if dst.insert(k.clone(), v.into_domain()).is_some() {
+                e.push(LoadError::DuplicateId {
+                    kind: "enum".into(),
+                    id: k,
                 });
-                continue;
             }
-        };
-        match serde_yaml::from_str::<EnumsFile>(&s) {
-            Ok(f) => {
-                for (k, v) in f.enums {
-                    if dst.insert(k.clone(), v.into_domain()).is_some() {
-                        errs.push(LoadError::DuplicateId {
-                            kind: "enum".into(),
-                            id: k,
-                        });
-                    }
-                }
-            }
-            Err(e) => errs.push(LoadError::Parse {
-                file: file.display().to_string(),
-                msg: e.to_string(),
-            }),
         }
-    }
+    })
 }
 
 /// Every `*.yaml`/`*.yml` under `path` (a dir), sorted byte-wise; or `[path]`

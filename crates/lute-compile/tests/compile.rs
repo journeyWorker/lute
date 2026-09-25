@@ -611,6 +611,59 @@ defs:
     );
 }
 
+/// dsl 0.24.0 §4: a format hint rides the placeholder as `format`; `text`
+/// keeps the marker verbatim, hint included. A placeholder without one has
+/// no `format` key (the test above).
+#[test]
+fn a_format_hint_rides_the_placeholder() {
+    const DOC: &str = r#"---
+kind: scene
+character: marina
+season: 1
+episode: 2
+state:
+  user.deaths: { type: number, default: 0 }
+defs:
+  next: { type: number, cel: "user.deaths + 1" }
+---
+
+## Shot 1.
+
+@marina{code="0010"}: Your {{user.deaths:ordinal}} death; the {{@next:ordinal}} waits. {{user.deaths}}
+"#;
+    let artifact = compile(&input(DOC)).expect("clean compile");
+    let line = artifact
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::Line(l) if l.speaker == "marina" => Some(l),
+            _ => None,
+        })
+        .expect("marina line");
+    assert_eq!(
+        line.text,
+        "Your {{user.deaths:ordinal}} death; the {{@next:ordinal}} waits. {{user.deaths}}"
+    );
+    let json = serde_json::to_value(line).unwrap();
+    assert_eq!(
+        json["placeholders"],
+        serde_json::json!([
+            { "kind": "path", "path": "user.deaths", "format": "ordinal" },
+            {
+                "kind": "ref",
+                "ref": "@next",
+                "expr": {
+                    "raw": "(user.deaths + 1)",
+                    "expr": { "op": "+", "l": { "path": "user.deaths" }, "r": { "lit": 1.0 } }
+                },
+                "format": "ordinal"
+            },
+            { "kind": "path", "path": "user.deaths" }
+        ]),
+        "got {json}"
+    );
+}
+
 /// A content line with NO interps omits `placeholders` entirely (skip-if-empty)
 /// — byte-stability for the existing goldens.
 #[test]
@@ -1107,6 +1160,8 @@ fn hub_choice_use_expands_component_records_with_source_stamp() {
         "greet".to_string(),
         lute_check::ComponentDef {
             params: Vec::new(),
+            speakers: Vec::new(),
+            effects: false,
             body: comp_body,
             src: std::path::PathBuf::from("test://greet"),
         },

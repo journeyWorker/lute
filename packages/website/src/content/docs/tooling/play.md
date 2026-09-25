@@ -207,7 +207,7 @@ A play script is a YAML mapping. `steps` is required; every other top-level key 
 | `expect` | Assertions about the end of the play — see [Expectations](#expectations). |
 | `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--explain`](#derivation-and---explain). |
 
-Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, and an [`expect:`](#expectations); an `end` step takes only a `label`. A tour of every shape, against the tower:
+Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, and an [`expect:`](#expectations); an `end` step takes only a `label`. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)). A tour of every shape, against the tower:
 
 ```yaml
 state: { user.runs: 2 }                   # path -> scalar literal, over the declared defaults
@@ -388,6 +388,29 @@ steps:
 In `--json` the step is `{ "step": 2, "end": true, … }`, `endReason` is the text after `── end:`, and `skipped` lists the steps that did not play (`[{ "step": 3, "label": "never reached" }]`). Only `true` is accepted — `end: false` is a usage error (exit 2), and so is `repeat` or `expect` beside `end`: put the expectation on the step before it, or at the top level, where it still judges the end of the play.
 
 A `::end` in content does **not** end the playthrough. It ends only the presentation it runs in — or, in a quest's handler, that quest document's advance — and the play goes on with the next step; see [What each step does](#what-each-step-does). Before 0.23.1 a scene's `::end` stopped the whole play; a script that relied on that adds `- end: true` after the step whose scene ends.
+
+### Advancing the clock
+
+When a schema declares a `clock:` (dsl 0.24.0 §1), `advance: slot`, `advance: <n>` (that many slots), or `advance: day` (the first slot of the next day) moves it forward in one step. The step writes the clock's `day` and `slot` paths — wrapping past the last slot into the next day — settles every quest (a `by` deadline the new time passes fails here), and then raises the clock's `raise` occasion, when it declares one, exactly as an `occasion:` step would. So the pair
+
+```yaml
+  - engine: { state: { run.slot: night } }
+  - occasion: slotStart
+```
+
+is one `- advance: slot` (from the afternoon). An advance step takes the raised occasion's `pick:` and `choose:`, and its `expect:` may judge the selection (`winner`, `offered`, `presented`); on a clock without `raise:` those are a usage error, since nothing is raised. The transcript prints the move, then the raise under the same step number:
+
+```
+── step 3 · advance slot: day 1 (Mon) afternoon → day 1 (Mon) night ──────────────
+  set run.slot = "night"
+── step 3 · slotStart (select: sequence) ──────────────
+  ✓ routine.night [scene, priority 5]
+  → routine.night
+```
+
+The clock only moves forward: an `engine:` step that moves `clock.index` backward is a usage error (exit 2) naming both positions; a `newRun` resets the clock with the rest of the run tier. `advance:` without a declared clock, or `advance: 0`, is a usage error too.
+
+`include: <file>` (a step whose only key is `include`) splices another file's steps in its place: the file is a list of steps, or a mapping whose only key is `steps:`. The path resolves against the including file, includes may nest, and including a file already being included is a usage error. Steps are numbered after the splice, so a week of routine lives in one file that several routes share.
 
 ### Labels and repetition
 
@@ -694,7 +717,8 @@ A `select: sequence` step uses the same two keys: `presented` is the first beat 
 
 Two objective attributes (dsl 0.23.0) change **when** an objective is judged — the language side is in [Quests & scenes](/language/quests-and-scenes/#deadlines):
 
-- `by="<condition>"` — a deadline. While the objective is not done, the first time `by` holds the objective **fails** and is never judged again. A failed required objective fails its quest: `failed` rewards, the `questFailed` handlers, and the cascade to a parent quest. `done` is judged before `by`, so an objective done at the moment its deadline passes does not fail. On an objective without `on=`, `by` is judged at every settle — after a presentation, an `engine:` write, a `newRun`. On an `on=` objective it is judged only when that objective is — when its occasion is raised (for its `target`, when it has one), right after its `done` — so between raises its deadline waits.
+- `by="<condition>"` — a deadline. While the objective is not done, the first time `by` holds the objective **fails** and is never judged again. A failed required objective fails its quest: `failed` rewards, the `questFailed` handlers, and the cascade to a parent quest. `done` is judged before `by`, so an objective done at the moment its deadline passes does not fail. `by` is judged at every settle — after a presentation, an `engine:` write, an `advance:`, a `newRun` — on every objective, `on=` or not (dsl 0.24.0 §2.1): a deadline is a moment, so a player who never raises the objective's occasion still misses it.
+- `until="<condition>"`, beside `on=` — the place-bound deadline (0.23.1's rule for an `on=` objective's `by`): judged only when the objective is — when its occasion is raised (for its `target`, when it has one), right after its `done` — so between raises it waits. It prints `failed (until)`.
 - `target="<target>"`, beside `on=` — the objective is judged only at an occasion step raised **for that target**. An occasion step with another target, or none, leaves it alone.
 
 In the [`also` example](#composing-occasions) above, the collar objective completes in the settle after step 3, when the engine asserts the kill. Step 4 raises `talk` for Maud, so the report objective (`on="talk" target="npc.oskar"`) is not judged; step 5 raises it for Oskar, and the quest completes. Without the kill, the climb passes the deadline:
@@ -723,13 +747,13 @@ steps:
 ── step 2 (the climber passes floor four) · engine ──────────────
   set run.floor = 4
   houndHunt.collar failed (by)
-  quest houndHunt -> failed
+  quest houndHunt -> failed (by)
 @oskar: Floor four already? Then it's gone to ground.
 ── end: complete (2 steps) ──────────────
 ── expect: every expectation held ──────────────
 ```
 
-`houndHunt.collar failed (by)` is the deadline (`--json`: an `objective` record with `"failed": true`), and the required objective fails the quest, whose `questFailed` handler plays; the step's own `expect:` checks the status right after that settle. A failure is lifecycle state, not a state path; a `newRun` clears it for a `tier="run"` quest.
+`houndHunt.collar failed (by)` is the deadline (`--json`: an `objective` record with `"failed": true, "failedBy": "by"`), and the required objective fails the quest — `-> failed (by)` names its `failedBy` — whose `questFailed` handler plays; the step's own `expect:` checks the status right after that settle. The failure is readable (`quest.houndHunt.objectives.collar.failed`, `quest.houndHunt.failedBy`); a `newRun` clears it for a `tier="run"` quest.
 
 **Rewards that credit state.** The tower's `EMBERS` reward kind declares [`credits: user.embers`](/plugins/manifests/#rewards-that-credit-state), so when step 5 above grants the quest's reward, the scalar amount is added to that path — `grant houndHunt EMBERS 50 (credits user.embers = 50)`, and the end-of-play `state: { user.embers: 50 }` holds. A whole number prints without a decimal point. In `--json`, the `grant` record carries `"credited": { "path": "user.embers", "value": 50 }`. A range amount is the engine's roll and credits nothing here, and a `::set` of the same path in one of the quest's own `<on>` or objective bodies would pay twice (`W-REWARD-DOUBLE-CREDIT`).
 
@@ -850,7 +874,8 @@ The explanation is printed before the `── expect:` block, and `--json` carri
 The script is rejected before anything plays — a **usage error, exit 2**, naming the step — when:
 
 - it is unreadable or malformed YAML, has an unknown top-level key, or `steps` is missing or empty;
-- a step names no action or more than one, has an unknown key, carries `target` / `pick` / `choose` on a step that is not an `occasion`, carries an occasion-only `expect:` key (`winner`, `offered`, `notOffered`, `presented`) on one, or has a `repeat` that is not a whole number ≥ 1;
+- a step names no action or more than one, has an unknown key, carries `target` on a step that is not an `occasion` or `pick` / `choose` on one that is neither an `occasion` nor an `advance`, carries an occasion-only `expect:` key (`winner`, `offered`, `notOffered`, `presented`) on one, or has a `repeat` that is not a whole number ≥ 1;
+- an `advance` is not `slot`, `day`, or a whole number ≥ 1; the project declares no clock; or it carries `pick` / `choose` / a selection `expect:` while the clock declares no `raise:`; an `engine:` step moves the clock backward; an `include:` names an unreadable file, one of the wrong shape, or a cycle;
 - an `end` step is anything but `end: true`, or carries `repeat` or `expect`;
 - an occasion step names an occasion no resolved plugin declares (when some plugin declares occasions) or, in a shape-only project, one that neither a beat answers nor an `<objective on>` judges; raises a targeted occasion without `target`, or an untargeted one with it; names a target outside the occasion's domain; carries `pick` on a `select: first` or `select: sequence` occasion; lacks it on a `select: all` one; or picks a beat that does not answer that occasion;
 - an `event:` names no declared world event, or a quest lifecycle event;
@@ -869,8 +894,8 @@ An occasion step:
 3. **Order** — eligible beats by priority descending, then project order.
 4. **Select** — the occasion's `select` comes from the resolved plugins' `occasions` export (an undeclared occasion is `first`). `first`: the first eligible beat that is not `also` wins, and every eligible `also` beat follows it (or plays alone when nothing else is eligible); none eligible, and the occasion passes with no story. `all`: the step's `pick` is presented; a pick that is not eligible at that moment is an **error (exit 1)**; `pick: none` presents nothing. `sequence`: every eligible beat, in order.
 5. **Present** — a scene beat runs through the reference runner (`lute run`'s evaluator): `scene.*` resets to the scene's own defaults, `run.*` / `user.*` / `app.*` / `quest.*` state and facts carry over, and the script's `choose:` — with the step's own `choose:` over it — decides branches and hubs; an unscripted decision halts **incomplete (exit 3)**. A bundle beat runs the same way, from its `beat` record in the lore artifact. An entry beat is presented by the lore-entry rules: its effects apply on the first read only, then `entry.<id>.read` and `entry.<id>.everRead` become true. A `::end` ends only the presentation it runs in: the quest advance (6), the step's other presentations (`also` beats, the rest of a `sequence`), and the occasion's objective judging (7) still run, and the playthrough goes on with the next step — only an [`end: true` step](#ending-the-playthrough) ends it. A scene's `::accept{quest="<id>"}` prints `quest <id> accepted`; the quest activates at the advance right after the presentation. A scene or bundle beat counts as visited — for `after:` and for `visited('<id>')` in any condition — once its presentation finished. When a step presents several beats (`sequence`, `also`), (5) and (6) run for each in turn.
-6. **Quests** — after every presentation, every quest lifecycle advances exactly as `lute run` advances a quest artifact: activation (`start`, or — for a quest with no `start` — an accept from a presented scene's `::accept`; a start-less quest never activates on its own), objective completion (monotone; objective bodies play once), then the `by` deadline of each open objective without `on=` (a first true fails it, `failed (by)`), `fail` before completion, `<on>` handlers, and `<reward>` grants — adding a scalar amount to the reward kind's `credits:` path. A `::end` in a handler or objective body ends that quest document's advance, not the step. So a later `when` over `quest.*`, or an `after: completed(…)` / `active(…)`, sees real progress.
-7. **Raise** — then the step's occasion is raised to the quests. When a world event of the same name is declared, every **active** quest's `<on event="<occasion>">` handlers run first. Then the occasion judges the `<objective on="<occasion>">` objectives of every active quest (dsl 0.21.0 §7a.2) — an objective that also carries `target=` only when the step's `target` equals it (dsl 0.23.0) — each one's `done`, then its `by`; and the lifecycles settle again, so a quest can complete (or fail) at exactly that step. An `on` objective is judged at no other time. An occasion that only objectives judge is a legal step even in a shape-only project; with no beat to present it prints `(no candidates)` and passes, then judges.
+6. **Quests** — after every presentation, every quest lifecycle advances exactly as `lute run` advances a quest artifact: activation (`start`, or — for a quest with no `start` — an accept from a presented scene's `::accept`; a start-less quest never activates on its own), objective completion (monotone; objective bodies play once), then the `by` deadline of every open objective (a first true fails it, `failed (by)`), `fail` before completion, `<on>` handlers, and `<reward>` grants — adding a scalar amount to the reward kind's `credits:` path. A `::end` in a handler or objective body ends that quest document's advance, not the step. So a later `when` over `quest.*`, or an `after: completed(…)` / `active(…)`, sees real progress.
+7. **Raise** — then the step's occasion is raised to the quests. When a world event of the same name is declared, every **active** quest's `<on event="<occasion>">` handlers run first. Then the occasion judges the `<objective on="<occasion>">` objectives of every active quest (dsl 0.21.0 §7a.2) — an objective that also carries `target=` only when the step's `target` equals it (dsl 0.23.0) — each one's `done`, then its `until`; and the lifecycles settle again, so a quest can complete (or fail) at exactly that step. An `on` objective is judged at no other time. An occasion that only objectives judge is a legal step even in a shape-only project; with no beat to present it prints `(no candidates)` and passes, then judges.
 
 The lifecycles also settle once before step 1 (with the save's quest statuses and objective seeds already in place), after every `engine:` step, and after every `newRun` (reset, then seed, then settle). An `event:` step raises its event once for every quest document, then settles. An `end` step does nothing but end the playthrough.
 
@@ -999,7 +1024,7 @@ type PlayTranscript = {
   explain?: Explanation[];                 // one per `--explain` atom
 };
 
-type Step = (OccasionStep | EngineStep | NewRunStep | EventStep | EndStep) & {
+type Step = (OccasionStep | EngineStep | NewRunStep | EventStep | AdvanceStep | EndStep) & {
   step: number;                            // the script step (shared by its repetitions)
   label?: string;
   iteration?: number;                      // 1-based repetition, when `repeat` > 1
@@ -1022,6 +1047,7 @@ type OccasionStep = {
     also?: true;                           // an `also` beat
     read?: true;                           // an entry already read in this run
   }[];
+  judgedBefore?: QuestGroup[];             // a `judge: before` occasion's quest transitions, made before the candidates were decided
   winner: string | null;
   presented?: Presentation;                // the winner, else the first `also` beat; a sequence's first beat
   then?: Presentation[];                   // the beats presented after it, in order
@@ -1041,9 +1067,21 @@ type NewRunStep = {
   newRun: true;
   seed: WriteRecord[];
   resetQuests?: Record<string, string>;    // run-tier quest -> the status it had before the reset
+  accepted?: string[];                     // the `::accept{… at="nextRun"}` quests applied at this run start
 };
 type EventStep = { event: string };
 type EndStep = { end: true };
+// dsl 0.24.0 §1: the occasion the clock raised, when it declares `raise:`,
+// is carried as the OccasionStep fields beside `advance`.
+type AdvanceStep = {
+  advance: {
+    by: string;                            // "slot", "day", or the slot count
+    from: string;                          // "day 1 (Mon) afternoon"
+    to: string;
+    writes: WriteRecord[];                 // the day/slot paths it moved
+    quests: QuestGroup[];                  // the settle right after the move
+  };
+} & Partial<OccasionStep>;
 
 type WriteRecord =
   | { kind: "set"; path: string; value: unknown }

@@ -257,6 +257,11 @@ pub fn lower_directive(
                 .accept_quest()
                 .map(|(q, _)| q.to_string())
                 .unwrap_or_default(),
+            // dsl 0.24.0 §2: the checker admits only `at="nextRun"`.
+            applies: dir
+                .accept_at()
+                .filter(|(at, _)| *at == "nextRun")
+                .map(|_| crate::ir::AcceptAt::NextRun),
             stamp,
         }),
         // dsl 0.12.0: `::mark{id}` is a pure position anchor — emits NO
@@ -266,6 +271,12 @@ pub fn lower_directive(
         // generic `emit_primitive` dispatch (which calls `lower_directive`
         // for EVERY `Node::Directive`, mark included) stays total.
         lute_manifest::core::MARK_DIRECTIVE => return None,
+        // dsl 0.24.0 §4: `::clear` emits no record of its own. Its exits
+        // depend on who is on stage, which only the walk's threaded
+        // `StageState` knows: the reducer (`lute_check::inject`'s
+        // `stage-clear` rule) injects one `sprite` exit per character, and
+        // `stage::emit_primitive` emits those in its place.
+        lute_manifest::core::CLEAR_DIRECTIVE => return None,
         // dsl 0.12.0: `::next{to [when]}` — an unconditional forward jump.
         // A GUARDED `::next` is desugared by
         // `normalize::synth_when_next_match` into a canonical one-arm
@@ -289,8 +300,8 @@ pub fn lower_directive(
             // Declarative lowering (`docs/plugin-system.md`): a directive whose
             // manifest decl carries `lower: { record, fields }` becomes that
             // CORE staging command, not the `kind: "plugin"` passthrough.
-            // `lower: { kind: builtin, … }` — and an unknown/undeclared tag —
-            // fall through untouched.
+            // `lower: { kind: builtin, … }`, an absent `lower:` — and an
+            // unknown/undeclared tag — fall through untouched.
             if let Some(cmd) = decl.and_then(|d| match &d.lower {
                 Lowering::Record { record, fields } => {
                     // §4.4 blocking is a property of the RECORD KIND the engine
@@ -307,7 +318,7 @@ pub fn lower_directive(
                     }
                     lower_record(record, fields, dir, &stamp)
                 }
-                Lowering::Builtin { .. } => None,
+                Lowering::Builtin { .. } | Lowering::Passthrough => None,
             }) {
                 return Some(cmd);
             }
@@ -350,7 +361,7 @@ pub fn lower_directive(
 /// The directive as written: `::tag{key="value" key=@ref flag}` in source
 /// attribute order (a component's arguments already substituted); the
 /// compiler's own `__`-prefixed bookkeeping attrs are not source.
-fn authored_directive(dir: &Directive) -> String {
+pub(crate) fn authored_directive(dir: &Directive) -> String {
     let attrs: Vec<String> = dir
         .attrs
         .iter()
@@ -677,7 +688,7 @@ fn attr_json_typed(attr: &Attr, ty: Option<&Type>) -> serde_json::Value {
 /// replaced by the record's attr value (e.g. `resultKey="debut"` → `debut`).
 /// The source is the bridge-result key, the `op`/`by` increment (integral `by`),
 /// or a literal — all integral-collapsed via `literal_json` (no duplication).
-fn resolve_effect(w: &WriteDecl, dir: &Directive) -> Effect {
+pub fn resolve_effect(w: &WriteDecl, dir: &Directive) -> Effect {
     let mut segments = vec![w.scope.clone()];
     for seg in &w.path {
         match seg {

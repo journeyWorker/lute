@@ -1,9 +1,11 @@
 //! `lute init` / `lute new` — project and document scaffolding.
 //!
 //! Every generated artifact is designed to pass the checker CLEAN: `lute init`
-//! output survives `lute check-project <dir>` (and the `beats` template's
-//! `lute test` and `lute play` as well), and `lute new` output survives
-//! `lute check-project` of the project it lands in. Frontmatter stamps the
+//! output survives `lute check-project <dir>` (and the `beats` and
+//! `investigation` templates' `lute test` and `lute play` as well), and `lute
+//! new` output survives `lute check-project` of the project it lands in
+//! (modulo the advisory an accept-driven `lute new quest` stub carries until
+//! a scene `::accept`s it). Frontmatter stamps the
 //! current [`lute_check::LUTE_LANG_VERSION`] unless the manifest's
 //! `defaults:` already supplies `luteVersion:`, so no `W-LUTE-VERSION-STALE`
 //! fires, and every read state path carries a `default:` so definite
@@ -22,7 +24,7 @@ struct File {
     content: String,
 }
 
-/// The `lute.project.yaml` of the `minimal` and `investigation` templates — a
+/// The `lute.project.yaml` of the `minimal` template — a
 /// core-only profile (no plugins), so each document resolves against the
 /// built-in `lute.core` snapshot. The default `voiceKey` already carries
 /// `{prefix}` (dsl 0.22.0 §11), so no `identity:` block is needed.
@@ -146,142 +148,335 @@ state:
     ]
 }
 
-/// The `investigation` template: a trimmed whodunit — two sequenced scenes, a
-/// quest, and a relational fact world (entities/relations/facts/rules). A
-/// structural echo of `docs/examples/investigation/`, kept small.
+/// The `investigation` template: a small whodunit on the `beats` skeleton
+/// (manifest `defaults:`, an occasions plugin, beats with `id:`, lore, a
+/// quest, `plays/` and `tests/`). The engine raises `arrive`, the targeted
+/// `examine` (evidence, `item.<member>`) and `interview` (suspects,
+/// `npc.<member>`), and `accuse`. Evidence lore `::assert`s base facts; the
+/// schema's rules DERIVE the conclusions, with stratified negation (a
+/// suspect is cleared by an alibi unless evidence contradicts it); the
+/// accusation's choices are guarded by those derived facts, and the quest
+/// is accept-driven. `check-project`, `test` and `play` pass as scaffolded.
 fn investigation_files() -> Vec<File> {
+    let lang = lute_check::LUTE_LANG_VERSION;
     vec![
         File {
             rel: "lute.project.yaml",
-            content: project_manifest(),
+            content: format!(
+                "\
+# Lute project manifest. The `case` profile activates this project's own
+# occasions plugin (plugins/case.occasions): the moments the engine raises
+# while the detective works, which beats and lore entries answer (dsl 0.21.0).
+pluginsDir: plugins/
+defaultProfile: case
+profiles:
+  case:
+    plugins: {{ case.occasions: true }}
+# Frontmatter every document inherits (dsl 0.10.0 §6): no document repeats
+# its language version or its schema imports.
+defaults:
+  luteVersion: \"{lang}\"
+  uses: [world.schema.yaml, vocabulary.schema.yaml]
+"
+            ),
+        },
+        File {
+            rel: "plugins/case.occasions/plugin.yaml",
+            content: "\
+# A capability plugin that only declares occasions. Add more files under
+# occasions/ as your engine raises more moments.
+id: case.occasions
+version: 0.1.0
+kind: capability
+depends: [ { id: lute.core, range: \"^0.0.1\" } ]
+exports:
+  occasions: occasions/
+"
+            .to_string(),
+        },
+        File {
+            rel: "plugins/case.occasions/occasions/case.yaml",
+            content: "\
+# The moments your engine raises (dsl 0.21.0 §2). A targeted occasion is
+# raised FOR something: `examine`'s targets are `item.<member>` of the
+# `evidence` entity kind, `interview`'s are `npc.<member>` of `suspect`
+# (world.schema.yaml, dsl 0.22.0 §8).
+occasions:
+  arrive:    { select: first, description: The detective arrives at the scene of the crime }
+  examine:   { select: first, target: { prefix: item, entity: evidence }, description: The detective studies a piece of evidence (item.<name>) }
+  interview: { select: first, target: { prefix: npc, entity: suspect }, description: The detective questions a suspect (npc.<name>) }
+  accuse:    { select: first, description: The detective is ready to name the killer }
+"
+            .to_string(),
         },
         File {
             rel: "world.schema.yaml",
             content: "\
-# Investigation world schema (dsl §9 scalars + 0.3.0 §3/§4 relational
-# vocabulary). Imported by every scene and the quest via `uses:`.
-
-# --- Scalar run state (each path has a `default:`) ------------------------
+# The case file, imported by every document through the manifest's
+# `defaults: uses:`. What the detective has ON RECORD is base facts, asserted
+# by the lore and scenes that find it; what the detective CONCLUDES is
+# derived by the rules below and never asserted by hand.
 state:
-  run.cluesLogged:  { type: number, default: 0 }
-  run.suspectFocus: { type: { enum: [none, blake, cass] }, default: none }
+  run.accused: { type: { enum: [nobody, blake, cass] }, default: nobody }
 
-# --- Relational fact world (0.3.0 §3) ------------------------------------
 entities:
-  suspect: { members: [blake, cass] }
-  clue:    { members: [ledger, knife] }
+  suspect:  { members: [blake, cass] }
+  evidence: { members: [ledger, knife] }
 
 relations:
-  # asserted by the crime scene as the detective logs evidence.
-  foundClue:  { args: [clue], tier: run }
-  # the static case map — which clue points at which suspect.
-  implicates: { args: [clue, suspect], tier: run, key: [0] }
-  # DERIVED: a suspect the found clues implicate (see `rules:`).
-  points:     { args: [suspect], derive: true }
+  # --- base: what is on record (asserted by lore/ and scenes/) ----------
+  implicates:  { args: [evidence, suspect], tier: run }
+  alibi:       { args: [suspect], tier: run }
+  contradicts: { args: [evidence, suspect], tier: run }
+  # --- derived: what the detective can conclude (see `rules:`) ---------
+  suspected: { args: [suspect], derive: true }
+  broken:    { args: [suspect], derive: true }
+  cleared:   { args: [suspect], derive: true }
+  culprit:   { args: [suspect], derive: true }
 
-# Seed facts (0.3.0 §4): the fixed evidence-to-suspect map.
-facts:
-  - \"implicates(ledger, blake)\"
-  - \"implicates(knife, cass)\"
-
-# Datalog derivation (0.3.0 §7): a suspect is `points`-ed at once a clue that
-# implicates them has been found.
+# Datalog (dsl 0.3.0 §7) with stratified negation: `not` reads a relation
+# that is fully derived first. A suspect is cleared by an alibi UNLESS the
+# evidence contradicts it, and is the culprit if implicated and not cleared.
 rules:
-  - \"points(S) :- foundClue(C), implicates(C, S)\"
+  - \"suspected(S) :- implicates(E, S)\"
+  - \"broken(S) :- contradicts(E, S)\"
+  - \"cleared(S) :- alibi(S), not broken(S)\"
+  - \"culprit(S) :- suspected(S), not cleared(S)\"
+
+cast:
+  detective: { name: The Detective }
+  blake:     { name: Arthur Blake }
+  cass:      { name: Cass Moreau }
 "
-            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
+            .to_string(),
         },
         File {
             rel: "vocabulary.schema.yaml",
             content: vocabulary_schema(),
         },
         File {
-            rel: "scenes/crime-scene.lute",
+            rel: "scenes/case/arrival.lute",
             content: "\
 ---
 kind: scene
-luteVersion: \"{lang}\"
-character: detective
-season: 1
-episode: 1
-title: The Crime Scene
-# Graph ROOT: no `after:`, so this scene is an unconditional entry point.
-uses:
-  - ../world.schema.yaml
-  - ../vocabulary.schema.yaml
+id: case.arrival
+title: The study
+# A beat: answers `arrive`, once per run.
+on: arrive
+once: run
 ---
 
-## The Study
+## The study
 
-@narrator: The victim's study, untouched since the coroner left.
-::assert{ foundClue(ledger) }
-::set{ run.cluesLogged += 1 }
-@detective{emotion=\"surprised\"}: A ledger, its balances scratched out in red ink.
-@detective{mono}: One name is starting to surface.
+::bg{location=\"study\" time=\"night\"}
+@narrator: Lord Ashby lies across his own desk. The ledger is open; a kitchen knife lies on the rug.
+@detective{emotion=\"neutral\"}: Two people had a reason tonight. Let's find out which one had the chance.
+::accept{quest=\"solveCase\"}
 "
-            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
+            .to_string(),
         },
         File {
-            rel: "scenes/interview.lute",
+            rel: "scenes/interview/blake.lute",
             content: "\
 ---
 kind: scene
-luteVersion: \"{lang}\"
-character: detective
-season: 1
-episode: 2
-title: The Interview
-# Sequenced AFTER the crime scene (canonical key `detective.s01ep01`).
-after: 'visited(\"detective.s01ep01\")'
-uses:
-  - ../world.schema.yaml
-  - ../vocabulary.schema.yaml
+id: blake.statement
+title: Blake's statement
+on: interview
+target: npc.blake
+once: run
+priority: 10
 ---
 
-## The Interview Room
+## Blake
 
-@narrator: Three chairs, one table, and the smell of cold coffee.
-
-<hub id=\"interrogate\">
-  <choice id=\"pressLedger\" label=\"Press them on the ledger\">
-    @detective: These numbers were bled dry. Explain them.
-    ::set{ run.suspectFocus = \"blake\" }
-  </choice>
-  <choice id=\"leave\" label=\"End the interview\" exit>
-    @detective: We're done here. For now.
-  </choice>
-</hub>
+@blake{emotion=\"angry\"}: I was at my club until one. Ask anyone there.
+::assert{ alibi(blake) }
 "
-            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
+            .to_string(),
         },
         File {
-            rel: "quests/identify-killer.lute",
+            rel: "scenes/interview/cass.lute",
+            content: "\
+---
+kind: scene
+id: cass.statement
+title: Cass's statement
+on: interview
+target: npc.cass
+once: run
+priority: 10
+---
+
+## Cass
+
+@cass{emotion=\"sad\"}: I was asleep. Cook brought me tea at eleven and saw me in bed.
+::assert{ alibi(cass) }
+"
+            .to_string(),
+        },
+        File {
+            rel: "scenes/interview/again.lute",
+            content: "\
+---
+kind: scene
+id: interview.again
+title: Nothing more to say
+# The fallback for `interview`: no `target:`, so it answers every suspect;
+# lowest priority and repeatable.
+on: interview
+once: false
+---
+
+## Again
+
+@narrator: They have told you all they intend to.
+"
+            .to_string(),
+        },
+        File {
+            rel: "scenes/accusation.lute",
+            content: "\
+---
+kind: scene
+id: case.accusation
+title: The accusation
+on: accuse
+once: run
+---
+
+## The drawing room
+
+@detective: I know who killed Lord Ashby.
+
+// Each accusation is offered only when the case file supports it: `culprit`
+// is derived, so what the detective has found decides what can be said.
+<branch id=\"accusation\" prompt=\"Who do you accuse?\">
+  <choice id=\"blake\" label=\"Arthur Blake\" when=\"holds(culprit(blake))\">
+    @detective: You were not at your club, Blake. The ledger was written in this room at eleven, in your hand.
+    ::set{ run.accused = \"blake\" }
+  </choice>
+  <choice id=\"cass\" label=\"Cass Moreau\" when=\"holds(culprit(cass))\">
+    @detective: It was your knife, Cass.
+    ::set{ run.accused = \"cass\" }
+  </choice>
+  <choice id=\"wait\" label=\"Not yet\">
+    @detective: Not yet. Something doesn't fit.
+  </choice>
+</branch>
+"
+            .to_string(),
+        },
+        File {
+            rel: "quests/case.lute",
             content: "\
 ---
 kind: quest
-luteVersion: \"{lang}\"
-uses: ../world.schema.yaml
-title: Identify the Killer
+id: quest.case
+title: Who killed Lord Ashby?
 ---
 
-<quest id=\"identifyKiller\" title=\"Identify the Killer\" start=\"true\">
-  <objective id=\"gatherEvidence\" title=\"Log at least one clue\" done=\"run.cluesLogged >= 1\"/>
-  <objective id=\"nameSuspect\" title=\"Focus on a suspect\" done=\"run.suspectFocus != 'none'\"/>
+// No `start`: the quest begins when a scene runs ::accept{quest=\"solveCase\"}.
+<quest id=\"solveCase\" title=\"Who killed Lord Ashby?\">
+  <objective id=\"evidence\" title=\"Examine the evidence\" done=\"count(suspected(_)) >= 2\"/>
+  <objective id=\"statements\" title=\"Hear both suspects\" done=\"holds(alibi(blake)) && holds(alibi(cass))\"/>
+  // `by=` fails the quest once a wrong name is on record.
+  <objective id=\"accuse\" title=\"Name the killer\" done=\"run.accused == 'blake'\" by=\"run.accused != 'nobody'\"/>
+  <on event=\"questComplete\">
+    @narrator: Blake is led away. The ledger goes with him.
+  </on>
+  <on event=\"questFailed\">
+    @narrator: The wrong name is in the papers by morning.
+  </on>
 </quest>
 "
-            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
+            .to_string(),
         },
         File {
-            rel: "mocks/playthrough.yaml",
+            rel: "lore/evidence.lute",
             content: "\
-# Trace mock (dsl 0.4.0 §4.3). `file:` names the document this mock previews,
-# resolved against this file. Preview with:
-#   lute trace scenes/interview.lute --mock mocks/playthrough.yaml
-file: ../scenes/interview.lute
-choose:
-  interrogate: pressLedger
+---
+kind: lore
+id: lore.evidence
+title: The evidence
+---
+
+// Entry beats: lore that answers `examine` at one item. Each ::assert puts
+// a fact on record on the entry's first read only (`entry.<id>.read`).
+<entry id=\"knife\" on=\"examine\" target=\"item.knife\" category=\"evidence\" title=\"The kitchen knife\">
+  @narrator: A kitchen knife from the Moreau household, its handle monogrammed C.M.
+  ::assert{ implicates(knife, cass) }
+</entry>
+
+<entry id=\"ledger\" on=\"examine\" target=\"item.ledger\" category=\"evidence\" title=\"The ledger\">
+  @narrator: The last entry, dated tonight at eleven, is in Blake's hand: a debt to Lord Ashby, struck through.
+  ::assert{ implicates(ledger, blake) }
+  ::assert{ contradicts(ledger, blake) }
+</entry>
 "
-            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
+            .to_string(),
+        },
+        File {
+            rel: "plays/the-case.play.yaml",
+            content: "\
+# The whole case, end to end (dsl 0.22.0):
+#   lute play . --script plays/the-case.play.yaml
+# Each step raises an occasion the way your engine would; `expect:` asserts
+# what happened, and `lute test` runs this script alongside tests/.
+choose:
+  accusation: blake
+steps:
+  - occasion: arrive
+    expect: { winner: case.arrival, quests: { solveCase: active } }
+  - occasion: examine
+    target: item.knife
+    expect: { winner: knife, facts: [\"culprit(cass)\"] }
+  - label: an alibi clears a suspect
+    occasion: interview
+    target: npc.cass
+    expect: { winner: cass.statement, facts: [\"cleared(cass)\"], notFacts: [\"culprit(cass)\"] }
+  - occasion: interview
+    target: npc.blake
+    expect: { winner: blake.statement, facts: [\"cleared(blake)\"] }
+  - label: the ledger breaks Blake's alibi
+    occasion: examine
+    target: item.ledger
+    expect: { winner: ledger, facts: [\"culprit(blake)\"], notFacts: [\"cleared(blake)\"] }
+  - occasion: interview
+    target: npc.blake
+    expect: { winner: interview.again }
+  - occasion: accuse
+    expect: { winner: case.accusation }
+expect:
+  exit: complete
+  quests: { solveCase: complete }
+  state: { run.accused: blake }
+  facts: [\"culprit(blake)\", \"cleared(cass)\"]
+  notFacts: [\"culprit(cass)\"]
+"
+            .to_string(),
+        },
+        File {
+            rel: "tests/accusation.test.yaml",
+            content: "\
+# A scenario test traces one document against mocks and asserts the outcome:
+#   lute test . --project .
+# Cass's alibi stands, so `not cleared(cass)` fails and she cannot be accused;
+# the ledger breaks Blake's, so he can.
+file: ../scenes/accusation.lute
+facts:
+  - \"implicates(knife, cass)\"
+  - \"implicates(ledger, blake)\"
+  - \"alibi(cass)\"
+  - \"alibi(blake)\"
+  - \"contradicts(ledger, blake)\"
+choose: { accusation: blake }
+expect:
+  offered: { accusation: [blake, wait] }
+  facts: [\"culprit(blake)\", \"cleared(cass)\"]
+  state: { run.accused: blake }
+"
+            .to_string(),
         },
         File {
             rel: "README.md",
@@ -609,7 +804,9 @@ expect:
 /// cannot reach a README, so the README must be unable to rot rather than
 /// checked for rot.
 fn readme(template: &str) -> String {
-    let commands = if template == "beats" {
+    // `investigation` is built on the `beats` skeleton, so it shares its
+    // commands; only `minimal` still previews through trace mocks.
+    let commands = if template != "minimal" {
         "\
 # Validate the whole project (recursively):
 lute check-project .
@@ -627,7 +824,8 @@ lute context scenes/<your-scene>.lute --project .
 lute doctor .
 
 # Add more documents (a beat answers an occasion; a targeted one takes
-# `--target <prefix>.<member>`):
+# `--target <prefix>.<member>`). `/` in a name nests it (`talk/<name>` lands
+# in scenes/talk/); `--dir` names the PROJECT, never a subfolder:
 lute new scene <name> --on <occasion> --target <target>
 lute new scene <name>
 lute new quest <name>
@@ -727,12 +925,10 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
     println!();
     println!("Next steps:");
     println!("  lute check-project {d}");
-    if template == "beats" {
+    let play = files.iter().find(|f| f.rel.starts_with("plays/"));
+    if let Some(play) = play {
         println!("  lute test {d} --project {d}");
-        println!(
-            "  lute play {d} --script {}",
-            dir.join("plays/first-day.play.yaml").display()
-        );
+        println!("  lute play {d} --script {}", dir.join(play.rel).display());
         println!("  lute new scene <name> --on <occasion> --dir {d}");
     } else {
         println!("  lute scenario {d}");
@@ -771,11 +967,39 @@ fn to_ident(name: &str, fallback: &str) -> String {
     out
 }
 
-/// Where a `lute new` document lands: the root of the project enclosing the
-/// requested directory (so `lute new` from inside `scenes/` still writes
-/// `<root>/scenes/…`), and the `defaults:` its manifest supplies — a
-/// defaulted key is omitted from the new document's frontmatter (dsl 0.22.0
-/// §13). Outside any project, the requested directory with no defaults.
+/// A `lute new` document id from its name: every `/`- or `.`-separated
+/// segment through [`to_ident`], joined by `.` — so a dotted name keeps its
+/// dots (`isolde.night` → `isolde.night`, `talk/mara-first` →
+/// `talk.maraFirst`), matching the dotted `<group>.<name>` ids the templates
+/// and docs use, while `-` (forbidden in a segment, dsl §9.4) still camels.
+fn to_id(name: &str, fallback: &str) -> String {
+    let segs: Vec<String> = name.split(['/', '.']).map(|seg| to_ident(seg, fallback)).collect();
+    segs.join(".")
+}
+
+/// `path` made absolute against the current directory, with `.`/`..`
+/// resolved lexically (the directory need not exist yet).
+fn absolute(path: &Path) -> PathBuf {
+    let abs = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let mut out = PathBuf::new();
+    for comp in abs.components() {
+        match comp {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Where a `lute new` document lands: the project root `--dir` names, and
+/// the `defaults:` its manifest supplies — a defaulted key is omitted from
+/// the new document's frontmatter (dsl 0.22.0 §13). Outside any project, the
+/// requested directory with no defaults. A directory INSIDE a project that is
+/// not its root is [`Destination::find`]'s `Err`: `--dir` names the project,
+/// and the document would otherwise land somewhere the author did not point.
 struct Destination {
     root: PathBuf,
     defaults: MetaDefaults,
@@ -783,31 +1007,33 @@ struct Destination {
 }
 
 impl Destination {
-    fn find(dir: &Path) -> Self {
-        let mut cur = Some(dir);
-        while let Some(d) = cur {
-            if d.join("lute.project.yaml").is_file() {
-                let defaults = match lute_manifest::project::load_project(d) {
-                    Ok(Some(config)) => config.defaults,
-                    Ok(None) => MetaDefaults::default(),
-                    Err(e) => {
-                        eprintln!("lute new: warning: {e} — writing without its `defaults:`");
-                        MetaDefaults::default()
-                    }
-                };
-                return Destination {
-                    root: d.to_path_buf(),
-                    defaults,
-                    in_project: true,
-                };
-            }
-            cur = d.parent();
+    /// `Err` carries the (absolute) root of the project enclosing `dir` when
+    /// `dir` itself is not that root.
+    fn find(dir: &Path) -> Result<Self, PathBuf> {
+        if dir.join("lute.project.yaml").is_file() {
+            let defaults = match lute_manifest::project::load_project(dir) {
+                Ok(Some(config)) => config.defaults,
+                Ok(None) => MetaDefaults::default(),
+                Err(e) => {
+                    eprintln!("lute new: warning: {e} — writing without its `defaults:`");
+                    MetaDefaults::default()
+                }
+            };
+            return Ok(Destination {
+                root: dir.to_path_buf(),
+                defaults,
+                in_project: true,
+            });
         }
-        Destination {
+        let abs = absolute(dir);
+        if let Some(root) = abs.ancestors().skip(1).find(|d| d.join("lute.project.yaml").is_file()) {
+            return Err(root.to_path_buf());
+        }
+        Ok(Destination {
             root: dir.to_path_buf(),
             defaults: MetaDefaults::default(),
             in_project: false,
-        }
+        })
     }
 
     /// The frontmatter every new document opens with: `kind:`, `id:`, the
@@ -920,16 +1146,15 @@ fn validate_beat(path: &Path, root: &Path, on: &str, target: Option<&str>) -> Re
 /// `lute new scene <name> [--on <occasion> [--target <target>]]`.
 ///
 /// The scene lands at `<root>/scenes/<name>.lute` (`/` in the name nests it)
-/// with `id:` = each path segment of the name as an identifier, joined by `.`
-/// (`talk/mara-first` → `talk.maraFirst`). With `--on` it is a beat
+/// with `id:` = [`to_id`] of the name (`talk/mara-first` → `talk.maraFirst`,
+/// `isolde.night` → `isolde.night`). With `--on` it is a beat
 /// answering that occasion (dsl 0.21.0 §3); the occasion and target are
 /// validated against the project, and the file is removed again when they
 /// do not resolve (exit `2`). Without `--on` it is a linear scene opening on
 /// a `::bg`.
 fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&str>) -> ExitCode {
     let path = dest.root.join("scenes").join(format!("{name}.lute"));
-    let id: Vec<String> = name.split('/').map(|seg| to_ident(seg, "scene")).collect();
-    let id = id.join(".");
+    let id = to_id(name, "scene");
     let title = name.rsplit('/').next().unwrap_or(name);
     let mut content = dest.head("scene", &id, title);
     let body = match on {
@@ -970,19 +1195,33 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
     created(&path, &format!("check it with: lute check {}", path.display()))
 }
 
-/// `lute new quest <name>`.
+/// `lute new quest <name> [--start]`.
 ///
 /// Self-contained: declares its own `run.<ident>Progress` scalar (with a
 /// `default:`, so the objective's `done` read is definitely assigned) and one
-/// objective gated on it. The quest id / state segment is [`to_ident`] of the
-/// name (a valid lower-camel identifier), while the file stem keeps the raw
-/// name. The document id (dsl 0.19.0 §2.1) is `quest.<ident>` — namespaced
-/// so it cannot collide with a scene id or a same-named `lute new lore`
-/// bundle.
-fn new_quest(name: &str, dest: &Destination) -> ExitCode {
+/// objective gated on it. Accept-driven by default — no `start`, so the
+/// quest stays inactive until content runs `::accept{quest="<ident>"}`, the
+/// shape quest-heavy games start from; `--start` scaffolds the auto-starting
+/// `start="true"` form instead. The quest id / state segment is
+/// [`to_ident`] of the name (a single lower-camel identifier, as
+/// `quest.<id>.state` needs), while the file stem keeps the raw name. The
+/// document id (dsl 0.19.0 §2.1) is `quest.` + [`to_id`] of the name —
+/// namespaced so it cannot collide with a scene id or a same-named `lute new
+/// lore` bundle.
+fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
     let path = dest.root.join("quests").join(format!("{name}.lute"));
     let ident = to_ident(name, "quest");
     let progress = format!("run.{ident}Progress");
+    let (lifecycle, start_attr) = if start {
+        ("// `start=\"true\"`: active from the first moment of play.\n", " start=\"true\"")
+    } else {
+        (
+            "// Accept-driven: inactive until a scene or lore entry runs\n\
+             // ::accept{quest=\"IDENT\"} — add that where the player takes the quest on.\n",
+            "",
+        )
+    };
+    let lifecycle = lifecycle.replace("IDENT", &ident);
     let content = format!(
         "{}\
 # Self-contained progress counter — a scene can bump it with
@@ -991,11 +1230,11 @@ state:
   {progress}: {{ type: number, default: 0 }}
 ---
 
-<quest id=\"{ident}\" title=\"{name}\" start=\"true\">
+{lifecycle}<quest id=\"{ident}\" title=\"{name}\"{start_attr}>
   <objective id=\"begin\" title=\"Make progress\" done=\"{progress} >= 1\"/>
 </quest>
 ",
-        dest.head("quest", &format!("quest.{ident}"), name)
+        dest.head("quest", &format!("quest.{}", to_id(name, "quest")), name)
     );
     if let Err(code) = create(&path, &content) {
         return code;
@@ -1008,7 +1247,8 @@ state:
 /// Self-contained: one `<entry>` whose id is [`to_ident`] of the name, attached
 /// to `item.<ident>` as a `note`, with one content line. Entries live under
 /// `lore/`, mirroring `quests/`; the file stem keeps the raw name. The
-/// document id (§2.1) is `lore.<ident>`, namespaced like `lute new quest`'s.
+/// document id (§2.1) is `lore.` + [`to_id`] of the name, namespaced like
+/// `lute new quest`'s.
 fn new_lore(name: &str, dest: &Destination) -> ExitCode {
     let path = dest.root.join("lore").join(format!("{name}.lute"));
     let ident = to_ident(name, "entry");
@@ -1024,7 +1264,7 @@ fn new_lore(name: &str, dest: &Destination) -> ExitCode {
   @narrator: A note about {name}. Replace this with your own text.
 </entry>
 ",
-        dest.head("lore", &format!("lore.{ident}"), name)
+        dest.head("lore", &format!("lore.{}", to_id(name, "entry")), name)
     );
     if let Err(code) = create(&path, &content) {
         return code;
@@ -1069,32 +1309,83 @@ state:
     created(&path, &hint)
 }
 
+/// Where `--dir` should have pointed for a directory inside a project that is
+/// not its root, spelled as the command to run instead: the subdirectory
+/// relative to the root (minus the kind's own folder) moves into `<name>`,
+/// and `--dir <root>` is added unless the root is the current directory.
+fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path) -> String {
+    let rel = absolute(dir);
+    let rel = rel.strip_prefix(root).unwrap_or(&rel);
+    let folder = match kind {
+        "scene" => "scenes",
+        "quest" => "quests",
+        "lore" => "lore",
+        _ => "",
+    };
+    let sub = if folder.is_empty() {
+        Path::new("")
+    } else {
+        rel.strip_prefix(folder).unwrap_or(rel)
+    };
+    let mut suggestion = format!("lute new {kind} ");
+    for seg in sub.components() {
+        suggestion.push_str(&seg.as_os_str().to_string_lossy());
+        suggestion.push('/');
+    }
+    suggestion.push_str(name);
+    if std::env::current_dir().map(|cwd| absolute(&cwd)).ok().as_deref() != Some(root) {
+        suggestion.push_str(&format!(" --dir {}", root.display()));
+    }
+    format!(
+        "lute new: `--dir` names the project; did you mean `{suggestion}`? (`{}` is inside the \
+         project at `{}`, not its root; nothing was written)",
+        dir.display(),
+        root.display()
+    )
+}
+
 /// Scaffold one new document into a project. See [`crate::Command::New`].
 ///
-/// Kinds `scene`/`quest`/`lore`/`schema`; an unknown kind, or `--on` on a
-/// non-scene, is a usage error (exit `2`). Refuses to overwrite an existing
-/// target (exit `2`). Outside a project (no `lute.project.yaml` at or above
-/// `dir`) it says so — and refuses `--on`, since no occasion is declared
-/// there for the beat to answer (dsl 0.22.0 §13).
+/// Kinds `scene`/`quest`/`lore`/`schema`; an unknown kind, `--on` on a
+/// non-scene, or `--start` on a non-quest is a usage error (exit `2`).
+/// Refuses to overwrite an existing target (exit `2`). A `dir` inside a
+/// project but not its root is refused (exit `2`, nothing written) with the
+/// `<sub>/<name>` spelling to use: `--dir` names the project, and writing to
+/// `<root>/scenes/<name>` when the author pointed at `scenes/talk/` would
+/// land the document somewhere they did not ask for. Outside a project (no
+/// `lute.project.yaml` at or above `dir`) it says so — and refuses `--on`,
+/// since no occasion is declared there for the beat to answer (dsl 0.22.0
+/// §13).
 pub fn run_new(
     kind: &str,
     name: &str,
     dir: &Path,
     on: Option<&str>,
     target: Option<&str>,
+    start: bool,
 ) -> ExitCode {
     if !matches!(kind, "scene" | "quest" | "lore" | "schema") {
         eprintln!(
             "lute new: unknown kind `{kind}` (expected `scene`, `quest`, `lore`, or `schema`)"
         );
-        eprintln!("usage: lute new <scene|quest|lore|schema> <name> [--dir <DIR>] [--on <OCCASION> [--target <TARGET>]]");
+        eprintln!("usage: lute new <scene|quest|lore|schema> <name> [--dir <PROJECT>] [--on <OCCASION> [--target <TARGET>]] [--start]");
         return ExitCode::from(2);
     }
     if let (Some(_), false) = (on, kind == "scene") {
         eprintln!("lute new: `--on` makes a scene a beat; a {kind} takes no `--on`");
         return ExitCode::from(2);
     }
-    let dest = Destination::find(dir);
+    if start && kind != "quest" {
+        eprintln!("lute new: `--start` makes a quest auto-start; a {kind} takes no `--start`");
+        return ExitCode::from(2);
+    }
+    let dest = match Destination::find(dir) {
+        Ok(dest) => dest,
+        Err(root) => {
+            eprintln!("{}", nested_hint(kind, name, dir, &root));
+            return ExitCode::from(2);
+        }
+    };
     if !dest.in_project {
         if let Some(on) = on {
             eprintln!(
@@ -1113,7 +1404,7 @@ pub fn run_new(
     }
     match kind {
         "scene" => new_scene(name, &dest, on, target),
-        "quest" => new_quest(name, &dest),
+        "quest" => new_quest(name, &dest, start),
         "lore" => new_lore(name, &dest),
         _ => new_schema(name, &dest),
     }

@@ -287,8 +287,7 @@ fn check_project_refuses_the_two_profile_project_compile_all_refuses() {
     write(
         &dir,
         "plugins/demo.plugin/directives/d.yaml",
-        "directives:\n  - { name: announce, attrs: [ { name: text, type: string } ], \
-         lower: { kind: builtin, name: noop } }\n",
+        "directives:\n  - { name: announce, attrs: [ { name: text, type: string } ] }\n",
     );
     write(
         &dir,
