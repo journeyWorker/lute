@@ -84,6 +84,9 @@ table.
 
 ### Fixed
 
+- **Trace/test seeds read by a beat `when:`** — a `quests:` / `state:` seed of `quest.<id>.state` is admitted when the only read is the scene's frontmatter `when:` (trace already judged it); the refusal for an unread quest now names `quests:` instead of `--state`.
+- **Occasion target `members:`** — `target: { prefix, entity, members: [..] }` narrows a domain to a subset of an entity kind; a domain without `members` keeps its `capabilityVersion`.
+- **Decider** — a disjunction of numeric comparisons on one path that covers the number line decides true. `cel()` rule guards stay opaque to the decider.
 - **`lute tag` no longer renames a shipped component lineId** (ashen N7): an
   untagged component line now takes the code `lute tag` would write into the
   component file (source order, per speaker) before a param-scoped `<match>`
@@ -147,6 +150,11 @@ table.
   speaker compiles to a reserved player role; no such IR role exists and
   `pov` does not reach the artifact. The dialogue, frontmatter and cheatsheet
   pages (and `llms-full.txt`) now say so.
+
+### Known limitations
+
+- `lute play` coverage counts presented documents only, not branch choices or match arms (trace keys arms by source position; play records compiled addresses).
+
 
 ## [0.23.0] - 2026-09-25
 

@@ -771,7 +771,17 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
     for (path, literal, span) in &mocks.state {
         if crate::eval::is_reserved_quest_path(path) {
             let referenced = referenced_reserved.get_or_insert_with(|| {
-                crate::quest_refs::collect_referenced_reserved_quest_paths(doc)
+                let mut set = crate::quest_refs::collect_referenced_reserved_quest_paths(doc);
+                // A scene beat's frontmatter `when:` is a read too: trace
+                // judges it (the beat-when note), so its seed must be legal.
+                if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
+                    crate::quest_refs::collect_referenced_in_raw(
+                        &when.raw,
+                        crate::eval::is_reserved_quest_path,
+                        &mut set,
+                    );
+                }
+                set
             });
             if referenced.contains(path) {
                 if !reserved_quest_literal_valid(path, literal) {
@@ -787,7 +797,7 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                 }
                 continue;
             }
-            out.push(undeclared_diag(path, *span));
+            out.push(reserved_quest_unreferenced_diag(path, *span));
             continue;
         }
         // dsl 0.19.0 §5: `entry.<id>.read` is admitted when the document
@@ -847,6 +857,20 @@ fn undeclared_diag(path: &str, span: Span) -> Diagnostic {
             "`--state {path}=…` names a state path not declared in the resolved schema \
              (state-by-typo MUST fail in mocks exactly as in documents, dsl 0.4.0 §4.3, \
              0.1 §11.1.1)"
+        ),
+        span,
+    )
+}
+
+/// A seed of a reserved quest path (a `quests:` entry, or `state:` /
+/// `--state` on `quest.<id>.…`) that no condition of this document reads.
+fn reserved_quest_unreferenced_diag(path: &str, span: Span) -> Diagnostic {
+    diag(
+        E_TRACE_MOCK_UNDECLARED,
+        format!(
+            "the seed of `{path}` (a `quests:` entry or `state:`/`--state` seed) is refused: \
+             no condition in this document — body slot or beat `when:` — reads it, so the \
+             seed could not change the walk (dsl 0.5.1 §1.1, 0.22.0 §3)"
         ),
         span,
     )

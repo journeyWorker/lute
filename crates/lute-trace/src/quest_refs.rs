@@ -42,20 +42,31 @@ pub(crate) fn collect_referenced_entry_read_paths(doc: &Document) -> BTreeSet<St
 fn collect_referenced(doc: &Document, keep: fn(&str) -> bool) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
-        let raw = slot.raw.trim();
-        if raw.is_empty() {
-            return;
-        }
-        let mut arena = CelArena::default();
-        let Ok(handle) = lute_cel::parse_slot(&mut arena, raw, 0) else {
-            return;
-        };
-        let Some(rec) = arena.get(handle) else {
-            return;
-        };
-        collect_paths(&rec.expr, keep, &mut out);
+        collect_referenced_in_raw(&slot.raw, keep, &mut out);
     });
     out
+}
+
+/// Add every reserved path (per `keep`) that the CEL text `raw` reads. Used
+/// for the document's AST slots and for condition text that lives outside
+/// the AST — a scene beat's frontmatter `when:` (dsl 0.21.0 §3.1).
+pub(crate) fn collect_referenced_in_raw(
+    raw: &str,
+    keep: fn(&str) -> bool,
+    out: &mut BTreeSet<String>,
+) {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return;
+    }
+    let mut arena = CelArena::default();
+    let Ok(handle) = lute_cel::parse_slot(&mut arena, raw, 0) else {
+        return;
+    };
+    let Some(rec) = arena.get(handle) else {
+        return;
+    };
+    collect_paths(&rec.expr, keep, out);
 }
 
 /// Collect every maximal reserved path (as decided by `keep`) referenced in

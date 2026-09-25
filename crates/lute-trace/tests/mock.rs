@@ -575,6 +575,33 @@ fn reserved_quest_path_mock_rejected_when_document_does_not_reference_it() {
     assert_eq!(codes(&diags), vec![E_TRACE_MOCK_UNDECLARED], "{diags:?}");
 }
 
+/// dsl 0.22.0 §3 (seven-days N2): a scene whose ONLY read of a quest is its
+/// beat frontmatter `when:` admits a seed of that quest's state — trace
+/// judges the beat `when`, so the seed can change what trace reports.
+#[test]
+fn reserved_quest_state_mock_admitted_when_only_the_beat_when_reads_it() {
+    let (folded, doc) = folded_and_doc(
+        "---\nkind: scene\nid: day4.missed\non: dayStart\n\
+         when: \"quest.lighthouse.state == 'failed'\"\n---\n## Shot 1.\n@x: You never came.\n",
+        "beat-when-reader",
+        Path::new("."),
+    );
+    let seed = |quest: &str| MockSet {
+        state: vec![(
+            format!("quest.{quest}.state"),
+            "failed".to_string(),
+            zero_span(),
+        )],
+        ..Default::default()
+    };
+    let diags = validate(&seed("lighthouse"), &folded, &doc);
+    assert!(diags.is_empty(), "{diags:?}");
+    // A quest nothing reads is still refused, and the message names `quests:`.
+    let diags = validate(&seed("other"), &folded, &doc);
+    assert_eq!(codes(&diags), vec![E_TRACE_MOCK_UNDECLARED], "{diags:?}");
+    assert!(diags[0].message.contains("quests:"), "{}", diags[0].message);
+}
+
 /// `--state quest.foo.state=paused` — a value outside the reserved
 /// domain (`active|complete|failed|unset`) on a REFERENCED reserved path
 /// -> a typed `E-TRACE-MOCK-TYPE`, never silently admitted (§1.1's own
