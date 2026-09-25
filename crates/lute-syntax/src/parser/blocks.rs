@@ -228,7 +228,9 @@ impl Parser<'_> {
             .map(|(s, sp)| (Some(s), sp))
             .unwrap_or_else(|| (None, self.span_o(open.start_o, open.end_o)));
         let tier = take_str_spanned(&mut attrs, "tier");
+        let outer = self.enter_top_block("quest", &id, &open);
         let (body, rewards, end_o) = self.parse_owner_body("quest", &open);
+        self.top_block = outer;
         Quest {
             id,
             id_span,
@@ -265,7 +267,9 @@ impl Parser<'_> {
         let priority = take_str_spanned(&mut attrs, "priority");
         let once = take_str_spanned(&mut attrs, "once");
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let outer = self.enter_top_block("entry", &id, &open);
         let (body, end_o) = self.parse_block_body("entry", &open);
+        self.top_block = outer;
         Entry {
             id,
             id_span,
@@ -309,7 +313,9 @@ impl Parser<'_> {
             flag.map(|f| (f, attrs.remove(pos).span))
         });
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let outer = self.enter_top_block("beat", &id, &open);
         let (body, end_o) = self.parse_block_body("beat", &open);
+        self.top_block = outer;
         BundleBeat {
             id,
             id_span,
@@ -324,6 +330,61 @@ impl Parser<'_> {
             body,
             span: self.span_o(open.start_o, end_o),
         }
+    }
+
+    /// Make the block `tag`/`id` opened by `open` the current top-level
+    /// block; returns the one it replaces, which the caller restores after
+    /// the body.
+    fn enter_top_block(&mut self, tag: &'static str, id: &str, open: &OpenTag) -> Option<super::TopBlock> {
+        let line = self.span_o(open.start_o, open.end_o).line;
+        self.top_block.replace(super::TopBlock {
+            tag,
+            id: id.to_string(),
+            line,
+            reported: false,
+        })
+    }
+
+    /// lamplight F23: a top-level opener (`<entry>` / `<beat>` / `<quest>`,
+    /// named `tag`) at `cursor` while another top-level block is still open.
+    /// Reported once per open block, naming it and its line, then parsed as
+    /// that block's SIBLING (hoisted), so the enclosing block's own tail and
+    /// `</…>` still close it and nothing cascades.
+    pub(super) fn parse_nested_top_block(&mut self, tag: &str) {
+        if let Some(parent) = self.top_block.as_mut().filter(|p| !p.reported) {
+            parent.reported = true;
+            let (ptag, pid, pline) = (parent.tag, parent.id.clone(), parent.line);
+            let named = if pid.is_empty() {
+                format!("the `<{ptag}>`")
+            } else {
+                format!("`{pid}`")
+            };
+            let head = if ptag == tag {
+                let plural = match tag {
+                    "entry" => "entries",
+                    "beat" => "beats",
+                    _ => "quests",
+                };
+                format!("{plural} cannot nest")
+            } else {
+                format!("a `<{tag}>` cannot sit inside a `<{ptag}>`")
+            };
+            self.emit_line(
+                E_UNCLOSED_TAG,
+                &format!(
+                    "{head}; {named} opened at line {pline} is still open — close it with \
+                     `</{ptag}>` before this `<{tag}>`"
+                ),
+                self.cursor,
+                Layer::Logic,
+            );
+        }
+        let block = match tag {
+            "entry" => super::Hoisted::Entry(self.parse_entry()),
+            "beat" => super::Hoisted::Beat(self.parse_bundle_beat()),
+            _ => super::Hoisted::Quest(self.parse_quest()),
+        };
+        self.hoisted.push(block);
     }
 
     /// `Objective ::= "<objective" Attrs ">" Node* "</objective>" | "<objective"

@@ -112,13 +112,13 @@ fn test_yaml_needing_manifest_passes_under_project() {
     assert!(text.contains("1 passed, 0 failed"), "{text}");
 }
 
-/// Positive control for the test above: the IDENTICAL fixture and test file, run WITHOUT
-/// `--project`, must still fail — carrying the resolution diagnostics (`E-UNKNOWN-DIRECTIVE`
-/// for the plugin directive, `E-UNDECLARED` for the hoisted state path) — proving `--project`
-/// is what changed the outcome, not something else in the harness. "No output" is never
-/// proof; this asserts the SPECIFIC codes the missing resolution produces.
+/// 0.23.1 (lamplight N7): the IDENTICAL fixture and test file, run WITHOUT
+/// `--project`, resolves the document against the nearest `lute.project.yaml`
+/// — as `lute check <file>` and this run's plays do — and says so on stderr.
+/// Before, the manifest was never consulted and the test failed with
+/// `E-UNKNOWN-DIRECTIVE` / `E-UNDECLARED` that looked like content bugs.
 #[test]
-fn same_test_yaml_without_project_still_fails_with_resolution_diagnostics() {
+fn same_test_yaml_without_project_resolves_the_nearest_manifest() {
     let dir = temp_dir("control");
     write_manifest_dependent_project(&dir);
 
@@ -127,20 +127,10 @@ fn same_test_yaml_without_project_still_fails_with_resolution_diagnostics() {
         .output()
         .expect("run lute");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
-    assert_eq!(
-        out.status.code(),
-        Some(1),
-        "without --project the manifest is never resolved, so the test must fail: {text}"
-    );
-    assert!(
-        text.contains("E-UNKNOWN-DIRECTIVE"),
-        "the plugin-only `::announce` directive must be unresolved with no project: {text}"
-    );
-    assert!(
-        text.contains("E-UNDECLARED"),
-        "the hoisted-only `run.mood` state path must be undeclared with no project: {text}"
-    );
-    assert!(text.contains("0 passed, 1 failed"), "{text}");
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    assert_eq!(out.status.code(), Some(0), "stdout: {text}\nstderr: {stderr}");
+    assert!(text.contains("1 passed, 0 failed"), "{text}");
+    assert!(stderr.contains("nearest lute.project.yaml"), "{stderr}");
 }
 
 /// Plugin §10's documented precedence — an explicit `--providers <dir>` wins over the

@@ -51,7 +51,9 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
         voice_key: None,
         placeholders: line.interps.iter().map(placeholder_from_interp).collect(),
         texts: Default::default(),
-        code: get("code"),
+        // An untagged component line carries its source-order back-fill
+        // (`normalize::backfill_component_codes`); an authored code wins.
+        code: get("code").or_else(|| get(crate::normalize::COMPONENT_CODE_ATTR)),
         stamp: Stamp {
             // plugin §14.1: a content line carries cross-cutting stamp attrs
             // like any other record. The built-in content-line keys win (they
@@ -158,6 +160,7 @@ pub fn lower_directive(
         // checker applies in `directives::check_directive` — so this only
         // lifts the genuinely cross-cutting ones.
         extra: stamp_extra(&dir.attrs, snapshot, |k| declares_attr(decl, k)),
+        authored: Some(authored_directive(dir)),
         ..Stamp::default()
     };
     Some(match dir.tag.as_str() {
@@ -342,6 +345,27 @@ pub fn lower_directive(
             })
         }
     })
+}
+
+/// The directive as written: `::tag{key="value" key=@ref flag}` in source
+/// attribute order (a component's arguments already substituted); the
+/// compiler's own `__`-prefixed bookkeeping attrs are not source.
+fn authored_directive(dir: &Directive) -> String {
+    let attrs: Vec<String> = dir
+        .attrs
+        .iter()
+        .filter(|a| !a.key.starts_with("__"))
+        .map(|a| match &a.value {
+            AttrValue::Str(s) => format!("{}=\"{}\"", a.key, s.replace('"', "\\\"")),
+            AttrValue::Ref(slot) => format!("{}={}", a.key, slot.raw),
+            AttrValue::BoolTrue => a.key.clone(),
+        })
+        .collect();
+    if attrs.is_empty() {
+        format!("::{}", dir.tag)
+    } else {
+        format!("::{}{{{}}}", dir.tag, attrs.join(" "))
+    }
 }
 
 /// Where one declarative-lowering target field gets its value.

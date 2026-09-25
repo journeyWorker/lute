@@ -42,8 +42,9 @@ must declare an identity: an **`id`**, or the triple **`character`**, **`season`
   defaults to `s{season:02}ep{episode:02}` (e.g. `season: 1, episode: 2` → `s01ep02`). Pinning it
   explicitly lets you renumber `season`/`episode` without breaking translation or voice keys.
 - **`title`** — an optional human title (localizable).
-- **`pov`** — the id of the player/protagonist speaker. The content-line speaker whose id equals
-  `pov` renders as the reserved **player** kind (see [Dialogue & cast](/language/dialogue-and-cast/)).
+- **`pov`** — the id of the point-of-view (protagonist) speaker, for readers of the source. It is
+  descriptive only: that speaker's lines compile as ordinary dialogue, and the artifact does not
+  carry `pov` (see [Dialogue & cast](/language/dialogue-and-cast/)).
 - **`luteVersion`** — the language-version pin; distinct from `app.lang` game state.
 - **`contentLang`** — the source authoring language (a BCP 47 code such as `en-US` or `ko-KR`).
 - **`mode`** — the authoring mode; `inline` is the only defined form.

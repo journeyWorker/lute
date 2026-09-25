@@ -129,7 +129,7 @@ fn an_unknown_expect_key_is_a_usage_error_listing_the_legal_keys() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(2), "{t}");
     assert!(t.contains("`winer`"), "{t}");
-    assert!(t.contains("notOffered, offered, presented, winner"), "{t}");
+    assert!(t.contains("facts, notFacts, notOffered, offered, presented, quests, state, winner"), "{t}");
 }
 
 #[test]
@@ -322,4 +322,75 @@ fn a_lore_test_presents_the_named_entries_in_order() {
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(t.contains("E-TRACE-ENTRY"), "{t}");
     assert!(t.contains("`entry: nope`"), "{t}");
+}
+
+// ---------------------------------------------------------------------------
+// 0.23.1: world expectations on a step, facts in tests, one test file.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_step_expect_judges_quests_and_state_right_after_that_step() {
+    // lamplight N12: night one's lifecycle, judged at its own step.
+    let out = play(
+        "step-world",
+        "steps:\n  - occasion: hubVisit\n    expect:\n      quests: { firstEscape: active }\n      \
+         state: { run.hubVisits: 1 }\n  - occasion: hubVisit\n    expect:\n      \
+         quests: { firstEscape: complete }\n",
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let out = play(
+        "step-world-miss",
+        "steps:\n  - occasion: hubVisit\n    label: night one\n    expect:\n      \
+         quests: { firstEscape: complete }\n      state: { run.hubVisits: 2 }\n  - occasion: hubVisit\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(
+        t.contains("step 1 (night one) at hubVisit: expect quests firstEscape: expected complete, actual active"),
+        "{t}"
+    );
+    assert!(t.contains("expect state run.hubVisits: expected 2, actual 1"), "{t}");
+}
+
+#[test]
+fn a_selection_expect_on_a_non_occasion_step_is_a_usage_error() {
+    let out = play(
+        "engine-winner",
+        "steps:\n  - engine: { state: { run.hubVisits: 1 } }\n    expect: { winner: hub.idle }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(t.contains("`expect.winner` applies only to an `occasion` step"), "{t}");
+}
+
+#[test]
+fn a_test_asserts_facts_and_runs_alone_and_a_missing_document_is_one_failure() {
+    let dir = temp_dir("test-facts");
+    write(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         enums:\n  who: [meg, zag]\nrelations:\n  met: { args: [who], tier: run }\n---\n\n## One\n\n\
+         @narrator: hello.\n::assert{met(meg)}\n",
+    );
+    let t_ok = write(
+        &dir,
+        "ok.test.yaml",
+        "file: s.lute\nexpect:\n  facts: [met(meg)]\n  notFacts: [met(zag)]\n",
+    );
+    write(&dir, "gone.test.yaml", "file: nope.lute\nexpect:\n  exit: complete\n");
+    // One file runs alone.
+    let out = lute(&["test", t_ok.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    // The whole directory: the missing document fails its own test only.
+    let out = lute(&["test", dir.to_str().unwrap()]);
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(t.contains("E-TEST-FILE"), "{t}");
+    assert!(t.contains("1 passed, 1 failed"), "{t}");
+    write(&dir, "ok.test.yaml", "file: s.lute\nexpect:\n  notFacts: [met(meg)]\n");
+    let out = lute(&["test", dir.join("ok.test.yaml").to_str().unwrap()]);
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(t.contains("notFacts met(meg): expected does not hold, got holds"), "{t}");
 }

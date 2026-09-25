@@ -105,6 +105,7 @@ fn root(texts: &[(&str, &str)]) -> Root {
     for folded in &foldeds {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
+    vocab.note_unreadable_documents(&docs);
     let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle)
         .into_iter()
         .filter_map(|(_, a)| GroundFact::from_pattern(&a.pattern));
@@ -889,6 +890,61 @@ fn negated_atom_over_a_retracted_seed_stays_possible() {
     assert!(r.guards("casebook.lute").is_empty(), "{:?}", r.guards("casebook.lute"));
 }
 
+/// lamplight F9 (0.23.1): the alibi is DERIVED from seeds nothing removes
+/// (`alibi(C) :- seen(C, P), away(P)`), so it is stable too, and
+/// `not alibi(vesna)` never holds.
+#[test]
+fn negated_atom_over_a_stably_derived_fact_never_holds() {
+    let text = "---\nkind: lore\ntitle: Casebook\nentities:\n  crew: { members: [vesna, toma] }\n  \
+                place: { members: [deck, hold] }\nrelations:\n  seen: { args: [crew, place], tier: user }\n  \
+                away: { args: [place], tier: run }\n  alibi: { args: [crew], derive: true }\n  \
+                suspect: { args: [crew], derive: true }\nfacts:\n  - \"seen(vesna, deck)\"\n  - \"away(deck)\"\n\
+                rules:\n  - \"alibi(C) :- seen(C, P), away(P)\"\n  - \"suspect(C) :- crew(C), not alibi(C)\"\n---\n\
+                <entry id=\"vesnaPage\" when=\"holds(suspect(vesna))\">\n  @vesna: Me?\n</entry>\n\
+                <entry id=\"tomaPage\" when=\"holds(suspect(toma))\">\n  @toma: Me?\n</entry>\n";
+    let r = root(&[("casebook.lute", text)]);
+    assert_vocab_clean(&r);
+    let ds = r.guards("casebook.lute");
+    let d = only(&ds, "E-ENTRY-UNREACHABLE");
+    assert!(d.message.starts_with("entry `vesnaPage`"), "{}", d.message);
+    // lamplight N16: the message names the defeating fact, not "no rule".
+    assert!(
+        d.message.contains("`suspect(vesna)` can only come from a rule that needs `not alibi(vesna)`"),
+        "{}",
+        d.message
+    );
+    assert!(!d.message.contains("no seed, assert, rule"), "{}", d.message);
+}
+
+#[test]
+fn negated_atom_over_a_derived_fact_with_a_retractable_premise_stays_possible() {
+    // `seen` can be retracted, so the alibi is not stable.
+    let text = "---\nkind: lore\ntitle: Casebook\nentities:\n  crew: { members: [vesna, toma] }\n  \
+                place: { members: [deck, hold] }\nrelations:\n  seen: { args: [crew, place], tier: user }\n  \
+                away: { args: [place], tier: run }\n  alibi: { args: [crew], derive: true }\n  \
+                suspect: { args: [crew], derive: true }\nfacts:\n  - \"seen(vesna, deck)\"\n  - \"away(deck)\"\n\
+                rules:\n  - \"alibi(C) :- seen(C, P), away(P)\"\n  - \"suspect(C) :- crew(C), not alibi(C)\"\n---\n\
+                <entry id=\"vesnaPage\" when=\"holds(suspect(vesna))\">\n  @vesna: Me?\n</entry>\n\
+                <entry id=\"recant\">\n  @toma: She lied.\n  ::retract{seen(vesna, _)}\n</entry>\n";
+    let r = root(&[("casebook.lute", text)]);
+    assert_vocab_clean(&r);
+    assert!(r.guards("casebook.lute").is_empty(), "{:?}", r.guards("casebook.lute"));
+}
+
+/// seven F3 (dsl 0.23.1): the only producer's frontmatter does not parse, so
+/// its scene is not a graph node and its assert is not a live site — yet the
+/// guard in ANOTHER file is not dead: the root is incomplete.
+#[test]
+fn a_root_with_an_unparseable_frontmatter_decides_no_fact_impossible() {
+    let broken = "---\nkind: scene\nid: a\nwhen: 'x == 'y''\n---\n## Shot 1.\n::assert{found(toma)}\n@vesna: hi.\n";
+    let guard = lore("<entry id=\"found\" when=\"holds(found(toma))\">\n  @vesna: Found him.\n</entry>");
+    let r = root(&[("a.lute", broken), ("notes.lute", &guard)]);
+    assert!(r.guards("notes.lute").is_empty(), "{:?}", r.guards("notes.lute"));
+    // Control: with the producer file absent, the guard is dead.
+    let r = root(&[("notes.lute", &guard)]);
+    assert_eq!(codes(&r.guards("notes.lute")), ["E-ENTRY-UNREACHABLE"]);
+}
+
 // --- dsl 0.23.0 §10: `check-project --wip` -----------------------------------
 
 impl Root {
@@ -944,4 +1000,27 @@ fn wip_follows_rules_to_the_missing_producer() {
     assert_eq!(only(&plain, "E-ENTRY-UNREACHABLE").severity, Severity::Error);
     let wip = root(&[("notes.lute", &text)]).with_wip().guards("notes.lute");
     assert_eq!(only(&wip, "E-ENTRY-UNREACHABLE").severity, Severity::Warning);
+}
+
+#[test]
+fn wip_downgrades_a_dead_choice_and_gated_line_too() {
+    // lamplight N11: a hub choice / gated line behind a clue nothing
+    // produces yet is graded like a dead entry under `--wip`.
+    let text = scene(
+        1,
+        "<hub id=\"look\">\n<choice id=\"cab\" label=\"Cabin\" when=\"holds(found(toma))\">\n@vesna: Cabin.\n</choice>\n\
+         <choice id=\"leave\" label=\"Leave\" exit>\n@vesna: Go.\n</choice>\n</hub>\n\
+         @vesna{when=\"holds(found(toma))\"}: Found him.",
+    );
+    let plain = root(&[("a.lute", &text)]).guards("a.lute");
+    let dead: Vec<&Diagnostic> = plain.iter().filter(|d| d.code == "E-ARM-DEAD").collect();
+    assert_eq!(dead.len(), 2, "{plain:?}");
+    assert!(dead.iter().all(|d| d.severity == Severity::Error), "{plain:?}");
+    let wip = root(&[("a.lute", &text)]).with_wip().guards("a.lute");
+    let dead: Vec<&Diagnostic> = wip.iter().filter(|d| d.code == "E-ARM-DEAD").collect();
+    assert_eq!(dead.len(), 2, "{wip:?}");
+    for d in dead {
+        assert_eq!(d.severity, Severity::Warning, "{d:?}");
+        assert!(d.message.contains("`--wip`"), "{}", d.message);
+    }
 }

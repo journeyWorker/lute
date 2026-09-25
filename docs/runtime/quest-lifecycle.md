@@ -105,6 +105,11 @@ quests, so the tier rides on each `quest` record, not on `QuestMeta`.
   accepted, and its objective bodies, rewards, and lifecycle handlers fire
   again on the new run's transitions.
 
+A subquest's tier must equal its parent's (`E-QUEST-TIER-MIX`, 0.23.1): a
+run-tier parent's end would cascade into a user-tier child that never resets,
+and a user-tier parent that has ended never re-activates run-tier children
+once they reset.
+
 The reset belongs to the run boundary (`state-lifecycle.md`), beside the
 `run.*` reset, and precedes the new run's first evaluation. `lute play`'s
 `newRun` step performs exactly this: it resets run-tier state, run-tier facts
@@ -168,12 +173,15 @@ evaluates `by` for each objective of the quest that is neither `done` nor
 already failed. The **first** time `by` holds, the objective **fails**: it is
 never judged again — neither `done` nor `by` — for the rest of the quest
 instance. A failed **required** objective fails its quest (§Failure above); a
-failed `optional` objective only closes itself. `by` is judged continuously,
-including on an objective with `on`: a deadline is an event the engine
+failed `optional` objective only closes itself. An objective without `on` has
+its `by` judged at every evaluation instant: a deadline is an event the engine
 observes without a clock, so "done before the fifth day" is
-`by="run.day > 5"`, whatever occasion judges `done`. Because `done` is judged
-first, an objective whose `done` and `by` become true at the same instant is
-done, not failed; and once `done` is recorded, `by` is never evaluated for it
+`by="run.day > 5"`. An objective **with** `on` has its `by` judged only when
+its occasion is raised for its target, right after its `done` (0.23.1): the
+moment the occasion answers is both the judgement and the deadline, so a beat
+answering the occasion that writes the state `by` reads cannot fail a correct
+answer. In every settle `done` is judged before `by`, so an objective whose
+`done` and `by` become true at the same instant is done, not failed; and once `done` is recorded, `by` is never evaluated for it
 again. An objective's failure is engine state like the presentation record:
 it is not a state path content reads, and it resets with a run-tier quest.
 The reference tooling shows it: `lute trace` records an objective decision
@@ -367,8 +375,9 @@ After **activation** and after **every event**, the engine (0.4.0 §4.6):
    its occasion is raised for its target (§Objectives above); raising an
    occasion is itself an evaluation instant, running steps 2–4 after those
    objectives;
-2. evaluates each not-done, not-failed objective's `by` deadline; the first
-   time it holds the objective fails (dsl 0.23.0 §2);
+2. evaluates the `by` deadline of each not-done, not-failed objective judged
+   in step 1 (an `on` objective's only at its occasion); the first time it
+   holds the objective fails (dsl 0.23.0 §2);
 3. evaluates `fail` — and any required objective failed in step 2 —
    **before** derived completion (§6.3 precedence);
 4. fires each lifecycle transition's handlers **once**.

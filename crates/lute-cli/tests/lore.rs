@@ -287,30 +287,32 @@ fn lore_report_json_carries_the_same_data() {
         "relations": [
             {"relation": "knows", "facts": [
                 {"fact": "knows(vesna, project_lumen)", "revealedBy": "both",
-                 "entries": ["log1"], "documents": ["scenes/lab.lute"]},
+                 "entries": ["log1"], "beats": [], "documents": ["scenes/lab.lute"]},
                 {"fact": "knows(vesna, reactor)", "revealedBy": "entries",
-                 "entries": ["log2"], "documents": []}
+                 "entries": ["log2"], "beats": [], "documents": []}
             ]},
             {"relation": "met", "facts": [
                 {"fact": "met(vesna, orin)", "revealedBy": "scenes",
-                 "entries": [], "documents": ["scenes/lab.lute"]}
+                 "entries": [], "beats": [], "documents": ["scenes/lab.lute"]}
             ]}
         ]
     });
     assert_eq!(v, expected, "{v:#}");
 }
 
-/// dsl 0.23.0 §4: a lore `<beat>` bundle's `::assert` (even inside a branch
-/// choice) reveals its fact like an entry's, attributed to the beat's
-/// canonical `<document id>.<beat id>`.
+/// dsl 0.23.0 §4 (lamplight N8): a lore `<beat>` bundle's `::assert` (even
+/// inside a branch choice) reveals its fact under the beat's canonical
+/// `<document id>.<beat id>`, listed as a beat — never as an entry — and the
+/// beat itself is listed under its target, labelled `beat`, beside the
+/// entries of that target.
 #[test]
-fn lore_report_attributes_bundle_beat_asserts_to_the_canonical_id() {
+fn lore_report_lists_bundle_beats_by_target_and_as_fact_sources() {
     let dir = fixture();
     write(
         &dir,
         "lore/dock.lute",
         "---\nkind: lore\nid: lore.dock\nuses: ../world.schema.yaml\n---\n\n\
-         <beat id=\"talk\" on=\"talk\">\n  @orin: Keep moving.\n  <branch id=\"ask\">\n    \
+         <beat id=\"talk\" on=\"talk\" target=\"item.rusty_key\" title=\"The key\">\n  @orin: Keep moving.\n  <branch id=\"ask\">\n    \
          <choice id=\"why\" label=\"Why?\">\n      ::assert{ knows(vesna, reactor) }\n    </choice>\n  \
          </branch>\n</beat>\n",
     );
@@ -331,8 +333,26 @@ fn lore_report_attributes_bundle_beat_asserts_to_the_canonical_id() {
         .unwrap();
     assert_eq!(
         reactor,
-        &serde_json::json!({"fact": "knows(vesna, reactor)", "revealedBy": "entries",
-            "entries": ["log2", "lore.dock.talk"], "documents": []})
+        &serde_json::json!({"fact": "knows(vesna, reactor)", "revealedBy": "both",
+            "entries": ["log2"], "beats": ["lore.dock.talk"], "documents": []})
+    );
+    assert_eq!(
+        v["targets"][0],
+        serde_json::json!({"target": "item.rusty_key", "entries": [
+            {"kind": "beat", "id": "lore.dock.talk", "document": "lore/dock.lute", "on": "talk",
+             "target": "item.rusty_key", "title": "The key"},
+            {"id": "rustyKey", "document": "lore/ship.lute", "target": "item.rusty_key", "category": "item"}
+        ]})
+    );
+
+    let text = String::from_utf8(run(&["lore", dir.to_str().unwrap()]).stdout).unwrap();
+    assert!(
+        text.contains("  item.rusty_key\n    beat  lore.dock.talk  \"The key\"  lore/dock.lute  (on talk)\n    rustyKey  [item]  lore/ship.lute\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("    knows(vesna, reactor)  both\n      entries: log2\n      beats: lore.dock.talk\n"),
+        "{text}"
     );
 }
 

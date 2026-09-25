@@ -499,6 +499,39 @@ fn emotion_distribution_skips_when_min_lines_not_met() {
     assert!(rows.is_empty(), "codes: {:?}", codes(&out.diagnostics));
 }
 
+/// ashen N6: a bundle's beats and a lore file's entries are never heard back
+/// to back, so emotion streaks are measured per bundle beat and entries are
+/// skipped — while one long beat is still judged on its own.
+#[test]
+fn emotion_distribution_measures_each_bundle_beat_alone_and_skips_entries() {
+    let alternating = "@alice{emotion=\"happy\"}: a\n@alice{emotion=\"sad\"}: b\n@alice{emotion=\"happy\"}: c\n";
+    let mut bundle = String::from("---\nkind: lore\nid: talk\n---\n\n");
+    for i in 0..4 {
+        bundle.push_str(&format!("<beat id=\"b{i}\" on=\"talk\">\n{alternating}</beat>\n\n"));
+    }
+    for i in 0..4 {
+        bundle.push_str(&format!("<entry id=\"e{i}\">\n{alternating}</entry>\n\n"));
+    }
+    let mut long = String::from("<beat id=\"long\" on=\"talk\">\n");
+    for _ in 0..11 {
+        long.push_str("@bob{emotion=\"neutral\"}: hi\n");
+    }
+    long.push_str("</beat>\n");
+    bundle.push_str(&long);
+    let out = lint(
+        &[input("lore/talk.lute", &bundle)],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
+    let rows = only_code(&out.diagnostics, "L-EMOTION-DISTRIBUTION");
+    assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
+    assert!(rows[0].1.message.starts_with("speaker `bob`"), "{}", rows[0].1.message);
+}
+
 // ---------------------------------------------------------------------------
 // variant-composition (speaker/group)
 // ---------------------------------------------------------------------------

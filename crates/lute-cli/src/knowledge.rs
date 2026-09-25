@@ -14,9 +14,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_check::{ProjectBeatKind, RelVocab};
+use lute_check::{GroundFact, MaySet, ProjectBeatKind, RelVocab};
 use lute_syntax::ast::{CelSlot, Document, Node};
-use lute_syntax::datalog::BodyLiteral;
+use lute_syntax::datalog::{BodyLiteral, Rule, RuleAtom, RuleTerm};
 use serde_json::{json, Map, Value as Json};
 
 use crate::{ByRoot, DocGroup};
@@ -156,10 +156,9 @@ fn rel_path(root: &Path, p: &Path) -> String {
 
 /// Every fact-guarded element of one root, document order: scene and
 /// bundle beats, entries (beat or not), then quest objectives.
-fn guarded(root: &Path, group: &DocGroup) -> Vec<Guarded> {
-    let docs: Vec<(PathBuf, Document)> = group.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<Guarded> {
     let foldeds: Vec<&lute_check::FoldedEnv> = group.iter().map(|(_, _, f)| f).collect();
-    let beats = lute_check::project_beats(&docs, &foldeds);
+    let beats = lute_check::project_beats(docs, &foldeds);
     let mut out = Vec::new();
     let mut push = |name: String, handles: Vec<String>, document: String, slots: Vec<(&'static str, String)>| {
         let reads: BTreeSet<Pattern> = slots.iter().flat_map(|(_, c)| queried(c)).collect();
@@ -209,8 +208,8 @@ fn guarded(root: &Path, group: &DocGroup) -> Vec<Guarded> {
     out
 }
 
-/// Every asserting site in one root: `scene (path)`, ``quest `id` ``,
-/// ``entry `id` ``, ``beat `id` ``, with the pattern it asserts.
+/// Every asserting site in one root: ``scene `key` (path)``, ``quest `id` ``,
+/// ``entry `id` ``, ``beat `doc.id` ``, with the pattern it asserts.
 fn asserters(root: &Path, group: &DocGroup) -> Asserters {
     let mut out = Asserters::new();
     let mut record = |nodes: &[Node], label: String| {
@@ -228,8 +227,11 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
     };
     for (path, doc, _) in group {
         let document = rel_path(root, path);
+        let scene = lute_check::connectivity::scene_key(doc)
+            .map(|k| format!("scene `{k}`"))
+            .unwrap_or_else(|| "scene".to_string());
         for shot in &doc.shots {
-            record(&shot.body, format!("scene ({document})"));
+            record(&shot.body, format!("{scene} ({document})"));
         }
         for q in &doc.quests {
             record(&q.body, format!("quest `{}` ({document})", q.id));
@@ -237,8 +239,13 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
         for e in &doc.entries {
             record(&e.body, format!("entry `{}` ({document})", e.id));
         }
+        let bundle = lute_check::connectivity::bundle_id(doc);
         for b in &doc.beats {
-            record(&b.body, format!("beat `{}` ({document})", b.id));
+            let id = match &bundle {
+                Some(d) => lute_check::bundle_beat_key(d, &b.id),
+                None => b.id.clone(),
+            };
+            record(&b.body, format!("beat `{id}` ({document})"));
         }
     }
     out
@@ -303,28 +310,253 @@ fn concludes(p: &Pattern, head: &lute_syntax::datalog::RuleAtom) -> bool {
     p.unifies(&head.relation, &rule_args(&head.terms, &BTreeMap::new()))
 }
 
+/// One root's view: its fact-guarded elements, vocabulary, asserting sites
+/// and may set.
+struct RootKnowledge {
+    root: PathBuf,
+    elements: Vec<Guarded>,
+    vocab: RelVocab,
+    asserted: Asserters,
+    /// Every ground fact that may hold at some point of some run — built as
+    /// `check-project` builds it, with every assert site counted live (this
+    /// view does not run reachability).
+    may: MaySet,
+}
+
+/// The root's may set (`compute_conn_fixpoint`'s construction).
+fn may_set(group: &DocGroup, docs: &[(PathBuf, Document)]) -> MaySet {
+    let mut vocab = lute_check::RootVocab::default();
+    for (_, _, folded) in group {
+        vocab.add(&folded.env.rel_vocab, &folded.env.domains);
+    }
+    vocab.note_unreadable_documents(docs);
+    let stable = lute_check::stable_seeds(docs, &vocab);
+    let none = BTreeSet::new();
+    let facts = lute_check::connectivity::live_assert_sites(docs, &BTreeMap::new(), &none, &none)
+        .into_iter()
+        .filter_map(|(_, a)| GroundFact::from_pattern(&a.pattern));
+    MaySet::build(&vocab, facts, &stable)
+}
+
+/// A clause variable binding.
+type Subst = BTreeMap<String, String>;
+
+/// More bindings than this and a clause is not enumerated.
+const JOIN_CAP: usize = 512;
+
+/// Defeating facts printed per negated premise; the rest are counted.
+const DEFEAT_SHOWN: usize = 3;
+
+fn term_value(t: &RuleTerm, s: &Subst) -> Option<String> {
+    match t {
+        RuleTerm::Var(v) => s.get(v).cloned(),
+        RuleTerm::Const(c) => Some(c.clone()),
+        RuleTerm::Bool(b) => Some(b.to_string()),
+    }
+}
+
+/// Every binding of `rule`'s positive premises to facts `may` holds,
+/// extending `seed`, kept when each `=`/`!=` decided on bound values holds.
+/// `None`: not enumerable — a positive premise over an unbounded relation,
+/// or more than [`JOIN_CAP`] bindings.
+fn joins(rule: &Rule, seed: Subst, may: &MaySet) -> Option<Vec<Subst>> {
+    let mut out = vec![seed];
+    for lit in &rule.body {
+        let BodyLiteral::Pos(atom) = lit else { continue };
+        if may.is_unbounded(&atom.relation) {
+            return None;
+        }
+        let mut next = Vec::new();
+        for s in &out {
+            for tuple in may.instances(&atom.relation).into_iter().flatten() {
+                if let Some(s) = bind(&atom.terms, tuple, s) {
+                    next.push(s);
+                    if next.len() > JOIN_CAP {
+                        return None;
+                    }
+                }
+            }
+        }
+        out = next;
+    }
+    out.retain(|s| {
+        rule.body.iter().all(|lit| match lit {
+            BodyLiteral::Cmp { lhs, rhs, negated, .. } => match (term_value(lhs, s), term_value(rhs, s)) {
+                (Some(a), Some(b)) => (a == b) != *negated,
+                _ => true,
+            },
+            _ => true,
+        })
+    });
+    Some(out)
+}
+
+/// `s` extended so `terms` match `tuple`; `None` when they cannot.
+fn bind(terms: &[RuleTerm], tuple: &[String], s: &Subst) -> Option<Subst> {
+    if terms.len() != tuple.len() {
+        return None;
+    }
+    let mut s = s.clone();
+    for (term, v) in terms.iter().zip(tuple) {
+        match term {
+            RuleTerm::Var(name) => match s.get(name) {
+                Some(b) if b != v => return None,
+                Some(_) => {}
+                None => {
+                    s.insert(name.clone(), v.clone());
+                }
+            },
+            RuleTerm::Const(c) if c != v => return None,
+            RuleTerm::Bool(b) if b.to_string() != *v => return None,
+            _ => {}
+        }
+    }
+    Some(s)
+}
+
+/// The facts `may` holds that defeat the negated premise `atom` of `rule`
+/// under `bound` (the head's constants): each binding of the positive
+/// premises instantiates it, and every held fact matching an instance
+/// defeats it. `Err`: the defeaters cannot be listed.
+fn defeaters(rule: &Rule, atom: &RuleAtom, bound: &Subst, may: &MaySet) -> Result<Vec<GroundFact>, String> {
+    if may.is_unbounded(&atom.relation) {
+        return Err(format!("`{}` may hold any tuple", atom.relation));
+    }
+    // Not enumerable: fall back to the premise under the head's constants.
+    let instances: Vec<Pattern> = match joins(rule, bound.clone(), may) {
+        Some(substs) => substs
+            .iter()
+            .map(|s| Pattern {
+                rel: atom.relation.clone(),
+                args: atom.terms.iter().map(|t| term_value(t, s)).collect(),
+            })
+            .collect(),
+        None => vec![Pattern {
+            rel: atom.relation.clone(),
+            args: atom.terms.iter().map(|t| term_value(t, bound)).collect(),
+        }],
+    };
+    Ok(may
+        .instances(&atom.relation)
+        .into_iter()
+        .flatten()
+        .filter(|tuple| {
+            let args: Vec<Option<String>> = tuple.iter().cloned().map(Some).collect();
+            instances.iter().any(|inst| inst.unifies(&atom.relation, &args))
+        })
+        .map(|args| GroundFact {
+            relation: atom.relation.clone(),
+            args: args.clone(),
+        })
+        .collect())
+}
+
+fn ground_text(g: &GroundFact) -> String {
+    format!("{}({})", g.relation, g.args.join(", "))
+}
+
+/// Where a ground fact can come from: its asserting sites, `seed`, the
+/// engine, or `derived`.
+fn fact_source(g: &GroundFact, k: &RootKnowledge) -> String {
+    let p = Pattern {
+        rel: g.relation.clone(),
+        args: g.args.iter().cloned().map(Some).collect(),
+    };
+    let mut parts: Vec<String> = k
+        .asserted
+        .iter()
+        .filter(|(_, a)| p.unifies(&a.rel, &a.args))
+        .map(|(label, _)| label.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if k.vocab
+        .facts
+        .iter()
+        .any(|f| p.unifies(&f.fact.relation, &fact_args(&f.fact)))
+    {
+        parts.push("seed".to_string());
+    }
+    if let Some(decl) = k.vocab.relations.get(&g.relation) {
+        if decl.reserved {
+            parts.push("engine".to_string());
+        }
+        if decl.derive && parts.is_empty() {
+            parts.push("derived".to_string());
+        }
+    }
+    parts.join(", ")
+}
+
+/// A defeating fact and why it may hold: its own source when asserted or
+/// seeded, else the premises of the first rule instance that derives it.
+fn defeat_text(g: &GroundFact, k: &RootKnowledge) -> String {
+    let source = fact_source(g, k);
+    if source != "derived" {
+        return format!("{} [{source}]", ground_text(g));
+    }
+    for r in k.vocab.rules.iter().filter(|r| r.rule.head.relation == g.relation) {
+        let Some(seed) = bind(&r.rule.head.terms, &g.args, &Subst::new()) else {
+            continue;
+        };
+        let Some(s) = joins(&r.rule, seed, &k.may).and_then(|v| v.into_iter().next()) else {
+            continue;
+        };
+        let premises: Vec<String> = r
+            .rule
+            .body
+            .iter()
+            .filter_map(|lit| {
+                let BodyLiteral::Pos(a) = lit else { return None };
+                let f = GroundFact {
+                    relation: a.relation.clone(),
+                    args: a.terms.iter().map(|t| term_value(t, &s)).collect::<Option<_>>()?,
+                };
+                Some(format!("{} [{}]", ground_text(&f), fact_source(&f, k)))
+            })
+            .collect();
+        return format!("{} ⇐ {}", ground_text(g), premises.join(", "));
+    }
+    format!("{} [derived]", ground_text(g))
+}
+
 /// Print `p` and, when derived, each rule that can conclude it with its
 /// premises — the head's variables bound by `p` — traced recursively. An
 /// atom already traced in this element (a shared or recursive premise) is
-/// referenced, not re-expanded.
+/// referenced, not re-expanded. `defeat` (a negated premise only) lists
+/// the facts the may set holds that make it false (lamplight N10).
 fn trace(
     out: &mut String,
     p: &Pattern,
-    negated: bool,
+    defeat: Option<Result<Vec<GroundFact>, String>>,
     depth: usize,
-    vocab: &RelVocab,
-    asserted: &Asserters,
+    k: &RootKnowledge,
     traced: &mut BTreeSet<Pattern>,
 ) {
-    use lute_syntax::datalog::RuleTerm;
     let pad = "  ".repeat(depth + 2);
-    let not = if negated { "not " } else { "" };
-    if !traced.insert(p.clone()) {
+    let not = if defeat.is_some() { "not " } else { "" };
+    let seen = !traced.insert(p.clone());
+    if seen {
         outln!(out, "{pad}{not}{} — (traced above)", p.text());
+    } else {
+        outln!(out, "{pad}{not}{} — {}", p.text(), producer_line(p, &k.vocab, &k.asserted));
+    }
+    match defeat {
+        Some(Ok(facts)) => {
+            for g in facts.iter().take(DEFEAT_SHOWN) {
+                outln!(out, "{pad}  can be defeated by {}", defeat_text(g, k));
+            }
+            if facts.len() > DEFEAT_SHOWN {
+                outln!(out, "{pad}  … and {} more defeating facts", facts.len() - DEFEAT_SHOWN);
+            }
+        }
+        Some(Err(why)) => outln!(out, "{pad}  may be defeated: {why}"),
+        None => {}
+    }
+    if seen {
         return;
     }
-    outln!(out, "{pad}{not}{} — {}", p.text(), producer_line(p, vocab, asserted));
-    for r in vocab.rules.iter().filter(|r| concludes(p, &r.rule.head)) {
+    for r in k.vocab.rules.iter().filter(|r| concludes(p, &r.rule.head)) {
         outln!(out, "{pad}  rule: {}", r.raw.trim());
         let mut bound: BTreeMap<&str, String> = BTreeMap::new();
         for (term, arg) in r.rule.head.terms.iter().zip(&p.args) {
@@ -332,41 +564,43 @@ fn trace(
                 bound.insert(v.as_str(), c.clone());
             }
         }
+        let subst: Subst = bound.iter().map(|(v, c)| (v.to_string(), c.clone())).collect();
         for lit in &r.rule.body {
-            let (atom, negated) = match lit {
-                BodyLiteral::Pos(a) => (a, false),
-                BodyLiteral::Neg(a) => (a, true),
+            let (atom, defeat) = match lit {
+                BodyLiteral::Pos(a) => (a, None),
+                BodyLiteral::Neg(a) => (a, Some(defeaters(&r.rule, a, &subst, &k.may))),
                 _ => continue,
             };
             let premise = Pattern {
                 rel: atom.relation.clone(),
                 args: rule_args(&atom.terms, &bound),
             };
-            trace(out, &premise, negated, depth + 2, vocab, asserted, traced);
+            trace(out, &premise, defeat, depth + 2, k, traced);
         }
     }
 }
 
 /// The `--for` selection over every root's elements; `Err` names the miss.
 fn select<'a>(
-    roots: &'a [(PathBuf, Vec<Guarded>, RelVocab, Asserters)],
+    roots: &'a [RootKnowledge],
     for_node: Option<&str>,
-) -> Result<Vec<(&'a PathBuf, Vec<&'a Guarded>, &'a RelVocab, &'a Asserters)>, String> {
+) -> Result<Vec<(&'a RootKnowledge, Vec<&'a Guarded>)>, String> {
     let picked: Vec<_> = roots
         .iter()
-        .map(|(root, elements, vocab, asserted)| {
-            let chosen = elements
+        .map(|k| {
+            let chosen = k
+                .elements
                 .iter()
                 .filter(|g| for_node.is_none_or(|n| g.handles.iter().any(|h| h == n)))
                 .collect::<Vec<_>>();
-            (root, chosen, vocab, asserted)
+            (k, chosen)
         })
         .collect();
     if let Some(n) = for_node {
-        if picked.iter().all(|(_, chosen, _, _)| chosen.is_empty()) {
+        if picked.iter().all(|(_, chosen)| chosen.is_empty()) {
             let handles: Vec<&str> = roots
                 .iter()
-                .flat_map(|(_, e, _, _)| e.iter().flat_map(|g| g.handles.iter().map(String::as_str)))
+                .flat_map(|k| k.elements.iter().flat_map(|g| g.handles.iter().map(String::as_str)))
                 .collect();
             let hint = lute_manifest::suggest::nearest(n, handles.iter().copied(), 3)
                 .map(|s| format!(" — did you mean `{s}`?"))
@@ -379,10 +613,19 @@ fn select<'a>(
     Ok(picked)
 }
 
-fn collect(by_root: &ByRoot) -> Vec<(PathBuf, Vec<Guarded>, RelVocab, Asserters)> {
+fn collect(by_root: &ByRoot) -> Vec<RootKnowledge> {
     by_root
         .iter()
-        .map(|(root, group)| (root.clone(), guarded(root, group), vocab(group), asserters(root, group)))
+        .map(|(root, group)| {
+            let docs: Vec<(PathBuf, Document)> = group.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+            RootKnowledge {
+                root: root.clone(),
+                elements: guarded(root, group, &docs),
+                vocab: vocab(group),
+                asserted: asserters(root, group),
+                may: may_set(group, &docs),
+            }
+        })
         .collect()
 }
 
@@ -405,8 +648,8 @@ pub(crate) fn run_text(
         outln!(out, "lute: no .lute files found");
         return ExitCode::SUCCESS;
     }
-    for (root, elements, vocab, asserted) in picked {
-        outln!(out, "project root: {}", root.display());
+    for (k, elements) in picked {
+        outln!(out, "project root: {}", k.root.display());
         outln!(out, "  knowledge (fact-guarded condition -> relations read -> producers):");
         if elements.is_empty() {
             outln!(out, "    (no condition queries a relation)");
@@ -420,7 +663,7 @@ pub(crate) fn run_text(
             }
             let mut traced = BTreeSet::new();
             for rel in &g.reads {
-                trace(out, rel, false, 0, vocab, asserted, &mut traced);
+                trace(out, rel, None, 0, k, &mut traced);
             }
         }
     }
@@ -434,7 +677,8 @@ pub(crate) fn json(by_root: &ByRoot, for_node: Option<&str>) -> Result<Json, Str
     let picked = select(&roots, for_node)?;
     let roots_json: Vec<Json> = picked
         .into_iter()
-        .map(|(root, elements, vocab, asserted)| {
+        .map(|(k, elements)| {
+            let (root, vocab, asserted) = (&k.root, &k.vocab, &k.asserted);
             let mut reached: BTreeSet<String> = BTreeSet::new();
             let mut stack: Vec<String> =
                 elements.iter().flat_map(|g| g.reads.iter().map(|p| p.rel.clone())).collect();

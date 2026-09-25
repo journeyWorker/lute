@@ -670,7 +670,9 @@ fn eval_emotion_distribution(
     let max_share = opt_num(opts, "maxShare").unwrap_or(0.4);
     let code = diagnostic_code(&rule.id);
     let mut out = Vec::new();
-    for sp in ctx.tables.speakers.values() {
+    // Streaks and runs are sequence metrics: each linear unit (a bundle beat
+    // alone, never a whole bundle; no lore entry) is measured on its own.
+    for sp in ctx.tables.unit_speakers.iter().flat_map(|unit| unit.values()) {
         if sp.lines < min_lines {
             continue;
         }

@@ -820,23 +820,148 @@ fn stage_project(tag: &str) -> PathBuf {
 }
 
 #[test]
-fn an_end_stops_the_walk_only_after_the_step_settles_its_quests_and_occasion() {
+fn an_end_ends_only_its_presentation_and_the_play_goes_on() {
     let dir = stage_project("end-order");
-    let v = play_project_json(&dir, "end-order", "steps:\n  - occasion: close\n  - occasion: visit\n");
+    let v = play_project_json(
+        &dir,
+        "end-order",
+        "steps:\n  - occasion: close\n  - occasion: talk\nchoose:\n  ask: notYet\n",
+    );
     // The ending scene's own progress lands: the ordinary advance AND the
-    // `on="close"` objective the occasion judges. Before, `::end` skipped
-    // both and still exited 0.
+    // `on="close"` objective the occasion judges.
     assert_eq!(
         quest_records(&step(&v, 1)["quests"]),
         ["plain.lit done", "plain -> complete", "acc.named done", "acc -> complete"]
     );
+    // 0.23.1: `::end` ended the finale, not the playthrough.
+    assert_eq!(winner(&v, 2), Some("offer"), "the next step plays after `::end`: {v}");
     assert_eq!(v["exit"], "complete");
-    assert!(
-        v["endReason"].as_str().unwrap().contains("::end in scene `finale`"),
-        "{}",
-        v["endReason"]
+    assert_eq!(v["endReason"], "complete (2 steps)");
+    assert!(v.get("skipped").is_none(), "{v}");
+}
+
+#[test]
+fn an_end_step_ends_the_playthrough_and_lists_the_steps_it_skips() {
+    let dir = stage_project("end-step");
+    let script = "steps:\n  - occasion: talk\n  - end: true\n  - label: never\n    occasion: close\n\
+                  choose:\n  ask: notYet\n";
+    let v = play_project_json(&dir, "end-step", script);
+    assert_eq!(v["exit"], "complete");
+    assert_eq!(v["endReason"], "`end: true` at step 2 (1 later step skipped)");
+    assert_eq!(v["skipped"], serde_json::json!([{ "step": 3, "label": "never" }]));
+    assert_eq!(step(&v, 2)["end"], true);
+    assert!(step(&v, 3).is_null(), "{v}");
+    let out = play_in(&dir, "end-step-text", script, false);
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("── step 3 (never) · skipped (the playthrough ended)"), "{text}");
+
+    for (bad, why) in [
+        ("steps:\n  - end: false\n", "`end` must be `true`"),
+        ("steps:\n  - end: true\n    repeat: 2\n", "`repeat` does not apply to an `end` step"),
+        ("steps:\n  - end: true\n    occasion: talk\n", "not both"),
+    ] {
+        let out = play_in(&dir, "end-bad", bad, false);
+        assert_eq!(out.status.code(), Some(2), "{bad}");
+        assert!(stderr(&out).contains(why), "{bad}: {}", stderr(&out));
+    }
+}
+
+#[test]
+fn staging_prints_as_authored_and_ir_prints_the_lowered_records() {
+    let dir = stage_project("staging-source");
+    let script = "steps:\n  - occasion: visit\nchoose:\n  look: [table, leave]\n";
+    let text = stdout(&play_in(&dir, "staging-source", script, false));
+    assert!(text.lines().any(|l| l == "::bg{location=\"parlor\"}"), "{text}");
+    assert!(text.lines().any(|l| l == "::auto{character=\"maud\" anchor=\"left\"}"), "{text}");
+    assert!(!text.contains("::background") && !text.contains("::sprite"), "{text}");
+
+    let s = write(&temp_dir("staging-ir"), "s.play.yaml", script);
+    let out = Command::new(BIN)
+        .args(["play", dir.to_str().unwrap(), "--script", s.to_str().unwrap(), "--ir"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    let ir = stdout(&out);
+    assert!(ir.lines().any(|l| l == "::background{location=\"parlor\" wait=true}"), "{ir}");
+    assert!(ir.contains("(injected: "), "the lowered view shows injected staging: {ir}");
+}
+
+/// 0.23.1: an occasion and a world event of the same name — the engine
+/// raises both at once.
+fn boss_project(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: g\nprofiles:\n  g:\n    plugins: { g.boss: true }\n",
     );
-    assert!(step(&v, 2).is_null(), "nothing plays after `::end`: {v}");
+    write(
+        &dir,
+        "plugins/g.boss/plugin.yaml",
+        "id: g.boss\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n  events: events/\n",
+    );
+    write(
+        &dir,
+        "plugins/g.boss/occasions/o.yaml",
+        "occasions:\n  bossDefeated: { target: { prefix: boss, entity: foe } }\n",
+    );
+    write(&dir, "plugins/g.boss/events/e.yaml", "events:\n  - name: bossDefeated\n");
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.hits: { type: number, default: 0 }\nentities:\n  foe: { members: [warden, hound] }\n",
+    );
+    write(
+        &dir,
+        "scenes/fall.lute",
+        "---\nkind: scene\nid: warden.fall\nuses: ../world.schema.yaml\non: bossDefeated\n\
+         target: boss.warden\nonce: false\n---\n\n## Fall\n\n@narrator: Down it goes.\n",
+    );
+    write(
+        &dir,
+        "quests/forge.lute",
+        "---\nkind: quest\nuses: ../world.schema.yaml\ntitle: Forge\n---\n\n\
+         <quest id=\"forge\" title=\"Forge\" start=\"true\">\n\
+         <objective id=\"maul\" title=\"Maul\" on=\"bossDefeated\" target=\"boss.warden\" done=\"run.hits >= 1\"/>\n\
+         <on event=\"bossDefeated\">\n@narrator: The stair shakes.\n::set{run.hits += 1}\n</on>\n</quest>\n",
+    );
+    dir
+}
+
+#[test]
+fn raising_an_occasion_fires_the_same_named_world_event_before_judging() {
+    let dir = boss_project("boss-play");
+    let v = play_project_json(
+        &dir,
+        "boss-play",
+        "steps:\n  - occasion: bossDefeated\n    target: boss.warden\n",
+    );
+    // The handler runs first (its write is what `done` reads), then the
+    // occasion judges the targeted objective in the same raise.
+    assert_eq!(
+        quest_records(&step(&v, 1)["quests"]),
+        ["line", "set", "forge.maul done", "forge -> complete"],
+        "{v}"
+    );
+
+    // `lute trace` raises it the same way.
+    let quest = dir.join("quests/forge.lute");
+    let out = Command::new(BIN)
+        .args([
+            "trace",
+            quest.to_str().unwrap(),
+            "--project",
+            dir.to_str().unwrap(),
+            "--occasion",
+            "bossDefeated@boss.warden",
+        ])
+        .output()
+        .unwrap();
+    let text = stdout(&out);
+    assert!(text.contains("The stair shakes."), "{text}{}", stderr(&out));
+    assert!(text.contains("-> complete"), "{text}");
 }
 
 #[test]

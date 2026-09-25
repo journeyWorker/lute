@@ -52,7 +52,8 @@ use crate::eval::{
 };
 use crate::mock::{self, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{
-    self, ComponentBoundary, Coverage, CoverageCount, Decision, GrantReward, Seeds, Step,
+    self, ComponentBoundary, Coverage, CoverageCount, Decision, GrantCredit, GrantReward, Seeds,
+    Step,
     TraceExit, TraceReport, UnresolvedEntry,
 };
 use crate::value::{UnresolvedAtom, Value};
@@ -1280,49 +1281,42 @@ fn is_objective_failed(w: &Walk<'_>, o: &Objective) -> bool {
         .any(|d| d.construct == "objective" && d.span == o.span && d.outcome == "failed")
 }
 
-/// dsl 0.23.0 §2: judge every not-done, not-failed objective's `by` (document
-/// order) after the objectives were judged this settle. The first time it is
-/// `true` the objective FAILS (decision `failed`, guard = the `by` text);
-/// `unknown` is recorded unresolved (trace never guesses a deadline).
-/// Returns the first REQUIRED objective that failed on this pass — its quest
-/// fails with it.
-fn judge_deadlines<'q>(quest: &'q Quest, w: &mut Walk<'_>) -> Option<&'q Objective> {
-    let mut missed = None;
-    for node in &quest.body {
-        let Node::Objective(o) = node else { continue };
-        let Some(by) = &o.by else { continue };
-        if o.id.is_empty() || is_objective_done(w, &quest.id, &o.id) || is_objective_failed(w, o)
-        {
-            continue;
+/// dsl 0.23.0 §2: judge `o`'s `by` — the caller already judged its `done`
+/// in this settle (done wins a tie) and it is neither done nor failed. The
+/// first time `by` is `true` the objective FAILS (decision `failed`, guard =
+/// the `by` text); `unknown` is recorded unresolved (trace never guesses a
+/// deadline). The quest-level consequence (a failed REQUIRED objective
+/// fails its quest) is [`settle_quest`]'s.
+fn judge_deadline(o: &Objective, by: &CelSlot, w: &mut Walk<'_>) {
+    let mut atoms = Vec::new();
+    let v = match slot_expr(&by.raw) {
+        Some(expr) => as_guard_value(eval(&expr, &w.env(), &mut atoms)),
+        None => Value::Bool(false),
+    };
+    match v {
+        Value::Bool(true) => {
+            w.push_decision(
+                "objective",
+                &o.id,
+                o.span,
+                "failed".to_string(),
+                render_done_guard(by),
+                false,
+                false,
+                Vec::new(),
+            );
         }
-        let mut atoms = Vec::new();
-        let v = match slot_expr(&by.raw) {
-            Some(expr) => as_guard_value(eval(&expr, &w.env(), &mut atoms)),
-            None => Value::Bool(false),
-        };
-        match v {
-            Value::Bool(true) => {
-                w.push_decision(
-                    "objective",
-                    &o.id,
-                    o.span,
-                    "failed".to_string(),
-                    render_done_guard(by),
-                    false,
-                    false,
-                    Vec::new(),
-                );
-                if !o.optional && missed.is_none() {
-                    missed = Some(o);
-                }
-            }
-            Value::Bool(false) => {}
-            Value::Unknown | Value::Num(_) | Value::Str(_) => {
-                w.record_unresolved("objective", &o.id, o.span, by.raw.trim().to_string(), atoms);
-            }
+        Value::Bool(false) => {}
+        Value::Unknown | Value::Num(_) | Value::Str(_) => {
+            w.record_unresolved("objective", &o.id, o.span, by.raw.trim().to_string(), atoms);
         }
     }
-    missed
+}
+
+/// The first REQUIRED objective of `quest` whose `by` failed it — an active
+/// quest with one fails (dsl 0.23.0 §2).
+fn missed_required<'q>(quest: &'q Quest, w: &Walk<'_>) -> Option<&'q Objective> {
+    quest_required_objectives(quest).find(|o| is_objective_failed(w, o))
 }
 
 /// Which lifecycle transition is firing rewards (spec §3 D-D). An
@@ -1400,12 +1394,43 @@ fn emit_grants(
                 continue;
             }
         }
+        // dsl 0.23.0 §8: a kind that `credits:` a path adds a scalar amount
+        // there (a range is the engine's roll, D-C) — as `lute run` / `lute
+        // play` apply it, through the same compound-assignment rule `::set
+        // path += n` uses (an unknown current value stays unknown).
+        let credited = match (w.snapshot.reward_kinds.get(r.kind.trim()), r.amount) {
+            (Some(kind), Some(RewardAmount::Scalar(n))) => kind.credits.as_ref().map(|path| {
+                let value = apply_set_op("+=", path, &w.state, Value::Num(n as f64));
+                w.state.write(path, value.clone());
+                GrantCredit {
+                    path: path.clone(),
+                    value: report::value_text(&value).unwrap_or_else(|| "unknown".to_string()),
+                }
+            }),
+            _ => None,
+        };
         w.steps.push(Step::Grant {
             quest: quest_id.to_string(),
             objective: objective_id.map(str::to_string),
             reward: grant_reward_from(r),
             on_failed: matches!(event, GrantEvent::Failed),
+            credited,
         });
+    }
+}
+
+/// Is `o` judged in this pass (dsl 0.21.0 §7a.2)? `None` is the continuous
+/// pass — every objective WITHOUT `on=`; `Some(raise)` is the raise `name`
+/// or `name@target` (dsl 0.23.0 §2) — only the objectives declaring that
+/// `on=` whose `target=` is absent or the raise's.
+fn judged_at(o: &Objective, occasion: Option<&str>) -> bool {
+    let on = o.on.as_ref().map(|(on, _)| on.as_str());
+    match (occasion, on) {
+        (None, None) => true,
+        (Some(raise), Some(on)) => {
+            crate::mock::raise_judges(raise, on, o.target.as_ref().map(|(t, _)| t.as_str()))
+        }
+        _ => false,
     }
 }
 
@@ -1420,27 +1445,25 @@ fn emit_grants(
 /// unlike `<match>`, an objective is a lifecycle FACT the report tables,
 /// not a control-flow gate the walk must stop on).
 ///
-/// `occasion` selects WHICH objectives are judged (dsl 0.21.0 §7a.2):
-/// `None` is the continuous pass — every objective WITHOUT `on=`; `Some(o)`
-/// is the raise `o` (`name` or `name@target`, dsl 0.23.0 §2) — only the
-/// objectives declaring that `on=` whose `target=` is absent or the raise's.
-/// An objective whose `by` already failed it is never judged again.
-fn reevaluate_objectives(quest: &Quest, occasion: Option<&str>, w: &mut Walk<'_>) {
+/// `occasion` selects WHICH objectives are judged ([`judged_at`]). An
+/// objective whose `by` already failed it is never judged again.
+///
+/// A fresh `done` fires the objective's rewards, then walks its completion
+/// body (it emits once — `lute run` / `lute play` do the same); a body that
+/// ends or halts the walk returns that [`Flow`]. After every judged
+/// objective's `done`, each judged objective still neither done nor failed
+/// has its `by` judged ([`judge_deadline`], dsl 0.23.0 §2): `done` wins a
+/// tie, and an `on=` objective's deadline is judged only at its occasion.
+fn reevaluate_objectives(quest: &Quest, occasion: Option<&str>, w: &mut Walk<'_>) -> Flow {
+    let open = |o: &Objective, w: &Walk<'_>| {
+        judged_at(o, occasion)
+            && !o.id.is_empty()
+            && !is_objective_done(w, &quest.id, &o.id)
+            && !is_objective_failed(w, o)
+    };
     for node in &quest.body {
         let Node::Objective(o) = node else { continue };
-        let on = o.on.as_ref().map(|(on, _)| on.as_str());
-        let judged = match (occasion, on) {
-            (None, None) => true,
-            (Some(raise), Some(on)) => {
-                crate::mock::raise_judges(raise, on, o.target.as_ref().map(|(t, _)| t.as_str()))
-            }
-            _ => false,
-        };
-        if !judged {
-            continue;
-        }
-        if o.id.is_empty() || is_objective_done(w, &quest.id, &o.id) || is_objective_failed(w, o)
-        {
+        if !open(o, w) {
             continue;
         }
         let mut atoms = Vec::new();
@@ -1468,6 +1491,10 @@ fn reevaluate_objectives(quest: &Quest, occasion: Option<&str>, w: &mut Walk<'_>
                 // quest-level grant fires and before the derived-complete
                 // pass can run `questComplete` handlers).
                 emit_grants(&quest.id, Some(&o.id), &o.rewards, GrantEvent::Objective, w);
+                let flow = walk_nodes(&o.body, w, None);
+                if !matches!(flow, Flow::Continue) {
+                    return flow;
+                }
             }
             Value::Bool(false) => {
                 w.push_decision(
@@ -1486,6 +1513,14 @@ fn reevaluate_objectives(quest: &Quest, occasion: Option<&str>, w: &mut Walk<'_>
             }
         }
     }
+    for node in &quest.body {
+        let Node::Objective(o) = node else { continue };
+        let Some(by) = &o.by else { continue };
+        if open(o, w) {
+            judge_deadline(o, by, w);
+        }
+    }
+    Flow::Continue
 }
 
 fn quest_required_objectives(quest: &Quest) -> impl Iterator<Item = &Objective> {
@@ -1609,8 +1644,13 @@ fn purge_terminal_objectives(quest: &Quest, w: &mut Walk<'_>) {
 /// transition; a quest already `Complete`/`Failed` never reaches this
 /// function again (`walk_quest`'s own `Active`-only loop guard).
 fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow {
-    reevaluate_objectives(quest, None, w);
-    let missed = judge_deadlines(quest, w);
+    let flow = reevaluate_objectives(quest, None, w);
+    if !matches!(flow, Flow::Continue) {
+        return flow;
+    }
+    // A required objective whose `by` failed it — in this settle, or at an
+    // occasion raise just before it — fails the quest.
+    let missed = missed_required(quest, w);
 
     let mut fail_atoms = Vec::new();
     let fail_v = match quest.fail.as_ref().and_then(|f| slot_expr(&f.raw)) {
@@ -2046,11 +2086,30 @@ fn walk_quests(doc: &Document, events: &[String], w: &mut Walk<'_>) -> Flow {
 
     let mocks = w.mocks;
     for occasion in &mocks.occasions {
+        // 0.23.1: a raise also fires the same-named world event — every
+        // active quest's `<on event>` handlers run first, then the occasion
+        // judges (as `lute play` / `lute run` raise it). A lifecycle event
+        // name is never raised this way: the settle fires those itself.
+        let (name, _) = mock::split_occasion(occasion);
+        if !lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&name) {
+            for quest in &doc.quests {
+                if states.get(&quest.id).copied() != Some(QuestState::Active) {
+                    continue;
+                }
+                let flow = dispatch_event(quest, name, w);
+                if !matches!(flow, Flow::Continue) {
+                    return flow;
+                }
+            }
+        }
         for quest in &doc.quests {
             if states.get(&quest.id).copied() != Some(QuestState::Active) {
                 continue;
             }
-            reevaluate_objectives(quest, Some(occasion), w);
+            let flow = reevaluate_objectives(quest, Some(occasion), w);
+            if !matches!(flow, Flow::Continue) {
+                return flow;
+            }
             let flow = settle_and_cascade(quest, doc, &parents, &mut states, w);
             if !matches!(flow, Flow::Continue) {
                 return flow;
@@ -2313,12 +2372,14 @@ fn unmatched_event_notes(doc: &Document, events: &[String]) -> Vec<String> {
 /// state paths, so the §1.3 reserved-read log is untouched.
 fn occasion_notes(doc: &Document, occasions: &[String], decisions: &[Decision]) -> Vec<String> {
     let mut notes = Vec::new();
+    // 0.23.1: a same-named `<on event>` handler answers a raise too.
     let answered: BTreeSet<&str> = doc
         .quests
         .iter()
         .flat_map(|q| &q.body)
         .filter_map(|n| match n {
             Node::Objective(o) => o.on.as_ref().map(|(on, _)| on.as_str()),
+            Node::On(on) => Some(on.event.as_str()),
             _ => None,
         })
         .collect();
@@ -2329,7 +2390,8 @@ fn occasion_notes(doc: &Document, occasions: &[String], decisions: &[Decision]) 
             continue;
         }
         notes.push(format!(
-            "occasion `{name}` is judged by no `<objective on>` in this document"
+            "occasion `{name}` is judged by no `<objective on>` and fires no `<on event>` \
+             handler in this document"
         ));
     }
     for quest in &doc.quests {
@@ -2590,6 +2652,8 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         end_reason: None,
         forced_unknown: Vec::new(),
         final_state: BTreeMap::new(),
+        final_facts: BTreeSet::new(),
+        final_undecided: BTreeSet::new(),
     }
 }
 
@@ -2922,6 +2986,7 @@ fn trace_pipeline(
             Read::Unset => None,
         })
         .collect();
+    let (final_facts, final_undecided) = w.facts.holding(&w.state);
     let report = TraceReport {
         file: input.uri.clone(),
         seeds: seeds_summary(&mocks),
@@ -2937,6 +3002,8 @@ fn trace_pipeline(
         end_reason,
         forced_unknown: w.forced_unknown,
         final_state,
+        final_facts,
+        final_undecided,
     };
     (report, exit)
 }

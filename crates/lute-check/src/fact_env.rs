@@ -188,6 +188,12 @@ pub struct RootVocab {
     pub(crate) seeds: BTreeSet<GroundFact>,
     rules: Vec<Rule>,
     rule_texts: BTreeSet<String>,
+    /// seven F3 (dsl 0.23.1): some document of the root has a frontmatter
+    /// that does not parse, so its `uses:` vocabulary, seeds, rules — and
+    /// whether its asserts ever run — are unknown. [`MaySet::build`] then
+    /// reads every relation as unbounded, so no fact is impossible, as
+    /// connectivity already declines to call a `visited()` key unknown.
+    incomplete: bool,
 }
 
 impl RootVocab {
@@ -246,6 +252,15 @@ impl RootVocab {
                 self.rules.push(rule.rule.clone());
             }
         }
+    }
+
+    /// seven F3 (dsl 0.23.1): mark the root incomplete when any of `docs`
+    /// has a frontmatter that does not parse (`E-META-PARSE` —
+    /// [`crate::meta::frontmatter_parses`]). Call before [`MaySet::build`].
+    pub fn note_unreadable_documents(&mut self, docs: &[(PathBuf, lute_syntax::ast::Document)]) {
+        self.incomplete |= docs
+            .iter()
+            .any(|(_, d)| !crate::meta::frontmatter_parses(&d.meta));
     }
 
     /// The member universe a domain / predicate name denotes. `bool` is the
@@ -317,9 +332,18 @@ pub struct MaySet {
     facts: BTreeMap<String, BTreeSet<Vec<String>>>,
     unbounded: BTreeSet<String>,
     /// dsl 0.23.0 §9: the facts that hold at every point of every run
-    /// (`crate::fact_must::stable_seeds`) — a negated rule atom over one of
+    /// (`crate::fact_must::stable_seeds`, closed under the rules whose every
+    /// premise is stable — dsl 0.23.1) — a negated rule atom over one of
     /// them is false, so the clause instance never fires.
     stable: BTreeSet<GroundFact>,
+    /// Each derived fact a stable fact defeats, with the first stable fact
+    /// a negated premise of one of its clauses denies — why an impossible
+    /// derived fact is impossible (`opp(crane)`: `alibi(crane)` is stable).
+    defeats: BTreeMap<GroundFact, GroundFact>,
+    /// The stable seeds `build` started from — [`Self::widened`]'s stable
+    /// set: the rule closure over them read a relation nothing produces yet
+    /// as never holding, which `--wip` no longer assumes.
+    stable_seeds: BTreeSet<GroundFact>,
 }
 
 /// One rule application's result: concrete head tuples, or "the head may be
@@ -333,12 +357,40 @@ enum Derived {
 impl MaySet {
     /// §3's least fixpoint over `vocab`'s seeds and rules plus `asserts` — the
     /// facts of every live assert site in the root. `stable` are the facts
-    /// that hold throughout every run (dsl 0.23.0 §9).
+    /// that hold throughout every run (dsl 0.23.0 §9); the set closes them
+    /// under the rules that prove a fact from stable facts alone (a negated
+    /// premise outside `May`, [`derive_guaranteed`]) and rebuilds until that
+    /// closure stops growing (dsl 0.23.1: `not alibi(crane)` with `alibi`
+    /// derived from seeds nothing removes never holds either).
     pub fn build(
         vocab: &RootVocab,
         asserts: impl IntoIterator<Item = GroundFact>,
         stable: &BTreeSet<GroundFact>,
     ) -> Self {
+        let asserts: Vec<GroundFact> = asserts.into_iter().collect();
+        let mut closure = stable.clone();
+        loop {
+            let mut may = Self::build_once(vocab, &asserts, &closure);
+            let base: Vec<MustFact> = closure
+                .iter()
+                .map(|fact| MustFact {
+                    fact: fact.clone(),
+                    provenance: Provenance::Seed,
+                })
+                .collect();
+            let derived = derive_guaranteed(vocab, &may, &base);
+            if derived.is_empty() {
+                may.stable_seeds = stable.clone();
+                return may;
+            }
+            // Sound: every closure fact holds at every point of every run
+            // over the current (sound) `May`, and a larger stable set only
+            // shrinks the next `May`.
+            closure.extend(derived.into_iter().map(|m| m.fact));
+        }
+    }
+
+    fn build_once(vocab: &RootVocab, asserts: &[GroundFact], stable: &BTreeSet<GroundFact>) -> Self {
         let mut may = MaySet {
             stable: stable.clone(),
             ..MaySet::default()
@@ -353,15 +405,41 @@ impl MaySet {
                 })
                 .collect();
             may.signature.insert(name.clone(), sig);
-            if vocab.is_unbounded(name, decl) {
+            // seven F3: an incomplete root may produce any fact of any
+            // relation — every relation is unbounded, nothing impossible.
+            if vocab.incomplete || vocab.is_unbounded(name, decl) {
                 may.unbounded.insert(name.clone());
             }
         }
-        for fact in vocab.seeds.iter().cloned().chain(asserts) {
+        for fact in vocab.seeds.iter().chain(asserts).cloned() {
             may.insert(fact);
         }
         may.saturate(vocab);
+        if !may.stable.is_empty() {
+            let mut defeats = BTreeMap::new();
+            for rule in &vocab.rules {
+                if vocab.relations.get(&rule.head.relation).is_some_and(|d| d.derive) {
+                    may.apply_rule(vocab, rule, Some(&mut defeats));
+                }
+            }
+            defeats.retain(|head, _| !may.contains(head));
+            may.defeats = defeats;
+        }
         may
+    }
+
+    /// Why no fact matching `q` can hold although a rule derives its
+    /// relation: the first defeated head matching `q` and the stable fact a
+    /// negated premise of its clause denies.
+    pub fn defeat(&self, q: &QueryPattern) -> Option<(&GroundFact, &GroundFact)> {
+        self.defeats.iter().find(|(head, _)| q.matches(head))
+    }
+
+    /// The ground tuples of `relation` this set may hold — `None` for a
+    /// relation it holds none of. Meaningless for an
+    /// [unbounded](Self::is_unbounded) relation, which may hold anything.
+    pub fn instances(&self, relation: &str) -> Option<&BTreeSet<Vec<String>>> {
+        self.facts.get(relation)
     }
 
     /// dsl 0.23.0 §10 (`check-project --wip`): this set with every relation
@@ -372,6 +450,8 @@ impl MaySet {
         let mut may = self.clone();
         may.unbounded
             .extend(open.iter().filter(|r| may.signature.contains_key(*r)).cloned());
+        may.stable = self.stable_seeds.clone();
+        may.defeats.clear();
         may.saturate(vocab);
         may
     }
@@ -388,7 +468,7 @@ impl MaySet {
                 if !decl.derive || self.unbounded.contains(head) {
                     continue;
                 }
-                match self.apply_rule(vocab, rule) {
+                match self.apply_rule(vocab, rule, None) {
                     Derived::Unbounded => {
                         self.unbounded.insert(head.clone());
                         changed = true;
@@ -429,10 +509,16 @@ impl MaySet {
     /// then filter by `=`/`!=` and drop the clause if a CEL guard decides
     /// false. A negated atom is satisfiable (§3 rule 4) unless it denies a
     /// stable fact (dsl 0.23.0 §9: `not alibi(crane, tunnel)` with the alibi
-    /// a seed nothing removes). A positive atom over an unbounded relation
+    /// a seed nothing removes) — each head so defeated is recorded in
+    /// `defeats` when given. A positive atom over an unbounded relation
     /// may match anything: it is satisfiable and binds nothing, so the head
     /// is unbounded only when it needs a variable no other atom binds.
-    fn apply_rule(&self, vocab: &RootVocab, rule: &Rule) -> Derived {
+    fn apply_rule(
+        &self,
+        vocab: &RootVocab,
+        rule: &Rule,
+        mut defeats: Option<&mut BTreeMap<GroundFact, GroundFact>>,
+    ) -> Derived {
         let mut bindings: Vec<BTreeMap<&str, &str>> = vec![BTreeMap::new()];
         for lit in &rule.body {
             let BodyLiteral::Pos(atom) = lit else {
@@ -474,10 +560,29 @@ impl MaySet {
                     else {
                         return true; // unbound: never a basis for dropping a clause
                     };
-                    !self.stable.contains(&GroundFact {
+                    let denied = GroundFact {
                         relation: atom.relation.clone(),
                         args,
-                    })
+                    };
+                    if !self.stable.contains(&denied) {
+                        return true;
+                    }
+                    if let Some(sink) = defeats.as_deref_mut() {
+                        let head = rule
+                            .head
+                            .terms
+                            .iter()
+                            .map(|t| term_value(t, b).map(str::to_string))
+                            .collect::<Option<Vec<_>>>();
+                        if let Some(args) = head {
+                            sink.entry(GroundFact {
+                                relation: rule.head.relation.clone(),
+                                args,
+                            })
+                            .or_insert(denied);
+                        }
+                    }
+                    false
                 }),
                 _ => {}
             }
@@ -981,6 +1086,11 @@ impl<'a> FactScope<'a> {
             .relations
             .get(&q.relation)
             .is_some_and(|d| d.args.len() == q.args.len())
+    }
+
+    /// [`MaySet::defeat`] over the may set this scope reads.
+    pub fn defeat(&self, q: &QueryPattern) -> Option<(&'a GroundFact, &'a GroundFact)> {
+        self.env.may_set(self.wip).defeat(q)
     }
 
     pub fn holds(&self, q: &QueryPattern) -> HoldsVerdict<'a> {

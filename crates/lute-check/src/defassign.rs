@@ -551,6 +551,12 @@ fn check_label_reads(
 /// survive `intersect_all` on exhaustive matches). Each `<when>`/`<otherwise>`
 /// still forks; join = intersection only when an `<otherwise>` makes the match
 /// exhaustive. Arm-level `<when test>` guards keep proving (see `apply_condition`).
+///
+/// dsl 0.23.1 (ashen N3): an arm NARROWS a plain state-path subject. Inside
+/// `<when is="x">` (no `unset` alternative) the subject equals a named value,
+/// so it is set; once an arm has taken every unset value (`is="unset"` with no
+/// narrowing `test`), every later arm and the `<otherwise>` see it set. The
+/// proof is arm-local (`available` only, never `writes`).
 fn walk_match(
     m: &Match,
     schema: &StateSchema,
@@ -561,15 +567,31 @@ fn walk_match(
     // Subject is a value-read check only; subject-position guards do NOT prove.
     check_reads(&m.subject, schema, &flow.available, diags, reads);
 
+    let subject = crate::match_check::subject_path(m)
+        .filter(|p| is_declared(p, schema) && !is_choicelog(p));
+    let mut unset_taken = false;
     let mut arm_finals: Vec<Flow> = Vec::new();
     for arm in &m.arms {
         let mut branch = flow.clone();
         match arm {
-            Arm::When { test, body, .. } => {
+            Arm::When { is, test, body, .. } => {
+                if let Some(p) = &subject {
+                    if unset_taken
+                        || crate::match_check::is_pattern_proves_set(is.as_ref(), Some(p))
+                    {
+                        branch.available.insert(p.clone());
+                    }
+                }
                 apply_condition(test, schema, &mut branch.available, diags, reads);
                 walk_nodes(body, schema, &mut branch, diags, reads);
+                unset_taken |= subject.as_deref().is_some_and(|p| {
+                    crate::match_check::arm_takes_unset(is.as_ref(), &test.raw, Some(p), schema)
+                });
             }
             Arm::Otherwise { body, .. } => {
+                if let (Some(p), true) = (&subject, unset_taken) {
+                    branch.available.insert(p.clone());
+                }
                 walk_nodes(body, schema, &mut branch, diags, reads);
             }
         }
@@ -993,6 +1015,68 @@ mod tests {
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "compound += reads old value, expected E-MAYBE-UNSET, got {errs:?}"
         );
+    }
+
+    // ---- dsl 0.23.1 (ashen N3): a match arm narrows its own subject ---------
+
+    /// The E-MAYBE-UNSET messages of `body` over a maybe-unset enum `run.mood`
+    /// and number `run.rival`, in source order — `<match on>` subject reads
+    /// excluded (`check.rs` settles those by exhaustiveness).
+    fn narrowing_errs(body: &str) -> Vec<String> {
+        let src = format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+             run.mood: {{ type: {{ enum: [calm, tense] }} }}\n  run.rival: {{ type: number }}\n---\n\
+             ## Shot 1.\n{body}\n"
+        );
+        let (nodes, schema) = fixture(&src);
+        let subjects: Vec<Span> = nodes
+            .iter()
+            .filter_map(|n| match n {
+                Node::Match(m) => Some(m.subject.span),
+                _ => None,
+            })
+            .collect();
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        errs.into_iter()
+            .filter(|e| e.code == "E-MAYBE-UNSET" && !subjects.contains(&e.span))
+            .map(|e| e.message)
+            .collect()
+    }
+
+    #[test]
+    fn is_arm_proves_its_subject_set() {
+        let errs = narrowing_errs(
+            "<match on=\"run.mood\">\n<when is=\"calm|tense\">\n@narrator: Mood {{run.mood}}.\n</when>\n\
+             <when is=\"unset\">\n@narrator: none.\n</when>\n</match>",
+        );
+        assert!(errs.is_empty(), "{errs:?}");
+    }
+
+    #[test]
+    fn arms_after_an_unset_arm_see_the_subject_set() {
+        let errs = narrowing_errs(
+            "<match on=\"run.rival\">\n<when is=\"unset\">\n@narrator: none.\n</when>\n\
+             <when test=\"$ > 0\">\n@narrator: Rival {{run.rival}}.\n</when>\n\
+             <otherwise>\n@narrator: Low {{run.rival}}.\n</otherwise>\n</match>",
+        );
+        assert!(errs.is_empty(), "{errs:?}");
+    }
+
+    #[test]
+    fn narrowing_stops_where_unset_can_still_arrive() {
+        // No unset arm: `<otherwise>` may see unset. An `is="unset"` arm
+        // with a `test` does not take every unset value. After the match the
+        // subject is as unknown as before.
+        let errs = narrowing_errs(
+            "<match on=\"run.rival\">\n<when is=\"1..\">\n@narrator: {{run.rival}}.\n</when>\n\
+             <otherwise>\n@narrator: Maybe {{run.rival}}.\n</otherwise>\n</match>\n\
+             <match on=\"run.mood\">\n<when is=\"unset\" test=\"1 > 0\">\n@narrator: a.\n</when>\n\
+             <otherwise>\n@narrator: {{run.mood}}.\n</otherwise>\n</match>\n\
+             @narrator: After {{run.mood}}.",
+        );
+        assert_eq!(errs.len(), 3, "{errs:?}");
+        assert!(errs[0].contains("`run.rival`"), "{errs:?}");
+        assert!(errs[1].contains("`run.mood`") && errs[2].contains("`run.mood`"), "{errs:?}");
     }
 
     // ---- Finding 1: subject-guard leak (dsl §9.4) ---------------------------

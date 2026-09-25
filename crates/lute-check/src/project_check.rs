@@ -835,7 +835,98 @@ pub fn check_project_quest_tree(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
             &mut out,
         );
     }
+    // 4) Tier mixing across documents (the same-document case is the
+    //    per-file `check()`'s [`check_doc_quest_tiers`]).
+    let mut tiers: BTreeMap<&str, (&Path, &str)> = BTreeMap::new();
+    for (path, doc) in docs {
+        for q in &doc.quests {
+            tiers
+                .entry(q.id.as_str())
+                .or_insert((path.as_path(), quest_tier(q)));
+        }
+    }
+    for e in &edges {
+        let (Some(&(child_path, child_tier)), Some(&(_, parent_tier))) =
+            (tiers.get(e.child.as_str()), tiers.get(e.parent.as_str()))
+        else {
+            continue;
+        };
+        if child_path != e.path.as_path() && child_tier != parent_tier {
+            out.push((
+                e.path.clone(),
+                tier_mix_diag(&e.parent, parent_tier, &e.child, child_tier, e.span),
+            ));
+        }
+    }
 
+    out
+}
+
+/// dsl 0.23.0 §6 (0.23.1): a subquest's `tier` must equal its parent's.
+/// A run-tier quest resets to `unset` at every `newRun`; a user-tier one
+/// keeps its status. Mixed, the tree locks: a run-tier parent's failure
+/// cascade-fails its user-tier child for good (and the parent, reset next
+/// run, waits on a child that stays failed); a user-tier parent that ends
+/// never re-activates its run-tier children once they reset.
+pub const E_QUEST_TIER_MIX: &str = "E-QUEST-TIER-MIX";
+
+/// A quest's effective tier: `run` when authored `tier="run"`, else `user`.
+fn quest_tier(q: &lute_syntax::ast::Quest) -> &'static str {
+    match q.tier.as_ref() {
+        Some((t, _)) if t == "run" => "run",
+        _ => "user",
+    }
+}
+
+fn tier_mix_diag(
+    parent: &str,
+    parent_tier: &str,
+    child: &str,
+    child_tier: &str,
+    span: Span,
+) -> Diagnostic {
+    let lock = if parent_tier == "run" {
+        format!(
+            "when `{parent}` ends, its end cascades into `{child}`, which keeps that status \
+             across runs, so `{parent}` restarts next run waiting on a child that never \
+             becomes active again"
+        )
+    } else {
+        format!(
+            "`{child}` resets to `unset` at every new run while `{parent}` keeps its status, so \
+             once `{parent}` has ended `{child}` is never activated again"
+        )
+    };
+    tree_diag(
+        E_QUEST_TIER_MIX,
+        format!(
+            "subquest `{child}` is tier `{child_tier}` but its parent `{parent}` is tier \
+             `{parent_tier}`: {lock} — give both quests the same `tier` (dsl 0.23.0 §6)"
+        ),
+        span,
+    )
+}
+
+/// [`E_QUEST_TIER_MIX`] for every `<objective quest="c">` whose parent and
+/// child are both declared in `doc` (the per-file half; cross-document
+/// edges are [`check_project_quest_tree`]'s).
+pub fn check_doc_quest_tiers(doc: &Document) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for parent in &doc.quests {
+        for node in &parent.body {
+            let Node::Objective(o) = node else { continue };
+            let Some(child) = o.quest.as_deref().filter(|c| !c.is_empty()) else {
+                continue;
+            };
+            let Some(child_q) = doc.quests.iter().find(|q| q.id == child) else {
+                continue;
+            };
+            let (pt, ct) = (quest_tier(parent), quest_tier(child_q));
+            if pt != ct {
+                out.push(tier_mix_diag(&parent.id, pt, child, ct, o.quest_span));
+            }
+        }
+    }
     out
 }
 
@@ -1921,5 +2012,65 @@ mod tests {
         let unreachable: BTreeSet<String> = BTreeSet::new();
         let out = check_project_subquest_unsatisfiable(&docs, &unreachable);
         assert!(out.is_empty(), "{out:?}");
+    }
+
+    fn run_tier(mut q: Quest) -> Quest {
+        q.tier = Some(("run".to_string(), span(q.span.line)));
+        q
+    }
+
+    #[test]
+    fn tier_mix_across_documents_is_check_projects_and_same_document_is_checks() {
+        // lamplight N1: a run-tier parent with a user-tier child, the child in
+        // another file — project-wide, anchored at the `quest=` objective.
+        let docs = vec![
+            (
+                PathBuf::from("a.lute"),
+                doc(vec![run_tier(quest_with(
+                    "case",
+                    1,
+                    vec![objective("inq", Some("inq"), false, 5)],
+                ))]),
+            ),
+            (PathBuf::from("b.lute"), doc(vec![quest("inq", 1)])),
+        ];
+        let out: Vec<_> = check_project_quest_tree(&docs)
+            .into_iter()
+            .filter(|(_, d)| d.code == E_QUEST_TIER_MIX)
+            .collect();
+        assert_eq!(out.len(), 1, "{out:?}");
+        let (path, d) = &out[0];
+        assert_eq!(path, Path::new("a.lute"));
+        assert_eq!(d.span.line, 5);
+        assert_eq!(d.severity, Severity::Error);
+        for needle in ["`inq` is tier `user`", "`case` is tier `run`"] {
+            assert!(d.message.contains(needle), "{}", d.message);
+        }
+
+        // Both in one document: the per-file check reports it (the other
+        // direction, a user-tier parent), and check-project does not repeat it.
+        let same = doc(vec![
+            quest_with("case", 1, vec![objective("acc", Some("acc"), false, 5)]),
+            run_tier(quest("acc", 10)),
+        ]);
+        let per_file = check_doc_quest_tiers(&same);
+        assert_eq!(per_file.len(), 1, "{per_file:?}");
+        assert!(per_file[0].message.contains("`acc` resets to `unset`"), "{}", per_file[0].message);
+        let project = check_project_quest_tree(&[(PathBuf::from("a.lute"), same)]);
+        assert!(!project.iter().any(|(_, d)| d.code == E_QUEST_TIER_MIX), "{project:?}");
+    }
+
+    #[test]
+    fn matching_tiers_are_clean() {
+        let same = doc(vec![
+            run_tier(quest_with("case", 1, vec![objective("acc", Some("acc"), false, 5)])),
+            run_tier(quest("acc", 10)),
+        ]);
+        assert!(check_doc_quest_tiers(&same).is_empty());
+        let user = doc(vec![
+            quest_with("case", 1, vec![objective("inq", Some("inq"), false, 5)]),
+            quest("inq", 10),
+        ]);
+        assert!(check_doc_quest_tiers(&user).is_empty());
     }
 }

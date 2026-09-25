@@ -157,3 +157,46 @@ fn doctor_flags_a_lute_lsp_whose_version_differs() {
     let l = line(&text, "lute-lsp on PATH");
     assert!(l.contains('✓') && l.contains(ours), "{text}");
 }
+
+/// seven-days F27: the editor's `lute-lsp` keeps running the build it was
+/// started from. Doctor lists running servers and flags one whose binary
+/// reports another version or was replaced after it started.
+#[cfg(unix)]
+#[test]
+fn doctor_flags_a_running_lute_lsp_of_another_build() {
+    use std::os::unix::fs::PermissionsExt;
+    let proj = occasions_project("running");
+    let ours = env!("CARGO_PKG_VERSION");
+    let dir = temp_dir("running-lsp");
+    let exe = dir.join("lute-lsp");
+    let script = |version: &str| {
+        format!("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'lute-lsp {version}'; exit 0; fi\nsleep 30\n")
+    };
+    std::fs::write(&exe, script(ours)).unwrap();
+    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut server = Command::new(&exe).spawn().unwrap();
+    let pid = format!("pid {} ({})", server.id(), exe.display());
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    let running = |text: &str| {
+        line(text, "running lute-lsp")
+            .split("; ")
+            .find(|part| part.contains(&pid))
+            .map(str::to_string)
+            .unwrap_or_else(|| panic!("{pid} not listed:\n{text}"))
+    };
+    let text = doctor(&proj, &temp_dir("running-path"));
+    assert_eq!(running(&text).rsplit(": ").next().unwrap(), format!("{pid} {ours}"), "{text}");
+
+    // Reinstalled over the running server: the file on disk is newer.
+    std::thread::sleep(std::time::Duration::from_millis(2500));
+    std::fs::write(&exe, script(ours)).unwrap();
+    let text = doctor(&proj, &temp_dir("running-path2"));
+    let l = line(&text, "running lute-lsp");
+    assert!(l.contains('✗'), "{text}");
+    assert!(running(&text).contains("started before its binary was replaced"), "{text}");
+    assert!(text.contains("restart the editor"), "{text}");
+
+    let _ = server.kill();
+    let _ = server.wait();
+}

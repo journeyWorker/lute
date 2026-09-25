@@ -385,21 +385,27 @@ fn a_shadowed_beat_reports_shadowing_not_a_tie() {
 fn once_run_beat_gated_only_on_user_state_is_advised() {
     let out = project_beats(&[&beat("a.one", "on: hubVisit\nwhen: 'user.runs >= 3'\n")]);
     assert_eq!(codes(&out, "W-BEAT-ONCE-RUN-USER"), 1, "{out:?}");
-    // `once: user`, a run-tier read, or a fact query: silent.
+    let (_, d) = out.iter().find(|(_, d)| d.code == "W-BEAT-ONCE-RUN-USER").unwrap();
+    assert!(d.message.contains("write `once: run` if it should replay every run"), "{}", d.message);
+    // `once: user`, a run-tier read, a fact query, or no `when`: silent.
+    // dsl 0.23.1 (ashen N1): so is an AUTHORED `once: run` — the author's
+    // acknowledgement — and a `prev.run.*` read (run history, not user).
     for fm in [
         "on: hubVisit\nonce: user\nwhen: 'user.runs >= 3'\n",
         "on: hubVisit\nwhen: 'user.runs >= 3 && run.day == 1'\n",
         "on: hubVisit\nwhen: 'user.runs >= 3 && visited(\"a.two\")'\n",
         "on: hubVisit\n",
+        "on: hubVisit\nonce: run\nwhen: 'user.runs >= 3'\n",
+        "on: hubVisit\nwhen: 'user.runs >= 3 && isSet(prev.run.day)'\n",
     ] {
         let out = project_beats(&[&beat("a.one", fm)]);
         assert_eq!(codes(&out, "W-BEAT-ONCE-RUN-USER"), 0, "{fm}: {out:?}");
     }
-    // An entry with `once="run"` and an everRead-only gate.
+    // An entry's `once="run"` is always written: silent.
     let src = lore(
         "<entry id=\"bark\" on=\"hubVisit\" once=\"run\" when=\"entry.bark.everRead\">\n\
          @narrator: hi\n</entry>\n",
     );
     let out = project_beats(&[&src]);
-    assert_eq!(codes(&out, "W-BEAT-ONCE-RUN-USER"), 1, "{out:?}");
+    assert_eq!(codes(&out, "W-BEAT-ONCE-RUN-USER"), 0, "{out:?}");
 }

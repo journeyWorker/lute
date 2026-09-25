@@ -307,6 +307,24 @@ impl<'a> FactStore<'a> {
         self.derived_reads.borrow().clone()
     }
 
+    /// Every fact that holds over `state`, rendered `rel(a, b)`: the
+    /// fixpoint of the held facts under derivation, else the held facts —
+    /// plus every derived relation whose derivation read undecided state
+    /// (a fact of it neither holds nor fails to hold).
+    pub fn holding(&self, state: &EffectiveState<'_>) -> (BTreeSet<String>, BTreeSet<String>) {
+        let render = |(rel, args): &(String, Vec<String>)| format!("{rel}({})", args.join(", "));
+        match self.derivation {
+            Some(program) if !program.is_empty() => {
+                let closure = program.fixpoint(&self.facts, state);
+                (
+                    closure.facts.iter().map(render).collect(),
+                    closure.undecided.keys().cloned().collect(),
+                )
+            }
+            _ => (self.facts.iter().map(render).collect(), BTreeSet::new()),
+        }
+    }
+
     fn is_derived(&self, rel: &str) -> bool {
         self.rel_vocab
             .relations

@@ -52,6 +52,74 @@ pub fn component_scope(d: &Directive) -> &str {
         .unwrap_or("")
 }
 
+/// The internal attr carrying a component line's SOURCE-ORDER back-filled
+/// `code` (ashen N7). [`expand_use`] stamps it on every untagged line of the
+/// cloned body BEFORE binding and folding; the lowering reads it when no
+/// authored `code` exists. It is deliberately not `code`: the line is still
+/// untagged (`lute loc` keeps reporting it so), it only no longer depends on
+/// which arms a call site's arguments fold away.
+pub const COMPONENT_CODE_ATTR: &str = "__code";
+
+/// Give every untagged line of a component body the code `lute tag` would
+/// write into the component file: one identity scope over the whole body in
+/// source order, per speaker, max authored + 10 (lute-check `tag.rs`). Run on
+/// the fresh clone, before any `<match>` folds, so a call site with a literal
+/// argument and one with a `@def` argument mint the same code for the same
+/// source line (decision 10: allocation never depends on the argument form).
+fn backfill_component_codes(body: &mut [Node]) {
+    fn visit(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
+        for node in nodes {
+            match node {
+                Node::Line(l) => f(l),
+                Node::Branch(b) => b.choices.iter_mut().for_each(|c| visit(&mut c.body, f)),
+                Node::Hub(h) => h.choices.iter_mut().for_each(|c| visit(&mut c.body, f)),
+                Node::Match(m) => {
+                    for arm in &mut m.arms {
+                        match arm {
+                            Arm::When { body, .. } | Arm::Otherwise { body, .. } => visit(body, f),
+                        }
+                    }
+                }
+                Node::Objective(o) => visit(&mut o.body, f),
+                Node::On(o) => visit(&mut o.body, f),
+                Node::Directive(_)
+                | Node::Set(_)
+                | Node::Timeline(_)
+                | Node::Assert(_)
+                | Node::Retract(_) => {}
+            }
+        }
+    }
+    let mut max: BTreeMap<String, u64> = BTreeMap::new();
+    visit(body, &mut |l| {
+        let cur = max.entry(l.speaker.clone()).or_insert(0);
+        for a in l.attrs.iter().filter(|a| a.key == "code") {
+            if let AttrValue::Str(s) = &a.value {
+                if let Ok(n) = s.trim().parse::<u64>() {
+                    *cur = (*cur).max(n);
+                }
+            }
+        }
+    });
+    visit(body, &mut |l| {
+        if l.attrs.iter().any(|a| a.key == "code") {
+            return;
+        }
+        let cur = max.entry(l.speaker.clone()).or_insert(0);
+        // Overflow fails closed for this line only, as `tag.rs` does.
+        let Some(next) = cur.checked_add(10) else {
+            return;
+        };
+        *cur = next;
+        l.attrs.push(Attr {
+            key: COMPONENT_CODE_ATTR.to_string(),
+            value: AttrValue::Str(format!("{next:04}")),
+            value_span: l.span,
+            span: l.span,
+        });
+    });
+}
+
 /// Per-host `::use` ordinals, keyed by component name.
 type UseOrdinals = BTreeMap<String, u32>;
 
@@ -467,6 +535,7 @@ fn expand_use(
         .iter()
         .flat_map(|s| s.body.iter().cloned())
         .collect();
+    backfill_component_codes(&mut body);
     bind_params(&mut body, &args, &def.params);
     // Nested `::use` in the body expands recursively (acyclic per checker);
     // this expansion is the nested uses' host, so they count from 1 afresh.

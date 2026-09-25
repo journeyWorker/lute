@@ -1,17 +1,22 @@
 //! Play-script assertions (dsl 0.22.0 §4).
 //!
-//! A play step MAY carry `expect: { winner, offered, notOffered, presented }` and a
-//! script MAY carry a top-level `expect: { exit, quests, state, facts,
-//! notFacts, transcriptContains, transcriptLacks }`. [`crate::play`] parses
-//! the script, calls [`validate`] on every `expect:` at parse time (an
-//! unknown key or a malformed value is a usage error, exit 2), walks the
-//! play, fills a [`PlayOutcome`] and hands both to [`check`]. Every miss
-//! names its step (and `label:`) and the actual value; `lute play` exits 1
-//! on any miss, and `lute test` reports a play with a miss as FAIL.
+//! A play step MAY carry `expect: { winner, offered, notOffered, presented,
+//! quests, state, facts, notFacts }` and a script MAY carry a top-level
+//! `expect: { exit, quests, state, facts, notFacts, transcriptContains,
+//! transcriptLacks }`. The first four step keys judge an `occasion` step's
+//! selection; the world keys (`quests`, `state`, `facts`, `notFacts`, 0.23.1)
+//! judge the world right after the step settled, on any step kind.
+//! [`crate::play`] parses the script, calls [`validate`] on every `expect:`
+//! at parse time (an unknown key or a malformed value is a usage error, exit
+//! 2), walks the play, fills a [`PlayOutcome`] and hands both to [`check`].
+//! Every miss names its step (and `label:`) and the actual value; `lute
+//! play` exits 1 on any miss, and `lute test` reports a play with a miss as
+//! FAIL.
 //!
 //! This module judges; it never walks. What a step presented, what was
-//! eligible, and the final state/facts/quests are exactly what the play
-//! walk recorded — there is no second model of the playthrough here.
+//! eligible, and the state/facts/quests after a step and at the end are
+//! exactly what the play walk recorded — there is no second model of the
+//! playthrough here.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -20,7 +25,61 @@ use lute_trace::Value;
 use serde_yaml::Value as Yaml;
 
 /// The complete legal key set of a STEP `expect:`.
-pub(crate) const STEP_EXPECT_KEYS: &[&str] = &["notOffered", "offered", "presented", "winner"];
+pub(crate) const STEP_EXPECT_KEYS: &[&str] = &[
+    "facts",
+    "notFacts",
+    "notOffered",
+    "offered",
+    "presented",
+    "quests",
+    "state",
+    "winner",
+];
+
+/// The step keys that judge an occasion's selection — legal only on an
+/// `occasion` step.
+const OCCASION_STEP_KEYS: &[&str] = &["notOffered", "offered", "presented", "winner"];
+
+/// The keys that judge the world (state, facts, quest statuses) — on a step,
+/// right after it settled; at the top level, at the end.
+const WORLD_KEYS: &[&str] = &["facts", "notFacts", "quests", "state"];
+
+/// The first occasion-only key a step `expect:` carries — a usage error on a
+/// step that raises no occasion.
+pub(crate) fn occasion_key(expect: &Yaml) -> Option<&'static str> {
+    OCCASION_STEP_KEYS
+        .iter()
+        .copied()
+        .find(|k| expect.get(k).is_some())
+}
+
+/// Does this step `expect:` judge the world after the step? The play then
+/// snapshots it ([`WorldView`]); `facts` says whether the derived facts are
+/// needed too (a fixpoint, so only on request).
+pub(crate) fn wants_world(expect: &Yaml) -> Option<WorldWants> {
+    WORLD_KEYS
+        .iter()
+        .any(|k| expect.get(k).is_some())
+        .then(|| WorldWants {
+            facts: expect.get("facts").is_some() || expect.get("notFacts").is_some(),
+        })
+}
+
+/// What a step's world expectation needs captured.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct WorldWants {
+    pub facts: bool,
+}
+
+/// The world at one moment of a play: the effective state, every fact that
+/// holds after derivation (rendered `rel(a, b)`), every declared quest's
+/// status.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct WorldView {
+    pub state: BTreeMap<String, Value>,
+    pub facts: BTreeSet<String>,
+    pub quests: BTreeMap<String, String>,
+}
 
 /// The complete legal key set of the top-level (end-of-play) `expect:`.
 pub(crate) const PLAY_EXPECT_KEYS: &[&str] = &[
@@ -43,13 +102,15 @@ const QUEST_STATES: &[&str] = &["unset", "active", "complete", "failed"];
 /// presented (no eligible beat, or `pick: none`).
 const NO_WINNER: &str = "none";
 
-/// What one executed occasion step did. A step with `repeat: n` yields `n`
-/// rows sharing one `index`.
+/// What one executed step did. A step with `repeat: n` yields `n` rows
+/// sharing one `index`.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct StepOutcome {
     /// 1-based script step number — the `N` of every "step N" message.
     pub index: usize,
     pub label: Option<String>,
+    /// The raised occasion; for another step kind, its action (`engine`,
+    /// `newRun`, `event <name>`).
     pub occasion: String,
     pub target: Option<String>,
     /// The presented beat; `None` when the occasion passed (no eligible
@@ -60,21 +121,20 @@ pub(crate) struct StepOutcome {
     /// Every presented beat id, in presentation order (dsl 0.23.0 §3: the
     /// winner and its `also` riders, or a `select: sequence`'s beats).
     pub presented: Vec<String>,
+    /// The world right after the step settled — captured only when the
+    /// step's `expect:` judges it ([`wants_world`]).
+    pub world: Option<WorldView>,
 }
 
 /// Everything a play's expectations are judged against.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct PlayOutcome {
-    /// One row per executed occasion step, in execution order.
+    /// One row per executed step, in execution order.
     pub steps: Vec<StepOutcome>,
-    /// The final EFFECTIVE state: every write, else the seed, else the
-    /// declared `default:`.
-    pub state: BTreeMap<String, Value>,
-    /// Every ground atom that holds at the end, after derivation, rendered
-    /// `rel(a, b)`.
-    pub facts: BTreeSet<String>,
-    /// Every declared quest → `unset | active | complete | failed`.
-    pub quests: BTreeMap<String, String>,
+    /// The world the play ended in: the EFFECTIVE state (every write, else
+    /// the seed, else the declared `default:`), every fact after
+    /// derivation, every declared quest's status.
+    pub end: WorldView,
     pub transcript: String,
     /// `complete | incomplete | error`.
     pub exit: &'static str,
@@ -275,7 +335,7 @@ fn scalar_text(v: &Yaml) -> Option<String> {
 
 /// `rel(a, b)` / `rel` → `(rel, [a, b])`, whitespace-trimmed and quote-
 /// stripped, so `knows(player,"oskar")` and `knows(player, oskar)` agree.
-fn parse_atom(text: &str) -> Option<(String, Vec<String>)> {
+pub(crate) fn parse_atom(text: &str) -> Option<(String, Vec<String>)> {
     let text = text.trim();
     let (rel, args) = match text.split_once('(') {
         None => (text, Vec::new()),
@@ -300,7 +360,7 @@ fn parse_atom(text: &str) -> Option<(String, Vec<String>)> {
 }
 
 /// The one spelling both sides of a fact comparison agree on.
-fn canonical_atom(text: &str) -> String {
+pub(crate) fn canonical_atom(text: &str) -> String {
     match parse_atom(text) {
         Some((rel, args)) => format!("{rel}({})", args.join(", ")),
         None => text.trim().to_string(),
@@ -370,13 +430,13 @@ fn check_step(
         None => row.occasion.clone(),
     };
     let label = label.or(row.label.as_ref());
-    let mut miss = |key: &str, expected: String, actual: String| {
+    let mut miss = |key: String, expected: String, actual: String| {
         misses.push(ExpectMiss {
             step: Some(row.index),
             label: label.cloned(),
             occasion: Some(occasion.clone()),
             repetition,
-            key: key.to_string(),
+            key,
             expected,
             actual,
         })
@@ -389,7 +449,7 @@ fn check_step(
             (None, _) => false,
         };
         if !holds {
-            miss("winner", want, actual_winner.clone());
+            miss("winner".into(), want, actual_winner.clone());
         }
     }
     let offered: BTreeSet<&str> = row.offered.iter().map(String::as_str).collect();
@@ -401,7 +461,7 @@ fn check_step(
             .collect();
         if !missing.is_empty() {
             miss(
-                "offered",
+                "offered".into(),
                 format!("{} among the eligible beats (missing {})", list(&want), list(&missing)),
                 list(&row.offered),
             );
@@ -418,7 +478,7 @@ fn check_step(
             .collect();
         if !present.is_empty() {
             miss(
-                "notOffered",
+                "notOffered".into(),
                 format!("none of {} eligible", list(&want)),
                 format!("{} (offending {})", list(&row.offered), list(&present)),
             );
@@ -427,7 +487,75 @@ fn check_step(
     // dsl 0.23.0 §3: the exact presentation order.
     if let Some(want) = m.get("presented").and_then(|v| string_list("presented", v).ok()) {
         if want != row.presented {
-            miss("presented", list(&want), list(&row.presented));
+            miss("presented".into(), list(&want), list(&row.presented));
+        }
+    }
+    // 0.23.1: the world right after this step settled.
+    if wants_world(expect).is_some() {
+        match &row.world {
+            Some(world) => check_world(world, m, &mut miss),
+            None => miss(
+                "(world)".into(),
+                "the world after this step".into(),
+                "not captured".into(),
+            ),
+        }
+    }
+}
+
+/// Judge the world keys (`quests`, `state`, `facts`, `notFacts`) of one
+/// `expect:` against `world`.
+fn check_world(
+    world: &WorldView,
+    m: &serde_yaml::Mapping,
+    miss: &mut impl FnMut(String, String, String),
+) {
+    if let Some(Yaml::Mapping(quests)) = m.get("quests") {
+        for (id, want) in quests {
+            let (Some(id), Some(want)) = (id.as_str(), scalar_text(want)) else {
+                continue;
+            };
+            match world.quests.get(id) {
+                Some(actual) if *actual == want => {}
+                Some(actual) => miss(format!("quests {id}"), want, actual.clone()),
+                None => miss(
+                    format!("quests {id}"),
+                    want,
+                    "no such quest in the project".to_string(),
+                ),
+            }
+        }
+    }
+    if let Some(Yaml::Mapping(state)) = m.get("state") {
+        for (path, want) in state {
+            let Some(path) = path.as_str() else { continue };
+            let actual = world.state.get(path);
+            if !state_matches(want, actual) {
+                miss(
+                    format!("state {path}"),
+                    yaml_value_text(want),
+                    match actual {
+                        Some(v) => value_text(v),
+                        None => "no value (never written, not seeded, no default)".to_string(),
+                    },
+                );
+            }
+        }
+    }
+    let facts: BTreeSet<String> = world.facts.iter().map(|f| canonical_atom(f)).collect();
+    for (key, want_held) in [("facts", true), ("notFacts", false)] {
+        let Some(want) = m.get(key).and_then(|v| string_list(key, v).ok()) else {
+            continue;
+        };
+        for atom in want {
+            let held = facts.contains(&canonical_atom(&atom));
+            if held != want_held {
+                miss(
+                    key.to_string(),
+                    format!("{atom} {}", if want_held { "holds" } else { "does not hold" }),
+                    format!("{atom} {}", if held { "holds" } else { "does not hold" }),
+                );
+            }
         }
     }
 }
@@ -450,54 +578,7 @@ fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
             miss("exit".into(), want, outcome.exit.to_string());
         }
     }
-    if let Some(Yaml::Mapping(quests)) = m.get("quests") {
-        for (id, want) in quests {
-            let (Some(id), Some(want)) = (id.as_str(), scalar_text(want)) else {
-                continue;
-            };
-            match outcome.quests.get(id) {
-                Some(actual) if *actual == want => {}
-                Some(actual) => miss(format!("quests {id}"), want, actual.clone()),
-                None => miss(
-                    format!("quests {id}"),
-                    want,
-                    "no such quest in the project".to_string(),
-                ),
-            }
-        }
-    }
-    if let Some(Yaml::Mapping(state)) = m.get("state") {
-        for (path, want) in state {
-            let Some(path) = path.as_str() else { continue };
-            let actual = outcome.state.get(path);
-            if !state_matches(want, actual) {
-                miss(
-                    format!("state {path}"),
-                    scalar_text(want).unwrap_or_default(),
-                    match actual {
-                        Some(v) => value_text(v),
-                        None => "no value (never written, not seeded, no default)".to_string(),
-                    },
-                );
-            }
-        }
-    }
-    let facts: BTreeSet<String> = outcome.facts.iter().map(|f| canonical_atom(f)).collect();
-    for (key, want_held) in [("facts", true), ("notFacts", false)] {
-        let Some(want) = m.get(key).and_then(|v| string_list(key, v).ok()) else {
-            continue;
-        };
-        for atom in want {
-            let held = facts.contains(&canonical_atom(&atom));
-            if held != want_held {
-                miss(
-                    key.to_string(),
-                    format!("{atom} {}", if want_held { "holds" } else { "does not hold" }),
-                    format!("{atom} {}", if held { "holds" } else { "does not hold" }),
-                );
-            }
-        }
-    }
+    check_world(&outcome.end, m, &mut miss);
     for (key, want_present) in [("transcriptContains", true), ("transcriptLacks", false)] {
         let Some(want) = m.get(key).and_then(|v| string_list(key, v).ok()) else {
             continue;
@@ -538,6 +619,15 @@ fn value_text(v: &Value) -> String {
     }
 }
 
+/// An expected YAML scalar as a miss line prints it — quoted like
+/// [`value_text`], so both sides of a miss read alike.
+fn yaml_value_text(v: &Yaml) -> String {
+    match v {
+        Yaml::String(s) => format!("{s:?}"),
+        other => scalar_text(other).unwrap_or_default(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,6 +645,7 @@ mod tests {
             winner: winner.map(str::to_string),
             offered: offered.iter().map(|s| s.to_string()).collect(),
             presented: winner.into_iter().map(str::to_string).collect(),
+            world: None,
         }
     }
 
@@ -564,17 +655,19 @@ mod tests {
                 step(1, Some("hub.welcome"), &["hub.welcome", "hub.idle"]),
                 step(3, None, &[]),
             ],
-            state: BTreeMap::from([
-                ("run.day".to_string(), Value::Num(3.0)),
-                ("run.outcome".to_string(), Value::Str("fell".into())),
-                ("user.met".to_string(), Value::Bool(true)),
-                ("run.fog".to_string(), Value::Unknown),
-            ]),
-            facts: BTreeSet::from(["knows(player, oskar)".to_string(), "slew(warden)".into()]),
-            quests: BTreeMap::from([
-                ("caseClosed".to_string(), "complete".to_string()),
-                ("side".to_string(), "unset".to_string()),
-            ]),
+            end: WorldView {
+                state: BTreeMap::from([
+                    ("run.day".to_string(), Value::Num(3.0)),
+                    ("run.outcome".to_string(), Value::Str("fell".into())),
+                    ("user.met".to_string(), Value::Bool(true)),
+                    ("run.fog".to_string(), Value::Unknown),
+                ]),
+                facts: BTreeSet::from(["knows(player, oskar)".to_string(), "slew(warden)".into()]),
+                quests: BTreeMap::from([
+                    ("caseClosed".to_string(), "complete".to_string()),
+                    ("side".to_string(), "unset".to_string()),
+                ]),
+            },
             transcript: "Oskar: Welcome back.\n".into(),
             exit: "complete",
         }
@@ -718,8 +811,11 @@ transcriptLacks: ["Welcome"]
         let e = validate(&y("{winer: hub.a}"), false).unwrap_err();
         assert!(e.contains("`winer`"), "{e}");
         assert!(e.contains("did you mean `winner`"), "{e}");
-        assert!(e.contains("legal: notOffered, offered, presented, winner"), "{e}");
-        let e = validate(&y("{state: {run.day: 1}}"), false).unwrap_err();
+        assert!(
+            e.contains("legal: facts, notFacts, notOffered, offered, presented, quests, state, winner"),
+            "{e}"
+        );
+        let e = validate(&y("{transcriptContains: [x]}"), false).unwrap_err();
         assert!(e.contains("belongs in the top-level"), "{e}");
         let e = validate(&y("{winner: a}"), true).unwrap_err();
         assert!(e.contains("belongs in a step"), "{e}");
@@ -738,5 +834,41 @@ transcriptLacks: ["Welcome"]
         ] {
             assert!(validate(&y(text), top).is_err(), "{text} should be rejected");
         }
+    }
+
+    #[test]
+    fn a_step_judges_the_world_right_after_it_settled() {
+        let mut o = outcome();
+        o.steps[0].world = Some(WorldView {
+            state: BTreeMap::from([("run.accused".to_string(), Value::Str("b".into()))]),
+            facts: BTreeSet::from(["slew(warden)".to_string()]),
+            quests: BTreeMap::from([("caseClosed".to_string(), "failed".to_string())]),
+        });
+        let holds = y("{quests: {caseClosed: failed}, state: {run.accused: b}, facts: [slew(warden)]}");
+        assert_eq!(check(&o, &[(1, None, holds)], None), Vec::new());
+        // The end world (`complete`) is not what a step judges.
+        let misses = check(
+            &o,
+            &[(1, Some("night one".into()), y("{quests: {caseClosed: complete}, state: {run.accused: a}, notFacts: [slew(warden)]}"))],
+            None,
+        );
+        let lines: Vec<String> = misses.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            lines,
+            [
+                "step 1 (night one) at hubVisit: expect quests caseClosed: expected complete, actual failed",
+                "step 1 (night one) at hubVisit: expect state run.accused: expected \"a\", actual \"b\"",
+                "step 1 (night one) at hubVisit: expect notFacts: expected slew(warden) does not hold, actual slew(warden) holds",
+            ]
+        );
+    }
+
+    #[test]
+    fn occasion_keys_are_named_for_a_non_occasion_step() {
+        assert_eq!(occasion_key(&y("{quests: {q: active}, winner: a}")), Some("winner"));
+        assert_eq!(occasion_key(&y("{quests: {q: active}}")), None);
+        assert!(wants_world(&y("{winner: a}")).is_none());
+        assert!(!wants_world(&y("{state: {run.x: 1}}")).unwrap().facts);
+        assert!(wants_world(&y("{notFacts: [a]}")).unwrap().facts);
     }
 }

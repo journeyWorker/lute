@@ -1375,3 +1375,43 @@ fn scenario_reach_reports_a_bare_quest_as_unanchored() {
     assert_eq!(v["reach"], "unanchored", "{v}");
     assert_eq!(v["node"], "quest(loose)", "{v}");
 }
+
+/// lamplight N8 / ashen N9: a bundle beat is a node of the scenario graph —
+/// drawn in the layers, answerable by `reach`/`envelope` under its canonical
+/// `<document id>.<beat id>` (bare or `beat:`-prefixed) — so moving a scene
+/// into a bundle no longer erases it from the only structural view.
+#[test]
+fn scenario_draws_and_reaches_bundle_beats() {
+    let dir = temp_dir("scenario-bundle-beat");
+    write(&dir, "a.lute", &scene_sets_run_a("a"));
+    write(
+        &dir,
+        "talk.lute",
+        "---\nkind: lore\nid: talk\n---\n\n\
+         <beat id=\"porter\" on=\"talk\" target=\"npc.porter\" when=\"visited('a.s01ep01')\">\n  \
+         @porter: You again.\n</beat>\n",
+    );
+    let d = dir.to_str().unwrap();
+
+    let graph = stdout(&run(&["scenario", d]));
+    assert!(graph.contains("layer 0: scene(a.s01ep01), beat(talk.porter)"), "{graph}");
+
+    for arg in ["talk.porter", "beat:talk.porter"] {
+        let out = run(&["scenario", d, "reach", arg]);
+        let text = stdout(&out);
+        assert!(out.status.success(), "{arg}: {}{text}", stderr(&out));
+        assert!(text.contains("reach beat(talk.porter):"), "{text}");
+        assert!(text.contains("verdict: Reachable"), "{text}");
+        assert!(text.contains("  on: talk\n  target: npc.porter\n"), "{text}");
+        assert!(text.contains("  when: visited('a.s01ep01')"), "{text}");
+    }
+
+    let out = run(&["scenario", d, "--format", "json", "reach", "talk.porter"]);
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(v["kind"], "beat", "{v}");
+    assert_eq!(v["reach"], "reachable", "{v}");
+
+    let env = run(&["scenario", d, "envelope", "talk.porter"]);
+    assert!(env.status.success(), "{}", stderr(&env));
+    assert!(stdout(&env).contains("envelope for beat(talk.porter)"), "{}", stdout(&env));
+}
