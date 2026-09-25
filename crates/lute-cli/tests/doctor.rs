@@ -204,3 +204,36 @@ fn doctor_flags_a_running_lute_lsp_of_another_build() {
     let _ = server.kill();
     let _ = server.wait();
 }
+
+/// Round-3 SU N10: a side-by-side install — a prerelease `lute` beside its
+/// own `lute-lsp`, a global build of the same version first on `PATH`. The
+/// `PATH` check alone passes; the sibling check says the editor runs
+/// another build, and passes once `PATH` holds the sibling's build.
+#[cfg(unix)]
+#[test]
+fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
+    use std::os::unix::fs::PermissionsExt;
+    let proj = occasions_project("sibling");
+    let ours = env!("CARGO_PKG_VERSION");
+    let bin = temp_dir("sibling-bin");
+    let lute = bin.join("lute");
+    std::fs::copy(BIN, &lute).unwrap();
+    let sibling = bin.join("lute-lsp");
+    std::fs::write(&sibling, format!("#!/bin/sh\n# prerelease build\nprintf 'lute-lsp {ours}\\n'\n")).unwrap();
+    std::fs::set_permissions(&sibling, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let global = fake_lsp("sibling-global", &format!("lute-lsp {ours}\\n"));
+    let run = |path: &Path| {
+        let out = Command::new(&lute).arg("doctor").arg(&proj).env("PATH", path).output().unwrap();
+        assert!(out.status.success(), "{out:?}");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+
+    let text = run(&global);
+    assert!(line(&text, "lute-lsp on PATH").contains('✓'), "{text}");
+    let l = line(&text, "lute-lsp beside lute");
+    assert!(l.contains('✗') && l.contains("another build than"), "{text}");
+
+    let text = run(&bin);
+    let l = line(&text, "lute-lsp beside lute");
+    assert!(l.contains('✓') && l.contains("the build on PATH"), "{text}");
+}

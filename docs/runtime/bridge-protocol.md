@@ -159,7 +159,10 @@ misfit value is a usage error.
   it, a default `<match>` arm included, is walked. Answers land in `scene.*`
   result slots even though a `state:` seed of `scene.*` is refused.
 - **`lute trace` / `lute test`**: mocks and `*.test.yaml` carry the same
-  `bridges:` key (`E-TRACE-MOCK-UNDECLARED` / `E-TRACE-MOCK-TYPE` on a bad
-  answer). An unanswered call leaves its result slots UNKNOWN — never the
-  state-shape default — so a guard reading one halts the trace incomplete
-  (exit 3), hinting the missing `bridges: { <tag>: [ { <field>: … } ] }`.
+  `bridges:` key (`E-TRACE-MOCK-UNDECLARED` for an unknown tag or a stray
+  field, `E-TRACE-MOCK-TYPE` for a missing field or a misfit value, each at
+  the offending key's line:column in the mock). An unanswered call leaves its
+  result slots UNKNOWN — never the state-shape default — so a guard reading
+  one halts the trace incomplete (exit 3), hinting the whole missing answer
+  with typed placeholders: `bridges: { check: [ { passed: <bool>, margin:
+  <number> } ] }` (`lute play`'s halt spells it the same way).

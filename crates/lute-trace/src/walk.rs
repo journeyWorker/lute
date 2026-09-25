@@ -108,10 +108,18 @@ struct Walk<'a> {
     /// dsl 0.24.0 §5: per plugin directive tag, how many `bridges:` answers
     /// earlier calls consumed.
     bridge_cursor: BTreeMap<String, usize>,
-    /// dsl 0.24.0 §5: result slot -> `(tag, field)` of a plugin call that
-    /// found no `bridges:` answer — the slot reads UNKNOWN (never its shape
-    /// default), and a read of it is hinted as the missing answer.
-    bridge_unanswered: BTreeMap<String, (String, String)>,
+    /// dsl 0.24.0 §5: result slot -> `(tag, field, answer shape)` of a plugin
+    /// call that found no `bridges:` answer — the slot reads UNKNOWN (never
+    /// its shape default), and a read of it is hinted as the missing answer,
+    /// every field the call reads with its type ([`mock::bridge_answer_shape`]).
+    bridge_unanswered: BTreeMap<String, (String, String, String)>,
+    /// dsl 0.24.0 §2.1: the `occasions:` raises not yet made — the settles
+    /// before one defer the `by` of the `on=` objectives it judges, so its
+    /// `done` is judged first ([`reevaluate_objectives`]).
+    deferred_by: Vec<String>,
+    /// dsl 0.24.0 §2 (ER N15): notes for `accepts:` of an
+    /// `activate="accept"` child spent while its parent was not active.
+    spent_accepts: Vec<String>,
 }
 
 impl<'a> Walk<'a> {
@@ -278,9 +286,9 @@ impl<'a> Walk<'a> {
     fn render_atom(&self, a: &UnresolvedAtom) -> String {
         match a {
             UnresolvedAtom::Path(p) => match self.bridge_unanswered.get(p) {
-                Some((tag, field)) => format!(
-                    "bridges: {{ {tag}: [ {{ {field}: <value> }} ] }} (plugin `{tag}` call \
-                     unanswered; `{p}` reads its `{field}` result)"
+                Some((tag, field, shape)) => format!(
+                    "bridges: {{ {tag}: [ {shape} ] }} (plugin `{tag}` call unanswered; `{p}` \
+                     reads its `{field}` result)"
                 ),
                 None => render_atom(a),
             },
@@ -523,6 +531,7 @@ fn fact_term_text(t: &FactTerm) -> String {
         FactTerm::Ident(s) => s.clone(),
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
+        FactTerm::Param(p) => format!("@{p}"),
     }
 }
 
@@ -704,8 +713,14 @@ fn walk_bridge_call(d: &Directive, w: &mut Walk<'_>) {
     if answer.is_some() {
         *used += 1;
     }
-    for (field, write) in reads {
-        let path = lute_compile::lower::resolve_effect(write, d).path;
+    let resolved: Vec<(&str, String)> = reads
+        .iter()
+        .map(|(field, write)| (*field, lute_compile::lower::resolve_effect(write, d).path))
+        .collect();
+    let decls = &w.check_env.state.decls;
+    let shape =
+        mock::bridge_answer_shape(resolved.iter().map(|(f, p)| (*f, decls.get(p).map(|d| &d.ty))));
+    for (field, path) in resolved {
         let lit = answer
             .as_ref()
             .and_then(|a| a.iter().find(|(f, _)| f == field))
@@ -719,7 +734,7 @@ fn walk_bridge_call(d: &Directive, w: &mut Walk<'_>) {
             .unwrap_or(Value::Unknown);
         if value == Value::Unknown {
             w.bridge_unanswered
-                .insert(path.clone(), (d.tag.clone(), field.to_string()));
+                .insert(path.clone(), (d.tag.clone(), field.to_string(), shape.clone()));
         } else {
             w.bridge_unanswered.remove(&path);
         }
@@ -796,7 +811,7 @@ fn walk_retract(r: &Retract, w: &mut Walk<'_>) {
         .args
         .iter()
         .map(|arg| match &arg.term {
-            FactTerm::Wildcard => Pat::Wildcard,
+            FactTerm::Wildcard | FactTerm::Param(_) => Pat::Wildcard,
             FactTerm::Ident(s) => Pat::Ground(s.clone()),
             FactTerm::Bool(b) => Pat::Ground(b.to_string()),
         })
@@ -1708,10 +1723,15 @@ fn reevaluate_objectives(quest: &Quest, occasion: Option<&str>, w: &mut Walk<'_>
     // dsl 0.24.0 §2.1: `by` is judged at every (continuous) settle for every
     // objective, `on=` or not — a deadline is a moment, not a place; `until`
     // only in the raise pass that judges the objective, after its `done`.
+    // An `on=` objective a raise still to come judges defers its `by` until
+    // that raise judged its `done` (the settle right after it).
     for node in &quest.body {
         let Node::Objective(o) = node else { continue };
         let (slot, judged_now) = match occasion {
-            None => (o.by.as_ref(), true),
+            None => (
+                o.by.as_ref(),
+                !w.deferred_by.iter().any(|r| judged_at(o, Some(r))),
+            ),
             Some(_) => (o.until.as_ref(), judged_at(o, occasion)),
         };
         let Some(slot) = slot else { continue };
@@ -2117,7 +2137,23 @@ fn try_activate_state(
     if let Some(pid) = &parent_id {
         match states.get(pid).copied() {
             Some(QuestState::Active) => {}
-            Some(QuestState::Complete) | Some(QuestState::Failed) | Some(QuestState::Skipped) => {
+            Some(parent @ (QuestState::Complete | QuestState::Failed | QuestState::Skipped)) => {
+                // dsl 0.24.0 §2 (ER N15): an accept of an `activate="accept"`
+                // child is spent without effect while its parent is not
+                // active — say so instead of leaving the child silently unset.
+                if quest.activates_on_accept() && w.mocks.accepts.iter().any(|id| id == &quest.id) {
+                    let why = match parent {
+                        QuestState::Complete => "already complete",
+                        QuestState::Failed => "already failed",
+                        _ => "never active",
+                    };
+                    w.spent_accepts.push(format!(
+                        "{NOTE_ACCEPT_SPENT} `{}` spent: its parent quest `{pid}` is {why} — an \
+                         `activate=\"accept\"` child activates only while its parent is active \
+                         (dsl 0.24.0 §2)",
+                        quest.id
+                    ));
+                }
                 states.insert(quest.id.clone(), QuestState::Skipped);
                 return ActivateOutcome::Skipped;
             }
@@ -2367,6 +2403,9 @@ fn walk_quests(doc: &Document, events: &[String], w: &mut Walk<'_>) -> Flow {
                 return flow;
             }
         }
+        // dsl 0.24.0 §2.1: every `done` this raise judges was judged — the
+        // `by` it deferred is judged by the settle below.
+        w.deferred_by.retain(|r| r != occasion);
         let flow = quest_settle_fixpoint(doc, &parents, &mut states, w);
         if !matches!(flow, Flow::Continue) {
             return flow;
@@ -2861,6 +2900,11 @@ fn collect_on_events<'a>(nodes: &'a [Node], out: &mut BTreeSet<&'a str>) {
 /// harness can surface that note without re-deriving it.
 pub const NOTE_BEAT_WHEN: &str = "beat `when`";
 
+/// dsl 0.24.0 §2 (ER N15): the prefix of the note for an `accepts:` of an
+/// `activate="accept"` child spent while its parent was not active —
+/// `lute test` surfaces it beside a failing quest expectation.
+pub const NOTE_ACCEPT_SPENT: &str = "accept of";
+
 /// T1-13: the note for a beat scene (dsl 0.21.0 §3.1) whose frontmatter
 /// `when` does not hold under the supplied mocks. Trace walks the body
 /// regardless — it was asked to — so without this a scene the selector would
@@ -3112,7 +3156,7 @@ fn trace_pipeline(
     // the whole walk. An explicit mock of a `clock.*` path is kept.
     if let Some(clock) = &folded.env.clock {
         let mut at = seed.clone();
-        for p in [&clock.day, &clock.slot] {
+        for p in std::iter::once(&clock.day).chain(&clock.slot) {
             if let Some(d) = folded.env.state.decls.get(p).and_then(|d| d.default.as_ref()) {
                 at.entry(p.clone())
                     .or_insert_with(|| crate::eval::literal_to_value(d));
@@ -3157,6 +3201,8 @@ fn trace_pipeline(
         apply_effects: true,
         bridge_cursor: BTreeMap::new(),
         bridge_unanswered: BTreeMap::new(),
+        deferred_by: mocks.occasions.clone(),
+        spent_accepts: Vec::new(),
     };
 
     // T1-13: a beat scene is only presented when its frontmatter `when`
@@ -3216,6 +3262,7 @@ fn trace_pipeline(
     notes.extend(quest_notes.into_iter().map(|(_, note)| note));
     notes.extend(unmatched_event_notes(&doc, &mocks.events));
     notes.extend(occasion_notes(&doc, &mocks.occasions, &w.decisions));
+    notes.extend(std::mem::take(&mut w.spent_accepts));
     notes.extend(mock_unproducible_notes(&mocks, &folded, &doc, project_asserts));
     // #32 / T5.9: `Ended` and `Complete` are the same EXIT CODE (see below)
     // and were therefore indistinguishable to a harness. `disposition` is the

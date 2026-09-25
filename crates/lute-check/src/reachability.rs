@@ -61,7 +61,7 @@ use crate::decide::{
 };
 use crate::match_check::{
     is_pattern_literals, literal_is_foreign, param_domain, quest_state_is_literal,
-    subject_path, Domain, DomainInfo, DomainValue, Interval, NumCoverage,
+    subject_path, CoverItem, Domain, DomainInfo, DomainValue, Interval, NumCoverage,
 };
 use crate::solution::{disjoint, solution_set, SolutionSet};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
@@ -105,6 +105,13 @@ pub(crate) const E_OBJECTIVE_CONTRADICTION: &str = "E-OBJECTIVE-CONTRADICTION";
 /// prose made checkable). A warning: `done` is evaluated independently of
 /// visibility, so completion may still be reachable.
 pub(crate) const W_OBJECTIVE_HIDDEN: &str = "W-OBJECTIVE-HIDDEN";
+
+/// `W-DEADLINE-BEFORE-DONE` (dsl 0.24.0 §2.1): an `on=` objective with a
+/// `by=` (no `until=`) whose `done` provably implies `by`. `by` is judged at
+/// every settle but an `on=` objective's `done` only at its occasion raise,
+/// so `by` comes true — and fails the objective — before `done` is ever
+/// judged, unless both happen in the step that raises the occasion.
+pub(crate) const W_DEADLINE_BEFORE_DONE: &str = "W-DEADLINE-BEFORE-DONE";
 
 /// `E-ENTRY-UNREACHABLE` (dsl 0.20.0 §5): a lore entry whose `when`
 /// eligibility guard provably never holds — the entry is never presented.
@@ -413,14 +420,14 @@ struct Reach<'a> {
 /// `user.*` / `prev.*` paths no `::set` / `<choice into>` in the body writes
 /// — none at all once the body runs a `::use` or a state-writing directive —
 /// plus the paths its presence guards prove (nothing unsets a path).
-struct Assumption {
+pub(crate) struct Assumption {
     raw: String,
     conjuncts: Vec<(String, SolutionSet)>,
     present: crate::defassign::Assigned,
 }
 
 impl Assumption {
-    fn new(
+    pub(crate) fn new(
         when: &CelSlot,
         bodies: &[&[Node]],
         defs: &DefTable<'_>,
@@ -469,7 +476,12 @@ impl Assumption {
     }
 
     /// Whether the guard rules out `item` as the value of `path`.
-    fn rules_out(&self, path: &str, item: &CoverItem, schema: &crate::meta::StateSchema) -> bool {
+    pub(crate) fn rules_out(
+        &self,
+        path: &str,
+        item: &CoverItem,
+        schema: &crate::meta::StateSchema,
+    ) -> bool {
         let mut on_path = self
             .conjuncts
             .iter()
@@ -757,17 +769,6 @@ fn walk_reach(
     }
 }
 
-/// One value the subsumption union `U` (or an arm's residual) tracks: a
-/// concrete finite-domain literal, a numeric point/range interval (dsl
-/// 0.18.0 §4), or the `unset` case — kept distinct from [`DomainValue`] since
-/// `unset` is a membership fact about `maybe_unset`, never a domain member
-/// (mirrors `match_check::ArmCoverage`).
-enum CoverItem {
-    Value(DomainValue),
-    Num(Interval),
-    Unset,
-}
-
 /// The domain-valid contribution of one `is=` literal (D4): `None` when
 /// `lit_raw` is foreign to `dom` — owned by `E-WHEN-LITERAL-DOMAIN`
 /// (`match_check::literal_is_foreign`, the SAME classification that code
@@ -1045,22 +1046,42 @@ fn check_match_reach(
     // 0.18.0 §4) — an unresolved/infinite subject makes no "whole domain"
     // claim to violate. A member the body's `when` rules out (dsl 0.24.0)
     // needs no arm.
+    let narrowed = std::cell::Cell::new(false);
+    let covered_or_ruled_out = |covered: bool, item: CoverItem| {
+        covered || {
+            let out = ruled_out(&item);
+            narrowed.set(narrowed.get() | out);
+            out
+        }
+    };
     let domain_covered = dom.resolved
         && match &dom.domain {
-            Domain::Finite(vals) => vals
-                .iter()
-                .all(|v| u.values.contains_key(v) || ruled_out(&CoverItem::Value(v.clone()))),
+            Domain::Finite(vals) => vals.iter().all(|v| {
+                covered_or_ruled_out(u.values.contains_key(v), CoverItem::Value(v.clone()))
+            }),
+            Domain::IntRange { lo, hi } => (*lo..=*hi).all(|k| {
+                let p = Interval { lo: k as f64, hi: k as f64 };
+                covered_or_ruled_out(u.num.contains(p), CoverItem::Num(p))
+            }),
             Domain::Number => u.num.covers_all(),
             Domain::Infinite => false,
         };
     if let (Some(span), true) = (otherwise_span, domain_covered) {
-        if u.unset.is_some() || !dom.maybe_unset || ruled_out(&CoverItem::Unset) {
+        if u.unset.is_some()
+            || !dom.maybe_unset
+            || covered_or_ruled_out(false, CoverItem::Unset)
+        {
+            let whole = match assume.filter(|_| narrowed.get()) {
+                Some(a) => format!("the domain left by the body's `when` guard `{}`", a.raw),
+                None => "the subject's whole domain".to_string(),
+            };
             diags.push(diag(
                 W_OTHERWISE_DEAD,
                 Severity::Warning,
-                "`<otherwise>` can never fire: earlier unguarded `is` arms already cover the \
-                 subject's whole domain (dsl 0.4 §5.2)"
-                    .to_string(),
+                format!(
+                    "`<otherwise>` can never fire: earlier unguarded `is` arms already cover \
+                     {whole} (dsl 0.4 §5.2)"
+                ),
                 span,
             ));
         }
@@ -1356,6 +1377,24 @@ fn check_objective_reach(
             }
         }
     }
+    // dsl 0.24.0 §2.1: `done ⇒ by` on an `on=` objective — proven as
+    // "`done && !by` decides false"; undecided stays silent.
+    if let (Some((on, _)), Some(by), None) = (&o.on, &o.by, &o.until) {
+        let (done, deadline) = (o.done.raw.trim(), by.raw.trim());
+        if !done.is_empty()
+            && !deadline.is_empty()
+            && decide_slot(done, defs, ctx) != Some(Decided::Bool(false))
+            && decide_slot(&format!("({done}) && !({deadline})"), defs, ctx)
+                == Some(Decided::Bool(false))
+        {
+            diags.push(diag(
+                W_DEADLINE_BEFORE_DONE,
+                Severity::Warning,
+                deadline_before_done_message(&o.id, on, done, deadline),
+                by.span,
+            ));
+        }
+    }
     diags
 }
 
@@ -1632,7 +1671,7 @@ fn schedule_conjuncts(
             && f.fact.args.iter().zip(&consts).all(|(a, k)| match &a.term {
                 FactTerm::Ident(i) => i == k,
                 FactTerm::Bool(b) => b.to_string() == *k,
-                FactTerm::Wildcard => true,
+                FactTerm::Wildcard | FactTerm::Param(_) => true,
             })
     });
     if seeded {
@@ -1804,6 +1843,19 @@ fn objective_hidden_message() -> String {
     "objective's `when` is provably false: it is never visible or tracked, yet still gates \
      completion (dsl 0.4 §5.3) — mark it `optional` or fix the gate (0.2 §6.3)"
         .to_string()
+}
+
+/// `W-DEADLINE-BEFORE-DONE` message (dsl 0.24.0 §2.1): why the objective
+/// fails first, and the `until=` spelling that keeps the deadline at the
+/// occasion.
+fn deadline_before_done_message(id: &str, on: &str, done: &str, by: &str) -> String {
+    format!(
+        "objective `{id}`'s `by=\"{by}\"` holds whenever its `done=\"{done}\"` does, and `by` is a \
+         moment judged at every settle (dsl 0.24.0 §2.1): it fails the objective at the settle it \
+         comes true, before occasion `{on}` ever judges `done` (unless both happen in the step \
+         that raises `{on}`) — write `until=\"{by}\"` to judge the deadline only when `{on}` is \
+         raised"
+    )
 }
 
 /// Cause-1 message (dsl 0.4.0 §5.2 rule 1): names the guard text and states

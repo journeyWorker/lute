@@ -53,10 +53,11 @@ pub mod walk;
 
 pub use eval::{eval, EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use mock::{
-    bridge_result_writes, merge, mock_subject, parse_bridges, parse_mock_surfaces, parse_mock_yaml,
-    raise_judges, split_occasion, validate, validate_bridges, BridgeAnswer, MockSet, E_MOCK_SUBJECT,
-    E_TRACE_ACCEPT, E_TRACE_BEAT, E_TRACE_CHOICE, E_TRACE_ENTRY, E_TRACE_EVENT, E_TRACE_MOCK_FACT,
-    E_TRACE_MOCK_PARSE, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED, MOCK_TOP_KEYS,
+    bridge_answer_shape, bridge_result_writes, merge, mock_subject, parse_bridges,
+    parse_mock_surfaces, parse_mock_yaml, raise_judges, split_occasion, type_placeholder, validate,
+    validate_bridges, BridgeAnswer, BridgeSpans, MockSet, E_MOCK_SUBJECT, E_TRACE_ACCEPT,
+    E_TRACE_BEAT, E_TRACE_CHOICE, E_TRACE_ENTRY, E_TRACE_EVENT, E_TRACE_MOCK_FACT,
+    E_TRACE_MOCK_PARSE, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED, MOCK_TEXT, MOCK_TOP_KEYS,
     W_TRACE_MOCK_UNPRODUCIBLE,
 };
 pub use quest_refs::collect_referenced_reserved_quest_paths;
@@ -68,5 +69,5 @@ pub use report::{
 pub use value::{UnresolvedAtom, Value};
 pub use walk::{
     trace_beat, trace_beat_with_check, trace_document, trace_entries_with_check, trace_entry,
-    trace_entry_with_check, trace_with_check, NOTE_BEAT_WHEN,
+    trace_entry_with_check, trace_with_check, NOTE_ACCEPT_SPENT, NOTE_BEAT_WHEN,
 };

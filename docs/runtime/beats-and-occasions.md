@@ -55,7 +55,11 @@ occasions:
   default `judge: after` keeps the 0.21 order. Use it for a closing moment
   whose beats read the verdict: an epilogue on `chapterEnd` that sees
   `quest.<id>.state` / `failedBy` already settled by the chapter's `on=`
-  objectives.
+  objectives. Only the judging moves: the `<on>` handler bodies the raise
+  answers — the same-named event's and the `questComplete` / `questFailed`
+  (and `questActive`) handlers of the transitions it settles — still run
+  **after** the beats, so their narration follows the scene that
+  establishes it.
 
 Occasion declarations are not in the artifact; they are part of the capability
 snapshot (`capabilityVersion`), where an occasion's `target` serializes as
@@ -333,7 +337,12 @@ therefore does two things, by default in this order: select and present a
 beat as above, then answer the raise in every active quest and settle those
 quests. An occasion declared `judge: before` (dsl 0.24.0 §2) swaps the two:
 it answers the raise and settles the quests first, then selects its beats —
-whose `when` and bodies therefore read the judged quests. Answering the raise
+whose `when` and bodies therefore read the judged quests. The handler
+bodies that raise fires (below, and each lifecycle transition's) are held
+and run after the beats, in the order they fired; each one's `when` is
+decided where it fired, and the quests settle again after them (so the
+objectives judged at that raise do not read what those handlers write, as
+they do under `judge: after`). Answering the raise
 is itself two steps, in this order (0.23.1): when a world event of the same
 name is declared, the engine fires it — every active quest's `<on event>`
 handler for that name runs, once — and then every active quest's objectives
@@ -412,7 +421,8 @@ history, not user state.
   in order; a candidate or presentation that rides along carries `also: true`.
   On a `judge: before` occasion the quest transitions its raise made print
   under the step header, before the candidates (`--json`: the step's
-  `judgedBefore`, while its `quests` are the ones after the presentations).
+  `judgedBefore`, while its `quests` are the ones after the presentations);
+  the handler bodies that raise fired print after the presentations.
 - In `lute play`, a `::end` ends only the presentation (or quest handler) it
   runs in; the playthrough goes on with the next step. A step `end: true`
   ends the playthrough: exit 0, and every later step is listed as skipped

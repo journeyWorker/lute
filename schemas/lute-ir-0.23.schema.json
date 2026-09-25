@@ -2817,7 +2817,7 @@
         },
         "slot": {
           "type": "string",
-          "description": "the slot path — an enum state path declared `owner: engine`."
+          "description": "the slot path — an enum state path declared `owner: engine`. Absent on a day-granular clock (every day is one slot)."
         },
         "slots": {
           "type": "array",
@@ -2825,12 +2825,38 @@
             "type": "string"
           },
           "minItems": 1,
-          "description": "the slot order within a day; exactly the slot enum's members, each once."
+          "description": "the slot order within a day; exactly the slot enum's members, each once. Present exactly when `slot` is."
         },
         "raise": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
-          "description": "the occasion the engine raises after every advance of the clock. Absent when not declared."
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+              "description": "one occasion, raised after every advance where the clock stops (the map form's `slot`)."
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "slot": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                  "description": "raised once after every advance, where the clock stops."
+                },
+                "dayStart": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                  "description": "raised at every midnight an advance crosses, after it — at the next day's first slot."
+                },
+                "dayEnd": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                  "description": "raised at every midnight an advance crosses, before it — at the day's last slot, the day not yet advanced."
+                }
+              }
+            }
+          ],
+          "description": "the occasions the engine raises as the clock advances, verbatim as declared. Absent when not declared."
         },
         "week": {
           "type": "object",
@@ -2863,11 +2889,17 @@
       },
       "additionalProperties": false,
       "required": [
-        "day",
-        "slot",
-        "slots"
+        "day"
       ],
-      "description": "dsl 0.24.0 §1: the project's declared clock, verbatim from the schema's `clock:` block. Carried on the artifact root and on `project.index.json` (`lute compile --all`) as `clock`. The engine derives the reserved read-only paths from it — `clock.index` = `(day - 1) * len(slots) + slotIndex` (monotone), `clock.weekday` = `(week.first + day - 1) mod week.length`, `clock.weekdayLabel` = `week.labels[clock.weekday]` — none of which is a `state` row, and spends `once: day|slot` beats by it. An advance moves the clock forward only (the last slot wraps to the first slot of the next day), settles quests and raises `raise` when declared."
+      "dependentRequired": {
+        "slot": [
+          "slots"
+        ],
+        "slots": [
+          "slot"
+        ]
+      },
+      "description": "dsl 0.24.0 §1: the project's declared clock, verbatim from the schema's `clock:` block. Carried on the artifact root and on `project.index.json` (`lute compile --all`) as `clock`. The engine derives the reserved read-only paths from it — `clock.index` = `(day - 1) * len(slots) + slotIndex` (`day - 1` without slots; monotone), `clock.weekday` = `(week.first + day - 1) mod week.length`, `clock.weekdayLabel` = `week.labels[clock.weekday]` — none of which is a `state` row, and spends `once: day|slot` beats by it. An advance moves the clock forward only (the last slot wraps to the first slot of the next day), settles quests and raises `raise` (`dayEnd` / `dayStart` at each midnight it crosses, `slot` where it stops) when declared."
     }
   }
 }

@@ -262,3 +262,57 @@ fn envelope_names_producers_in_the_knowledge_words() {
     );
     assert!(s.contains("    - liar/1 (producible) — derived by 1 rule\n"), "{s}");
 }
+
+/// Round-3 prerelease (CR N2, SU N6, ER N9): an entity-kind atom in a rule
+/// body is a membership premise, not an "undeclared relation", and the
+/// rule's `cel()` premise is listed with the member it reads.
+#[test]
+fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises() {
+    let d = temp_dir("kinds");
+    write(
+        &d,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: m\nprofiles:\n  m:\n    plugins: { m.occ: true }\n\
+         defaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &d,
+        "plugins/m.occ/plugin.yaml",
+        "id: m.occ\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n",
+    );
+    write(&d, "plugins/m.occ/occasions/occ.yaml", "occasions:\n  tick: {}\n");
+    write(
+        &d,
+        "world.schema.yaml",
+        "state:\n  run.aff: { type: number, default: 0, per: suitor }\n  run.day: { type: number, default: 1 }\n\
+         entities:\n  person: { members: [ines, sol, wren] }\n  suitor: { subsetOf: person, members: [sol, wren] }\n\
+         relations:\n  ready: { args: [suitor], derive: true }\n  plain: { args: [person], derive: true }\n\
+         rules:\n  - \"ready(P) :- suitor(P), cel(\\\"run.aff[P] >= 3\\\")\"\n\
+         \x20 - \"plain(P) :- person(P), not suitor(P), cel(\\\"run.day >= 2\\\")\"\n",
+    );
+    write(
+        &d,
+        "scenes/s.lute",
+        "---\nkind: scene\nid: s\non: tick\nwhen: \"holds(ready(sol)) || holds(plain(ines))\"\n---\n\n## S\n\n@narrator: Ready.\n",
+    );
+    let dir = d.to_str().unwrap();
+    let s = ok(&["scenario", dir, "knowledge", "--for", "s"]);
+    assert!(!s.contains("undeclared relation"), "{s}");
+    assert!(s.contains("suitor(sol) — entity kind `suitor`; sol is a member\n"), "{s}");
+    assert!(
+        s.contains("cel(\"run.aff.sol >= 3\") — state condition on run.aff.sol, decided at run time\n"),
+        "the guard is grounded by the head's binding: {s}"
+    );
+    assert!(s.contains("person(ines) — entity kind `person`; ines is a member\n"), "{s}");
+    assert!(s.contains("not suitor(ines) — entity kind `suitor`; ines is not a member — always holds\n"), "{s}");
+    assert!(s.contains("cel(\"run.day >= 2\") — state condition on run.day"), "{s}");
+
+    let out = lute(&["scenario", dir, "--format", "json", "knowledge", "--for", "s"]);
+    let j: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let rels = &j["roots"][0]["relations"];
+    assert!(rels.get("suitor").is_none() && rels.get("person").is_none(), "{rels}");
+    let premises = &rels["ready"]["rules"][0]["premises"];
+    assert_eq!(premises[0], serde_json::json!({ "entityKind": "suitor" }), "{premises}");
+    assert_eq!(premises[1], serde_json::json!({ "cel": "run.aff[P] >= 3" }), "{premises}");
+}

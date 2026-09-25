@@ -27,6 +27,7 @@ use lute_manifest::schema::CastMember;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, Directive, Document, Node};
+use lute_syntax::datalog::{FactPattern, FactTerm};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 use crate::cel_expand::DefTable;
@@ -152,6 +153,46 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
             _ => cel_string_literal(s),
         },
     }
+}
+
+/// The fact-atom constant a `::use` argument binds a `@param` to (dsl 0.24.0
+/// §4): an identifier (an entity or enum member id) or `true`/`false`. `Err`
+/// names why any other argument — a CEL expression, a `@def`, a number, a
+/// string that is no identifier — cannot be a fact argument, which is ground.
+pub fn fact_arg_constant(arg: &AttrValue) -> Result<FactTerm, String> {
+    match arg {
+        AttrValue::BoolTrue => Ok(FactTerm::Bool(true)),
+        AttrValue::Str(s) => match s.as_str() {
+            "true" => Ok(FactTerm::Bool(true)),
+            "false" => Ok(FactTerm::Bool(false)),
+            _ if s.starts_with(|c: char| c.is_ascii_alphabetic())
+                && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+            {
+                Ok(FactTerm::Ident(s.clone()))
+            }
+            _ => Err(format!("`{s}` is not an identifier")),
+        },
+        AttrValue::Ref(slot) => Err(format!(
+            "`{}` is an expression, decided only at runtime",
+            slot.raw.trim()
+        )),
+    }
+}
+
+/// Bind every `@param` argument of `pattern` whose `::use` argument is a
+/// constant ([`fact_arg_constant`]); `false` when one stays unbound (the
+/// `::use` check reports why).
+pub fn bind_fact(pattern: &mut FactPattern, args: &BTreeMap<String, AttrValue>) -> bool {
+    let mut bound = true;
+    for a in &mut pattern.args {
+        if let FactTerm::Param(p) = &a.term {
+            match args.get(p).map(fact_arg_constant) {
+                Some(Ok(term)) => a.term = term,
+                _ => bound = false,
+            }
+        }
+    }
+    bound
 }
 
 /// Quote `s` as a single-quoted CEL string literal (backslash escaping, §4.4).
@@ -444,31 +485,39 @@ fn write_skeleton(nodes: &[Node], snapshot: &CapabilitySnapshot, out: &mut Vec<N
     }
 }
 
-fn bind_writes(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
-    for node in nodes {
-        match node {
-            Node::Set(s) => {
-                bind_slot_raw(&mut s.expr, args, params);
-                if let Some(w) = &mut s.when {
-                    bind_slot_raw(w, args, params);
-                }
+/// Bind every `@param` in the skeleton. An `::assert` / `::retract` whose
+/// param argument is no constant is dropped: the `::use` check reports it
+/// (`E-COMPONENT-ARG`), and an unbound atom would only pile on.
+fn bind_writes(nodes: &mut Vec<Node>, args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
+    nodes.retain_mut(|node| match node {
+        Node::Set(s) => {
+            bind_slot_raw(&mut s.expr, args, params);
+            if let Some(w) = &mut s.when {
+                bind_slot_raw(w, args, params);
             }
-            Node::Directive(d) => bind_attrs(&mut d.attrs, args, params),
-            Node::Match(m) => {
-                bind_slot_raw(&mut m.subject, args, params);
-                for arm in &mut m.arms {
-                    match arm {
-                        Arm::When { test, body, .. } => {
-                            bind_slot_raw(test, args, params);
-                            bind_writes(body, args, params);
-                        }
-                        Arm::Otherwise { body, .. } => bind_writes(body, args, params),
-                    }
-                }
-            }
-            _ => {}
+            true
         }
-    }
+        Node::Assert(a) => bind_fact(&mut a.pattern, args),
+        Node::Retract(r) => bind_fact(&mut r.pattern, args),
+        Node::Directive(d) => {
+            bind_attrs(&mut d.attrs, args, params);
+            true
+        }
+        Node::Match(m) => {
+            bind_slot_raw(&mut m.subject, args, params);
+            for arm in &mut m.arms {
+                match arm {
+                    Arm::When { test, body, .. } => {
+                        bind_slot_raw(test, args, params);
+                        bind_writes(body, args, params);
+                    }
+                    Arm::Otherwise { body, .. } => bind_writes(body, args, params),
+                }
+            }
+            true
+        }
+        _ => true,
+    });
 }
 
 /// Replace each nested `::use` left in a bound skeleton with ITS writes (a

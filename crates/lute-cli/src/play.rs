@@ -159,6 +159,9 @@ enum StepAction {
     /// judges it by (refused, like them, when the clock raises nothing).
     Advance {
         by: lute_manifest::clock::Advance,
+        /// dsl 0.24.0 §1 (ER N16): the `engine:` writes of the same moment,
+        /// applied before the clock moves; one settle follows both.
+        writes: RawWrites,
         pick: Option<Pick>,
         choose: BTreeMap<String, Vec<String>>,
         occasion_expect: Option<&'static str>,
@@ -493,7 +496,7 @@ fn parse_writes(n: usize, key: &str, v: &serde_yaml::Value, retract: bool) -> Re
 /// `label`/`repeat`/`expect` beside any (`repeat`/`expect` not beside `end`).
 fn parse_step(n: usize, item: &serde_yaml::Value) -> Result<(ScriptStep, Option<serde_yaml::Value>), String> {
     let shape = "one of `occasion` (with `target`, `pick`, `choose`), `newRun`, `engine`, \
-                 `event`, `advance` (with `pick`, `choose`), `end` — plus \
+                 `event`, `advance` (with `pick`, `choose`, `engine`), `end` — plus \
                  `label`/`repeat`/`expect`";
     let serde_yaml::Value::Mapping(m) = item else {
         return Err(format!("step {n} must be a mapping — {shape}"));
@@ -610,13 +613,18 @@ fn parse_step(n: usize, item: &serde_yaml::Value) -> Result<(ScriptStep, Option<
             _ => unreachable!("every STEP_KEYS key is matched"),
         }
     }
+    // dsl 0.24.0 §1: an `advance:` may carry the `engine:` writes of the same
+    // moment (applied before the clock moves, one settle for both).
+    if actions.contains(&"advance") && actions.contains(&"engine") {
+        actions.retain(|a| *a != "engine");
+    }
     let action = match actions.as_slice() {
         [] => return Err(format!("step {n} names no action — {shape}")),
         [a, b, ..] => {
             return Err(format!(
                 "step {n}: a step raises an `occasion`, starts a `newRun`, applies `engine` \
-                 writes, fires an `event`, advances the clock (`advance`) or ends the \
-                 playthrough (`end`) — not both `{a}` and `{b}`"
+                 writes, fires an `event`, advances the clock (`advance`, which may carry \
+                 `engine` writes) or ends the playthrough (`end`) — not both `{a}` and `{b}`"
             ))
         }
         [one] => *one,
@@ -669,6 +677,7 @@ fn parse_step(n: usize, item: &serde_yaml::Value) -> Result<(ScriptStep, Option<
         "event" => StepAction::Event(event.unwrap_or_default()),
         "advance" => StepAction::Advance {
             by: advance.expect("an `advance` action parsed its value"),
+            writes: writes.take().unwrap_or_default(),
             pick,
             choose,
             occasion_expect: expect.as_ref().and_then(crate::play_expect::occasion_key),
@@ -754,6 +763,14 @@ struct Project {
     /// `<quest tier="run">` quests (dsl 0.22.0 §7) -> their objective ids:
     /// reset to `unset` at every `newRun`.
     run_quests: BTreeMap<String, Vec<String>>,
+    /// dsl 0.24.0 §2: the accept-driven quests — no `start`, and either not
+    /// a child or an `activate="accept"` one. Only these can be taken again
+    /// with `::accept{… at="nextRun"}` (CR N3).
+    accept_driven: BTreeSet<String>,
+    /// dsl 0.24.0 §2: each `activate="accept"` child -> (its parent, the
+    /// quest document declaring the child) — an accept of it while the
+    /// parent is not active is spent, and the transcript says so (ER N15).
+    accept_children: BTreeMap<String, (String, String)>,
     /// The union entity kinds, the domain an occasion `target: { prefix,
     /// entity }` names (dsl 0.22.0 §8).
     kinds: BTreeMap<String, EntityKindDecl>,
@@ -973,6 +990,45 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         .filter(|c| c.get("tier").and_then(Json::as_str) == Some("run"))
         .filter_map(objectives_of)
         .collect();
+    let children: BTreeSet<&str> = quest_cmds()
+        .flat_map(|c| c.get("objectives").and_then(Json::as_array).into_iter().flatten())
+        .filter_map(|o| o.get("quest").and_then(Json::as_str))
+        .collect();
+    let accept_driven = quest_cmds()
+        .filter(|c| c.get("start").is_none_or(Json::is_null))
+        .filter_map(|c| c.get("id").and_then(Json::as_str).map(|id| (c, id)))
+        .filter(|(c, id)| {
+            !children.contains(id) || c.get("activate").and_then(Json::as_str) == Some("accept")
+        })
+        .map(|(_, id)| id.to_string())
+        .collect();
+    let parent_of: BTreeMap<&str, &str> = quest_cmds()
+        .flat_map(|c| {
+            let parent = c.get("id").and_then(Json::as_str).unwrap_or("");
+            c.get("objectives")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(move |o| o.get("quest").and_then(Json::as_str).map(|child| (child, parent)))
+        })
+        .collect();
+    let accept_children = quest_docs
+        .iter()
+        .filter_map(|rel| artifacts.get(rel).map(|a| (rel, a)))
+        .flat_map(|(rel, a)| {
+            a.get("commands")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter(|c| {
+                    c.get("kind").and_then(Json::as_str) == Some("quest")
+                        && c.get("activate").and_then(Json::as_str) == Some("accept")
+                })
+                .filter_map(|c| c.get("id").and_then(Json::as_str))
+                .filter_map(|id| parent_of.get(id).map(|p| (id.to_string(), (p.to_string(), rel.clone()))))
+                .collect::<Vec<_>>()
+        })
+        .collect();
     // dsl 0.23.0 §4: a bundle beat is visited like a scene.
     let scene_ids = artifacts
         .values()
@@ -1027,6 +1083,8 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         scene_ids,
         entry_ids,
         run_quests,
+        accept_driven,
+        accept_children,
         kinds,
     })
 }
@@ -1074,12 +1132,14 @@ enum Action {
     NewRun(Writes),
     Engine(Writes),
     Event(String),
-    /// dsl 0.24.0 §1: move the clock `by`, settle, then raise `raise` (the
-    /// clock's occasion, when it declares one) with the step's `pick` and
-    /// `choose`.
+    /// dsl 0.24.0 §1: apply `writes` (the step's `engine:`), move the clock
+    /// `by` — raising the clock's `dayEnd` / `dayStart` at every midnight it
+    /// crosses — settle, then raise its `slot` occasion (when it declares
+    /// one) with the step's `pick` and `choose`.
     Advance {
         by: lute_manifest::clock::Advance,
-        raise: Option<String>,
+        writes: Writes,
+        raise: lute_manifest::clock::RaiseMoments,
         pick: Option<Pick>,
         choose: BTreeMap<String, Vec<String>>,
     },
@@ -1402,6 +1462,7 @@ fn plan_steps(p: &Project, steps: &[ScriptStep]) -> Result<Vec<Step>, String> {
             }
             StepAction::Advance {
                 by,
+                writes,
                 pick,
                 choose,
                 occasion_expect,
@@ -1412,39 +1473,52 @@ fn plan_steps(p: &Project, steps: &[ScriptStep]) -> Result<Vec<Step>, String> {
                          project declares a `clock:` (dsl 0.24.0 §1)"
                     ));
                 };
-                let raise = clock.raise.clone();
-                match &raise {
-                    None => {
-                        let key = if pick.is_some() {
-                            Some("`pick`".to_string())
-                        } else if !choose.is_empty() {
-                            Some("`choose`".to_string())
-                        } else {
-                            occasion_expect.map(|k| format!("`expect.{k}`"))
-                        };
-                        if let Some(key) = key {
-                            return Err(format!(
-                                "step {n}: {key} judges the occasion an `advance:` raises, and \
-                                 the clock declares no `raise:` — the advance presents nothing"
-                            ));
-                        }
+                let writes = resolve_writes(p, n, "engine", writes)?;
+                if let Some((path, _)) = writes
+                    .state
+                    .iter()
+                    .find(|(path, _)| *path == clock.day || clock.slot.as_ref() == Some(path))
+                {
+                    return Err(format!(
+                        "step {n}: `engine:` writes `{path}`, which the `advance:` beside it \
+                         moves — write the clock in a step of its own, or let `advance:` move it"
+                    ));
+                }
+                let raise = clock.raises();
+                if raise.slot.is_none() {
+                    let key = if pick.is_some() {
+                        Some("`pick`".to_string())
+                    } else if !choose.is_empty() {
+                        Some("`choose`".to_string())
+                    } else {
+                        occasion_expect.map(|k| format!("`expect.{k}`"))
+                    };
+                    if let Some(key) = key {
+                        return Err(format!(
+                            "step {n}: {key} judges the occasion an `advance:` raises where the \
+                             clock stops, and the clock declares no `raise:` slot occasion — \
+                             the advance presents nothing there"
+                        ));
                     }
-                    Some(occasion) => {
-                        if p.occasions.get(occasion).is_some_and(|d| d.target.takes_target()) {
-                            return Err(format!(
-                                "step {n}: the clock raises `{occasion}`, which is declared \
-                                 `target: true` — an `advance:` raises it for no target"
-                            ));
-                        }
-                        // Shape-only vocabulary: an occasion no beat answers
-                        // and no objective is judged at is raised to nobody.
-                        if !p.occasions.is_empty() || answered.contains(occasion.as_str()) || pick.is_some() {
-                            plan_occasion(p, &answered, n, occasion, None, pick.as_ref())?;
-                        }
+                }
+                let moments = [(&raise.slot, pick.as_ref()), (&raise.day_start, None), (&raise.day_end, None)];
+                for (occasion, pick) in moments {
+                    let Some(occasion) = occasion else { continue };
+                    if p.occasions.get(occasion).is_some_and(|d| d.target.takes_target()) {
+                        return Err(format!(
+                            "step {n}: the clock raises `{occasion}`, which is declared \
+                             `target: true` — an `advance:` raises it for no target"
+                        ));
+                    }
+                    // Shape-only vocabulary: an occasion no beat answers
+                    // and no objective is judged at is raised to nobody.
+                    if !p.occasions.is_empty() || answered.contains(occasion.as_str()) || pick.is_some() {
+                        plan_occasion(p, &answered, n, occasion, None, pick)?;
                     }
                 }
                 Action::Advance {
                     by: *by,
+                    writes,
                     raise,
                     pick: pick.clone(),
                     choose: choose.clone(),
@@ -1596,6 +1670,16 @@ struct World {
     /// step's own, then the script's top-level ones; every presentation and
     /// quest advance hands them to its runner and takes back the rest.
     bridges: crate::runner::BridgeAnswers,
+    /// dsl 0.24.0 §2.1: the raise (`name` / `name@target`) the running step
+    /// makes, until it is made — the settles before it defer the `by` of
+    /// the `on=` objectives it judges ([`Runner::with_deferred_by`]).
+    defer_by: Option<String>,
+    /// dsl 0.24.0 §2: `true` while a `judge: before` raise is answered —
+    /// the `<on>` handlers it fires are collected in `deferred_handlers`
+    /// (`(quest document, body addr)`, firing order) and run after the
+    /// occasion's beats ([`run_deferred_handlers`]).
+    defer_handlers: bool,
+    deferred_handlers: Vec<(String, String)>,
 }
 
 impl World {
@@ -1724,6 +1808,9 @@ fn seed_world(p: &Project, script: &PlayScript) -> Result<World, String> {
             top: resolve_bridges(p, "top level", &script.surfaces.bridges)?,
             ..Default::default()
         },
+        defer_by: None,
+        defer_handlers: false,
+        deferred_handlers: Vec::new(),
     };
     for (path, e) in &p.state_table {
         if path.starts_with("scene.") {
@@ -1826,8 +1913,9 @@ struct NewRunReport {
     /// The `prev.run.*` snapshot the ended run left (path, value), in path
     /// order — printed value by value (dsl 0.24.0, T3-10).
     prev_run: Vec<(String, Value)>,
-    /// Run-tier quests the reset found `active` with no objective judged
-    /// (done or failed) — work the ended run took and the reset discards.
+    /// Accept-driven run-tier quests (CR N3: only those can be queued with
+    /// `at="nextRun"`) the reset found `active` with no objective done or
+    /// failed — taken this run, and discarded by the reset.
     unjudged: Vec<String>,
 }
 
@@ -1869,7 +1957,8 @@ fn new_run(p: &Project, w: &mut World, seed: &Writes) -> Result<NewRunReport, St
         .run_quests
         .iter()
         .filter(|(id, objectives)| {
-            w.quests.get(*id).map(String::as_str) == Some("active")
+            p.accept_driven.contains(*id)
+                && w.quests.get(*id).map(String::as_str) == Some("active")
                 && objectives.iter().all(|oid| {
                     let judged = |flag: &str| {
                         w.state.get(&format!("quest.{id}.objectives.{oid}.{flag}"))
@@ -2099,18 +2188,21 @@ fn outcome_halt(outcome: &RunnerOutcome, what: &str, doc_json: &Json) -> Option<
             c.get("kind").and_then(Json::as_str) == Some("plugin") && c.get("unanswered").is_some()
         }) {
             let tag = rec.get("tag").and_then(Json::as_str).unwrap_or("?");
-            let fields: Vec<String> = rec
-                .get("unanswered")
-                .and_then(Json::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Json::as_str)
-                .map(|f| format!("{f}: …"))
-                .collect();
+            let strs = |key: &str| -> Vec<&str> {
+                let list = rec.get(key).and_then(Json::as_array).into_iter().flatten();
+                list.filter_map(Json::as_str).collect()
+            };
+            // `unanswered` and `unresolvedEffects` pair each field with the
+            // result slot it writes; the slot's declared type is the
+            // placeholder, as in `lute trace`'s hint.
+            let types: Vec<Option<lute_manifest::types::Type>> =
+                strs("unresolvedEffects").into_iter().map(|p| state_entry_type(doc_json, p)).collect();
+            let shape = lute_trace::bridge_answer_shape(
+                strs("unanswered").into_iter().zip(types.iter().map(Option::as_ref)),
+            );
             return Some(PlayHalt::Incomplete(format!(
                 "{what}: plugin call `{tag}` reads a bridge result and has no answer — give one \
-                 with `bridges: {{ {tag}: [ {{ {} }} ] }}` (top level or on the step)",
-                fields.join(", ")
+                 with `bridges: {{ {tag}: [ {shape} ] }}` (top level or on the step)"
             )));
         }
         if let Some(rec) = outcome.transcript.iter().find(|c| {
@@ -2141,6 +2233,28 @@ fn outcome_halt(outcome: &RunnerOutcome, what: &str, doc_json: &Json) -> Option<
         )));
     }
     None
+}
+
+/// The declared type of the state entry `path` in an artifact, as far as a
+/// placeholder needs it (`bool`, `number`, `string`, an enum's members).
+fn state_entry_type(doc_json: &Json, path: &str) -> Option<lute_manifest::types::Type> {
+    use lute_manifest::types::Type;
+    let entries = doc_json.get("state")?.as_array()?;
+    let entry = entries.iter().find(|e| e.get("path").and_then(Json::as_str) == Some(path))?;
+    Some(match entry.get("type")?.as_str()? {
+        "bool" => Type::Bool,
+        "number" => Type::Number,
+        "string" => Type::Str,
+        "enum" => Type::Enum(
+            entry
+                .get("domain")?
+                .as_array()?
+                .iter()
+                .filter_map(|m| Some(m.as_str()?.to_string()))
+                .collect(),
+        ),
+        _ => return None,
+    })
 }
 
 /// The option ids of the `choice`/`hub` `id` in an artifact, declared order.
@@ -2189,7 +2303,24 @@ fn advance_quests(p: &Project, w: &mut World) -> (Vec<QuestAdvance>, Option<Play
             break;
         }
     }
-    w.accepts.clear();
+    // dsl 0.24.0 §2 (ER N15): an accept of an `activate="accept"` child
+    // while its parent is not active is spent — the transcript says so.
+    for id in std::mem::take(&mut w.accepts) {
+        let Some((parent, doc)) = p.accept_children.get(&id) else { continue };
+        let status = |q: &str| w.quests.get(q).map_or("unset", String::as_str);
+        if status(&id) != "unset" || status(parent) == "active" {
+            continue;
+        }
+        out.push(QuestAdvance {
+            document: doc.clone(),
+            transcript: vec![json!({
+                "kind": "acceptSpent",
+                "quest": id,
+                "parent": parent,
+                "parentStatus": status(parent),
+            })],
+        });
+    }
     (out, None)
 }
 
@@ -2211,8 +2342,58 @@ enum Raise<'a> {
 fn raise(p: &Project, w: &mut World, moment: Raise<'_>) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
     let mut out = Vec::new();
     let (_, stop) = advance_pass(p, w, Some(moment), &mut out);
+    // dsl 0.24.0 §2.1: the raise judged the `done`s it deferred `by` for.
+    if matches!(moment, Raise::Occasion(..)) {
+        w.defer_by = None;
+    }
     if stop.is_some() {
         return (out, stop);
+    }
+    let (more, stop) = advance_quests(p, w);
+    out.extend(more);
+    (out, stop)
+}
+
+/// dsl 0.24.0 §2: run the `<on>` handler bodies a `judge: before` raise
+/// answered (`(quest document, body addr)`, firing order) — after the
+/// occasion's beats — then settle every quest to a fixpoint, as after any
+/// presentation. Consecutive bodies of one document share one walk.
+fn run_deferred_handlers(
+    p: &Project,
+    w: &mut World,
+    handlers: Vec<(String, String)>,
+) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
+    let mut out = Vec::new();
+    let mut rest = handlers.as_slice();
+    while let Some((doc, _)) = rest.first() {
+        let len = rest.iter().take_while(|(d, _)| d == doc).count();
+        let bodies: Vec<String> = rest[..len].iter().map(|(_, b)| b.clone()).collect();
+        rest = &rest[len..];
+        let doc_json = &p.artifacts[doc];
+        let mut runner = Runner::with_carryover(
+            &play_artifact_json(doc_json, p),
+            w.mock(),
+            w.state.clone(),
+            w.facts.clone(),
+            w.quests.clone(),
+        )
+        .with_visited(&w.visited)
+        .with_choice_cursor(&w.choice_cursor)
+        .with_failed_objectives(&w.failed_objectives)
+        .with_bridges(&w.bridges);
+        let result = runner.run_deferred_handlers(&bodies);
+        let outcome = runner.into_outcome();
+        absorb(w, &outcome);
+        let stop = walk_stop(result, &outcome, &format!("quest document `{doc}`"), doc_json);
+        if !outcome.transcript.is_empty() {
+            out.push(QuestAdvance {
+                document: doc.clone(),
+                transcript: outcome.transcript,
+            });
+        }
+        if stop.is_some() {
+            return (out, stop);
+        }
     }
     let (more, stop) = advance_quests(p, w);
     out.extend(more);
@@ -2252,10 +2433,14 @@ fn advance_pass(
         .with_visited(&w.visited)
         .with_choice_cursor(&w.choice_cursor)
         .with_failed_objectives(&w.failed_objectives)
-        .with_bridges(&w.bridges);
+        .with_bridges(&w.bridges)
+        .with_deferred_by(w.defer_by.as_deref())
+        .with_deferred_handlers(w.defer_handlers);
         let result = runner.advance_quests();
         let outcome = runner.into_outcome();
         absorb(w, &outcome);
+        w.deferred_handlers
+            .extend(outcome.deferred_handlers.iter().map(|b| (doc.clone(), b.clone())));
         let what = format!("quest document `{doc}`");
         let stop = walk_stop(result, &outcome, &what, doc_json);
         let mut transcript = skipped;
@@ -2703,19 +2888,34 @@ enum StepBody {
     Engine { writes: Vec<Json> },
     Event { event: String },
     /// dsl 0.24.0 §1: an `advance:` — `by` as written (`slot`, `day`, `3`),
-    /// the clock `from` → `to` (described, `day 2 (Tue) morning`), the
-    /// `set` records of the day/slot paths it moved, the quest settle right
-    /// after, then the clock's `raise` occasion as an `Occasion` body.
+    /// the clock `from` → `to` (described, `day 2 (Tue) morning`), each
+    /// `dayEnd` / `dayStart` the clock raised at a midnight it crossed,
+    /// then the `set` records of the last move (with the step's `engine:`
+    /// writes when nothing was raised before it), the quest settle right
+    /// after, then the clock's `raise.slot` occasion as an `Occasion` body.
     Advance {
         by: String,
         from: String,
         to: String,
         writes: Vec<Json>,
         settled: Vec<QuestAdvance>,
+        days: Vec<DayRaise>,
         raised: Option<Box<StepBody>>,
     },
     /// `end: true` — the playthrough ends here.
     End,
+}
+
+/// dsl 0.24.0 §1: a `dayEnd` / `dayStart` an `advance:` raised at a
+/// midnight: the move that brought the clock there (its `set` records, the
+/// step's `engine:` writes on the first) and the settle after it, then the
+/// occasion raised at `at` and the quests' answer to it.
+struct DayRaise {
+    at: String,
+    writes: Vec<Json>,
+    settled: Vec<QuestAdvance>,
+    occasion: Box<StepBody>,
+    quests: Vec<QuestAdvance>,
 }
 
 struct StepRecord {
@@ -2936,10 +3136,11 @@ fn run_step(
         }
         Action::Advance {
             by,
+            writes,
             raise,
             pick,
             choose,
-        } => return run_advance(p, script, w, n, *by, raise.as_ref(), pick, choose),
+        } => return run_advance(p, script, w, n, *by, writes, raise, pick, choose),
         Action::End => unreachable!("`execute` ends the playthrough at an `end` step"),
     };
     run_occasion(p, script, w, n, occasion, target, pick, choose)
@@ -2959,10 +3160,51 @@ fn refresh_clock(p: &Project, w: &mut World) {
     }
 }
 
-/// dsl 0.24.0 §1: one `advance:` — write the clock's day/slot paths `by`
-/// slots (or to the next day's first slot) forward, settle every quest
-/// (a `by` deadline the new time passes fails here), then raise the
-/// clock's `raise` occasion, exactly as an `occasion:` step raises it.
+/// dsl 0.24.0 §1: move the clock to `to`, writing its day (and slot) paths
+/// where they change; the `set` records.
+fn move_clock(
+    p: &Project,
+    w: &mut World,
+    clock: &lute_manifest::clock::ClockDecl,
+    from: lute_manifest::clock::ClockAt,
+    to: lute_manifest::clock::ClockAt,
+) -> Vec<Json> {
+    let mut moved = Writes::default();
+    if to.day != from.day {
+        moved.state.push((clock.day.clone(), Write::Set(Value::Num(to.day as f64))));
+    }
+    if let (Some(path), Some(name), true) = (&clock.slot, clock.slot_name(to.slot), to.slot != from.slot) {
+        moved.state.push((path.clone(), Write::Set(Value::Str(name.to_string()))));
+    }
+    let writes = apply_writes(w, &moved).expect("literal writes never fail");
+    refresh_clock(p, w);
+    writes
+}
+
+/// Settle every quest after the clock moved; the settle before a raise
+/// defers the `by` of the `on=` objectives that raise judges (dsl 0.24.0
+/// §2.1).
+fn settle_before(p: &Project, w: &mut World, next: Option<&String>) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
+    if let Some(occasion) = next.filter(|o| p.objective_occasions.contains(*o)) {
+        w.defer_by = Some(occasion.clone());
+    }
+    let (settled, stop) = advance_quests(p, w);
+    if stop.is_some() {
+        w.defer_by = None;
+    }
+    (settled, stop)
+}
+
+/// dsl 0.24.0 §1: one `advance:` — apply the step's `engine:` writes, write
+/// the clock's day/slot paths `by` slots (or to the next day's first slot)
+/// forward, settle every quest (a `by` deadline the new time passes fails
+/// here), then raise the clock's `raise.slot` occasion, exactly as an
+/// `occasion:` step raises it. With `raise.dayEnd` / `raise.dayStart`, every
+/// midnight the advance crosses is a stop of its own: `dayEnd` is raised at
+/// the day's last slot (`advance: <n>` walks there — it never skips the
+/// close of a day; `advance: day` closes the day where the clock stands),
+/// then the clock crosses to the next day's first slot and `dayStart` is
+/// raised there; each move settles the quests first.
 #[allow(clippy::too_many_arguments)]
 fn run_advance(
     p: &Project,
@@ -2970,62 +3212,115 @@ fn run_advance(
     w: &mut World,
     n: usize,
     by: lute_manifest::clock::Advance,
-    raise_occasion: Option<&String>,
+    engine: &Writes,
+    raise: &lute_manifest::clock::RaiseMoments,
     pick: &Option<Pick>,
     choose: &BTreeMap<String, Vec<String>>,
 ) -> (StepBody, Vec<QuestAdvance>, Option<PlayHalt>) {
-    use lute_manifest::clock::Advance;
+    use lute_manifest::clock::{Advance, ClockAt};
     let clock = p.index.clock.as_ref().expect("the plan requires a clock for `advance:`");
     let by_text = match by {
         Advance::Day => "day".to_string(),
         Advance::Slots(1) => "slot".to_string(),
         Advance::Slots(k) => k.to_string(),
     };
-    let Some(from) = clock_at(p, w) else {
-        let body = StepBody::Advance {
-            by: by_text,
-            from: String::new(),
-            to: String::new(),
-            writes: Vec::new(),
-            settled: Vec::new(),
-            raised: None,
-        };
-        let halt = PlayHalt::Error(format!(
-            "step {n}: `advance:` cannot move the clock — `{}` / `{}` name no position on it \
-             (a whole day number and one of: {})",
-            clock.day,
-            clock.slot,
-            clock.slots.join(", ")
-        ));
-        return (body, Vec::new(), Some(halt));
-    };
-    let to = clock.advance(from, by);
-    let mut moved = Writes::default();
-    if to.day != from.day {
-        moved.state.push((clock.day.clone(), Write::Set(Value::Num(to.day as f64))));
-    }
-    if to.slot != from.slot {
-        moved.state.push((clock.slot.clone(), Write::Set(Value::Str(clock.slots[to.slot].clone()))));
-    }
-    let writes = apply_writes(w, &moved).expect("literal writes never fail");
-    refresh_clock(p, w);
-    let (settled, stop) = advance_quests(p, w);
-    let (raised, quests, stop) = match (raise_occasion, stop) {
-        (Some(occasion), None) => {
-            let (body, quests, stop) = run_occasion(p, script, w, n, occasion, &None, pick, choose);
-            (Some(Box::new(body)), quests, stop)
-        }
-        (_, stop) => (None, Vec::new(), stop),
-    };
-    let body = StepBody::Advance {
-        by: by_text,
-        from: clock.describe(from),
-        to: clock.describe(to),
+    let body = |from: String, to: String, writes, settled, days, raised| StepBody::Advance {
+        by: by_text.clone(),
+        from,
+        to,
         writes,
         settled,
+        days,
         raised,
     };
-    (body, quests, stop)
+    let Some(from) = clock_at(p, w) else {
+        let names = match &clock.slot {
+            Some(slot) => format!(
+                "`{}` / `{slot}` name no position on it (a whole day number and one of: {})",
+                clock.day,
+                clock.slots.join(", ")
+            ),
+            None => format!("`{}` is no whole day number", clock.day),
+        };
+        let halt = PlayHalt::Error(format!("step {n}: `advance:` cannot move the clock — {names}"));
+        return (body(String::new(), String::new(), Vec::new(), Vec::new(), Vec::new(), None), Vec::new(), Some(halt));
+    };
+    let mut writes = match apply_writes(w, engine) {
+        Ok(writes) => writes,
+        Err(e) => {
+            let b = body(clock.describe(from), String::new(), Vec::new(), Vec::new(), Vec::new(), None);
+            return (b, Vec::new(), Some(PlayHalt::Error(format!("step {n}: {e}"))));
+        }
+    };
+    let to = clock.advance(from, by);
+    let mut at = from;
+    let mut settled = Vec::new();
+    let mut days = Vec::new();
+    let mut stop = None;
+    // Each midnight crossed, while the clock raises something there.
+    while at.day < to.day && (raise.day_end.is_some() || raise.day_start.is_some()) {
+        if let Some(end) = &raise.day_end {
+            let last = if by == Advance::Day { at } else { clock.day_end(at) };
+            writes.extend(move_clock(p, w, clock, at, last));
+            at = last;
+            let (s, halt) = settle_before(p, w, Some(end));
+            settled.extend(s);
+            if halt.is_some() {
+                stop = halt;
+                break;
+            }
+            let (occasion, quests, halt) = run_occasion(p, script, w, n, end, &None, &None, choose);
+            days.push(DayRaise {
+                at: clock.describe(at),
+                writes: std::mem::take(&mut writes),
+                settled: std::mem::take(&mut settled),
+                occasion: Box::new(occasion),
+                quests,
+            });
+            if halt.is_some() {
+                stop = halt;
+                break;
+            }
+        }
+        let next = ClockAt { day: at.day + 1, slot: 0 };
+        writes.extend(move_clock(p, w, clock, at, next));
+        at = next;
+        let Some(start) = &raise.day_start else { continue };
+        let (s, halt) = settle_before(p, w, Some(start));
+        settled.extend(s);
+        if halt.is_some() {
+            stop = halt;
+            break;
+        }
+        let (occasion, quests, halt) = run_occasion(p, script, w, n, start, &None, &None, choose);
+        days.push(DayRaise {
+            at: clock.describe(at),
+            writes: std::mem::take(&mut writes),
+            settled: std::mem::take(&mut settled),
+            occasion: Box::new(occasion),
+            quests,
+        });
+        if halt.is_some() {
+            stop = halt;
+            break;
+        }
+    }
+    let mut raised = None;
+    let mut quests = Vec::new();
+    if stop.is_none() {
+        writes.extend(move_clock(p, w, clock, at, to));
+        at = to;
+        let (s, halt) = settle_before(p, w, raise.slot.as_ref());
+        settled.extend(s);
+        stop = halt;
+        if let (Some(occasion), None) = (&raise.slot, &stop) {
+            let (b, q, halt) = run_occasion(p, script, w, n, occasion, &None, pick, choose);
+            raised = Some(Box::new(b));
+            quests = q;
+            stop = halt;
+        }
+    }
+    (body(clock.describe(from), clock.describe(at), writes, settled, days, raised), quests, stop)
 }
 
 /// Raise `occasion` (for `target`) as one step: its candidates' verdicts,
@@ -3052,12 +3347,23 @@ fn run_occasion(
     let judged_here =
         p.objective_occasions.contains(occasion) || p.world_events.contains(occasion);
     let before = judged_here && p.judges_before(occasion);
+    // dsl 0.24.0 §2.1: until the raise, this step's settles defer the `by`
+    // of the `on=` objectives it judges — their `done` is judged first.
+    if judged_here {
+        w.defer_by = Some(target.as_ref().map_or_else(|| occasion.clone(), |t| format!("{occasion}@{t}")));
+    }
     let mut quests = Vec::new();
     let mut judged = Vec::new();
     if before {
+        // dsl 0.24.0 §2: the quests are judged and settled before the beats;
+        // the `<on>` handlers that answer (the same-named event, the
+        // lifecycle transitions) run after them.
+        w.defer_handlers = true;
         let (more, s) = raise(p, w, Raise::Occasion(occasion, target.as_deref()));
+        w.defer_handlers = false;
         judged = more;
         if s.is_some() {
+            w.deferred_handlers.clear();
             let body = StepBody::Occasion {
                 occasion: occasion.clone(),
                 target: target.clone(),
@@ -3157,6 +3463,15 @@ fn run_occasion(
         quests.extend(more);
         stop = s;
     }
+    // dsl 0.24.0 §2: a `judge: before` raise's handlers run after the beats.
+    let handlers = std::mem::take(&mut w.deferred_handlers);
+    if stop.is_none() && !handlers.is_empty() {
+        let (more, s) = run_deferred_handlers(p, w, handlers);
+        quests.extend(more);
+        stop = s;
+    }
+    // A step that halted before its raise defers nothing past itself.
+    w.defer_by = None;
     let body = StepBody::Occasion {
         occasion: occasion.clone(),
         target: target.clone(),
@@ -3510,6 +3825,17 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
             str_of(rec, "quest"),
             str_of(rec, "status")
         ),
+        // dsl 0.24.0 §2 (ER N15): an accept the child's inactive parent spent.
+        "acceptSpent" => format!(
+            "  note: accept of quest {} spent — its parent quest {} is {}; an \
+             `activate=\"accept\"` child activates only while its parent is active (dsl 0.24.0 §2)",
+            str_of(rec, "quest"),
+            str_of(rec, "parent"),
+            match str_of(rec, "parentStatus") {
+                "unset" => "not active yet",
+                s => s,
+            }
+        ),
         "accept" => {
             let ignored = rec
                 .get("ignored")
@@ -3683,9 +4009,9 @@ fn render_human(p: &Project, play: &Playthrough, ir: bool) -> String {
                 }
                 for id in unjudged {
                     out.push_str(&format!(
-                        "  note: quest {id} was active and never judged this run — the reset \
-                         discards it; a run-tier quest taken between runs is \
-                         `::accept{{quest=\"{id}\" at=\"nextRun\"}}` (dsl 0.24.0 §2)\n"
+                        "  note: quest {id} was accepted this run and is still active with no \
+                         objective done or failed — the reset discards it; a run-tier quest taken \
+                         between runs is `::accept{{quest=\"{id}\" at=\"nextRun\"}}` (dsl 0.24.0 §2)\n"
                     ));
                 }
                 for id in accepted {
@@ -3715,9 +4041,26 @@ fn render_human(p: &Project, play: &Playthrough, ir: bool) -> String {
                 to,
                 writes,
                 settled,
+                days,
                 raised,
             } => {
                 out.push_str(&format!("{head} · advance {by}: {from} → {to} {RULE}\n"));
+                for d in days {
+                    for rec in &d.writes {
+                        out.push_str(&render_write(rec));
+                        out.push('\n');
+                    }
+                    for q in &d.settled {
+                        render_records(&mut out, p, ir, &q.document, &q.transcript);
+                    }
+                    render_occasion_human(&mut out, p, ir, &format!("{head} · {}", d.at), &d.occasion);
+                    for q in &d.quests {
+                        render_records(&mut out, p, ir, &q.document, &q.transcript);
+                    }
+                }
+                if !days.is_empty() && !(writes.is_empty() && settled.is_empty()) {
+                    out.push_str(&format!("{head} · {to} {RULE}\n"));
+                }
                 for rec in writes {
                     out.push_str(&render_write(rec));
                     out.push('\n');
@@ -3845,6 +4188,12 @@ fn said(play: &Playthrough) -> String {
         push(&q.transcript);
     }
     for s in &play.steps {
+        for played in s.body.days_played() {
+            match played {
+                Played::Quest(q) => push(&q.transcript),
+                Played::Beat(pr) => push(&pr.transcript),
+            }
+        }
         for q in s.body.settled() {
             push(&q.transcript);
         }
@@ -3885,6 +4234,32 @@ impl StepBody {
         };
         own.iter().chain(judged)
     }
+
+    /// What an `advance:` played at the midnights it crossed, in order —
+    /// before [`Self::settled`]: each move's settle, the `dayEnd` /
+    /// `dayStart` raise's quest advances and presentations, the quests'
+    /// answer. Empty for any other step.
+    fn days_played(&self) -> Vec<Played<'_>> {
+        let StepBody::Advance { days, .. } = self else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for d in days {
+            out.extend(d.settled.iter().map(Played::Quest));
+            if let StepBody::Occasion { judged, presented, .. } = &*d.occasion {
+                out.extend(judged.iter().map(Played::Quest));
+                out.extend(presented.iter().map(Played::Beat));
+            }
+            out.extend(d.quests.iter().map(Played::Quest));
+        }
+        out
+    }
+}
+
+/// One transcript an `advance:` played at a midnight.
+enum Played<'a> {
+    Quest(&'a QuestAdvance),
+    Beat(&'a Presented),
 }
 
 fn state_delta(before: &BTreeMap<String, Value>, after: &BTreeMap<String, Value>) -> Json {
@@ -3936,6 +4311,12 @@ fn fact_origins(play: &Playthrough, initial: &BTreeSet<Fact>) -> BTreeMap<Fact, 
             StepBody::Engine { writes } => take(writes, format!("engine {step}")),
             StepBody::NewRun { writes, .. } => take(writes, format!("newRun {step}")),
             _ => {}
+        }
+        for played in s.body.days_played() {
+            match played {
+                Played::Quest(q) => take(&q.transcript, format!("a quest handler in {}, {step}", q.document)),
+                Played::Beat(p) => take(&p.transcript, format!("{} `{}`, {step}", kind_label(p.kind), p.id)),
+            }
         }
         for q in s.body.settled() {
             take(&q.transcript, format!("a quest handler in {}, {step}", q.document));
@@ -4006,26 +4387,42 @@ fn render_json(play: &Playthrough) -> Json {
                 StepBody::End => {
                     o.insert("end".into(), json!(true));
                 }
-                // dsl 0.24.0 §1: the move and its settle under `advance`;
-                // the occasion it raised as an occasion step's own fields.
+                // dsl 0.24.0 §1: the move and its settle under `advance`,
+                // each midnight raise (`dayEnd` / `dayStart`) under
+                // `advance.days` in occasion-step fields; the occasion it
+                // raised where it stopped as an occasion step's own fields.
                 StepBody::Advance {
                     by,
                     from,
                     to,
                     writes,
                     settled,
+                    days,
                     raised,
                 } => {
-                    o.insert(
-                        "advance".into(),
-                        json!({
-                            "by": by,
-                            "from": from,
-                            "to": to,
-                            "writes": writes,
-                            "quests": quests_json(settled),
-                        }),
-                    );
+                    let days: Vec<Json> = days
+                        .iter()
+                        .map(|d| {
+                            let mut m = serde_json::Map::new();
+                            m.insert("at".into(), json!(d.at));
+                            m.insert("writes".into(), json!(d.writes));
+                            m.insert("settled".into(), quests_json(&d.settled));
+                            render_occasion_json(&mut m, &d.occasion);
+                            m.insert("quests".into(), quests_json(&d.quests));
+                            Json::Object(m)
+                        })
+                        .collect();
+                    let mut advance = json!({
+                        "by": by,
+                        "from": from,
+                        "to": to,
+                        "writes": writes,
+                        "quests": quests_json(settled),
+                    });
+                    if !days.is_empty() {
+                        advance["days"] = Json::Array(days);
+                    }
+                    o.insert("advance".into(), advance);
                     if let Some(body) = raised {
                         render_occasion_json(&mut o, body);
                     }
@@ -4235,6 +4632,13 @@ fn play_outcome(p: &Project, play: &Playthrough, said: String) -> PlayOutcome {
                 StepBody::Engine { .. } => row.occasion = "engine".to_string(),
                 StepBody::Event { event } => row.occasion = format!("event {event}"),
                 StepBody::End => return None,
+            }
+            for played in s.body.days_played() {
+                let (document, transcript) = match played {
+                    Played::Quest(q) => (&q.document, &q.transcript),
+                    Played::Beat(pr) => (&pr.document, &pr.transcript),
+                };
+                offered_options(p, document, transcript, &mut row.options);
             }
             for q in s.body.settled().chain(&s.quests) {
                 offered_options(p, &q.document, &q.transcript, &mut row.options);
@@ -4477,17 +4881,24 @@ pub(crate) fn run_play_for_test(
     let play = execute(&p, &script, &plan, world);
     let outcome = play_outcome(&p, &play, said(&play));
     let misses = judge(&script, &outcome);
-    // A presented beat's document, and a quest document whose lifecycle
-    // transitioned or whose handlers played during the play.
+    // A presented beat's document — an `occasion:` step's, or the occasion
+    // an `advance:` step's clock raised — and a quest document whose
+    // lifecycle transitioned or whose handlers played during the play.
     let presented_docs = play
         .steps
         .iter()
-        .flat_map(|s| match &s.body {
-            StepBody::Occasion { presented, .. } => {
+        .flat_map(|s| match s.body.occasion() {
+            Some(StepBody::Occasion { presented, .. }) => {
                 presented.iter().map(|pr| pr.document.clone()).collect()
             }
             _ => Vec::new(),
         })
+        .chain(play.steps.iter().flat_map(|s| {
+            s.body.days_played().into_iter().map(|played| match played {
+                Played::Quest(q) => q.document.clone(),
+                Played::Beat(pr) => pr.document.clone(),
+            })
+        }))
         .chain(
             play.start
                 .iter()

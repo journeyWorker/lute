@@ -205,7 +205,7 @@ pub fn schema_sources(foldeds: &[&FoldedEnv]) -> BTreeSet<PathBuf> {
 /// Every relation `text` queries: `holds(R(`, `count(R(`, `countDistinct(R(`,
 /// whitespace allowed. Textual on purpose — a use in a comment only ever
 /// silences the advisory, never fakes one.
-fn queried_relations(text: &str, out: &mut BTreeSet<String>) {
+pub(crate) fn queried_relations(text: &str, out: &mut BTreeSet<String>) {
     for f in ["holds", "count", "countDistinct"] {
         let mut rest = text;
         while let Some(at) = rest.find(f) {

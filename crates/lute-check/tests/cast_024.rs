@@ -32,6 +32,7 @@ fn member(id: &str, present: Option<&str>, emotions: Option<&[&str]>) -> CastMem
         name: None,
         present: present.map(str::to_string),
         emotions: emotions.map(|es| es.iter().map(|e| e.to_string()).collect()),
+        assume: None,
     }
 }
 
@@ -227,11 +228,15 @@ fn a_plugin_present_that_does_not_parse_is_reported_once_and_not_decided() {
 /// One resolved root analyzed like `check-project`: per-file `check()`,
 /// then the fact envelope, then the presence reconciliation.
 fn project(texts: &[(&str, &str)]) -> Vec<(String, Vec<Diagnostic>)> {
+    project_in(snapshot, texts)
+}
+
+fn project_in(snap: fn() -> CapabilitySnapshot, texts: &[(&str, &str)]) -> Vec<(String, Vec<Diagnostic>)> {
     let mut docs: Vec<(PathBuf, Document)> = Vec::new();
     let mut foldeds: Vec<FoldedEnv> = Vec::new();
     let mut results = Vec::new();
     for (path, text) in texts {
-        let input = input(text, snapshot());
+        let input = input(text, snap());
         let (doc, _) = lute_syntax::parse(&input.text);
         let (folded, _, _) = fold_env(&doc, &input);
         results.push((PathBuf::from(path), check(&input)));
@@ -255,11 +260,14 @@ fn project(texts: &[(&str, &str)]) -> Vec<(String, Vec<Diagnostic>)> {
     let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);
     let env = FactEnv::new(may, must.slots);
+    let ladder = lute_check::beats::presence_ladder(&docs, &folded_refs);
+    let no_ladder = std::collections::BTreeMap::new();
     results
         .into_iter()
         .zip(docs.iter().zip(&foldeds))
         .map(|((path, mut result), ((_, doc), folded))| {
-            lute_check::cast::reconcile_presence(&mut result.diagnostics, Path::new(&path), doc, folded, &env);
+            let ladder = ladder.get(&path).unwrap_or(&no_ladder);
+            lute_check::cast::reconcile_presence(&mut result.diagnostics, Path::new(&path), doc, folded, &env, ladder);
             (path.display().to_string(), result.diagnostics)
         })
         .collect()
@@ -295,6 +303,168 @@ fn a_fact_asserted_on_only_some_routes_still_warns_in_check_project() {
         "the project verdict keeps the project wording: {}",
         hits[0].message
     );
+}
+
+// --- W-CAST-ABSENT precision (0.24 prerelease) ---------------------------------
+
+/// A vocabulary with a derived party (`inParty` over recruited, departed and
+/// the engine-reserved `fell`) and a `cel()`-only schedule (`at`).
+const REL_VOCAB: &str = "entities:\n  companion: { members: [isolde, mara, wren, tomas] }\n  \
+    person: { members: [sol] }\n  place: { members: [radio, roof] }\n  part: { members: [wire] }\n\
+    relations:\n  recruited: { args: [companion], tier: run }\n  departed: { args: [companion], tier: run }\n  \
+    fell: { args: [companion], tier: run, reserved: true }\n  inParty: { args: [companion], derive: true }\n  \
+    at: { args: [person, place], derive: true }\n  carrying: { args: [part], tier: run }\n\
+    rules:\n  - 'inParty(P) :- recruited(P), not departed(P), not fell(P)'\n  \
+    - 'at(sol, radio) :- cel(\"run.x == 1\")'\n\
+    state:\n  run.x: { type: number, default: 0 }\n";
+
+/// [`snapshot`] plus speakers present over [`REL_VOCAB`]: `mara` while not
+/// departed, `wren` in the party or not yet recruited, `sol` on his
+/// schedule, `tomas` in the party with `assume: true`, and `quill` once the
+/// `meet` entry has been read.
+fn rel_snapshot() -> CapabilitySnapshot {
+    let mut snap = snapshot();
+    for mut m in [
+        member("mara", Some("!holds(departed(mara))"), None),
+        member("wren", Some("holds(inParty(wren)) || !holds(recruited(wren))"), None),
+        member("sol", Some("holds(at(sol, radio))"), None),
+        member("tomas", Some("holds(inParty(tomas))"), None),
+        member("quill", Some("entry.meet.everRead"), None),
+    ] {
+        m.assume = (m.id == "tomas").then_some(true);
+        snap.cast.insert(m.id.clone(), m);
+    }
+    snap
+}
+
+fn rel_scene(fm: &str, body: &str) -> String {
+    format!("---\nkind: scene\nid: a.rel\n{fm}{REL_VOCAB}---\n## Shot 1.\n{body}\n")
+}
+
+fn rel_diags(text: &str) -> Vec<Diagnostic> {
+    check(&input(text, rel_snapshot())).diagnostics
+}
+
+/// The source text each `W-CAST-ABSENT` of `ds` anchors at, up to its `:`.
+fn absent_lines<'s>(src: &'s str, ds: &[Diagnostic]) -> Vec<&'s str> {
+    with_code(ds, ABSENT)
+        .iter()
+        .map(|d| {
+            let rest = &src[d.span.byte_start..];
+            &rest[..rest.find('\n').unwrap_or(rest.len())]
+        })
+        .collect()
+}
+
+#[test]
+fn a_write_in_one_choice_does_not_reach_a_sibling_choice() {
+    let src = rel_scene(
+        "on: hubVisit\nwhen: \"!holds(recruited(wren))\"\n",
+        "<branch id=\"ask\">\n<choice id=\"yes\" label=\"Join us\">\n@wren: Gladly.\n::assert{recruited(wren)}\n</choice>\n\
+         <choice id=\"no\" label=\"Stay\">\n@wren: I'll stay.\n</choice>\n</branch>\n@wren: After the branch.",
+    );
+    let ds = rel_diags(&src);
+    assert_clean_vocab(&ds);
+    // Only after the join: the `yes` path asserted what the guard denies.
+    assert_eq!(absent_lines(&src, &ds), ["wren: After the branch."], "{ds:?}");
+}
+
+#[test]
+fn an_assert_invalidates_only_a_guard_atom_it_can_falsify() {
+    let src = rel_scene(
+        "on: hubVisit\nwhen: \"holds(inParty(isolde)) && !holds(carrying(wire))\"\n",
+        "::assert{recruited(tomas)}\n@isolde: Another pair of hands.\n\
+         ::assert{recruited(isolde)}\n@isolde: A positive premise only helps.\n\
+         ::assert{carrying(wire)}\n@isolde: Another conjunct of the guard fell, not mine.\n\
+         ::assert{departed(isolde)}\n@isolde: Now I may be gone.",
+    );
+    let ds = rel_diags(&src);
+    assert_clean_vocab(&ds);
+    assert_eq!(absent_lines(&src, &ds), ["isolde: Now I may be gone."], "{ds:?}");
+}
+
+#[test]
+fn a_derived_guard_implies_its_rule_premises() {
+    let src = rel_scene(
+        "on: hubVisit\nwhen: \"holds(inParty(mara))\"\n",
+        "@mara: With you.\n@wren: Me too?",
+    );
+    let ds = rel_diags(&src);
+    assert_clean_vocab(&ds);
+    // `inParty(mara)` implies `!departed(mara)`; it says nothing of Wren.
+    assert_eq!(absent_lines(&src, &ds), ["wren: Me too?"], "{ds:?}");
+}
+
+#[test]
+fn a_cel_only_schedule_is_read_as_its_guard() {
+    let on = rel_scene("on: hubVisit\nwhen: \"run.x == 1\"\n", "@sol: Morning.\n::set{run.x = 2}\n@sol: Later.");
+    let ds = rel_diags(&on);
+    assert_clean_vocab(&ds);
+    // The `::set` rewrites what the schedule reads.
+    assert_eq!(absent_lines(&on, &ds), ["sol: Later."], "{ds:?}");
+    let off = rel_scene("on: hubVisit\nwhen: \"run.x == 2\"\n", "@sol: Not my shift.");
+    assert_eq!(absent_lines(&off, &rel_diags(&off)), ["sol: Not my shift."]);
+    let atom = rel_scene(
+        "on: hubVisit\nwhen: \"holds(at(sol, radio))\"\n",
+        "@sol: Here.\n::set{run.x = 3}\n@sol: The schedule moved.",
+    );
+    assert_eq!(absent_lines(&atom, &rel_diags(&atom)), ["sol: The schedule moved."]);
+}
+
+#[test]
+fn a_voice_over_line_is_exempt_and_an_off_screen_line_is_not() {
+    let src = scene("@isolde{vo}: A letter in her hand.\n@isolde{os}: From the next room.");
+    let ds = diags(&src);
+    assert_clean_vocab(&ds);
+    assert_eq!(absent_lines(&src, &ds), ["isolde{os}: From the next room."], "{ds:?}");
+}
+
+#[test]
+fn a_quest_handler_assumes_its_stable_start_and_an_entry_its_own_read() {
+    let quest = "---\nkind: quest\nid: q\ntitle: q\n---\n\
+        <quest id=\"memory\" title=\"Memory\" start=\"entry.meet.everRead\">\n\
+        <objective id=\"o\" title=\"o\" done=\"run.x >= 1\"/>\n\
+        <on event=\"questActive\">\n@quill: I remember a little more.\n</on>\n</quest>\n\
+        <quest id=\"other\" title=\"Other\" start=\"run.x >= 1\">\n\
+        <objective id=\"o2\" title=\"o\" done=\"run.x >= 2\"/>\n\
+        <on event=\"questActive\">\n@quill: Too soon.\n</on>\n</quest>\n";
+    let ds = check(&input(quest, rel_snapshot())).diagnostics;
+    assert_eq!(absent_lines(quest, &ds), ["quill: Too soon."], "{ds:?}");
+    let lore = "---\nkind: lore\nid: l\n---\n\
+        <entry id=\"meet\" on=\"hubVisit\" category=\"bark\" priority=\"30\" once=\"user\">\n\
+        @quill: A ghost at the figurehead.\n</entry>\n";
+    let ds = check(&input(lore, rel_snapshot())).diagnostics;
+    assert!(with_code(&ds, ABSENT).is_empty(), "{ds:?}");
+}
+
+#[test]
+fn a_beat_below_an_always_eligible_once_user_intro_assumes_it_was_read() {
+    let lore = "---\nkind: lore\nid: l\n---\n\
+        <entry id=\"meet\" on=\"hubVisit\" category=\"bark\" priority=\"30\" once=\"user\">\n\
+        @narrator: A ghost at the figurehead.\n</entry>\n\
+        <entry id=\"later\" on=\"hubVisit\" category=\"bark\" priority=\"20\" once=\"user\" when=\"run.x >= 2\">\n\
+        @quill: My name was Quill.\n</entry>\n\
+        <entry id=\"above\" on=\"hubVisit\" category=\"bark\" priority=\"40\" once=\"user\" when=\"run.x >= 2\">\n\
+        @quill: Ranked above the meeting.\n</entry>\n";
+    // Single-file: no ladder.
+    let ds = check(&input(lore, rel_snapshot())).diagnostics;
+    assert_eq!(absent_lines(lore, &ds).len(), 2, "{ds:?}");
+    // The project ladder: `later` wins only once `meet` is spent.
+    let out = project_in(rel_snapshot, &[("l.lute", lore)]);
+    assert_eq!(absent_lines(lore, &out[0].1), ["quill: Ranked above the meeting."], "{:?}", out[0].1);
+}
+
+#[test]
+fn assume_reads_a_negated_reserved_relation_as_holding() {
+    let src = rel_scene(
+        "",
+        "::assert{recruited(tomas)}\n::assert{recruited(isolde)}\n@tomas: I'm in.\n@isolde: So am I.",
+    );
+    let out = project_in(rel_snapshot, &[("a.lute", &src)]);
+    assert_clean_vocab(&out[0].1);
+    // Both are recruited and nobody departs; only `tomas` (`assume: true`)
+    // takes the engine-reserved `fell` as absent.
+    assert_eq!(absent_lines(&src, &out[0].1), ["isolde: So am I."], "{:?}", out[0].1);
 }
 
 // --- emotions -----------------------------------------------------------------

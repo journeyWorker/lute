@@ -1259,6 +1259,39 @@ pub fn domain_reads_from_state(schema: &crate::meta::StateSchema) -> BTreeSet<St
     out
 }
 
+/// Every entity kind the relational vocabulary itself reads (round-3 CR N1,
+/// ER N10): a `per: <kind>` state family's index (its members declare the
+/// paths), a sub-kind's `subsetOf:` parent (the sub-kind's members are
+/// checked against it), and a kind atom a rule body or a condition queries
+/// (`trusts(P) :- confidant(P), …`, `holds(npc(x))`) — `texts` are the
+/// sources a condition may be written in. Each is as active a read as a
+/// relation's `args: [kind]`.
+pub fn domain_reads_from_kinds<'a>(
+    vocab: &crate::rel_schema::RelVocab,
+    texts: impl Iterator<Item = &'a str>,
+) -> BTreeSet<String> {
+    use lute_syntax::datalog::BodyLiteral;
+    let mut out: BTreeSet<String> = vocab.indexed_state.values().cloned().collect();
+    out.extend(vocab.kinds.values().filter_map(|k| k.subset_of.clone()));
+    let mut queried = BTreeSet::new();
+    for r in &vocab.rules {
+        for lit in &r.rule.body {
+            match lit {
+                BodyLiteral::Pos(a) | BodyLiteral::Neg(a) => {
+                    queried.insert(a.relation.clone());
+                }
+                BodyLiteral::Guard { cel, .. } => crate::usage::queried_relations(cel, &mut queried),
+                BodyLiteral::Cmp { .. } => {}
+            }
+        }
+    }
+    for text in texts {
+        crate::usage::queried_relations(text, &mut queried);
+    }
+    out.extend(queried.into_iter().filter(|q| vocab.kinds.contains_key(q)));
+    out
+}
+
 /// Every `Type::Domain(name)` reachable from `ty`, including through the
 /// container types — a `{ list: { domain: X } }` slot reads `X` as surely as a
 /// bare one does.
@@ -1289,18 +1322,18 @@ fn collect_domain_names(ty: &Type, out: &mut BTreeSet<String>) {
 /// to read it would be a false positive on the most common layout there is.
 ///
 /// One diagnostic per unread DOMAIN, not per declaring document, anchored at
-/// the byte-sorted-first document that declares it, at that document's
-/// frontmatter span. The domain may in fact be declared in an imported schema
-/// rather than in the document itself; the message says so, because
-/// `Diagnostic` has no file field and inventing cross-file anchoring for one
-/// warning is exactly the retreat **D-Z** and **D-AB** already made twice in
-/// this release.
+/// its declaration (dsl 0.24 T3-6): the schema file and line an import
+/// resolved it from, or the `enums:` / `entities:` key of the byte-sorted-first
+/// document declaring it inline. A domain neither places (a plugin's) falls
+/// back to that document's frontmatter span. The path of an imported home is
+/// the canonical schema path; the caller prints it walk-relative.
 ///
 /// [`Layer::Staging`], matching `E-DOMAIN-UNKNOWN` — the same fact asked in the
 /// other direction, so the two must not land on different layers.
 pub fn check_project_domain_reads(
     per_file: &[(PathBuf, &crate::check::DomainUse)],
 ) -> Vec<(PathBuf, Diagnostic)> {
+    use crate::check::DomainHome;
     let mut declared: BTreeSet<&str> = BTreeSet::new();
     let mut read: BTreeSet<&str> = BTreeSet::new();
     for (_, u) in per_file {
@@ -1312,24 +1345,40 @@ pub fn check_project_domain_reads(
 
     let mut out = Vec::new();
     for name in declared.difference(&read) {
-        let Some((path, u)) = sorted.iter().find(|(_, u)| u.declared.contains(*name)) else {
+        let imported = sorted.iter().find_map(|(_, u)| match u.homes.get(*name) {
+            Some(DomainHome::Imported(o)) => Some((o.file.clone(), o.span)),
+            _ => None,
+        });
+        let local = || {
+            sorted.iter().find_map(|(p, u)| match u.homes.get(*name) {
+                Some(DomainHome::Local(span)) => Some((p.clone(), *span)),
+                _ => None,
+            })
+        };
+        let first = || {
+            sorted
+                .iter()
+                .find(|(_, u)| u.declared.contains(*name))
+                .map(|(p, u)| (p.clone(), u.at))
+        };
+        let Some((path, span)) = imported.or_else(local).or_else(first) else {
             continue;
         };
         out.push((
-            path.clone(),
+            path,
             Diagnostic {
                 code: W_DOMAIN_UNREAD.to_string(),
                 severity: Severity::Warning,
                 message: format!(
                     "domain `{name}` is declared but no active construct reads it: no directive \
-                     attribute and no content-line slot is typed `{{ domain: {name} }}`, and no \
-                     `relations:` entry takes it as an argument, so it enforces nothing and only \
-                     reaches the artifact's `enums` array. Type a slot against it, give a \
-                     relation an `args: [{name}]` position, or remove the declaration \
-                     (dsl 0.10.0 §11.1). It may be declared in a schema this document imports \
-                     rather than in the document itself"
+                     attribute, content-line slot, or state path is typed `{{ domain: {name} }}`, \
+                     no `relations:` entry takes it as an argument, no `per: {name}` state \
+                     family or `subsetOf: {name}` kind builds on it, and no rule or condition \
+                     queries `{name}(…)` — so it enforces nothing and only reaches the \
+                     artifact's `enums` array. Read it, or remove the declaration \
+                     (dsl 0.10.0 §11.1)"
                 ),
-                span: u.at,
+                span,
                 layer: Layer::Staging,
                 fixits: Vec::new(),
                 provenance: None,
@@ -1678,6 +1727,7 @@ mod tests {
                 .collect(),
             read: ["emotion".to_string()].into_iter().collect(),
             at: span(1),
+            homes: Default::default(),
         };
         let out = check_project_domain_reads(&[(PathBuf::from("a.lute"), &use_a)]);
         assert_eq!(
@@ -1704,11 +1754,13 @@ mod tests {
             declared: ["action".to_string()].into_iter().collect(),
             read: Default::default(),
             at: span(1),
+            homes: Default::default(),
         };
         let reader = crate::check::DomainUse {
             declared: ["action".to_string()].into_iter().collect(),
             read: ["action".to_string()].into_iter().collect(),
             at: span(1),
+            homes: Default::default(),
         };
         let out = check_project_domain_reads(&[
             (PathBuf::from("a.lute"), &declarer),
@@ -1725,6 +1777,7 @@ mod tests {
             declared: ["reason".to_string()].into_iter().collect(),
             read: Default::default(),
             at: span(1),
+            homes: Default::default(),
         };
         let out = check_project_domain_reads(&[
             (PathBuf::from("b.lute"), &u),

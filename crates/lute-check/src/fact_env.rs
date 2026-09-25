@@ -64,7 +64,7 @@ impl GroundFact {
             .map(|a| match &a.term {
                 FactTerm::Ident(id) => Some(id.clone()),
                 FactTerm::Bool(b) => Some(b.to_string()),
-                FactTerm::Wildcard => None,
+                FactTerm::Wildcard | FactTerm::Param(_) => None,
             })
             .collect::<Option<Vec<_>>>()?;
         Some(GroundFact {
@@ -102,7 +102,7 @@ impl QueryPattern {
                 .map(|a| match a.term {
                     FactTerm::Ident(id) => Some(id),
                     FactTerm::Bool(b) => Some(b.to_string()),
-                    FactTerm::Wildcard => None,
+                    FactTerm::Wildcard | FactTerm::Param(_) => None,
                 })
                 .collect(),
         })
@@ -122,7 +122,7 @@ impl QueryPattern {
                 .map(|a| match &a.term {
                     FactTerm::Ident(id) => Some(id.clone()),
                     FactTerm::Bool(b) => Some(b.to_string()),
-                    FactTerm::Wildcard => None,
+                    FactTerm::Wildcard | FactTerm::Param(_) => None,
                 })
                 .collect(),
         })

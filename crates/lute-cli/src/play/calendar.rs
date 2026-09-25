@@ -291,15 +291,13 @@ fn resolve_clock_axis(p: &Project, days: &[String]) -> Result<Axis, String> {
             })
             .collect::<Result<_, _>>()?
     };
-    let mut values = Vec::with_capacity(days.len() * clock.slots.len());
+    let mut values = Vec::with_capacity(days.len() * clock.slot_count());
     for day in days {
-        for (slot, name) in clock.slots.iter().enumerate() {
+        for slot in 0..clock.slot_count() {
             let at = lute_manifest::clock::ClockAt { day, slot };
-            let text = match clock.weekday_label(day) {
-                Some(label) => format!("{day} {label} {name}"),
-                None => format!("{day} {name}"),
-            };
-            values.push((text, Value::Num(clock.index(at) as f64)));
+            let label = clock.weekday_label(day).map(|l| format!(" {l}")).unwrap_or_default();
+            let name = clock.slot_name(slot).map(|n| format!(" {n}")).unwrap_or_default();
+            values.push((format!("{day}{label}{name}"), Value::Num(clock.index(at) as f64)));
         }
     }
     Ok(Axis {
@@ -312,7 +310,7 @@ fn resolve_clock_axis(p: &Project, days: &[String]) -> Result<Axis, String> {
 /// The position of a clock axis value (its `clock.index`).
 fn clock_axis_at(clock: &lute_manifest::clock::ClockDecl, value: &Value) -> lute_manifest::clock::ClockAt {
     let Value::Num(index) = value else { unreachable!("a clock axis value is its index") };
-    let len = clock.slots.len().max(1) as i64;
+    let len = clock.slot_count() as i64;
     let index = *index as i64;
     lute_manifest::clock::ClockAt {
         day: index.div_euclid(len) + 1,
@@ -361,7 +359,9 @@ fn apply_axis(p: &Project, w: &mut World, axis: &Axis, text: &str, value: &Value
             let clock = p.index.clock.as_ref().expect("a clock axis was resolved against a clock");
             let at = clock_axis_at(clock, value);
             w.state.insert(clock.day.clone(), Value::Num(at.day as f64));
-            w.state.insert(clock.slot.clone(), Value::Str(clock.slots[at.slot].clone()));
+            if let (Some(path), Some(name)) = (&clock.slot, clock.slot_name(at.slot)) {
+                w.state.insert(path.clone(), Value::Str(name.to_string()));
+            }
             super::refresh_clock(p, w);
         }
     }
@@ -402,10 +402,9 @@ struct Column {
     /// none): only its untargeted beats are candidates.
     any_target: bool,
     select: OccasionSelect,
-    /// `--occasion O@<axes>`: per axis, `None` when the occasion varies over
-    /// it, else the one value index it is evaluated at. `None` for an
-    /// occasion that varies over every axis.
-    pins: Option<Vec<Option<usize>>>,
+    /// `--occasion O@<axes>`: per axis, how the occasion treats it. `None`
+    /// for an occasion that varies over every axis.
+    pins: Option<Vec<Pin>>,
 }
 
 impl Column {
@@ -421,7 +420,11 @@ impl Column {
     /// are `picks`.
     fn applies(&self, picks: &[usize]) -> bool {
         self.pins.as_ref().is_none_or(|pins| {
-            pins.iter().zip(picks).all(|(pin, &k)| pin.is_none_or(|p| p == k))
+            pins.iter().zip(picks).all(|(pin, k)| match pin {
+                Pin::Varies => true,
+                Pin::At(p) => p == k,
+                Pin::Clock { allowed, .. } => allowed.contains(k),
+            })
         })
     }
 }
@@ -456,18 +459,68 @@ fn parse_occasion(raw: &str) -> Result<OccasionSpec<'_>, String> {
     Ok(OccasionSpec { raw, name: name.trim(), only: Some(only) })
 }
 
+/// How a per-occasion column (`--occasion O@…`) treats one axis.
+#[derive(Clone)]
+enum Pin {
+    /// The occasion varies over the axis.
+    Varies,
+    /// Held at one value index.
+    At(usize),
+    /// dsl 0.24.0 §1: the clock axis, varied or held per part
+    /// (`O@clock.day`, `O@run.day,run.slot=night`): the value indices whose
+    /// position matches, and each part's held value (`None`: it varies).
+    Clock {
+        allowed: BTreeSet<usize>,
+        day: Option<i64>,
+        slot: Option<String>,
+        /// The clock has a slot part (not a day-granular clock).
+        slotted: bool,
+    },
+}
+
 /// Resolve an [`OccasionSpec`]'s `@` list against the axes into
-/// [`Column::pins`].
-fn occasion_pins(spec: &OccasionSpec<'_>, axes: &[Axis]) -> Result<Option<Vec<Option<usize>>>, String> {
+/// [`Column::pins`]. With a `clock` axis, its parts are named `clock.day` /
+/// `clock.slot` or by the clock's own day / slot paths (`run.day`); an
+/// unnamed part is held at its first value.
+fn occasion_pins(
+    spec: &OccasionSpec<'_>,
+    axes: &[Axis],
+    clock: Option<&lute_manifest::clock::ClockDecl>,
+) -> Result<Option<Vec<Pin>>, String> {
     let Some(only) = &spec.only else {
         return Ok(None);
     };
     let raw = spec.raw;
-    let mut pins = vec![Some(0); axes.len()];
+    let mut pins = vec![Pin::At(0); axes.len()];
     let mut named = BTreeSet::new();
+    let clock_axis = axes.iter().position(|a| matches!(a.apply, Apply::Clock));
+    // Per clock part: `None` unnamed, `Some(None)` varies, `Some(Some(v))` held.
+    let (mut day_part, mut slot_part): (Option<Option<&str>>, Option<Option<&str>>) = (None, None);
     for &(path, value) in only {
         let Some(i) = axes.iter().position(|a| a.path == path) else {
-            let paths: Vec<&str> = axes.iter().map(|a| a.path.as_str()).collect();
+            if let (Some(ci), Some(clock)) = (clock_axis, clock) {
+                let day = path == "clock.day" || path == clock.day;
+                let slot = path == "clock.slot" || clock.slot.as_deref() == Some(path);
+                if day || slot {
+                    if named.contains(&ci) {
+                        return Err(format!("`--occasion {raw}`: `{path}` is part of `clock`, named already"));
+                    }
+                    if slot && clock.slot.is_none() {
+                        return Err(format!(
+                            "`--occasion {raw}`: the clock counts whole days — it has no slot to vary or hold"
+                        ));
+                    }
+                    let part = if day { &mut day_part } else { &mut slot_part };
+                    if part.replace(value).is_some() {
+                        return Err(format!("`--occasion {raw}`: `{path}` is named twice"));
+                    }
+                    continue;
+                }
+            }
+            let mut paths: Vec<&str> = axes.iter().map(|a| a.path.as_str()).collect();
+            if clock_axis.is_some() {
+                paths.extend(["clock.day", "clock.slot"]);
+            }
             let hint = lute_manifest::suggest::nearest(path, paths.iter().copied(), 3)
                 .map(|k| format!(" — did you mean `{k}`?"))
                 .unwrap_or_default();
@@ -476,12 +529,12 @@ fn occasion_pins(spec: &OccasionSpec<'_>, axes: &[Axis]) -> Result<Option<Vec<Op
                 if paths.is_empty() { "none".to_string() } else { paths.join(", ") }
             ));
         };
-        if !named.insert(i) {
+        if !named.insert(i) || (Some(i) == clock_axis && (day_part.is_some() || slot_part.is_some())) {
             return Err(format!("`--occasion {raw}`: `{path}` is named twice"));
         }
         pins[i] = match value {
-            None => None,
-            Some(v) => Some(axes[i].values.iter().position(|(t, _)| t == v).ok_or_else(|| {
+            None => Pin::Varies,
+            Some(v) => Pin::At(axes[i].values.iter().position(|(t, _)| t == v).ok_or_else(|| {
                 let vals: Vec<&str> = axes[i].values.iter().map(|(t, _)| t.as_str()).collect();
                 format!(
                     "`--occasion {raw}`: `{v}` is not a value of `--axis {path}` ({})",
@@ -489,6 +542,45 @@ fn occasion_pins(spec: &OccasionSpec<'_>, axes: &[Axis]) -> Result<Option<Vec<Op
                 )
             })?),
         };
+    }
+    if let (Some(ci), Some(clock)) = (clock_axis, clock) {
+        if day_part.is_some() || slot_part.is_some() {
+            let positions: Vec<lute_manifest::clock::ClockAt> =
+                axes[ci].values.iter().map(|(_, v)| clock_axis_at(clock, v)).collect();
+            let first = positions[0];
+            let day = match day_part {
+                None => Some(first.day),
+                Some(None) => None,
+                Some(Some(v)) => Some(
+                    v.parse::<i64>()
+                        .ok()
+                        .filter(|d| positions.iter().any(|at| at.day == *d))
+                        .ok_or_else(|| format!("`--occasion {raw}`: `{v}` is not a day of `--axis clock`"))?,
+                ),
+            };
+            let slot = match slot_part {
+                None => Some(first.slot),
+                Some(None) => None,
+                Some(Some(v)) => Some(clock.slot_index(v).ok_or_else(|| {
+                    format!(
+                        "`--occasion {raw}`: `{v}` is not a slot of the clock ({})",
+                        clock.slots.join(", ")
+                    )
+                })?),
+            };
+            let allowed = positions
+                .iter()
+                .enumerate()
+                .filter(|(_, at)| day.is_none_or(|d| at.day == d) && slot.is_none_or(|s| at.slot == s))
+                .map(|(k, _)| k)
+                .collect();
+            pins[ci] = Pin::Clock {
+                allowed,
+                day,
+                slot: slot.and_then(|s| clock.slot_name(s)).map(str::to_string),
+                slotted: clock.slot.is_some(),
+            };
+        }
     }
     Ok(Some(pins))
 }
@@ -710,11 +802,15 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     }
     // dsl 0.24.0 §1: the clock axis writes the day and slot paths itself.
     if let (Some(clock), true) = (&p.index.clock, resolved.iter().any(|a| matches!(a.apply, Apply::Clock))) {
-        if let Some(a) = resolved.iter().find(|a| a.path == clock.day || a.path == clock.slot) {
+        if let Some(a) = resolved.iter().find(|a| a.path == clock.day || clock.slot.as_ref() == Some(&a.path)) {
+            let paths = match &clock.slot {
+                Some(slot) => format!("`{}` and `{slot}`", clock.day),
+                None => format!("`{}`", clock.day),
+            };
             return usage(format!(
                 "`--axis {}` and `--axis clock` both set the clock — the clock axis already \
-                 varies `{}` and `{}`",
-                a.path, clock.day, clock.slot
+                 varies {paths}; vary one part per occasion with `--occasion O@{}` (or `O@clock.day`)",
+                a.path, clock.day
             ));
         }
     }
@@ -741,7 +837,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         Err(e) => return usage(e),
     };
     for spec in &specs {
-        let pins = match occasion_pins(spec, &resolved) {
+        let pins = match occasion_pins(spec, &resolved, p.index.clock.as_ref()) {
             Ok(p) => p,
             Err(e) => return usage(e),
         };
@@ -1113,17 +1209,28 @@ fn table(rows: &[Vec<String>]) -> String {
     out
 }
 
-/// `(varies, held)` of a per-occasion column: the axes it varies over and
-/// `(path, value text, value)` of every axis it is held at.
-fn pinned<'a>(pins: &[Option<usize>], axes: &'a [Axis]) -> (Vec<&'a str>, Vec<(&'a str, &'a str, &'a Value)>) {
+/// `(varies, held)` of a per-occasion column: the axes (or clock parts) it
+/// varies over and `(path, value text, value)` of every one it is held at.
+fn pinned(pins: &[Pin], axes: &[Axis]) -> (Vec<String>, Vec<(String, String, Value)>) {
     let mut varies = Vec::new();
     let mut held = Vec::new();
     for (pin, axis) in pins.iter().zip(axes) {
         match pin {
-            None => varies.push(axis.path.as_str()),
-            Some(k) => {
+            Pin::Varies => varies.push(axis.path.clone()),
+            Pin::At(k) => {
                 let (text, value) = &axis.values[*k];
-                held.push((axis.path.as_str(), text.as_str(), value));
+                held.push((axis.path.clone(), text.clone(), value.clone()));
+            }
+            Pin::Clock { day, slot, slotted, .. } => {
+                match day {
+                    None => varies.push("clock.day".to_string()),
+                    Some(d) => held.push(("clock.day".to_string(), d.to_string(), Value::Num(*d as f64))),
+                }
+                match slot {
+                    None if !slotted => {}
+                    None => varies.push("clock.slot".to_string()),
+                    Some(s) => held.push(("clock.slot".to_string(), s.clone(), Value::Str(s.clone()))),
+                }
             }
         }
     }

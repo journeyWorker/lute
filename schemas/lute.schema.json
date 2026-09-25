@@ -60,7 +60,7 @@
     },
     "cast": {
       "type": "object",
-      "description": "dsl 0.23.0 §7, 0.24.0 §4: speaker id -> `{ name?, present?, emotions? }`. Once any cast is declared (here or by a plugin's `cast` export), a content line whose speaker is outside it is `E-CAST-UNKNOWN`.",
+      "description": "dsl 0.23.0 §7, 0.24.0 §4: speaker id -> `{ name?, present?, emotions?, assume? }`. Once any cast is declared (here or by a plugin's `cast` export), a content line whose speaker is outside it is `E-CAST-UNKNOWN`.",
       "additionalProperties": {
         "type": "object",
         "properties": {
@@ -77,6 +77,10 @@
               "type": "string"
             },
             "description": "dsl 0.24.0 §4: the `emotion=` values this speaker takes; any other is `E-BAD-ENUM`."
+          },
+          "assume": {
+            "type": "boolean",
+            "description": "dsl 0.24.0 §4: `true` — presence reads every negated `holds` of an engine-`reserved` relation in `present` (directly or through a rule: `inParty(P) :- …, not fell(P)`) as holding, i.e. assumes the engine has not written it. Lines after the engine event then need their own guard."
           }
         },
         "additionalProperties": false
@@ -86,10 +90,16 @@
       "type": "object",
       "description": "dsl 0.24.0 §1 (lute-manifest clock.rs::ClockDecl): the project's one clock, over existing engine-owned state paths. `lute play` `advance:` moves it; content reads the reserved `clock.index` / `clock.weekday` / `clock.weekdayLabel`; scene beats take `once: day|slot`, entries `once=\"day\"|\"slot\"`. Path ownership, slot/enum agreement and week consistency are semantic (`E-CLOCK-DECL`), not shape.",
       "required": [
-        "day",
-        "slot",
-        "slots"
+        "day"
       ],
+      "dependencies": {
+        "slot": [
+          "slots"
+        ],
+        "slots": [
+          "slot"
+        ]
+      },
       "additionalProperties": false,
       "properties": {
         "day": {
@@ -98,7 +108,7 @@
         },
         "slot": {
           "type": "string",
-          "description": "the slot path — an enum state path declared `owner: engine`."
+          "description": "the slot path — an enum state path declared `owner: engine`. Omit it (and `slots`) for a clock that counts whole days."
         },
         "slots": {
           "type": "array",
@@ -109,8 +119,27 @@
           "description": "the slot order within a day; exactly the slot enum's members, each once."
         },
         "raise": {
-          "type": "string",
-          "description": "an occasion raised after every advance."
+          "description": "one occasion raised after every advance, where the clock stops — or a map of moments: `slot` (the same), `dayEnd` (at every midnight an advance crosses, before it), `dayStart` (after it).",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "slot": {
+                  "type": "string"
+                },
+                "dayStart": {
+                  "type": "string"
+                },
+                "dayEnd": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
         },
         "week": {
           "type": "object",

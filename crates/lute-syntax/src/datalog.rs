@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! FactPattern ::= Ident "(" FactArg ("," FactArg)* ")"
-//! FactArg     ::= Ident | "true" | "false" | "_"
+//! FactArg     ::= Ident | "true" | "false" | "_" | "@" Ident   (* "@" Ident: a component param *)
 //! Rule        ::= Atom ":-" Literal ("," Literal)*
 //! Literal     ::= "not" WS Atom | "cel(" CelString ")" | Term ("="|"!=") Term | Atom
 //! Atom        ::= Ident "(" Term ("," Term)* ")"
@@ -42,6 +42,10 @@ pub enum FactTerm {
     Ident(String),
     Bool(bool),
     Wildcard,
+    /// `@name` (dsl 0.24.0 §4): an `effects: true` component's param, bound
+    /// to its `::use` argument — a constant — when the body is expanded. A
+    /// param still present in a host document is an error.
+    Param(String),
 }
 
 /// One Horn clause: `Head :- Body` (spec §7.1).
@@ -271,9 +275,19 @@ fn parse_fact_term(c: &mut Cur) -> Result<FactTerm, DatalogError> {
         return Ok(FactTerm::Wildcard);
     }
     let at = c.i;
+    if c.peek() == Some(b'@') {
+        c.i += 1;
+        let (name, _) = c.ident().ok_or_else(|| DatalogError::Malformed {
+            at: c.i,
+            msg: "expected a component param name after `@`".to_string(),
+        })?;
+        return Ok(FactTerm::Param(name));
+    }
     let (name, _) = c.ident().ok_or_else(|| DatalogError::Malformed {
         at,
-        msg: "expected an argument (identifier, `true`, `false`, or `_`)".to_string(),
+        msg: "expected an argument (identifier, `true`, `false`, `_`, or a component \
+              `@param`)"
+            .to_string(),
     })?;
     if let Some(err) = check_function_or_op(c, at, &name) {
         return Err(err);

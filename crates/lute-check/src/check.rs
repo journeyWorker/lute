@@ -281,8 +281,22 @@ pub struct DomainUse {
     /// Every domain name some active construct in the resolved snapshot reads.
     pub read: std::collections::BTreeSet<String>,
     /// This document's frontmatter span, where a project-wide domain diagnostic
-    /// anchors when this is the first document to declare an unread domain.
+    /// anchors when this is the first document to declare an unread domain
+    /// and [`Self::homes`] does not place it.
     pub at: Span,
+    /// Where each project-declared domain this document resolves is written:
+    /// the imported schema's line (dsl 0.24 T3-6), or this document's own
+    /// `enums:` / `entities:` key.
+    pub homes: std::collections::BTreeMap<String, DomainHome>,
+}
+
+/// The declaration site of a domain (see [`DomainUse::homes`]).
+#[derive(Clone, Debug)]
+pub enum DomainHome {
+    /// Declared in an imported schema file, at this line.
+    Imported(crate::rel_schema::DeclOrigin),
+    /// Declared in the document's own frontmatter, at this key.
+    Local(Span),
 }
 
 /// Hand-written rather than derived: [`Span`] carries no `Default`, and adding
@@ -300,6 +314,7 @@ impl Default for DomainUse {
                 column: 1,
                 utf16_range: (0, 0),
             },
+            homes: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -688,6 +703,11 @@ pub fn fold_env(
     fold_diags.extend(clock_diags);
     if let Some(clock) = &clock {
         schema.decls.extend(crate::clock::reserved_decls(clock, &schema));
+        if let Some(range) = crate::clock::weekday_range(clock) {
+            schema
+                .int_ranges
+                .insert(lute_manifest::clock::CLOCK_WEEKDAY.to_string(), range);
+        }
     }
     fold_diags.extend(crate::clock::check_once_needs_clock(
         doc,
@@ -1095,7 +1115,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         src: &input.text,
         param_domains,
         scope: &scope,
-        assumed: crate::defassign::Assigned::new(),
+        assume: None,
     };
     // Kind-dispatched walk (dsl 0.2.0 §3.1): scene walks `doc.shots` (dsl
     // 0.1.0 grammar, unchanged); quest walks `doc.quests` — each quest's own
@@ -1151,7 +1171,8 @@ pub fn check(input: &CheckInput) -> CheckResult {
                     .diags
                     .extend(check_beat_when(when, &arena, &base_ctx, &scope));
             }
-            walker.assumed = crate::defassign::assumed_present(beat_when.as_ref(), &scope);
+            let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
+            walker.assume = walker.assumption(beat_when.as_ref(), &shots);
             for shot in &doc.shots {
                 walker.walk(&shot.body, &base_ctx);
             }
@@ -1207,7 +1228,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
                         Some(&ExpectedType::Bool),
                     ));
                 }
-                walker.assumed = crate::defassign::assumed_present(entry.when.as_ref(), &scope);
+                walker.assume = walker.assumption(entry.when.as_ref(), &[&entry.body]);
                 walker.walk(&entry.body, &base_ctx);
             }
             // dsl 0.23.0 §4: a bundle beat is a scene beat written in a lore
@@ -1220,7 +1241,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
                         .diags
                         .extend(check_beat_when(when, &arena, &base_ctx, &scope));
                 }
-                walker.assumed = crate::defassign::assumed_present(beat.when.as_ref(), &scope);
+                walker.assume = walker.assumption(beat.when.as_ref(), &[&beat.body]);
                 walker.walk(&beat.body, &base_ctx);
             }
         }
@@ -1356,6 +1377,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         &doc,
         &folded,
         None,
+        &std::collections::BTreeMap::new(),
     ));
 
     // 7. Resolved view: injection fold + the timeline tables gathered in the walk.
@@ -1627,9 +1649,24 @@ pub fn check(input: &CheckInput) -> CheckResult {
                     &env.rel_vocab,
                 ));
                 read.extend(crate::project_check::domain_reads_from_state(&env.state));
+                read.extend(crate::project_check::domain_reads_from_kinds(
+                    &env.rel_vocab,
+                    std::iter::once(input.text.as_str())
+                        .chain(folded.def_bodies.values().map(String::as_str)),
+                ));
                 read
             },
             at: doc.meta.span,
+            homes: env
+                .rel_vocab
+                .origins
+                .domains
+                .iter()
+                .map(|(n, o)| (n.clone(), DomainHome::Imported(o.clone())))
+                .chain(folded.typed.domains.keys().map(|n| {
+                    (n.clone(), DomainHome::Local(crate::meta::meta_key_span(&doc.meta, n)))
+                }))
+                .collect(),
         },
     }
 }
@@ -1776,13 +1813,29 @@ struct Walker<'a> {
     /// The document's definite-assignment scope (dsl 0.24.0): the def table a
     /// `<match on="@def">` subject resolves through.
     scope: &'a crate::defassign::Scope<'a>,
-    /// The paths the body being walked may assume present: its beat's /
-    /// entry's `when` guards (dsl 0.24.0) — a `<match>` on one of them has no
-    /// `unset` case to cover.
-    assumed: crate::defassign::Assigned,
+    /// The body being walked's beat / entry `when` as an assumption (dsl
+    /// 0.24.0): a `<match>` needs no arm for a value it rules out — `unset`
+    /// included — exactly as reachability's `E-ARM-DEAD` reads it.
+    assume: Option<crate::reachability::Assumption>,
 }
 
 impl Walker<'_> {
+    /// `when` as an assumption over `bodies` (dsl 0.24.0).
+    fn assumption(
+        &self,
+        when: Option<&lute_syntax::ast::CelSlot>,
+        bodies: &[&[Node]],
+    ) -> Option<crate::reachability::Assumption> {
+        crate::reachability::Assumption::new(
+            when?,
+            bodies,
+            &self.scope.defs,
+            self.scope.def_types,
+            self.scope.schema,
+            self.snapshot,
+        )
+    }
+
     fn walk(&mut self, nodes: &[Node], ctx: &Ctx<'_>) {
         for node in nodes {
             match node {
@@ -1971,23 +2024,19 @@ impl Walker<'_> {
                                 self.scope.def_types,
                                 &ctx.env.state,
                             );
-                            // A subject the body's beat/entry `when` proves
-                            // present has no `unset` case to cover (dsl
-                            // 0.24.0); an `unset` arm stays a legal literal —
-                            // reachability reports it dead (`E-ARM-DEAD`).
-                            let assumed = subject.as_deref().is_some_and(|p| {
-                                crate::defassign::is_present(p, &self.assumed, &ctx.env.state)
-                            });
-                            let mut ds = crate::match_check::check_match_with_domain(
+                            let assume = self.assume.as_ref();
+                            let ruled_out = |item: &crate::match_check::CoverItem| {
+                                subject.as_deref().zip(assume).is_some_and(|(p, a)| {
+                                    a.rules_out(p, item, &ctx.env.state)
+                                })
+                            };
+                            self.diags.extend(crate::match_check::check_match_with_domain(
                                 m,
                                 subject.as_deref(),
                                 info,
                                 ctx,
-                            );
-                            if assumed {
-                                ds.retain(|d| d.code != "E-UNSET-UNCOVERED");
-                            }
-                            self.diags.extend(ds);
+                                &ruled_out,
+                            ));
                         }
                     }
                     // Arms (tests + bodies) evaluate WITHIN match scope: `$` binds
@@ -2665,6 +2714,65 @@ fn check_use(
             ));
         }
     }
+    // dsl 0.24.0 §4: a param an `::assert` / `::retract` passes as a fact
+    // argument is bound to its `::use` argument, which must be a constant. A
+    // bare `@name` that is no def is an enclosing component's param passed
+    // through — judged where the outer `::use` binds it.
+    let fact_params = component_fact_params(&def.body);
+    for attr in dir.attrs.iter().filter(|a| fact_params.contains_key(&a.key)) {
+        let pass_through = matches!(&attr.value, AttrValue::Ref(s)
+            if s.raw.trim().strip_prefix('@').is_some_and(|p| {
+                !p.is_empty()
+                    && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    && !ctx.env.defs.contains(p)
+            }));
+        if pass_through {
+            continue;
+        }
+        if let Err(why) = crate::component_effects::fact_arg_constant(&attr.value) {
+            diags.push(use_diag(
+                E_COMPONENT_ARG,
+                format!(
+                    "argument `{}` to component `{name}` binds `@{}` in the fact atom `{}`, so it \
+                     must be a constant — an entity or enum member id, `true`, or `false` — but \
+                     {why}; a fact's arguments are ground (dsl 0.24.0 §4)",
+                    attr.key, attr.key, fact_params[&attr.key]
+                ),
+                attr.value_span,
+            ));
+        }
+    }
+}
+
+/// Every param a component body's `::assert` / `::retract` passes as a fact
+/// argument (at any depth), with the first such atom's text.
+fn component_fact_params(body: &Document) -> std::collections::BTreeMap<String, String> {
+    fn walk(nodes: &[Node], out: &mut std::collections::BTreeMap<String, String>) {
+        for node in nodes {
+            match node {
+                Node::Assert(lute_syntax::ast::Assert { pattern, raw, .. })
+                | Node::Retract(lute_syntax::ast::Retract { pattern, raw, .. }) => {
+                    for a in &pattern.args {
+                        if let lute_syntax::datalog::FactTerm::Param(p) = &a.term {
+                            out.entry(p.clone()).or_insert_with(|| raw.clone());
+                        }
+                    }
+                }
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                        walk(body, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    for shot in &body.shots {
+        walk(&shot.body, &mut out);
+    }
+    out
 }
 
 /// dsl 0.24.0 §4: every `speaker` argument of every scene-level `::use` in

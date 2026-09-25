@@ -83,11 +83,245 @@ pub struct MockSet {
     /// `bridgeResult` fields the call's effects read, as literal TEXT (the
     /// `state:` idiom); [`validate_bridges`] types them.
     pub bridges: BTreeMap<String, Vec<BridgeAnswer>>,
+    /// Where each `bridges:` entry sits in the mock's own text — what a
+    /// [`validate_bridges`] diagnostic about it is anchored at.
+    pub bridge_spans: BridgeSpans,
 }
 
 /// One bridge answer (dsl 0.24.0 §5): `(bridgeResult field, literal TEXT)`,
 /// in the order written.
 pub type BridgeAnswer = Vec<(String, String)>;
+
+/// Where each `bridges:` entry of a mock document sits in its text (dsl
+/// 0.24.0 §5): per tag, the tag key and, per answer, the answer itself and
+/// each of its field keys. Empty for answers with no text behind them; a
+/// diagnostic about one then renders at [`synthetic_span`].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BridgeSpans(BTreeMap<String, (Span, Vec<(Span, BTreeMap<String, Span>)>)>);
+
+impl BridgeSpans {
+    /// Locate every entry of `bridges` (parsed from `text`) in `text`.
+    fn locate(text: &str, bridges: &BTreeMap<String, Vec<BridgeAnswer>>) -> Self {
+        use YamlStep::{Item, Key};
+        let mut out = BTreeMap::new();
+        for (tag, answers) in bridges {
+            let Some(at) = yaml_span(text, &[Key("bridges"), Key(tag)]) else {
+                continue;
+            };
+            let mut spans = Vec::with_capacity(answers.len());
+            for (i, answer) in answers.iter().enumerate() {
+                let item = [Key("bridges"), Key(tag), Item(i)];
+                let fields = answer
+                    .iter()
+                    .filter_map(|(f, _)| {
+                        let path = [Key("bridges"), Key(tag), Item(i), Key(f)];
+                        Some((f.clone(), yaml_span(text, &path)?))
+                    })
+                    .collect();
+                spans.push((yaml_span(text, &item).unwrap_or(at), fields));
+            }
+            out.insert(tag.clone(), (at, spans));
+        }
+        BridgeSpans(out)
+    }
+
+    fn tag(&self, tag: &str) -> Option<Span> {
+        self.0.get(tag).map(|(at, _)| *at)
+    }
+
+    fn answer(&self, tag: &str, i: usize) -> Option<Span> {
+        let (at, answers) = self.0.get(tag)?;
+        Some(answers.get(i).map_or(*at, |(a, _)| *a))
+    }
+
+    fn field(&self, tag: &str, i: usize, field: &str) -> Option<Span> {
+        let key = self.0.get(tag)?.1.get(i).and_then(|(_, f)| f.get(field));
+        key.copied().or_else(|| self.answer(tag, i))
+    }
+}
+
+/// One step of a path into a YAML document.
+enum YamlStep<'a> {
+    Key(&'a str),
+    Item(usize),
+}
+
+/// The span of the node `path` names in `text` — a final key's own scalar,
+/// a final item's first token — or `None` when `text` has no such node.
+///
+/// A `serde_yaml::Value` keeps no position, but `serde_yaml` stamps an error
+/// a visitor raises with the start mark of the node being visited: this
+/// deserializes along `path` and raises one AT the target, so the position
+/// is libyaml's own (flow or block style, quoted keys and all).
+fn yaml_span(text: &str, path: &[YamlStep<'_>]) -> Option<Span> {
+    use serde::de::DeserializeSeed;
+    let err = YamlSeek(path)
+        .deserialize(serde_yaml::Deserializer::from_str(text))
+        .err()?;
+    // `serde_yaml` prefixes the message with the node's path (`bridges.check[0]: …`).
+    if !err.to_string().contains(YAML_FOUND) {
+        return None;
+    }
+    let start = err.location()?.index();
+    let end = match path.last() {
+        Some(YamlStep::Key(k)) if text[start..].starts_with(k) => start + k.len(),
+        _ => start,
+    };
+    Some(Span::from_bytes(&lute_core_span::TextIndex::new(text), start, end))
+}
+
+/// The error [`yaml_span`] raises at its target.
+const YAML_FOUND: &str = "yaml_span: found";
+
+/// [`yaml_span`]'s walk: the node it is handed is the one the path so far
+/// names; an empty remaining path makes it the target.
+struct YamlSeek<'p>(&'p [YamlStep<'p>]);
+
+impl<'de> serde::de::DeserializeSeed<'de> for YamlSeek<'_> {
+    type Value = ();
+    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
+        d.deserialize_any(self)
+    }
+}
+
+impl<'de> serde::de::Visitor<'de> for YamlSeek<'_> {
+    type Value = ();
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("any YAML node")
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        let want = match self.0.split_first() {
+            Some((YamlStep::Key(k), rest)) => Some((*k, rest)),
+            Some(_) => None,
+            None => return Err(serde::de::Error::custom(YAML_FOUND)),
+        };
+        while let Some(hit) = map.next_key_seed(YamlKey(want.map(|(k, rest)| (k, rest.is_empty()))))? {
+            match want {
+                Some((_, rest)) if hit => map.next_value_seed(YamlSeek(rest))?,
+                _ => {
+                    map.next_value::<serde::de::IgnoredAny>()?;
+                }
+            }
+        }
+        Ok(())
+    }
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+        let want = match self.0.split_first() {
+            Some((YamlStep::Item(i), rest)) => Some((*i, rest)),
+            Some(_) => None,
+            None => return Err(serde::de::Error::custom(YAML_FOUND)),
+        };
+        for n in 0.. {
+            let more = match want {
+                Some((i, rest)) if i == n => seq.next_element_seed(YamlSeek(rest))?.is_some(),
+                _ => seq.next_element::<serde::de::IgnoredAny>()?.is_some(),
+            };
+            if !more {
+                break;
+            }
+        }
+        Ok(())
+    }
+    fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<(), E> {
+        self.scalar()
+    }
+    fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<(), E> {
+        self.scalar()
+    }
+    fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<(), E> {
+        self.scalar()
+    }
+    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<(), E> {
+        self.scalar()
+    }
+    fn visit_str<E: serde::de::Error>(self, _: &str) -> Result<(), E> {
+        self.scalar()
+    }
+    fn visit_unit<E: serde::de::Error>(self) -> Result<(), E> {
+        self.scalar()
+    }
+    fn visit_none<E: serde::de::Error>(self) -> Result<(), E> {
+        self.scalar()
+    }
+}
+
+impl YamlSeek<'_> {
+    /// A scalar is the target when the path ends here, else a dead end.
+    fn scalar<E: serde::de::Error>(&self) -> Result<(), E> {
+        if self.0.is_empty() {
+            Err(E::custom(YAML_FOUND))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// A mapping key against the key [`YamlSeek`] wants: `(key, last step)`.
+/// Yields whether it matched; the last step's match is the target.
+struct YamlKey<'k>(Option<(&'k str, bool)>);
+
+impl<'de> serde::de::DeserializeSeed<'de> for YamlKey<'_> {
+    type Value = bool;
+    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<bool, D::Error> {
+        d.deserialize_any(self)
+    }
+}
+
+impl<'de> serde::de::Visitor<'de> for YamlKey<'_> {
+    type Value = bool;
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a mapping key")
+    }
+    fn visit_str<E: serde::de::Error>(self, s: &str) -> Result<bool, E> {
+        match self.0 {
+            Some((want, true)) if want == s => Err(E::custom(YAML_FOUND)),
+            Some((want, false)) => Ok(want == s),
+            _ => Ok(false),
+        }
+    }
+    fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn visit_unit<E: serde::de::Error>(self) -> Result<bool, E> {
+        Ok(false)
+    }
+}
+
+/// The placeholder a bridge-answer hint writes for a result slot of type
+/// `ty` (dsl 0.24.0 §5): `<bool>`, `<number>`, `<string>`, an enum's
+/// members as `<one of: a|b>`, and `<value>` for anything else or an
+/// unknown type.
+pub fn type_placeholder(ty: Option<&Type>) -> String {
+    match ty {
+        Some(Type::Bool) => "<bool>".to_string(),
+        Some(Type::Number) => "<number>".to_string(),
+        Some(Type::Str) => "<string>".to_string(),
+        Some(Type::Enum(members)) => format!("<one of: {}>", members.join("|")),
+        _ => "<value>".to_string(),
+    }
+}
+
+/// A whole bridge answer as a hint: every field the call reads, once each
+/// in the order given, with its [`type_placeholder`] — `{ passed: <bool>,
+/// margin: <number> }`, exactly the set [`validate_bridges`] demands.
+pub fn bridge_answer_shape<'t>(fields: impl IntoIterator<Item = (&'t str, Option<&'t Type>)>) -> String {
+    let mut seen = BTreeSet::new();
+    let parts: Vec<String> = fields
+        .into_iter()
+        .filter(|(f, _)| seen.insert(*f))
+        .map(|(f, ty)| format!("{f}: {}", type_placeholder(ty)))
+        .collect();
+    format!("{{ {} }}", parts.join(", "))
+}
 
 /// Parse a `bridges:` value (dsl 0.24.0 §5) — `{ <tag>: [ {<field>: value},
 /// … ] }` — shared by the mock grammar and `lute play`'s per-step key. `Err`
@@ -161,6 +395,8 @@ pub fn raise_judges(raw: &str, on: &str, target: Option<&str>) -> bool {
 /// span"), mirroring the house zero-then-normalize convention
 /// (`lute-check/src/check.rs`'s `zeroed_span`) other ad hoc span producers
 /// use — there is simply no source `TextIndex` to normalize against here.
+/// The one exception is a `bridges:` entry parsed from a mock's text
+/// ([`BridgeSpans`]): its [`validate_bridges`] diagnostics are [`MOCK_TEXT`].
 pub(crate) fn synthetic_span() -> Span {
     Span {
         byte_start: 0,
@@ -229,10 +465,9 @@ pub const E_TRACE_MOCK_PARSE: &str = "E-TRACE-MOCK-PARSE";
 ///
 /// Anchored at the mock file and naming the offending key in its message,
 /// never at a line and column: `parse_mock_yaml` deserializes into
-/// `serde_yaml::Value`, which retains no position; every mock entry carries
-/// the all-zeros [`synthetic_span`]; and `Diagnostic` has no file field at
-/// all, so fixing the first two would put a correct position in the wrong
-/// file (D-AB).
+/// `serde_yaml::Value`, which retains no position, so every mock entry but a
+/// located `bridges:` one ([`MOCK_TEXT`]) carries the all-zeros
+/// [`synthetic_span`] (D-AB).
 pub const E_MOCK_SUBJECT: &str = "E-MOCK-SUBJECT";
 
 /// Build a `Layer::Logic` error diagnostic — mock validation is a
@@ -249,6 +484,25 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+    }
+}
+
+/// The [`Diagnostic::provenance`] of a mock diagnostic anchored in the
+/// mock's OWN text (a `bridges:` entry of a `--mock` file, a `mocks/*.yaml`
+/// or a `*.test.yaml`, dsl 0.24.0 §5): its span is a position in that file,
+/// not in the traced document, and a renderer prints it against the mock's
+/// path. Every other mock diagnostic is [`synthetic_span`]-anchored.
+pub const MOCK_TEXT: &str = "mock";
+
+/// [`diag`] at `at` in the mock's text ([`MOCK_TEXT`]); at the
+/// [`synthetic_span`] when there is no text behind the entry.
+fn mock_diag(code: &str, message: String, at: Option<Span>) -> Diagnostic {
+    match at {
+        Some(span) => Diagnostic {
+            provenance: Some(MOCK_TEXT.to_string()),
+            ..diag(code, message, span)
+        },
+        None => diag(code, message, synthetic_span()),
     }
 }
 
@@ -644,6 +898,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
     // dsl 0.24.0 §5: `bridges:` answers plugin calls, per tag, in order.
     if let Some(v) = top.get("bridges") {
         mocks.bridges = parse_bridges(v).map_err(|e| diag(E_TRACE_MOCK_PARSE, e, span))?;
+        mocks.bridge_spans = BridgeSpans::locate(text, &mocks.bridges);
     }
 
     // dsl 0.22.0 §6: `derive: false` restores the 0.21 lookup-only model.
@@ -765,6 +1020,8 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
     occasions.extend(flags.occasions);
     let mut bridges = file.bridges;
     bridges.extend(flags.bridges);
+    let mut bridge_spans = file.bridge_spans;
+    bridge_spans.0.extend(flags.bridge_spans.0);
 
     MockSet {
         state,
@@ -776,6 +1033,7 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
         occasions,
         derive: flags.derive.or(file.derive),
         bridges,
+        bridge_spans,
     }
 }
 
@@ -1360,15 +1618,17 @@ fn write_lands_on(write: &lute_manifest::schema::WriteDecl, path: &str) -> bool 
 /// answers. The tag names a directive whose effects read a `bridgeResult`;
 /// each answer gives exactly the fields those effects read; each value fits
 /// the declared type of every state slot this document's calls of the tag
-/// write it to. A tag, field or slot miss is [`E_TRACE_MOCK_UNDECLARED`], a
-/// value that does not fit [`E_TRACE_MOCK_TYPE`] — the `state:` codes, since
-/// an answer is a supplied value of those slots.
+/// write it to. A tag, field or slot miss is [`E_TRACE_MOCK_UNDECLARED`]; a
+/// value that does not fit, or an answer missing a field the result shape
+/// requires, is [`E_TRACE_MOCK_TYPE`] — the `state:` codes, since an answer
+/// is a supplied value of those slots. Each is anchored at the offending
+/// tag key, answer or field key in the mock's text ([`MOCK_TEXT`]).
 pub fn validate_bridges(
     mocks: &MockSet,
     folded: &FoldedEnv,
     snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
 ) -> Vec<Diagnostic> {
-    let span = synthetic_span();
+    let at = &mocks.bridge_spans;
     let mut out = Vec::new();
     for (tag, answers) in &mocks.bridges {
         let reads = snapshot
@@ -1385,43 +1645,50 @@ pub fn validate_bridges(
             let sugg = lute_manifest::suggest::nearest(tag, bridged, 2)
                 .map(|k| format!(" — did you mean `{k}`?"))
                 .unwrap_or_default();
-            out.push(diag(
+            out.push(mock_diag(
                 E_TRACE_MOCK_UNDECLARED,
                 format!(
                     "`bridges.{tag}` answers no plugin call: no resolved directive `::{tag}` \
                      reads a bridge result{sugg} (dsl 0.24.0 §5)"
                 ),
-                span,
+                at.tag(tag),
             ));
             continue;
         }
         let fields: Vec<&str> = reads.iter().map(|(f, _)| *f).collect();
+        let slot_type = |write: &lute_manifest::schema::WriteDecl| {
+            let decls = &folded.env.state.decls;
+            decls.iter().find(|(p, _)| write_lands_on(write, p)).map(|(_, d)| &d.ty)
+        };
+        let shape = bridge_answer_shape(reads.iter().map(|(f, w)| (*f, slot_type(w))));
         for (i, answer) in answers.iter().enumerate() {
             let n = i + 1;
             for (field, _) in answer {
                 if !fields.contains(&field.as_str()) {
-                    out.push(diag(
+                    out.push(mock_diag(
                         E_TRACE_MOCK_UNDECLARED,
                         format!(
                             "`bridges.{tag}` answer {n} gives `{field}`, which no effect of \
                              `::{tag}` reads (it reads: {}) (dsl 0.24.0 §5)",
                             fields.join(", ")
                         ),
-                        span,
+                        at.field(tag, i, field),
                     ));
                 }
             }
+            let mut lacked = BTreeSet::new();
             for (field, write) in &reads {
                 let Some((_, lit)) = answer.iter().find(|(f, _)| f == field) else {
-                    out.push(diag(
-                        E_TRACE_MOCK_UNDECLARED,
-                        format!(
-                            "`bridges.{tag}` answer {n} lacks `{field}` — an answer gives every \
-                             bridge result `::{tag}` reads ({}) (dsl 0.24.0 §5)",
-                            fields.join(", ")
-                        ),
-                        span,
-                    ));
+                    if lacked.insert(*field) {
+                        out.push(mock_diag(
+                            E_TRACE_MOCK_TYPE,
+                            format!(
+                                "`bridges.{tag}` answer {n} lacks `{field}` — an answer gives \
+                                 every bridge result `::{tag}` reads: `{shape}` (dsl 0.24.0 §5)"
+                            ),
+                            at.answer(tag, i),
+                        ));
+                    }
                     continue;
                 };
                 let slots: Vec<_> = folded
@@ -1432,14 +1699,14 @@ pub fn validate_bridges(
                     .filter(|(p, _)| write_lands_on(write, p))
                     .collect();
                 if slots.is_empty() {
-                    out.push(diag(
+                    out.push(mock_diag(
                         E_TRACE_MOCK_UNDECLARED,
                         format!(
                             "`bridges.{tag}` answers `{field}`, but no `::{tag}` call of this \
                              document writes it to a declared state slot — nothing reads the \
                              answer (dsl 0.24.0 §5)"
                         ),
-                        span,
+                        at.field(tag, i, field),
                     ));
                     continue;
                 }
@@ -1447,13 +1714,13 @@ pub fn validate_bridges(
                     let ok = coerce_state_literal(&decl.ty, lit)
                         .is_some_and(|l| type_accepts(&decl.ty, &l));
                     if !ok {
-                        out.push(diag(
+                        out.push(mock_diag(
                             E_TRACE_MOCK_TYPE,
                             format!(
                                 "`bridges.{tag}` answer {n}: `{field}: {lit}` is not compatible \
                                  with `{path}`'s declared type (dsl 0.24.0 §5)"
                             ),
-                            span,
+                            at.field(tag, i, field),
                         ));
                     }
                 }

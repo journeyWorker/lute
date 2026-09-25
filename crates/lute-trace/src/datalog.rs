@@ -513,7 +513,7 @@ pub fn parse_ground(s: &str) -> Option<Fact> {
             FactTerm::Ident(s) if s.starts_with(|c: char| c.is_ascii_uppercase()) => return None,
             FactTerm::Ident(s) => args.push(s.clone()),
             FactTerm::Bool(b) => args.push(b.to_string()),
-            FactTerm::Wildcard => return None,
+            FactTerm::Wildcard | FactTerm::Param(_) => return None,
         }
     }
     Some((pat.relation, args))

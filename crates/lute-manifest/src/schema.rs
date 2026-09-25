@@ -522,6 +522,11 @@ pub struct CastBody {
     /// dsl 0.24.0 §4: the `emotion=` values this speaker takes.
     #[serde(default)]
     pub emotions: Option<Vec<String>>,
+    /// dsl 0.24.0 §4: `assume: true` — presence assumes the engine has not
+    /// asserted any engine-`reserved` relation `present` negates
+    /// (`!holds(fell(isolde))`, directly or through a rule).
+    #[serde(default)]
+    pub assume: Option<bool>,
 }
 
 impl CastBody {
@@ -532,6 +537,7 @@ impl CastBody {
             name: self.name,
             present: self.present,
             emotions: self.emotions,
+            assume: self.assume,
         }
     }
 }
@@ -540,7 +546,8 @@ impl CastBody {
 /// name. When any cast is declared, a speaker outside it is `E-CAST-UNKNOWN`.
 /// dsl 0.24.0 §4: `present` — a line by this speaker whose enclosing guards
 /// do not imply it is `W-CAST-ABSENT`; `emotions` — the `emotion=` values the
-/// speaker takes (`E-BAD-ENUM` outside it).
+/// speaker takes (`E-BAD-ENUM` outside it); `assume` — presence treats a
+/// negated engine-`reserved` relation in `present` as holding.
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CastMember {
     pub id: String,
@@ -550,6 +557,8 @@ pub struct CastMember {
     pub present: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emotions: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assume: Option<bool>,
 }
 
 /// Hand-written so a member without `present`/`emotions` prints exactly as
@@ -564,6 +573,9 @@ impl std::fmt::Debug for CastMember {
         }
         if let Some(emotions) = &self.emotions {
             s.field("emotions", emotions);
+        }
+        if let Some(assume) = &self.assume {
+            s.field("assume", assume);
         }
         s.finish()
     }

@@ -758,12 +758,20 @@ fn run_one_test(
     // vector, so a stale `choose:` id, a stale branch id and a stale
     // `state:` path were indistinguishable (#25, T9.11).
     if let TraceExit::Refused(diags) = &exit {
+        // A `bridges:` answer's diagnostic is anchored in THIS file's text
+        // (dsl 0.24.0 §5), every other one in the traced document.
+        let test_display = test_file.display().to_string();
         let lines: Vec<String> = diags
             .iter()
             .map(|d| {
+                let at = if d.provenance.as_deref() == Some(lute_trace::MOCK_TEXT) {
+                    &test_display
+                } else {
+                    &lute_display
+                };
                 format!(
                     "{}:{}:{}: error [{}] {}",
-                    lute_display,
+                    at,
                     d.span.line,
                     d.span.column,
                     d.code,
@@ -1095,7 +1103,9 @@ fn run_one_test(
         notes: report
             .notes
             .iter()
-            .filter(|n| n.starts_with(lute_trace::NOTE_BEAT_WHEN))
+            .filter(|n| {
+                n.starts_with(lute_trace::NOTE_BEAT_WHEN) || n.starts_with(lute_trace::NOTE_ACCEPT_SPENT)
+            })
             .cloned()
             .chain(ineligible_notes(
                 &report,
@@ -1682,9 +1692,12 @@ fn render_coverage_human(out: &mut String, cov: &CoverageAccum, root: &Path, unt
     if cov.plays == 0 {
         outln!(out, "\ncoverage over {} traced path(s):", cov.paths);
     } else {
+        // A play feeds only the documents it presented; the branch/hub and
+        // arm rows below are the traced paths' alone (lighthouse N3).
         outln!(
             out,
-            "\ncoverage over {} traced path(s) and {} play(s):",
+            "\ncoverage over {} traced path(s) and {} play(s) (plays count toward documents \
+             presented only, not branches or arms):",
             cov.paths,
             cov.plays
         );

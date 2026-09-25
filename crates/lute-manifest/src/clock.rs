@@ -32,15 +32,58 @@ pub fn is_clock_path(path: &str) -> bool {
 pub struct ClockDecl {
     /// The day path — `number`, `owner: engine`.
     pub day: String,
-    /// The slot path — an enum, `owner: engine`.
-    pub slot: String,
-    /// The slot order; the same members as the slot enum.
-    pub slots: Vec<String>,
-    /// The occasion raised after every advance.
+    /// The slot path — an enum, `owner: engine`. Absent on a day-granular
+    /// clock: every day is one slot, and `slots` is empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub raise: Option<String>,
+    pub slot: Option<String>,
+    /// The slot order; the same members as the slot enum. Empty exactly
+    /// when `slot` is absent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<String>,
+    /// The occasions an advance raises.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raise: Option<ClockRaise>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub week: Option<WeekDecl>,
+}
+
+/// A clock's `raise:` — one occasion (raised after every advance, the map
+/// form's `slot`), or a map naming the occasion for each moment.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ClockRaise {
+    Slot(String),
+    Moments(RaiseMoments),
+}
+
+/// `raise: { slot, dayStart, dayEnd }` — each optional.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RaiseMoments {
+    /// Raised once after every advance, where the clock stops.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot: Option<String>,
+    /// Raised on every day an advance enters, at its first position, before
+    /// the clock moves on.
+    #[serde(default, rename = "dayStart", skip_serializing_if = "Option::is_none")]
+    pub day_start: Option<String>,
+    /// Raised on every day an advance leaves, at its last position (the
+    /// day not yet advanced), before the clock crosses midnight.
+    #[serde(default, rename = "dayEnd", skip_serializing_if = "Option::is_none")]
+    pub day_end: Option<String>,
+}
+
+impl ClockRaise {
+    /// The map form of either spelling.
+    pub fn moments(&self) -> RaiseMoments {
+        match self {
+            ClockRaise::Slot(o) => RaiseMoments {
+                slot: Some(o.clone()),
+                ..RaiseMoments::default()
+            },
+            ClockRaise::Moments(m) => m.clone(),
+        }
+    }
 }
 
 /// A clock's `week:`.
@@ -87,8 +130,14 @@ impl ClockDecl {
     /// outside the week, a label count that is not the week's length.
     pub fn shape_problems(&self) -> Vec<String> {
         let mut out = Vec::new();
-        if self.slots.is_empty() {
-            out.push("`slots:` must list at least one slot".to_string());
+        match (&self.slot, self.slots.is_empty()) {
+            (Some(_), true) => out.push("`slots:` must list at least one slot".to_string()),
+            (None, false) => out.push(
+                "`slots:` orders the members of `slot:`, and the clock declares no `slot:` — \
+                 declare both, or neither for a clock that counts whole days"
+                    .to_string(),
+            ),
+            _ => {}
         }
         let mut seen = std::collections::BTreeSet::new();
         for s in &self.slots {
@@ -96,7 +145,7 @@ impl ClockDecl {
                 out.push(format!("`slots:` lists `{s}` twice"));
             }
         }
-        if self.day == self.slot {
+        if self.slot.as_deref() == Some(self.day.as_str()) {
             out.push(format!("`day:` and `slot:` are the same path `{}`", self.day));
         }
         if let Some(week) = &self.week {
@@ -134,29 +183,42 @@ impl ClockDecl {
         out
     }
 
+    /// Slots per day: `slots`' length, or 1 for a day-granular clock.
+    pub fn slot_count(&self) -> usize {
+        self.slots.len().max(1)
+    }
+
+    /// The name of the slot at index `i` — `None` on a day-granular clock.
+    pub fn slot_name(&self, i: usize) -> Option<&str> {
+        self.slots.get(i).map(String::as_str)
+    }
+
     /// The index of `slot` in the order.
     pub fn slot_index(&self, slot: &str) -> Option<usize> {
         self.slots.iter().position(|s| s == slot)
     }
 
     /// The position a `day` value and a `slot` member name. `None` when the
-    /// day is not an integer or the slot is not one of `slots`.
-    pub fn at(&self, day: f64, slot: &str) -> Option<ClockAt> {
+    /// day is not an integer or — on a clock with a `slot:` path — the slot
+    /// is not one of `slots`. A day-granular clock ignores `slot`.
+    pub fn at(&self, day: f64, slot: Option<&str>) -> Option<ClockAt> {
         if day.fract() != 0.0 || !day.is_finite() {
             return None;
         }
-        Some(ClockAt {
-            day: day as i64,
-            slot: self.slot_index(slot)?,
-        })
+        let slot = match &self.slot {
+            None => 0,
+            Some(_) => self.slot_index(slot?)?,
+        };
+        Some(ClockAt { day: day as i64, slot })
     }
 
     /// `clock.index` of a position.
     pub fn index(&self, at: ClockAt) -> i64 {
-        (at.day - 1) * self.slots.len() as i64 + at.slot as i64
+        (at.day - 1) * self.slot_count() as i64 + at.slot as i64
     }
 
-    /// The position `n` slots after `at` (wrapping into later days).
+    /// The position `n` slots after `at` (wrapping into later days), or
+    /// the first slot of the next day.
     pub fn advance(&self, at: ClockAt, by: Advance) -> ClockAt {
         match by {
             Advance::Day => ClockAt {
@@ -164,7 +226,7 @@ impl ClockDecl {
                 slot: 0,
             },
             Advance::Slots(n) => {
-                let len = self.slots.len().max(1) as i64;
+                let len = self.slot_count() as i64;
                 let flat = at.slot as i64 + i64::from(n);
                 ClockAt {
                     day: at.day + flat / len,
@@ -172,6 +234,19 @@ impl ClockDecl {
                 }
             }
         }
+    }
+
+    /// The last position of `at`'s day.
+    pub fn day_end(&self, at: ClockAt) -> ClockAt {
+        ClockAt {
+            day: at.day,
+            slot: self.slot_count() - 1,
+        }
+    }
+
+    /// The occasions an advance raises (all `None` without a `raise:`).
+    pub fn raises(&self) -> RaiseMoments {
+        self.raise.as_ref().map(ClockRaise::moments).unwrap_or_default()
     }
 
     /// `clock.weekday` of `day` (`None` without a `week:`).
@@ -200,12 +275,16 @@ impl ClockDecl {
         out
     }
 
-    /// `day slot` — how a position reads in a transcript (`3 night`).
+    /// `day slot` — how a position reads in a transcript (`3 night`); a
+    /// day-granular clock's position is its day alone (`day 3`).
     pub fn describe(&self, at: ClockAt) -> String {
-        let slot = self.slots.get(at.slot).map(String::as_str).unwrap_or("?");
+        let slot = match &self.slot {
+            None => String::new(),
+            Some(_) => format!(" {}", self.slots.get(at.slot).map(String::as_str).unwrap_or("?")),
+        };
         match self.weekday_label(at.day) {
-            Some(label) => format!("day {} ({label}) {slot}", at.day),
-            None => format!("day {} {slot}", at.day),
+            Some(label) => format!("day {} ({label}){slot}", at.day),
+            None => format!("day {}{slot}", at.day),
         }
     }
 }
@@ -225,20 +304,21 @@ mod tests {
     #[test]
     fn index_is_monotone_over_day_and_slot() {
         let c = clock();
-        let a = c.at(1.0, "morning").unwrap();
-        let b = c.at(1.0, "night").unwrap();
-        let d = c.at(2.0, "morning").unwrap();
+        let a = c.at(1.0, Some("morning")).unwrap();
+        let b = c.at(1.0, Some("night")).unwrap();
+        let d = c.at(2.0, Some("morning")).unwrap();
         assert_eq!((c.index(a), c.index(b), c.index(d)), (0, 2, 3));
-        assert!(c.at(1.5, "morning").is_none() && c.at(1.0, "dusk").is_none());
+        assert!(c.at(1.5, Some("morning")).is_none() && c.at(1.0, Some("dusk")).is_none());
+        assert!(c.at(1.0, None).is_none(), "a clock with a slot path needs a slot");
     }
 
     #[test]
     fn advance_wraps_slots_into_the_next_day() {
         let c = clock();
-        let night = c.at(1.0, "night").unwrap();
+        let night = c.at(1.0, Some("night")).unwrap();
         assert_eq!(c.advance(night, Advance::Slots(1)), ClockAt { day: 2, slot: 0 });
         assert_eq!(c.advance(night, Advance::Slots(4)), ClockAt { day: 3, slot: 0 });
-        let noon = c.at(1.0, "afternoon").unwrap();
+        let noon = c.at(1.0, Some("afternoon")).unwrap();
         assert_eq!(c.advance(noon, Advance::Day), ClockAt { day: 2, slot: 0 });
     }
 
@@ -260,5 +340,36 @@ mod tests {
         let p = c.shape_problems();
         assert_eq!(p.len(), 3, "{p:?}");
         assert!(serde_yaml::from_str::<ClockDecl>("day: a\nslot: b\nslots: [x]\norder: [x]\n").is_err());
+        let stray: ClockDecl = serde_yaml::from_str("day: a\nslots: [x]\n").unwrap();
+        assert_eq!(stray.shape_problems().len(), 1, "`slots:` without `slot:`");
+    }
+
+    #[test]
+    fn a_day_granular_clock_counts_whole_days() {
+        let c: ClockDecl = serde_yaml::from_str("day: run.day\nraise: arrive\n").unwrap();
+        assert!(c.shape_problems().is_empty());
+        let d3 = c.at(3.0, None).unwrap();
+        assert_eq!(c.index(d3), 2);
+        assert_eq!(c.advance(d3, Advance::Slots(2)), ClockAt { day: 5, slot: 0 });
+        assert_eq!(c.advance(d3, Advance::Day), ClockAt { day: 4, slot: 0 });
+        assert_eq!(c.describe(d3), "day 3");
+        assert_eq!(c.raises().slot.as_deref(), Some("arrive"));
+    }
+
+    #[test]
+    fn raise_is_one_occasion_or_a_map_of_moments() {
+        let c: ClockDecl = serde_yaml::from_str(
+            "day: run.day\nslot: run.slot\nslots: [a]\nraise: { slot: slotStart, dayEnd: dayEnd }\n",
+        )
+        .unwrap();
+        let m = c.raises();
+        assert_eq!(
+            (m.slot.as_deref(), m.day_start.as_deref(), m.day_end.as_deref()),
+            (Some("slotStart"), None, Some("dayEnd"))
+        );
+        assert!(
+            serde_yaml::from_str::<ClockDecl>("day: d\nraise: { dusk: x }\n").is_err(),
+            "an unknown moment is refused"
+        );
     }
 }

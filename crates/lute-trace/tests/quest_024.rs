@@ -272,6 +272,58 @@ state:
     assert_eq!(final_state(&report, "quest.fest.objectives.go.failed"), Some("true"));
 }
 
+/// dsl 0.24.0 §2.1 (lighthouse N2): an `on=` objective whose `by` holds
+/// wherever its `done` does. The walk that raises its occasion judges `done`
+/// first; a walk that never raises it fails the objective at the settle.
+#[test]
+fn a_raise_judges_done_before_the_by_it_defers() {
+    let text = r#"---
+kind: quest
+title: Verdict
+state:
+  run.filed: { type: bool, default: true }
+---
+
+<quest id="verdict" title="Verdict" start="true">
+  <objective id="fate" title="Fate" on="talk" done="run.filed" by="run.filed"/>
+</quest>
+"#;
+    let raised = MockSet {
+        occasions: vec!["talk".to_string()],
+        ..Default::default()
+    };
+    let report = trace(text, raised);
+    assert_eq!(quest_outcomes(&report.decisions, "verdict"), ["active", "complete"]);
+    assert_ne!(final_state(&report, "quest.verdict.objectives.fate.failed"), Some("true"));
+
+    let report = trace(text, MockSet::default());
+    assert_eq!(quest_outcomes(&report.decisions, "verdict"), ["active", "failed"]);
+    assert_eq!(final_state(&report, "quest.verdict.failedBy"), Some("by"));
+}
+
+/// Ember N15: an `accepts:` of an `activate="accept"` child whose parent never
+/// activated is spent — and the report says so.
+#[test]
+fn an_accept_spent_by_an_inactive_parent_is_noted() {
+    let text = ROAD.replace(
+        r#"<quest id="road" title="Road" start="true""#,
+        r#"<quest id="road" title="Road" start="run.refused""#,
+    );
+    let report = trace(&text, accepts(&["toll"]));
+    assert_eq!(quest_outcomes(&report.decisions, "road"), ["never"]);
+    assert!(quest_outcomes(&report.decisions, "toll").is_empty());
+    assert!(
+        report.notes.iter().any(|n| n.starts_with(
+            "accept of `toll` spent: its parent quest `road` is never active"
+        )),
+        "{:?}",
+        report.notes
+    );
+    // Accepted under an active parent: no note.
+    let report = road(&[], &["toll"]);
+    assert!(!report.notes.iter().any(|n| n.starts_with("accept of")), "{:?}", report.notes);
+}
+
 #[test]
 fn a_targeted_on_fires_only_for_a_raise_for_its_target() {
     let text = r#"---

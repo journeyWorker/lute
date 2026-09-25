@@ -181,6 +181,11 @@ pub enum Domain {
     /// intervals ([`NumCoverage`]); exhaustive iff that union is the whole
     /// line.
     Number,
+    /// The whole numbers `lo..=hi` of a `number` subject whose range the
+    /// schema knows ([`StateSchema::int_ranges`] — `clock.weekday`, dsl
+    /// 0.24.0 §1): exhaustive once every one of them is covered, and a
+    /// literal matching none of them is foreign.
+    IntRange { lo: i64, hi: i64 },
     /// Infinite / unknowable domain (string, opaque, unresolved subject): an
     /// `<otherwise>` is mandatory.
     Infinite,
@@ -286,6 +291,16 @@ impl NumCoverage {
         (first.hi < f64::INFINITY)
             .then(|| format!("numbers above {} are not covered", fmt_num(first.hi)))
     }
+
+    /// The whole numbers in `lo..=hi` the union leaves uncovered.
+    pub(crate) fn uncovered_ints(&self, lo: i64, hi: i64) -> Vec<i64> {
+        (lo..=hi)
+            .filter(|k| {
+                let p = *k as f64;
+                !self.contains(Interval { lo: p, hi: p })
+            })
+            .collect()
+    }
 }
 
 /// Shortest round-trip rendering of a finite bound (`2`, not `2.0`; `-0`
@@ -330,7 +345,16 @@ pub struct HubRecord {
 pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let subject = subject_path(m);
     let dom = infer_domain(subject.as_deref(), schema);
-    check_match_with_domain(m, subject.as_deref(), dom, ctx)
+    check_match_with_domain(m, subject.as_deref(), dom, ctx, &|_| false)
+}
+
+/// One value a `<match>` subject can take, as coverage and narrowing see it
+/// (dsl 0.4.0 §5.2, 0.18.0 §4): a finite member, a numeric point or range,
+/// or `unset`.
+pub(crate) enum CoverItem {
+    Value(DomainValue),
+    Num(Interval),
+    Unset,
 }
 
 /// The shared `<match>` engine (dsl §11.2, 0.4.0 §6.3): exhaustiveness, unset
@@ -340,11 +364,15 @@ pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagno
 /// component param's [`param_domain`] instead — same rules, same codes,
 /// different domain source (§6.3: "apply inside component bodies exactly as
 /// at scene level"); a `@def` subject arrives through [`resolve_subject`].
+/// `ruled_out` is what the enclosing body's beat/entry `when` excludes as the
+/// subject's value (dsl 0.24.0): such a member needs no arm, exactly as
+/// `E-ARM-DEAD` and `W-OTHERWISE-DEAD` already read the narrowed domain.
 pub(crate) fn check_match_with_domain(
     m: &Match,
     subject: Option<&str>,
     info: DomainInfo,
     ctx: &Ctx<'_>,
+    ruled_out: &dyn Fn(&CoverItem) -> bool,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let has_otherwise = m.arms.iter().any(|a| matches!(a, Arm::Otherwise { .. }));
@@ -461,27 +489,33 @@ pub(crate) fn check_match_with_domain(
 
     let (fully_covered, gap) = match &info.domain {
         Domain::Finite(vals) => {
-            let missing: Vec<DomainValue> =
-                vals.iter().filter(|v| !covered.contains(v)).cloned().collect();
-            let gap = match missing.as_slice() {
-                [] => None,
-                [one] => Some(format!("`{}` is not covered", domain_members_display(&[one.clone()]))),
-                many => Some(format!(
-                    "{} are not covered",
-                    many.iter()
-                        .map(|v| format!("`{}`", domain_members_display(std::slice::from_ref(v))))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )),
-            };
-            (missing.is_empty(), gap)
+            let missing: Vec<DomainValue> = vals
+                .iter()
+                .filter(|v| !covered.contains(v) && !ruled_out(&CoverItem::Value((*v).clone())))
+                .cloned()
+                .collect();
+            let shown: Vec<String> =
+                missing.iter().map(|v| domain_members_display(std::slice::from_ref(v))).collect();
+            (missing.is_empty(), not_covered(&shown))
+        }
+        Domain::IntRange { lo, hi } => {
+            let missing: Vec<String> = covered_num
+                .uncovered_ints(*lo, *hi)
+                .into_iter()
+                .filter(|k| {
+                    let p = *k as f64;
+                    !ruled_out(&CoverItem::Num(Interval { lo: p, hi: p }))
+                })
+                .map(|k| k.to_string())
+                .collect();
+            (missing.is_empty(), not_covered(&missing))
         }
         Domain::Number => (covered_num.covers_all(), covered_num.first_gap()),
         Domain::Infinite => (false, None),
     };
     if !fully_covered {
         let message = match (gap, &info.domain) {
-            (Some(gap), Domain::Number) => format!(
+            (Some(gap), Domain::Number | Domain::IntRange { .. }) => format!(
                 "non-exhaustive `<match>`: {gap} and there is no `<otherwise>` (dsl 0.18.0 §4)"
             ),
             (Some(gap), _) => format!(
@@ -502,7 +536,7 @@ pub(crate) fn check_match_with_domain(
     // so emitting E-UNSET-UNCOVERED here would false-positive the written case.
     let unset_owned_here =
         subject.is_some_and(|p| p.starts_with("scene.choices.") || !p.starts_with("scene."));
-    if info.maybe_unset && unset_owned_here && !covers_unset {
+    if info.maybe_unset && unset_owned_here && !covers_unset && !ruled_out(&CoverItem::Unset) {
         diags.push(diag(
             "E-UNSET-UNCOVERED",
             Severity::Error,
@@ -526,7 +560,19 @@ pub(crate) fn check_match_with_domain(
 /// is structurally unreachable — no special-casing needed, the SAME engine
 /// proves it by construction.
 pub(crate) fn check_param_match(m: &Match, dom: DomainInfo, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
-    check_match_with_domain(m, subject_path(m).as_deref(), dom, ctx)
+    check_match_with_domain(m, subject_path(m).as_deref(), dom, ctx, &|_| false)
+}
+
+/// "`a` is not covered" / "`a`, `b` are not covered" — `None` for none.
+fn not_covered(missing: &[String]) -> Option<String> {
+    match missing {
+        [] => None,
+        [one] => Some(format!("`{one}` is not covered")),
+        many => Some(format!(
+            "{} are not covered",
+            many.iter().map(|v| format!("`{v}`")).collect::<Vec<_>>().join(", ")
+        )),
+    }
 }
 
 /// Record a `<branch>` (dsl §11.1): flag a duplicate id within the episode
@@ -1384,6 +1430,7 @@ pub(crate) fn is_exhaustive_resolved(
     let domain_covered = match &info.domain {
         Domain::Finite(vals) => vals.iter().all(|v| covered.contains(v)),
         Domain::Number => covered_num.covers_all(),
+        Domain::IntRange { lo, hi } => covered_num.uncovered_ints(*lo, *hi).is_empty(),
         Domain::Infinite => false,
     };
     domain_covered && (!info.maybe_unset || covers_unset)
@@ -1497,7 +1544,10 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
                         .map(|m| DomainValue::Str(m.clone()))
                         .collect(),
                 ),
-                Type::Number => Domain::Number,
+                Type::Number => match schema.int_ranges.get(path) {
+                    Some(&(lo, hi)) => Domain::IntRange { lo, hi },
+                    None => Domain::Number,
+                },
                 _ => Domain::Infinite,
             };
             let maybe_unset = decl.default.is_none()
@@ -1836,6 +1886,12 @@ pub(crate) fn literal_is_foreign(lit: &IsLiteral, dom: &DomainInfo) -> bool {
     }
     match (lit, &dom.domain) {
         (IsLiteral::Unset, _) => !dom.maybe_unset,
+        (IsLiteral::Range(_) | IsLiteral::Num(_), Domain::IntRange { lo, hi }) => {
+            let iv = Interval::of(lit).expect("a numeric literal has an interval");
+            let first = iv.lo.ceil().max(*lo as f64);
+            let last = iv.hi.floor().min(*hi as f64);
+            first > last
+        }
         (IsLiteral::Range(_), domain) => !matches!(domain, Domain::Number),
         (IsLiteral::Bool(b), Domain::Finite(vals)) => !vals.contains(&DomainValue::Bool(*b)),
         (IsLiteral::Str(s), Domain::Finite(vals)) => !vals
@@ -1843,6 +1899,7 @@ pub(crate) fn literal_is_foreign(lit: &IsLiteral, dom: &DomainInfo) -> bool {
             .any(|v| matches!(v, DomainValue::Str(x) if x == s)),
         // `Domain::Finite` is always bool/enum; a Num never fits.
         (IsLiteral::Num(_), Domain::Finite(_)) => true,
+        (IsLiteral::Bool(_) | IsLiteral::Str(_), Domain::IntRange { .. }) => true,
         (_, Domain::Number | Domain::Infinite) => false,
     }
 }
@@ -1858,6 +1915,10 @@ fn foreign_literal_message(lit_display: &str, lit: &IsLiteral, domain: &Domain) 
         (IsLiteral::Unset, _) => "`unset` is not a member of the subject's domain: this \
                                   subject can never be unset (dsl 0.4 §5.2)"
             .to_string(),
+        (_, Domain::IntRange { lo, hi }) => format!(
+            "`{lit_display}` matches none of the subject's values, the whole numbers {lo}..{hi} \
+             (dsl 0.24.0 §1)"
+        ),
         (IsLiteral::Range(_), _) => format!(
             "`{lit_display}` is a numeric range, which cannot match a non-numeric subject \
              (dsl 0.18.0 §2)"
@@ -2164,7 +2225,7 @@ mod tests {
                 owner: None,
             },
         );
-        StateSchema { decls }
+        StateSchema { decls, ..Default::default() }
     }
 
     /// `run.rank` declared as an enum WITHOUT a default => finite but maybe-unset.
@@ -2179,7 +2240,7 @@ mod tests {
                 owner: None,
             },
         );
-        StateSchema { decls }
+        StateSchema { decls, ..Default::default() }
     }
 
     fn ctx() -> Ctx<'static> {
@@ -2235,7 +2296,7 @@ mod tests {
                 owner: None,
             },
         );
-        StateSchema { decls }
+        StateSchema { decls, ..Default::default() }
     }
 
     fn branch(id: &str, choice_ids: &[&str]) -> Branch {
@@ -2274,7 +2335,7 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls };
+        let schema = StateSchema { decls, ..Default::default() };
         let m = match_with(
             "run.n",
             vec![
@@ -2301,7 +2362,7 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls };
+        let schema = StateSchema { decls, ..Default::default() };
         let m = match_with("run.n", vec![when_arm("$ == 1"), when_arm("$ == 2")]);
         let errs = check_match(&m, &schema, &ctx());
         assert!(errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"));
@@ -2395,9 +2456,7 @@ mod tests {
         );
         let errs = check_match(
             &m,
-            &StateSchema {
-                decls: BTreeMap::new(),
-            },
+            &StateSchema::default(),
             &ctx(),
         );
         assert!(
@@ -2421,9 +2480,7 @@ mod tests {
         );
         let errs = check_match(
             &m,
-            &StateSchema {
-                decls: BTreeMap::new(),
-            },
+            &StateSchema::default(),
             &ctx(),
         );
         assert!(
@@ -2463,9 +2520,7 @@ mod tests {
         );
         let errs = check_match(
             &m,
-            &StateSchema {
-                decls: BTreeMap::new(),
-            },
+            &StateSchema::default(),
             &ctx(),
         );
         assert!(
@@ -2488,7 +2543,7 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls };
+        let schema = StateSchema { decls, ..Default::default() };
         let m = match_with(
             "app.rating",
             vec![when_arm("$ == 'everyone'"), when_arm("$ == 'mature'")],
@@ -2509,7 +2564,7 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls };
+        let schema = StateSchema { decls, ..Default::default() };
         let m = match_with(
             "app.rating",
             vec![
@@ -2565,7 +2620,7 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls };
+        let schema = StateSchema { decls, ..Default::default() };
         let m = match_with(
             "scene.choices.couch",
             vec![when_arm("$ == 'help'"), when_arm("$ == 'ignore'")],
@@ -3068,7 +3123,7 @@ mod tests {
                 owner: None,
             },
         );
-        StateSchema { decls }
+        StateSchema { decls, ..Default::default() }
     }
 
     #[test]
@@ -3572,7 +3627,7 @@ mod tests {
                     owner: None,
                 },
             );
-            StateSchema { decls }
+            StateSchema { decls, ..Default::default() }
         };
         let split = match_with(
             "run.n",

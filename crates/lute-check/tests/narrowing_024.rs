@@ -203,6 +203,35 @@ fn entry_and_bundle_beat_when_are_assumptions() {
     assert!(dead[0].message.contains("`lost`"), "{}", dead[0].message);
 }
 
+/// Round-3 LH N1: exhaustiveness reads the same narrowed domain `E-ARM-DEAD`
+/// and `W-OTHERWISE-DEAD` do, so deleting the dead arm is the clean spelling.
+#[test]
+fn exhaustiveness_honors_the_beat_when() {
+    let when = "run.wd != 'c'";
+    let arms = "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
+                <when is=\"b\">\n@n: b\n</when>\n";
+    let ds = run(&beat(when, &format!("{arms}</match>\n")));
+    assert!(ds.is_empty(), "the dead arm removed is clean: {ds:#?}");
+
+    let ds = run(&beat(when, &format!("{arms}<when is=\"c\">\n@n: c\n</when>\n</match>\n")));
+    assert_eq!(with_code(&ds, "E-ARM-DEAD").len(), 1, "{ds:#?}");
+
+    let ds = run(&beat(when, &format!("{arms}<otherwise>\n@n: c\n</otherwise>\n</match>\n")));
+    let dead = with_code(&ds, "W-OTHERWISE-DEAD");
+    assert_eq!(dead.len(), 1, "{ds:#?}");
+    assert!(dead[0].message.contains("the domain left by the body's `when` guard"), "{}", dead[0].message);
+
+    // A member the guard leaves in is still required, and only it is named.
+    let ds = run(&beat(when, "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n"));
+    let d = with_code(&ds, "E-NONEXHAUSTIVE");
+    assert_eq!(d.len(), 1, "{ds:#?}");
+    assert!(d[0].message.contains("`b` is not covered"), "{}", d[0].message);
+
+    // A body that writes the subject keeps the whole domain.
+    let ds = run(&beat(when, &format!("::set{{run.wd = 'c'}}\n{arms}</match>\n")));
+    assert_eq!(with_code(&ds, "E-NONEXHAUSTIVE").len(), 1, "{ds:#?}");
+}
+
 // --- T1-7 (b): short-circuit narrowing ---------------------------------------------
 
 fn line_reads(when: &str) -> usize {
