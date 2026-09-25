@@ -114,6 +114,7 @@ After the reset the lifecycle settles as usual: `climb`'s `start` holds again, s
 at the start of every run, while an accept-driven run-tier quest stays `unset` until it is accepted
 again. `legend` keeps its status across runs. The tier belongs to each `<quest>`, not to the
 document, so one quest document can mix both. Any value but `run` or `user` is `E-ATTR-TYPE`.
+A [subquest](#subquests) is the exception: it must share its parent's tier (`E-QUEST-TIER-MIX`).
 [`lute play`](/tooling/play/) performs the reset at every `newRun` step, so a play script can walk
 several runs and assert each one.
 
@@ -199,7 +200,10 @@ occasions for a quest walk with the mock key `occasions: [runEnd]` or `--occasio
 (repeatable), applied in order after the walk settles, and raise one for a target as
 `<occasion>@<target>` (`occasions: [talk@npc.maud]`, `--occasion talk@npc.maud`). `lute play`
 judges them on every step that raises the occasion, for the step's `target:`, and an occasion
-that only objectives reference is a legal step.
+that only objectives reference is a legal step. When a world event of the same name is declared,
+every raise fires it first, so an active quest's `<on event>` handler for that name runs before
+the objectives are judged and they can read what it wrote (see
+[Beats](/language/beats/#occasions)).
 
 **Accepting a quest from a scene.** A quest without `start` is *accept-driven*. The scene-side
 form of the engine's "accept quest" action (and of `lute trace --accept`) is the core directive
@@ -253,19 +257,26 @@ it is never judged again. A failed required objective fails its quest, as a `fai
 would: the quest's `failed` rewards are granted, its `questFailed` handlers run, and the failure
 cascades to its still-active subquests. A failed `optional` objective leaves its quest alone.
 
-- `by` is judged at every lifecycle settle, right after `done`. So an objective that becomes done
-  in the same settle as its deadline passes counts as done, and a done objective never fails later.
-- `on=` does not change that. It decides when `done` is judged, while `by` is judged at every
-  settle. `thank` above has no deadline, but a `by` on it would still fail it on the fourth day.
-- Quests settle after every beat an occasion presents, so a deadline can pass between two beats of
-  one [`select: sequence`](/language/beats/#a-routine-then-the-days-event) occasion.
+- In every settle `done` is judged before `by`. So an objective whose `done` and `by` become true
+  at the same moment counts as done, and a done objective never fails later.
+- An objective without `on=` has its `by` judged at every lifecycle settle. An `on=` objective has
+  its `by` judged only when its occasion is raised (for its target, when it names one), right
+  after its `done`: the moment the occasion answers is both the judgement and the deadline. A beat
+  on that occasion that writes the state `by` reads therefore cannot fail a correct answer. Given
+  `by="run.day >= 4"`, `thank` above would fail only at a `talk` with Maud on day four or later
+  that finds `run.answered` still false. (Before 0.23.1 an `on=` objective's `by` was judged at
+  every settle.)
+- Quests settle after every beat an occasion presents, so a deadline without `on=` can pass
+  between two beats of one [`select: sequence`](/language/beats/#a-routine-then-the-days-event)
+  occasion.
 - The failure is lifecycle state, not a state path, so content cannot read it. A failed required
   objective shows as its quest's `failed` state. A new run clears it for a `tier="run"` quest.
 - `by` is checked like `done`: an undeclared path is `E-UNDECLARED`, and a read that may be unset
   is `E-MAYBE-UNSET`.
 
 `lute trace` records the objective's decision as `failed`, and `lute run` / `lute play` print
-`failed (by)`. See [Playing a story](/tooling/play/#deadlines-and-targeted-objectives).
+`failed (by)`; all three judge `done` and `by` in the same order. See
+[Playing a story](/tooling/play/#deadlines-and-targeted-objectives).
 
 ### Subquests
 
@@ -308,7 +319,7 @@ carry `quest=` objectives — bounded only by the structural checks below.
 Child ids stay flat and project-unique; there is no `parent.child`
 namespacing.
 
-Four new diagnostics guard the shape:
+Five diagnostics guard the shape:
 
 - `E-OBJECTIVE-QUEST-DONE` — `quest=` and `done=` on one objective.
 - `E-QUEST-REF-UNKNOWN` — `quest=` names no known quest id. Same split as
@@ -319,6 +330,16 @@ Four new diagnostics guard the shape:
 - `E-QUEST-TREE-CYCLE` — the parent→child edges form a cycle;
   self-reference is a length-1 cycle and, when parent and child share a
   document, `check` catches it early.
+- `E-QUEST-TIER-MIX` — a subquest's `tier` differs from its parent's. The
+  error names both quests and both tiers. Same split again: `check` reports
+  it when parent and child share a document, `check-project` across
+  documents. A mixed tree would lock for good. Under a `tier="run"` parent,
+  the parent's end cascades into a user-tier child that keeps that status
+  across runs, so the parent restarts next run waiting on a child that never
+  becomes active again. Under a user-tier parent, a run-tier child resets to
+  `unset` at every new run while the parent keeps its status, so once the
+  parent has ended the child is never activated again. Give both quests the
+  same `tier`.
 
 Reachability propagates through the reference: a required subquest objective
 whose child is `E-QUEST-UNREACHABLE` reports `E-OBJECTIVE-UNSATISFIABLE`

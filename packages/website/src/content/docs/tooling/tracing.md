@@ -1,6 +1,6 @@
 ---
 title: Tracing guide
-description: Preview a scene before you ship it — seeding state, facts, choices, events, accepts, the visited set, a save's quest status and entry reads, raised occasions (for a target, too) and the previous run via flags or a mock YAML file, presenting one bundle beat, how the project's rules derive over them, reading the decision transcript, and the E-TRACE-* refusals.
+description: Preview a scene before you ship it — seeding state, facts, choices, events, accepts, the visited set, a save's quest status and entry reads, raised occasions (for a target, too) and the previous run via flags or a mock YAML file, credited rewards and objective bodies, presenting one bundle beat, how the project's rules derive over them, reading the decision transcript, and the E-TRACE-* refusals.
 ---
 
 `lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof. Since 0.22.0 it applies the project's seed facts and Datalog rules over those mocks by default, exactly as `lute run` and `lute play` do — see [Derivation](#derivation).
@@ -26,7 +26,7 @@ $ lute trace scene.lute \
 
 Two more surfaces feed quest and scene conditions (dsl 0.21.0):
 
-- `--occasion <name>` — raise an occasion after the walk settles, in CLI order (repeatable, after the mock's own `occasions:`). Each raise judges the `<objective on="<name>">` objectives of every active quest; an `on` objective is **never** judged otherwise. `--occasion <name>@<target>` (dsl 0.23.0) raises it for a target — see [Targets, deadlines, and the previous run](#targets-deadlines-and-the-previous-run).
+- `--occasion <name>` — raise an occasion after the walk settles, in CLI order (repeatable, after the mock's own `occasions:`). Each raise first runs every active quest's `<on event="<name>">` handlers — an occasion also fires the same-named world event, as it does in `lute play` and `lute run` — and then judges the `<objective on="<name>">` objectives of every active quest, so an objective can read what a handler wrote; an `on` objective is **never** judged otherwise. `--occasion <name>@<target>` (dsl 0.23.0) raises it for a target — see [Targets, deadlines, and the previous run](#targets-deadlines-and-the-previous-run).
 - `visited: [<scene id>…]` (mock file only) — the scenes already presented, read by `visited('<scene id>')` in any condition. The set is closed: a scene you do not list is not visited, so a `visited(…)` read is always `true` or `false`, never unresolved.
 
 The same surfaces live in a `--mock <file.yaml>` document; CLI flags compose with it, the flag winning on a conflict.
@@ -41,7 +41,7 @@ visited: [haven.shed]
 occasions: [runEnd]
 ```
 
-Two notes point at an occasion mismatch without refusing the walk: an objective whose occasion the walk never raised (``objective `q.o` is judged at occasion `runEnd`, which this walk never raised (supply `--occasion runEnd` or `occasions: [runEnd]`)``), and a raised occasion no `<objective on>` in the document judges (``occasion `dayEnd` is judged by no `<objective on>` in this document``).
+Two notes point at an occasion mismatch without refusing the walk: an objective whose occasion the walk never raised (``objective `q.o` is judged at occasion `runEnd`, which this walk never raised (supply `--occasion runEnd` or `occasions: [runEnd]`)``), and a raised occasion nothing in the document answers (``occasion `dayEnd` is judged by no `<objective on>` and fires no `<on event>` handler in this document``).
 
 ### A save's history
 
@@ -88,7 +88,7 @@ trace: quests/hound.lute  (seeds: 0 paths, 1 facts; 0 selections)
   <objective collar>   -> done (holds(slew(hound)))
   <objective report>   -> done (holds(slew(hound)))
   <quest houndHunt>   -> complete
-    grant houndHunt  EMBERS 50
+    grant houndHunt  EMBERS 50 (credits user.embers = 50)
 trace complete: 4 decisions
 ```
 
@@ -117,6 +117,14 @@ trace: scenes/start-recap.lute  (seeds: 1 paths, 0 facts; 0 selections)
 trace complete: 1 decision; arms 1/2 (isSet(prev.run.floor) @11:1)
 ```
 
+## Rewards and objective bodies
+
+A quest walk settles the way [`lute play`](/tooling/play/) settles it, so a trace, a test, and a play agree on what a completion leaves behind.
+
+**Credited rewards.** When a `<reward>`'s kind declares [`credits: <path>`](/plugins/manifests/#rewards-that-credit-state), a grant with a scalar amount adds it to that path, by the same rule as `::set <path> += <n>`. The grant line ends with the credit — `grant houndHunt  EMBERS 50 (credits user.embers = 50)` above, since the tower's `EMBERS` kind credits `user.embers` — and in `--json` the `grant` step carries `"credited": { "path": "user.embers", "value": "50" }`. The walk ends with the credited value, so a test's `expect.state` can assert `user.embers: 50`. A range amount is the engine's roll and credits nothing, and a path with no value to add to stays `unknown`.
+
+**Objective bodies.** An `<objective>` with a body plays it once, when the objective first turns done: its lines, `::set`, `::assert` and `::retract` follow the objective's `done` decision and its own grants in the transcript, and `--choose` decides a `<branch>` inside it.
+
 ## Bundle beats
 
 A lore document's [bundle beats](/tooling/play/#bundle-beats) (dsl 0.23.0) have no sequence to walk, so trace presents one at a time: `--beat <id>`, by its local id or its canonical `<document id>.<beat id>`. Its body is walked like a scene's — `--choose` decides its branches and hubs — every effect applies, and its `when` is shown, not enforced (JSON: a first step `{"kind": "beat", "id": …, "eligible": …}`). Oskar's hunt:
@@ -139,6 +147,8 @@ lore/oskar.lute:0:0: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id
 ```
 
 `--beat` on a document with no `<beat>` — a scene, say — is `E-TRACE-BEAT` too. [`lute run --beat`](/tooling/cli/#run) presents the same beat from the compiled lore artifact.
+
+A scenario test presents the same beat with `beat: <id>` (bare or canonical) instead of `entry:`. Since trace shows a beat's `when` without enforcing it, `lute test` prints a note when the beat or entry it presents is not eligible under the test's mocks, and `expect.eligible` asserts the verdict — see [`lute test`](/tooling/cli/#test). `--entry` with a beat's id is refused as `E-TRACE-ENTRY`; after the document's entries its message adds ``— `hunt` is a `<beat>`: present it with `--beat hunt` ``, and in a test it names the `beat:` key instead. For an id that is neither, the message lists the beats (`--beat`) after the entries.
 
 ## Reading the transcript
 
@@ -248,7 +258,17 @@ trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
 trace complete: 2 decisions; choices 1/2 (ask), choices 1/2 (verdict)
 ```
 
-A mocked derived atom is still accepted: it is a seed like any other, so `--fact "culprit(ann)"` holds whatever the rules conclude. [`lute test`](/tooling/cli/#test) walks the same way, and a test whose walk halts fails unless it declares `expect: { exit: incomplete }`.
+A mocked derived atom is still accepted: it is a seed like any other, so `--fact "culprit(ann)"` holds whatever the rules conclude. [`lute test`](/tooling/cli/#test) walks the same way, and a test whose walk halts fails unless it declares `expect: { exit: incomplete }`. A test asserts what the rules conclude with `expect.facts` and `expect.notFacts` — atoms that must hold, or must not, after derivation when the walk ends:
+
+```yaml
+file: accuse.lute
+choose: { ask: maid, verdict: wait }
+expect:
+  facts: ["alibi(ann)"]
+  notFacts: ["culprit(ann)"]
+```
+
+A miss names both sides — `notFacts culprit(ann): expected does not hold, got holds` — and an atom whose derivation read undecided state is `unknown`, which satisfies neither list.
 
 **A rule guard over undecided state.** A rule may test state (`cel("…")`). When the mocks leave that state undecided, the rule decides nothing: its conclusion is unknown, and the report names the state path that would decide it rather than the derived atom:
 
@@ -310,11 +330,11 @@ trace complete: 2 decisions; 1 unresolved (forced past an unknown guard — the 
   unresolved (forced): branch `verdict -> ann` choice guard `holds(culprit(ann))` was unknown — supply --fact "culprit(ann)" as a mock to decide it
 ```
 
-**Migrating from 0.21.** A test that relied on an unmocked derived atom being unknown (exit 3), or on a seeded relation reading empty, now sees the derived or seeded answer and may change verdict. Pin `derive: false` in that test or mock to keep the old one — or, better, assert what the rules conclude. To walk everything the old way at once, run `lute test --no-derive`, which overrides every test's and play script's own `derive:`.
+**Migrating from 0.21.** A test that relied on an unmocked derived atom being unknown (exit 3), or on a seeded relation reading empty, now sees the derived or seeded answer and may change verdict. Pin `derive: false` in that test or mock to keep the old one — or, better, assert what the rules conclude with `expect.facts` / `expect.notFacts`. To walk everything the old way at once, run `lute test --no-derive`, which overrides every test's and play script's own `derive:`.
 
 ## The `E-TRACE-*` refusals
 
-Before walking, trace resolves the document exactly as `check` does and **refuses** (exit 1) a document with check errors or invalid mocks — run `check` first. The mock refusals: `E-TRACE-MOCK-PARSE` (a malformed mock file — including a `quests:` status outside the four, an `entriesRead:` that is not `{ run: [...], user: [...] }`, or a `derive:` that is not `true`/`false`), `E-TRACE-MOCK-UNDECLARED` (an undeclared `--state` path, or a `quests:`/`entriesRead:` path the document neither reads nor declares), `E-TRACE-MOCK-TYPE` (wrong literal type), `E-TRACE-MOCK-FACT` (unknown relation/arity/foreign arg), `E-TRACE-CHOICE` (unknown or ineligible forced choice), `E-TRACE-BEAT` (a `--beat` naming no bundle beat of the document, dsl 0.23.0), `E-TRACE-EVENT` (a built-in lifecycle event `questActive`/`questComplete`/`questFailed` — engine-derived, never fired by hand), and `E-TRACE-ACCEPT` (an unknown quest id, or one that carries a `start` predicate and needs no accept). An unmatched `--event` is an informational note, not a refusal.
+Before walking, trace resolves the document exactly as `check` does and **refuses** (exit 1) a document with check errors or invalid mocks — run `check` first. The mock refusals: `E-TRACE-MOCK-PARSE` (a malformed mock file — including a `quests:` status outside the four, an `entriesRead:` that is not `{ run: [...], user: [...] }`, or a `derive:` that is not `true`/`false`), `E-TRACE-MOCK-UNDECLARED` (an undeclared `--state` path, or a `quests:`/`entriesRead:` path the document neither reads nor declares), `E-TRACE-MOCK-TYPE` (wrong literal type), `E-TRACE-MOCK-FACT` (unknown relation/arity/foreign arg), `E-TRACE-CHOICE` (unknown or ineligible forced choice), `E-TRACE-ENTRY` (an `--entry` on a document that is not lore, or naming none of its entries; the message lists the document's entries, then its beats — or, for a beat's id, says to present it with `--beat`), `E-TRACE-BEAT` (a `--beat` naming no bundle beat of the document, dsl 0.23.0), `E-TRACE-EVENT` (a built-in lifecycle event `questActive`/`questComplete`/`questFailed` — engine-derived, never fired by hand), and `E-TRACE-ACCEPT` (an unknown quest id, or one that carries a `start` predicate and needs no accept). An unmatched `--event` is an informational note, not a refusal.
 
 Since 0.6.1, trace also emits a warning (not a refusal) — `W-TRACE-MOCK-UNPRODUCIBLE` — for a `--fact`/mock-YAML fact whose relation no authored producer can ever assert (`producible()` judges it not producible): the supplied answer can never arise in reachable play, so a "complete" walk seeded with it proves nothing. A `reserved: true` or `open: engine`-argument relation is producible by definition and never warns.
 
