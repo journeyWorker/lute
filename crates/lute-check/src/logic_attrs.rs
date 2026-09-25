@@ -70,7 +70,7 @@ pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
 pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "on"];
 /// dsl 0.19.0 §3: `<entry>` closes over its declared keys — the seven 0.19.0
 /// keys plus the dsl 0.21.0 §3.2 beat keys `on` and `priority` and the dsl
-/// 0.22.0 §7 beat key `once`. The parser extracts each into a typed field,
+/// 0.22.0 §7 beat key `once` (and dsl 0.25.0 §2's `share`). The parser extracts each into a typed field,
 /// so a permitted key reaches the residual list only when its value was not
 /// a quoted string — `crate::lore` owns that shape fault (`E-ENTRY-ATTR`,
 /// or `E-BEAT-ATTR` for a beat key); every OTHER key is `E-UNKNOWN-ATTR`.
@@ -78,14 +78,16 @@ pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "
 /// it to `crate::beats`, which reports it on an entry as `E-BEAT-ATTR`.
 pub const ENTRY_ATTRS: &[&str] = &[
     "id", "target", "category", "title", "series", "order", "when", "on", "priority", "once",
+    "share",
 ];
 /// dsl 0.2.0 §6.3 (+ `after`, connectivity T2; `tier`, dsl 0.22.0 §7;
-/// `activate` / `complete`, dsl 0.24.0 §2): `<quest>`'s keys. The parser
-/// extracts each into a typed field, so one reaches the residual list only
-/// with a non-string value; every OTHER key — a `fial=` typo — used to be
-/// accepted and dropped from the IR without a word (0.21.1 T1-7).
+/// `activate` / `complete`, dsl 0.24.0 §2; `accept`, dsl 0.25.0 §5):
+/// `<quest>`'s keys. The parser extracts each into a typed field, so one
+/// reaches the residual list only with a non-string value; every OTHER key —
+/// a `fial=` typo — used to be accepted and dropped from the IR without a
+/// word (0.21.1 T1-7).
 pub const QUEST_ATTRS: &[&str] = &[
-    "id", "title", "start", "fail", "after", "tier", "activate", "complete",
+    "id", "title", "start", "fail", "after", "tier", "activate", "complete", "accept",
 ];
 /// dsl 0.2.0 §6.4 (+ subquest `quest`, dsl 0.21.0 §7a.2 `on`, dsl 0.23.0 §2
 /// `by` / `target`, dsl 0.24.0 §2.1 `until`): `<objective>`'s keys. A
@@ -227,7 +229,7 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
     close(&q.attrs, "quest", QUEST_ATTRS, &[], None, diags);
     // Each enumerated `<quest>` attribute is a quoted string from a fixed
     // set; a bare/non-string value stays residual and is reported too.
-    let enumerated: [(&str, &Option<(String, Span)>, &[&str], &str); 3] = [
+    let enumerated: [(&str, &Option<(String, Span)>, &[&str], &str); 4] = [
         (
             "tier",
             &q.tier,
@@ -248,6 +250,13 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
             &["all", "any"],
             "\"all\" (every required objective done, the default) or \"any\" (one required \
              objective done; the other still-active children fail as superseded) (dsl 0.24.0 §2)",
+        ),
+        (
+            "accept",
+            &q.accept,
+            &["external"],
+            "\"external\" (the quest is accepted outside the script — a quest board, a menu, a \
+             UI) (dsl 0.25.0 §5)",
         ),
     ];
     for (key, value, legal, expects) in enumerated {
@@ -272,6 +281,19 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
                 "`<quest id=\"{}\">` carries both `activate=\"accept\"` and `start`: an \
                  accept-driven quest activates when `::accept` names it (while its parent is \
                  active), never by a `start` condition; remove one (dsl 0.24.0 §2)",
+                q.id
+            ),
+            *span,
+        ));
+    }
+    // dsl 0.25.0 §5: an externally accepted quest is accept-driven — the
+    // engine activates it when the player takes it, never a `start`.
+    if let (Some((_, span)), true, Some(_)) = (&q.accept, q.accepted_externally(), &q.start) {
+        diags.push(attr_type(
+            format!(
+                "`<quest id=\"{}\">` carries both `accept=\"external\"` and `start`: an \
+                 externally accepted quest activates when the engine accepts it, never by a \
+                 `start` condition; remove one (dsl 0.25.0 §5)",
                 q.id
             ),
             *span,

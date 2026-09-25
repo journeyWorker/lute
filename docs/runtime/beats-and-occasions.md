@@ -96,6 +96,7 @@ type BeatIr = {
   priority: number;       // resolved; unauthored → 0; higher wins
   once: "run" | "user" | "none"; // unauthored → "run"; "none" is source `once: false`
   also?: true;            // dsl 0.23.0 §3; present only when authored true
+  share?: string;         // dsl 0.25.0 §2; the shared-spend key, present only when authored
 };
 ```
 
@@ -107,6 +108,7 @@ type EntryCmd = {
   on?: string;            // the occasion this entry answers
   priority?: number;      // absent → 0
   once?: "run" | "user";  // dsl 0.22.0 §7; absent: repeatable
+  share?: string;         // dsl 0.25.0 §2; only beside `once`
 };
 ```
 
@@ -144,6 +146,8 @@ type BeatCmd = {
   priority: number;       // resolved; unauthored → 0
   once: "run" | "user" | "none"; // unauthored → "run"
   also?: true;
+  share?: string;         // dsl 0.25.0 §2
+  after?: string;         // dsl 0.25.0 §3: raw `after=`, a scene `after:`'s grammar
   body: Addr;             // first record of the body segment
 };
 ```
@@ -153,7 +157,9 @@ presentation record, and its `visited()` key. The body segment runs from
 `body` to the next `entry` or `beat` record, or the end of the artifact, and
 holds what a scene shot holds (lines, choices, hubs, matches, staging,
 writes). A bundle beat is otherwise a **scene beat**: its eligibility is its
-`when` and its `once` against the presentation record (it has no `after:`).
+`after=` (dsl 0.25.0 §3; the artifact's `prereqEdges` carries the same text
+in a row whose `node` is the beat's `id`), its `when`, and its `once` against
+the presentation record.
 
 `ProjectIndex.beats` (`lute compile --all`) lists every beat in the project so
 an engine can build its `occasion → candidates` table without loading every
@@ -170,6 +176,7 @@ type IndexBeat = {
   once?: "run" | "user" | "none"; // scene rows: always; entry rows: the authored `once`, absent = repeatable
   when?: string;          // dsl 0.23.0 §1: the beat's condition, `@def`-expanded
   title?: string;         // dsl 0.23.0 §11: scene `title:`, entry or bundle beat `title=`
+  share?: string;         // dsl 0.25.0 §2: the shared-spend key
 };
 ```
 
@@ -195,16 +202,18 @@ When the engine raises occasion `O`, optionally for target `T`:
    raise. An occasion no plugin declares keeps the 0.21 rule (a target
    restricts).
 2. A candidate is **eligible** when all of these hold:
-   - a scene beat's `after:` holds — the artifact's `prereqEdges` row whose
-     `node` is the scene's `meta.id`, evaluated as it is for any scene
-     (`quest-lifecycle.md`); an entry has no `after:`;
+   - a scene beat's `after:` (or a bundle beat's `after=`, dsl 0.25.0 §3)
+     holds — the artifact's `prereqEdges` row whose `node` is the beat's
+     `id`, evaluated as it is for any scene (`quest-lifecycle.md`); an entry
+     has no `after:`;
    - its `when` is absent or evaluates true against live state and facts
      (`evalSlot(when.raw, when.expr, …)`, `execution-model.md`) at the moment
      the occasion is raised;
    - a beat's `once` is not spent. A scene beat: `run` — not yet presented
      this run; `user` — never presented; `none` — never spent. An entry beat:
      `run` — `entry.<id>.read` is false; `user` — `entry.<id>.everRead` is
-     false; absent — never spent.
+     false; absent — never spent. A beat with a `share` key (below) is also
+     spent while its key is.
 3. Eligible beats are **ordered by `priority` descending, then
    `ProjectIndex.beats` order**. Scene and entry beats on the same occasion
    compete in one list.
@@ -224,6 +233,16 @@ record resets with the **run** tier and the user record persists with the
 **user** tier (`state-lifecycle.md`); both are keyed by the beat's `id`.
 Content never reads or writes them. An entry beat's `once` reads the entry's
 read flags instead, which the engine already keeps (`lore-entries.md`).
+
+**Shared spends** (dsl 0.25.0 §2). Beats that stand for one event in several
+places carry the same `share` key (project-wide; scene, entry and bundle
+beats alike). Presenting any beat of a key (an entry: reading it) spends
+**every** beat of the key for their `once` period, exactly as if each had
+been presented: the engine records the spend under every member's `id` in
+the run / user presentation record, and for `once: "day"` / `"slot"` at the
+current clock position. A shared entry is then spent although its own read
+flags stay false. The checker guarantees every beat of a key writes the
+same `once`, and never `false` (`E-BEAT-ATTR`).
 
 Selection is deterministic: for the same state, facts, and presentation
 record, every engine picks the same beat. An engine MAY layer its own policy
@@ -270,28 +289,32 @@ function presentationOrder(select: "first" | "sequence", eligible: IndexBeat[]) 
 
 function isEligible(beat: IndexBeat, state, facts, presented: Presented) {
   if (beat.kind === "entry") {
-    if (beat.once === "run" && state.get(`entry.${beat.id}.read`)) return false;
-    if (beat.once === "user" && state.get(`entry.${beat.id}.everRead`)) return false;
+    if (beat.once === "run" && (state.get(`entry.${beat.id}.read`) || presented.run.has(beat.id))) return false;
+    if (beat.once === "user" && (state.get(`entry.${beat.id}.everRead`) || presented.user.has(beat.id))) return false;
     const when = entryRecord(beat.id).when;
     return !when || truthy(evalSlot(when.raw, when.expr, state, facts));
   }
-  const artifact = sceneArtifact(beat.id);
-  const { when, once } = artifact.meta.beat;
-  if (!afterHolds(artifact, state, facts)) return false; // prereqEdges row for meta.id
+  const artifact = beatArtifact(beat);  // the scene's, or the lore artifact holding the `beat` record
+  const { when, once } = beatDecl(beat); // meta.beat, or the `beat` record
+  if (!afterHolds(artifact, beat.id, state, facts)) return false; // prereqEdges row for beat.id
   if (when && !truthy(evalSlot(when.raw, when.expr, state, facts))) return false;
   if (once === "run" && presented.run.has(beat.id)) return false;
   if (once === "user" && presented.user.has(beat.id)) return false;
   return true;
 }
 
+// dsl 0.25.0 §2: the beats one presentation spends — every beat of its key.
+const spentTogether = (beat: IndexBeat) =>
+  beat.share ? index.beats.filter((b) => b.share === beat.share) : [beat];
+
 function present(beat: IndexBeat, state, facts, presented: Presented) {
   if (beat.kind === "entry") {
     presentEntry(entryRecord(beat.id), state, facts); // lore-entries.md: sets read / everRead
+    if (beat.share) for (const b of spentTogether(beat)) { presented.run.add(b.id); presented.user.add(b.id); }
     return;
   }
-  presented.run.add(beat.id);
-  presented.user.add(beat.id);
-  run(sceneArtifact(beat.id), state, facts);         // execution-model.md
+  for (const b of spentTogether(beat)) { presented.run.add(b.id); presented.user.add(b.id); }
+  run(beatArtifact(beat), state, facts);             // execution-model.md
 }
 ```
 
@@ -374,6 +397,12 @@ An artifact that compiled cleanly carries these guarantees:
   (`E-BEAT-ATTR`).
 - `also` is `true` or `false`, and appears only on a scene or bundle beat of a
   `select: first` occasion (`E-BEAT-ATTR`).
+- `share` (dsl 0.25.0 §2) is an identifier, written only beside an authored
+  `once` that is not `false`, and every beat of one key declares the same
+  `once` (`E-BEAT-ATTR`, the last one at `check-project`).
+- A bundle beat's `after=` (dsl 0.25.0 §3) parses under the scene `after:`
+  grammar (`E-CONN-PROFILE`) and names known nodes (`E-CONN-UNKNOWN-NODE`,
+  `check-project`); it is a scenario edge as a scene's `after:` is.
 - `on` names a declared occasion whenever any resolved plugin declares
   occasions (`E-OCCASION-UNKNOWN`), and a `target` of a domain occasion is
   `<prefix>.<member>` of that domain (`E-BEAT-ATTR`).
@@ -392,7 +421,8 @@ target, with equal priority and eligibilities not provably exclusive, whose
 winner therefore falls to `ProjectIndex.beats` order. A beat's eligibility
 there is its `when` and its `once` (an entry's `once="user"` requires
 `!entry.<id>.everRead`, `once="run"` `!entry.<id>.read`, a scene's or bundle
-beat's `once: user` `!visited('<id>')`), and a `holds(A)` of a derived atom
+beat's `once: user` `!visited('<id>')` — for a shared beat, every flag of its
+key, dsl 0.25.0 §2), and a `holds(A)` of a derived atom
 whose every rule is ground and `cel()`-only stands for its rules' guards.
 Both ignore `also` beats, which never compete for the win: an `also` beat is
 never shadowed, never shadows, and never ties. `W-BEAT-ONCE-RUN-USER` names a
@@ -459,9 +489,17 @@ history, not user state.
   eligible in some cell but presented in none, with what was presented over
   them (`?` where an unknown `when` decided the cell) — `neverPresented`
   with `beatenBy` in `--json`, a second table after a blank line in `--csv`.
-- `lute scenario <dir>` draws every bundle beat as an edgeless entry node
-  `beat(<doc>.<beat>)`; `scenario reach|envelope` accept its canonical id,
-  bare or `beat:`-prefixed.
+- `lute scenario <dir>` draws every bundle beat as a node
+  `beat(<doc>.<beat>)` — an entry node, or (dsl 0.25.0 §3) the dependent of
+  the edges its `after=` draws; `scenario reach|envelope` accept its
+  canonical id, bare or `beat:`-prefixed. A scene or bundle beat without
+  `after` whose `when` has a `visited('<id>')` conjunct is listed as
+  unanchored — the conjunct gates it but draws no edge — with the `after`
+  that would (`unanchoredHints` in `--format json`).
+- `lute beats` shows a beat's `share` key in its `once` column (`day, share
+  solWarm`; `share` in `--json`), and `lute play` / `lute calendar` spend the
+  whole key at a presentation: a sibling reads `once: day — share: solWarm
+  already spent today by <id>`.
 - `lute trace` / `lute run` raise occasions for a quest walk with the mock
   key `occasions: [runEnd]` or `--occasion runEnd` (repeatable), applied in
   order after the walk settles. A raise for a target is written
@@ -471,5 +509,7 @@ history, not user state.
 - `lute trace <lore.lute> --beat <id>` and `lute run <lore artifact> --beat
   <id>` present one bundle beat by its local or canonical id, outside any
   selection: `when` is evaluated and shown on the beat's head, not enforced,
+  together with its `after=` over the mocked `visited:` and quest states
+  (dsl 0.25.0 §3),
   and the body runs as a scene's (a mock's `choose:` picks). An unknown id is
   `E-TRACE-BEAT` (`trace`, exit 1) or a usage error (`run`, exit 2).

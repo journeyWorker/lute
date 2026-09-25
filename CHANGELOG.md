@@ -36,6 +36,107 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Added
+
+- `{{run.day:ordinalWord}}`: an ordinal-word format hint beside `:ordinal`
+  (dsl 0.25.0 §8). The IR placeholder carries `format: "ordinalWord"` for the
+  engine to localize; `lute play` / `lute run` / `lute trace` render the
+  English words `first` … `twentieth` and fall back to `:ordinal` digits
+  (`21st`) above; the checker admits it wherever `:ordinal` is admitted.
+- **Shared spends** (dsl 0.25.0 §2, SU N9): a scene (`share:`), bundle
+  `<beat share=…>` or `<entry share=…>` beside a written `once` names a
+  project-wide key; presenting any beat of the key (an entry: reading it)
+  spends every beat of it for the `once` period. `E-BEAT-ATTR` for a
+  malformed key, `share` without a written spending `once` (absent or
+  `false`), and (`check-project`) beats of one key with different `once`s.
+  `lute play` / `lute calendar` spend the key together (`✗ … once: day —
+  share: solWarm already spent today by talks.solWarmRadio`), `lute beats`
+  shows the key in its `once` column (`share` in `--json`), the presence
+  ladder and `W-BEAT-PRIORITY-TIE` read the whole key's flags. IR:
+  `BeatIr.share`, `EntryCmd.share`, `BeatCmd.share`, `IndexBeat.share`
+  (absent when unauthored).
+- **Bundle beat `after=`** (dsl 0.25.0 §3, LH N9): `<beat after="…">` has a
+  scene `after:`'s meaning — an eligibility conjunct (`lute play`,
+  `lute calendar`, `lute trace --beat`: `not eligible: \`after\` prerequisite
+  not satisfied`) and a scenario edge (`E-CONN-PROFILE`,
+  `E-CONN-UNKNOWN-NODE`, cycles, envelopes as for a scene). IR:
+  `BeatCmd.after` plus a `prereqEdges` row keyed by the beat's canonical id.
+  `lute scenario` lists a scene or bundle beat whose `when` has a
+  `visited()` conjunct but no `after` as unanchored, with the `after` to
+  write (`unanchoredHints` in `--format json`).
+- **Exclusive relations** (dsl 0.25.0 §1, LH F17): a relation may declare
+  `excludes: [other, …]` — the relations it never holds together with on the
+  same arguments. The declaration is symmetric, and each partner must be a
+  declared relation with the same argument kinds (else `E-RELATION-DECL`).
+  `check-project` reads `holds(A(x)) && holds(B(x))` as false (a dead guard,
+  `E-ARM-DEAD` / `E-BEAT-UNREACHABLE` naming the exclusion) and
+  `!holds(B(x))` as following from `holds(A(x))` — in the same guard, an
+  enclosing one, or anything else on every route — so such a guard is
+  `W-FACT-GUARANTEED`, and cast presence uses it too. An `::assert{A(x)}`
+  where `B(x)` holds on every route to it is the new **`E-FACT-EXCLUSIVE`**.
+  Where both are only possible, `lute play` reports
+  `✗ exclusive: fell(elias) and seenAfter(elias) both hold` at the step and
+  halts (exit 1); `lute trace` / `lute test` record the same `✗ exclusive`
+  line at the write and refuse the walk there (`E-FACT-EXCLUSIVE`, exit 1).
+  Derived relations are covered through their derivations. The IR's
+  `RelationEntry` carries `excludes` (the symmetric closure, sorted; absent
+  when empty).
+- **Presence after engine events** (dsl 0.25.0 §6): an engine-`reserved`
+  relation may name the occasions on which the engine changes it —
+  `fell: { args: [companion], reserved: true, changedOn: [battleEnd] }`.
+  Cast `assume: true` then no longer reads it as unchanged in a unit
+  presented on one of those occasions (a scene / entry / bundle beat `on`,
+  a quest `<on event>` handler or `on=` objective body on it) nor, in
+  `check-project`, in any after-descendant of such a unit over the scenario
+  graph's `after:` / `after=` / `[start]` edges: `W-CAST-ABSENT` reports the
+  post-battle line again and says `assume: true` does not cover `fell`
+  there. Without `changedOn` nothing changes. `changedOn` on a relation that
+  is not `reserved: true`, or naming an undeclared occasion (with a
+  did-you-mean), is `E-RELATION-DECL`.
+- **Quest graph edges** (dsl 0.25.0 §4, ER F17 / N13): `lute scenario`
+  draws `quest(parent) -> quest(child) [subquest]` for every nested quest,
+  so a parent with children is no longer listed as unanchored, and a quest
+  without `after=` is anchored by its top-level `start` conjuncts that read
+  `visited('…')`, `entry.X.everRead` or `quest.Y.state == '…'` (not
+  `unset`) — `[start]` edges; an `||` of such reads is one anchor with
+  several sources. A `start`-driven quest no longer needs a copy of its
+  `start` in `after=`. The sources join the graph (an entry `X` as the new
+  node `entry(X)`); `reach` lists a quest's anchors (`anchors` in
+  `--format json`). An explicit `after=` still replaces the `start` and
+  `::accept` anchors; the subquest edge stays. Anchors never prove a quest
+  unreachable, and one that would close a cycle is not drawn.
+- **`<quest accept="external">`** (dsl 0.25.0 §5, LH N5): the quest is
+  accepted outside the script (a quest board, a menu, a UI). It silences
+  `W-QUEST-NEVER-ACCEPTED`; beside `start` it is `E-ATTR-TYPE`, and on a
+  subquest child that activates with its parent it is `E-ACCEPT-TARGET`
+  (declare `activate="accept"` too). IR: `QuestCmd.accept: "external"`.
+
+### Changed
+
+- Bridge answers (dsl 0.25.0 §7): a bridge result field no content reads may
+  be left out of a `lute play` / `lute trace` / scenario-test / `mocks/*.yaml`
+  `bridges:` answer, and every unanswered-call hint lists only the fields
+  content reads. A field content reads is still required
+  (`E-TRACE-MOCK-TYPE`). `lute play` no longer halts at a plugin call none of
+  whose result slots content reads.
+- `W-QUEST-NEVER-ACCEPTED` (dsl 0.25.0 §5, LH N5): a `*.test.yaml` or
+  `mocks/*.yaml` `accepts:` mock no longer counts as an acceptance — a mock
+  proves a test, not the game. A quest only a mock accepts still warns, the
+  message names the mock file, and the hint offers `accept="external"`.
+- `lute scenario knowledge` (dsl 0.25.0 §9, LH N6): a defeater lists every
+  derivation route of the defeating fact (`⇐ … / ⇐ …`), not only the first.
+- The `lute scenario` note on undrawn references now says a quest's edges
+  come from its `after`, subquest tree, `start` conjuncts and `::accept`s.
+
+### Fixed
+
+- An undeclared `<match on>` subject is no longer also `E-NONEXHAUSTIVE`
+  (dsl 0.25.0 §9, SU N8): its read is reported once — `E-UNDECLARED`, or,
+  while a schema import is broken, the import error (a `clock:` that
+  swallowed the state entry left only a misleading `E-NONEXHAUSTIVE`).
+
 ## [0.24.0] - 2026-09-25
 
 **Clocks, quest structure, parties.**

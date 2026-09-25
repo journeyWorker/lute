@@ -753,6 +753,12 @@ pub fn fold_env(
         &input.snapshot.occasions,
         &vocab.kinds,
     ));
+    // dsl 0.25.0 §6: every relation's `changedOn:` occasion, checked like one.
+    fold_diags.extend(crate::rel_schema::check_changed_on(
+        &vocab,
+        &input.snapshot.occasions,
+        &doc.meta,
+    ));
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
     //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
@@ -2487,13 +2493,14 @@ fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
     }
 }
 
-/// dsl 0.24.0 §4: validate an interpolation's format hint
+/// dsl 0.24.0 §4 / 0.25.0 §8: validate an interpolation's format hint
 /// ([`Interp::format`], the `:ordinal` of `{{user.deaths:ordinal}}`).
-/// `ordinal` is the only hint; any other is `E-CEL-PROFILE`, the §7.6
-/// interpolation-grammar code ([`interp_grammar_diag`]) — the hint is part of
-/// the `{{…}}` form. `ordinal` formats a number, so a referent whose type is
-/// KNOWN and not a number — a declared state path, a def's produced type, the
-/// reserved `userName` string — is `E-REF-TYPE`, the interpolation
+/// `ordinal` and `ordinalWord` are the hints
+/// ([`lute_syntax::ast::INTERP_FORMATS`]); any other is `E-CEL-PROFILE`, the
+/// §7.6 interpolation-grammar code ([`interp_grammar_diag`]) — the hint is
+/// part of the `{{…}}` form. Each formats a number, so a referent whose type
+/// is KNOWN and not a number — a declared state path, a def's produced type,
+/// the reserved `userName` string — is `E-REF-TYPE`, the interpolation
 /// rendering-type code. An unresolved referent (already `E-UNDECLARED` /
 /// `E-UNDECLARED-REF`) and one `type_flagged` as non-renderable already are
 /// not flagged again.
@@ -2507,12 +2514,12 @@ fn check_interp_format(
         return;
     };
     let raw = &interp.raw;
-    let (code, message) = if format != lute_syntax::ast::INTERP_FORMAT_ORDINAL {
+    let (code, message) = if !lute_syntax::ast::INTERP_FORMATS.contains(&format) {
         (
             crate::cel_resolve::E_CEL_PROFILE,
             format!(
-                "`{{{{{raw}:{format}}}}}` names an unknown format `{format}` — the only \
-                 interpolation format is `:ordinal` (dsl 0.24.0 §4)"
+                "`{{{{{raw}:{format}}}}}` names an unknown format `{format}` — the \
+                 interpolation formats are `:ordinal` and `:ordinalWord` (dsl 0.25.0 §8)"
             ),
         )
     } else {
@@ -2528,7 +2535,7 @@ fn check_interp_format(
             Some(ty) if ty != Type::Number && !type_flagged => (
                 "E-REF-TYPE",
                 format!(
-                    "`:ordinal` formats a number, but `{raw}` is {} — write `{{{{{raw}}}}}` \
+                    "`:{format}` formats a number, but `{raw}` is {} — write `{{{{{raw}}}}}` \
                      without the hint, or interpolate a number (dsl 0.24.0 §4)",
                     crate::cel_resolve::ty_desc(&ty)
                 ),

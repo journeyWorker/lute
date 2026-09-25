@@ -1917,8 +1917,8 @@ fn a_guarded_set_writes_only_while_its_guard_holds() {
 }
 
 /// dsl 0.24.0 §4: one `visit` scene that stages two characters, interpolates
-/// `user.deaths` with and without `:ordinal` (and a fractional def with it),
-/// then `::clear`s the stage.
+/// `user.deaths` with and without `:ordinal` (and a fractional def with it)
+/// and with `:ordinalWord` (dsl 0.25.0 §8), then `::clear`s the stage.
 fn hall_project(tag: &str) -> PathBuf {
     let dir = temp_dir(tag);
     write(
@@ -1940,6 +1940,7 @@ fn hall_project(tag: &str) -> PathBuf {
          ## Hall\n\n::auto{character=\"maud\" anchor=\"left\"}\n\
          ::auto{character=\"oskar\" anchor=\"right\"}\n\
          @maud: Your {{user.deaths:ordinal}} death, {{user.deaths}} in all; half is {{@half:ordinal}}.\n\
+         @oskar: The {{user.deaths:ordinalWord}} time.\n\
          ::clear\n@narrator: The hall is empty.\n",
     );
     dir
@@ -1965,6 +1966,59 @@ fn an_ordinal_placeholder_renders_an_english_ordinal() {
             .collect();
         assert_eq!(texts, [want], "{}", step(&v, 1));
     }
+}
+
+/// dsl 0.25.0 §8: `format: ordinalWord` renders `first` … `twentieth`, then
+/// the `:ordinal` digits — in `lute play` and in `lute trace` alike; the IR
+/// carries the hint for the engine to localize.
+#[test]
+fn an_ordinal_word_placeholder_renders_a_word_up_to_twenty() {
+    let dir = hall_project("ordinal-word");
+    for (deaths, want) in [
+        (1, "The first time."),
+        (12, "The twelfth time."),
+        (20, "The twentieth time."),
+        (21, "The 21st time."),
+    ] {
+        let script = format!("state:\n  user.deaths: {deaths}\nsteps:\n  - occasion: visit\n");
+        let v = play_project_json(&dir, "ordinal-word", &script);
+        let texts: Vec<&str> = presented(&v, 1)
+            .iter()
+            .filter(|r| r["kind"] == "line" && r["speaker"] == "oskar")
+            .filter_map(|r| r["text"].as_str())
+            .collect();
+        assert_eq!(texts, [want], "{}", step(&v, 1));
+
+        let mock = write(
+            &temp_dir("ordinal-word-trace"),
+            "m.yaml",
+            &format!("state:\n  user.deaths: {deaths}\n"),
+        );
+        let out = Command::new(BIN)
+            .args(["trace", dir.join("scenes/hall.lute").to_str().unwrap()])
+            .args(["--project", dir.to_str().unwrap(), "--mock", mock.to_str().unwrap()])
+            .output()
+            .unwrap();
+        let text = format!("{}{}", stdout(&out), stderr(&out));
+        assert!(text.contains(want), "{text}");
+    }
+
+    let out = Command::new(BIN)
+        .args(["compile", dir.join("scenes/hall.lute").to_str().unwrap()])
+        .args(["--project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let ir: serde_json::Value = serde_json::from_slice(&out.stdout).expect(&stderr(&out));
+    let line = ir["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["speaker"] == "oskar")
+        .expect("oskar's line");
+    assert_eq!(
+        line["placeholders"],
+        serde_json::json!([{ "kind": "path", "path": "user.deaths", "format": "ordinalWord" }])
+    );
 }
 
 /// dsl 0.24.0 §4: `::clear` exits both characters; the transcript prints the

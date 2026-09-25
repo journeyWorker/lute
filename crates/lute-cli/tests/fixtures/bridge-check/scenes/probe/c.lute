@@ -12,6 +12,7 @@ priority: 50
 <match on="scene.check.guards.passed">
   <when is="true">
     @narrator: Passed.
+    @narrator{when="scene.check.guards.margin > 5"}: Easily.
   </when>
   <when is="false">
     @narrator: Failed.

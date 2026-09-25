@@ -128,6 +128,10 @@ pub struct IndexBeat {
     pub when: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// dsl 0.25.0 §2: the beat's `share` key — every row of one key is
+    /// spent when any of them is presented. Omitted when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub share: Option<String>,
 }
 
 /// The `project.index.json` envelope. Field DECLARATION ORDER is the serialized
@@ -403,6 +407,7 @@ pub fn build_index(
                     once: Some(b.once),
                     when: b.when.as_ref().map(|w| w.raw.clone()),
                     title: m.title.clone(),
+                    share: b.share.clone(),
                 }),
                 ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => None,
             };
@@ -417,6 +422,7 @@ pub fn build_index(
                     once: e.once,
                     when: e.when.as_ref().map(|w| w.raw.clone()),
                     title: e.title.clone(),
+                    share: e.share.clone(),
                 }),
                 Command::Beat(b) => Some(IndexBeat {
                     id: b.id.clone(),
@@ -428,6 +434,7 @@ pub fn build_index(
                     once: Some(b.once),
                     when: b.when.as_ref().map(|w| w.raw.clone()),
                     title: b.title.clone(),
+                    share: b.share.clone(),
                 }),
                 _ => None,
             });
@@ -617,6 +624,7 @@ mod tests {
             derive: false,
             reserved: false,
             key: Vec::new(),
+            excludes: Vec::new(),
         }
     }
 
@@ -791,6 +799,7 @@ mod tests {
                     on: None,
                     priority: None,
                     once: None,
+                    share: None,
                     stamp: Stamp::default(),
                 })
             })
@@ -883,6 +892,7 @@ mod tests {
             priority,
             once,
             also: false,
+            share: None,
         })
     }
 

@@ -1113,8 +1113,9 @@ pub(crate) fn missing_members(child: &[String], base: &[String]) -> Vec<String> 
 }
 
 /// D5's `extends`-growth check for a relation re-declaration: the child must
-/// match the base's FULL decl (`args`+`tier`+`derive`+`reserved`+`key`,
-/// `malformed_fields` excluded — it is not part of the declared signature).
+/// match the base's FULL decl (`args`+`tier`+`derive`+`reserved`+`key`, and
+/// dsl 0.25.0 §1's `excludes` and §6's `changedOn` as sets; `malformed_fields`
+/// excluded — it is not part of the declared signature).
 /// Returns the differing field names, empty when identical.
 pub(crate) fn relation_sig_diff(child: &RelationDecl, base: &RelationDecl) -> Vec<&'static str> {
     let mut out = Vec::new();
@@ -1132,6 +1133,13 @@ pub(crate) fn relation_sig_diff(child: &RelationDecl, base: &RelationDecl) -> Ve
     }
     if child.key != base.key {
         out.push("key");
+    }
+    let set = |v: &[String]| v.iter().cloned().collect::<std::collections::BTreeSet<_>>();
+    if set(&child.excludes) != set(&base.excludes) {
+        out.push("excludes");
+    }
+    if set(&child.changed_on) != set(&base.changed_on) {
+        out.push("changedOn");
     }
     out
 }

@@ -128,8 +128,7 @@ mod tests {
             tier: Some("run".to_string()),
             derive: false,
             reserved,
-            key: vec![],
-            malformed_fields: vec![],
+            ..Default::default()
         }
     }
 
@@ -139,8 +138,7 @@ mod tests {
             tier: None,
             derive: true,
             reserved: false,
-            key: vec![],
-            malformed_fields: vec![],
+            ..Default::default()
         }
     }
 

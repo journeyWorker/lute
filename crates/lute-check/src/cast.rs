@@ -438,6 +438,15 @@ pub fn check_presence(
             }
         });
     }
+    // dsl 0.25.0 §6: occasion → the engine-`reserved` relations it may change.
+    let mut changed_on: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (rel, decl) in &folded.env.rel_vocab.relations {
+        if decl.reserved {
+            for occasion in &decl.changed_on {
+                changed_on.entry(occasion.clone()).or_default().insert(rel.clone());
+            }
+        }
+    }
     let mut w = Presence {
         path,
         folded,
@@ -452,13 +461,22 @@ pub fn check_presence(
         guards: Vec::new(),
         base: 0,
         quest: None,
+        changed_on,
+        changed: BTreeSet::new(),
         present: BTreeMap::new(),
+        reads: BTreeMap::new(),
         out: Vec::new(),
     };
     let ladder_at = |at: Span| {
         project
             .and_then(|p| p.ladder.get(&at.byte_start))
             .map_or(&[][..], Vec::as_slice)
+    };
+    // The occasions unit `key` follows: its own (`on`), and — `check-project`
+    // — every one a scenario-graph ancestor is presented on.
+    let after = |key: usize, own: Option<&str>| -> Vec<String> {
+        let graph = project.and_then(|p| p.after.get(&key)).into_iter().flatten();
+        own.into_iter().map(str::to_string).chain(graph.cloned()).collect()
     };
 
     let scene_ladder = match &folded.typed.beat {
@@ -467,10 +485,12 @@ pub fn check_presence(
     };
     let scene_when = w.slot_cond(folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()));
     let scene_absent = w.absent_facts(0, folded.typed.beat.as_ref().map_or(BeatOnce::None, |b| b.once));
+    let scene_after = after(0, folded.typed.beat.as_ref().map(|b| b.on.as_str()));
     w.unit(
         scene_when.into_iter().collect(),
         scene_ladder,
         scene_absent,
+        &scene_after,
         doc.shots.iter().map(|s| &s.body[..]),
     );
     for quest in &doc.quests {
@@ -481,7 +501,8 @@ pub fn check_presence(
             conds.extend(cs.into_iter().filter_map(|c| stable_text(&c).map(|t| (c, t))));
         }
         w.quest = (!quest.id.is_empty()).then(|| quest.id.clone());
-        w.unit(conds, &[], Vec::new(), std::iter::once(&quest.body[..]));
+        let quest_after = after(quest.span.byte_start, None);
+        w.unit(conds, &[], Vec::new(), &quest_after, std::iter::once(&quest.body[..]));
         w.quest = None;
     }
     for entry in &doc.entries {
@@ -496,25 +517,109 @@ pub fn check_presence(
             _ => BeatOnce::None,
         };
         let absent = w.absent_facts(entry.span.byte_start, once);
-        w.unit(conds, ladder, absent, std::iter::once(&entry.body[..]));
+        let entry_after = after(entry.span.byte_start, entry.on.as_ref().map(|(o, _)| o.as_str()));
+        w.unit(conds, ladder, absent, &entry_after, std::iter::once(&entry.body[..]));
     }
     for beat in &doc.beats {
         let conds = w.slot_cond(beat.when.as_ref()).into_iter().collect();
         let ladder = beat.on.as_ref().map_or(&[][..], |(_, s)| ladder_at(*s));
         let absent = w.absent_facts(beat.span.byte_start, crate::bundles::bundle_beat_once(beat));
-        w.unit(conds, ladder, absent, std::iter::once(&beat.body[..]));
+        let beat_after = after(beat.span.byte_start, beat.on.as_ref().map(|(o, _)| o.as_str()));
+        w.unit(conds, ladder, absent, &beat_after, std::iter::once(&beat.body[..]));
     }
     w.out
 }
 
 /// dsl 0.24.0 §4, `check-project`: what presence reads beyond one document
 /// — the root's fact envelope, the document's beat-ladder assumptions
-/// ([`crate::beats::presence_ladder`], keyed by a unit's `on` offset) and
-/// every `::assert` site of the root ([`fact_producers`]).
+/// ([`crate::beats::presence_ladder`], keyed by a unit's `on` offset),
+/// every `::assert` site of the root ([`fact_producers`]) and (dsl 0.25.0
+/// §6) the occasions each unit of the document follows in the scenario
+/// graph ([`occasions_before`], keyed like [`FactProducers`]' units).
 pub struct PresenceProject<'a> {
     pub env: &'a FactEnv,
     pub ladder: &'a BTreeMap<usize, Vec<String>>,
     pub producers: &'a FactProducers,
+    pub after: &'a BTreeMap<usize, BTreeSet<String>>,
+}
+
+/// dsl 0.25.0 §6 (D-D): per document, per unit (`0` for a scene's shots,
+/// else the span start of the quest, entry or bundle beat — the
+/// [`FactProducers`] keys), every occasion a unit presented on it precedes
+/// the unit by: the unit is its after-descendant over `after:` / `after=`
+/// and `[start]` edges of the scenario graph ([`crate::connectivity`]).
+/// Accept anchors and subquest edges order nothing here. Only occasions
+/// some relation of the root names in `changedOn:` are followed. `docs` and
+/// `foldeds` are aligned (one resolved root).
+pub fn occasions_before(
+    docs: &[(std::path::PathBuf, Document)],
+    foldeds: &[&FoldedEnv],
+    graph: &crate::connectivity::ConnGraph,
+) -> BTreeMap<std::path::PathBuf, BTreeMap<usize, BTreeSet<String>>> {
+    use crate::connectivity::{EdgeKind, NodeId};
+    let mut out: BTreeMap<std::path::PathBuf, BTreeMap<usize, BTreeSet<String>>> = BTreeMap::new();
+    let named: BTreeSet<&str> = foldeds
+        .iter()
+        .flat_map(|f| f.env.rel_vocab.relations.values())
+        .filter(|d| d.reserved)
+        .flat_map(|d| d.changed_on.iter().map(String::as_str))
+        .collect();
+    if named.is_empty() {
+        return out;
+    }
+    // A node's document index, unit key and the occasion it is presented on.
+    let unit_of = |id: &NodeId| -> Option<(usize, usize, Option<&str>)> {
+        let info = graph.nodes.get(id)?;
+        let i = docs.iter().position(|(p, _)| *p == info.path)?;
+        let doc = &docs[i].1;
+        match id {
+            NodeId::Scene(_) => Some((i, 0, foldeds.get(i)?.typed.beat.as_ref().map(|b| b.on.as_str()))),
+            NodeId::Quest(q) => doc.quests.iter().find(|x| x.id == *q).map(|x| (i, x.span.byte_start, None)),
+            NodeId::Beat(key) => {
+                let doc_id = crate::connectivity::bundle_id(doc)?;
+                doc.beats
+                    .iter()
+                    .find(|b| crate::bundles::bundle_beat_key(&doc_id, &b.id) == *key)
+                    .map(|b| (i, b.span.byte_start, b.on.as_ref().map(|(o, _)| o.as_str())))
+            }
+            NodeId::Entry(e) => doc
+                .entries
+                .iter()
+                .find(|x| x.id == *e)
+                .map(|x| (i, x.span.byte_start, x.on.as_ref().map(|(o, _)| o.as_str()))),
+        }
+    };
+    let orders = |from: &NodeId, to: &NodeId| {
+        graph.edge_kinds_for(from, to).is_some_and(|ks| {
+            ks.iter().any(|k| {
+                matches!(k, EdgeKind::Visited | EdgeKind::Completed | EdgeKind::Active | EdgeKind::Start)
+            })
+        })
+    };
+    for id in graph.nodes.keys() {
+        let Some(occasion) = unit_of(id).and_then(|(_, _, on)| on).filter(|o| named.contains(o)) else {
+            continue;
+        };
+        let mut seen = BTreeSet::new();
+        let mut stack = vec![id];
+        while let Some(from) = stack.pop() {
+            for to in graph.edges.get(from).into_iter().flatten() {
+                if orders(from, to) && seen.insert(to) {
+                    stack.push(to);
+                }
+            }
+        }
+        for to in seen {
+            if let Some((i, key, _)) = unit_of(to) {
+                out.entry(docs[i].0.clone())
+                    .or_default()
+                    .entry(key)
+                    .or_default()
+                    .insert(occasion.to_string());
+            }
+        }
+    }
+    out
 }
 
 /// Every `::assert` site of one project root, by relation: its document,
@@ -573,29 +678,31 @@ fn unifiable(a: &[Option<String>], b: &[Option<String>]) -> bool {
 /// `W-CAST-ABSENT`s under the root's fact envelope and the document's
 /// beat-ladder assumptions ([`crate::beats::presence_ladder`]) — a line the
 /// Must set or the ladder shows present is dropped, the rest keep the
-/// project's wording.
+/// project's wording. Returns the lines only the project shows may be
+/// absent (dsl 0.25.0 §6): those in a unit that follows, in the scenario
+/// graph, an occasion on which the engine changes a relation `assume: true`
+/// read as unchanged. Their spans carry byte offsets only; the caller
+/// positions and adds them.
 pub fn reconcile_presence(
     diags: &mut Vec<Diagnostic>,
     path: &Path,
     doc: &Document,
     folded: &FoldedEnv,
     project: &PresenceProject<'_>,
-) {
-    if !diags.iter().any(|d| d.code == W_CAST_ABSENT) {
-        return;
+) -> Vec<Diagnostic> {
+    if project.after.is_empty() && !diags.iter().any(|d| d.code == W_CAST_ABSENT) {
+        return Vec::new();
     }
-    let still: Vec<Diagnostic> = check_presence(path, doc, folded, Some(project))
+    let mut still: Vec<Diagnostic> = check_presence(path, doc, folded, Some(project))
         .into_iter()
         .filter(|d| d.code == W_CAST_ABSENT)
         .collect();
+    let at = |d: &Diagnostic| (d.span.byte_start, d.span.byte_end);
     diags.retain_mut(|d| {
         if d.code != W_CAST_ABSENT {
             return true;
         }
-        match still
-            .iter()
-            .find(|s| (s.span.byte_start, s.span.byte_end) == (d.span.byte_start, d.span.byte_end))
-        {
+        match still.iter().find(|s| at(s) == at(d)) {
             Some(s) => {
                 d.message = s.message.clone();
                 true
@@ -603,6 +710,8 @@ pub fn reconcile_presence(
             None => false,
         }
     });
+    still.retain(|s| !diags.iter().any(|d| d.code == W_CAST_ABSENT && at(d) == at(s)));
+    still
 }
 
 /// A `start` conjunct that stays true once it held — `entry.<id>.everRead`
@@ -1142,8 +1251,18 @@ struct Presence<'a> {
     base: usize,
     /// The quest whose body is being walked.
     quest: Option<String>,
-    /// Speaker → `present`'s conjuncts; `None` once reported unparseable.
-    present: BTreeMap<String, Option<PresentConjuncts>>,
+    /// dsl 0.25.0 §6: occasion → the engine-`reserved` relations whose
+    /// `changedOn:` names it.
+    changed_on: BTreeMap<String, BTreeSet<String>>,
+    /// The `changedOn` relations the engine may have changed before the
+    /// code being walked: `assume: true` no longer reads them as unchanged.
+    changed: BTreeSet<String>,
+    /// Speaker → `present`'s conjuncts as written; `None` once reported
+    /// unparseable.
+    present: BTreeMap<String, Option<Vec<Expr>>>,
+    /// (speaker, [`Self::changed`] as it applies to the speaker) →
+    /// `present`'s conjuncts, each with its rule-read form.
+    reads: BTreeMap<(String, BTreeSet<String>), PresentConjuncts>,
     out: Vec<Diagnostic>,
 }
 
@@ -1227,7 +1346,8 @@ impl Presence<'_> {
     /// side a positive `holds(A)` becomes `holds(A) && D` (what it implies)
     /// and, when `D` is exact, a negative one `holds(A) || D`; on the
     /// `present` side an exact `D` replaces it, and under `assume` a
-    /// negative `holds` of an engine-`reserved` relation reads `false`.
+    /// negative `holds` of an engine-`reserved` relation reads `false` —
+    /// unless (dsl 0.25.0 §6) the relation is in [`Self::changed`].
     /// The rule `cel()`s read are pushed onto `cels`.
     fn expand(&self, e: &Expr, pol: Pol, side: Side, depth: u8, cels: &mut Vec<String>) -> Expr {
         let Expr::Call(c) = e else { return e.clone() };
@@ -1252,6 +1372,7 @@ impl Presence<'_> {
                 if side == (Side::Present { assume: true })
                     && pol == Pol::Neg
                     && vocab.relations.get(&atom.func_name).is_some_and(|d| d.reserved)
+                    && !self.changed.contains(&atom.func_name)
                 {
                     return Expr::Literal(Val::Boolean(false));
                 }
@@ -1318,15 +1439,22 @@ impl Presence<'_> {
 
     /// One unit (a scene's shots, a quest, an entry, a bundle beat) under
     /// its own assumptions and the ladder's; `absent` ([`Self::absent_facts`])
-    /// holds at its start, as path state the body's writes may end.
+    /// holds at its start, as path state the body's writes may end. `after`
+    /// are the occasions the unit follows (dsl 0.25.0 §6): the relations they
+    /// change are no longer assumed unchanged.
     fn unit<'n>(
         &mut self,
         conds: Vec<(Expr, String)>,
         ladder: &[String],
         absent: Vec<String>,
+        after: &[String],
         bodies: impl Iterator<Item = &'n [Node]>,
     ) {
         self.guards.clear();
+        self.changed.clear();
+        for occasion in after {
+            self.follow(occasion);
+        }
         for c in conds {
             self.push(Some(c));
         }
@@ -1342,6 +1470,16 @@ impl Presence<'_> {
         for body in bodies {
             self.walk(body);
         }
+    }
+
+    /// dsl 0.25.0 §6: the code walked from here on follows `occasion`, so the
+    /// relations it changes join [`Self::changed`]. Returns the set before.
+    fn follow(&mut self, occasion: &str) -> BTreeSet<String> {
+        let before = self.changed.clone();
+        if let Some(rels) = self.changed_on.get(occasion) {
+            self.changed.extend(rels.iter().cloned());
+        }
+        before
     }
 
     /// `check-project`: the facts known absent when unit `key` of this
@@ -1473,11 +1611,20 @@ impl Presence<'_> {
                         conds.extend(self.parse(&format!("quest.{q}.state == '{state}'"), None));
                     }
                     conds.extend(o.when.as_ref().and_then(|w| self.parse(&w.raw, None)));
+                    // Raising an occasion fires the same-named event: the
+                    // handler runs on it (dsl 0.25.0 §6).
+                    let before = self.follow(&o.event);
                     self.region(conds, &o.body);
+                    self.changed = before;
                 }
                 Node::Objective(o) => {
                     let cond = self.parse(&o.done.raw, None);
+                    // An `on=` objective completes when its occasion judges it.
+                    let before = o.on.as_ref().map(|(on, _)| self.follow(on));
                     self.region(cond.into_iter().collect(), &o.body);
+                    if let Some(before) = before {
+                        self.changed = before;
+                    }
                 }
             }
         }
@@ -1601,17 +1748,41 @@ impl Presence<'_> {
     }
 
     /// `present`'s conjuncts for `speaker`, parsed once, each with its
-    /// rule-read form. A plugin `present:` that is not a condition is
-    /// reported here, once, at `span`.
+    /// rule-read form under the relations [`Self::changed`] holds (dsl
+    /// 0.25.0 §6). A plugin `present:` that is not a condition is reported
+    /// here, once, at `span`.
     fn present_of(&mut self, speaker: &str, span: Span) -> Option<PresentConjuncts> {
-        if let Some(cached) = self.present.get(speaker) {
-            return cached.clone();
+        let written = match self.present.get(speaker) {
+            Some(cached) => cached.clone()?,
+            None => {
+                let written = self.written_present(speaker, span);
+                self.present.insert(speaker.to_string(), written.clone());
+                written?
+            }
+        };
+        let assume = self.folded.cast.get(speaker)?.assume == Some(true);
+        let changed = if assume { self.changed.clone() } else { BTreeSet::new() };
+        let key = (speaker.to_string(), changed);
+        if let Some(read) = self.reads.get(&key) {
+            return Some(read.clone());
         }
+        let side = Side::Present { assume };
+        let read: PresentConjuncts = written
+            .into_iter()
+            .map(|p| {
+                let read = self.expand(&p, Pol::Pos, side, EXPAND_DEPTH, &mut Vec::new());
+                (p, read)
+            })
+            .collect();
+        self.reads.insert(key, read.clone());
+        Some(read)
+    }
+
+    /// `present`'s top-level conjuncts for `speaker` as written; `None` (the
+    /// faults reported at `span`, single-file) when it is not a condition.
+    fn written_present(&mut self, speaker: &str, span: Span) -> Option<Vec<Expr>> {
         let member = self.folded.cast.get(speaker)?;
         let raw = member.present.clone()?;
-        let side = Side::Present {
-            assume: member.assume == Some(true),
-        };
         let mut faults = present_faults(speaker, &raw, span);
         // A `present:` reading a state path this document does not declare
         // is no condition here — `W-CAST-ABSENT` would suggest a guard that
@@ -1640,32 +1811,24 @@ impl Presence<'_> {
                 }
             }
         }
-        let parsed = if faults.is_empty() {
-            self.parse(&raw, None).map(|(e, _)| {
+        if faults.is_empty() {
+            return self.parse(&raw, None).map(|(e, _)| {
                 let mut out = Vec::new();
                 conjuncts(&e, &mut out);
-                out.into_iter()
-                    .map(|p| {
-                        let read = self.expand(&p, Pol::Pos, side, EXPAND_DEPTH, &mut Vec::new());
-                        (p, read)
-                    })
-                    .collect()
-            })
-        } else {
-            if self.facts.is_none() {
-                self.out.extend(faults.into_iter().map(|mut d| {
-                    d.message.push_str(if d.code == "E-UNDECLARED" {
-                        " (dsl 0.24.0 §4)"
-                    } else {
-                        " — fix the plugin's `cast` export (dsl 0.24.0 §4)"
-                    });
-                    d
-                }));
-            }
-            None
-        };
-        self.present.insert(speaker.to_string(), parsed.clone());
-        parsed
+                out
+            });
+        }
+        if self.facts.is_none() {
+            self.out.extend(faults.into_iter().map(|mut d| {
+                d.message.push_str(if d.code == "E-UNDECLARED" {
+                    " (dsl 0.24.0 §4)"
+                } else {
+                    " — fix the plugin's `cast` export (dsl 0.24.0 §4)"
+                });
+                d
+            }));
+        }
+        None
     }
 
     fn line(&mut self, l: &Line) {
@@ -1701,6 +1864,20 @@ impl Presence<'_> {
              `@{who}{{when=\"{raw}\"}}` — or move it under a guard that implies it",
             who = l.speaker
         );
+        // dsl 0.25.0 §6: say so when only `changedOn` took `assume` away.
+        if !self.changed.is_empty() && self.folded.cast[&l.speaker].assume == Some(true) {
+            let changed = std::mem::take(&mut self.changed);
+            let assumed = self.present_of(&l.speaker, span);
+            let rels: Vec<String> = changed.iter().map(|r| format!("`{r}`")).collect();
+            self.changed = changed;
+            if assumed.is_some_and(|a| self.implied(&a, own.as_ref(), slot)) {
+                message.push_str(&format!(
+                    "; `assume: true` does not cover {}: this line follows an occasion its \
+                     `changedOn:` names (dsl 0.25.0 §6)",
+                    rels.join(", ")
+                ));
+            }
+        }
         if self.facts.is_none() && (raw.contains("holds(") || raw.contains("count(")) {
             message.push_str(
                 " (a single-file check does not see facts asserted on every route to this \

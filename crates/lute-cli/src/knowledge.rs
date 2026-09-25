@@ -801,16 +801,22 @@ fn defeat_ways(p: &Pattern, k: &RootKnowledge) -> Vec<String> {
     ways
 }
 
-/// How one defeating fact defeats: how it is asserted, else the premises of
-/// the first rule instance that derives it.
+/// How one defeating fact defeats: how it is asserted, else every rule
+/// instance that derives it (dsl 0.25.0 §9, LH N6 — not only the first:
+/// the route a story hinges on may be any of them), as `lute lore` lists.
 fn defeated_when(g: &GroundFact, k: &RootKnowledge) -> String {
     let ways = defeat_ways(&Pattern::of(g), k);
     if !ways.is_empty() {
         return ways.join("; or ");
     }
-    match derivations(g, k).first() {
-        Some(d) => format!("defeated when {} is derived ⇐ {}", ground_text(g), derivation_text(d, k)),
-        None => format!("defeated when {} is derived", ground_text(g)),
+    let routes: Vec<String> = derivations(g, k)
+        .iter()
+        .map(|d| format!("⇐ {}", derivation_text(d, k)))
+        .collect();
+    if routes.is_empty() {
+        format!("defeated when {} is derived", ground_text(g))
+    } else {
+        format!("defeated when {} is derived {}", ground_text(g), routes.join(" / "))
     }
 }
 

@@ -110,6 +110,7 @@ fn bundle_beat_walks_the_chosen_arm_and_applies_its_effects() {
         Step::Beat {
             id: "interviews.porter".into(),
             eligible: Some(true),
+            after_unmet: false,
         }
     );
     assert_eq!(lines(&report.steps), vec!["You again.", "I saw nothing."]);
@@ -162,6 +163,7 @@ fn bundle_beat_when_is_shown_not_enforced() {
         Step::Beat {
             id: "interviews.porter".into(),
             eligible: Some(false),
+            after_unmet: false,
         }
     );
     assert_eq!(lines(&report.steps), vec!["You again.", "Good."]);
@@ -169,6 +171,43 @@ fn bundle_beat_when_is_shown_not_enforced() {
         report.render_human().contains("not eligible"),
         "{}",
         report.render_human()
+    );
+}
+
+/// dsl 0.25.0 §3: a bundle beat's `after=` joins its `when` on the head —
+/// unmet over the mocked `visited:` it reads as not eligible, and says why.
+#[test]
+fn bundle_beat_after_is_an_eligibility_conjunct() {
+    let src = BUNDLE.replacen(
+        "when=\"run.porterTrust >= 0\"",
+        "when=\"run.porterTrust >= 0\" after=\"visited('interviews.first')\"",
+        1,
+    );
+    let (report, _) = trace_beat(&input_for(&src), choose("porterTalk", "leave"), "porter");
+    assert_eq!(
+        report.steps[0],
+        Step::Beat {
+            id: "interviews.porter".into(),
+            eligible: Some(false),
+            after_unmet: true,
+        }
+    );
+    assert!(
+        report
+            .render_human()
+            .contains("not eligible: `after` prerequisite not satisfied"),
+        "{}",
+        report.render_human()
+    );
+    let visited = MockSet {
+        visited: vec!["interviews.first".into()],
+        ..choose("porterTalk", "leave")
+    };
+    let (report, _) = trace_beat(&input_for(&src), visited, "porter");
+    assert!(
+        matches!(&report.steps[0], Step::Beat { eligible: Some(true), after_unmet: false, .. }),
+        "{:?}",
+        report.steps[0]
     );
 }
 

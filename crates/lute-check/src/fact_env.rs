@@ -1000,6 +1000,9 @@ pub enum HoldsVerdict<'e> {
     Impossible,
     /// A fact in `Must(slot)` matches `P` — the first such fact.
     Guaranteed(&'e MustFact),
+    /// dsl 0.25.0 §1: a fact in `Must(slot)` of a relation that excludes
+    /// `P`'s, on `P`'s arguments — the first such fact. `holds(P)` is false.
+    Excluded(&'e MustFact),
     /// Both outcomes are reachable, or the analysis cannot separate them
     /// (also: an undeclared relation or a wrong arity, owned elsewhere).
     Possible,
@@ -1147,7 +1150,39 @@ impl<'a> FactScope<'a> {
         if !self.in_vocab(q) {
             return HoldsVerdict::Possible;
         }
-        self.env.holds(self.path, self.span, q, self.wip)
+        match self.env.holds(self.path, self.span, q, self.wip) {
+            HoldsVerdict::Possible => self
+                .excluding(q)
+                .map_or(HoldsVerdict::Possible, HoldsVerdict::Excluded),
+            v => v,
+        }
+    }
+
+    /// dsl 0.25.0 §1: a guaranteed fact that rules out every instance of `q`
+    /// — for a ground `q`, a must fact of an excluding relation on the same
+    /// arguments; for a pattern with `_`, every `May` instance is so ruled
+    /// out (a pattern over an unbounded relation never is).
+    fn excluding(&self, q: &QueryPattern) -> Option<&'a MustFact> {
+        let must = self.env.must.at(self.path, self.span);
+        let rules_out = |args: &[String]| {
+            must.iter()
+                .find(|m| m.fact.args == args && self.vocab.excludes(&m.fact.relation, &q.relation))
+        };
+        if let Some(g) = q.ground() {
+            return rules_out(&g.args);
+        }
+        let may = self.env.may_set(self.wip);
+        if !may.decides(q) || may.is_unbounded(&q.relation) {
+            return None;
+        }
+        let mut first = None;
+        for args in may.instances(&q.relation)? {
+            if q.matches_args(args) {
+                let m = rules_out(args)?;
+                first.get_or_insert(m);
+            }
+        }
+        first
     }
 
     pub fn count(&self, q: &QueryPattern) -> Option<CountInterval> {

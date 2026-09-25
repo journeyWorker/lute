@@ -2,9 +2,10 @@
 //! `check-project` passes: `<quest activate complete>` values, `<on
 //! target>`, `::accept{at}`, accepting a subquest child
 //! (`E-ACCEPT-TARGET`), `W-QUEST-NEVER-ACCEPTED`, and the reserved read-only
-//! `quest.<id>.failedBy` / `quest.<id>.objectives.<o>.failed` paths.
+//! `quest.<id>.failedBy` / `quest.<id>.objectives.<o>.failed` paths; dsl
+//! 0.25.0 §5 `<quest accept="external">`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use lute_check::{
@@ -141,6 +142,32 @@ fn activate_accept_beside_start_is_attr_type() {
     assert!(d.message.contains("`start`"), "{}", d.message);
 }
 
+#[test]
+fn quest_accept_takes_only_external_and_never_beside_start() {
+    let good = quest_doc(
+        "<quest id=\"bounty\" accept=\"external\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+    );
+    let ds = diags(&good);
+    assert!(errors(&ds).is_empty(), "{ds:?}");
+
+    let bad = quest_doc(
+        "<quest id=\"bounty\" accept=\"board\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+    );
+    let ds = diags(&bad);
+    let d = only(&ds, "E-ATTR-TYPE");
+    assert_eq!(anchored(&bad, d), "board");
+    assert!(d.message.contains("\"external\""), "{}", d.message);
+
+    let started = quest_doc(
+        "<quest id=\"bounty\" accept=\"external\" start=\"run.d\">\n\
+         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+    );
+    let ds = diags(&started);
+    let d = only(&ds, "E-ATTR-TYPE");
+    assert_eq!(anchored(&started, d), "external");
+    assert!(d.message.contains("`start`"), "{}", d.message);
+}
+
 // --- `<on event target>` -----------------------------------------------------
 
 fn on_quest(on: &str) -> String {
@@ -273,11 +300,29 @@ fn accepting_an_activate_accept_child_is_clean() {
     assert!(ds.is_empty(), "{ds:?}");
 }
 
+#[test]
+fn external_acceptance_of_a_child_that_activates_with_its_parent_is_accept_target() {
+    let quests = tree(" accept=\"external\"");
+    let ds = project_accepts(&[("quest.lute", &quests)]);
+    let d = only(&ds, "E-ACCEPT-TARGET");
+    assert_eq!(anchored(&quests, d), "external");
+    assert!(
+        d.message.contains("parent `main`") && d.message.contains("activate=\"accept\""),
+        "{}",
+        d.message
+    );
+    let waiting = tree(" activate=\"accept\" accept=\"external\"");
+    assert!(project_accepts(&[("quest.lute", &waiting)]).is_empty());
+}
+
 // --- W-QUEST-NEVER-ACCEPTED ---------------------------------------------------
 
-fn never_accepted(texts: &[(&str, &str)], mocked: &[&str]) -> Vec<Diagnostic> {
-    let mocked: BTreeSet<String> = mocked.iter().map(|s| s.to_string()).collect();
-    check_project_never_accepted(&docs(texts), &mocked)
+fn never_accepted(texts: &[(&str, &str)], mocked: &[(&str, &str)]) -> Vec<Diagnostic> {
+    let mut by_quest: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    for (id, file) in mocked {
+        by_quest.entry(id.to_string()).or_default().push(PathBuf::from(file));
+    }
+    check_project_never_accepted(&docs(texts), &by_quest)
         .into_iter()
         .map(|(_, d)| d)
         .collect()
@@ -294,20 +339,44 @@ fn an_accept_driven_quest_nothing_accepts_is_never_accepted() {
     assert_eq!(d.severity, Severity::Warning);
     assert_eq!(anchored(&quest, d), "lonely");
     assert!(
-        d.message.contains("::accept{quest=\"lonely\"}") && d.message.contains("`start`"),
+        d.message.contains("::accept{quest=\"lonely\"}")
+            && d.message.contains("`start`")
+            && d.message.contains("accept=\"external\""),
         "{}",
         d.message
     );
 }
 
 #[test]
-fn an_accept_site_or_an_accepts_mock_reaches_the_quest() {
+fn an_accept_site_or_external_acceptance_reaches_the_quest() {
     let quest = quest_doc(LONELY);
     let later = scene_doc("hub.board", "::accept{quest=\"lonely\" at=\"nextRun\"}\n");
     assert!(never_accepted(&[("scene.lute", &later), ("quest.lute", &quest)], &[]).is_empty());
+    let board = quest_doc(
+        "<quest id=\"lonely\" accept=\"external\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+    );
+    assert!(never_accepted(&[("quest.lute", &board)], &[]).is_empty());
+    // An externally accepted child that waits for its acceptance.
+    let child = tree(" activate=\"accept\" accept=\"external\"");
+    assert!(never_accepted(&[("quest.lute", &child)], &[]).is_empty());
+}
+
+/// dsl 0.25.0 §5 (LH N5): a test's `accepts:` mock is a precondition of the
+/// test, not a route in the game — the quest still warns, and the warning
+/// names the mock and `accept="external"`.
+#[test]
+fn a_test_mock_accepting_the_quest_does_not_silence_the_warning() {
+    let quest = quest_doc(LONELY);
     let quiet = scene_doc("hub.board", "@narrator: Nothing to take.\n");
+    let ds = never_accepted(
+        &[("scene.lute", &quiet), ("quest.lute", &quest)],
+        &[("lonely", "tests/lonely.test.yaml")],
+    );
+    let d = only(&ds, "W-QUEST-NEVER-ACCEPTED");
     assert!(
-        never_accepted(&[("scene.lute", &quiet), ("quest.lute", &quest)], &["lonely"]).is_empty()
+        d.message.contains("`tests/lonely.test.yaml`") && d.message.contains("accept=\"external\""),
+        "{}",
+        d.message
     );
 }
 

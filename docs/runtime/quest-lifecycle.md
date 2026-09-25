@@ -86,7 +86,17 @@ accept-driven quest of the project (`E-ACCEPT-TARGET`): a quest without
 `start` that is either no one's subquest or declares `activate="accept"` —
 so an engine never sees an `accept` for a quest with a `start` predicate, nor
 for a child that activates with its parent. An accept-driven quest that no
-`::accept` in the project names is `W-QUEST-NEVER-ACCEPTED`.
+`::accept` in the project names and that is not `accept="external"` is
+`W-QUEST-NEVER-ACCEPTED`; a test's `accepts:` mock does not count.
+
+**Accepted outside the script — `QuestCmd.accept: "external"`** (dsl 0.25.0
+§5). `<quest accept="external">` marks an accept-driven quest the engine
+itself offers — a quest board, a menu, a UI — so the moment of acceptance is
+in no document. The engine activates it when the player takes it, with the
+same rules as an `accept` record: only while `unset`, and for an
+`activate="accept"` child only while its parent is `active`. `accept` is
+absent for every other quest; an engine may still accept any accept-driven
+quest through its own API, but only `external` ones are meant to be offered.
 
 **Accepting for the next run — `applies: "nextRun"`** (dsl 0.24.0 §2).
 `::accept{quest="<id>" at="nextRun"}` queues the acceptance instead: the

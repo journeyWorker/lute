@@ -128,6 +128,12 @@ impl RelVocab {
             Some(rel.tier.as_deref().unwrap_or("run"))
         }
     }
+
+    /// dsl 0.25.0 §1: relations `a` and `b` can never hold together on the
+    /// same arguments (`excludes:`, closed symmetrically).
+    pub fn excludes(&self, a: &str, b: &str) -> bool {
+        lute_manifest::relations::relations_exclude(&self.relations, a, b)
+    }
 }
 
 pub const E_ENTITY_KIND_SHAPE: &str = "E-ENTITY-KIND-SHAPE"; // §3.1
@@ -147,6 +153,11 @@ pub const E_EXTENDS_RELATION_SIG: &str = "E-EXTENDS-RELATION-SIG"; // §4.1
 /// dsl 0.24 T3-8: a relation named like a CEL call/macro/keyword can never be
 /// queried — `holds(has(lamp))` does not even parse.
 pub const E_RELATION_RESERVED_NAME: &str = "E-RELATION-RESERVED-NAME";
+
+/// dsl 0.25.0 §1/§6: a relation declaration whose `excludes` names a
+/// relation of other argument kinds, or whose `changedOn` sits on a relation
+/// that is not engine-`reserved` or names an undeclared occasion.
+pub const E_RELATION_DECL: &str = "E-RELATION-DECL";
 
 /// Names a relation may not take (dsl 0.24 T3-8): the Lute-CEL profile's
 /// calls (`isSet`, `holds`, `count`, `countDistinct`, `validAt`, `now`,
@@ -272,6 +283,17 @@ pub fn validate_rel_decls(
                 span_of(name),
             ));
         }
+        if !decl.changed_on.is_empty() && !decl.reserved {
+            out.push(diag(
+                E_RELATION_DECL,
+                format!(
+                    "relation `{name}` declares `changedOn:` but is not `reserved: true`; only the \
+                     engine changes a relation on an occasion — script writes are ordered by the \
+                     scenario already (dsl 0.25.0 §6)"
+                ),
+                span_of(name),
+            ));
+        }
         if !decl.key.is_empty() {
             let n = decl.args.len() as i64;
             let mut seen = BTreeSet::new();
@@ -293,6 +315,40 @@ pub fn validate_rel_decls(
                     span_of(name),
                 ));
             }
+        }
+    }
+    out
+}
+
+/// dsl 0.25.0 §6: `E-RELATION-DECL` for every `changedOn:` entry of the
+/// merged `vocab` that names no declared occasion (with a did-you-mean),
+/// reported where the relation is declared — an imported one at its schema
+/// line ([`at_origin`]). Silent when no occasion is declared (a project-less
+/// check has no occasion vocabulary, D-F), like every occasion-name check.
+pub fn check_changed_on(
+    vocab: &RelVocab,
+    occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+    meta: &Meta,
+) -> Vec<Diagnostic> {
+    if occasions.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (name, decl) in &vocab.relations {
+        for occasion in decl.changed_on.iter().filter(|o| !occasions.contains_key(*o)) {
+            let hint = lute_manifest::suggest::nearest(occasion, occasions.keys().map(String::as_str), 2)
+                .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+            out.push(at_origin(
+                diag(
+                    E_RELATION_DECL,
+                    format!(
+                        "relation `{name}` `changedOn: {occasion}` is not a declared occasion{hint} \
+                         (dsl 0.25.0 §6)"
+                    ),
+                    meta_key_span(meta, name),
+                ),
+                vocab.origins.relations.get(name),
+            ));
         }
     }
     out
@@ -433,6 +489,44 @@ pub fn build_rel_vocab(
                         "relation `{name}` argument domain `{arg}` is not a declared entity kind, enum, or domain (dsl 0.3.0 §4)"
                     ),
                     span_of(arg),
+                ),
+                origins.relations.get(name),
+            ));
+        }
+    }
+
+    // Merged check (a2), dsl 0.25.0 §1: every `excludes:` entry names a
+    // declared relation other than itself, with the same argument kinds —
+    // else E-RELATION-DECL (the partner may live in an imported schema).
+    for (name, decl) in &relations {
+        for other in &decl.excludes {
+            let problem = match relations.get(other) {
+                _ if other == name => {
+                    "a relation cannot exclude itself".to_string()
+                }
+                None => {
+                    let hint = lute_manifest::suggest::nearest(
+                        other,
+                        relations.keys().map(String::as_str).filter(|n| *n != name.as_str()),
+                        2,
+                    )
+                    .map(|s| format!(" — did you mean `{s}`?"))
+                    .unwrap_or_default();
+                    format!("`{other}` is not a declared relation{hint}")
+                }
+                Some(od) if od.args != decl.args => format!(
+                    "`{other}` takes [{}] but `{name}` takes [{}]; excluded relations must \
+                     have the same argument kinds",
+                    od.args.join(", "),
+                    decl.args.join(", ")
+                ),
+                Some(_) => continue,
+            };
+            diags.push(at_origin(
+                diag(
+                    E_RELATION_DECL,
+                    format!("relation `{name}` `excludes: [{other}]`: {problem} (dsl 0.25.0 §1)"),
+                    span_of(name),
                 ),
                 origins.relations.get(name),
             ));

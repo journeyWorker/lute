@@ -497,6 +497,7 @@ fn quest_record_serializes_per_spec() {
         tier: None,
         activate: None,
         complete: None,
+        accept: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
@@ -653,8 +654,9 @@ fn on_record_serializes_per_spec() {
     );
 }
 
-/// dsl 0.24.0 §2: the quest modes, an `<on target>` and a queued accept
-/// serialize their non-default values, appended after the 0.23 fields.
+/// dsl 0.24.0 §2 / 0.25.0 §5: the quest modes, an `<on target>` and a
+/// queued accept serialize their non-default values, appended after the
+/// 0.23 fields.
 #[test]
 fn quest_structure_fields_serialize_when_authored() {
     let quest = Command::Quest(QuestCmd {
@@ -669,11 +671,12 @@ fn quest_structure_fields_serialize_when_authored() {
         tier: None,
         activate: Some(lute_compile::ir::QuestActivate::Accept),
         complete: Some(lute_compile::ir::QuestComplete::Any),
+        accept: Some(lute_compile::ir::QuestAccept::External),
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&quest),
-        r#"{"kind":"quest","addr":"001-0100","id":"toll","objectives":[],"activate":"accept","complete":"any"}"#
+        r#"{"kind":"quest","addr":"001-0100","id":"toll","objectives":[],"activate":"accept","complete":"any","accept":"external"}"#
     );
     let on = Command::On(OnCmd {
         addr: "001-0400".into(),

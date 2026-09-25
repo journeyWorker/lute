@@ -232,6 +232,7 @@ impl Parser<'_> {
         let tier = take_str_spanned(&mut attrs, "tier");
         let activate = take_str_spanned(&mut attrs, "activate");
         let complete = take_str_spanned(&mut attrs, "complete");
+        let accept = take_str_spanned(&mut attrs, "accept");
         let outer = self.enter_top_block("quest", &id, &open);
         let (body, rewards, end_o) = self.parse_owner_body("quest", &open);
         self.top_block = outer;
@@ -246,6 +247,7 @@ impl Parser<'_> {
             tier,
             activate,
             complete,
+            accept,
             attrs,
             body,
             rewards,
@@ -272,6 +274,7 @@ impl Parser<'_> {
         let on = take_str_spanned(&mut attrs, "on");
         let priority = take_str_spanned(&mut attrs, "priority");
         let once = take_str_spanned(&mut attrs, "once");
+        let share = take_str_spanned(&mut attrs, "share");
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let outer = self.enter_top_block("entry", &id, &open);
         let (body, end_o) = self.parse_block_body("entry", &open);
@@ -287,6 +290,7 @@ impl Parser<'_> {
             on,
             priority,
             once,
+            share,
             when,
             attrs,
             body,
@@ -309,6 +313,10 @@ impl Parser<'_> {
         let title = take_str_spanned(&mut attrs, "title");
         let priority = take_str_spanned(&mut attrs, "priority");
         let once = take_str_spanned(&mut attrs, "once");
+        let share = take_str_spanned(&mut attrs, "share");
+        // dsl 0.25.0 §3: raw text + span, like `<quest after>` — never
+        // `take_cel`; the checker validates it under the prereq grammar.
+        let after = take_str_spanned(&mut attrs, "after");
         let also = attrs.iter().position(|a| a.key == "also").and_then(|pos| {
             let flag = match &attrs[pos].value {
                 AttrValue::BoolTrue => Some(true),
@@ -330,6 +338,8 @@ impl Parser<'_> {
             title,
             priority,
             once,
+            share,
+            after,
             also,
             when,
             attrs,

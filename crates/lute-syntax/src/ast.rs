@@ -224,6 +224,10 @@ pub struct Quest {
     /// completion reads its required objectives. Raw text + value span; the
     /// checker validates the value (`E-ATTR-TYPE`).
     pub complete: Option<(String, Span)>,
+    /// dsl 0.25.0 §5: `accept="external"` — the quest is accepted outside
+    /// the script (a quest board, a menu, a UI). Raw text + value span; the
+    /// checker validates the value (`E-ATTR-TYPE`).
+    pub accept: Option<(String, Span)>,
     /// Residual (post-extraction) attrs, mirroring [`Branch`]; normally empty.
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
@@ -243,6 +247,12 @@ impl Quest {
     /// completes the quest (the other open children fail `superseded`).
     pub fn completes_on_any(&self) -> bool {
         self.complete.as_ref().is_some_and(|(v, _)| v == "any")
+    }
+
+    /// dsl 0.25.0 §5: `accept="external"` — the engine accepts the quest
+    /// outside any document, whenever the player chooses.
+    pub fn accepted_externally(&self) -> bool {
+        self.accept.as_ref().is_some_and(|(v, _)| v == "external")
     }
 }
 
@@ -275,6 +285,10 @@ pub struct Entry {
     /// span (`"run"` / `"user"`; absent = repeatable). The checker validates
     /// the value (`E-BEAT-ATTR`).
     pub once: Option<(String, Span)>,
+    /// dsl 0.25.0 §2: the shared-spend key, raw text + value span — beats
+    /// with one key are spent together. The checker validates the shape
+    /// and that `once` is written (`E-BEAT-ATTR`).
+    pub share: Option<(String, Span)>,
     /// Optional eligibility guard (dsl 0.19.0 §3), like [`Quest::start`].
     pub when: Option<CelSlot>,
     /// Residual (post-extraction) attrs, mirroring [`Quest`]; normally empty.
@@ -306,6 +320,13 @@ pub struct BundleBeat {
     pub priority: Option<(String, Span)>,
     /// `run` (the default) / `user` / `false`, like a scene's `once:`.
     pub once: Option<(String, Span)>,
+    /// dsl 0.25.0 §2: the shared-spend key, like [`Entry::share`].
+    pub share: Option<(String, Span)>,
+    /// dsl 0.25.0 §3: the prerequisite, raw text + value span — a scene's
+    /// `after:` on a bundle beat (an eligibility conjunct and a scenario
+    /// edge), validated under the restricted `prereq::parse_prereq`
+    /// grammar like [`Quest::after`], never routed through general CEL.
+    pub after: Option<(String, Span)>,
     pub also: Option<(bool, Span)>,
     pub when: Option<CelSlot>,
     /// Residual (post-extraction) attrs; normally empty.
@@ -444,7 +465,7 @@ pub struct Interp {
     /// dsl 0.24.0 §4: the format hint after the referent, trimmed —
     /// `ordinal` in `{{user.deaths:ordinal}}`. The parser keeps any
     /// identifier here; the checker rejects one that is not a known hint
-    /// ([`INTERP_FORMAT_ORDINAL`] is the only one).
+    /// ([`INTERP_FORMATS`]).
     pub format: Option<String>,
 }
 
@@ -474,10 +495,29 @@ pub fn classify_interp(inner: &str) -> InterpKind {
     }
 }
 
-/// dsl 0.24.0 §4: the one interpolation format hint the language defines —
-/// `{{user.deaths:ordinal}}` renders the number as an English ordinal
-/// ([`english_ordinal`]).
+/// dsl 0.24.0 §4: `{{user.deaths:ordinal}}` renders the number as an
+/// English ordinal ([`english_ordinal`]).
 pub const INTERP_FORMAT_ORDINAL: &str = "ordinal";
+
+/// dsl 0.25.0 §8: `{{run.day:ordinalWord}}` renders the number as an
+/// English ordinal word ([`english_ordinal_word`]).
+pub const INTERP_FORMAT_ORDINAL_WORD: &str = "ordinalWord";
+
+/// Every interpolation format hint the language defines; the checker
+/// rejects any other. Each formats a number ([`format_number`]).
+pub const INTERP_FORMATS: [&str; 2] = [INTERP_FORMAT_ORDINAL, INTERP_FORMAT_ORDINAL_WORD];
+
+/// `n` rendered in format hint `format` ([`INTERP_FORMATS`]) — the one rule
+/// the reference runner, `lute trace` and a component's compile-time literal
+/// splice all render with. `None` for an unknown hint or a number the hint
+/// does not cover: the renderer then shows the number unchanged.
+pub fn format_number(format: &str, n: f64) -> Option<String> {
+    match format {
+        INTERP_FORMAT_ORDINAL => english_ordinal(n),
+        INTERP_FORMAT_ORDINAL_WORD => english_ordinal_word(n),
+        _ => None,
+    }
+}
 
 /// Build the [`Interp`] for one `{{…}}` interior (untrimmed `inner`),
 /// spanned at `span`: a trailing `:hint` is split off into
@@ -556,6 +596,22 @@ pub fn english_ordinal(n: f64) -> Option<String> {
         _ => "th",
     };
     Some(format!("{i}{suffix}"))
+}
+
+/// dsl 0.25.0 §8: `n` as an English ordinal word — `first` … `twentieth`
+/// for 1–20, and [`english_ordinal`]'s digits (`0th`, `21st`, `101st`)
+/// otherwise. `None` exactly where [`english_ordinal`] is.
+pub fn english_ordinal_word(n: f64) -> Option<String> {
+    const WORDS: [&str; 20] = [
+        "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth",
+        "tenth", "eleventh", "twelfth", "thirteenth", "fourteenth", "fifteenth", "sixteenth",
+        "seventeenth", "eighteenth", "nineteenth", "twentieth",
+    ];
+    let digits = english_ordinal(n)?;
+    Some(match n as usize {
+        i @ 1..=20 => WORDS[i - 1].to_string(),
+        _ => digits,
+    })
 }
 
 /// Scan a `<choice label>` / `<hub label>` string for `{{…}}` interpolations
@@ -775,6 +831,27 @@ mod tests {
     fn english_ordinal_is_undefined_off_the_non_negative_integers() {
         for n in [-1.0, 2.5, f64::NAN, f64::INFINITY, 1e15] {
             assert_eq!(english_ordinal(n), None, "{n}");
+        }
+    }
+
+    /// dsl 0.25.0 §8: words for 1–20, digit ordinals on either side, and
+    /// no ordinal where `:ordinal` has none.
+    #[test]
+    fn english_ordinal_word_spells_one_to_twenty_then_falls_back_to_digits() {
+        for (n, want) in [
+            (1.0, "first"),
+            (2.0, "second"),
+            (3.0, "third"),
+            (12.0, "twelfth"),
+            (20.0, "twentieth"),
+            (21.0, "21st"),
+            (0.0, "0th"),
+            (112.0, "112th"),
+        ] {
+            assert_eq!(english_ordinal_word(n).as_deref(), Some(want), "{n}");
+        }
+        for n in [-1.0, 2.5, f64::NAN] {
+            assert_eq!(english_ordinal_word(n), None, "{n}");
         }
     }
     fn test_span() -> lute_core_span::Span {

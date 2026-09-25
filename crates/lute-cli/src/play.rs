@@ -774,6 +774,9 @@ struct Project {
     /// The union entity kinds, the domain an occasion `target: { prefix,
     /// entity }` names (dsl 0.22.0 §8).
     kinds: BTreeMap<String, EntityKindDecl>,
+    /// dsl 0.25.0 §7: what the project's content reads of its plugin calls'
+    /// bridge results — the fields a `bridges:` answer must give.
+    bridge_reads: std::sync::Arc<crate::runner::BridgeReads>,
 }
 
 impl Project {
@@ -1066,6 +1069,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         eval_json["clock"] = serde_json::to_value(clock).unwrap_or(Json::Null);
     }
 
+    let bridge_reads = std::sync::Arc::new(crate::runner::BridgeReads::of(artifacts.values()));
     Ok(Project {
         artifacts,
         authored,
@@ -1086,6 +1090,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         accept_driven,
         accept_children,
         kinds,
+        bridge_reads,
     })
 }
 
@@ -1241,9 +1246,10 @@ fn resolve_state(p: &Project, path: &str, lit: &str) -> Result<Value, String> {
 /// dsl 0.24.0 §5: resolve a script's `bridges:` (`at` names where it was
 /// written) against the plugin calls of the project — a usage error unless
 /// the tag names a plugin directive some document calls whose effects read
-/// a bridge result, every answer gives exactly the fields those effects
-/// read, and each value fits the declared type of every result slot a call
-/// writes it to. The resolved answers, queued in order per tag.
+/// a bridge result, every answer gives only fields those effects read and
+/// (dsl 0.25.0 §7) every one of them content reads ([`Project::bridge_reads`]),
+/// and each value fits the declared type of every result slot a call writes
+/// it to. The resolved answers, queued in order per tag.
 fn resolve_bridges(
     p: &Project,
     at: &str,
@@ -1251,7 +1257,7 @@ fn resolve_bridges(
 ) -> Result<BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>, String> {
     // tag -> field -> the result slots the project's calls write it to.
     let mut calls: BTreeMap<&str, BTreeMap<&str, BTreeSet<&str>>> = BTreeMap::new();
-    // tag -> the fields its calls read, in effect order, typed by the slot
+    // tag -> the fields content reads, in effect order, typed by the slot
     // (the typed answer `lute trace` / `lute test` spell, ember N7).
     let mut shapes: BTreeMap<&str, Vec<(&str, Option<lute_manifest::types::Type>)>> = BTreeMap::new();
     for art in p.artifacts.values() {
@@ -1263,8 +1269,9 @@ fn resolve_bridges(
                 let path = e.get("path").and_then(Json::as_str);
                 if let (Some(field), Some(path)) = (field, path) {
                     calls.entry(tag).or_default().entry(field).or_default().insert(path);
+                    let read = p.bridge_reads.reads(tag, field);
                     let shape = shapes.entry(tag).or_default();
-                    if !shape.iter().any(|(f, _)| *f == field) {
+                    if read && !shape.iter().any(|(f, _)| *f == field) {
                         shape.push((field, state_entry_type(art, path)));
                     }
                 }
@@ -1302,13 +1309,18 @@ fn resolve_bridges(
                     }
                 }
             }
-            if let Some(missing) = fields.keys().find(|f| !answer.iter().any(|(a, _)| a == *f)) {
+            if let Some(missing) = fields
+                .keys()
+                .filter(|f| p.bridge_reads.reads(tag, f))
+                .find(|f| !answer.iter().any(|(a, _)| a == *f))
+            {
                 let shape = lute_trace::bridge_answer_shape(
                     shapes.get(tag.as_str()).into_iter().flatten().map(|(f, t)| (*f, t.as_ref())),
                 );
                 return Err(format!(
-                    "{at}: `bridges.{tag}` answer {n} lacks `{missing}` — an answer gives every \
-                     bridge result `::{tag}` reads: `{shape}` (dsl 0.24.0 §5)"
+                    "{at}: `bridges.{tag}` answer {n} lacks `{missing}`, which content reads — an \
+                     answer gives every bridge result of `::{tag}` content reads: `{shape}` (dsl \
+                     0.25.0 §7)"
                 ));
             }
         }
@@ -1654,13 +1666,20 @@ struct World {
     /// Canonical ids of every presented scene — the `visited(…)` set both
     /// `after:` and CEL `visited('<id>')` read (dsl 0.21.0 §7a.1).
     visited: BTreeSet<String>,
-    /// Scene beats presented since the last `newRun` (`once: run`).
+    /// Scene beats presented since the last `newRun` (`once: run`) — and
+    /// (dsl 0.25.0 §2) every beat, entries included, of a `share` key one of
+    /// them spent this run.
     spent_run: BTreeSet<String>,
-    /// Scene beats presented in this play (`once: user`).
+    /// Scene beats presented in this play (`once: user`), and every beat of
+    /// a `share` key one of them spent.
     spent_user: BTreeSet<String>,
     /// dsl 0.24.0 §1: where on the clock each beat was last presented (an
-    /// entry: read) — what spends `once: day` / `once: slot`.
+    /// entry: read) — what spends `once: day` / `once: slot`; a presented
+    /// shared beat records every beat of its key (dsl 0.25.0 §2).
     spent_at: BTreeMap<String, lute_manifest::clock::ClockAt>,
+    /// dsl 0.25.0 §2: `share` key → the beat whose presentation last spent
+    /// it, for the reason a spent sibling gives.
+    share_spent_by: BTreeMap<String, String>,
     /// Quest ids `accept` records named since the last quest advance (dsl
     /// 0.21.0 §7a.3) — the next advance activates those still `unset`.
     accepts: Vec<String>,
@@ -1809,6 +1828,7 @@ fn seed_world(p: &Project, script: &PlayScript) -> Result<World, String> {
         spent_run: BTreeSet::new(),
         spent_user: BTreeSet::new(),
         spent_at: BTreeMap::new(),
+        share_spent_by: BTreeMap::new(),
         accepts: Vec::new(),
         next_run_accepts: Vec::new(),
         choice_cursor: BTreeMap::new(),
@@ -1816,7 +1836,8 @@ fn seed_world(p: &Project, script: &PlayScript) -> Result<World, String> {
         failed_objectives: BTreeSet::new(),
         bridges: crate::runner::BridgeAnswers {
             top: resolve_bridges(p, "top level", &script.surfaces.bridges)?,
-            ..Default::default()
+            step: BTreeMap::new(),
+            reads: p.bridge_reads.clone(),
         },
         defer_by: None,
         defer_handlers: false,
@@ -1877,11 +1898,8 @@ fn seed_world(p: &Project, script: &PlayScript) -> Result<World, String> {
             }
             // A beat presented this run was also presented ever, and a
             // presented scene is a visited one — as a live presentation
-            // records it.
-            if tier == "run" {
-                w.spent_run.insert(id.clone());
-            }
-            w.spent_user.insert(id.clone());
+            // records it (spending its `share` key, dsl 0.25.0 §2).
+            spend_shared(p, &mut w, id, tier == "run");
             w.visited.insert(id.clone());
         }
     }
@@ -1900,6 +1918,9 @@ fn seed_world(p: &Project, script: &PlayScript) -> Result<World, String> {
                 w.state.insert(format!("entry.{id}.read"), Value::Bool(true));
             }
             w.state.insert(ever_read_path(id), Value::Bool(true));
+            if share_of(p, id).is_some() {
+                spend_shared(p, &mut w, id, tier == "run");
+            }
         }
     }
     for f in &script.surfaces.facts {
@@ -2568,14 +2589,16 @@ fn kind_label(kind: BeatKind) -> &'static str {
     }
 }
 
-/// A scene's declared `after:` (its `prereqEdges` row), parsed by the
+/// A scene's declared `after:` or (dsl 0.25.0 §3) a bundle beat's `after=`
+/// — the `prereqEdges` row whose `node` is the beat's id — parsed by the
 /// checker's restricted profile parser the compile gate already proved it
 /// well-formed under.
-fn scene_prereq(doc_json: &Json) -> Option<PrereqFormula> {
+fn beat_prereq(doc_json: &Json, id: &str) -> Option<PrereqFormula> {
     let raw = doc_json
         .get("prereqEdges")
         .and_then(Json::as_array)?
-        .first()?
+        .iter()
+        .find(|e| e.get("node").and_then(Json::as_str) == Some(id))?
         .get("after")
         .and_then(Json::as_str)?;
     if raw.trim().is_empty() {
@@ -2681,7 +2704,9 @@ fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> 
         }
         // A scene's (or bundle beat's) `once` is spent by presenting it; an
         // entry's (dsl 0.22.0 §7) by its read flag — `entry.<id>.read` (run)
-        // / `.everRead` (user).
+        // / `.everRead` (user). dsl 0.25.0 §2: a beat of a `share` key is
+        // also spent by presenting any other beat of the key (recorded in
+        // the spent sets under every member's id).
         let spent = match (beat.kind, beat.once) {
             (BeatKind::Scene | BeatKind::Bundle, Some(BeatOnce::Run))
                 if w.spent_run.contains(&beat.id) =>
@@ -2693,10 +2718,14 @@ fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> 
             {
                 Some("once: user — already presented")
             }
-            (BeatKind::Entry, Some(BeatOnce::Run)) if flag(format!("entry.{}.read", beat.id)) => {
+            (BeatKind::Entry, Some(BeatOnce::Run))
+                if flag(format!("entry.{}.read", beat.id)) || w.spent_run.contains(&beat.id) =>
+            {
                 Some("once: run — already read this run")
             }
-            (BeatKind::Entry, Some(BeatOnce::User)) if flag(ever_read_path(&beat.id)) => {
+            (BeatKind::Entry, Some(BeatOnce::User))
+                if flag(ever_read_path(&beat.id)) || w.spent_user.contains(&beat.id) =>
+            {
                 Some("once: user — already read")
             }
             // dsl 0.24.0 §1: spent until the clock's day (slot) moves on.
@@ -2712,10 +2741,31 @@ fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> 
             }
             _ => None,
         };
-        let after_unmet = beat.kind == BeatKind::Scene
+        // dsl 0.25.0 §2: spent by a sibling of its key — name the sibling.
+        let spent = spent.map(|reason| {
+            let by = beat
+                .share
+                .as_ref()
+                .and_then(|k| Some((k, w.share_spent_by.get(k)?)))
+                .filter(|(_, by)| **by != beat.id);
+            match (by, beat.once) {
+                (Some((key, by)), Some(once)) => {
+                    let period = match once {
+                        BeatOnce::Run => " this run",
+                        BeatOnce::Day => " today",
+                        BeatOnce::Slot => " this slot",
+                        BeatOnce::User | BeatOnce::None => "",
+                    };
+                    format!("once: {} — `share: {key}` already spent{period} by {by}", once_word(once))
+                }
+                _ => reason.to_string(),
+            }
+        });
+        // A scene's `after:` / a bundle beat's `after=` (dsl 0.25.0 §3).
+        let after_unmet = matches!(beat.kind, BeatKind::Scene | BeatKind::Bundle)
             && p.artifacts
                 .get(&beat.document)
-                .and_then(scene_prereq)
+                .and_then(|doc| beat_prereq(doc, &beat.id))
                 .is_some_and(|f| !eval_prereq(&f, w));
         let verdict = if let Some(reason) = spent {
             Verdict::Ineligible(reason.to_string())
@@ -2804,10 +2854,60 @@ struct Presented {
 
 /// dsl 0.24.0 §1: record where on the declared clock beat `id` was just
 /// presented — `once: day` / `once: slot` are spent until the clock leaves
-/// that day / slot. Nothing without a clock (such a beat is `E-BEAT-ATTR`).
+/// that day / slot — for every beat its presentation spends (dsl 0.25.0
+/// §2, [`spend_group`]). Nothing without a clock (such a beat is
+/// `E-BEAT-ATTR`).
 fn spend_at_clock(p: &Project, w: &mut World, id: &str) {
     if let Some(at) = p.index.clock.as_ref().and_then(|c| lute_trace::clock::position(c, &w.state)) {
-        w.spent_at.insert(id.to_string(), at);
+        for m in spend_group(p, id) {
+            w.spent_at.insert(m.to_string(), at.clone());
+        }
+    }
+}
+
+/// dsl 0.25.0 §2: beat `id`'s `share` key, when it declares one.
+fn share_of<'p>(p: &'p Project, id: &str) -> Option<&'p str> {
+    p.index.beats.iter().find(|b| b.id == id)?.share.as_deref()
+}
+
+/// dsl 0.25.0 §2: the beats one presentation of `id` spends — every beat of
+/// its `share` key (itself included), else `id` alone.
+fn spend_group<'p>(p: &'p Project, id: &'p str) -> Vec<&'p str> {
+    match share_of(p, id) {
+        Some(key) => p
+            .index
+            .beats
+            .iter()
+            .filter(|b| b.share.as_deref() == Some(key))
+            .map(|b| b.id.as_str())
+            .collect(),
+        None => vec![id],
+    }
+}
+
+/// Spend the `once: run` (when `run`) and `once: user` of every beat a
+/// presentation of `id` spends ([`spend_group`]), and remember who spent a
+/// `share` key.
+fn spend_shared(p: &Project, w: &mut World, id: &str, run: bool) {
+    for m in spend_group(p, id) {
+        if run {
+            w.spent_run.insert(m.to_string());
+        }
+        w.spent_user.insert(m.to_string());
+    }
+    if let Some(key) = share_of(p, id) {
+        w.share_spent_by.insert(key.to_string(), id.to_string());
+    }
+}
+
+/// The authored spelling of a `once` policy, for a reason.
+fn once_word(once: BeatOnce) -> &'static str {
+    match once {
+        BeatOnce::Run => "run",
+        BeatOnce::User => "user",
+        BeatOnce::None => "false",
+        BeatOnce::Day => "day",
+        BeatOnce::Slot => "slot",
     }
 }
 
@@ -2838,15 +2938,18 @@ fn present(p: &Project, w: &mut World, beat: &IndexBeat, mock: &MockSet) -> (Pre
     match beat.kind {
         BeatKind::Scene | BeatKind::Bundle => {
             w.visited.insert(beat.id.clone());
-            w.spent_run.insert(beat.id.clone());
-            w.spent_user.insert(beat.id.clone());
+            spend_shared(p, w, &beat.id, true);
             spend_at_clock(p, w, &beat.id);
         }
         // dsl 0.22.0 §7: a completed first read sets the user-tier
-        // `everRead` beside the runner's run-tier `read`; never reset.
+        // `everRead` beside the runner's run-tier `read`; never reset. dsl
+        // 0.25.0 §2: a shared entry's read spends its key's other beats.
         BeatKind::Entry => {
             if w.state.get(&format!("entry.{}.read", beat.id)) == Some(&Value::Bool(true)) {
                 w.state.insert(ever_read_path(&beat.id), Value::Bool(true));
+                if beat.share.is_some() {
+                    spend_shared(p, w, &beat.id, true);
+                }
                 spend_at_clock(p, w, &beat.id);
             }
         }
@@ -2942,6 +3045,9 @@ struct StepRecord {
     /// the `dayEnd` / `dayStart` its clock's `advance:` already raises
     /// ([`clock_raised_note`]).
     notes: Vec<String>,
+    /// dsl 0.25.0 §1: exclusive relations that both hold after the step
+    /// (`seenAfter(elias) and fell(elias) both hold`) — each fails the play.
+    exclusive: Vec<String>,
 }
 
 /// The whole playthrough: the initial quest settle, then every step, and
@@ -2978,6 +3084,7 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
                 quests: Vec::new(),
                 world: None,
                 notes: Vec::new(),
+                exclusive: Vec::new(),
             });
             let skipped: Vec<(usize, Option<String>)> =
                 plan[i + 1..].iter().map(|s| (s.n, s.label.clone())).collect();
@@ -3009,6 +3116,16 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
             let (body, quests, halt) = run_step(p, script, &mut w, step);
             let leftover = std::mem::take(&mut w.bridges.step);
             let halt = halt.or_else(|| unconsumed_step_bridges(step.n, &leftover));
+            let exclusive = exclusive_violations(p, &w);
+            let halt = halt.or_else(|| {
+                (!exclusive.is_empty()).then(|| {
+                    PlayHalt::Error(format!(
+                        "step {}: exclusive relations hold together — {} (dsl 0.25.0 §1)",
+                        step.n,
+                        exclusive.join("; ")
+                    ))
+                })
+            });
             steps.push(StepRecord {
                 n: step.n,
                 label: step.label.clone(),
@@ -3017,6 +3134,7 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
                 quests,
                 world: wants.map(|wants| world_view(p, &w, wants.facts)),
                 notes: clock_raised_note(p, &step.action).into_iter().collect(),
+                exclusive,
             });
             if let Some(h) = halt {
                 return finish(start, steps, h, w);
@@ -4116,6 +4234,9 @@ fn render_human(p: &Project, play: &Playthrough, ir: bool) -> String {
         for note in &s.notes {
             out.push_str(&format!("  note: {note}\n"));
         }
+        for v in &s.exclusive {
+            out.push_str(&format!("  ✗ exclusive: {v}\n"));
+        }
         for q in &s.quests {
             render_records(&mut out, p, ir, &q.document, &q.transcript);
         }
@@ -4391,6 +4512,9 @@ fn render_json(play: &Playthrough) -> Json {
             }
             if !s.notes.is_empty() {
                 o.insert("notes".into(), json!(s.notes));
+            }
+            if !s.exclusive.is_empty() {
+                o.insert("exclusive".into(), json!(s.exclusive));
             }
             match &s.body {
                 StepBody::NewRun {
@@ -4750,6 +4874,48 @@ fn offered_options(
             .map(str::to_string);
         into.entry(id.to_string()).or_default().extend(offered);
     }
+}
+
+/// dsl 0.25.0 §1: every pair of facts that hold together in `w` (after
+/// derivation) although their relations exclude each other, rendered
+/// `seenAfter(elias) and fell(elias) both hold`. Derives only when the
+/// project declares an exclusion.
+fn exclusive_violations(p: &Project, w: &World) -> Vec<String> {
+    let pairs: Vec<(&str, &str)> = p
+        .index
+        .relations
+        .iter()
+        .flat_map(|r| {
+            r.excludes
+                .iter()
+                .filter(|o| r.name.as_str() < o.as_str())
+                .map(|o| (r.name.as_str(), o.as_str()))
+        })
+        .collect();
+    if pairs.is_empty() {
+        return Vec::new();
+    }
+    let runner = Runner::with_carryover(
+        &p.eval_json,
+        w.mock(),
+        w.state.clone(),
+        w.facts.clone(),
+        w.quests.clone(),
+    );
+    let facts = runner.all_facts();
+    let mut out = Vec::new();
+    for (a, b) in pairs {
+        for (_, args) in facts.iter().filter(|(rel, _)| rel == a) {
+            if facts.contains(&(b.to_string(), args.clone())) {
+                out.push(format!(
+                    "{} and {} both hold",
+                    render_fact(&(a.to_string(), args.clone())),
+                    render_fact(&(b.to_string(), args.clone()))
+                ));
+            }
+        }
+    }
+    out
 }
 
 /// The world `w` as expectations judge it: the effective state, every

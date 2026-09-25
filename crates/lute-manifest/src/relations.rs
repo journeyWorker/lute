@@ -53,9 +53,17 @@ pub struct RelationDecl {
     pub tier: Option<String>,
     pub derive: bool,
     pub reserved: bool,
+    /// dsl 0.25.0 §6: the occasions on which the engine may change this
+    /// engine-`reserved` relation, as written (the checker owns
+    /// `E-RELATION-DECL`). A non-string entry is preserved as "".
+    pub changed_on: Vec<String>,
     /// Raw 0-based key indices; non-int entries preserved as -1 (checker:
     /// range/dup).
     pub key: Vec<i64>,
+    /// dsl 0.25.0 §1: relations this one can never hold together with on the
+    /// same arguments, as written (the checker closes it symmetrically and
+    /// owns `E-RELATION-DECL`). A non-string entry is preserved as "".
+    pub excludes: Vec<String>,
     /// Field names with a wrong YAML type, plus unknown decl keys (checker →
     /// `E-RELATION-DOMAIN`, decision D4).
     pub malformed_fields: Vec<String>,
@@ -154,6 +162,20 @@ pub fn kind_within(kinds: &BTreeMap<String, EntityKindDecl>, kind: &str, ancesto
     false
 }
 
+/// dsl 0.25.0 §1: `a` and `b` can never hold together on the same arguments —
+/// either names the other in `excludes:` (the symmetric closure), both are
+/// declared, they are distinct, and their argument kinds agree (a mismatch is
+/// the checker's `E-RELATION-DECL` and excludes nothing).
+pub fn relations_exclude(relations: &BTreeMap<String, RelationDecl>, a: &str, b: &str) -> bool {
+    if a == b {
+        return false;
+    }
+    let (Some(da), Some(db)) = (relations.get(a), relations.get(b)) else {
+        return false;
+    };
+    da.args == db.args && (da.excludes.iter().any(|x| x == b) || db.excludes.iter().any(|x| x == a))
+}
+
 /// Parse one `relations:` entry into a [`RelationDecl`]. A non-mapping decl
 /// value (including a bare scalar) yields `RelationDecl::default()`. Each
 /// known field (`args`, `tier`, `derive`, `reserved`, `key`) is pulled with a
@@ -202,11 +224,31 @@ fn relation_decl(v: &Value) -> RelationDecl {
                     decl.malformed_fields.push("reserved".to_string());
                 }
             }
+            "changedOn" => {
+                if let Some(seq) = val.as_sequence() {
+                    decl.changed_on = seq
+                        .iter()
+                        .map(|a| a.as_str().map(str::to_string).unwrap_or_default())
+                        .collect();
+                } else {
+                    decl.malformed_fields.push("changedOn".to_string());
+                }
+            }
             "key" => {
                 if let Some(seq) = val.as_sequence() {
                     decl.key = seq.iter().map(|k| k.as_i64().unwrap_or(-1)).collect();
                 } else {
                     decl.malformed_fields.push("key".to_string());
+                }
+            }
+            "excludes" => {
+                if let Some(seq) = val.as_sequence() {
+                    decl.excludes = seq
+                        .iter()
+                        .map(|a| a.as_str().map(str::to_string).unwrap_or_default())
+                        .collect();
+                } else {
+                    decl.malformed_fields.push("excludes".to_string());
                 }
             }
             other => decl.malformed_fields.push(other.to_string()),

@@ -270,6 +270,10 @@ fn render_root(
             if b.also {
                 once.push_str(", also");
             }
+            // dsl 0.25.0 §2: the spend this beat shares.
+            if let Some((key, _)) = b.share {
+                let _ = write!(once, ", share {key}");
+            }
             let mut id = b.id.clone();
             if let Some(t) = &b.title {
                 let _ = write!(id, " \"{t}\"");
@@ -328,6 +332,9 @@ fn root_json(
                     m.insert("once".into(), json!(b.once.as_str()));
                     if b.also {
                         m.insert("also".into(), json!(true));
+                    }
+                    if let Some((key, _)) = b.share {
+                        m.insert("share".into(), json!(key));
                     }
                     if let Some(t) = b.target {
                         m.insert("target".into(), json!(t));

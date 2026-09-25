@@ -46,7 +46,7 @@ pub const W_BEAT_SHADOWED: &str = "W-BEAT-SHADOWED";
 
 /// The scene-frontmatter beat keys (dsl 0.21.0 §3.1). Scene-only, never
 /// defaultable: a beat is one scene's own declaration.
-pub const BEAT_KEYS: &[&str] = &["on", "target", "when", "priority", "once", "also"];
+pub const BEAT_KEYS: &[&str] = &["on", "target", "when", "priority", "once", "also", "share"];
 
 /// A scene beat's repetition policy (dsl 0.21.0 §3.1, D-F).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +107,9 @@ pub struct BeatMeta {
     /// dsl 0.23.0 §3: `also: true` — on a `select: first` occasion, presented
     /// in addition to the winner, after it; never the winner itself.
     pub also: bool,
+    /// dsl 0.25.0 §2: the shared-spend key — every beat of the key is spent
+    /// when one is presented. Only with an authored, spending `once`.
+    pub share: Option<String>,
 }
 
 /// A beat `priority` (dsl 0.21.0 §3): an integer `-?[0-9]+` that fits `i64`.
@@ -265,6 +268,24 @@ pub(crate) fn lift_scene_beat(
         }
     };
 
+    let share = get("share").and_then(|v| {
+        let Some(key) = v.as_str().filter(|s| is_entry_ident(s)) else {
+            push(
+                format!(
+                    "`share:` must be a key — an identifier (`[A-Za-z][A-Za-z0-9_-]*`) every \
+                     beat standing for the same event writes, got {} (dsl 0.25.0 §2)",
+                    describe(v)
+                ),
+                top_value_span(meta, "share"),
+            );
+            return None;
+        };
+        if get("once").is_none() || once == BeatOnce::None {
+            push(share_without_once(key), top_key_span(meta, "share"));
+        }
+        Some(key.to_string())
+    });
+
     let on = on?;
     check_occasion(
         &on,
@@ -301,6 +322,7 @@ pub(crate) fn lift_scene_beat(
         once,
         once_authored: get("once").is_some(),
         also,
+        share,
     })
 }
 
@@ -315,11 +337,13 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
     // A non-string value leaves the key residual (the parser extracts only
     // quoted strings); the shape fault is the beat's own.
     let mut residual_on = false;
+    let mut residual_once = false;
     for attr in &entry.attrs {
-        if matches!(attr.key.as_str(), "on" | "priority" | "once")
+        if matches!(attr.key.as_str(), "on" | "priority" | "once" | "share")
             && !matches!(attr.value, AttrValue::Str(_))
         {
             residual_on |= attr.key == "on";
+            residual_once |= attr.key == "once";
             push(
                 format!(
                     "`<entry>` attribute `{}` must be a quoted string (dsl 0.21.0 §3.2)",
@@ -385,6 +409,13 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
                     .to_string(),
                 *span,
             );
+        }
+    }
+    if let Some((key, span)) = &entry.share {
+        if !is_entry_ident(key) {
+            push(share_malformed("`<entry>`", key), *span);
+        } else if entry.once.is_none() && !residual_once {
+            push(share_without_once(key), *span);
         }
     }
 }
@@ -781,8 +812,10 @@ pub struct ProjectBeat<'a> {
     pub once_authored: bool,
     /// dsl 0.23.0 §3: a scene's `also: true`.
     pub also: bool,
-    /// A scene's non-blank `after:`, raw.
+    /// A scene's / bundle beat's non-blank `after:` / `after=`, raw.
     pub after: Option<&'a str>,
+    /// dsl 0.25.0 §2: the well-formed `share` key and where it is written.
+    pub share: Option<(&'a str, Span)>,
     /// The `when` slot as authored.
     pub when_slot: Option<&'a CelSlot>,
     /// The `when` after `@def` expansion in its own document.
@@ -847,6 +880,7 @@ pub fn project_beats<'a>(
                 once_authored: beat.once_authored,
                 also: beat.also,
                 after: folded.typed.after.as_deref().filter(|a| !a.trim().is_empty()),
+                share: beat.share.as_deref().map(|k| (k, top_value_span(&doc.meta, "share"))),
                 when_slot: beat.when.as_ref(),
                 when: expand(beat.when.as_ref()),
                 title,
@@ -896,6 +930,7 @@ pub fn project_beats<'a>(
                 once_authored: entry.once.is_some(),
                 also: false,
                 after: None,
+                share: well_formed_share(entry.share.as_ref()),
                 when_slot: entry.when.as_ref(),
                 when: expand(entry.when.as_ref()),
                 title: entry.title.as_ref().map(|(t, _)| t.clone()),
@@ -932,7 +967,8 @@ pub fn project_beats<'a>(
                     once: crate::bundles::bundle_beat_once(beat),
                     once_authored: beat.once.is_some(),
                     also: crate::bundles::bundle_beat_also(beat),
-                    after: None,
+                    after: beat.after.as_ref().map(|(a, _)| a.as_str()).filter(|a| !a.trim().is_empty()),
+                    share: well_formed_share(beat.share.as_ref()),
                     when_slot: beat.when.as_ref(),
                     when: expand(beat.when.as_ref()),
                     title: beat.title.as_ref().map(|(t, _)| t.clone()),
@@ -945,6 +981,60 @@ pub fn project_beats<'a>(
         beats.extend(lore.into_iter().map(|(_, b)| b));
     }
     beats
+}
+
+/// A lore beat's `share` attribute when it is a well-formed key.
+fn well_formed_share(share: Option<&(String, Span)>) -> Option<(&str, Span)> {
+    share.filter(|(k, _)| is_entry_ident(k)).map(|(k, s)| (k.as_str(), *s))
+}
+
+/// dsl 0.25.0 §2: what each beat's shared spend holds — `share key → the
+/// beats of the key`, as indices into `beats`, in project order.
+fn share_groups(beats: &[ProjectBeat<'_>]) -> BTreeMap<String, Vec<usize>> {
+    let mut groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (i, b) in beats.iter().enumerate() {
+        if let Some((key, _)) = b.share {
+            groups.entry(key.to_string()).or_default().push(i);
+        }
+    }
+    groups
+}
+
+/// dsl 0.25.0 §2 ([`E_BEAT_ATTR`], `check-project`): every beat of one
+/// `share` key declares the same `once` — the first beat of the key, in
+/// project order, sets it; each beat that differs is reported at its
+/// `share`.
+fn check_share_once(beats: &[ProjectBeat<'_>]) -> Vec<(PathBuf, Diagnostic)> {
+    let mut out = Vec::new();
+    for (key, members) in share_groups(beats) {
+        let first = &beats[members[0]];
+        for &i in &members[1..] {
+            let b = &beats[i];
+            if b.once == first.once {
+                continue;
+            }
+            out.push((
+                b.path.clone(),
+                beat_diag(
+                    E_BEAT_ATTR,
+                    Severity::Error,
+                    format!(
+                        "{} shares `{key}` with {}, but declares `once: {}` where {} declares \
+                         `once: {}`; the beats of one `share` key are spent together for one \
+                         period, so every one of them declares the same `once` (dsl 0.25.0 §2)",
+                        b.name(),
+                        first.name(),
+                        b.once.as_str(),
+                        first.name(),
+                        first.once.as_str(),
+                    ),
+                    b.share.map_or(b.anchor, |(_, s)| s),
+                    Layer::Logic,
+                ),
+            ));
+        }
+    }
+    out
 }
 
 /// One beat of the project, in selection-tiebreak order, with what the
@@ -1033,9 +1123,14 @@ pub fn check_project_beats(
         .filter(|q| !q.id.is_empty())
         .map(|q| (q.id.as_str(), !q.tier.as_ref().is_some_and(|(t, _)| t == "run")))
         .collect();
-    let mut beats: Vec<Beat<'_>> = project_beats(docs, foldeds)
+    let pbs = project_beats(docs, foldeds);
+    let groups = share_groups(&pbs);
+    let share_diags = check_share_once(&pbs);
+    let guards: Vec<Option<String>> = pbs.iter().map(|pb| once_guard(pb, &pbs, &groups)).collect();
+    let mut beats: Vec<Beat<'_>> = pbs
         .into_iter()
-        .map(|pb| {
+        .zip(guards)
+        .map(|(pb, guard)| {
             let folded = pb.folded;
             let defs = DefTable {
                 bodies: &folded.def_bodies,
@@ -1050,7 +1145,7 @@ pub fn check_project_beats(
             let holds = pb.when_slot.is_none_or(|w| {
                 matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true)))
             });
-            let eligible = match (pb.when.as_deref(), once_guard(&pb)) {
+            let eligible = match (pb.when.as_deref(), guard) {
                 (Some(w), Some(g)) => Some(format!("({w}) && {g}")),
                 (Some(w), None) => Some(w.to_string()),
                 (None, g) => g,
@@ -1089,7 +1184,7 @@ pub fn check_project_beats(
     // Stable: equal priorities keep the tiebreak order.
     beats.sort_by(|a, b| b.priority.cmp(&a.priority));
 
-    let mut out = Vec::new();
+    let mut out = share_diags;
     for b in beats.iter().filter(|b| b.run_once_user_when) {
         out.push((
             b.path.clone(),
@@ -1261,23 +1356,69 @@ fn shadowed_on_every_target<'b, 'a>(
         .collect()
 }
 
-/// dsl 0.24.0 (T3-3): what a beat's `once` adds to its eligibility, as a
-/// condition over the flags that spend it — an entry's `once="user"` is
-/// `!entry.<id>.everRead`, `once="run"` `!entry.<id>.read`; a scene's or
-/// bundle beat's `once: user` is `!visited('<id>')` (the save-scoped visited
-/// set). A scene's `once: run` has no readable run-scoped flag, and a
-/// repeatable beat adds nothing.
-fn once_guard(pb: &ProjectBeat<'_>) -> Option<String> {
+/// dsl 0.24.0 (T3-3): the readable flag a beat's own presentation sets and
+/// its `once` reads — an entry's `once="user"` `entry.<id>.everRead`,
+/// `once="run"` `entry.<id>.read`; a scene's or bundle beat's `once: user`
+/// `visited('<id>')` (the save-scoped visited set). A scene's `once: run`
+/// (or a clock period) has no readable flag, and a repeatable beat none.
+fn spend_flag(pb: &ProjectBeat<'_>) -> Option<String> {
     match (pb.kind, pb.once) {
-        (ProjectBeatKind::Entry, BeatOnce::User) => Some(format!("!entry.{}.everRead", pb.id)),
-        (ProjectBeatKind::Entry, BeatOnce::Run) => Some(format!("!entry.{}.read", pb.id)),
+        (ProjectBeatKind::Entry, BeatOnce::User) => Some(format!("entry.{}.everRead", pb.id)),
+        (ProjectBeatKind::Entry, BeatOnce::Run) => Some(format!("entry.{}.read", pb.id)),
         (ProjectBeatKind::Scene, BeatOnce::User)
             if crate::meta::canonical_scene_key(&pb.folded.typed).is_some() =>
         {
-            Some(format!("!visited('{}')", pb.id))
+            Some(format!("visited('{}')", pb.id))
         }
-        (ProjectBeatKind::Bundle, BeatOnce::User) => Some(format!("!visited('{}')", pb.id)),
+        (ProjectBeatKind::Bundle, BeatOnce::User) => Some(format!("visited('{}')", pb.id)),
         _ => None,
+    }
+}
+
+/// The beats whose presentation spends `pb` (dsl 0.25.0 §2): every beat of
+/// its `share` key, else `pb` alone.
+fn spenders<'b, 'a>(
+    pb: &'b ProjectBeat<'a>,
+    beats: &'b [ProjectBeat<'a>],
+    groups: &BTreeMap<String, Vec<usize>>,
+) -> Vec<&'b ProjectBeat<'a>> {
+    match pb.share.and_then(|(k, _)| groups.get(k)) {
+        Some(members) => members.iter().map(|&i| &beats[i]).collect(),
+        None => vec![pb],
+    }
+}
+
+/// dsl 0.24.0 (T3-3): what a beat's `once` adds to its eligibility — no
+/// [`spend_flag`] of a beat that spends it is set. dsl 0.25.0 §2: a shared
+/// beat is spent by every beat of its key, so each member's flag counts
+/// (`!visited('a') && !entry.b.everRead`). `None` when no spender has one.
+fn once_guard(
+    pb: &ProjectBeat<'_>,
+    beats: &[ProjectBeat<'_>],
+    groups: &BTreeMap<String, Vec<usize>>,
+) -> Option<String> {
+    let flags: Vec<String> = spenders(pb, beats, groups)
+        .into_iter()
+        .filter_map(spend_flag)
+        .map(|f| format!("!{f}"))
+        .collect();
+    (!flags.is_empty()).then(|| flags.join(" && "))
+}
+
+/// What "`pb` is spent" reads as, for the presence ladder: some beat that
+/// spends it was presented — its own [`spend_flag`], or (dsl 0.25.0 §2)
+/// the disjunction over its `share` key. `None` unless EVERY spender has a
+/// readable flag: one without makes the spend unreadable.
+fn spent_condition(
+    pb: &ProjectBeat<'_>,
+    beats: &[ProjectBeat<'_>],
+    groups: &BTreeMap<String, Vec<usize>>,
+) -> Option<String> {
+    let flags: Option<Vec<String>> = spenders(pb, beats, groups).into_iter().map(spend_flag).collect();
+    match flags?.as_slice() {
+        [] => None,
+        [one] => Some(one.clone()),
+        many => Some(format!("({})", many.join(" || "))),
     }
 }
 
@@ -1286,17 +1427,23 @@ fn once_guard(pb: &ProjectBeat<'_>) -> Option<String> {
 /// every beat ordered before it on the same occasion that is a candidate
 /// whenever `B` is (untargeted, or `B`'s target), always eligible (no
 /// `after:`, `when` absent or always true) and spent by a readable flag
-/// ([`once_guard`]) has been spent: `entry.<id>.everRead`,
-/// `entry.<id>.read` or `visited('<id>')`. Keyed by document, then by the
+/// ([`spent_condition`]) has been spent: `entry.<id>.everRead`,
+/// `entry.<id>.read` or `visited('<id>')` — dsl 0.25.0 §2: for a shared
+/// beat, any of its key's flags. Keyed by document, then by the
 /// beat's `on` key/attribute offset ([`ProjectBeat::anchor`]).
 pub fn presence_ladder(
     docs: &[(PathBuf, Document)],
     foldeds: &[&FoldedEnv],
 ) -> BTreeMap<PathBuf, BTreeMap<usize, Vec<String>>> {
     let params = BTreeMap::new();
-    let mut beats: Vec<(ProjectBeat<'_>, bool)> = project_beats(docs, foldeds)
+    let pbs = project_beats(docs, foldeds);
+    let groups = share_groups(&pbs);
+    let spent_conds: Vec<Option<String>> =
+        pbs.iter().map(|pb| spent_condition(pb, &pbs, &groups)).collect();
+    let mut beats: Vec<(ProjectBeat<'_>, bool, Option<String>)> = pbs
         .into_iter()
-        .map(|pb| {
+        .zip(spent_conds)
+        .map(|(pb, spent)| {
             let defs = DefTable {
                 bodies: &pb.folded.def_bodies,
                 params: &pb.folded.env.def_params,
@@ -1311,22 +1458,21 @@ pub fn presence_ladder(
                 && pb.when_slot.is_none_or(|w| {
                     matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true)))
                 });
-            (pb, always)
+            (pb, always, spent)
         })
         .collect();
     // Stable: equal priorities keep the tiebreak order.
     beats.sort_by(|a, b| b.0.priority.cmp(&a.0.priority));
     let mut out: BTreeMap<PathBuf, BTreeMap<usize, Vec<String>>> = BTreeMap::new();
-    for (j, (b, _)) in beats.iter().enumerate() {
+    for (j, (b, _, _)) in beats.iter().enumerate() {
         let select = b.folded.occasions.get(b.on).map_or(OccasionSelect::First, |o| o.select);
         if select != OccasionSelect::First || b.also {
             continue;
         }
         let spent: Vec<String> = beats[..j]
             .iter()
-            .filter(|(a, always)| *always && !a.also && a.on == b.on && (a.target.is_none() || a.target == b.target))
-            .filter_map(|(a, _)| once_guard(a))
-            .map(|g| g.strip_prefix('!').unwrap_or(&g).to_string())
+            .filter(|(a, always, _)| *always && !a.also && a.on == b.on && (a.target.is_none() || a.target == b.target))
+            .filter_map(|(_, _, spent)| spent.clone())
             .collect();
         if !spent.is_empty() {
             out.entry(b.path.clone()).or_default().insert(b.anchor.byte_start, spent);
@@ -1525,4 +1671,23 @@ fn beat_diag(code: &str, severity: Severity, message: String, span: Span, layer:
         covered: Vec::new(),
         related: Vec::new(),
     }
+}
+
+/// dsl 0.25.0 §2: a `share` key that is no identifier (`what` names the
+/// construct: `` `<entry>` `` / `` `<beat>` ``).
+pub(crate) fn share_malformed(what: &str, key: &str) -> String {
+    format!(
+        "{what} `share=\"{key}\"` must be a key — an identifier (`[A-Za-z][A-Za-z0-9_-]*`) every \
+         beat standing for the same event writes (dsl 0.25.0 §2)"
+    )
+}
+
+/// dsl 0.25.0 §2: `share` names a spend, and only a written, spending
+/// `once` is one.
+pub(crate) fn share_without_once(key: &str) -> String {
+    format!(
+        "`share` `{key}` without `once`; beats with one `share` key are spent together for their \
+         `once` period, so each one writes the same `once` (`run`, `user`, `day` or `slot`) — add \
+         it, or remove `share` (dsl 0.25.0 §2)"
+    )
 }

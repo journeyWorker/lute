@@ -527,6 +527,85 @@ pub(crate) struct RunnerOutcome {
 pub(crate) struct BridgeAnswers {
     pub step: BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
     pub top: BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
+    /// dsl 0.25.0 §7: what content reads of the bridge results — the
+    /// project's (`lute play`) or the artifact's (`lute run`).
+    pub reads: std::sync::Arc<BridgeReads>,
+}
+
+/// dsl 0.25.0 §7: what content reads of the plugin calls' bridge results,
+/// over a set of compiled artifacts ([`BridgeReads::of`]). A result field
+/// no content reads MAY be left out of an answer.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct BridgeReads {
+    /// Every state path a CEL expression or a `{{…}}` placeholder reads.
+    pub paths: BTreeSet<String>,
+    /// Per plugin directive tag, the bridge result fields some call of it
+    /// writes to a path in `paths` — what every answer to the tag gives
+    /// (answers queue per tag, not per call), and what a hint lists.
+    pub fields: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl BridgeReads {
+    pub(crate) fn of<'a>(arts: impl IntoIterator<Item = &'a Json> + Clone) -> Self {
+        let mut paths = BTreeSet::new();
+        for art in arts.clone() {
+            ir_read_paths(art, false, &mut paths);
+        }
+        let mut fields: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for art in arts {
+            let cmds = art.get("commands").and_then(Json::as_array).into_iter().flatten();
+            for c in cmds.filter(|c| c.get("kind").and_then(Json::as_str) == Some("plugin")) {
+                let tag = c.get("tag").and_then(Json::as_str).unwrap_or("");
+                for e in c.get("effects").and_then(Json::as_array).into_iter().flatten() {
+                    let field = e.pointer("/from/bridgeResult").and_then(Json::as_str);
+                    let path = e.get("path").and_then(Json::as_str);
+                    if let (Some(field), Some(path)) = (field, path) {
+                        if paths.contains(path) {
+                            fields.entry(tag.to_string()).or_default().insert(field.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        BridgeReads { paths, fields }
+    }
+
+    /// Whether content reads `field` of a `tag` call's result.
+    pub(crate) fn reads(&self, tag: &str, field: &str) -> bool {
+        self.fields.get(tag).is_some_and(|f| f.contains(field))
+    }
+}
+
+/// Every state path `v` (an artifact, or any part of one) reads: each
+/// `path` leaf of an expression tree (an `expr` — conditions, `::set`
+/// values, match arms, `ref` placeholders with their def inlined) and each
+/// `path` placeholder of a `{{…}}`. Writes (`set` / effect `path`s) sit
+/// outside both and are not reads.
+fn ir_read_paths(v: &Json, in_expr: bool, out: &mut BTreeSet<String>) {
+    match v {
+        Json::Object(map) => {
+            for (k, child) in map {
+                match (k.as_str(), child) {
+                    ("path", Json::String(p)) if in_expr => {
+                        out.insert(p.clone());
+                    }
+                    ("placeholders", Json::Array(items)) => {
+                        for ph in items {
+                            if ph.get("kind").and_then(Json::as_str) == Some("path") {
+                                if let Some(p) = ph.get("path").and_then(Json::as_str) {
+                                    out.insert(p.to_string());
+                                }
+                            }
+                            ir_read_paths(ph, in_expr, out);
+                        }
+                    }
+                    _ => ir_read_paths(child, in_expr || k == "expr", out),
+                }
+            }
+        }
+        Json::Array(items) => items.iter().for_each(|i| ir_read_paths(i, in_expr, out)),
+        _ => {}
+    }
 }
 
 impl BridgeAnswers {
@@ -712,6 +791,10 @@ impl Runner {
 
     fn new(art: &Json, mock: lute_trace::MockSet) -> Self {
         let mut runner = Self::blank(art, mock);
+        // dsl 0.25.0 §7: `lute run` walks one artifact — its content is the
+        // reader of its bridge results (`lute play` hands the project's in
+        // [`Runner::with_bridges`]).
+        runner.bridges.reads = std::sync::Arc::new(BridgeReads::of([art]));
         runner.apply_mock_seeds();
         refresh_clock(art, &mut runner.state);
         runner.recompute_facts();
@@ -1846,12 +1929,15 @@ impl Runner {
     /// A `plugin` command (bridge-protocol.md). Effects that need no bridge
     /// result apply. A `bridgeResult` effect reads the call's `bridges:`
     /// answer (dsl 0.24.0 §5), the next one queued for its tag: the answered
-    /// values are written, typed by each result slot's declared type. With
-    /// no answer, `lute run` records the effects unresolved and walks on (no
-    /// host bridge is invoked); `lute play` halts the walk AT the call,
-    /// incomplete, before anything after it — a default arm over the result
-    /// slot included — is walked. `false` = the walk stops here (that halt,
-    /// or an answer that does not fit the call, which is fatal).
+    /// values are written, typed by each result slot's declared type; a
+    /// field the answer leaves out (dsl 0.25.0 §7: one no content reads) is
+    /// unresolved. With no answer, `lute run` records the effects unresolved
+    /// and walks on (no host bridge is invoked); `lute play` halts the walk
+    /// AT the call, incomplete, before anything after it — a default arm over
+    /// the result slot included — is walked, when content reads one of the
+    /// call's result slots (else it walks on, like `lute run`). `false` = the
+    /// walk stops here (that halt, or an answer that does not fit the call,
+    /// which is fatal).
     fn exec_plugin(&mut self, cmd: &Json) -> bool {
         let tag = cmd
             .get("tag")
@@ -1876,6 +1962,8 @@ impl Runner {
         } else {
             self.bridges.next(&tag)
         };
+        // dsl 0.25.0 §7: whether content reads one of this call's results.
+        let read = reads.iter().any(|(_, p)| self.bridges.reads.paths.contains(p));
         let answered = match &answer {
             Some(a) => match self.bridge_values(&tag, &reads, a) {
                 Ok(values) => Some(values),
@@ -1884,10 +1972,14 @@ impl Runner {
                     return false;
                 }
             },
-            None if !reads.is_empty() && self.play => {
+            None if self.play && read => {
                 self.incomplete = true;
-                let paths: Vec<&str> = reads.iter().map(|(_, p)| p.as_str()).collect();
-                let fields: Vec<&str> = reads.iter().map(|(f, _)| f.as_str()).collect();
+                // The fields every answer to the tag gives (dsl 0.25.0 §7).
+                let (fields, paths): (Vec<&str>, Vec<&str>) = reads
+                    .iter()
+                    .filter(|(f, _)| self.bridges.reads.reads(&tag, f))
+                    .map(|(f, p)| (f.as_str(), p.as_str()))
+                    .unzip();
                 self.transcript.push(json!({
                     "addr": addr(cmd),
                     "kind": "plugin",
@@ -1969,9 +2061,10 @@ impl Runner {
     }
 
     /// One `bridges:` answer against the call it answers (dsl 0.24.0 §5):
-    /// exactly the `bridgeResult` fields the call's effects read, each a
-    /// literal of its result slot's declared type. `(field, value)` in the
-    /// effects' order; `Err` names the misfit (a usage error).
+    /// only `bridgeResult` fields the call's effects read, every one content
+    /// reads among them (dsl 0.25.0 §7), each a literal of its result slot's
+    /// declared type. `(field, value)` in the effects' order; `Err` names the
+    /// misfit (a usage error).
     fn bridge_values(
         &self,
         tag: &str,
@@ -1992,9 +2085,15 @@ impl Runner {
                 continue;
             }
             let Some((_, lit)) = answer.iter().find(|(f, _)| f == field) else {
+                if !self.bridges.reads.reads(tag, field) {
+                    continue;
+                }
+                let read: Vec<&str> =
+                    fields.iter().copied().filter(|f| self.bridges.reads.reads(tag, f)).collect();
                 return Err(format!(
-                    "{at} lacks `{field}` — an answer gives every bridge result the call reads ({})",
-                    fields.join(", ")
+                    "{at} lacks `{field}`, which content reads — an answer gives every bridge \
+                     result of the call content reads ({})",
+                    read.join(", ")
                 ));
             };
             let ty = self.types.get(path).map(String::as_str);
@@ -3344,15 +3443,15 @@ fn value_to_json(v: &Value) -> Json {
     }
 }
 
-/// dsl 0.24.0 §4: a placeholder's `format` applied to its value — `ordinal`
-/// renders a number as an English ordinal (`3rd`, `11th`, `22nd`). `None`
-/// when the placeholder carries no format or the value has no ordinal (a
-/// fraction, a negative number): the value then renders unchanged.
+/// dsl 0.24.0 §4 / 0.25.0 §8: a placeholder's `format` applied to its value
+/// ([`lute_syntax::ast::format_number`]) — `ordinal` renders a number as an
+/// English ordinal (`3rd`, `11th`), `ordinalWord` as a word (`third`) up to
+/// `twentieth`. `None` when the placeholder carries no format or the value
+/// has no ordinal (a fraction, a negative number): the value then renders
+/// unchanged.
 fn formatted(ph: &Json, v: &Value) -> Option<String> {
     match (ph.get("format").and_then(Json::as_str), v) {
-        (Some(lute_syntax::ast::INTERP_FORMAT_ORDINAL), Value::Num(n)) => {
-            lute_syntax::ast::english_ordinal(*n)
-        }
+        (Some(format), Value::Num(n)) => lute_syntax::ast::format_number(format, *n),
         _ => None,
     }
 }

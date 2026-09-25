@@ -483,7 +483,14 @@ pub(crate) fn check_match_with_domain(
     }
 
     // An `<otherwise>` makes the match exhaustive and covers `unset` (§11.2).
-    if has_otherwise {
+    // dsl 0.25.0 §9 (SU N8): an undeclared subject path has no domain to be
+    // exhaustive over — its read is reported once (`E-UNDECLARED`, or under a
+    // broken schema import the import error), never as a follow-on
+    // `E-NONEXHAUSTIVE` pointing at the match.
+    let undeclared = subject.is_some_and(|p| {
+        !info.resolved && !crate::defassign::is_declared(p, &ctx.env.state)
+    });
+    if has_otherwise || undeclared {
         return diags;
     }
 
@@ -3292,6 +3299,7 @@ mod tests {
             tier: None,
             activate: None,
             complete: None,
+            accept: None,
             attrs: Vec::new(),
             body,
             rewards: Vec::new(),

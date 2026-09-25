@@ -1264,7 +1264,7 @@ fn presented_eligibility(report: &TraceReport) -> Vec<(String, Option<bool>)> {
         .steps
         .iter()
         .filter_map(|s| match s {
-            lute_trace::Step::Entry { id, eligible, .. } | lute_trace::Step::Beat { id, eligible } => {
+            lute_trace::Step::Entry { id, eligible, .. } | lute_trace::Step::Beat { id, eligible, .. } => {
                 Some((id.clone(), *eligible))
             }
             _ => None,

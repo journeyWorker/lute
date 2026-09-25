@@ -158,12 +158,16 @@ pub enum Step {
     /// dsl 0.23.0 §4 (`lute trace --beat`): the presented bundle `<beat>`'s
     /// head. `id` is the canonical `<document id>.<beat id>`. `eligible` is
     /// the beat's `when` against the mocked state, exactly as on
-    /// [`Step::Entry`] — shown, not enforced. A bundle beat is presented
-    /// like a scene beat, so there is no first-read distinction: every
-    /// effect of its body applies.
+    /// [`Step::Entry`] — shown, not enforced — and (dsl 0.25.0 §3) its
+    /// `after=` over the mocked `visited:` / quest states: `after_unmet`
+    /// marks a beat that is ineligible because its `after` does not hold. A
+    /// bundle beat is presented like a scene beat, so there is no
+    /// first-read distinction: every effect of its body applies.
     Beat {
         id: String,
         eligible: Option<bool>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        after_unmet: bool,
     },
     /// A first-read-only effect record NOT applied on a re-read (dsl 0.19.0
     /// §6, `docs/runtime/lore-entries.md`): `effect` is `set`/`assert`/
@@ -181,6 +185,13 @@ pub enum Step {
         quest: String,
         #[serde(rename = "nextRun", skip_serializing_if = "std::ops::Not::not")]
         next_run: bool,
+    },
+    /// dsl 0.25.0 §1: right after the write that made them hold together,
+    /// two facts of relations that exclude each other
+    /// (`seenAfter(elias) and fell(elias) both hold`). The trace is refused
+    /// (`E-FACT-EXCLUSIVE`, exit 1) at that write.
+    Exclusive {
+        text: String,
     },
 }
 
@@ -653,9 +664,14 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
             };
             out.push_str(&format!("  <entry {id}>   ({read}{gate})\n"));
         }
-        Step::Beat { id, eligible } => {
+        Step::Beat {
+            id,
+            eligible,
+            after_unmet,
+        } => {
             let gate = match eligible {
                 Some(true) => "",
+                Some(false) if *after_unmet => "   (not eligible: `after` prerequisite not satisfied)",
                 Some(false) => "   (not eligible: `when` is false)",
                 None => "   (eligibility unknown)",
             };
@@ -668,6 +684,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
             let queued = if *next_run { " (queued: applies after the next run start)" } else { "" };
             out.push_str(&format!("    quest {quest} accepted{queued}\n"))
         }
+        Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),
         Step::Grant {
             quest,
             objective,

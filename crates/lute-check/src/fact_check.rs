@@ -37,9 +37,13 @@ use lute_syntax::ast::{Arm, CelSlot, Document, Node, Objective, Quest};
 
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
-use crate::decide::{analyze_unset_sentinel_slot, decide, DecideCtx, Decided, DollarBinding};
+use crate::decide::{
+    analyze_unset_sentinel_slot, and_chain_holds, decide, exclusive_pairs, DecideCtx, Decided,
+    DollarBinding,
+};
 use crate::fact_env::{
-    CountInterval, FactEnv, FactScope, HoldsVerdict, MustFact, Provenance, QueryPattern,
+    CountInterval, FactEnv, FactScope, GroundFact, HoldsVerdict, MustFact, Provenance,
+    QueryPattern,
 };
 use crate::match_check::{infer_domain, subject_path, DomainInfo};
 use crate::meta::StateSchema;
@@ -54,6 +58,10 @@ pub use crate::reachability::E_ENTRY_UNREACHABLE;
 /// (line `when=`, `<choice when>`, `<when test>`, entry `when`) that is
 /// guaranteed on every route to the guard — the condition is redundant.
 pub const W_FACT_GUARANTEED: &str = "W-FACT-GUARANTEED";
+
+/// `E-FACT-EXCLUSIVE` (dsl 0.25.0 §1): an `::assert{A(x)}` on a path where a
+/// fact of a relation `A` excludes holds on the same arguments.
+pub const E_FACT_EXCLUSIVE: &str = "E-FACT-EXCLUSIVE";
 
 /// The relational guard diagnostics of one document (see the module doc).
 /// `reported` is what the per-file `check()` already reported for this
@@ -216,6 +224,8 @@ enum Atom {
     Holds {
         pattern: QueryPattern,
         verdict: HoldsOutcome,
+        /// Under an odd number of `!` — `!holds(P)`.
+        negated: bool,
     },
     /// A `count(P) ⋈ n` / `countDistinct(P, V) ⋈ n` comparison the interval
     /// decided; `column` is `countDistinct`'s counted position.
@@ -228,10 +238,12 @@ enum Atom {
 }
 
 /// An owned [`HoldsVerdict`]; a guaranteed query carries its reason, an
-/// impossible one the stable fact that defeats it, if any.
+/// impossible one the stable fact that defeats it, if any, an excluded one
+/// (dsl 0.25.0 §1) why it cannot hold.
 enum HoldsOutcome {
     Impossible(Option<String>),
     Guaranteed(String),
+    Excluded(String),
     Possible,
 }
 
@@ -245,6 +257,12 @@ struct SlotVerdict {
     /// under its work-in-progress twin — only a relation nothing produces
     /// yet makes the guard dead.
     wip: bool,
+    /// dsl 0.25.0 §1: why pairs of the guard's required `holds` conjuncts
+    /// can never hold together (each makes the guard false).
+    exclusive: Vec<String>,
+    /// dsl 0.25.0 §1: why `!holds(B)` conjuncts follow from a required
+    /// `holds(A)` of the same guard (each is redundant).
+    redundant: Vec<String>,
 }
 
 impl SlotVerdict {
@@ -279,9 +297,10 @@ impl SlotVerdict {
                 Atom::Holds {
                     pattern,
                     verdict: HoldsOutcome::Impossible(defeat),
+                    ..
                 } => Some(defeat.clone().unwrap_or_else(|| impossible_reason(pattern))),
                 Atom::Holds {
-                    verdict: HoldsOutcome::Guaranteed(reason),
+                    verdict: HoldsOutcome::Guaranteed(reason) | HoldsOutcome::Excluded(reason),
                     ..
                 } => Some(reason.clone()),
                 Atom::Count {
@@ -295,6 +314,7 @@ impl SlotVerdict {
                     ..
                 } => None,
             })
+            .chain(self.exclusive.iter().cloned())
             .collect();
         reasons.join("; ")
     }
@@ -306,6 +326,12 @@ impl SlotVerdict {
             .filter_map(|a| match a {
                 Atom::Holds {
                     verdict: HoldsOutcome::Guaranteed(reason),
+                    ..
+                } => Some(reason.clone()),
+                // dsl 0.25.0 §1: `!holds(B)` where an excluding fact holds.
+                Atom::Holds {
+                    verdict: HoldsOutcome::Excluded(reason),
+                    negated: true,
                     ..
                 } => Some(reason.clone()),
                 Atom::Count {
@@ -327,6 +353,7 @@ impl SlotVerdict {
                 }),
                 _ => None,
             })
+            .chain(self.redundant.iter().cloned())
             .collect()
     }
 }
@@ -353,6 +380,16 @@ fn guaranteed_reason(m: &MustFact) -> String {
             "`{fact}` follows by rule from facts that hold on every route to here ({inner})"
         ),
     }
+}
+
+/// dsl 0.25.0 §1: why `pattern` cannot hold where the must fact `m` does.
+fn excluded_reason(pattern: &QueryPattern, m: &MustFact) -> String {
+    format!(
+        "`{pattern}` cannot hold here: {}, and `{}` excludes `{}` (dsl 0.25.0 §1)",
+        guaranteed_reason(m),
+        m.fact.relation,
+        pattern.relation
+    )
 }
 
 fn count_reason(pattern: &QueryPattern, column: Option<usize>, iv: &CountInterval) -> String {
@@ -422,7 +459,30 @@ impl<'a> Guards<'a> {
         let expr = &arena.get(handle)?.expr;
         let with_ctx = self.ctx(dollar, slot.span, true);
         let mut atoms = Vec::new();
-        collect_atoms(expr, &with_ctx, &mut atoms);
+        collect_atoms(expr, &with_ctx, false, &mut atoms);
+        let (required, absent) = and_chain_holds(expr);
+        let exclusive = exclusive_pairs(&required, self.vocab)
+            .into_iter()
+            .map(|(a, b)| {
+                format!(
+                    "`{a}` and `{b}` can never hold together (`{}` excludes `{}`, dsl 0.25.0 §1)",
+                    a.relation, b.relation
+                )
+            })
+            .collect();
+        let redundant = absent
+            .iter()
+            .filter_map(|n| {
+                let p = required.iter().find(|p| {
+                    !exclusive_pairs(&[(*p).clone(), n.clone()], self.vocab).is_empty()
+                })?;
+                Some(format!(
+                    "`!holds({n})` follows from this guard's `holds({p})`: `{}` excludes `{}` \
+                     (dsl 0.25.0 §1)",
+                    p.relation, n.relation
+                ))
+            })
+            .collect();
         let with = decide(expr, &with_ctx);
         let wip = self.env.wip.is_some() && with == Some(Decided::Bool(false)) && {
             let mut wip_ctx = self.ctx(dollar, slot.span, true);
@@ -436,6 +496,8 @@ impl<'a> Guards<'a> {
             with,
             atoms,
             wip,
+            exclusive,
+            redundant,
         })
     }
 
@@ -656,9 +718,39 @@ impl<'a> Guards<'a> {
                         );
                     }
                 }
-                Node::Set(_) | Node::Timeline(_) | Node::Assert(_) | Node::Retract(_) => {}
+                Node::Assert(a) => self.exclusive_assert(a, out),
+                Node::Set(_) | Node::Timeline(_) | Node::Retract(_) => {}
             }
         }
+    }
+
+    /// dsl 0.25.0 §1: an `::assert{A(x)}` where a fact `B(x)` of a relation
+    /// excluding `A` holds on every route to it would make both hold —
+    /// [`E_FACT_EXCLUSIVE`].
+    fn exclusive_assert(&self, a: &lute_syntax::ast::Assert, out: &mut Vec<Diagnostic>) {
+        let Some(fact) = GroundFact::from_pattern(&a.pattern) else {
+            return;
+        };
+        let Some(m) = self.env.must.at(self.path, a.span).iter().find(|m| {
+            !exclusive_pairs(&[fact.clone(), m.fact.clone()], self.vocab).is_empty()
+        }) else {
+            return;
+        };
+        out.push(diag(
+            E_FACT_EXCLUSIVE,
+            Severity::Error,
+            format!(
+                "`::assert{{{fact}}}` would make `{fact}` and `{}` both hold: {}, and `{}` \
+                 excludes `{}` (dsl 0.25.0 §1) — retract `{}` first, or assert only where it \
+                 does not hold",
+                m.fact,
+                guaranteed_reason(m),
+                fact.relation,
+                m.fact.relation,
+                m.fact
+            ),
+            a.span,
+        ));
     }
 
     fn choices(&self, choices: &[lute_syntax::ast::Choice], out: &mut Vec<Diagnostic>) {
@@ -719,7 +811,7 @@ fn dead_arm(span: Span, kind: &str, slot: &CelSlot, v: &SlotVerdict) -> Diagnost
 /// comparison the interval decides. Recurses like
 /// `cel_resolve::check_fact_queries` (operator args, list elements, select
 /// operands, `validAt`'s time argument).
-fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, out: &mut Vec<Atom>) {
+fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, negated: bool, out: &mut Vec<Atom>) {
     match expr {
         Expr::Call(c) => {
             if crate::cel_resolve::is_profile_fact_query(c) {
@@ -742,14 +834,21 @@ fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, out: &mut Vec<Atom>) {
                                 HoldsVerdict::Guaranteed(m) => {
                                     HoldsOutcome::Guaranteed(guaranteed_reason(m))
                                 }
+                                HoldsVerdict::Excluded(m) => {
+                                    HoldsOutcome::Excluded(excluded_reason(&pattern, m))
+                                }
                                 HoldsVerdict::Possible => HoldsOutcome::Possible,
                             };
-                            out.push(Atom::Holds { pattern, verdict });
+                            out.push(Atom::Holds {
+                                pattern,
+                                verdict,
+                                negated,
+                            });
                         }
                     }
                 } else if c.func_name == "validAt" {
                     if let Some(t) = c.args.get(1) {
-                        collect_atoms(&t.expr, ctx, out);
+                        collect_atoms(&t.expr, ctx, negated, out);
                     }
                 }
                 return;
@@ -770,18 +869,19 @@ fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, out: &mut Vec<Atom>) {
                 }
             }
             if let Some(t) = &c.target {
-                collect_atoms(&t.expr, ctx, out);
+                collect_atoms(&t.expr, ctx, negated, out);
             }
+            let flip = negated != (c.func_name == op::LOGICAL_NOT);
             for a in &c.args {
-                collect_atoms(&a.expr, ctx, out);
+                collect_atoms(&a.expr, ctx, flip, out);
             }
         }
         Expr::List(list) => {
             for el in &list.elements {
-                collect_atoms(&el.expr, ctx, out);
+                collect_atoms(&el.expr, ctx, negated, out);
             }
         }
-        Expr::Select(sel) => collect_atoms(&sel.operand.expr, ctx, out),
+        Expr::Select(sel) => collect_atoms(&sel.operand.expr, ctx, negated, out),
         _ => {}
     }
 }

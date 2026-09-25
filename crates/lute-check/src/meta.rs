@@ -241,6 +241,7 @@ const SCENE_KEYS: &[&str] = &[
     "priority",
     "once",
     "also",
+    "share",
 ];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Quest` document: the optional

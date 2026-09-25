@@ -3,7 +3,8 @@
 //! project whose plugin declares a `::check` skill check writing
 //! `scene.check.<key>.{passed,margin}` from its bridge result. `probe.c`
 //! makes two calls (`guards`, then `sneak`), each followed by a `<match>`
-//! over its `passed` slot.
+//! over its `passed` slot; a gated line reads `guards`'s `margin`, so both
+//! fields are read (dsl 0.25.0 §7 — `margin_unread` drops that line).
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -132,7 +133,7 @@ fn play_refuses_a_bad_field_or_a_misfit_value_at_load() {
         ),
         (
             "bridges:\n  check:\n    - { passed: true }\nsteps:\n  - occasion: hubVisit\n",
-            "lacks `margin` — an answer gives every bridge result `::check` reads: `{ passed: <bool>, margin: <number> }`",
+            "lacks `margin`, which content reads — an answer gives every bridge result of `::check` content reads: `{ passed: <bool>, margin: <number> }`",
         ),
         (
             "bridges:\n  chek:\n    - { passed: true, margin: 1 }\nsteps:\n  - occasion: hubVisit\n",
@@ -304,4 +305,79 @@ fn copy_dir(from: &Path, to: &Path) {
             std::fs::copy(entry.path(), dest).unwrap();
         }
     }
+}
+
+/// The fixture copied to a temp project with the gated line over `margin`
+/// removed: no content reads `margin` any more.
+fn margin_unread(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    copy_dir(&fixture(), &dir);
+    let c = dir.join("scenes/probe/c.lute");
+    let text = std::fs::read_to_string(&c).unwrap();
+    let kept: Vec<&str> = text.lines().filter(|l| !l.contains("guards.margin")).collect();
+    assert_eq!(kept.len() + 1, text.lines().count(), "the fixture reads margin once");
+    std::fs::write(&c, kept.join("\n") + "\n").unwrap();
+    dir
+}
+
+/// dsl 0.25.0 §7: a bridge result field no content reads may be left out
+/// of an answer — in `lute play`, `lute trace`, a scenario test and a
+/// `mocks/*.yaml` alike — and every hint lists only the fields content
+/// reads. A field content reads stays required (the tests above).
+#[test]
+fn an_unread_bridge_result_field_may_be_left_out() {
+    let dir = margin_unread("unread");
+    let answers = "bridges:\n  check:\n    - { passed: true }\n    - { passed: false }\n";
+
+    // play: answered without `margin`, and the halt hint omits it.
+    let script = write(&dir, "s.play.yaml", &format!("{answers}steps:\n  - occasion: hubVisit\n"));
+    let run_play = |script: &Path| {
+        Command::new(BIN)
+            .args(["play", dir.to_str().unwrap(), "--script", script.to_str().unwrap()])
+            .output()
+            .unwrap()
+    };
+    let o = run_play(&script);
+    assert_eq!(o.status.code(), Some(0), "{}", out(&o));
+    assert!(out(&o).contains("(bridge answered: passed=true)"), "{}", out(&o));
+    assert!(out(&o).contains("Passed.") && out(&o).contains("Spotted."), "{}", out(&o));
+    let bare = write(&dir, "bare.play.yaml", "steps:\n  - occasion: hubVisit\n");
+    let o = run_play(&bare);
+    assert_eq!(o.status.code(), Some(3), "{}", out(&o));
+    assert!(out(&o).contains("(bridge unanswered: passed)"), "{}", out(&o));
+    assert!(out(&o).contains("bridges: { check: [ { passed: <bool> } ] }"), "{}", out(&o));
+
+    // trace: the same answer is accepted, and the unmocked hint omits it.
+    let doc = dir.join("scenes/probe/c.lute");
+    let trace = |mock: Option<&Path>| {
+        let mut c = Command::new(BIN);
+        c.args(["trace", doc.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+        if let Some(m) = mock {
+            c.args(["--mock", m.to_str().unwrap()]);
+        }
+        c.output().unwrap()
+    };
+    let mock = write(&temp_dir("unread-mock"), "m.yaml", answers);
+    let o = trace(Some(&mock));
+    assert_eq!(o.status.code(), Some(0), "{}", out(&o));
+    assert!(out(&o).contains("Passed.") && out(&o).contains("Spotted."), "{}", out(&o));
+    let o = trace(None);
+    assert_eq!(o.status.code(), Some(3), "{}", out(&o));
+    assert!(out(&o).contains("bridges: { check: [ { passed: <bool> } ] }"), "{}", out(&o));
+
+    // A scenario test and a checked `mocks/*.yaml` take it too.
+    write(
+        &dir,
+        "tests/unread.test.yaml",
+        &format!("file: ../scenes/probe/c.lute\n{answers}expect:\n  transcriptContains: [\"Passed.\"]\n"),
+    );
+    let o = Command::new(BIN)
+        .args(["test", dir.join("tests/unread.test.yaml").to_str().unwrap()])
+        .args(["--project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(0), "{}", out(&o));
+    write(&dir, "mocks/unread.yaml", &format!("file: ../scenes/probe/c.lute\n{answers}"));
+    let o = Command::new(BIN).args(["check-project", dir.to_str().unwrap()]).output().unwrap();
+    assert!(!out(&o).contains("E-TRACE-MOCK"), "{}", out(&o));
 }
