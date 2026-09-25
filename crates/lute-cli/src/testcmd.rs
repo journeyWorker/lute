@@ -638,14 +638,16 @@ fn run_one_test(
 
     // One test naming a document that no longer exists is that test's
     // failure, never the whole suite's abort.
+    /// A test whose `file:` names no document (0.23.1).
+    const E_TEST_FILE: &str = "E-TEST-FILE";
     if !lute_path.is_file() {
         return Ok(TestResult::refused(
             test_file,
             lute_display.clone(),
             "invalid",
             vec![format!(
-                "error [E-TEST-FILE] `file: {rel}` names no document ({lute_display} does not \
-                 exist)"
+                "error [{E_TEST_FILE}] {}",
+                format!("`file: {rel}` names no document ({lute_display} does not exist)")
             )],
         ));
     }

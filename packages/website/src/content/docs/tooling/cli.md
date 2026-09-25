@@ -387,6 +387,7 @@ FAIL  ./plays/first-day.play.yaml  (play of .)
 
 A test whose `file:` names a document that does not exist fails on its own as `E-TEST-FILE`, and the rest of the suite still runs:
 
+<!-- lute-diagnostics -->
 ```console
 FAIL  ./tests/old-shed.test.yaml  (./tests/../scenes/old-shed.lute)
         error [E-TEST-FILE] `file: ../scenes/old-shed.lute` names no document (./tests/../scenes/old-shed.lute does not exist)

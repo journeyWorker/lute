@@ -118,7 +118,7 @@ the branch is not, because the `leave` path reaches it with her gone:
 
 <!-- lute-diagnostics -->
 ```
-platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)
+platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)
 ```
 
 An `::auto{character="marina" action="fade-in-up"}` before that line, or at the end of the `leave`
