@@ -164,7 +164,11 @@ pub fn check_directive(
             // synthetic decl, so it never falls through to E-UNKNOWN-ATTR. A
             // directive that DOES declare one of these (core camera/video)
             // never reaches this branch -- the `find` above already matched.
-            if let Some(universal) = universal_timing_decl(&attr.key) {
+            // `::clear` (dsl 0.24.0 §4) takes no attributes at all: it lowers
+            // to one exit record per character on stage, which carry none of
+            // its timing, so a `duration`/`wait` there would be dropped.
+            let clear = dir.tag == lute_manifest::core::CLEAR_DIRECTIVE;
+            if let Some(universal) = universal_timing_decl(&attr.key).filter(|_| !clear) {
                 check_attr_value(
                     &owner, &universal, attr, snapshot, providers, domains, &mut diags,
                 );
@@ -187,7 +191,15 @@ pub fn check_directive(
             diags.push(diag(
                 "E-UNKNOWN-ATTR",
                 Severity::Error,
-                format!("`::{}` has no attribute `{}`", dir.tag, attr.key),
+                if clear {
+                    format!(
+                        "`::clear` has no attribute `{}` — it takes no attributes; every character \
+                         on stage exits with its own exit (dsl 0.24.0 §4)",
+                        attr.key
+                    )
+                } else {
+                    format!("`::{}` has no attribute `{}`", dir.tag, attr.key)
+                },
                 attr.span,
             ));
             continue;

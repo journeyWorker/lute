@@ -93,8 +93,10 @@ pub struct SchemaImports {
     /// keeps the byte-sorted-first file's entry).
     pub cast: BTreeMap<String, lute_manifest::schema::CastMember>,
     /// dsl 0.24.0 §1: every `clock:` an import-reachable schema declares,
-    /// by file (canonical path order). A project declares at most one.
-    pub clock: Vec<(PathBuf, lute_manifest::clock::ClockDecl)>,
+    /// by file (canonical path order), with the positioned span of its
+    /// `clock:` key there — where a problem with it is reported. A project
+    /// declares at most one.
+    pub clock: Vec<(PathBuf, lute_manifest::clock::ClockDecl, Span)>,
     pub rel: RelImports,
 }
 
@@ -178,7 +180,8 @@ struct ParsedDoc {
     /// dsl 0.23.0 §7: this schema's `cast:` members.
     cast: Vec<lute_manifest::schema::CastMember>,
     /// dsl 0.24.0 §1: this schema's `clock:`.
-    clock: Option<lute_manifest::clock::ClockDecl>,
+    /// The `clock:` and its key's positioned span in this file.
+    clock: Option<(lute_manifest::clock::ClockDecl, Span)>,
     /// dsl 0.24 T3-6: this doc's declarations' spans, positioned in its text.
     origins: crate::rel_schema::DeclOrigins,
     /// dsl 0.24 T3-6: heads of this doc's `rules:` entries that failed to parse.
@@ -594,9 +597,9 @@ pub fn resolve_imports(
     }
     // dsl 0.24.0 §1: every import-reachable `clock:`, path order —
     // `crate::clock::check_clock` reports more than one.
-    let clock: Vec<(PathBuf, lute_manifest::clock::ClockDecl)> = parsed
+    let clock: Vec<(PathBuf, lute_manifest::clock::ClockDecl, Span)> = parsed
         .iter()
-        .filter_map(|(path, doc)| doc.clock.clone().map(|c| (path.clone(), c)))
+        .filter_map(|(path, doc)| doc.clock.clone().map(|(c, at)| (path.clone(), c, at)))
         .collect();
 
     // dsl 0.24 T3-6: each resolved name's home — the shallowest declaring
@@ -756,9 +759,15 @@ pub fn merge_domains(
             kinds.get(name).map(|decl| &decl.shape),
             Some(KindShape::Members(_) | KindShape::Open)
         );
+        // An imported domain's problem is the schema's: reported at its
+        // declaration there (dsl 0.24 T3-6), so the roll-up folds importers.
+        let origin = (!inline.domains.contains_key(name))
+            .then(|| imports.rel.origins.domains.get(name))
+            .flatten();
         if !kind_derived {
             for issue in lute_manifest::validate::validate_domain(name, dom) {
-                diags.push(uses_diag(issue.code(), issue.message(), at));
+                let d = uses_diag(issue.code(), issue.message(), at);
+                diags.push(crate::rel_schema::at_origin(d, origin));
             }
         } else if let Some(key) = missing_slot_semantics_key(name) {
             diags.push(uses_diag(
@@ -1017,7 +1026,7 @@ fn read_and_parse(
     let rules = tm.rel_rules;
     let state_index = tm.state_index;
     let cast = tm.cast;
-    let clock = tm.clock;
+    let clock = tm.clock.map(|c| (c, key("clock").span));
     let uses = tm.uses;
     let extends = tm.extends;
     (

@@ -1,6 +1,6 @@
 ---
 title: State schemas
-description: The shared, imported source of truth for run/user/app state and defs — the schema document shape, and how uses composes peers while extends refines a base layer.
+description: The shared, imported source of truth for run/user/app state, defs, entities, the cast and the clock — the schema document shape, and how uses composes peers while extends refines a base layer.
 ---
 
 The `run` / `user` / `app` tiers are game/season-global: one persisted value cannot carry per-scene types. So they live in a single **schema document**, the source of truth every scene imports with `uses:`. Scenes then declare only their own `scene.*` locals. Since 0.2.2 a declaration file is plain `.yaml` (no `---`/Lute envelope) — a pure declaration, not a scene.
@@ -9,7 +9,7 @@ The `run` / `user` / `app` tiers are game/season-global: one persisted value can
 
 A schema declares `state:` (scalar tiers), `defs:` (named typed-CEL macros), `enums:` (declared
 member lists), and — when the relational layer is used — `entities:` / `relations:` / `facts:` /
-`rules:`.
+`rules:`. It may also declare the project's `cast:` (dsl 0.23.0) and, since `0.24.0`, one `clock:`.
 
 ```yaml
 state:
@@ -20,7 +20,7 @@ defs:
   helped: { type: bool, cel: "run.choseHelp" }
 ```
 
-Each `<path>` segment is a CEL-facing identifier (no `-`). A declaration is `{ type, default?, owner? }`. A `default` is materialized into the tier's initial state at schema load **and** re-materialized whenever the engine fires that tier's reset — so a defaulted path is always assigned, and the checker and engine read the one snapshot. `owner: engine` (0.22.0) marks a path content may read but never `::set` (`E-ENGINE-OWNED-WRITE`); `engine` is the only value it takes — see [`owner: engine`](/state/state-model/#owner-engine).
+Each `<path>` segment is a CEL-facing identifier (no `-`). A declaration is `{ type, default?, owner?, per? }`. A `default` is materialized into the tier's initial state at schema load **and** re-materialized whenever the engine fires that tier's reset — so a defaulted path is always assigned, and the checker and engine read the one snapshot. `owner: engine` (0.22.0) marks a path content may read but never `::set` (`E-ENGINE-OWNED-WRITE`); `engine` is the only value it takes — see [`owner: engine`](/state/state-model/#owner-engine). `per: <kind>` (0.24.0) declares one path per member of a closed entity kind — see [One path per entity](/state/state-model/#one-path-per-entity-per).
 
 An `enums:` block does double duty. Its domains are argument types for the
 [relational layer](/state/facts-and-datalog/), and since language `0.9.0` they are also how a project
@@ -29,6 +29,50 @@ declares the **content vocabulary** — `emotion`, `action`, `anchor`, `mood`, `
 route a multi-document project should prefer for declaring them; `action` and `anchor` additionally
 carry required member semantics. That is a distinct concern from the scalar tiers this page is about
 — see [Content vocabulary](/language/vocabulary/).
+
+### Keys added in 0.24.0
+
+A schema for a party game with a day clock uses most of them at once:
+
+```yaml
+state:
+  run.day:      { type: number, default: 1, owner: engine }
+  run.slot:     { type: { domain: slot }, default: dawn, owner: engine }
+  run.approval: { type: number, default: 0, per: companion }
+enums:
+  slot:
+    members: [dawn, noon, dusk]
+    labels: { dawn: Dawn, noon: Midday, dusk: Dusk }
+  emotion: [calm, fierce, tired]
+entities:
+  person:    { members: [isolde, corvin, hollis] }
+  companion: { subsetOf: person, members: [isolde, corvin] }
+relations:
+  inParty: { args: [companion], tier: run }
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [dawn, noon, dusk]
+cast:
+  isolde: { name: Isolde, present: "holds(inParty(isolde))", emotions: [calm, fierce] }
+  corvin: { name: "Corvin Hale", present: "holds(inParty(corvin))" }
+  hollis: { name: Hollis }
+```
+
+- **`clock:`** names the `owner: engine` path that holds the day and, for a clock with slots, the path that holds the slot and the slots in order (a clock may also count whole days only). A schema declares at most one, and a malformed clock is `E-CLOCK-DECL`. It adds the read-only `clock.*` paths and `once: day` / `once: slot` beats. See [The clock](/language/clock/).
+- **`labels:`** on a long-form enum gives members display text: `{{run.slot}}` renders `Dawn`, while conditions still compare `run.slot == 'dawn'`. A label for a non-member is `E-ENUM-LABEL-NOT-MEMBER`, and a non-string label is `E-META-VALUE`.
+- **`subsetOf:`** on an entity kind declares a sub-kind whose members all belong to the parent. See [Sub-kinds](/state/facts-and-datalog/#sub-kinds-subsetof).
+- **`per:`** on a state path declares `run.approval.isolde` and `run.approval.corvin`. Its `default:` may be one value for every member or a map with per-member values and a `_` fallback, `{ _: 0, isolde: 2 }`. See [One path per entity](/state/state-model/#one-path-per-entity-per).
+- **`present:`, `emotions:` and `assume:`** on a cast entry say when the character is with the player, which `emotion=` values their lines may use, and whether presence may take the engine's `reserved:` facts as absent. In a schema, a `present:` that does not parse is `E-CEL-PARSE`, one outside the CEL profile is `E-CEL-PROFILE`, and an `emotions:` member outside the schema's `emotion` enum is `E-BAD-ENUM`, each reported at the entry's key. See [The cast](/language/dialogue-and-cast/#the-cast).
+
+### Defs nothing uses
+
+`check-project` reports `W-DEF-UNUSED` (dsl 0.24.0 §7) for a declared `@def` that no content, no other def, and no rule guard references. It is reported once per project, at the declaration: the schema file's line, or the document's own `defs:` key. Play scripts and tests are not uses. The relational counterpart is `W-RELATION-UNREAD` (see [Relations nothing reads](/state/facts-and-datalog/#relations-nothing-reads)).
+
+<!-- lute-diagnostics -->
+```
+./world.schema.yaml:5:3: warning [W-DEF-UNUSED] def `stale` is declared but no `@stale` reference uses it anywhere in the project (content, other defs, or rule guards); use it or drop it (dsl 0.24.0)
+```
 
 ## Composition: `uses` and `extends`
 

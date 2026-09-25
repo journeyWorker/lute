@@ -1406,7 +1406,11 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
                 let entry = cov
                     .arms
                     .entry(key)
-                    .or_insert_with(|| (d.id.clone(), BTreeSet::new(), 0));
+                    // Ember N14: the author's `@def` spelling, not its
+                    // expansion (as `lute trace` prints it, T3-12).
+                    .or_insert_with(|| {
+                        (d.authored_id.clone().unwrap_or_else(|| d.id.clone()), BTreeSet::new(), 0)
+                    });
                 entry.1.insert(d.outcome.clone());
             }
             _ => {}
@@ -1425,7 +1429,10 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
         let entry = cov
             .arms
             .entry(key)
-            .or_insert_with(|| (c.label.clone(), BTreeSet::new(), 0));
+            // N14: the author's `@def` spelling, not its expansion (T3-12).
+            .or_insert_with(|| {
+                (c.authored_label.clone().unwrap_or_else(|| c.label.clone()), BTreeSet::new(), 0)
+            });
         entry.2 = entry.2.max(c.total);
     }
 }

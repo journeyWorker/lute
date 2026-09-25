@@ -220,14 +220,69 @@ fn resolve_edges(
             Err(_) => diags.push(comp_diag(
                 "E-COMPONENT-PARSE",
                 format!(
-                    "cannot resolve `components:` import `{r}` (from {})",
-                    dir.display()
+                    "cannot resolve `components:` import `{r}` (from {}){}",
+                    dir.display(),
+                    component_suggestion(dir, r)
+                        .map(|s| format!(" — did you mean `{s}`? (a document's own \
+                                           `components:` resolves against its directory, \
+                                           `defaults: components:` against lute.project.yaml's)"))
+                        .unwrap_or_default()
                 ),
                 at,
             )),
         }
     }
     out
+}
+
+/// Round-3 CR F5: the spelling of `r`, relative to `dir`, that reaches a
+/// component file of the project: one with the same file name, else the
+/// nearest file name (edit distance ≤ 2). The project is the directory of
+/// the nearest `lute.project.yaml` at or above `dir` (else `dir` itself);
+/// hidden directories, `node_modules` and `target` are skipped.
+fn component_suggestion(dir: &Path, r: &str) -> Option<String> {
+    let dir = std::fs::canonicalize(dir).ok()?;
+    let root = dir
+        .ancestors()
+        .find(|a| a.join("lute.project.yaml").is_file())
+        .unwrap_or(&dir)
+        .to_path_buf();
+    let mut files = Vec::new();
+    let mut stack = vec![(root, 0usize)];
+    while let Some((d, depth)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else { continue };
+        for e in entries.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().into_owned();
+            if p.is_dir() {
+                if depth < 8 && !name.starts_with('.') && name != "node_modules" && name != "target" {
+                    stack.push((p, depth + 1));
+                }
+            } else if name.ends_with(".component.lute") {
+                files.push((name, p));
+            }
+        }
+    }
+    files.sort();
+    let wanted = Path::new(r).file_name()?.to_string_lossy().into_owned();
+    let hit = files.iter().find(|(n, _)| *n == wanted).or_else(|| {
+        let near = lute_manifest::suggest::nearest(&wanted, files.iter().map(|(n, _)| n.as_str()), 2)?;
+        files.iter().find(|(n, _)| n == near)
+    })?;
+    Some(relative_to(&dir, &hit.1))
+}
+
+/// `target` spelled relative to the directory `from` (both canonical).
+fn relative_to(from: &Path, target: &Path) -> String {
+    let common = from
+        .components()
+        .zip(target.components())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let ups = from.components().count() - common;
+    let mut out: Vec<String> = std::iter::repeat_n("..".to_string(), ups).collect();
+    out.extend(target.components().skip(common).map(|c| c.as_os_str().to_string_lossy().into_owned()));
+    out.join("/")
 }
 
 /// Read + parse one canonical component file. An I/O failure or any parse/

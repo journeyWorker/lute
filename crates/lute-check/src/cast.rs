@@ -169,6 +169,7 @@ use lute_syntax::ast::{CelKind, CelSlot, Match};
 use lute_syntax::datalog::{is_anonymous_var, BodyLiteral, FactPattern, FactTerm, RuleTerm};
 use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral};
 
+use crate::beats::BeatOnce;
 use crate::cel_expand::{expand_cel, subject_text, DefTable};
 use crate::check::FoldedEnv;
 use crate::decide::{decide, DecideCtx, Decided};
@@ -419,8 +420,7 @@ pub fn check_presence(
     path: &Path,
     doc: &Document,
     folded: &FoldedEnv,
-    facts: Option<&FactEnv>,
-    ladder: &BTreeMap<usize, Vec<String>>,
+    project: Option<&PresenceProject<'_>>,
 ) -> Vec<Diagnostic> {
     if !folded.cast.values().any(|c| c.present.is_some()) {
         return Vec::new();
@@ -441,7 +441,8 @@ pub fn check_presence(
     let mut w = Presence {
         path,
         folded,
-        facts,
+        facts: project.map(|p| p.env),
+        producers: project.map(|p| p.producers),
         params: &params,
         defs: DefTable {
             bodies: &folded.def_bodies,
@@ -454,14 +455,24 @@ pub fn check_presence(
         present: BTreeMap::new(),
         out: Vec::new(),
     };
-    let ladder_at = |at: Span| ladder.get(&at.byte_start).map_or(&[][..], Vec::as_slice);
+    let ladder_at = |at: Span| {
+        project
+            .and_then(|p| p.ladder.get(&at.byte_start))
+            .map_or(&[][..], Vec::as_slice)
+    };
 
     let scene_ladder = match &folded.typed.beat {
         Some(_) => ladder_at(crate::beats::top_key_span(&doc.meta, "on")),
         None => &[],
     };
     let scene_when = w.slot_cond(folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()));
-    w.unit(scene_when.into_iter().collect(), scene_ladder, doc.shots.iter().map(|s| &s.body[..]));
+    let scene_absent = w.absent_facts(0, folded.typed.beat.as_ref().map_or(BeatOnce::None, |b| b.once));
+    w.unit(
+        scene_when.into_iter().collect(),
+        scene_ladder,
+        scene_absent,
+        doc.shots.iter().map(|s| &s.body[..]),
+    );
     for quest in &doc.quests {
         let mut conds = Vec::new();
         if let Some((start, _)) = w.slot_cond(quest.start.as_ref()) {
@@ -470,7 +481,7 @@ pub fn check_presence(
             conds.extend(cs.into_iter().filter_map(|c| stable_text(&c).map(|t| (c, t))));
         }
         w.quest = (!quest.id.is_empty()).then(|| quest.id.clone());
-        w.unit(conds, &[], std::iter::once(&quest.body[..]));
+        w.unit(conds, &[], Vec::new(), std::iter::once(&quest.body[..]));
         w.quest = None;
     }
     for entry in &doc.entries {
@@ -479,14 +490,83 @@ pub fn check_presence(
             conds.extend(w.parse(&format!("entry.{0}.everRead && entry.{0}.read", entry.id), None));
         }
         let ladder = entry.on.as_ref().map_or(&[][..], |(_, s)| ladder_at(*s));
-        w.unit(conds, ladder, std::iter::once(&entry.body[..]));
+        let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
+            Some("run") => BeatOnce::Run,
+            Some("user") => BeatOnce::User,
+            _ => BeatOnce::None,
+        };
+        let absent = w.absent_facts(entry.span.byte_start, once);
+        w.unit(conds, ladder, absent, std::iter::once(&entry.body[..]));
     }
     for beat in &doc.beats {
         let conds = w.slot_cond(beat.when.as_ref()).into_iter().collect();
         let ladder = beat.on.as_ref().map_or(&[][..], |(_, s)| ladder_at(*s));
-        w.unit(conds, ladder, std::iter::once(&beat.body[..]));
+        let absent = w.absent_facts(beat.span.byte_start, crate::bundles::bundle_beat_once(beat));
+        w.unit(conds, ladder, absent, std::iter::once(&beat.body[..]));
     }
     w.out
+}
+
+/// dsl 0.24.0 §4, `check-project`: what presence reads beyond one document
+/// — the root's fact envelope, the document's beat-ladder assumptions
+/// ([`crate::beats::presence_ladder`], keyed by a unit's `on` offset) and
+/// every `::assert` site of the root ([`fact_producers`]).
+pub struct PresenceProject<'a> {
+    pub env: &'a FactEnv,
+    pub ladder: &'a BTreeMap<usize, Vec<String>>,
+    pub producers: &'a FactProducers,
+}
+
+/// Every `::assert` site of one project root, by relation: its document,
+/// its unit (`0` for a scene's shots, else the span start of the quest,
+/// entry or bundle beat) and its arguments (`None` for anything but a
+/// constant — a component param, `_`).
+#[derive(Default)]
+pub struct FactProducers(BTreeMap<String, Vec<(std::path::PathBuf, usize, Vec<Option<String>>)>>);
+
+/// The [`FactProducers`] of `docs` (one resolved root; component documents
+/// included, their sites counting as a unit of their own).
+pub fn fact_producers(docs: &[(std::path::PathBuf, Document)]) -> FactProducers {
+    let mut out = FactProducers::default();
+    for (path, doc) in docs {
+        let units = std::iter::once((0, doc.shots.iter().map(|s| &s.body[..]).collect::<Vec<_>>()))
+            .chain(doc.quests.iter().map(|q| (q.span.byte_start, vec![&q.body[..]])))
+            .chain(doc.entries.iter().map(|e| (e.span.byte_start, vec![&e.body[..]])))
+            .chain(doc.beats.iter().map(|b| (b.span.byte_start, vec![&b.body[..]])));
+        for (key, bodies) in units {
+            for body in bodies {
+                visit(body, &mut |node| {
+                    if let Node::Assert(a) = node {
+                        if !a.pattern.relation.is_empty() {
+                            out.0
+                                .entry(a.pattern.relation.clone())
+                                .or_default()
+                                .push((path.clone(), key, pattern_args(&a.pattern)));
+                        }
+                    }
+                });
+            }
+        }
+    }
+    out
+}
+
+/// A fact pattern's arguments: a constant, else `None`.
+fn pattern_args(pattern: &FactPattern) -> Vec<Option<String>> {
+    pattern
+        .args
+        .iter()
+        .map(|a| match &a.term {
+            FactTerm::Ident(s) if s.starts_with(|c: char| c.is_ascii_alphabetic()) => Some(s.clone()),
+            FactTerm::Bool(b) => Some(b.to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Two argument lists that may name the same fact.
+fn unifiable(a: &[Option<String>], b: &[Option<String>]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.is_none() || y.is_none() || x == y)
 }
 
 /// dsl 0.24.0 §4, `check-project`: re-decide one document's per-file
@@ -499,13 +579,12 @@ pub fn reconcile_presence(
     path: &Path,
     doc: &Document,
     folded: &FoldedEnv,
-    env: &FactEnv,
-    ladder: &BTreeMap<usize, Vec<String>>,
+    project: &PresenceProject<'_>,
 ) {
     if !diags.iter().any(|d| d.code == W_CAST_ABSENT) {
         return;
     }
-    let still: Vec<Diagnostic> = check_presence(path, doc, folded, Some(env), ladder)
+    let still: Vec<Diagnostic> = check_presence(path, doc, folded, Some(project))
         .into_iter()
         .filter(|d| d.code == W_CAST_ABSENT)
         .collect();
@@ -1052,6 +1131,8 @@ struct Presence<'a> {
     path: &'a Path,
     folded: &'a FoldedEnv,
     facts: Option<&'a FactEnv>,
+    /// `check-project`: every `::assert` site of the root.
+    producers: Option<&'a FactProducers>,
     params: &'a BTreeMap<String, DomainInfo>,
     defs: DefTable<'a>,
     /// Every `::next{to}` target of the document.
@@ -1236,8 +1317,15 @@ impl Presence<'_> {
     }
 
     /// One unit (a scene's shots, a quest, an entry, a bundle beat) under
-    /// its own assumptions and the ladder's.
-    fn unit<'n>(&mut self, conds: Vec<(Expr, String)>, ladder: &[String], bodies: impl Iterator<Item = &'n [Node]>) {
+    /// its own assumptions and the ladder's; `absent` ([`Self::absent_facts`])
+    /// holds at its start, as path state the body's writes may end.
+    fn unit<'n>(
+        &mut self,
+        conds: Vec<(Expr, String)>,
+        ladder: &[String],
+        absent: Vec<String>,
+        bodies: impl Iterator<Item = &'n [Node]>,
+    ) {
         self.guards.clear();
         for c in conds {
             self.push(Some(c));
@@ -1247,9 +1335,57 @@ impl Presence<'_> {
             self.push(c);
         }
         self.base = self.guards.len();
+        for a in absent {
+            let c = self.parse(&a, None);
+            self.push(c);
+        }
         for body in bodies {
             self.walk(body);
         }
+    }
+
+    /// `check-project`: the facts known absent when unit `key` of this
+    /// document starts, as `!holds(F)` — every ground `F` the unit itself
+    /// asserts that no other unit of the root can assert (no unifiable site
+    /// elsewhere, component documents included), no seed names, and that
+    /// cannot survive from an earlier presentation of the unit: a `tier:
+    /// run` relation in a unit presented at most once per run (`once: run`
+    /// or `user`), a `tier: user`/`app` one in a `once: user` unit. Derived
+    /// and engine-`reserved` relations never qualify.
+    fn absent_facts(&self, key: usize, once: BeatOnce) -> Vec<String> {
+        let Some(producers) = self.producers else {
+            return Vec::new();
+        };
+        let vocab = &self.folded.env.rel_vocab;
+        let mut out = BTreeSet::new();
+        for (rel, sites) in &producers.0 {
+            let Some(decl) = vocab.relations.get(rel) else { continue };
+            if decl.derive || decl.reserved {
+                continue;
+            }
+            let fresh = match decl.tier.as_deref().unwrap_or("run") {
+                "run" => matches!(once, BeatOnce::Run | BeatOnce::User),
+                "user" | "app" => once == BeatOnce::User,
+                _ => false,
+            };
+            if !fresh {
+                continue;
+            }
+            let here = |p: &std::path::PathBuf, k: usize| p.as_path() == self.path && k == key;
+            for (_, _, args) in sites.iter().filter(|(p, k, _)| here(p, *k)) {
+                let Some(ground) = args.iter().cloned().collect::<Option<Vec<String>>>() else {
+                    continue;
+                };
+                let elsewhere = sites.iter().any(|(p, k, a)| !here(p, *k) && unifiable(a, args));
+                let seeded = vocab.facts.iter().any(|f| {
+                    f.fact.relation == *rel && unifiable(&pattern_args(&f.fact), args)
+                });
+                if !elsewhere && !seeded {
+                    out.insert(format!("!holds({rel}({}))", ground.join(", ")));
+                }
+            }
+        }
+        out.into_iter().collect()
     }
 
     /// Walk `body` under `conds` added to the guards pushed so far; they
@@ -1424,15 +1560,7 @@ impl Presence<'_> {
         if pattern.relation.is_empty() {
             return;
         }
-        let args = pattern
-            .args
-            .iter()
-            .map(|a| match &a.term {
-                FactTerm::Ident(s) if s.starts_with(|c: char| c.is_ascii_alphabetic()) => Some(s.clone()),
-                FactTerm::Bool(b) => Some(b.to_string()),
-                _ => None,
-            })
-            .collect();
+        let args = pattern_args(pattern);
         let effects = write_effects(&self.folded.env.rel_vocab, &pattern.relation, args, up);
         for g in &mut self.guards {
             if g.live && affected(&effects, g) {
@@ -1484,7 +1612,34 @@ impl Presence<'_> {
         let side = Side::Present {
             assume: member.assume == Some(true),
         };
-        let faults = present_faults(speaker, &raw, span);
+        let mut faults = present_faults(speaker, &raw, span);
+        // A `present:` reading a state path this document does not declare
+        // is no condition here — `W-CAST-ABSENT` would suggest a guard that
+        // is itself `E-UNDECLARED`.
+        if faults.is_empty() {
+            if let Some((e, _)) = self.parse(&raw, None) {
+                let mut paths = Vec::new();
+                read_paths(&e, &mut paths);
+                paths.sort();
+                paths.dedup();
+                for p in paths.iter().filter(|p| {
+                    crate::meta::namespace_of(p).is_some()
+                        && !crate::defassign::is_declared(p, &self.folded.env.state)
+                }) {
+                    faults.push(cast_diag(
+                        "E-UNDECLARED",
+                        Severity::Error,
+                        Layer::Cel,
+                        format!(
+                            "cast `{speaker}` `present: \"{raw}\"` reads `{p}`, which this \
+                             document's `state:` does not declare — declare it where every \
+                             document the member speaks in imports it, or fix the condition"
+                        ),
+                        span,
+                    ));
+                }
+            }
+        }
         let parsed = if faults.is_empty() {
             self.parse(&raw, None).map(|(e, _)| {
                 let mut out = Vec::new();
@@ -1499,7 +1654,11 @@ impl Presence<'_> {
         } else {
             if self.facts.is_none() {
                 self.out.extend(faults.into_iter().map(|mut d| {
-                    d.message.push_str(" — fix the plugin's `cast` export (dsl 0.24.0 §4)");
+                    d.message.push_str(if d.code == "E-UNDECLARED" {
+                        " (dsl 0.24.0 §4)"
+                    } else {
+                        " — fix the plugin's `cast` export (dsl 0.24.0 §4)"
+                    });
                     d
                 }));
             }

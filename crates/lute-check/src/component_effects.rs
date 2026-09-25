@@ -137,10 +137,19 @@ pub fn bind_slot_raw(
         let Some(arg) = args.get(&r.name) else {
             continue;
         };
+        // dsl 0.24.0 §3/§4: `run.approval[@who]` reads the member the
+        // argument names — `run.approval.isolde`.
+        let (s, e) = (r.span.byte_start, r.span.byte_end);
+        let indexed = s > 0
+            && slot.raw.as_bytes()[s - 1] == b'['
+            && slot.raw.as_bytes().get(e) == Some(&b']');
+        if let (true, Ok(FactTerm::Ident(member))) = (indexed, fact_arg_constant(arg)) {
+            slot.raw.replace_range(s - 1..e + 1, &format!(".{member}"));
+            continue;
+        }
         let ty = params.iter().find(|(n, _)| n == &r.name).map(|(_, t)| t);
         let text = arg_cel_text(arg, ty);
-        slot.raw
-            .replace_range(r.span.byte_start..r.span.byte_end, &text);
+        slot.raw.replace_range(s..e, &text);
     }
 }
 
@@ -485,6 +494,29 @@ fn write_skeleton(nodes: &[Node], snapshot: &CapabilitySnapshot, out: &mut Vec<N
     }
 }
 
+/// A `::set` path's `[@param]` member index (dsl 0.24.0 §3/§4):
+/// `run.approval[@who]` → `("run.approval", "who")`.
+pub fn set_path_index(path: &str) -> Option<(&str, &str)> {
+    let (family, rest) = path.split_once("[@")?;
+    Some((family, rest.strip_suffix(']')?))
+}
+
+/// Bind a `::set` path's `[@param]` index to its `::use` constant:
+/// `run.approval[@who]` with `who="isolde"` → `run.approval.isolde`. `false`
+/// when the argument is no identifier (the `::use` check reports why).
+pub fn bind_set_path(path: &mut String, args: &BTreeMap<String, AttrValue>) -> bool {
+    let Some((family, param)) = set_path_index(path) else {
+        return true;
+    };
+    match args.get(param).map(fact_arg_constant) {
+        Some(Ok(FactTerm::Ident(member))) => {
+            *path = format!("{family}.{member}");
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Bind every `@param` in the skeleton. An `::assert` / `::retract` whose
 /// param argument is no constant is dropped: the `::use` check reports it
 /// (`E-COMPONENT-ARG`), and an unbound atom would only pile on.
@@ -495,7 +527,7 @@ fn bind_writes(nodes: &mut Vec<Node>, args: &BTreeMap<String, AttrValue>, params
             if let Some(w) = &mut s.when {
                 bind_slot_raw(w, args, params);
             }
-            true
+            bind_set_path(&mut s.path, args)
         }
         Node::Assert(a) => bind_fact(&mut a.pattern, args),
         Node::Retract(r) => bind_fact(&mut r.pattern, args),

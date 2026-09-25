@@ -41,7 +41,7 @@ options:                   # OPTIONAL — typed activation options
 Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `number` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, and shape refs). State paths use **structured segments**, never `$name` interpolation.
 
 - `directives/*.yaml` — `::name` directive declarations (see [Bridge](/plugins/bridge/)).
-- `state/shapes.yaml` — reusable typed record shapes; `state/templates.yaml` — structured path templates.
+- `state/*.yaml` — reusable typed record shapes (`stateShapes:`) and structured path templates (`stateTemplates:`); one file may hold both (since 0.24.0; before, the second was dropped).
 - `providers/*.yaml` — id registries resolved against a pinned snapshot.
 - `bridge/*.yaml` — typed runtime bridge capabilities.
 - `defs/*.yaml` — shared typed-CEL `@refs`.
@@ -54,7 +54,28 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `cast/*.yaml` — the speakers content lines may use, with display names (dsl 0.23.0).
 - `lints/*.yaml` — advisory [lint rules](/tooling/linting/), namespaced `<plugin-id>/<rule-id>`; excluded from the capability snapshot.
 
-An export name outside this list is a load error. The newest kinds, one minimal file each (every file carries one top-level key; the id is the map key or `name`/`id`):
+An export name outside this list is a load error. Every export file is also read strictly (0.24.0): a key the declaration does not know is `E-PLUGIN-PARSE`, with a did-you-mean, instead of being ignored. This covers directives and their attrs, state, effects and bridge, state shapes and templates, providers, bridge capabilities, defs, enums, events, frontmatter, asset kinds, stamp attributes, reward kinds, occasions, cast entries and lints. Before, `{ selct: all }` loaded as `select: first` without a word:
+
+<!-- lute-diagnostics unverified="serde's unknown-field text with a did-you-mean appended by crates/lute-manifest, then wrapped in the loader's E-PLUGIN-PARSE line; no single format! literal pins it; copied verbatim from lute check --project output" -->
+```
+lute: E-PLUGIN-PARSE: `./plugins/demo.pack/occasions/o.yaml` failed to parse: occasions.inbox: unknown field `selct`, expected one of `select`, `target`, `description`, `judge` at line 3 column 12; did you mean `select`?
+```
+
+A common way to get there is an unquoted description in a flow map. YAML ends an unquoted value at the first comma, so `{ select: all, description: Pick one, the player picks one }` leaves `the player picks one` as a key with no value. The error says so and spells the quoted form:
+
+<!-- lute-diagnostics unverified="serde's unknown-field text with the flow-map hint appended by crates/lute-manifest, wrapped in the loader's E-PLUGIN-PARSE line; copied verbatim from lute check --project output" -->
+```
+lute: E-PLUGIN-PARSE: `./plugins/demo.pack/occasions/o.yaml` failed to parse: occasions.inbox: unknown field `the player picks one`, expected one of `select`, `target`, `description`, `judge` at line 3 column 48; `the player picks one` has no value — in a flow map `{ … }` an unquoted value ends at the first comma, so the rest became a key; quote the description: `description: "Pick one, the player picks one"`
+```
+
+A plugin whose `plugin.yaml` parsed but one of whose exports did not is not loaded at all. The follow-up error for a profile that activates it says the plugin **failed to load** and points back at the parse error. Before 0.24.0 it told the author to install a plugin that was already installed:
+
+<!-- lute-diagnostics unverified="assembled in crates/lute-manifest from the plugin id and a fixed suffix; copied verbatim from lute check --project output" -->
+```
+lute: E-PLUGIN-MISSING-ACTIVE: plugin `demo.pack` is activated by the project manifest but failed to load (see E-PLUGIN-PARSE above); fix its package
+```
+
+The newest kinds, one minimal file each (every file carries one top-level key; the id is the map key or `name`/`id`):
 
 ```yaml
 # events/world.yaml
@@ -64,7 +85,7 @@ events:
 ```
 
 ```yaml
-# occasions/game.yaml — a bare {} is select: first, untargeted
+# occasions/game.yaml — a bare {} is select: first, untargeted, judged after
 occasions:
   hubVisit: {}
   examine:  { select: first, target: true }
@@ -72,9 +93,12 @@ occasions:
   bossDefeated: { select: first, target: { prefix: boss, entity: foe, members: [gatekeeper, warden] } }
   inbox:    { select: all, description: Letters waiting at the fountain }
   evening:  { select: sequence }
+  dayEnd:   { select: first, judge: before }
 ```
 
 An occasion's `select:` says what the engine presents when it is raised. `first` (the default) presents the single winning beat, plus any eligible [`also`](/language/beats/#side-remarks-with-also) beat after it. `all` offers every eligible beat and the player picks one. `sequence` (dsl 0.23.0) presents every eligible beat in selection order, such as an evening routine followed by the day's event (see [Composing an occasion](/language/beats/#composing-an-occasion)). A beat's `also: true` on an `all` or `sequence` occasion is `E-BEAT-ATTR`. When a world event of the same name is also declared under `events:`, every raise of the occasion fires that event after the beats, before the occasion judges its `on=` objectives (see [Occasions](/language/beats/#occasions)).
+
+An occasion's `judge:` (dsl 0.24.0 §2) says when a raise judges the quest objectives that name it with `on=`. The default `after` judges them after the beats are presented, the order since 0.21.0. `before` judges them and settles the quests before the beats are decided, so an epilogue on `dayEnd` can read how its quests ended (`quest.<id>.failedBy`, see [Quests & scenes](/language/quests-and-scenes/)). Only the judging moves. The `<on>` handler bodies the raise answers, both the same-named `<on event>` handlers and the `questComplete` / `questFailed` handlers of the quests it settles, still run after the beats, so their narration follows the scene. Any other value is `E-PLUGIN-PARSE`. An occasion without `judge: before` keeps the `capabilityVersion` stamp it had.
 
 An occasion's `target:` says what it is raised for. Absent or `false`, it is untargeted. `true` keeps its 0.21.0 meaning: the occasion is raised for some dotted id, and a beat's target is checked for shape only. A **domain** `{ prefix, entity }` (dsl 0.22.0) also closes the set: a target is `<prefix>.<member>`, where `entity` names an entity kind the *project* declares under `entities:` in its schema. The plugin supplies the prefix and the kind, and the project supplies the members (or declares the kind `open:` for engine-populated members). A beat target outside the domain is `E-BEAT-ATTR`, with a did-you-mean when a member is close, and so is every target of an occasion whose kind the document's schema does not declare (see [Beats](/language/beats/#target-domains)). A `target:` that is neither a bool nor a `{ prefix, entity }` map (with an optional `members:`) fails the plugin load with `E-PLUGIN-PARSE`.
 
@@ -129,11 +153,11 @@ A kind without `credits:` hashes exactly as it did before 0.23.0, so adding the 
 # cast/harbor.yaml
 cast:
   mira:  { name: Mira }
-  oskar: { name: "Oskar Lind" }
+  oskar: { name: "Oskar Lind", present: "run.oskarAboard", emotions: [calm, grim] }
   vesna: {}
 ```
 
-A `cast` export (dsl 0.23.0) declares the speakers an engine pack is built for: each map key is a speaker id, and `name` (optional, the only field) is its display name. Once any cast is declared, by a plugin or by a schema document's `cast:` key, a content line whose speaker is outside it is `E-CAST-UNKNOWN` with a did-you-mean (see [The cast](/language/dialogue-and-cast/#the-cast)). The plugin casts and the schema casts a document imports are unioned, and a plugin's entry wins an id they share, because it carries the engine's display name. Two active plugins declaring the same id is `E-PLUGIN-DUP-ACROSS` at assembly. A non-empty cast folds into `capabilityVersion`; a plugin that exports none leaves the stamp alone.
+A `cast` export (dsl 0.23.0) declares the speakers an engine pack is built for: each map key is a speaker id, and every field is optional. `name` is the display name. Since 0.24.0 an entry may also declare `present:`, the condition under which the character is with the player, `emotions:`, the `emotion=` values their lines may use, and `assume: true`, which lets the presence check take the engine's `reserved:` facts that `present:` negates as absent. A line whose guards do not imply `present:` is `W-CAST-ABSENT`, and an `emotion=` outside `emotions:` is `E-BAD-ENUM` (see [The cast](/language/dialogue-and-cast/#the-cast)). Any other key is `E-PLUGIN-PARSE`. Once any cast is declared, by a plugin or by a schema document's `cast:` key, a content line whose speaker is outside it is `E-CAST-UNKNOWN` with a did-you-mean, and so is an `::auto{character}` or `::camera{focus}` that names someone outside it. The plugin casts and the schema casts a document imports are unioned, and a plugin's entry wins an id they share, because it carries the engine's display name. Two active plugins declaring the same id is `E-PLUGIN-DUP-ACROSS` at assembly. A non-empty cast folds into `capabilityVersion`; a plugin that exports none leaves the stamp alone, and a cast that uses none of the 0.24.0 keys keeps the stamp it had under 0.23.
 
 ## Cross-cutting attributes (`stampAttrs`)
 
@@ -172,11 +196,18 @@ Both surfaces are covered — the `stampAttrs` export *and* an ordinary per-dire
 
 ## Declarative lowering
 
-A directive's `lower:` says what the compiler emits for it. There are two forms:
+A directive's `lower:` says what the compiler emits for it. It is optional: without it the directive compiles to the generic `kind: "plugin"` passthrough record ([below](#passthrough-ownership-and-dispatch)). Before 0.24.0 a missing `lower:` was `E-PLUGIN-PARSE missing field lower`, although the passthrough was documented as the default. When present it takes one of two forms:
 
 ```yaml
 lower: { record: <kind>, fields: { … } }   # a finite attrs → one core record
 lower: { kind: builtin, name: <hook> }     # a named core hook
+```
+
+A `builtin` name must be one of the hooks the core registers for its own directives: `autoStage`, `cameraTransform`, `clearStage`, `end`, `mark`, `next`. Any other name is `E-PLUGIN-PARSE` when the plugin loads, with a did-you-mean for a near miss and the advice to omit `lower:` for the passthrough. Before 0.24.0 an unregistered name lowered as a silent passthrough, and the shipped bridge examples named hooks that never existed (`bridgeMinigame`, `bridgeServe`, …). A bridge directive needs no `lower:`; its `bridge: { service, operation }` binds the call (see [Bridge](/plugins/bridge/)).
+
+<!-- lute-diagnostics unverified="built in crates/lute-manifest/src/schema.rs from several format! pieces and wrapped in the loader's E-PLUGIN-PARSE line; copied verbatim from lute check --project output" -->
+```
+lute: E-PLUGIN-PARSE: `./plugins/demo.pack/directives/d.yaml` failed to parse: directives[1]: `clearStag` is not a builtin lowering hook (did you mean `clearStage`?); the core registers autoStage, cameraTransform, clearStage, end, mark, next; omit `lower:` for the generic `kind: "plugin"` passthrough at line 6 column 5
 ```
 
 The `record` form targets one of the eight **non-control-flow staging kinds** — `background`, `music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video` — binding each target field to a `fromAttr` reference or a literal:
@@ -218,8 +249,7 @@ lute: E-LOWER-RECORD-UNKNOWN: directive `::sting` lowers to unknown record `line
 
 ### Passthrough ownership and dispatch
 
-When a directive has neither declarative `lower: { record, fields }` nor a named core builtin
-lowering hook, the compiler emits a generic passthrough record:
+When a directive declares no `lower:`, the compiler emits a generic passthrough record:
 
 ```json
 {

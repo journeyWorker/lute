@@ -446,8 +446,8 @@ enum Command {
         /// The PROJECT directory (default: current directory) — not the
         /// destination folder. A directory inside a project that is not its
         /// root is refused with the `<sub>/<name>` spelling to use instead.
-        #[arg(long, value_name = "PROJECT", default_value = ".")]
-        dir: PathBuf,
+        #[arg(long, value_name = "PROJECT")]
+        dir: Option<PathBuf>,
         /// Make the scene a beat answering this occasion (dsl 0.21.0 §3).
         #[arg(long, value_name = "OCCASION")]
         on: Option<String>,
@@ -1337,7 +1337,7 @@ fn main() -> ExitCode {
             on,
             target,
             start,
-        } => scaffold::run_new(&kind, &name, &dir, on.as_deref(), target.as_deref(), start),
+        } => scaffold::run_new(&kind, &name, dir.as_deref(), on.as_deref(), target.as_deref(), start),
         Command::Lore { dir, json } => lore_report::run_lore(&dir, json),
         Command::Doctor { dir, json } => doctor::run_doctor(&dir, json),
         Command::Run {
@@ -1968,6 +1968,14 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
         &CapabilitySnapshot::default(),
         lute_check::MetaKind::Schema,
     );
+    for d in schema_as_imported_diags(file) {
+        let dup = diagnostics
+            .iter()
+            .any(|e| e.code == d.code && e.message == d.message && e.span.byte_start == d.span.byte_start);
+        if !dup {
+            diagnostics.push(d);
+        }
+    }
     // The house zero-then-normalize convention: `meta_key_span` emits byte
     // offsets and leaves `line`/`column` at zero for `check`'s own pass, which
     // this surface bypasses.
@@ -1985,6 +1993,54 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
         domain_use: lute_check::DomainUse::default(),
     };
     render_check_result(file, &result, json, policy)
+}
+
+/// What `check` reports about the schema `file` when a document imports it
+/// — the problems that need the resolved schema (its own `uses:` /
+/// `extends:`) and, inside a project, the project's vocabulary: entity and
+/// fact validation, enum labels, the clock's paths and `raise` occasions
+/// (dsl 0.24 T3-6). A document that only `uses:` the schema is checked in
+/// memory, and every diagnostic it attributes to the schema (its `related`
+/// entry in this file) is kept, at the schema's own line. The schema's
+/// frontmatter diagnostics (`E-USES-PARSE`) are the caller's already.
+fn schema_as_imported_diags(file: &Path) -> Vec<Diagnostic> {
+    let Ok(canon) = std::fs::canonicalize(file) else {
+        return Vec::new();
+    };
+    let (Some(base), Some(name)) = (canon.parent(), canon.file_name()) else {
+        return Vec::new();
+    };
+    let project = nearest_manifest_dir(file).and_then(|dir| load_project(&dir).ok().flatten());
+    let (snapshot, _) = resolve_document_snapshot(project.as_ref(), None, &Default::default());
+    let text = format!(
+        "---\nkind: scene\nid: schema-check\nuses: '{}'\n---\n\n## Check\n",
+        name.to_string_lossy().replace('\'', "''")
+    );
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta, _) = lute_check::meta::parse_meta_kind(
+        &doc.meta,
+        &CapabilitySnapshot::default(),
+        lute_check::meta::MetaKind::Scene,
+    );
+    let input = CheckInput {
+        uri: base.join("schema-check.lute").display().to_string(),
+        snapshot,
+        providers: lute_manifest::project::project_providers(project.as_ref()),
+        mode: Mode::Ci,
+        imports: lute_check::resolve_imports(base, &meta.uses, &meta.extends, doc.meta.span),
+        components: lute_check::resolve_components(base, &[], doc.meta.span),
+        defaults: Default::default(),
+        text,
+    };
+    let here = canon.display().to_string();
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code != "E-USES-PARSE")
+        .flat_map(|d| d.related)
+        .filter(|r| r.file == here)
+        .map(|r| r.diagnostic)
+        .collect()
 }
 
 /// Run `check` over one file and print its result. Exit `0` clean / `1` on an
@@ -2735,15 +2791,21 @@ fn reconcile_collected(
         }
         let beat_foldeds: Vec<&lute_check::FoldedEnv> =
             group_full.iter().map(|(_, _, f)| f).collect();
-        // dsl 0.24.0 §4: `W-CAST-ABSENT` re-decided under the fact envelope
-        // and the beat ladders — a line the Must set (or the beats a ladder
-        // must have spent first) shows its speaker present at is dropped.
+        // dsl 0.24.0 §4: `W-CAST-ABSENT` re-decided under the fact envelope,
+        // the beat ladders and the root's assert sites — a line the Must set,
+        // the beats a ladder must have spent first, or a fact only its own
+        // unit produces shows its speaker present at is dropped.
         let ladder = lute_check::beats::presence_ladder(group, &beat_foldeds);
+        let producers = lute_check::cast::fact_producers(group);
         let no_ladder = BTreeMap::new();
         for (path, doc, folded) in group_full {
             if let Some((_, r)) = file_results.iter_mut().find(|(p, _)| p == path) {
-                let ladder = ladder.get(path).unwrap_or(&no_ladder);
-                lute_check::cast::reconcile_presence(&mut r.diagnostics, path, doc, folded, fact_env, ladder);
+                let project = lute_check::cast::PresenceProject {
+                    env: fact_env,
+                    ladder: ladder.get(path).unwrap_or(&no_ladder),
+                    producers: &producers,
+                };
+                lute_check::cast::reconcile_presence(&mut r.diagnostics, path, doc, folded, &project);
             }
         }
         // dsl 0.21.0 §5: `W-BEAT-SHADOWED` — a `select: first` beat an

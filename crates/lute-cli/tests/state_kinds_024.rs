@@ -133,3 +133,143 @@ fn component_params_bind_into_fact_atoms() {
     assert!(t.contains("argument 0 is `@who`, a component param"), "{t}");
     assert!(!t.contains("E-DATALOG-PARSE"), "{t}");
 }
+
+/// Round-3 CR F5: an unresolvable `components:` import names the project
+/// file it probably meant, spelled from the importing document; a `::use` of
+/// an undeclared component names the nearest declared one.
+#[test]
+fn unresolved_component_imports_suggest_the_project_file() {
+    let schema = format!("{KINDS}{GIFTED}");
+    let nested = "---\nkind: scene\nid: s\ncomponents: [gift.component.lute]\n---\n\n## S\n\n\
+                  ::use{component=\"gift\" who=\"sefa\" item=\"shell\"}\n";
+    let typo = "---\nkind: scene\nid: t\n---\n\n## T\n\n\
+                ::use{component=\"gfit\" who=\"sefa\" item=\"shell\"}\n";
+    let dir = project(
+        "comp-path",
+        &schema,
+        &[("scenes/run/recap.lute", nested), ("scenes/t.lute", typo)],
+    );
+    let (_, t) = run(&dir, &["check-project", "."]);
+    assert!(
+        t.contains("cannot resolve `components:` import `gift.component.lute`")
+            && t.contains("did you mean `../../gift.component.lute`?"),
+        "{t}"
+    );
+    assert!(t.contains("unknown component `gfit`: not declared in `components:` — did you mean `gift`?"), "{t}");
+}
+
+/// A project from `(path, text)` files alone.
+fn raw_project(tag: &str, files: &[(&str, &str)]) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("lute-sk-raw-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for (rel, text) in files {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+    dir
+}
+
+const CORE: &str = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  uses: [w.schema.yaml]\n  components: [react.component.lute]\n";
+
+/// ER N6: an effects component writes and reads a `per:` family member
+/// chosen by its param — `run.approval[@who]` — bound at each `::use`, whose
+/// argument must be a member of the family's kind.
+#[test]
+fn a_component_indexes_a_per_family_by_its_param() {
+    let schema = "state:\n  run.approval: { type: number, default: 0, per: companion }\n\
+                  entities:\n  companion: { members: [isolde, corvin] }\n\
+                  cast:\n  isolde: { name: Isolde }\n  corvin: { name: Corvin }\n  oda: { name: Oda }\n";
+    let comp = "---\ncomponent: react\neffects: true\nparams:\n  who: speaker\n---\n\n## R\n\n\
+                ::set{run.approval[@who] = run.approval[@who] + 2}\n";
+    let ok = "---\nkind: scene\nid: s\non: visit\n---\n\n## S\n\n::use{component=\"react\" who=\"isolde\"}\n\
+              @narrator: {{run.approval.isolde}}\n";
+    let dir = raw_project(
+        "per-index",
+        &[("lute.project.yaml", CORE), ("w.schema.yaml", schema), ("react.component.lute", comp), ("s.lute", ok)],
+    );
+    let (code, t) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(0), "{t}");
+    std::fs::write(
+        dir.join("p.play.yaml"),
+        "steps:\n  - occasion: visit\nexpect:\n  state: { run.approval.isolde: 2, run.approval.corvin: 0 }\n",
+    )
+    .unwrap();
+    let (code, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    assert_eq!(code, Some(0), "{t}");
+
+    std::fs::write(
+        dir.join("t.lute"),
+        "---\nkind: scene\nid: t\n---\n\n## T\n\n::use{component=\"react\" who=\"oda\"}\n",
+    )
+    .unwrap();
+    let (_, t) = run(&dir, &["check-project", "."]);
+    assert!(
+        t.contains("./t.lute:8:")
+            && t.contains("`oda` is not a member of entity kind `companion` [isolde, corvin]"),
+        "{t}"
+    );
+    assert!(!t.contains("E-CEL-PARSE"), "{t}");
+}
+
+/// Docs024: `::clear` takes no attributes — the timing keys other
+/// directives accept are `E-UNKNOWN-ATTR` on it.
+#[test]
+fn clear_takes_no_timing_attributes() {
+    let scene = "---\nkind: scene\nid: s\n---\n\n## S\n\n::clear{duration=\"0.5\" wait=\"true\"}\n@narrator: x\n";
+    let dir = raw_project("clear-attrs", &[("s.lute", scene)]);
+    let (code, t) = run(&dir, &["check", "s.lute"]);
+    assert_ne!(code, Some(0), "{t}");
+    assert!(t.contains("`::clear` has no attribute `duration`"), "{t}");
+    assert!(t.contains("`::clear` has no attribute `wait`"), "{t}");
+}
+
+/// Docs024: a plugin directive lowered by the `clearStage` builtin hook
+/// compiles and traces as `::clear` — a sprite exit, not a passthrough.
+#[test]
+fn a_plugin_builtin_hook_lowers_to_the_core_op() {
+    let dir = raw_project(
+        "builtin-hook",
+        &[
+            (
+                "lute.project.yaml",
+                "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    plugins: { lute.core: true, demo.pack: true }\n",
+            ),
+            (
+                "plugins/demo.pack/plugin.yaml",
+                "id: demo.pack\nversion: 0.1.0\nkind: capability\ndepends:\n  - { id: lute.core, range: \"^0.0.1\" }\nexports:\n  directives: directives/\n",
+            ),
+            (
+                "plugins/demo.pack/directives/d.yaml",
+                "directives:\n  - name: wipe\n    layer: staging\n    attrs: []\n    lower: { kind: builtin, name: clearStage }\n",
+            ),
+            (
+                "b.lute",
+                "---\nkind: scene\nid: b\nenums:\n  action:\n    members: [fade-in-up, fade-out-down]\n    exits: [fade-out-down]\n  anchor:\n    members: [left, center, right]\n    default: center\n---\n\n## B\n\n::auto{character=\"corvin\" action=\"fade-in-up\"}\n@corvin: Hi.\n::wipe\n@narrator: Gone.\n",
+            ),
+        ],
+    );
+    let (code, t) = run(&dir, &["compile", "b.lute", "--project", "."]);
+    assert_eq!(code, Some(0), "{t}");
+    assert!(t.contains("\"exit\": true"), "{t}");
+    assert!(!t.contains("\"kind\": \"plugin\""), "{t}");
+    let (_, t) = run(&dir, &["trace", "b.lute", "--project", "."]);
+    assert!(t.contains("<clear exit>"), "{t}");
+}
+
+/// Docs024: a cast `present:` reading a path the document does not declare
+/// is `E-UNDECLARED`, not a `W-CAST-ABSENT` suggesting that same guard.
+#[test]
+fn a_cast_present_on_an_undeclared_path_is_an_error() {
+    let dir = raw_project(
+        "present-undeclared",
+        &[
+            ("lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  uses: [w.schema.yaml]\n"),
+            ("w.schema.yaml", "cast:\n  isolde: { name: Isolde, present: \"run.withIsolde\" }\n"),
+            ("u.lute", "---\nkind: scene\nid: u\n---\n\n## U\n\n@isolde: Hello.\n"),
+        ],
+    );
+    let (_, t) = run(&dir, &["check-project", "."]);
+    assert!(t.contains("E-UNDECLARED") && t.contains("reads `run.withIsolde`"), "{t}");
+    assert!(!t.contains("W-CAST-ABSENT"), "{t}");
+}

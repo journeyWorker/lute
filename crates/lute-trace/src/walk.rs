@@ -3136,6 +3136,8 @@ fn trace_pipeline(
         &cast,
         &folded.env.state,
     );
+    // The same builtin-hook retag `compile` applies after normalizing.
+    lute_check::builtin_lowering::canonicalize_builtin_directives(&mut doc, &input.snapshot);
     let table = DefTable {
         bodies: &folded.def_bodies,
         params: &folded.env.def_params,

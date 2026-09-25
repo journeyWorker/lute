@@ -623,6 +623,18 @@ impl Parser<'_> {
         while j < n && (is_ident_byte(ib[j]) || ib[j] == b'.') {
             j += 1;
         }
+        // dsl 0.24.0 §3/§4: `run.approval[@who]` — a `per:` family member
+        // chosen by a component param, bound to `run.approval.<arg>` at each
+        // `::use`. Only the `[@ident]` form joins the path.
+        if ib.get(j) == Some(&b'[') && ib.get(j + 1) == Some(&b'@') {
+            let mut k = j + 2;
+            while k < n && is_ident_byte(ib[k]) {
+                k += 1;
+            }
+            if k > j + 2 && ib.get(k) == Some(&b']') {
+                j = k + 1;
+            }
+        }
         let path_end = j;
         let path = inner[path_start..path_end].to_string();
         let path_span = self.span(inner_start + path_start, inner_start + path_end);

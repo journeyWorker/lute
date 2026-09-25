@@ -244,7 +244,7 @@ $ lute compile my-scene.lute
   "kind": "scene",
   "lute": "0.23.1",
   "irVersion": "0.23.1",
-  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "capabilityVersion": "0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3",
   "meta": {
     "id": "mira.s01ep01",
     "character": "mira",
@@ -489,7 +489,7 @@ file you give it:
 
 ```
 $ lute context my-scene.lute
-capabilityVersion: 69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81
+capabilityVersion: 0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3
 permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (11):
   auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]

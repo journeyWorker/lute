@@ -1251,6 +1251,9 @@ fn resolve_bridges(
 ) -> Result<BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>, String> {
     // tag -> field -> the result slots the project's calls write it to.
     let mut calls: BTreeMap<&str, BTreeMap<&str, BTreeSet<&str>>> = BTreeMap::new();
+    // tag -> the fields its calls read, in effect order, typed by the slot
+    // (the typed answer `lute trace` / `lute test` spell, ember N7).
+    let mut shapes: BTreeMap<&str, Vec<(&str, Option<lute_manifest::types::Type>)>> = BTreeMap::new();
     for art in p.artifacts.values() {
         let cmds = art.get("commands").and_then(Json::as_array).into_iter().flatten();
         for c in cmds.filter(|c| c.get("kind").and_then(Json::as_str) == Some("plugin")) {
@@ -1260,6 +1263,10 @@ fn resolve_bridges(
                 let path = e.get("path").and_then(Json::as_str);
                 if let (Some(field), Some(path)) = (field, path) {
                     calls.entry(tag).or_default().entry(field).or_default().insert(path);
+                    let shape = shapes.entry(tag).or_default();
+                    if !shape.iter().any(|(f, _)| *f == field) {
+                        shape.push((field, state_entry_type(art, path)));
+                    }
                 }
             }
         }
@@ -1296,9 +1303,12 @@ fn resolve_bridges(
                 }
             }
             if let Some(missing) = fields.keys().find(|f| !answer.iter().any(|(a, _)| a == *f)) {
+                let shape = lute_trace::bridge_answer_shape(
+                    shapes.get(tag.as_str()).into_iter().flatten().map(|(f, t)| (*f, t.as_ref())),
+                );
                 return Err(format!(
                     "{at}: `bridges.{tag}` answer {n} lacks `{missing}` — an answer gives every \
-                     bridge result a `{tag}` call reads ({reads})"
+                     bridge result `::{tag}` reads: `{shape}` (dsl 0.24.0 §5)"
                 ));
             }
         }
@@ -2890,8 +2900,8 @@ enum StepBody {
     /// dsl 0.24.0 §1: an `advance:` — `by` as written (`slot`, `day`, `3`),
     /// the clock `from` → `to` (described, `day 2 (Tue) morning`), each
     /// `dayEnd` / `dayStart` the clock raised at a midnight it crossed,
-    /// then the `set` records of the last move (with the step's `engine:`
-    /// writes when nothing was raised before it), the quest settle right
+    /// then the `set` records of the last move and the step's `engine:`
+    /// writes (applied where the clock arrives), the quest settle right
     /// after, then the clock's `raise.slot` occasion as an `Occasion` body.
     Advance {
         by: String,
@@ -2907,9 +2917,9 @@ enum StepBody {
 }
 
 /// dsl 0.24.0 §1: a `dayEnd` / `dayStart` an `advance:` raised at a
-/// midnight: the move that brought the clock there (its `set` records, the
-/// step's `engine:` writes on the first) and the settle after it, then the
-/// occasion raised at `at` and the quests' answer to it.
+/// midnight: the move that brought the clock there (its `set` records) and
+/// the settle after it, then the occasion raised at `at` and the quests'
+/// answer to it.
 struct DayRaise {
     at: String,
     writes: Vec<Json>,
@@ -2928,6 +2938,10 @@ struct StepRecord {
     /// The world right after the step settled — captured only when the
     /// step's `expect:` judges it (0.23.1).
     world: Option<WorldView>,
+    /// Usage notes on the step as written — e.g. an `occasion:` step raising
+    /// the `dayEnd` / `dayStart` its clock's `advance:` already raises
+    /// ([`clock_raised_note`]).
+    notes: Vec<String>,
 }
 
 /// The whole playthrough: the initial quest settle, then every step, and
@@ -2963,6 +2977,7 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
                 body: StepBody::End,
                 quests: Vec::new(),
                 world: None,
+                notes: Vec::new(),
             });
             let skipped: Vec<(usize, Option<String>)> =
                 plan[i + 1..].iter().map(|s| (s.n, s.label.clone())).collect();
@@ -3001,6 +3016,7 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
                 body,
                 quests,
                 world: wants.map(|wants| world_view(p, &w, wants.facts)),
+                notes: clock_raised_note(p, &step.action).into_iter().collect(),
             });
             if let Some(h) = halt {
                 return finish(start, steps, h, w);
@@ -3015,6 +3031,27 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
         outcome: Ok(format!("complete ({n} step{})", if n == 1 { "" } else { "s" })),
         world: w,
     }
+}
+
+/// Summer R1: an `occasion:` step raising the `dayEnd` / `dayStart` the
+/// clock's `raise:` map declares — the next `advance:` crossing that
+/// midnight raises it again, so its content runs twice for one day. A note,
+/// not an error: a script may mean it.
+fn clock_raised_note(p: &Project, action: &Action) -> Option<String> {
+    let Action::Occasion { occasion, .. } = action else { return None };
+    let moments = p.index.clock.as_ref()?.raise.as_ref()?.moments();
+    let (moment, when) = if moments.day_end.as_ref() == Some(occasion) {
+        ("dayEnd", "at each midnight it crosses, before the clock leaves the day")
+    } else if moments.day_start.as_ref() == Some(occasion) {
+        ("dayStart", "on each day it enters")
+    } else {
+        return None;
+    };
+    Some(format!(
+        "`{occasion}` is the clock's `raise: {{ {moment}: {occasion} }}` — an `advance:` raises it \
+         {when}; this step raises it again, so the same day's `{occasion}` runs twice once an \
+         `advance:` passes it (drop the step and let `advance:` raise it; dsl 0.24.0 §1)"
+    ))
 }
 
 /// dsl 0.24.0 §5: answers a step's own `bridges:` gave that no plugin call
@@ -3195,16 +3232,18 @@ fn settle_before(p: &Project, w: &mut World, next: Option<&String>) -> (Vec<Ques
     (settled, stop)
 }
 
-/// dsl 0.24.0 §1: one `advance:` — apply the step's `engine:` writes, write
-/// the clock's day/slot paths `by` slots (or to the next day's first slot)
-/// forward, settle every quest (a `by` deadline the new time passes fails
-/// here), then raise the clock's `raise.slot` occasion, exactly as an
-/// `occasion:` step raises it. With `raise.dayEnd` / `raise.dayStart`, every
-/// midnight the advance crosses is a stop of its own: `dayEnd` is raised at
-/// the day's last slot (`advance: <n>` walks there — it never skips the
-/// close of a day; `advance: day` closes the day where the clock stands),
-/// then the clock crosses to the next day's first slot and `dayStart` is
-/// raised there; each move settles the quests first.
+/// dsl 0.24.0 §1: one `advance:` — write the clock's day/slot paths `by`
+/// slots (or to the next day's first slot) forward, apply the step's
+/// `engine:` writes where the clock arrives, settle every quest (a `by`
+/// deadline the new time passes fails here), then raise the clock's
+/// `raise.slot` occasion, exactly as an `occasion:` step raises it. With
+/// `raise.dayEnd` / `raise.dayStart`, every midnight the advance crosses is
+/// a stop of its own, before the `engine:` writes (ember R3: that evening's
+/// `dayEnd` still reads the day it closes): `dayEnd` is raised at the day's
+/// last slot (`advance: <n>` walks there — it never skips the close of a
+/// day; `advance: day` closes the day where the clock stands), then the
+/// clock crosses to the next day's first slot and `dayStart` is raised
+/// there; each move settles the quests first.
 #[allow(clippy::too_many_arguments)]
 fn run_advance(
     p: &Project,
@@ -3245,13 +3284,7 @@ fn run_advance(
         let halt = PlayHalt::Error(format!("step {n}: `advance:` cannot move the clock — {names}"));
         return (body(String::new(), String::new(), Vec::new(), Vec::new(), Vec::new(), None), Vec::new(), Some(halt));
     };
-    let mut writes = match apply_writes(w, engine) {
-        Ok(writes) => writes,
-        Err(e) => {
-            let b = body(clock.describe(from), String::new(), Vec::new(), Vec::new(), Vec::new(), None);
-            return (b, Vec::new(), Some(PlayHalt::Error(format!("step {n}: {e}"))));
-        }
-    };
+    let mut writes = Vec::new();
     let to = clock.advance(from, by);
     let mut at = from;
     let mut settled = Vec::new();
@@ -3310,6 +3343,12 @@ fn run_advance(
     if stop.is_none() {
         writes.extend(move_clock(p, w, clock, at, to));
         at = to;
+        match apply_writes(w, engine) {
+            Ok(engine) => writes.extend(engine),
+            Err(e) => stop = Some(PlayHalt::Error(format!("step {n}: {e}"))),
+        }
+    }
+    if stop.is_none() {
         let (s, halt) = settle_before(p, w, raise.slot.as_ref());
         settled.extend(s);
         stop = halt;
@@ -4074,6 +4113,9 @@ fn render_human(p: &Project, play: &Playthrough, ir: bool) -> String {
             }
             body @ StepBody::Occasion { .. } => render_occasion_human(&mut out, p, ir, &head, body),
         }
+        for note in &s.notes {
+            out.push_str(&format!("  note: {note}\n"));
+        }
         for q in &s.quests {
             render_records(&mut out, p, ir, &q.document, &q.transcript);
         }
@@ -4346,6 +4388,9 @@ fn render_json(play: &Playthrough) -> Json {
             if let Some((k, of)) = s.iteration {
                 o.insert("iteration".into(), json!(k));
                 o.insert("repeat".into(), json!(of));
+            }
+            if !s.notes.is_empty() {
+                o.insert("notes".into(), json!(s.notes));
             }
             match &s.body {
                 StepBody::NewRun {
@@ -4623,6 +4668,21 @@ fn play_outcome(p: &Project, play: &Playthrough, said: String) -> PlayOutcome {
                 for pr in presented {
                     offered_options(p, &pr.document, &pr.transcript, &mut row.options);
                 }
+            }
+            // Summer R2 / lighthouse N15: an `advance:` step's `presented`
+            // spans every raise it made — each midnight's `dayEnd` /
+            // `dayStart`, then the slot raise — in order; `winner`, `offered`
+            // and `notOffered` stay the slot raise's (where the clock stops).
+            if let StepBody::Advance { days, raised, .. } = &s.body {
+                let beats = days
+                    .iter()
+                    .map(|d| &*d.occasion)
+                    .chain(raised.as_deref())
+                    .flat_map(|b| match b {
+                        StepBody::Occasion { presented, .. } => presented.as_slice(),
+                        _ => &[],
+                    });
+                row.presented = beats.map(|pr| pr.id.clone()).collect();
             }
             match &s.body {
                 StepBody::Occasion { .. } => {}

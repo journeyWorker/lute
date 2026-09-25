@@ -440,6 +440,8 @@ SCHEMA_DOC_KEYS = frozenset(
         "facts",
         "rules",
         "components",
+        "cast",
+        "clock",
     )
 )
 
@@ -475,7 +477,9 @@ QUOTE_HEAD_RES = (
 )
 
 # D2 — a record ends here. (A new header is checked before this.)
-QUOTE_STOP_RE = re.compile(r"^\s*$|^\s*\$ |^(?:ok|failed): |^--deny |^project-wide diagnostics:")
+QUOTE_STOP_RE = re.compile(
+    r"^\s*$|^\s*\$ |^(?:ok|failed): |^--deny |^project-wide diagnostics:|^trace refused: "
+)
 
 # Rust's format-argument grammar and nothing else: `{}`, `{0}`, `{name}`,
 # `{name:spec}`, and the `{{` / `}}` brace escapes. A brace run that is not one

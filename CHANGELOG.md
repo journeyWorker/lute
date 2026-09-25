@@ -234,12 +234,21 @@ table.
   (wrapping slots into the next day), settles the quests (a `by` the new
   time passes fails there), then raises the clock's `raise` occasion as an
   `occasion:` step would, taking its `pick` / `choose` and selection
-  `expect:`. The transcript prints `advance slot: day 1 (Mon) night → day 2
+  `expect:` — the step's `presented:` lists every beat the step presented,
+  each `dayEnd` / `dayStart` raise's then the final raise's, in order
+  (summer R2, lighthouse N15), while `winner:`, `offered:` and `notOffered:`
+  judge the final raise, where the clock stops. The transcript prints `advance slot: day 1 (Mon) night → day 2
   (Tue) morning`; `--json` carries `advance: { by, from, to, writes, quests
   }` beside the raised occasion's fields. An `advance:` step may carry the
   `engine:` writes of the same moment (`advance: day` + `engine: { state: {
-  run.leg: 3 } }`): they apply before the clock moves and one settle follows
-  both (a write to the clock's own day / slot path there is a usage error).
+  run.leg: 3 } }`): they land where the clock arrives — after every
+  `dayEnd` / `dayStart` the advance raises on the way (that evening's
+  `dayEnd` still reads the day it closes, ember R3), before the final
+  settle and raise — and one settle follows both (a write to the clock's
+  own day / slot path there is a usage error). An `occasion:` step raising
+  the clock's own `dayEnd` / `dayStart` prints a note: the next `advance:`
+  across that midnight raises it again (summer R1; `--json`: the step's
+  `notes`).
   An `engine:` step that moves `clock.index` backward is a usage error (exit
   2). `- include: <file>`
   splices another file's steps in place (relative to the including file;
@@ -502,6 +511,36 @@ table.
 
 ### Fixed
 
+- **A component can index a `per:` family by its param** (ER N6).
+  `::set{run.approval[@who] += 1}` (and a `run.approval[@who]` read in the
+  component's CEL) binds to `run.approval.isolde` at each `::use`; an
+  argument that is not a member of the family's kind is `E-COMPONENT-ARG` at
+  the `::use`, naming the kind's members. It was `E-UNDECLARED` plus a
+  misleading `E-CEL-PARSE`.
+- **A plugin directive lowered by a builtin hook runs that builtin.**
+  `lower: { kind: builtin, name: clearStage }` compiled to a `kind: plugin`
+  passthrough and cleared nothing; `compile` and `trace` now treat the
+  directive as the core directive the hook belongs to (`clearStage` →
+  `::clear`, `autoStage` → `::auto`, `cameraTransform` → `::camera`, `end`,
+  `mark`, `next`).
+- **`::clear` rejects timing attributes.** `::clear{duration="0.5"
+  wait="true"}` checked clean and the keys were dropped; `duration`, `delay`
+  and `wait` are now `E-UNKNOWN-ATTR` on `::clear`, which takes no attributes.
+- **A cast `present:` on an undeclared path is `E-UNDECLARED`** (plugin or
+  schema cast), reported at the member's line in each document that does not
+  declare the path, instead of a `W-CAST-ABSENT` suggesting that same
+  undeclared guard.
+- **Unresolved components get a did-you-mean** (CR F5). A `components:`
+  import that does not resolve names the project's component file with that
+  name (or the nearest one), spelled from the importing document
+  (`did you mean ../../components/gauge.component.lute?`), and says a
+  document's own `components:` resolves against its directory while
+  `defaults: components:` resolves against lute.project.yaml's. A `::use` of
+  an undeclared component names the nearest declared one.
+- **`lute new` from a subdirectory no longer blames `--dir`** (CR N7). With
+  no `--dir`, the refusal says the project was taken from the current
+  directory, names it, and says to run from the project root or pass
+  `--dir <root>`. With `--dir`, it names the directory it resolved to.
 - **Exhaustiveness honors a beat's `when:`** (LH N1). `E-NONEXHAUSTIVE` now
   reads the same narrowed domain `E-ARM-DEAD` and `W-OTHERWISE-DEAD` do: under
   `when: "run.verdict != 'undecided'"` a `<match on="run.verdict">` without an
@@ -687,13 +726,17 @@ table.
   } ] }`, and supplying exactly that was refused for lacking `margin`. The
   hint now lists every field the call's result shape requires, each with a
   type placeholder — `{ passed: <bool>, margin: <number> }` (an enum is
-  `<one of: a|b>`) — and `lute play`'s halt spells its answer the same way.
+  `<one of: a|b>`) — and `lute play`'s halt spells its answer the same way,
+  as does its load-time refusal of a `bridges:` answer missing a field.
   A `bridges:` error in a `*.test.yaml`, a `trace --mock` file or a
   `mocks/*.yaml` is anchored at the offending tag key, answer or field key in
   that file (`tests/t.test.yaml:6:21`), not at `<document>:0:0`; the JSON
   diagnostic carries `"provenance": "mock"`. An answer missing a field is now
   `E-TRACE-MOCK-TYPE` (was `E-TRACE-MOCK-UNDECLARED`), and its message shows
   the whole typed answer.
+- **`lute test --coverage` names a `<match>` over a `@def` as authored**
+  (ember N14): ``match `@wrenWithUs` (…)``, as `lute trace` prints it, not
+  the def's expansion ``match `(holds(inParty(wren)))` ``.
 
 - `lute scenario knowledge` reads an entity-kind atom in a rule body as a
   membership premise (`suitor(sol) — entity kind suitor; sol is a
@@ -704,6 +747,30 @@ table.
   ER N9).
 - `lute beats` lists bundle beats with `once="day"` / `once="slot"`
   (round-3 SU N2).
+- A `clock:` whose `day` / `slot` path is undeclared, mistyped or not
+  `owner: engine`, or whose `raise` names an undeclared occasion, is
+  `E-CLOCK-DECL` from `lute check <schema>.yaml` at the `clock:` line (it
+  said `ok`; the occasions are the enclosing project's, when there is one).
+  `check-project` reports it once, attributed to the schema's `clock:`
+  line, instead of at `1:1` of every importing document.
+- `lute check <schema>.yaml` reports everything an importer's check would
+  about the schema — `E-ENUM-LABEL-NOT-MEMBER`, `E-ENTITY-KIND-SHAPE`,
+  `E-ENTITY-KIND-CLASH`, `E-FACT-DOMAIN`, the clock — at the schema's own
+  lines (it said `ok`). In `check-project` an imported enum's
+  `E-ENUM-LABEL-NOT-MEMBER` is folded into one report at the schema's line
+  like the others, instead of `1:1` of every importer.
+- `E-RULE-GUARD-DEF` (and a malformed rule) in a document's own `rules:` is
+  reported at the rule's line, not `1:1`, when the rule quotes its
+  `cel("…")` guard.
+- The `E-BEAT-ATTR` hint for an entry's `once="day"` / `once="slot"` without
+  a clock suggests `run` / `user` or omitting `once`, not `false` (which an
+  entry refuses).
+- A trace / test mock that seeds a derived `clock.*` path is
+  `E-TRACE-MOCK-UNDECLARED`, naming the clock's day / slot paths to seed; it
+  was accepted and contradicted them.
+- `lute calendar` says `undecided (…)` and `lost to an undecided cell (…)`,
+  naming the beat whose `when` is unknown, where it printed `? over quiet` /
+  `lost to ?`.
 - **`W-CAST-ABSENT` is precise** (dsl 0.24.0 §4; round-3 SU N4/N5, ER
   N3/N4, CR N4, LH N4). Measured on the four reviewed games, with `present:`
   declared as the reviewers had it and their workaround guards removed:
@@ -732,6 +799,17 @@ table.
   - A `{vo}` line is exempt. An `{os}` line is still checked, because the
     speaker is in the scene, just out of frame. Two of Drowned Crown's real
     catches were `{os}` lines.
+- **`W-CAST-ABSENT` sees a fact only its own beat produces** (round-3 ER
+  re-verify R1). Under `check-project`, a beat, entry or bundle beat
+  presented at most once per run starts with `!holds(F)` for every ground
+  fact `F` that only it asserts. No other unit of the root, component
+  documents included, can assert `F`, and no seed names it. The fact's
+  relation is `tier: run`, or `tier: user` in a `once: user` beat; it is
+  neither derived nor engine-`reserved`. The body's own `::assert{F}` ends
+  the assumption on that path. So a `present:` such as
+  `holds(inParty(wren)) || !holds(recruited(wren))` is satisfied before and
+  beside the only choice that recruits her, even when another scene can
+  make her depart or `fell` is reserved.
 
 ## [0.23.1] - 2026-09-25
 

@@ -1313,7 +1313,10 @@ state:
 /// not its root, spelled as the command to run instead: the subdirectory
 /// relative to the root (minus the kind's own folder) moves into `<name>`,
 /// and `--dir <root>` is added unless the root is the current directory.
-fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path) -> String {
+/// `given` is whether the author passed `--dir`; without it the directory is
+/// the current one, and the message says so rather than blaming a flag the
+/// author never typed (round-3 CR N7).
+fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> String {
     let rel = absolute(dir);
     let rel = rel.strip_prefix(root).unwrap_or(&rel);
     let folder = match kind {
@@ -1336,10 +1339,21 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path) -> String {
     if std::env::current_dir().map(|cwd| absolute(&cwd)).ok().as_deref() != Some(root) {
         suggestion.push_str(&format!(" --dir {}", root.display()));
     }
+    let resolved = absolute(dir);
+    let (what, fix) = if given {
+        (
+            format!("`--dir {}` resolves to `{}`", dir.display(), resolved.display()),
+            "`--dir` names the project, not the destination folder",
+        )
+    } else {
+        (
+            format!("no `--dir` was given, so `lute new` started from the current directory `{}`", resolved.display()),
+            "run from the project root, or pass `--dir <root>`",
+        )
+    };
     format!(
-        "lute new: `--dir` names the project; did you mean `{suggestion}`? (`{}` is inside the \
-         project at `{}`, not its root; nothing was written)",
-        dir.display(),
+        "lute new: {what}, which is inside the project at `{}` (its lute.project.yaml) but not \
+         its root; {fix} — did you mean `{suggestion}`? (nothing was written)",
         root.display()
     )
 }
@@ -1359,7 +1373,7 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path) -> String {
 pub fn run_new(
     kind: &str,
     name: &str,
-    dir: &Path,
+    dir: Option<&Path>,
     on: Option<&str>,
     target: Option<&str>,
     start: bool,
@@ -1379,10 +1393,12 @@ pub fn run_new(
         eprintln!("lute new: `--start` makes a quest auto-start; a {kind} takes no `--start`");
         return ExitCode::from(2);
     }
+    let given = dir.is_some();
+    let dir = dir.unwrap_or(Path::new("."));
     let dest = match Destination::find(dir) {
         Ok(dest) => dest,
         Err(root) => {
-            eprintln!("{}", nested_hint(kind, name, dir, &root));
+            eprintln!("{}", nested_hint(kind, name, dir, &root, given));
             return ExitCode::from(2);
         }
     };

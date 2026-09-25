@@ -1802,6 +1802,29 @@ fn untested_denominator_excludes_component_documents() {
     );
 }
 
+/// Ember N14: a `<match>` over a `@def` is listed by the author's spelling in
+/// `--coverage` (as `lute trace` prints it), not by the def's expansion.
+#[test]
+fn coverage_names_a_def_match_as_authored() {
+    let dir = temp_dir("coverage-def-match");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         state:\n  run.n: { type: number, default: 0 }\ndefs:\n  high: \"run.n >= 3\"\n---\n\n## One\n\n\
+         <match on=\"@high\">\n<when is=\"true\">\n@narrator: high\n</when>\n<otherwise>\n@narrator: low\n</otherwise>\n</match>\n",
+    );
+    write_at(&dir, "t.test.yaml", "file: s.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "{text}");
+    assert!(text.contains("match `@high`"), "{text}");
+    assert!(!text.contains("run.n >= 3"), "{text}");
+}
+
 /// #32 / T2.5: `lute context`'s human mode dropped the `semantics` flags its
 /// own --json already carries. `mayExitCharacter` is the machine-readable
 /// statement that `::auto` is the construct that ends a presence, and it is

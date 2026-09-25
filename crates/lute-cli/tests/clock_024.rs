@@ -234,9 +234,9 @@ fn advance_needs_a_clock_and_moves_only_forward() {
     assert!(text(&out).contains("a slot count is a whole number ≥ 1"), "{}", text(&out));
 }
 
-/// Ember N16: an `advance:` step carries the `engine:` writes of the same
-/// moment — applied before the clock moves, one settle for both — but not
-/// a write to the clock's own paths.
+/// Ember N16 / R3: an `advance:` step carries the `engine:` writes of the
+/// same moment — applied where the clock arrives, one settle for both — but
+/// not a write to the clock's own paths.
 #[test]
 fn an_advance_step_carries_engine_writes() {
     let leg = format!("  run.leg: {{ type: number, default: 1, owner: engine }}\n{RAISING_CLOCK}");
@@ -250,7 +250,7 @@ fn an_advance_step_carries_engine_writes() {
     assert!(out.status.success(), "{t}");
     let leg = t.find("  set run.leg = 3").unwrap_or_else(|| panic!("{t}"));
     let day = t.find("  set run.day = 2").unwrap_or_else(|| panic!("{t}"));
-    assert!(leg < day, "the engine writes apply before the clock moves: {t}");
+    assert!(day < leg, "the engine writes apply where the clock arrives: {t}");
     let out = clock_play(
         "advance-engine-clock",
         RAISING_CLOCK,
@@ -258,6 +258,67 @@ fn an_advance_step_carries_engine_writes() {
     );
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     assert!(text(&out).contains("`engine:` writes `run.day`, which the `advance:` beside it moves"), "{}", text(&out));
+}
+
+const MAP_CLOCK: &str = "  run.leg: { type: number, default: 1, owner: engine }\n\
+                         clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, afternoon, night]\n  \
+                         week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }\n  \
+                         raise: { slot: slotStart, dayEnd: dayEnd }\n";
+
+const CLOSE_SCENE: &str = "---\nkind: scene\nid: day.close\nuses: ../world.schema.yaml\non: dayEnd\nonce: false\n---\n\n\
+                           ## Close\n\n@narrator: Leg {{run.leg}} ends.\n";
+
+fn map_play(tag: &str, script: &str) -> Output {
+    let dir = project_with(
+        tag,
+        ", owner: engine",
+        MAP_CLOCK,
+        &[("scenes/slot.lute", SLOT_SCENE), ("scenes/close.lute", CLOSE_SCENE)],
+    );
+    play(&dir, script)
+}
+
+/// Ember R3: the `engine:` writes of an `advance:` land where the clock
+/// arrives — after the `dayEnd` it raises on the way, which still reads the
+/// day it closes. Summer R2 / lighthouse N15: the step's `presented` spans
+/// every raise in it; `winner` stays the slot raise's.
+#[test]
+fn an_advance_judges_every_raise_and_writes_on_arrival() {
+    let out = map_play(
+        "map-advance",
+        "steps:\n  - advance: day\n    engine: { state: { run.leg: 3 } }\n    \
+         expect: { presented: [day.close, day.slot], winner: day.slot, state: { run.leg: 3 } }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    let closed = t.find("Leg 1 ends.").unwrap_or_else(|| panic!("{t}"));
+    let leg = t.find("  set run.leg = 3").unwrap_or_else(|| panic!("{t}"));
+    assert!(closed < leg, "dayEnd reads the day it closes: {t}");
+    let out = map_play(
+        "map-advance-miss",
+        "steps:\n  - advance: day\n    expect: { presented: [day.slot] }\n",
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(text(&out).contains("expected [day.slot], actual [day.close, day.slot]"), "{}", text(&out));
+}
+
+/// Summer R1: raising the clock's `dayEnd` by hand as well closes the day
+/// twice — the step says so.
+#[test]
+fn a_manual_raise_of_the_clocks_day_end_is_noted() {
+    let out = map_play(
+        "map-manual",
+        "steps:\n  - occasion: dayEnd\n  - advance: day\nexpect: { transcriptContains: [\"Leg 1 ends.\"] }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert_eq!(t.matches("Leg 1 ends.").count(), 2, "{t}");
+    let (manual, _) = t.split_once("── step 2").unwrap_or_else(|| panic!("{t}"));
+    assert!(
+        manual.contains("note: `dayEnd` is the clock's `raise: { dayEnd: dayEnd }` — an `advance:` raises it"),
+        "{t}"
+    );
+    assert_eq!(t.matches("note: `dayEnd`").count(), 1, "{t}");
 }
 
 /// dsl 0.24.0 §1: an `engine:` step moving `clock.index` backward is a
@@ -407,7 +468,7 @@ fn advance_raises_day_end_and_day_start_at_every_midnight_it_crosses() {
     );
     let out = play(
         &dir,
-        "steps:\n  - advance: slot\n  - advance: 3\n    expect: { presented: [c.slot], state: { run.day: 2, run.slot: afternoon } }\n  \
+        "steps:\n  - advance: slot\n  - advance: 3\n    expect: { presented: [c.end, c.start, c.slot], state: { run.day: 2, run.slot: afternoon } }\n  \
          - advance: day\n",
     );
     let t = text(&out);
@@ -484,4 +545,150 @@ fn beats_lists_a_once_day_bundle_beat() {
     assert!(out.status.success(), "{t}");
     let row = t.lines().find(|l| l.contains("b.daily")).unwrap_or_else(|| panic!("no b.daily row:\n{t}"));
     assert!(row.contains(" day "), "{row}");
+}
+
+/// Round-3 (cheatsheet p2): a clock over a path that is not `owner: engine`,
+/// or naming an undeclared `raise` occasion, is reported by `lute check` on
+/// the schema itself (it said `ok`), and by `check-project` once — folded
+/// across importers — attributed to the schema's `clock:` line.
+#[test]
+fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
+    let scene = |id: &str| format!("---\nkind: scene\nid: {id}\nuses: ../world.schema.yaml\non: slotStart\n---\n\n## S\n\n@narrator: Hi.\n");
+    let (a, b) = (scene("a"), scene("b"));
+    let dir = project_with("bad-clock", "", "clock: { day: run.day, slot: run.slot, slots: [morning, afternoon, night] }\n", &[
+        ("scenes/a.lute", &a),
+        ("scenes/b.lute", &b),
+    ]);
+    let schema = dir.join("world.schema.yaml");
+    let out = Command::new(BIN).arg("check").arg(&schema).output().unwrap();
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(t.contains("world.schema.yaml:4:1: error [E-CLOCK-DECL] `clock:` `day: run.day` must be declared `owner: engine`"), "{t}");
+
+    let t = text(&check_project(&dir));
+    assert_eq!(t.matches("must be declared `owner: engine`").count(), 4, "day and slot, each once plus its schema line: {t}");
+    assert!(t.contains("(+1 more caller)"), "{t}");
+    assert!(t.contains("world.schema.yaml:4:1: error [E-CLOCK-DECL] `clock:` `slot: run.slot`"), "{t}");
+
+    // An undeclared `raise` occasion, with the project's occasions known.
+    write(&dir, "world.schema.yaml", &std::fs::read_to_string(&schema).unwrap().replace(
+        "run.day: { type: number, default: 1 }",
+        "run.day: { type: number, default: 1, owner: engine }",
+    ).replace("run.slot: { type: { enum: [morning, afternoon, night] }, default: morning }",
+        "run.slot: { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }")
+     .replace("slots: [morning, afternoon, night] }", "slots: [morning, afternoon, night], raise: nope }"));
+    write(&dir, "lute.project.yaml", "pluginsDir: plugins/\ndefaultProfile: m\nprofiles:\n  m:\n    plugins: { m.occ: true }\n");
+    write(&dir, "plugins/m.occ/plugin.yaml", "id: m.occ\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports:\n  occasions: occasions/\n");
+    write(&dir, "plugins/m.occ/occasions/occ.yaml", "occasions:\n  slotStart: {}\n");
+    let out = Command::new(BIN).arg("check").arg(&schema).output().unwrap();
+    let t = text(&out);
+    assert!(t.contains("[E-CLOCK-DECL] `clock:` `raise: nope` is not a declared occasion"), "{t}");
+    let t = text(&check_project(&dir));
+    assert_eq!(t.matches("`raise: nope` is not a declared occasion").count(), 2, "{t}");
+}
+
+/// Round-3 docs pass (a): `lute check` on a schema alone runs what an
+/// importer's check would report about it — enum labels, entity kinds,
+/// seed facts — at the schema's own lines; `check-project` folds the
+/// importers' copies into one attributed to the schema.
+#[test]
+fn a_schema_checked_alone_reports_what_its_importers_would() {
+    let dir = temp_dir("schema-alone");
+    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "w.schema.yaml",
+        "enums:\n  weekday:\n    members: [mon, tue]\n    labels: { mon: Monday, sunday: Sunday }\n\
+         state:\n  run.weekday: { type: { domain: weekday }, default: mon }\n\
+         entities:\n  person: { members: [ada, bo] }\n  pet: { members: [bo] }\n\
+         relations:\n  likes: { args: [person] }\nfacts:\n  - \"likes(zed)\"\n",
+    );
+    let scene = |id: &str| format!("---\nkind: scene\nid: {id}\nuses: ../w.schema.yaml\n---\n\n## S\n\n@narrator: {{{{run.weekday}}}}.\n");
+    write(&dir, "scenes/a.lute", &scene("a"));
+    write(&dir, "scenes/b.lute", &scene("b"));
+    let out = Command::new(BIN).arg("check").arg(dir.join("w.schema.yaml")).output().unwrap();
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    for want in [
+        "w.schema.yaml:2:3: error [E-ENUM-LABEL-NOT-MEMBER]",
+        "w.schema.yaml:9:3: error [E-ENTITY-KIND-CLASH]",
+        "w.schema.yaml:13:6: error [E-FACT-DOMAIN]",
+    ] {
+        assert!(t.contains(want), "missing `{want}`:\n{t}");
+    }
+    let t = text(&check_project(&dir));
+    assert_eq!(t.matches("[E-ENUM-LABEL-NOT-MEMBER]").count(), 2, "once, plus its schema line: {t}");
+    assert!(t.contains("w.schema.yaml:2:3: error [E-ENUM-LABEL-NOT-MEMBER]"), "{t}");
+    assert!(t.contains("which is not one of its members (dsl 0.24.0 §1) (declared in schema import `w.schema.yaml`) (+1 more caller)"), "{t}");
+}
+
+/// Round-3 docs pass (b): a frontmatter rule whose `cel("…")` guard names
+/// no def is reported at the rule's line, not at 1:1.
+#[test]
+fn a_rule_guard_def_error_lands_on_the_rule() {
+    let dir = temp_dir("rule-guard-def");
+    let f = dir.join("s.lute");
+    write(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\nid: s\nentities:\n  item: { members: [lamp] }\n\
+         relations:\n  lit: { args: [item], derive: true }\nrules:\n  - \"lit(lamp) :- cel(\\\"@firstDy\\\")\"\n---\n\n\
+         ## S\n\n@narrator{when=\"holds(lit(lamp))\"}: Hi.\n",
+    );
+    let t = text(&Command::new(BIN).arg("check").arg(&f).output().unwrap());
+    assert!(t.contains("s.lute:9:6: error [E-RULE-GUARD-DEF]"), "{t}");
+}
+
+/// Round-3 docs pass (d): an entry's `once="slot"` without a clock is not
+/// told to use `false`, which an entry refuses.
+#[test]
+fn once_slot_on_an_entry_without_a_clock_suggests_what_an_entry_accepts() {
+    let lore = "---\nkind: lore\nid: l\nuses: ../world.schema.yaml\n---\n\n\
+                <entry id=\"e\" on=\"visit\" once=\"slot\">\n  @narrator: Hi.\n</entry>\n";
+    let dir = project_with("entry-once-slot", ", owner: engine", "", &[("lore/l.lute", lore)]);
+    let t = text(&check_project(&dir));
+    assert!(t.contains("`once=\"slot\"` spends a beat once per clock slot"), "{t}");
+    assert!(t.contains("or omit `once`") && !t.contains("`user` / `false`"), "{t}");
+}
+
+/// Round-3 docs pass (e): a mock may not seed a derived `clock.*` path —
+/// it names the day / slot paths to seed instead.
+#[test]
+fn a_mock_seeding_a_clock_path_is_refused() {
+    let dir = project_with("mock-clock", ", owner: engine", CLOCK, &[("scenes/hall.lute", SCENE)]);
+    write(&dir, "m.yaml", "file: scenes/hall.lute\nstate:\n  clock.index: 5\n");
+    let out = Command::new(BIN)
+        .arg("trace")
+        .arg(dir.join("scenes/hall.lute"))
+        .arg("--mock")
+        .arg(dir.join("m.yaml"))
+        .output()
+        .unwrap();
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(t.contains("[E-TRACE-MOCK-UNDECLARED] `--state clock.index=…` seeds a path the clock derives"), "{t}");
+    assert!(t.contains("seed `run.day` / `run.slot` instead"), "{t}");
+}
+
+/// Round-3 docs pass (f): a cell an unknown `when` leaves undecided reads
+/// as such — not `? over quiet` / `lost to ?`.
+#[test]
+fn calendar_names_the_unknown_when_of_an_undecided_cell() {
+    let odd = "---\nkind: scene\nid: odd\nuses: ../world.schema.yaml\non: visit\npriority: 5\n\
+               when: \"validAt(met(ada), quest.f.activatedAt)\"\n---\n\n## S\n\n@narrator: Odd.\n";
+    let quiet = "---\nkind: scene\nid: quiet\nuses: ../world.schema.yaml\non: visit\n---\n\n## S\n\n@narrator: Quiet.\n";
+    let quest = "---\nkind: quest\nid: q\nuses: ../world.schema.yaml\n---\n\n\
+                 <quest id=\"f\" start=\"true\">\n  <objective id=\"o\" done=\"run.day > 2\"/>\n</quest>\n";
+    let dir = project_with(
+        "calendar-undecided",
+        "",
+        "entities:\n  person: { members: [ada] }\nrelations:\n  met: { args: [person] }\n",
+        &[("scenes/odd.lute", odd), ("scenes/quiet.lute", quiet), ("quests/f.lute", quest)],
+    );
+    let out = Command::new(BIN).arg("calendar").arg(&dir).output().unwrap();
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(t.contains("visit: undecided (odd's `when` is unknown) over quiet"), "{t}");
+    assert!(t.contains("quiet [scene, scenes/quiet.lute] visit — lost to an undecided cell (odd's `when` is unknown)"), "{t}");
+    assert!(!t.contains("lost to ?") && !t.contains(": ? over"), "{t}");
 }

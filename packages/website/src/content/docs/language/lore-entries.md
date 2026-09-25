@@ -62,13 +62,15 @@ heading, no `## ` shots, no `<quest>`.
 | `title` | display title, localized like a quest title |
 | `series` / `order` | multi-part text: `order` is the position within `series` (a document-level `series:` can supply both — see below) |
 | `when` | eligibility: the entry may be presented only while this holds |
-| `on` / `priority` / `once` | make the entry a [beat](/language/beats/#entry-beats) that answers an engine occasion; `once="run"` or `once="user"` stops it answering again after a read |
+| `on` / `priority` / `once` | make the entry a [beat](/language/beats/) that answers an engine occasion; `once="run"` or `once="user"` stops it answering again after a read, and on a project with a [clock](/language/clock/), `once="day"` or `once="slot"` stops it until the clock's day or slot changes |
 
 `target` and `category` are checked for shape only, so you can write lore before the engine's item
 catalog exists. Several entries may share a `target` — an NPC's barks, for example. The one
 exception is an entry beat whose occasion declares a
 [target domain](/language/beats/#target-domains): its `target` must then be `<prefix>.<member>` of
-that domain.
+that domain. On an occasion declared without any target, an entry beat's `target` is metadata
+(dsl 0.24.0 §6): it still says what the entry is about, and the entry answers every raise of the
+occasion. Before 0.24.0 that was `E-BEAT-ATTR`, and for a scene or bundle beat it still is.
 
 ## The document is the bundle
 
@@ -172,8 +174,36 @@ ever.
 | `entry.<id>.everRead` | user | after the entry's first presentation ever | never |
 
 An entry beat can also spend itself on these flags directly: `once="run"` stops it answering its
-occasion while `read` is set, and `once="user"` once `everRead` is. See
-[Entry beats](/language/beats/#entry-beats).
+occasion while `read` is set, and `once="user"` once `everRead` is. `once="day"` and
+`once="slot"` (dsl 0.24.0 §1, only with a declared [clock](/language/clock/)) spend it by time
+instead: it does not answer again until the clock's day, or slot, changes, whatever its flags say.
+See [Beats](/language/beats/).
+
+### What a read proves
+
+A guard that assumes an entry was read also knows what that entry asserted (dsl 0.24.0 §6). Under
+`entry.X.read` (or `entry.X.read == true`), `lute check-project` adds the facts `X`'s body asserts
+on every route, and that nothing retracts, to the facts it knows hold, the Must set of the
+[fact analysis](/state/facts-and-datalog/). A `holds(…)` of one of them inside that guard is then
+redundant, `W-FACT-GUARANTEED`, and its negation can never hold (`E-ARM-DEAD` on a line). Save the
+first document on this page as `lore/ship-records.lute` and give `scientistLog2` a second line:
+
+```lute
+<entry id="scientistLog2" target="item.torn_note_2" category="note" series="scientistLog" order="2" when="entry.scientistLog1.read">
+  @scientist: Day nine. We stopped writing her name in the logs.
+  @scientist{when="holds(knows(vesna, project_lumen))"}: You know what Lumen was. Now you know who.
+</entry>
+```
+
+<!-- lute-diagnostics -->
+```
+./lore/ship-records.lute:20:20: warning [W-FACT-GUARANTEED] guard `holds(knows(vesna, project_lumen))` is redundant: `knows(vesna, project_lumen)` is asserted on every route to here (./lore/ship-records.lute:15) (dsl 0.20.0 §5)
+```
+
+The entry's `when` already guarantees the log was read this run, so the line's guard is always
+true. `entry.X.everRead` promises less. It adds only the asserted facts of `tier: user` and
+`tier: app` relations, the ones a new run keeps. `knows` above is `tier: run`, so under
+`everRead` alone, as in `tomaDejaVu`, its `holds(…)` stays an open question.
 
 ## Entries and beats in one file
 
@@ -214,7 +244,7 @@ The two kinds of block share a file but keep their own rules:
 | Body | content lines, `<match>`, `::set` / `::assert` / `::retract` | a scene body: lines, branches, hubs, `<match>`, directives |
 | Reached | looked up by the engine, or as an [entry beat](/language/beats/#entry-beats) | only as a beat answering its `on` occasion |
 | Effects | on the first read in a run | on every presentation, as a scene's |
-| Spent | by `entry.<id>.read` / `everRead`, when `once=` asks | by presentation; `once` defaults to `run` |
+| Spent | by `entry.<id>.read` / `everRead` when `once=` asks (by the clock for `once="day"` / `"slot"`) | by presentation; `once` defaults to `run` |
 | Read by conditions | `entry.<id>.read`, `entry.<id>.everRead` | `visited('<document id>.<beat id>')` |
 
 Entries and beats may come in any order. In the compiled lore artifact each one heads its own
@@ -249,8 +279,12 @@ the `<beat>` attributes, the canonical id, and how a bundle beat is checked and 
   A lore test that names neither is `E-TEST-LORE`, and the message lists the document's entry ids.
   Since lore is testable, `lute test --coverage` lists an untested lore document with the other
   untested documents.
-- `lute lore <dir>` prints the world-narrative map: entries by target and by series, and which
-  facts entries reveal versus scenes and quests. It reads beat bodies too.
+- `lute lore <dir>` prints the world-narrative map: entries by target and by series, with each
+  entry's and beat's `when` under it, and which facts entries reveal versus scenes and quests. It
+  reads beat bodies too. When the project's rules derive a relation, a **Derived** section lists
+  every conclusion the rules can reach from what the project asserts, the rule instance behind it,
+  the evidence it rests on (which entry or scene asserted each premise), and the entries and beats it gates
+  (`derived` in `--json`). See [the CLI reference](/tooling/cli/).
 - `lute new lore <name>` scaffolds a lore document.
 
 The engine contract — eligibility, presentation, first-read effects, the two read flags — is in
@@ -258,6 +292,8 @@ The engine contract — eligibility, presentation, first-read effects, the two r
 the normative specs are
 [`0.19.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md),
 [`0.22.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
-for `everRead` and lore tests, and
+for `everRead` and lore tests,
 [`0.23.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
-for beats in a lore document.
+for beats in a lore document, and
+[`0.24.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
+§6 for entry targets as metadata and what a read proves.

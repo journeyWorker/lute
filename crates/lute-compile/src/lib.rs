@@ -342,6 +342,9 @@ pub fn compile_with_check(
     let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
     let mut diags =
         normalize::normalize_document(&mut doc, &input.components, &cast, &folded.env.state);
+    // A plugin directive lowered by a core builtin hook runs as that core
+    // directive (`lower: { kind: builtin, name: clearStage }` is `::clear`).
+    lute_check::builtin_lowering::canonicalize_builtin_directives(&mut doc, &input.snapshot);
 
     // §5 pass 3 — CEL expansion (D4).
     let table = DefTable {
