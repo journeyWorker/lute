@@ -898,7 +898,8 @@ fn loads_occasions_export() {
         by_name["visit"].target,
         OccasionTarget::Domain {
             prefix: "place".into(),
-            entity: "location".into()
+            entity: "location".into(),
+            members: None,
         }
     );
     assert!(by_name["visit"].target.takes_target());
@@ -934,5 +935,41 @@ fn loads_occasions_export() {
         errs.iter().any(|e| matches!(e, lute_manifest::loader::LoadError::Parse { .. })),
         "{errs:?}"
     );
+
+    // A member subset loads onto the domain.
+    fs::write(
+        tmp.join("occasions/b.yaml"),
+        "occasions:\n  bossDefeated: { target: { prefix: boss, entity: foe, members: [gatekeeper, warden] } }\n",
+    )
+    .unwrap();
+    let loaded = load_plugin_dir(&tmp).expect("a member subset loads");
+    let boss = loaded.occasions.iter().find(|o| o.name == "bossDefeated").unwrap();
+    assert_eq!(
+        boss.target,
+        OccasionTarget::Domain {
+            prefix: "boss".into(),
+            entity: "foe".into(),
+            members: Some(vec!["gatekeeper".into(), "warden".into()]),
+        }
+    );
+
+    // An empty or repeating member list fails the load, naming the occasion.
+    for (list, why) in [("[]", "is empty"), ("[warden, warden]", "`warden` more than once")] {
+        fs::write(
+            tmp.join("occasions/b.yaml"),
+            format!("occasions:\n  bossDefeated: {{ target: {{ prefix: boss, entity: foe, members: {list} }} }}\n"),
+        )
+        .unwrap();
+        let errs = load_plugin_dir(&tmp).expect_err("a bad member list fails the load");
+        assert!(
+            errs.iter().any(|e| {
+                let msg = e.to_string();
+                matches!(e, lute_manifest::loader::LoadError::Parse { file, .. } if file.ends_with("b.yaml"))
+                    && msg.contains("occasion `bossDefeated`")
+                    && msg.contains(why)
+            }),
+            "{list}: {errs:?}"
+        );
+    }
     fs::remove_dir_all(&tmp).ok();
 }

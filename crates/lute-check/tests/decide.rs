@@ -463,6 +463,42 @@ fn covering_disjunction_decides_true() {
     }
 }
 
+/// A nested disjunction of comparisons on ONE number path is a union of
+/// intervals: a conjunction whose other operand falls in its gap decides
+/// false (seven-days N5), in either operand order. Only a union covering the
+/// whole real line on a never-unset path decides true; a gap, a two-path
+/// disjunction, or a maybe-unset path stays undecided.
+#[test]
+fn numeric_disjunction_is_a_union_of_intervals() {
+    for e in [
+        "run.n == 3 && (run.n > 3 || run.n < 3)",
+        "(run.n > 3 || run.n < 3) && run.n == 3",
+        "run.n > 5 && (run.n < 3 || run.n == 4)",
+        "run.n == 3 && !(run.n >= 3 && run.n <= 3)",
+        "run.n == 3 && (run.n > 3 || (run.n < 3 && run.n > 1) || run.n < 1)",
+        // `==` is false on `unset`, so a maybe-unset path decides too.
+        "run.m == 3 && (run.m > 3 || run.m < 3)",
+    ] {
+        assert_eq!(d(e), f(), "{e}");
+    }
+    for e in [
+        "run.n >= 3 || run.n < 3",
+        "run.n > 3 || run.n < 5",
+        "(run.n > 1 && run.n < 5) || run.n <= 1 || run.n >= 5",
+    ] {
+        assert_eq!(d(e), t(), "{e}");
+    }
+    for e in [
+        "run.n > 3 || run.n < 3",
+        "run.n == 3 && (run.n >= 3 || run.n < 1)",
+        "run.n == 3 && (run.n > 3 || run.m < 3)",
+        "run.n == 3 && (run.n > 3 || run.flag)",
+        "(run.m > 1 && run.m < 5) || run.m <= 1 || run.m >= 5",
+    ] {
+        assert_eq!(d(e), None, "{e}");
+    }
+}
+
 /// Relational calls are never-unset paths keyed by their text: a query and
 /// its negation exclude each other with no fact envelope in scope.
 #[test]

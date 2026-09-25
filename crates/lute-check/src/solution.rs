@@ -45,6 +45,63 @@ pub(crate) enum SolutionSet {
     Values(BTreeSet<DomainValue>),
     /// Every value but one (`!= c`) — values of any other kind included.
     Except(Decided),
+    /// The numbers of a union of real intervals — a nested `||` / `&&` of
+    /// comparisons on one number path (`run.n > 3 || run.n < 3`), built by
+    /// [`number_spans`], [`meet_spans`], and concatenation.
+    Union(Vec<Span>),
+}
+
+/// A real interval `(lo, lo_inc, hi, hi_inc)` with [`SolutionSet::Interval`]'s
+/// field meanings.
+pub(crate) type Span = (f64, bool, f64, bool);
+
+/// The whole real line.
+pub(crate) const REALS: Span = (f64::NEG_INFINITY, false, f64::INFINITY, false);
+
+/// The numbers `set` holds (`None` is every value) as a union of spans. A
+/// `Values` set holds strings / booleans only, so no number.
+pub(crate) fn number_spans(set: Option<&SolutionSet>) -> Vec<Span> {
+    match set {
+        None | Some(SolutionSet::Except(Decided::Str(_) | Decided::Bool(_))) => vec![REALS],
+        Some(SolutionSet::Except(Decided::Num(c))) => {
+            vec![(f64::NEG_INFINITY, false, *c, false), (*c, false, f64::INFINITY, false)]
+        }
+        Some(SolutionSet::Interval {
+            lo,
+            lo_inc,
+            hi,
+            hi_inc,
+        }) => vec![(*lo, *lo_inc, *hi, *hi_inc)],
+        Some(SolutionSet::Values(_)) => Vec::new(),
+        Some(SolutionSet::Union(spans)) => spans.clone(),
+    }
+}
+
+/// The intersection of two span unions, empty spans dropped.
+pub(crate) fn meet_spans(a: &[Span], b: &[Span]) -> Vec<Span> {
+    let mut out = Vec::new();
+    for &(l1, li1, h1, hi1) in a {
+        for &(l2, li2, h2, hi2) in b {
+            let (lo, lo_inc) = match l1.total_cmp(&l2) {
+                std::cmp::Ordering::Greater => (l1, li1),
+                std::cmp::Ordering::Less => (l2, li2),
+                std::cmp::Ordering::Equal => (l1, li1 && li2),
+            };
+            let (hi, hi_inc) = match h1.total_cmp(&h2) {
+                std::cmp::Ordering::Less => (h1, hi1),
+                std::cmp::Ordering::Greater => (h2, hi2),
+                std::cmp::Ordering::Equal => (h1, hi1 && hi2),
+            };
+            if lo < hi || (lo == hi && lo_inc && hi_inc) {
+                out.push((lo, lo_inc, hi, hi_inc));
+            }
+        }
+    }
+    out
+}
+
+fn span_contains(&(lo, lo_inc, hi, hi_inc): &Span, n: f64) -> bool {
+    (n > lo || (n == lo && lo_inc)) && (n < hi || (n == hi && hi_inc))
 }
 
 /// A comparison's solution set plus whether the path's `unset` value makes
@@ -122,10 +179,12 @@ fn contains(set: &SolutionSet, value: &Decided) -> bool {
             lo_inc,
             hi,
             hi_inc,
-        } => matches!(value, Decided::Num(n)
-            if (n > lo || (n == lo && *lo_inc)) && (n < hi || (n == hi && *hi_inc))),
+        } => matches!(value, Decided::Num(n) if span_contains(&(*lo, *lo_inc, *hi, *hi_inc), *n)),
         SolutionSet::Values(values) => domain_value(value).is_some_and(|v| values.contains(&v)),
         SolutionSet::Except(hole) => hole != value,
+        SolutionSet::Union(spans) => {
+            matches!(value, Decided::Num(n) if spans.iter().any(|s| span_contains(s, *n)))
+        }
     }
 }
 
@@ -167,15 +226,8 @@ pub(crate) fn covers(dom: &PathDomain, truths: &[Truth]) -> bool {
         Kind::Finite(members) => members
             .iter()
             .all(|m| sets.iter().any(|s| holds_member(s, m))),
-        Kind::Number => intervals_cover_reals(sets.iter().filter_map(|s| match s {
-            SolutionSet::Interval {
-                lo,
-                lo_inc,
-                hi,
-                hi_inc,
-            } => Some((*lo, *lo_inc, *hi, *hi_inc)),
-            _ => None,
-        })),
+        // Every `Except` returned above; a `Values` set holds no number.
+        Kind::Number => intervals_cover_reals(sets.iter().flat_map(|s| number_spans(Some(s)))),
         Kind::Open => false,
     }
 }
@@ -183,7 +235,7 @@ pub(crate) fn covers(dom: &PathDomain, truths: &[Truth]) -> bool {
 /// Whether the intervals' union is the whole real line: sweep them in
 /// ascending start order (an inclusive start first on a tie), extending the
 /// covered prefix `(-∞, reach)` / `(-∞, reach]` until a gap or `+∞`.
-fn intervals_cover_reals(intervals: impl Iterator<Item = (f64, bool, f64, bool)>) -> bool {
+fn intervals_cover_reals(intervals: impl Iterator<Item = Span>) -> bool {
     let mut ivs: Vec<_> = intervals.collect();
     ivs.sort_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)));
     let mut reach = f64::NEG_INFINITY;
@@ -206,10 +258,23 @@ fn intervals_cover_reals(intervals: impl Iterator<Item = (f64, bool, f64, bool)>
 }
 
 /// Do the two solution sets fail to intersect? `Except` pairs always share
-/// a value; mixed kinds never do.
+/// a value; mixed kinds never do; a `Union` misses when each span does.
 pub(crate) fn disjoint(a: &SolutionSet, b: &SolutionSet) -> bool {
     use SolutionSet::*;
     match (a, b) {
+        (Union(spans), other) | (other, Union(spans)) => {
+            spans.iter().all(|&(lo, lo_inc, hi, hi_inc)| {
+                disjoint(
+                    &Interval {
+                        lo,
+                        lo_inc,
+                        hi,
+                        hi_inc,
+                    },
+                    other,
+                )
+            })
+        }
         (
             Interval {
                 lo: l1,
@@ -234,6 +299,7 @@ pub(crate) fn disjoint(a: &SolutionSet, b: &SolutionSet) -> bool {
             Interval { lo, hi, .. } => {
                 matches!(c, Decided::Num(n) if lo == n && hi == n) && contains(other, c)
             }
+            Union(_) => false, // matched by the first arm
         },
         (Values(x), Values(y)) => x.is_disjoint(y),
         (Values(_), Interval { .. }) | (Interval { .. }, Values(_)) => true,

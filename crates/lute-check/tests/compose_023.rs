@@ -15,6 +15,7 @@ fn snapshot() -> CapabilitySnapshot {
     let npc = OccasionTarget::Domain {
         prefix: "npc".into(),
         entity: "person".into(),
+        members: None,
     };
     for (name, select, target) in [
         ("hubVisit", OccasionSelect::First, OccasionTarget::Shape(false)),

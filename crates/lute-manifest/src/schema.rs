@@ -455,17 +455,25 @@ pub struct OccasionDecl {
 
 /// An occasion's `target:` (dsl 0.21.0 §2, dsl 0.22.0 §8): `true` / `false`
 /// (the 0.21 shape-only meaning — any dotted id), or a domain
-/// `{ prefix, entity }`: a target is then `<prefix>.<member>` for a member of
-/// the project entity kind `entity`.
+/// `{ prefix, entity, members? }`: a target is then `<prefix>.<member>` for a
+/// member of the project entity kind `entity` — or, with `members`, for one of
+/// the listed members only (each of which must belong to `entity`).
 ///
 /// `Debug` prints a shape-only target as the bare bool, exactly as the 0.21
 /// `target: bool` field did, so a snapshot that never names a domain keeps
-/// its `capabilityVersion` (the hash folds `OccasionDecl`'s `Debug`).
+/// its `capabilityVersion` (the hash folds `OccasionDecl`'s `Debug`); a
+/// domain without `members` prints exactly as the 0.22 `{ prefix, entity }`
+/// did, for the same reason.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum OccasionTarget {
     Shape(bool),
-    Domain { prefix: String, entity: String },
+    Domain {
+        prefix: String,
+        entity: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        members: Option<Vec<String>>,
+    },
 }
 
 impl Default for OccasionTarget {
@@ -486,17 +494,45 @@ impl OccasionTarget {
     pub fn takes_target(&self) -> bool {
         !matches!(self, OccasionTarget::Shape(false))
     }
+
+    /// The members a domain draws its targets from, given the entity kind's
+    /// own closed member list `kind_members` (`None` for an `open:` kind,
+    /// whose members are engine-populated): the declared `members` subset
+    /// when there is one, else the whole kind. `None` for a shape-only
+    /// target, or for a whole open kind. Every consumer that enumerates or
+    /// judges a domain's targets goes through this, so a subset narrows all
+    /// of them alike.
+    pub fn domain_members<'a>(
+        &'a self,
+        kind_members: Option<&'a [String]>,
+    ) -> Option<&'a [String]> {
+        match self {
+            OccasionTarget::Shape(_) => None,
+            OccasionTarget::Domain {
+                members: Some(subset),
+                ..
+            } => Some(subset),
+            OccasionTarget::Domain { members: None, .. } => kind_members,
+        }
+    }
 }
 
 impl std::fmt::Debug for OccasionTarget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OccasionTarget::Shape(b) => std::fmt::Debug::fmt(b, f),
-            OccasionTarget::Domain { prefix, entity } => f
-                .debug_struct("Domain")
-                .field("prefix", prefix)
-                .field("entity", entity)
-                .finish(),
+            OccasionTarget::Domain {
+                prefix,
+                entity,
+                members,
+            } => {
+                let mut d = f.debug_struct("Domain");
+                d.field("prefix", prefix).field("entity", entity);
+                if let Some(members) = members {
+                    d.field("members", members);
+                }
+                d.finish()
+            }
         }
     }
 }

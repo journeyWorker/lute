@@ -96,6 +96,9 @@ fn beat_when_follows_the_scene_beat_rules() {
     let ds = with_code(&dead, "E-BEAT-UNREACHABLE");
     assert_eq!(ds.len(), 1, "{:#?}", run(&dead).diagnostics);
     assert!(ds[0].message.contains("interviews.a"), "{}", ds[0].message);
+    // A numeric disjunction whose gap holds the conjunction's only value.
+    let gap = doc("<beat id=\"a\" on=\"talk\" when=\"run.trust == 3 && (run.trust > 3 || run.trust < 3)\">\n@n: hi\n</beat>\n");
+    assert_eq!(with_code(&gap, "E-BEAT-UNREACHABLE").len(), 1, "{:#?}", run(&gap).diagnostics);
     let scene_read = doc("<beat id=\"a\" on=\"talk\" when=\"scene.x\">\n@n: hi\n</beat>\n");
     assert!(!with_code(&scene_read, "E-BEAT-ATTR").is_empty());
     let undeclared = doc("<beat id=\"a\" on=\"talk\" when=\"run.ghost\">\n@n: hi\n</beat>\n");

@@ -31,8 +31,8 @@ use crate::fact_env::{CountInterval, FactScope, HoldsVerdict, QueryPattern};
 use crate::match_check::{infer_domain, Domain, DomainInfo, DomainValue};
 use crate::meta::StateSchema;
 use crate::solution::{
-    covers, domain_value, finite_set, holds_member, number_set, Kind, PathDomain, SolutionSet,
-    Truth,
+    covers, domain_value, finite_set, holds_member, meet_spans, number_set, number_spans, Kind,
+    PathDomain, SolutionSet, Truth, REALS,
 };
 
 /// A §5.1-decided constant — provably the expression's value in EVERY
@@ -453,8 +453,9 @@ fn in_truth(
 }
 
 /// A nested chain of the OTHER connective (`(x == 'a' || x == 'b')` inside
-/// an `&&` chain) whose literals all read ONE finite-domain path: its TRUE
-/// set is the union (`||`) or intersection (`&&`) of theirs.
+/// an `&&` chain) whose literals all read ONE finite-domain or number path:
+/// its TRUE set is the union (`||`) or intersection (`&&`) of theirs — over
+/// a number path a union of intervals (`run.n > 3 || run.n < 3`).
 fn nested_truth(
     expr: &Expr,
     chain: Chain,
@@ -475,29 +476,40 @@ fn nested_truth(
         truths.push(truth);
     }
     let (key, dom) = key_dom?;
-    let Kind::Finite(all) = &dom.kind else {
-        return None;
-    };
     let any = chain == Chain::Or;
-    let holds = |t: &Truth, m: &DomainValue| t.set.as_ref().is_none_or(|s| holds_member(s, m));
-    let set = all
-        .iter()
-        .filter(|m| {
-            if any {
-                truths.iter().any(|t| holds(t, m))
-            } else {
-                truths.iter().all(|t| holds(t, m))
-            }
-        })
-        .cloned()
-        .collect();
+    let set = match &dom.kind {
+        Kind::Finite(all) => {
+            let holds = |t: &Truth, m: &DomainValue| t.set.as_ref().is_none_or(|s| holds_member(s, m));
+            SolutionSet::Values(
+                all.iter()
+                    .filter(|m| {
+                        if any {
+                            truths.iter().any(|t| holds(t, m))
+                        } else {
+                            truths.iter().all(|t| holds(t, m))
+                        }
+                    })
+                    .cloned()
+                    .collect(),
+            )
+        }
+        Kind::Number => SolutionSet::Union(if any {
+            truths.iter().flat_map(|t| number_spans(t.set.as_ref())).collect()
+        } else {
+            truths.iter().fold(vec![REALS], |acc, t| {
+                meet_spans(&acc, &number_spans(t.set.as_ref()))
+            })
+        }),
+        // A value of any kind may turn up: an ordering errs on a non-number.
+        Kind::Open => return None,
+    };
     let unset = if any {
         truths.iter().any(|t| t.unset)
     } else {
         truths.iter().all(|t| t.unset)
     };
     let truth = Truth {
-        set: Some(SolutionSet::Values(set)),
+        set: Some(set),
         unset,
     };
     Some((key, dom, truth))

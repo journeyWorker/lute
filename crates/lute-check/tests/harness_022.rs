@@ -18,6 +18,12 @@ fn snapshot() -> CapabilitySnapshot {
     let domain = OccasionTarget::Domain {
         prefix: "npc".into(),
         entity: "person".into(),
+        members: None,
+    };
+    let bosses = |members: &[&str]| OccasionTarget::Domain {
+        prefix: "boss".into(),
+        entity: "foe".into(),
+        members: Some(members.iter().map(|m| m.to_string()).collect()),
     };
     for (name, select, target) in [
         ("hubVisit", OccasionSelect::First, OccasionTarget::Shape(false)),
@@ -29,9 +35,12 @@ fn snapshot() -> CapabilitySnapshot {
             OccasionTarget::Domain {
                 prefix: "place".into(),
                 entity: "location".into(),
+                members: None,
             },
         ),
         ("board", OccasionSelect::All, OccasionTarget::Shape(false)),
+        ("bossDefeated", OccasionSelect::First, bosses(&["gatekeeper", "warden"])),
+        ("bossFled", OccasionSelect::First, bosses(&["gatekeeper", "wardne"])),
     ] {
         snap.occasions.insert(
             name.into(),
@@ -71,7 +80,8 @@ fn anchored<'s>(src: &'s str, d: &Diagnostic) -> &'s str {
     &src[d.span.byte_start..d.span.byte_end]
 }
 
-const VOCAB: &str = "entities:\n  person: { members: [maud, oskar] }\n  location: { open: true }\n";
+const VOCAB: &str = "entities:\n  person: { members: [maud, oskar] }\n  location: { open: true }\n  \
+                     foe: { members: [gatekeeper, warden, cinderhound] }\n";
 
 /// A scene document with frontmatter lines `fm` and body `body`.
 fn scene(id: &str, fm: &str, body: &str) -> String {
@@ -165,6 +175,44 @@ fn entry_beat_targets_and_open_kinds_and_shape_only_targets() {
     let d = with_code(&ds, "E-BEAT-ATTR");
     assert_eq!(d.len(), 1, "only the closed-kind miss: {ds:?}");
     assert_eq!(anchored(&src, d[0]), "npc.sable");
+}
+
+#[test]
+fn a_member_subset_narrows_the_domain_with_did_you_mean_over_the_subset() {
+    // ashen N10: `bossDefeated` is raised only for the two guardians. A
+    // hound is a `foe`, but not one of the occasion's listed members.
+    let src = scene("a.boss", "on: bossDefeated\ntarget: boss.cinderhound\n", "@narrator: Hi.\n");
+    let ds = diags(&src);
+    let d = with_code(&ds, "E-BEAT-ATTR");
+    assert_eq!(d.len(), 1, "{ds:?}");
+    assert_eq!(anchored(&src, d[0]), "boss.cinderhound");
+    assert!(
+        d[0].message.contains("member list (`boss.gatekeeper`, `boss.warden`)"),
+        "{}",
+        d[0].message
+    );
+    // The did-you-mean runs over the subset.
+    let near = diags(&scene("a.near", "on: bossDefeated\ntarget: boss.wardn\n", "@narrator: Hi.\n"));
+    let d = with_code(&near, "E-BEAT-ATTR");
+    assert_eq!(d.len(), 1, "{near:?}");
+    assert!(d[0].message.contains("did you mean `boss.warden`?"), "{}", d[0].message);
+    // A listed member is legal.
+    let ok = diags(&scene("a.ok", "on: bossDefeated\ntarget: boss.gatekeeper\n", "@narrator: Hi.\n"));
+    assert!(with_code(&ok, "E-BEAT-ATTR").is_empty(), "{ok:?}");
+}
+
+#[test]
+fn a_listed_member_outside_the_entity_kind_refuses_every_target() {
+    // `bossFled` lists `wardne`, which `foe` does not declare: even a
+    // well-spelled target names the stray member, the kind, and the fix.
+    let src = scene("a.fled", "on: bossFled\ntarget: boss.gatekeeper\n", "@narrator: Hi.\n");
+    let ds = diags(&src);
+    let d = with_code(&ds, "E-BEAT-ATTR");
+    assert_eq!(d.len(), 1, "{ds:?}");
+    let msg = &d[0].message;
+    assert!(msg.contains("occasion `bossFled` lists `wardne`"), "{msg}");
+    assert!(msg.contains("not a member of entity kind `foe`"), "{msg}");
+    assert!(msg.contains("did you mean `warden`?"), "{msg}");
 }
 
 #[test]
