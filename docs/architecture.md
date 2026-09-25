@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.24.0.md`](proposals/scenario-dsl/0.24.0.md). The
+> [`proposals/scenario-dsl/0.25.0.md`](proposals/scenario-dsl/0.25.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -32,7 +32,11 @@ target is the flat command-record format the engine consumes.
 > and `lute scenario knowledge` give authors overviews of which beat answers when. Since
 > 0.24.0 a schema may declare a `clock:` that `once: day` / `once: slot` and `lute play`'s
 > `advance:` steps read, quests take `activate="accept"` / `complete="any"` / `until=`, a
-> cast entry may declare `present:`, and an `effects: true` component may write state.
+> cast entry may declare `present:`, and an `effects: true` component may write state. Since
+> 0.25.0 a relation may declare `excludes:` (checked statically and halting `lute play` /
+> `lute trace` on a violation), beats may `share` one spend, a bundle `<beat after=…>` and a
+> quest's subquests and `start` reads are scenario-graph edges, and a quest may be
+> `accept="external"`.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -711,6 +715,17 @@ above, never a rule-body dependency):
   its `::use` sits for both the checker and `normalize`, `rule_index.rs` grounds a rule
   guard's entity-indexed read into one IR rule per member, and `usage.rs` owns the
   project-wide `W-RELATION-UNREAD` / `W-DEF-UNUSED` advisories.
+- **Exclusion, shared spends and graph anchors (dsl 0.25.0).** `rel_schema.rs` owns a
+  relation's `excludes:` (the symmetric closure, `E-RELATION-DECL` for mismatched argument
+  kinds or a malformed `changedOn:`, `E-RULE-EXCLUSIVE` for a rule that derives one side from
+  the other); `decide.rs::exclusive_pairs` lets the decider read a guard needing both sides as
+  false and a negation as following, and `fact_check.rs` reports the provable
+  `E-FACT-EXCLUSIVE` assert. The dynamic half is `lute_trace::eval`'s
+  `exclusive_violations`, which the trace walk and `lute test` refuse at the write, and
+  `lute play`'s own, which halts at the step. `beats.rs` groups beats by `share` key and checks one
+  `once` per key, and `lute play` spends the key together; `connectivity.rs` draws the bundle
+  beat `after=`, `[subquest]` and `[start]` edges (`quest_anchors` / `start_anchors`), and
+  `cast.rs` reads a reserved relation's `changedOn:` to narrow `assume: true`.
 
 ### Narrative time (spec §6, D11)
 
