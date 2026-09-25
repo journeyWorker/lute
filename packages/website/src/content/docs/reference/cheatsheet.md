@@ -1,6 +1,6 @@
 ---
 title: Cheatsheet
-description: "One page to keep open while writing Lute 0.23.1 and the dsl 0.24.0 additions (clock, quest structure, parties, bridge answers in play and test): every construct with a minimal checked snippet (project layout, frontmatter, lines, choices, match, state, CEL, beats, clock, quests, lore, components, timelines), the CLI at a glance, the diagnostics authors hit most, and the gotchas."
+description: "One page to keep open while writing Lute 0.24.0 (with its clock, quest structure, parties, and bridge answers in play and test): every construct with a minimal checked snippet (project layout, frontmatter, lines, choices, match, state, CEL, beats, clock, quests, lore, components, timelines), the CLI at a glance, the diagnostics authors hit most, and the gotchas."
 ---
 
 Every construct on one page, as snippets you can copy. Each `lute` block below is compile-checked in CI
@@ -37,7 +37,7 @@ identity:                               # both values below are the defaults
   lineId: "{prefix}.{speaker}_{code}"
   voiceKey: "{prefix}.{speaker}-{code}" # the 0.21 default was {speaker}-{code}: pin it to keep old keys
 defaults:                               # frontmatter every document inherits
-  luteVersion: "0.23.1"
+  luteVersion: "0.24.0"
   uses: [world.schema.yaml]             # resolved against THIS file's directory
 ```
 

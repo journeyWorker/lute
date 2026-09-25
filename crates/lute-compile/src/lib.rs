@@ -286,7 +286,18 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// would write into the component file (source order, per speaker) before a
 /// param-scoped `<match>` folds, so a line in a non-first arm may get a new
 /// `lineId` / `voiceKey` once — the one `lute tag` persists.
-pub const LUTE_IR_VERSION: &str = "0.23.1";
+///
+/// IR `0.24.0` is ADDITIVE over `0.23.1` (dsl 0.24.0): the artifact and
+/// `ProjectIndex` carry an optional `clock` declaration, beat and entry
+/// `once` gain `"day"` / `"slot"`, and the optional `ObjectiveEntry.until`,
+/// `QuestCmd.activate` / `complete`, `OnCmd.target`, `AcceptCmd.applies`,
+/// placeholder `format`, `StateEntry.labels` and the CEL binary op `%`
+/// appear only when authored. Documents that use none of it compile
+/// byte-identically apart from the version strings (and the capability
+/// stamp, which moves with `lute.core`'s new `::clear`).
+/// `schemas/lute-ir-0.23.schema.json` is renamed to
+/// `schemas/lute-ir-0.24.schema.json` per the release-line rule.
+pub const LUTE_IR_VERSION: &str = "0.24.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1295,12 +1306,14 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.23.1 axis alignment (docs/versioning.md): a patch on the 0.23
-        // line. The language tightens static semantics (`E-QUEST-TIER-MIX`)
-        // and the IR moves no shape (the schema keeps its 0.23 name) — both
-        // still move independently of the toolchain pin.
-        assert_eq!(super::LUTE_IR_VERSION, "0.23.1");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.23.1");
+        // 0.24.0 axis alignment (docs/versioning.md): a minor release. The
+        // language earns the move (clock, quest structure, entity sub-kinds
+        // and `per:` state, cast presence, effects components) and so does
+        // the IR (additive `clock`, `until`, `activate` / `complete`,
+        // `OnCmd.target`, `format`, `labels`) — both move independently of
+        // the toolchain pin.
+        assert_eq!(super::LUTE_IR_VERSION, "0.24.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.24.0");
     }
 
     #[test]
@@ -1309,8 +1322,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.23.1");
-        assert_eq!(v["irVersion"], "0.23.1");
+        assert_eq!(v["lute"], "0.24.0");
+        assert_eq!(v["irVersion"], "0.24.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

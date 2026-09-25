@@ -89,7 +89,7 @@ A lore document can say so directly (dsl 0.19.0 §2.1):
 ```lute check="docs/examples/haven/lore/purser-ledger.lute"
 ---
 kind: lore
-luteVersion: "0.23.1"
+luteVersion: "0.24.0"
 id: haven.purserLedger
 title: Purser's ledger
 series: purserLedger

@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.23.0.md`](proposals/scenario-dsl/0.23.0.md). The
+> [`proposals/scenario-dsl/0.24.0.md`](proposals/scenario-dsl/0.24.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -29,7 +29,10 @@ target is the flat command-record format the engine consumes.
 > `lute test` runs those plays; runs have a lifecycle (`<quest tier="run">`, entry
 > `once`, `entry.<id>.everRead`). Since 0.23.0 a lore document may also bundle scene-like
 > `<beat>` blocks (canonical id `<document id>.<beat id>`), and `lute beats`, `lute calendar`
-> and `lute scenario knowledge` give authors overviews of which beat answers when.
+> and `lute scenario knowledge` give authors overviews of which beat answers when. Since
+> 0.24.0 a schema may declare a `clock:` that `once: day` / `once: slot` and `lute play`'s
+> `advance:` steps read, quests take `activate="accept"` / `complete="any"` / `until=`, a
+> cast entry may declare `present:`, and an `effects: true` component may write state.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -698,6 +701,16 @@ above, never a rule-body dependency):
   exclusions, with `unset` as a value), so a same-path contradiction decides false and a
   covering disjunction true. `check-project --wip` re-checks a newly dead fact guard against a
   second may set in which unproduced relations are unbounded (`FactEnv::with_wip`).
+- **Clock, presence and effects (dsl 0.24.0).** `lute_manifest::clock` is the one piece of
+  clock arithmetic (`clock.index`, weekday, `once: day` / `slot` spending, advance) shared by
+  the checker (`lute_check::clock`, `E-CLOCK-DECL` and the reserved `clock.*` paths), the
+  compiler (the IR carries the declaration verbatim), trace and the reference runner, so
+  every tool derives the reserved paths identically. `cast.rs` checks speakers and staged
+  characters against a declared cast and decides `W-CAST-ABSENT` from the guards around each
+  line, `component_effects.rs` binds and splices an `effects: true` component's writes where
+  its `::use` sits for both the checker and `normalize`, `rule_index.rs` grounds a rule
+  guard's entity-indexed read into one IR rule per member, and `usage.rs` owns the
+  project-wide `W-RELATION-UNREAD` / `W-DEF-UNUSED` advisories.
 
 ### Narrative time (spec §6, D11)
 

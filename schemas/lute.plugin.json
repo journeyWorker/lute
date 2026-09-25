@@ -171,8 +171,7 @@
       "type": "object",
       "required": [
         "name",
-        "attrs",
-        "lower"
+        "attrs"
       ],
       "properties": {
         "name": {
@@ -204,7 +203,8 @@
           "$ref": "#/definitions/bridgeRef"
         },
         "lower": {
-          "$ref": "#/definitions/lowering"
+          "$ref": "#/definitions/lowering",
+          "description": "Optional (0.24.0): absent means the generic `kind: \"plugin\"` passthrough."
         }
       }
     },

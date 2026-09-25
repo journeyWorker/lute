@@ -5472,22 +5472,20 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.23.0` is a language AND IR release: objectives take `by=`
-    /// deadlines and `target=`, occasions may `select: sequence`, a beat may
-    /// ride along with `also`, a lore document may bundle `<beat>`s, a hub
-    /// takes `prompt=`, component string params interpolate, `prev.run.*` is
-    /// reserved, a declared cast is checked, reward kinds may `credits:` a
-    /// path, and `E-CAST-UNKNOWN` / `W-REWARD-DOUBLE-CREDIT` join the code
-    /// set. The IR gains the `beat` command and optional beat, objective, hub
-    /// and reward fields, so the current schema is
-    /// `schemas/lute-ir-0.23.schema.json`. `0.23.1` is a patch on the same
-    /// line: no new syntax, but static semantics tighten
-    /// (`E-QUEST-TIER-MIX` rejects a mixed-tier quest tree) and an occasion
-    /// target domain may narrow to `members:`; the IR shape does not move,
-    /// so the schema keeps its `0.23` name and `$id`.
+    /// `0.24.0` is a language AND IR release: a schema may declare a
+    /// `clock:` (reserved `clock.*` reads, `once: day` / `once: slot`),
+    /// quests gain `activate="accept"`, `complete="any"`, `until=` and the
+    /// read-only `failedBy` / `objectives.<o>.failed` paths, entities gain
+    /// sub-kinds and `per:` state, a cast may declare `present:` /
+    /// `emotions:`, components may write state (`effects: true`), and
+    /// `::clear`, `%`, guarded `::set` and `{{x:ordinal}}` join the core.
+    /// The IR gains the optional `clock`, `ObjectiveEntry.until`,
+    /// `QuestCmd.activate` / `complete`, `OnCmd.target`,
+    /// `AcceptCmd.applies`, placeholder `format` and `StateEntry.labels`, so
+    /// the current schema is `schemas/lute-ir-0.24.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_23_1() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.23.1");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.23.1");
+    fn language_ir_and_toolchain_are_aligned_at_0_24_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.24.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.24.0");
     }
 }

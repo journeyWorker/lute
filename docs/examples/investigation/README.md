@@ -158,7 +158,7 @@ cargo run -q -p lute-cli -- compile docs/examples/investigation/scenes/crime-sce
   --project docs/examples/investigation -o /tmp/crime-scene.json
 ```
 
-Exit `0`; the artifact is stamped `"lute": "0.23.1"` / `"irVersion": "0.23.1"`.
+Exit `0`; the artifact is stamped `"lute": "0.24.0"` / `"irVersion": "0.24.0"`.
 Every document in the project compiles (`scenes/*.lute` and
 `quests/identify-killer.lute`) — swap the path above.
 

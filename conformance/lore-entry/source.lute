@@ -1,6 +1,6 @@
 ---
 kind: lore
-luteVersion: "0.23.1"
+luteVersion: "0.24.0"
 uses: ./schema.yaml
 title: Ship's records
 ---
