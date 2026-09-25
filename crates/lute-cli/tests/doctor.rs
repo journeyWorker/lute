@@ -161,7 +161,11 @@ fn doctor_flags_a_lute_lsp_whose_version_differs() {
 /// seven-days F27: the editor's `lute-lsp` keeps running the build it was
 /// started from. Doctor lists running servers and flags one whose binary
 /// reports another version or was replaced after it started.
-#[cfg(unix)]
+///
+/// macOS only: the fake server is a shell script, and on Linux the process
+/// table (and `/proc/<pid>/exe`) names the interpreter, not the script — a
+/// real `lute-lsp` is a native binary, so that is an artefact of the fake.
+#[cfg(target_os = "macos")]
 #[test]
 fn doctor_flags_a_running_lute_lsp_of_another_build() {
     use std::os::unix::fs::PermissionsExt;
