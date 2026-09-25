@@ -80,7 +80,11 @@ fn project_with_component(component_body: &str, params: &str) -> (PathBuf, Strin
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
          components: [../components/c.component.lute]\n---\n## Shot 1.\n\
          @narrator: before.\n::use{{component=\"c\"{}}}\n",
-        if params.is_empty() { "" } else { " memory=\"hi\"" }
+        if params.is_empty() {
+            ""
+        } else {
+            " memory=\"hi\""
+        }
     );
     (root, scene)
 }

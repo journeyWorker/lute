@@ -426,7 +426,9 @@ fn document_units(
         };
         walk_nodes(&cx, &entry.body, None, cx.prefix, out);
     }
-    let doc_id = (!doc.beats.is_empty()).then(|| authored_doc_id(doc)).flatten();
+    let doc_id = (!doc.beats.is_empty())
+        .then(|| authored_doc_id(doc))
+        .flatten();
     for beat in &doc.beats {
         let key = doc_id
             .as_deref()

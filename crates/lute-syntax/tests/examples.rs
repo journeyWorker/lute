@@ -58,7 +58,10 @@ fn marina_block_assembly_is_correct() {
     // §10.2: `Clip.at` keeps the authored TEXT, not a parsed `f64`.
     assert!(timeline.tracks[0].clips[0].at.is_none());
     assert_eq!(
-        timeline.tracks[0].clips[1].at.as_ref().map(|a| a.raw.as_str()),
+        timeline.tracks[0].clips[1]
+            .at
+            .as_ref()
+            .map(|a| a.raw.as_str()),
         Some("0.5")
     );
     // `at` is lifted onto the Clip, not left on the directive attrs.

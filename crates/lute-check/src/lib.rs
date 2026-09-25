@@ -1,6 +1,7 @@
 pub mod accept;
 pub mod admission;
 pub mod beats;
+pub mod builtin_lowering;
 pub mod bundles;
 pub mod cast;
 pub mod cel_expand;
@@ -8,7 +9,6 @@ pub mod cel_message;
 pub mod cel_paths;
 pub mod cel_resolve;
 pub mod check;
-pub mod builtin_lowering;
 pub mod clock;
 pub mod component_effects;
 pub mod component_import;
@@ -62,20 +62,19 @@ pub mod when_test_literal;
 pub const LUTE_LANG_VERSION: &str = "0.24.0";
 
 pub use accept::{
-    check_accept_directive, check_project_accepts, check_project_never_accepted,
-    E_ACCEPT_TARGET, W_QUEST_NEVER_ACCEPTED,
+    check_accept_directive, check_project_accepts, check_project_never_accepted, E_ACCEPT_TARGET,
+    W_QUEST_NEVER_ACCEPTED,
 };
 pub use admission::{check_admission, node_kind, NodeKind};
+pub use beats::{
+    beat_target_restricts, check_project_beats, occasion_target_ok, parse_beat_priority,
+    project_beats, BeatMeta, BeatOnce, ProjectBeat, ProjectBeatKind, BEAT_KEYS, E_BEAT_ATTR,
+    E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE,
+    W_BEAT_SHADOWED,
+};
 pub use bundles::{
     bundle_beat_also, bundle_beat_key, bundle_beat_once, bundle_beat_priority, check_bundle_beats,
     BUNDLE_BEAT_ATTRS,
-};
-pub use beats::{
-    beat_target_restricts, check_project_beats, occasion_target_ok, parse_beat_priority,
-    project_beats, BeatMeta,
-    BeatOnce, ProjectBeat, ProjectBeatKind, BEAT_KEYS,
-    E_BEAT_ATTR, E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_ONCE_RUN_USER,
-    W_BEAT_PRIORITY_TIE, W_BEAT_SHADOWED,
 };
 pub use cast::{check_speakers, declared_cast, E_CAST_UNKNOWN};
 pub use cel_expand::{expand_cel, DefTable};
@@ -86,9 +85,10 @@ pub use cel_resolve::{
     E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,
 };
 pub use check::{
-    check, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved, W_LUTE_VERSION_STALE,
+    check, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved,
+    INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
 };
-pub use component_effects::{splice_component_effects, speaker_display_args};
+pub use component_effects::{speaker_display_args, splice_component_effects};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use datalog_check::{
@@ -103,6 +103,9 @@ pub use def_inline::{
 };
 pub use defassign::{check_definite_assignment, check_quest_guard_defassign};
 pub use directives::E_AT_CONTEXT;
+pub use fact_check::{check_fact_guards, E_ENTRY_UNREACHABLE, W_FACT_GUARANTEED};
+pub use fact_env::{FactEnv, FactScope, GroundFact, MaySet, MustMap, QueryPattern, RootVocab};
+pub use fact_must::{compute_must, stable_seeds, unproduced_relations, FactMust};
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
 pub use fix::{fix_document, FixResult};
 pub use inject::{
@@ -129,17 +132,13 @@ pub use permissions::{
     E_PERMISSION_QUEST, E_PERMISSION_REWARD, E_PERMISSION_STATE,
 };
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
-pub use fact_check::{check_fact_guards, E_ENTRY_UNREACHABLE, W_FACT_GUARANTEED};
-pub use fact_env::{FactEnv, FactScope, GroundFact, MaySet, MustMap, QueryPattern, RootVocab};
-pub use fact_must::{compute_must, stable_seeds, unproduced_relations, FactMust};
 pub use project_check::{
     check_project_domain_reads, check_project_entry_ids, check_project_entry_refs,
     check_project_quest_handlers, check_project_quest_ids, check_project_quest_refs,
     check_project_quest_tree, check_project_subquest_unsatisfiable, colliding_entry_occurrences,
     colliding_occurrences, component_unverified_diag, domain_reading_set, ComponentScope,
     E_QUEST_MULTI_PARENT, E_QUEST_REF_UNKNOWN, E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE,
-    W_COMPONENT_UNVERIFIED,
-    W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN,
+    W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN,
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;

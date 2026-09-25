@@ -487,9 +487,8 @@ pub(crate) fn check_match_with_domain(
     // exhaustive over — its read is reported once (`E-UNDECLARED`, or under a
     // broken schema import the import error), never as a follow-on
     // `E-NONEXHAUSTIVE` pointing at the match.
-    let undeclared = subject.is_some_and(|p| {
-        !info.resolved && !crate::defassign::is_declared(p, &ctx.env.state)
-    });
+    let undeclared = subject
+        .is_some_and(|p| !info.resolved && !crate::defassign::is_declared(p, &ctx.env.state));
     if has_otherwise || undeclared {
         return diags;
     }
@@ -501,8 +500,10 @@ pub(crate) fn check_match_with_domain(
                 .filter(|v| !covered.contains(v) && !ruled_out(&CoverItem::Value((*v).clone())))
                 .cloned()
                 .collect();
-            let shown: Vec<String> =
-                missing.iter().map(|v| domain_members_display(std::slice::from_ref(v))).collect();
+            let shown: Vec<String> = missing
+                .iter()
+                .map(|v| domain_members_display(std::slice::from_ref(v)))
+                .collect();
             (missing.is_empty(), not_covered(&shown))
         }
         Domain::IntRange { lo, hi } => {
@@ -525,9 +526,9 @@ pub(crate) fn check_match_with_domain(
             (Some(gap), Domain::Number | Domain::IntRange { .. }) => format!(
                 "non-exhaustive `<match>`: {gap} and there is no `<otherwise>` (dsl 0.18.0 §4)"
             ),
-            (Some(gap), _) => format!(
-                "non-exhaustive `<match>`: {gap} and there is no `<otherwise>` (dsl §11.2)"
-            ),
+            (Some(gap), _) => {
+                format!("non-exhaustive `<match>`: {gap} and there is no `<otherwise>` (dsl §11.2)")
+            }
             (None, _) => "non-exhaustive `<match>`: the subject's domain is not fully covered and \
                      there is no `<otherwise>` (dsl §11.2)"
                 .to_string(),
@@ -577,7 +578,10 @@ fn not_covered(missing: &[String]) -> Option<String> {
         [one] => Some(format!("`{one}` is not covered")),
         many => Some(format!(
             "{} are not covered",
-            many.iter().map(|v| format!("`{v}`")).collect::<Vec<_>>().join(", ")
+            many.iter()
+                .map(|v| format!("`{v}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
         )),
     }
 }
@@ -2232,7 +2236,10 @@ mod tests {
                 owner: None,
             },
         );
-        StateSchema { decls, ..Default::default() }
+        StateSchema {
+            decls,
+            ..Default::default()
+        }
     }
 
     /// `run.rank` declared as an enum WITHOUT a default => finite but maybe-unset.
@@ -2247,7 +2254,10 @@ mod tests {
                 owner: None,
             },
         );
-        StateSchema { decls, ..Default::default() }
+        StateSchema {
+            decls,
+            ..Default::default()
+        }
     }
 
     fn ctx() -> Ctx<'static> {
@@ -2303,7 +2313,10 @@ mod tests {
                 owner: None,
             },
         );
-        StateSchema { decls, ..Default::default() }
+        StateSchema {
+            decls,
+            ..Default::default()
+        }
     }
 
     fn branch(id: &str, choice_ids: &[&str]) -> Branch {
@@ -2342,7 +2355,10 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls, ..Default::default() };
+        let schema = StateSchema {
+            decls,
+            ..Default::default()
+        };
         let m = match_with(
             "run.n",
             vec![
@@ -2369,7 +2385,10 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls, ..Default::default() };
+        let schema = StateSchema {
+            decls,
+            ..Default::default()
+        };
         let m = match_with("run.n", vec![when_arm("$ == 1"), when_arm("$ == 2")]);
         let errs = check_match(&m, &schema, &ctx());
         assert!(errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"));
@@ -2461,11 +2480,7 @@ mod tests {
                 when_arm("$ == 'unset'"),
             ],
         );
-        let errs = check_match(
-            &m,
-            &StateSchema::default(),
-            &ctx(),
-        );
+        let errs = check_match(&m, &StateSchema::default(), &ctx());
         assert!(
             errs.is_empty(),
             "foreign quest.state fully covered incl. unset should be clean: {errs:?}"
@@ -2485,11 +2500,7 @@ mod tests {
                 when_arm("$ == 'unset'"),
             ],
         );
-        let errs = check_match(
-            &m,
-            &StateSchema::default(),
-            &ctx(),
-        );
+        let errs = check_match(&m, &StateSchema::default(), &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
             "missing `failed` member must still be E-NONEXHAUSTIVE: {errs:?}"
@@ -2511,10 +2522,7 @@ mod tests {
             ],
         );
         let errs = check_match(&m, &StateSchema::default(), &ctx());
-        assert!(
-            errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
-            "{errs:?}"
-        );
+        assert!(errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"), "{errs:?}");
     }
 
     #[test]
@@ -2525,11 +2533,7 @@ mod tests {
             "quest.foo.objectives.bar.done",
             vec![when_arm("$"), when_arm("!$")],
         );
-        let errs = check_match(
-            &m,
-            &StateSchema::default(),
-            &ctx(),
-        );
+        let errs = check_match(&m, &StateSchema::default(), &ctx());
         assert!(
             errs.is_empty(),
             "foreign objective.done fully covered should be clean: {errs:?}"
@@ -2550,7 +2554,10 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls, ..Default::default() };
+        let schema = StateSchema {
+            decls,
+            ..Default::default()
+        };
         let m = match_with(
             "app.rating",
             vec![when_arm("$ == 'everyone'"), when_arm("$ == 'mature'")],
@@ -2571,7 +2578,10 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls, ..Default::default() };
+        let schema = StateSchema {
+            decls,
+            ..Default::default()
+        };
         let m = match_with(
             "app.rating",
             vec![
@@ -2627,7 +2637,10 @@ mod tests {
                 owner: None,
             },
         );
-        let schema = StateSchema { decls, ..Default::default() };
+        let schema = StateSchema {
+            decls,
+            ..Default::default()
+        };
         let m = match_with(
             "scene.choices.couch",
             vec![when_arm("$ == 'help'"), when_arm("$ == 'ignore'")],
@@ -3086,7 +3099,10 @@ mod tests {
         let (doc, _) = lute_syntax::parse(src);
         let diags = check_line_codes(&doc);
         assert_eq!(diags.len(), 1, "{diags:?}");
-        assert_eq!(diags[0].span.byte_start, src.find("@n{code=\"0010\"}: d").unwrap());
+        assert_eq!(
+            diags[0].span.byte_start,
+            src.find("@n{code=\"0010\"}: d").unwrap()
+        );
     }
     // ---- B4: <when is> literal-pattern coverage + E-WHEN-PATTERN (§7.3.1) ----
 
@@ -3130,7 +3146,10 @@ mod tests {
                 owner: None,
             },
         );
-        StateSchema { decls, ..Default::default() }
+        StateSchema {
+            decls,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -3635,7 +3654,10 @@ mod tests {
                     owner: None,
                 },
             );
-            StateSchema { decls, ..Default::default() }
+            StateSchema {
+                decls,
+                ..Default::default()
+            }
         };
         let split = match_with(
             "run.n",

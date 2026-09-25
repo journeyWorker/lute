@@ -366,7 +366,11 @@ fn scene_accept() {
 /// dsl 0.23.0 §4: `<hub prompt>` lowers to `"prompt"` on the hub record.
 #[test]
 fn scene_hub_prompt() {
-    golden("scene_hub_prompt", "tests/fixtures/scene_hub_prompt.lute", None);
+    golden(
+        "scene_hub_prompt",
+        "tests/fixtures/scene_hub_prompt.lute",
+        None,
+    );
 }
 
 /// dsl 0.23.0 §4: a lore document bundling beats — one unit per entry /
@@ -374,7 +378,11 @@ fn scene_hub_prompt() {
 /// lowering (branch, hub with its prompt), `also`, `once: false` → `none`.
 #[test]
 fn lore_bundle_interviews() {
-    golden("lore_bundle_interviews", "tests/fixtures/lore_bundle_interviews.lute", None);
+    golden(
+        "lore_bundle_interviews",
+        "tests/fixtures/lore_bundle_interviews.lute",
+        None,
+    );
 }
 
 /// IR A12: the `::serve` plugin record carries resolved effect bindings. The
@@ -441,11 +449,7 @@ fn components_scene() {
 /// number `1.3` instead of vanishing.
 #[test]
 fn def_inline() {
-    golden(
-        "def_inline",
-        "tests/fixtures/def_inline/scene.lute",
-        None,
-    );
+    golden("def_inline", "tests/fixtures/def_inline/scene.lute", None);
 }
 
 /// dsl 0.4.0 §6.4/§6.5 (T8): the deduplicated affinity-reaction worked

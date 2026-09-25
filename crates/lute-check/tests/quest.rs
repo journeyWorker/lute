@@ -685,7 +685,13 @@ fn isset_on_quest_state_warns() {
         .collect();
     assert_eq!(w.len(), 1, "{:?}", r.diagnostics);
     assert!(w[0].message.contains("== 'unset'"), "{}", w[0].message);
-    assert!(r.diagnostics.iter().all(|d| d.code == "W-QUEST-STATE-ISSET"), "{:?}", r.diagnostics);
+    assert!(
+        r.diagnostics
+            .iter()
+            .all(|d| d.code == "W-QUEST-STATE-ISSET"),
+        "{:?}",
+        r.diagnostics
+    );
 }
 
 /// `<when is="unset">` on a quest state names the MEMBER: a match over all
@@ -702,5 +708,8 @@ fn quest_state_match_covers_unset_as_a_member() {
         "{T11_SCENE}<match on=\"quest.qq.state\">\n<when is=\"active\">\n@x: a\n</when>\n\
          <when is=\"complete | failed\">\n@x: c\n</when>\n</match>\n"
     ));
-    assert!(missing.contains(&"E-NONEXHAUSTIVE".to_string()), "{missing:?}");
+    assert!(
+        missing.contains(&"E-NONEXHAUSTIVE".to_string()),
+        "{missing:?}"
+    );
 }

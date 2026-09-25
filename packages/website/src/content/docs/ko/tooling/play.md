@@ -141,7 +141,10 @@ once: user
 심문 질문 한 벌 — [로어 문서](/language/lore-entries/#entries-and-beats-in-one-file)가 그것들을 **번들
 비트**(dsl 0.23.0)로 담을 수 있습니다: 씬 본문 전체 — 대사, branch, hub, `<match>`, 지시문 — 를 가진
 `<beat>` 블록이며, 씬 비트가 프런트매터에 적는 것과 같은 속성(`on`, `target`, `when`, `priority`, `once`,
-`also`, 그리고 `select: all` 메뉴용 `title`)을 받습니다. [아래 예제](#lute-play)가 오르는 탑에서
+`also`, dsl 0.25.0부터 `share`와 `after`, 그리고 `select: all` 메뉴용 `title`)을 받습니다. 비트 자신의
+`after="…"`는 씬의 것처럼 검사되며(`✗ keeper.greeting [beat, priority 0] — after: prerequisite not satisfied`),
+[`share`](/language/beats/#one-event-several-places-share) 키를 가진 비트는 같은 키의 다른 비트가 `once` 기간 안에
+제시되었으면 함께 소진됩니다(``✗ talks.solRoof [beat, priority 0] — once: day — `share: solWarm` already spent today by talks.solRadio``). [아래 예제](#lute-play)가 오르는 탑에서
 `lore/oskar.lute`는 `id: oskar`를 선언하고 오스카에게 둘을 줍니다:
 
 ```lute
@@ -1550,13 +1553,15 @@ expect:
 
 예제는 [예제](#예제)의 마을에 기술 판정을 더합니다: 플러그인은 `::check{skill dc resultKey}`를 선언하고, 그
 효과는 `dice` 서비스의 `passed`와 `margin`으로 `scene.check.<key>.passed`와 `.margin`을 씁니다. `hubVisit`에
-priority 50으로 응답하는 씬 `gate.guards`는 판정을 두 번 하며, 각 판정 뒤에 결과에 대한 `<match>`가 옵니다:
+priority 50으로 응답하는 씬 `gate.guards`는 판정을 두 번 하며, 각 판정 뒤에 결과에 대한 `<match>`가 옵니다.
+가드 달린 줄 하나가 첫 판정의 margin도 읽습니다:
 
 ```lute
 ::check{skill="persuasion" dc="12" resultKey="guards"}
 <match on="scene.check.guards.passed">
   <when is="true">
     @narrator: The guards wave you through.
+    @narrator{when="scene.check.guards.margin > 5"}: They barely look up.
   </when>
   <when is="false">
     @narrator: The guards bar the way.
@@ -1593,16 +1598,20 @@ steps:
 ::check{skill="persuasion" dc="12" resultKey="guards"}        (bridge answered: passed=true, margin=3)
   match -> arm 1
 @narrator: The guards wave you through.
+  skip @narrator "They barely look up." — when: false
 ::check{skill="stealth" dc="10" resultKey="sneak"}        (bridge answered: passed=false, margin=-2)
   match -> arm 2
 @narrator: A stallholder shouts after you.
 ── end: complete (1 step) ──────────────
 ```
 
-- **정확한 필드, 로드 시점 검사.** 각 응답은 호출의 효과가 읽는 `bridgeResult` 필드를 정확히 주며, 값은 각
-  결과 슬롯의 선언된 타입에 맞는 리터럴입니다. 알 수 없는 태그, 어떤 효과도 읽지 않는 필드, 빠진 필드, 맞지
-  않는 값은 아무것도 재생하기 전의 사용법 오류(종료 코드 2)입니다:
-  `` top level: `bridges.check` answer 1 lacks `margin` — an answer gives every bridge result `::check` reads: `{ passed: <bool>, margin: <number> }` (dsl 0.24.0 §5) ``.
+- **콘텐츠가 읽는 필드, 로드 시점 검사.** 각 응답은 그 태그의 어느 호출을 통해서든 콘텐츠가 읽는 `bridgeResult`
+  필드를 주며, 값은 각 결과 슬롯의 선언된 타입에 맞는 리터럴입니다. dsl 0.25.0 §7부터 어떤 콘텐츠도 읽지 않는
+  필드는 빼도 됩니다: 여기서는 가드 달린 줄이 `margin`을 읽으므로 모든 `check` 응답이 그것을 주지만, 그 줄이
+  없다면 `- { passed: true }`로 충분하고 아래의 힌트도 `passed`만 요구합니다. 읽지 않는 필드를 주어도 됩니다.
+  알 수 없는 태그, 어떤 효과도 읽지 않는 필드, 콘텐츠가 읽는데 빠진 필드, 맞지 않는 값은 아무것도 재생하기
+  전의 사용법 오류(종료 코드 2)입니다:
+  `` top level: `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }` (dsl 0.25.0 §7) ``.
   철자가 틀린 태그에는 did-you-mean이 붙습니다.
 - **스텝의 응답이 먼저.** 스텝 자신의 `bridges:`는 최상위 대기열보다 먼저 그 스텝의 호출이 소비합니다.
   스텝이 소비하지 않고 남긴 응답은 스텝을 실패시킵니다(종료 코드 1) — 무언가를 정하려고 쓴 응답이 아무것도
@@ -1795,6 +1804,32 @@ explain safe(warden): holds
 원자(`knows(X)`, `slew(_)`)는 사용법 오류(종료 코드 2)입니다. `--explain`은 `--no-derive`에서도 최종 팩트와
 상태에 대해 규칙을 평가합니다.
 
+### 배타 관계
+
+[`excludes:`](/state/facts-and-datalog/#exclusive-relations-excludes)로 선언한 관계(dsl 0.25.0 §1)는 같은 인자에서
+결코 함께 성립하지 않습니다. `check-project`가 증명할 수 있는 것은 증명하고, 둘 다 *가능하기만* 한 곳 — 한 씬의
+갈래가 `panicked(maren)`을 assert하고 뒤의 씬이 `calm(maren)`을 assert하는 경우 — 에서는 플레이가 모든 쓰기
+뒤에 파생된 것까지 포함한 실시간 팩트를 검사합니다. 둘 다 성립하면 그 쓰기 바로 아래에 위반을 출력하고 거기서
+멈춥니다(종료 코드 1). 씬의 뒤쪽 쓰기가 되돌리더라도 마찬가지입니다:
+
+```
+── step 2 · morning ──────────────
+  ✓ dawn [scene, priority 0]
+  → dawn
+▷ choice look: saw [nothing]        ← chosen: nothing
+@narrator: Nobody answers.
+  skip @narrator "Elias walks on." — when: false
+  assert calm(maren)
+  ✗ exclusive: calm(maren) and panicked(maren) both hold
+── halted: scene `dawn` (scenes/dawn.lute): exclusive relations hold together — calm(maren) and panicked(maren) both hold (dsl 0.25.0 §1) ──────────────
+```
+
+짝은 알파벳 순서로 나옵니다. 선택이 둘을 함께 성립시키지 않는 스크립트는 조용히 계속됩니다. 규칙이 도출하는
+팩트도 같은 검사를 받으므로, 다른 관계를 배제하는 파생 관계는 그 규칙을 발화시킨 쓰기에서 잡힙니다. 두 배타
+팩트를 함께 성립시키는 `engine:` 스텝은 그 스텝에서 멈추고(``── halted: step <n>: exclusive relations hold together — …``),
+스크립트 자신의 `facts:`(프로젝트의 시드와 규칙이 거기서 도출한 것 포함)가 이미 배타를 깨면 스텝 1 전에 멈춥니다.
+[`lute trace`](/tooling/tracing/#exclusive-relations)와 `lute test`는 같은 쓰기에서 워크를 거부합니다.
+
 ### 사용법 오류
 
 다음 경우 스크립트는 아무것도 재생하기 전에 거부됩니다 — **사용법 오류, 종료 코드 2**, 스텝 번호를 댐:
@@ -1902,7 +1937,7 @@ explain safe(warden): holds
 | 코드 | 의미 |
 |---|---|
 | `0` | 완료 — 모든 스텝이 재생되었거나 `end: true` 스텝이 플레이스루를 끝냈고, 모든 기대값이 성립함. |
-| `1` | 오류 — 프로젝트 컴파일 실패, 어휘 충돌, 자격이 없는 `pick`, 자격 있는 비트가 있는데 `pick`이 없는 `select: all` 스텝, 메뉴가 제시하지 않는 `choose:` 결정(자격 없는 선택지나 이미 고른 `once` hub 선택지), 스텝 자신의 `bridges:` 응답이 다 소비되지 않음, 또는 기대값 불일치. |
+| `1` | 오류 — 프로젝트 컴파일 실패, 어휘 충돌, 자격이 없는 `pick`, 자격 있는 비트가 있는데 `pick`이 없는 `select: all` 스텝, 메뉴가 제시하지 않는 `choose:` 결정(자격 없는 선택지나 이미 고른 `once` hub 선택지), 스텝 자신의 `bridges:` 응답이 다 소비되지 않음, 함께 성립한 두 [배타 관계](#배타-관계)(dsl 0.25.0), 또는 기대값 불일치. |
 | `2` | 사용법 또는 I/O — 잘못된 스크립트([사용법 오류](#사용법-오류) 참고), 알 수 없는 계기나 월드 이벤트, 누락되었거나 도메인 밖인 `target`, 잘못된 시드나 `engine:` 쓰기, 시계를 뒤로 움직이는 `engine:` 스텝, 어떤 호출에도 맞지 않는 `bridges:` 응답, 그라운드가 아닌 `--explain` 원자, 읽을 수 없는 프로젝트, 잘못된 산출물. |
 | `3` | 미완료 — 스크립트에 없는 choice나 hub, 바닥난 branch `choose:` 목록, unknown으로 평가되는 `when`이나 퀘스트 목표, 해석되지 않은 `now()` / `validAt()`, 또는 브리지 결과에 `bridges:` 응답이 없는 플러그인 호출. |
 

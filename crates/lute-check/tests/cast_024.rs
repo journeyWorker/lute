@@ -41,7 +41,11 @@ fn member(id: &str, present: Option<&str>, emotions: Option<&[&str]>) -> CastMem
 fn snapshot() -> CapabilitySnapshot {
     let mut snap = lute_manifest::core::load_core_snapshot();
     for m in [
-        member("isolde", Some("holds(inParty(isolde))"), Some(&["calm", "fierce"])),
+        member(
+            "isolde",
+            Some("holds(inParty(isolde))"),
+            Some(&["calm", "fierce"]),
+        ),
         member("corvin", Some("run.withUs == true"), None),
         member("maud", None, None),
     ] {
@@ -119,7 +123,10 @@ fn an_unguarded_line_by_a_present_speaker_warns_once() {
     assert_eq!(anchored(&src, hits[0]), "isolde");
     let msg = &hits[0].message;
     assert!(msg.contains("present: \"holds(inParty(isolde))\""), "{msg}");
-    assert!(msg.contains("@isolde{when=\"holds(inParty(isolde))\"}"), "{msg}");
+    assert!(
+        msg.contains("@isolde{when=\"holds(inParty(isolde))\"}"),
+        "{msg}"
+    );
 }
 
 #[test]
@@ -131,7 +138,11 @@ fn the_lines_own_when_implies_presence() {
     let ds = diags(&src);
     assert_clean_vocab(&ds);
     let hits = with_code(&ds, ABSENT);
-    assert_eq!(hits.len(), 1, "only the line guarded by someone else's presence: {ds:?}");
+    assert_eq!(
+        hits.len(),
+        1,
+        "only the line guarded by someone else's presence: {ds:?}"
+    );
     assert!(src[hits[0].span.byte_start..].starts_with("isolde{when=\"holds(inParty(corvin))"));
 }
 
@@ -146,7 +157,10 @@ fn a_scene_beat_when_conjunction_implies_presence() {
     assert_clean_vocab(&ds);
     assert!(with_code(&ds, ABSENT).is_empty(), "{ds:?}");
     // The same line without the beat guard warns.
-    assert_eq!(with_code(&diags(&scene("@isolde: The fire is warm.")), ABSENT).len(), 1);
+    assert_eq!(
+        with_code(&diags(&scene("@isolde: The fire is warm.")), ABSENT).len(),
+        1
+    );
 }
 
 #[test]
@@ -172,11 +186,18 @@ fn a_match_arm_on_the_presence_state_implies_it() {
     let ds = diags(&src);
     assert_clean_vocab(&ds);
     let hits = with_code(&ds, ABSENT);
-    assert_eq!(hits.len(), 1, "the `<otherwise>` arm is where he is absent: {ds:?}");
+    assert_eq!(
+        hits.len(),
+        1,
+        "the `<otherwise>` arm is where he is absent: {ds:?}"
+    );
     assert!(src[hits[0].span.byte_start..].starts_with("corvin: Alone."));
     let msg = &hits[0].message;
     assert!(msg.contains("present: \"run.withUs == true\""), "{msg}");
-    assert!(!msg.contains("check-project"), "no fact query, no project note: {msg}");
+    assert!(
+        !msg.contains("check-project"),
+        "no fact query, no project note: {msg}"
+    );
 }
 
 #[test]
@@ -196,7 +217,11 @@ fn a_write_between_the_guard_and_the_line_voids_the_guard() {
         "<match on=\"run.withUs\">\n<when is=\"true\">\n::set{run.withUs = false}\n\
          @corvin: Goodbye.\n</when>\n<otherwise>\n@narrator: Quiet.\n</otherwise>\n</match>",
     );
-    assert_eq!(with_code(&diags(&set), ABSENT).len(), 1, "a `::set` of the guarded path");
+    assert_eq!(
+        with_code(&diags(&set), ABSENT).len(),
+        1,
+        "a `::set` of the guarded path"
+    );
     let retract = scene(
         "<branch id=\"b\">\n<choice id=\"c\" label=\"Part\" when=\"holds(inParty(isolde))\">\n\
          ::retract{inParty(isolde)}\n@isolde: Farewell.\n</choice>\n\
@@ -204,7 +229,11 @@ fn a_write_between_the_guard_and_the_line_voids_the_guard() {
     );
     let ds = diags(&retract);
     assert_clean_vocab(&ds);
-    assert_eq!(with_code(&ds, ABSENT).len(), 1, "a `::retract` of the guarded fact: {ds:?}");
+    assert_eq!(
+        with_code(&ds, ABSENT).len(),
+        1,
+        "a `::retract` of the guarded fact: {ds:?}"
+    );
 }
 
 #[test]
@@ -219,7 +248,11 @@ fn a_plugin_present_that_does_not_parse_is_reported_once_and_not_decided() {
     let parse = with_code(&ds, "E-CEL-PARSE");
     assert_eq!(parse.len(), 1, "{ds:?}");
     assert_eq!(anchored(&src, parse[0]), "isolde");
-    assert!(parse[0].message.contains("cast `isolde` `present:`"), "{}", parse[0].message);
+    assert!(
+        parse[0].message.contains("cast `isolde` `present:`"),
+        "{}",
+        parse[0].message
+    );
     assert!(with_code(&ds, ABSENT).is_empty(), "{ds:?}");
 }
 
@@ -231,7 +264,10 @@ fn project(texts: &[(&str, &str)]) -> Vec<(String, Vec<Diagnostic>)> {
     project_in(snapshot, texts)
 }
 
-fn project_in(snap: fn() -> CapabilitySnapshot, texts: &[(&str, &str)]) -> Vec<(String, Vec<Diagnostic>)> {
+fn project_in(
+    snap: fn() -> CapabilitySnapshot,
+    texts: &[(&str, &str)],
+) -> Vec<(String, Vec<Diagnostic>)> {
     let mut docs: Vec<(PathBuf, Document)> = Vec::new();
     let mut foldeds: Vec<FoldedEnv> = Vec::new();
     let mut results = Vec::new();
@@ -297,7 +333,11 @@ fn a_fact_asserted_on_every_route_discharges_presence_in_check_project() {
     assert_clean_vocab(&ds);
     let hits = with_code(&ds, ABSENT);
     assert_eq!(hits.len(), 1, "{ds:?}");
-    assert!(hits[0].message.contains("`lute check-project` does"), "{}", hits[0].message);
+    assert!(
+        hits[0].message.contains("`lute check-project` does"),
+        "{}",
+        hits[0].message
+    );
     // The project's Must set holds `inParty(isolde)` at the line.
     let out = project(&[("a.lute", &src)]);
     assert!(with_code(&out[0].1, ABSENT).is_empty(), "{:?}", out[0].1);
@@ -342,7 +382,11 @@ fn rel_snapshot() -> CapabilitySnapshot {
     let mut snap = snapshot();
     for mut m in [
         member("mara", Some("!holds(departed(mara))"), None),
-        member("wren", Some("holds(inParty(wren)) || !holds(recruited(wren))"), None),
+        member(
+            "wren",
+            Some("holds(inParty(wren)) || !holds(recruited(wren))"),
+            None,
+        ),
         member("sol", Some("holds(at(sol, radio))"), None),
         member("tomas", Some("holds(inParty(tomas))"), None),
         member("quill", Some("entry.meet.everRead"), None),
@@ -382,7 +426,11 @@ fn a_write_in_one_choice_does_not_reach_a_sibling_choice() {
     let ds = rel_diags(&src);
     assert_clean_vocab(&ds);
     // Only after the join: the `yes` path asserted what the guard denies.
-    assert_eq!(absent_lines(&src, &ds), ["wren: After the branch."], "{ds:?}");
+    assert_eq!(
+        absent_lines(&src, &ds),
+        ["wren: After the branch."],
+        "{ds:?}"
+    );
 }
 
 #[test]
@@ -396,7 +444,11 @@ fn an_assert_invalidates_only_a_guard_atom_it_can_falsify() {
     );
     let ds = rel_diags(&src);
     assert_clean_vocab(&ds);
-    assert_eq!(absent_lines(&src, &ds), ["isolde: Now I may be gone."], "{ds:?}");
+    assert_eq!(
+        absent_lines(&src, &ds),
+        ["isolde: Now I may be gone."],
+        "{ds:?}"
+    );
 }
 
 #[test]
@@ -413,18 +465,27 @@ fn a_derived_guard_implies_its_rule_premises() {
 
 #[test]
 fn a_cel_only_schedule_is_read_as_its_guard() {
-    let on = rel_scene("on: hubVisit\nwhen: \"run.x == 1\"\n", "@sol: Morning.\n::set{run.x = 2}\n@sol: Later.");
+    let on = rel_scene(
+        "on: hubVisit\nwhen: \"run.x == 1\"\n",
+        "@sol: Morning.\n::set{run.x = 2}\n@sol: Later.",
+    );
     let ds = rel_diags(&on);
     assert_clean_vocab(&ds);
     // The `::set` rewrites what the schedule reads.
     assert_eq!(absent_lines(&on, &ds), ["sol: Later."], "{ds:?}");
-    let off = rel_scene("on: hubVisit\nwhen: \"run.x == 2\"\n", "@sol: Not my shift.");
+    let off = rel_scene(
+        "on: hubVisit\nwhen: \"run.x == 2\"\n",
+        "@sol: Not my shift.",
+    );
     assert_eq!(absent_lines(&off, &rel_diags(&off)), ["sol: Not my shift."]);
     let atom = rel_scene(
         "on: hubVisit\nwhen: \"holds(at(sol, radio))\"\n",
         "@sol: Here.\n::set{run.x = 3}\n@sol: The schedule moved.",
     );
-    assert_eq!(absent_lines(&atom, &rel_diags(&atom)), ["sol: The schedule moved."]);
+    assert_eq!(
+        absent_lines(&atom, &rel_diags(&atom)),
+        ["sol: The schedule moved."]
+    );
 }
 
 #[test]
@@ -432,7 +493,11 @@ fn a_voice_over_line_is_exempt_and_an_off_screen_line_is_not() {
     let src = scene("@isolde{vo}: A letter in her hand.\n@isolde{os}: From the next room.");
     let ds = diags(&src);
     assert_clean_vocab(&ds);
-    assert_eq!(absent_lines(&src, &ds), ["isolde{os}: From the next room."], "{ds:?}");
+    assert_eq!(
+        absent_lines(&src, &ds),
+        ["isolde{os}: From the next room."],
+        "{ds:?}"
+    );
 }
 
 #[test]
@@ -467,7 +532,12 @@ fn a_beat_below_an_always_eligible_once_user_intro_assumes_it_was_read() {
     assert_eq!(absent_lines(lore, &ds).len(), 2, "{ds:?}");
     // The project ladder: `later` wins only once `meet` is spent.
     let out = project_in(rel_snapshot, &[("l.lute", lore)]);
-    assert_eq!(absent_lines(lore, &out[0].1), ["quill: Ranked above the meeting."], "{:?}", out[0].1);
+    assert_eq!(
+        absent_lines(lore, &out[0].1),
+        ["quill: Ranked above the meeting."],
+        "{:?}",
+        out[0].1
+    );
 }
 
 #[test]
@@ -480,7 +550,12 @@ fn assume_reads_a_negated_reserved_relation_as_holding() {
     assert_clean_vocab(&out[0].1);
     // Both are recruited and nobody departs; only `tomas` (`assume: true`)
     // takes the engine-reserved `fell` as absent.
-    assert_eq!(absent_lines(&src, &out[0].1), ["isolde: So am I."], "{:?}", out[0].1);
+    assert_eq!(
+        absent_lines(&src, &out[0].1),
+        ["isolde: So am I."],
+        "{:?}",
+        out[0].1
+    );
 }
 
 #[test]
@@ -495,14 +570,28 @@ fn a_disjunct_proven_by_a_fact_only_the_unit_itself_asserts_counts() {
          ::assert{recruited(wren)}\n</choice>\n<choice id=\"no\" label=\"Stay\">\n@wren: I'll stay.\n</choice>\n\
          </branch>\n@wren: After the branch.",
     );
-    let leaves = rel_scene("on: hubVisit\npriority: 5\nwhen: \"holds(inParty(wren))\"\n", "::assert{departed(wren)}")
-        .replace("id: a.rel", "id: a.leaves");
-    let out = project_in(rel_snapshot, &[("meet.lute", &meet), ("leaves.lute", &leaves)]);
+    let leaves = rel_scene(
+        "on: hubVisit\npriority: 5\nwhen: \"holds(inParty(wren))\"\n",
+        "::assert{departed(wren)}",
+    )
+    .replace("id: a.rel", "id: a.leaves");
+    let out = project_in(
+        rel_snapshot,
+        &[("meet.lute", &meet), ("leaves.lute", &leaves)],
+    );
     assert_clean_vocab(&out[0].1);
-    assert_eq!(absent_lines(&meet, &out[0].1), ["wren: After the branch."], "{:?}", out[0].1);
+    assert_eq!(
+        absent_lines(&meet, &out[0].1),
+        ["wren: After the branch."],
+        "{:?}",
+        out[0].1
+    );
     // A second producer anywhere else voids the assumption.
     let recruits = leaves.replace("::assert{departed(wren)}", "::assert{recruited(wren)}");
-    let out = project_in(rel_snapshot, &[("meet.lute", &meet), ("recruits.lute", &recruits)]);
+    let out = project_in(
+        rel_snapshot,
+        &[("meet.lute", &meet), ("recruits.lute", &recruits)],
+    );
     assert_eq!(absent_lines(&meet, &out[0].1).len(), 3, "{:?}", out[0].1);
 }
 
@@ -520,7 +609,12 @@ fn battle_snapshot() -> CapabilitySnapshot {
             ..Default::default()
         },
     );
-    snap.events.insert("battleEnd".into(), lute_manifest::schema::EventDecl { name: "battleEnd".into() });
+    snap.events.insert(
+        "battleEnd".into(),
+        lute_manifest::schema::EventDecl {
+            name: "battleEnd".into(),
+        },
+    );
     snap
 }
 
@@ -528,7 +622,10 @@ fn battle_snapshot() -> CapabilitySnapshot {
 fn battle_scene(id: &str, fm: &str, body: &str) -> String {
     rel_scene(fm, body)
         .replace("id: a.rel", &format!("id: {id}"))
-        .replace("reserved: true }", "reserved: true, changedOn: [battleEnd] }")
+        .replace(
+            "reserved: true }",
+            "reserved: true, changedOn: [battleEnd] }",
+        )
 }
 
 /// A `tomas` line guarded by every premise of his `present` but `fell`.
@@ -536,24 +633,43 @@ const TOMAS: &str = "@tomas{when=\"holds(recruited(tomas)) && !holds(departed(to
 
 /// The spoken text of every `W-CAST-ABSENT` line of `ds`.
 fn absent_said<'s>(src: &'s str, ds: &[Diagnostic]) -> Vec<&'s str> {
-    absent_lines(src, ds).into_iter().map(|l| l.rsplit(": ").next().unwrap_or(l)).collect()
+    absent_lines(src, ds)
+        .into_iter()
+        .map(|l| l.rsplit(": ").next().unwrap_or(l))
+        .collect()
 }
 
 #[test]
 fn changed_on_takes_assume_away_where_its_occasion_is_presented() {
-    let march = battle_scene("a.march", "on: hubVisit\n", &format!("{TOMAS}: Before the battle."));
+    let march = battle_scene(
+        "a.march",
+        "on: hubVisit\n",
+        &format!("{TOMAS}: Before the battle."),
+    );
     let ds = check(&input(&march, battle_snapshot())).diagnostics;
     assert_clean_vocab(&ds);
     assert!(with_code(&ds, ABSENT).is_empty(), "{ds:?}");
-    let field = battle_scene("a.field", "on: battleEnd\n", &format!("{TOMAS}: After the battle."));
+    let field = battle_scene(
+        "a.field",
+        "on: battleEnd\n",
+        &format!("{TOMAS}: After the battle."),
+    );
     let ds = check(&input(&field, battle_snapshot())).diagnostics;
     assert_clean_vocab(&ds);
     assert_eq!(absent_said(&field, &ds), ["After the battle."], "{ds:?}");
     let hit = with_code(&ds, ABSENT)[0];
-    assert!(hit.message.contains("`assume: true` does not cover `fell`"), "{}", hit.message);
+    assert!(
+        hit.message.contains("`assume: true` does not cover `fell`"),
+        "{}",
+        hit.message
+    );
     // Without `changedOn`, 0.24: `assume` covers the battle scene as well.
     let plain = field.replace(", changedOn: [battleEnd]", "");
-    assert!(with_code(&check(&input(&plain, battle_snapshot())).diagnostics, ABSENT).is_empty());
+    assert!(with_code(
+        &check(&input(&plain, battle_snapshot())).diagnostics,
+        ABSENT
+    )
+    .is_empty());
     // A quest handler on the occasion's world event runs on the raise.
     let quest = format!(
         "---\nkind: quest\nid: q\ntitle: q\n{}---\n\
@@ -561,7 +677,10 @@ fn changed_on_takes_assume_away_where_its_occasion_is_presented() {
          <objective id=\"o\" title=\"o\" done=\"run.x >= 1\"/>\n\
          <on event=\"battleEnd\">\n{TOMAS}: The field is quiet.\n</on>\n\
          <on event=\"questActive\">\n{TOMAS}: On the road.\n</on>\n</quest>\n",
-        REL_VOCAB.replace("reserved: true }", "reserved: true, changedOn: [battleEnd] }")
+        REL_VOCAB.replace(
+            "reserved: true }",
+            "reserved: true, changedOn: [battleEnd] }"
+        )
     );
     let ds = check(&input(&quest, battle_snapshot())).diagnostics;
     assert_clean_vocab(&ds);
@@ -595,22 +714,79 @@ fn changed_on_takes_assume_away_after_the_occasion_in_check_project() {
     assert!(with_code(&check(&input(&camp, battle_snapshot())).diagnostics, ABSENT).is_empty());
     let out = project_in(
         battle_snapshot,
-        &[("march.lute", &march), ("field.lute", &field), ("camp.lute", &camp), ("road.lute", &road)],
+        &[
+            ("march.lute", &march),
+            ("field.lute", &field),
+            ("camp.lute", &camp),
+            ("road.lute", &road),
+        ],
     );
     for (_, ds) in &out {
         assert_clean_vocab(ds);
     }
     assert!(with_code(&out[0].1, ABSENT).is_empty(), "{:?}", out[0].1);
-    assert_eq!(absent_said(&field, &out[1].1), ["After the battle."], "{:?}", out[1].1);
-    assert_eq!(absent_said(&camp, &out[2].1), ["Days later."], "{:?}", out[2].1);
+    assert_eq!(
+        absent_said(&field, &out[1].1),
+        ["After the battle."],
+        "{:?}",
+        out[1].1
+    );
+    assert_eq!(
+        absent_said(&camp, &out[2].1),
+        ["Days later."],
+        "{:?}",
+        out[2].1
+    );
     assert!(with_code(&out[3].1, ABSENT).is_empty(), "{:?}", out[3].1);
+}
+
+/// ER C2 (0.25 prerelease): a guard that needs a `fell` fact — which only
+/// `battleEnd` writes — puts the code it guards after the battle, whatever
+/// its occasion or `after` edges.
+#[test]
+fn a_guard_needing_a_changed_on_fact_takes_assume_away() {
+    let said = |fm: &str, body: &str| {
+        let src = battle_scene("a.grief", fm, body);
+        let ds = check(&input(&src, battle_snapshot())).diagnostics;
+        assert_clean_vocab(&ds);
+        absent_said(&src, &ds)
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    // The unit's own `when`, directly and through `count`.
+    let unit = said(
+        "on: hubVisit\nwhen: \"holds(fell(isolde))\"\n",
+        &format!("{TOMAS}: Two days quiet."),
+    );
+    assert_eq!(unit, ["Two days quiet."]);
+    let counted = said(
+        "on: hubVisit\nwhen: \"count(fell(_)) >= 1\"\n",
+        &format!("{TOMAS}: Cairns."),
+    );
+    assert_eq!(counted, ["Cairns."]);
+    // A line's own guard, and only that line.
+    let line = said(
+        "on: hubVisit\n",
+        "@tomas{when=\"holds(recruited(tomas)) && !holds(departed(tomas)) && holds(fell(isolde))\"}: She's gone.\n\
+         @tomas{when=\"holds(recruited(tomas)) && !holds(departed(tomas))\"}: Morning.",
+    );
+    assert_eq!(line, ["She's gone."]);
+    // A guard that holds without a `fell` fact proves nothing.
+    let either = said(
+        "on: hubVisit\nwhen: \"holds(fell(isolde)) || run.x == 1\"\n",
+        &format!("{TOMAS}: Maybe."),
+    );
+    assert!(either.is_empty(), "{either:?}");
 }
 
 #[test]
 fn changed_on_needs_a_reserved_relation_and_a_declared_occasion() {
     let decl_errors = |fell: &str| -> Vec<String> {
-        let src = rel_scene("", "@narrator: Hm.")
-            .replace("fell: { args: [companion], tier: run, reserved: true }", fell);
+        let src = rel_scene("", "@narrator: Hm.").replace(
+            "fell: { args: [companion], tier: run, reserved: true }",
+            fell,
+        );
         check(&input(&src, battle_snapshot()))
             .diagnostics
             .into_iter()
@@ -618,13 +794,23 @@ fn changed_on_needs_a_reserved_relation_and_a_declared_occasion() {
             .map(|d| d.message)
             .collect()
     };
-    let ok = decl_errors("fell: { args: [companion], tier: run, reserved: true, changedOn: [battleEnd] }");
+    let ok = decl_errors(
+        "fell: { args: [companion], tier: run, reserved: true, changedOn: [battleEnd] }",
+    );
     assert!(ok.is_empty(), "{ok:?}");
     let unreserved = decl_errors("fell: { args: [companion], tier: run, changedOn: [battleEnd] }");
-    assert!(unreserved.len() == 1 && unreserved[0].contains("not `reserved: true`"), "{unreserved:?}");
-    let typo = decl_errors("fell: { args: [companion], tier: run, reserved: true, changedOn: [batleEnd] }");
     assert!(
-        typo.len() == 1 && typo[0].contains("`changedOn: batleEnd` is not a declared occasion — did you mean `battleEnd`?"),
+        unreserved.len() == 1 && unreserved[0].contains("not `reserved: true`"),
+        "{unreserved:?}"
+    );
+    let typo = decl_errors(
+        "fell: { args: [companion], tier: run, reserved: true, changedOn: [batleEnd] }",
+    );
+    assert!(
+        typo.len() == 1
+            && typo[0].contains(
+                "`changedOn: batleEnd` is not a declared occasion — did you mean `battleEnd`?"
+            ),
         "{typo:?}"
     );
 }
@@ -645,7 +831,10 @@ fn an_emotion_outside_the_speakers_emotions_is_bad_enum() {
     assert_eq!(anchored(&src, hits[0]), "sad");
     assert!(hits[0].span.byte_start < src.find("emotion=\"fierce\"").unwrap());
     let msg = &hits[0].message;
-    assert!(msg.contains("`isolde`") && msg.contains("calm, fierce"), "{msg}");
+    assert!(
+        msg.contains("`isolde`") && msg.contains("calm, fierce"),
+        "{msg}"
+    );
 }
 
 #[test]
@@ -654,7 +843,11 @@ fn an_emotion_outside_the_emotion_enum_is_reported_once() {
     let ds = diags(&src);
     let hits = with_code(&ds, "E-BAD-ENUM");
     assert_eq!(hits.len(), 1, "the enum's own check owns it: {hits:?}");
-    assert!(!hits[0].message.contains("`isolde`'s emotions"), "{}", hits[0].message);
+    assert!(
+        !hits[0].message.contains("`isolde`'s emotions"),
+        "{}",
+        hits[0].message
+    );
 }
 
 // --- declarations -------------------------------------------------------------
@@ -679,7 +872,8 @@ fn a_schema_cast_entry_checks_present_and_emotions_at_its_key() {
                 corvin: { present: \"size(run.party) > 1\" }\n  \
                 maud: { name: Maud, present: \"run.x >= 1\", emotions: [calm] }\n";
     let meta = schema_meta(yaml);
-    let (typed, ds) = lute_check::parse_meta_kind(&meta, &CapabilitySnapshot::default(), MetaKind::Schema);
+    let (typed, ds) =
+        lute_check::parse_meta_kind(&meta, &CapabilitySnapshot::default(), MetaKind::Schema);
     let at = |code: &str| -> Vec<&str> {
         ds.iter()
             .filter(|d| d.code == code)
@@ -694,11 +888,18 @@ fn a_schema_cast_entry_checks_present_and_emotions_at_its_key() {
     assert_eq!(by_id("isolde").present, None);
     assert_eq!(by_id("corvin").present, None);
     assert_eq!(by_id("maud").present.as_deref(), Some("run.x >= 1"));
-    assert_eq!(by_id("maud").emotions.as_deref(), Some(&["calm".to_string()][..]));
+    assert_eq!(
+        by_id("maud").emotions.as_deref(),
+        Some(&["calm".to_string()][..])
+    );
     assert_eq!(by_id("isolde").name.as_deref(), Some("Isolde"));
 
     let typo = "cast:\n  isolde: { presnt: \"run.x >= 1\" }\n";
-    let (_, ds) = lute_check::parse_meta_kind(&schema_meta(typo), &CapabilitySnapshot::default(), MetaKind::Schema);
+    let (_, ds) = lute_check::parse_meta_kind(
+        &schema_meta(typo),
+        &CapabilitySnapshot::default(),
+        MetaKind::Schema,
+    );
     let bad: Vec<&Diagnostic> = ds.iter().filter(|d| d.code == "E-META-VALUE").collect();
     assert_eq!(bad.len(), 1, "{ds:?}");
     assert!(bad[0].message.contains("presnt"), "{}", bad[0].message);

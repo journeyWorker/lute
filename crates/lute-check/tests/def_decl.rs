@@ -114,7 +114,8 @@ fn an_undecidable_shorthand_asks_for_the_long_form() {
     assert!(d.message.contains("cannot be inferred"), "{}", d.message);
     // 0.21.1 T1-6: the type is a placeholder, never a guessed `bool`.
     assert!(
-        d.message.contains("x: { type: <bool|number|enum>, cel: \"scene.flag ? 1 : 'one'\" }"),
+        d.message
+            .contains("x: { type: <bool|number|enum>, cel: \"scene.flag ? 1 : 'one'\" }"),
         "the fix, spelled out: {}",
         d.message
     );
@@ -126,8 +127,7 @@ fn an_undecidable_shorthand_asks_for_the_long_form() {
 fn an_explicit_type_must_agree_with_the_body() {
     let d = def_decl("x: { type: bool, cel: \"scene.n + 1\" }");
     assert!(
-        d.message.contains("declares `type:` a bool")
-            && d.message.contains("produces a number"),
+        d.message.contains("declares `type:` a bool") && d.message.contains("produces a number"),
         "{}",
         d.message
     );
@@ -154,7 +154,11 @@ fn a_mapping_without_a_string_cel_is_rejected() {
     let d = def_decl("x: { type: bool }");
     assert!(d.message.contains("no `cel:` key"), "{}", d.message);
     let d = def_decl("x: { type: bool, cel: 5 }");
-    assert!(d.message.contains("must be a string of CEL"), "{}", d.message);
+    assert!(
+        d.message.contains("must be a string of CEL"),
+        "{}",
+        d.message
+    );
 }
 
 #[test]
@@ -166,13 +170,21 @@ fn a_bad_type_is_rejected() {
 #[test]
 fn an_unknown_key_is_rejected_by_name() {
     let d = def_decl("x: { type: bool, body: \"true\", cel: \"true\" }");
-    assert!(d.message.contains("`body:` is not a def key"), "{}", d.message);
+    assert!(
+        d.message.contains("`body:` is not a def key"),
+        "{}",
+        d.message
+    );
 }
 
 #[test]
 fn params_require_an_explicit_type() {
     let d = def_decl("x: { params: { n: number }, cel: \"scene.n >= n\" }");
-    assert!(d.message.contains("must declare its `type:`"), "{}", d.message);
+    assert!(
+        d.message.contains("must declare its `type:`"),
+        "{}",
+        d.message
+    );
     // With the type, the same def is legal.
     let ds = diags(&scene(
         "x: { type: bool, params: { n: number }, cel: \"scene.n >= n\" }",
@@ -298,7 +310,10 @@ fn def_body_gets_the_cel_profile_gate() {
     assert!(parse[0].starts_with("def `broken`:"), "{parse:?}");
     let ty = of("E-CEL-TYPE");
     assert_eq!(ty.len(), 1, "{ds:?}");
-    assert!(ty[0].starts_with("def `half`:") && ty[0].contains("`2.5`"), "{ty:?}");
+    assert!(
+        ty[0].starts_with("def `half`:") && ty[0].contains("`2.5`"),
+        "{ty:?}"
+    );
 }
 
 /// dsl 0.24.0 §1: `%` produces a number, so a shorthand `wd: "run.day % 7"`
@@ -318,7 +333,14 @@ fn shorthand_integer_modulo_def_is_a_clean_number() {
 fn undecidable_def_type_hint_does_not_guess_bool() {
     let t = format!("{HDR}defs:\n  wd: \"scene.n > 0 ? 1 : 'none'\"\n---\n## Shot 1.\n@x: a\n");
     let ds = diags(&t);
-    let d = ds.iter().find(|d| d.code == "E-DEF-DECL").expect("E-DEF-DECL");
-    assert!(d.message.contains("type: <bool|number|enum>"), "{}", d.message);
+    let d = ds
+        .iter()
+        .find(|d| d.code == "E-DEF-DECL")
+        .expect("E-DEF-DECL");
+    assert!(
+        d.message.contains("type: <bool|number|enum>"),
+        "{}",
+        d.message
+    );
     assert!(!d.message.contains("type: bool"), "{}", d.message);
 }

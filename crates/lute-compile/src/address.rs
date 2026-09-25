@@ -284,7 +284,9 @@ fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &Identity
                         // closed for THIS line only (`continue`, not `break`), so
                         // other speakers/lines still get identities and no colliding
                         // code is emitted — mirroring lute-check's tag.rs.
-                        let e = max_code.entry((scope.clone(), l.speaker.clone())).or_insert(0);
+                        let e = max_code
+                            .entry((scope.clone(), l.speaker.clone()))
+                            .or_insert(0);
                         let Some(nc) = e.checked_add(10) else {
                             continue;
                         };
@@ -633,12 +635,18 @@ mod tests {
         let tagged = as_line(&cmds[0]);
         assert_eq!(tagged.code.as_deref(), Some("0050"));
         assert_eq!(tagged.line_id, "bardstale.s01ep02.fixer_0050");
-        assert_eq!(tagged.voice_key.as_deref(), Some("bardstale.s01ep02.fixer-0050"));
+        assert_eq!(
+            tagged.voice_key.as_deref(),
+            Some("bardstale.s01ep02.fixer-0050")
+        );
 
         let untagged = as_line(&cmds[1]);
         assert_eq!(untagged.code.as_deref(), Some("0060"));
         assert_eq!(untagged.line_id, "bardstale.s01ep02.fixer_0060");
-        assert_eq!(untagged.voice_key.as_deref(), Some("bardstale.s01ep02.fixer-0060"));
+        assert_eq!(
+            untagged.voice_key.as_deref(),
+            Some("bardstale.s01ep02.fixer-0060")
+        );
     }
 
     /// A speaker's authored `code` at `u64::MAX` followed by an untagged line for

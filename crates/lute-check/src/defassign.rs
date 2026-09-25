@@ -472,7 +472,13 @@ fn walk_set(
     if is_state_path(target) {
         // Compound assignment reads the old value first (dsl §9.4).
         if set.op != "=" {
-            check_read(&Use::plain(target.clone(), set.span), cx, available, diags, reads);
+            check_read(
+                &Use::plain(target.clone(), set.span),
+                cx,
+                available,
+                diags,
+                reads,
+            );
         }
         // The write target itself must be declared (T4.3 covers read sites; the
         // `::set` LHS path is this pass's responsibility). An `entry.*` target
@@ -544,14 +550,7 @@ fn walk_branch(
         // §7.6: a `{{path}}` in the choice LABEL is a READ at the point the choice
         // is OFFERED — after its own `when` guard proves (a guarded choice's label
         // shows only when the guard holds), so check against the post-guard arm.
-        check_label_reads(
-            &choice.label,
-            cx,
-            &arm.available,
-            choice.span,
-            diags,
-            reads,
-        );
+        check_label_reads(&choice.label, cx, &arm.available, choice.span, diags, reads);
         walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
         arm_finals.push(arm);
@@ -586,14 +585,7 @@ fn walk_hub(
         }
         // Label reads (§7.6): checked against the post-guard arm, then discarded
         // with the rest of the fork.
-        check_label_reads(
-            &choice.label,
-            cx,
-            &arm.available,
-            choice.span,
-            diags,
-            reads,
-        );
+        check_label_reads(&choice.label, cx, &arm.available, choice.span, diags, reads);
         walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
         // arm (and any record write) discarded — a hub never folds back.
@@ -953,9 +945,14 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
         })
         .map(|r| {
             let end = r.call.as_ref().map_or(r.span.byte_end, |c| c.span.byte_end);
-            let paths = expand_cel(&raw[r.span.byte_start..end], &cx.defs, Some("$"), &mut Vec::new())
-                .map(|text| parse_uses(&text).into_iter().map(|u| u.path).collect())
-                .unwrap_or_default();
+            let paths = expand_cel(
+                &raw[r.span.byte_start..end],
+                &cx.defs,
+                Some("$"),
+                &mut Vec::new(),
+            )
+            .map(|text| parse_uses(&text).into_iter().map(|u| u.path).collect())
+            .unwrap_or_default();
             (r.name.as_str(), paths)
         })
         .collect();
@@ -1274,7 +1271,8 @@ mod tests {
         // the envelope layer's `guaranteed()` (T8/§4.3) reuses this exact set.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
         assert!(assigned.contains("run.x"));
     }
@@ -1285,7 +1283,8 @@ mod tests {
         // body with no prior `::set` and no guard on THIS path.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "expected E-MAYBE-UNSET, got {errs:?}"
@@ -1297,7 +1296,8 @@ mod tests {
         // `::set{run.x = 1}` dominates the later read `run.x` in the `<when>` test.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n@narrator: hi\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "dominating write should prove the path, got {errs:?}"
@@ -1310,7 +1310,8 @@ mod tests {
         // prior write -> the old-value read is maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x += 1}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "compound += reads old value, expected E-MAYBE-UNSET, got {errs:?}"
@@ -1336,7 +1337,8 @@ mod tests {
                 _ => None,
             })
             .collect();
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         errs.into_iter()
             .filter(|e| e.code == "E-MAYBE-UNSET" && !subjects.contains(&e.span))
             .map(|e| e.message)
@@ -1376,7 +1378,10 @@ mod tests {
         );
         assert_eq!(errs.len(), 3, "{errs:?}");
         assert!(errs[0].contains("`run.rival`"), "{errs:?}");
-        assert!(errs[1].contains("`run.mood`") && errs[2].contains("`run.mood`"), "{errs:?}");
+        assert!(
+            errs[1].contains("`run.mood`") && errs[2].contains("`run.mood`"),
+            "{errs:?}"
+        );
     }
 
     // ---- Finding 1: subject-guard leak (dsl §9.4) ---------------------------
@@ -1388,7 +1393,8 @@ mod tests {
         // block. A later read of `run.x` is therefore maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n@narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "subject isSet-guard must not prove run.x past a non-exhaustive match, got {errs:?}"
@@ -1402,7 +1408,8 @@ mod tests {
         // A later read of `run.x` is maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "subject has-guard must not survive intersect_all, got {errs:?}"
@@ -1417,7 +1424,8 @@ mod tests {
         // path-sensitive analysis (§9.4) -> maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "non-defaulted scene.s read before write should flag, got {errs:?}"
@@ -1429,7 +1437,8 @@ mod tests {
         // A schema-defaulted `scene.d` read is seeded at scene entry -> no error.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.d: { type: number, default: 0 }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.d}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "defaulted scene.d read should be safe, got {errs:?}"
@@ -1441,7 +1450,8 @@ mod tests {
         // A dominating `::set{scene.s = 1}` proves the later read -> no error.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.s = 1}\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "dominating scene write should prove the path, got {errs:?}"
@@ -1464,7 +1474,8 @@ mod tests {
         // guaranteed WRITTEN when two of three arms never wrote it (RevT8 P1).
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "exhaustive arm-level isSet guard should still prove the later read, got {errs:?}"
@@ -1486,7 +1497,8 @@ mod tests {
         // guaranteed WRITE set. `into=` alone drives the record now.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.x\" value=\"1\">\n@narrator: pick\n</choice>\n</branch>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "unconditional record should satisfy the later read (no false positive), got {errs:?}"
@@ -1504,7 +1516,8 @@ mod tests {
         // satisfy a read of the same path INSIDE that same body.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.x\" value=\"1\">\n::set{run.out = run.x}\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, _assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "a read inside the recording choice's own body must still flag, got {errs:?}"
@@ -1518,7 +1531,8 @@ mod tests {
         // guaranteed WRITE set, exactly like an exhaustive `::set`.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &Scope::bare(&schema), None);
+        let (errs, assigned, _reads) =
+            check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
         assert!(
             assigned.contains("run.x"),

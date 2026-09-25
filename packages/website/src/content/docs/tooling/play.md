@@ -80,7 +80,7 @@ Without `once`, an entry is repeatable: re-presentation is its nature, and its e
 
 ### Bundle beats
 
-A scene is one beat per file. When a character has many short scenes — an NPC's lines at each visit, a set of interview questions — a [lore document](/language/lore-entries/#entries-and-beats-in-one-file) can hold them as **bundle beats** (dsl 0.23.0): `<beat>` blocks with a full scene body — lines, branches, hubs, `<match>`, directives — and the same attributes a scene beat puts in its frontmatter (`on`, `target`, `when`, `priority`, `once`, `also`, and a `title` for a `select: all` menu). In the tower the [examples below](#lute-play) climb, `lore/oskar.lute` declares `id: oskar` and gives Oskar two:
+A scene is one beat per file. When a character has many short scenes — an NPC's lines at each visit, a set of interview questions — a [lore document](/language/lore-entries/#entries-and-beats-in-one-file) can hold them as **bundle beats** (dsl 0.23.0): `<beat>` blocks with a full scene body — lines, branches, hubs, `<match>`, directives — and the same attributes a scene beat puts in its frontmatter (`on`, `target`, `when`, `priority`, `once`, `also`, since dsl 0.25.0 `share` and `after`, and a `title` for a `select: all` menu). In the tower the [examples below](#lute-play) climb, `lore/oskar.lute` declares `id: oskar` and gives Oskar two:
 
 ```lute
 <beat id="hunt" on="talk" target="npc.oskar" priority="10" title="The hound">
@@ -93,14 +93,14 @@ A scene is one beat per file. When a character has many short scenes — an NPC'
 </beat>
 ```
 
-A bundle beat behaves like a scene beat, not an entry: its id is `<document id>.<beat id>` — `oskar.hunt`, `oskar.rumor` — so the document needs an `id:`; its `once` defaults to `run` and is spent by presentation; presenting it marks that id visited, so `visited('oskar.hunt')` reads it in any condition (an `after:` still names only scenes and quests); and `check-project` judges it like any beat (`E-BEAT-UNREACHABLE`, `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE`, `W-BEAT-ONCE-RUN-USER`). The language rules are on [Beats](/language/beats/#beat-bundles). In a transcript a bundle beat's kind is `beat`; `lute trace --beat` and `lute run --beat` present one on its own (see [Tracing](/tooling/tracing/#bundle-beats)).
+A bundle beat behaves like a scene beat, not an entry: its id is `<document id>.<beat id>` — `oskar.hunt`, `oskar.rumor` — so the document needs an `id:`; its `once` defaults to `run` and is spent by presentation; presenting it marks that id visited, so `visited('oskar.hunt')` reads it in any condition, an `after:` included; since dsl 0.25.0 it may carry its own `after="…"`, which `lute play` checks like a scene's (`✗ keeper.greeting [beat, priority 0] — after: prerequisite not satisfied`); and `check-project` judges it like any beat (`E-BEAT-UNREACHABLE`, `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE`, `W-BEAT-ONCE-RUN-USER`). The language rules are on [Beats](/language/beats/#beat-bundles). In a transcript a bundle beat's kind is `beat`; `lute trace --beat` and `lute run --beat` present one on its own (see [Tracing](/tooling/tracing/#bundle-beats)).
 
 ## Selection
 
 When the engine raises occasion `O`, optionally for target `T`:
 
 1. **Candidates** are the beats with `on: O` whose `target` is absent or equal to `T`. An occasion raised without a target has only untargeted candidates.
-2. A candidate is **eligible** when its `after:` holds (scene beats), its `when` holds, and its `once` is not spent. A scene's (or bundle beat's) `once`: `run` — not yet presented this run; `user` — never presented; `day` / `slot` — not yet presented since the clock's day / slot last changed (dsl 0.24.0 §1); `false` — never spent. An entry's `once`: `run` — `entry.<id>.read` not set; `user` — `entry.<id>.everRead` not set; `day` / `slot` — as a scene's; absent — never spent.
+2. A candidate is **eligible** when its `after:` holds (scene beats; a bundle beat's `after=`), its `when` holds, and its `once` is not spent. A scene's (or bundle beat's) `once`: `run` — not yet presented this run; `user` — never presented; `day` / `slot` — not yet presented since the clock's day / slot last changed (dsl 0.24.0 §1); `false` — never spent. An entry's `once`: `run` — `entry.<id>.read` not set; `user` — `entry.<id>.everRead` not set; `day` / `slot` — as a scene's; absent — never spent. A beat with a [`share`](/language/beats/#one-event-several-places-share) key (dsl 0.25.0 §2) is also spent when any other beat of its key was presented (an entry: read) within its `once` period: ``✗ talks.solRoof [beat, priority 0] — once: day — `share: solWarm` already spent today by talks.solRadio``.
 3. Eligible beats are **ordered by priority, descending, then project order**: document path, then declaration order within the document — the order of `beats` in `project.index.json`. Scene, entry, and bundle beats on the same occasion compete in one list.
 4. `select: first` presents the first eligible beat that is not `also`, then every eligible `also` beat; `select: all` offers the ordered list and presents the one the player picks; `select: sequence` presents the whole ordered list.
 5. **No eligible beat** — the occasion passes with no story, and the engine's default behavior for that moment applies.
@@ -1213,13 +1213,14 @@ Without `at="nextRun"` the accept activates `relic` in the run that is ending, a
 
 A plugin directive that calls a host service — a skill check, a minigame — writes the service's answer into `scene.*` result slots through its `bridgeResult` effects (see [Manifests](/plugins/manifests/)). The reference player invokes no service, so the script answers the calls itself (dsl 0.24.0 §5): `bridges: { <tag>: [ {<field>: value}, … ] }`, where `<tag>` is the directive's name and each list item answers one call of that tag, in call order.
 
-The examples add a skill check to the [worked example](#worked-example)'s town: the plugin declares `::check{skill dc resultKey}`, whose effects write `scene.check.<key>.passed` and `.margin` from the `dice` service's `passed` and `margin`, and a scene `gate.guards` answering `hubVisit` at priority 50 makes two checks, each followed by a `<match>` over its result:
+The examples add a skill check to the [worked example](#worked-example)'s town: the plugin declares `::check{skill dc resultKey}`, whose effects write `scene.check.<key>.passed` and `.margin` from the `dice` service's `passed` and `margin`, and a scene `gate.guards` answering `hubVisit` at priority 50 makes two checks, each followed by a `<match>` over its result; a gated line also reads the first check's margin:
 
 ```lute
 ::check{skill="persuasion" dc="12" resultKey="guards"}
 <match on="scene.check.guards.passed">
   <when is="true">
     @narrator: The guards wave you through.
+    @narrator{when="scene.check.guards.margin > 5"}: They barely look up.
   </when>
   <when is="false">
     @narrator: The guards bar the way.
@@ -1256,13 +1257,14 @@ steps:
 ::check{skill="persuasion" dc="12" resultKey="guards"}        (bridge answered: passed=true, margin=3)
   match -> arm 1
 @narrator: The guards wave you through.
+  skip @narrator "They barely look up." — when: false
 ::check{skill="stealth" dc="10" resultKey="sneak"}        (bridge answered: passed=false, margin=-2)
   match -> arm 2
 @narrator: A stallholder shouts after you.
 ── end: complete (1 step) ──────────────
 ```
 
-- **Exact fields, checked at load.** Each answer gives exactly the `bridgeResult` fields the call's effects read, each a literal of its result slot's declared type. An unknown tag, a field no effect reads, a missing field, or a value that does not fit is a usage error before anything plays (exit 2): `` top level: `bridges.check` answer 1 lacks `margin` — an answer gives every bridge result `::check` reads: `{ passed: <bool>, margin: <number> }` (dsl 0.24.0 §5) ``; a misspelt tag gets a did-you-mean.
+- **Fields content reads, checked at load.** Each answer gives the `bridgeResult` fields content reads through any call of the tag, each a literal of its result slot's declared type. Since dsl 0.25.0 §7 a field that no content reads may be left out: here the gated line reads `margin`, so every `check` answer gives it, but without that line `- { passed: true }` would be a complete answer, and the hints below would ask for `passed` only. An answer may still give an unread field. An unknown tag, a field no effect reads, a missing field content reads, or a value that does not fit is a usage error before anything plays (exit 2): `` top level: `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }` (dsl 0.25.0 §7) ``; a misspelt tag gets a did-you-mean.
 - **Step answers first.** A step's own `bridges:` is consumed by that step's calls before the top-level queue. Answers the step leaves unconsumed fail it, exit 1 — an answer written to decide something decided nothing: `── halted: step 1: its `bridges:` answers were not all consumed — no plugin call of the step took `check` {passed: false, margin: 9}`.
 - **Into `scene.*`.** The answers land in the scene's result slots — the one way a script writes `scene.*`. A `state:` seed of a result slot is refused before anything plays (exit 2: `` `state.scene.check.guards.passed` is `scene.*`, which resets at every scene boundary and cannot be written ``); a 0.23.1 script that seeded one answers the call with `bridges:` instead.
 - **No answer, no guess.** A call with no answer left halts the walk **at the call**, incomplete (exit 3), before anything after it — the `<match>` and its default arm included — is walked. Before 0.24 the walk printed the default arm and only then halted:
@@ -1401,6 +1403,24 @@ explain safe(warden): holds
 
 The explanation is printed before the `── expect:` block, and `--json` carries it as `explain`. An atom that is not ground (`knows(X)`, `slew(_)`) is a usage error (exit 2). `--explain` evaluates the rules over the final facts and state even under `--no-derive`.
 
+### Exclusive relations
+
+Relations declared [`excludes:`](/state/facts-and-datalog/#exclusive-relations-excludes) (dsl 0.25.0 §1) never hold together on the same arguments. `check-project` proves what it can; where both are only *possible* — one scene's branch asserts `panicked(maren)`, a later scene asserts `calm(maren)` — the play checks the live facts, derived ones included, after every write. When both hold, it prints the violation right under the write and halts there, exit 1, even if a later write in the scene would undo it:
+
+```
+── step 2 · morning ──────────────
+  ✓ dawn [scene, priority 0]
+  → dawn
+▷ choice look: saw [nothing]        ← chosen: nothing
+@narrator: Nobody answers.
+  skip @narrator "Elias walks on." — when: false
+  assert calm(maren)
+  ✗ exclusive: calm(maren) and panicked(maren) both hold
+── halted: scene `dawn` (scenes/dawn.lute): exclusive relations hold together — calm(maren) and panicked(maren) both hold (dsl 0.25.0 §1) ──────────────
+```
+
+The pair is named in alphabetical order. A script whose choices never make both hold plays on silently. The same check covers facts a rule derives, so a derived relation that excludes another is caught at the write that made its rule fire. An `engine:` step that makes two exclusive facts hold halts at the step, ``── halted: step <n>: exclusive relations hold together — …``, and a script whose own `facts:` (with the project's seeds and what the rules derive from them) already break an exclusion halts before step 1: ``── halted: the script's seeded world holds exclusive relations together before step 1 — … (dsl 0.25.0 §1); fix the script's `facts:` (or the `excludes:` declaration)``. [`lute trace`](/tooling/tracing/#exclusive-relations) and `lute test` refuse the walk at the same write.
+
 ### Usage errors
 
 The script is rejected before anything plays — a **usage error, exit 2**, naming the step — when:
@@ -1439,7 +1459,7 @@ The lifecycles also settle once before step 1 (with the save's quest statuses an
 | Code | Meaning |
 |---|---|
 | `0` | Complete — every step played, or an `end: true` step ended the playthrough — and every expectation held. |
-| `1` | Error — the project fails to compile, a vocabulary conflict, a `pick` that is not eligible, a `select: all` step with eligible beats and no `pick`, a `choose:` decision the menu does not offer (an ineligible choice, or a spent `once` hub option), a step whose own `bridges:` answers were not all consumed, or a missed expectation. |
+| `1` | Error — the project fails to compile, a vocabulary conflict, a `pick` that is not eligible, a `select: all` step with eligible beats and no `pick`, a `choose:` decision the menu does not offer (an ineligible choice, or a spent `once` hub option), a step whose own `bridges:` answers were not all consumed, two [exclusive relations](#exclusive-relations) holding together (dsl 0.25.0), or a missed expectation. |
 | `2` | Usage or I/O — a bad script (see [Usage errors](#usage-errors)), an unknown occasion or world event, a missing or out-of-domain `target`, an invalid seed or `engine:` write, an `engine:` step that moves the clock backward, a `bridges:` answer that fits no call, a non-ground `--explain` atom, an unreadable project, a malformed artifact. |
 | `3` | Incomplete — an unscripted choice or hub, a branch `choose:` list that ran out, a `when` or quest objective that evaluates to unknown, an unresolved `now()` / `validAt()`, or a plugin call whose bridge result has no `bridges:` answer. |
 

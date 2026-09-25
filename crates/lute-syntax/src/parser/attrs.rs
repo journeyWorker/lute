@@ -340,8 +340,13 @@ fn char_reference(s: &str) -> Option<(char, usize)> {
         _ => {
             let num = name.strip_prefix('#')?;
             let code = match num.strip_prefix(['x', 'X']) {
-                Some(hex) if !hex.is_empty() && hex.len() <= 6 => u32::from_str_radix(hex, 16).ok()?,
-                None if !num.is_empty() && num.len() <= 7 && num.bytes().all(|b| b.is_ascii_digit()) => {
+                Some(hex) if !hex.is_empty() && hex.len() <= 6 => {
+                    u32::from_str_radix(hex, 16).ok()?
+                }
+                None if !num.is_empty()
+                    && num.len() <= 7
+                    && num.bytes().all(|b| b.is_ascii_digit()) =>
+                {
                     num.parse().ok()?
                 }
                 _ => return None,
@@ -414,7 +419,10 @@ mod tests {
     #[test]
     fn unknown_string_escape_is_diagnosed() {
         let (_, diags) = parse("## Shot 1.\n::sfx{sound=\"a\\qb\"}\n");
-        assert!(diags.iter().any(|d| d.code == "E-STRING-ESCAPE"), "{diags:?}");
+        assert!(
+            diags.iter().any(|d| d.code == "E-STRING-ESCAPE"),
+            "{diags:?}"
+        );
     }
 
     #[test]

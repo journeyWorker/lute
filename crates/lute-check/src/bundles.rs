@@ -102,7 +102,14 @@ pub fn check_bundle_beats(
             .as_ref()
             .filter(|(t, _)| is_entry_target(t))
             .map(|(_, span)| *span);
-        crate::beats::check_occasion(on, *on_span, target_span, occasions, Layer::Logic, &mut diags);
+        crate::beats::check_occasion(
+            on,
+            *on_span,
+            target_span,
+            occasions,
+            Layer::Logic,
+            &mut diags,
+        );
     }
     diags
 }
@@ -203,7 +210,10 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
     if let Some((key, span)) = &beat.share {
         let once = beat.once.as_ref().map(|(o, _)| o.as_str());
         if !is_entry_ident(key) {
-            diags.push(beat_attr(crate::beats::share_malformed("`<beat>`", key), *span));
+            diags.push(beat_attr(
+                crate::beats::share_malformed("`<beat>`", key),
+                *span,
+            ));
         } else if once == Some("false") || (once.is_none() && !residual.contains("once")) {
             diags.push(beat_attr(crate::beats::share_without_once(key), *span));
         }

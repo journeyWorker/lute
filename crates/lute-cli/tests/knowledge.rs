@@ -115,26 +115,53 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
     // Before 0.24 a scene with only choice and line guards was not a
     // fact-guarded node: `--for` exited 2.
     let s = ok(&["scenario", d, "knowledge", "--for", "inquiry.report"]);
-    assert!(s.contains("\n  scenes/report.lute\n    choice `fate.tobias` (line 10)\n"), "{s}");
+    assert!(
+        s.contains("\n  scenes/report.lute\n    choice `fate.tobias` (line 10)\n"),
+        "{s}"
+    );
     assert!(s.contains("      when: holds(alibied(tobias))\n"), "{s}");
     assert!(s.contains("    choice `fate.ada` (line 13)\n"), "{s}");
     assert!(s.contains("    line `@narrator` (line 21)\n"), "{s}");
     assert!(s.contains("    line `@tobias` (line 22)\n"), "{s}");
-    assert!(!s.contains("entry `nbTobias`"), "--for selects the scene's guards only: {s}");
+    assert!(
+        !s.contains("entry `nbTobias`"),
+        "--for selects the scene's guards only: {s}"
+    );
 
     // One choice by `<scene>#<branch>.<choice>`.
-    let one = ok(&["scenario", d, "knowledge", "--for", "inquiry.report#fate.ada"]);
+    let one = ok(&[
+        "scenario",
+        d,
+        "knowledge",
+        "--for",
+        "inquiry.report#fate.ada",
+    ]);
     assert!(one.contains("choice `fate.ada`"), "{one}");
-    assert!(!one.contains("choice `fate.tobias`") && !one.contains("line `@"), "{one}");
+    assert!(
+        !one.contains("choice `fate.tobias`") && !one.contains("line `@"),
+        "{one}"
+    );
 
     // Quest `start`/`fail` are guard slots too.
     let q = ok(&["scenario", d, "knowledge", "--for", "quest:case"]);
-    assert!(q.contains("\n  quests/case.lute\n    quest `case`\n"), "{q}");
-    assert!(q.contains("      start: holds(saw(hollis, tobias))\n"), "{q}");
+    assert!(
+        q.contains("\n  quests/case.lute\n    quest `case`\n"),
+        "{q}"
+    );
+    assert!(
+        q.contains("      start: holds(saw(hollis, tobias))\n"),
+        "{q}"
+    );
     assert!(q.contains("      fail: holds(departed(tobias))\n"), "{q}");
     assert!(q.contains("    objective `case.clear`\n"), "{q}");
 
-    let miss = lute(&["scenario", d, "knowledge", "--for", "inquiry.report#fate.adda"]);
+    let miss = lute(&[
+        "scenario",
+        d,
+        "knowledge",
+        "--for",
+        "inquiry.report#fate.adda",
+    ]);
     assert_eq!(miss.status.code(), Some(2));
     assert!(
         String::from_utf8_lossy(&miss.stderr).contains("did you mean `inquiry.report#fate.ada`?"),
@@ -159,7 +186,10 @@ fn knowledge_propagates_constants_into_negations_and_says_whether_they_can_be_de
     );
     assert!(!s.contains("not liar(_)"), "{s}");
     // Maren's lie defeats Ada's alibi, and the defeater names its source.
-    assert!(s.contains("not liar(maren) — holds unless defeated\n"), "{s}");
+    assert!(
+        s.contains("not liar(maren) — holds unless defeated\n"),
+        "{s}"
+    );
     assert!(
         s.contains("defeated when liar(maren) is derived ⇐ lied(maren) [entry `marenSaw` (lore/evidence.lute)]"),
         "{s}"
@@ -188,7 +218,13 @@ fn a_defeater_lists_every_derivation_route() {
             "  - \"liar(W) :- lied(W)\"\n  - \"liar(W) :- saw(W, ada)\"\n",
         );
     write(&dir, "world.schema.yaml", &schema);
-    let s = ok(&["scenario", dir.to_str().unwrap(), "knowledge", "--for", "inquiry.report"]);
+    let s = ok(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "knowledge",
+        "--for",
+        "inquiry.report",
+    ]);
     assert!(
         s.contains(
             "defeated when liar(maren) is derived ⇐ lied(maren) [entry `marenSaw` \
@@ -204,7 +240,12 @@ fn knowledge_prints_a_derived_tree_once_and_references_it() {
     let d = dir.to_str().unwrap();
     let s = ok(&["scenario", d, "knowledge"]);
     // Before, every guard re-derived `alibied(tobias)` (4 guards read it).
-    assert_eq!(s.matches("rule: alibied(S) :- saw(W, S), not liar(W)").count(), 2, "tobias and ada: {s}");
+    assert_eq!(
+        s.matches("rule: alibied(S) :- saw(W, S), not liar(W)")
+            .count(),
+        2,
+        "tobias and ada: {s}"
+    );
     assert!(
         s.contains("alibied(tobias) — derived by 1 rule — traced above under entry `nbTobias` in lore/evidence.lute"),
         "{s}"
@@ -237,14 +278,29 @@ fn play_explain_names_the_asserting_beat_and_step_and_expands_an_absent_negation
         "--explain",
         "alibied(ada)",
     ]);
-    let tobias = s.split("explain alibied(tobias): holds\n").nth(1).unwrap_or_else(|| panic!("{s}"));
-    assert!(tobias.contains("saw(hollis, tobias)  (asserted by entry `hollisSaw`, step 1)"), "{s}");
-    assert!(tobias.contains("not liar(hollis)  (absent — no rule concludes it:)\n"), "{s}");
+    let tobias = s
+        .split("explain alibied(tobias): holds\n")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{s}"));
+    assert!(
+        tobias.contains("saw(hollis, tobias)  (asserted by entry `hollisSaw`, step 1)"),
+        "{s}"
+    );
+    assert!(
+        tobias.contains("not liar(hollis)  (absent — no rule concludes it:)\n"),
+        "{s}"
+    );
     assert!(tobias.contains("liar(W) :- lied(W)\n"), "{s}");
     assert!(tobias.contains("✗ lied(hollis)  (absent)"), "{s}");
     // Ada's alibi holds through the engine's witness, not Maren's.
-    let ada = s.split("explain alibied(ada): holds\n").nth(1).unwrap_or_else(|| panic!("{s}"));
-    assert!(ada.contains("saw(tobias, ada)  (asserted by engine step 3)"), "{s}");
+    let ada = s
+        .split("explain alibied(ada): holds\n")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{s}"));
+    assert!(
+        ada.contains("saw(tobias, ada)  (asserted by engine step 3)"),
+        "{s}"
+    );
 }
 
 #[test]
@@ -253,25 +309,49 @@ fn lore_shows_entry_when_and_the_derived_conclusions() {
     let d = dir.to_str().unwrap();
     let s = ok(&["lore", d]);
     assert!(
-        s.contains("    nbTobias  \"Alibi\"  lore/evidence.lute\n      when: holds(alibied(tobias))\n"),
+        s.contains(
+            "    nbTobias  \"Alibi\"  lore/evidence.lute\n      when: holds(alibied(tobias))\n"
+        ),
         "{s}"
     );
-    let derived = s.split("\nDerived (").nth(1).unwrap_or_else(|| panic!("{s}"));
+    let derived = s
+        .split("\nDerived (")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{s}"));
     assert!(
         derived.contains(
             "    alibied(tobias)\n      ⇐ saw(hollis, tobias) [entry `hollisSaw` (lore/evidence.lute)], not liar(hollis)\n"
         ),
         "{derived}"
     );
-    assert!(derived.contains("      evidence: entry `hollisSaw` (lore/evidence.lute)\n"), "{derived}");
+    assert!(
+        derived.contains("      evidence: entry `hollisSaw` (lore/evidence.lute)\n"),
+        "{derived}"
+    );
     let tobias = derived.split("alibied(tobias)").nth(1).unwrap();
-    assert!(tobias.contains("gates: entry `nbTobias` (lore/evidence.lute)"), "{derived}");
-    assert!(derived.contains("    liar(maren)\n      ⇐ lied(maren) [entry `marenSaw` (lore/evidence.lute)]\n"), "{derived}");
+    assert!(
+        tobias.contains("gates: entry `nbTobias` (lore/evidence.lute)"),
+        "{derived}"
+    );
+    assert!(
+        derived.contains(
+            "    liar(maren)\n      ⇐ lied(maren) [entry `marenSaw` (lore/evidence.lute)]\n"
+        ),
+        "{derived}"
+    );
 
     let v: serde_json::Value = serde_json::from_str(&ok(&["lore", d, "--json"])).unwrap();
-    let liar = v["derived"].as_array().unwrap().iter().find(|g| g["relation"] == "liar").unwrap();
+    let liar = v["derived"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["relation"] == "liar")
+        .unwrap();
     assert_eq!(liar["facts"][0]["fact"], "liar(maren)");
-    assert_eq!(liar["facts"][0]["evidence"][0], "entry `marenSaw` (lore/evidence.lute)");
+    assert_eq!(
+        liar["facts"][0]["evidence"][0],
+        "entry `marenSaw` (lore/evidence.lute)"
+    );
 }
 
 #[test]
@@ -283,7 +363,10 @@ fn envelope_names_producers_in_the_knowledge_words() {
         s.contains("    - present/1 (producible) — seed facts present(hollis); reserved — the engine asserts it\n"),
         "{s}"
     );
-    assert!(s.contains("    - liar/1 (producible) — derived by 1 rule\n"), "{s}");
+    assert!(
+        s.contains("    - liar/1 (producible) — derived by 1 rule\n"),
+        "{s}"
+    );
 }
 
 /// Round-3 prerelease (CR N2, SU N6, ER N9): an entity-kind atom in a rule
@@ -304,7 +387,11 @@ fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises()
         "id: m.occ\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
          exports:\n  occasions: occasions/\n",
     );
-    write(&d, "plugins/m.occ/occasions/occ.yaml", "occasions:\n  tick: {}\n");
+    write(
+        &d,
+        "plugins/m.occ/occasions/occ.yaml",
+        "occasions:\n  tick: {}\n",
+    );
     write(
         &d,
         "world.schema.yaml",
@@ -322,20 +409,55 @@ fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises()
     let dir = d.to_str().unwrap();
     let s = ok(&["scenario", dir, "knowledge", "--for", "s"]);
     assert!(!s.contains("undeclared relation"), "{s}");
-    assert!(s.contains("suitor(sol) — entity kind `suitor`; sol is a member\n"), "{s}");
     assert!(
-        s.contains("cel(\"run.aff.sol >= 3\") — state condition on run.aff.sol, decided at run time\n"),
+        s.contains("suitor(sol) — entity kind `suitor`; sol is a member\n"),
+        "{s}"
+    );
+    assert!(
+        s.contains(
+            "cel(\"run.aff.sol >= 3\") — state condition on run.aff.sol, decided at run time\n"
+        ),
         "the guard is grounded by the head's binding: {s}"
     );
-    assert!(s.contains("person(ines) — entity kind `person`; ines is a member\n"), "{s}");
-    assert!(s.contains("not suitor(ines) — entity kind `suitor`; ines is not a member — always holds\n"), "{s}");
-    assert!(s.contains("cel(\"run.day >= 2\") — state condition on run.day"), "{s}");
+    assert!(
+        s.contains("person(ines) — entity kind `person`; ines is a member\n"),
+        "{s}"
+    );
+    assert!(
+        s.contains(
+            "not suitor(ines) — entity kind `suitor`; ines is not a member — always holds\n"
+        ),
+        "{s}"
+    );
+    assert!(
+        s.contains("cel(\"run.day >= 2\") — state condition on run.day"),
+        "{s}"
+    );
 
-    let out = lute(&["scenario", dir, "--format", "json", "knowledge", "--for", "s"]);
+    let out = lute(&[
+        "scenario",
+        dir,
+        "--format",
+        "json",
+        "knowledge",
+        "--for",
+        "s",
+    ]);
     let j: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let rels = &j["roots"][0]["relations"];
-    assert!(rels.get("suitor").is_none() && rels.get("person").is_none(), "{rels}");
+    assert!(
+        rels.get("suitor").is_none() && rels.get("person").is_none(),
+        "{rels}"
+    );
     let premises = &rels["ready"]["rules"][0]["premises"];
-    assert_eq!(premises[0], serde_json::json!({ "entityKind": "suitor" }), "{premises}");
-    assert_eq!(premises[1], serde_json::json!({ "cel": "run.aff[P] >= 3" }), "{premises}");
+    assert_eq!(
+        premises[0],
+        serde_json::json!({ "entityKind": "suitor" }),
+        "{premises}"
+    );
+    assert_eq!(
+        premises[1],
+        serde_json::json!({ "cel": "run.aff[P] >= 3" }),
+        "{premises}"
+    );
 }

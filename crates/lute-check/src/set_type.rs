@@ -330,7 +330,11 @@ fn is_string_family(t: &Type) -> bool {
 /// spelling — §3.3's own worked case wants the message to name the comparison,
 /// not the whole write.
 fn operand_desc(expr: &Expr, t: &Type) -> String {
-    format!("{} is a `{}`, not a `number`", operand_subject(expr), scalar_name(t))
+    format!(
+        "{} is a `{}`, not a `number`",
+        operand_subject(expr),
+        scalar_name(t)
+    )
 }
 
 /// How [`operand_desc`] and [`integer_fault`] name an operand.

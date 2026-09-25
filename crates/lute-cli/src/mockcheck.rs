@@ -180,7 +180,12 @@ pub fn check_mocks_under(
         let mut diags = lute_trace::validate(&mocks, folded, doc);
         if let Some(input) = input {
             let reads = lute_trace::content_read_paths(&input.text, &folded.def_bodies);
-            diags.extend(lute_trace::validate_bridges(&mocks, folded, &input.snapshot, &reads));
+            diags.extend(lute_trace::validate_bridges(
+                &mocks,
+                folded,
+                &input.snapshot,
+                &reads,
+            ));
         }
         for mut d in diags {
             // Right file, offending key named, impossible position gone: the
@@ -219,9 +224,15 @@ pub fn mocked_accepts_under(root: &Path) -> BTreeMap<String, Vec<PathBuf>> {
                 }
                 continue;
             }
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-            let in_mocks =
-                path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()) == Some("mocks");
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            let in_mocks = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                == Some("mocks");
             if !(name.ends_with(".test.yaml") || (in_mocks && name.ends_with(".yaml"))) {
                 continue;
             }

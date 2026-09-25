@@ -223,9 +223,11 @@ fn resolve_edges(
                     "cannot resolve `components:` import `{r}` (from {}){}",
                     dir.display(),
                     component_suggestion(dir, r)
-                        .map(|s| format!(" — did you mean `{s}`? (a document's own \
+                        .map(|s| format!(
+                            " — did you mean `{s}`? (a document's own \
                                            `components:` resolves against its directory, \
-                                           `defaults: components:` against lute.project.yaml's)"))
+                                           `defaults: components:` against lute.project.yaml's)"
+                        ))
                         .unwrap_or_default()
                 ),
                 at,
@@ -250,12 +252,15 @@ fn component_suggestion(dir: &Path, r: &str) -> Option<String> {
     let mut files = Vec::new();
     let mut stack = vec![(root, 0usize)];
     while let Some((d, depth)) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&d) else { continue };
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in entries.flatten() {
             let p = e.path();
             let name = e.file_name().to_string_lossy().into_owned();
             if p.is_dir() {
-                if depth < 8 && !name.starts_with('.') && name != "node_modules" && name != "target" {
+                if depth < 8 && !name.starts_with('.') && name != "node_modules" && name != "target"
+                {
                     stack.push((p, depth + 1));
                 }
             } else if name.ends_with(".component.lute") {
@@ -266,7 +271,8 @@ fn component_suggestion(dir: &Path, r: &str) -> Option<String> {
     files.sort();
     let wanted = Path::new(r).file_name()?.to_string_lossy().into_owned();
     let hit = files.iter().find(|(n, _)| *n == wanted).or_else(|| {
-        let near = lute_manifest::suggest::nearest(&wanted, files.iter().map(|(n, _)| n.as_str()), 2)?;
+        let near =
+            lute_manifest::suggest::nearest(&wanted, files.iter().map(|(n, _)| n.as_str()), 2)?;
         files.iter().find(|(n, _)| n == near)
     })?;
     Some(relative_to(&dir, &hit.1))
@@ -281,7 +287,12 @@ fn relative_to(from: &Path, target: &Path) -> String {
         .count();
     let ups = from.components().count() - common;
     let mut out: Vec<String> = std::iter::repeat_n("..".to_string(), ups).collect();
-    out.extend(target.components().skip(common).map(|c| c.as_os_str().to_string_lossy().into_owned()));
+    out.extend(
+        target
+            .components()
+            .skip(common)
+            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+    );
     out.join("/")
 }
 

@@ -351,7 +351,12 @@ impl Parser<'_> {
     /// Make the block `tag`/`id` opened by `open` the current top-level
     /// block; returns the one it replaces, which the caller restores after
     /// the body.
-    fn enter_top_block(&mut self, tag: &'static str, id: &str, open: &OpenTag) -> Option<super::TopBlock> {
+    fn enter_top_block(
+        &mut self,
+        tag: &'static str,
+        id: &str,
+        open: &OpenTag,
+    ) -> Option<super::TopBlock> {
         let line = self.span_o(open.start_o, open.end_o).line;
         self.top_block.replace(super::TopBlock {
             tag,

@@ -219,7 +219,10 @@ fn occasions_detail(scan: &ProjectScan) -> String {
         declared.join(", ")
     );
     if !undeclared.is_empty() {
-        detail.push_str(&format!("; answered but not declared: {}", undeclared.join(", ")));
+        detail.push_str(&format!(
+            "; answered but not declared: {}",
+            undeclared.join(", ")
+        ));
     }
     detail
 }
@@ -303,7 +306,11 @@ fn language_server_check() -> Check {
     const KEY: &str = "languageServer";
     const LABEL: &str = "lute-lsp on PATH";
     let ours = env!("CARGO_PKG_VERSION");
-    let exe = if cfg!(windows) { "lute-lsp.exe" } else { "lute-lsp" };
+    let exe = if cfg!(windows) {
+        "lute-lsp.exe"
+    } else {
+        "lute-lsp"
+    };
     let Some(lsp) = find_on_path(exe) else {
         return Check::info(
             KEY,
@@ -344,8 +351,15 @@ fn sibling_language_server_check() -> Check {
     const KEY: &str = "siblingLanguageServer";
     const LABEL: &str = "lute-lsp beside lute";
     let ours = env!("CARGO_PKG_VERSION");
-    let exe = if cfg!(windows) { "lute-lsp.exe" } else { "lute-lsp" };
-    let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) else {
+    let exe = if cfg!(windows) {
+        "lute-lsp.exe"
+    } else {
+        "lute-lsp"
+    };
+    let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+    else {
         return Check::info(KEY, LABEL, "cannot locate the running `lute`".to_string());
     };
     let sibling = dir.join(exe);
@@ -446,7 +460,9 @@ fn lsp_argv_binary(args: &str) -> Option<&str> {
         let starts = std::iter::once(0).chain(args[..idx].match_indices(' ').map(|(i, _)| i + 1));
         for start in starts {
             let candidate = &args[start..end];
-            if candidate == NAME || (candidate.ends_with("/lute-lsp") && Path::new(candidate).is_file()) {
+            if candidate == NAME
+                || (candidate.ends_with("/lute-lsp") && Path::new(candidate).is_file())
+            {
                 return Some(candidate);
             }
         }
@@ -458,7 +474,11 @@ fn lsp_argv_binary(args: &str) -> Option<&str> {
 /// listed. A `--version` probe is not a server and is skipped.
 #[cfg(unix)]
 fn running_lsps() -> Option<Vec<RunningLsp>> {
-    let ps = if Path::new("/bin/ps").is_file() { "/bin/ps" } else { "ps" };
+    let ps = if Path::new("/bin/ps").is_file() {
+        "/bin/ps"
+    } else {
+        "ps"
+    };
     let out = std::process::Command::new(ps)
         .args(["-Ao", "pid=,etime=,args="])
         .env("LC_ALL", "C")
@@ -472,12 +492,23 @@ fn running_lsps() -> Option<Vec<RunningLsp>> {
     let mut found = Vec::new();
     for row in text.lines() {
         let row = row.trim_start();
-        let Some((pid, rest)) = row.split_once(char::is_whitespace) else { continue };
-        let Some((etime, args)) = rest.trim_start().split_once(char::is_whitespace) else { continue };
-        let (Ok(pid), Some(age)) = (pid.parse::<u32>(), parse_etime(etime)) else { continue };
+        let Some((pid, rest)) = row.split_once(char::is_whitespace) else {
+            continue;
+        };
+        let Some((etime, args)) = rest.trim_start().split_once(char::is_whitespace) else {
+            continue;
+        };
+        let (Ok(pid), Some(age)) = (pid.parse::<u32>(), parse_etime(etime)) else {
+            continue;
+        };
         let args = args.trim();
-        let Some(argv) = lsp_argv_binary(args) else { continue };
-        if args[argv.len()..].split_whitespace().any(|a| a == "--version") {
+        let Some(argv) = lsp_argv_binary(args) else {
+            continue;
+        };
+        if args[argv.len()..]
+            .split_whitespace()
+            .any(|a| a == "--version")
+        {
             continue;
         }
         // Linux names the binary a process runs, and marks it replaced.
@@ -523,7 +554,11 @@ fn running_language_servers_check() -> Check {
     const LABEL: &str = "running lute-lsp";
     let ours = env!("CARGO_PKG_VERSION");
     let Some(servers) = running_lsps() else {
-        return Check::info(KEY, LABEL, "cannot list processes (`ps` failed)".to_string());
+        return Check::info(
+            KEY,
+            LABEL,
+            "cannot list processes (`ps` failed)".to_string(),
+        );
     };
     if servers.is_empty() {
         return Check::info(KEY, LABEL, "none running".to_string());
@@ -537,7 +572,9 @@ fn running_language_servers_check() -> Check {
         };
         let at = format!("pid {} ({})", s.pid, exe.display());
         if s.replaced {
-            stale.push(format!("{at} started before its binary was replaced, so it runs an older build"));
+            stale.push(format!(
+                "{at} started before its binary was replaced, so it runs an older build"
+            ));
             continue;
         }
         let reported = versions
@@ -549,7 +586,12 @@ fn running_language_servers_check() -> Check {
             None => stale.push(format!("{at} reports no version (older than 0.22.0)")),
         }
     }
-    let all: Vec<String> = stale.iter().chain(&current).chain(&unknown).cloned().collect();
+    let all: Vec<String> = stale
+        .iter()
+        .chain(&current)
+        .chain(&unknown)
+        .cloned()
+        .collect();
     if !stale.is_empty() {
         Check::fail(
             KEY,
@@ -671,12 +713,13 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // (`lute_manifest::project::project_providers`): the manifest's
     // `catalogDir:`, default `catalog/`. Its absence says nothing about
     // plugins — only that no provider id is pinned.
-    let catalog_dir = manifest_dir.as_deref().map(|root| {
-        match lute_manifest::project::load_project(root) {
-            Ok(Some(config)) => config.catalog_dir,
-            _ => root.join("catalog"),
-        }
-    });
+    let catalog_dir =
+        manifest_dir
+            .as_deref()
+            .map(|root| match lute_manifest::project::load_project(root) {
+                Ok(Some(config)) => config.catalog_dir,
+                _ => root.join("catalog"),
+            });
     match catalog_dir.filter(|d| d.is_dir()) {
         Some(catalog_dir) => {
             let set = ProviderSet::load(&catalog_dir);

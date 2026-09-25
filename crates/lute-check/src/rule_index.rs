@@ -102,7 +102,9 @@ fn rewrite(cel: &str, uses: &[IndexUse], member_of: &dyn Fn(&str) -> String) -> 
 fn binding_kinds(rule: &Rule, var: &str, vocab: &RelVocab) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for lit in &rule.body {
-        let BodyLiteral::Pos(atom) = lit else { continue };
+        let BodyLiteral::Pos(atom) = lit else {
+            continue;
+        };
         for (i, t) in atom.terms.iter().enumerate() {
             if !matches!(t, RuleTerm::Var(v) if v == var) {
                 continue;
@@ -110,7 +112,10 @@ fn binding_kinds(rule: &Rule, var: &str, vocab: &RelVocab) -> Vec<(String, Strin
             let kind = if vocab.kinds.contains_key(&atom.relation) {
                 Some(atom.relation.clone())
             } else {
-                vocab.relations.get(&atom.relation).and_then(|r| r.args.get(i).cloned())
+                vocab
+                    .relations
+                    .get(&atom.relation)
+                    .and_then(|r| r.args.get(i).cloned())
             };
             if let Some(kind) = kind {
                 out.push((render_atom(atom), kind));
@@ -143,7 +148,10 @@ fn closed_members<'a>(vocab: &'a RelVocab, kind: &str) -> Option<&'a [String]> {
 /// descendant, or a closed kind whose every member is one of `index_kind`'s.
 fn within(vocab: &RelVocab, kind: &str, index_kind: &str) -> bool {
     kind_within(&vocab.kinds, kind, index_kind)
-        || match (closed_members(vocab, kind), closed_members(vocab, index_kind)) {
+        || match (
+            closed_members(vocab, kind),
+            closed_members(vocab, index_kind),
+        ) {
             (Some(ms), Some(outer)) => ms.iter().all(|m| outer.contains(m)),
             _ => false,
         }
@@ -214,7 +222,10 @@ pub fn check_indexed_guard(
             continue;
         }
         if !bound.iter().any(|(_, k)| within(vocab, k, kind)) {
-            let by: Vec<String> = bound.iter().map(|(a, k)| format!("`{a}` over `{k}`")).collect();
+            let by: Vec<String> = bound
+                .iter()
+                .map(|(a, k)| format!("`{a}` over `{k}`"))
+                .collect();
             diags.push(diag(
                 "E-FACT-DOMAIN",
                 format!(
@@ -239,7 +250,9 @@ pub fn check_indexed_guard(
     if !diags.is_empty() {
         return Err(diags);
     }
-    Ok(rewrite(cel, &uses, &|v| first_member.get(v).cloned().unwrap_or_default()))
+    Ok(rewrite(cel, &uses, &|v| {
+        first_member.get(v).cloned().unwrap_or_default()
+    }))
 }
 
 /// The members each indexed variable of `rule` is grounded over: for a
@@ -249,7 +262,9 @@ pub fn check_indexed_guard(
 fn grounding(rule: &Rule, vocab: &RelVocab) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for lit in &rule.body {
-        let BodyLiteral::Guard { cel, .. } = lit else { continue };
+        let BodyLiteral::Guard { cel, .. } = lit else {
+            continue;
+        };
         for u in index_uses(cel) {
             let members = vocab
                 .indexed_state
@@ -292,7 +307,9 @@ pub fn ground_guard(cel: &str, at: &BTreeMap<&str, &str>) -> String {
         .into_iter()
         .filter(|u| at.contains_key(u.var.as_str()))
         .collect();
-    rewrite(cel, &uses, &|v| at.get(v).map(|m| (*m).to_string()).unwrap_or_default())
+    rewrite(cel, &uses, &|v| {
+        at.get(v).map(|m| (*m).to_string()).unwrap_or_default()
+    })
 }
 
 fn ground_rule(rule: &Rule, at: &BTreeMap<&str, &str>) -> Rule {
@@ -333,11 +350,12 @@ fn ground_rule(rule: &Rule, at: &BTreeMap<&str, &str>) -> Rule {
 /// (`… [P = isolde]`). Borrowed unchanged when no rule reads indexed state —
 /// the common case costs nothing.
 pub fn evaluable_rules(vocab: &RelVocab) -> Cow<'_, [RuleDecl]> {
-    if !vocab
-        .rules
-        .iter()
-        .any(|r| r.rule.body.iter().any(|l| matches!(l, BodyLiteral::Guard { cel, .. } if !index_uses(cel).is_empty())))
-    {
+    if !vocab.rules.iter().any(|r| {
+        r.rule
+            .body
+            .iter()
+            .any(|l| matches!(l, BodyLiteral::Guard { cel, .. } if !index_uses(cel).is_empty()))
+    }) {
         return Cow::Borrowed(&vocab.rules);
     }
     let mut out = Vec::with_capacity(vocab.rules.len());
@@ -392,8 +410,13 @@ mod tests {
 
     #[test]
     fn finds_indexed_reads_outside_strings() {
-        let u = index_uses("run.approval[P] >= 3 && run.rep[ F ] < 0 && 'x[Y]' == 'a' && run.xs[0] == 1");
-        let got: Vec<(&str, &str)> = u.iter().map(|u| (u.family.as_str(), u.var.as_str())).collect();
+        let u = index_uses(
+            "run.approval[P] >= 3 && run.rep[ F ] < 0 && 'x[Y]' == 'a' && run.xs[0] == 1",
+        );
+        let got: Vec<(&str, &str)> = u
+            .iter()
+            .map(|u| (u.family.as_str(), u.var.as_str()))
+            .collect();
         assert_eq!(got, vec![("run.approval", "P"), ("run.rep", "F")]);
     }
 

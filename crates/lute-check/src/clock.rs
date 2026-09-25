@@ -120,7 +120,10 @@ pub fn check_clock(
         ));
     }
     for what in clock_problems(clock, schema, domains, occasions, false) {
-        let mut d = clock_diag(format!("clock (declared in `{origin}`): {what} (dsl 0.24.0 §1)"), span);
+        let mut d = clock_diag(
+            format!("clock (declared in `{origin}`): {what} (dsl 0.24.0 §1)"),
+            span,
+        );
         if let Some((file, at)) = &site.at {
             d.related.push(lute_core_span::RelatedDiagnostic {
                 file: file.clone(),
@@ -196,13 +199,18 @@ pub fn clock_problems(
         }
     }
     let moments = clock.raises();
-    let named = [("slot", &moments.slot), ("dayStart", &moments.day_start), ("dayEnd", &moments.day_end)];
+    let named = [
+        ("slot", &moments.slot),
+        ("dayStart", &moments.day_start),
+        ("dayEnd", &moments.day_end),
+    ];
     for (moment, raise) in named {
         let Some(raise) = raise else { continue };
         if !occasions.is_empty() && !occasions.contains_key(raise) {
-            let hint = lute_manifest::suggest::nearest(raise, occasions.keys().map(String::as_str), 2)
-                .map(|n| format!(" — did you mean `{n}`?"))
-                .unwrap_or_default();
+            let hint =
+                lute_manifest::suggest::nearest(raise, occasions.keys().map(String::as_str), 2)
+                    .map(|n| format!(" — did you mean `{n}`?"))
+                    .unwrap_or_default();
             let key = match &clock.raise {
                 Some(lute_manifest::clock::ClockRaise::Slot(_)) => "raise".to_string(),
                 _ => format!("raise.{moment}"),
@@ -224,14 +232,18 @@ pub fn clock_problems(
 pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, StateDecl)> {
     let day = schema.decls.get(&clock.day);
     let namespace = day.map_or(Namespace::Run, |d| d.namespace);
-    let slot_default = clock.slot.as_ref().map(|s| schema.decls.get(s).and_then(|d| d.default.as_ref()));
+    let slot_default = clock
+        .slot
+        .as_ref()
+        .map(|s| schema.decls.get(s).and_then(|d| d.default.as_ref()));
     let at = match (day.and_then(|d| d.default.as_ref()), slot_default) {
         (Some(Literal::Num(d)), None) => clock.at(*d, None),
         (Some(Literal::Num(d)), Some(Some(Literal::Str(s)))) => clock.at(*d, Some(s)),
         _ => None,
     };
-    let values: BTreeMap<&str, lute_manifest::clock::ClockValue> =
-        at.map(|at| clock.values(at).into_iter().collect()).unwrap_or_default();
+    let values: BTreeMap<&str, lute_manifest::clock::ClockValue> = at
+        .map(|at| clock.values(at).into_iter().collect())
+        .unwrap_or_default();
     clock
         .reserved_paths()
         .into_iter()
@@ -246,7 +258,13 @@ pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, S
                     ty: if number {
                         Type::Number
                     } else {
-                        Type::Enum(clock.week.as_ref().map(|w| w.labels.clone()).unwrap_or_default())
+                        Type::Enum(
+                            clock
+                                .week
+                                .as_ref()
+                                .map(|w| w.labels.clone())
+                                .unwrap_or_default(),
+                        )
                     },
                     default,
                     namespace,
@@ -298,7 +316,11 @@ pub fn check_once_needs_clock(
     let mut out = Vec::new();
     if let Some(b) = beat.filter(|b| b.once.is_clock()) {
         out.push(attr(
-            needs(format!("once: {}", b.once.as_str()), b.once.as_str(), scene_or_beat),
+            needs(
+                format!("once: {}", b.once.as_str()),
+                b.once.as_str(),
+                scene_or_beat,
+            ),
             crate::meta::meta_key_span(&doc.meta, "once"),
         ));
     }
@@ -307,7 +329,11 @@ pub fn check_once_needs_clock(
         .entries
         .iter()
         .filter_map(|e| e.once.as_ref().map(|o| (o, entry)))
-        .chain(doc.beats.iter().filter_map(|b| b.once.as_ref().map(|o| (o, scene_or_beat))));
+        .chain(
+            doc.beats
+                .iter()
+                .filter_map(|b| b.once.as_ref().map(|o| (o, scene_or_beat))),
+        );
     for ((raw, span), instead) in authored {
         if matches!(raw.as_str(), "day" | "slot") {
             out.push(attr(needs(format!("once=\"{raw}\""), raw, instead), *span));

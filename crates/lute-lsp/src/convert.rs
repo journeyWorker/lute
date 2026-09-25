@@ -49,7 +49,11 @@ use tower_lsp_server::ls_types as lsp_types;
 /// `idx` MUST index the exact document text the diagnostic's byte offsets refer
 /// to (a fresh `TextIndex::new(&text)` over the open document), so positions match
 /// the headless path that `check()` normalized against.
-pub fn to_lsp_diagnostic(d: &Diagnostic, idx: &TextIndex, uri: &lsp_types::Uri) -> lsp_types::Diagnostic {
+pub fn to_lsp_diagnostic(
+    d: &Diagnostic,
+    idx: &TextIndex,
+    uri: &lsp_types::Uri,
+) -> lsp_types::Diagnostic {
     lsp_types::Diagnostic {
         range: to_lsp_range(&d.span, idx),
         severity: Some(to_lsp_severity(d.severity)),
@@ -300,11 +304,25 @@ mod tests {
         ];
         let uri = test_uri();
         let l = to_lsp_diagnostic(&d, &idx, &uri);
-        let related = l.related_information.expect("covered must populate related_information");
+        let related = l
+            .related_information
+            .expect("covered must populate related_information");
         assert_eq!(related.len(), 2);
         assert_eq!(related[0].location.uri, uri);
-        assert_eq!((related[0].location.range.start.line, related[0].location.range.start.character), (1, 0));
-        assert_eq!((related[1].location.range.start.line, related[1].location.range.start.character), (2, 0));
+        assert_eq!(
+            (
+                related[0].location.range.start.line,
+                related[0].location.range.start.character
+            ),
+            (1, 0)
+        );
+        assert_eq!(
+            (
+                related[1].location.range.start.line,
+                related[1].location.range.start.character
+            ),
+            (2, 0)
+        );
         assert_eq!(related[0].message, "also here");
         assert_eq!(related[1].message, "also here");
 

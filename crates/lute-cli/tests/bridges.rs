@@ -40,7 +40,12 @@ fn out(o: &Output) -> String {
 fn play(tag: &str, script: &str) -> Output {
     let script = write(&temp_dir(tag), "s.play.yaml", script);
     Command::new(BIN)
-        .args(["play", fixture().to_str().unwrap(), "--script", script.to_str().unwrap()])
+        .args([
+            "play",
+            fixture().to_str().unwrap(),
+            "--script",
+            script.to_str().unwrap(),
+        ])
         .output()
         .unwrap()
 }
@@ -65,7 +70,10 @@ fn play_halts_at_an_unanswered_call_before_the_default_arm() {
     let o = play("unanswered", "steps:\n  - occasion: hubVisit\n");
     let text = out(&o);
     assert_eq!(o.status.code(), Some(3), "{text}");
-    assert!(text.contains("(bridge unanswered: passed, margin)"), "{text}");
+    assert!(
+        text.contains("(bridge unanswered: passed, margin)"),
+        "{text}"
+    );
     assert!(text.contains("plugin call `check`"), "{text}");
     assert!(
         text.contains("bridges: { check: [ { passed: <bool>, margin: <number> } ] }"),
@@ -86,12 +94,21 @@ fn play_consumes_top_level_answers_in_call_order() {
     );
     let text = out(&o);
     assert_eq!(o.status.code(), Some(0), "{text}");
-    assert!(text.contains("(bridge answered: passed=true, margin=3)"), "{text}");
-    assert!(text.contains("(bridge answered: passed=false, margin=-2)"), "{text}");
+    assert!(
+        text.contains("(bridge answered: passed=true, margin=3)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("(bridge answered: passed=false, margin=-2)"),
+        "{text}"
+    );
     let passed = text.find("Passed.").expect(&text);
     let spotted = text.find("Spotted.").expect(&text);
     assert!(passed < spotted, "{text}");
-    assert!(!text.contains("Failed.") && !text.contains("Sneaked."), "{text}");
+    assert!(
+        !text.contains("Failed.") && !text.contains("Sneaked."),
+        "{text}"
+    );
 }
 
 #[test]
@@ -104,7 +121,10 @@ fn play_step_answers_come_before_the_top_level_ones() {
     let text = out(&o);
     assert_eq!(o.status.code(), Some(0), "{text}");
     // The step's answer decides the first call, the top level's the second.
-    assert!(text.contains("Passed.") && text.contains("Spotted."), "{text}");
+    assert!(
+        text.contains("Passed.") && text.contains("Spotted."),
+        "{text}"
+    );
 }
 
 #[test]
@@ -116,8 +136,14 @@ fn play_fails_a_step_that_leaves_its_own_answers_unconsumed() {
     );
     let text = out(&o);
     assert_eq!(o.status.code(), Some(1), "{text}");
-    assert!(text.contains("step 1: its `bridges:` answers were not all consumed"), "{text}");
-    assert!(text.contains("`check` {passed: false, margin: 9}"), "{text}");
+    assert!(
+        text.contains("step 1: its `bridges:` answers were not all consumed"),
+        "{text}"
+    );
+    assert!(
+        text.contains("`check` {passed: false, margin: 9}"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -133,7 +159,7 @@ fn play_refuses_a_bad_field_or_a_misfit_value_at_load() {
         ),
         (
             "bridges:\n  check:\n    - { passed: true }\nsteps:\n  - occasion: hubVisit\n",
-            "lacks `margin`, which content reads — an answer gives every bridge result of `::check` content reads: `{ passed: <bool>, margin: <number> }`",
+            "lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }`",
         ),
         (
             "bridges:\n  chek:\n    - { passed: true, margin: 1 }\nsteps:\n  - occasion: hubVisit\n",
@@ -147,12 +173,31 @@ fn play_refuses_a_bad_field_or_a_misfit_value_at_load() {
     }
 }
 
+/// dsl 0.25.0 §7: a missing read field reads the same in `lute play` and
+/// `lute trace` (one wording, the trace one).
+#[test]
+fn a_missing_bridge_field_reads_the_same_in_play_and_trace() {
+    let want =
+        "lacks `margin`, which content reads — an answer gives every bridge result `::check` \
+                content reads: `{ passed: <bool>, margin: <number> }`";
+    let played = out(&play(
+        "lacks-same",
+        "bridges:\n  check:\n    - { passed: true }\nsteps:\n  - occasion: hubVisit\n",
+    ));
+    let traced = out(&trace(Some("bridges:\n  check:\n    - { passed: true }\n")));
+    assert!(played.contains(want), "{played}");
+    assert!(traced.contains(want), "{traced}");
+}
+
 #[test]
 fn trace_reads_an_unmocked_bridge_result_as_unknown() {
     let o = trace(None);
     let text = out(&o);
     assert_eq!(o.status.code(), Some(3), "{text}");
-    assert!(!text.contains("-> arm 2"), "the shape default must not decide: {text}");
+    assert!(
+        !text.contains("-> arm 2"),
+        "the shape default must not decide: {text}"
+    );
     assert!(
         text.contains("bridges: { check: [ { passed: <bool>, margin: <number> } ] }"),
         "the hint names the tag and every field the loader demands, typed: {text}"
@@ -166,9 +211,18 @@ fn trace_takes_the_mocked_answer_in_call_order() {
     ));
     let text = out(&o);
     assert_eq!(o.status.code(), Some(0), "{text}");
-    assert!(text.contains("(bridge answered: passed=true, margin=3)"), "{text}");
-    assert!(text.contains("Passed.") && text.contains("Spotted."), "{text}");
-    assert!(!text.contains("Failed.") && !text.contains("Sneaked."), "{text}");
+    assert!(
+        text.contains("(bridge answered: passed=true, margin=3)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Passed.") && text.contains("Spotted."),
+        "{text}"
+    );
+    assert!(
+        !text.contains("Failed.") && !text.contains("Sneaked."),
+        "{text}"
+    );
 
     let bad = trace(Some("bridges:\n  check:\n    - { passed: 7, margin: 3 }\n"));
     assert_eq!(bad.status.code(), Some(1), "{}", out(&bad));
@@ -181,7 +235,12 @@ fn a_scenario_test_needs_its_bridge_answers() {
     let run = |tag: &str, body: &str| {
         let t = write(&dir, &format!("tests/{tag}.test.yaml"), body);
         let o = Command::new(BIN)
-            .args(["test", t.to_str().unwrap(), "--project", dir.to_str().unwrap()])
+            .args([
+                "test",
+                t.to_str().unwrap(),
+                "--project",
+                dir.to_str().unwrap(),
+            ])
             .output()
             .unwrap();
         let _ = std::fs::remove_file(&t);
@@ -198,7 +257,11 @@ fn a_scenario_test_needs_its_bridge_answers() {
         "file: ../scenes/probe/c.lute\nexpect:\n  transcriptContains: [\"Passed.\"]\n",
     );
     assert_eq!(without.status.code(), Some(1), "{}", out(&without));
-    assert!(out(&without).contains("bridges: { check:"), "{}", out(&without));
+    assert!(
+        out(&without).contains("bridges: { check:"),
+        "{}",
+        out(&without)
+    );
 }
 
 /// `lute test <file> --project <fixture>` on a scenario test written into
@@ -207,7 +270,12 @@ fn scenario(tag: &str, body: &str) -> (PathBuf, Output) {
     let dir = fixture();
     let t = write(&dir, &format!("tests/{tag}.test.yaml"), body);
     let o = Command::new(BIN)
-        .args(["test", t.to_str().unwrap(), "--project", dir.to_str().unwrap()])
+        .args([
+            "test",
+            t.to_str().unwrap(),
+            "--project",
+            dir.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     let _ = std::fs::remove_file(&t);
@@ -225,7 +293,10 @@ fn the_unanswered_bridge_hint_is_an_answer_the_loader_accepts() {
     );
     let text = out(&without);
     let hint = "{ passed: <bool>, margin: <number> }";
-    assert!(text.contains(&format!("supply bridges: {{ check: [ {hint} ] }}")), "{text}");
+    assert!(
+        text.contains(&format!("supply bridges: {{ check: [ {hint} ] }}")),
+        "{text}"
+    );
 
     let answer = hint.replace("<bool>", "true").replace("<number>", "2");
     let (_, with) = scenario(
@@ -249,8 +320,12 @@ fn assert_anchored(text: &str, file: &str) {
     for want in [
         format!("{file}:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin`"),
         format!("{file}:5:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 2: `passed: maybe`"),
-        format!("{file}:7:7: error [E-TRACE-MOCK-UNDECLARED] `bridges.check` answer 2 gives `margn`"),
-        format!("{file}:8:3: error [E-TRACE-MOCK-UNDECLARED] `bridges.chek` answers no plugin call"),
+        format!(
+            "{file}:7:7: error [E-TRACE-MOCK-UNDECLARED] `bridges.check` answer 2 gives `margn`"
+        ),
+        format!(
+            "{file}:8:3: error [E-TRACE-MOCK-UNDECLARED] `bridges.chek` answers no plugin call"
+        ),
     ] {
         assert!(text.contains(&want), "missing `{want}` in:\n{text}");
     }
@@ -276,7 +351,12 @@ fn a_bridges_mock_error_is_anchored_at_its_entry_in_the_mock() {
         &format!("file: {}\n{BAD_BRIDGES}", doc.display()),
     );
     let o = Command::new(BIN)
-        .args(["trace", doc.to_str().unwrap(), "--project", fixture().to_str().unwrap()])
+        .args([
+            "trace",
+            doc.to_str().unwrap(),
+            "--project",
+            fixture().to_str().unwrap(),
+        ])
         .args(["--mock", mock.to_str().unwrap()])
         .output()
         .unwrap();
@@ -290,7 +370,10 @@ fn a_bridges_mock_error_is_anchored_at_its_entry_in_the_mock() {
         "mocks/bad.yaml",
         &format!("file: ../scenes/probe/c.lute\n{BAD_BRIDGES}"),
     );
-    let o = Command::new(BIN).args(["check-project", project.to_str().unwrap()]).output().unwrap();
+    let o = Command::new(BIN)
+        .args(["check-project", project.to_str().unwrap()])
+        .output()
+        .unwrap();
     assert_eq!(o.status.code(), Some(1), "{}", out(&o));
     assert_anchored(&out(&o), &mock.display().to_string());
 }
@@ -314,8 +397,15 @@ fn margin_unread(tag: &str) -> PathBuf {
     copy_dir(&fixture(), &dir);
     let c = dir.join("scenes/probe/c.lute");
     let text = std::fs::read_to_string(&c).unwrap();
-    let kept: Vec<&str> = text.lines().filter(|l| !l.contains("guards.margin")).collect();
-    assert_eq!(kept.len() + 1, text.lines().count(), "the fixture reads margin once");
+    let kept: Vec<&str> = text
+        .lines()
+        .filter(|l| !l.contains("guards.margin"))
+        .collect();
+    assert_eq!(
+        kept.len() + 1,
+        text.lines().count(),
+        "the fixture reads margin once"
+    );
     std::fs::write(&c, kept.join("\n") + "\n").unwrap();
     dir
 }
@@ -330,28 +420,58 @@ fn an_unread_bridge_result_field_may_be_left_out() {
     let answers = "bridges:\n  check:\n    - { passed: true }\n    - { passed: false }\n";
 
     // play: answered without `margin`, and the halt hint omits it.
-    let script = write(&dir, "s.play.yaml", &format!("{answers}steps:\n  - occasion: hubVisit\n"));
+    let script = write(
+        &dir,
+        "s.play.yaml",
+        &format!("{answers}steps:\n  - occasion: hubVisit\n"),
+    );
     let run_play = |script: &Path| {
         Command::new(BIN)
-            .args(["play", dir.to_str().unwrap(), "--script", script.to_str().unwrap()])
+            .args([
+                "play",
+                dir.to_str().unwrap(),
+                "--script",
+                script.to_str().unwrap(),
+            ])
             .output()
             .unwrap()
     };
     let o = run_play(&script);
     assert_eq!(o.status.code(), Some(0), "{}", out(&o));
-    assert!(out(&o).contains("(bridge answered: passed=true)"), "{}", out(&o));
-    assert!(out(&o).contains("Passed.") && out(&o).contains("Spotted."), "{}", out(&o));
+    assert!(
+        out(&o).contains("(bridge answered: passed=true)"),
+        "{}",
+        out(&o)
+    );
+    assert!(
+        out(&o).contains("Passed.") && out(&o).contains("Spotted."),
+        "{}",
+        out(&o)
+    );
     let bare = write(&dir, "bare.play.yaml", "steps:\n  - occasion: hubVisit\n");
     let o = run_play(&bare);
     assert_eq!(o.status.code(), Some(3), "{}", out(&o));
-    assert!(out(&o).contains("(bridge unanswered: passed)"), "{}", out(&o));
-    assert!(out(&o).contains("bridges: { check: [ { passed: <bool> } ] }"), "{}", out(&o));
+    assert!(
+        out(&o).contains("(bridge unanswered: passed)"),
+        "{}",
+        out(&o)
+    );
+    assert!(
+        out(&o).contains("bridges: { check: [ { passed: <bool> } ] }"),
+        "{}",
+        out(&o)
+    );
 
     // trace: the same answer is accepted, and the unmocked hint omits it.
     let doc = dir.join("scenes/probe/c.lute");
     let trace = |mock: Option<&Path>| {
         let mut c = Command::new(BIN);
-        c.args(["trace", doc.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+        c.args([
+            "trace",
+            doc.to_str().unwrap(),
+            "--project",
+            dir.to_str().unwrap(),
+        ]);
         if let Some(m) = mock {
             c.args(["--mock", m.to_str().unwrap()]);
         }
@@ -360,16 +480,26 @@ fn an_unread_bridge_result_field_may_be_left_out() {
     let mock = write(&temp_dir("unread-mock"), "m.yaml", answers);
     let o = trace(Some(&mock));
     assert_eq!(o.status.code(), Some(0), "{}", out(&o));
-    assert!(out(&o).contains("Passed.") && out(&o).contains("Spotted."), "{}", out(&o));
+    assert!(
+        out(&o).contains("Passed.") && out(&o).contains("Spotted."),
+        "{}",
+        out(&o)
+    );
     let o = trace(None);
     assert_eq!(o.status.code(), Some(3), "{}", out(&o));
-    assert!(out(&o).contains("bridges: { check: [ { passed: <bool> } ] }"), "{}", out(&o));
+    assert!(
+        out(&o).contains("bridges: { check: [ { passed: <bool> } ] }"),
+        "{}",
+        out(&o)
+    );
 
     // A scenario test and a checked `mocks/*.yaml` take it too.
     write(
         &dir,
         "tests/unread.test.yaml",
-        &format!("file: ../scenes/probe/c.lute\n{answers}expect:\n  transcriptContains: [\"Passed.\"]\n"),
+        &format!(
+            "file: ../scenes/probe/c.lute\n{answers}expect:\n  transcriptContains: [\"Passed.\"]\n"
+        ),
     );
     let o = Command::new(BIN)
         .args(["test", dir.join("tests/unread.test.yaml").to_str().unwrap()])
@@ -377,7 +507,14 @@ fn an_unread_bridge_result_field_may_be_left_out() {
         .output()
         .unwrap();
     assert_eq!(o.status.code(), Some(0), "{}", out(&o));
-    write(&dir, "mocks/unread.yaml", &format!("file: ../scenes/probe/c.lute\n{answers}"));
-    let o = Command::new(BIN).args(["check-project", dir.to_str().unwrap()]).output().unwrap();
+    write(
+        &dir,
+        "mocks/unread.yaml",
+        &format!("file: ../scenes/probe/c.lute\n{answers}"),
+    );
+    let o = Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
     assert!(!out(&o).contains("E-TRACE-MOCK"), "{}", out(&o));
 }

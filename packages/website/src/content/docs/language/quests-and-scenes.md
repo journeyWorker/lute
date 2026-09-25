@@ -145,8 +145,23 @@ by its canonical id, `after="visited('talks.maud')"` (dsl 0.24.0 §2). Before 0.
 An accept-driven quest (no `start`, see [below](#quests-meet-scenes-and-occasions)) usually needs
 no `after=` at all. Without one, it is anchored at every scene, bundle beat, and quest body that
 `::accept`s it: `lute scenario` draws an `accept` edge from each of them (`beat(talks.maud) ->
-quest(salvage) [accept]`), and the quest no longer counts as unanchored. An explicit `after=` keeps
-only the edges it declares.
+quest(salvage) [accept]`), and the quest no longer counts as unanchored.
+
+Two more kinds of anchor need no `after=` either (dsl 0.25.0 §4):
+
+- **Subquests.** Every nested quest hangs off its parent: `quest(relight) -> quest(oil)
+  [subquest]`. A parent with children is no longer listed as unanchored, and neither is a child.
+- **`start` conjuncts.** A quest without `after=` is anchored by the top-level `&&` conjuncts of
+  its `start` that read `visited('…')`, `entry.X.everRead`, or `quest.Y.state == '…'` (any status
+  but `unset`). `start="entry.keeperLog.everRead && visited('arrival')"` draws
+  `entry(keeperLog) -> quest(relight) [start]` and `scene(arrival) -> quest(relight) [start]`; an
+  entry joins the graph as the node `entry(<id>)`. An `||` of such reads is one anchor with several
+  sources. A `start`-driven quest therefore no longer needs a copy of its `start` in `after=`.
+
+`lute scenario <dir> reach quest:<id>` lists a quest's anchors (`anchors` in `--format json`).
+Anchors never prove a quest unreachable, and an anchor that would close a cycle is not drawn. An
+explicit `after=` keeps only the edges it declares, in place of the `start` and `accept` anchors;
+the subquest edge stays.
 
 ### `<objective>`
 
@@ -266,8 +281,16 @@ choice where the player agrees:
 
 Accepting while the quest is already active, complete, or failed does nothing. `lute check-project`
 warns **`W-QUEST-NEVER-ACCEPTED`** (dsl 0.24.0 §2) at an accept-driven quest that no `::accept` in
-the project names and no `accepts:` mock (`mocks/*.yaml`, `*.test.yaml`) reaches: nothing can ever
-activate it. `--deny W-QUEST-NEVER-ACCEPTED` makes it an error.
+the project names: nothing can ever activate it. Since dsl 0.25.0 §5 an `accepts:` mock
+(`mocks/*.yaml`, `*.test.yaml`) no longer counts. A mock proves a test, not the game, so a quest
+only a mock accepts still warns, and the message names the mock file. A quest the engine accepts
+outside any document declares [`accept="external"`](#accepted-outside-the-script-acceptexternal)
+instead. `--deny W-QUEST-NEVER-ACCEPTED` makes the warning an error.
+
+<!-- lute-diagnostics -->
+```
+./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition (dsl 0.24.0 §2, 0.25.0 §5)
+```
 
 **Accepting for the next run.** A run-tier quest accepted between runs, at a hub or a bounty board
 after the run has ended, would activate in the ending run and then be reset by `newRun`.
@@ -306,6 +329,42 @@ observe completion. A test, a trace mock, or a play script can also start from a
 a top-level `quests: {<questId>: complete}` (dsl 0.22.0). That is the way to seed one: a play
 script's `engine:` step refuses a `quest.*` write, because a status change belongs to the lifecycle,
 whose transitions fire handlers and grants.
+
+#### Accepted outside the script: `accept="external"`
+
+Some quests are taken up where no document is: a quest board, a menu, a journal UI. The moment of
+acceptance is the engine's, and no scene can `::accept` it. **`<quest accept="external">`**
+(dsl 0.25.0 §5) says so:
+
+```lute check
+---
+kind: quest
+title: The wreck
+state:
+  run.dived: { type: bool, default: false }
+---
+
+<quest id="salvage" title="Salvage the wreck" accept="external">
+  <objective id="dive" title="Dive the wreck" done="run.dived"/>
+</quest>
+```
+
+The quest is accept-driven: it stays `unset` until the engine accepts it, whenever the player
+chooses, and the IR carries `"accept": "external"` on its `QuestCmd` (omitted by default).
+`accept="external"` is the one non-content source of acceptance that silences
+`W-QUEST-NEVER-ACCEPTED`. A scene may still `::accept` it as well. In `lute play`, `lute trace`
+and `lute test`, the engine's acceptance is written the usual way, with `accepts:` or `--accept`.
+
+`accept` takes only `external`; any other value is `E-ATTR-TYPE`. So is `accept="external"` beside
+`start`, since the quest would have two ways to activate. On a [subquest](#subquests) child that
+activates with its parent, the engine's acceptance would do nothing, so `check-project` reports
+`E-ACCEPT-TARGET`. Declare [`activate="accept"`](#taken-up-in-dialogue-activateaccept) on the
+child as well, and it waits for the engine while its parent is active:
+
+<!-- lute-diagnostics -->
+```
+./quests/board.lute:10:41: error [E-ACCEPT-TARGET] quest `child` declares `accept="external"`, but it activates with its parent `board`, so the engine's acceptance does nothing; declare `activate="accept"` on it too so it waits to be accepted (dsl 0.25.0 §5)
+```
 
 ### Deadlines
 
@@ -553,10 +612,10 @@ state:
 </quest>
 ```
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="verbatim check-project output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
 ```
 scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene (dsl 0.24.0 §2)
-quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for `::accept` (`activate="accept"`), but no `::accept` in the project names it and no `accepts:` mock or test accepts it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, or remove `activate="accept"` so it activates with its parent `crossing` (dsl 0.24.0 §2)
+quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing` (dsl 0.24.0 §2, 0.25.0 §5)
 ```
 
 ### Lifecycle reactions with `<on>`

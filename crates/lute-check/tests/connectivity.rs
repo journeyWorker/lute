@@ -277,14 +277,18 @@ fn quest_document_id_collides_with_a_scene_id() {
     assert_eq!(path, &PathBuf::from("b.lute"));
     assert_eq!(d.code, "E-CONN-EPISODE-ID-DUP");
     assert!(
-        d.message.contains("duplicate document id `haven.mainChain`")
+        d.message
+            .contains("duplicate document id `haven.mainChain`")
             && d.message.contains("a.lute"),
         "{}",
         d.message
     );
     let doc_b = &docs[1].1;
     let id_start = doc_b.meta.span.byte_start + 4 + doc_b.meta.raw_yaml.find("id:").unwrap();
-    assert_eq!(d.span.byte_start, id_start, "anchor at the quest's `id:` key");
+    assert_eq!(
+        d.span.byte_start, id_start,
+        "anchor at the quest's `id:` key"
+    );
 
     // A bundle id is not a scene node: `visited('haven.mainChain')` resolves
     // only against scene keys.
@@ -311,11 +315,13 @@ fn lore_document_ids_collide_and_unauthored_bundles_do_not() {
     // nothing.
     let scene = "---\nkind: scene\nid: log1\n---\n## Shot 1.\n@a: hi\n";
     let unauthored = lore("", "log1");
-    assert!(lute_check::connectivity::check_conn_episode_dup(&docs_for(&[
-        ("a.lute", scene),
-        ("b.lute", &unauthored),
-    ]))
-    .is_empty());
+    assert!(
+        lute_check::connectivity::check_conn_episode_dup(&docs_for(&[
+            ("a.lute", scene),
+            ("b.lute", &unauthored),
+        ]))
+        .is_empty()
+    );
 }
 
 #[test]
@@ -2044,11 +2050,10 @@ fn exhaustive_match_subject_spans_recurses_into_nested_constructs() {
             parsed_quest(&in_objective).1,
         ),
     ] {
-        let spans =
-            lute_check::defassign::exhaustive_match_subject_spans(
-                &nodes,
-                &lute_check::defassign::Scope::of(&folded),
-            );
+        let spans = lute_check::defassign::exhaustive_match_subject_spans(
+            &nodes,
+            &lute_check::defassign::Scope::of(&folded),
+        );
         assert_eq!(
             spans.len(),
             1,
@@ -2456,7 +2461,8 @@ fn an_unreadable_frontmatter_does_not_cascade_unknown_node_into_other_files() {
 /// `E-DOMAIN-UNKNOWN`/`E-UNDECLARED` consequences of the one real error.
 #[test]
 fn meta_parse_failure_stops_semantic_checks() {
-    let text = "---\nkind: scene\nid: probe.bad\nwhen: 'run.day == 4 && run.slot == 'night''\n---\n\
+    let text =
+        "---\nkind: scene\nid: probe.bad\nwhen: 'run.day == 4 && run.slot == 'night''\n---\n\
                 ## Shot 1.\n@ann{emotion=\"nonsense\"}: hi.\n::set{run.n = 1}\n";
     let codes: Vec<String> = check(&input_for(text))
         .diagnostics
@@ -2481,8 +2487,13 @@ fn graph_of(docs: &[(PathBuf, lute_syntax::ast::Document)]) -> lute_check::conne
     g
 }
 
-fn kinds(g: &lute_check::connectivity::ConnGraph, from: &NodeId, to: &NodeId) -> Option<Vec<EdgeKind>> {
-    g.edge_kinds_for(from, to).map(|k| k.iter().copied().collect())
+fn kinds(
+    g: &lute_check::connectivity::ConnGraph,
+    from: &NodeId,
+    to: &NodeId,
+) -> Option<Vec<EdgeKind>> {
+    g.edge_kinds_for(from, to)
+        .map(|k| k.iter().copied().collect())
 }
 
 #[test]
@@ -2490,7 +2501,11 @@ fn a_bundle_beat_is_a_legal_after_predecessor_of_a_quest_and_a_scene() {
     let quest = "---\nkind: quest\n---\n<quest id=\"scheme\" start=\"true\" \
                  after=\"visited('camp.talks.corvinScheme')\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
     let scene = "---\nkind: scene\nid: camp.after\nafter: \"visited('camp.talks.corvinScheme')\"\n---\n## Shot 1.\n@a: hi\n";
-    let docs = docs_for(&[("camp.lute", CAMP_TALKS), ("q.lute", quest), ("s.lute", scene)]);
+    let docs = docs_for(&[
+        ("camp.lute", CAMP_TALKS),
+        ("q.lute", quest),
+        ("s.lute", scene),
+    ]);
     let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
     assert!(
         !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
@@ -2503,7 +2518,8 @@ fn a_bundle_beat_is_a_legal_after_predecessor_of_a_quest_and_a_scene() {
     let s = NodeId::Scene("camp.after".into());
     assert_eq!(kinds(&g, &beat, &q), Some(vec![EdgeKind::Visited]), "{g:?}");
     assert_eq!(kinds(&g, &beat, &s), Some(vec![EdgeKind::Visited]), "{g:?}");
-    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+    let (reach, diags) =
+        check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
     assert!(diags.is_empty(), "{diags:?}");
     assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
     assert_eq!(reach.get(&s), Some(&Reachability::Reachable));
@@ -2526,16 +2542,25 @@ fn an_accept_driven_quest_is_anchored_at_every_accepting_node() {
     let PrereqState::Anchored(anchors) = &info.prereq else {
         panic!("{:?}", info.prereq);
     };
-    assert_eq!(anchors.len(), 1, "one accept anchor, three sources: {anchors:?}");
+    assert_eq!(
+        anchors.len(),
+        1,
+        "one accept anchor, three sources: {anchors:?}"
+    );
     assert_eq!(anchors[0].kind, EdgeKind::Accept);
     for anchor in [
         NodeId::Scene("camp.night".into()),
         NodeId::Beat("camp.talks.corvinScheme".into()),
         NodeId::Quest("main".into()),
     ] {
-        assert_eq!(kinds(&g, &anchor, &q), Some(vec![EdgeKind::Accept]), "{anchor}: {g:?}");
+        assert_eq!(
+            kinds(&g, &anchor, &q),
+            Some(vec![EdgeKind::Accept]),
+            "{anchor}: {g:?}"
+        );
     }
-    let (reach, _) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+    let (reach, _) =
+        check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
     assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
 }
 
@@ -2558,12 +2583,20 @@ fn every_subquest_child_hangs_off_its_parent_and_an_accept_child_also_off_its_ac
     let night = NodeId::Scene("camp.night".into());
     // dsl 0.25.0 §4: the parent is on the graph (an entry point), each
     // child hangs off it; only the accept child is anchored at its accept.
-    assert!(matches!(g.nodes[&main].prereq, PrereqState::Absent), "{g:?}");
+    assert!(
+        matches!(g.nodes[&main].prereq, PrereqState::Absent),
+        "{g:?}"
+    );
     assert_eq!(kinds(&g, &main, &side), Some(vec![EdgeKind::Subquest]));
     assert_eq!(kinds(&g, &main, &auto), Some(vec![EdgeKind::Subquest]));
     assert_eq!(kinds(&g, &night, &side), Some(vec![EdgeKind::Accept]));
-    assert_eq!(kinds(&g, &night, &auto), None, "an auto child is not accept-driven: {g:?}");
-    let (reach, _) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+    assert_eq!(
+        kinds(&g, &night, &auto),
+        None,
+        "an auto child is not accept-driven: {g:?}"
+    );
+    let (reach, _) =
+        check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
     assert_eq!(reach.get(&auto), Some(&Reachability::Reachable));
     assert_eq!(reach.get(&side), Some(&Reachability::Reachable));
 }
@@ -2577,10 +2610,21 @@ fn an_accept_anchor_reads_the_anchor_reachability_but_never_proves_the_quest_dea
     let g = graph_of(&docs);
     let dead = BTreeSet::from(["deadQ".to_string()]);
     let (reach, diags) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &dead);
-    assert_eq!(reach.get(&NodeId::Scene("camp.night".into())), Some(&Reachability::Unreachable));
+    assert_eq!(
+        reach.get(&NodeId::Scene("camp.night".into())),
+        Some(&Reachability::Unreachable)
+    );
     let q = NodeId::Quest("helpVesna".into());
-    assert_eq!(reach.get(&q), Some(&Reachability::Unknown), "the engine may accept it elsewhere");
-    assert_eq!(diags.len(), 1, "only the dead scene is E-CONN-UNREACHABLE: {diags:?}");
+    assert_eq!(
+        reach.get(&q),
+        Some(&Reachability::Unknown),
+        "the engine may accept it elsewhere"
+    );
+    assert_eq!(
+        diags.len(),
+        1,
+        "only the dead scene is E-CONN-UNREACHABLE: {diags:?}"
+    );
 }
 
 #[test]
@@ -2593,8 +2637,15 @@ fn a_quest_with_an_explicit_after_keeps_only_its_declared_edges() {
     let g = graph_of(&docs);
     let q = NodeId::Quest("helpVesna".into());
     assert!(matches!(g.nodes[&q].prereq, PrereqState::Valid(_)));
-    assert_eq!(kinds(&g, &NodeId::Scene("camp.day".into()), &q), Some(vec![EdgeKind::Visited]));
-    assert_eq!(kinds(&g, &NodeId::Scene("camp.night".into()), &q), None, "{g:?}");
+    assert_eq!(
+        kinds(&g, &NodeId::Scene("camp.day".into()), &q),
+        Some(vec![EdgeKind::Visited])
+    );
+    assert_eq!(
+        kinds(&g, &NodeId::Scene("camp.night".into()), &q),
+        None,
+        "{g:?}"
+    );
 }
 
 #[test]
@@ -2602,23 +2653,33 @@ fn an_accept_anchor_that_would_close_a_cycle_is_not_drawn() {
     // The accepting scene itself waits on the quest: the anchor cannot be the
     // quest's way in, and an anchor is no `after` clause for E-CONN-CYCLE.
     let quest = "---\nkind: quest\n---\n<quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
-    let scene = accepting_scene("camp.night", "after: \"active('helpVesna')\"\n", "helpVesna");
+    let scene = accepting_scene(
+        "camp.night",
+        "after: \"active('helpVesna')\"\n",
+        "helpVesna",
+    );
     let docs = docs_for(&[("q.lute", quest), ("s.lute", &scene)]);
     let g = graph_of(&docs);
     let q = NodeId::Quest("helpVesna".into());
     let night = NodeId::Scene("camp.night".into());
     assert_eq!(kinds(&g, &q, &night), Some(vec![EdgeKind::Active]));
     assert_eq!(kinds(&g, &night, &q), None, "{g:?}");
-    assert!(g.topo_order.contains(&q) && g.topo_order.contains(&night), "{g:?}");
+    assert!(
+        g.topo_order.contains(&q) && g.topo_order.contains(&night),
+        "{g:?}"
+    );
 }
 
 #[test]
 fn an_unresolvable_quest_after_suggests_dropping_after_not_when() {
-    let quest = "---\nkind: quest\n---\n<quest id=\"scheme\" after=\"visited('camp.talks.nope')\">\n\
+    let quest =
+        "---\nkind: quest\n---\n<quest id=\"scheme\" after=\"visited('camp.talks.nope')\">\n\
         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
     let docs = docs_for(&[("camp.lute", CAMP_TALKS), ("q.lute", quest)]);
     let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
-    let [(_, d)] = res.as_slice() else { panic!("one miss: {res:?}") };
+    let [(_, d)] = res.as_slice() else {
+        panic!("one miss: {res:?}")
+    };
     assert_eq!(d.code, "E-CONN-UNKNOWN-NODE");
     assert!(d.message.contains("drop `after=`"), "{}", d.message);
     assert!(!d.message.contains("`when`"), "{}", d.message);
@@ -2643,7 +2704,12 @@ fn start_conjuncts_that_read_a_node_anchor_the_quest() {
         "visited('road.departure') && entry.keeperLog.everRead && quest.prologue.state == 'complete' && run.day > 1",
     );
     let prologue = quest_with_start("prologue", "true");
-    let docs = docs_for(&[("s.lute", DEPARTURE), ("l.lute", LOG), ("q.lute", &road), ("p.lute", &prologue)]);
+    let docs = docs_for(&[
+        ("s.lute", DEPARTURE),
+        ("l.lute", LOG),
+        ("q.lute", &road),
+        ("p.lute", &prologue),
+    ]);
     let g = graph_of(&docs);
     let q = NodeId::Quest("emberRoad".into());
     let (scene, entry, pro) = (
@@ -2652,17 +2718,26 @@ fn start_conjuncts_that_read_a_node_anchor_the_quest() {
         NodeId::Quest("prologue".into()),
     );
     for from in [&scene, &entry, &pro] {
-        assert_eq!(kinds(&g, from, &q), Some(vec![EdgeKind::Start]), "{from}: {g:?}");
+        assert_eq!(
+            kinds(&g, from, &q),
+            Some(vec![EdgeKind::Start]),
+            "{from}: {g:?}"
+        );
     }
     let PrereqState::Anchored(anchors) = &g.nodes[&q].prereq else {
         panic!("{:?}", g.nodes[&q].prereq);
     };
-    assert_eq!(anchors.len(), 3, "`run.day > 1` gates but anchors nothing: {anchors:?}");
+    assert_eq!(
+        anchors.len(),
+        3,
+        "`run.day > 1` gates but anchors nothing: {anchors:?}"
+    );
     // The sources join the graph as entry points, the entry at its declaration.
     assert!(matches!(g.nodes[&entry].prereq, PrereqState::Absent));
     assert_eq!(g.nodes[&entry].path, PathBuf::from("l.lute"));
     assert!(matches!(g.nodes[&pro].prereq, PrereqState::Absent));
-    let (reach, _) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+    let (reach, _) =
+        check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
     assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
 }
 
@@ -2670,22 +2745,36 @@ fn start_conjuncts_that_read_a_node_anchor_the_quest() {
 fn only_top_level_conjuncts_and_disjunctions_of_reads_anchor() {
     let ford = "---\nkind: scene\nid: road.ford\n---\n## Shot 1.\n@a: hi\n";
     // An `||` of two reads is one anchor with both sources.
-    let either = quest_with_start("either", "visited('road.departure') || visited('road.ford')");
+    let either = quest_with_start(
+        "either",
+        "visited('road.departure') || visited('road.ford')",
+    );
     // Negated, mixed with a non-read, or naming `unset`: no anchor.
     let none = quest_with_start(
         "none",
         "!visited('road.departure') && (visited('road.ford') || run.d) && quest.either.state == 'unset'",
     );
-    let docs = docs_for(&[("s.lute", DEPARTURE), ("f.lute", ford), ("q.lute", &either), ("n.lute", &none)]);
+    let docs = docs_for(&[
+        ("s.lute", DEPARTURE),
+        ("f.lute", ford),
+        ("q.lute", &either),
+        ("n.lute", &none),
+    ]);
     let g = graph_of(&docs);
     let PrereqState::Anchored(anchors) = &g.nodes[&NodeId::Quest("either".into())].prereq else {
         panic!("{g:?}");
     };
     assert_eq!(
         anchors[0].from,
-        vec![NodeId::Scene("road.departure".into()), NodeId::Scene("road.ford".into())]
+        vec![
+            NodeId::Scene("road.departure".into()),
+            NodeId::Scene("road.ford".into())
+        ]
     );
-    assert!(!g.nodes.contains_key(&NodeId::Quest("none".into())), "{g:?}");
+    assert!(
+        !g.nodes.contains_key(&NodeId::Quest("none".into())),
+        "{g:?}"
+    );
 }
 
 #[test]
@@ -2699,11 +2788,21 @@ fn an_explicit_after_replaces_start_anchors_but_keeps_the_subquest_edge() {
     let docs = docs_for(&[("s.lute", DEPARTURE), ("f.lute", ford), ("q.lute", quest)]);
     let g = graph_of(&docs);
     let road = NodeId::Quest("road".into());
-    assert_eq!(kinds(&g, &NodeId::Scene("road.departure".into()), &road), None, "{g:?}");
-    assert_eq!(kinds(&g, &NodeId::Scene("road.ford".into()), &road), Some(vec![EdgeKind::Visited]));
+    assert_eq!(
+        kinds(&g, &NodeId::Scene("road.departure".into()), &road),
+        None,
+        "{g:?}"
+    );
+    assert_eq!(
+        kinds(&g, &NodeId::Scene("road.ford".into()), &road),
+        Some(vec![EdgeKind::Visited])
+    );
     let child = NodeId::Quest("child".into());
     assert!(matches!(g.nodes[&child].prereq, PrereqState::Valid(_)));
-    assert_eq!(kinds(&g, &NodeId::Quest("main".into()), &child), Some(vec![EdgeKind::Subquest]));
+    assert_eq!(
+        kinds(&g, &NodeId::Quest("main".into()), &child),
+        Some(vec![EdgeKind::Subquest])
+    );
 }
 
 #[test]
@@ -2714,7 +2813,10 @@ fn a_start_anchor_never_proves_the_quest_dead_nor_closes_a_cycle() {
     let looped = "---\nkind: scene\nid: road.departure\nafter: \"active('road')\"\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("s.lute", looped), ("q.lute", &road)]);
     let g = graph_of(&docs);
-    let (q, s) = (NodeId::Quest("road".into()), NodeId::Scene("road.departure".into()));
+    let (q, s) = (
+        NodeId::Quest("road".into()),
+        NodeId::Scene("road.departure".into()),
+    );
     assert_eq!(kinds(&g, &q, &s), Some(vec![EdgeKind::Active]));
     assert_eq!(kinds(&g, &s, &q), None, "{g:?}");
 

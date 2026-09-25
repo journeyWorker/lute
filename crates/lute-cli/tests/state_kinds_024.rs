@@ -36,10 +36,18 @@ fn project(tag: &str, schema: &str, docs: &[(&str, &str)]) -> PathBuf {
 }
 
 fn run(dir: &Path, args: &[&str]) -> (Option<i32>, String) {
-    let o: Output = Command::new(BIN).args(args).current_dir(dir).output().unwrap();
+    let o: Output = Command::new(BIN)
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
     (
         o.status.code(),
-        format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        ),
     )
 }
 
@@ -79,7 +87,10 @@ fn per_member_default_maps_are_checked() {
     );
     let dir = project("per-bad", &bad, &[("s.lute", &scene("@narrator: hi\n"))]);
     let (_, t) = run(&dir, &["check-project", "."]);
-    assert!(t.contains("`zed`, which is not a member of entity kind `npc`"), "{t}");
+    assert!(
+        t.contains("`zed`, which is not a member of entity kind `npc`"),
+        "{t}"
+    );
     assert!(t.contains("gives `quill` the value"), "{t}");
     assert!(t.contains("gives no value for `tavi`"), "{t}");
     assert!(t.contains("`run.flat` has no `per:`"), "{t}");
@@ -100,7 +111,10 @@ fn kind_reads_and_schema_anchor() {
     let body = scene("@narrator{when=\"holds(trusts(sefa))\"}: Trusted.\n@narrator: x\n");
     let dir = project("unread", &schema, &[("s.lute", &body)]);
     let (_, t) = run(&dir, &["check-project", "."]);
-    let unread: Vec<&str> = t.lines().filter(|l| l.contains("W-DOMAIN-UNREAD")).collect();
+    let unread: Vec<&str> = t
+        .lines()
+        .filter(|l| l.contains("W-DOMAIN-UNREAD"))
+        .collect();
     assert_eq!(unread.len(), 1, "{t}");
     assert!(unread[0].starts_with("./world.schema.yaml:8:3:"), "{t}");
     assert!(unread[0].contains("domain `unused`"), "{t}");
@@ -120,7 +134,10 @@ fn component_params_bind_into_fact_atoms() {
     assert_eq!(code, Some(0), "{t}");
     std::fs::write(dir.join("p.play.yaml"), "steps:\n  - occasion: visit\n").unwrap();
     let (_, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
-    assert!(t.contains("assert gifted(sefa, compass)") && t.contains("Gifted."), "{t}");
+    assert!(
+        t.contains("assert gifted(sefa, compass)") && t.contains("Gifted."),
+        "{t}"
+    );
 
     let schema = format!("{KINDS}{GIFTED}defs:\n  pick: \"'shell'\"\n");
     let bad = scene(
@@ -129,7 +146,10 @@ fn component_params_bind_into_fact_atoms() {
     );
     let dir = project("param-bad", &schema, &[("s.lute", &bad)]);
     let (_, t) = run(&dir, &["check-project", "."]);
-    assert!(t.contains("binds `@item` in the fact atom `gifted(@who, @item)`"), "{t}");
+    assert!(
+        t.contains("binds `@item` in the fact atom `gifted(@who, @item)`"),
+        "{t}"
+    );
     assert!(t.contains("argument 0 is `@who`, a component param"), "{t}");
     assert!(!t.contains("E-DATALOG-PARSE"), "{t}");
 }
@@ -155,7 +175,12 @@ fn unresolved_component_imports_suggest_the_project_file() {
             && t.contains("did you mean `../../gift.component.lute`?"),
         "{t}"
     );
-    assert!(t.contains("unknown component `gfit`: not declared in `components:` — did you mean `gift`?"), "{t}");
+    assert!(
+        t.contains(
+            "unknown component `gfit`: not declared in `components:` — did you mean `gift`?"
+        ),
+        "{t}"
+    );
 }
 
 /// A project from `(path, text)` files alone.
@@ -186,7 +211,12 @@ fn a_component_indexes_a_per_family_by_its_param() {
               @narrator: {{run.approval.isolde}}\n";
     let dir = raw_project(
         "per-index",
-        &[("lute.project.yaml", CORE), ("w.schema.yaml", schema), ("react.component.lute", comp), ("s.lute", ok)],
+        &[
+            ("lute.project.yaml", CORE),
+            ("w.schema.yaml", schema),
+            ("react.component.lute", comp),
+            ("s.lute", ok),
+        ],
     );
     let (code, t) = run(&dir, &["check-project", "."]);
     assert_eq!(code, Some(0), "{t}");
@@ -270,6 +300,46 @@ fn a_cast_present_on_an_undeclared_path_is_an_error() {
         ],
     );
     let (_, t) = run(&dir, &["check-project", "."]);
-    assert!(t.contains("E-UNDECLARED") && t.contains("reads `run.withIsolde`"), "{t}");
+    assert!(
+        t.contains("E-UNDECLARED") && t.contains("reads `run.withIsolde`"),
+        "{t}"
+    );
     assert!(!t.contains("W-CAST-ABSENT"), "{t}");
+}
+
+/// ER C1 (0.25 prerelease): an effects component's `::assert{gifted(@who, @item)}`
+/// produces a fact only where a `::use` performs it, with the bound arguments.
+/// `sefa` is present until she is given the compass, which only scene `a`
+/// does (after her line) — so her line is clean while the `gift` component is
+/// unused or used for `quill`, and may be absent once another scene can give
+/// her the compass through it.
+#[test]
+fn a_component_write_produces_only_at_its_use_sites() {
+    let schema = format!(
+        "{KINDS}{GIFTED}cast:\n  sefa: {{ name: Sefa, present: \"!holds(gifted(sefa, compass))\" }}\n"
+    );
+    let a = "---\nkind: scene\nid: a\non: visit\n---\n\n## A\n\n@sefa: Before the gift.\n::assert{gifted(sefa, compass)}\n";
+    let other = |who: &str| {
+        format!(
+            "---\nkind: scene\nid: b\non: visit\n---\n\n## B\n\n::use{{component=\"gift\" who=\"{who}\" item=\"compass\"}}\n"
+        )
+    };
+    let absent = |docs: &[(&str, &str)]| {
+        let dir = project("c1", &schema, docs);
+        let (_, t) = run(&dir, &["check-project", "."]);
+        t.lines()
+            .filter(|l| l.contains("W-CAST-ABSENT") && l.contains("a.lute"))
+            .count()
+    };
+    assert_eq!(absent(&[("a.lute", a)]), 0, "unused component");
+    assert_eq!(
+        absent(&[("a.lute", a), ("b.lute", &other("quill"))]),
+        0,
+        "bound to another member"
+    );
+    assert_eq!(
+        absent(&[("a.lute", a), ("b.lute", &other("sefa"))]),
+        1,
+        "bound to sefa elsewhere"
+    );
 }

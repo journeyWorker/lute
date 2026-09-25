@@ -752,7 +752,10 @@ mod tests {
 
         // The `@narrator:` lines inside both bodies still carry CONTENT tokens.
         assert_eq!(
-            decoded.iter().filter(|&&(_, _, _, ty)| ty == content).count(),
+            decoded
+                .iter()
+                .filter(|&&(_, _, _, ty)| ty == content)
+                .count(),
             4,
             "two narrator lines * (speaker + text) = 4 content tokens: {decoded:?}"
         );
@@ -772,7 +775,10 @@ mod tests {
             .unwrap_or_else(|| panic!("no LOGIC token for <beat: {decoded:?}"));
         assert_eq!(tok.2, "<beat".len() as u32);
         assert_eq!(
-            decoded.iter().filter(|&&(_, _, _, t)| t == ty("content")).count(),
+            decoded
+                .iter()
+                .filter(|&&(_, _, _, t)| t == ty("content"))
+                .count(),
             2,
             "speaker + text: {decoded:?}"
         );

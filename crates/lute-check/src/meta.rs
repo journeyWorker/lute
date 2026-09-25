@@ -1055,7 +1055,11 @@ pub fn parse_meta_kind_with_defaults(
     // frontmatter value-shape code reports it (a label for a non-member is
     // `E-ENUM-LABEL-NOT-MEMBER`, from the shared `validate_domain` rules).
     for message in lute_manifest::entities::label_shape_errors(enums_val) {
-        diags.push(err_at("E-META-VALUE", message, meta_key_span(meta, "enums")));
+        diags.push(err_at(
+            "E-META-VALUE",
+            message,
+            meta_key_span(meta, "enums"),
+        ));
     }
     typed.domains = project_enums.clone();
     typed.rel_kinds = lute_manifest::relations::parse_entity_kinds(
@@ -1072,14 +1076,21 @@ pub fn parse_meta_kind_with_defaults(
     // each checked here at the entry's key.
     if kind == MetaKind::Schema {
         if let Some(v) = map.get(yaml_key("cast")) {
-            match serde_yaml::from_value::<std::collections::BTreeMap<String, lute_manifest::schema::CastBody>>(v.clone()) {
+            match serde_yaml::from_value::<
+                std::collections::BTreeMap<String, lute_manifest::schema::CastBody>,
+            >(v.clone())
+            {
                 Ok(m) => {
                     typed.cast = m
                         .into_iter()
                         .map(|(id, b)| {
                             let mut member = b.into_member(id);
                             let span = meta_key_span(meta, &member.id);
-                            diags.extend(crate::cast::validate_member(&mut member, span, &typed.domains));
+                            diags.extend(crate::cast::validate_member(
+                                &mut member,
+                                span,
+                                &typed.domains,
+                            ));
                             member
                         })
                         .collect();
@@ -1929,7 +1940,9 @@ fn per_members<'a>(
     use lute_manifest::relations::KindShape;
     match kinds.kinds.get(kind).map(|k| &k.shape) {
         Some(KindShape::Members(ms)) => Ok(ms),
-        Some(KindShape::Open) => Err("names an `open:` entity kind, whose members the engine registers at runtime"),
+        Some(KindShape::Open) => {
+            Err("names an `open:` entity kind, whose members the engine registers at runtime")
+        }
         Some(KindShape::Invalid) => Err("names a malformed entity kind"),
         None => Err("names no entity kind declared in this document's `entities:`"),
     }
@@ -2033,7 +2046,11 @@ fn per_member_defaults(
         bad(format!(
             "`default:` gives no value for {} — name every member of `{kind}`, or add a fallback \
              for the rest with `_: <value>`",
-            missing.iter().map(|m| format!("`{m}`")).collect::<Vec<_>>().join(", ")
+            missing
+                .iter()
+                .map(|m| format!("`{m}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     members

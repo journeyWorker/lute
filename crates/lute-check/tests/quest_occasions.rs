@@ -54,7 +54,9 @@ fn diags(text: &str) -> Vec<Diagnostic> {
 }
 
 fn errors(ds: &[Diagnostic]) -> Vec<&Diagnostic> {
-    ds.iter().filter(|d| d.severity == Severity::Error).collect()
+    ds.iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect()
 }
 
 fn with_code<'a>(ds: &'a [Diagnostic], code: &str) -> Vec<&'a Diagnostic> {
@@ -155,7 +157,11 @@ fn visited_is_legal_in_line_and_choice_when() {
 
 #[test]
 fn visited_outside_a_condition_slot_is_out_of_profile() {
-    let src = scene_doc("haven.s01ep07", "", "::set{run.d = visited('haven.s01ep04')}\n");
+    let src = scene_doc(
+        "haven.s01ep07",
+        "",
+        "::set{run.d = visited('haven.s01ep04')}\n",
+    );
     let ds = diags(&src);
     let d = only(&ds, "E-CEL-PROFILE");
     assert!(d.message.contains("condition slot"), "{}", d.message);
@@ -163,12 +169,15 @@ fn visited_outside_a_condition_slot_is_out_of_profile() {
 
 #[test]
 fn malformed_visited_is_out_of_profile_and_the_message_lists_it() {
-    let src = quest_doc(
-        "<quest id=\"q\">\n<objective id=\"o\" done=\"visited(run.d)\"/>\n</quest>\n",
-    );
+    let src =
+        quest_doc("<quest id=\"q\">\n<objective id=\"o\" done=\"visited(run.d)\"/>\n</quest>\n");
     let ds = diags(&src);
     let d = only(&ds, "E-CEL-PROFILE");
-    assert!(d.message.contains("`visited('<scene id>')`"), "{}", d.message);
+    assert!(
+        d.message.contains("`visited('<scene id>')`"),
+        "{}",
+        d.message
+    );
 }
 
 #[test]
@@ -226,7 +235,11 @@ fn project_resolves_visited_ids_in_a_beat_when() {
 
 #[test]
 fn project_accepts_known_visited_ids() {
-    let scene = scene_doc("haven.s01ep04", "", "@vesna{when=\"visited('haven.s01ep04')\"}: Hi.\n");
+    let scene = scene_doc(
+        "haven.s01ep04",
+        "",
+        "@vesna{when=\"visited('haven.s01ep04')\"}: Hi.\n",
+    );
     assert!(unknown_nodes(&[("scene.lute", &scene)]).is_empty());
 }
 
@@ -278,9 +291,8 @@ fn objective_on_non_identifier_is_beat_attr() {
 
 #[test]
 fn objective_on_unquoted_value_is_beat_attr() {
-    let src = quest_doc(
-        "<quest id=\"q\">\n<objective id=\"low\" on=@x done=\"run.d\"/>\n</quest>\n",
-    );
+    let src =
+        quest_doc("<quest id=\"q\">\n<objective id=\"low\" on=@x done=\"run.d\"/>\n</quest>\n");
     let ds = diags(&src);
     assert!(!with_code(&ds, "E-BEAT-ATTR").is_empty(), "{ds:?}");
 }
@@ -352,9 +364,8 @@ fn project_accept_of_an_accept_driven_quest_is_clean() {
         "<branch id=\"offer\">\n<choice id=\"yes\" label=\"Help\">\n::accept{quest=\"helpVesna\"}\n\
          </choice>\n<choice id=\"no\" label=\"Leave\">\n@vesna: Fine.\n</choice>\n</branch>\n",
     );
-    let quest = quest_doc(
-        "<quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
-    );
+    let quest =
+        quest_doc("<quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n");
     let ds = accepts(&[("scene.lute", &scene), ("quest.lute", &quest)]);
     assert!(ds.is_empty(), "{ds:?}");
 }
@@ -367,16 +378,19 @@ fn project_accept_of_a_start_quest_is_accept_target() {
     );
     let ds = accepts(&[("scene.lute", &scene), ("quest.lute", &quest)]);
     let d = only(&ds, "E-ACCEPT-TARGET");
-    assert!(d.message.contains("has a `start` condition"), "{}", d.message);
+    assert!(
+        d.message.contains("has a `start` condition"),
+        "{}",
+        d.message
+    );
     assert_eq!(anchored(&scene, d), "helpVesna");
 }
 
 #[test]
 fn project_accept_of_an_unknown_quest_is_accept_target() {
     let scene = scene_doc("haven.s01ep04", "", "::accept{quest=\"helpVesnaa\"}\n");
-    let quest = quest_doc(
-        "<quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
-    );
+    let quest =
+        quest_doc("<quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n");
     let ds = accepts(&[("scene.lute", &scene), ("quest.lute", &quest)]);
     let d = only(&ds, "E-ACCEPT-TARGET");
     assert!(

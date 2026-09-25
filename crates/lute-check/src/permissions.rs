@@ -29,7 +29,11 @@ pub fn check_permissions(input: &CheckInput) -> Vec<Diagnostic> {
     }
 
     let (mut doc, _) = lute_syntax::parse(&input.text);
-    crate::component_effects::splice_component_effects(&mut doc, &input.components, &input.snapshot);
+    crate::component_effects::splice_component_effects(
+        &mut doc,
+        &input.components,
+        &input.snapshot,
+    );
     let (folded, _, _) = crate::fold_env(&doc, input);
     let mut diagnostics = check_document_permissions(&doc, &folded.typed, input);
     diagnostics.sort_by(|a, b| {

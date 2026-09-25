@@ -23,8 +23,8 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::CastMember;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
-    classify_interp, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive,
-    Document, Interp, InterpKind, Line, Match, Node, Set,
+    classify_interp, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document,
+    Interp, InterpKind, Line, Match, Node, Set,
 };
 
 pub const COMPONENT_BEGIN: &str = "__component-begin";
@@ -104,12 +104,20 @@ fn visit_lines(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
     for node in nodes {
         match node {
             Node::Line(l) => f(l),
-            Node::Branch(b) => b.choices.iter_mut().for_each(|c| visit_lines(&mut c.body, f)),
-            Node::Hub(h) => h.choices.iter_mut().for_each(|c| visit_lines(&mut c.body, f)),
+            Node::Branch(b) => b
+                .choices
+                .iter_mut()
+                .for_each(|c| visit_lines(&mut c.body, f)),
+            Node::Hub(h) => h
+                .choices
+                .iter_mut()
+                .for_each(|c| visit_lines(&mut c.body, f)),
             Node::Match(m) => {
                 for arm in &mut m.arms {
                     match arm {
-                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => visit_lines(body, f),
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            visit_lines(body, f)
+                        }
                     }
                 }
             }
@@ -157,20 +165,44 @@ pub fn normalize_document(
     // shots share one, each quest and each entry gets its own.
     let mut shot_uses = UseOrdinals::new();
     for shot in &mut doc.shots {
-        normalize_nodes(&mut shot.body, components, schema, &mut shot_uses, &mut diags);
+        normalize_nodes(
+            &mut shot.body,
+            components,
+            schema,
+            &mut shot_uses,
+            &mut diags,
+        );
     }
     for quest in &mut doc.quests {
-        normalize_nodes(&mut quest.body, components, schema, &mut UseOrdinals::new(), &mut diags);
+        normalize_nodes(
+            &mut quest.body,
+            components,
+            schema,
+            &mut UseOrdinals::new(),
+            &mut diags,
+        );
     }
     // dsl 0.19.0 §4: entry bodies admit content lines (incl. `when=` guards)
     // and `<match>` — the same desugars a quest body gets.
     for entry in &mut doc.entries {
-        normalize_nodes(&mut entry.body, components, schema, &mut UseOrdinals::new(), &mut diags);
+        normalize_nodes(
+            &mut entry.body,
+            components,
+            schema,
+            &mut UseOrdinals::new(),
+            &mut diags,
+        );
     }
     // dsl 0.23.0 §4: a bundle beat body is a scene body, its own identity
     // scope (like an entry's).
     for beat in &mut doc.beats {
-        normalize_nodes(&mut beat.body, components, schema, &mut UseOrdinals::new(), &mut diags);
+        normalize_nodes(
+            &mut beat.body,
+            components,
+            schema,
+            &mut UseOrdinals::new(),
+            &mut diags,
+        );
     }
     // Subquest synthesis (2026-08-31 design §2.1/§2.2) — MUST run here (not
     // in `stage::walk_quest`) so `lute-trace` inherits the derived
@@ -586,7 +618,13 @@ fn expand_use(
     bind_params(&mut body, &args, &def.params);
     // Nested `::use` in the body expands recursively (acyclic per checker);
     // this expansion is the nested uses' host, so they count from 1 afresh.
-    normalize_nodes(&mut body, components, schema, &mut UseOrdinals::new(), diags);
+    normalize_nodes(
+        &mut body,
+        components,
+        schema,
+        &mut UseOrdinals::new(),
+        diags,
+    );
     // §6.4: static selection / residual dispatch for any param-scoped
     // `<match>` in the bound body — runs ONLY here, on this clone (B2).
     fold_component_matches(&mut body, schema);
@@ -925,7 +963,12 @@ mod tests {
         let mut doc = parse_clean(&scene);
         let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
         assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
-        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
+        let diags = normalize_document(
+            &mut doc,
+            &comps,
+            &Default::default(),
+            &StateSchema::default(),
+        );
         assert!(diags.is_empty(), "{diags:#?}");
 
         let body = &doc.shots[0].body;
@@ -984,7 +1027,12 @@ episode: 1
 "#;
         let mut doc = parse_clean(src);
         let comps = resolve_components(Path::new("."), &[], doc.meta.span);
-        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
+        let diags = normalize_document(
+            &mut doc,
+            &comps,
+            &Default::default(),
+            &StateSchema::default(),
+        );
         assert!(
             diags.iter().any(|d| d.code == "E-COMPILE-COMPONENT"),
             "expected E-COMPILE-COMPONENT for a ::use timeline clip, got {diags:#?}"
@@ -1015,7 +1063,12 @@ components: [greet.component.lute]
         let mut doc = parse_clean(src);
         let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
         assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
-        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
+        let diags = normalize_document(
+            &mut doc,
+            &comps,
+            &Default::default(),
+            &StateSchema::default(),
+        );
         let arg_err = diags
             .iter()
             .find(|d| d.code == "E-COMPILE-COMPONENT" && d.severity == Severity::Error);
@@ -1163,7 +1216,12 @@ components: [greet.component.lute]
         assert_eq!(doc.quests.len(), 1, "fixture must parse one <quest>");
         let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
         assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
-        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
+        let diags = normalize_document(
+            &mut doc,
+            &comps,
+            &Default::default(),
+            &StateSchema::default(),
+        );
         assert!(diags.is_empty(), "{diags:#?}");
 
         let quest = &doc.quests[0];
@@ -1246,7 +1304,12 @@ kind: quest
 </quest>
 "#;
         let mut doc = parse_clean(src);
-        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
+        let diags = normalize_document(
+            &mut doc,
+            &comps,
+            &Default::default(),
+            &StateSchema::default(),
+        );
         assert!(diags.is_empty(), "{diags:#?}");
 
         let quest = &doc.quests[0];
@@ -1283,7 +1346,12 @@ kind: quest
         let mut doc = parse_clean(src);
         let comps = resolve_components(Path::new("."), &[], doc.meta.span);
         assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
-        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
+        let diags = normalize_document(
+            &mut doc,
+            &comps,
+            &Default::default(),
+            &StateSchema::default(),
+        );
         // Subquest synthesis is pure text: it never produces diagnostics of
         // its own (structural / cross-doc violations are the checker's job).
         assert!(diags.is_empty(), "{diags:#?}");

@@ -87,9 +87,17 @@ pub enum BodyLiteral {
     Pos(RuleAtom),
     Neg(RuleAtom),
     /// `cel("…")` — the raw CEL string, unescaped (§7.3). Span covers the whole literal.
-    Guard { cel: String, span: (usize, usize) },
+    Guard {
+        cel: String,
+        span: (usize, usize),
+    },
     /// `Term = Term` (negated: false) / `Term != Term` (negated: true) (§7.1).
-    Cmp { lhs: RuleTerm, rhs: RuleTerm, negated: bool, span: (usize, usize) },
+    Cmp {
+        lhs: RuleTerm,
+        rhs: RuleTerm,
+        negated: bool,
+        span: (usize, usize),
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -102,7 +110,11 @@ pub enum DatalogError {
 
 /// Parses a fact pattern: `rel(a, b)` / `rel(a, _)`. Total — never panics.
 pub fn parse_fact(input: &str) -> Result<FactPattern, DatalogError> {
-    let mut c = Cur { b: input.as_bytes(), i: 0, anon: 0 };
+    let mut c = Cur {
+        b: input.as_bytes(),
+        i: 0,
+        anon: 0,
+    };
     c.ws();
     let pattern_start = c.i;
     let (relation, relation_span) = c.ident().ok_or_else(|| DatalogError::Malformed {
@@ -112,7 +124,10 @@ pub fn parse_fact(input: &str) -> Result<FactPattern, DatalogError> {
     let args = parse_arg_list(&mut c, |c| {
         let start = c.i;
         let term = parse_fact_term(c)?;
-        Ok(FactArg { term, span: (start, c.i) })
+        Ok(FactArg {
+            term,
+            span: (start, c.i),
+        })
     })?;
     let end = c.i;
     c.ws();
@@ -122,16 +137,29 @@ pub fn parse_fact(input: &str) -> Result<FactPattern, DatalogError> {
             msg: "unexpected trailing input after fact pattern".to_string(),
         });
     }
-    Ok(FactPattern { relation, relation_span, args, span: (pattern_start, end) })
+    Ok(FactPattern {
+        relation,
+        relation_span,
+        args,
+        span: (pattern_start, end),
+    })
 }
 
 /// Parses one Horn-clause rule: `Head :- Body`. Total — never panics.
 pub fn parse_rule(input: &str) -> Result<Rule, DatalogError> {
-    let mut c = Cur { b: input.as_bytes(), i: 0, anon: 0 };
+    let mut c = Cur {
+        b: input.as_bytes(),
+        i: 0,
+        anon: 0,
+    };
     c.ws();
     let head_start = c.i;
     let head = parse_rule_atom(&mut c)?;
-    if head.terms.iter().any(|t| matches!(t, RuleTerm::Var(v) if is_anonymous_var(v))) {
+    if head
+        .terms
+        .iter()
+        .any(|t| matches!(t, RuleTerm::Var(v) if is_anonymous_var(v)))
+    {
         return Err(DatalogError::Malformed {
             at: head_start,
             msg: "`_` cannot appear in a rule head: every head argument must be a bound \
@@ -190,7 +218,10 @@ impl<'a> Cur<'a> {
         {
             self.i += 1;
         }
-        Some((String::from_utf8_lossy(&self.b[s..self.i]).into_owned(), (s, self.i)))
+        Some((
+            String::from_utf8_lossy(&self.b[s..self.i]).into_owned(),
+            (s, self.i),
+        ))
     }
     fn eat(&mut self, c: u8) -> bool {
         if self.i < self.b.len() && self.b[self.i] == c {
@@ -259,11 +290,17 @@ fn parse_arg_list<T>(
 fn check_function_or_op(c: &mut Cur, at: usize, name: &str) -> Option<DatalogError> {
     c.ws();
     if c.peek() == Some(b'(') {
-        return Some(DatalogError::FunctionTerm { at, name: name.to_string() });
+        return Some(DatalogError::FunctionTerm {
+            at,
+            name: name.to_string(),
+        });
     }
     if let Some(op) = c.peek() {
         if matches!(op, b'+' | b'-' | b'*' | b'/') {
-            return Some(DatalogError::FunctionTerm { at, name: (op as char).to_string() });
+            return Some(DatalogError::FunctionTerm {
+                at,
+                name: (op as char).to_string(),
+            });
         }
     }
     None
@@ -312,7 +349,9 @@ fn parse_rule_term(c: &mut Cur) -> Result<RuleTerm, DatalogError> {
     if c.peek() == Some(b'_') {
         let at = c.i;
         c.i += 1;
-        if c.peek().is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_') {
+        if c.peek()
+            .is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
             return Err(DatalogError::Malformed {
                 at,
                 msg: "a rule term is an identifier, `true`, `false`, or a lone `_`".to_string(),
@@ -340,7 +379,12 @@ fn parse_rule_atom(c: &mut Cur) -> Result<RuleAtom, DatalogError> {
         msg: "expected relation name".to_string(),
     })?;
     let terms = parse_arg_list(c, parse_rule_term)?;
-    Ok(RuleAtom { relation, relation_span, terms, span: (atom_start, c.i) })
+    Ok(RuleAtom {
+        relation,
+        relation_span,
+        terms,
+        span: (atom_start, c.i),
+    })
 }
 
 /// `"cel(" ...` already consumed through the opening `(`; parses the quoted
@@ -394,7 +438,10 @@ fn parse_cel_guard(c: &mut Cur, lit_start: usize) -> Result<BodyLiteral, Datalog
             msg: "expected `)` to close `cel(...)`".to_string(),
         });
     }
-    Ok(BodyLiteral::Guard { cel: String::from_utf8_lossy(&buf).into_owned(), span: (lit_start, c.i) })
+    Ok(BodyLiteral::Guard {
+        cel: String::from_utf8_lossy(&buf).into_owned(),
+        span: (lit_start, c.i),
+    })
 }
 
 /// `Literal ::= "not" WS Atom | "cel(" CelString ")" | Term ("="|"!=") Term | Atom`.
@@ -404,19 +451,20 @@ fn parse_body_literal(c: &mut Cur) -> Result<BodyLiteral, DatalogError> {
     let at = c.i;
     let (name, _) = c.ident().ok_or_else(|| DatalogError::Malformed {
         at,
-        msg: "expected a body literal (atom, `not` atom, `cel(...)`, or a comparison)"
-            .to_string(),
+        msg: "expected a body literal (atom, `not` atom, `cel(...)`, or a comparison)".to_string(),
     })?;
 
     if name == "not" {
         c.ws();
-        return parse_rule_atom(c).map(BodyLiteral::Neg).map_err(|e| match e {
-            DatalogError::FunctionTerm { .. } => e,
-            DatalogError::Malformed { .. } => DatalogError::Malformed {
-                at: lit_start,
-                msg: "`not` must be followed by an atom".to_string(),
-            },
-        });
+        return parse_rule_atom(c)
+            .map(BodyLiteral::Neg)
+            .map_err(|e| match e {
+                DatalogError::FunctionTerm { .. } => e,
+                DatalogError::Malformed { .. } => DatalogError::Malformed {
+                    at: lit_start,
+                    msg: "`not` must be followed by an atom".to_string(),
+                },
+            });
     }
 
     if name == "cel" {
@@ -466,7 +514,12 @@ fn parse_body_literal(c: &mut Cur) -> Result<BodyLiteral, DatalogError> {
                 .to_string(),
         });
     }
-    Ok(BodyLiteral::Cmp { lhs, rhs, negated, span: (lit_start, c.i) })
+    Ok(BodyLiteral::Cmp {
+        lhs,
+        rhs,
+        negated,
+        span: (lit_start, c.i),
+    })
 }
 
 #[cfg(test)]
@@ -480,7 +533,10 @@ mod tests {
         assert_eq!(f.relation_span, (0, "atLocation".len()));
         assert_eq!(
             f.args.iter().map(|a| a.term.clone()).collect::<Vec<_>>(),
-            vec![FactTerm::Ident("shadowheart".into()), FactTerm::Ident("grove".into())]
+            vec![
+                FactTerm::Ident("shadowheart".into()),
+                FactTerm::Ident("grove".into())
+            ]
         );
     }
 
@@ -501,8 +557,13 @@ mod tests {
 
     #[test]
     fn fact_malformed_shapes() {
-        for bad in ["", "rel", "rel(", "rel()", "rel(a", "rel(a,)", "rel(a) x", "re-l(a)"] {
-            assert!(matches!(parse_fact(bad), Err(DatalogError::Malformed { .. })), "{bad}");
+        for bad in [
+            "", "rel", "rel(", "rel()", "rel(a", "rel(a,)", "rel(a) x", "re-l(a)",
+        ] {
+            assert!(
+                matches!(parse_fact(bad), Err(DatalogError::Malformed { .. })),
+                "{bad}"
+            );
         }
     }
 
@@ -510,7 +571,10 @@ mod tests {
     fn parses_recursive_rule() {
         let r = parse_rule("canReach(C, L2) :- canReach(C, L1), connected(L1, L2)").unwrap();
         assert_eq!(r.head.relation, "canReach");
-        assert_eq!(r.head.terms, vec![RuleTerm::Var("C".into()), RuleTerm::Var("L2".into())]);
+        assert_eq!(
+            r.head.terms,
+            vec![RuleTerm::Var("C".into()), RuleTerm::Var("L2".into())]
+        );
         assert_eq!(r.body.len(), 2);
         assert!(matches!(&r.body[0], BodyLiteral::Pos(a) if a.relation == "canReach"));
     }
@@ -554,22 +618,36 @@ mod tests {
     #[test]
     fn body_wildcards_are_distinct_anonymous_variables() {
         let r = parse_rule("testified(W) :- sawAt(W, _, _), not hid(W, _)").unwrap();
-        let BodyLiteral::Pos(a) = &r.body[0] else { panic!("{r:?}") };
+        let BodyLiteral::Pos(a) = &r.body[0] else {
+            panic!("{r:?}")
+        };
         assert_eq!(
             a.terms,
-            vec![RuleTerm::Var("W".into()), RuleTerm::Var("_0".into()), RuleTerm::Var("_1".into())]
+            vec![
+                RuleTerm::Var("W".into()),
+                RuleTerm::Var("_0".into()),
+                RuleTerm::Var("_1".into())
+            ]
         );
-        let BodyLiteral::Neg(n) = &r.body[1] else { panic!("{r:?}") };
+        let BodyLiteral::Neg(n) = &r.body[1] else {
+            panic!("{r:?}")
+        };
         assert_eq!(n.terms[1], RuleTerm::Var("_2".into()));
         assert!(is_anonymous_var("_2") && !is_anonymous_var("W"));
         for bad in ["d(_) :- b(X)", "d(X) :- b(X), X = _", "d(X) :- b(X, _y)"] {
-            assert!(matches!(parse_rule(bad), Err(DatalogError::Malformed { .. })), "{bad}");
+            assert!(
+                matches!(parse_rule(bad), Err(DatalogError::Malformed { .. })),
+                "{bad}"
+            );
         }
     }
 
     #[test]
     fn equality_binds_shape_parses() {
         let r = parse_rule("d(X, Y) :- b(X), Y = X").unwrap();
-        assert!(matches!(&r.body[1], BodyLiteral::Cmp { negated: false, .. }));
+        assert!(matches!(
+            &r.body[1],
+            BodyLiteral::Cmp { negated: false, .. }
+        ));
     }
 }

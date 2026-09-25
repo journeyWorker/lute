@@ -63,7 +63,11 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
     );
     let out = lute(&["test", dir.to_str().unwrap()]);
     let text = stdout(&out);
-    assert_eq!(out.status.code(), Some(1), "incomplete must not pass: {text}");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "incomplete must not pass: {text}"
+    );
     assert!(text.contains("FAIL"), "{text}");
     assert!(text.contains("exit: incomplete"), "{text}");
     assert!(
@@ -148,8 +152,14 @@ fn a_lore_document_is_a_test_subject_only_with_its_entries_named() {
     let text = stdout(&out);
     assert_eq!(out.status.code(), Some(1), "{text}");
     assert!(text.contains("E-TEST-LORE"), "{text}");
-    assert!(text.contains("`entry: <id>`"), "the way forward is named: {text}");
-    assert!(text.contains("page"), "the declared entries are listed: {text}");
+    assert!(
+        text.contains("`entry: <id>`"),
+        "the way forward is named: {text}"
+    );
+    assert!(
+        text.contains("page"),
+        "the declared entries are listed: {text}"
+    );
 
     write_at(
         &dir,
@@ -193,7 +203,10 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
     assert!(text.contains("2 untested document"), "{text}");
     assert!(text.contains("untested.lute"), "{text}");
     assert!(!text.contains("every testable document"), "{text}");
-    assert!(text.contains("book.lute"), "lore is testable, so untested: {text}");
+    assert!(
+        text.contains("book.lute"),
+        "lore is testable, so untested: {text}"
+    );
 
     // Naming its entry discharges it.
     write_at(
@@ -264,7 +277,11 @@ fn a_false_beat_when_is_named_by_trace_and_by_test() {
 
     let out = lute(&["trace", file.to_str().unwrap(), "--state", "run.day=4"]);
     let text = stdout(&out);
-    assert_eq!(out.status.code(), Some(0), "the walk verdict is unchanged: {text}");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "the walk verdict is unchanged: {text}"
+    );
     assert!(
         text.contains("note: beat `when` (run.day == 3) is false under these mocks"),
         "{text}"
@@ -334,7 +351,13 @@ fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
     assert_eq!(v["forcedUnknown"][0]["id"], "ask -> trust", "{v:#}");
 
     // By default the rule derives `allied(ana, bo)`: nothing is forced.
-    let out = lute(&["trace", file.to_str().unwrap(), "--choose", "ask=trust", "--json"]);
+    let out = lute(&[
+        "trace",
+        file.to_str().unwrap(),
+        "--choose",
+        "ask=trust",
+        "--json",
+    ]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["forcedUnknown"], serde_json::json!([]), "{v:#}");
 }
@@ -351,7 +374,10 @@ fn two_scene_case(dir: &Path) {
     write_at(
         dir,
         "scenes/a.lute",
-        &format!("{}## One\n\n@narrator: found it.\n::assert{{clue(ann)}}\n", front("case.a")),
+        &format!(
+            "{}## One\n\n@narrator: found it.\n::assert{{clue(ann)}}\n",
+            front("case.a")
+        ),
     );
     write_at(
         dir,
@@ -452,7 +478,11 @@ fn scenario_and_test_survive_a_closed_stdout() {
         "a.lute",
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",
     );
-    write_at(&dir, "t.test.yaml", "file: a.lute\nexpect:\n  exit: complete\n");
+    write_at(
+        &dir,
+        "t.test.yaml",
+        "file: a.lute\nexpect:\n  exit: complete\n",
+    );
     for args in [
         vec!["scenario", dir.to_str().unwrap()],
         vec!["test", dir.to_str().unwrap()],

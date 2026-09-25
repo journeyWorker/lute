@@ -379,7 +379,11 @@ impl<'a> FactStore<'a> {
         for (a, b) in pairs {
             for (_, args) in facts.iter().filter(|(rel, _)| rel == a) {
                 if facts.contains(&(b.to_string(), args.clone())) {
-                    out.push(format!("{} and {} both hold", render(a, args), render(b, args)));
+                    out.push(format!(
+                        "{} and {} both hold",
+                        render(a, args),
+                        render(b, args)
+                    ));
                 }
             }
         }
@@ -707,7 +711,10 @@ fn eval_fact_query(
     if let Some(slot) = column.and_then(|i| pats.get_mut(i)) {
         *slot = Pat::Wildcard;
     }
-    match env.facts.lookup_distinct(relation, &pats, column, env.state) {
+    match env
+        .facts
+        .lookup_distinct(relation, &pats, column, env.state)
+    {
         Ok(n) if kind == "holds" => Value::Bool(n > 0),
         Ok(n) => Value::Num(n as f64),
         Err(atoms) => {

@@ -127,7 +127,11 @@ fn same_test_yaml_without_project_resolves_the_nearest_manifest() {
         .expect("run lute");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-    assert_eq!(out.status.code(), Some(0), "stdout: {text}\nstderr: {stderr}");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stdout: {text}\nstderr: {stderr}"
+    );
     assert!(text.contains("1 passed, 0 failed"), "{text}");
     assert!(stderr.contains("nearest lute.project.yaml"), "{stderr}");
 }
@@ -425,7 +429,10 @@ fn expect_accepts_is_the_set_of_quests_the_walk_accepted() {
         &[],
     );
     assert_eq!(code, Some(1), "{text}");
-    assert!(text.contains("accepts: expected [sideJob], got []"), "{text}");
+    assert!(
+        text.contains("accepts: expected [sideJob], got []"),
+        "{text}"
+    );
     assert!(text.contains("0 passed, 1 failed"), "{text}");
 }
 

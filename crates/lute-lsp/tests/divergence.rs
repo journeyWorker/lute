@@ -31,8 +31,8 @@ use lute_manifest::provider::ProviderSet;
 // v0.23 of `tower-lsp-server` re-exports the LSP type crate as `ls_types` (backed
 // by `ls-types` 0.0.6), NOT `lsp_types`. We only ever *read* the converted type,
 // produced by the single conversion path `lute_lsp::convert::to_lsp_diagnostic`.
-use tower_lsp_server::ls_types;
 use std::str::FromStr;
+use tower_lsp_server::ls_types;
 
 /// The comparable projection of one diagnostic: `(code, severity-discriminant,
 /// message, start (line0, utf16col), end (line0, utf16col))`. Both surfaces
@@ -162,7 +162,8 @@ fn normalize_lsp(d: &ls_types::Diagnostic) -> Norm {
 /// normalized projection must be byte-for-byte identical.
 #[test]
 fn headless_and_lsp_diagnostics_match() {
-    let text = std::fs::read_to_string("../../docs/examples/arcia-project/date-minigame.lute").unwrap();
+    let text =
+        std::fs::read_to_string("../../docs/examples/arcia-project/date-minigame.lute").unwrap();
     let res = check(&input_for(&text));
 
     // Sanity: a non-empty vector, so the equality below is meaningful, not vacuous.
@@ -180,7 +181,13 @@ fn headless_and_lsp_diagnostics_match() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &index,
+                &test_uri(),
+            ))
+        })
         .collect();
 
     // Same length, same order (check() already sorts), same content.
@@ -192,16 +199,17 @@ fn headless_and_lsp_diagnostics_match() {
 
 #[test]
 fn permission_diagnostic_uses_the_shared_headless_lsp_surface() {
-    let text = "---\nkind: scene\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n::end\n";
+    let text =
+        "---\nkind: scene\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n::end\n";
     let mut input = input_for(text);
-    input.snapshot.restrict_permissions(
-        &lute_manifest::permissions::Permissions {
+    input
+        .snapshot
+        .restrict_permissions(&lute_manifest::permissions::Permissions {
             layers: vec![lute_manifest::permissions::PermissionSet {
                 directives: Some(std::collections::BTreeSet::from(["camera".to_string()])),
                 ..Default::default()
             }],
-        },
-    );
+        });
     let result = check(&input);
     assert!(
         result
@@ -283,7 +291,13 @@ fn headless_and_lsp_diagnostics_match_warning_bearing() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &index,
+                &test_uri(),
+            ))
+        })
         .collect();
 
     assert_eq!(
@@ -303,7 +317,8 @@ fn headless_and_lsp_diagnostics_match_warning_bearing() {
 fn divergence_holds_under_plugin_project() {
     use lute_manifest::project::{load_project, resolve_document_snapshot};
 
-    let text = std::fs::read_to_string("../../docs/examples/arcia-project/date-minigame.lute").unwrap();
+    let text =
+        std::fs::read_to_string("../../docs/examples/arcia-project/date-minigame.lute").unwrap();
     let proj = load_project(std::path::Path::new("../../docs/examples/arcia-project"))
         .expect("arcia-project loads")
         .expect("arcia-project has a lute.project.yaml");
@@ -366,7 +381,13 @@ fn divergence_holds_under_plugin_project() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &index,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         headless, via_lsp,
@@ -572,7 +593,13 @@ fn divergence_holds_under_uses_import() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &index,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         headless, via_lsp,
@@ -618,7 +645,13 @@ fn divergence_holds_under_uses_import() {
     let bvia_lsp: Vec<Norm> = bres
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &bindex,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         bheadless, bvia_lsp,
@@ -642,9 +675,14 @@ fn divergence_holds_under_inline_enums() {
               @marina{emotion=\"gleeful\"}: declared inline.\n";
     let res = check(&input_for(ok));
     assert!(
-        res.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        res.diagnostics
+            .iter()
+            .all(|d| d.severity != Severity::Error),
         "an inline `enums:` declaration must satisfy the line; got {:?}",
-        res.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+        res.diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
     );
     let index = idx(ok);
     let headless: Vec<Norm> = res
@@ -655,7 +693,13 @@ fn divergence_holds_under_inline_enums() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &index,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         headless, via_lsp,
@@ -676,7 +720,10 @@ fn divergence_holds_under_inline_enums() {
         .unwrap_or_else(|| {
             panic!(
                 "a non-member against an inline declaration must be E-BAD-ENUM; got {:?}",
-                bres.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+                bres.diagnostics
+                    .iter()
+                    .map(|d| d.code.clone())
+                    .collect::<Vec<_>>()
             )
         });
     assert!(
@@ -693,7 +740,13 @@ fn divergence_holds_under_inline_enums() {
     let bvia_lsp: Vec<Norm> = bres
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &bindex,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         bheadless, bvia_lsp,
@@ -762,7 +815,13 @@ fn divergence_holds_under_components() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &index,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         headless, via_lsp,
@@ -808,7 +867,13 @@ fn divergence_holds_under_components() {
     let bvia_lsp: Vec<Norm> = bres
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &bindex,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         bheadless, bvia_lsp,
@@ -836,9 +901,14 @@ fn divergence_holds_for_quest_docs() {
                 </quest>\n";
     let res = check(&input_for(text));
     assert!(
-        res.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        res.diagnostics
+            .iter()
+            .all(|d| d.severity != Severity::Error),
         "a clean quest doc must be error-free; got {:?}",
-        res.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+        res.diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
     );
     let index = idx(text);
     let headless: Vec<Norm> = res
@@ -849,7 +919,13 @@ fn divergence_holds_for_quest_docs() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &index,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         headless, via_lsp,
@@ -861,9 +937,14 @@ fn divergence_holds_for_quest_docs() {
     let bad = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\"/>\n</quest>\n";
     let bres = check(&input_for(bad));
     assert!(
-        bres.diagnostics.iter().any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
+        bres.diagnostics
+            .iter()
+            .any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
         "an objective with no done= must yield E-OBJECTIVE-MISSING-DONE; got {:?}",
-        bres.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+        bres.diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
     );
     let bindex = idx(bad);
     let bheadless: Vec<Norm> = bres
@@ -874,7 +955,13 @@ fn divergence_holds_for_quest_docs() {
     let bvia_lsp: Vec<Norm> = bres
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &bindex,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         bheadless, bvia_lsp,
@@ -891,7 +978,11 @@ fn divergence_holds_for_quest_docs() {
     assert!(
         cel_res.diagnostics.iter().any(|d| d.code == "E-UNDECLARED"),
         "an objective done= reading an undeclared state path must yield E-UNDECLARED; got {:?}",
-        cel_res.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+        cel_res
+            .diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
     );
     let cel_index = idx(cel_bad);
     let cel_headless: Vec<Norm> = cel_res
@@ -902,7 +993,13 @@ fn divergence_holds_for_quest_docs() {
     let cel_via_lsp: Vec<Norm> = cel_res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &cel_index, &test_uri())))
+        .map(|d| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                d,
+                &cel_index,
+                &test_uri(),
+            ))
+        })
         .collect();
     assert_eq!(
         cel_headless, cel_via_lsp,

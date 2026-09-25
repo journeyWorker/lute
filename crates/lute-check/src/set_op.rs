@@ -38,7 +38,9 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::Set;
 
-use crate::cel_paths::{is_entry_path, is_reserved_quest_path, state_path_has_hyphen, E_PATH_IDENT};
+use crate::cel_paths::{
+    is_entry_path, is_reserved_quest_path, state_path_has_hyphen, E_PATH_IDENT,
+};
 use crate::meta::{namespace_of, Namespace, StateSchema};
 use crate::Ctx;
 
@@ -109,7 +111,9 @@ fn engine_owned(path: &str, schema: &StateSchema) -> bool {
     schema
         .decls
         .iter()
-        .filter(|(k, _)| path.starts_with(k.as_str()) && path.as_bytes().get(k.len()) == Some(&b'.'))
+        .filter(|(k, _)| {
+            path.starts_with(k.as_str()) && path.as_bytes().get(k.len()) == Some(&b'.')
+        })
         .max_by_key(|(k, _)| k.len())
         .is_some_and(|(_, d)| owned(d))
 }

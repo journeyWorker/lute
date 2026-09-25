@@ -1191,7 +1191,10 @@ fn cast_export_carries_present_and_emotions_and_rejects_unknown_keys() {
         Some(&["calm".to_string(), "fierce".to_string()][..])
     );
     let maud = p.cast.iter().find(|c| c.id == "maud").expect("maud");
-    assert_eq!((maud.present.as_deref(), maud.emotions.as_deref()), (None, None));
+    assert_eq!(
+        (maud.present.as_deref(), maud.emotions.as_deref()),
+        (None, None)
+    );
     fs::remove_dir_all(&tmp).ok();
 
     let tmp = one_export_pkg(

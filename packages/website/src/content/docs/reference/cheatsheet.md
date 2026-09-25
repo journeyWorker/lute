@@ -47,6 +47,11 @@ A document that writes a key at all replaces the default for that key entirely, 
 (`uses: []` means "no imports"). A default that is illegal on a document's kind is skipped for
 that document.
 
+`components:` in a document resolves against **that document's** directory; `defaults: components:`
+resolves against the **manifest's** directory, as `defaults: uses:` does. So a scene in `scenes/`
+writes `components: [../components/greet.component.lute]`, while the manifest writes
+`defaults: { components: [components/greet.component.lute] }` for the same file.
+
 The default `voiceKey` carries `{prefix}` since 0.22.0, so voice keys are unique across the project.
 A project that recorded audio against the 0.21 keys pins `identity: { voiceKey: "{speaker}-{code}" }`,
 and then gets `E-DUP-VOICEKEY` wherever lines with different text land on one key.
@@ -77,6 +82,8 @@ relations:
   awake:    { args: [crew], tier: run }
   knows:    { args: [crew, topic], tier: run }
   can_halt: { args: [crew], derive: true }
+  asleep:   { args: [crew], tier: run, excludes: [awake] }   # 0.25.0: never both on the same args (symmetric)
+  hurt:     { args: [crew], reserved: true, changedOn: [dusk] }   # 0.25.0: the engine writes it only on `dusk`
 facts:
   - "awake(vesna)"
 rules:
@@ -115,11 +122,14 @@ The seven vocabulary slots are `emotion`, `action`, `anchor`, `mood`, `volume`, 
 and since 0.24.0 so is an `::auto{character}` or `::camera{focus}` outside it. With no cast declared,
 any speaker id is accepted. A scene's frontmatter cannot declare `cast:` (`E-META-UNKNOWN-KEY`).
 `lute context` lists the cast. A cast entry may also carry `present:` (a condition) and `emotions:`
-(0.24.0): a line by that speaker whose guards do not imply `present` is `W-CAST-ABSENT` (`{vo}` lines
-are exempt, `{os}` lines are not), and an `emotion=` outside the speaker's `emotions:` is
-`E-BAD-ENUM`. With `assume: true` on the entry, a negated `holds` of an engine-`reserved:` relation
-in `present:` reads as true: `present: "holds(inParty(isolde)) && !holds(fell(isolde))"` then needs
-only the `inParty` guard.
+(0.24.0): a line by that speaker whose guards do not imply `present` is `W-CAST-ABSENT`, and an
+`emotion=` outside the speaker's `emotions:` is `E-BAD-ENUM`. A `{vo}` line is exempt (the speaker
+may be outside the scene's time); an `{os}` line is checked, since `{os}` means in the scene but off
+screen. With `assume: true` on the entry, a negated `holds` of an engine-`reserved:` relation in
+`present:` reads as true: `present: "holds(inParty(isolde)) && !holds(fell(isolde))"` then needs
+only the `inParty` guard. Since 0.25.0, when that relation declares `changedOn: [battleEnd]`,
+`assume` stops covering it in a unit presented on `battleEnd` and in every unit after one in the
+scenario graph (`after:` / `after=` / `[start]` edges): those lines warn again until guarded.
 
 Also 0.24.0: `subsetOf:` declares a sub-kind whose members must all belong to the parent
 (`E-ENTITY-KIND-SHAPE`); an argument of kind `watch` is also a `crew`. `per: <kind>` declares one
@@ -135,7 +145,7 @@ for a non-member is `E-ENUM-LABEL-NOT-MEMBER`. The `clock:` block is under [Cloc
 
 | Kind | Required | Kind-only keys |
 |---|---|---|
-| `kind: scene` | `id:`, or the legacy `character` + `season` + `episode` | `id`, `character`, `season`, `episode`, `episodeId`, `pov`, `after`, beat keys `on` / `target` / `when` / `priority` / `once` / `also` |
+| `kind: scene` | `id:`, or the legacy `character` + `season` + `episode` | `id`, `character`, `season`, `episode`, `episodeId`, `pov`, `after`, beat keys `on` / `target` / `when` / `priority` / `once` / `also` / `share` (0.25.0) |
 | `kind: quest` | one or more `<quest>` in the body | `id` (optional bundle name) |
 | `kind: lore` | one or more `<entry>` or `<beat>` in the body | `id` (required when it holds a `<beat>`), `series` |
 | component (no `kind:`) | `component: <name>` | `component`, `params`, `effects` (0.24.0) |
@@ -177,6 +187,8 @@ state:
 @mira{code="0010" emotion="happy"}: You're back, {{userName}}! Warmth: {{run.affection}}.
 @fixer: I am.
 @fixer{mono}: She remembered.
+@fixer{mono when="run.affection > 2"}: She remembered my order, too.
+// a `//` line comment: the whole line is ignored
 @mira{os}: Hold on!
 @mira{as="???"}: ...who's there?
 ::sfx{sound="door bell"}
@@ -190,11 +202,11 @@ state:
 |---|---|
 | `@speaker{attrs}: text` | `@narrator` is narration; any other speaker is dialogue (the `pov:` speaker included — `pov` is descriptive only). Text after `: ` is literal to end of line. With a declared `cast:`, the speaker must be in it (`E-CAST-UNKNOWN`); a cast `present:` the line's guards do not imply is `W-CAST-ABSENT`, and `emotion=` outside the speaker's `emotions:` is `E-BAD-ENUM` (0.24.0). |
 | line attrs | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as` (label override), `when` (guard), `id` (a jump label). A quoted value decodes `&quot;` `&apos;` `&amp;` `&lt;` `&gt;` `&#NN;` `&#xHH;` (0.24.0); any other `&` stays literal, and `\"` still works. |
-| delivery flags | `{mono}` thought, `{os}` off-screen, `{vo}` voiceover. At most one per line, and never on `@narrator`. |
-| `{{…}}` | `{{userName}}`, a declared state path, or `{{@def}}` (the artifact carries the def's body, and `lute run` / `lute play` evaluate it). Reading a maybe-unset path is `E-MAYBE-UNSET`. A line whose whole text is `@name` ships that literal text (`W-TEXT-LOOKS-LIKE-REF`); write `{{@name}}`. 0.24.0: `{{run.visits:ordinal}}` renders `1st`, `2nd`, … (the only hint; a number only), and a path typed against an enum with `labels:` renders the label. |
+| delivery flags | `{mono}` thought, `{os}` off-screen, `{vo}` voiceover. At most one per line, and never on `@narrator`. A flag combines with attributes: `{mono when="…"}`. |
+| `{{…}}` | `{{userName}}`, a declared state path, or `{{@def}}` (the artifact carries the def's body, and `lute run` / `lute play` evaluate it). Reading a maybe-unset path is `E-MAYBE-UNSET`. A line whose whole text is `@name` ships that literal text (`W-TEXT-LOOKS-LIKE-REF`); write `{{@name}}`. 0.24.0: `{{run.visits:ordinal}}` renders `1st`, `2nd`, … (a number only), and a path typed against an enum with `labels:` renders the label. 0.25.0: `{{run.day:ordinalWord}}` renders `first` … `twentieth` (the engine localizes it; `lute play` falls back to `21st` digits above twenty). No other hint exists. |
 | shots | All content sits under a `## Heading`. A lone `# Title` does not open a shot. |
 | directives | `::bg` `::music` `::sfx` `::auto` (entrance, pose, exit) `::camera` `::cut` `::vfx` `::video` `::end`, and `::clear` (0.24.0: everyone on stage exits; background and music stay). Timing keys: `duration`, `delay`, `wait="true"` (blocks). With a cast declared, `::auto{character}` and `::camera{focus}` must be in it (`E-CAST-UNKNOWN`). |
-| comments | `/* … */` |
+| comments | `// …` to the end of the line, on a line of its own or after a directive (`::set{run.n += 1} // why`), and `/* … */`. After a `<tag>` it is `E-TAG-INLINE-BODY`, and inside a content line's text `//` is literal. |
 
 → [Dialogue & cast](/language/dialogue-and-cast/) · [Core directives](/language/directives/)
 
@@ -418,6 +430,43 @@ rules:
   false`). A relation named like a CEL call (`has`, `holds`, `count`, `isSet`, `now`, …) is
   `E-RELATION-RESERVED-NAME`.
 
+Exclusive relations (0.25.0): `excludes:` names the relations one can never hold together with on the
+same arguments.
+
+```lute check
+---
+kind: scene
+id: tower.gallery
+entities:
+  person: { members: [elias, maren] }
+relations:
+  seen:      { args: [person], tier: run }
+  seenAfter: { args: [person], derive: true, excludes: [fell] }   # symmetric: fell excludes seenAfter
+  fell:      { args: [person], tier: run }
+rules:
+  - "seenAfter(P) :- seen(P)"
+---
+
+## Gallery
+
+::assert{seen(elias)}
+@maren{when="holds(seenAfter(elias))"}: He was on the stairs after the storm.
+```
+
+- Partners must be declared relations with the same argument kinds, and not the relation itself
+  (`E-RELATION-DECL`). The IR's `RelationEntry.excludes` carries the symmetric closure.
+- `check-project`: `holds(seenAfter(x)) && holds(fell(x))` is dead (`E-ARM-DEAD` /
+  `E-BEAT-UNREACHABLE`), `!holds(fell(x))` under `holds(seenAfter(x))` is `W-FACT-GUARANTEED`,
+  `::assert{fell(elias)}` here would be `E-FACT-EXCLUSIVE` (the other holds on every route), and a
+  rule like `fell(P) :- seenAfter(P)` that can only break the pair is `E-RULE-EXCLUSIVE`.
+- Where both are only possible, `lute play` halts at the write with `✗ exclusive: fell(elias) and
+  seenAfter(elias) both hold` (exit 1), and `lute trace` / `lute test` refuse there
+  (`E-FACT-EXCLUSIVE`).
+- A `reserved:` relation may declare `changedOn: [<occasion>…]`, the occasions on which the engine
+  changes it; it narrows cast `assume: true` (see [the schema above](#project-layout)).
+  `changedOn` on a relation that is not `reserved`, or naming an undeclared occasion, is
+  `E-RELATION-DECL`.
+
 → [State model](/state/state-model/) · [Facts & Datalog](/state/facts-and-datalog/)
 
 ## CEL cheat
@@ -525,16 +574,27 @@ state:
 <beat id="miraHum" on="talk" target="npc.mira" once="false" also>
   @narrator: Mira hums while she works.
 </beat>
+
+<beat id="thanksCounter" on="talk" target="npc.mira" after="visited('cafe.talks.miraOrder')" once="user" share="miraThanks">
+  @mira: Thanks for the tips, by the way.
+</beat>
+
+<beat id="thanksDoor" on="leave" once="user" share="miraThanks">
+  @mira: Thanks for the tips! See you.
+</beat>
 ```
 
-A bundle beat takes `id`, `on`, `target`, `title`, `when`, `priority`, `once`, and `also`, and its
-body is a scene body (lines, branches, hubs, match, directives). The document needs `id:`, the beat
-`id` is an identifier without `-`, and the beat's canonical id is `<document id>.<beat id>`
-(`cafe.talks.miraOrder`): the id that `lute play`, `presented:`, `visited('cafe.talks.miraOrder')`,
-and `lute trace --beat` use. It behaves like a scene beat: `once` defaults to `run`, presentation
-spends it, and it has no `after:` of its own, though since 0.24.0 a scene or quest may name it as a
-predecessor (`after: visited('cafe.talks.miraOrder')`). `title` labels it in a `select: all` menu. A
-canonical id equal to a scene id is `E-CONN-EPISODE-ID-DUP`.
+A bundle beat takes `id`, `on`, `target`, `title`, `when`, `priority`, `once`, `also`, and since
+0.25.0 `after` and `share`, and its body is a scene body (lines, branches, hubs, match, directives).
+The document needs `id:`, the beat `id` is an identifier without `-`, and the beat's canonical id is
+`<document id>.<beat id>` (`cafe.talks.miraOrder`): the id that `lute play`, `presented:`,
+`visited('cafe.talks.miraOrder')`, and `lute trace --beat` use. It behaves like a scene beat: `once`
+defaults to `run`, and presentation spends it. Since 0.24.0 a scene or quest may name it as a
+predecessor (`after: visited('cafe.talks.miraOrder')`), and since 0.25.0 its own `after="…"` is a
+scene `after:`: an eligibility conjunct and a scenario edge. A `visited()` in a beat's `when` gates
+but draws no edge, so `lute scenario` lists that beat as unanchored with the `after=` to write.
+`title` labels it in a `select: all` menu. A canonical id equal to a scene id is
+`E-CONN-EPISODE-ID-DUP`.
 
 | Key | Meaning |
 |---|---|
@@ -544,6 +604,7 @@ canonical id equal to a scene id is `E-CONN-EPISODE-ID-DUP`.
 | `priority` | Integer, default `0`. Higher wins. |
 | `once` | Scenes: `run` (the default), `user` (once ever), or `false` (repeatable). Entries: `once="run"` (until a new run resets `entry.<id>.read`) or `once="user"` (spent once `entry.<id>.everRead` is set); without it an entry repeats. With a declared clock (0.24.0), `once: day` / `once: slot` (entries `once="day"` / `"slot"`) spends it until the day or slot changes; without a clock that is `E-BEAT-ATTR`. |
 | `also` | 0.23.0, scenes (`also: true`) and bundle beats (`also`) on a `select: first` occasion: presented after the winner, or alone when no main beat is eligible, and never replaces it. On an entry, or on a `select: all` / `sequence` occasion, it is `E-BEAT-ATTR`. `W-BEAT-SHADOWED` and `W-BEAT-PRIORITY-TIE` ignore `also` beats. |
+| `share` | 0.25.0, scenes (`share:`), entries and bundle beats (`share=`): a project-wide key for one event told in several places. Presenting (an entry: reading) any beat of the key spends every beat of it for the `once` period (`lute play`: `` once: user — `share: miraThanks` already spent … by cafe.talks.thanksCounter ``). It needs a written `once` other than `false`, and every beat of a key declares the same `once`; otherwise `E-BEAT-ATTR`. `lute beats` shows `user, share miraThanks`. |
 
 Selection: the candidates are the beats whose `on` matches and whose `target` is absent or equal to
 the raised target. A candidate is eligible when its `after:` and `when` hold and its `once` is
@@ -713,9 +774,10 @@ state:
 
 | Piece | Rule |
 |---|---|
-| `start=` | Activates the quest (`unset` → `active`) when it holds. With no `start` the quest is accept-driven: it stays `unset` until a scene runs `::accept{quest="…"}`, or a mock accepts it. A play script seeds a save's status with `quests:`. One that no `::accept` and no `accepts:` mock reaches is `W-QUEST-NEVER-ACCEPTED` (0.24.0, `check-project`). |
+| `start=` | Activates the quest (`unset` → `active`) when it holds. With no `start` the quest is accept-driven: it stays `unset` until a scene runs `::accept{quest="…"}`, or a mock accepts it. A play script seeds a save's status with `quests:`. One that no `::accept` names is `W-QUEST-NEVER-ACCEPTED` (0.24.0, `check-project`); since 0.25.0 an `accepts:` mock no longer counts. |
+| `accept="external"` | 0.25.0. The engine accepts the quest outside any document (a quest board, a menu): it silences `W-QUEST-NEVER-ACCEPTED`. Beside `start` it is `E-ATTR-TYPE`; on a child that activates with its parent it is `E-ACCEPT-TARGET` (add `activate="accept"`). IR: `QuestCmd.accept`. |
 | `fail=` | `active` → `failed`. It wins over completion when both hold. |
-| `after=` | The structural prerequisite for the scene graph: `visited` / `completed` / `active` with `&&` / `\|\|`. It does not gate activation; `start` does. Scenes write it as `after:` in frontmatter. |
+| `after=` | The structural prerequisite for the scene graph: `visited` / `completed` / `active` with `&&` / `\|\|`. It does not gate activation; `start` does. Scenes write it as `after:` in frontmatter. Without it a quest is anchored by its `::accept`s, its parent (`[subquest]`, 0.25.0) and its `start` conjuncts reading `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` (`[start]`, 0.25.0). |
 | `tier="run"` | A new run returns the quest to `unset` and undoes its objectives. The default `tier="user"` keeps its status across runs. A subquest's tier must equal its parent's (`E-QUEST-TIER-MIX`). |
 | `<objective done>` | `done` is required (`E-OBJECTIVE-MISSING-DONE`). The quest completes when every non-`optional` objective is done. Completion is monotonic, and the body plays once. |
 | `on="runEnd"` | `done` is judged only when that occasion is raised while the quest is active. Raising it first runs the handlers of a same-named declared world event (`<on event="runEnd">`), then judges the objectives. |
@@ -1181,7 +1243,9 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-STAGE-ABSENT` | A line stages a character who has exited, or was auto-hidden by a `::bg` scene change, on some path to it. Each choice and `<match>` arm is followed separately, so an exit in one arm does not warn in its sibling; after the arms rejoin, a character is on stage only if every arm left them there. |
 | `E-BEAT-UNREACHABLE` / `E-ARM-DEAD` | The condition can never hold. `check-project` also decides fact queries. Since 0.23.0 contradictions inside one `&&` (`run.n > 5 && run.n < 3`) count too. Under `check-project --wip`, a guard dead only for a relation nothing produces yet is a warning. |
 | `E-ACCEPT-TARGET` | `::accept` names a quest that does not exist or that has a `start`, or (0.24.0) a child that activates with its parent (declare `activate="accept"` on it), or has an `at` other than `"nextRun"`. |
-| `W-QUEST-NEVER-ACCEPTED` | 0.24.0, `check-project`. An accept-driven quest (no `start`, or an `activate="accept"` child) that no `::accept` names and no `accepts:` mock or test reaches: it never activates. |
+| `W-QUEST-NEVER-ACCEPTED` | 0.24.0, `check-project`. An accept-driven quest (no `start`, or an `activate="accept"` child) that no `::accept` names: it never activates. Since 0.25.0 a mock's `accepts:` no longer counts (the message names the mock); declare `accept="external"` for a quest the engine accepts. |
+| `E-FACT-EXCLUSIVE` / `E-RULE-EXCLUSIVE` | 0.25.0. An `::assert` makes two `excludes:` relations hold together on every route (or, in `lute trace` / `lute test`, on the walked one), or a rule can only derive one where the other holds. |
+| `W-LUTE-VERSION-STALE` | A document's `luteVersion` stamp differs from the toolchain's. 0.25.0: when it is inherited from the manifest's `defaults: luteVersion`, `check-project` reports it once, at that line of `lute.project.yaml`, instead of once per document (`… — every document inherits it (N documents)`). |
 | `W-DEADLINE-BEFORE-DONE` | 0.24.0. An `on=` objective's `by=` holds whenever its `done` does, so `by` (judged at every settle) fails it before the occasion ever judges `done`. Write the condition as `until=`. |
 | `E-STATE-DECL` | A state declaration is malformed; since 0.24.0 also a `per:` over an open or unknown kind, or a map `default:` naming a non-member, leaving a member with no value and no `_` (`` `default:` gives no value for `guild` ``), or on a path without `per:`. |
 | `W-DOMAIN-UNREAD` | A declared enum or kind that nothing reads. Since 0.24.0 a `per:` index, a `subsetOf:` parent, and a kind atom in a rule body or `holds(…)` count as reads, and the warning sits at the declaration's own line. |
@@ -1209,7 +1273,7 @@ expect:                                 # judged at the end; a miss exits 1
 ## Gotchas
 
 **A quest with no `start` never activates by itself.** It is accept-driven: it stays `unset` until
-a scene runs `::accept{quest="id"}`, or a mock or test lists it in `accepts:` (a play script can
+a scene runs `::accept{quest="id"}`, the engine accepts an `accept="external"` quest, or a mock or test lists it in `accepts:` (a play script can
 seed its status with `quests:`). `::accept` on a quest that has a `start` is `E-ACCEPT-TARGET`. The
 exception is a child named by `quest=`, which activates with its parent unless it declares
 `activate="accept"`; accepting a child that activates with its parent is `E-ACCEPT-TARGET` too.

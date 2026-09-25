@@ -286,7 +286,13 @@ fn fold_document(
             record(fact, Source::Beat(&id));
         }
         let value = |v: &Option<(String, lute_core_span::Span)>| v.as_ref().map(|(s, _)| s.clone());
-        let mut row = beat_row(id, document, value(&beat.on), value(&beat.target), value(&beat.title));
+        let mut row = beat_row(
+            id,
+            document,
+            value(&beat.on),
+            value(&beat.target),
+            value(&beat.title),
+        );
         row.when = authored(&beat.when);
         rows.push((beat.span.byte_start, row));
     }
@@ -318,7 +324,12 @@ fn beat_row(
 
 /// A guard as authored, whitespace-collapsed; `None` when absent or empty.
 fn authored(slot: &Option<lute_syntax::ast::CelSlot>) -> Option<String> {
-    let raw = slot.as_ref()?.raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    let raw = slot
+        .as_ref()?
+        .raw
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     (!raw.is_empty()).then_some(raw)
 }
 
@@ -332,7 +343,10 @@ fn build_report(
     let mut by_series: BTreeMap<String, Vec<EntryRow>> = BTreeMap::new();
     for row in entries {
         if let Some(series) = &row.series {
-            by_series.entry(series.clone()).or_default().push(row.clone());
+            by_series
+                .entry(series.clone())
+                .or_default()
+                .push(row.clone());
         }
         match &row.target {
             Some(t) => by_target.entry(t.clone()).or_default().push(row),
@@ -482,7 +496,9 @@ fn render_text(r: &Report) -> String {
     for g in &r.derived {
         out.push_str(&format!("  {}\n", g.relation));
         if g.facts.is_empty() {
-            out.push_str("    (nothing — no rule instance follows from what the project asserts)\n");
+            out.push_str(
+                "    (nothing — no rule instance follows from what the project asserts)\n",
+            );
         }
         for f in &g.facts {
             out.push_str(&format!("    {}\n", f.fact));

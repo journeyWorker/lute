@@ -145,13 +145,29 @@ fn line_ids_and_voice_keys_follow_the_speaker_code_model() {
         vec![
             // Authored code kept; the voiceKey carries the document prefix
             // (dsl 0.22.0 §11), so no other scene's `fixer-0010` shares it.
-            ("fixer", "marina.s01ep02.fixer_0010", Some("marina.s01ep02.fixer-0010")),
+            (
+                "fixer",
+                "marina.s01ep02.fixer_0010",
+                Some("marina.s01ep02.fixer-0010")
+            ),
             // Narrator: lineId for i18n, NO voiceKey (unvoiced role).
             ("narrator", "marina.s01ep02.narrator_0010", None),
-            ("fixer", "marina.s01ep02.fixer_0050", Some("marina.s01ep02.fixer-0050")),
+            (
+                "fixer",
+                "marina.s01ep02.fixer_0050",
+                Some("marina.s01ep02.fixer-0050")
+            ),
             // Back-filled: fixer's max authored code is 0050 => next is 0060.
-            ("fixer", "marina.s01ep02.fixer_0060", Some("marina.s01ep02.fixer-0060")),
-            ("marina", "marina.s01ep02.marina_0010", Some("marina.s01ep02.marina-0010")),
+            (
+                "fixer",
+                "marina.s01ep02.fixer_0060",
+                Some("marina.s01ep02.fixer-0060")
+            ),
+            (
+                "marina",
+                "marina.s01ep02.marina_0010",
+                Some("marina.s01ep02.marina-0010")
+            ),
         ]
     );
     // Option labels get structural lineIds: {character}.s{s}ep{e}.{branchId}.{choiceId}.

@@ -2258,7 +2258,10 @@ fn a_mis_keyed_mock_surface_is_reported_by_check_project() {
 fn entry_dup_sites(v: &serde_json::Value) -> Vec<(String, u64)> {
     let mut out = Vec::new();
     for f in v["files"].as_array().unwrap() {
-        let path = f["path"].as_str().or(f["file"].as_str()).unwrap_or_default();
+        let path = f["path"]
+            .as_str()
+            .or(f["file"].as_str())
+            .unwrap_or_default();
         for d in f["diagnostics"].as_array().unwrap() {
             if d["code"] == "E-ENTRY-ID-DUP" {
                 out.push((path.to_string(), d["span"]["byte_start"].as_u64().unwrap()));
@@ -2303,7 +2306,12 @@ fn check_project_reports_each_duplicate_entry_id_exactly_once() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let sites = entry_dup_sites(&v);
     let second_in_a = a.rfind("<entry").unwrap() as u64;
@@ -2313,7 +2321,10 @@ fn check_project_reports_each_duplicate_entry_id_exactly_once() {
         .collect();
     found.sort();
     assert_eq!(sites.len(), 2, "one report per non-first occurrence: {v}");
-    assert!(found[1].0 && found[1].1 >= second_in_a, "a.lute's second `x`: {v}");
+    assert!(
+        found[1].0 && found[1].1 >= second_in_a,
+        "a.lute's second `x`: {v}"
+    );
     assert!(!found[0].0, "b.lute's `x`: {v}");
 }
 
@@ -2336,7 +2347,12 @@ fn check_project_warns_on_an_unknown_entry_read() {
          @a{when=\"entry.nope.read\"}: unknown.\n",
     );
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let warns: Vec<&serde_json::Value> = v["project_diagnostics"]
         .as_array()
@@ -2346,8 +2362,17 @@ fn check_project_warns_on_an_unknown_entry_read() {
         .collect();
     assert_eq!(warns.len(), 1, "{v}");
     assert_eq!(warns[0]["severity"], "warning");
-    assert!(warns[0]["path"].as_str().unwrap().ends_with("scene.lute"), "{v}");
-    assert!(warns[0]["message"].as_str().unwrap().contains("entry.nope.read"), "{v}");
+    assert!(
+        warns[0]["path"].as_str().unwrap().ends_with("scene.lute"),
+        "{v}"
+    );
+    assert!(
+        warns[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("entry.nope.read"),
+        "{v}"
+    );
 }
 
 // --- dsl 0.20.0 fact envelopes ------------------------------------------------
@@ -2382,15 +2407,28 @@ fn check_project_flags_a_line_guard_over_a_never_asserted_fact() {
     );
 
     let single = run(&["check", bridge.to_str().unwrap(), "--json"]);
-    assert_eq!(single.status.code(), Some(0), "{}", String::from_utf8_lossy(&single.stdout));
+    assert_eq!(
+        single.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&single.stdout)
+    );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let diags = v["project_diagnostics"].as_array().unwrap();
     assert_eq!(diags.len(), 1, "only the never-asserted guard: {v}");
     assert_eq!(diags[0]["code"], "E-ARM-DEAD", "{v}");
-    assert!(diags[0]["path"].as_str().unwrap().ends_with("bridge.lute"), "{v}");
+    assert!(
+        diags[0]["path"].as_str().unwrap().ends_with("bridge.lute"),
+        "{v}"
+    );
     assert!(
         diags[0]["message"]
             .as_str()
@@ -2438,7 +2476,10 @@ fn argument_level_dead_objective_marks_completed_gate_unreachable() {
         .map(|d| d["code"].as_str().unwrap())
         .collect();
     assert_eq!(
-        codes.iter().filter(|c| **c == "E-OBJECTIVE-UNSATISFIABLE").count(),
+        codes
+            .iter()
+            .filter(|c| **c == "E-OBJECTIVE-UNSATISFIABLE")
+            .count(),
         1,
         "{v}"
     );
@@ -2451,10 +2492,30 @@ fn argument_level_dead_objective_marks_completed_gate_unreachable() {
 #[test]
 fn deny_of_the_removed_unproven_relational_code_is_a_usage_error() {
     let dir = temp_dir("deny-removed-unproven");
-    let out = run(&["check-project", dir.to_str().unwrap(), "--deny", "W-UNPROVEN-RELATIONAL"]);
-    assert_eq!(out.status.code(), Some(2), "{}", String::from_utf8_lossy(&out.stderr));
-    let ok = run(&["check-project", dir.to_str().unwrap(), "--deny", "W-FACT-GUARANTEED"]);
-    assert_eq!(ok.status.code(), Some(0), "{}", String::from_utf8_lossy(&ok.stderr));
+    let out = run(&[
+        "check-project",
+        dir.to_str().unwrap(),
+        "--deny",
+        "W-UNPROVEN-RELATIONAL",
+    ]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let ok = run(&[
+        "check-project",
+        dir.to_str().unwrap(),
+        "--deny",
+        "W-FACT-GUARANTEED",
+    ]);
+    assert_eq!(
+        ok.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
 }
 
 // --- dsl 0.23.0 §10: `check-project --wip` ----------------------------------
@@ -2500,6 +2561,12 @@ fn wip_keeps_a_produced_relation_that_never_matches_an_error() {
     let wip = run(&["check-project", "--wip", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&wip.stdout);
     assert_eq!(wip.status.code(), Some(1), "{text}");
-    assert!(text.contains("warning [E-ENTRY-UNREACHABLE] entry `found`"), "{text}");
-    assert!(text.contains("error [E-ENTRY-UNREACHABLE] entry `heading`"), "{text}");
+    assert!(
+        text.contains("warning [E-ENTRY-UNREACHABLE] entry `found`"),
+        "{text}"
+    );
+    assert!(
+        text.contains("error [E-ENTRY-UNREACHABLE] entry `heading`"),
+        "{text}"
+    );
 }

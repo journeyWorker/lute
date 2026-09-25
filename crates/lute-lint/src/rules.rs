@@ -672,7 +672,12 @@ fn eval_emotion_distribution(
     let mut out = Vec::new();
     // Streaks and runs are sequence metrics: each linear unit (a bundle beat
     // alone, never a whole bundle; no lore entry) is measured on its own.
-    for sp in ctx.tables.unit_speakers.iter().flat_map(|unit| unit.values()) {
+    for sp in ctx
+        .tables
+        .unit_speakers
+        .iter()
+        .flat_map(|unit| unit.values())
+    {
         if sp.lines < min_lines {
             continue;
         }

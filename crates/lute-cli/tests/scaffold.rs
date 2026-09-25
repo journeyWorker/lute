@@ -43,7 +43,11 @@ fn assert_checks_tests_and_plays_clean(proj: &Path) {
     let p = proj.to_str().unwrap();
     let check = lute(&["check-project", p]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
-    assert!(!text(&check).contains("warning ["), "no advisory at all: {}", text(&check));
+    assert!(
+        !text(&check).contains("warning ["),
+        "no advisory at all: {}",
+        text(&check)
+    );
     let test = lute(&["test", p, "--project", p]);
     assert_eq!(test.status.code(), Some(0), "{}", text(&test));
     let plays: Vec<PathBuf> = std::fs::read_dir(proj.join("plays"))
@@ -54,7 +58,11 @@ fn assert_checks_tests_and_plays_clean(proj: &Path) {
     for script in plays {
         let play = lute(&["play", p, "--script", script.to_str().unwrap()]);
         assert_eq!(play.status.code(), Some(0), "{}", text(&play));
-        assert!(text(&play).contains("every expectation held"), "{}", text(&play));
+        assert!(
+            text(&play).contains("every expectation held"),
+            "{}",
+            text(&play)
+        );
     }
 }
 
@@ -84,16 +92,31 @@ fn investigation_template_is_current_and_checks_tests_and_plays_clean() {
     let read = |rel: &str| std::fs::read_to_string(proj.join(rel)).unwrap();
     assert!(read("lute.project.yaml").contains("defaults:"));
     let occasions = read("plugins/case.occasions/occasions/case.yaml");
-    for occ in ["examine:", "interview:", "target: { prefix: item", "target: { prefix: npc"] {
+    for occ in [
+        "examine:",
+        "interview:",
+        "target: { prefix: item",
+        "target: { prefix: npc",
+    ] {
         assert!(occasions.contains(occ), "{occ}: {occasions}");
     }
-    assert!(read("world.schema.yaml").contains(", not "), "a negated rule body");
+    assert!(
+        read("world.schema.yaml").contains(", not "),
+        "a negated rule body"
+    );
     assert!(read("lore/evidence.lute").contains("::assert{"));
     assert!(read("scenes/accusation.lute").contains("when=\"holds(culprit("));
-    for rel in ["scenes/case/arrival.lute", "scenes/accusation.lute", "quests/case.lute"] {
+    for rel in [
+        "scenes/case/arrival.lute",
+        "scenes/accusation.lute",
+        "quests/case.lute",
+    ] {
         let doc = read(rel);
         for legacy in ["character:", "season:", "episode:", "start=\"true\""] {
-            assert!(!doc.contains(legacy), "{rel} carries legacy `{legacy}`: {doc}");
+            assert!(
+                !doc.contains(legacy),
+                "{rel} carries legacy `{legacy}`: {doc}"
+            );
         }
     }
     assert!(!proj.join("mocks").exists(), "no dsl-0.4 trace mock");
@@ -125,8 +148,14 @@ fn new_scene_on_writes_a_beat_that_respects_defaults() {
     let beat = scene(&proj, "talk/tomas-first.lute");
     assert!(beat.contains("\nid: talk.tomasFirst\n"), "{beat}");
     assert!(beat.contains("\non: talk\ntarget: npc.tomas\n"), "{beat}");
-    assert!(!beat.contains("luteVersion") && !beat.contains("uses:"), "{beat}");
-    assert!(!beat.contains("character:"), "no legacy identity triple: {beat}");
+    assert!(
+        !beat.contains("luteVersion") && !beat.contains("uses:"),
+        "{beat}"
+    );
+    assert!(
+        !beat.contains("character:"),
+        "no legacy identity triple: {beat}"
+    );
 
     let check = lute(&["check-project", proj.to_str().unwrap()]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
@@ -141,14 +170,29 @@ fn new_with_a_non_root_dir_inside_a_project_is_refused_with_the_nested_name() {
     let proj = init_beats("new-nested-dir");
     let sub = proj.join("scenes/talk");
     let out = lute(&[
-        "new", "scene", "tavi-shell", "--on", "talk", "--dir", sub.to_str().unwrap(),
+        "new",
+        "scene",
+        "tavi-shell",
+        "--on",
+        "talk",
+        "--dir",
+        sub.to_str().unwrap(),
     ]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     let msg = text(&out);
-    assert!(msg.contains("`--dir` names the project, not the destination folder"), "{msg}");
+    assert!(
+        msg.contains("`--dir` names the project, not the destination folder"),
+        "{msg}"
+    );
     assert!(msg.contains("resolves to `"), "{msg}");
-    assert!(msg.contains("did you mean `lute new scene talk/tavi-shell --dir "), "{msg}");
-    assert!(!proj.join("scenes/tavi-shell.lute").exists(), "nothing lands at the root");
+    assert!(
+        msg.contains("did you mean `lute new scene talk/tavi-shell --dir "),
+        "{msg}"
+    );
+    assert!(
+        !proj.join("scenes/tavi-shell.lute").exists(),
+        "nothing lands at the root"
+    );
     assert!(!sub.join("tavi-shell.lute").exists());
 
     // Run from the project root with a relative `--dir`: no `--dir` needed.
@@ -185,9 +229,15 @@ fn new_from_a_subdirectory_without_dir_names_the_current_directory() {
         msg.contains("no `--dir` was given, so `lute new` started from the current directory `"),
         "{msg}"
     );
-    assert!(msg.contains("run from the project root, or pass `--dir <root>`"), "{msg}");
+    assert!(
+        msg.contains("run from the project root, or pass `--dir <root>`"),
+        "{msg}"
+    );
     assert!(!msg.contains("`--dir` names the project"), "{msg}");
-    assert!(msg.contains("did you mean `lute new scene talk/tavi-shell --dir "), "{msg}");
+    assert!(
+        msg.contains("did you mean `lute new scene talk/tavi-shell --dir "),
+        "{msg}"
+    );
     assert!(!sub.join("tavi-shell.lute").exists());
 }
 
@@ -224,16 +274,25 @@ fn new_quest_is_accept_driven_unless_start() {
     let out = lute(&["new", "quest", "oil-run", "--dir", d]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let stub = std::fs::read_to_string(proj.join("quests/oil-run.lute")).unwrap();
-    assert!(stub.contains("<quest id=\"oilRun\" title=\"oil-run\">"), "{stub}");
+    assert!(
+        stub.contains("<quest id=\"oilRun\" title=\"oil-run\">"),
+        "{stub}"
+    );
     assert!(!stub.contains("start="), "{stub}");
-    assert!(stub.contains("::accept{quest=\"oilRun\"}"), "the stub says how it starts: {stub}");
+    assert!(
+        stub.contains("::accept{quest=\"oilRun\"}"),
+        "the stub says how it starts: {stub}"
+    );
     let check = lute(&["check-project", d]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
 
     let out = lute(&["new", "quest", "always-on", "--start", "--dir", d]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let auto = std::fs::read_to_string(proj.join("quests/always-on.lute")).unwrap();
-    assert!(auto.contains("<quest id=\"alwaysOn\" title=\"always-on\" start=\"true\">"), "{auto}");
+    assert!(
+        auto.contains("<quest id=\"alwaysOn\" title=\"always-on\" start=\"true\">"),
+        "{auto}"
+    );
 
     // Accept the stub where the player takes it on: the project is clean.
     let welcome = proj.join("scenes/hub/welcome.lute");
@@ -257,15 +316,31 @@ fn new_scene_on_refuses_what_the_project_does_not_declare() {
     let d = proj.to_str().unwrap();
     let out = lute(&["new", "scene", "x", "--on", "tallk", "--dir", d]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
-    assert!(text(&out).contains("did you mean `talk`?"), "{}", text(&out));
+    assert!(
+        text(&out).contains("did you mean `talk`?"),
+        "{}",
+        text(&out)
+    );
     assert!(!proj.join("scenes/x.lute").exists());
 
-    let out = lute(&["new", "scene", "y", "--on", "talk", "--target", "npc.oskar", "--dir", d]);
+    let out = lute(&[
+        "new",
+        "scene",
+        "y",
+        "--on",
+        "talk",
+        "--target",
+        "npc.oskar",
+        "--dir",
+        d,
+    ]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     assert!(text(&out).contains("npc.oskar"), "{}", text(&out));
     assert!(!proj.join("scenes/y.lute").exists());
 
-    let out = lute(&["new", "scene", "z", "--on", "hubVisit", "--target", "npc.mara", "--dir", d]);
+    let out = lute(&[
+        "new", "scene", "z", "--on", "hubVisit", "--target", "npc.mara", "--dir", d,
+    ]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     assert!(!proj.join("scenes/z.lute").exists());
 }
@@ -278,7 +353,11 @@ fn new_outside_a_project_says_so() {
     let d = dir.to_str().unwrap();
     let out = lute(&["new", "scene", "intro", "--on", "talk", "--dir", d]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
-    assert!(text(&out).contains("not inside a Lute project"), "{}", text(&out));
+    assert!(
+        text(&out).contains("not inside a Lute project"),
+        "{}",
+        text(&out)
+    );
     assert!(!dir.join("scenes/intro.lute").exists());
 
     let out = lute(&["new", "scene", "intro", "--dir", d]);
@@ -289,5 +368,8 @@ fn new_outside_a_project_says_so() {
         text(&out)
     );
     let intro = scene(&dir, "intro.lute");
-    assert!(intro.contains("\nid: intro\n") && intro.contains("luteVersion:"), "{intro}");
+    assert!(
+        intro.contains("\nid: intro\n") && intro.contains("luteVersion:"),
+        "{intro}"
+    );
 }

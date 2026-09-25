@@ -322,9 +322,7 @@ fn fold_attr(a: &mut Attr, schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
     match lute_check::fold_attr_ref(&slot.raw, &defs, schema) {
         Some(d) => a.value = AttrValue::Str(lute_check::decided_literal(&d)),
         None => diags.push(lute_check::attr_def_dynamic_diag(
-            &a.key,
-            &slot.raw,
-            slot.span,
+            &a.key, &slot.raw, slot.span,
         )),
     }
 }
@@ -350,11 +348,7 @@ pub fn inline_ref_placeholders(
             {
                 match lute_check::inline_interp_ref(reference, defs) {
                     Ok(body) => *expr = Some(CelPair::from_raw(&body)),
-                    Err(reason) => diags.push(lute_check::interp_def_diag(
-                        reference,
-                        &reason,
-                        at,
-                    )),
+                    Err(reason) => diags.push(lute_check::interp_def_diag(reference, &reason, at)),
                 }
             }
         }

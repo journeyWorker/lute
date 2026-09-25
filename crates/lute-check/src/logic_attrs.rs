@@ -222,7 +222,14 @@ pub(crate) fn check_entry_attrs(e: &Entry, diags: &mut Vec<Diagnostic>) {
 /// dsl 0.23.0 §4: `<beat>` closes over [`crate::bundles::BUNDLE_BEAT_ATTRS`];
 /// a permitted key left residual is `crate::bundles`' `E-BEAT-ATTR`.
 pub(crate) fn check_bundle_beat_attrs(b: &BundleBeat, diags: &mut Vec<Diagnostic>) {
-    close(&b.attrs, "beat", crate::bundles::BUNDLE_BEAT_ATTRS, &[], None, diags);
+    close(
+        &b.attrs,
+        "beat",
+        crate::bundles::BUNDLE_BEAT_ATTRS,
+        &[],
+        None,
+        diags,
+    );
 }
 
 pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {

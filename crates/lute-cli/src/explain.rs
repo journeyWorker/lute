@@ -142,7 +142,11 @@ impl Renderer<'_> {
     fn premises(&self, out: &mut String, premises: &[Premise], indent: &str, nested: bool) {
         for (i, p) in premises.iter().enumerate() {
             let last = i + 1 == premises.len();
-            let (branch, cont) = if last { ("└─ ", "   ") } else { ("├─ ", "│  ") };
+            let (branch, cont) = if last {
+                ("└─ ", "   ")
+            } else {
+                ("├─ ", "│  ")
+            };
             let child = format!("{indent}{cont}");
             match p {
                 Premise::Holds(proof) => {
@@ -152,7 +156,11 @@ impl Renderer<'_> {
                     }
                 }
                 Premise::Missing { atom, why } => {
-                    let note = if why.is_empty() { "absent" } else { "not derived" };
+                    let note = if why.is_empty() {
+                        "absent"
+                    } else {
+                        "not derived"
+                    };
                     out.push_str(&format!("{indent}{branch}✗ {atom}  ({note})\n"));
                     if !nested {
                         for a in why {
@@ -170,7 +178,10 @@ impl Renderer<'_> {
                             self.attempt(out, a, &child, true);
                         }
                     }
-                    None => out.push_str(&format!("{indent}{branch}not {}  (absent)\n", render_fact(f))),
+                    None => out.push_str(&format!(
+                        "{indent}{branch}not {}  (absent)\n",
+                        render_fact(f)
+                    )),
                 },
                 Premise::Present(proof) => {
                     let why = match proof.as_ref() {
@@ -255,7 +266,9 @@ impl Renderer<'_> {
 
     fn premise_json(&self, p: &Premise, nested: bool) -> Json {
         match p {
-            Premise::Holds(proof) => json!({ "status": "holds", "proof": self.proof_json(proof, nested) }),
+            Premise::Holds(proof) => {
+                json!({ "status": "holds", "proof": self.proof_json(proof, nested) })
+            }
             Premise::Missing { atom, why } => json!({
                 "status": "missing",
                 "atom": atom,
@@ -264,14 +277,19 @@ impl Renderer<'_> {
             Premise::Absent(f) => {
                 let mut v = json!({ "status": "absent", "negated": render_fact(f) });
                 if let Some(attempts) = (!nested).then(|| self.defeaters(f)).flatten() {
-                    v["attempts"] = attempts.iter().map(|a| self.attempt_json(a, true)).collect();
+                    v["attempts"] = attempts
+                        .iter()
+                        .map(|a| self.attempt_json(a, true))
+                        .collect();
                 }
                 v
             }
             Premise::Present(proof) => {
                 json!({ "status": "present", "proof": self.proof_json(proof, nested) })
             }
-            Premise::Test { text, holds } => json!({ "status": "test", "test": text, "holds": holds }),
+            Premise::Test { text, holds } => {
+                json!({ "status": "test", "test": text, "holds": holds })
+            }
             Premise::Unreached(text) => json!({ "status": "unreached", "premise": text }),
         }
     }

@@ -72,7 +72,11 @@ struct Pattern {
 
 impl Pattern {
     fn text(&self) -> String {
-        let args: Vec<&str> = self.args.iter().map(|a| a.as_deref().unwrap_or("_")).collect();
+        let args: Vec<&str> = self
+            .args
+            .iter()
+            .map(|a| a.as_deref().unwrap_or("_"))
+            .collect();
         format!("{}({})", self.rel, args.join(", "))
     }
 
@@ -146,8 +150,11 @@ fn queried(raw: &str) -> BTreeSet<Read> {
                 if c.target.is_none() && name == op::LOGICAL_NOT && c.args.len() == 1 {
                     return walk(&c.args[0].expr, !negated, out);
                 }
-                let keeps = c.target.is_none() && (name == op::LOGICAL_AND || name == op::LOGICAL_OR);
-                if c.target.is_none() && matches!(name, "holds" | "count" | "countDistinct" | "validAt") {
+                let keeps =
+                    c.target.is_none() && (name == op::LOGICAL_AND || name == op::LOGICAL_OR);
+                if c.target.is_none()
+                    && matches!(name, "holds" | "count" | "countDistinct" | "validAt")
+                {
                     // `countDistinct(P, V…)`: the column variables `V` are
                     // not constants of `P`.
                     let columns: Vec<&str> = if name == "countDistinct" {
@@ -167,7 +174,9 @@ fn queried(raw: &str) -> BTreeSet<Read> {
                             .args
                             .iter()
                             .map(|a| match &a.expr {
-                                Expr::Ident(s) if s != "_" && !columns.contains(&s.as_str()) => Some(s.clone()),
+                                Expr::Ident(s) if s != "_" && !columns.contains(&s.as_str()) => {
+                                    Some(s.clone())
+                                }
                                 Expr::Literal(Val::String(s)) => Some(s.to_string()),
                                 Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
                                 _ => None,
@@ -196,7 +205,8 @@ fn queried(raw: &str) -> BTreeSet<Read> {
     }
     let mut out = BTreeSet::new();
     let mut arena = lute_cel::CelArena::default();
-    if let Some(root) = lute_cel::parse_slot_marked_refs(&mut arena, raw).and_then(|h| arena.get(h)) {
+    if let Some(root) = lute_cel::parse_slot_marked_refs(&mut arena, raw).and_then(|h| arena.get(h))
+    {
         walk(&root.expr, false, &mut out);
     }
     out
@@ -227,7 +237,13 @@ struct Walk<'a> {
 }
 
 impl Walk<'_> {
-    fn push(&mut self, name: String, line: Option<u32>, handles: Vec<String>, slots: Vec<(&'static str, &CelSlot)>) {
+    fn push(
+        &mut self,
+        name: String,
+        line: Option<u32>,
+        handles: Vec<String>,
+        slots: Vec<(&'static str, &CelSlot)>,
+    ) {
         let slots: Vec<(&'static str, String, String)> = slots
             .into_iter()
             .filter(|(_, s)| !s.raw.trim().is_empty())
@@ -278,7 +294,12 @@ impl Walk<'_> {
                         match arm {
                             Arm::When { test, body, .. } => {
                                 let line = Some(test.span.line);
-                                self.push("`<when>` arm".to_string(), line, handles.to_vec(), vec![("test", test)]);
+                                self.push(
+                                    "`<when>` arm".to_string(),
+                                    line,
+                                    handles.to_vec(),
+                                    vec![("test", test)],
+                                );
                                 self.body(body, handles);
                             }
                             Arm::Otherwise { body, .. } => self.body(body, handles),
@@ -315,7 +336,12 @@ impl Walk<'_> {
                 inner.push(format!("{container}#{local}"));
             }
             if let Some(w) = &c.when {
-                self.push(format!("choice `{local}`"), Some(c.span.line), inner.clone(), vec![("when", w)]);
+                self.push(
+                    format!("choice `{local}`"),
+                    Some(c.span.line),
+                    inner.clone(),
+                    vec![("when", w)],
+                );
             }
             self.body(&c.body, &inner);
         }
@@ -368,13 +394,23 @@ fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<G
             quest: None,
             out: Vec::new(),
         };
-        for b in beats.iter().filter(|b| b.path == path && b.kind == ProjectBeatKind::Scene) {
+        for b in beats
+            .iter()
+            .filter(|b| b.path == path && b.kind == ProjectBeatKind::Scene)
+        {
             if let Some(when) = &b.when {
                 let authored = frontmatter_when(doc).unwrap_or_else(|| when.clone());
-                w.push_expanded(b.name(), None, vec![b.id.clone()], vec![("when", authored, when.clone())]);
+                w.push_expanded(
+                    b.name(),
+                    None,
+                    vec![b.id.clone()],
+                    vec![("when", authored, when.clone())],
+                );
             }
         }
-        let scene: Vec<String> = lute_check::connectivity::scene_key(doc).into_iter().collect();
+        let scene: Vec<String> = lute_check::connectivity::scene_key(doc)
+            .into_iter()
+            .collect();
         for shot in &doc.shots {
             w.body(&shot.body, &scene);
         }
@@ -396,7 +432,12 @@ fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<G
                 Top::Entry(e) => {
                     let handles = vec![e.id.clone()];
                     if let Some(when) = &e.when {
-                        w.push(format!("entry `{}`", e.id), None, handles.clone(), vec![("when", when)]);
+                        w.push(
+                            format!("entry `{}`", e.id),
+                            None,
+                            handles.clone(),
+                            vec![("when", when)],
+                        );
                     }
                     w.body(&e.body, &handles);
                 }
@@ -407,7 +448,12 @@ fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<G
                     };
                     let handles = vec![key.clone()];
                     if let Some(when) = &b.when {
-                        w.push(format!("beat `{key}`"), None, handles.clone(), vec![("when", when)]);
+                        w.push(
+                            format!("beat `{key}`"),
+                            None,
+                            handles.clone(),
+                            vec![("when", when)],
+                        );
                     }
                     w.body(&b.body, &handles);
                 }
@@ -521,7 +567,11 @@ fn producers(p: &Pattern, vocab: &RelVocab, sites: &[&str]) -> Vec<String> {
         parts.push("reserved — the engine asserts it".to_string());
     }
     if decl.derive {
-        let rules = vocab.rules.iter().filter(|r| concludes(p, &r.rule.head)).count();
+        let rules = vocab
+            .rules
+            .iter()
+            .filter(|r| concludes(p, &r.rule.head))
+            .count();
         parts.push(match rules {
             0 => "derived, but no rule can conclude it".to_string(),
             1 => "derived by 1 rule".to_string(),
@@ -618,7 +668,9 @@ fn term_value(t: &RuleTerm, s: &Subst) -> Option<String> {
 fn joins(rule: &Rule, seed: Subst, may: &MaySet) -> Option<Vec<Subst>> {
     let mut out = vec![seed];
     for lit in &rule.body {
-        let BodyLiteral::Pos(atom) = lit else { continue };
+        let BodyLiteral::Pos(atom) = lit else {
+            continue;
+        };
         if may.is_unbounded(&atom.relation) {
             return None;
         }
@@ -637,7 +689,9 @@ fn joins(rule: &Rule, seed: Subst, may: &MaySet) -> Option<Vec<Subst>> {
     }
     out.retain(|s| {
         rule.body.iter().all(|lit| match lit {
-            BodyLiteral::Cmp { lhs, rhs, negated, .. } => match (term_value(lhs, s), term_value(rhs, s)) {
+            BodyLiteral::Cmp {
+                lhs, rhs, negated, ..
+            } => match (term_value(lhs, s), term_value(rhs, s)) {
                 (Some(a), Some(b)) => (a == b) != *negated,
                 _ => true,
             },
@@ -796,7 +850,9 @@ fn defeat_ways(p: &Pattern, k: &RootKnowledge) -> Vec<String> {
         ways.push(format!("defeated from the start: {text} is a seed fact"));
     }
     if k.vocab.relations.get(&p.rel).is_some_and(|d| d.reserved) {
-        ways.push(format!("defeated when the engine asserts {text} (reserved)"));
+        ways.push(format!(
+            "defeated when the engine asserts {text} (reserved)"
+        ));
     }
     ways
 }
@@ -816,7 +872,11 @@ fn defeated_when(g: &GroundFact, k: &RootKnowledge) -> String {
     if routes.is_empty() {
         format!("defeated when {} is derived", ground_text(g))
     } else {
-        format!("defeated when {} is derived {}", ground_text(g), routes.join(" / "))
+        format!(
+            "defeated when {} is derived {}",
+            ground_text(g),
+            routes.join(" / ")
+        )
     }
 }
 
@@ -824,12 +884,25 @@ fn defeated_when(g: &GroundFact, k: &RootKnowledge) -> String {
 fn never_produced(p: &Pattern, k: &RootKnowledge) -> String {
     let parts = producer_parts(p, &k.vocab, &k.asserted);
     let text = p.text();
-    let rules = k.vocab.rules.iter().filter(|r| concludes(p, &r.rule.head)).count();
+    let rules = k
+        .vocab
+        .rules
+        .iter()
+        .filter(|r| concludes(p, &r.rule.head))
+        .count();
     if parts.is_empty() {
         format!("nothing produces {text}: no assert, seed fact, engine write or rule")
     } else if parts.len() == 1 && rules > 0 {
-        let its = if rules == 1 { "its rule".to_string() } else { format!("none of its {rules} rules") };
-        let verb = if rules == 1 { "never concludes" } else { "concludes" };
+        let its = if rules == 1 {
+            "its rule".to_string()
+        } else {
+            format!("none of its {rules} rules")
+        };
+        let verb = if rules == 1 {
+            "never concludes"
+        } else {
+            "concludes"
+        };
         format!("nothing can produce {text}: {its} {verb} it from what the project asserts")
     } else {
         format!(
@@ -859,7 +932,11 @@ fn kind_membership(p: &Pattern, vocab: &RelVocab, negated: bool) -> String {
                 (false, false) => " — never holds",
                 (false, true) => " — always holds",
             };
-            let is = if member { "is a member" } else { "is not a member" };
+            let is = if member {
+                "is a member"
+            } else {
+                "is not a member"
+            };
             format!("{kind}; {id} {is}{verdict}")
         }
         ([Some(id)], None) => format!("{kind} (open — holds when the engine registers {id})"),
@@ -882,7 +959,12 @@ fn guard_reads(cel: &str) -> String {
     fn walk(expr: &Expr, out: &mut BTreeSet<String>) {
         if let Some(p) = path(expr) {
             let root = p.split('.').next().unwrap_or_default();
-            if p.contains('.') && matches!(root, "scene" | "run" | "user" | "app" | "quest" | "entry" | "prev" | "clock") {
+            if p.contains('.')
+                && matches!(
+                    root,
+                    "scene" | "run" | "user" | "app" | "quest" | "entry" | "prev" | "clock"
+                )
+            {
                 out.insert(p);
             }
             return;
@@ -901,13 +983,17 @@ fn guard_reads(cel: &str) -> String {
     }
     let mut paths = BTreeSet::new();
     let mut arena = lute_cel::CelArena::default();
-    if let Some(root) = lute_cel::parse_slot_marked_refs(&mut arena, cel).and_then(|h| arena.get(h)) {
+    if let Some(root) = lute_cel::parse_slot_marked_refs(&mut arena, cel).and_then(|h| arena.get(h))
+    {
         walk(&root.expr, &mut paths);
     }
     if paths.is_empty() {
         "state condition, decided at run time".to_string()
     } else {
-        format!("state condition on {}, decided at run time", paths.into_iter().collect::<Vec<_>>().join(", "))
+        format!(
+            "state condition on {}, decided at run time",
+            paths.into_iter().collect::<Vec<_>>().join(", ")
+        )
     }
 }
 
@@ -932,11 +1018,27 @@ impl Tracer<'_> {
     /// derived and not yet expanded, each rule that can conclude it with
     /// its premises — the head's variables bound by `p` — traced
     /// recursively. `here` names the element being traced.
-    fn trace(&mut self, out: &mut String, p: &Pattern, neg: Option<Defeat>, depth: usize, here: &Here) {
+    fn trace(
+        &mut self,
+        out: &mut String,
+        p: &Pattern,
+        neg: Option<Defeat>,
+        depth: usize,
+        here: &Here,
+    ) {
         let k = self.k;
         let pad = "  ".repeat(depth + 3);
-        let rules: Vec<_> = k.vocab.rules.iter().filter(|r| concludes(p, &r.rule.head)).collect();
-        let seen = if rules.is_empty() { None } else { self.expanded.get(p).cloned() };
+        let rules: Vec<_> = k
+            .vocab
+            .rules
+            .iter()
+            .filter(|r| concludes(p, &r.rule.head))
+            .collect();
+        let seen = if rules.is_empty() {
+            None
+        } else {
+            self.expanded.get(p).cloned()
+        };
         let reference = match &seen {
             Some(w) if w == here => " — traced above".to_string(),
             Some(w) if w.document == here.document => format!(" — traced above under {}", w.label),
@@ -944,11 +1046,23 @@ impl Tracer<'_> {
             None => String::new(),
         };
         match &neg {
-            None if k.vocab.kinds.contains_key(&p.rel) && !k.vocab.relations.contains_key(&p.rel) => {
-                outln!(out, "{pad}{} — {}", p.text(), kind_membership(p, &k.vocab, false));
+            None if k.vocab.kinds.contains_key(&p.rel)
+                && !k.vocab.relations.contains_key(&p.rel) =>
+            {
+                outln!(
+                    out,
+                    "{pad}{} — {}",
+                    p.text(),
+                    kind_membership(p, &k.vocab, false)
+                );
                 return;
             }
-            None => outln!(out, "{pad}{} — {}{reference}", p.text(), producer_line(p, &k.vocab, &k.asserted)),
+            None => outln!(
+                out,
+                "{pad}{} — {}{reference}",
+                p.text(),
+                producer_line(p, &k.vocab, &k.asserted)
+            ),
             Some(Ok(facts)) if facts.is_empty() => {
                 outln!(
                     out,
@@ -959,16 +1073,28 @@ impl Tracer<'_> {
                 return;
             }
             Some(Ok(facts)) => {
-                outln!(out, "{pad}not {} — holds unless defeated{reference}", p.text());
+                outln!(
+                    out,
+                    "{pad}not {} — holds unless defeated{reference}",
+                    p.text()
+                );
                 for g in facts.iter().take(DEFEAT_SHOWN) {
                     outln!(out, "{pad}  {}", defeated_when(g, k));
                 }
                 if facts.len() > DEFEAT_SHOWN {
-                    outln!(out, "{pad}  … and {} more defeating facts", facts.len() - DEFEAT_SHOWN);
+                    outln!(
+                        out,
+                        "{pad}  … and {} more defeating facts",
+                        facts.len() - DEFEAT_SHOWN
+                    );
                 }
             }
             Some(Err(why)) => {
-                outln!(out, "{pad}not {} — holds unless defeated{reference}", p.text());
+                outln!(
+                    out,
+                    "{pad}not {} — holds unless defeated{reference}",
+                    p.text()
+                );
                 let ways = defeat_ways(p, k);
                 let when = if ways.is_empty() {
                     format!("defeated when {} holds", p.text())
@@ -990,7 +1116,10 @@ impl Tracer<'_> {
                     bound.insert(v.as_str(), c.clone());
                 }
             }
-            let subst: Subst = bound.iter().map(|(v, c)| (v.to_string(), c.clone())).collect();
+            let subst: Subst = bound
+                .iter()
+                .map(|(v, c)| (v.to_string(), c.clone()))
+                .collect();
             for lit in &r.rule.body {
                 match lit {
                     BodyLiteral::Pos(a) => {
@@ -1005,14 +1134,20 @@ impl Tracer<'_> {
                             rel: a.relation.clone(),
                             args: rule_args(&a.terms, &bound),
                         };
-                        outln!(out, "{pad}    not {} — {}", premise.text(), kind_membership(&premise, &k.vocab, true));
+                        outln!(
+                            out,
+                            "{pad}    not {} — {}",
+                            premise.text(),
+                            kind_membership(&premise, &k.vocab, true)
+                        );
                     }
                     BodyLiteral::Neg(a) => {
                         let (premise, defeat) = negated(&r.rule, a, &subst, &k.may);
                         self.trace(out, &premise, Some(defeat), depth + 2, here);
                     }
                     BodyLiteral::Guard { cel, .. } => {
-                        let at: BTreeMap<&str, &str> = bound.iter().map(|(v, c)| (*v, c.as_str())).collect();
+                        let at: BTreeMap<&str, &str> =
+                            bound.iter().map(|(v, c)| (*v, c.as_str())).collect();
                         let cel = lute_check::rule_index::ground_guard(cel, &at);
                         outln!(out, "{pad}    cel({cel:?}) — {}", guard_reads(&cel));
                     }
@@ -1024,9 +1159,13 @@ impl Tracer<'_> {
 
     /// A guard's own read: a `!holds(X)` is defeated by any fact matching X.
     fn read(&mut self, out: &mut String, r: &Read, here: &Here) {
-        let neg = r
-            .negated
-            .then(|| matching(&self.k.may, &r.pattern.rel, std::slice::from_ref(&r.pattern)));
+        let neg = r.negated.then(|| {
+            matching(
+                &self.k.may,
+                &r.pattern.rel,
+                std::slice::from_ref(&r.pattern),
+            )
+        });
         self.trace(out, &r.pattern, neg, 0, here);
     }
 }
@@ -1051,7 +1190,11 @@ fn select<'a>(
         if picked.iter().all(|(_, chosen)| chosen.is_empty()) {
             let handles: BTreeSet<&str> = roots
                 .iter()
-                .flat_map(|k| k.elements.iter().flat_map(|g| g.handles.iter().map(String::as_str)))
+                .flat_map(|k| {
+                    k.elements
+                        .iter()
+                        .flat_map(|g| g.handles.iter().map(String::as_str))
+                })
                 .collect();
             let hint = lute_manifest::suggest::nearest(n, handles.iter().copied(), 3)
                 .map(|s| format!(" — did you mean `{s}`?"))
@@ -1069,7 +1212,10 @@ pub(crate) fn collect(by_root: &ByRoot) -> Vec<RootKnowledge> {
     by_root
         .iter()
         .map(|(root, group)| {
-            let docs: Vec<(PathBuf, Document)> = group.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+            let docs: Vec<(PathBuf, Document)> = group
+                .iter()
+                .map(|(p, d, _)| (p.clone(), d.clone()))
+                .collect();
             RootKnowledge {
                 root: root.clone(),
                 elements: guarded(root, group, &docs),
@@ -1123,7 +1269,11 @@ pub(crate) fn run_text(
             }
             outln!(out, "    {}", g.label());
             for (slot, authored, _) in &g.slots {
-                outln!(out, "      {slot}: {}", authored.split_whitespace().collect::<Vec<_>>().join(" "));
+                outln!(
+                    out,
+                    "      {slot}: {}",
+                    authored.split_whitespace().collect::<Vec<_>>().join(" ")
+                );
             }
             let here = Here {
                 label: g.label(),
@@ -1160,7 +1310,12 @@ type Derivation = (Vec<GroundFact>, Vec<String>);
 /// The rule instances that can conclude `g` over the may set.
 fn derivations(g: &GroundFact, k: &RootKnowledge) -> Vec<Derivation> {
     let mut out: Vec<Derivation> = Vec::new();
-    for r in k.vocab.rules.iter().filter(|r| r.rule.head.relation == g.relation) {
+    for r in k
+        .vocab
+        .rules
+        .iter()
+        .filter(|r| r.rule.head.relation == g.relation)
+    {
         let Some(seed) = bind(&r.rule.head.terms, &g.args, &Subst::new()) else {
             continue;
         };
@@ -1183,7 +1338,9 @@ fn derivations(g: &GroundFact, k: &RootKnowledge) -> Vec<Derivation> {
                         other.push(format!("not {}({})", a.relation, args.join(", ")));
                     }
                     BodyLiteral::Guard { cel, .. } => other.push(format!("cel({cel:?})")),
-                    BodyLiteral::Cmp { lhs, rhs, negated, .. } => {
+                    BodyLiteral::Cmp {
+                        lhs, rhs, negated, ..
+                    } => {
                         let op = if *negated { "!=" } else { "=" };
                         other.push(format!("{} {op} {}", value(lhs), value(rhs)));
                     }
@@ -1212,7 +1369,12 @@ fn derivation_text((pos, other): &Derivation, k: &RootKnowledge) -> String {
 }
 
 /// Every non-derived source `g` rests on, through every derivation.
-fn evidence(g: &GroundFact, k: &RootKnowledge, seen: &mut BTreeSet<GroundFact>, out: &mut BTreeSet<String>) {
+fn evidence(
+    g: &GroundFact,
+    k: &RootKnowledge,
+    seen: &mut BTreeSet<GroundFact>,
+    out: &mut BTreeSet<String>,
+) {
     if !seen.insert(g.clone()) {
         return;
     }
@@ -1259,13 +1421,20 @@ pub(crate) fn derived(k: &RootKnowledge) -> Vec<(String, Vec<DerivedFact>)> {
                         args: tuple.clone(),
                     };
                     let args: Vec<Option<String>> = tuple.iter().cloned().map(Some).collect();
-                    let from = derivations(&g, k).iter().map(|d| derivation_text(d, k)).collect();
+                    let from = derivations(&g, k)
+                        .iter()
+                        .map(|d| derivation_text(d, k))
+                        .collect();
                     let mut sources = BTreeSet::new();
                     evidence(&g, k, &mut BTreeSet::new(), &mut sources);
                     let gates = k
                         .elements
                         .iter()
-                        .filter(|e| e.reads.iter().any(|r| !r.negated && r.pattern.unifies(rel, &args)))
+                        .filter(|e| {
+                            e.reads
+                                .iter()
+                                .any(|r| !r.negated && r.pattern.unifies(rel, &args))
+                        })
                         .map(|e| format!("{} ({})", e.label(), e.document))
                         .collect();
                     DerivedFact {
@@ -1323,10 +1492,14 @@ pub(crate) fn json(by_root: &ByRoot, for_node: Option<&str>) -> Result<Json, Str
                                 .body
                                 .iter()
                                 .filter_map(|lit| match lit {
-                                    BodyLiteral::Pos(a) if vocab.kinds.contains_key(&a.relation) => {
+                                    BodyLiteral::Pos(a)
+                                        if vocab.kinds.contains_key(&a.relation) =>
+                                    {
                                         Some(json!({ "entityKind": a.relation }))
                                     }
-                                    BodyLiteral::Neg(a) if vocab.kinds.contains_key(&a.relation) => {
+                                    BodyLiteral::Neg(a)
+                                        if vocab.kinds.contains_key(&a.relation) =>
+                                    {
                                         Some(json!({ "entityKind": a.relation, "negated": true }))
                                     }
                                     BodyLiteral::Pos(a) => Some(json!({ "relation": a.relation })),
@@ -1366,8 +1539,11 @@ pub(crate) fn json(by_root: &ByRoot, for_node: Option<&str>) -> Result<Json, Str
             let elements: Vec<Json> = elements
                 .iter()
                 .map(|g| {
-                    let slots: Map<String, Json> =
-                        g.slots.iter().map(|(s, _, c)| (s.to_string(), json!(c))).collect();
+                    let slots: Map<String, Json> = g
+                        .slots
+                        .iter()
+                        .map(|(s, _, c)| (s.to_string(), json!(c)))
+                        .collect();
                     let reads: Vec<String> = g
                         .reads
                         .iter()

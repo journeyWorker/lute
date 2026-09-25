@@ -23,9 +23,18 @@ fn lute(args: &[&str]) -> (Option<i32>, String, String) {
 fn trace_entry_first_read_applies_effects_and_re_read_skips_them() {
     let (code, stdout, stderr) = lute(&["trace", SOURCE, "--entry", "scientistLog1"]);
     assert_eq!(code, Some(0), "stderr: {stderr}\nstdout: {stdout}");
-    assert!(stdout.contains("<entry scientistLog1>   (first read)"), "{stdout}");
-    assert!(stdout.contains("Subject E does not respond to light."), "{stdout}");
-    assert!(stdout.contains("::assert  knows(vesna, project_lumen)\n"), "{stdout}");
+    assert!(
+        stdout.contains("<entry scientistLog1>   (first read)"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Subject E does not respond to light."),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("::assert  knows(vesna, project_lumen)\n"),
+        "{stdout}"
+    );
     assert!(stdout.contains("::set  run.logsRead = 1\n"), "{stdout}");
 
     let (code, stdout, stderr) = lute(&[
@@ -40,12 +49,18 @@ fn trace_entry_first_read_applies_effects_and_re_read_skips_them() {
     ]);
     assert_eq!(code, Some(0), "stderr: {stderr}\nstdout: {stdout}");
     assert!(stdout.contains("(re-read: effects skipped)"), "{stdout}");
-    assert!(stdout.contains("The page is scorched at the edges."), "{stdout}");
+    assert!(
+        stdout.contains("The page is scorched at the edges."),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("::assert  knows(vesna, project_lumen)  (skipped: re-read)"),
         "{stdout}"
     );
-    assert!(stdout.contains("::set  run.logsRead += 1  (skipped: re-read)"), "{stdout}");
+    assert!(
+        stdout.contains("::set  run.logsRead += 1  (skipped: re-read)"),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -89,7 +104,10 @@ fn run_entry_presents_one_entry_and_the_engine_marks_it_read() {
         .collect();
     // Body segment only: runs to the next `entry` record, never into it.
     assert_eq!(kinds, ["entry", "match", "line", "assert", "set"]);
-    assert_eq!(v["facts"], serde_json::json!(["knows(vesna, project_lumen)"]));
+    assert_eq!(
+        v["facts"],
+        serde_json::json!(["knows(vesna, project_lumen)"])
+    );
     assert_eq!(v["state"]["entry.scientistLog1.read"], true);
     assert_eq!(v["state"]["run.logsRead"], 1);
 

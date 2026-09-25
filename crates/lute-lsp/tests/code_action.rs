@@ -55,8 +55,7 @@ fn persist_removed_diag() -> Diagnostic {
     Diagnostic {
         code: "E-PERSIST-REMOVED".to_string(),
         severity: Severity::Error,
-        message: "`persist=` was removed from the language; delete it (dsl 0.6.0 §2.2)"
-            .to_string(),
+        message: "`persist=` was removed from the language; delete it (dsl 0.6.0 §2.2)".to_string(),
         span: span(8, 21),
         layer: Layer::Logic,
         fixits: vec![Fixit {

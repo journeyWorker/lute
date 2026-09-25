@@ -306,10 +306,10 @@ pub fn build_index(
     let capability: Option<(&str, &str)> = docs
         .first()
         .map(|d| (d.path.as_str(), d.artifact.capability_version.as_str()));
-    errors.extend(capability_mismatches(
-        docs.iter()
-            .map(|d| (d.path.as_str(), d.artifact.capability_version.as_str())),
-    ));
+    errors
+        .extend(capability_mismatches(docs.iter().map(|d| {
+            (d.path.as_str(), d.artifact.capability_version.as_str())
+        })));
 
     let mut entities = Axis::new("entity kind");
     let mut enums = Axis::new("enum");
@@ -530,10 +530,11 @@ pub fn voice_key_collisions(docs: &[IndexInput<'_>]) -> Vec<VoiceKeyCollision> {
         for c in &d.artifact.commands {
             if let Command::Line(l) = c {
                 if let Some(key) = l.voice_key.as_deref() {
-                    by_key
-                        .entry(key)
-                        .or_default()
-                        .push((d.path.as_str(), l.line_id.as_str(), l.text.as_str()));
+                    by_key.entry(key).or_default().push((
+                        d.path.as_str(),
+                        l.line_id.as_str(),
+                        l.text.as_str(),
+                    ));
                 }
             }
         }
@@ -823,7 +824,10 @@ mod tests {
                 "lore/a.lute",
                 lore(
                     "cap-1",
-                    &[("log2", Some("log"), Some(2)), ("log1", Some("log"), Some(1))],
+                    &[
+                        ("log2", Some("log"), Some(2)),
+                        ("log1", Some("log"), Some(1)),
+                    ],
                 ),
             ),
         ];
@@ -1021,7 +1025,10 @@ mod tests {
         let docs = [
             ("scenes/wed.lute", titled),
             ("lore/barks.lute", barks),
-            ("scenes/plain.lute", beat_scene("plain", beat("dayStart", None, 0, BeatOnce::Run))),
+            (
+                "scenes/plain.lute",
+                beat_scene("plain", beat("dayStart", None, 0, BeatOnce::Run)),
+            ),
         ];
         let index = build_index("0.23.0", &inputs(&docs)).expect("no conflicts");
         let v: serde_json::Value = serde_json::from_str(&index.to_json().unwrap()).unwrap();

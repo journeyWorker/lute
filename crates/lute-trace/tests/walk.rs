@@ -1052,12 +1052,18 @@ fn a_branch_choose_list_is_consumed_in_presentation_order() {
 
     // A list that runs out halts incomplete rather than guessing.
     let input = input_for(&text, "branch-exhausted", Path::new("."));
-    let mocks = choose(&[("h", &["ask", "ask", "ask", "leave"]), ("b", &["yes", "no"])]);
+    let mocks = choose(&[
+        ("h", &["ask", "ask", "ask", "leave"]),
+        ("b", &["yes", "no"]),
+    ]);
     let (report, exit) = trace_document(&input, mocks);
     assert!(matches!(exit, TraceExit::Incomplete), "{exit:?}");
     assert_eq!(branch_picks(&report), ["yes", "no"], "{report:#?}");
     assert!(
-        report.unresolved.iter().any(|u| u.id == "b" && u.expression.contains("exhausted")),
+        report
+            .unresolved
+            .iter()
+            .any(|u| u.id == "b" && u.expression.contains("exhausted")),
         "{:?}",
         report.unresolved
     );

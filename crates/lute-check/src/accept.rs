@@ -193,9 +193,11 @@ pub fn check_project_accepts(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diag
     for_each_accept(docs, |path, d| check_target(d, &project, path, &mut out));
     for (path, doc) in docs {
         for q in doc.quests.iter().filter(|q| q.accepted_externally()) {
-            let (Some(facts), Some(parent), Some((_, span))) =
-                (project.quests.get(q.id.as_str()), project.parents.get(q.id.as_str()), &q.accept)
-            else {
+            let (Some(facts), Some(parent), Some((_, span))) = (
+                project.quests.get(q.id.as_str()),
+                project.parents.get(q.id.as_str()),
+                &q.accept,
+            ) else {
                 continue;
             };
             if facts.on_accept || facts.start {
@@ -313,12 +315,18 @@ fn check_target(
             )
         }
     };
-    out.push((path.to_path_buf(), accept_diag(E_ACCEPT_TARGET, message, span)));
+    out.push((
+        path.to_path_buf(),
+        accept_diag(E_ACCEPT_TARGET, message, span),
+    ));
 }
 
 /// Every `::accept` directive of `docs`, with its document's path: scene
 /// shots, quest bodies, lore entries, and bundle beats.
-fn for_each_accept<'a>(docs: &'a [(PathBuf, Document)], mut f: impl FnMut(&'a Path, &'a Directive)) {
+fn for_each_accept<'a>(
+    docs: &'a [(PathBuf, Document)],
+    mut f: impl FnMut(&'a Path, &'a Directive),
+) {
     for (path, doc) in docs {
         let mut visit = |d: &'a Directive| f(path.as_path(), d);
         for shot in &doc.shots {

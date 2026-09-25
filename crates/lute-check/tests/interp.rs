@@ -285,7 +285,9 @@ const ORDINAL_STATE: &str = "state:\n  user.deaths: { type: number, default: 0 }
      title: { type: string, cel: \"'x'\" }\n";
 
 fn ordinal_codes(text: &str) -> Vec<String> {
-    codes(&format!("{HDR}{ORDINAL_STATE}---\n## Shot 1.\n@marina: {text}\n"))
+    codes(&format!(
+        "{HDR}{ORDINAL_STATE}---\n## Shot 1.\n@marina: {text}\n"
+    ))
 }
 
 /// A number path and a number def take the hint cleanly, in a line and in a
@@ -341,5 +343,8 @@ fn ordinal_word_is_a_second_number_hint() {
     for text in ["{{run.name:ordinalWord}}", "{{userName:ordinalWord}}"] {
         assert_eq!(ordinal_codes(text), ["E-REF-TYPE"], "{text}");
     }
-    assert_eq!(ordinal_codes("{{user.deaths:ordinalword}}"), ["E-CEL-PROFILE"]);
+    assert_eq!(
+        ordinal_codes("{{user.deaths:ordinalword}}"),
+        ["E-CEL-PROFILE"]
+    );
 }

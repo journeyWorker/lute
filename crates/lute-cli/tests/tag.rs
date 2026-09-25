@@ -70,9 +70,7 @@ fn tag_backfills_code_and_is_idempotent() {
 #[test]
 fn tag_walks_a_directory_recursively_in_sorted_order() {
     let dir = temp_dir("tag-dir");
-    let scene = |line: &str| {
-        format!("---\nkind: scene\nid: s\n---\n## Shot 1.\n{line}\n")
-    };
+    let scene = |line: &str| format!("---\nkind: scene\nid: s\n---\n## Shot 1.\n{line}\n");
     std::fs::create_dir_all(dir.join("scenes/talk")).unwrap();
     std::fs::write(dir.join("scenes/talk/b.lute"), scene("@ann: b")).unwrap();
     std::fs::write(dir.join("scenes/a.lute"), scene("@ann: a")).unwrap();
@@ -102,7 +100,10 @@ fn tag_walks_a_directory_recursively_in_sorted_order() {
         std::fs::read_to_string(dir.join("scenes/talk/b.lute")).unwrap(),
         scene("@ann{code=\"0010\"}: b")
     );
-    assert_eq!(std::fs::read_to_string(dir.join("scenes/done.lute")).unwrap(), tagged);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("scenes/done.lute")).unwrap(),
+        tagged
+    );
     assert_eq!(
         std::fs::read_to_string(dir.join("scenes/notes.txt")).unwrap(),
         "@ann: not lute\n"
@@ -130,7 +131,10 @@ fn tag_force_over_a_directory_continues_past_a_refusal() {
         String::from_utf8_lossy(&out.stderr).contains("codesLocked"),
         "{out:?}"
     );
-    assert_eq!(std::fs::read_to_string(dir.join("a-locked.lute")).unwrap(), locked);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("a-locked.lute")).unwrap(),
+        locked
+    );
     assert!(
         std::fs::read_to_string(dir.join("b-draft.lute"))
             .unwrap()
@@ -146,8 +150,11 @@ fn fix_walks_a_directory_recursively() {
     std::fs::create_dir_all(dir.join("nested")).unwrap();
     let legacy = "---\nkind: scene\nid: s\n---\n## Shot 1.\n:line[ann]: hi\n";
     std::fs::write(dir.join("nested/old.lute"), legacy).unwrap();
-    std::fs::write(dir.join("new.lute"), "---\nkind: scene\nid: t\n---\n## Shot 1.\n@ann: hi\n")
-        .unwrap();
+    std::fs::write(
+        dir.join("new.lute"),
+        "---\nkind: scene\nid: t\n---\n## Shot 1.\n@ann: hi\n",
+    )
+    .unwrap();
 
     let out = Command::new(BIN)
         .args(["fix", dir.to_str().unwrap()])

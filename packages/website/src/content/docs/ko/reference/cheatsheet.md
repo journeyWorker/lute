@@ -46,6 +46,11 @@ defaults:                               # frontmatter every document inherits
 직접 쓰면 그 키의 기본값은 병합 없이 통째로 대체됩니다(`uses: []`는 "가져오기 없음"). 문서의 kind에서
 허용되지 않는 기본값은 그 문서에는 적용되지 않습니다.
 
+문서의 `components:`는 **그 문서의** 디렉터리를 기준으로, `defaults: components:`는 `defaults: uses:`처럼
+**매니페스트의** 디렉터리를 기준으로 해석합니다. 그래서 같은 파일을 `scenes/`의 씬은
+`components: [../components/greet.component.lute]`로, 매니페스트는
+`defaults: { components: [components/greet.component.lute] }`로 씁니다.
+
 0.22.0부터 기본 `voiceKey`에 `{prefix}`가 들어가므로 보이스 키는 프로젝트 전체에서 유일합니다. 0.21 키로
 음성을 녹음해 둔 프로젝트는 `identity: { voiceKey: "{speaker}-{code}" }`로 고정하면 되고, 그러면 텍스트가
 다른 줄들이 한 키에 모이는 곳마다 `E-DUP-VOICEKEY`가 납니다.
@@ -76,6 +81,8 @@ relations:
   awake:    { args: [crew], tier: run }
   knows:    { args: [crew, topic], tier: run }
   can_halt: { args: [crew], derive: true }
+  asleep:   { args: [crew], tier: run, excludes: [awake] }   # 0.25.0: never both on the same args (symmetric)
+  hurt:     { args: [crew], reserved: true, changedOn: [dusk] }   # 0.25.0: the engine writes it only on `dusk`
 facts:
   - "awake(vesna)"
 rules:
@@ -113,10 +120,13 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`, `isSet`은 `bool`이�
 `::auto{character}`와 `::camera{focus}`도 마찬가지입니다. 캐스트를 선언하지 않으면 어떤 화자 id든
 받아들여집니다. 씬 프론트매터에는 `cast:`를 쓸 수 없습니다(`E-META-UNKNOWN-KEY`). `lute context`가 캐스트를
 보여 줍니다. 캐스트 항목에는 `present:`(조건)와 `emotions:`도 둘 수 있습니다(0.24.0). 그 화자의 줄을 감싼
-가드가 `present`를 함의하지 않으면 `W-CAST-ABSENT`이고(`{vo}` 줄은 제외, `{os}` 줄은 검사), 화자의 `emotions:`
-밖의 `emotion=`은 `E-BAD-ENUM`입니다. 항목에 `assume: true`를 두면 `present:` 안의 엔진 `reserved:` 관계에 대한
-부정 `holds`를 참으로 읽으므로, `present: "holds(inParty(isolde)) && !holds(fell(isolde))"`에는 `inParty`
-가드만 있으면 됩니다.
+가드가 `present`를 함의하지 않으면 `W-CAST-ABSENT`이고, 화자의 `emotions:` 밖의 `emotion=`은
+`E-BAD-ENUM`입니다. `{vo}` 줄은 제외됩니다(화자가 씬의 시간 밖에 있을 수 있음). `{os}` 줄은 검사합니다.
+`{os}`는 씬 안에 있지만 화면 밖이라는 뜻이기 때문입니다. 항목에 `assume: true`를 두면 `present:` 안의 엔진
+`reserved:` 관계에 대한 부정 `holds`를 참으로 읽으므로, `present: "holds(inParty(isolde)) && !holds(fell(isolde))"`에는
+`inParty` 가드만 있으면 됩니다. 0.25.0부터 그 관계가 `changedOn: [battleEnd]`를 선언하면, `battleEnd`에 제시된
+단위와 시나리오 그래프에서 그 뒤에 오는 모든 단위(`after:` / `after=` / `[start]` 간선)에서는 `assume`이 더 이상
+그 관계를 덮지 않습니다. 그런 줄은 가드를 달 때까지 다시 경고합니다.
 
 역시 0.24.0: `subsetOf:`는 멤버가 모두 부모 종류에 속해야 하는 하위 종류를 선언합니다(`E-ENTITY-KIND-SHAPE`).
 `watch` 종류의 인자는 `crew`이기도 합니다. `per: <kind>`는 닫힌 종류의 멤버마다 경로를 하나씩
@@ -132,7 +142,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`, `isSet`은 `bool`이�
 
 | kind | 필수 | 그 kind에서만 쓰는 키 |
 |---|---|---|
-| `kind: scene` | `id:`, 또는 레거시 `character` + `season` + `episode` | `id`, `character`, `season`, `episode`, `episodeId`, `pov`, `after`, 비트 키 `on` / `target` / `when` / `priority` / `once` / `also` |
+| `kind: scene` | `id:`, 또는 레거시 `character` + `season` + `episode` | `id`, `character`, `season`, `episode`, `episodeId`, `pov`, `after`, 비트 키 `on` / `target` / `when` / `priority` / `once` / `also` / `share`(0.25.0) |
 | `kind: quest` | 본문에 `<quest>` 하나 이상 | `id` (선택, 묶음 이름) |
 | `kind: lore` | 본문에 `<entry>`나 `<beat>` 하나 이상 | `id` (`<beat>`가 있으면 필수), `series` |
 | 컴포넌트 (`kind:` 없음) | `component: <name>` | `component`, `params`, `effects`(0.24.0) |
@@ -173,6 +183,8 @@ state:
 @mira{code="0010" emotion="happy"}: You're back, {{userName}}! Warmth: {{run.affection}}.
 @fixer: I am.
 @fixer{mono}: She remembered.
+@fixer{mono when="run.affection > 2"}: She remembered my order, too.
+// a `//` line comment: the whole line is ignored
 @mira{os}: Hold on!
 @mira{as="???"}: ...who's there?
 ::sfx{sound="door bell"}
@@ -186,11 +198,11 @@ state:
 |---|---|
 | `@speaker{attrs}: text` | `@narrator`는 내레이션이고, 그 밖의 화자는 모두 대사입니다(`pov:` 화자도 마찬가지이며, `pov`는 설명용일 뿐입니다). `: ` 뒤의 텍스트는 줄 끝까지 그대로입니다. `cast:`가 선언되어 있으면 화자는 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). 줄의 가드가 캐스트의 `present:`를 함의하지 않으면 `W-CAST-ABSENT`이고, 화자의 `emotions:` 밖의 `emotion=`은 `E-BAD-ENUM`입니다(0.24.0). |
 | 줄 속성 | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as`(이름표 덮어쓰기), `when`(가드), `id`(점프 라벨). 따옴표로 감싼 값은 `&quot;` `&apos;` `&amp;` `&lt;` `&gt;` `&#NN;` `&#xHH;`를 해석합니다(0.24.0). 그 밖의 `&`는 그대로이며 `\"`도 여전히 됩니다. |
-| 전달 플래그 | `{mono}` 속마음, `{os}` 화면 밖, `{vo}` 보이스오버. 한 줄에 하나까지이며 `@narrator`에는 쓸 수 없습니다. |
-| `{{…}}` | `{{userName}}`, 선언된 상태 경로, 또는 `{{@def}}`(산출물에 def 본문이 실리고 `lute run` / `lute play`가 그 값을 계산합니다). 값이 없을 수 있는 경로를 읽으면 `E-MAYBE-UNSET`입니다. 줄의 텍스트 전체가 `@name`이면 그 글자가 그대로 출하됩니다(`W-TEXT-LOOKS-LIKE-REF`). `{{@name}}`으로 쓰세요. 0.24.0: `{{run.visits:ordinal}}`은 `1st`, `2nd`, …로 렌더링되며(유일한 힌트, 숫자 전용), `labels:`가 있는 enum 타입 경로는 라벨로 렌더링됩니다. |
+| 전달 플래그 | `{mono}` 속마음, `{os}` 화면 밖, `{vo}` 보이스오버. 한 줄에 하나까지이며 `@narrator`에는 쓸 수 없습니다. 플래그는 속성과 함께 쓸 수 있습니다: `{mono when="…"}`. |
+| `{{…}}` | `{{userName}}`, 선언된 상태 경로, 또는 `{{@def}}`(산출물에 def 본문이 실리고 `lute run` / `lute play`가 그 값을 계산합니다). 값이 없을 수 있는 경로를 읽으면 `E-MAYBE-UNSET`입니다. 줄의 텍스트 전체가 `@name`이면 그 글자가 그대로 출하됩니다(`W-TEXT-LOOKS-LIKE-REF`). `{{@name}}`으로 쓰세요. 0.24.0: `{{run.visits:ordinal}}`은 `1st`, `2nd`, …로 렌더링되며(숫자 전용), `labels:`가 있는 enum 타입 경로는 라벨로 렌더링됩니다. 0.25.0: `{{run.day:ordinalWord}}`는 `first` … `twentieth`로 렌더링됩니다(엔진이 현지화하며, `lute play`는 스물을 넘으면 `21st` 같은 숫자로 돌아갑니다). 다른 힌트는 없습니다. |
 | 샷 | 모든 콘텐츠는 `## 제목` 아래에 둡니다. `# 제목`만으로는 샷이 열리지 않습니다. |
 | 디렉티브 | `::bg` `::music` `::sfx` `::auto`(등장, 포즈, 퇴장) `::camera` `::cut` `::vfx` `::video` `::end`, 그리고 `::clear`(0.24.0: 무대의 모두가 퇴장, 배경과 음악은 유지). 타이밍 키: `duration`, `delay`, `wait="true"`(대기). 캐스트가 선언되어 있으면 `::auto{character}`와 `::camera{focus}`도 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). |
-| 주석 | `/* … */` |
+| 주석 | `// …`는 줄 끝까지이며, 그 줄에 홀로 있거나 디렉티브 뒤에 올 수 있습니다(`::set{run.n += 1} // why`). 그리고 `/* … */`. `<tag>` 뒤에 쓰면 `E-TAG-INLINE-BODY`이고, 대사 텍스트 안의 `//`는 글자 그대로입니다. |
 
 → [대사와 캐스트](/language/dialogue-and-cast/) · [코어 디렉티브](/language/directives/)
 
@@ -411,6 +423,40 @@ rules:
 - `::set{… when="…"}`은 조건이 성립할 때만 씁니다(`lute play`는 `skip set … — when: false`로 출력).
   CEL 호출처럼 이름 붙인 관계(`has`, `holds`, `count`, `isSet`, `now`, …)는 `E-RELATION-RESERVED-NAME`입니다.
 
+배타 관계(0.25.0): `excludes:`는 같은 인자에서 결코 함께 성립하지 않는 관계를 적습니다.
+
+```lute check
+---
+kind: scene
+id: tower.gallery
+entities:
+  person: { members: [elias, maren] }
+relations:
+  seen:      { args: [person], tier: run }
+  seenAfter: { args: [person], derive: true, excludes: [fell] }   # symmetric: fell excludes seenAfter
+  fell:      { args: [person], tier: run }
+rules:
+  - "seenAfter(P) :- seen(P)"
+---
+
+## Gallery
+
+::assert{seen(elias)}
+@maren{when="holds(seenAfter(elias))"}: He was on the stairs after the storm.
+```
+
+- 짝은 선언된 관계여야 하고, 인자 종류가 같아야 하며, 자기 자신일 수 없습니다(`E-RELATION-DECL`). IR의
+  `RelationEntry.excludes`에는 대칭 폐포가 실립니다.
+- `check-project`: `holds(seenAfter(x)) && holds(fell(x))`는 죽은 가드이고(`E-ARM-DEAD` / `E-BEAT-UNREACHABLE`),
+  `holds(seenAfter(x))` 아래의 `!holds(fell(x))`는 `W-FACT-GUARANTEED`이며, 여기서 `::assert{fell(elias)}`는
+  `E-FACT-EXCLUSIVE`(다른 쪽이 모든 경로에서 성립), 짝을 깨뜨릴 수밖에 없는 `fell(P) :- seenAfter(P)` 같은 규칙은
+  `E-RULE-EXCLUSIVE`입니다.
+- 둘 다 가능하기만 한 곳에서는 `lute play`가 쓰기 지점에서 `✗ exclusive: fell(elias) and seenAfter(elias) both
+  hold`로 멈추고(종료 코드 1), `lute trace` / `lute test`는 그 지점에서 거부합니다(`E-FACT-EXCLUSIVE`).
+- `reserved:` 관계는 엔진이 그 관계를 바꾸는 계기를 `changedOn: [<occasion>…]`으로 선언할 수 있습니다. 이것이
+  캐스트의 `assume: true`를 좁힙니다([위의 스키마](#프로젝트-구성) 참고). `reserved`가 아닌 관계의 `changedOn`이나
+  선언되지 않은 계기를 가리키는 `changedOn`은 `E-RELATION-DECL`입니다.
+
 → [상태 모델](/state/state-model/) · [팩트와 Datalog](/state/facts-and-datalog/)
 
 ## CEL 요약
@@ -517,15 +563,25 @@ state:
 <beat id="miraHum" on="talk" target="npc.mira" once="false" also>
   @narrator: Mira hums while she works.
 </beat>
+
+<beat id="thanksCounter" on="talk" target="npc.mira" after="visited('cafe.talks.miraOrder')" once="user" share="miraThanks">
+  @mira: Thanks for the tips, by the way.
+</beat>
+
+<beat id="thanksDoor" on="leave" once="user" share="miraThanks">
+  @mira: Thanks for the tips! See you.
+</beat>
 ```
 
-번들 비트는 `id`, `on`, `target`, `title`, `when`, `priority`, `once`, `also`를 받고, 본문은 씬 본문(대사,
-branch, 허브, match, 디렉티브)입니다. 문서에는 `id:`가 있어야 하고, 비트 `id`는 `-`가 없는 식별자이며, 비트의
-정식 id는 `<문서 id>.<비트 id>`(`cafe.talks.miraOrder`)입니다. `lute play`, `presented:`,
-`visited('cafe.talks.miraOrder')`, `lute trace --beat`가 이 id를 씁니다. 씬 비트처럼 동작합니다: `once`의
-기본값은 `run`이고, 제시되면 소진되며, 자기 `after:`는 없습니다. 다만 0.24.0부터는 씬이나 퀘스트가 번들
-비트를 선행 조건으로 쓸 수 있습니다(`after: visited('cafe.talks.miraOrder')`). `title`은 `select: all`
-메뉴에서 비트의 이름표가 됩니다. 정식 id가 씬 id와 같으면 `E-CONN-EPISODE-ID-DUP`입니다.
+번들 비트는 `id`, `on`, `target`, `title`, `when`, `priority`, `once`, `also`, 그리고 0.25.0부터 `after`와
+`share`를 받고, 본문은 씬 본문(대사, branch, 허브, match, 디렉티브)입니다. 문서에는 `id:`가 있어야 하고, 비트
+`id`는 `-`가 없는 식별자이며, 비트의 정식 id는 `<문서 id>.<비트 id>`(`cafe.talks.miraOrder`)입니다.
+`lute play`, `presented:`, `visited('cafe.talks.miraOrder')`, `lute trace --beat`가 이 id를 씁니다. 씬
+비트처럼 동작합니다: `once`의 기본값은 `run`이고, 제시되면 소진됩니다. 0.24.0부터는 씬이나 퀘스트가 번들 비트를
+선행 조건으로 쓸 수 있고(`after: visited('cafe.talks.miraOrder')`), 0.25.0부터는 비트 자신의 `after="…"`가 씬의
+`after:`와 같습니다: 자격 조건이자 시나리오 간선입니다. 비트 `when`의 `visited()`는 막기만 하고 간선을 그리지
+않으므로, `lute scenario`는 그런 비트를 써야 할 `after=`와 함께 unanchored로 나열합니다. `title`은
+`select: all` 메뉴에서 비트의 이름표가 됩니다. 정식 id가 씬 id와 같으면 `E-CONN-EPISODE-ID-DUP`입니다.
 
 | 키 | 의미 |
 |---|---|
@@ -535,6 +591,7 @@ branch, 허브, match, 디렉티브)입니다. 문서에는 `id:`가 있어야 �
 | `priority` | 정수, 기본값 `0`. 높은 쪽이 이깁니다. |
 | `once` | 씬: `run`(기본값), `user`(평생 한 번), `false`(반복 가능). 엔트리: `once="run"`(새 런이 `entry.<id>.read`를 초기화할 때까지) 또는 `once="user"`(`entry.<id>.everRead`가 설정되면 소진). 엔트리에 `once`가 없으면 반복됩니다. 시계를 선언했다면(0.24.0) `once: day` / `once: slot`(엔트리는 `once="day"` / `"slot"`)은 날이나 슬롯이 바뀔 때까지 소진 상태로 둡니다. 시계 없이 쓰면 `E-BEAT-ATTR`입니다. |
 | `also` | 0.23.0. `select: first` 계기의 씬(`also: true`)과 번들 비트(`also`): 승자 뒤에, 또는 주 비트가 하나도 자격이 없을 때는 혼자 제시되며, 승자를 대신하지 않습니다. 엔트리에 쓰거나 `select: all` / `sequence` 계기에 쓰면 `E-BEAT-ATTR`입니다. `W-BEAT-SHADOWED`와 `W-BEAT-PRIORITY-TIE`는 `also` 비트를 무시합니다. |
+| `share` | 0.25.0. 씬(`share:`), 엔트리와 번들 비트(`share=`): 여러 곳에서 이야기되는 한 사건을 위한 프로젝트 전체의 키입니다. 키의 어느 비트든 제시되면(엔트리는 읽히면) 그 키의 모든 비트가 `once` 기간 동안 소진됩니다(`lute play`: `` once: user — `share: miraThanks` already spent … by cafe.talks.thanksCounter ``). `false`가 아닌 `once`를 함께 써야 하고, 한 키의 모든 비트는 같은 `once`를 선언해야 합니다. 그렇지 않으면 `E-BEAT-ATTR`입니다. `lute beats`는 `user, share miraThanks`로 보여 줍니다. |
 
 선택: 후보는 `on`이 일치하고 `target`이 없거나 발생한 대상과 같은 비트입니다. 후보는 `after:`와 `when`이
 성립하고 `once`가 소진되지 않았을 때 자격이 있습니다. 자격 있는 비트는 priority, 문서 경로, 선언 순서로
@@ -699,9 +756,10 @@ state:
 
 | 요소 | 규칙 |
 |---|---|
-| `start=` | 성립하면 퀘스트를 활성화합니다(`unset` → `active`). `start`가 없으면 수락형입니다: 씬이 `::accept{quest="…"}`를 실행하거나 목(mock)이 수락할 때까지 `unset`으로 남습니다. 플레이 스크립트는 `quests:`로 세이브의 상태를 시드합니다. 어떤 `::accept`도, 어떤 `accepts:` 목도 닿지 않는 수락형 퀘스트는 `W-QUEST-NEVER-ACCEPTED`입니다(0.24.0, `check-project`). |
+| `start=` | 성립하면 퀘스트를 활성화합니다(`unset` → `active`). `start`가 없으면 수락형입니다: 씬이 `::accept{quest="…"}`를 실행하거나 목(mock)이 수락할 때까지 `unset`으로 남습니다. 플레이 스크립트는 `quests:`로 세이브의 상태를 시드합니다. 어떤 `::accept`도 이름을 부르지 않는 수락형 퀘스트는 `W-QUEST-NEVER-ACCEPTED`입니다(0.24.0, `check-project`). 0.25.0부터 `accepts:` 목은 더 이상 치지 않습니다. |
+| `accept="external"` | 0.25.0. 엔진이 문서 밖(퀘스트 게시판, 메뉴)에서 퀘스트를 수락합니다. `W-QUEST-NEVER-ACCEPTED`를 잠재웁니다. `start`와 함께 쓰면 `E-ATTR-TYPE`, 부모와 함께 활성화되는 자식에 쓰면 `E-ACCEPT-TARGET`입니다(`activate="accept"`를 더하세요). IR: `QuestCmd.accept`. |
 | `fail=` | `active` → `failed`. 완료 조건과 동시에 성립하면 실패가 이깁니다. |
-| `after=` | 씬 그래프를 위한 구조적 선행 조건: `&&` / `\|\|`로 묶은 `visited` / `completed` / `active`. 활성화를 막지 않으며, 활성화는 `start`가 정합니다. 씬은 프론트매터에 `after:`로 씁니다. |
+| `after=` | 씬 그래프를 위한 구조적 선행 조건: `&&` / `\|\|`로 묶은 `visited` / `completed` / `active`. 활성화를 막지 않으며, 활성화는 `start`가 정합니다. 씬은 프론트매터에 `after:`로 씁니다. 이것이 없으면 퀘스트는 자신의 `::accept`, 부모(`[subquest]`, 0.25.0), 그리고 `visited(…)` / `entry.X.everRead` / `quest.Y.state == …`를 읽는 `start` 연언항(`[start]`, 0.25.0)에 고정됩니다. |
 | `tier="run"` | 새 런에서 퀘스트가 `unset`으로 돌아가고 목표도 모두 미완료가 됩니다. 기본값 `tier="user"`는 런이 바뀌어도 상태를 유지합니다. 하위 퀘스트의 등급은 부모와 같아야 합니다(`E-QUEST-TIER-MIX`). |
 | `<objective done>` | `done`은 필수입니다(`E-OBJECTIVE-MISSING-DONE`). `optional`이 아닌 목표가 모두 완료되면 퀘스트가 완료됩니다. 완료는 되돌려지지 않으며 본문은 한 번만 재생됩니다. |
 | `on="runEnd"` | 퀘스트가 활성인 동안 그 계기가 발생했을 때만 `done`을 판정합니다. 계기를 발생시키면 먼저 같은 이름으로 선언된 월드 이벤트의 핸들러(`<on event="runEnd">`)가 실행되고, 그다음 목표를 판정합니다. |
@@ -1140,7 +1198,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | 상태 경로나 `@def`가 선언되지 않았거나, 그 스키마를 가져오지 않았습니다. |
 | `E-MAYBE-UNSET` | 기본값도, 앞선 `::set`도, `isSet` 가드도 없는 경로를 읽었습니다. `prev.run.*`를 읽을 때는 항상 필요합니다. |
 | `E-CAST-UNKNOWN` | 캐스트가 선언되어 있는데(스키마의 `cast:`나 플러그인의 `cast` 내보내기) 이 화자는 그 안에 없거나, (0.24.0) `::auto{character}`, `::camera{focus}`, `speaker` 컴포넌트 인자가 캐스트 밖을 가리킵니다. 메시지가 가장 가까운 id를 제안합니다. |
-| `W-CAST-ABSENT` | 0.24.0. 화자의 캐스트 항목이 `present:`를 선언했는데 줄을 감싼 가드가 그것을 함의하지 않습니다(`{vo}` 줄은 제외). 줄에 가드를 달거나(`@corvin{when="holds(inParty(corvin))"}`) 그런 가드 아래로 옮기세요. 가드를 거짓으로 만들 수 있는 쓰기만 그 가드를 무효로 합니다. 단일 파일 `check`는 모든 경로에서 assert된 팩트를 볼 수 없지만 `check-project`는 봅니다. |
+| `W-CAST-ABSENT` | 0.24.0. 화자의 캐스트 항목이 `present:`를 선언했는데 줄을 감싼 가드가 그것을 함의하지 않습니다(`{vo}` 줄은 제외, `{os}` 줄은 검사). 줄에 가드를 달거나(`@corvin{when="holds(inParty(corvin))"}`) 그런 가드 아래로 옮기세요. 가드를 거짓으로 만들 수 있는 쓰기만 그 가드를 무효로 합니다. 단일 파일 `check`는 모든 경로에서 assert된 팩트를 볼 수 없지만 `check-project`는 봅니다. 0.25.0: 관계의 `changedOn:` 계기 뒤의 줄에서는 `assume: true`가 그 관계를 덮지 않습니다. |
 | `E-BAD-ENUM` | enum 밖의 값입니다. 0.24.0부터는 화자의 캐스트 `emotions:` 밖의 `emotion=`도 해당합니다(`happy`는 `isolde`의 감정이 아님). |
 | `E-ENGINE-OWNED-WRITE` | `::set`이 `owner: engine`으로 선언된 경로에 씁니다. 콘텐츠는 읽기만 합니다. `lute play`에서는 `engine:` 스텝으로, trace와 test에서는 목의 `state:`로 쓰세요. |
 | `W-QUEST-STATE-ISSET` | `isSet(quest.<id>.state)`는 항상 참입니다. `'unset'`과 비교하세요. |
@@ -1164,7 +1222,9 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-STAGE-ABSENT` | 어떤 경로에서 퇴장했거나 `::bg` 장면 전환으로 자동으로 숨겨진 캐릭터를 줄이 무대에 세웁니다. 선택지와 `<match>` 갈래는 따로 따라가므로 한 갈래의 퇴장이 형제 갈래에서 경고를 내지 않습니다. 갈래가 다시 합쳐진 뒤에는 모든 갈래가 무대에 남겨 둔 캐릭터만 무대에 있습니다. |
 | `E-BEAT-UNREACHABLE` / `E-ARM-DEAD` | 조건이 결코 성립할 수 없습니다. `check-project`는 팩트 질의도 판정합니다. 0.23.0부터는 한 `&&` 안의 모순(`run.n > 5 && run.n < 3`)도 잡습니다. `check-project --wip`에서는 아직 아무것도 만들어 내지 않는 관계 때문에만 죽은 가드가 경고입니다. |
 | `E-ACCEPT-TARGET` | `::accept`가 없는 퀘스트나 `start`가 있는 퀘스트를 가리키거나, (0.24.0) 부모와 함께 활성화되는 자식을 가리키거나(그 자식에 `activate="accept"`를 선언하세요), `at`이 `"nextRun"`이 아닙니다. |
-| `W-QUEST-NEVER-ACCEPTED` | 0.24.0, `check-project`. 어떤 `::accept`도 이름을 부르지 않고 어떤 `accepts:` 목이나 테스트도 닿지 않는 수락형 퀘스트(`start` 없음, 또는 `activate="accept"` 자식)입니다. 결코 활성화되지 않습니다. |
+| `W-QUEST-NEVER-ACCEPTED` | 0.24.0, `check-project`. 어떤 `::accept`도 이름을 부르지 않는 수락형 퀘스트(`start` 없음, 또는 `activate="accept"` 자식)입니다. 결코 활성화되지 않습니다. 0.25.0부터 목의 `accepts:`는 치지 않으며(메시지가 그 목을 밝힙니다), 엔진이 수락하는 퀘스트에는 `accept="external"`을 선언하세요. |
+| `E-FACT-EXCLUSIVE` / `E-RULE-EXCLUSIVE` | 0.25.0. `::assert`가 두 `excludes:` 관계를 모든 경로에서(`lute trace` / `lute test`에서는 걸은 경로에서) 함께 성립하게 하거나, 규칙이 다른 쪽이 성립하는 곳에서만 한쪽을 도출합니다. |
+| `W-LUTE-VERSION-STALE` | 문서의 `luteVersion`이 툴체인과 다릅니다. 0.25.0: 매니페스트의 `defaults: luteVersion`에서 물려받은 경우 `check-project`는 문서마다가 아니라 `lute.project.yaml`의 그 줄에서 한 번 보고합니다(`… — every document inherits it (N documents)`). |
 | `W-DEADLINE-BEFORE-DONE` | 0.24.0. `on=` 목표의 `by=`가 `done`이 성립할 때마다 성립하므로, 매 정산마다 판정하는 `by`가 계기가 `done`을 판정하기 전에 목표를 실패시킵니다. 그 조건을 `until=`로 쓰세요. |
 | `E-STATE-DECL` | 상태 선언이 잘못되었습니다. 0.24.0부터는 열린 종류나 모르는 종류에 대한 `per:`, 그리고 멤버가 아닌 키를 쓰거나 값도 `_`도 없는 멤버를 남기거나(`` `default:` gives no value for `guild` ``) `per:` 없는 경로에 쓴 맵 `default:`도 해당합니다. |
 | `W-DOMAIN-UNREAD` | 선언했지만 아무것도 읽지 않는 enum이나 종류입니다. 0.24.0부터는 `per:` 색인, `subsetOf:` 부모, 규칙 본문이나 `holds(…)`의 종류 원자도 읽기로 치며, 경고는 선언 자신의 줄에 붙습니다. |
@@ -1192,7 +1252,7 @@ expect:                                 # judged at the end; a miss exits 1
 ## 주의할 점
 
 **`start`가 없는 퀘스트는 스스로 활성화되지 않습니다.** 수락형이라서, 씬이 `::accept{quest="id"}`를
-실행하거나 목이나 테스트가 `accepts:`에 적을 때까지 `unset`으로 남습니다(플레이 스크립트는 `quests:`로
+실행하거나, 엔진이 `accept="external"` 퀘스트를 수락하거나, 목이나 테스트가 `accepts:`에 적을 때까지 `unset`으로 남습니다(플레이 스크립트는 `quests:`로
 상태를 시드할 수 있습니다). `start`가 있는 퀘스트에 `::accept`를 쓰면 `E-ACCEPT-TARGET`입니다. 예외는
 `quest=`로 지정된 자식으로, `activate="accept"`를 선언하지 않는 한 부모와 함께 활성화됩니다. 부모와 함께
 활성화되는 자식을 `::accept`해도 `E-ACCEPT-TARGET`입니다.

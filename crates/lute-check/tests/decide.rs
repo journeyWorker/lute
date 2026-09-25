@@ -58,7 +58,10 @@ fn schema() -> StateSchema {
             owner: None,
         },
     );
-    StateSchema { decls, ..Default::default() }
+    StateSchema {
+        decls,
+        ..Default::default()
+    }
 }
 
 /// The same finite domain `run.rank` infers to, built by hand (`infer_domain`

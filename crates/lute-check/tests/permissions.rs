@@ -106,15 +106,28 @@ facts:
     };
 
     let diagnostics = permission_diagnostics(&input(source, permissions));
-    let messages: Vec<&str> = diagnostics.iter().map(|diag| diag.message.as_str()).collect();
-    assert!(messages.iter().any(|message| message.contains("state default")));
+    let messages: Vec<&str> = diagnostics
+        .iter()
+        .map(|diag| diag.message.as_str())
+        .collect();
+    assert!(messages
+        .iter()
+        .any(|message| message.contains("state default")));
     assert!(messages.iter().any(|message| message.contains("`::set`")));
-    assert!(messages.iter().any(|message| message.contains("choice `into`")));
-    assert!(messages.iter().any(|message| message.contains("hub selection")));
+    assert!(messages
+        .iter()
+        .any(|message| message.contains("choice `into`")));
+    assert!(messages
+        .iter()
+        .any(|message| message.contains("hub selection")));
     assert!(messages.iter().any(|message| message.contains("hub visit")));
     assert!(messages.iter().any(|message| message.contains("seed fact")));
-    assert!(messages.iter().any(|message| message.contains("`::assert`")));
-    assert!(diagnostics.iter().all(|diag| diag.span.byte_end >= diag.span.byte_start));
+    assert!(messages
+        .iter()
+        .any(|message| message.contains("`::assert`")));
+    assert!(diagnostics
+        .iter()
+        .all(|diag| diag.span.byte_end >= diag.span.byte_start));
 }
 
 #[test]
@@ -207,12 +220,12 @@ episode: 1
     });
 
     let diagnostics = permission_diagnostics(&input);
-    assert!(diagnostics.iter().any(|diag| {
-        diag.code == "E-PERMISSION-DIRECTIVE" && diag.message.contains("::bg")
-    }));
-    assert!(diagnostics.iter().any(|diag| {
-        diag.code == "E-PERMISSION-STATE" && diag.message.contains("effect")
-    }));
+    assert!(diagnostics
+        .iter()
+        .any(|diag| { diag.code == "E-PERMISSION-DIRECTIVE" && diag.message.contains("::bg") }));
+    assert!(diagnostics
+        .iter()
+        .any(|diag| { diag.code == "E-PERMISSION-STATE" && diag.message.contains("effect") }));
     assert!(diagnostics.iter().any(|diag| {
         diag.code == "E-PERMISSION-STATE" && diag.message.contains("state default")
     }));

@@ -283,7 +283,8 @@ pub fn resolve_imports(
                 .or_else(|| doc.origins.kinds.get(name))
                 .map_or(at, |o| o.span)
         };
-        for d in crate::rel_schema::validate_rel_decls(&doc.rel_kinds, &doc.rel_relations, &span_of) {
+        for d in crate::rel_schema::validate_rel_decls(&doc.rel_kinds, &doc.rel_relations, &span_of)
+        {
             let origin = crate::rel_schema::DeclOrigin {
                 file: canon.clone(),
                 span: d.span,
@@ -1009,11 +1010,29 @@ fn read_and_parse(
     };
     let key = |name: &str| here(crate::meta::meta_key_span(&meta, name));
     let origins = crate::rel_schema::DeclOrigins {
-        relations: tm.rel_relations.relations.keys().map(|n| (n.clone(), key(n))).collect(),
-        kinds: tm.rel_kinds.kinds.keys().map(|n| (n.clone(), key(n))).collect(),
+        relations: tm
+            .rel_relations
+            .relations
+            .keys()
+            .map(|n| (n.clone(), key(n)))
+            .collect(),
+        kinds: tm
+            .rel_kinds
+            .kinds
+            .keys()
+            .map(|n| (n.clone(), key(n)))
+            .collect(),
         defs: tm.defs.keys().map(|n| (n.clone(), key(n))).collect(),
-        rules: tm.rel_rules.iter().map(|r| (r.raw.clone(), here(r.span))).collect(),
-        facts: tm.rel_facts.iter().map(|f| (f.raw.clone(), here(f.span))).collect(),
+        rules: tm
+            .rel_rules
+            .iter()
+            .map(|r| (r.raw.clone(), here(r.span)))
+            .collect(),
+        facts: tm
+            .rel_facts
+            .iter()
+            .map(|f| (f.raw.clone(), here(f.span)))
+            .collect(),
         domains: tm.domains.keys().map(|n| (n.clone(), key(n))).collect(),
     };
     let failed_heads = tm.rel_rule_failed_heads.clone();

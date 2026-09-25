@@ -53,8 +53,16 @@ fn occasions_project(tag: &str) -> PathBuf {
         "lore/barks.lute",
         "---\nkind: lore\nid: lore.barks\n---\n\n<entry id=\"idle\" on=\"hubVisit\" category=\"bark\">\n  @narrator: The fire crackles.\n</entry>\n",
     );
-    write_at(&proj, "plays/first.play.yaml", "steps:\n  - occasion: hubVisit\n");
-    write_at(&proj, "tests/welcome.test.yaml", "file: ../scenes/welcome.lute\n");
+    write_at(
+        &proj,
+        "plays/first.play.yaml",
+        "steps:\n  - occasion: hubVisit\n",
+    );
+    write_at(
+        &proj,
+        "tests/welcome.test.yaml",
+        "file: ../scenes/welcome.lute\n",
+    );
     proj
 }
 
@@ -92,8 +100,14 @@ fn doctor_reports_plugins_occasions_plays_and_tests() {
         "• occasions (beats answering): 2 declared, 2 beat(s) — hubVisit (2), talk (0)",
         "{text}"
     );
-    assert!(line(&text, "play scripts").ends_with("1 `*.play.yaml`"), "{text}");
-    assert!(line(&text, "scenario tests").ends_with("1 `*.test.yaml`"), "{text}");
+    assert!(
+        line(&text, "play scripts").ends_with("1 `*.play.yaml`"),
+        "{text}"
+    );
+    assert!(
+        line(&text, "scenario tests").ends_with("1 `*.test.yaml`"),
+        "{text}"
+    );
     // A project without a pinned catalog is not "core-only": it has a plugin.
     assert!(
         line(&text, "provider snapshots").ends_with("no pinned provider snapshots"),
@@ -150,7 +164,10 @@ fn doctor_flags_a_lute_lsp_whose_version_differs() {
     let silent = fake_lsp("lsp-silent", "");
     let text = doctor(&proj, &silent);
     let l = line(&text, "lute-lsp on PATH");
-    assert!(l.contains('✗') && l.contains("reports no version"), "{text}");
+    assert!(
+        l.contains('✗') && l.contains("reports no version"),
+        "{text}"
+    );
 
     let current = fake_lsp("lsp-current", &format!("lute-lsp {ours}\\n"));
     let text = doctor(&proj, &current);
@@ -190,7 +207,11 @@ fn doctor_flags_a_running_lute_lsp_of_another_build() {
             .unwrap_or_else(|| panic!("{pid} not listed:\n{text}"))
     };
     let text = doctor(&proj, &temp_dir("running-path"));
-    assert_eq!(running(&text).rsplit(": ").next().unwrap(), format!("{pid} {ours}"), "{text}");
+    assert_eq!(
+        running(&text).rsplit(": ").next().unwrap(),
+        format!("{pid} {ours}"),
+        "{text}"
+    );
 
     // Reinstalled over the running server: the file on disk is newer.
     std::thread::sleep(std::time::Duration::from_millis(2500));
@@ -198,7 +219,10 @@ fn doctor_flags_a_running_lute_lsp_of_another_build() {
     let text = doctor(&proj, &temp_dir("running-path2"));
     let l = line(&text, "running lute-lsp");
     assert!(l.contains('✗'), "{text}");
-    assert!(running(&text).contains("started before its binary was replaced"), "{text}");
+    assert!(
+        running(&text).contains("started before its binary was replaced"),
+        "{text}"
+    );
     assert!(text.contains("restart the editor"), "{text}");
 
     let _ = server.kill();
@@ -219,11 +243,20 @@ fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
     let lute = bin.join("lute");
     std::fs::copy(BIN, &lute).unwrap();
     let sibling = bin.join("lute-lsp");
-    std::fs::write(&sibling, format!("#!/bin/sh\n# prerelease build\nprintf 'lute-lsp {ours}\\n'\n")).unwrap();
+    std::fs::write(
+        &sibling,
+        format!("#!/bin/sh\n# prerelease build\nprintf 'lute-lsp {ours}\\n'\n"),
+    )
+    .unwrap();
     std::fs::set_permissions(&sibling, std::fs::Permissions::from_mode(0o755)).unwrap();
     let global = fake_lsp("sibling-global", &format!("lute-lsp {ours}\\n"));
     let run = |path: &Path| {
-        let out = Command::new(&lute).arg("doctor").arg(&proj).env("PATH", path).output().unwrap();
+        let out = Command::new(&lute)
+            .arg("doctor")
+            .arg(&proj)
+            .env("PATH", path)
+            .output()
+            .unwrap();
         assert!(out.status.success(), "{out:?}");
         String::from_utf8_lossy(&out.stdout).to_string()
     };
@@ -231,7 +264,10 @@ fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
     let text = run(&global);
     assert!(line(&text, "lute-lsp on PATH").contains('✓'), "{text}");
     let l = line(&text, "lute-lsp beside lute");
-    assert!(l.contains('✗') && l.contains("another build than"), "{text}");
+    assert!(
+        l.contains('✗') && l.contains("another build than"),
+        "{text}"
+    );
 
     let text = run(&bin);
     let l = line(&text, "lute-lsp beside lute");

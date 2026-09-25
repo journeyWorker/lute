@@ -973,7 +973,10 @@ fn to_ident(name: &str, fallback: &str) -> String {
 /// `talk.maraFirst`), matching the dotted `<group>.<name>` ids the templates
 /// and docs use, while `-` (forbidden in a segment, dsl §9.4) still camels.
 fn to_id(name: &str, fallback: &str) -> String {
-    let segs: Vec<String> = name.split(['/', '.']).map(|seg| to_ident(seg, fallback)).collect();
+    let segs: Vec<String> = name
+        .split(['/', '.'])
+        .map(|seg| to_ident(seg, fallback))
+        .collect();
     segs.join(".")
 }
 
@@ -1026,7 +1029,11 @@ impl Destination {
             });
         }
         let abs = absolute(dir);
-        if let Some(root) = abs.ancestors().skip(1).find(|d| d.join("lute.project.yaml").is_file()) {
+        if let Some(root) = abs
+            .ancestors()
+            .skip(1)
+            .find(|d| d.join("lute.project.yaml").is_file())
+        {
             return Err(root.to_path_buf());
         }
         Ok(Destination {
@@ -1192,7 +1199,10 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
             return ExitCode::from(2);
         }
     }
-    created(&path, &format!("check it with: lute check {}", path.display()))
+    created(
+        &path,
+        &format!("check it with: lute check {}", path.display()),
+    )
 }
 
 /// `lute new quest <name> [--start]`.
@@ -1213,7 +1223,10 @@ fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
     let ident = to_ident(name, "quest");
     let progress = format!("run.{ident}Progress");
     let (lifecycle, start_attr) = if start {
-        ("// `start=\"true\"`: active from the first moment of play.\n", " start=\"true\"")
+        (
+            "// `start=\"true\"`: active from the first moment of play.\n",
+            " start=\"true\"",
+        )
     } else {
         (
             "// Accept-driven: inactive until a scene or lore entry runs\n\
@@ -1239,7 +1252,10 @@ state:
     if let Err(code) = create(&path, &content) {
         return code;
     }
-    created(&path, &format!("check it with: lute check {}", path.display()))
+    created(
+        &path,
+        &format!("check it with: lute check {}", path.display()),
+    )
 }
 
 /// `lute new lore <name>` (dsl 0.19.0 §2).
@@ -1269,7 +1285,10 @@ fn new_lore(name: &str, dest: &Destination) -> ExitCode {
     if let Err(code) = create(&path, &content) {
         return code;
     }
-    created(&path, &format!("check it with: lute check {}", path.display()))
+    created(
+        &path,
+        &format!("check it with: lute check {}", path.display()),
+    )
 }
 
 /// `lute new schema <name>` — a `<name>.schema.yaml` skeleton at the project
@@ -1336,18 +1355,30 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> 
         suggestion.push('/');
     }
     suggestion.push_str(name);
-    if std::env::current_dir().map(|cwd| absolute(&cwd)).ok().as_deref() != Some(root) {
+    if std::env::current_dir()
+        .map(|cwd| absolute(&cwd))
+        .ok()
+        .as_deref()
+        != Some(root)
+    {
         suggestion.push_str(&format!(" --dir {}", root.display()));
     }
     let resolved = absolute(dir);
     let (what, fix) = if given {
         (
-            format!("`--dir {}` resolves to `{}`", dir.display(), resolved.display()),
+            format!(
+                "`--dir {}` resolves to `{}`",
+                dir.display(),
+                resolved.display()
+            ),
             "`--dir` names the project, not the destination folder",
         )
     } else {
         (
-            format!("no `--dir` was given, so `lute new` started from the current directory `{}`", resolved.display()),
+            format!(
+                "no `--dir` was given, so `lute new` started from the current directory `{}`",
+                resolved.display()
+            ),
             "run from the project root, or pass `--dir <root>`",
         )
     };

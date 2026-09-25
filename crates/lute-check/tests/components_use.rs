@@ -325,6 +325,14 @@ fn def_arg_to_enum_param_must_produce_members() {
     };
     assert_eq!(count("run.flag ? 'blazing' : 'brief'"), 0);
     assert_eq!(count("run.mood"), 0);
-    assert_eq!(count("run.flag ? 'blazing' : 'brisk'"), 1, "non-member literal");
-    assert_eq!(count("run.name"), 1, "a string read cannot be proven a member");
+    assert_eq!(
+        count("run.flag ? 'blazing' : 'brisk'"),
+        1,
+        "non-member literal"
+    );
+    assert_eq!(
+        count("run.name"),
+        1,
+        "a string read cannot be proven a member"
+    );
 }

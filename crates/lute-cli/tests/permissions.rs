@@ -114,7 +114,10 @@ fn context_reports_the_same_effective_ceiling_and_filters_authoring_surface() {
         String::from_utf8_lossy(&result.stderr)
     );
     let context: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
-    assert_eq!(context["permissions"]["layers"][0]["directives"][0], "camera");
+    assert_eq!(
+        context["permissions"]["layers"][0]["directives"][0],
+        "camera"
+    );
     assert_eq!(context["questsAllowed"], false);
     assert!(context["bridges"].as_array().unwrap().is_empty());
     assert!(context["rewardKinds"].as_object().unwrap().is_empty());

@@ -1268,7 +1268,12 @@ fn scenario_envelope_reports_guaranteed_facts_on_arrival() {
     );
     // The assert sits on line 13 of `a.lute` (5 metadata + 5 vocabulary lines).
 
-    let text = stdout(&run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]));
+    let text = stdout(&run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "envelope",
+        "b.s01ep01",
+    ]));
     let section = text
         .split("Guaranteed facts")
         .nth(1)
@@ -1289,7 +1294,10 @@ fn scenario_envelope_reports_guaranteed_facts_on_arrival() {
     assert_eq!(facts.len(), 1, "{v}");
     assert_eq!(facts[0]["fact"], "knows(vesna, manifest)", "{v}");
     assert!(
-        facts[0]["establishedBy"].as_str().unwrap().ends_with("a.lute:13"),
+        facts[0]["establishedBy"]
+            .as_str()
+            .unwrap()
+            .ends_with("a.lute:13"),
         "{v}"
     );
 }
@@ -1320,15 +1328,27 @@ fn scenario_lists_a_bare_quest_as_unanchored_in_every_format() {
         .unwrap_or_else(|| panic!("no unanchored section: {text}"));
     assert_eq!(tail.lines().next(), Some("    quest(loose)"), "{text}");
     assert!(
-        !text.split("unanchored").next().unwrap().contains("quest(loose)"),
+        !text
+            .split("unanchored")
+            .next()
+            .unwrap()
+            .contains("quest(loose)"),
         "the bare quest sits in no layer and on no edge: {text}"
     );
 
     let out = run(&["scenario", &path, "--format", "json"]);
     assert!(out.status.success(), "{}", stderr(&out));
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
-    assert_eq!(v["roots"][0]["unanchored"], serde_json::json!(["quest(loose)"]), "{v}");
-    assert_eq!(v["roots"][0]["layers"], serde_json::json!([["scene(a.s01ep01)"]]), "{v}");
+    assert_eq!(
+        v["roots"][0]["unanchored"],
+        serde_json::json!(["quest(loose)"]),
+        "{v}"
+    );
+    assert_eq!(
+        v["roots"][0]["layers"],
+        serde_json::json!([["scene(a.s01ep01)"]]),
+        "{v}"
+    );
 
     let dot = stdout(&run(&["scenario", &path, "--format", "dot"]));
     assert!(
@@ -1370,7 +1390,14 @@ fn scenario_reach_reports_a_bare_quest_as_unanchored() {
         "{text}"
     );
 
-    let out = run(&["scenario", &path, "--format", "json", "reach", "quest:loose"]);
+    let out = run(&[
+        "scenario",
+        &path,
+        "--format",
+        "json",
+        "reach",
+        "quest:loose",
+    ]);
     assert!(out.status.success(), "{}", stderr(&out));
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
     assert_eq!(v["reach"], "unanchored", "{v}");
@@ -1399,11 +1426,24 @@ fn scenario_draws_subquest_and_start_edges_without_after() {
     );
     let path = dir.to_str().unwrap().to_string();
     let text = stdout(&run(&["scenario", &path]));
-    assert!(text.contains("scene(road.departure) -> quest(emberRoad) [start]"), "{text}");
-    assert!(text.contains("quest(emberRoad) -> quest(openBridge) [subquest]"), "{text}");
+    assert!(
+        text.contains("scene(road.departure) -> quest(emberRoad) [start]"),
+        "{text}"
+    );
+    assert!(
+        text.contains("quest(emberRoad) -> quest(openBridge) [subquest]"),
+        "{text}"
+    );
     assert!(!text.contains("unanchored"), "{text}");
 
-    let out = run(&["scenario", &path, "--format", "json", "reach", "quest:openBridge"]);
+    let out = run(&[
+        "scenario",
+        &path,
+        "--format",
+        "json",
+        "reach",
+        "quest:openBridge",
+    ]);
     assert!(out.status.success(), "{}", stderr(&out));
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
     assert_eq!(v["reach"], "reachable", "{v}");
@@ -1432,7 +1472,10 @@ fn scenario_draws_and_reaches_bundle_beats() {
     let d = dir.to_str().unwrap();
 
     let graph = stdout(&run(&["scenario", d]));
-    assert!(graph.contains("layer 0: scene(a.s01ep01), beat(talk.porter)"), "{graph}");
+    assert!(
+        graph.contains("layer 0: scene(a.s01ep01), beat(talk.porter)"),
+        "{graph}"
+    );
 
     for arg in ["talk.porter", "beat:talk.porter"] {
         let out = run(&["scenario", d, "reach", arg]);
@@ -1440,7 +1483,10 @@ fn scenario_draws_and_reaches_bundle_beats() {
         assert!(out.status.success(), "{arg}: {}{text}", stderr(&out));
         assert!(text.contains("reach beat(talk.porter):"), "{text}");
         assert!(text.contains("verdict: Reachable"), "{text}");
-        assert!(text.contains("  on: talk\n  target: npc.porter\n"), "{text}");
+        assert!(
+            text.contains("  on: talk\n  target: npc.porter\n"),
+            "{text}"
+        );
         assert!(text.contains("  when: visited('a.s01ep01')"), "{text}");
     }
 
@@ -1451,5 +1497,32 @@ fn scenario_draws_and_reaches_bundle_beats() {
 
     let env = run(&["scenario", d, "envelope", "talk.porter"]);
     assert!(env.status.success(), "{}", stderr(&env));
-    assert!(stdout(&env).contains("envelope for beat(talk.porter)"), "{}", stdout(&env));
+    assert!(
+        stdout(&env).contains("envelope for beat(talk.porter)"),
+        "{}",
+        stdout(&env)
+    );
+}
+
+/// dsl 0.25.0 §3: `reach` on a bundle beat with `after=` prints the formula
+/// and the node it references, as for a scene's `after:` — not "declares no
+/// `after`".
+#[test]
+fn scenario_reach_prints_a_bundle_beats_after() {
+    let dir = temp_dir("scenario-bundle-after");
+    write(&dir, "a.lute", &scene_sets_run_a("a"));
+    write(
+        &dir,
+        "talk.lute",
+        "---\nkind: lore\nid: talk\n---\n\n\
+         <beat id=\"porter\" on=\"talk\" after=\"visited('a.s01ep01')\">\n  @porter: You again.\n</beat>\n",
+    );
+    let d = dir.to_str().unwrap();
+    let out = run(&["scenario", d, "reach", "talk.porter"]);
+    let text = stdout(&out);
+    assert!(out.status.success(), "{}{text}", stderr(&out));
+    assert!(text.contains("  after: visited(\"a.s01ep01\")"), "{text}");
+    assert!(text.contains("    - scene(a.s01ep01): "), "{text}");
+    assert!(!text.contains("declares no `after`"), "{text}");
+    assert!(text.contains("  on: talk\n"), "{text}");
 }

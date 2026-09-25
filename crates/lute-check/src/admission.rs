@@ -291,7 +291,7 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                     "a lore document declares no `<entry>` or `<beat>`; a lore doc is a set of \
                      one or more `<entry>` / `<beat>` declarations (dsl 0.19.0 §2, dsl 0.23.0 \
                      §4)"
-                        .to_string(),
+                    .to_string(),
                     doc.span,
                 ));
             }

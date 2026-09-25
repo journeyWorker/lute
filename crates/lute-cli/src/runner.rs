@@ -467,6 +467,9 @@ pub(crate) struct Runner {
     /// dsl 0.24.0 §5: the `bridges:` answers plugin calls consume — the
     /// mock's (`lute run`), or the playthrough's queue ([`Runner::with_bridges`]).
     bridges: BridgeAnswers,
+    /// dsl 0.25.0 §1: every pair of relations the artifact's `relations[].excludes`
+    /// declares exclusive (`a < b`); empty when none.
+    excludes: Vec<(String, String)>,
     /// dsl 0.24.0 §2: why each `<quest>.<objective>` in `failed_objectives`
     /// failed (`by` / `until`) — read when a required objective's failure
     /// fails its quest, to stamp `quest.<id>.failedBy`.
@@ -553,15 +556,27 @@ impl BridgeReads {
         }
         let mut fields: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for art in arts {
-            let cmds = art.get("commands").and_then(Json::as_array).into_iter().flatten();
+            let cmds = art
+                .get("commands")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten();
             for c in cmds.filter(|c| c.get("kind").and_then(Json::as_str) == Some("plugin")) {
                 let tag = c.get("tag").and_then(Json::as_str).unwrap_or("");
-                for e in c.get("effects").and_then(Json::as_array).into_iter().flatten() {
+                for e in c
+                    .get("effects")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                {
                     let field = e.pointer("/from/bridgeResult").and_then(Json::as_str);
                     let path = e.get("path").and_then(Json::as_str);
                     if let (Some(field), Some(path)) = (field, path) {
                         if paths.contains(path) {
-                            fields.entry(tag.to_string()).or_default().insert(field.to_string());
+                            fields
+                                .entry(tag.to_string())
+                                .or_default()
+                                .insert(field.to_string());
                         }
                     }
                 }
@@ -749,6 +764,27 @@ impl Runner {
             top: BridgeAnswers::queue(&mock.bridges),
             ..BridgeAnswers::default()
         };
+        let excludes = art
+            .get("relations")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .flat_map(|r| {
+                let name = r
+                    .get("name")
+                    .and_then(Json::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                r.get("excludes")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Json::as_str)
+                    .filter(|o| name.as_str() < *o)
+                    .map(|o| (name.clone(), o.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
 
         Runner {
             kind,
@@ -786,6 +822,7 @@ impl Runner {
             defer_by: Vec::new(),
             deferred_handlers: None,
             bridges,
+            excludes,
         }
     }
 
@@ -1319,10 +1356,7 @@ impl Runner {
             .get(&quest)
             .filter(|s| s.as_str() != "unset")
         {
-            rec.insert(
-                "ignored".into(),
-                Json::String(format!("already {state}")),
-            );
+            rec.insert("ignored".into(), Json::String(format!("already {state}")));
         }
         self.transcript.push(Json::Object(rec));
         self.accepted.push(quest);
@@ -1479,6 +1513,7 @@ impl Runner {
             .and_then(Json::as_array)
             .map(|a| a.iter().map(json_arg_to_string).collect())
             .unwrap_or_default();
+        let before = self.exclusive_now();
         self.base_facts.insert((rel.clone(), args.clone()));
         self.recompute_facts();
         self.transcript.push(json!({
@@ -1486,6 +1521,7 @@ impl Runner {
             "kind": "assert",
             "fact": render_fact(&rel, &args),
         }));
+        self.exclusive_check(&before);
     }
 
     fn exec_retract(&mut self, cmd: &Json) {
@@ -1499,6 +1535,7 @@ impl Runner {
             .and_then(Json::as_array)
             .map(|a| a.iter().map(json_arg_to_string).collect())
             .unwrap_or_default();
+        let before = self.exclusive_now();
         // `_` positions are a bulk wildcard over the ground positions.
         self.base_facts.retain(|(r, a)| {
             !(r == &rel
@@ -1511,6 +1548,50 @@ impl Runner {
             "kind": "retract",
             "pattern": render_fact(&rel, &args),
         }));
+        self.exclusive_check(&before);
+    }
+
+    /// dsl 0.25.0 §1: every pair of facts of exclusive relations holding now
+    /// (derived ones included), rendered `a(x) and b(x) both hold`.
+    fn exclusive_now(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for (a, b) in &self.excludes {
+            for (_, args) in self.all_facts.iter().filter(|(r, _)| r == a) {
+                if self.all_facts.contains(&(b.clone(), args.clone())) {
+                    out.push(format!(
+                        "{} and {} both hold",
+                        render_fact(a, args),
+                        render_fact(b, args)
+                    ));
+                }
+            }
+        }
+        out
+    }
+
+    /// dsl 0.25.0 §1: a write that made exclusive relations hold together —
+    /// even for a moment a later write undoes — is recorded at the write and
+    /// halts the walk like `lute trace` refuses it (`lute play` exit 1).
+    fn exclusive_check(&mut self, before: &[String]) {
+        if self.excludes.is_empty() {
+            return;
+        }
+        let new: Vec<String> = self
+            .exclusive_now()
+            .into_iter()
+            .filter(|v| !before.contains(v))
+            .collect();
+        if new.is_empty() {
+            return;
+        }
+        for v in &new {
+            self.transcript
+                .push(json!({ "kind": "exclusive", "text": v }));
+        }
+        self.refuse(format!(
+            "exclusive relations hold together — {} (dsl 0.25.0 §1)",
+            new.join("; ")
+        ));
     }
 
     /// dsl 0.19.0 §6: a first-read-only effect record NOT applied on a
@@ -1620,7 +1701,10 @@ impl Runner {
             rec.insert("kind".into(), Json::String("choice".into()));
             rec.insert("branch".into(), Json::String(branch));
             rec.insert("chose".into(), Json::Null);
-            rec.insert("note".into(), Json::String("no mock decision — incomplete".into()));
+            rec.insert(
+                "note".into(),
+                Json::String("no mock decision — incomplete".into()),
+            );
             if scripted.len() > 1 {
                 rec.insert("scripted".into(), json!(scripted.len()));
             }
@@ -1776,7 +1860,10 @@ impl Runner {
                     rec.insert("prompt".into(), Json::String(p.clone()));
                 }
                 rec.insert("chose".into(), Json::Null);
-                rec.insert("note".into(), Json::String("no mock decision — incomplete".into()));
+                rec.insert(
+                    "note".into(),
+                    Json::String("no mock decision — incomplete".into()),
+                );
                 marks(&mut rec);
                 self.transcript.push(Json::Object(rec));
                 return Step::Halt;
@@ -1963,7 +2050,9 @@ impl Runner {
             self.bridges.next(&tag)
         };
         // dsl 0.25.0 §7: whether content reads one of this call's results.
-        let read = reads.iter().any(|(_, p)| self.bridges.reads.paths.contains(p));
+        let read = reads
+            .iter()
+            .any(|(_, p)| self.bridges.reads.paths.contains(p));
         let answered = match &answer {
             Some(a) => match self.bridge_values(&tag, &reads, a) {
                 Ok(values) => Some(values),
@@ -2023,7 +2112,10 @@ impl Runner {
                 };
                 self.state.insert(path, Value::Num(v));
             } else if let Some(field) = from.get("bridgeResult").and_then(Json::as_str) {
-                match answered.as_ref().and_then(|a| a.iter().find(|(f, _)| f == field)) {
+                match answered
+                    .as_ref()
+                    .and_then(|a| a.iter().find(|(f, _)| f == field))
+                {
                     Some((_, v)) => {
                         self.state.insert(path, v.clone());
                     }
@@ -2088,8 +2180,11 @@ impl Runner {
                 if !self.bridges.reads.reads(tag, field) {
                     continue;
                 }
-                let read: Vec<&str> =
-                    fields.iter().copied().filter(|f| self.bridges.reads.reads(tag, f)).collect();
+                let read: Vec<&str> = fields
+                    .iter()
+                    .copied()
+                    .filter(|f| self.bridges.reads.reads(tag, f))
+                    .collect();
                 return Err(format!(
                     "{at} lacks `{field}`, which content reads — an answer gives every bridge \
                      result of the call content reads ({})",
@@ -2313,7 +2408,9 @@ impl Runner {
                 for (oi, o) in q.objectives.iter().enumerate() {
                     if o.optional
                         || done.contains(&(qi, oi))
-                        || self.failed_objectives.contains(&format!("{}.{}", q.id, o.id))
+                        || self
+                            .failed_objectives
+                            .contains(&format!("{}.{}", q.id, o.id))
                     {
                         continue;
                     }
@@ -2330,7 +2427,8 @@ impl Runner {
                     // `done`. `by` is judged at every settle; `until` only
                     // where the objective is judged.
                     let unknown = |this: &mut Self, slot: &Option<String>| {
-                        slot.as_ref().is_some_and(|c| this.eval_raw(c) == Value::Unknown)
+                        slot.as_ref()
+                            .is_some_and(|c| this.eval_raw(c) == Value::Unknown)
                     };
                     let (key, stuck) = if judged && self.eval_raw(&o.done) == Value::Unknown {
                         ("done", true)
@@ -2453,7 +2551,9 @@ impl Runner {
                 for (oi, o) in q.objectives.iter().enumerate() {
                     if o.on.is_some()
                         || done.contains(&(qi, oi))
-                        || self.failed_objectives.contains(&format!("{}.{}", q.id, o.id))
+                        || self
+                            .failed_objectives
+                            .contains(&format!("{}.{}", q.id, o.id))
                     {
                         continue;
                     }
@@ -2509,7 +2609,9 @@ impl Runner {
                     // handlers and BEFORE the §2.3 downward cascade.
                     self.emit_grants(&q.id, None, &q.rewards, GrantEvent::Failed);
                     self.fire_event("questFailed", Some(&q.id), None, handlers, seg_starts);
-                    self.cascade_children(&q.id, "cascade", quests, parent_of, handlers, seg_starts);
+                    self.cascade_children(
+                        &q.id, "cascade", quests, parent_of, handlers, seg_starts,
+                    );
                     changed = true;
                     continue;
                 }
@@ -2535,7 +2637,11 @@ impl Runner {
                     self.fire_event("questComplete", Some(&q.id), None, handlers, seg_starts);
                     // dsl 0.24.0 §2: the alternatives an `any` quest did not
                     // take are superseded, not cascaded.
-                    let reason = if q.complete_any { "superseded" } else { "cascade" };
+                    let reason = if q.complete_any {
+                        "superseded"
+                    } else {
+                        "cascade"
+                    };
                     self.cascade_children(&q.id, reason, quests, parent_of, handlers, seg_starts);
                     changed = true;
                 }
@@ -2596,9 +2702,9 @@ impl Runner {
                 .iter()
                 .enumerate()
                 .filter(|(_, o)| {
-                    o.on
-                        .as_deref()
-                        .is_some_and(|on| lute_trace::raise_judges(occasion, on, o.target.as_deref()))
+                    o.on.as_deref().is_some_and(|on| {
+                        lute_trace::raise_judges(occasion, on, o.target.as_deref())
+                    })
                 })
                 .map(|(oi, _)| oi)
                 .collect();
@@ -2610,7 +2716,9 @@ impl Runner {
                 }
                 let o = &q.objectives[oi];
                 if done.contains(&(qi, oi))
-                    || self.failed_objectives.contains(&format!("{}.{}", q.id, o.id))
+                    || self
+                        .failed_objectives
+                        .contains(&format!("{}.{}", q.id, o.id))
                 {
                     continue;
                 }
@@ -2734,8 +2842,10 @@ impl Runner {
     /// carries it as `failedBy`.
     fn set_quest_failed(&mut self, id: &str, reason: &str) {
         self.set_quest_state(id, "failed");
-        self.state
-            .insert(format!("quest.{id}.failedBy"), Value::Str(reason.to_string()));
+        self.state.insert(
+            format!("quest.{id}.failedBy"),
+            Value::Str(reason.to_string()),
+        );
         if let Some(rec) = self.transcript.last_mut() {
             rec["failedBy"] = json!(reason);
         }
@@ -2966,12 +3076,22 @@ impl Runner {
         let beats: Vec<usize> = (0..self.commands.len())
             .filter(|&i| self.commands[i].get("kind").and_then(Json::as_str) == Some("beat"))
             .collect();
-        let record_id = |i: usize| self.commands[i].get("id").and_then(Json::as_str).unwrap_or("");
+        let record_id = |i: usize| {
+            self.commands[i]
+                .get("id")
+                .and_then(Json::as_str)
+                .unwrap_or("")
+        };
         let at = beats
             .iter()
             .copied()
             .find(|&i| record_id(i) == id)
-            .or_else(|| beats.iter().copied().find(|&i| record_id(i).ends_with(&suffix)));
+            .or_else(|| {
+                beats
+                    .iter()
+                    .copied()
+                    .find(|&i| record_id(i).ends_with(&suffix))
+            });
         let Some(at) = at else {
             let declared: Vec<&str> = beats.iter().map(|&i| record_id(i)).collect();
             self.fatal = Some(format!(
@@ -3117,6 +3237,10 @@ impl Runner {
                         e.get("effect").and_then(Json::as_str).unwrap_or("")
                     )
                 }
+                "exclusive" => format!(
+                    "  ✗ exclusive: {}",
+                    e.get("text").and_then(Json::as_str).unwrap_or("")
+                ),
                 "end" => match e.get("reason").and_then(Json::as_str) {
                     Some(r) => format!("  {a}  end    reason={r}"),
                     None => format!("  {a}  end"),

@@ -26,9 +26,17 @@ fn snapshot() -> CapabilitySnapshot {
         members: Some(members.iter().map(|m| m.to_string()).collect()),
     };
     for (name, select, target) in [
-        ("hubVisit", OccasionSelect::First, OccasionTarget::Shape(false)),
+        (
+            "hubVisit",
+            OccasionSelect::First,
+            OccasionTarget::Shape(false),
+        ),
         ("talk", OccasionSelect::First, domain),
-        ("examine", OccasionSelect::First, OccasionTarget::Shape(true)),
+        (
+            "examine",
+            OccasionSelect::First,
+            OccasionTarget::Shape(true),
+        ),
         (
             "visit",
             OccasionSelect::First,
@@ -39,8 +47,16 @@ fn snapshot() -> CapabilitySnapshot {
             },
         ),
         ("board", OccasionSelect::All, OccasionTarget::Shape(false)),
-        ("bossDefeated", OccasionSelect::First, bosses(&["gatekeeper", "warden"])),
-        ("bossFled", OccasionSelect::First, bosses(&["gatekeeper", "wardne"])),
+        (
+            "bossDefeated",
+            OccasionSelect::First,
+            bosses(&["gatekeeper", "warden"]),
+        ),
+        (
+            "bossFled",
+            OccasionSelect::First,
+            bosses(&["gatekeeper", "wardne"]),
+        ),
     ] {
         snap.occasions.insert(
             name.into(),
@@ -81,7 +97,8 @@ fn anchored<'s>(src: &'s str, d: &Diagnostic) -> &'s str {
     &src[d.span.byte_start..d.span.byte_end]
 }
 
-const VOCAB: &str = "entities:\n  person: { members: [maud, oskar] }\n  location: { open: true }\n  \
+const VOCAB: &str =
+    "entities:\n  person: { members: [maud, oskar] }\n  location: { open: true }\n  \
                      foe: { members: [gatekeeper, warden, cinderhound] }\n";
 
 /// A scene document with frontmatter lines `fm` and body `body`.
@@ -94,9 +111,7 @@ fn lore(body: &str) -> String {
 }
 
 fn quest_doc(body: &str) -> String {
-    format!(
-        "---\nkind: quest\nstate:\n  run.n: {{ type: number, default: 0 }}\n---\n{body}"
-    )
+    format!("---\nkind: quest\nstate:\n  run.n: {{ type: number, default: 0 }}\n---\n{body}")
 }
 
 // --- §1.2 owner: engine ----------------------------------------------------
@@ -114,7 +129,11 @@ fn content_set_of_an_engine_owned_path_is_an_error_and_reads_are_free() {
     assert_eq!(hits.len(), 1, "{ds:?}");
     assert_eq!(hits[0].severity, Severity::Error);
     assert_eq!(anchored(&src, hits[0]), "run.day");
-    assert!(hits[0].message.contains("`engine:` step"), "{}", hits[0].message);
+    assert!(
+        hits[0].message.contains("`engine:` step"),
+        "{}",
+        hits[0].message
+    );
     // The write short-circuits: no op/type or undeclared twin.
     assert!(with_code(&ds, "E-UNDECLARED").is_empty(), "{ds:?}");
 }
@@ -129,7 +148,11 @@ fn owner_other_than_engine_is_a_state_decl_error() {
     let ds = diags(&src);
     let d = with_code(&ds, "E-STATE-DECL");
     assert_eq!(d.len(), 1, "{ds:?}");
-    assert!(d[0].message.contains("`owner:` is `content`"), "{}", d[0].message);
+    assert!(
+        d[0].message.contains("`owner:` is `content`"),
+        "{}",
+        d[0].message
+    );
 }
 
 #[test]
@@ -152,16 +175,36 @@ fn engine_owned_decl_is_lifted_onto_the_schema() {
 
 #[test]
 fn a_beat_target_outside_its_domain_is_beat_attr_with_did_you_mean() {
-    let src = scene("a.talk", "on: talk\ntarget: npc.mauda\n", "@narrator: Hi.\n");
+    let src = scene(
+        "a.talk",
+        "on: talk\ntarget: npc.mauda\n",
+        "@narrator: Hi.\n",
+    );
     let ds = diags(&src);
     let d = with_code(&ds, "E-BEAT-ATTR");
     assert_eq!(d.len(), 1, "{ds:?}");
     assert_eq!(anchored(&src, d[0]), "npc.mauda");
-    assert!(d[0].message.contains("did you mean `npc.maud`?"), "{}", d[0].message);
+    assert!(
+        d[0].message.contains("did you mean `npc.maud`?"),
+        "{}",
+        d[0].message
+    );
 
     // In-domain, and a wrong prefix.
-    assert!(with_code(&diags(&scene("a.ok", "on: talk\ntarget: npc.oskar\n", "@narrator: Hi.\n")), "E-BEAT-ATTR").is_empty());
-    let wrong = diags(&scene("a.bad", "on: talk\ntarget: place.maud\n", "@narrator: Hi.\n"));
+    assert!(with_code(
+        &diags(&scene(
+            "a.ok",
+            "on: talk\ntarget: npc.oskar\n",
+            "@narrator: Hi.\n"
+        )),
+        "E-BEAT-ATTR"
+    )
+    .is_empty());
+    let wrong = diags(&scene(
+        "a.bad",
+        "on: talk\ntarget: place.maud\n",
+        "@narrator: Hi.\n",
+    ));
     assert_eq!(with_code(&wrong, "E-BEAT-ATTR").len(), 1, "{wrong:?}");
 }
 
@@ -182,23 +225,40 @@ fn entry_beat_targets_and_open_kinds_and_shape_only_targets() {
 fn a_member_subset_narrows_the_domain_with_did_you_mean_over_the_subset() {
     // ashen N10: `bossDefeated` is raised only for the two guardians. A
     // hound is a `foe`, but not one of the occasion's listed members.
-    let src = scene("a.boss", "on: bossDefeated\ntarget: boss.cinderhound\n", "@narrator: Hi.\n");
+    let src = scene(
+        "a.boss",
+        "on: bossDefeated\ntarget: boss.cinderhound\n",
+        "@narrator: Hi.\n",
+    );
     let ds = diags(&src);
     let d = with_code(&ds, "E-BEAT-ATTR");
     assert_eq!(d.len(), 1, "{ds:?}");
     assert_eq!(anchored(&src, d[0]), "boss.cinderhound");
     assert!(
-        d[0].message.contains("member list (`boss.gatekeeper`, `boss.warden`)"),
+        d[0].message
+            .contains("member list (`boss.gatekeeper`, `boss.warden`)"),
         "{}",
         d[0].message
     );
     // The did-you-mean runs over the subset.
-    let near = diags(&scene("a.near", "on: bossDefeated\ntarget: boss.wardn\n", "@narrator: Hi.\n"));
+    let near = diags(&scene(
+        "a.near",
+        "on: bossDefeated\ntarget: boss.wardn\n",
+        "@narrator: Hi.\n",
+    ));
     let d = with_code(&near, "E-BEAT-ATTR");
     assert_eq!(d.len(), 1, "{near:?}");
-    assert!(d[0].message.contains("did you mean `boss.warden`?"), "{}", d[0].message);
+    assert!(
+        d[0].message.contains("did you mean `boss.warden`?"),
+        "{}",
+        d[0].message
+    );
     // A listed member is legal.
-    let ok = diags(&scene("a.ok", "on: bossDefeated\ntarget: boss.gatekeeper\n", "@narrator: Hi.\n"));
+    let ok = diags(&scene(
+        "a.ok",
+        "on: bossDefeated\ntarget: boss.gatekeeper\n",
+        "@narrator: Hi.\n",
+    ));
     assert!(with_code(&ok, "E-BEAT-ATTR").is_empty(), "{ok:?}");
 }
 
@@ -206,7 +266,11 @@ fn a_member_subset_narrows_the_domain_with_did_you_mean_over_the_subset() {
 fn a_listed_member_outside_the_entity_kind_refuses_every_target() {
     // `bossFled` lists `wardne`, which `foe` does not declare: even a
     // well-spelled target names the stray member, the kind, and the fix.
-    let src = scene("a.fled", "on: bossFled\ntarget: boss.gatekeeper\n", "@narrator: Hi.\n");
+    let src = scene(
+        "a.fled",
+        "on: bossFled\ntarget: boss.gatekeeper\n",
+        "@narrator: Hi.\n",
+    );
     let ds = diags(&src);
     let d = with_code(&ds, "E-BEAT-ATTR");
     assert_eq!(d.len(), 1, "{ds:?}");
@@ -334,7 +398,11 @@ fn quest_failed_handler_on_a_quest_that_cannot_fail_is_dead() {
     assert!(run(&tree).is_empty());
     let out = run(&inert_child);
     assert_eq!(out.len(), 1, "only the parent's handler: {out:?}");
-    assert!(out[0].1.message.contains("quest `p`"), "{}", out[0].1.message);
+    assert!(
+        out[0].1.message.contains("quest `p`"),
+        "{}",
+        out[0].1.message
+    );
     assert!(run(&deadline("")).is_empty());
     assert_eq!(run(&deadline(" optional")).len(), 1);
 }
@@ -373,7 +441,10 @@ fn equal_priority_beats_whose_whens_can_overlap_tie() {
         &beat("a.two", "on: hubVisit\nwhen: 'run.slot == \"night\"'\n"),
     ]);
     assert_eq!(codes(&out, "W-BEAT-PRIORITY-TIE"), 1, "{out:?}");
-    let d = &out.iter().find(|(_, d)| d.code == "W-BEAT-PRIORITY-TIE").unwrap();
+    let d = &out
+        .iter()
+        .find(|(_, d)| d.code == "W-BEAT-PRIORITY-TIE")
+        .unwrap();
     assert_eq!(d.0, PathBuf::from("1.lute"), "anchored at the later beat");
     assert!(d.1.message.contains("scene `a.one`"), "{}", d.1.message);
 }
@@ -382,7 +453,10 @@ fn equal_priority_beats_whose_whens_can_overlap_tie() {
 fn exclusive_whens_different_priorities_targets_or_select_all_do_not_tie() {
     // Disjoint values of one path.
     let exclusive = project_beats(&[
-        &beat("a.one", "on: hubVisit\nwhen: 'run.day == 1 && run.slot == \"night\"'\n"),
+        &beat(
+            "a.one",
+            "on: hubVisit\nwhen: 'run.day == 1 && run.slot == \"night\"'\n",
+        ),
         &beat("a.two", "on: hubVisit\nwhen: 'run.slot == \"morning\"'\n"),
     ]);
     assert_eq!(codes(&exclusive, "W-BEAT-PRIORITY-TIE"), 0, "{exclusive:?}");
@@ -392,8 +466,14 @@ fn exclusive_whens_different_priorities_targets_or_select_all_do_not_tie() {
     ]);
     assert_eq!(codes(&ranked, "W-BEAT-PRIORITY-TIE"), 0, "{ranked:?}");
     let targets = project_beats(&[
-        &beat("a.one", "on: talk\ntarget: npc.maud\nwhen: 'run.day >= 2'\n"),
-        &beat("a.two", "on: talk\ntarget: npc.oskar\nwhen: 'run.day >= 2'\n"),
+        &beat(
+            "a.one",
+            "on: talk\ntarget: npc.maud\nwhen: 'run.day >= 2'\n",
+        ),
+        &beat(
+            "a.two",
+            "on: talk\ntarget: npc.oskar\nwhen: 'run.day >= 2'\n",
+        ),
     ]);
     assert_eq!(codes(&targets, "W-BEAT-PRIORITY-TIE"), 0, "{targets:?}");
     let offered = project_beats(&[
@@ -404,19 +484,34 @@ fn exclusive_whens_different_priorities_targets_or_select_all_do_not_tie() {
     // `holds(P)` against `!holds(P)` is exclusive too.
     let rel = "relations:\n  here: { args: [person] }\n";
     let facts = project_beats(&[
-        &beat("a.one", &format!("on: hubVisit\nwhen: 'holds(here(maud))'\n{rel}")),
-        &beat("a.two", &format!("on: hubVisit\nwhen: '!holds(here(maud))'\n{rel}")),
+        &beat(
+            "a.one",
+            &format!("on: hubVisit\nwhen: 'holds(here(maud))'\n{rel}"),
+        ),
+        &beat(
+            "a.two",
+            &format!("on: hubVisit\nwhen: '!holds(here(maud))'\n{rel}"),
+        ),
     ]);
     assert_eq!(codes(&facts, "W-BEAT-PRIORITY-TIE"), 0, "{facts:?}");
     let other = project_beats(&[
-        &beat("a.one", &format!("on: hubVisit\nwhen: 'holds(here(maud))'\n{rel}")),
-        &beat("a.two", &format!("on: hubVisit\nwhen: '!holds(here(oskar))'\n{rel}")),
+        &beat(
+            "a.one",
+            &format!("on: hubVisit\nwhen: 'holds(here(maud))'\n{rel}"),
+        ),
+        &beat(
+            "a.two",
+            &format!("on: hubVisit\nwhen: '!holds(here(oskar))'\n{rel}"),
+        ),
     ]);
     assert_eq!(codes(&other, "W-BEAT-PRIORITY-TIE"), 1, "{other:?}");
     // An untargeted beat is a candidate for every target: it ties.
     let wide = project_beats(&[
         &beat("a.one", "on: talk\nwhen: 'run.day >= 2'\n"),
-        &beat("a.two", "on: talk\ntarget: npc.oskar\nwhen: 'run.day >= 3'\n"),
+        &beat(
+            "a.two",
+            "on: talk\ntarget: npc.oskar\nwhen: 'run.day >= 3'\n",
+        ),
     ]);
     assert_eq!(codes(&wide, "W-BEAT-PRIORITY-TIE"), 1, "{wide:?}");
 }
@@ -435,8 +530,16 @@ fn a_shadowed_beat_reports_shadowing_not_a_tie() {
 fn once_run_beat_gated_only_on_user_state_is_advised() {
     let out = project_beats(&[&beat("a.one", "on: hubVisit\nwhen: 'user.runs >= 3'\n")]);
     assert_eq!(codes(&out, "W-BEAT-ONCE-RUN-USER"), 1, "{out:?}");
-    let (_, d) = out.iter().find(|(_, d)| d.code == "W-BEAT-ONCE-RUN-USER").unwrap();
-    assert!(d.message.contains("write `once: run` if it should replay every run"), "{}", d.message);
+    let (_, d) = out
+        .iter()
+        .find(|(_, d)| d.code == "W-BEAT-ONCE-RUN-USER")
+        .unwrap();
+    assert!(
+        d.message
+            .contains("write `once: run` if it should replay every run"),
+        "{}",
+        d.message
+    );
     // `once: user`, a run-tier read, a fact query, or no `when`: silent.
     // dsl 0.23.1 (ashen N1): so is an AUTHORED `once: run` — the author's
     // acknowledgement — and a `prev.run.*` read (run history, not user).

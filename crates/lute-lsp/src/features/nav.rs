@@ -484,7 +484,13 @@ mod tests {
         let doc = parsed(WITH_INTERPS);
         let set_at = WITH_INTERPS.find("::set{").unwrap();
         let off = WITH_INTERPS[set_at..].find("run.coins").unwrap() + set_at + 2;
-        let refs = references_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off, false);
+        let refs = references_at(
+            &doc,
+            &load_core_snapshot(),
+            &SchemaImports::default(),
+            off,
+            false,
+        );
         assert!(
             refs.iter()
                 .any(|r| &WITH_INTERPS[r.byte_start..r.byte_end] == "{{run.coins}}"),
@@ -503,7 +509,13 @@ mod tests {
     fn references_on_interp_ref_include_interp() {
         let doc = parsed(WITH_INTERPS);
         let off = WITH_INTERPS.find("{{@fond}}").unwrap() + 2;
-        let refs = references_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off, false);
+        let refs = references_at(
+            &doc,
+            &load_core_snapshot(),
+            &SchemaImports::default(),
+            off,
+            false,
+        );
         assert!(
             refs.iter()
                 .any(|r| &WITH_INTERPS[r.byte_start..r.byte_end] == "{{@fond}}"),

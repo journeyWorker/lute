@@ -257,9 +257,12 @@ fn event_hover(snapshot: &CapabilitySnapshot, event: &str) -> Option<String> {
             "**{event}** — built-in lifecycle event (dsl 0.2.0 §4.5)"
         ));
     }
-    snapshot
-        .event(event)
-        .map(|d| format!("**{}** — capability-declared world event (dsl 0.2.0 §4.5)", d.name))
+    snapshot.event(event).map(|d| {
+        format!(
+            "**{}** — capability-declared world event (dsl 0.2.0 §4.5)",
+            d.name
+        )
+    })
 }
 
 /// Render a keyword doc for the `<quest>`/`<on>`/`<objective>` construct (dsl
@@ -724,7 +727,8 @@ mod tests {
 
     // ---- dsl 0.2.0 §4/§6.3/§6.4: quest / on / objective hover ----
 
-    const QUEST_DOC: &str = "---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
+    const QUEST_DOC: &str =
+        "---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
         <quest id=\"q\">\n\
         <objective id=\"o\" done=\"run.d\">\n</objective>\n\
         <on event=\"questComplete\">\n</on>\n\
@@ -755,11 +759,7 @@ mod tests {
         let doc = parsed(QUEST_DOC);
         let off = QUEST_DOC.find("<quest ").unwrap() + 1;
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
-        assert!(
-            contents_text(&h).contains("quest"),
-            "{}",
-            contents_text(&h)
-        );
+        assert!(contents_text(&h).contains("quest"), "{}", contents_text(&h));
     }
 
     #[test]
@@ -789,12 +789,15 @@ mod tests {
 
     #[test]
     fn hover_on_entry_construct_explains_its_attrs() {
-        let text = "---\nkind: lore\n---\n<entry id=\"e\" target=\"item.key\">\n@narrator: hi\n</entry>\n";
+        let text =
+            "---\nkind: lore\n---\n<entry id=\"e\" target=\"item.key\">\n@narrator: hi\n</entry>\n";
         let doc = parsed(text);
         let off = text.find("<entry ").unwrap() + 1;
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
-        for k in ["entry", "target", "category", "series", "order", "when", "on", "priority", "once"] {
+        for k in [
+            "entry", "target", "category", "series", "order", "when", "on", "priority", "once",
+        ] {
             assert!(s.contains(k), "missing {k}: {s}");
         }
     }

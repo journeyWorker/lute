@@ -206,7 +206,10 @@ fn hub_empty_prompt_is_branch_prompt_error() {
         let codes: Vec<&str> = diags.iter().map(|d| d.code.as_str()).collect();
         assert_eq!(codes, vec!["E-BRANCH-PROMPT"], "{bad:?}");
         let d = &diags[0];
-        assert_eq!(&t[d.span.byte_start..d.span.byte_end], format!("prompt=\"{bad}\""));
+        assert_eq!(
+            &t[d.span.byte_start..d.span.byte_end],
+            format!("prompt=\"{bad}\"")
+        );
         assert!(d.message.contains("`<hub prompt>`"), "{}", d.message);
     }
 }

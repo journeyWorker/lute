@@ -44,7 +44,8 @@ fn snapshot() -> CapabilitySnapshot {
         );
     }
     for name in ["bossDefeated", "examine", "hubVisit", "combatEnd"] {
-        snap.events.insert(name.into(), EventDecl { name: name.into() });
+        snap.events
+            .insert(name.into(), EventDecl { name: name.into() });
     }
     snap
 }
@@ -74,7 +75,9 @@ fn only<'a>(ds: &'a [Diagnostic], code: &str) -> &'a Diagnostic {
 }
 
 fn errors(ds: &[Diagnostic]) -> Vec<&Diagnostic> {
-    ds.iter().filter(|d| d.severity == Severity::Error).collect()
+    ds.iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect()
 }
 
 fn anchored<'s>(src: &'s str, d: &Diagnostic) -> &'s str {
@@ -126,8 +129,12 @@ fn quest_activate_and_complete_take_their_listed_values() {
     assert_eq!(hits.len(), 2, "{ds:?}");
     let spots: BTreeSet<&str> = hits.iter().map(|d| anchored(&bad, d)).collect();
     assert_eq!(spots, BTreeSet::from(["later", "some"]));
-    assert!(hits.iter().any(|d| d.message.contains("`activate`") && d.message.contains("\"accept\"")));
-    assert!(hits.iter().any(|d| d.message.contains("`complete`") && d.message.contains("\"any\"")));
+    assert!(hits
+        .iter()
+        .any(|d| d.message.contains("`activate`") && d.message.contains("\"accept\"")));
+    assert!(hits
+        .iter()
+        .any(|d| d.message.contains("`complete`") && d.message.contains("\"any\"")));
 }
 
 #[test]
@@ -208,7 +215,8 @@ fn on_target_needs_a_targeted_occasion_of_the_event_name() {
     let ds = diags(&src);
     let d = only(&ds, "E-BEAT-ATTR");
     assert!(
-        d.message.contains("needs a targeted occasion named `hubVisit`"),
+        d.message
+            .contains("needs a targeted occasion named `hubVisit`"),
         "{}",
         d.message
     );
@@ -217,7 +225,8 @@ fn on_target_needs_a_targeted_occasion_of_the_event_name() {
     let ds = diags(&src);
     let d = only(&ds, "E-BEAT-ATTR");
     assert!(
-        d.message.contains("needs a targeted occasion named `combatEnd`"),
+        d.message
+            .contains("needs a targeted occasion named `combatEnd`"),
         "{}",
         d.message
     );
@@ -234,7 +243,10 @@ fn on_target_must_be_a_quoted_dotted_id() {
     );
     let bad = on_quest("<on event=\"bossDefeated\" target=\"boss gatekeeper\">");
     let ds = diags(&bad);
-    assert!(only(&ds, "E-BEAT-ATTR").message.contains("dotted id"), "{ds:?}");
+    assert!(
+        only(&ds, "E-BEAT-ATTR").message.contains("dotted id"),
+        "{ds:?}"
+    );
 }
 
 // --- `::accept{at}` ----------------------------------------------------------
@@ -320,7 +332,10 @@ fn external_acceptance_of_a_child_that_activates_with_its_parent_is_accept_targe
 fn never_accepted(texts: &[(&str, &str)], mocked: &[(&str, &str)]) -> Vec<Diagnostic> {
     let mut by_quest: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
     for (id, file) in mocked {
-        by_quest.entry(id.to_string()).or_default().push(PathBuf::from(file));
+        by_quest
+            .entry(id.to_string())
+            .or_default()
+            .push(PathBuf::from(file));
     }
     check_project_never_accepted(&docs(texts), &by_quest)
         .into_iter()
@@ -444,7 +459,11 @@ fn failed_by_and_objective_failed_are_unwritable_and_undeclarable() {
         "::set{quest.road.objectives.bridge.failed = true}",
     ] {
         let ds = diags(&scene_doc("camp.epilogue", &format!("{set}\n")));
-        assert_eq!(with_code(&ds, "E-QUEST-RESERVED-WRITE").len(), 1, "{set}: {ds:?}");
+        assert_eq!(
+            with_code(&ds, "E-QUEST-RESERVED-WRITE").len(),
+            1,
+            "{set}: {ds:?}"
+        );
     }
     for path in ["quest.road.failedBy", "quest.road.objectives.bridge.failed"] {
         let src = format!(
@@ -452,7 +471,10 @@ fn failed_by_and_objective_failed_are_unwritable_and_undeclarable() {
              ## Shot 1.\n@narrator: x\n"
         );
         let ds = diags(&src);
-        assert!(!with_code(&ds, "E-QUEST-RESERVED-DECL").is_empty(), "{path}: {ds:?}");
+        assert!(
+            !with_code(&ds, "E-QUEST-RESERVED-DECL").is_empty(),
+            "{path}: {ds:?}"
+        );
     }
 }
 
@@ -468,12 +490,21 @@ fn project_resolves_failed_by_and_objective_failed_ids() {
             .map(|(_, d)| d)
             .collect::<Vec<_>>()
     };
-    assert!(refs("quest.road.failedBy == 'fail' || quest.road.objectives.bridge.failed").is_empty());
+    assert!(
+        refs("quest.road.failedBy == 'fail' || quest.road.objectives.bridge.failed").is_empty()
+    );
     let ds = refs("quest.raod.failedBy == 'fail'");
-    assert!(only(&ds, "W-QUEST-REF-UNKNOWN").message.contains("quest `raod`"), "{ds:?}");
+    assert!(
+        only(&ds, "W-QUEST-REF-UNKNOWN")
+            .message
+            .contains("quest `raod`"),
+        "{ds:?}"
+    );
     let ds = refs("quest.road.objectives.brige.failed");
     assert!(
-        only(&ds, "W-QUEST-REF-UNKNOWN").message.contains("objective `brige`"),
+        only(&ds, "W-QUEST-REF-UNKNOWN")
+            .message
+            .contains("objective `brige`"),
         "{ds:?}"
     );
 }

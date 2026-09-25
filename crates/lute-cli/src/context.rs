@@ -88,7 +88,9 @@ pub(crate) fn extend_surface(
 
     let builtins: Vec<Value> = BUILTIN_DIRECTIVES
         .iter()
-        .map(|(name, syntax, meaning)| json!({ "name": name, "syntax": syntax, "meaning": meaning }))
+        .map(
+            |(name, syntax, meaning)| json!({ "name": name, "syntax": syntax, "meaning": meaning }),
+        )
         .collect();
     root.insert("builtinDirectives".into(), builtins.into());
 

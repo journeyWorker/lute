@@ -47,12 +47,25 @@ fn cumulative_reanalysis_carries_state_between_units() {
 
     let first = compiler.push("::set{run.value = 7}\n");
     assert_eq!(first.updates.len(), 1);
-    assert!(first.diagnostics.iter().all(|d| d.severity != lute_core_span::Severity::Error));
+    assert!(first
+        .diagnostics
+        .iter()
+        .all(|d| d.severity != lute_core_span::Severity::Error));
 
     let second = compiler.push("::set{run.result = run.value}\n");
-    assert_eq!(second.updates.len(), 1, "earlier write must satisfy later read");
-    assert!(second.diagnostics.iter().all(|d| d.severity != lute_core_span::Severity::Error));
-    assert_eq!(second.updates[0].append_from, first.updates[0].artifact.commands.len());
+    assert_eq!(
+        second.updates.len(),
+        1,
+        "earlier write must satisfy later read"
+    );
+    assert!(second
+        .diagnostics
+        .iter()
+        .all(|d| d.severity != lute_core_span::Severity::Error));
+    assert_eq!(
+        second.updates[0].append_from,
+        first.updates[0].artifact.commands.len()
+    );
 
     let finished = compiler.finish();
     assert!(finished.finished && finished.diagnostics.is_empty());
@@ -115,7 +128,12 @@ fn chunk_partition_does_not_change_updates_or_final_artifact() {
         for chunk in chunks {
             let result = compiler.push(chunk);
             assert!(!result.finished, "valid input remains open before EOF");
-            updates.extend(result.updates.into_iter().map(|u| artifact_json(&u.artifact)));
+            updates.extend(
+                result
+                    .updates
+                    .into_iter()
+                    .map(|u| artifact_json(&u.artifact)),
+            );
         }
         let finish = compiler.finish();
         assert!(finish.finished && finish.diagnostics.is_empty());
@@ -153,8 +171,15 @@ fn body_scaffolding_and_invalid_state_are_terminal_without_exposing_ir() {
         .expect("valid scene template");
     let rejected = state.push("@marina{code=\"0010\"}: accepted\n::set{run.missing = 1}\n");
     assert!(rejected.finished);
-    assert_eq!(rejected.updates.len(), 1, "accepted earlier unit is retained");
-    assert!(rejected.diagnostics.iter().any(|d| d.code == "E-UNDECLARED"));
+    assert_eq!(
+        rejected.updates.len(),
+        1,
+        "accepted earlier unit is retained"
+    );
+    assert!(rejected
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "E-UNDECLARED"));
     assert_eq!(state.artifact().commands.len(), 1);
     let closed = state.push("@narrator: ignored\n");
     assert!(closed.finished && closed.updates.is_empty());
@@ -174,7 +199,10 @@ fn incomplete_eof_is_terminal_and_keeps_last_artifact() {
 
     let mut leaf = ContinuationCompiler::new(input(&prefix), IdentityTemplates::default())
         .expect("valid scene template");
-    assert!(leaf.push("@narrator{code=\"0010\"}: eof leaf").updates.is_empty());
+    assert!(leaf
+        .push("@narrator{code=\"0010\"}: eof leaf")
+        .updates
+        .is_empty());
     let completed = leaf.finish();
     assert!(completed.finished && completed.diagnostics.is_empty());
     assert_eq!(completed.updates.len(), 1, "EOF delimits a complete leaf");
@@ -184,7 +212,10 @@ fn incomplete_eof_is_terminal_and_keeps_last_artifact() {
             "{prefix}@narrator{{code=\"0010\"}}: eof leaf"
         )))
     );
-    assert!(finished.diagnostics.iter().any(|d| d.code == "E-UNCLOSED-TAG"));
+    assert!(finished
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "E-UNCLOSED-TAG"));
     assert!(compiler.artifact().commands.is_empty());
 }
 
@@ -192,7 +223,9 @@ fn incomplete_eof_is_terminal_and_keeps_last_artifact() {
 fn decimal_padding_growth_does_not_rewrite_the_semantic_prefix() {
     let mut initial = String::new();
     for number in 1..=99 {
-        initial.push_str(&format!("@narrator{{code=\"{number:04}\"}}: line {number}\n"));
+        initial.push_str(&format!(
+            "@narrator{{code=\"{number:04}\"}}: line {number}\n"
+        ));
     }
     let prefix = scene(&initial, "");
     let mut compiler = ContinuationCompiler::new(input(&prefix), IdentityTemplates::default())
@@ -201,7 +234,11 @@ fn decimal_padding_growth_does_not_rewrite_the_semantic_prefix() {
     assert_eq!(first["addr"], "001-0100");
 
     let update = compiler.push("@narrator{code=\"0100\"}: line 100\n");
-    assert_eq!(update.updates.len(), 1, "address-width-only changes are allowed");
+    assert_eq!(
+        update.updates.len(),
+        1,
+        "address-width-only changes are allowed"
+    );
     assert_eq!(update.updates[0].append_from, 99);
     let first = serde_json::to_value(&update.updates[0].artifact.commands[0]).unwrap();
     assert_eq!(first["addr"], "001-00100");
@@ -234,11 +271,10 @@ fn finish_and_failure_both_close_the_service() {
     assert!(closed.diagnostics.iter().any(|d| d.code == E_STREAM_CLOSED));
 
     let no_shot = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 1\n---\n";
-    let diagnostics =
-        match ContinuationCompiler::new(input(no_shot), IdentityTemplates::default()) {
-            Ok(_) => panic!("scene without a shot is not a continuation template"),
-            Err(diagnostics) => diagnostics,
-        };
+    let diagnostics = match ContinuationCompiler::new(input(no_shot), IdentityTemplates::default())
+    {
+        Ok(_) => panic!("scene without a shot is not a continuation template"),
+        Err(diagnostics) => diagnostics,
+    };
     assert!(diagnostics.iter().any(|d| d.code == E_STREAM_TEMPLATE));
 }
-

@@ -27,7 +27,10 @@ fn diags(text: &str) -> Vec<(String, String)> {
 }
 
 fn with_code(all: &[(String, String)], code: &str) -> Vec<String> {
-    all.iter().filter(|(c, _)| c == code).map(|(_, m)| m.clone()).collect()
+    all.iter()
+        .filter(|(c, _)| c == code)
+        .map(|(_, m)| m.clone())
+        .collect()
 }
 
 /// A scene declaring `front` (frontmatter lines after the scene triad) with
@@ -83,7 +86,11 @@ fn a_sub_kind_member_outside_its_parent_is_named() {
     ));
     let shape = with_code(&all, "E-ENTITY-KIND-SHAPE");
     assert_eq!(shape.len(), 1, "{all:?}");
-    assert!(shape[0].contains("`wren` is not a member of `person`"), "{}", shape[0]);
+    assert!(
+        shape[0].contains("`wren` is not a member of `person`"),
+        "{}",
+        shape[0]
+    );
 }
 
 #[test]
@@ -94,20 +101,35 @@ fn a_sub_kind_of_an_undeclared_or_open_kind_is_a_shape_error() {
     ));
     let shape = with_code(&all, "E-ENTITY-KIND-SHAPE");
     assert_eq!(shape.len(), 2, "{all:?}");
-    assert!(shape.iter().any(|m| m.contains("`persn` is not a declared entity kind")), "{shape:?}");
-    assert!(shape.iter().any(|m| m.contains("`npc` is `open:`")), "{shape:?}");
+    assert!(
+        shape
+            .iter()
+            .any(|m| m.contains("`persn` is not a declared entity kind")),
+        "{shape:?}"
+    );
+    assert!(
+        shape.iter().any(|m| m.contains("`npc` is `open:`")),
+        "{shape:?}"
+    );
 }
 
 #[test]
 fn a_relation_over_a_sub_kind_rejects_a_parent_only_member() {
     // `oda` is a person: legal for a relation over `person`, not for one
     // over the sub-kind `companion`.
-    let all = diags(&party(RULES, "::assert{recruited(oda)}\n::assert{sworn(isolde)}\n@narrator: hi\n"));
+    let all = diags(&party(
+        RULES,
+        "::assert{recruited(oda)}\n::assert{sworn(isolde)}\n@narrator: hi\n",
+    ));
     assert!(with_code(&all, "E-FACT-DOMAIN").is_empty(), "{all:?}");
     let all = diags(&party(RULES, "::assert{sworn(oda)}\n@narrator: hi\n"));
     let dom = with_code(&all, "E-FACT-DOMAIN");
     assert_eq!(dom.len(), 1, "{all:?}");
-    assert!(dom[0].contains("`oda` is not a declared member of entity kind `companion`"), "{}", dom[0]);
+    assert!(
+        dom[0].contains("`oda` is not a declared member of entity kind `companion`"),
+        "{}",
+        dom[0]
+    );
 }
 
 #[test]
@@ -118,7 +140,11 @@ fn per_declares_one_path_per_member() {
     ));
     let undeclared = with_code(&all, "E-UNDECLARED");
     assert_eq!(undeclared.len(), 1, "{all:?}");
-    assert!(undeclared[0].contains("run.approval.oda"), "{}", undeclared[0]);
+    assert!(
+        undeclared[0].contains("run.approval.oda"),
+        "{}",
+        undeclared[0]
+    );
 }
 
 #[test]
@@ -127,13 +153,29 @@ fn per_state_folds_into_the_schema_with_defaults_and_prev_run_mirrors() {
     let (doc, _) = lute_syntax::parse(&text);
     let (folded, _, _) = fold_env(&doc, &input(&text));
     let decls = &folded.env.state.decls;
-    for p in ["run.approval.isolde", "run.approval.corvin", "prev.run.approval.isolde"] {
-        assert!(decls.contains_key(p), "{p} missing: {:?}", decls.keys().collect::<Vec<_>>());
+    for p in [
+        "run.approval.isolde",
+        "run.approval.corvin",
+        "prev.run.approval.isolde",
+    ] {
+        assert!(
+            decls.contains_key(p),
+            "{p} missing: {:?}",
+            decls.keys().collect::<Vec<_>>()
+        );
     }
-    assert!(!decls.contains_key("run.approval"), "the family itself is not a path");
+    assert!(
+        !decls.contains_key("run.approval"),
+        "the family itself is not a path"
+    );
     assert!(!decls.contains_key("run.approval.oda"));
     assert_eq!(
-        folded.env.rel_vocab.indexed_state.get("run.approval").map(String::as_str),
+        folded
+            .env
+            .rel_vocab
+            .indexed_state
+            .get("run.approval")
+            .map(String::as_str),
         Some("companion")
     );
 }
@@ -146,13 +188,24 @@ fn per_over_an_open_or_unknown_kind_is_a_state_decl_error() {
     ));
     let decl = with_code(&all, "E-STATE-DECL");
     assert_eq!(decl.len(), 2, "{all:?}");
-    assert!(decl.iter().any(|m| m.contains("`per: npc` names an `open:` entity kind")), "{decl:?}");
-    assert!(decl.iter().any(|m| m.contains("`per: nobody` names no entity kind")), "{decl:?}");
+    assert!(
+        decl.iter()
+            .any(|m| m.contains("`per: npc` names an `open:` entity kind")),
+        "{decl:?}"
+    );
+    assert!(
+        decl.iter()
+            .any(|m| m.contains("`per: nobody` names no entity kind")),
+        "{decl:?}"
+    );
 }
 
 #[test]
 fn a_rule_guard_reads_indexed_state_by_a_bound_variable() {
-    let all = diags(&party(RULES, "@narrator{when=\"holds(loyal(isolde))\"}: loyal\n"));
+    let all = diags(&party(
+        RULES,
+        "@narrator{when=\"holds(loyal(isolde))\"}: loyal\n",
+    ));
     let errors: Vec<_> = all.iter().filter(|(c, _)| c.starts_with("E-")).collect();
     assert!(errors.is_empty(), "{all:?}");
 }
@@ -163,7 +216,11 @@ fn a_rule_guard_index_over_a_wider_kind_is_a_fact_domain_error() {
     let all = diags(&party(rules, "@narrator: hi\n"));
     let dom = with_code(&all, "E-FACT-DOMAIN");
     assert_eq!(dom.len(), 1, "{all:?}");
-    assert!(dom[0].contains("`recruited(P)` over `person`"), "{}", dom[0]);
+    assert!(
+        dom[0].contains("`recruited(P)` over `person`"),
+        "{}",
+        dom[0]
+    );
     // No cascade onto the bare variable or the family path.
     assert!(with_code(&all, "E-CEL-PROFILE").is_empty(), "{all:?}");
     assert!(with_code(&all, "E-UNDECLARED").is_empty(), "{all:?}");
@@ -172,24 +229,42 @@ fn a_rule_guard_index_over_a_wider_kind_is_a_fact_domain_error() {
 #[test]
 fn a_rule_guard_index_needs_a_positive_binding_and_an_indexed_family() {
     let rules = "  - \"inParty(P) :- companion(P), recruited(P)\"\n  - \"loyal(P) :- inParty(P), cel(\\\"run.approval[Q] >= 3 && run.gold[P] > 1\\\")\"\n";
-    let front = PARTY.replacen("state:\n", "state:\n  run.gold: { type: number, default: 0 }\n", 1);
-    let all = diags(&scene(&format!("{front}rules:\n{rules}"), "@narrator: hi\n"));
+    let front = PARTY.replacen(
+        "state:\n",
+        "state:\n  run.gold: { type: number, default: 0 }\n",
+        1,
+    );
+    let all = diags(&scene(
+        &format!("{front}rules:\n{rules}"),
+        "@narrator: hi\n",
+    ));
     assert!(
-        with_code(&all, "E-DATALOG-UNSAFE").iter().any(|m| m.contains("`run.approval[Q]`")),
+        with_code(&all, "E-DATALOG-UNSAFE")
+            .iter()
+            .any(|m| m.contains("`run.approval[Q]`")),
         "{all:?}"
     );
     assert!(
-        with_code(&all, "E-UNDECLARED").iter().any(|m| m.contains("`run.gold` is not entity-indexed state")),
+        with_code(&all, "E-UNDECLARED")
+            .iter()
+            .any(|m| m.contains("`run.gold` is not entity-indexed state")),
         "{all:?}"
     );
 }
 
 #[test]
 fn an_index_outside_a_rule_guard_says_to_name_the_member() {
-    let all = diags(&party(RULES, "@narrator{when=\"run.approval >= 1\"}: family\n"));
+    let all = diags(&party(
+        RULES,
+        "@narrator{when=\"run.approval >= 1\"}: family\n",
+    ));
     let undeclared = with_code(&all, "E-UNDECLARED");
     assert_eq!(undeclared.len(), 1, "{all:?}");
-    assert!(undeclared[0].contains("entity-indexed (`per: companion`)"), "{}", undeclared[0]);
+    assert!(
+        undeclared[0].contains("entity-indexed (`per: companion`)"),
+        "{}",
+        undeclared[0]
+    );
 }
 
 #[test]

@@ -59,7 +59,10 @@ pub fn check_rules(vocab: &RelVocab, domains: &BTreeMap<String, Domain>) -> Vec<
         // dsl 0.24 T3-6: an imported rule's problem is reported at the
         // schema's line, not at the rule's offset read into the importer.
         let origin = vocab.origins.rules.get(&rule_decl.raw);
-        out.extend(here.into_iter().map(|d| crate::rel_schema::at_origin(d, origin)));
+        out.extend(
+            here.into_iter()
+                .map(|d| crate::rel_schema::at_origin(d, origin)),
+        );
     }
     for (name, decl) in &vocab.relations {
         // dsl 0.24 T3-6: a relation whose rule failed to parse HAS a rule —
@@ -349,7 +352,8 @@ fn check_rule_safety(rule: &Rule, span: Span, out: &mut Vec<Diagnostic>) {
                     // A `_` (dsl 0.24 T3-9) is existential under negation —
                     // `not seen(W, _)`: no `seen(W, …)` tuple at all.
                     if let RuleTerm::Var(v) = term {
-                        if !bound.contains(v.as_str()) && !lute_syntax::datalog::is_anonymous_var(v) {
+                        if !bound.contains(v.as_str()) && !lute_syntax::datalog::is_anonymous_var(v)
+                        {
                             out.push(diag(
                                 E_DATALOG_UNSAFE,
                                 format!(

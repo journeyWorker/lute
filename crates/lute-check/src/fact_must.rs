@@ -69,7 +69,9 @@ use std::path::{Path, PathBuf};
 
 use cel_parser::ast::{operators as op, Expr};
 use lute_core_span::Span;
-use lute_syntax::ast::{Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Document, Match, Node, Retract};
+use lute_syntax::ast::{
+    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Document, Match, Node, Retract,
+};
 
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
@@ -605,20 +607,38 @@ impl<'a> Walk<'a> {
         let mut facts: Vec<(GroundFact, Provenance)> = Vec::new();
         for c in conj {
             if let Some(f) = held_fact(c) {
-                facts.push((f, self.guard_provenance(slot)));
+                if self.guard_trackable(&f) {
+                    facts.push((f, self.guard_provenance(slot)));
+                }
             } else if let Some((id, ever)) = entry_read(c) {
                 let Some(read) = self.root.entry_reads.get(&id) else {
                     continue;
                 };
                 facts.extend(
                     read.iter()
-                        .filter(|(f, _)| !ever || self.user_tier(f))
+                        .filter(|(f, _)| (!ever || self.user_tier(f)) && self.trackable(f))
                         .map(|(f, p)| (f.clone(), p.clone())),
                 );
             }
         }
-        facts.retain(|(f, _)| self.trackable(f));
         facts
+    }
+
+    /// A fact a guard's own `holds(F)` conjunct may put in the must set of
+    /// its region: [`Self::trackable`], except that a reserved (or otherwise
+    /// unbounded) relation counts too (crown M1, dsl 0.25.0 §1) — the engine
+    /// changes such facts only between presentations (on its occasions), never
+    /// inside the region the guard opens, and a region never outlives its
+    /// presentation (only [`Root::crosses`] facts leave a document).
+    fn guard_trackable(&self, f: &GroundFact) -> bool {
+        let Some(decl) = self.vocab.relations.get(&f.relation) else {
+            return false;
+        };
+        let q = QueryPattern {
+            relation: f.relation.clone(),
+            args: f.args.iter().cloned().map(Some).collect(),
+        };
+        decl.args.len() == f.args.len() && self.root.may.decides(&q)
     }
 
     /// A fact of a `tier: user` / `tier: app` relation — one a new run keeps.
@@ -882,7 +902,10 @@ fn entry_read(e: &Expr) -> Option<(String, bool)> {
             if c.func_name == op::EQUALS
                 && c.target.is_none()
                 && c.args.len() == 2
-                && matches!(c.args[1].expr, Expr::Literal(cel_parser::reference::Val::Boolean(true))) =>
+                && matches!(
+                    c.args[1].expr,
+                    Expr::Literal(cel_parser::reference::Val::Boolean(true))
+                ) =>
         {
             &c.args[0].expr
         }

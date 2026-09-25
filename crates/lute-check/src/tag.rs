@@ -260,13 +260,7 @@ pub fn retag_document(text: &str) -> RetagOutcome {
     for beat in &doc.beats {
         let mut beat_lines: Vec<&Line> = Vec::new();
         collect_lines(&beat.body, &mut beat_lines);
-        retag_scope(
-            beat_lines,
-            bytes,
-            &mut edits,
-            &mut renumbered,
-            &mut skipped,
-        );
+        retag_scope(beat_lines, bytes, &mut edits, &mut renumbered, &mut skipped);
     }
 
     if edits.is_empty() {

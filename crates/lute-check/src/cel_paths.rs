@@ -27,8 +27,9 @@ use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr};
 /// `E-UNDECLARED` and every `entry.*` write is rejected. `prev` (dsl 0.23.0
 /// §6) is read-only too: `prev.run.<path>` mirrors each declared `run.<path>`.
 /// So is `clock` (dsl 0.24.0 §1): the declared clock's derived paths.
-pub(crate) const STATE_ROOTS: &[&str] =
-    &["scene", "run", "user", "app", "quest", "entry", "prev", "clock"];
+pub(crate) const STATE_ROOTS: &[&str] = &[
+    "scene", "run", "user", "app", "quest", "entry", "prev", "clock",
+];
 
 /// `true` for any path rooted at the read-only `prev` mirror (dsl 0.23.0 §6).
 pub fn is_prev_path(path: &str) -> bool {

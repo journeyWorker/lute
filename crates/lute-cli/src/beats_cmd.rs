@@ -98,7 +98,8 @@ pub(crate) fn run_beats(
         Ok(v) => v,
         Err(code) => return code,
     };
-    let (file_results, project_diags, _) = crate::reconcile_collected(file_results, &by_root, false);
+    let (file_results, project_diags, _) =
+        crate::reconcile_collected(file_results, &by_root, false);
     let mut verdict_diags: Vec<(&PathBuf, &Diagnostic)> = Vec::new();
     for (path, result) in &file_results {
         verdict_diags.extend(result.diagnostics.iter().map(|d| (path, d)));
@@ -110,8 +111,10 @@ pub(crate) fn run_beats(
     let mut roots_json = Vec::new();
     let mut known_occasions: BTreeSet<String> = BTreeSet::new();
     for (root, group) in &by_root {
-        let docs: Vec<(PathBuf, lute_syntax::ast::Document)> =
-            group.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+        let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = group
+            .iter()
+            .map(|(p, d, _)| (p.clone(), d.clone()))
+            .collect();
         let foldeds: Vec<&lute_check::FoldedEnv> = group.iter().map(|(_, _, f)| f).collect();
         let mut beats = lute_check::project_beats(&docs, &foldeds);
         // Selection order: priority descending, project order within (stable).
@@ -150,7 +153,8 @@ pub(crate) fn run_beats(
         return ExitCode::from(2);
     }
     let out = if json_out {
-        let mut s = serde_json::to_string_pretty(&json!({ "roots": roots_json })).unwrap_or_default();
+        let mut s =
+            serde_json::to_string_pretty(&json!({ "roots": roots_json })).unwrap_or_default();
         s.push('\n');
         s
     } else if by_root.is_empty() {
@@ -200,9 +204,7 @@ fn ladders<'a>(
             let rows = beats
                 .iter()
                 .enumerate()
-                .filter(|(_, b)| {
-                    b.on == occ && (b.target.is_none() || b.target == target)
-                })
+                .filter(|(_, b)| b.on == occ && (b.target.is_none() || b.target == target))
                 .map(|(i, _)| i)
                 .collect();
             out.push(Ladder {

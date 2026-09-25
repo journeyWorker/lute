@@ -138,7 +138,9 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
             name.to_string(),
             EntityKindDecl {
                 shape: kind_shape(v),
-                subset_of: v.get("subsetOf").map(|p| p.as_str().unwrap_or_default().to_string()),
+                subset_of: v
+                    .get("subsetOf")
+                    .map(|p| p.as_str().unwrap_or_default().to_string()),
             },
         );
     }
@@ -380,11 +382,17 @@ mod tests {
              sworn: { subsetOf: companion, members: [a] }\nloop: { subsetOf: loop, members: [x] }",
         ));
         assert_eq!(p.kinds["companion"].subset_of.as_deref(), Some("person"));
-        assert_eq!(p.kinds["companion"].shape, KindShape::Members(vec!["a".into(), "b".into()]));
+        assert_eq!(
+            p.kinds["companion"].shape,
+            KindShape::Members(vec!["a".into(), "b".into()])
+        );
         assert_eq!(p.kinds["person"].subset_of, None);
         assert!(kind_within(&p.kinds, "sworn", "person"));
         assert!(kind_within(&p.kinds, "companion", "companion"));
         assert!(!kind_within(&p.kinds, "person", "companion"));
-        assert!(!kind_within(&p.kinds, "loop", "person"), "a loop terminates");
+        assert!(
+            !kind_within(&p.kinds, "loop", "person"),
+            "a loop terminates"
+        );
     }
 }

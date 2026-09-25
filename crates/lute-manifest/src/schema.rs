@@ -265,8 +265,14 @@ impl Lowering {
 /// The core's closed registry of builtin lowering hooks (plugin §8.2: "`name`
 /// MUST resolve to a registered hook"), exactly the hooks the `lute.core`
 /// staging manifest names. Adding one is a core code change.
-pub const BUILTIN_LOWERING_HOOKS: &[&str] =
-    &["autoStage", "cameraTransform", "clearStage", "end", "mark", "next"];
+pub const BUILTIN_LOWERING_HOOKS: &[&str] = &[
+    "autoStage",
+    "cameraTransform",
+    "clearStage",
+    "end",
+    "mark",
+    "next",
+];
 
 /// The wire shape of `lower:`, validated into a [`Lowering`].
 #[derive(Deserialize)]
@@ -977,7 +983,10 @@ writes:
         let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: encounter }")
             .unwrap_err()
             .to_string();
-        assert!(err.contains("`encounter` is not a builtin lowering hook"), "{err}");
+        assert!(
+            err.contains("`encounter` is not a builtin lowering hook"),
+            "{err}"
+        );
         assert!(err.contains(&BUILTIN_LOWERING_HOOKS.join(", ")), "{err}");
         assert!(err.contains("omit `lower:`"), "{err}");
         let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: autoStag }")
@@ -989,12 +998,21 @@ writes:
     #[test]
     fn malformed_lowering_shapes_are_named() {
         for (y, want) in [
-            ("{ kind: record, name: background }", "the only kind is `builtin`"),
+            (
+                "{ kind: record, name: background }",
+                "the only kind is `builtin`",
+            ),
             ("{ kind: builtin }", "needs `name:`"),
             ("{ record: background }", "needs `fields:`"),
-            ("{ record: background, fields: {}, kind: builtin, name: end }", "not a mix"),
+            (
+                "{ record: background, fields: {}, kind: builtin, name: end }",
+                "not a mix",
+            ),
             ("{}", "`lower:` is empty"),
-            ("{ record: background, feilds: {} }", "unknown field `feilds`"),
+            (
+                "{ record: background, feilds: {} }",
+                "unknown field `feilds`",
+            ),
         ] {
             let err = serde_yaml::from_str::<Lowering>(y).unwrap_err().to_string();
             assert!(err.contains(want), "{y}: {err}");
@@ -1026,9 +1044,10 @@ writes:
             .unwrap_err()
             .to_string();
         assert!(occ.contains("unknown field `selct`"), "{occ}");
-        let rk = serde_yaml::from_str::<RewardKindsFile>("rewardKinds:\n  gold: { credit: run.gold }\n")
-            .unwrap_err()
-            .to_string();
+        let rk =
+            serde_yaml::from_str::<RewardKindsFile>("rewardKinds:\n  gold: { credit: run.gold }\n")
+                .unwrap_err()
+                .to_string();
         assert!(rk.contains("unknown field `credit`"), "{rk}");
         let dir = serde_yaml::from_str::<DirectivesFile>(
             "directives:\n  - { name: x, attrs: [ { name: a, type: string, requird: true } ] }\n",
