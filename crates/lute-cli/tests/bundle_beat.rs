@@ -41,8 +41,8 @@ state:
 /// source order, each head record followed by its body segment.
 const ARTIFACT: &str = r#"{
   "kind": "lore",
-  "lute": "0.25.0",
-  "irVersion": "0.25.0",
+  "lute": "0.25.1",
+  "irVersion": "0.25.1",
   "meta": { "id": "interviews" },
   "state": [
     { "path": "entry.porterNote.read", "type": "bool", "default": false, "provenance": "entry:porterNote" },

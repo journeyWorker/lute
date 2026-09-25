@@ -116,7 +116,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.25.0"
+luteVersion: "0.25.1"
 profile: date-minigame
 extra:
   arc: main
@@ -219,7 +219,7 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.25.0.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.25.1.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
   [`0.25.0`](docs/proposals/scenario-dsl/0.25.0.md). Recent tips: `0.22.0` a harness that
   stands in for the engine (`lute play` writes engine-owned state, starts from a save and
@@ -237,10 +237,12 @@ history):
   `<beat after=…>` is a scenario edge and `lute scenario` draws `[subquest]` and `[start]`
   anchors; `<quest accept="external">` is the only acceptance outside content (a test mock
   no longer counts); a reserved relation's `changedOn:` narrows cast `assume: true`; a
-  bridge answer may omit fields nobody reads; and `{{x:ordinalWord}}`. Being draft means
-  the grammar may still break before 1.0; each breaking change ships a `lute fix`
-  migration or a pin where the rewrite is mechanical.
-- **IR: 0.25.0.** The compiled artifact is specified by
+  bridge answer may omit fields nobody reads; and `{{x:ordinalWord}}`. `0.25.1` is a
+  performance patch with no language change: project commands scale linearly in the
+  document count and check documents in parallel. Being draft means the grammar may still
+  break before 1.0; each breaking change ships a `lute fix` migration or a pin where the
+  rewrite is mechanical.
+- **IR: 0.25.1.** The compiled artifact is specified by
   [`schemas/lute-ir-0.25.schema.json`](schemas/lute-ir-0.25.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only
@@ -248,7 +250,7 @@ history):
   consumer nothing. `0.25.0` is additive: an optional `RelationEntry.excludes`, `share` on
   beats, entries, bundle beats and index beat rows, a bundle `BeatCmd.after` with its
   `prereqEdges` row, `QuestCmd.accept` (`"external"`), and the placeholder format
-  `ordinalWord`.
+  `ordinalWord`. `0.25.1` moves no shape: artifacts differ only in the version strings.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver, reference
   runtime, LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (including `lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-trace`, `lute-lint`,

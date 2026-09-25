@@ -5544,10 +5544,12 @@ mod lute_version_tests {
     /// IR gains the optional `RelationEntry.excludes`, `share` on beats,
     /// entries and index rows, `BeatCmd.after`, `QuestCmd.accept` and the
     /// placeholder format `ordinalWord`, so the current schema is
-    /// `schemas/lute-ir-0.25.schema.json`.
+    /// `schemas/lute-ir-0.25.schema.json`. `0.25.1` is a performance patch
+    /// on the same line: no language change and no IR shape change, so the
+    /// schema keeps its `0.25` name and `$id`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_25_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.25.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.25.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_25_1() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.25.1");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.25.1");
     }
 }

@@ -306,7 +306,12 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// that use none of it compile byte-identically apart from the version
 /// strings. `schemas/lute-ir-0.24.schema.json` is renamed to
 /// `schemas/lute-ir-0.25.schema.json` per the release-line rule.
-pub const LUTE_IR_VERSION: &str = "0.25.0";
+///
+/// IR `0.25.1` is a patch on the `0.25` line with NO shape or content
+/// change (a toolchain performance release): the schema keeps its
+/// `schemas/lute-ir-0.25.schema.json` name and `$id`, and documents compile
+/// byte-identically apart from the version strings.
+pub const LUTE_IR_VERSION: &str = "0.25.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1338,14 +1343,12 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.25.0 axis alignment (docs/versioning.md): a minor release. The
-        // language earns the move (exclusive relations, shared spends, bundle
-        // `after=`, `accept="external"`, `changedOn:`, `ordinalWord`) and so
-        // does the IR (additive `excludes`, `share`, `BeatCmd.after`,
-        // `QuestCmd.accept`, `ordinalWord`) — both move independently of the
-        // toolchain pin.
-        assert_eq!(super::LUTE_IR_VERSION, "0.25.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.25.0");
+        // 0.25.1 axis alignment (docs/versioning.md): a performance patch on
+        // the 0.25 line. The toolchain earns the move; the language and the
+        // IR are content no-ops (the schema keeps its 0.25 name) — both
+        // still move independently of the toolchain pin.
+        assert_eq!(super::LUTE_IR_VERSION, "0.25.1");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.25.1");
     }
 
     #[test]
@@ -1354,8 +1357,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.25.0");
-        assert_eq!(v["irVersion"], "0.25.0");
+        assert_eq!(v["lute"], "0.25.1");
+        assert_eq!(v["irVersion"], "0.25.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

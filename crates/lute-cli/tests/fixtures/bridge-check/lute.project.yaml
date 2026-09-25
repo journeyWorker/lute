@@ -9,5 +9,5 @@ profiles:
 # Frontmatter every document inherits (dsl 0.10.0 §6): no document repeats
 # its language version or its schema imports.
 defaults:
-  luteVersion: "0.25.0"
+  luteVersion: "0.25.1"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
