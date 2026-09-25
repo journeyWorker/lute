@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.25.0`, the grammar and semantics the checker
+- **Language** — currently `0.25.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.25.0`) and gated on by consuming engines.
+  artifact (currently `0.25.1`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,10 +36,23 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.25.1] - 2026-09-26
+
+**Faster project commands.**
+
+A performance patch on the `0.25` line: no language change and no IR shape
+change. Project commands scale linearly in the document count and use every
+core; output, diagnostics and exit codes are byte-identical. See
+[`docs/versioning.md`](docs/versioning.md) for what each axis earned.
 
 ### Performance
 
+- **Span offsets are O(line), not O(file).** Every source span computed its
+  file-relative UTF-16 offsets by rescanning the text from the start of the
+  file, so the spans of one large document cost time quadratic in its size.
+  They now come from a per-line prefix table built with the line index. On a
+  synthetic project of 1600 scenes plus one 1600-entry lore file (10-core
+  Apple M1 Pro), `check-project` falls from 18.4 s to 2.7 s.
 - **Project commands scale linearly and use every core.** `check-project`,
   `lore`, `scenario`, `beats`, `test`, `play`, `doctor`, `loc` and
   `compile --all` no longer recompute the inputs every document of a project
