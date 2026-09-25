@@ -471,6 +471,19 @@ pub(crate) struct Runner {
     /// failed (`by` / `until`) — read when a required objective's failure
     /// fails its quest, to stamp `quest.<id>.failedBy`.
     objective_failed_by: BTreeMap<String, &'static str>,
+    /// dsl 0.24.0 §2.1: the raises (`name` / `name@target`) still to come in
+    /// this step — the walk's own `occasions` (`lute run`, a play raise pass)
+    /// plus the play step's ([`Runner::with_deferred_by`]). An `on=`
+    /// objective one of them judges has its `by` deferred until that raise
+    /// judged its `done` ([`Runner::judge_occasion`]): `done` wins over a
+    /// deadline that came true in the step raising the occasion.
+    defer_by: Vec<String>,
+    /// `lute play` (dsl 0.24.0 §2): `Some` while answering a `judge: before`
+    /// raise — a firing `<on>` handler's body is collected here (its `when`
+    /// decided at the firing) instead of run, and play runs it after the
+    /// occasion's beats ([`Runner::run_deferred_handlers`]). `None`: bodies
+    /// run where they fire.
+    deferred_handlers: Option<Vec<String>>,
 }
 
 /// `lute play`'s per-presentation carryover + transcript-reuse surface:
@@ -502,6 +515,8 @@ pub(crate) struct RunnerOutcome {
     pub failed_objectives: BTreeSet<String>,
     /// See [`Runner::bridges`] — the answers later walks consume.
     pub bridges: BridgeAnswers,
+    /// See [`Runner::deferred_handlers`] — empty unless deferring.
+    pub deferred_handlers: Vec<String>,
 }
 
 /// dsl 0.24.0 §5: the bridge answers a walk consumes — per plugin directive
@@ -689,6 +704,8 @@ impl Runner {
             accepted_next_run: Vec::new(),
             failed_objectives: BTreeSet::new(),
             objective_failed_by: BTreeMap::new(),
+            defer_by: Vec::new(),
+            deferred_handlers: None,
             bridges,
         }
     }
@@ -764,6 +781,22 @@ impl Runner {
     /// again.
     pub(crate) fn with_failed_objectives(mut self, failed: &BTreeSet<String>) -> Self {
         self.failed_objectives.extend(failed.iter().cloned());
+        self
+    }
+
+    /// `lute play` (dsl 0.24.0 §2.1): the step raises `raise` (`name` or
+    /// `name@target`) — the settles before it defer the `by` of the `on=`
+    /// objectives it judges ([`Runner::defer_by`]).
+    pub(crate) fn with_deferred_by(mut self, raise: Option<&str>) -> Self {
+        self.defer_by.extend(raise.map(str::to_string));
+        self
+    }
+
+    /// `lute play` (dsl 0.24.0 §2): answering a `judge: before` raise —
+    /// collect the firing `<on>` handlers' bodies instead of running them
+    /// ([`Runner::deferred_handlers`]).
+    pub(crate) fn with_deferred_handlers(mut self, defer: bool) -> Self {
+        self.deferred_handlers = defer.then(Vec::new);
         self
     }
 
@@ -1062,6 +1095,7 @@ impl Runner {
             choice_cursor: self.choice_cursor,
             failed_objectives: self.failed_objectives,
             bridges: self.bridges,
+            deferred_handlers: self.deferred_handlers.unwrap_or_default(),
         }
     }
 
@@ -1986,8 +2020,10 @@ impl Runner {
 
     // ── quest lifecycle (quest-lifecycle.md) ────────────────────────────
 
-    fn run_quest(&mut self) {
-        // Parse declarations.
+    /// The quest artifact's declarations: its quests, its `<on>` handlers
+    /// (each with its enclosing quest), and the body-segment boundaries —
+    /// every objective body and every `<on>` body.
+    fn quest_program(&self) -> (Vec<QuestDecl>, Vec<Handler>, Vec<usize>) {
         let mut quests: Vec<QuestDecl> = Vec::new();
         let mut handlers: Vec<Handler> = Vec::new();
         for cmd in &self.commands {
@@ -2016,8 +2052,6 @@ impl Runner {
                 _ => {}
             }
         }
-
-        // Body-segment boundaries: every objective body + every `<on>` body.
         let mut seg_starts: Vec<usize> = Vec::new();
         for q in &quests {
             for o in &q.objectives {
@@ -2031,6 +2065,30 @@ impl Runner {
         }
         seg_starts.sort_unstable();
         seg_starts.dedup();
+        (quests, handlers, seg_starts)
+    }
+
+    /// `lute play` (dsl 0.24.0 §2): run the `<on>` handler bodies a `judge:
+    /// before` raise answered ([`Runner::with_deferred_handlers`]) — after
+    /// the occasion's beats, in the order they fired. Their `when` was
+    /// decided when they fired; a `::end` in one ends the rest.
+    pub(crate) fn run_deferred_handlers(&mut self, bodies: &[String]) -> Result<(), String> {
+        self.quest_resume = true;
+        let (_, _, seg_starts) = self.quest_program();
+        for body in bodies {
+            if self.terminated {
+                break;
+            }
+            self.run_segment(body, &seg_starts);
+        }
+        match self.fatal.take() {
+            Some(msg) => Err(msg),
+            None => Ok(()),
+        }
+    }
+
+    fn run_quest(&mut self) {
+        let (quests, handlers, seg_starts) = self.quest_program();
 
         // A fresh walk (`lute run`) starts every quest `unset`. A resumed one
         // (`lute play`) keeps each carried status and registers only a quest it
@@ -2095,6 +2153,9 @@ impl Runner {
                 }
             }
         }
+        // dsl 0.24.0 §2.1: the settles before this walk's raises defer the
+        // `by` of the `on=` objectives those raises judge.
+        self.defer_by.extend(self.mock.occasions.iter().cloned());
         self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
 
         // Mock events fire in order; each re-evaluates the lifecycle. An `end`
@@ -2307,8 +2368,17 @@ impl Runner {
                 // objective whose `by` is true fails the first time, `on=`
                 // or not: a deadline is a moment, not a place. (`until` is
                 // judged only at the occasion, [`Runner::judge_occasion`].)
-                for oi in 0..q.objectives.len() {
-                    changed |= self.judge_deadline(q, qi, oi, done, "by");
+                // An `on=` objective a raise still to come in this step
+                // judges waits for it: its `done` is judged first.
+                for (oi, o) in q.objectives.iter().enumerate() {
+                    let deferred = o.on.as_deref().is_some_and(|on| {
+                        self.defer_by
+                            .iter()
+                            .any(|r| lute_trace::raise_judges(r, on, o.target.as_deref()))
+                    });
+                    if !deferred {
+                        changed |= self.judge_deadline(q, qi, oi, done, "by");
+                    }
                 }
                 // 2. fail BEFORE derived completion (§6.3 precedence): an
                 // authored `fail`, or a required objective whose `by`
@@ -2409,8 +2479,10 @@ impl Runner {
     /// not-yet-done `on="<occasion>"` objectives, document order. The raise
     /// is `name` or `name@target` (dsl 0.23.0 §2): an objective with a
     /// `target` is judged only by a raise for it; a failed one never. Its
-    /// `by` is judged here too, after its `done` (`done` wins a tie). The
-    /// caller settles the lifecycle afterwards (`fail` before completion).
+    /// `until` is judged here, after its `done`; its `by` — deferred by the
+    /// settles of the step until this raise ([`Runner::defer_by`]) — at the
+    /// caller's settle right after (`fail` before completion), so `done`
+    /// wins over a deadline that came true in this step.
     fn judge_occasion(
         &mut self,
         occasion: &str,
@@ -2418,6 +2490,7 @@ impl Runner {
         seg_starts: &[usize],
         done: &mut BTreeSet<(usize, usize)>,
     ) {
+        self.defer_by.retain(|r| r != occasion);
         for (qi, q) in quests.iter().enumerate() {
             let judged: Vec<usize> = q
                 .objectives
@@ -2700,7 +2773,10 @@ impl Runner {
             };
             if when_ok {
                 let body = h.body.clone();
-                self.run_segment(&body, seg_starts);
+                match &mut self.deferred_handlers {
+                    Some(later) => later.push(body),
+                    None => self.run_segment(&body, seg_starts),
+                }
             }
         }
     }

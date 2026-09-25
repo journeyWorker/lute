@@ -109,7 +109,7 @@ fn fact_args(p: &lute_syntax::datalog::FactPattern) -> Vec<Option<String>> {
         .map(|a| match &a.term {
             FactTerm::Ident(s) => Some(s.clone()),
             FactTerm::Bool(b) => Some(b.to_string()),
-            FactTerm::Wildcard => None,
+            FactTerm::Wildcard | FactTerm::Param(_) => None,
         })
         .collect()
 }
@@ -834,6 +834,77 @@ fn never_produced(p: &Pattern, k: &RootKnowledge) -> String {
     }
 }
 
+/// An entity-kind atom (`suitor(sol)`) as a premise: membership, never a
+/// fact — whether the member belongs, or the kind's members when the
+/// argument is unbound. `negated`: read under `not`.
+fn kind_membership(p: &Pattern, vocab: &RelVocab, negated: bool) -> String {
+    use lute_manifest::relations::KindShape;
+    let members = match vocab.kinds.get(&p.rel).map(|d| &d.shape) {
+        Some(KindShape::Members(ms)) => Some(ms.as_slice()),
+        _ => None,
+    };
+    let kind = format!("entity kind `{}`", p.rel);
+    match (p.args.as_slice(), members) {
+        ([Some(id)], Some(ms)) => {
+            let member = ms.contains(id);
+            let verdict = match (member, negated) {
+                (true, false) => "",
+                (true, true) => " — never holds",
+                (false, false) => " — never holds",
+                (false, true) => " — always holds",
+            };
+            let is = if member { "is a member" } else { "is not a member" };
+            format!("{kind}; {id} {is}{verdict}")
+        }
+        ([Some(id)], None) => format!("{kind} (open — holds when the engine registers {id})"),
+        (_, Some(ms)) => format!("{kind} (members: {})", ms.join(", ")),
+        (_, None) => format!("{kind} (open — the engine registers its members)"),
+    }
+}
+
+/// What a rule's `cel()` premise reads: the state paths it names.
+fn guard_reads(cel: &str) -> String {
+    use cel_parser::ast::Expr;
+    /// A pure `Ident`/`Select` chain as a dotted path.
+    fn path(expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Ident(s) => Some(s.clone()),
+            Expr::Select(s) => Some(format!("{}.{}", path(&s.operand.expr)?, s.field)),
+            _ => None,
+        }
+    }
+    fn walk(expr: &Expr, out: &mut BTreeSet<String>) {
+        if let Some(p) = path(expr) {
+            let root = p.split('.').next().unwrap_or_default();
+            if p.contains('.') && matches!(root, "scene" | "run" | "user" | "app" | "quest" | "entry" | "prev" | "clock") {
+                out.insert(p);
+            }
+            return;
+        }
+        match expr {
+            Expr::Call(c) => {
+                if let Some(t) = &c.target {
+                    walk(&t.expr, out);
+                }
+                c.args.iter().for_each(|a| walk(&a.expr, out));
+            }
+            Expr::List(l) => l.elements.iter().for_each(|e| walk(&e.expr, out)),
+            Expr::Select(s) => walk(&s.operand.expr, out),
+            _ => {}
+        }
+    }
+    let mut paths = BTreeSet::new();
+    let mut arena = lute_cel::CelArena::default();
+    if let Some(root) = lute_cel::parse_slot_marked_refs(&mut arena, cel).and_then(|h| arena.get(h)) {
+        walk(&root.expr, &mut paths);
+    }
+    if paths.is_empty() {
+        "state condition, decided at run time".to_string()
+    } else {
+        format!("state condition on {}, decided at run time", paths.into_iter().collect::<Vec<_>>().join(", "))
+    }
+}
+
 /// Where a derived atom's rules were printed: the element and its document.
 #[derive(Clone, PartialEq)]
 struct Here {
@@ -867,6 +938,10 @@ impl Tracer<'_> {
             None => String::new(),
         };
         match &neg {
+            None if k.vocab.kinds.contains_key(&p.rel) && !k.vocab.relations.contains_key(&p.rel) => {
+                outln!(out, "{pad}{} — {}", p.text(), kind_membership(p, &k.vocab, false));
+                return;
+            }
             None => outln!(out, "{pad}{} — {}{reference}", p.text(), producer_line(p, &k.vocab, &k.asserted)),
             Some(Ok(facts)) if facts.is_empty() => {
                 outln!(
@@ -919,11 +994,23 @@ impl Tracer<'_> {
                         };
                         self.trace(out, &premise, None, depth + 2, here);
                     }
+                    BodyLiteral::Neg(a) if k.vocab.kinds.contains_key(&a.relation) => {
+                        let premise = Pattern {
+                            rel: a.relation.clone(),
+                            args: rule_args(&a.terms, &bound),
+                        };
+                        outln!(out, "{pad}    not {} — {}", premise.text(), kind_membership(&premise, &k.vocab, true));
+                    }
                     BodyLiteral::Neg(a) => {
                         let (premise, defeat) = negated(&r.rule, a, &subst, &k.may);
                         self.trace(out, &premise, Some(defeat), depth + 2, here);
                     }
-                    _ => {}
+                    BodyLiteral::Guard { cel, .. } => {
+                        let at: BTreeMap<&str, &str> = bound.iter().map(|(v, c)| (*v, c.as_str())).collect();
+                        let cel = lute_check::rule_index::ground_guard(cel, &at);
+                        outln!(out, "{pad}    cel({cel:?}) — {}", guard_reads(&cel));
+                    }
+                    BodyLiteral::Cmp { .. } => {}
                 }
             }
         }
@@ -1209,7 +1296,9 @@ pub(crate) fn json(by_root: &ByRoot, for_node: Option<&str>) -> Result<Json, Str
                 for r in vocab.rules.iter().filter(|r| r.rule.head.relation == rel) {
                     for lit in &r.rule.body {
                         if let BodyLiteral::Pos(a) | BodyLiteral::Neg(a) = lit {
-                            stack.push(a.relation.clone());
+                            if !vocab.kinds.contains_key(&a.relation) {
+                                stack.push(a.relation.clone());
+                            }
                         }
                     }
                 }
@@ -1228,11 +1317,18 @@ pub(crate) fn json(by_root: &ByRoot, for_node: Option<&str>) -> Result<Json, Str
                                 .body
                                 .iter()
                                 .filter_map(|lit| match lit {
+                                    BodyLiteral::Pos(a) if vocab.kinds.contains_key(&a.relation) => {
+                                        Some(json!({ "entityKind": a.relation }))
+                                    }
+                                    BodyLiteral::Neg(a) if vocab.kinds.contains_key(&a.relation) => {
+                                        Some(json!({ "entityKind": a.relation, "negated": true }))
+                                    }
                                     BodyLiteral::Pos(a) => Some(json!({ "relation": a.relation })),
                                     BodyLiteral::Neg(a) => {
                                         Some(json!({ "relation": a.relation, "negated": true }))
                                     }
-                                    _ => None,
+                                    BodyLiteral::Guard { cel, .. } => Some(json!({ "cel": cel })),
+                                    BodyLiteral::Cmp { .. } => None,
                                 })
                                 .collect();
                             json!({ "rule": r.raw.trim(), "premises": premises })

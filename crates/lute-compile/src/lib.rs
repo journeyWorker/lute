@@ -678,6 +678,7 @@ fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
         FactTerm::Ident(s) => s.clone(),
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
+        FactTerm::Param(p) => format!("@{p}"),
     }
 }
 

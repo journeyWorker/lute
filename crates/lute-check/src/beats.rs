@@ -918,7 +918,7 @@ pub fn project_beats<'a>(
                     || beat
                         .once
                         .as_ref()
-                        .is_some_and(|(o, _)| !matches!(o.as_str(), "run" | "user" | "false"))
+                        .is_some_and(|(o, _)| !matches!(o.as_str(), "run" | "user" | "false" | "day" | "slot"))
                 {
                     continue;
                 }
@@ -1279,6 +1279,60 @@ fn once_guard(pb: &ProjectBeat<'_>) -> Option<String> {
         (ProjectBeatKind::Bundle, BeatOnce::User) => Some(format!("!visited('{}')", pb.id)),
         _ => None,
     }
+}
+
+/// dsl 0.24.0 §4 (`W-CAST-ABSENT`): what each beat may assume about the
+/// ladder above it. A `select: first`, non-`also` beat `B` wins only once
+/// every beat ordered before it on the same occasion that is a candidate
+/// whenever `B` is (untargeted, or `B`'s target), always eligible (no
+/// `after:`, `when` absent or always true) and spent by a readable flag
+/// ([`once_guard`]) has been spent: `entry.<id>.everRead`,
+/// `entry.<id>.read` or `visited('<id>')`. Keyed by document, then by the
+/// beat's `on` key/attribute offset ([`ProjectBeat::anchor`]).
+pub fn presence_ladder(
+    docs: &[(PathBuf, Document)],
+    foldeds: &[&FoldedEnv],
+) -> BTreeMap<PathBuf, BTreeMap<usize, Vec<String>>> {
+    let params = BTreeMap::new();
+    let mut beats: Vec<(ProjectBeat<'_>, bool)> = project_beats(docs, foldeds)
+        .into_iter()
+        .map(|pb| {
+            let defs = DefTable {
+                bodies: &pb.folded.def_bodies,
+                params: &pb.folded.env.def_params,
+            };
+            let ctx = DecideCtx {
+                schema: &pb.folded.env.state,
+                dollar: None,
+                params: &params,
+                facts: None,
+            };
+            let always = pb.after.is_none()
+                && pb.when_slot.is_none_or(|w| {
+                    matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true)))
+                });
+            (pb, always)
+        })
+        .collect();
+    // Stable: equal priorities keep the tiebreak order.
+    beats.sort_by(|a, b| b.0.priority.cmp(&a.0.priority));
+    let mut out: BTreeMap<PathBuf, BTreeMap<usize, Vec<String>>> = BTreeMap::new();
+    for (j, (b, _)) in beats.iter().enumerate() {
+        let select = b.folded.occasions.get(b.on).map_or(OccasionSelect::First, |o| o.select);
+        if select != OccasionSelect::First || b.also {
+            continue;
+        }
+        let spent: Vec<String> = beats[..j]
+            .iter()
+            .filter(|(a, always)| *always && !a.also && a.on == b.on && (a.target.is_none() || a.target == b.target))
+            .filter_map(|(a, _)| once_guard(a))
+            .map(|g| g.strip_prefix('!').unwrap_or(&g).to_string())
+            .collect();
+        if !spent.is_empty() {
+            out.entry(b.path.clone()).or_default().insert(b.anchor.byte_start, spent);
+        }
+    }
+    out
 }
 
 /// `a` and `b` can never be eligible together: the decider folds the

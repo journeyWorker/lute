@@ -138,7 +138,7 @@ impl PathDomain {
         PathDomain {
             kind: match &info.domain {
                 Domain::Finite(values) => Kind::Finite(values.clone()),
-                Domain::Number => Kind::Number,
+                Domain::Number | Domain::IntRange { .. } => Kind::Number,
                 Domain::Infinite => Kind::Open,
             },
             maybe_unset: info.maybe_unset || !info.resolved,

@@ -37,6 +37,10 @@ pub struct StateDecl {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StateSchema {
     pub decls: BTreeMap<String, StateDecl>,
+    /// `number` paths known to hold only the whole numbers `lo..=hi` — the
+    /// reserved `clock.weekday` (`0..length-1`, dsl 0.24.0 §1). A `<match>`
+    /// over one is exhaustive once every whole number in range is covered.
+    pub int_ranges: BTreeMap<String, (i64, i64)>,
 }
 
 /// A parsed seed fact from a `facts:` list (spec §4). Seeds are ground
@@ -1452,20 +1456,55 @@ pub fn parse_meta_kind_with_defaults(
                         Ok(raw) => {
                             let decl = StateDecl {
                                 ty: raw.ty,
-                                default: raw.default,
+                                default: None,
                                 namespace,
                                 owner: raw.owner,
                             };
+                            let key_span = meta_key_span(meta, path);
                             match raw.per {
                                 None => {
-                                    typed.state.decls.insert(path.to_string(), decl);
+                                    let default = match raw.default {
+                                        Some(Literal::Map(_)) => {
+                                            diags.push(err_at(
+                                                "E-STATE-DECL",
+                                                format!(
+                                                    "invalid state declaration for `{path}`: a map-valued \
+                                                     `default:` gives each member of a `per:` family its own \
+                                                     default, and `{path}` has no `per:` — give one scalar \
+                                                     value (dsl 0.24.0 §3)"
+                                                ),
+                                                key_span,
+                                            ));
+                                            None
+                                        }
+                                        other => scalar_default(path, other, &mut diags, key_span),
+                                    };
+                                    typed
+                                        .state
+                                        .decls
+                                        .insert(path.to_string(), StateDecl { default, ..decl });
                                 }
                                 // dsl 0.24.0 §3: one decl per member of a
                                 // closed kind declared in this same document.
                                 Some(kind) => match per_members(&typed.rel_kinds, &kind) {
                                     Ok(members) => {
-                                        for m in members {
-                                            typed.state.decls.insert(format!("{path}.{m}"), decl.clone());
+                                        let defaults = per_member_defaults(
+                                            path,
+                                            &kind,
+                                            members,
+                                            &decl.ty,
+                                            raw.default,
+                                            &mut diags,
+                                            key_span,
+                                        );
+                                        for (m, default) in members.iter().zip(defaults) {
+                                            typed.state.decls.insert(
+                                                format!("{path}.{m}"),
+                                                StateDecl {
+                                                    default,
+                                                    ..decl.clone()
+                                                },
+                                            );
                                         }
                                         typed.state_index.insert(path.to_string(), kind);
                                     }
@@ -1477,7 +1516,7 @@ pub fn parse_meta_kind_with_defaults(
                                              declared in this document's `entities:`, declaring \
                                              `{path}.<member>` for every member (dsl 0.24.0 §3)"
                                         ),
-                                        meta_key_span(meta, path),
+                                        key_span,
                                     )),
                                 },
                             }
@@ -1879,6 +1918,118 @@ fn per_members<'a>(
         Some(KindShape::Invalid) => Err("names a malformed entity kind"),
         None => Err("names no entity kind declared in this document's `entities:`"),
     }
+}
+
+/// An `E-STATE-DECL` at a `state:` key.
+fn state_decl_diag(message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: "E-STATE-DECL".to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// The `default:` of a path with no `per:`: author state is scalar, so a
+/// list default is `E-STATE-DECL` and installs no default.
+fn scalar_default(
+    path: &str,
+    default: Option<Literal>,
+    diags: &mut Vec<Diagnostic>,
+    span: Span,
+) -> Option<Literal> {
+    match default {
+        Some(Literal::List(_)) => {
+            diags.push(state_decl_diag(
+                format!(
+                    "invalid state declaration for `{path}`: `default:` is a list, but author \
+                     state is scalar (number|bool|string|enum) — give one value (dsl 0.8.0 §4)"
+                ),
+                span,
+            ));
+            None
+        }
+        other => other,
+    }
+}
+
+/// The default of each member of a `per: <kind>` family (dsl 0.24.0 §3), in
+/// `members` order. A scalar `default:` is every member's; a map gives
+/// members their own — `{ isolde: 2, corvin: 0 }` — where every key is a
+/// member or `_`, the fallback for the members it does not name. A member
+/// the map neither names nor falls back for, a key that is no member, a
+/// value that is not a scalar of the path's type, and a list default are
+/// each `E-STATE-DECL`; the member they concern gets no default.
+fn per_member_defaults(
+    path: &str,
+    kind: &str,
+    members: &[String],
+    ty: &Type,
+    default: Option<Literal>,
+    diags: &mut Vec<Diagnostic>,
+    span: Span,
+) -> Vec<Option<Literal>> {
+    let map = match default {
+        Some(Literal::Map(map)) => map,
+        other => {
+            let d = scalar_default(path, other, diags, span);
+            return vec![d; members.len()];
+        }
+    };
+    let mut bad = |msg: String| {
+        diags.push(state_decl_diag(
+            format!("invalid state declaration for `{path}`: {msg} (dsl 0.24.0 §3)"),
+            span,
+        ));
+    };
+    for key in map.keys().filter(|k| *k != "_" && !members.contains(k)) {
+        let hint = lute_manifest::suggest::nearest(key, members.iter().map(String::as_str), 2)
+            .map(|n| format!(" — did you mean `{n}`?"))
+            .unwrap_or_default();
+        bad(format!(
+            "`default:` names `{key}`, which is not a member of entity kind `{kind}` [{}]{hint}",
+            members.join(", ")
+        ));
+    }
+    let mut valid = BTreeMap::new();
+    for (key, value) in &map {
+        if matches!(value, Literal::Map(_) | Literal::List(_)) || !type_accepts(ty, value) {
+            bad(format!(
+                "`default:` gives `{key}` the value {}, which is not a `{}`",
+                lit_str(value),
+                type_str(ty)
+            ));
+        } else {
+            valid.insert(key.as_str(), value);
+        }
+    }
+    let fallback = map.contains_key("_");
+    let missing: Vec<&str> = members
+        .iter()
+        .map(String::as_str)
+        .filter(|m| !map.contains_key(*m))
+        .collect();
+    if !fallback && !missing.is_empty() {
+        bad(format!(
+            "`default:` gives no value for {} — name every member of `{kind}`, or add a fallback \
+             for the rest with `_: <value>`",
+            missing.iter().map(|m| format!("`{m}`")).collect::<Vec<_>>().join(", ")
+        ));
+    }
+    members
+        .iter()
+        .map(|m| {
+            valid
+                .get(m.as_str())
+                .or_else(|| valid.get("_"))
+                .map(|v| (*v).clone())
+        })
+        .collect()
 }
 
 fn yaml_key(k: &str) -> serde_yaml::Value {

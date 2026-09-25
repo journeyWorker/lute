@@ -334,6 +334,68 @@ fn language_server_check() -> Check {
     }
 }
 
+/// The `siblingLanguageServer` check (round-3 SU N10): a side-by-side
+/// install (a prerelease `bin/lute` beside its `bin/lute-lsp`) keeps the
+/// global build first on `PATH`, and the two report the same version, so
+/// the `PATH` check passes while the editor runs another build. Compare the
+/// `lute-lsp` beside the running `lute` with the one on `PATH` as files —
+/// the same file or identical bytes is the same build.
+fn sibling_language_server_check() -> Check {
+    const KEY: &str = "siblingLanguageServer";
+    const LABEL: &str = "lute-lsp beside lute";
+    let ours = env!("CARGO_PKG_VERSION");
+    let exe = if cfg!(windows) { "lute-lsp.exe" } else { "lute-lsp" };
+    let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) else {
+        return Check::info(KEY, LABEL, "cannot locate the running `lute`".to_string());
+    };
+    let sibling = dir.join(exe);
+    if !sibling.is_file() {
+        return Check::info(KEY, LABEL, format!("none in {}", dir.display()));
+    }
+    let at = sibling.display();
+    match lsp_reported_version(&sibling) {
+        Some(v) if v == ours => {}
+        other => {
+            let v = other.unwrap_or_else(|| "no version".to_string());
+            return Check::fail(
+                KEY,
+                LABEL,
+                format!("{at} reports {v} — differs from lute {ours}"),
+                "install lute and lute-lsp from the same build",
+            );
+        }
+    }
+    let Some(on_path) = find_on_path(exe) else {
+        return Check::info(
+            KEY,
+            LABEL,
+            format!("{ours} at {at} — not on PATH; point the editor's language server at it"),
+        );
+    };
+    let same_file = matches!(
+        (sibling.canonicalize(), on_path.canonicalize()),
+        (Ok(a), Ok(b)) if a == b
+    );
+    let same_build = same_file
+        || matches!((std::fs::read(&sibling), std::fs::read(&on_path)), (Ok(a), Ok(b)) if a == b);
+    if same_build {
+        Check::pass(KEY, LABEL, format!("{ours} at {at} — the build on PATH"))
+    } else {
+        Check::fail(
+            KEY,
+            LABEL,
+            format!(
+                "{at} is another build than {} on PATH, which the editor launches",
+                on_path.display()
+            ),
+            &format!(
+                "put {} first on PATH, or point the editor's language server at {at}",
+                dir.display()
+            ),
+        )
+    }
+}
+
 /// The version a `lute-lsp` binary reports for `--version`, `None` when it
 /// reports none (older than 0.22.0).
 fn lsp_reported_version(lsp: &Path) -> Option<String> {
@@ -745,6 +807,7 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
         "not detectable from the CLI".to_string(),
     ));
     checks.push(language_server_check());
+    checks.push(sibling_language_server_check());
     #[cfg(unix)]
     checks.push(running_language_servers_check());
 

@@ -706,8 +706,15 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                 bind_attrs(&mut o.attrs, args, params);
                 bind_params(&mut o.body, args, params);
             }
-            // Fact args are ground — no `@param` binding target (0.3.0 T2).
-            Node::Assert(_) | Node::Retract(_) => {}
+            // dsl 0.24.0 §4: an `effects: true` body's `@param` fact
+            // arguments take their `::use` constants (the checker rejects a
+            // non-constant argument, so a bound build leaves none).
+            Node::Assert(a) => {
+                lute_check::component_effects::bind_fact(&mut a.pattern, args);
+            }
+            Node::Retract(r) => {
+                lute_check::component_effects::bind_fact(&mut r.pattern, args);
+            }
         }
     }
 }

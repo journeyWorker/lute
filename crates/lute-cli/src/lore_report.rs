@@ -194,7 +194,7 @@ fn ground_fact(p: &FactPattern) -> Option<String> {
         match &arg.term {
             FactTerm::Ident(s) => args.push(s.clone()),
             FactTerm::Bool(b) => args.push(b.to_string()),
-            FactTerm::Wildcard => return None,
+            FactTerm::Wildcard | FactTerm::Param(_) => return None,
         }
     }
     Some(format!("{}({})", p.relation, args.join(", ")))

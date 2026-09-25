@@ -616,6 +616,7 @@ pub fn resolve_imports(
             (&mut origins.defs, &doc.origins.defs),
             (&mut origins.rules, &doc.origins.rules),
             (&mut origins.facts, &doc.origins.facts),
+            (&mut origins.domains, &doc.origins.domains),
         ] {
             for (k, v) in src {
                 dst.entry(k.clone()).or_insert_with(|| v.clone());
@@ -1004,6 +1005,7 @@ fn read_and_parse(
         defs: tm.defs.keys().map(|n| (n.clone(), key(n))).collect(),
         rules: tm.rel_rules.iter().map(|r| (r.raw.clone(), here(r.span))).collect(),
         facts: tm.rel_facts.iter().map(|f| (f.raw.clone(), here(f.span))).collect(),
+        domains: tm.domains.keys().map(|n| (n.clone(), key(n))).collect(),
     };
     let failed_heads = tm.rel_rule_failed_heads.clone();
     let state = tm.state.decls;

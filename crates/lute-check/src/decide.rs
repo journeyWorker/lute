@@ -155,20 +155,25 @@ fn const_side(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<Constant> {
 
 /// R2 domain membership: `unset` is a member only when `dom.maybe_unset` (a
 /// defaulted path or a bound param is never unset, §5.1 R2); a scalar is a
-/// member when it matches one of `dom`'s `Finite` values — a `Num` never
-/// does (`infer_domain` only produces a finite domain for `bool`/`enum`
-/// subjects; a numeric subject is `Domain::Number`, which R2 — needing a
-/// FINITE domain — leaves undecided exactly like `Domain::Infinite`).
+/// member when it matches one of `dom`'s `Finite` values, and a number when
+/// it is one of an `IntRange`'s whole numbers (`clock.weekday`, dsl 0.24.0
+/// §1). A plain `Domain::Number` never reaches here (R2 leaves it undecided
+/// exactly like `Domain::Infinite`); a string or bool against an `IntRange`
+/// counts as a member — its type error is `E-CEL-TYPE`'s, never a dead arm.
 fn domain_contains(dom: &DomainInfo, value: &Constant) -> bool {
-    match value {
-        Constant::Unset => dom.maybe_unset,
-        Constant::Value(Decided::Str(s)) => {
-            matches!(&dom.domain, Domain::Finite(vals) if vals.iter().any(|v| matches!(v, DomainValue::Str(x) if x == s)))
+    match (value, &dom.domain) {
+        (Constant::Unset, _) => dom.maybe_unset,
+        (Constant::Value(Decided::Num(n)), Domain::IntRange { lo, hi }) => {
+            n.fract() == 0.0 && (*lo as f64) <= *n && *n <= (*hi as f64)
         }
-        Constant::Value(Decided::Bool(b)) => {
-            matches!(&dom.domain, Domain::Finite(vals) if vals.iter().any(|v| matches!(v, DomainValue::Bool(x) if x == b)))
+        (Constant::Value(_), Domain::IntRange { .. }) => true,
+        (Constant::Value(Decided::Str(s)), Domain::Finite(vals)) => {
+            vals.iter().any(|v| matches!(v, DomainValue::Str(x) if x == s))
         }
-        Constant::Value(Decided::Num(_)) => false,
+        (Constant::Value(Decided::Bool(b)), Domain::Finite(vals)) => {
+            vals.iter().any(|v| matches!(v, DomainValue::Bool(x) if x == b))
+        }
+        (Constant::Value(_), _) => false,
     }
 }
 
@@ -211,7 +216,7 @@ fn decide_domain_equality(
     let (dom, other) = resolve_domain(lhs, ctx)
         .map(|d| (d, rhs))
         .or_else(|| resolve_domain(rhs, ctx).map(|d| (d, lhs)))?;
-    if !matches!(dom.domain, Domain::Finite(_)) {
+    if !matches!(dom.domain, Domain::Finite(_) | Domain::IntRange { .. }) {
         return None;
     }
     let value = const_side(other, ctx)?;
@@ -229,7 +234,7 @@ fn decide_domain_equality(
 /// value, so non-membership can't be proven.
 fn decide_domain_in(needle: &Expr, container: &Expr, ctx: &DecideCtx<'_>) -> Option<Decided> {
     let dom = resolve_domain(needle, ctx)?;
-    if !matches!(dom.domain, Domain::Finite(_)) {
+    if !matches!(dom.domain, Domain::Finite(_) | Domain::IntRange { .. }) {
         return None;
     }
     let Expr::List(list) = container else {

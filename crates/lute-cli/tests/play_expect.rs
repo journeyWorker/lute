@@ -225,6 +225,54 @@ fn coverage_counts_the_documents_a_play_presented() {
     assert!(listed("scenes/hub/idle.lute"), "offered but never presented: {untested:?}");
 }
 
+/// lighthouse N3: a scene reached only by the occasion an `advance:` step's
+/// clock raises is presented exactly as an `occasion:` step's winner is —
+/// `--coverage` listed it untested. The header says plays count toward
+/// documents only (the branch/arm rows are the traced paths').
+#[test]
+fn coverage_counts_the_documents_an_advance_step_presented() {
+    let dir = temp_dir("advance-coverage");
+    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+         run.slot: { type: { enum: [morning, night] }, default: morning, owner: engine }\n\
+         clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, night]\n  raise: dawn\n",
+    );
+    write(
+        &dir,
+        "scenes/dawn.lute",
+        "---\nkind: scene\nid: day.dawn\nuses: ../world.schema.yaml\non: dawn\n---\n\n\
+         ## Dawn\n\n@narrator: Morning again.\n",
+    );
+    write(
+        &dir,
+        "scenes/unseen.lute",
+        "---\nkind: scene\nid: day.unseen\nuses: ../world.schema.yaml\non: visit\n---\n\n\
+         ## Unseen\n\n@narrator: Nobody comes.\n",
+    );
+    write(
+        &dir,
+        "plays/day.play.yaml",
+        "steps:\n  - advance: day\n    expect: { winner: day.dawn }\n",
+    );
+    let d = dir.to_str().unwrap();
+    let out = lute(&["test", d, "--project", d, "--coverage"]);
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}");
+    assert!(
+        t.contains(
+            "coverage over 0 traced path(s) and 1 play(s) (plays count toward documents \
+             presented only, not branches or arms):"
+        ),
+        "{t}"
+    );
+    assert!(t.contains("1 untested document"), "{t}");
+    assert!(t.contains("scenes/unseen.lute"), "{t}");
+    assert!(!t.contains("scenes/dawn.lute"), "presented by the advance's raise: {t}");
+}
+
 // ---------------------------------------------------------------------------
 // `*.test.yaml` additions (dsl 0.22.0 §3, §5).
 // ---------------------------------------------------------------------------

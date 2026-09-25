@@ -10,11 +10,16 @@ use lute_manifest::clock::{ClockAt, ClockDecl, ClockValue};
 use crate::Value;
 
 /// The clock's position in `state` (`None` when the day is not an integer
-/// or the slot is not one of the clock's slots).
+/// or the slot is not one of the clock's slots; a day-granular clock reads
+/// its day alone).
 pub fn position(clock: &ClockDecl, state: &BTreeMap<String, Value>) -> Option<ClockAt> {
-    match (state.get(&clock.day), state.get(&clock.slot)) {
-        (Some(Value::Num(day)), Some(Value::Str(slot))) => clock.at(*day, slot),
-        _ => None,
+    let Some(Value::Num(day)) = state.get(&clock.day) else {
+        return None;
+    };
+    match clock.slot.as_ref().map(|s| state.get(s)) {
+        None => clock.at(*day, None),
+        Some(Some(Value::Str(slot))) => clock.at(*day, Some(slot)),
+        Some(_) => None,
     }
 }
 

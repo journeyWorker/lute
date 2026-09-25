@@ -75,6 +75,8 @@ pub struct DeclOrigins {
     pub defs: BTreeMap<String, DeclOrigin>,
     pub rules: BTreeMap<String, DeclOrigin>,
     pub facts: BTreeMap<String, DeclOrigin>,
+    /// Every `enums:` / `entities:` domain the schema declares.
+    pub domains: BTreeMap<String, DeclOrigin>,
 }
 
 /// dsl 0.24 T3-6: re-home a diagnostic about an IMPORTED declaration. The
@@ -401,6 +403,9 @@ pub fn build_rel_vocab(
     for name in typed.defs.keys() {
         origins.defs.remove(name);
     }
+    for name in typed.domains.keys() {
+        origins.domains.remove(name);
+    }
     for r in &typed.rel_rules {
         origins.rules.remove(&r.raw);
     }
@@ -666,6 +671,18 @@ pub fn check_atom(
     }
     let mut out = Vec::new();
     for (i, (arg, dname)) in args.iter().zip(decl.args.iter()).enumerate() {
+        if let FactTerm::Param(p) = &arg.term {
+            out.push(diag(
+                E_FACT_DOMAIN,
+                format!(
+                    "relation `{relation}` argument {i} is `@{p}`, a component param: only an \
+                     `effects: true` component body may use one, and each `::use` binds it to \
+                     a constant (dsl 0.24.0 §4)"
+                ),
+                span,
+            ));
+            continue;
+        }
         if matches!(arg.term, FactTerm::Wildcard) {
             if !wildcard_ok {
                 out.push(diag(

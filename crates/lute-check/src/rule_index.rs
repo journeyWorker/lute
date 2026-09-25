@@ -284,6 +284,17 @@ fn ground_atom(a: &RuleAtom, at: &BTreeMap<&str, &str>) -> RuleAtom {
     }
 }
 
+/// A rule guard's CEL with each indexed read `F[V]` whose variable `at`
+/// binds replaced by `F.<member>` (`run.aff[P]` under `P = sol` reads
+/// `run.aff.sol`); unbound variables are left as written.
+pub fn ground_guard(cel: &str, at: &BTreeMap<&str, &str>) -> String {
+    let uses: Vec<IndexUse> = index_uses(cel)
+        .into_iter()
+        .filter(|u| at.contains_key(u.var.as_str()))
+        .collect();
+    rewrite(cel, &uses, &|v| at.get(v).map(|m| (*m).to_string()).unwrap_or_default())
+}
+
 fn ground_rule(rule: &Rule, at: &BTreeMap<&str, &str>) -> Rule {
     let body = rule
         .body
@@ -291,16 +302,10 @@ fn ground_rule(rule: &Rule, at: &BTreeMap<&str, &str>) -> Rule {
         .map(|lit| match lit {
             BodyLiteral::Pos(a) => BodyLiteral::Pos(ground_atom(a, at)),
             BodyLiteral::Neg(a) => BodyLiteral::Neg(ground_atom(a, at)),
-            BodyLiteral::Guard { cel, span } => {
-                let uses: Vec<IndexUse> = index_uses(cel)
-                    .into_iter()
-                    .filter(|u| at.contains_key(u.var.as_str()))
-                    .collect();
-                BodyLiteral::Guard {
-                    cel: rewrite(cel, &uses, &|v| at.get(v).map(|m| (*m).to_string()).unwrap_or_default()),
-                    span: *span,
-                }
-            }
+            BodyLiteral::Guard { cel, span } => BodyLiteral::Guard {
+                cel: ground_guard(cel, at),
+                span: *span,
+            },
             BodyLiteral::Cmp {
                 lhs,
                 rhs,

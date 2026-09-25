@@ -66,7 +66,10 @@ fn play_halts_at_an_unanswered_call_before_the_default_arm() {
     assert_eq!(o.status.code(), Some(3), "{text}");
     assert!(text.contains("(bridge unanswered: passed, margin)"), "{text}");
     assert!(text.contains("plugin call `check`"), "{text}");
-    assert!(text.contains("bridges: { check: [ { passed: …, margin: … } ] }"), "{text}");
+    assert!(
+        text.contains("bridges: { check: [ { passed: <bool>, margin: <number> } ] }"),
+        "{text}"
+    );
     // Nothing after the call was walked: no arm, no line.
     assert!(!text.contains("match ->"), "{text}");
     assert!(!text.contains("Failed."), "{text}");
@@ -150,8 +153,8 @@ fn trace_reads_an_unmocked_bridge_result_as_unknown() {
     assert_eq!(o.status.code(), Some(3), "{text}");
     assert!(!text.contains("-> arm 2"), "the shape default must not decide: {text}");
     assert!(
-        text.contains("bridges: { check: [ { passed: <value> } ] }"),
-        "the hint names the tag and field: {text}"
+        text.contains("bridges: { check: [ { passed: <bool>, margin: <number> } ] }"),
+        "the hint names the tag and every field the loader demands, typed: {text}"
     );
 }
 
@@ -195,4 +198,110 @@ fn a_scenario_test_needs_its_bridge_answers() {
     );
     assert_eq!(without.status.code(), Some(1), "{}", out(&without));
     assert!(out(&without).contains("bridges: { check:"), "{}", out(&without));
+}
+
+/// `lute test <file> --project <fixture>` on a scenario test written into
+/// the fixture's `tests/` for the run.
+fn scenario(tag: &str, body: &str) -> (PathBuf, Output) {
+    let dir = fixture();
+    let t = write(&dir, &format!("tests/{tag}.test.yaml"), body);
+    let o = Command::new(BIN)
+        .args(["test", t.to_str().unwrap(), "--project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_file(&t);
+    (t, o)
+}
+
+/// ER N7: the unanswered-bridge hint gave `{ passed: <value> }`, an answer
+/// the loader then refused for lacking `margin`. The hint is now the whole
+/// typed shape, and filling in its placeholders is an accepted answer.
+#[test]
+fn the_unanswered_bridge_hint_is_an_answer_the_loader_accepts() {
+    let (_, without) = scenario(
+        "bridge-hint",
+        "file: ../scenes/probe/c.lute\nexpect:\n  transcriptContains: [\"Passed.\"]\n",
+    );
+    let text = out(&without);
+    let hint = "{ passed: <bool>, margin: <number> }";
+    assert!(text.contains(&format!("supply bridges: {{ check: [ {hint} ] }}")), "{text}");
+
+    let answer = hint.replace("<bool>", "true").replace("<number>", "2");
+    let (_, with) = scenario(
+        "bridge-hinted",
+        &format!(
+            "file: ../scenes/probe/c.lute\nbridges: {{ check: [ {answer}, {answer} ] }}\n\
+             expect:\n  transcriptContains: [\"Passed.\", \"Sneaked.\"]\n"
+        ),
+    );
+    assert_eq!(with.status.code(), Some(0), "{}", out(&with));
+}
+
+/// Four bad `bridges:` entries, each on a known line of a mock whose first
+/// line is its `file:` key: a missing field (answer at 4:7), a misfit value
+/// (`passed` at 5:7), a stray field (`margn` at 7:7), an unknown tag
+/// (`chek` at 8:3).
+const BAD_BRIDGES: &str = "bridges:\n  check:\n    - { passed: true }\n    - passed: maybe\n      \
+                           margin: 1\n      margn: 2\n  chek:\n    - { passed: true, margin: 1 }\n";
+
+fn assert_anchored(text: &str, file: &str) {
+    for want in [
+        format!("{file}:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin`"),
+        format!("{file}:5:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 2: `passed: maybe`"),
+        format!("{file}:7:7: error [E-TRACE-MOCK-UNDECLARED] `bridges.check` answer 2 gives `margn`"),
+        format!("{file}:8:3: error [E-TRACE-MOCK-UNDECLARED] `bridges.chek` answers no plugin call"),
+    ] {
+        assert!(text.contains(&want), "missing `{want}` in:\n{text}");
+    }
+    assert!(!text.contains(":0:0:"), "{text}");
+}
+
+/// ER N7: a `bridges:` error rendered at `<traced document>:0:0`. It is the
+/// mock's own entry at fault, so it renders at that entry's line:column in
+/// the mock — a scenario test, a `trace --mock` file, a `mocks/*.yaml`.
+#[test]
+fn a_bridges_mock_error_is_anchored_at_its_entry_in_the_mock() {
+    let (t, o) = scenario(
+        "bridge-anchored",
+        &format!("file: ../scenes/probe/c.lute\n{BAD_BRIDGES}expect:\n  exit: complete\n"),
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", out(&o));
+    assert_anchored(&out(&o), &t.display().to_string());
+
+    let doc = fixture().join("scenes/probe/c.lute");
+    let mock = write(
+        &temp_dir("trace-anchored"),
+        "m.yaml",
+        &format!("file: {}\n{BAD_BRIDGES}", doc.display()),
+    );
+    let o = Command::new(BIN)
+        .args(["trace", doc.to_str().unwrap(), "--project", fixture().to_str().unwrap()])
+        .args(["--mock", mock.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(1), "{}", out(&o));
+    assert_anchored(&out(&o), &mock.display().to_string());
+
+    let project = temp_dir("check-project-anchored");
+    copy_dir(&fixture(), &project);
+    let mock = write(
+        &project,
+        "mocks/bad.yaml",
+        &format!("file: ../scenes/probe/c.lute\n{BAD_BRIDGES}"),
+    );
+    let o = Command::new(BIN).args(["check-project", project.to_str().unwrap()]).output().unwrap();
+    assert_eq!(o.status.code(), Some(1), "{}", out(&o));
+    assert_anchored(&out(&o), &mock.display().to_string());
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap().flatten() {
+        let dest = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &dest);
+        } else {
+            std::fs::copy(entry.path(), dest).unwrap();
+        }
+    }
 }

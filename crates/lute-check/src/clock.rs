@@ -51,8 +51,9 @@ pub fn parse_clock(value: &serde_yaml::Value, span: Span) -> (Option<ClockDecl>,
             vec![clock_diag(
                 format!(
                     "`clock:` must be `{{ day: <number path>, slot: <enum path>, slots: [..], \
-                     raise: <occasion>, week: {{ length, first, labels }} }}` — `raise` and \
-                     `week` optional (dsl 0.24.0 §1): {e}"
+                     raise: <occasion> | {{ slot, dayStart, dayEnd }}, week: {{ length, first, \
+                     labels }} }}` — `slot`/`slots` (together), `raise` and `week` optional \
+                     (dsl 0.24.0 §1): {e}"
                 ),
                 span,
             )],
@@ -116,60 +117,68 @@ pub fn check_clock(
             }
         }
     }
-    match schema.decls.get(&clock.slot) {
-        None => diags.push(bad(format!("`slot: {}` is not a declared state path", clock.slot))),
-        Some(decl) => {
-            match enum_members(&decl.ty, domains) {
-                None => diags.push(bad(format!("`slot: {}` must be an enum path", clock.slot))),
-                Some(members) => {
-                    let mut want: Vec<&str> = members.iter().map(String::as_str).collect();
-                    let mut got: Vec<&str> = clock.slots.iter().map(String::as_str).collect();
-                    want.sort_unstable();
-                    got.sort_unstable();
-                    if want != got {
-                        diags.push(bad(format!(
-                            "`slots: [{}]` must list exactly the members of `{}` ({}), in \
-                             clock order",
-                            clock.slots.join(", "),
-                            clock.slot,
-                            members.join(", ")
-                        )));
+    if let Some(slot) = &clock.slot {
+        match schema.decls.get(slot) {
+            None => diags.push(bad(format!("`slot: {slot}` is not a declared state path"))),
+            Some(decl) => {
+                match enum_members(&decl.ty, domains) {
+                    None => diags.push(bad(format!("`slot: {slot}` must be an enum path"))),
+                    Some(members) => {
+                        let mut want: Vec<&str> = members.iter().map(String::as_str).collect();
+                        let mut got: Vec<&str> = clock.slots.iter().map(String::as_str).collect();
+                        want.sort_unstable();
+                        got.sort_unstable();
+                        if want != got {
+                            diags.push(bad(format!(
+                                "`slots: [{}]` must list exactly the members of `{slot}` ({}), in \
+                                 clock order",
+                                clock.slots.join(", "),
+                                members.join(", ")
+                            )));
+                        }
                     }
                 }
-            }
-            if decl.owner != Some(Owner::Engine) {
-                diags.push(bad(format!(
-                    "`slot: {}` must be declared `owner: engine` — only the engine moves the clock",
-                    clock.slot
-                )));
+                if decl.owner != Some(Owner::Engine) {
+                    diags.push(bad(format!(
+                        "`slot: {slot}` must be declared `owner: engine` — only the engine moves the clock"
+                    )));
+                }
             }
         }
     }
-    if let Some(raise) = &clock.raise {
+    let moments = clock.raises();
+    let named = [("slot", &moments.slot), ("dayStart", &moments.day_start), ("dayEnd", &moments.day_end)];
+    for (moment, raise) in named {
+        let Some(raise) = raise else { continue };
         if !occasions.is_empty() && !occasions.contains_key(raise) {
             let hint = lute_manifest::suggest::nearest(raise, occasions.keys().map(String::as_str), 2)
                 .map(|n| format!(" — did you mean `{n}`?"))
                 .unwrap_or_default();
-            diags.push(bad(format!("`raise: {raise}` is not a declared occasion{hint}")));
+            let key = match &clock.raise {
+                Some(lute_manifest::clock::ClockRaise::Slot(_)) => "raise".to_string(),
+                _ => format!("raise.{moment}"),
+            };
+            diags.push(bad(format!("`{key}: {raise}` is not a declared occasion{hint}")));
         }
     }
     (Some(clock.clone()), diags)
 }
 
 /// The reserved read-only `clock.*` decls a clock implies: `clock.index`
-/// (number) always, `clock.weekday` (number) with a `week:`, and
-/// `clock.weekdayLabel` (string) with week labels. `owner: engine`, the
+/// (number) always, `clock.weekday` (number, `0..length-1` — see
+/// [`weekday_range`]) with a `week:`, and `clock.weekdayLabel` (the enum of
+/// the week's labels, so a `<match>` over it is exhaustive and typo-checked)
+/// with week labels. `owner: engine`, the
 /// day path's tier, and a default computed from the `day`/`slot` defaults
 /// when both have one — so a read is exactly as definitely-assigned as the
 /// clock paths themselves.
 pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, StateDecl)> {
     let day = schema.decls.get(&clock.day);
     let namespace = day.map_or(Namespace::Run, |d| d.namespace);
-    let at = match (
-        day.and_then(|d| d.default.as_ref()),
-        schema.decls.get(&clock.slot).and_then(|d| d.default.as_ref()),
-    ) {
-        (Some(Literal::Num(d)), Some(Literal::Str(s))) => clock.at(*d, s),
+    let slot_default = clock.slot.as_ref().map(|s| schema.decls.get(s).and_then(|d| d.default.as_ref()));
+    let at = match (day.and_then(|d| d.default.as_ref()), slot_default) {
+        (Some(Literal::Num(d)), None) => clock.at(*d, None),
+        (Some(Literal::Num(d)), Some(Some(Literal::Str(s)))) => clock.at(*d, Some(s)),
         _ => None,
     };
     let values: BTreeMap<&str, lute_manifest::clock::ClockValue> =
@@ -185,7 +194,11 @@ pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, S
             (
                 path.to_string(),
                 StateDecl {
-                    ty: if number { Type::Number } else { Type::Str },
+                    ty: if number {
+                        Type::Number
+                    } else {
+                        Type::Enum(clock.week.as_ref().map(|w| w.labels.clone()).unwrap_or_default())
+                    },
                     default,
                     namespace,
                     owner: Some(Owner::Engine),
@@ -193,6 +206,13 @@ pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, S
             )
         })
         .collect()
+}
+
+/// `clock.weekday`'s whole-number range `(0, length - 1)` (dsl 0.24.0 §1),
+/// `None` without a `week:`.
+pub fn weekday_range(clock: &ClockDecl) -> Option<(i64, i64)> {
+    let week = clock.week.as_ref().filter(|w| w.length > 0)?;
+    Some((0, i64::from(week.length) - 1))
 }
 
 /// `once: day` / `once: slot` (a scene's frontmatter, an entry's or a bundle

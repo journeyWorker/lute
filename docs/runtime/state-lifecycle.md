@@ -145,15 +145,15 @@ asserts and retracts their facts.
 
 ## The clock
 
-A schema MAY declare one clock (dsl 0.24.0 §1) over two existing
-engine-owned paths — it adds meaning, not storage (D-B):
+A schema MAY declare one clock (dsl 0.24.0 §1) over existing engine-owned
+paths — it adds meaning, not storage (D-B):
 
 ```yaml
 clock:
   day: run.day            # number path, owner: engine
-  slot: run.slot          # enum path, owner: engine
-  slots: [morning, afternoon, night]   # order; the slot enum's members
-  raise: slotStart        # optional: the occasion raised after every advance
+  slot: run.slot          # optional: enum path, owner: engine
+  slots: [morning, afternoon, night]   # with `slot`: the order; the slot enum's members
+  raise: { slot: slotStart, dayStart: dayStart, dayEnd: dayEnd }  # optional; each key optional
   week: { length: 7, first: 1, labels: [Sun, Mon, Tue, Wed, Thu, Fri, Sat] }  # optional
 ```
 
@@ -162,7 +162,20 @@ The declaration is carried verbatim as `clock` on the artifact and on
 an index conflict). `day` and `slot` stay ordinary `StateEntry` rows,
 initialized and reset by their tier; the checker requires both
 `owner: engine`, a number `day`, an enum `slot` whose members are exactly
-`slots`, and a declared `raise` occasion (`E-CLOCK-DECL`).
+`slots`, and declared `raise` occasions (`E-CLOCK-DECL`).
+
+**A day-granular clock** declares no `slot` / `slots`: every day is one
+slot, a position is its day alone (`day 3`), `clock.index` is `day - 1`,
+and `once: slot` spends like `once: day`.
+
+**`raise`** is one occasion (`raise: slotStart`, the same as `raise: {
+slot: slotStart }`) or a map of moments:
+
+| key | raised |
+| --- | ------ |
+| `slot` | once after every advance, where the clock stops |
+| `dayEnd` | at every midnight an advance crosses, before the crossing — at the day's last slot, the day not yet advanced |
+| `dayStart` | at every midnight an advance crosses, after it — at the next day's first slot |
 
 **Reserved read-only paths.** The engine derives these from the live `day`
 and `slot` — they are not rows of the state table, content never writes
@@ -171,7 +184,7 @@ whole number or `slot` not one of `slots`:
 
 | path | value |
 | ---- | ----- |
-| `clock.index` | `(day - 1) * len(slots) + index of slot in slots` — monotone in time |
+| `clock.index` | `(day - 1) * len(slots) + index of slot in slots` (`day - 1` without slots) — monotone in time |
 | `clock.weekday` | `(week.first + day - 1) mod week.length` (only with `week:`) |
 | `clock.weekdayLabel` | `week.labels[clock.weekday]`, renderable (only with `week.labels`) |
 
@@ -183,20 +196,29 @@ not use them (`E-BEAT-ATTR`).
 
 **The engine moves the clock forward only.** `clock.index` never
 decreases within a run; a run start resets `day` / `slot` to their
-defaults by the tier rule. After every advance the engine settles the quest
+defaults by the tier rule. An advance moves the clock and settles the quest
 lifecycles — a `by` deadline over the clock fails at the advance that passes
-it (`quest-lifecycle.md` §Objectives) — and then raises `raise`, when
-declared, as an ordinary occasion.
+it (`quest-lifecycle.md` §Objectives). Each midnight it crosses is a stop
+when the clock raises `dayEnd` or `dayStart`: the clock moves to the day's
+last slot, settles, raises `dayEnd`; moves to the next day's first slot,
+settles, raises `dayStart`. Then it moves to where the advance ends,
+settles, and raises `slot` — once, never at the slots it passed.
 
 The reference tooling models exactly this. A `lute play` step `advance:
 slot` (one slot), `advance: <n>` (`n` slots) or `advance: day` (the first
-slot of the next day) writes the two paths — wrapping past the last slot
-into the next day — settles, then raises `raise` with the step's `pick:` /
-`choose:` and selection `expect:` (refused when the clock raises nothing).
-An `engine:` step that moves `clock.index` backward is a usage error (exit
-2); `newRun` starts the clock over. `lute calendar --axis clock=d1..d2`
-expands to every slot of those days in clock order (bare `clock`: one week
-from day 1, or day 1 without a `week:`).
+slot of the next day, from any slot) writes the paths — wrapping past the
+last slot into the next day — settles, then raises `raise.slot` with the
+step's `pick:` / `choose:` and selection `expect:` (refused when the clock
+raises no `slot` occasion). `advance: <n>` never skips a day's close — it
+walks to each day's last slot to raise `dayEnd`; `advance: day` raises
+`dayEnd` where the clock stands. The transcript prints each midnight raise
+under the step (`── step 4 · day 1 (Mon) night · dayEnd`), and `--json`
+lists them under `advance.days`. An `engine:` step that moves
+`clock.index` backward is a usage error (exit 2); `newRun` starts the clock
+over. `lute calendar --axis clock=d1..d2` expands to every slot of those
+days in clock order (bare `clock`: one week from day 1, or day 1 without a
+`week:`); `--occasion dayEnd@clock.day,clock.slot=night` (or the clock's own
+paths, `@run.day,run.slot=night`) evaluates an occasion once per day.
 
 ## Previous run (`prev.run.*`)
 

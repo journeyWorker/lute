@@ -1111,6 +1111,7 @@ const DENIABLE_CODES: &[&str] = &[
     "W-CODE-AFTER-END",
     "W-CODE-AFTER-NEXT",
     "W-COMPONENT-UNVERIFIED",
+    "W-DEADLINE-BEFORE-DONE",
     "W-DEF-UNUSED",
     "W-DERIVE-NO-RULES",
     "W-DOMAIN-UNREAD",
@@ -2732,18 +2733,22 @@ fn reconcile_collected(
                 project_diags.push((path.clone(), d));
             }
         }
+        let beat_foldeds: Vec<&lute_check::FoldedEnv> =
+            group_full.iter().map(|(_, _, f)| f).collect();
         // dsl 0.24.0 §4: `W-CAST-ABSENT` re-decided under the fact envelope
-        // — a line the Must set shows its speaker present at is dropped.
+        // and the beat ladders — a line the Must set (or the beats a ladder
+        // must have spent first) shows its speaker present at is dropped.
+        let ladder = lute_check::beats::presence_ladder(group, &beat_foldeds);
+        let no_ladder = BTreeMap::new();
         for (path, doc, folded) in group_full {
             if let Some((_, r)) = file_results.iter_mut().find(|(p, _)| p == path) {
-                lute_check::cast::reconcile_presence(&mut r.diagnostics, path, doc, folded, fact_env);
+                let ladder = ladder.get(path).unwrap_or(&no_ladder);
+                lute_check::cast::reconcile_presence(&mut r.diagnostics, path, doc, folded, fact_env, ladder);
             }
         }
         // dsl 0.21.0 §5: `W-BEAT-SHADOWED` — a `select: first` beat an
         // earlier-ordered, always-eligible, never-spent beat on the same
         // occasion always beats. Project order is the selection tiebreak.
-        let beat_foldeds: Vec<&lute_check::FoldedEnv> =
-            group_full.iter().map(|(_, _, f)| f).collect();
         project_diags.extend(lute_check::check_project_beats(group, &beat_foldeds));
         // T10/T11: connectivity envelope (dsl §4.3). `PerDocEffects`
         // populated from T8 (per-scene `guaranteed`/`possible_writes`,
@@ -3063,15 +3068,24 @@ fn run_check_project(
     // Deliberately NOT inside `reconcile_collected`: `gate_for_doc` merges every
     // project-wide diagnostic anchored on a file INTO that file's single-document
     // verdict, so a `W-DOMAIN-UNREAD` produced there would surface from
-    // `lute check <file> --project <dir>` and break D-V outright. Span
-    // normalization is not needed either — the anchor is the frontmatter span the
-    // parser produced, which already carries a real line/column.
+    // `lute check <file> --project <dir>` and break D-V outright. The anchor
+    // is the declaration (dsl 0.24 T3-6): an imported schema's canonical path,
+    // printed walk-relative like every other check-project diagnostic.
     {
         let per_file: Vec<(PathBuf, &lute_check::DomainUse)> = file_results
             .iter()
             .map(|(p, r)| (p.clone(), &r.domain_use))
             .collect();
-        project_diags.extend(lute_check::check_project_domain_reads(&per_file));
+        let canon_dir = std::fs::canonicalize(dir).ok();
+        for (path, mut d) in lute_check::check_project_domain_reads(&per_file) {
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            d.span = normalize_span_from_text(&text, d.span);
+            let shown = canon_dir
+                .as_deref()
+                .and_then(|c| path.strip_prefix(c).ok())
+                .map_or_else(|| path.clone(), |rel| dir.join(rel));
+            project_diags.push((shown, d));
+        }
     }
 
     // dsl 0.24.0 (round-3 T3-16): `W-RELATION-UNREAD` / `W-DEF-UNUSED`, once
@@ -6118,6 +6132,7 @@ fn run_trace(
         visited: Vec::new(),
         derive: no_derive.then_some(false),
         bridges: Default::default(),
+        bridge_spans: Default::default(),
     };
 
     let mocks = merge(file_mocks, flag_mocks);
@@ -6212,7 +6227,14 @@ fn run_trace(
                     }
                 }
             } else {
-                print_diagnostics(file, &diags, &DenyPolicy::default());
+                // A `bridges:` answer's diagnostic is anchored in the mock's
+                // own text (dsl 0.24.0 §5), so it renders against the mock.
+                let (at_mock, at_doc): (Vec<_>, Vec<_>) = diags
+                    .iter()
+                    .cloned()
+                    .partition(|d| d.provenance.as_deref() == Some(lute_trace::MOCK_TEXT));
+                print_diagnostics(file, &at_doc, &DenyPolicy::default());
+                print_diagnostics(mock.unwrap_or(file), &at_mock, &DenyPolicy::default());
                 // Every `E-TRACE-*` code is mock/choice validation (D1
                 // quarantine: `lute-check` cannot know that vocabulary, so
                 // its OWN diagnostics never carry it) — a refusal carrying

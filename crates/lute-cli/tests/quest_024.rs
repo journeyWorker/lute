@@ -69,6 +69,9 @@ title: Road
 
 <quest id="cross" title="Cross" start="true">
   <objective id="over" title="Over" on="chapterEnd" done="run.paid"/>
+  <on event="questComplete">
+    @narrator: Cross handler.
+  </on>
 </quest>
 
 <quest id="dusk" title="Dusk" start="true">
@@ -346,12 +349,78 @@ fn judge_before_judges_the_occasion_before_its_beats_are_presented() {
     assert!(v["steps"][2].get("judgedBefore").is_none(), "{}", v["steps"][2]);
     assert_eq!(transitions(&v, 3), ["dusk -> complete"]);
 
-    // The transcript shows the judging where it happened: before the beat.
+    // The transcript shows the judging where it happened: before the beat;
+    // the lifecycle handler it fired runs after the beat.
     let out = play(&dir, "judge-human", "steps:\n  - engine: { state: { run.paid: true } }\n  - occasion: chapterEnd\n", false);
     let t = text(&out);
     let judged = t.find("  quest cross -> complete\n").unwrap_or_else(|| panic!("{t}"));
     let chosen = t.find("  → end.over\n").unwrap_or_else(|| panic!("{t}"));
     assert!(t.find("· chapterEnd").unwrap() < judged && judged < chosen, "{t}");
+    let scene = t.find("Crossed.").unwrap_or_else(|| panic!("{t}"));
+    let handler = t.find("Cross handler.").unwrap_or_else(|| panic!("{t}"));
+    assert!(scene < handler, "the questComplete handler runs after the beat: {t}");
+}
+
+/// dsl 0.24.0 §2.1 (LH N2): an `on=` objective whose `by` holds wherever its
+/// `done` does. `inquest` presents the hearing, which files the verdict.
+fn deadline_project(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: g\nprofiles:\n  g:\n    plugins: { g.occ: true }\n",
+    );
+    write(
+        &dir,
+        "plugins/g.occ/plugin.yaml",
+        "id: g.occ\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n",
+    );
+    write(&dir, "plugins/g.occ/occasions/o.yaml", "occasions:\n  file: {}\n  inquest: {}\n");
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.v: { type: { enum: [undecided, fell, drowned] }, default: undecided }\n",
+    );
+    write(
+        &dir,
+        "quests/verdict.lute",
+        "---\nkind: quest\nuses: ../world.schema.yaml\ntitle: Verdict\n---\n\n\
+         <quest id=\"verdict\" title=\"Verdict\" start=\"true\">\n  \
+         <objective id=\"fate\" title=\"Fate\" on=\"inquest\" done=\"run.v == 'fell'\" by=\"run.v != 'undecided'\"/>\n\
+         </quest>\n",
+    );
+    for (rel, id, on) in [("scenes/file.lute", "hub.file", "file"), ("scenes/hearing.lute", "end.hearing", "inquest")] {
+        write(
+            &dir,
+            rel,
+            &format!(
+                "---\nkind: scene\nid: {id}\nuses: ../world.schema.yaml\non: {on}\nonce: false\n---\n\n\
+                 ## {id}\n\n@narrator: Filed.\n::set{{run.v = \"fell\"}}\n"
+            ),
+        );
+    }
+    dir
+}
+
+#[test]
+fn a_deadline_that_comes_true_in_the_raising_step_loses_to_done() {
+    let dir = deadline_project("deadline-same-step");
+    // The hearing files the verdict, then `inquest` judges `done` first.
+    let v = play_json(
+        &dir,
+        "same-step",
+        "steps:\n  - occasion: inquest\nexpect:\n  quests: { verdict: complete }\n",
+    );
+    assert_eq!(transitions(&v, 1), ["verdict -> complete"]);
+    // Filed in an earlier step, the deadline is a moment: it fails there.
+    let v = play_json(
+        &dir,
+        "earlier-step",
+        "steps:\n  - occasion: file\n  - occasion: inquest\nexpect:\n  quests: { verdict: failed }\n",
+    );
+    assert_eq!(transitions(&v, 1), ["verdict -> failed (by)"]);
+    assert!(transitions(&v, 2).is_empty(), "{:?}", transitions(&v, 2));
 }
 
 #[test]

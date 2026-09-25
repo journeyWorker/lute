@@ -182,8 +182,10 @@ pub fn check_mocks_under(
         }
         for mut d in diags {
             // Right file, offending key named, impossible position gone: the
-            // span the validator produced is `synthetic_span()`'s all-zeros,
-            // and pairing it with the MOCK's path is what makes it correct.
+            // span the validator produced is `synthetic_span()`'s all-zeros
+            // (printed without a position) or, for a `bridges:` entry, the
+            // entry's own line:column in THIS mock — either is correct only
+            // paired with the MOCK's path.
             d.message = format!("{} (resolved for `{rel}`)", d.message);
             out.push((mock.clone(), d));
         }

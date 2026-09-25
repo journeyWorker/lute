@@ -238,7 +238,10 @@ failed **required** objective fails its quest (§Failure above); a failed
   `by="run.day > 5"`, and the settle after the clock passes day 5 fails it
   whether or not the objective's occasion was ever raised. (0.23.1 judged an
   `on` objective's `by` only at its raise, so a player who never went there
-  escaped the deadline; 0.24.0 reverses that.)
+  escaped the deadline; 0.24.0 reverses that.) An `on` objective whose `done`
+  provably implies its `by` fails at the settle `by` comes true, before its
+  occasion judges `done` (unless both happen in the step that raises it);
+  `lute check` warns `W-DEADLINE-BEFORE-DONE` there and suggests `until=`.
 - **`until` is a place.** It requires `on` (`E-BEAT-ATTR` without it) and is
   judged only when the objective's occasion is raised for its target, right
   after its `done` — the 0.23.1 raise-only rule: the moment the occasion
@@ -248,9 +251,15 @@ failed **required** objective fails its quest (§Failure above); a failed
 `done` wins a tie: whenever `done` is judged in the same settle as a deadline
 it is judged first, so an objective whose `done` and deadline become true at
 the same instant is done, not failed; once `done` is recorded no deadline is
-evaluated for it again. (An `on` objective's `done` is judged only at its
-raise, so a `by` that comes true between raises fails it.) An objective's
-failure is readable: `quest.<id>.objectives.<oid>.failed` is `true` from then
+evaluated for it again. An `on` objective's `done` is judged only at its
+raise, so the engine extends the tie to the **moment that raises it**: while
+an occasion is being raised — the beats it presents, their settles, and (for
+a clock advance) the settle after the clock moves — the `by` of each `on`
+objective that raise judges is not evaluated until the raise has judged its
+`done`; then `by` is judged at the settle right after the raise (so a `by`
+that holds while `done` is false there still fails it). A `by` that comes
+true in any other moment, between raises, fails the objective there. An
+objective's failure is readable: `quest.<id>.objectives.<oid>.failed` is `true` from then
 on (dsl 0.24.0 §2), and a required one's kind lands in `quest.<id>.failedBy`
 (`by` / `until`); both reset with a run-tier quest.
 The reference tooling shows it: `lute trace` records an objective decision
@@ -475,9 +484,10 @@ After **activation** and after **every event**, the engine (0.4.0 §4.6):
    occasion is itself an evaluation instant, running steps 2–4 after those
    objectives;
 2. evaluates the `by` deadline of every not-done, not-failed objective (with
-   or without `on`, dsl 0.24.0 §2.1) and, at a raise, the `until` deadline
-   of each objective judged in step 1; the first time one holds the
-   objective fails (dsl 0.23.0 §2);
+   or without `on`, dsl 0.24.0 §2.1 — except, until the raise, an `on`
+   objective an occasion being raised at this moment judges) and, at a
+   raise, the `until` deadline of each objective judged in step 1; the first
+   time one holds the objective fails (dsl 0.23.0 §2);
 3. evaluates `fail` — and any required objective failed in step 2 (not for
    a `complete="any"` quest, dsl 0.24.0 §2) — **before** derived completion
    (§6.3 precedence), recording `quest.<id>.failedBy`; then derived

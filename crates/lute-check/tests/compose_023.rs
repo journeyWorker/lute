@@ -111,6 +111,47 @@ fn by_is_a_bool_condition_slot_like_done() {
     }
 }
 
+// --- dsl 0.24.0 §2.1: `W-DEADLINE-BEFORE-DONE` ------------------------------------
+
+/// One objective over an enum verdict (the lighthouse-keeper N2 shape).
+fn verdict(attrs: &str) -> String {
+    format!(
+        "---\nkind: quest\nstate:\n  run.v: {{ type: {{ enum: [undecided, fell, drowned] }}, default: undecided }}\n  \
+         run.day: {{ type: number, default: 1 }}\n\
+         ---\n<quest id=\"q\" title=\"Q\">\n\
+         <objective id=\"fate\" title=\"O\" done=\"run.v == 'fell'\" {attrs}/>\n</quest>\n"
+    )
+}
+
+#[test]
+fn an_on_objective_whose_done_implies_its_by_warns_at_by() {
+    let src = verdict("on=\"hubVisit\" by=\"run.v != 'undecided'\"");
+    let ds = diags(&src);
+    let d = only(&ds, "W-DEADLINE-BEFORE-DONE");
+    assert_eq!(d.severity, Severity::Warning);
+    assert_eq!(anchored(&src, d), "run.v != 'undecided'");
+    assert!(d.message.contains("until=\"run.v != 'undecided'\""), "{}", d.message);
+    assert!(d.message.contains("occasion `hubVisit`"), "{}", d.message);
+    assert!(errors(&ds).is_empty(), "{ds:?}");
+}
+
+#[test]
+fn deadline_before_done_needs_on_by_without_until_and_a_proven_implication() {
+    for attrs in [
+        // `until=` is judged only at the raise, after `done`.
+        "on=\"hubVisit\" until=\"run.v != 'undecided'\"",
+        // `done` does not imply `by`: a real deadline.
+        "on=\"hubVisit\" by=\"run.day >= 3\"",
+        // Without `on=`, `done` is judged at every settle too and wins the tie.
+        "by=\"run.v != 'undecided'\"",
+    ] {
+        let src = verdict(attrs);
+        let ds = diags(&src);
+        assert!(with_code(&ds, "W-DEADLINE-BEFORE-DONE").is_empty(), "{attrs}: {ds:?}");
+        assert!(errors(&ds).is_empty(), "{attrs}: {ds:?}");
+    }
+}
+
 // --- §2 `<objective on target>` ---------------------------------------------------
 
 #[test]
