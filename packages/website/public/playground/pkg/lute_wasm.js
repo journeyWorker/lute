@@ -88,7 +88,7 @@ export function trace_source(src, mock_yaml) {
 
 /**
  * The three independent version axes (docs/versioning.md), matching
- * `lute version --json`: `{"toolchain":"0.23.1","language":"0.23.1","ir":"0.23.1"}`.
+ * `lute version --json`: `{"toolchain":"0.24.0","language":"0.24.0","ir":"0.24.0"}`.
  * The toolchain axis is this crate's workspace `CARGO_PKG_VERSION`.
  * @returns {string}
  */

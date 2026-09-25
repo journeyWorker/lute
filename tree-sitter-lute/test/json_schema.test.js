@@ -486,9 +486,9 @@ options:
     expect(ok).toBe(false);
   });
 
-  test("broken DirectivesFile: directive missing required `lower`", () => {
+  test("broken DirectivesFile: directive missing required `attrs`", () => {
     const { ajv, pluginSchema } = loadAjv();
-    const doc = Bun.YAML.parse("directives:\n  - name: bad\n    attrs: []\n");
+    const doc = Bun.YAML.parse("directives:\n  - name: bad\n");
     const { ok } = validateAgainst(ajv, pluginSchema.$id, doc);
     expect(ok).toBe(false);
   });

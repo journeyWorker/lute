@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.23.1`, the grammar and semantics the checker
+- **Language** — currently `0.24.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.23.1`) and gated on by consuming engines.
+  artifact (currently `0.24.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,7 +36,21 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.24.0] - 2026-09-25
+
+**Clocks, quest structure, parties.**
+
+A minor release from a third dogfood round over four games — a mystery, a
+roguelike, a day-clock visual novel and a party RPG. A schema may declare a
+clock that beats, `lute play` and `lute calendar` read; quests gain accepted
+subquests, alternatives, place-bound deadlines and a reason they failed;
+entities gain sub-kinds and per-member state; a cast may say when a speaker
+is present; components may write state; and plugin calls are answered by
+`bridges:` in play, test and trace. Every silent wrong answer that round found
+is fixed here (there is no separate 0.23.2). The language and the IR both earn
+the move (the IR additively); see
+[`docs/proposals/scenario-dsl/0.24.0.md`](docs/proposals/scenario-dsl/0.24.0.md)
+and [`docs/versioning.md`](docs/versioning.md).
 
 ### Added
 
@@ -265,7 +279,7 @@ table.
   Inside a `<track>` a guarded `::set` is `E-TIMELINE-CONTENT`. Any other
   attribute in a `::set` body is still expression text, and its
   `E-CEL-PARSE` now names `when=` as the one attribute there is.
-- **Schemas and editor support cover 0.24.** `schemas/lute-ir-0.23.schema.json`
+- **Schemas and editor support cover 0.24.** `schemas/lute-ir-0.24.schema.json`
   documents every additive 0.24 IR field: the artifact's `clock`
   (`$defs/clockDecl`, the same shape as `project.index.json`'s `clock`),
   `once: "day"|"slot"` on scene beats, entries, bundle beats and index beat
@@ -810,6 +824,75 @@ table.
   `holds(inParty(wren)) || !holds(recruited(wren))` is satisfied before and
   beside the only choice that recruits her, even when another scene can
   make her depart or `fell` is reserved.
+
+### Compatibility
+
+- **Arms kept only to satisfy the checker are now `E-ARM-DEAD`.** A beat's
+  `when:`, a bundle `<beat when>` and an entry `when=` now narrow their whole
+  body, and exhaustiveness reads the same narrowed domain. The 0.23 workaround
+  — a `<when is="undecided">` (or `<otherwise>`) arm the beat's `when` rules
+  out, kept so `E-NONEXHAUSTIVE` would pass — is now `E-ARM-DEAD` (or
+  `W-OTHERWISE-DEAD`). Delete the dead arm; the match stays exhaustive. A body
+  that writes the subject keeps the whole domain.
+- **`by=` is judged at every settle; the old rule is `until=`.** 0.23.1 judged
+  an `on=` objective's `by` only when its occasion was raised. Now it fails the
+  objective at the first settle where it holds, wherever the player is. Content
+  written for the raise-only rule — a `by` that `done` implies, such as
+  `done="run.v == 'fell'" by="run.v != 'undecided'"` — can never complete and
+  is flagged `W-DEADLINE-BEFORE-DONE`; replace `by=` with `until=` (same
+  condition), which is judged only at the occasion's raise, after `done`.
+  `lute run` / `lute play` print `failed (until)` for it, and failing
+  `quest` records carry `failedBy`.
+- **Bridge results come from `bridges:`, not `scene.*` seeds.** A `*.test.yaml`
+  or trace mock that seeded a plugin call's result slot (`state: {
+  scene.check.guards.passed: true }`) no longer decides the guard: the walk
+  stops unresolved with a `bridges:` hint, and `lute play` refuses the seed
+  (exit 2). Replace it with `bridges: { check: [ { passed: true, margin: 3 }
+  ] }` — one answer per call, every field the result shape requires.
+- **Plugin `lower:` is optional, and the `builtin` workaround is rejected.** A
+  directive without `lower:` is the generic `kind: "plugin"` passthrough (it
+  was `E-PLUGIN-PARSE missing field lower`, and `schemas/lute.plugin.json`
+  required it too). A `lower: { kind: builtin, name:
+  X }` naming a hook the core does not register (`bridgeMinigame`, `mgart`, …)
+  — the old way to satisfy that error — is now `E-PLUGIN-PARSE`; drop `lower:`
+  (a bridge directive binds its call with `bridge:` alone; the compiled
+  records do not change). A registered hook now runs its builtin:
+  `clearStage` clears the stage as `::clear` does, where it used to compile to
+  a passthrough. Plugin export files also reject unknown keys
+  (`E-PLUGIN-PARSE` with a did-you-mean), so a misspelled key that loaded as
+  its default now fails.
+- **Cast presence is a new warning.** A cast entry that declares `present:`
+  makes every line by that speaker whose guards do not imply it
+  `W-CAST-ABSENT` (`--deny W-CAST-ABSENT` works). Projects whose cast has no
+  `present:` are unaffected. Guard the line (`@isolde{when="…"}`), or declare
+  `assume: true` when `present` reads an engine-reserved relation whose
+  negation holds until the engine writes it.
+- **`judge: before` moves when quests settle, not when handlers run.** On an
+  occasion declared `judge: before`, its `on=` objectives are judged and the
+  quests settled before its beats are chosen, so an epilogue reads the ending;
+  the `<on>` handler bodies of that raise still run after the beats. The
+  default `after` keeps the 0.21 order, and only a snapshot that declares
+  `judge: before` changes `capabilityVersion` for it.
+- **`capabilityVersion` moves for every document.** `lute.core` gains
+  `::clear`, so every capability stamp changes; engines or build caches keyed
+  on the stamp see new values. Compiled records are otherwise unchanged for
+  documents that use none of the new syntax.
+- **Schema file renamed; additive IR.** The version strings move to `0.24.0`
+  and `schemas/lute-ir-0.23.schema.json` is renamed to
+  [`schemas/lute-ir-0.24.schema.json`](schemas/lute-ir-0.24.schema.json)
+  (`$id` updated). Every new field is optional and appears only when the
+  source uses the feature: `clock`, `once: "day"|"slot"`,
+  `ObjectiveEntry.until`, `QuestCmd.activate` / `complete`, `OnCmd.target`,
+  `AcceptCmd.applies`, placeholder `format`, `StateEntry.labels`, and the CEL
+  op `%`. Engines gate on MAJOR, so nothing widens; the tree-sitter grammar is
+  unchanged.
+- **Documents that were already wrong can redden.** A relation named like a
+  CEL call (`has`, `holds`, `count`, …) is `E-RELATION-RESERVED-NAME`; an
+  `::accept` of a child that activates with its parent is `E-ACCEPT-TARGET`
+  (it was a silent no-op); a map `default:` without `per:` is `E-STATE-DECL`
+  (it yielded no default); a maybe-unset read through a `@def` is
+  `E-MAYBE-UNSET` at the use; a `@def` a rule guard cannot expand is
+  `E-RULE-GUARD-DEF` (the rule used to be dropped silently).
 
 ## [0.23.1] - 2026-09-25
 

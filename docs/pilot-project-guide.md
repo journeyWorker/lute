@@ -48,12 +48,12 @@ project/
 ```
 
 - 플러그인 매니페스트는 `docs/examples/arcia-project/plugins/arcia.minigame/`을 복사해 개명하는 게 가장 빠르고 정확하다. tactus의 실전 사례: `~/Workspace/tactus/story/plugins/tactus.battle/`.
-- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, 그리고 현재 IR 스키마 [`schemas/lute-ir-0.23.schema.json`](../schemas/lute-ir-0.23.schema.json)(파일명은 릴리스 라인마다 개명되므로 `schemas/`의 실제 파일을 정본으로 삼아라).
+- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, 그리고 현재 IR 스키마 [`schemas/lute-ir-0.24.schema.json`](../schemas/lute-ir-0.24.schema.json)(파일명은 릴리스 라인마다 개명되므로 `schemas/`의 실제 파일을 정본으로 삼아라).
 - 컴파일 스크립트에서 ajv는 **draft 2020-12** 필요: `import Ajv from 'ajv/dist/2020'`.
 
 ## 4. 저작 규칙 (check를 통과하는 형태)
 
-- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.23.1"`(= 현재 언어 버전; 낮게 스탬프하면 `W-LUTE-VERSION-STALE`), `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
+- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.24.0"`(= 현재 언어 버전; 낮게 스탬프하면 `W-LUTE-VERSION-STALE`), `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
 - 관계 선언: `relations: { persuaded: { args: [character, route], tier: run, key: [0] } }` + `entities`/`enums`. `::assert{rel(a,b)}`로 기록, 퀘스트 objective에서 `count(persuaded(_,_)) >= 7`로 판정 — 이 패턴은 0.7에서 완전 동작한다.
 - number 대상 `<match on=...>`은 범위 패턴으로 쓴다: `<when is="4..">` (0.18.0 — 양 끝 포함, `..0`·`1..3`도 가능). `<when test="$ >= 4">`도 동작하지만 `W-WHEN-TEST-LITERAL` 경고가 나고 `lute fix`가 `is=`로 바꿔 준다.
 - 대사 `emotion=`은 **lute 내장 enum**(neutral, surprised, delighted, shy, content, angry, sad)만 허용된다. 엔진 포트레이트 키(serious/soft 등)와 다르면 엔진 쪽에서 매핑 테이블을 둬라.
