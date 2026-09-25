@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.24.0`, the grammar and semantics the checker
+- **Language** — currently `0.25.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.24.0`) and gated on by consuming engines.
+  artifact (currently `0.25.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,7 +36,21 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.25.0] - 2026-09-25
+
+**Exclusion, shared spends, graph edges.**
+
+A minor release closing the items the 0.24.0 pre-release review left open —
+each a workaround a round-3 author still carried. A relation may declare the
+relations it never holds together with, and the checker, `lute play` and
+`lute trace` hold content to it; beats that tell one event in different places
+share one spend; a bundle beat's `after=`, a quest's subquests and its `start`
+reads become scenario-graph edges; a quest may be accepted outside the script;
+a reserved relation may say when the engine changes it; and a bridge answer
+need not invent fields nobody reads. The language and the IR both earn the move
+(the IR additively); see
+[`docs/proposals/scenario-dsl/0.25.0.md`](docs/proposals/scenario-dsl/0.25.0.md)
+and [`docs/versioning.md`](docs/versioning.md).
 
 ### Added
 
@@ -172,6 +186,48 @@ table.
   component's writes produce facts only at its `::use` sites, with the bound
   arguments (ER C1). An unused `joins` component no longer made a
   character's pre-recruitment lines warn.
+
+### Compatibility
+
+- **A test mock no longer accepts a quest for the checker.** A `*.test.yaml`
+  or `mocks/*.yaml` `accepts:` entry used to silence
+  `W-QUEST-NEVER-ACCEPTED`; it no longer does, since a mock proves a test, not
+  the game. A quest the game accepts outside the script (a quest board, a
+  menu, a UI) declares `<quest accept="external">`; the warning's message
+  names the mock and its hint offers the attribute.
+- **Exclusive violations halt play and trace.** Once a relation declares
+  `excludes:`, a write that makes both sides hold stops `lute play` at the
+  step (exit 1) and refuses the `lute trace` / `lute test` walk
+  (`E-FACT-EXCLUSIVE`, exit 1); seeded facts that already break an exclusion
+  refuse the run before it starts. Projects that declare no `excludes:` are
+  unaffected.
+- **`E-RULE-EXCLUSIVE` can redden a project.** A rule that derives a relation
+  from one it excludes, on the head's own arguments (`dark(X) :- lit(X)`
+  with `dark` excluding `lit`), is now an error at the rule. It only fires
+  once an `excludes:` is declared that the rules contradict.
+- **`W-LUTE-VERSION-STALE` for an inherited stamp is reported once.** A stale
+  `luteVersion` inherited from the manifest's `defaults:` is reported by
+  `check-project` once, at the manifest's `luteVersion:` line, with the
+  number of documents inheriting it, instead of once per document at `1:1`.
+  Tooling that counted or located these warnings per document sees one.
+- **Bridge answers may be lighter, and fewer plays halt.** A `bridges:` answer
+  may omit result fields no content reads (a field content reads is still
+  required, `E-TRACE-MOCK-TYPE`), and `lute play` no longer halts at a plugin
+  call none of whose result slots content reads — a play that used to stop
+  there now continues.
+- **Schema file renamed; additive IR.** The version strings move to `0.25.0`
+  and `schemas/lute-ir-0.24.schema.json` is renamed to
+  [`schemas/lute-ir-0.25.schema.json`](schemas/lute-ir-0.25.schema.json)
+  (`$id` updated). Every new field is optional and appears only when the
+  source uses the feature: `RelationEntry.excludes`, `share` on `BeatIr` /
+  `EntryCmd` / `BeatCmd` / index beat rows, `BeatCmd.after` with its
+  `prereqEdges` row, `QuestCmd.accept` (`"external"`), and the placeholder
+  format `"ordinalWord"`. `lute.core` does not move, so neither does
+  `capabilityVersion`. Engines gate on MAJOR, so nothing widens; the
+  tree-sitter grammar is unchanged.
+- **A large rustfmt-only reformat.** Commit `a1b6ae1` reformatted the Rust
+  sources with `rustfmt`; it changes no behavior, but a downstream patch
+  against the crates may need rebasing.
 
 ## [0.24.0] - 2026-09-25
 

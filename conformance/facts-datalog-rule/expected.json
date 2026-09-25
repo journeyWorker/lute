@@ -34,7 +34,7 @@
     "sawClue(map)",
     "suspected(mira)"
   ],
-  "irVersion": "0.24",
+  "irVersion": "0.25",
   "kind": "scene",
   "quests": {},
   "state": {}

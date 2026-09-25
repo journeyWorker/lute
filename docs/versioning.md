@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.24.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.24.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.24.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.24.schema.json`](../schemas/lute-ir-0.24.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.25.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.25.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.25.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.25.schema.json`](../schemas/lute-ir-0.25.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.24.schema.json`](../schemas/lute-ir-0.24.schema.json)
+published as [`schemas/lute-ir-0.25.schema.json`](../schemas/lute-ir-0.25.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -600,11 +600,45 @@ an optional `clock` on the artifact and project index, beat and entry `once`
 `OnCmd.target`, `AcceptCmd.applies`, placeholder `format`,
 `StateEntry.labels`, and the CEL op `%`. The schema file renames per release
 line (`lute-ir-0.23.schema.json` →
-[`lute-ir-0.24.schema.json`](../schemas/lute-ir-0.24.schema.json)).
+`lute-ir-0.24.schema.json`, since renamed).
 Artifacts that use none of it compile byte-identically apart from the version
 strings and the capability stamp, which moves for every document because
 `lute.core` gains `::clear`. Engines gate on MAJOR, so nothing widens, and
 the tree-sitter grammar is unchanged.
+
+**`0.25.0` aligns all three axes at `0.25.0`; the language and the IR both
+earn the move, the IR additively.** The items the 0.24.0 pre-release review
+left open, each closing a workaround a round-3 author still carried
+([`proposals/scenario-dsl/0.25.0.md`](proposals/scenario-dsl/0.25.0.md)). A
+relation may declare `excludes:` — the relations it never holds together with
+on the same arguments: `check-project` reads a guard that needs both as dead
+and a negation as following, an `::assert` that provably breaks one is the new
+`E-FACT-EXCLUSIVE`, a rule that derives one from the other is the new
+`E-RULE-EXCLUSIVE`, and `lute play` / `lute trace` / `lute test` halt at a
+write that makes both hold. Beats with one `share` key are spent together; a
+bundle `<beat after=…>` is an eligibility conjunct and a scenario edge; and
+`lute scenario` draws `[subquest]` and `[start]` anchors, so a
+`start`-driven quest no longer needs a copied `after=`. `<quest
+accept="external">` is the only acceptance outside content: a test or trace
+`accepts:` mock no longer silences `W-QUEST-NEVER-ACCEPTED`. A reserved
+relation's `changedOn:` narrows cast `assume: true` after the occasions that
+change it (a malformed one is `E-RELATION-DECL`, as is an `excludes:` partner
+with other argument kinds). A bridge answer may omit result fields no content
+reads, and `{{x:ordinalWord}}` joins `:ordinal`. What moves for a 0.24-clean
+project: an exclusive violation now halts play and trace, a project whose
+rules contradict a declared exclusion is `E-RULE-EXCLUSIVE`, a quest only a
+mock accepts warns again, and `W-LUTE-VERSION-STALE` for a stamp inherited
+from the manifest is reported once, at the manifest. The IR change is
+additive: an optional `RelationEntry.excludes`, `share` on beats, entries,
+bundle beats and index beat rows, a bundle `BeatCmd.after` with its
+`prereqEdges` row, `QuestCmd.accept` (`"external"`), and the placeholder
+format `ordinalWord`. The schema file renames per release line
+(`lute-ir-0.24.schema.json` →
+[`lute-ir-0.25.schema.json`](../schemas/lute-ir-0.25.schema.json)).
+Artifacts that use none of it compile byte-identically apart from the version
+strings; `lute.core` does not move, so neither does `capabilityVersion`.
+Engines gate on MAJOR, so nothing widens, and the tree-sitter grammar is
+unchanged.
 
 ## Which bump when
 

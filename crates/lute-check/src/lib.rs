@@ -59,7 +59,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.24.0";
+pub const LUTE_LANG_VERSION: &str = "0.25.0";
 
 pub use accept::{
     check_accept_directive, check_project_accepts, check_project_never_accepted, E_ACCEPT_TARGET,
