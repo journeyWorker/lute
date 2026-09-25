@@ -4894,10 +4894,14 @@ mod lute_version_tests {
     /// path, and `E-CAST-UNKNOWN` / `W-REWARD-DOUBLE-CREDIT` join the code
     /// set. The IR gains the `beat` command and optional beat, objective, hub
     /// and reward fields, so the current schema is
-    /// `schemas/lute-ir-0.23.schema.json`.
+    /// `schemas/lute-ir-0.23.schema.json`. `0.23.1` is a patch on the same
+    /// line: no new syntax, but static semantics tighten
+    /// (`E-QUEST-TIER-MIX` rejects a mixed-tier quest tree) and an occasion
+    /// target domain may narrow to `members:`; the IR shape does not move,
+    /// so the schema keeps its `0.23` name and `$id`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_23_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.23.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.23.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_23_1() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.23.1");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.23.1");
     }
 }

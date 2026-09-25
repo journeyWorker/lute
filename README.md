@@ -116,7 +116,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.23.0"
+luteVersion: "0.23.1"
 profile: date-minigame
 extra:
   arc: main
@@ -219,7 +219,7 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.23.0.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.23.1.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
   [`0.23.0`](docs/proposals/scenario-dsl/0.23.0.md). Recent tips: `0.20.0` fact envelopes
   (`check-project` proves relational guards dead or redundant), `0.21.0` beats and occasions
@@ -234,16 +234,22 @@ history):
   bundle scene-like `<beat>`s; `prev.run.*`, a checked cast, and reward kinds that credit
   state join the vocabulary; and the condition decider now reports same-path
   contradictions it used to miss (`check-project --wip` softens the ones caused by content
-  not yet written). Being draft means the grammar may still break before 1.0; each breaking change
-  ships a `lute fix` migration or a pin where the rewrite is mechanical.
-- **IR: 0.23.0.** The compiled artifact is specified by
+  not yet written). `0.23.1` is a patch that adds no syntax: `lute trace`, `lute test` and
+  `lute play` now agree (a raised occasion fires its same-named world event's `<on event>`
+  handlers; a `::end` in `lute play` ends only its presentation — a step `end: true` stops
+  the play), and a mixed-tier quest tree is the new `E-QUEST-TIER-MIX`. Being draft means
+  the grammar may still break before 1.0; each breaking change ships a `lute fix` migration
+  or a pin where the rewrite is mechanical.
+- **IR: 0.23.1.** The compiled artifact is specified by
   [`schemas/lute-ir-0.23.schema.json`](schemas/lute-ir-0.23.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only
   (since `0.13.0`): fields are append-only within a major line, so a minor move costs a
   consumer nothing. `0.23.0` is additive: a `beat` command for bundle beats in lore
   artifacts, and the optional `BeatIr.also`, `ObjectiveEntry.by` / `target`,
-  `HubCmd.prompt`, `RewardEntry.credits`, and index beat-row `when` / `title`.
+  `HubCmd.prompt`, `RewardEntry.credits`, and index beat-row `when` / `title`. `0.23.1`
+  moves no shape; an untagged component line's `lineId` may change once, to the code
+  `lute tag` writes.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver, reference
   runtime, LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (including `lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-trace`, `lute-lint`,

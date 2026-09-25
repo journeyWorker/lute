@@ -1,6 +1,6 @@
 ---
 title: 치트시트
-description: "Lute 0.23.0로 글을 쓰는 동안 열어 두는 한 페이지: 모든 구문을 검사된 최소 스니펫으로 보여 줍니다(프로젝트 구성, 프론트매터, 대사, 선택지, match, 상태, CEL, 비트, 퀘스트, 로어, 컴포넌트, 타임라인). CLI 요약, 작가가 가장 자주 만나는 진단 코드, 주의할 점도 담았습니다."
+description: "Lute 0.23.1로 글을 쓰는 동안 열어 두는 한 페이지: 모든 구문을 검사된 최소 스니펫으로 보여 줍니다(프로젝트 구성, 프론트매터, 대사, 선택지, match, 상태, CEL, 비트, 퀘스트, 로어, 컴포넌트, 타임라인). CLI 요약, 작가가 가장 자주 만나는 진단 코드, 주의할 점도 담았습니다."
 ---
 
 모든 구문을 한 페이지에 복사해 쓸 수 있는 스니펫으로 모았습니다. 아래의 `lute` 블록은 모두 CI에서 실제
@@ -37,7 +37,7 @@ identity:                               # both values below are the defaults
   lineId: "{prefix}.{speaker}_{code}"
   voiceKey: "{prefix}.{speaker}-{code}" # the 0.21 default was {speaker}-{code}: pin it to keep old keys
 defaults:                               # frontmatter every document inherits
-  luteVersion: "0.23.0"
+  luteVersion: "0.23.1"
   uses: [world.schema.yaml]             # resolved against THIS file's directory
 ```
 
