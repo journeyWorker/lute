@@ -145,10 +145,9 @@ fn new_with_a_non_root_dir_inside_a_project_is_refused_with_the_nested_name() {
     ]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     let msg = text(&out);
-    assert!(
-        msg.contains("`--dir` names the project; did you mean `lute new scene talk/tavi-shell --dir "),
-        "{msg}"
-    );
+    assert!(msg.contains("`--dir` names the project, not the destination folder"), "{msg}");
+    assert!(msg.contains("resolves to `"), "{msg}");
+    assert!(msg.contains("did you mean `lute new scene talk/tavi-shell --dir "), "{msg}");
     assert!(!proj.join("scenes/tavi-shell.lute").exists(), "nothing lands at the root");
     assert!(!sub.join("tavi-shell.lute").exists());
 
@@ -166,6 +165,30 @@ fn new_with_a_non_root_dir_inside_a_project_is_refused_with_the_nested_name() {
     );
     assert!(!proj.join("quests/side.lute").exists());
     assert!(!proj.join("quests/extra").exists());
+}
+
+/// Round-3 CR N7: run from a project subdirectory with no `--dir`, the
+/// refusal names the current directory it resolved and how, and never
+/// blames a `--dir` the author did not pass.
+#[test]
+fn new_from_a_subdirectory_without_dir_names_the_current_directory() {
+    let proj = init_beats("new-subdir-cwd");
+    let sub = proj.join("scenes/talk");
+    let out = Command::new(BIN)
+        .args(["new", "scene", "tavi-shell", "--on", "talk"])
+        .current_dir(&sub)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    let msg = text(&out);
+    assert!(
+        msg.contains("no `--dir` was given, so `lute new` started from the current directory `"),
+        "{msg}"
+    );
+    assert!(msg.contains("run from the project root, or pass `--dir <root>`"), "{msg}");
+    assert!(!msg.contains("`--dir` names the project"), "{msg}");
+    assert!(msg.contains("did you mean `lute new scene talk/tavi-shell --dir "), "{msg}");
+    assert!(!sub.join("tavi-shell.lute").exists());
 }
 
 /// T3-14: a dotted name keeps its dots as the id (`isolde.night` →

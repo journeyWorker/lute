@@ -261,13 +261,18 @@ fn project_in(snap: fn() -> CapabilitySnapshot, texts: &[(&str, &str)]) -> Vec<(
     let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);
     let env = FactEnv::new(may, must.slots);
     let ladder = lute_check::beats::presence_ladder(&docs, &folded_refs);
+    let producers = lute_check::cast::fact_producers(&docs);
     let no_ladder = std::collections::BTreeMap::new();
     results
         .into_iter()
         .zip(docs.iter().zip(&foldeds))
         .map(|((path, mut result), ((_, doc), folded))| {
-            let ladder = ladder.get(&path).unwrap_or(&no_ladder);
-            lute_check::cast::reconcile_presence(&mut result.diagnostics, Path::new(&path), doc, folded, &env, ladder);
+            let project = lute_check::cast::PresenceProject {
+                env: &env,
+                ladder: ladder.get(&path).unwrap_or(&no_ladder),
+                producers: &producers,
+            };
+            lute_check::cast::reconcile_presence(&mut result.diagnostics, Path::new(&path), doc, folded, &project);
             (path.display().to_string(), result.diagnostics)
         })
         .collect()
@@ -465,6 +470,29 @@ fn assume_reads_a_negated_reserved_relation_as_holding() {
     // Both are recruited and nobody departs; only `tomas` (`assume: true`)
     // takes the engine-reserved `fell` as absent.
     assert_eq!(absent_lines(&src, &out[0].1), ["isolde: So am I."], "{:?}", out[0].1);
+}
+
+#[test]
+fn a_disjunct_proven_by_a_fact_only_the_unit_itself_asserts_counts() {
+    // Wren is present "in the party, or not yet recruited". Only this
+    // `once: run` scene recruits her, after its first line and in one
+    // choice, so `!holds(recruited(wren))` holds before and beside it —
+    // even though another scene can make her depart and `fell` is reserved.
+    let meet = rel_scene(
+        "on: hubVisit\n",
+        "@wren: Before anyone asks.\n<branch id=\"ask\">\n<choice id=\"yes\" label=\"Join us\">\n\
+         ::assert{recruited(wren)}\n</choice>\n<choice id=\"no\" label=\"Stay\">\n@wren: I'll stay.\n</choice>\n\
+         </branch>\n@wren: After the branch.",
+    );
+    let leaves = rel_scene("on: hubVisit\npriority: 5\nwhen: \"holds(inParty(wren))\"\n", "::assert{departed(wren)}")
+        .replace("id: a.rel", "id: a.leaves");
+    let out = project_in(rel_snapshot, &[("meet.lute", &meet), ("leaves.lute", &leaves)]);
+    assert_clean_vocab(&out[0].1);
+    assert_eq!(absent_lines(&meet, &out[0].1), ["wren: After the branch."], "{:?}", out[0].1);
+    // A second producer anywhere else voids the assumption.
+    let recruits = leaves.replace("::assert{departed(wren)}", "::assert{recruited(wren)}");
+    let out = project_in(rel_snapshot, &[("meet.lute", &meet), ("recruits.lute", &recruits)]);
+    assert_eq!(absent_lines(&meet, &out[0].1).len(), 3, "{:?}", out[0].1);
 }
 
 // --- emotions -----------------------------------------------------------------

@@ -680,25 +680,34 @@ pub fn fold_env(
     // 4a'''. dsl 0.24.0 §1: the project's clock — its imports' `clock:` and,
     //        for a schema document, its own — checked against the folded
     //        schema; its reserved read-only `clock.*` paths join the schema.
-    let clocks: Vec<(String, lute_manifest::clock::ClockDecl)> = input
+    let clocks: Vec<(crate::clock::ClockSite, lute_manifest::clock::ClockDecl)> = input
         .imports
         .clock
         .iter()
-        .map(|(path, c)| {
+        .map(|(path, c, at)| {
             let name = path.file_name().map_or_else(
                 || path.display().to_string(),
                 |n| n.to_string_lossy().into_owned(),
             );
-            (name, c.clone())
+            let at = Some((path.display().to_string(), *at));
+            (crate::clock::ClockSite { name, at }, c.clone())
         })
-        .chain(typed.clock.clone().map(|c| ("this schema".to_string(), c)))
+        .chain(typed.clock.clone().map(|c| {
+            (crate::clock::ClockSite { name: "this schema".to_string(), at: None }, c)
+        }))
         .collect();
+    // A schema document's own clock is reported at its `clock:` key.
+    let clock_span = if typed.clock.is_some() {
+        crate::meta::meta_key_span(&doc.meta, "clock")
+    } else {
+        doc.meta.span
+    };
     let (clock, clock_diags) = crate::clock::check_clock(
         &clocks,
         &schema,
         &domains,
         &input.snapshot.occasions,
-        doc.meta.span,
+        clock_span,
     );
     fold_diags.extend(clock_diags);
     if let Some(clock) = &clock {
@@ -1377,7 +1386,6 @@ pub fn check(input: &CheckInput) -> CheckResult {
         &doc,
         &folded,
         None,
-        &std::collections::BTreeMap::new(),
     ));
 
     // 7. Resolved view: injection fold + the timeline tables gathered in the walk.
@@ -2666,7 +2674,16 @@ fn check_use(
     let Some(def) = components.table.get(name) else {
         diags.push(use_diag(
             E_COMPONENT_UNDECLARED,
-            format!("unknown component `{name}`: not declared in `components:` (dsl §13)"),
+            format!(
+                "unknown component `{name}`: not declared in `components:`{} (dsl §13)",
+                lute_manifest::suggest::nearest(
+                    name,
+                    components.table.keys().map(String::as_str),
+                    2
+                )
+                .map(|n| format!(" — did you mean `{n}`?"))
+                .unwrap_or_default()
+            ),
             name_attr.value_span,
         ));
         return;
@@ -2715,11 +2732,17 @@ fn check_use(
         }
     }
     // dsl 0.24.0 §4: a param an `::assert` / `::retract` passes as a fact
-    // argument is bound to its `::use` argument, which must be a constant. A
-    // bare `@name` that is no def is an enclosing component's param passed
+    // argument, or a `::set` uses as a `per:` member index
+    // (`run.approval[@who]`), is bound to its `::use` argument, which must be
+    // a constant — and, for an index, a member of the family's kind. A bare
+    // `@name` that is no def is an enclosing component's param passed
     // through — judged where the outer `::use` binds it.
-    let fact_params = component_fact_params(&def.body);
-    for attr in dir.attrs.iter().filter(|a| fact_params.contains_key(&a.key)) {
+    let (fact_params, index_params) = component_bound_params(&def.body);
+    for attr in dir
+        .attrs
+        .iter()
+        .filter(|a| fact_params.contains_key(&a.key) || index_params.contains_key(&a.key))
+    {
         let pass_through = matches!(&attr.value, AttrValue::Ref(s)
             if s.raw.trim().strip_prefix('@').is_some_and(|p| {
                 !p.is_empty()
@@ -2729,50 +2752,102 @@ fn check_use(
         if pass_through {
             continue;
         }
-        if let Err(why) = crate::component_effects::fact_arg_constant(&attr.value) {
+        let constant = crate::component_effects::fact_arg_constant(&attr.value);
+        if let (Err(why), Some(atom)) = (&constant, fact_params.get(&attr.key)) {
             diags.push(use_diag(
                 E_COMPONENT_ARG,
                 format!(
-                    "argument `{}` to component `{name}` binds `@{}` in the fact atom `{}`, so it \
-                     must be a constant — an entity or enum member id, `true`, or `false` — but \
-                     {why}; a fact's arguments are ground (dsl 0.24.0 §4)",
-                    attr.key, attr.key, fact_params[&attr.key]
+                    "argument `{}` to component `{name}` binds `@{}` in the fact atom `{atom}`, so \
+                     it must be a constant — an entity or enum member id, `true`, or `false` — \
+                     but {why}; a fact's arguments are ground (dsl 0.24.0 §4)",
+                    attr.key, attr.key
                 ),
                 attr.value_span,
             ));
         }
+        let Some(family) = index_params.get(&attr.key) else {
+            continue;
+        };
+        let vocab = &ctx.env.rel_vocab;
+        let Some(kind) = vocab.indexed_state.get(family) else {
+            diags.push(use_diag(
+                E_COMPONENT_ARG,
+                format!(
+                    "component `{name}` writes `{family}[@{}]`, but `{family}` is not a `per:` \
+                     state family here — declare `{family}: {{ …, per: <kind> }}` (dsl 0.24.0 §3)",
+                    attr.key
+                ),
+                dir.span,
+            ));
+            continue;
+        };
+        let members: &[String] = match vocab.kinds.get(kind).map(|k| &k.shape) {
+            Some(lute_manifest::relations::KindShape::Members(ms)) => ms,
+            _ => &[],
+        };
+        let problem = match &constant {
+            Ok(lute_syntax::datalog::FactTerm::Ident(m)) if members.contains(m) => continue,
+            Ok(lute_syntax::datalog::FactTerm::Ident(m)) => {
+                let hint = lute_manifest::suggest::nearest(m, members.iter().map(String::as_str), 2)
+                    .map(|n| format!(" — did you mean `{n}`?"))
+                    .unwrap_or_default();
+                format!("`{m}` is not a member of entity kind `{kind}` [{}]{hint}", members.join(", "))
+            }
+            Ok(_) => "a boolean is no member id".to_string(),
+            Err(why) => why.clone(),
+        };
+        diags.push(use_diag(
+            E_COMPONENT_ARG,
+            format!(
+                "argument `{}` to component `{name}` picks the member of `{family}[@{}]` \
+                 (`per: {kind}`), so it must name a member of `{kind}`, but {problem} \
+                 (dsl 0.24.0 §3/§4)",
+                attr.key, attr.key
+            ),
+            attr.value_span,
+        ));
     }
 }
 
-/// Every param a component body's `::assert` / `::retract` passes as a fact
-/// argument (at any depth), with the first such atom's text.
-fn component_fact_params(body: &Document) -> std::collections::BTreeMap<String, String> {
-    fn walk(nodes: &[Node], out: &mut std::collections::BTreeMap<String, String>) {
+/// The params a component body binds at each `::use` (at any depth): those
+/// an `::assert` / `::retract` passes as a fact argument (with the first such
+/// atom's text), and those a `::set` uses as a `per:` member index (with the
+/// family path).
+fn component_bound_params(
+    body: &Document,
+) -> (std::collections::BTreeMap<String, String>, std::collections::BTreeMap<String, String>) {
+    type Out = std::collections::BTreeMap<String, String>;
+    fn walk(nodes: &[Node], facts: &mut Out, index: &mut Out) {
         for node in nodes {
             match node {
                 Node::Assert(lute_syntax::ast::Assert { pattern, raw, .. })
                 | Node::Retract(lute_syntax::ast::Retract { pattern, raw, .. }) => {
                     for a in &pattern.args {
                         if let lute_syntax::datalog::FactTerm::Param(p) = &a.term {
-                            out.entry(p.clone()).or_insert_with(|| raw.clone());
+                            facts.entry(p.clone()).or_insert_with(|| raw.clone());
                         }
+                    }
+                }
+                Node::Set(s) => {
+                    if let Some((family, p)) = crate::component_effects::set_path_index(&s.path) {
+                        index.entry(p.to_string()).or_insert_with(|| family.to_string());
                     }
                 }
                 Node::Match(m) => {
                     for arm in &m.arms {
                         let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
-                        walk(body, out);
+                        walk(body, facts, index);
                     }
                 }
                 _ => {}
             }
         }
     }
-    let mut out = std::collections::BTreeMap::new();
+    let (mut facts, mut index) = (Out::new(), Out::new());
     for shot in &body.shots {
-        walk(&shot.body, &mut out);
+        walk(&shot.body, &mut facts, &mut index);
     }
-    out
+    (facts, index)
 }
 
 /// dsl 0.24.0 §4: every `speaker` argument of every scene-level `::use` in

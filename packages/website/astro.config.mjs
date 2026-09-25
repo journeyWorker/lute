@@ -92,6 +92,7 @@ export default defineConfig({
             { slug: "language/quests-and-scenes" },
             { slug: "language/lore-entries" },
             { slug: "language/beats" },
+            { slug: "language/clock" },
             { slug: "language/imports" },
           ],
         },

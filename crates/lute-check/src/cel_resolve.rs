@@ -1168,7 +1168,18 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
         return;
     }
     // Otherwise the path must be declared in the inline `state:` schema (dsl §9.4).
-    if !is_declared(path, ctx) {
+    // dsl 0.24.0 §3/§4: `run.approval[@who]` in a component body reads the
+    // member a `::use` binds (`component_effects::bind_slot_raw`), checked
+    // there; a `@name` that is no param is `E-UNDECLARED-REF`'s.
+    let param_indexed = ctx.env.rel_vocab.indexed_state.contains_key(path)
+        && slot.raw.match_indices(&format!("{path}[@")).any(|(at, m)| {
+            let rest = &slot.raw[at + m.len()..];
+            let name_len = rest.bytes().take_while(|c| c.is_ascii_alphanumeric() || *c == b'_').count();
+            name_len > 0
+                && rest.as_bytes().get(name_len) == Some(&b']')
+                && !ctx.env.defs.contains(&rest[..name_len])
+        });
+    if !param_indexed && !is_declared(path, ctx) {
         let mut msg = format!("state path `{path}` is not declared in `state:` (dsl §9.4)");
         // dsl 0.5.0 §2.2 "did you mean": suggest the nearest declared path
         // within a small edit distance, advisory text only (no new code).

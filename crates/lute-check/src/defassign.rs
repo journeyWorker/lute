@@ -464,6 +464,11 @@ fn walk_set(
     check_reads(&set.expr, cx, available, diags, reads);
 
     let target = &set.path;
+    // dsl 0.24.0 §3/§4: `run.approval[@who]` in a component body names no
+    // member until a `::use` binds it; each `::use` checks the bound member.
+    if crate::component_effects::set_path_index(target).is_some() {
+        return;
+    }
     if is_state_path(target) {
         // Compound assignment reads the old value first (dsl §9.4).
         if set.op != "=" {
@@ -1036,7 +1041,7 @@ pub(crate) fn may_read_unset(expr: &cel_parser::ast::Expr, schema: &StateSchema)
 /// document's own `<quest>` fold populated the schema (a foreign-quest read
 /// is always legal, never `E-UNDECLARED`) — see `cel_resolve::is_declared`,
 /// which applies the identical rule for T4.3's read-site check.
-fn is_declared(path: &str, schema: &StateSchema) -> bool {
+pub(crate) fn is_declared(path: &str, schema: &StateSchema) -> bool {
     is_reserved_quest_path(path)
         || is_reserved_entry_read(path)
         || schema

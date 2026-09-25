@@ -1,6 +1,6 @@
 ---
 title: The state model
-description: Lute's tiered scalar state — the run, user, and app lifetime namespaces (plus episode-local scene), how paths are declared, the path-sensitive definite-assignment rules that govern reads and writes, the paths only the engine writes, and prev.run, the previous run's final values.
+description: Lute's tiered scalar state — the run, user, and app lifetime namespaces (plus episode-local scene), how paths are declared (including enum-typed and per-entity paths), the path-sensitive definite-assignment rules that govern reads and writes, the paths only the engine writes, and prev.run, the previous run's final values.
 ---
 
 Lute scalar state is a set of typed paths (`number`, `bool`, `string`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
@@ -30,11 +30,72 @@ Author `state:` is **scalar-only** — `number`, `bool`, `string`, or `enum`, an
 
 Enforcement is new in 0.8.0, but it removes an ambiguity rather than adding a restriction. The normative text always said scalar, but the shape validator accepted the whole type union and the runtime documentation described `list<…>` / `map<…>` / `record` as valid entry types — three sources, three answers. All three now agree. Collections were always meant to be modelled **relationally**: an inventory is `ownsItem(item)`, not a `list<string>`, so reach for [`relations:`](/state/facts-and-datalog/) instead. Collection-shaped entry types do still reach the compiled artifact, but only through a plugin `state_shapes` expansion — never from an author's `state:` block.
 
+### Paths typed by a named enum
+
+A path may take its type from a named enum instead of listing members inline: `{ type: { domain: weekday } }` reads its members from the `weekday` enum of the schema, and it counts as a read of that enum, so the enum draws no `W-DOMAIN-UNREAD`. Since `0.24.0` a long-form enum may give its members display **labels**, and interpolating a path typed against it renders the label rather than the member id:
+
+```yaml
+state:
+  run.weekday: { type: { domain: weekday }, default: sun }
+enums:
+  weekday:
+    members: [sun, mon, tue]
+    labels: { sun: Sunday, mon: Monday }
+```
+
+`@narrator: Today is {{run.weekday}}.` renders `Today is Sunday.`. A member without a label renders its id (`tue`). Conditions still compare ids: `run.weekday == 'sun'`. A label for something that is not a member is `E-ENUM-LABEL-NOT-MEMBER`, and a label that is not a string is `E-META-VALUE`. A declared [clock](/language/clock/) uses the same mechanism for its weekday names.
+
+### One path per entity: `per:`
+
+A number kept for each member of a group, such as a companion's approval, is one declaration with **`per:`** (dsl 0.24.0 §3) rather than one line per member:
+
+```yaml
+state:
+  run.approval: { type: number, default: 0, per: companion }
+entities:
+  person:    { members: [isolde, corvin, hollis] }
+  companion: { subsetOf: person, members: [isolde, corvin] }
+```
+
+This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: number, default: 0 }`, and the compiled state table carries one entry per member. Content addresses a member by name: `::set{run.approval.isolde += 1}`, `when="run.approval.corvin >= 3"`, `{{run.approval.isolde}}`. The family itself is not a path, so `when="run.approval > 1"` is `E-UNDECLARED`, and the message says the path is entity-indexed and asks for a member. A Datalog rule is the one place that reads a member through a variable, `cel("run.approval[P] >= 3")` (see [Facts and Datalog](/state/facts-and-datalog/#entity-indexed-state-in-a-rule-guard)).
+
+`per:` names a **closed** entity kind, one with `members:`, declared in the same document as the path. A kind declared `open:`, a kind the document does not declare, or a malformed one is `E-STATE-DECL`, because the checker cannot list the paths it would declare. The kind may be a [sub-kind](/state/facts-and-datalog/#sub-kinds-subsetof). Indexing a path by a kind counts as reading the kind, so it draws no `W-DOMAIN-UNREAD`.
+
+Members may start from different values. A map `default:` gives each member its own, with `_` as the fallback for the members it does not name:
+
+```yaml
+state:
+  run.approval: { type: number, default: { _: 0, isolde: 2 }, per: companion }
+entities:
+  companion: { members: [isolde, corvin] }
+```
+
+`run.approval.isolde` starts at 2 and `run.approval.corvin` at 0. The compiled state table carries each member's own default, and `check`, `trace`, `run` and `play` all read it. The map is checked strictly, and each of these is `E-STATE-DECL`: a key that is not a member, a value that is not a scalar of the path's type, a member with neither its own value nor a `_`, a map `default:` on a path without `per:`, and a list `default:`.
+
 ## Reads and writes
 
 `::set{path <op> celExpr}` writes one path per directive (`=`, `+=`, `-=`, `*=`). Writes target `scene.*` / `run.*` / `user.*`; `app.*` is **content-read-only** (the settings layer owns it — `::set{app.*}` is a static error), and so is every path the engine writes ([below](#paths-the-engine-writes)).
 
 Definite assignment is **path-sensitive**. Reading an undeclared path is `E-UNDECLARED`. A `scene.*` read follows ordinary flow analysis. A `run`/`user`/`app` path is **maybe-unset at scene entry** unless it carries a schema `default`; after entry, a dominating `::set{p = …}` write or a guard (`has(p)` / `isSet(p)`) proves it — otherwise the read is `E-MAYBE-UNSET`. A compound assignment (`+=`/`-=`/`*=`) reads the old value first, so only `=` may be a path's first write. A defaulted path is always assigned; the checker and engine share the one schema snapshot, so they can never disagree.
+
+A write may carry its own guard: `::set{run.best = run.floor when="run.floor > 3"}` (dsl 0.24.0 §1) writes only when the condition holds, like a one-arm `<match>` around it. Because the write may not happen, it is **never** a definite assignment. A later read of an undefaulted path it writes is still maybe-unset:
+
+```lute expect="E-MAYBE-UNSET"
+---
+kind: scene
+id: tower.landing
+state:
+  run.floor: { type: number, default: 1 }
+  run.best: { type: number }
+---
+
+## The Landing
+
+::set{run.best = run.floor when="run.floor > 3"}
+@narrator: Your best is floor {{run.best}}.
+```
+
+Give `run.best` a default, or guard the read with `isSet(run.best)`. The `when=` is checked like a line's: a guard that can never hold is `E-ARM-DEAD`, and `when=` is the only attribute a `::set` takes, since everything else after the operator is the expression.
 
 ## Paths the engine writes
 
@@ -43,13 +104,18 @@ Some paths belong to the engine. Content reads them anywhere it reads state — 
 | Path | Written by | A `::set` of it |
 |---|---|---|
 | `app.*` | the settings layer | `E-APP-READONLY` |
-| `quest.<id>.state`, `quest.<id>.activatedAt`, `quest.<id>.objectives.<o>.done` | the quest lifecycle (see [Quests & scenes](/language/quests-and-scenes/)) | `E-QUEST-RESERVED-WRITE` |
+| `quest.<id>.state`, `quest.<id>.activatedAt`, `quest.<id>.objectives.<o>.done`, and since 0.24.0 `quest.<id>.failedBy`, `quest.<id>.objectives.<o>.failed` | the quest lifecycle (see [Quests & scenes](/language/quests-and-scenes/)) | `E-QUEST-RESERVED-WRITE` |
 | `entry.<id>.read` | the engine, on a lore entry's first presentation in a run — **run** tier | `E-QUEST-RESERVED-WRITE` |
 | `entry.<id>.everRead` | the engine, on a lore entry's first presentation ever — **user** tier | `E-QUEST-RESERVED-WRITE` |
 | `prev.run.<path>` | the engine, when a run ends: the value `run.<path>` had then (see [below](#the-previous-run)) | `E-QUEST-RESERVED-WRITE` |
+| `clock.index`, `clock.weekday`, `clock.weekdayLabel` | derived from the day and slot of the schema's declared [clock](/language/clock/) (0.24.0) | `E-QUEST-RESERVED-WRITE` |
 | a path your schema declares `owner: engine` | the engine | `E-ENGINE-OWNED-WRITE` |
 
-The quest and entry paths are reserved by name: every document may read them without declaring them. The two entry flags are `bool`s, `false` until the entry is first presented (see [Lore entries](/language/lore-entries/)). `entry.<id>.read` resets with the run, so a new run's first read applies the entry's effects again; `entry.<id>.everRead` (0.22.0) is set on the first read ever and no new run resets it.
+The quest and entry paths are reserved by name: every document may read them without declaring them, and declaring one in `state:` is `E-QUEST-RESERVED-DECL`. The two entry flags are `bool`s, `false` until the entry is first presented (see [Lore entries](/language/lore-entries/)). `entry.<id>.read` resets with the run, so a new run's first read applies the entry's effects again; `entry.<id>.everRead` (0.22.0) is set on the first read ever and no new run resets it.
+
+Two quest paths say why something failed. `quest.<id>.failedBy` reads `unset` until the quest fails, then names the cause: `fail` (its `fail` predicate), `by` or `until` (an objective's deadline), `cascade` (its parent failed), or `superseded` (its `complete="any"` parent completed through another alternative). `quest.<id>.objectives.<o>.failed` is `true` once the objective's `by` or `until` has failed it. An epilogue can therefore tell a missed deadline from a road not taken with `<match on="quest.hunt.failedBy">`. A run-tier quest's reset clears both.
+
+The `clock.*` paths exist only when a schema declares a `clock:`. Without one, reading `clock.index` is `E-UNDECLARED`. `clock.index` counts positions from the start of day 1 (slots, or whole days for a clock without slots), so it only ever grows, and `clock.weekday` / `clock.weekdayLabel` need the clock's `week:`. See [The clock](/language/clock/).
 
 ### `owner: engine`
 

@@ -32,6 +32,12 @@ fn clock_diag(message: String, span: Span) -> Diagnostic {
     }
 }
 
+/// A clock problem as reported at the schema's own `clock:` line — one
+/// template for the shape problems and the path/occasion problems alike.
+fn at_schema(what: &str) -> String {
+    format!("`clock:` {what} (dsl 0.24.0 §1)")
+}
+
 /// Lift a schema document's `clock:` value. Shape problems (an unknown key,
 /// a missing field, repeated slots, a week that does not add up) are
 /// [`E_CLOCK_DECL`] at `span`; the paths are checked later, against the
@@ -42,7 +48,7 @@ pub fn parse_clock(value: &serde_yaml::Value, span: Span) -> (Option<ClockDecl>,
             let diags = clock
                 .shape_problems()
                 .into_iter()
-                .map(|p| clock_diag(format!("`clock:` {p} (dsl 0.24.0 §1)"), span))
+                .map(|p| clock_diag(at_schema(&p), span))
                 .collect();
             (Some(clock), diags)
         }
@@ -74,74 +80,117 @@ fn enum_members<'a>(ty: &'a Type, domains: &'a BTreeMap<String, Domain>) -> Opti
     }
 }
 
+/// Where a clock is declared: its name in messages (`w.schema.yaml`, `this
+/// schema`) and, for an imported schema, the file and the positioned span
+/// of its `clock:` key — every problem with the clock is attributed there.
+#[derive(Clone, Debug)]
+pub struct ClockSite {
+    pub name: String,
+    pub at: Option<(String, Span)>,
+}
+
 /// Settle the project's clock for one document: `clocks` are every
-/// declaration the document sees (`(where, decl)` — its imports' and, for a
-/// schema document, its own). More than one is [`E_CLOCK_DECL`]; the one
-/// kept is checked against the folded `schema` (the `day`/`slot` paths),
-/// the merged `domains` (a named slot enum) and the `occasions` vocabulary
-/// (`raise`; shape-only when empty). Every diagnostic is anchored at `span`
-/// and names where the clock is declared.
+/// declaration the document sees (its imports' and, for a schema document,
+/// its own). More than one is [`E_CLOCK_DECL`]; the one kept is checked
+/// against the folded `schema` ([`clock_problems`]). Every diagnostic is
+/// anchored at `span` and names where the clock is declared; a clock from
+/// an imported schema also carries that schema's `clock:` line as a
+/// `related` entry, so `check-project` folds the identical report of every
+/// importer into one attributed to the schema.
 pub fn check_clock(
-    clocks: &[(String, ClockDecl)],
+    clocks: &[(ClockSite, ClockDecl)],
     schema: &StateSchema,
     domains: &BTreeMap<String, Domain>,
     occasions: &BTreeMap<String, OccasionDecl>,
     span: Span,
 ) -> (Option<ClockDecl>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
-    let Some((origin, clock)) = clocks.first() else {
+    let Some((site, clock)) = clocks.first() else {
         return (None, diags);
     };
+    let origin = &site.name;
     if let Some((other, _)) = clocks.iter().skip(1).find(|(_, c)| c != clock) {
         diags.push(clock_diag(
             format!(
-                "a project declares at most one clock, but `{origin}` and `{other}` both \
-                 declare `clock:` (dsl 0.24.0 §1)"
+                "a project declares at most one clock, but `{origin}` and `{}` both \
+                 declare `clock:` (dsl 0.24.0 §1)",
+                other.name
             ),
             span,
         ));
     }
-    let bad = |what: String| clock_diag(format!("clock (declared in `{origin}`): {what} (dsl 0.24.0 §1)"), span);
+    for what in clock_problems(clock, schema, domains, occasions, false) {
+        let mut d = clock_diag(format!("clock (declared in `{origin}`): {what} (dsl 0.24.0 §1)"), span);
+        if let Some((file, at)) = &site.at {
+            d.related.push(lute_core_span::RelatedDiagnostic {
+                file: file.clone(),
+                diagnostic: clock_diag(at_schema(&what), *at),
+            });
+        }
+        diags.push(d);
+    }
+    (Some(clock.clone()), diags)
+}
 
+/// What is wrong with `clock` against a state `schema`, the `domains` a
+/// named slot enum resolves in and the `occasions` vocabulary: a `day` path
+/// that is undeclared, not a number or not `owner: engine`; a `slot` path
+/// that is undeclared, not an enum or not `owner: engine`, or `slots` that
+/// are not its members; a `raise` occasion that is not declared (checked
+/// only when `occasions` is non-empty). `partial`: `schema` is one schema
+/// file's own state, whose imports may declare a path it lacks — an
+/// undeclared path is then not a problem here.
+pub fn clock_problems(
+    clock: &ClockDecl,
+    schema: &StateSchema,
+    domains: &BTreeMap<String, Domain>,
+    occasions: &BTreeMap<String, OccasionDecl>,
+    partial: bool,
+) -> Vec<String> {
+    let mut out = Vec::new();
     match schema.decls.get(&clock.day) {
-        None => diags.push(bad(format!("`day: {}` is not a declared state path", clock.day))),
+        None if partial => {}
+        None => out.push(format!("`day: {}` is not a declared state path", clock.day)),
         Some(decl) => {
             if decl.ty != Type::Number {
-                diags.push(bad(format!("`day: {}` must be a `number` path", clock.day)));
+                out.push(format!("`day: {}` must be a `number` path", clock.day));
             }
             if decl.owner != Some(Owner::Engine) {
-                diags.push(bad(format!(
+                out.push(format!(
                     "`day: {}` must be declared `owner: engine` — only the engine moves the clock",
                     clock.day
-                )));
+                ));
             }
         }
     }
     if let Some(slot) = &clock.slot {
         match schema.decls.get(slot) {
-            None => diags.push(bad(format!("`slot: {slot}` is not a declared state path"))),
+            None if partial => {}
+            None => out.push(format!("`slot: {slot}` is not a declared state path")),
             Some(decl) => {
                 match enum_members(&decl.ty, domains) {
-                    None => diags.push(bad(format!("`slot: {slot}` must be an enum path"))),
+                    // A named domain an import declares is not resolvable here.
+                    None if partial && matches!(decl.ty, Type::Domain(_)) => {}
+                    None => out.push(format!("`slot: {slot}` must be an enum path")),
                     Some(members) => {
                         let mut want: Vec<&str> = members.iter().map(String::as_str).collect();
                         let mut got: Vec<&str> = clock.slots.iter().map(String::as_str).collect();
                         want.sort_unstable();
                         got.sort_unstable();
                         if want != got {
-                            diags.push(bad(format!(
+                            out.push(format!(
                                 "`slots: [{}]` must list exactly the members of `{slot}` ({}), in \
                                  clock order",
                                 clock.slots.join(", "),
                                 members.join(", ")
-                            )));
+                            ));
                         }
                     }
                 }
                 if decl.owner != Some(Owner::Engine) {
-                    diags.push(bad(format!(
+                    out.push(format!(
                         "`slot: {slot}` must be declared `owner: engine` — only the engine moves the clock"
-                    )));
+                    ));
                 }
             }
         }
@@ -158,10 +207,10 @@ pub fn check_clock(
                 Some(lute_manifest::clock::ClockRaise::Slot(_)) => "raise".to_string(),
                 _ => format!("raise.{moment}"),
             };
-            diags.push(bad(format!("`{key}: {raise}` is not a declared occasion{hint}")));
+            out.push(format!("`{key}: {raise}` is not a declared occasion{hint}"));
         }
     }
-    (Some(clock.clone()), diags)
+    out
 }
 
 /// The reserved read-only `clock.*` decls a clock implies: `clock.index`
@@ -226,13 +275,15 @@ pub fn check_once_needs_clock(
     if has_clock {
         return Vec::new();
     }
-    let needs = |once: &str| {
+    // `instead`: what the construct accepts without a clock — an entry has
+    // no `once="false"` (omitting `once` is its never-spent form).
+    let needs = |written: String, once: &str, instead: &str| {
         format!(
-            "`once: {once}` spends a beat once per clock {once}, but the project declares no \
-             `clock:` — declare one in a schema, or use `run` / `user` / `false` \
-             (dsl 0.24.0 §1)"
+            "`{written}` spends a beat once per clock {once}, but the project declares no \
+             `clock:` — declare one in a schema, or {instead} (dsl 0.24.0 §1)"
         )
     };
+    let scene_or_beat = "use `run` / `user` / `false`";
     let attr = |message: String, span: Span| Diagnostic {
         code: crate::beats::E_BEAT_ATTR.to_string(),
         severity: Severity::Error,
@@ -247,18 +298,19 @@ pub fn check_once_needs_clock(
     let mut out = Vec::new();
     if let Some(b) = beat.filter(|b| b.once.is_clock()) {
         out.push(attr(
-            needs(b.once.as_str()),
+            needs(format!("once: {}", b.once.as_str()), b.once.as_str(), scene_or_beat),
             crate::meta::meta_key_span(&doc.meta, "once"),
         ));
     }
+    let entry = "use `run` / `user`, or omit `once` (an entry without it is never spent)";
     let authored = doc
         .entries
         .iter()
-        .filter_map(|e| e.once.as_ref())
-        .chain(doc.beats.iter().filter_map(|b| b.once.as_ref()));
-    for (raw, span) in authored {
+        .filter_map(|e| e.once.as_ref().map(|o| (o, entry)))
+        .chain(doc.beats.iter().filter_map(|b| b.once.as_ref().map(|o| (o, scene_or_beat))));
+    for ((raw, span), instead) in authored {
         if matches!(raw.as_str(), "day" | "slot") {
-            out.push(attr(needs(raw), *span));
+            out.push(attr(needs(format!("once=\"{raw}\""), raw, instead), *span));
         }
     }
     out

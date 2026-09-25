@@ -138,16 +138,27 @@ nothing else (`E-CONN-PROFILE`). Writing `after:` in a quest's *frontmatter* is
 error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin) — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, not a frontmatter key (dsl §4.1)
 ```
 
+A `visited()` in `after=` (or in a scene's `after:`) may name a [bundle beat](/language/beats/#beat-bundles)
+by its canonical id, `after="visited('talks.maud')"` (dsl 0.24.0 §2). Before 0.24.0 that was
+`E-CONN-UNKNOWN-NODE`, "a bundle beat, not a scene".
+
+An accept-driven quest (no `start`, see [below](#quests-meet-scenes-and-occasions)) usually needs
+no `after=` at all. Without one, it is anchored at every scene, bundle beat, and quest body that
+`::accept`s it: `lute scenario` draws an `accept` edge from each of them (`beat(talks.maud) ->
+quest(salvage) [accept]`), and the quest no longer counts as unanchored. An explicit `after=` keeps
+only the edges it declares.
+
 ### `<objective>`
 
 An `<objective id done>` requires a `done` completion predicate over declared state. `when` gates
 only the objective's visibility/tracking, not the completion obligation; `optional` excludes it from
-completion; `by` sets a [deadline](#deadlines). An empty-body objective should be written
+completion; `by` and `until` set a [deadline](#deadlines). An empty-body objective should be written
 self-closing (`<objective …/>`); a body — a log line, a per-objective `::set` reward — emits
 **once**, when the objective first becomes `done`.
 
 **Completion is derived**, never author-written: a quest becomes `complete` when every non-`optional`
-objective is `done`. Objective completion is monotonic — once `done`, it stays recorded.
+objective is `done` (or any one of them, under [`complete="any"`](#alternatives-completeany)).
+Objective completion is monotonic — once `done`, it stays recorded.
 
 ### Quests meet scenes and occasions
 
@@ -205,6 +216,37 @@ every raise fires it first, so an active quest's `<on event>` handler for that n
 the objectives are judged and they can read what it wrote (see
 [Beats](/language/beats/#occasions)).
 
+By default an occasion presents its beats first and judges its objectives after, so a beat on
+`runEnd` still sees the quest `active`. An occasion that closes a chapter often wants the reverse,
+an epilogue that knows how the chapter's quests ended. A plugin declares that occasion
+**`judge: before`** (dsl 0.24.0 §2) in its [`occasions:` export](/plugins/manifests/):
+
+```yaml
+occasions:
+  chapterEnd: { judge: before }
+```
+
+Raising `chapterEnd` then judges its `on=` objectives and settles the quests **before** its beats
+are decided, so a beat with `when: "quest.tide.state == 'complete'"` can win the same raise that
+completed `tide`. Only the judging moves. The handler bodies the raise answers, the
+`<on event="chapterEnd">` handlers and the `questComplete` / `questFailed` handlers of the quests
+it settled, still run after the beats, so their narration follows the scene:
+
+```
+── step 3 · chapterEnd ──────────────
+  tide.home done
+  quest tide -> complete
+  ✓ end.tide [scene, priority 5]
+  → end.tide
+@narrator: Home before the water.
+@narrator: Handler on chapterEnd.
+@narrator: Tide beaten.
+```
+
+`lute play` prints the transitions under the step header, above the candidates (`--json`: the
+step's `judgedBefore`; its `quests` are the ones after, with the handler bodies). The default,
+`judge: after`, keeps the 0.21.0 order.
+
 **Accepting a quest from a scene.** A quest without `start` is *accept-driven*. The scene-side
 form of the engine's "accept quest" action (and of `lute trace --accept`) is the core directive
 [`::accept{quest="<id>"}`](/language/directives/#accept--taking-up-a-quest), typically inside the
@@ -221,6 +263,42 @@ choice where the player agrees:
   </choice>
 </branch>
 ```
+
+Accepting while the quest is already active, complete, or failed does nothing. `lute check-project`
+warns **`W-QUEST-NEVER-ACCEPTED`** (dsl 0.24.0 §2) at an accept-driven quest that no `::accept` in
+the project names and no `accepts:` mock (`mocks/*.yaml`, `*.test.yaml`) reaches: nothing can ever
+activate it. `--deny W-QUEST-NEVER-ACCEPTED` makes it an error.
+
+**Accepting for the next run.** A run-tier quest accepted between runs, at a hub or a bounty board
+after the run has ended, would activate in the ending run and then be reset by `newRun`.
+`::accept{quest="<id>" at="nextRun"}` (dsl 0.24.0 §2) queues the acceptance instead. It applies
+right after the next `newRun` reset, so the quest activates in the new run's first settle:
+
+```lute check
+---
+kind: scene
+id: hub.board
+title: The bounty board
+---
+
+## Board
+
+@maud: The bounties reset at dawn. Sign now and the hunt is yours next run.
+
+<branch id="bounty">
+  <choice id="sign" label="Sign for the next run">
+    ::accept{quest="wolfBounty" at="nextRun"}
+    @maud: Your name's on the board.
+  </choice>
+  <choice id="later" label="Not this time">
+    @maud: Suit yourself.
+  </choice>
+</branch>
+```
+
+`nextRun` is the only value `at` takes; any other is `E-ACCEPT-TARGET`. `lute play` prints `quest
+wolfBounty accepted (queued: applies after the next newRun)` where the choice ran, and `quest
+wolfBounty accepted (queued at="nextRun")` under the next `newRun` step.
 
 **Quest outcomes in scenario tests.** `lute test` asserts the lifecycle the trace ran with
 `expect.quests: {<questId>: unset | active | complete | failed}` — no side-effect `::set` needed to
@@ -241,11 +319,13 @@ title: The letter
 state:
   run.day: { type: number, default: 1 }
   run.answered: { type: bool, default: false }
+  run.apologized: { type: bool, default: false }
 ---
 
 <quest id="letter" title="Answer the letter" start="true" tier="run">
   <objective id="reply" title="Write back before the fourth day" done="run.answered" by="run.day >= 4"/>
-  <objective id="thank" title="Thank Maud in person" on="talk" target="npc.maud" done="run.answered"/>
+  <objective id="thank" title="Thank Maud in person" on="talk" target="npc.maud" done="run.answered" by="run.day >= 4"/>
+  <objective id="sorry" title="Apologize to Oskar when you next see him" on="talk" target="npc.oskar" done="run.apologized" until="run.day >= 4" optional/>
   <on event="questFailed">
     @narrator: The letter goes unanswered. Maud stops asking.
   </on>
@@ -258,15 +338,21 @@ would: the quest's `failed` rewards are granted, its `questFailed` handlers run,
 cascades to its still-active subquests. A failed `optional` objective leaves its quest alone.
 
 - In every settle `done` is judged before `by`. So an objective whose `done` and `by` become true
-  at the same moment counts as done, and a done objective never fails later.
+  at the same moment counts as done, and a done objective never fails later. The step that raises
+  an `on=` objective's occasion judges that objective's `done` first and its `by` only after, in
+  all of that step's presentations and settles, so a hearing whose beat files the right verdict
+  completes the objective even when that verdict also makes `by` true.
 - `by` is a moment: it is judged at every lifecycle settle, for every objective, `on=` or not
-  (dsl 0.24.0 §2.1). Given `by="run.day >= 4"`, `thank` above fails in the settle that reaches day
-  four with `run.answered` still false — whether or not the player ever talks to Maud again.
+  (dsl 0.24.0 §2.1). `thank` above fails in the settle that reaches day four with
+  `run.answered` still false, whether or not the player ever talks to Maud again.
   (0.23.1 judged an `on=` objective's `by` only at its occasion; 0.24.0 reverses that.)
-- `until="<condition>"` is the place-bound deadline, legal only beside `on=`: it is judged only
-  when the objective's occasion is raised (for its target, when it names one), right after its
-  `done`, so the moment the occasion answers is both the judgement and the deadline, and a beat on
-  that occasion that writes the state `until` reads cannot fail a correct answer.
+- `until="<condition>"` is the place-bound deadline: it is judged only when the objective's
+  occasion is raised (for its target, when it names one), right after its `done`. So the moment
+  the occasion answers is both the judgement and the deadline, and a beat on that occasion that
+  writes the state `until` reads cannot fail a correct answer. `sorry` above fails only if the
+  player talks to Oskar on day four or later without having apologized; a player who never sees
+  him again leaves it open. `until` needs `on=` (`E-BEAT-ATTR` without it: a deadline that holds
+  everywhere is `by=`).
 - Quests settle after every beat an occasion presents, so a `by` can pass between two beats of one
   [`select: sequence`](/language/beats/#a-routine-then-the-days-event) occasion.
 - The failure is readable: `quest.<id>.objectives.<oid>.failed` is `true` from then on, and a
@@ -276,8 +362,35 @@ cascades to its still-active subquests. A failed `optional` objective leaves its
   may be unset is `E-MAYBE-UNSET`.
 
 `lute trace` records the objective's decision as `failed`, and `lute run` / `lute play` print
-`failed (by)` or `failed (until)`; all three judge `done` and the deadlines in the same order. See
-[Playing a story](/tooling/play/#deadlines-and-targeted-objectives).
+`letter.thank failed (by)` or `failed (until)`; all three judge `done` and the deadlines in the
+same order. The quest transition names its [`failedBy`](#why-a-quest-failed) the same way:
+`quest letter -> failed (by)`, and likewise `(until)`, `(fail)`, `(cascade)` and `(superseded)`.
+See [Playing a story](/tooling/play/#deadlines-and-targeted-objectives).
+
+An `on=` objective with `by=` (and no `until=`) whose `done` provably implies its `by` can
+complete only in the step that raises its occasion. Anywhere else, `by` comes true no later than
+`done`, at a settle where the occasion is not raised, and fails the objective before `done` is
+ever judged. That is content written for 0.23.1's raise-only `by`. `lute check` and
+`lute check-project` warn **`W-DEADLINE-BEFORE-DONE`** (dsl 0.24.0 §2.1) at the `by=` and suggest
+`until=` with the same condition; `--deny W-DEADLINE-BEFORE-DONE` makes it an error:
+
+```lute check
+---
+kind: quest
+title: The hearing
+state:
+  run.verdict: { type: { enum: [undecided, guilty, acquitted] }, default: undecided }
+---
+
+<quest id="hearing" title="See the hearing through" start="true">
+  <objective id="verdict" title="Hear the verdict" on="hearing" done="run.verdict == 'guilty'" by="run.verdict != 'undecided'"/>
+</quest>
+```
+
+<!-- lute-diagnostics -->
+```
+hearing.lute:9:100: warning [W-DEADLINE-BEFORE-DONE] objective `verdict`'s `by="run.verdict != 'undecided'"` holds whenever its `done="run.verdict == 'guilty'"` does, and `by` is a moment judged at every settle (dsl 0.24.0 §2.1): it fails the objective at the settle it comes true, before occasion `hearing` ever judges `done` (unless both happen in the step that raises `hearing`) — write `until="run.verdict != 'undecided'"` to judge the deadline only when `hearing` is raised
+```
 
 ### Subquests
 
@@ -307,10 +420,10 @@ surfaces plus two engine-derived rules:
 
 | Direction | Rule |
 | --- | --- |
-| Objective completion | Compiler synthesizes `done = "quest.<child>.state == 'complete'"`. Derived parent completion — "all non-`optional` objectives `done`" — is unchanged; `optional` on a subquest objective means the child's outcome does not gate the parent. |
-| Upward failure | Compiler synthesizes the parent's `fail` as the disjunction of the authored `fail` (if any) and one `quest.<c>.state == 'failed'` test per **required** child, in document order. `fail`'s precedence over completion is unchanged, so a required child failing resolves the parent to `failed` even if the remaining objectives could otherwise complete. |
-| Downward cascade | Engine rule: on a parent's terminal transition (`failed` or `complete`) every child still `active` transitions to `failed`. A required child cannot be `active` at parent completion — its `complete` is part of the derived completion — so the `complete` arm only fails still-running **optional** children. Recursive. |
-| Activation | Engine rule: a referenced child with no `start` activates when its parent activates (replacing the accept-driven default); one with `start` evaluates the predicate only while the parent is `active` (effective gate is the conjunction). Unreferenced quests keep today's semantics exactly. |
+| Objective completion | Compiler synthesizes `done = "quest.<child>.state == 'complete'"`. Derived parent completion — "all non-`optional` objectives `done`" — is unchanged; `optional` on a subquest objective means the child's outcome does not gate the parent. A [`complete="any"`](#alternatives-completeany) parent needs only one. |
+| Upward failure | Compiler synthesizes the parent's `fail` as the disjunction of the authored `fail` (if any) and one `quest.<c>.state == 'failed'` test per **required** child, in document order. `fail`'s precedence over completion is unchanged, so a required child failing resolves the parent to `failed` even if the remaining objectives could otherwise complete. Under `complete="any"` the synthesized part is a conjunction instead. |
+| Downward cascade | Engine rule: on a parent's terminal transition (`failed` or `complete`) every child still `active` transitions to `failed` (`failedBy: cascade`). A required child cannot be `active` at parent completion — its `complete` is part of the derived completion — so the `complete` arm only fails still-running **optional** children; under `complete="any"` it fails every other running child, as `superseded`. Recursive. |
+| Activation | Engine rule: a referenced child with no `start` activates when its parent activates (replacing the accept-driven default), unless it declares [`activate="accept"`](#taken-up-in-dialogue-activateaccept); one with `start` evaluates the predicate only while the parent is `active` (effective gate is the conjunction). Unreferenced quests keep today's semantics exactly. |
 
 The project's parent→child tree is **derived**, not written:
 `ObjectiveEntry.quest` records the reference per artifact, and engines union
@@ -350,6 +463,102 @@ cascade directions, activation, tree reconstruction) is in
 worked example:
 [`docs/examples/quest-subquest.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-subquest.lute).
 
+#### Taken up in dialogue: `activate="accept"`
+
+A child without `start` joins the journal the moment its parent activates. A side path the player
+takes up in conversation should join only when it is offered. **`activate="accept"`** on the child
+(dsl 0.24.0 §2) makes it wait for an `::accept` (or an `accepts:` mock, or `lute trace --accept`),
+like a root quest without `start`. It activates only while its parent is `active`: an accept that
+runs while the parent is not active is spent without effect, and the tools say so. `lute play`
+prints `note: accept of quest firewood spent — its parent quest camp is not active yet …`
+(`--json`: an `acceptSpent` record), and `lute trace` / `lute test` note the same for an
+`accepts:` mock.
+
+#### Alternatives: `complete="any"`
+
+"Cross the river by parley, by toll, or by force" is one goal with three routes. A parent declaring
+**`complete="any"`** (dsl 0.24.0 §2) completes when **any one** required objective is done, a child
+quest or a plain objective. Its other still-active children then fail with
+`failedBy: superseded`, so the routes the player did not take close themselves, and nobody copies
+the cascade into each sibling's `fail=`. The default is `complete="all"`.
+
+```lute check
+---
+kind: quest
+title: The river crossing
+state:
+  run.talked: { type: bool, default: false }
+  run.paid: { type: bool, default: false }
+  run.won: { type: bool, default: false }
+---
+
+<quest id="crossing" title="Cross the river" start="true" complete="any">
+  <objective id="byParley" title="Talk your way across" quest="parley"/>
+  <objective id="byToll" title="Pay the toll" quest="toll"/>
+  <objective id="byForce" title="Force the bridge" quest="force"/>
+</quest>
+
+<quest id="parley" title="Parley with the warden" activate="accept">
+  <objective id="terms" title="Win the warden over" done="run.talked"/>
+</quest>
+
+<quest id="toll" title="Pay the toll" activate="accept">
+  <objective id="pay" title="Pay the ferryman" done="run.paid"/>
+</quest>
+
+<quest id="force" title="Force the bridge">
+  <objective id="fight" title="Beat the guards" done="run.won"/>
+</quest>
+```
+
+`force` has no `activate`, so it activates with `crossing`. `parley` and `toll` wait for a scene to
+`::accept` them. Say the player accepts `toll`, then `parley`, then wins the warden over: `parley`
+completes, `crossing` completes, and the routes still open, `toll` and `force`, fail as
+superseded. Had the player never accepted `toll`, it would stay `unset`. `lute play` prints the
+settle:
+
+```
+  parley.terms done
+  quest parley -> complete
+  crossing.byParley done
+  quest crossing -> complete
+  quest toll -> failed (superseded)
+  quest force -> failed (superseded)
+```
+
+One failed route leaves the others open. The synthesized `fail` of a `complete="any"` quest is the
+**conjunction** over its required objectives, each child by `quest.<c>.state == 'failed'` and each
+plain objective by its `quest.<q>.objectives.<o>.failed` flag, so the quest fails (`failedBy:
+fail`) only once no route is left.
+
+Three diagnostics guard the accept side. `activate="accept"` beside `start` is `E-ATTR-TYPE`
+(pick one). `::accept` of a child that activates with its parent used to do nothing; it is now
+`E-ACCEPT-TARGET` at `check-project`, naming the parent. And `W-QUEST-NEVER-ACCEPTED` flags an
+`activate="accept"` child no `::accept` reaches:
+
+```lute expect="E-ATTR-TYPE"
+---
+kind: quest
+title: The river crossing
+state:
+  run.talked: { type: bool, default: false }
+---
+
+<quest id="crossing" title="Cross the river" start="true">
+  <objective id="byParley" title="Talk your way across" quest="parley"/>
+</quest>
+
+<quest id="parley" title="Parley with the warden" activate="accept" start="true">
+  <objective id="terms" title="Win the warden over" done="run.talked"/>
+</quest>
+```
+
+<!-- lute-diagnostics -->
+```
+scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene (dsl 0.24.0 §2)
+quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for `::accept` (`activate="accept"`), but no `::accept` in the project names it and no `accepts:` mock or test accepts it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, or remove `activate="accept"` so it activates with its parent `crossing` (dsl 0.24.0 §2)
+```
+
 ### Lifecycle reactions with `<on>`
 
 `<on event>` is the language's event-condition-action rule: when its event fires and its optional
@@ -357,15 +566,42 @@ worked example:
 — **`questActive`**, **`questComplete`**, **`questFailed`** — each firing only for its own enclosing
 quest. World events (e.g. `combatEnd`) are capability-provided by plugins.
 
+A world event that is also a targeted occasion can be answered for one target only (dsl 0.24.0
+§2). `<on event="talk" target="npc.maud">` runs when `talk` is raised for `npc.maud`, and never for
+another target, a plain `event:` step, or a lifecycle transition:
+
+```lute
+<on event="talk" target="npc.maud">
+  @maud: Coin first, talk later.
+</on>
+```
+
+The target is checked like an [objective's](#quests-meet-scenes-and-occasions) (`E-BEAT-ATTR`): it
+must be a quoted dotted id, the occasion named like the event must take a target, and the target
+must lie inside its domain. A
+lifecycle event is never raised for a target, so `target` on `questActive`, `questComplete`, or
+`questFailed` is `E-BEAT-ATTR` too. Without `target`, a handler answers every raise of its event.
+
 A `questFailed` handler on a quest that can never fail is dead code. `lute check-project` warns
 `W-QUEST-HANDLER-DEAD` at the handler's `event` when its quest has no `fail`, no required objective
-with a `by=` [deadline](#deadlines), no required subquest objective whose child can itself fail (a
-failing required child fails its parent), and no parent quest (a parent's end cascade-fails its
-still-active children). Add a `fail=` condition, or remove the handler:
+with a `by=` or `until=` [deadline](#deadlines), no required subquest objective whose child can
+itself fail (a failing required child fails its parent), and no parent quest (a parent's end
+cascade-fails its still-active children). Add a `fail=` condition, or remove the handler:
 
 <!-- lute-diagnostics -->
 ```
 ./q.lute:10:14: warning [W-QUEST-HANDLER-DEAD] `<on event="questFailed">` never runs: quest `lampOut` cannot fail — it has no `fail` condition, no required objective with a `by=` deadline, no required subquest that can fail (a failing required child fails it), and no parent quest whose end would cascade to it; add a `fail=` condition or remove the handler (dsl 0.22.0 §7)
+```
+
+The same code (dsl 0.24.0) names a world-event handler that can only fire on a completed quest:
+one whose `when` contains every required objective's `done` (any one, under `complete="any"`),
+`@def`s expanded. The quest settles `complete` as soon as that `when` holds, and an event reaches
+only an active quest's handlers. `lute check` reports it too. Lifecycle events, and quests with an
+`on=` or `quest=` objective, are exempt:
+
+<!-- lute-diagnostics unverified="verbatim lute check-project output; the message is composed in crates/lute-check/src/reachability.rs, which names the code through the project_check::W_QUEST_HANDLER_DEAD constant rather than a string literal, so the scraper cannot pair quote and code" -->
+```
+quests/road.lute:25:14: warning [W-QUEST-HANDLER-DEAD] `<on event="combatEnd">` never runs: its `when` implies every required objective of quest `brawl` is done, so the quest has already completed when it holds, and an event reaches only an active quest's handlers; move the body to `<on event="questComplete">` or the objective's own body (dsl 0.24.0)
 ```
 
 Content elsewhere can also gate on quest lifecycle by reading the reserved `quest.<id>.state` path.
@@ -391,6 +627,56 @@ So a read needs no `isSet` guard (`isSet(quest.<id>.state)` is always true, `W-Q
 Quests can gate on relational facts too — `start="holds(inParty(shadowheart))"` — see
 [Facts & Datalog](/state/facts-and-datalog/) for the fact surface, worked in full by
 [`docs/examples/quest-rescue-halsin.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-rescue-halsin.lute).
+
+### Why a quest failed
+
+`failed` says that a quest ended badly, not why. Two more reserved, read-only paths do (dsl 0.24.0
+§2):
+
+- **`quest.<id>.failedBy`** reads `unset` until the quest fails, then one of `fail` (its `fail`
+  condition held), `by` or `until` (a required objective missed that [deadline](#deadlines)),
+  `cascade` (its parent ended while it was active), or `superseded` (its
+  [`complete="any"`](#alternatives-completeany) parent completed through another route).
+- **`quest.<id>.objectives.<oid>.failed`** reads `true` once the objective's `by` or `until` failed
+  it, and `false` before.
+
+Any condition or interpolation may read them, so an epilogue can tell a route the player left
+behind from a deadline they missed:
+
+```lute check
+---
+kind: scene
+id: river.epilogue
+title: Across the river
+---
+
+## Epilogue
+
+<match on="quest.toll.failedBy">
+  <when is="superseded">
+    @narrator: The ferryman is still waiting for a coin that never came.
+  </when>
+  <when is="by|until">
+    @narrator: You reached the ferry too late.
+  </when>
+  <when is="fail|cascade">
+    @narrator: The ferry burned before you could pay.
+  </when>
+  <when is="unset">
+    @narrator: The river is behind you.
+  </when>
+</match>
+
+@narrator{when="quest.letter.objectives.thank.failed"}: Maud's letter is still in your coat.
+```
+
+`failedBy` is an enum of those six values, so the match above is exhaustive without
+`<otherwise>`, and a misspelled arm (`is="superceded"`) is `E-WHEN-LITERAL-DOMAIN`. When a missed
+objective and `fail` fail a quest in the same settle, the objective's kind wins. Declaring either
+path in `state:` is `E-QUEST-RESERVED-DECL`, and writing one with `::set` is
+`E-QUEST-RESERVED-WRITE`. A run-tier quest's `newRun` reset clears both. `lute run`, `lute play`,
+`lute trace`, and `lute test` agree on the values, and `lute run --json` carries `failedBy` on the
+failing `quest` record.
 
 ### `quest.<id>.activatedAt`
 

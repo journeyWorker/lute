@@ -1,6 +1,6 @@
 ---
 title: Components & extends
-description: Two reuse mechanisms — reusable content components invoked with ::use, including string params that carry a sentence into each call site, and extends schema composition with base-layer override precedence.
+description: Two reuse mechanisms — reusable content components invoked with ::use, including string params that carry a sentence into each call site, speaker params, and effects components that write state — and extends schema composition with base-layer override precedence.
 ---
 
 Lute has three reuse mechanisms, each for a different thing: `defs` reuse typed CEL *values*,
@@ -12,7 +12,8 @@ components and schema `extends:` composition.
 A **component** is a named, parameterized block of lines and staging that is expanded inline
 wherever it is invoked. It lives in its own **component file** — a `.lute` document whose
 frontmatter declares `component: <name>` and, optionally, `params:` (typed exactly like a
-[def param](/language/params/)). The body is a **presentational template**.
+[def param](/language/params/), plus, since 0.24.0, the [`speaker`](#speaker-params) type). The body is a **presentational template**, unless the file
+declares [`effects: true`](#components-that-write-state-effects-true).
 
 ```lute check="docs/examples/components/greet.component.lute"
 ---
@@ -130,7 +131,8 @@ check follows the param through nested components, so a component that passes it
 ### Component body rules
 
 A component body is **presentational**: lines, staging directives, and `@param` refs only. It may
-**not** read or write scene/run state and may **not** contain logic blocks (`E-COMPONENT-BODY`) —
+**not** read scene/run state, may **not** write it unless the file declares
+[`effects: true`](#components-that-write-state-effects-true), and may **not** contain logic blocks (`E-COMPONENT-BODY`) —
 pass values in through params instead (a caller's def is a legal argument, above). One notable
 exception: a `<match>` that dispatches on the component's own param is admitted, because dispatch on
 a param is a pure read of an invocation argument, not of ambient state:
@@ -160,6 +162,95 @@ uses: ../base.schema.yaml
 
 *(From [`docs/examples/components/reaction.component.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/components/reaction.component.lute).)* The three arms cover the declared
 enum and a param is never `unset`, so no `<otherwise>` is needed.
+
+### Components that write state: `effects: true`
+
+Some reusable content has a consequence: a companion's nod that also raises their approval, a
+search that asserts what was found. A component file that declares **`effects: true`** (dsl 0.24.0
+§4) may `::set`, `::assert` and `::retract`, use a plugin directive that writes state, and `::use`
+another effects component:
+
+```lute check
+---
+component: nod
+effects: true
+params:
+  who: speaker
+  delta: number
+state:
+  run.approval: { type: number, default: 0, per: companion }
+entities:
+  companion: { members: [isolde, corvin] }
+---
+
+## A Nod
+
+@narrator: {{@who}} nods.
+<match on="@who">
+  <when is="isolde">
+    ::set{run.approval.isolde += @delta}
+  </when>
+  <when is="corvin">
+    ::set{run.approval.corvin += @delta}
+  </when>
+  <otherwise>
+    @narrator: Nobody else minds.
+  </otherwise>
+</match>
+```
+
+(The `state:` and `entities:` above let the file check on its own. In a project the component
+`uses:` the shared schema, and the declaration that counts is the host's.)
+
+The writes belong to the **host**. Each one is checked at every `::use` against the host document's
+schema — an undeclared path, a `::set` of the wrong type, an `owner: engine` path, a relation's
+vocabulary and domain, permissions — and the error is reported at the `::use`. A host whose schema
+declares no `run.approval` gets:
+
+<!-- lute-diagnostics -->
+```
+./scenes/market.lute:12:1: error [E-UNDECLARED] `::set` target `run.approval.isolde` is not declared in the `state:` schema (dsl §7.3.4)
+```
+
+The writes compile into the host's commands where the `::use` sits, and a `<match>` on a param keeps
+only the arm the argument selects. In a scene `camp.fire` whose cast names `corvin` "Corvin Hale",
+`::use{component="nod" who="corvin" delta="2"}` compiles to:
+
+```json
+{"kind": "line", "addr": "001-0200", "role": "narration", "speaker": "narrator", "text": "Corvin Hale nods.", "lineId": "camp.fire.nod#1.narrator_0010"}
+{"kind": "set", "addr": "001-0300", "path": "run.approval.corvin", "op": "+=", "value": "2", "expr": {"lit": 2.0}}
+```
+
+A fact atom in the body may take params as arguments, `::assert{gifted(@who, @item)}` or the same
+in a `::retract`. Each `::use` binds the params to its arguments, and the host checks the bound atom
+there, like any atom it wrote itself. With `item: string` and an `item` kind of `[locket, map]`,
+`::use{component="gift" who="isolde" item="locket"}` compiles to an `assert` of
+`gifted(isolde, locket)`, and `item="lockt"` is `E-FACT-DOMAIN` at the `::use`. `check-project`'s
+fact analyses see the bound atom too, so a later `holds(gifted(isolde, locket))` is a guaranteed
+guard, and a query no `::use` can produce is dead (`E-ARM-DEAD`). A fact's arguments are ground, so
+the argument must be a constant: an entity or enum member id, `true` or `false`. A def argument,
+`item=@best`, is `E-COMPONENT-ARG`, and the message names the atom. Outside a component body a
+`@param` in a fact is `E-FACT-DOMAIN`.
+
+Writing is the only thing `effects: true` unlocks. A guard or match subject in the body still may not
+read state (`E-COMPONENT-STATE`). A presentational component that `::use`s an effects component is
+`E-COMPONENT-BODY`, and the message asks for `effects: true` on it as well. Without `effects: true`, a
+write is `E-COMPONENT-BODY`, as before.
+
+### Speaker params
+
+A param typed **`speaker`** (dsl 0.24.0 §4) takes a cast id, as `who` does in `nod` above:
+
+- `{{@who}}` in a line renders the member's display `name` from the [cast](/language/dialogue-and-cast/#the-cast),
+  or the id when the member has none. So `who="corvin"` renders `Corvin Hale nods.`
+- Attributes and `<match on="@who">` see the id. The match ranges over the declared cast plus
+  `narrator`, so arms named after cast members check against it: a typo arm is
+  `E-WHEN-LITERAL-DOMAIN`, and a match with neither every member nor `<otherwise>` is
+  `E-NONEXHAUSTIVE` (`narrator` counts as a member).
+- An argument outside the cast is `E-CAST-UNKNOWN` at the `::use`, with a did-you-mean
+  (`who="corvn"` suggests `corvin`). Without a declared cast any identifier is accepted.
+- The argument must be a literal. A def argument, `who=@lead`, is `E-COMPONENT-ARG`, because the
+  name is chosen when the component expands, not at run time.
 
 ### Line identity
 

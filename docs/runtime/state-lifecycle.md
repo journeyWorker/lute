@@ -201,8 +201,10 @@ lifecycles — a `by` deadline over the clock fails at the advance that passes
 it (`quest-lifecycle.md` §Objectives). Each midnight it crosses is a stop
 when the clock raises `dayEnd` or `dayStart`: the clock moves to the day's
 last slot, settles, raises `dayEnd`; moves to the next day's first slot,
-settles, raises `dayStart`. Then it moves to where the advance ends,
-settles, and raises `slot` — once, never at the slots it passed.
+settles, raises `dayStart`. Then it moves to where the advance ends, applies
+any other engine writes of the same moment (so a day's `dayEnd` still reads
+the day it closes), settles, and raises `slot` — once, never at the slots
+it passed.
 
 The reference tooling models exactly this. A `lute play` step `advance:
 slot` (one slot), `advance: <n>` (`n` slots) or `advance: day` (the first
@@ -213,7 +215,13 @@ raises no `slot` occasion). `advance: <n>` never skips a day's close — it
 walks to each day's last slot to raise `dayEnd`; `advance: day` raises
 `dayEnd` where the clock stands. The transcript prints each midnight raise
 under the step (`── step 4 · day 1 (Mon) night · dayEnd`), and `--json`
-lists them under `advance.days`. An `engine:` step that moves
+lists them under `advance.days`. An `advance:` step's `engine:` writes land
+where the clock arrives, after its midnight stops. Its `expect.presented`
+lists what every raise of the step presented (each `dayEnd` / `dayStart`,
+then the `slot` raise), in order; `winner`, `offered` and `notOffered`
+judge the `slot` raise. An `occasion:` step that raises the clock's own
+`dayEnd` / `dayStart` prints a note — the next advance across that
+midnight raises it again. An `engine:` step that moves
 `clock.index` backward is a usage error (exit 2); `newRun` starts the clock
 over. `lute calendar --axis clock=d1..d2` expands to every slot of those
 days in clock order (bare `clock`: one week from day 1, or day 1 without a

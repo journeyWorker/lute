@@ -132,7 +132,7 @@ fn play_refuses_a_bad_field_or_a_misfit_value_at_load() {
         ),
         (
             "bridges:\n  check:\n    - { passed: true }\nsteps:\n  - occasion: hubVisit\n",
-            "lacks `margin`",
+            "lacks `margin` — an answer gives every bridge result `::check` reads: `{ passed: <bool>, margin: <number> }`",
         ),
         (
             "bridges:\n  chek:\n    - { passed: true, margin: 1 }\nsteps:\n  - occasion: hubVisit\n",

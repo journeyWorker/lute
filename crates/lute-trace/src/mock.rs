@@ -1086,6 +1086,23 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
     let mut referenced_reserved: Option<BTreeSet<String>> = None;
     let mut referenced_entry_reads: Option<BTreeSet<String>> = None;
     for (path, literal, span) in &mocks.state {
+        // dsl 0.24.0 §1: `clock.*` is derived from the clock's day / slot
+        // paths, never stored — a seed of it would contradict them.
+        if let Some(clock) = folded.env.clock.as_ref().filter(|_| lute_manifest::clock::is_clock_path(path)) {
+            let seedable = match &clock.slot {
+                Some(slot) => format!("`{}` / `{slot}`", clock.day),
+                None => format!("`{}`", clock.day),
+            };
+            out.push(diag(
+                E_TRACE_MOCK_UNDECLARED,
+                format!(
+                    "`--state {path}=…` seeds a path the clock derives from its day and slot, \
+                     which no mock may set — seed {seedable} instead (dsl 0.24.0 §1)"
+                ),
+                *span,
+            ));
+            continue;
+        }
         if crate::eval::is_reserved_quest_path(path) {
             let referenced = referenced_reserved.get_or_insert_with(|| {
                 let mut set = crate::quest_refs::collect_referenced_reserved_quest_paths(doc);

@@ -1192,13 +1192,13 @@ pub fn parse_meta_kind_with_defaults(
                     Ok(rule) => typed.rel_rules.push(RuleDecl {
                         rule,
                         raw: raw.to_string(),
-                        span: meta_key_span(meta, raw),
+                        span: scalar_span(meta, raw),
                     }),
                     Err(lute_syntax::datalog::DatalogError::Malformed { msg, .. }) => {
                         diags.push(err_at(
                             "E-DATALOG-PARSE",
                             format!("malformed rule `{raw}`: {msg}"),
-                            meta_key_span(meta, raw),
+                            scalar_span(meta, raw),
                         ));
                     }
                     Err(lute_syntax::datalog::DatalogError::FunctionTerm { name, .. }) => {
@@ -1208,7 +1208,7 @@ pub fn parse_meta_kind_with_defaults(
                                 "rule `{raw}` uses a function/compound term `{name}(...)`; \
                                  rule terms admit only Var/Const/bool (dsl §7.1)"
                             ),
-                            meta_key_span(meta, raw),
+                            scalar_span(meta, raw),
                         ));
                     }
                 }
@@ -1724,7 +1724,21 @@ fn unrepresentable_yaml(v: &serde_yaml::Value) -> &'static str {
 /// Falls back to a naive first occurrence, then the whole-frontmatter span, only
 /// when no key line matches. `line`/`column`/`utf16` are left zeroed —
 /// [`crate::check`]'s `normalize_spans` recomputes them from the byte offsets.
-pub(crate) fn meta_key_span(meta: &Meta, needle: &str) -> Span {
+/// The span of a YAML list scalar whose parsed value is `raw` (a `rules:`
+/// entry): its text as written — plain, or escaped inside double (`\"`) or
+/// single (`''`) quotes — so a rule with a quoted `cel("…")` guard is found
+/// at its own line (dsl 0.24 T3-6), not the whole frontmatter.
+fn scalar_span(meta: &Meta, raw: &str) -> Span {
+    let double = raw.replace('\\', "\\\\").replace('"', "\\\"");
+    let single = raw.replace('\'', "''");
+    let written = [raw, double.as_str(), single.as_str()]
+        .into_iter()
+        .find(|written| meta.raw_yaml.contains(*written))
+        .unwrap_or(raw);
+    meta_key_span(meta, written)
+}
+
+pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {
     // `raw_yaml` is usually the frontmatter interior sliced verbatim after the
     // 4-byte `"---\n"` opener (itself included in `meta.span`), so a `raw_yaml`
     // offset maps to the document by adding `meta.span.byte_start + 4`.

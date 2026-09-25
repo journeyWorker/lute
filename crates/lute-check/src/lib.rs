@@ -8,6 +8,7 @@ pub mod cel_message;
 pub mod cel_paths;
 pub mod cel_resolve;
 pub mod check;
+pub mod builtin_lowering;
 pub mod clock;
 pub mod component_effects;
 pub mod component_import;

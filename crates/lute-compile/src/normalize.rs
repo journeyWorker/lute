@@ -647,6 +647,7 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                 if let Some(w) = &mut s.when {
                     bind_slot(w, args, params);
                 }
+                lute_check::component_effects::bind_set_path(&mut s.path, args);
             }
             Node::Branch(b) => {
                 for c in &mut b.choices {

@@ -1117,7 +1117,7 @@ fn evaluate(p: &Project, w: &World, col: &Column, seen: &mut BTreeMap<usize, See
     let presented: Vec<String> = shown.iter().map(|&i| cands[i].id.clone()).collect();
     // What a shadowed beat lost to: the winner, else the presented list.
     let beater = if undecided {
-        "?".to_string()
+        format!("an undecided cell ({})", undecided_why(&unknown))
     } else {
         winner.clone().unwrap_or_else(|| presented.join(", "))
     };
@@ -1144,6 +1144,16 @@ fn evaluate(p: &Project, w: &World, col: &Column, seen: &mut BTreeMap<usize, See
         shadowed,
         unknown,
         undecided,
+    }
+}
+
+/// Which beats' unknown `when` leaves a cell undecided, in words
+/// (inn.oldFriend's `when` is unknown).
+fn undecided_why(unknown: &[(String, String)]) -> String {
+    let ids: Vec<&str> = unknown.iter().map(|(id, _)| id.as_str()).collect();
+    match ids.as_slice() {
+        [one] => format!("{one}'s `when` is unknown"),
+        many => format!("the `when` of {} is unknown", many.join(", ")),
     }
 }
 
@@ -1356,7 +1366,11 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
             if !o.shadowed.is_empty() {
                 // An undecided cell presents nothing: the eligible beats wait
                 // behind the unknown `when`, which `?` stands for.
-                let over = if o.undecided { "?".to_string() } else { o.presented.join(", ") };
+                let over = if o.undecided {
+                    format!("undecided ({})", undecided_why(&o.unknown))
+                } else {
+                    o.presented.join(", ")
+                };
                 let _ = writeln!(
                     shadowed,
                     "  {label}  {}: {over} over {}",
