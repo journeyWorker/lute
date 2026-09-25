@@ -2095,8 +2095,14 @@ pub fn unreachable_quest_ids(
 ) -> BTreeSet<String> {
     let ambiguous = ambiguous_quest_ids(docs);
     let mut out = BTreeSet::new();
+    // First result per path — `find`'s answer, without a scan per document.
+    let mut results: std::collections::HashMap<&Path, &CheckResult> =
+        std::collections::HashMap::with_capacity(file_results.len());
+    for (p, r) in file_results {
+        results.entry(p.as_path()).or_insert(r);
+    }
     for (path, document) in docs {
-        let Some((_, result)) = file_results.iter().find(|(p, _)| p == path) else {
+        let Some(result) = results.get(path.as_path()) else {
             continue;
         };
         for quest in &document.quests {

@@ -23,8 +23,9 @@
 //!    `E-EXTENDS-STATE-TYPE`. A state path whose winner came from an `extends`
 //!    base (depth >= 1) is marked `overridable`, so the importing scene's inline
 //!    `state:` may refine it (dsl §9.2), while a `uses`-peer path may not.
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use lute_manifest::relations::{
@@ -199,6 +200,108 @@ fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+    }
+}
+
+/// The importer-span placeholder [`ImportCache`] resolves with: no real span
+/// has `usize::MAX` offsets, so every diagnostic span equal to it is exactly
+/// one `resolve_imports` anchored at its `at` argument.
+const AT_PLACEHOLDER: Span = Span {
+    byte_start: usize::MAX,
+    byte_end: usize::MAX,
+    line: u32::MAX,
+    column: u32::MAX,
+    utf16_range: (u32::MAX, u32::MAX),
+};
+
+/// Per-run memo of [`resolve_imports`] and
+/// [`crate::component_import::resolve_components`]: every document of a
+/// project that names the same `uses:`/`extends:` (or `components:`) lists
+/// from the same directory resolves the same import DAG, so a batch caller (a
+/// project check over thousands of scenes) reads and parses each imported file
+/// once instead of once per document.
+///
+/// Each result depends on the importing document only through `at`, which is
+/// copied verbatim into diagnostic spans; the memo resolves once against
+/// [`AT_PLACEHOLDER`] and rewrites those spans to each caller's `at`, so both
+/// methods return exactly what the uncached resolvers would. Holds no
+/// invalidation: the files are assumed not to change during one run.
+#[derive(Default)]
+pub struct ImportCache {
+    imports: Memo<(PathBuf, Vec<String>, Vec<String>), SchemaImports>,
+    components: Memo<(PathBuf, Vec<String>), crate::ComponentSet>,
+}
+
+impl ImportCache {
+    /// [`resolve_imports`], memoized on `(base_dir, uses, extends)`.
+    pub fn resolve(
+        &self,
+        base_dir: &Path,
+        uses: &[String],
+        extends: &[String],
+        at: Span,
+    ) -> SchemaImports {
+        let key = (base_dir.to_path_buf(), uses.to_vec(), extends.to_vec());
+        let mut out = self.imports.get_or_init(key, || {
+            resolve_imports(base_dir, uses, extends, AT_PLACEHOLDER)
+        });
+        anchor_at(&mut out.diags, at);
+        out
+    }
+
+    /// [`crate::component_import::resolve_components`], memoized on
+    /// `(base_dir, components)`.
+    pub fn resolve_components(
+        &self,
+        base_dir: &Path,
+        components: &[String],
+        at: Span,
+    ) -> crate::ComponentSet {
+        let key = (base_dir.to_path_buf(), components.to_vec());
+        let mut out = self.components.get_or_init(key, || {
+            crate::component_import::resolve_components(base_dir, components, AT_PLACEHOLDER)
+        });
+        anchor_at(&mut out.diags, at);
+        out
+    }
+}
+
+/// A thread-safe compute-once map: the first caller for a key runs `init`,
+/// concurrent callers for the same key block on it, later callers read it.
+pub struct Memo<K, V> {
+    map: Mutex<HashMap<K, Arc<OnceLock<V>>>>,
+}
+
+impl<K, V> Default for Memo<K, V> {
+    fn default() -> Self {
+        Memo {
+            map: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl<K: Eq + std::hash::Hash, V: Clone> Memo<K, V> {
+    /// A clone of the value for `key`, computing it with `init` on first use.
+    /// The map lock is held only to find the key's cell, never while `init`
+    /// runs, so distinct keys compute concurrently.
+    pub fn get_or_init(&self, key: K, init: impl FnOnce() -> V) -> V {
+        let cell = {
+            let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+            map.entry(key).or_default().clone()
+        };
+        cell.get_or_init(init).clone()
+    }
+}
+
+/// Replace every [`AT_PLACEHOLDER`] span (outer or `related`) with `at`.
+fn anchor_at(diags: &mut [Diagnostic], at: Span) {
+    for d in diags {
+        if d.span == AT_PLACEHOLDER {
+            d.span = at;
+        }
+        for r in &mut d.related {
+            anchor_at(std::slice::from_mut(&mut r.diagnostic), at);
+        }
     }
 }
 

@@ -118,6 +118,12 @@ pub fn compute_must(
     let mut out = FactMust::default();
     let mut must_out: BTreeMap<String, Facts> = BTreeMap::new();
     let mut walked = vec![false; docs.len()];
+    // First index per path — `position`'s answer, without a scan per node.
+    let mut doc_ix: std::collections::HashMap<&std::path::Path, usize> =
+        std::collections::HashMap::with_capacity(docs.len());
+    for (idx, (p, _)) in docs.iter().enumerate() {
+        doc_ix.entry(p.as_path()).or_insert(idx);
+    }
     for id in &graph.topo_order {
         let NodeId::Scene(key) = id else {
             continue;
@@ -125,7 +131,7 @@ pub fn compute_must(
         let Some(info) = graph.nodes.get(id) else {
             continue;
         };
-        let Some(idx) = docs.iter().position(|(p, _)| *p == info.path) else {
+        let Some(&idx) = doc_ix.get(info.path.as_path()) else {
             continue;
         };
         if walked[idx] {
@@ -154,7 +160,7 @@ pub fn compute_must(
     }
     for (key, info) in &graph.nodes {
         if let NodeId::Scene(k) | NodeId::Beat(k) = key {
-            if !out.scene_entry.contains_key(k) && docs.iter().any(|(p, _)| *p == info.path) {
+            if !out.scene_entry.contains_key(k) && doc_ix.contains_key(info.path.as_path()) {
                 out.scene_entry
                     .insert(k.clone(), with_derived(vocab, may, root.seeds.clone()));
             }

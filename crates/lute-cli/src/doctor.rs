@@ -142,9 +142,10 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
         utf16_range: (0, 0),
     };
     let mut scan = ProjectScan::default();
+    let cache = crate::InputCache::default();
     for file in lute_files {
         let project = crate::project_root_for(file, root);
-        let Some(built) = crate::build_input(file, None, Some(&project), None) else {
+        let Some(built) = crate::build_input_with(&cache, file, None, Some(&project), None) else {
             continue;
         };
         for m in &built.project_diags {

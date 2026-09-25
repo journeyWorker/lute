@@ -36,6 +36,40 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Performance
+
+- **Project commands scale linearly and use every core.** `check-project`,
+  `lore`, `scenario`, `beats`, `test`, `play`, `doctor`, `loc` and
+  `compile --all` no longer recompute the inputs every document of a project
+  shares. One per-run memo (no on-disk cache) loads each
+  `lute.project.yaml`, provider catalog and activated capability snapshot
+  (plugin load, assembly, `capabilityVersion` hash) once per project root and
+  `(profile, plugins)`, and resolves each `uses:`/`extends:` and
+  `components:` import DAG once per importing directory — the schema YAML used
+  to be re-parsed for every scene. Each document is parsed once instead of
+  three times, and the per-document check, the project compile pass, the
+  `compile --all` builds, `lore`'s parse and the independent project-wide
+  passes run in parallel (rayon; `RAYON_NUM_THREADS` is honored), folded back
+  in walk order so output, diagnostics and exit codes are byte-identical.
+  Several per-document `find`-by-path scans in the project passes, quadratic
+  in the document count, are now map lookups. On synthetic projects of N
+  scenes plus one N-entry lore file (10-core Apple M1 Pro, median of 5;
+  "before" is the preceding commit, span-offset fix included):
+
+  | N scenes | command         | before | now    | now, 1 thread |
+  |----------|-----------------|--------|--------|---------------|
+  | 200      | `check-project` | 251 ms | 115 ms | 151 ms        |
+  | 200      | `lore`          | 212 ms | 96 ms  | 116 ms        |
+  | 800      | `check-project` | 1.11 s | 360 ms | 526 ms        |
+  | 800      | `lore`          | 960 ms | 270 ms | 368 ms        |
+  | 1600     | `check-project` | 2.73 s | 676 ms | 1.03 s        |
+  | 1600     | `lore`          | 2.34 s | 511 ms | 702 ms        |
+
+  The wasm playground build is unaffected: the parallelism lives in the CLI
+  crate only.
+
 ## [0.25.0] - 2026-09-25
 
 **Exclusion, shared spends, graph edges.**

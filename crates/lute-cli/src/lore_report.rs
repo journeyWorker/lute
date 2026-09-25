@@ -42,6 +42,7 @@ use std::process::ExitCode;
 use lute_core_span::Severity;
 use lute_syntax::ast::{Arm, Document, Node};
 use lute_syntax::datalog::{FactPattern, FactTerm};
+use rayon::prelude::*;
 use serde::Serialize;
 
 /// One lore entry, or one beat, as the report lists it.
@@ -527,21 +528,30 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // Every file reads and parses independently: in parallel, then folded in
+    // walk order, so messages, early exits, and the report are the sequential ones.
+    let parsed: Vec<std::io::Result<(Document, usize)>> = files
+        .par_iter()
+        .map(|path| {
+            let text = std::fs::read_to_string(path)?;
+            let (doc, diags) = lute_syntax::parse(&text);
+            let errors = diags
+                .iter()
+                .filter(|d| d.severity == Severity::Error)
+                .count();
+            Ok((doc, errors))
+        })
+        .collect();
     let mut entries = Vec::new();
     let mut facts = BTreeMap::new();
-    for path in &files {
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
+    for (path, parsed) in files.iter().zip(parsed) {
+        let (doc, errors) = match parsed {
+            Ok(p) => p,
             Err(e) => {
                 eprintln!("lute lore: cannot read {}: {e}", path.display());
                 return ExitCode::from(2);
             }
         };
-        let (doc, diags) = lute_syntax::parse(&text);
-        let errors = diags
-            .iter()
-            .filter(|d| d.severity == Severity::Error)
-            .count();
         if errors > 0 {
             eprintln!(
                 "lute lore: skipping {} — parse failed ({errors} error(s))",

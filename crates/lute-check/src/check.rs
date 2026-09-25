@@ -983,10 +983,17 @@ pub fn fold_env(
 ///
 /// Never panics: every stage degrades to diagnostics + a best-effort view.
 pub fn check(input: &CheckInput) -> CheckResult {
+    check_parsed(input, parse(&input.text))
+}
+
+/// [`check`] over an already-parsed `input.text`: `parsed` MUST be exactly
+/// `lute_syntax::parse(&input.text)`, so a batch caller that parsed the
+/// document for its own needs does not parse it again.
+pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> CheckResult {
     let idx = TextIndex::new(&input.text);
 
-    // 1. Parse the DSL structure.
-    let (mut doc, parse_diags) = parse(&input.text);
+    // 1. Parse the DSL structure (done by the caller).
+    let (mut doc, parse_diags) = parsed;
     // dsl 0.24.0 §4: each `::use` of an `effects: true` component performs
     // its body's writes HERE, in this document — splice them in (anchored at
     // the `::use`) so every pass below judges them against this document's

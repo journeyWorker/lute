@@ -491,6 +491,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     })?;
     let mut units = Vec::new();
     let mut templates: BTreeMap<PathBuf, IdentityTemplates> = BTreeMap::new();
+    let cache = crate::InputCache::default();
     for path in &files {
         // #3 / T6.10 fix (i): expand `::use` before extracting, so a
         // component's lines are exported once PER CALL SITE under the
@@ -500,7 +501,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         // `expand_document` is deliberately NOT run, because `{{…}}`
         // interpolation is what a translator must see intact.
         let root = crate::project_root_for(path, dir);
-        let Some(built) = crate::build_input(path, None, Some(&root), None) else {
+        let Some(built) = crate::build_input_with(&cache, path, None, Some(&root), None) else {
             eprintln!(
                 "lute loc: skipping {} — cannot resolve inputs",
                 path.display()
