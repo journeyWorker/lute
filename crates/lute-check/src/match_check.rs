@@ -1641,6 +1641,37 @@ fn arm_coverage(
     }
 }
 
+/// dsl 0.23.1 (ashen N3): `true` iff the arm's own `is=` pattern proves the
+/// subject SET inside the arm — it names at least one value and none of its
+/// alternatives is `unset`, so an unset subject never matches it (the
+/// arm's `test` can only narrow further).
+pub(crate) fn is_pattern_proves_set(is: Option<&IsPattern>, subject: Option<&str>) -> bool {
+    let Some(pat) = is else {
+        return false;
+    };
+    let mut alternatives = is_alternatives(&pat.raw).peekable();
+    alternatives.peek().is_some()
+        && alternatives.all(|lit| {
+            !matches!(
+                classify_is_literal(lit).map(|l| quest_state_is_literal(l, subject)),
+                Ok(IsLiteral::Unset)
+            )
+        })
+}
+
+/// dsl 0.23.1 (ashen N3): `true` iff the `<when>` arm provably takes EVERY
+/// unset subject value (`is="unset"` with no narrowing `test`, or a test
+/// like `!isSet($)`) — no later arm and no `<otherwise>` sees the subject
+/// unset.
+pub(crate) fn arm_takes_unset(
+    is: Option<&IsPattern>,
+    test_raw: &str,
+    subject: Option<&str>,
+    schema: &StateSchema,
+) -> bool {
+    arm_coverage(is, test_raw, subject, schema).covers_unset
+}
+
 /// Parse a `<when is="…">` literal pattern (dsl §7.3.1) into `cov`: every
 /// alternative ([`is_alternatives`]) is classified by the shared
 /// [`classify_is_literal`] — `true`/`false` are bool domain values, `unset`

@@ -88,6 +88,9 @@ pub struct BeatMeta {
     pub priority: i64,
     /// Default [`BeatOnce::Run`].
     pub once: BeatOnce,
+    /// `once:` is written (frontmatter or project `defaults:`), not defaulted
+    /// — dsl 0.23.1: an authored `once: run` acknowledges a per-run beat.
+    pub once_authored: bool,
     /// dsl 0.23.0 §3: `also: true` — on a `select: first` occasion, presented
     /// in addition to the winner, after it; never the winner itself.
     pub also: bool,
@@ -280,6 +283,7 @@ pub(crate) fn lift_scene_beat(
         when,
         priority,
         once,
+        once_authored: get("once").is_some(),
         also,
     })
 }
@@ -708,6 +712,8 @@ pub struct ProjectBeat<'a> {
     /// A scene's policy; an entry's authored `once` ([`BeatOnce::None`] when
     /// absent — an entry without `once` is repeatable).
     pub once: BeatOnce,
+    /// `once` is written rather than defaulted (an entry's `once` always is).
+    pub once_authored: bool,
     /// dsl 0.23.0 §3: a scene's `also: true`.
     pub also: bool,
     /// A scene's non-blank `after:`, raw.
@@ -773,6 +779,7 @@ pub fn project_beats<'a>(
                 target: beat.target.as_deref(),
                 priority: beat.priority,
                 once: beat.once,
+                once_authored: beat.once_authored,
                 also: beat.also,
                 after: folded.typed.after.as_deref().filter(|a| !a.trim().is_empty()),
                 when_slot: beat.when.as_ref(),
@@ -815,6 +822,7 @@ pub fn project_beats<'a>(
                 target,
                 priority,
                 once,
+                once_authored: entry.once.is_some(),
                 also: false,
                 after: None,
                 when_slot: entry.when.as_ref(),
@@ -851,6 +859,7 @@ pub fn project_beats<'a>(
                     target: beat.target.as_ref().map(|(t, _)| t.as_str()),
                     priority: crate::bundles::bundle_beat_priority(beat),
                     once: crate::bundles::bundle_beat_once(beat),
+                    once_authored: beat.once.is_some(),
                     also: crate::bundles::bundle_beat_also(beat),
                     after: None,
                     when_slot: beat.when.as_ref(),
@@ -887,8 +896,9 @@ struct Beat<'a> {
     when: Option<String>,
     /// The `when`'s in-domain conjuncts, typed in its own document.
     conjuncts: crate::reachability::Conjuncts,
-    /// `once: run` (a scene's default, an entry's `once="run"`) with a `when`
-    /// that reads only user-tier state.
+    /// A defaulted `once: run` (a scene's or bundle beat's; never an
+    /// entry's, whose `once` is always written) with a `when` that reads
+    /// only user-tier state (dsl 0.23.1).
     run_once_user_when: bool,
     /// Where a warning anchors: the `on` key / attribute.
     anchor: Span,
@@ -898,8 +908,9 @@ struct Beat<'a> {
 /// `W-BEAT-PRIORITY-TIE` (dsl 0.22.0 §13): two beats on one `select: first`
 /// occasion whose selection falls to file order.
 pub const W_BEAT_PRIORITY_TIE: &str = "W-BEAT-PRIORITY-TIE";
-/// `W-BEAT-ONCE-RUN-USER` (dsl 0.22.0 §13 advisory): a `once: run` beat whose
-/// `when` reads only user-tier state, so it replays every run.
+/// `W-BEAT-ONCE-RUN-USER` (dsl 0.22.0 §13 advisory, dsl 0.23.1): a beat
+/// spent once per run by DEFAULT whose `when` reads only user-tier state, so
+/// it replays every run. An authored `once: run` silences it.
 pub const W_BEAT_ONCE_RUN_USER: &str = "W-BEAT-ONCE-RUN-USER";
 
 /// The project beat passes over one resolved project root (dsl 0.21.0 §4,
@@ -922,10 +933,11 @@ pub const W_BEAT_ONCE_RUN_USER: &str = "W-BEAT-ONCE-RUN-USER";
 ///   conjunction to `false` nor two of their comparisons pin one path to
 ///   disjoint values. File order then picks the winner. One warning per
 ///   `B`, naming every such partner.
-/// - [`W_BEAT_ONCE_RUN_USER`]: a `once: run` beat whose `when` reads state,
-///   all of it user-tier (`user.*`, `entry.<id>.everRead`) with no fact or
-///   scene query: once true it stays true across runs, so the beat plays
-///   again at the start of every run.
+/// - [`W_BEAT_ONCE_RUN_USER`]: a beat whose `once: run` is DEFAULTED (not
+///   written — dsl 0.23.1) and whose `when` reads state, all of it user-tier
+///   (`user.*`, `entry.<id>.everRead`; `prev.run.*` is run history, not
+///   user-tier) with no fact or scene query: once true it stays true across
+///   runs, so the beat plays again at the start of every run.
 pub fn check_project_beats(
     docs: &[(PathBuf, Document)],
     foldeds: &[&FoldedEnv],
@@ -958,6 +970,7 @@ pub fn check_project_beats(
                 always: pb.after.is_none() && holds,
                 unspent: pb.once == BeatOnce::None,
                 run_once_user_when: pb.once == BeatOnce::Run
+                    && !pb.once_authored
                     && pb.when.as_deref().is_some_and(reads_only_user),
                 conjuncts: pb.when_slot.map_or_else(Default::default, |w| {
                     crate::reachability::when_conjuncts(&w.raw, &defs, &folded.env.state)
@@ -979,10 +992,11 @@ pub fn check_project_beats(
                 W_BEAT_ONCE_RUN_USER,
                 Severity::Warning,
                 format!(
-                    "{} is spent once per run (`once: run`), but its `when` `{}` reads only \
-                     user-tier state, which a new run does not reset — once it holds it holds \
-                     every run, so the beat plays again each run; use `once: user` for a beat \
-                     heard once ever, or gate it on run-tier state (dsl 0.22.0 §13)",
+                    "{} is spent once per run by default (`once: run`), but its `when` `{}` \
+                     reads only user-tier state, which a new run does not reset — once it holds \
+                     it holds every run, so the beat plays again each run; write `once: run` if \
+                     it should replay every run, use `once: user` for a beat heard once ever, or \
+                     gate it on run-tier state (dsl 0.22.0 §13)",
                     b.name,
                     b.when.as_deref().unwrap_or_default().trim()
                 ),
@@ -1104,7 +1118,9 @@ fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> bool {
 /// `when` (already `@def`-expanded) reads at least one state path, every
 /// one of them user-tier (`user.*`, `entry.<id>.everRead`), and calls no
 /// function but the CEL operators and `isSet`/`has` — a fact query,
-/// `visited()`, or `now()` may change within a run.
+/// `visited()`, or `now()` may change within a run. `prev.run.*` is the
+/// previous run's snapshot, which every run replaces: run history, not
+/// user-tier (dsl 0.23.1).
 fn reads_only_user(when: &str) -> bool {
     use cel_parser::ast::Expr;
     fn walk(expr: &Expr, reads: &mut usize) -> bool {

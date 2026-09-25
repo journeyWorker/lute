@@ -187,6 +187,12 @@ pub struct DocTables {
     pub lines: Vec<LineRow>,
     pub shots: Vec<ShotRow>,
     pub speakers: BTreeMap<String, SpeakerRow>,
+    /// [`Self::speakers`] per linear unit — the lines a player hears in one
+    /// sitting: the shots and quest bodies together, then each lore bundle
+    /// beat alone. Lore entries belong to no unit: each is an independent
+    /// bark. Sequence metrics (emotion runs and streaks) read these, so a
+    /// bundle's beats are never scored as one scene (ashen N6).
+    pub unit_speakers: Vec<BTreeMap<String, SpeakerRow>>,
     pub groups: BTreeMap<String, Vec<GroupRow>>,
 }
 
@@ -210,20 +216,29 @@ pub fn compute_doc_tables(
         walker.visit_nodes(&quest.body);
     }
     // Lore entry lines (dsl 0.19.0 §8) are translatable content like quest lines.
+    let linear_end = walker.lines.len();
     for entry in &doc.entries {
         walker.visit_nodes(&entry.body);
     }
     // Lore bundle beat lines (dsl 0.23.0 §4) are translatable content like
     // entry lines.
+    let mut units = vec![0..linear_end];
     for beat in &doc.beats {
+        let start = walker.lines.len();
         walker.visit_nodes(&beat.body);
+        units.push(start..walker.lines.len());
     }
     // The scene target is the whole document — including a doc that never
     // reached a `##` shot heading (a project fragment). Its span is the
     // document span so anchoring falls to the file head deterministically.
     let scene = Some(walker.finish_scene(doc.span));
 
-    let speakers = walker.build_speakers();
+    let speakers = speakers_of(&walker.lines);
+    let unit_speakers = units
+        .into_iter()
+        .filter(|u| !u.is_empty())
+        .map(|u| speakers_of(&walker.lines[u]))
+        .collect();
     let groups = walker.build_groups(group_bys);
     let shots = std::mem::take(&mut walker.shots);
     let lines = std::mem::take(&mut walker.lines);
@@ -235,6 +250,7 @@ pub fn compute_doc_tables(
             lines,
             shots,
             speakers,
+            unit_speakers,
             groups,
         },
         directives,
@@ -493,49 +509,52 @@ impl Walker {
             span,
         }
     }
+}
 
-    fn build_speakers(&self) -> BTreeMap<String, SpeakerRow> {
-        // Group DIALOGUE lines only (spec §4 "dialogue lines only"). A
-        // narration bucket would be a false speaker with no name to key on.
-        let mut per_speaker: BTreeMap<String, Vec<&LineRow>> = BTreeMap::new();
-        for l in &self.lines {
-            if l.speaker.is_empty() {
-                continue;
-            }
-            per_speaker.entry(l.speaker.clone()).or_default().push(l);
+/// One [`SpeakerRow`] per speaker over `lines`.
+fn speakers_of(lines: &[LineRow]) -> BTreeMap<String, SpeakerRow> {
+    // Group DIALOGUE lines only (spec §4 "dialogue lines only"). A
+    // narration bucket would be a false speaker with no name to key on.
+    let mut per_speaker: BTreeMap<String, Vec<&LineRow>> = BTreeMap::new();
+    for l in lines {
+        if l.speaker.is_empty() {
+            continue;
         }
-        let mut out = BTreeMap::new();
-        for (name, lines) in per_speaker {
-            let words: u32 = lines.iter().map(|l| l.words).sum();
-            // attrShare: attr present on line / lines
-            let mut attr_counts: BTreeMap<String, u32> = BTreeMap::new();
-            for l in &lines {
-                for k in l.attrs.keys() {
-                    *attr_counts.entry(k.clone()).or_insert(0) += 1;
-                }
-            }
-            let mut attr_share = BTreeMap::new();
-            for (k, c) in attr_counts {
-                attr_share.insert(k, c as f64 / lines.len() as f64);
-            }
-            // Axes.
-            let axis = build_axes(&lines);
-            let first_span = lines[0].span;
-            out.insert(
-                name.clone(),
-                SpeakerRow {
-                    speaker: name,
-                    lines: lines.len() as u32,
-                    words,
-                    axis,
-                    attrShare: attr_share,
-                    first_line_span: first_span,
-                },
-            );
-        }
-        out
+        per_speaker.entry(l.speaker.clone()).or_default().push(l);
     }
+    let mut out = BTreeMap::new();
+    for (name, lines) in per_speaker {
+        let words: u32 = lines.iter().map(|l| l.words).sum();
+        // attrShare: attr present on line / lines
+        let mut attr_counts: BTreeMap<String, u32> = BTreeMap::new();
+        for l in &lines {
+            for k in l.attrs.keys() {
+                *attr_counts.entry(k.clone()).or_insert(0) += 1;
+            }
+        }
+        let mut attr_share = BTreeMap::new();
+        for (k, c) in attr_counts {
+            attr_share.insert(k, c as f64 / lines.len() as f64);
+        }
+        // Axes.
+        let axis = build_axes(&lines);
+        let first_span = lines[0].span;
+        out.insert(
+            name.clone(),
+            SpeakerRow {
+                speaker: name,
+                lines: lines.len() as u32,
+                words,
+                axis,
+                attrShare: attr_share,
+                first_line_span: first_span,
+            },
+        );
+    }
+    out
+}
 
+impl Walker {
     fn build_groups(&self, group_bys: &BTreeSet<String>) -> BTreeMap<String, Vec<GroupRow>> {
         let mut out = BTreeMap::new();
         if group_bys.is_empty() {

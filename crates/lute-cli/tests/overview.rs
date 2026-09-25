@@ -200,7 +200,7 @@ fn calendar_text_csv_and_usage_errors() {
     let csv = lute(&["calendar", d, "--axis", "run.slot=night", "--occasion", "placeVisit", "--csv"]);
     assert_eq!(csv.status.code(), Some(0), "{}", text(&csv));
     let rows = String::from_utf8_lossy(&csv.stdout).to_string();
-    assert!(rows.starts_with("run.slot,occasion,target,select,winner,presented,shadowed,unknown,note\n"), "{rows}");
+    assert!(rows.starts_with("run.slot,occasion,target,select,winner,presented,shadowed,unknown,notes\n"), "{rows}");
     assert!(rows.contains("night,placeVisit,place.dock,first,,,,,\n"), "{rows}");
     assert!(rows.contains("night,placeVisit,place.inn,first,inn.ada,inn.ada,,,\n"), "{rows}");
 
@@ -210,6 +210,81 @@ fn calendar_text_csv_and_usage_errors() {
         (vec!["--axis", "run.day=3..1"], "empty range"),
         (vec!["--axis", "run.day=1", "--occasion", "nope"], "unknown occasion"),
         (vec!["--axis", "run.day=1", "--occasion", "dayStart", "--target", "place.inn"], "target no listed occasion takes"),
+    ] {
+        let mut full = vec!["calendar", d];
+        full.extend(args);
+        let out = lute(&full);
+        assert_eq!(out.status.code(), Some(2), "{why}: {}", text(&out));
+    }
+}
+
+#[test]
+fn calendar_replays_the_route_and_applies_quest_fact_and_where_axes() {
+    let dir = town("cal-replay");
+    // A domain-targeted occasion only the inn answers, and a quest-gated beat.
+    write(
+        &dir,
+        "plugins/town.clock/occasions/clock.yaml",
+        "occasions:\n  dayStart: {}\n  placeVisit: { target: true }\n  board: { select: all, target: true }\n  \
+         look: { target: { prefix: place, entity: place } }\n",
+    );
+    write(&dir, "scenes/look.lute", &scene("inn.look", "on: look\ntarget: place.inn\nonce: false\n", "@narrator: Lamps."));
+    write(
+        &dir,
+        "scenes/lost.lute",
+        &scene("town.lost", "on: dayStart\nonce: false\npriority: 50\nwhen: \"quest.errand.state == 'failed'\"\n", "@narrator: Too late."),
+    );
+    write(
+        &dir,
+        "quests/errand.lute",
+        "---\nkind: quest\ntitle: Errand\n---\n\n<quest id=\"errand\" title=\"Errand\">\n\
+         <objective id=\"go\" title=\"Go\" done=\"run.day > 5\"/>\n</quest>\n",
+    );
+    let d = dir.to_str().unwrap();
+    // The route meets ada at the inn, then comes back.
+    let route = write(
+        &dir,
+        "route.play.yaml",
+        "state:\n  run.slot: night\nsteps:\n  - occasion: placeVisit\n    target: place.inn\n  \
+         - label: back at the inn\n    occasion: placeVisit\n    target: place.inn\n",
+    );
+    let r = route.to_str().unwrap();
+    let run = |extra: &[&str]| {
+        let mut args = vec!["calendar", d, "--json"];
+        args.extend_from_slice(extra);
+        let out = lute(&args);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+        serde_json::from_slice::<Json>(&out.stdout).unwrap()
+    };
+    // Replayed up to the labelled step: ada was met and `inn.ada` visited.
+    let base = ["--script", r, "--until", "back at the inn", "--occasion", "placeVisit", "--target", "place.inn"];
+    let mut args = base.to_vec();
+    args.extend(["--axis", "holds(rumor(ada))=false,true"]);
+    let v = run(&args);
+    assert!(v["from"].as_str().unwrap().contains("step 1 replayed"), "{}", v["from"]);
+    assert_eq!(result(&v, 0, "placeVisit", Some("place.inn"))["winner"], "inn.again");
+    assert_ne!(result(&v, 1, "placeVisit", Some("place.inn"))["winner"], "inn.again", "a rumor defeats the trust");
+
+    // A quest-state axis seeds the status the lifecycle keeps.
+    let v = run(&["--axis", "quest.errand.state=unset,failed", "--occasion", "dayStart"]);
+    assert_ne!(result(&v, 0, "dayStart", None)["winner"], "town.lost");
+    assert_eq!(result(&v, 1, "dayStart", None)["winner"], "town.lost");
+
+    // `--where` drops cells; a domain-targeted occasion gets only the
+    // targets its beats name.
+    let v = run(&["--axis", "run.slot=morning,night", "--where", "run.slot == 'night'", "--occasion", "look"]);
+    assert_eq!(v["pruned"], 1);
+    assert_eq!(v["cells"].as_array().unwrap().len(), 1);
+    let targets: Vec<&str> = v["columns"].as_array().unwrap().iter().map(|c| c["target"].as_str().unwrap()).collect();
+    assert_eq!(targets, ["place.inn"]);
+
+    for (args, why) in [
+        (vec!["--axis", "quest.nope.state=failed"], "unknown quest"),
+        (vec!["--axis", "quest.errand.activatedAt=1"], "quest bookkeeping"),
+        (vec!["--axis", "holds(trusted(ada))=true"], "derived fact"),
+        (vec!["--axis", "holds(met(ada))=maybe"], "not a bool"),
+        (vec!["--script", r, "--until", "nowhere"], "unknown step"),
+        (vec!["--axis", "run.day=1", "--where", "run.nope == 1"], "undecidable where"),
     ] {
         let mut full = vec!["calendar", d];
         full.extend(args);
@@ -280,8 +355,9 @@ fn knowledge_traces_a_fact_guard_through_rules_to_producers() {
     assert!(s.contains("scene `inn.again` (scenes/inn-again.lute)"), "{s}");
     assert!(s.contains("trusted(ada) — derived by 1 rule"), "{s}");
     assert!(s.contains("rule: trusted(P) :- met(P), not rumor(P)"), "{s}");
-    assert!(s.contains("met(ada) — asserted by scene (scenes/inn-ada.lute)"), "{s}");
+    assert!(s.contains("met(ada) — asserted by scene `inn.ada` (scenes/inn-ada.lute)"), "{s}");
     assert!(s.contains("not rumor(ada) — NO PRODUCER"), "{s}");
+    assert!(!s.contains("defeated"), "nothing produces rumor(ada) yet: {s}");
     assert!(!s.contains("innShut"), "--for selects one node: {s}");
 
     // A ground query follows only the rules that can conclude it.
@@ -294,13 +370,33 @@ fn knowledge_traces_a_fact_guard_through_rules_to_producers() {
     assert_eq!(json.status.code(), Some(0), "{}", text(&json));
     let v: Json = serde_json::from_slice(&json.stdout).unwrap();
     let rel = &v["roots"][0]["relations"];
-    assert_eq!(rel["met"]["assertedBy"][0], "scene (scenes/inn-ada.lute)");
+    assert_eq!(rel["met"]["assertedBy"][0], "scene `inn.ada` (scenes/inn-ada.lute)");
     assert_eq!(rel["rumor"]["assertedBy"].as_array().unwrap().len(), 0);
     assert_eq!(rel["trusted"]["rules"][0]["premises"][1]["negated"], true);
 
     let miss = lute(&["scenario", d, "knowledge", "--for", "inn.agian"]);
     assert_eq!(miss.status.code(), Some(2));
     assert!(text(&miss).contains("did you mean `inn.again`?"), "{}", text(&miss));
+
+    // lamplight N10: a clue that defeats a negated premise is named, with
+    // its producer; a bundle beat is labelled by its canonical id.
+    write(
+        &dir,
+        "lore/gossip.lute",
+        "---\nkind: lore\nid: town.gossip\n---\n\n\
+         <beat id=\"whisper\" on=\"board\" target=\"place.dock\">\n  @bo: About Ada…\n  ::assert{rumor(ada)}\n</beat>\n",
+    );
+    let out = lute(&["scenario", d, "knowledge", "--for", "inn.again"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        s.contains("not rumor(ada) — asserted by beat `town.gossip.whisper` (lore/gossip.lute)"),
+        "{s}"
+    );
+    assert!(
+        s.contains("can be defeated by rumor(ada) [beat `town.gossip.whisper` (lore/gossip.lute)]"),
+        "{s}"
+    );
 }
 
 #[test]

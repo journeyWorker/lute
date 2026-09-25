@@ -86,7 +86,8 @@ type Flow = Option<Facts>;
 pub struct FactMust {
     /// Every guard slot's guaranteed facts, derived closure included.
     pub slots: MustMap,
-    /// Per scene key (`NodeId::Scene`): the facts guaranteed on arrival
+    /// Per scene key (`NodeId::Scene`) and bundle beat key (`NodeId::Beat`,
+    /// an `after`-less entry: the seeds): the facts guaranteed on arrival
     /// (`Must_in`), derived closure included — `lute scenario`'s fact
     /// envelope.
     pub scene_entry: BTreeMap<String, Vec<MustFact>>,
@@ -134,14 +135,15 @@ pub fn compute_must(
         must_out.insert(key.clone(), end);
     }
     // Scenes on or past a cycle (absent from `topo_order`), duplicates and
-    // unidentifiable scenes, quest and lore documents: seeds only.
+    // unidentifiable scenes, bundle beats, quest and lore documents: seeds
+    // only.
     for (idx, doc) in docs.iter().enumerate() {
         if !walked[idx] {
             walk_doc(&root, doc, foldeds[idx], root.seeds.clone(), &mut out.slots);
         }
     }
     for (key, info) in &graph.nodes {
-        if let NodeId::Scene(k) = key {
+        if let NodeId::Scene(k) | NodeId::Beat(k) = key {
             if !out.scene_entry.contains_key(k) && docs.iter().any(|(p, _)| *p == info.path) {
                 out.scene_entry
                     .insert(k.clone(), with_derived(vocab, may, root.seeds.clone()));

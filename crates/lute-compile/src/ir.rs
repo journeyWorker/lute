@@ -395,6 +395,12 @@ pub struct Stamp {
     pub provenance: Option<lute_check::Provenance>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
+    /// The directive as authored — `::bg{location="hall"}`, a plugin
+    /// `::portrait{…}` — for the record a directive lowered to. Not wire
+    /// data: `lute play` prints it so its transcript reads like the source
+    /// (0.23.1); the lowered record is what an engine consumes.
+    #[serde(skip)]
+    pub authored: Option<String>,
     /// Plugin-declared CROSS-CUTTING attrs (plugin 0.0.2 §14.1 `stampAttrs:`),
     /// flattened alongside the reserved timing keys above. An engine reads
     /// these exactly like a directive `fields` entry — typed by the declaring
@@ -1364,5 +1370,24 @@ impl Command {
             Command::End(c) => Some(&mut c.stamp),
             Command::Jump(_) | Command::Barrier(_) => None,
         }
+    }
+
+    /// `(addr, authored directive)` of a record a directive lowered to —
+    /// staging, `::end`, a plugin passthrough ([`Stamp::authored`]).
+    pub fn authored(&self) -> Option<(&str, &str)> {
+        let (addr, stamp) = match self {
+            Command::Background(c) => (&c.addr, &c.stamp),
+            Command::Music(c) => (&c.addr, &c.stamp),
+            Command::Sfx(c) => (&c.addr, &c.stamp),
+            Command::Vfx(c) => (&c.addr, &c.stamp),
+            Command::Sprite(c) => (&c.addr, &c.stamp),
+            Command::Camera(c) => (&c.addr, &c.stamp),
+            Command::Cut(c) => (&c.addr, &c.stamp),
+            Command::Video(c) => (&c.addr, &c.stamp),
+            Command::End(c) => (&c.addr, &c.stamp),
+            Command::Other(c) => (&c.addr, &c.stamp),
+            _ => return None,
+        };
+        Some((addr, stamp.authored.as_deref()?))
     }
 }

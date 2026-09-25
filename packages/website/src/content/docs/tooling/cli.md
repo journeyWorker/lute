@@ -309,6 +309,13 @@ lute doctor — .
       → reinstall the language server from this toolchain (`cargo install --path crates/lute-lsp`) and restart the editor
 ```
 
+An editor keeps running the `lute-lsp` it started, so reinstalling the toolchain does not reach an open editor. On macOS and Linux doctor therefore also lists every running `lute-lsp` server (`runningLanguageServers` in `--json`) and flags one whose binary was replaced after the server started, or whose binary reports another version, with the fix — restart the editor or its language server:
+
+```console
+  ✗ running lute-lsp: pid 12431 (/usr/local/bin/lute-lsp) started before its binary was replaced, so it runs an older build
+      → restart the editor (or its language server) so it launches this toolchain's lute-lsp
+```
+
 `--json` emits the same checks as one object, `{ "dir", "checks": { <key>: { label, ok, detail, hint } } }` (`ok` is `null` for an informational line). A report, never a gate: exit **0** whatever the checks find, **2** when `<dir>` cannot be read.
 
 ## run

@@ -108,6 +108,11 @@ pub struct StageState {
     /// Cleared per character on a re-show ([`stage_bookkeeping_show`]). At a
     /// convergence it is the UNION over the incoming arms ([`StageState::join`]).
     pub exited: BTreeMap<String, Departure>,
+    /// Characters on stage on SOME path to here but not provably on every
+    /// one — shown in only some arms of a `<match>` / `<branch>`, or in every
+    /// arm with differing sprite state (seven F7). A `::bg` scene change hides
+    /// them too, so no path carries a sprite through the cut (dsl 0.23.1).
+    pub maybe_on_stage: BTreeSet<String>,
     /// Current background (`::bg` location / assetId).
     pub bg: Option<String>,
     /// Current music (`::music` mood / action).
@@ -119,13 +124,13 @@ pub struct StageState {
 }
 
 /// How a character in [`StageState::exited`] left the stage — names the cause
-/// in `W-STAGE-ABSENT`.
+/// in `W-STAGE-ABSENT`, with the 1-based line of the exit / `::bg`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Departure {
     /// An `::auto` whose `action` is a declared exit member.
-    Exit,
+    Exit { line: u32 },
     /// Auto-hidden by a `::bg` scene change while on stage.
-    SceneChange,
+    SceneChange { line: u32 },
 }
 
 impl StageState {
@@ -144,6 +149,8 @@ impl StageState {
     ///   must-present, so staging them after the join warns (may-absent →
     ///   `W-STAGE-ABSENT`), exactly as a fact asserted on only some arms is
     ///   not must-set. The first arm's departure names the cause.
+    /// * `maybe_on_stage`: every character on stage (or maybe on stage) in
+    ///   some arm that the join does not carry as present (dsl 0.23.1).
     /// * `bg`/`music` carry only when identical across arms.
     ///
     /// Arms' diagnostics concatenate in arm order. No arms → `entry`.
@@ -172,6 +179,13 @@ impl StageState {
         for e in &exits {
             for (ch, how) in &e.exited {
                 joined.exited.entry(ch.clone()).or_insert(*how);
+            }
+        }
+        for e in &exits {
+            for ch in e.on_stage.keys().chain(&e.maybe_on_stage) {
+                if !joined.on_stage.contains_key(ch) {
+                    joined.maybe_on_stage.insert(ch.clone());
+                }
             }
         }
         joined.bg = if exits.iter().all(|e| e.bg == first.bg) {
@@ -287,16 +301,14 @@ fn lower_auto(
         // earlier exit — `exited`, never `!on_stage` — so a first-ever `::auto`
         // exit for a character nothing staged is not the finding and is silent.
         if let Some(how) = state.exited.get(&character).copied() {
-            state.diags.push(stage_absent_diag(
-                &character,
-                how,
-                "another declared exit",
-                d.span,
-            ));
+            state
+                .diags
+                .push(stage_absent_diag(&character, how, Staged::Exit, d.span));
         }
         state.on_stage.remove(&character);
+        state.maybe_on_stage.remove(&character);
         state.dirty.remove(&character);
-        state.exited.insert(character, Departure::Exit);
+        state.exited.insert(character, Departure::Exit { line: d.span.line });
         return;
     }
 
@@ -456,7 +468,7 @@ fn lower_line(
     if let Some(how) = state.exited.get(speaker).copied() {
         state
             .diags
-            .push(stage_absent_diag(speaker, how, "a spoken line", line.span));
+            .push(stage_absent_diag(speaker, how, Staged::Line, line.span));
     }
 
     if !stateful && state.dirty.contains(speaker) && state.on_stage.contains_key(speaker) {
@@ -487,9 +499,24 @@ fn lower_line(
 /// auto-hide every sprite left on stage — the one implicit command this rule
 /// emits — then clear the stage and record the new background. An auto-hidden
 /// character is recorded as exited (dsl 0.22.0 §12), so a later line by them
-/// without a re-show is `W-STAGE-ABSENT` like one after a declared exit.
+/// without a re-show is `W-STAGE-ABSENT` like one after a declared exit. A
+/// character on stage on only SOME path here is hidden too (seven F7, dsl
+/// 0.23.1): on the paths where they are, their sprite must not survive the cut.
 fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<InjectedCommand>) {
-    for character in state.on_stage.keys().cloned().collect::<Vec<_>>() {
+    let maybe = std::mem::take(&mut state.maybe_on_stage);
+    let present: Vec<String> = state.on_stage.keys().cloned().collect();
+    for (character, some_paths) in present
+        .into_iter()
+        .map(|c| (c, false))
+        .chain(maybe.into_iter().map(|c| (c, true)))
+    {
+        let explanation = if some_paths {
+            format!(
+                "auto-hiding `{character}`, on stage on some paths to here, across a scene change"
+            )
+        } else {
+            format!("auto-hiding `{character}` left on stage across a scene change")
+        };
         emit.push(InjectedCommand {
             kind: InjectKind::Hide {
                 character: character.clone(),
@@ -497,12 +524,14 @@ fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<In
             provenance: Provenance {
                 injected: true,
                 by: "stage-bookkeeping".to_string(),
-                explanation: format!(
-                    "auto-hiding `{character}` left on stage across a scene change"
-                ),
+                explanation,
             },
         });
-        state.exited.insert(character, Departure::SceneChange);
+        // A declared exit on some path stays the named cause.
+        state
+            .exited
+            .entry(character)
+            .or_insert(Departure::SceneChange { line: d.span.line });
     }
     state.on_stage.clear();
     state.dirty.clear();
@@ -524,6 +553,7 @@ fn stage_bookkeeping_show(
         attr_str(&d.attrs, "anchor").or_else(|| default_anchor(domains).map(str::to_string));
     // A re-show ends the absence §11.2 warns about.
     state.exited.remove(character);
+    state.maybe_on_stage.remove(character);
     state.on_stage.insert(
         character.to_string(),
         SpriteState {
@@ -682,26 +712,50 @@ fn exit_inert_diag(speaker: &str, action: &str, span: Span) -> Diagnostic {
 /// **D-X**) or a `::bg` auto-hide, on some path reaching it (dsl 0.22.0 §12).
 pub const W_STAGE_ABSENT: &str = "W-STAGE-ABSENT";
 
-/// Build the `W-STAGE-ABSENT` staging-layer warning. `what` names the event —
-/// `"a spoken line"` or `"another declared exit"`.
+/// The staging event `W-STAGE-ABSENT` is about.
+#[derive(Clone, Copy)]
+enum Staged {
+    /// A spoken line.
+    Line,
+    /// Another declared exit — it does nothing (lamplight N15).
+    Exit,
+}
+
+/// Build the `W-STAGE-ABSENT` staging-layer warning for `what` by a
+/// character who left the stage `how`.
 ///
 /// **D-X** keeps this separate from [`W_EXIT_INERT`]: they are different
 /// claims. One says an attribute does not do what it looks like; this one says
 /// the staging is impossible. `--deny <CODE>` must be able to separate them.
-fn stage_absent_diag(character: &str, how: Departure, what: &str, span: Span) -> Diagnostic {
-    let left = match how {
-        Departure::Exit => "left the stage on an earlier declared exit",
-        Departure::SceneChange => "was auto-hidden by an earlier `::bg` scene change",
+fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) -> Diagnostic {
+    let message = match (what, how) {
+        (Staged::Line, Departure::Exit { line }) => format!(
+            "`{character}` left the stage on an earlier declared exit (line {line}) on a path \
+             that reaches here and has not been shown again, so a spoken line here stages \
+             someone who is not present. Show them again with an `::auto` before this point, or \
+             remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)"
+        ),
+        (Staged::Line, Departure::SceneChange { line }) => format!(
+            "`{character}` was auto-hidden by an earlier `::bg` scene change (line {line}) on a \
+             path that reaches here and has not been shown again, so a spoken line here stages \
+             someone who is not present. Show them again with an `::auto` after the `::bg` (dsl \
+             0.10.0 §11.2, 0.22.0 §12)"
+        ),
+        (Staged::Exit, Departure::Exit { line }) => format!(
+            "`{character}` already left on the declared exit at line {line} on a path that \
+             reaches here and has not been shown again, so this exit does nothing. Delete it, \
+             or show them again with an `::auto` before it (dsl 0.10.0 §11.2)"
+        ),
+        (Staged::Exit, Departure::SceneChange { line }) => format!(
+            "`{character}` is already off stage (hidden by the `::bg` at line {line}) on a path \
+             that reaches here, so this exit does nothing. Move it before the `::bg`, or delete \
+             it (dsl 0.10.0 §11.2, 0.22.0 §12)"
+        ),
     };
     Diagnostic {
         code: W_STAGE_ABSENT.to_string(),
         severity: Severity::Warning,
-        message: format!(
-            "`{character}` {left} on a path that reaches here and has not been shown again, \
-             so {what} here stages someone who is not present. Show them again with an \
-             `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2, \
-             0.22.0 §12)"
-        ),
+        message,
         span,
         layer: Layer::Staging,
         fixits: Vec::new(),
@@ -1487,12 +1541,32 @@ mod tests {
         let stayed = entry.clone();
         let joined = StageState::join(&entry, vec![stayed.clone(), left]);
         assert!(!joined.on_stage.contains_key("vesna"));
-        assert_eq!(joined.exited.get("vesna"), Some(&Departure::Exit));
+        assert!(matches!(joined.exited.get("vesna"), Some(Departure::Exit { .. })));
         let (after, _) = lower_node(joined, &plain_line("vesna"), &[], &doms);
         assert!(after.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"));
 
         let both = StageState::join(&entry, vec![stayed.clone(), stayed]);
         assert!(both.on_stage.contains_key("vesna") && both.exited.is_empty());
         assert!(StageState::join(&entry, Vec::new()).on_stage.contains_key("vesna"));
+    }
+
+    /// seven F7 (dsl 0.23.1): on stage in only one arm, then a `::bg` — the
+    /// scene change still hides her (the path where she stayed must not carry
+    /// her sprite through the cut), and records the auto-hide.
+    #[test]
+    fn a_bg_after_a_partial_join_hides_the_maybe_present_character() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let entry = StageState::default();
+        let shown = staged("pell");
+        let joined = StageState::join(&entry, vec![shown, entry.clone()]);
+        assert!(!joined.on_stage.contains_key("pell"));
+        assert!(joined.maybe_on_stage.contains("pell"));
+        let (st, hid) = lower_node(joined, &bg("slipway"), &[], &doms);
+        assert!(
+            matches!(&hid[..], [InjectedCommand { kind: InjectKind::Hide { character }, .. }] if character == "pell"),
+            "{hid:?}"
+        );
+        assert!(st.maybe_on_stage.is_empty());
+        assert!(matches!(st.exited.get("pell"), Some(Departure::SceneChange { .. })));
     }
 }

@@ -1082,6 +1082,7 @@ state:
                 objective: None,
                 reward,
                 on_failed,
+                ..
             } if quest == "parentQ" => Some((reward.kind.as_str(), *on_failed)),
             _ => None,
         })
@@ -1103,6 +1104,7 @@ state:
                 objective: None,
                 reward,
                 on_failed,
+                ..
             } if quest == "childQ" => Some((reward.kind.as_str(), *on_failed)),
             _ => None,
         })
@@ -1485,6 +1487,91 @@ fn a_by_never_fails_a_done_objective() {
     assert_eq!(objective_outcomes(&report.decisions, "early"), ["done"]);
     assert!(objective_outcomes(&report.decisions, "slow").contains(&"failed"));
     assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 0);
+}
+
+#[test]
+fn an_on_objectives_deadline_is_judged_only_at_its_raise_after_done() {
+    // lamplight N2: `run.late` is true from the start. The `on="tick"`
+    // objective's `by` is not judged continuously — without the raise it
+    // neither completes nor fails — and at the raise `done` (also true)
+    // wins the tie.
+    let input = deadline_input(
+        "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.early\" by=\"run.late\"/>\n",
+    );
+    let (report, _) = trace_document(&input, MockSet::default());
+    assert!(objective_outcomes(&report.decisions, "named").is_empty(), "{:?}", report.decisions);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 0);
+    let raise = MockSet {
+        occasions: vec!["tick".to_string()],
+        ..Default::default()
+    };
+    let (report, exit) = trace_document(&input, raise.clone());
+    assert_complete(&exit);
+    assert_eq!(objective_outcomes(&report.decisions, "named"), ["done"]);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "complete"), 1);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 0);
+
+    // Not done at the raise: the deadline fails it there, and the quest.
+    let input = deadline_input(
+        "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.got\" by=\"run.late\"/>\n",
+    );
+    let (report, _) = trace_document(&input, raise);
+    assert_eq!(objective_outcomes(&report.decisions, "named"), ["pending", "failed"]);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 1);
+    assert!(has_line_containing(&report.steps, "Too late."));
+}
+
+#[test]
+fn a_fresh_done_walks_the_objective_body_once() {
+    // ashen N4 / seven N13: trace plays the completion body as play does.
+    let input = deadline_input(
+        "<objective id=\"main\" title=\"Main\" done=\"run.early\">\n\
+         @narrator: The maul-head is heavy.\n\
+         </objective>\n",
+    );
+    let mocks = MockSet {
+        events: vec!["bell".to_string()],
+        ..Default::default()
+    };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    let bodies = report
+        .steps
+        .iter()
+        .filter(|s| matches!(s, Step::Line { text, .. } if text.contains("maul-head")))
+        .count();
+    assert_eq!(bodies, 1, "{:?}", report.steps);
+    assert!(report.render_human().contains("The maul-head is heavy."));
+}
+
+#[test]
+fn a_grant_credits_its_kinds_path_as_play_does() {
+    // lamplight N4 / ashen N4: `rewardKinds.CASE.credits: user.cases`.
+    let text = "---\nkind: quest\ntitle: Credit\nstate:\n  \
+                user.cases: { type: number, default: 2 }\n---\n\n\
+                <quest id=\"q\" title=\"Q\" start=\"true\">\n\
+                <objective id=\"o\" title=\"O\" done=\"true\"/>\n\
+                <reward kind=\"CASE\" amount=\"3\"/>\n\
+                </quest>\n";
+    let mut input = input_for(text, "credit.lute", Path::new("."));
+    input.snapshot.reward_kinds.insert(
+        "CASE".to_string(),
+        lute_manifest::schema::RewardKindDecl {
+            name: "CASE".to_string(),
+            credits: Some("user.cases".to_string()),
+            ..Default::default()
+        },
+    );
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+    assert_eq!(report.final_state.get("user.cases").map(String::as_str), Some("5"));
+    let credited = report.steps.iter().find_map(|s| match s {
+        Step::Grant { credited, .. } => credited.clone(),
+        _ => None,
+    });
+    let credited = credited.expect("the grant credits its path");
+    assert_eq!((credited.path.as_str(), credited.value.as_str()), ("user.cases", "5"));
+    assert!(report.render_human().contains("(credits user.cases = 5)"));
 }
 
 fn targeted_fixture() -> &'static str {

@@ -225,9 +225,10 @@ enum Atom {
     },
 }
 
-/// An owned [`HoldsVerdict`]; a guaranteed query carries its reason.
+/// An owned [`HoldsVerdict`]; a guaranteed query carries its reason, an
+/// impossible one the stable fact that defeats it, if any.
 enum HoldsOutcome {
-    Impossible,
+    Impossible(Option<String>),
     Guaranteed(String),
     Possible,
 }
@@ -275,8 +276,8 @@ impl SlotVerdict {
             .filter_map(|a| match a {
                 Atom::Holds {
                     pattern,
-                    verdict: HoldsOutcome::Impossible,
-                } => Some(impossible_reason(pattern)),
+                    verdict: HoldsOutcome::Impossible(defeat),
+                } => Some(defeat.clone().unwrap_or_else(|| impossible_reason(pattern))),
                 Atom::Holds {
                     verdict: HoldsOutcome::Guaranteed(reason),
                     ..
@@ -445,7 +446,9 @@ impl<'a> Guards<'a> {
         };
         if v.newly_false() {
             if !self.sentinel_owns(slot, dollar) {
-                out.push(dead(&v));
+                // dsl 0.23.0 §10: `--wip` grades a dead arm, choice, gated
+                // line, or `::next` like every other dead guard.
+                out.push(v.grade(dead(&v)));
             }
         } else if warn_guaranteed {
             self.push_guaranteed(&v, "guard", slot, out);
@@ -703,7 +706,18 @@ fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, out: &mut Vec<Atom>) {
                     if let (Some(scope), Expr::Call(p)) = (&ctx.facts, &c.args[0].expr) {
                         if let Some(pattern) = QueryPattern::from_call(p) {
                             let verdict = match scope.holds(&pattern) {
-                                HoldsVerdict::Impossible => HoldsOutcome::Impossible,
+                                HoldsVerdict::Impossible => {
+                                    HoldsOutcome::Impossible(scope.defeat(&pattern).map(
+                                        |(head, denied)| {
+                                            format!(
+                                                "`{head}` can only come from a rule that needs \
+                                                 `not {denied}`, and `{denied}` holds throughout \
+                                                 every run (a seed nothing removes, or derived \
+                                                 from such seeds)"
+                                            )
+                                        },
+                                    ))
+                                }
                                 HoldsVerdict::Guaranteed(m) => {
                                     HoldsOutcome::Guaranteed(guaranteed_reason(m))
                                 }

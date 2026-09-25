@@ -495,7 +495,9 @@ enum Command {
     /// `lute run`'s evaluator), orders the eligible ones by priority then
     /// index order, presents the winner (or the step's `pick` on a `select:
     /// all` occasion) with the reference runner, and advances every quest
-    /// lifecycle. Exit `0` a complete walk (every step, or a `::end`), `1` a
+    /// lifecycle. A `::end` ends the presentation it runs in; the play goes
+    /// on with the next step — a step `end: true` ends the playthrough.
+    /// Exit `0` a complete walk, `1` a
     /// failed project compile or an ineligible `pick`, `2` an I/O/usage
     /// failure (a malformed script, an unknown occasion), `3` an incomplete
     /// walk (an unscripted choice/hub, or a `when`/effect this reference
@@ -522,6 +524,11 @@ enum Command {
         /// rule that could conclude it (repeatable, dsl 0.22.0 §6).
         #[arg(long, value_name = "ATOM")]
         explain: Vec<String>,
+        /// Print staging as the lowered IR records (`::background`,
+        /// `::sprite`, injected preloads and pose resets) instead of the
+        /// authored directives (`::bg`, `::auto`, …).
+        #[arg(long)]
+        ir: bool,
     },
     /// Run the project's scenario tests: every `*.test.yaml` under `dir`
     /// traces its scene (or, with `entry:`/`entries:`, presents its lore
@@ -625,33 +632,46 @@ enum Command {
     },
     /// Evaluate beat eligibility over a grid of state values (dsl 0.23.0
     /// §1): for every cell of the `--axis` product, starting from the
-    /// `--script` save (or the declared defaults), the winner and the
-    /// eligible beats it shadows for every listed occasion — play's own
-    /// eligibility, no presentation. Beats never eligible in any cell are
-    /// listed at the end. Exit `0` on success, `1` when the project does not
-    /// compile, `2` on an I/O or usage failure.
+    /// `--script` (its save, then its steps replayed) or the declared
+    /// defaults, the winner and the eligible beats it shadows for every
+    /// listed occasion — play's own eligibility, no presentation. Beats
+    /// never eligible in any cell are listed at the end. Exit `0` on
+    /// success, `1` when the project does not compile, `2` on an I/O or
+    /// usage failure (including an axis that cannot be applied).
     Calendar {
         /// Project directory (`lute.project.yaml`).
         dir: PathBuf,
         /// One grid axis: a declared state path and its values, an
         /// inclusive integer range `run.day=1..7` or a list
-        /// `run.slot=morning,afternoon,night` (repeatable; the first axis
-        /// varies slowest).
-        #[arg(long, value_name = "PATH=VALUES", required = true, value_parser = play::calendar::parse_axis_flag)]
+        /// `run.slot=morning,afternoon,night`; `quest.<id>.state=…` seeds
+        /// the quest's status, `holds(<fact>)=true,false` asserts or
+        /// retracts a base fact (repeatable; the first axis varies slowest).
+        #[arg(long, value_name = "PATH=VALUES", value_parser = play::calendar::parse_axis_flag)]
         axis: Vec<(String, Vec<String>)>,
         /// An occasion to evaluate (repeatable; default: every occasion a
         /// beat answers).
         #[arg(long, value_name = "OCCASION")]
         occasion: Vec<String>,
         /// A target to raise targeted occasions for (repeatable; default:
-        /// the occasion's declared domain, else every target its beats name).
+        /// every target the occasion's beats name).
         #[arg(long, value_name = "TARGET")]
         target: Vec<String>,
-        /// A play script whose save (`state:`/`facts:`/`visited:`/
-        /// `presented:`/`quests:`/`entriesRead:`, dsl 0.22.0 §3) every cell
-        /// starts from; its `steps:` are not played and may be omitted.
+        /// A play script: every cell starts from its save
+        /// (`state:`/`facts:`/`visited:`/`presented:`/`quests:`/
+        /// `entriesRead:`, dsl 0.22.0 §3) with its `steps:` replayed as
+        /// `lute play` plays them.
         #[arg(long, value_name = "FILE")]
         script: Option<PathBuf>,
+        /// Replay the `--script` only up to this step — a 1-based step
+        /// number or a step `label:` — and evaluate from the state that
+        /// step starts from (the step itself is not played).
+        #[arg(long, value_name = "STEP", requires = "script")]
+        until: Option<String>,
+        /// Keep only the cells where this CEL condition holds (evaluated
+        /// over the cell's state after the axes are applied) — prunes
+        /// combinations of independent axes no run can reach.
+        #[arg(long = "where", value_name = "CEL")]
+        where_: Option<String>,
         /// Emit the grid as JSON.
         #[arg(long, conflicts_with = "csv")]
         json: bool,
@@ -679,8 +699,10 @@ enum ScenarioCommand {
     /// Report a node's reachability verdict (Reachable/Unreachable/Unknown,
     /// T6) plus its declared `after` prerequisite structure (dsl §5:575).
     Reach {
-        /// A scene's canonical key (e.g. `marina.s01ep02`), or `quest:<id>`
-        /// for a quest (dsl §4.4's `envelope quest:<id>` syntax).
+        /// A scene's canonical key (e.g. `marina.s01ep02`), a bundle beat's
+        /// `<document id>.<beat id>`, or `quest:<id>` for a quest (dsl
+        /// §4.4's `envelope quest:<id>` syntax); `scene:`/`beat:` prefixes
+        /// disambiguate.
         node_id: String,
     },
     /// Report the Guaranteed/Possible envelope tables for a node (T10) —
@@ -689,7 +711,8 @@ enum ScenarioCommand {
     /// prints the `Possible \ Guaranteed` warning-grade reads for the node
     /// (dsl §6) — suppressed by default in `check-project`, surfaced here.
     Envelope {
-        /// A scene's canonical key, or `quest:<id>` for a quest.
+        /// A scene's canonical key, a bundle beat's `<document id>.<beat
+        /// id>`, or `quest:<id>` for a quest.
         node_id: String,
     },
     /// Trace every fact-guarded beat, entry and objective to the relations
@@ -963,6 +986,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-QUEST-REF-UNKNOWN",
     "E-QUEST-RESERVED-DECL",
     "E-QUEST-RESERVED-WRITE",
+    "E-QUEST-TIER-MIX",
     "E-QUEST-TREE-CYCLE",
     "E-QUEST-UNREACHABLE",
     "E-REF-ARG-TYPE",
@@ -993,6 +1017,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-TAG-INLINE-BODY",
     "E-TAG-NOT-ONE-LINE",
     "E-TEMPORAL-ARG",
+    "E-TEST-FILE",
     "E-TEST-KEY",
     "E-TEST-LORE",
     "E-TEST-NO-EXPECT",
@@ -1284,7 +1309,8 @@ fn main() -> ExitCode {
             json,
             no_derive,
             explain,
-        } => play::run_play(&dir, &script, json, no_derive, &explain),
+            ir,
+        } => play::run_play(&dir, &script, json, no_derive, &explain, ir),
         Command::Test {
             dir,
             json,
@@ -1326,16 +1352,22 @@ fn main() -> ExitCode {
             occasion,
             target,
             script,
+            until,
+            where_,
             json,
             csv,
         } => play::calendar::run_calendar(
             &dir,
-            &axis,
-            &occasion,
-            &target,
-            script.as_deref(),
-            json,
-            csv,
+            &play::calendar::CalendarArgs {
+                axes: &axis,
+                occasions: &occasion,
+                targets: &target,
+                script: script.as_deref(),
+                until: until.as_deref(),
+                where_: where_.as_deref(),
+                json,
+                csv,
+            },
         ),
         Command::Version { json } => run_version(json),
     }
@@ -2369,6 +2401,9 @@ fn compute_conn_fixpoint(
     for (_path, _doc, folded) in group_full {
         root_vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
+    // seven F3: a document whose frontmatter does not parse may produce facts
+    // nothing here can see — no guard is dead for want of them.
+    root_vocab.note_unreadable_documents(group);
     // dsl 0.23.0 §9: seeds nothing can remove — a negated rule atom over one
     // of them never holds.
     let stable = lute_check::stable_seeds(group, &root_vocab);
@@ -3384,28 +3419,34 @@ fn gate_for_doc(
 // the omission of diagnostics, differ).
 // ===========================================================================
 
-/// A bare scene-key, `quest:<id>`, or `scene:<key>` node reference, parsed
-/// from a `scenario reach`/`scenario envelope` CLI argument (dsl §4.4's
-/// `envelope quest:<id>` syntax; `scene:<key>` is this branch's symmetric
-/// counterpart -- see [`resolve_node_ref`]'s doc comment for why both
-/// explicit prefixes exist).
+/// A bare scene-key, `quest:<id>`, `scene:<key>`, or `beat:<doc>.<beat>`
+/// node reference, parsed from a `scenario reach`/`scenario envelope` CLI
+/// argument (dsl §4.4's `envelope quest:<id>` syntax; `scene:<key>` and
+/// `beat:<key>` are its symmetric counterparts -- see [`resolve_node_ref`]'s
+/// doc comment for why explicit prefixes exist).
 enum NodeRef {
     Scene(String),
     Quest(String),
+    /// A bundle beat's canonical id (dsl 0.23.0 §4).
+    Beat(String),
 }
 
-/// Parse an EXPLICIT `quest:<id>` / `scene:<key>` prefix only -- `None` for
-/// a bare (unprefixed) string, which [`resolve_node_ref`] resolves against
-/// actual project candidates instead of guessing. An explicit prefix is
-/// always authoritative: `quest:foo` is ALWAYS a quest lookup and
-/// `scene:foo` is ALWAYS a scene lookup, never re-tried as the other kind
-/// (that would silently paper over a genuine "no such quest" typo).
+/// Parse an EXPLICIT `quest:<id>` / `scene:<key>` / `beat:<key>` prefix
+/// only -- `None` for a bare (unprefixed) string, which [`resolve_node_ref`]
+/// resolves against actual project candidates instead of guessing. An
+/// explicit prefix is always authoritative: `quest:foo` is ALWAYS a quest
+/// lookup and `scene:foo` is ALWAYS a scene lookup, never re-tried as
+/// another kind (that would silently paper over a genuine "no such quest"
+/// typo).
 fn parse_node_ref_prefix(raw: &str) -> Option<NodeRef> {
     if let Some(id) = raw.strip_prefix("quest:") {
         return Some(NodeRef::Quest(id.to_string()));
     }
     if let Some(key) = raw.strip_prefix("scene:") {
         return Some(NodeRef::Scene(key.to_string()));
+    }
+    if let Some(key) = raw.strip_prefix("beat:") {
+        return Some(NodeRef::Beat(key.to_string()));
     }
     None
 }
@@ -3414,6 +3455,7 @@ fn node_ref_to_id(node: &NodeRef) -> lute_check::connectivity::NodeId {
     match node {
         NodeRef::Scene(key) => lute_check::connectivity::NodeId::Scene(key.clone()),
         NodeRef::Quest(id) => lute_check::connectivity::NodeId::Quest(id.clone()),
+        NodeRef::Beat(key) => lute_check::connectivity::NodeId::Beat(key.clone()),
     }
 }
 
@@ -3430,6 +3472,10 @@ struct RootScenario {
     tainted: BTreeSet<lute_check::connectivity::NodeId>,
     reads_per_scene: BTreeMap<String, Vec<(String, Span)>>,
     key_set: BTreeMap<String, Vec<(PathBuf, Span)>>,
+    /// Every bundle beat's canonical id (dsl 0.23.0 §4) with its
+    /// declarations — each is a [`lute_check::connectivity::NodeId::Beat`]
+    /// graph node (lamplight N8, ashen N9).
+    beat_keys: BTreeMap<String, Vec<(PathBuf, Span)>>,
     quest_ids: BTreeSet<String>,
     ambiguous_quests: BTreeSet<String>,
     unreachable_quests: BTreeSet<String>,
@@ -3480,6 +3526,7 @@ fn assemble_root_scenario(
         .collect();
     let key_set = lute_check::connectivity::scene_key_set(&docs);
     let quest_ids = lute_check::connectivity::quest_id_set(&docs);
+    let beat_keys = lute_check::connectivity::bundle_beat_key_set(&docs);
     let (graph, _cycle_diags) =
         lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
     // T7/T14/Fix2 wiring: shares `compute_conn_fixpoint`'s finite-fixpoint
@@ -3568,6 +3615,7 @@ fn assemble_root_scenario(
         tainted,
         reads_per_scene,
         key_set,
+        beat_keys,
         quest_ids,
         ambiguous_quests,
         unreachable_quests,
@@ -3600,6 +3648,10 @@ fn find_matching_roots<'a>(
         let present = match node {
             NodeRef::Scene(key) => scenario.key_set.contains_key(key),
             NodeRef::Quest(id) => scenario.quest_ids.contains(id),
+            NodeRef::Beat(key) => scenario
+                .graph
+                .nodes
+                .contains_key(&lute_check::connectivity::NodeId::Beat(key.clone())),
         };
         if present {
             out.push((root, scenario));
@@ -3758,6 +3810,9 @@ fn print_prereq_structure(out: &mut String, scenario: &RootScenario, node: &lute
                  layer and on no edge; it is available from the start of play."
             );
         }
+        _ if matches!(node, lute_check::connectivity::NodeId::Beat(_)) => {
+            print_bundle_beat_selection(out, scenario, node);
+        }
         None | Some(PrereqState::Absent) => {
             outln!(out, "  after: (none declared) — this node is an entry point.");
         }
@@ -3786,6 +3841,53 @@ fn print_prereq_structure(out: &mut String, scenario: &RootScenario, node: &lute
                     outln!(out, "    - {target}: {}", reach_verdict_text(scenario, target));
                 }
             }
+        }
+    }
+}
+
+/// A bundle beat's reach report (dsl 0.23.0 §4): it has no `after` surface,
+/// so it is an entry node; what selects it is its occasion, target and
+/// `when`, printed as authored so the reader sees why it is on the graph.
+fn print_bundle_beat_selection(
+    out: &mut String,
+    scenario: &RootScenario,
+    node: &lute_check::connectivity::NodeId,
+) {
+    outln!(
+        out,
+        "  after: (a bundle beat declares no `after`) — an entry node: it plays when its occasion \
+         is raised and its `when` holds."
+    );
+    let Some(info) = scenario.graph.nodes.get(node) else {
+        return;
+    };
+    let lute_check::connectivity::NodeId::Beat(key) = node else {
+        return;
+    };
+    let beat = scenario
+        .docs
+        .iter()
+        .filter(|(p, _)| *p == info.path)
+        .flat_map(|(_, d)| {
+            let doc_id = lute_check::connectivity::bundle_id(d);
+            d.beats.iter().map(move |b| (doc_id.clone(), b))
+        })
+        .find(|(doc_id, b)| {
+            doc_id
+                .as_deref()
+                .is_some_and(|d| lute_check::bundles::bundle_beat_key(d, &b.id) == *key)
+        })
+        .map(|(_, b)| b);
+    outln!(out, "  declared in: {}", info.path.display());
+    if let Some(beat) = beat {
+        if let Some((on, _)) = &beat.on {
+            outln!(out, "  on: {on}");
+        }
+        if let Some((target, _)) = &beat.target {
+            outln!(out, "  target: {target}");
+        }
+        if let Some(when) = &beat.when {
+            outln!(out, "  when: {}", when.raw);
         }
     }
 }
@@ -3850,18 +3952,17 @@ fn resolve_unique_root<'a>(
 /// `quest:` (e.g. `character: "quest:foo"`). Unconditionally reserving
 /// that prefix for quest lookups (the original design) would make such a
 /// scene permanently unselectable. The fix:
-/// - An EXPLICIT `quest:<id>` / `scene:<key>` prefix ([`parse_node_ref_prefix`])
-///   is always authoritative — never re-tried as the other kind.
+/// - An EXPLICIT `quest:<id>` / `scene:<key>` / `beat:<key>` prefix
+///   ([`parse_node_ref_prefix`]) is always authoritative — never re-tried as
+///   another kind.
 /// - A BARE (unprefixed) string is resolved against ACTUAL project
-///   candidates: if it matches a declared scene key in some root, and/or
-///   a declared quest id in some root. Exactly one kind matching → use
-///   it (the overwhelmingly common case — no prefix needed at all).
-///   BOTH kinds matching (some root has a scene key AND some root/the
-///   same root has a quest id, both equal to the raw string) is
-///   genuinely ambiguous — neither is silently preferred; the user is
-///   told to disambiguate with an explicit prefix (mirrors
-///   [`primary_node_ambiguity_note`]'s honesty pattern: never silently
-///   pick one candidate over another equally-valid one).
+///   candidates: a declared scene key, a declared quest id, or a bundle
+///   beat's canonical id (dsl 0.23.0 §4) in some root. Exactly one kind
+///   matching → use it (the overwhelmingly common case — no prefix needed
+///   at all). Two or more kinds matching is genuinely ambiguous — none is
+///   silently preferred; the user is told to disambiguate with an explicit
+///   prefix (mirrors [`primary_node_ambiguity_note`]'s honesty pattern:
+///   never silently pick one candidate over another equally-valid one).
 fn resolve_node_ref<'a>(
     dir: &Path,
     by_root: &'a ByRoot,
@@ -3872,24 +3973,51 @@ fn resolve_node_ref<'a>(
         return resolve_unique_root(dir, by_root, file_results, &explicit, node_id_raw)
             .map(|(root, scenario)| (explicit, root, scenario));
     }
-    let scene_ref = NodeRef::Scene(node_id_raw.to_string());
-    let quest_ref = NodeRef::Quest(node_id_raw.to_string());
-    let scene_matches = find_matching_roots(by_root, file_results, &scene_ref);
-    let quest_matches = find_matching_roots(by_root, file_results, &quest_ref);
-    match (scene_matches.is_empty(), quest_matches.is_empty()) {
-        (false, true) => pick_unique_root(scene_matches, dir, node_id_raw)
-            .map(|(root, scenario)| (scene_ref, root, scenario)),
-        (true, false) => pick_unique_root(quest_matches, dir, node_id_raw)
-            .map(|(root, scenario)| (quest_ref, root, scenario)),
-        (true, true) => {
+    let raw = node_id_raw.to_string();
+    let mut found: Vec<(NodeRef, Vec<(&'a PathBuf, RootScenario)>)> = [
+        NodeRef::Scene(raw.clone()),
+        NodeRef::Quest(raw.clone()),
+        NodeRef::Beat(raw),
+    ]
+    .into_iter()
+    .map(|r| {
+        let matches = find_matching_roots(by_root, file_results, &r);
+        (r, matches)
+    })
+    .filter(|(_, matches)| !matches.is_empty())
+    .collect();
+    match found.len() {
+        0 => {
             eprintln!("lute: unknown node `{node_id_raw}` under {}", dir.display());
             Err(ExitCode::from(2))
         }
-        (false, false) => {
+        1 => {
+            let (node_ref, matches) = found.pop().expect("len == 1");
+            pick_unique_root(matches, dir, node_id_raw)
+                .map(|(root, scenario)| (node_ref, root, scenario))
+        }
+        _ => {
+            let kinds: Vec<&str> = found
+                .iter()
+                .map(|(r, _)| match r {
+                    NodeRef::Scene(_) => "a scene key",
+                    NodeRef::Quest(_) => "a quest id",
+                    NodeRef::Beat(_) => "a bundle beat id",
+                })
+                .collect();
+            let prefixes: Vec<String> = found
+                .iter()
+                .map(|(r, _)| match r {
+                    NodeRef::Scene(_) => format!("`scene:{node_id_raw}`"),
+                    NodeRef::Quest(_) => format!("`quest:{node_id_raw}`"),
+                    NodeRef::Beat(_) => format!("`beat:{node_id_raw}`"),
+                })
+                .collect();
             eprintln!(
-                "lute: node `{node_id_raw}` matches BOTH a scene key and a quest id in this \
-                 project -- ambiguous (neither is silently preferred); disambiguate with an \
-                 explicit `scene:{node_id_raw}` or `quest:{node_id_raw}` prefix",
+                "lute: node `{node_id_raw}` matches {} in this project -- ambiguous (none is \
+                 silently preferred); disambiguate with an explicit {} prefix",
+                kinds.join(" and "),
+                prefixes.join(" or "),
             );
             Err(ExitCode::from(2))
         }
@@ -3929,6 +4057,17 @@ fn primary_node_ambiguity_note(scenario: &RootScenario, node_ref: &NodeRef) -> O
                  this project root, so a single reach/envelope report cannot be given."
             )
         }),
+        NodeRef::Beat(key) => {
+            let occurrences = scenario.beat_keys.get(key)?;
+            (occurrences.len() > 1).then(|| {
+                format!(
+                    "ambiguous bundle beat id (E-CONN-EPISODE-ID-DUP): `{key}` is declared by {} \
+                     different lore documents in this project root, so a single reach/envelope \
+                     report cannot be given.",
+                    occurrences.len()
+                )
+            })
+        }
     }
 }
 
@@ -4188,16 +4327,24 @@ fn print_cycle_envelope_note(out: &mut String) {
 /// to `key` so every returned diagnostic necessarily belongs to this node,
 /// and keeps the warning grade instead. Never a second classification pass
 /// — `check_envelope` is reused verbatim, never re-implemented.
-fn print_scene_envelope(out: &mut String, scenario: &RootScenario, key: &str, root: &Path) {
-    let node_id = lute_check::connectivity::NodeId::Scene(key.to_string());
+///
+/// A bundle beat (`node_id` a `NodeId::Beat`) prints through here too: an
+/// edgeless entry node, so its tables are the entry floor.
+fn print_scene_envelope(
+    out: &mut String,
+    scenario: &RootScenario,
+    node_id: &lute_check::connectivity::NodeId,
+    key: &str,
+    root: &Path,
+) {
     outln!(out, 
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
          before its own writes):"
     );
-    if node_cycle_degraded(scenario, &node_id) {
+    if node_cycle_degraded(scenario, node_id) {
         print_cycle_envelope_note(out);
     }
-    if scenario.tainted.contains(&node_id) {
+    if scenario.tainted.contains(node_id) {
         outln!(out, 
             "  note: this node's envelope is a defaults-only placeholder -- its `after` \
              formula is malformed or references an unresolved node (E-CONN-PROFILE/\
@@ -4206,13 +4353,13 @@ fn print_scene_envelope(out: &mut String, scenario: &RootScenario, key: &str, ro
     }
     let env = scenario
         .envs
-        .get(&node_id)
+        .get(node_id)
         .cloned()
         .unwrap_or_else(|| envelope::Env {
             guaranteed: scenario.envelope_d.clone(),
             possible: scenario.envelope_d.clone(),
         });
-    let writers = writers_of(scenario, &node_id);
+    let writers = writers_of(scenario, node_id);
     outln!(out, "  Guaranteed (safe to read under your declared routes):");
     print_path_set_with_writers(out, &env.guaranteed, &writers);
     // T3-15: Possible ⊇ Guaranteed; print only what is new beside the table
@@ -4346,7 +4493,9 @@ fn run_scenario_envelope(
         return ExitCode::SUCCESS;
     }
     match &node_ref {
-        NodeRef::Scene(key) => print_scene_envelope(out, &scenario, key, root),
+        NodeRef::Scene(key) | NodeRef::Beat(key) => {
+            print_scene_envelope(out, &scenario, &node_ref_to_id(&node_ref), key, root)
+        }
         NodeRef::Quest(id) => {
             let Some(quest) = scenario
                 .docs
@@ -6231,7 +6380,7 @@ mod tests {
     /// sortedness still holds without it.
     #[test]
     fn the_harness_own_codes_are_deniable() {
-        for code in ["E-TEST-KEY", "E-TEST-LORE", "E-TEST-NO-EXPECT"] {
+        for code in ["E-TEST-FILE", "E-TEST-KEY", "E-TEST-LORE", "E-TEST-NO-EXPECT"] {
             assert!(
                 DENIABLE_CODES.contains(&code),
                 "{code} is emitted by crates/lute-cli/src/testcmd.rs and MUST be deniable; \

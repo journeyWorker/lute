@@ -376,7 +376,7 @@ $ lute scenario <dir> [--format text|json] knowledge [--for <node>]
 
 List every beat, entry, and quest objective whose condition queries a fact — `holds(…)`, `count(…)`, or `validAt(…)` — and trace each queried atom back to what can produce it. A derived atom is followed **through the rules**, with the rule head's variables bound to the atom's constants, so each premise is shown as the ground atom it needs; a base atom ends at its producers:
 
-- **asserted by** — the scenes, quests, entries and bundle beats whose `::assert` can produce it, with their documents;
+- **asserted by** — the scenes (by scene key), quests, entries and bundle beats (by canonical id `<document id>.<beat id>`) whose `::assert` can produce it, with their documents;
 - **seed facts** — the schema's `facts:` that match it;
 - **reserved** — a `reserved: true` relation: the engine asserts it;
 - **NO PRODUCER** — nothing asserts it, no seed fact, not reserved, no rule. The condition is waiting on content no one has written.
@@ -405,7 +405,7 @@ project root: .
     done: holds(trusted(ada))
     trusted(ada) — derived by 1 rule
       rule: trusted(P) :- met(P), not rumor(P)
-        met(ada) — asserted by scene (scenes/inn/ada.lute)
+        met(ada) — asserted by scene `inn.ada` (scenes/inn/ada.lute)
         not rumor(ada) — NO PRODUCER — nothing asserts it, no seed fact, not reserved, no rule
 
   scene `inn.ada` (scenes/inn/ada.lute)
@@ -417,11 +417,27 @@ project root: .
     when: holds(trusted(ada))
     trusted(ada) — derived by 1 rule
       rule: trusted(P) :- met(P), not rumor(P)
-        met(ada) — asserted by scene (scenes/inn/ada.lute)
+        met(ada) — asserted by scene `inn.ada` (scenes/inn/ada.lute)
         not rumor(ada) — NO PRODUCER — nothing asserts it, no seed fact, not reserved, no rule
 ```
 
 Only the rules that can conclude the queried atom are followed: `dockBo` asks for `present(bo, dock)`, so the rule that places Ada at the inn is not listed under it. `not rumor(ada)` has no producer, so the negation always holds today — the rumour that would make Ada distrust you is a relation declared and never written. Under [`check-project --wip`](/tooling/cli/#check-project), a guard that is dead only because of such a relation is a warning, not an error.
+
+A negated premise the project **can** make false is followed by what would do it. The rule body is instantiated against every fact that may hold in some run (the may set `check-project` decides guards with, here counting every assert site as live), and each fact that matches the negated atom is listed with its producer — or, when it is itself derived, with the premises of one rule instance that derives it. Once a bundle beat writes the rumour:
+
+```console
+        not rumor(ada) — asserted by beat `town.gossip.whisper` (lore/gossip.lute)
+          can be defeated by rumor(ada) [beat `town.gossip.whisper` (lore/gossip.lute)]
+```
+
+A derived defeater names the facts that join to produce it — the clue and the seed that break a deduction:
+
+```console
+            not alibi(solt, _) — derived by 1 rule
+              can be defeated by alibi(solt, tunnel) ⇐ seen(solt, corridor, tunnel) [entry `mirelaMatch` (lore/talk.lute)], away(corridor) [seed]
+```
+
+At most three defeaters are printed per premise, then a count. A negated relation that may hold any tuple (an open argument domain) prints `may be defeated: …` instead.
 
 `--for <node>` selects one element: a scene key (`inn.again`), an entry id (`dockBo`), a quest objective as `<quest>.<objective>` (`ferry.word`), or `quest:<id>` for every objective of a quest. A node that names no fact-guarded element is a usage error (exit 2), with a did-you-mean when one is close:
 

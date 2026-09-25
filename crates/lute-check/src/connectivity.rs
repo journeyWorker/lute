@@ -121,6 +121,16 @@ pub fn scene_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(Path
     by_key
 }
 
+/// One scene document's canonical key — [`scene_key_set`]'s identity for a
+/// single document; `None` for a non-scene or a scene whose identity cannot
+/// be read.
+pub fn scene_key(doc: &Document) -> Option<String> {
+    if resolve_doc_kind(&doc.meta).0 != Some(DocKind::Scene) {
+        return None;
+    }
+    scene_identity(doc).map(|s| s.key)
+}
+
 /// A quest or lore document's authored, well-formed `id:` (dsl 0.19.0
 /// §2.1), read off the raw frontmatter under the same `[A-Za-z0-9_.-]+` gate
 /// as a scene's (a rejected id contributes nothing; its own `E-META-ID`
@@ -547,6 +557,13 @@ pub enum NodeId {
     /// node; the atom they came from is recorded separately as an
     /// [`EdgeKind`] (lang 0.8.0).
     Quest(String),
+    /// A bundle beat (dsl 0.23.0 §4), keyed `<document id>.<beat id>`
+    /// ([`bundle_beat_key_set`]). A bundle beat declares no `after`, so it is
+    /// always an entry node with no edges: `visited(K)` in an `after:` never
+    /// targets it (`E-CONN-UNKNOWN-NODE` names it a bundle beat). It is a node
+    /// so that `lute scenario` draws and answers for every beat a condition
+    /// may `visited()` (lamplight N8, ashen N9).
+    Beat(String),
 }
 
 impl fmt::Display for NodeId {
@@ -554,6 +571,7 @@ impl fmt::Display for NodeId {
         match self {
             NodeId::Scene(key) => write!(f, "scene({key})"),
             NodeId::Quest(id) => write!(f, "quest({id})"),
+            NodeId::Beat(key) => write!(f, "beat({key})"),
         }
     }
 }
@@ -709,7 +727,8 @@ pub fn cycle_diag(message: String, span: Span) -> Diagnostic {
 /// Node/edge model (Task 5 spec):
 /// - **Nodes**: every scene ([`scene_key_set`]'s `key_set`, as
 ///   `NodeId::Scene`) PLUS every quest that declares an `after` attribute
-///   (`NodeId::Quest`) — a quest with no `after` is NEVER a node.
+///   (`NodeId::Quest`) — a quest with no `after` is NEVER a node — PLUS
+///   every bundle beat (`NodeId::Beat`, an edgeless entry node).
 /// - **Edges**: flattened, over-approximating (ignoring `&&`/`||` position)
 ///   — for each atom `p` in node `n`'s formula, add `p -> n` IFF `p` is
 ///   itself a node in this graph. `visited(K)` targets `NodeId::Scene(K)`;
@@ -772,6 +791,25 @@ pub fn assemble_graph(
                 path: path.clone(),
                 prereq,
                 span: *span,
+            },
+        );
+    }
+
+    // Bundle beat nodes: every canonical beat key, anchored at its first
+    // occurrence (a repeat is E-CONN-EPISODE-ID-DUP's problem). No `after`
+    // surface exists on `<beat>`, so each is an entry point.
+    for (key, occurrences) in bundle_beat_key_set(docs) {
+        let Some((path, span)) = occurrences.into_iter().next() else {
+            continue;
+        };
+        let id = NodeId::Beat(key);
+        nodes.insert(
+            id.clone(),
+            NodeInfo {
+                id,
+                path,
+                prereq: PrereqState::Absent,
+                span,
             },
         );
     }

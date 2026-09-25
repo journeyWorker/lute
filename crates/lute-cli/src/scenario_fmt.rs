@@ -54,6 +54,7 @@ fn node_kind_str(node: &NodeId) -> &'static str {
     match node {
         NodeId::Scene(_) => "scene",
         NodeId::Quest(_) => "quest",
+        NodeId::Beat(_) => "beat",
     }
 }
 
@@ -388,7 +389,9 @@ fn envelope_json(
     );
 
     let (env, enrichment_note, facts) = match &node_ref {
-        NodeRef::Scene(key) => {
+        // A bundle beat is an edgeless entry node: its envelope is the entry
+        // floor, exactly as an `after`-less scene's.
+        NodeRef::Scene(key) | NodeRef::Beat(key) => {
             obj.insert(
                 "tainted".to_string(),
                 Value::Bool(scenario.tainted.contains(&node_id)),
@@ -429,9 +432,10 @@ fn envelope_json(
     envelope_obj.insert("guaranteed".to_string(), path_set_json(&env.guaranteed));
     envelope_obj.insert("possible".to_string(), path_set_json(&env.possible));
     envelope_obj.insert("possibleNotGuaranteed".to_string(), path_set_json(&diff));
-    // dsl 0.20.0 §6: the fact envelope beside the scalar one (scenes only —
-    // a quest body runs at engine-chosen times, not on arrival).
-    if let NodeRef::Scene(_) = &node_ref {
+    // dsl 0.20.0 §6: the fact envelope beside the scalar one (scenes and
+    // bundle beats — a quest body runs at engine-chosen times, not on
+    // arrival).
+    if let NodeRef::Scene(_) | NodeRef::Beat(_) = &node_ref {
         let facts: Vec<Value> = facts
             .map(Vec::as_slice)
             .unwrap_or_default()
@@ -509,7 +513,7 @@ fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand
 }
 
 /// One `digraph` for one root: a node line per `graph.nodes` (shape by kind —
-/// box scene / ellipse quest; color by reach verdict — green reachable / red
+/// box scene / ellipse quest / note bundle beat; color by reach verdict — green reachable / red
 /// unreachable / gray unknown / orange cycle-degraded; label = id), a dashed
 /// blue edgeless node per unanchored quest (dsl 0.21.0 §7a.5), and an
 /// edge line per `graph.edges` entry (the SAME prerequisite -> dependent walk
@@ -526,6 +530,7 @@ fn root_dot(root: &Path, scenario: &RootScenario) -> String {
         let shape = match node {
             NodeId::Scene(_) => "box",
             NodeId::Quest(_) => "ellipse",
+            NodeId::Beat(_) => "note",
         };
         let color = match reach_token(scenario, node) {
             "reachable" => "green",

@@ -1374,7 +1374,7 @@ state:
 
 | Piece | Rule |
 |---|---|
-| `@speaker{attrs}: text` | `@narrator` is narration. The speaker equal to `pov:` is the player. Text after `: ` is literal to end of line. With a declared `cast:`, the speaker must be in it (`E-CAST-UNKNOWN`). |
+| `@speaker{attrs}: text` | `@narrator` is narration; any other speaker is dialogue (the `pov:` speaker included — `pov` is descriptive only). Text after `: ` is literal to end of line. With a declared `cast:`, the speaker must be in it (`E-CAST-UNKNOWN`). |
 | line attrs | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as` (label override), `when` (guard), `id` (a jump label) |
 | delivery flags | `{mono}` thought, `{os}` off-screen, `{vo}` voiceover. At most one per line, and never on `@narrator`. |
 | `{{…}}` | `{{userName}}`, a declared state path, or `{{@def}}` (the artifact carries the def's body, and `lute run` / `lute play` evaluate it). Reading a maybe-unset path is `E-MAYBE-UNSET`. A line whose whole text is `@name` ships that literal text (`W-TEXT-LOOKS-LIKE-REF`); write `{{@name}}`. |
@@ -2327,8 +2327,9 @@ must declare an identity: an **`id`**, or the triple **`character`**, **`season`
   defaults to `s{season:02}ep{episode:02}` (e.g. `season: 1, episode: 2` → `s01ep02`). Pinning it
   explicitly lets you renumber `season`/`episode` without breaking translation or voice keys.
 - **`title`** — an optional human title (localizable).
-- **`pov`** — the id of the player/protagonist speaker. The content-line speaker whose id equals
-  `pov` renders as the reserved **player** kind (see [Dialogue & cast](/language/dialogue-and-cast/)).
+- **`pov`** — the id of the point-of-view (protagonist) speaker, for readers of the source. It is
+  descriptive only: that speaker's lines compile as ordinary dialogue, and the artifact does not
+  carry `pov` (see [Dialogue & cast](/language/dialogue-and-cast/)).
 - **`luteVersion`** — the language-version pin; distinct from `app.lang` game state.
 - **`contentLang`** — the source authoring language (a BCP 47 code such as `en-US` or `ko-KR`).
 - **`mode`** — the authoring mode; `inline` is the only defined form.
@@ -2567,10 +2568,14 @@ Content is the spoken and narrated text of a scene. Every content line has the s
 
 The **speaker** selects the line's kind:
 
-- a **registered character** id → **dialogue**;
 - the reserved **`narrator`** → **narration** (speakerless);
-- the speaker whose id equals frontmatter `pov` → the reserved **player** (protagonist), which
-  renders the runtime `{{userName}}` and carries no sprite.
+- any other speaker id → **dialogue**, carrying that speaker.
+
+Frontmatter `pov` names the scene's point-of-view character for readers of the source. It does not
+change how that speaker's lines compile: the protagonist's lines are ordinary dialogue, and the
+artifact carries neither `pov` nor a player role. An engine that renders its protagonist
+differently (no sprite, the player's chosen name as the label) keys that on the speaker id; in line
+text, write `{{userName}}` for the player's name.
 
 There is no separate monologue or prose node — role is derived from the speaker plus its delivery
 (below).
@@ -2638,7 +2643,8 @@ voices exist for.
 Once a cast is declared, every speaker must be in it. Scene lines, quest bodies, lore entries, and
 [bundle beats](/language/beats/#beat-bundles) are all checked. A speaker outside the cast is
 `E-CAST-UNKNOWN`, with a did-you-mean for a near miss such as `@oskr`. `narrator` is always a
-speaker. The player is not: a scene whose `pov` is `fixer` still needs `fixer` in the cast.
+speaker. The `pov` speaker is not special: a scene whose `pov` is `fixer` still needs `fixer` in the
+cast.
 
 <!-- lute-diagnostics -->
 ```
@@ -2667,7 +2673,7 @@ delivered:
 
 The three are **mutually exclusive** — at most one per line (`E-DELIVERY-CONFLICT` on two) — and
 none is allowed on `@narrator` (`E-DELIVERY-NARRATOR`). `{mono}` works for *any* character, not
-just the player: a non-player `{mono}` line is that character's inner voice.
+just the protagonist: a `{mono}` line is that character's inner voice.
 
 Roles derive from speaker + delivery: `narrator` → narration; any character with `{mono}` →
 monologue; any character with `{vo}` → voiceover; any character otherwise → dialogue.
@@ -5816,6 +5822,13 @@ lute doctor — .
   • VS Code extension: not detectable from the CLI
   ✗ lute-lsp on PATH: /usr/local/bin/lute-lsp reports no version (older than 0.22.0) — differs from lute 0.22.0
       → reinstall the language server from this toolchain (`cargo install --path crates/lute-lsp`) and restart the editor
+```
+
+An editor keeps running the `lute-lsp` it started, so reinstalling the toolchain does not reach an open editor. On macOS and Linux doctor therefore also lists every running `lute-lsp` server (`runningLanguageServers` in `--json`) and flags one whose binary was replaced after the server started, or whose binary reports another version, with the fix — restart the editor or its language server:
+
+```console
+  ✗ running lute-lsp: pid 12431 (/usr/local/bin/lute-lsp) started before its binary was replaced, so it runs an older build
+      → restart the editor (or its language server) so it launches this toolchain's lute-lsp
 ```
 
 `--json` emits the same checks as one object, `{ "dir", "checks": { <key>: { label, ok, detail, hint } } }` (`ok` is `null` for an informational line). A report, never a gate: exit **0** whatever the checks find, **2** when `<dir>` cannot be read.

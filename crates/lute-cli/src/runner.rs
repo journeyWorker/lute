@@ -450,9 +450,6 @@ pub(crate) struct RunnerOutcome {
     pub state: BTreeMap<String, Value>,
     pub base_facts: BTreeSet<Fact>,
     pub quest_status: BTreeMap<String, String>,
-    /// dsl 0.8.0 `::end` executed: the WHOLE playthrough is over, not just
-    /// this scene.
-    pub terminated: bool,
     /// A `choice`/`hub` was reached with no scripted `choose:` decision, or
     /// (quest advance) an active quest's required objective is undecidable.
     pub incomplete: bool,
@@ -942,7 +939,6 @@ impl Runner {
             state: self.state,
             base_facts: self.base_facts,
             quest_status: self.quest_status,
-            terminated: self.terminated,
             incomplete: self.incomplete,
             unresolved: self.unresolved,
             transcript: self.transcript,
@@ -1848,19 +1844,28 @@ impl Runner {
         // dsl 0.21.0 §7a.2: occasions are raised in order after the walk
         // settles; each judges the `on="<occasion>"` objectives of every
         // active quest, then the lifecycle settles again. `lute run` records
-        // the raise; `lute play`'s step header already names it.
+        // the raise; `lute play`'s step header already names it. 0.23.1: a
+        // raise also fires the same-named world event — the `<on event>`
+        // handlers run first, then the occasion judges. (A lifecycle event
+        // name is never raised this way: the runner fires those itself.)
         let occasions: Vec<String> = self.mock.occasions.clone();
         for occasion in &occasions {
             if self.terminated {
                 break;
             }
+            let (name, target) = lute_trace::split_occasion(occasion);
             if !self.quest_resume {
-                let (name, target) = lute_trace::split_occasion(occasion);
                 let mut rec = json!({ "kind": "occasion", "occasion": name });
                 if let Some(t) = target {
                     rec["target"] = json!(t);
                 }
                 self.transcript.push(rec);
+            }
+            if !lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&name) {
+                self.fire_event(name, None, &handlers, &seg_starts);
+                if self.terminated {
+                    break;
+                }
             }
             self.judge_occasion(occasion, &quests, &seg_starts, &mut done);
             self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
@@ -1894,7 +1899,9 @@ impl Runner {
                     // quest — as stuck as an undecidable `done`.
                     let (key, stuck) = if judged && self.eval_raw(&o.done) == Value::Unknown {
                         ("done", true)
-                    } else if o.by.as_ref().is_some_and(|by| self.eval_raw(by) == Value::Unknown) {
+                    } else if judged
+                        && o.by.as_ref().is_some_and(|by| self.eval_raw(by) == Value::Unknown)
+                    {
                         ("failed", true)
                     } else {
                         ("done", false)
@@ -2020,29 +2027,22 @@ impl Runner {
                     }
                 }
                 // 1b. dsl 0.23.0 §2: deadlines, after the objectives were
-                // judged — a not-done objective whose `by` is true fails
-                // the first time; a failed required objective fails its
-                // quest below.
-                let mut missed = false;
+                // judged (`done` wins a tie) — a not-done objective whose
+                // `by` is true fails the first time. An `on=` objective's
+                // deadline is judged only at its occasion, after its `done`
+                // ([`Runner::judge_occasion`]).
                 for (oi, o) in q.objectives.iter().enumerate() {
-                    let Some(by) = &o.by else { continue };
-                    let key = format!("{}.{}", q.id, o.id);
-                    if done.contains(&(qi, oi)) || self.failed_objectives.contains(&key) {
+                    if o.on.is_some() {
                         continue;
                     }
-                    if self.truthy(by) == Some(true) {
-                        self.failed_objectives.insert(key);
-                        self.transcript.push(json!({
-                            "kind": "objective",
-                            "quest": q.id,
-                            "objective": o.id,
-                            "failed": true,
-                        }));
-                        missed |= !o.optional;
-                        changed = true;
-                    }
+                    changed |= self.judge_deadline(q, qi, oi, done);
                 }
-                // 2. fail BEFORE derived completion (§6.3 precedence).
+                // 2. fail BEFORE derived completion (§6.3 precedence): an
+                // authored `fail`, or a required objective whose `by`
+                // failed it (in this settle or at the raise before it).
+                let missed = q.objectives.iter().any(|o| {
+                    !o.optional && self.failed_objectives.contains(&format!("{}.{}", q.id, o.id))
+                });
                 let failed = missed
                     || q.fail.as_ref().is_some_and(|fail| self.truthy(fail) == Some(true));
                 if failed {
@@ -2110,7 +2110,8 @@ impl Runner {
     /// dsl 0.21.0 §7a.2: raise `occasion` — every ACTIVE quest judges its
     /// not-yet-done `on="<occasion>"` objectives, document order. The raise
     /// is `name` or `name@target` (dsl 0.23.0 §2): an objective with a
-    /// `target` is judged only by a raise for it; a failed one never. The
+    /// `target` is judged only by a raise for it; a failed one never. Its
+    /// `by` is judged here too, after its `done` (`done` wins a tie). The
     /// caller settles the lifecycle afterwards (`fail` before completion).
     fn judge_occasion(
         &mut self,
@@ -2120,18 +2121,25 @@ impl Runner {
         done: &mut BTreeSet<(usize, usize)>,
     ) {
         for (qi, q) in quests.iter().enumerate() {
-            for (oi, o) in q.objectives.iter().enumerate() {
+            let judged: Vec<usize> = q
+                .objectives
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| {
+                    o.on
+                        .as_deref()
+                        .is_some_and(|on| lute_trace::raise_judges(occasion, on, o.target.as_deref()))
+                })
+                .map(|(oi, _)| oi)
+                .collect();
+            for &oi in &judged {
                 if self.terminated
                     || self.quest_status.get(&q.id).map(String::as_str) != Some("active")
                 {
                     break;
                 }
-                let judged = o
-                    .on
-                    .as_deref()
-                    .is_some_and(|on| lute_trace::raise_judges(occasion, on, o.target.as_deref()));
-                if !judged
-                    || done.contains(&(qi, oi))
+                let o = &q.objectives[oi];
+                if done.contains(&(qi, oi))
                     || self.failed_objectives.contains(&format!("{}.{}", q.id, o.id))
                 {
                     continue;
@@ -2140,7 +2148,45 @@ impl Runner {
                     self.complete_objective(q, qi, oi, seg_starts, done);
                 }
             }
+            for &oi in &judged {
+                if self.terminated
+                    || self.quest_status.get(&q.id).map(String::as_str) != Some("active")
+                {
+                    break;
+                }
+                self.judge_deadline(q, qi, oi, done);
+            }
         }
+    }
+
+    /// dsl 0.23.0 §2: judge objective `oi`'s `by` — skipped when it has none,
+    /// is done, or already failed. The first time it is true the objective
+    /// fails (recorded); a failed required objective fails its quest at the
+    /// next settle. `true` when it failed now.
+    fn judge_deadline(
+        &mut self,
+        q: &QuestDecl,
+        qi: usize,
+        oi: usize,
+        done: &BTreeSet<(usize, usize)>,
+    ) -> bool {
+        let o = &q.objectives[oi];
+        let Some(by) = &o.by else { return false };
+        let key = format!("{}.{}", q.id, o.id);
+        if done.contains(&(qi, oi)) || self.failed_objectives.contains(&key) {
+            return false;
+        }
+        if self.truthy(by) != Some(true) {
+            return false;
+        }
+        self.failed_objectives.insert(key);
+        self.transcript.push(json!({
+            "kind": "objective",
+            "quest": q.id,
+            "objective": o.id,
+            "failed": true,
+        }));
+        true
     }
 
     /// Downward cascade (subquest design 2026-08-31 §2.3): on `terminal`'s
@@ -2268,7 +2314,7 @@ impl Runner {
                 self.state.insert(path.clone(), Value::Num(after));
                 rec.insert(
                     "credited".into(),
-                    json!({ "path": path, "value": after }),
+                    json!({ "path": path, "value": value_to_json(&Value::Num(after)) }),
                 );
             }
             if matches!(event, GrantEvent::Failed) {

@@ -9,7 +9,7 @@
 //! call; this module owns only the SHAPE and the two renderers — it holds no
 //! walk logic.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Span};
 use serde::Serialize;
@@ -126,6 +126,11 @@ pub enum Step {
         reward: GrantReward,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         on_failed: bool,
+        /// dsl 0.23.0 §8: the state path the reward kind's `credits:` names
+        /// and the value it holds after this grant added its scalar amount —
+        /// the same credit `lute run` / `lute play` apply.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        credited: Option<GrantCredit>,
     },
     Decision(Decision),
     /// dsl 0.19.0 §8 (`lute trace --entry`): the presented `<entry>`'s head.
@@ -189,6 +194,15 @@ pub struct GrantReward {
     pub amount_min: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amount_max: Option<i64>,
+}
+
+/// dsl 0.23.0 §8: a grant's credit — the path its kind `credits:` and the
+/// effective value there after the grant (`unknown` when the path had no
+/// value to add to).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct GrantCredit {
+    pub path: String,
+    pub value: String,
 }
 
 /// One decision (§4.5: "the construct kind, its id/span, the outcome, and
@@ -350,6 +364,16 @@ pub struct TraceReport {
     /// already carry every write), hence never serialized.
     #[serde(skip)]
     pub final_state: BTreeMap<String, String>,
+    /// Every fact that holds when the walk ends, after derivation (unless
+    /// `derive: false`), rendered `rel(a, b)` — what `lute test`'s
+    /// `expect.facts` / `notFacts` judge, as `lute play`'s end-of-play
+    /// expectations do. Never serialized, like `final_state`.
+    #[serde(skip)]
+    pub final_facts: BTreeSet<String>,
+    /// Derived relations whose derivation read undecided state at the end —
+    /// a fact of one neither holds nor fails to hold.
+    #[serde(skip)]
+    pub final_undecided: BTreeSet<String>,
 }
 
 /// Render a decided [`Value`] to display text; `Unknown` has no decided
@@ -548,6 +572,7 @@ fn render_step(step: &Step, out: &mut String) {
             objective,
             reward,
             on_failed,
+            credited,
         } => {
             let owner = match objective {
                 Some(oid) => format!("{quest}.{oid}"),
@@ -564,9 +589,13 @@ fn render_step(step: &Step, out: &mut String) {
                 .map(|t| format!(" -> {t}"))
                 .unwrap_or_default();
             let annot = if *on_failed { " (on failed)" } else { "" };
+            let credit = credited
+                .as_ref()
+                .map(|c| format!(" (credits {} = {})", c.path, c.value))
+                .unwrap_or_default();
             out.push_str(&format!(
-                "    grant {owner}  {} {}{}{}\n",
-                reward.kind, amount, target, annot
+                "    grant {owner}  {} {}{}{}{}\n",
+                reward.kind, amount, target, annot, credit
             ));
         }
     }

@@ -78,7 +78,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_trace::{
-    parse_mock_surfaces, trace_entries_with_check, trace_with_check, TraceExit, TraceReport,
+    parse_mock_surfaces, trace_beat_with_check, trace_entries_with_check, trace_with_check,
+    TraceExit, TraceReport,
     UnresolvedEntry,
 };
 
@@ -97,6 +98,7 @@ use crate::play_expect::ExpectMiss;
 const TEST_TOP_KEYS: &[&str] = &[
     "accept",
     "accepts",
+    "beat",
     "choose",
     "derive",
     "entries",
@@ -113,18 +115,24 @@ const TEST_TOP_KEYS: &[&str] = &[
 ];
 
 /// The `*.test.yaml` keys that are not mock surfaces: the expectations, and
-/// the lore entries a test presents (dsl 0.22.0 §5). Only the drift test
-/// reads it — the runtime gate is the literal [`TEST_TOP_KEYS`] — so it is
-/// test-only rather than a dead constant in the binary.
+/// the lore entries (dsl 0.22.0 §5) or bundle beat (0.23.1) a test presents.
+/// Only the drift test reads it — the runtime gate is the literal
+/// [`TEST_TOP_KEYS`] — so it is test-only rather than a dead constant in the
+/// binary.
 #[cfg(test)]
-const HARNESS_KEYS: &[&str] = &["entries", "entry", "expect"];
+const HARNESS_KEYS: &[&str] = &["beat", "entries", "entry", "expect"];
 
 /// The complete legal key set inside `expect:`. Also CLOSED — a new
 /// expectation kind is added HERE, which is the point of a closed set.
 /// `quests:` (dsl 0.21.0 §7a.4) asserts the quest lifecycle the trace ran;
-/// `offered:` / `transcriptLacks:` are dsl 0.22.0 §5.
+/// `offered:` / `transcriptLacks:` are dsl 0.22.0 §5; `facts:` / `notFacts:`
+/// (every fact that holds at the end, after derivation) and `eligible:` (a
+/// presented entry's or beat's `when`) are 0.23.1.
 const TEST_EXPECT_KEYS: &[&str] = &[
+    "eligible",
     "exit",
+    "facts",
+    "notFacts",
     "offered",
     "quests",
     "state",
@@ -309,8 +317,9 @@ fn canonical_key(p: &std::path::Path) -> String {
 }
 
 /// Run every `*.test.yaml` scenario test under `dir`, then every
-/// `*.play.yaml` under it that carries an `expect:` (dsl 0.22.0 §4). See
-/// [`crate::Command::Test`].
+/// `*.play.yaml` under it that carries an `expect:` (dsl 0.22.0 §4). `dir`
+/// may also be ONE `*.test.yaml` or `*.play.yaml` file, which runs alone.
+/// See [`crate::Command::Test`].
 pub fn run_test(
     dir: &Path,
     json: bool,
@@ -319,15 +328,30 @@ pub fn run_test(
     coverage: bool,
     no_derive: bool,
 ) -> ExitCode {
-    let (test_files, play_files) = match (
-        find_files_with_suffix(dir, ".test.yaml"),
-        find_files_with_suffix(dir, ".play.yaml"),
-    ) {
-        (Ok(t), Ok(p)) => (t, p),
-        (Err(e), _) | (_, Err(e)) => {
-            eprintln!("lute: cannot walk {}: {e}", dir.display());
+    let single = dir.is_file().then(|| {
+        let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        (name.ends_with(".test.yaml"), name.ends_with(".play.yaml"))
+    });
+    let (test_files, play_files) = match single {
+        Some((true, _)) => (vec![dir.to_path_buf()], Vec::new()),
+        Some((_, true)) => (Vec::new(), vec![dir.to_path_buf()]),
+        Some(_) => {
+            eprintln!(
+                "lute: {} is not a directory, a `*.test.yaml` or a `*.play.yaml`",
+                dir.display()
+            );
             return ExitCode::from(2);
         }
+        None => match (
+            find_files_with_suffix(dir, ".test.yaml"),
+            find_files_with_suffix(dir, ".play.yaml"),
+        ) {
+            (Ok(t), Ok(p)) => (t, p),
+            (Err(e), _) | (_, Err(e)) => {
+                eprintln!("lute: cannot walk {}: {e}", dir.display());
+                return ExitCode::from(2);
+            }
+        },
     };
 
     let mut results = Vec::new();
@@ -380,11 +404,16 @@ pub fn run_test(
     // component case already has its own honest surface, and it is not this
     // one: `W-COMPONENT-UNVERIFIED` (dsl 0.10.0 §9 rule 4, D-W) says the
     // component's contract was not verified, and says who decides.
+    let walk_root = if single.is_some() {
+        dir.parent().unwrap_or_else(|| Path::new("."))
+    } else {
+        dir
+    };
     let coverage_root: PathBuf = match project {
         Some(p) => p.to_path_buf(),
         None => match crate::nearest_manifest_dir(dir) {
-            Some(root) if canonical_key(&root) != canonical_key(dir) => root,
-            _ => dir.to_path_buf(),
+            Some(root) if canonical_key(&root) != canonical_key(walk_root) => root,
+            _ => walk_root.to_path_buf(),
         },
     };
     let untested: Vec<String> = if coverage {
@@ -436,6 +465,9 @@ pub fn run_test(
 #[derive(Default)]
 struct ProducerCache {
     by_root: BTreeMap<PathBuf, Option<BTreeSet<String>>>,
+    /// Project roots a scenario test discovered (nearest `lute.project.yaml`,
+    /// no `--project`) and already announced on stderr — one note per root.
+    noted: BTreeSet<PathBuf>,
 }
 
 impl ProducerCache {
@@ -556,7 +588,8 @@ fn run_one_test(
         }
     };
     // dsl 0.22.0 §5: `entry: <id>` / `entries: [ids]` — the lore entries to
-    // present, in order.
+    // present, in order. 0.23.1: `beat: <id>` — one bundle `<beat>` (local
+    // or canonical `<document id>.<beat id>`), as `lute trace --beat`.
     let entries: Vec<String> = match (map.get("entry"), map.get("entries")) {
         (None, None) => Vec::new(),
         (Some(serde_yaml::Value::String(id)), None) => vec![id.clone()],
@@ -579,12 +612,64 @@ fn run_one_test(
             return Err(ExitCode::from(2));
         }
     };
+    let beat: Option<String> = match map.get("beat") {
+        None => None,
+        Some(serde_yaml::Value::String(id)) if !id.trim().is_empty() => Some(id.clone()),
+        Some(_) => {
+            eprintln!(
+                "lute: {}: `beat:` must be one bundle beat id (`<beat id>` or \
+                 `<document id>.<beat id>`)",
+                test_file.display()
+            );
+            return Err(ExitCode::from(2));
+        }
+    };
+    if beat.is_some() && !entries.is_empty() {
+        eprintln!(
+            "lute: {}: a test presents ONE of `beat:` or `entry:` / `entries:`, not both",
+            test_file.display()
+        );
+        return Err(ExitCode::from(2));
+    }
 
     let base = test_file.parent().unwrap_or_else(|| Path::new("."));
     let lute_path = base.join(&rel);
     let lute_display = lute_path.display().to_string();
 
-    let Some(built) = crate::build_input(&lute_path, providers, project, None) else {
+    // One test naming a document that no longer exists is that test's
+    // failure, never the whole suite's abort.
+    if !lute_path.is_file() {
+        return Ok(TestResult::refused(
+            test_file,
+            lute_display.clone(),
+            "invalid",
+            vec![format!(
+                "error [E-TEST-FILE] `file: {rel}` names no document ({lute_display} does not \
+                 exist)"
+            )],
+        ));
+    }
+
+    // 0.23.1: like `lute check <file>` and like the plays of this run, a
+    // scenario test without `--project` resolves its document against the
+    // nearest `lute.project.yaml` — announced once per project root.
+    let discovered = match project {
+        Some(_) => None,
+        None => crate::nearest_manifest_dir(&lute_path),
+    };
+    if let Some(root) = &discovered {
+        if producers.noted.insert(root.clone()) {
+            let shown = crate::cwd_relative(&root.display().to_string());
+            eprintln!(
+                "lute: note: scenario tests use project {} (nearest lute.project.yaml); pass \
+                 --project to choose another",
+                if shown.is_empty() { "." } else { shown.as_str() }
+            );
+        }
+    }
+    let resolve_with = project.or(discovered.as_deref());
+
+    let Some(built) = crate::build_input(&lute_path, providers, resolve_with, None) else {
         // build_input already printed the read error.
         return Err(ExitCode::from(2));
     };
@@ -602,14 +687,15 @@ fn run_one_test(
     }
 
     // T1-13: a lore document is looked up, not played — `lute trace` refuses
-    // one without `--entry`, and a test naming it without `entry:` /
-    // `entries:` would walk nothing and PASS `exit: complete`. Say so instead
-    // of asserting against nothing.
-    if entries.is_empty() {
+    // one without `--entry`/`--beat`, and a test naming it without `entry:`
+    // / `entries:` / `beat:` would walk nothing and PASS `exit: complete`.
+    // Say so instead of asserting against nothing.
+    if entries.is_empty() && beat.is_none() {
         let (doc, _) = lute_syntax::parse(&input.text);
         let (folded, _, _) = lute_check::fold_env(&doc, &input);
         if folded.doc_kind == lute_check::DocKind::Lore {
             let ids: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
+            let beats: Vec<&str> = doc.beats.iter().map(|b| b.id.as_str()).collect();
             return Ok(TestResult::refused(
                 test_file,
                 lute_display,
@@ -617,9 +703,10 @@ fn run_one_test(
                 vec![format!(
                     "error [E-TEST-LORE] `file: {rel}` is a lore document — a lore document is \
                      looked up, not played, so there is no walk to assert against until the \
-                     test names the entries to present: `entry: <id>` or `entries: [ids]` \
-                     (declared: {})",
-                    ids.join(", ")
+                     test names what to present: `entry: <id>` or `entries: [ids]` (declared: \
+                     {}), or `beat: <id>` (declared: {})",
+                    if ids.is_empty() { "none".to_string() } else { ids.join(", ") },
+                    if beats.is_empty() { "none".to_string() } else { beats.join(", ") }
                 )],
             ));
         }
@@ -633,22 +720,14 @@ fn run_one_test(
             .for_document(&lute_path, project, providers)
             .cloned()
     };
-    let (report, exit) = if entries.is_empty() {
-        trace_with_check(
-            &input,
-            lute_check::check(&input),
-            mocks,
-            project_asserts.as_ref(),
-        )
+    let checked = lute_check::check(&input);
+    let (report, exit) = if let Some(beat) = &beat {
+        trace_beat_with_check(&input, checked, mocks, beat, project_asserts.as_ref())
+    } else if entries.is_empty() {
+        trace_with_check(&input, checked, mocks, project_asserts.as_ref())
     } else {
         let ids: Vec<&str> = entries.iter().map(String::as_str).collect();
-        trace_entries_with_check(
-            &input,
-            lute_check::check(&input),
-            mocks,
-            &ids,
-            project_asserts.as_ref(),
-        )
+        trace_entries_with_check(&input, checked, mocks, &ids, project_asserts.as_ref())
     };
 
     // A refused trace (document check errors or invalid mocks) cannot be
@@ -820,6 +899,91 @@ fn run_one_test(
                 });
             }
         }
+
+        // facts / notFacts: [atoms] — every fact that holds when the walk
+        // ends, after derivation (0.23.1), judged as `lute play`'s
+        // end-of-play expectation judges it. A fact of a relation whose
+        // derivation read undecided state neither holds nor fails to hold.
+        for (kind, want_held) in [("facts", true), ("notFacts", false)] {
+            let Some(list) = expect.get(kind).and_then(|v| v.as_sequence()) else {
+                continue;
+            };
+            for atom in list.iter().filter_map(yaml_scalar_text) {
+                let Some((rel, _)) = crate::play_expect::parse_atom(&atom) else {
+                    expectations.push(ExpectResult {
+                        kind,
+                        subject: atom.clone(),
+                        expected: "a ground atom `rel(a, b)`".to_string(),
+                        actual: Some("not a ground atom".to_string()),
+                        passed: false,
+                    });
+                    continue;
+                };
+                let canonical = crate::play_expect::canonical_atom(&atom);
+                let held = if report.final_facts.contains(&canonical) {
+                    "holds"
+                } else if report.final_undecided.contains(&rel) {
+                    "unknown"
+                } else {
+                    "does not hold"
+                };
+                let want = if want_held { "holds" } else { "does not hold" };
+                expectations.push(ExpectResult {
+                    kind,
+                    subject: atom.clone(),
+                    expected: want.to_string(),
+                    actual: Some(held.to_string()),
+                    passed: held == want,
+                });
+            }
+        }
+
+        // eligible: bool | { <id>: bool } (0.23.1) — the `when` verdict of
+        // the presented entry/beat. Trace presents it either way (the
+        // engine's gate, shown, not enforced); this asserts the verdict.
+        if let Some(want) = expect.get("eligible") {
+            let presented = presented_eligibility(&report);
+            let wants: Vec<(Option<String>, Option<bool>)> = match want {
+                serde_yaml::Value::Mapping(m) => m
+                    .iter()
+                    .map(|(k, v)| (k.as_str().map(str::to_string), v.as_bool()))
+                    .collect(),
+                other => vec![(None, other.as_bool())],
+            };
+            for (id, want) in wants {
+                let matched: Vec<&(String, Option<bool>)> = presented
+                    .iter()
+                    .filter(|(p, _)| {
+                        id.as_deref()
+                            .is_none_or(|id| p == id || p.ends_with(&format!(".{id}")))
+                    })
+                    .collect();
+                let actual = (!matched.is_empty()).then(|| {
+                    matched
+                        .iter()
+                        .map(|(_, e)| match e {
+                            Some(true) => "true",
+                            Some(false) => "false",
+                            None => "unknown",
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                });
+                let expected = match want {
+                    Some(b) => b.to_string(),
+                    None => "true or false".to_string(),
+                };
+                expectations.push(ExpectResult {
+                    kind: "eligible",
+                    subject: id.unwrap_or_default(),
+                    passed: want.is_some()
+                        && !matched.is_empty()
+                        && matched.iter().all(|(_, e)| *e == want),
+                    expected,
+                    actual,
+                });
+            }
+        }
     }
 
     // #2(d) / D-B: `all()` over an empty vector is `true`, so a test that
@@ -874,6 +1038,7 @@ fn run_one_test(
             .iter()
             .filter(|n| n.starts_with(lute_trace::NOTE_BEAT_WHEN))
             .cloned()
+            .chain(ineligible_notes(&report))
             .collect(),
     })
 }
@@ -1019,6 +1184,43 @@ fn yaml_atom_hints(u: &UnresolvedEntry) -> String {
         .join(", ")
 }
 
+/// Every presented lore entry / bundle beat with its `when` verdict, in
+/// presentation order: `Some(true)` eligible (or no `when`), `Some(false)`
+/// not, `None` undecided under the mocks.
+fn presented_eligibility(report: &TraceReport) -> Vec<(String, Option<bool>)> {
+    report
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            lute_trace::Step::Entry { id, eligible, .. } | lute_trace::Step::Beat { id, eligible } => {
+                Some((id.clone(), *eligible))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// A note for every presented entry / bundle beat whose `when` does not
+/// hold under the test's mocks: trace presents it anyway (the engine's gate,
+/// shown, not enforced), so a passing test says so instead of staying
+/// silent (lamplight N6).
+fn ineligible_notes(report: &TraceReport) -> Vec<String> {
+    presented_eligibility(report)
+        .into_iter()
+        .filter_map(|(id, eligible)| {
+            let why = match eligible {
+                Some(false) => "its `when` is false",
+                None => "its `when` is undecided",
+                Some(true) => return None,
+            };
+            Some(format!(
+                "`{id}` is not eligible under these mocks ({why}); the test presents it anyway \
+                 — assert it with `expect: {{ eligible: false }}`"
+            ))
+        })
+        .collect()
+}
+
 /// Every quest the traced document declares, mapped to where the walk left
 /// it (dsl 0.21.0 §7a.4): the LAST `quest` decision's `active`/`complete`/
 /// `failed` outcome, else `unset` — a quest whose `start` never held, that
@@ -1062,6 +1264,7 @@ fn yaml_key_spelling(message: &str) -> String {
         ("--event ", "events: "),
         ("--accept ", "accepts: "),
         ("--entry ", "entry: "),
+        ("--beat ", "beat: "),
     ] {
         out = out.replace(flag, key);
     }
@@ -1335,6 +1538,25 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
              test declares `expect: {{ exit: incomplete }}`"
         ),
         ("exit", Some(actual)) => outln!(out, "      exit: expected {}, got {actual}", e.expected),
+        ("facts" | "notFacts", Some(actual)) => outln!(
+            out,
+            "      {} {}: expected {}, got {actual}",
+            e.kind,
+            e.subject,
+            e.expected
+        ),
+        ("eligible", Some(actual)) => outln!(
+            out,
+            "      eligible{}: expected {}, got {actual}",
+            if e.subject.is_empty() { String::new() } else { format!(" {}", e.subject) },
+            e.expected
+        ),
+        ("eligible", None) => outln!(
+            out,
+            "      eligible{}: expected {}, but the test presented no such entry or beat",
+            if e.subject.is_empty() { String::new() } else { format!(" {}", e.subject) },
+            e.expected
+        ),
         _ => {}
     }
 }

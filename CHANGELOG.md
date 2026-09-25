@@ -36,6 +36,118 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Changed
+
+- `E-QUEST-TIER-MIX`: a subquest whose `tier` differs from its parent's is an
+  error naming both quests and tiers (`check` when both share a document,
+  `check-project` across documents) — a mixed tree locks for good.
+- An `on=` objective's `by` deadline is judged only when its occasion is
+  raised, after its `done`; in every settle `done` is judged before `by`.
+  `lute trace`, `lute run` and `lute play` agree.
+- `lute trace` / `lute test` apply a reward kind's `credits:` and walk objective
+  completion bodies exactly as `lute play` does; play prints a whole credit as
+  `= 1`, not `= 1.0`.
+- `*.test.yaml`: `expect.facts` / `notFacts` (after derivation), `expect.eligible`
+  for a presented entry/beat (and a note when one is presented though
+  ineligible), `beat: <id>` presents a bundle beat; `E-TRACE-ENTRY` names the
+  document's beats.
+- `lute test` resolves scenario tests against the nearest `lute.project.yaml`
+  (announced on stderr) when `--project` is absent, accepts one `*.test.yaml` /
+  `*.play.yaml` file, and reports a test whose `file:` is missing as one
+  `E-TEST-FILE` failure instead of aborting the suite.
+- Play step `expect:` gains `quests`, `state`, `facts`, `notFacts`, judged right
+  after that step settles, on any step kind; state misses quote both sides.
+- `lute play`: a `::end` ends only the presentation (or quest handler) it runs
+  in — the playthrough goes on with the next step. A new step `end: true` ends
+  the playthrough (exit 0); later steps print as skipped and `--json` lists them
+  under `skipped`. Scripts that relied on `::end` stopping the play add
+  `- end: true` after that step.
+- Raising an occasion also fires a same-named declared world event: every
+  active quest's `<on event>` handlers run, then the occasion judges its `on=`
+  objectives — in `lute play`, `lute run` and `lute trace` alike.
+- `lute play` prints staging as authored (`::bg{…}`, `::auto{…}`,
+  `::vfx{type=…}`, a plugin directive by its own name) and drops the bare
+  `beat` line; `--ir` prints the lowered records, injected ones included. A
+  `newRun` names the `prev.run.*` snapshot it took and lists only the run-tier
+  quests it actually reset (with their previous status).
+- `lute calendar --script` replays the script's steps before evaluating the
+  grid (`--until <step number | label>` stops before that step); `--axis` is
+  optional; `quest.<id>.state=…` seeds the quest's status (it was silently
+  overwritten); `holds(<fact>)=true,false` asserts / retracts a base fact;
+  another `quest.*` path or a derived fact is a usage error; `--where <cel>`
+  drops cells where the condition does not hold; a targeted occasion gets one
+  column per target its beats name (or per `--target`), not every member of
+  its domain. `--json` gains `from`, `pruned`, `anyTarget`; a cell's `note` is
+  now `notes` (CSV column too), and the settle moving an axis value is noted.
+
+### Fixed
+
+- **`lute tag` no longer renames a shipped component lineId** (ashen N7): an
+  untagged component line now takes the code `lute tag` would write into the
+  component file (source order, per speaker) before a param-scoped `<match>`
+  folds, so a `::use` with a literal argument and one with a `@def` argument
+  mint the same code for the same line. **Migration:** a component whose
+  untagged lines sit in a non-first `<match>` arm compiles to new `lineId`s
+  (the ones `lute tag` persists); re-export localization / voice manifests.
+- **Bundle beats are scenario nodes** (lamplight N8, ashen N9): `lute scenario`
+  draws every bundle beat as an edgeless entry node `beat(<doc>.<beat>)` (text,
+  JSON `kind: "beat"`, DOT `shape=note`); `scenario reach` / `envelope` accept
+  its canonical id bare or as `beat:<id>`, and `reach` prints its occasion,
+  target and `when`.
+- **`lute lore` lists beats** (lamplight N8): bundle beats and scene beats
+  appear under their target, labelled `beat` (JSON `kind: "beat"`, `on`), and a
+  fact a bundle beat asserts is credited under `beats` (new JSON array), not
+  `entries`; `revealedBy` gains `beats`.
+- **Match arms narrow their subject** (ashen N3): inside `<when is="x">` (no
+  `unset` alternative) the subject is set, and once an arm takes every unset
+  value (`is="unset"` with no `test`) later arms and `<otherwise>` see it set —
+  no `E-MAYBE-UNSET` for those reads.
+- **`W-BEAT-ONCE-RUN-USER` fires only on a defaulted `once`** (ashen N1): an
+  authored `once: run` (and an entry's `once="run"`) acknowledges a per-run
+  beat; `prev.run.*` counts as run history, not user state. The message adds
+  "write `once: run` if it should replay every run".
+- **Negation over a stably derived fact** (lamplight F9): the stable-fact set
+  closes under rules whose every premise is stable, so `not alibi(crane)` with
+  `alibi` derived from seeds nothing removes never holds; an impossible derived
+  fact now names the defeating fact (lamplight N16) instead of "no rule".
+- **`--wip` grades dead choices, arms, gated lines and `::next`** (lamplight
+  N11) like dead entries/beats/objectives.
+- **Mis-nested `<entry>` / `<beat>` / `<quest>`** (lamplight F23): one
+  `E-UNCLOSED-TAG` "entries cannot nest; `<id>` opened at line N is still
+  open", the nested block parsed as a sibling (no cascade); content outside a
+  block in a lore/quest document no longer advises a `## ` heading.
+- **Stage tracking across partial arms** (seven F7): a character on stage in
+  only some arms of a `<match>` / `<branch>` is auto-hidden at the next `::bg`
+  (compiled hide) and warned when speaking without a re-show;
+  `W-STAGE-ABSENT` names the exit / `::bg` line, and a redundant exit after a
+  `::bg` says "this exit does nothing. Move it before the `::bg`, or delete
+  it" (lamplight N15).
+- **One YAML slip no longer kills guards in other files** (seven F3): when any
+  document of a root has an unparseable frontmatter, `check-project` decides
+  no fact query impossible.
+- **`lute scenario knowledge` names what defeats a negation** (lamplight N10):
+  under a negated premise, the rule body is instantiated against the may set
+  and each fact that can make it false is listed — `can be defeated by
+  alibi(solt, tunnel) ⇐ seen(solt, corridor, tunnel) [entry `mirelaMatch` …],
+  away(corridor) [seed]`. Producers are labelled `scene `<key>`` and bundle
+  beats by canonical id `beat `<doc>.<beat>``; JSON `assertedBy` labels change
+  the same way.
+- **`L-EMOTION-DISTRIBUTION` judges each bundle beat alone** (ashen N6): runs
+  and streaks are measured per linear unit — a document's shots and quest
+  bodies together, each lore `<beat>` on its own — and lore entries are not
+  measured, so a bundle's independent beats no longer read as one scene.
+- **`lute doctor` checks running `lute-lsp` servers** (seven F27): a new
+  `running lute-lsp` line (`runningLanguageServers` in `--json`, Unix) lists
+  each running server and fails, advising an editor restart, when one was
+  started before its binary was replaced or its binary reports another
+  version.
+- **Docs: `pov` is descriptive** (ashen N8): the pages claimed the `pov`
+  speaker compiles to a reserved player role; no such IR role exists and
+  `pov` does not reach the artifact. The dialogue, frontmatter and cheatsheet
+  pages (and `llms-full.txt`) now say so.
+
 ## [0.23.0] - 2026-09-25
 
 **Author overviews and time.**

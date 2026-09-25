@@ -1,6 +1,6 @@
 ---
 title: Dialogue & cast
-description: Content lines — the @speaker syntax for dialogue, narration, and player voice — plus the declared cast that closes the set of speakers, delivery flags, line attributes, interpolation, and display names.
+description: Content lines — the @speaker syntax for dialogue and narration — plus the declared cast that closes the set of speakers, delivery flags, line attributes, interpolation, and display names.
 ---
 
 Content is the spoken and narrated text of a scene. Every content line has the same shape:
@@ -11,10 +11,14 @@ Content is the spoken and narrated text of a scene. Every content line has the s
 
 The **speaker** selects the line's kind:
 
-- a **registered character** id → **dialogue**;
 - the reserved **`narrator`** → **narration** (speakerless);
-- the speaker whose id equals frontmatter `pov` → the reserved **player** (protagonist), which
-  renders the runtime `{{userName}}` and carries no sprite.
+- any other speaker id → **dialogue**, carrying that speaker.
+
+Frontmatter `pov` names the scene's point-of-view character for readers of the source. It does not
+change how that speaker's lines compile: the protagonist's lines are ordinary dialogue, and the
+artifact carries neither `pov` nor a player role. An engine that renders its protagonist
+differently (no sprite, the player's chosen name as the label) keys that on the speaker id; in line
+text, write `{{userName}}` for the player's name.
 
 There is no separate monologue or prose node — role is derived from the speaker plus its delivery
 (below).
@@ -82,7 +86,8 @@ voices exist for.
 Once a cast is declared, every speaker must be in it. Scene lines, quest bodies, lore entries, and
 [bundle beats](/language/beats/#beat-bundles) are all checked. A speaker outside the cast is
 `E-CAST-UNKNOWN`, with a did-you-mean for a near miss such as `@oskr`. `narrator` is always a
-speaker. The player is not: a scene whose `pov` is `fixer` still needs `fixer` in the cast.
+speaker. The `pov` speaker is not special: a scene whose `pov` is `fixer` still needs `fixer` in the
+cast.
 
 <!-- lute-diagnostics -->
 ```
@@ -111,7 +116,7 @@ delivered:
 
 The three are **mutually exclusive** — at most one per line (`E-DELIVERY-CONFLICT` on two) — and
 none is allowed on `@narrator` (`E-DELIVERY-NARRATOR`). `{mono}` works for *any* character, not
-just the player: a non-player `{mono}` line is that character's inner voice.
+just the protagonist: a `{mono}` line is that character's inner voice.
 
 Roles derive from speaker + delivery: `narrator` → narration; any character with `{mono}` →
 monologue; any character with `{vo}` → voiceover; any character otherwise → dialogue.

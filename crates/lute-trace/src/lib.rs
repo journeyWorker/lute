@@ -60,7 +60,8 @@ pub use mock::{
 };
 pub use quest_refs::collect_referenced_reserved_quest_paths;
 pub use report::{
-    ComponentBoundary, Coverage, CoverageCount, Decision, GrantReward, Seeds, Step, TraceExit,
+    ComponentBoundary, Coverage, CoverageCount, Decision, GrantCredit, GrantReward, Seeds, Step,
+    TraceExit,
     TraceReport, UnresolvedEntry,
 };
 pub use value::{UnresolvedAtom, Value};

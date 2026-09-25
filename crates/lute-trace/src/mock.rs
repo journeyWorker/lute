@@ -1139,12 +1139,25 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
         return Vec::new();
     }
     let declared: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
+    let canonical = |local: &str| match folded.typed.id.as_deref() {
+        Some(doc_id) => lute_check::bundle_beat_key(doc_id, local),
+        None => local.to_string(),
+    };
+    let beats: Vec<String> = doc.beats.iter().map(|b| canonical(&b.id)).collect();
+    let is_beat = doc.beats.iter().any(|b| b.id == id || canonical(&b.id) == id);
+    let beat_hint = if is_beat {
+        format!(" — `{id}` is a `<beat>`: present it with `--beat {id}`")
+    } else if beats.is_empty() {
+        String::new()
+    } else {
+        format!(", and beats (`--beat`): {}", beats.join(", "))
+    };
     vec![diag(
         E_TRACE_ENTRY,
         format!(
-            "`--entry {id}` names an unknown entry id `{id}`; this document declares: {} \
-             (dsl 0.19.0 §8)",
-            declared.join(", ")
+            "`--entry {id}` names an unknown entry id `{id}`; this document declares entries: \
+             {}{beat_hint} (dsl 0.19.0 §8)",
+            if declared.is_empty() { "none".to_string() } else { declared.join(", ") }
         ),
         span,
     )]

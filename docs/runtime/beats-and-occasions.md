@@ -283,8 +283,8 @@ Every beat an occasion presents is presented in full, spends its own `once`,
 and is followed by a quest settle before the next one begins: a `select:
 sequence` routine and the day's event, or a `select: first` winner and the
 `also` beats riding along, are each an evaluation instant for quest
-lifecycles (`quest-lifecycle.md`). A beat that ends the playthrough (`::end`)
-stops the rest of the list.
+lifecycles (`quest-lifecycle.md`). A `::end` ends the presentation it runs in
+(its settle still runs); the occasion's other presentations and judging go on.
 
 An `also` beat (`also: true` in a scene's frontmatter, or a bundle beat's
 `also`, dsl 0.23.0 §3) is a side remark: it never competes for the win and
@@ -300,10 +300,16 @@ An occasion also judges quest objectives that name it (dsl 0.21.0 §7a.2): an
 `ObjectiveEntry` with `on` is evaluated only when its occasion is raised
 while its quest is `active` (`quest-lifecycle.md`). Raising an occasion
 therefore does two things, in this order: select and present a beat as
-above, then evaluate every active quest's objectives with that `on` and
-settle those quests. An occasion referenced only by objectives is still
-raised — with no beat to present, only the second step runs, and so does a
-`select: all` list the player closed without picking. An objective's
+above, then answer the raise in every active quest and settle those quests.
+Answering the raise is itself two steps, in this order (0.23.1): when a world
+event of the same name is declared, the engine fires it — every active
+quest's `<on event>` handler for that name runs, once, and the event carries
+no target — and then every active quest's objectives with that `on` are
+evaluated, so an objective can read what the handler wrote. An occasion
+referenced only by objectives or same-named handlers is still raised — with
+no beat to present, only the second step runs, and so does a `select: all`
+list the player closed without picking. An occasion never fires a quest
+lifecycle event (`questActive`, `questComplete`, `questFailed`). An objective's
 occasion is checked against the vocabulary exactly as a beat's `on`
 (`E-OCCASION-UNKNOWN`, `E-BEAT-ATTR`). An objective without `target` is
 judged whenever its occasion is raised, whatever the target. An objective
@@ -356,6 +362,26 @@ never ties. `W-BEAT-ONCE-RUN-USER` names a beat spent once per run whose
   the presented beats exactly and in order. `--json` emits the same
   transcript: `presented` is the first presentation and `then` lists the rest
   in order; a candidate or presentation that rides along carries `also: true`.
+- In `lute play`, a `::end` ends only the presentation (or quest handler) it
+  runs in; the playthrough goes on with the next step. A step `end: true`
+  ends the playthrough: exit 0, and every later step is listed as skipped
+  (`skipped: [{ step, label }]` in `--json`). The transcript prints staging as
+  authored (`::bg{…}`, `::auto{…}`, a plugin directive by its own name); `--ir`
+  prints the lowered records instead, compiler-injected ones included.
+- `lute calendar <dir> --script <play.yaml>` starts every cell from the
+  script's save with its steps replayed as `lute play` plays them; `--until
+  <step number | label>` stops before that step. An axis
+  `quest.<id>.state=…` seeds the quest's status (an `unset`/`active` seed
+  drops the route's objective progress), `holds(<fact>)=true,false` asserts or
+  retracts a base fact, and an axis the calendar cannot apply (another
+  `quest.*` path, a derived fact) is a usage error. `--where <cel>` keeps only
+  the cells where the condition holds after the axes are applied and quests
+  settle — independent axes otherwise combine into saves no run reaches. A
+  targeted occasion gets one column per target its beats name (or per
+  `--target`), never the unanswered rest of its declared domain.
+- `lute scenario <dir>` draws every bundle beat as an edgeless entry node
+  `beat(<doc>.<beat>)`; `scenario reach|envelope` accept its canonical id,
+  bare or `beat:`-prefixed.
 - `lute trace` / `lute run` raise occasions for a quest walk with the mock
   key `occasions: [runEnd]` or `--occasion runEnd` (repeatable), applied in
   order after the walk settles. A raise for a target is written

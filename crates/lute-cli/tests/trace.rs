@@ -687,7 +687,7 @@ fn trace_judges_an_on_objective_only_when_the_occasion_is_raised() {
     // An occasion no objective is judged at is noted, not an error.
     let v = trace_quest_json(&dir, &["--occasion", "hubVisit"]);
     assert!(
-        has_note(&v, "occasion `hubVisit` is judged by no `<objective on>` in this document"),
+        has_note(&v, "occasion `hubVisit` is judged by no `<objective on>`"),
         "{}",
         v["notes"]
     );

@@ -139,6 +139,7 @@ entry-specific at runtime.
 - `lute play` keeps both flags across a playthrough: a `newRun` step resets
   every `entry.<id>.read` and no `everRead`, and a script's top-level
   `entriesRead: { run, user }` starts from a save.
-- `lute lore <dir>` prints the project's world-narrative map: entries by
-  target and by series, and which ground facts entries reveal versus
-  scenes and quests.
+- `lute lore <dir>` prints the project's world-narrative map: entries and
+  beats by target (a bundle beat under its `<document id>.<beat id>`, a scene
+  beat under its scene key, each labelled `beat`), entries by series, and
+  which ground facts entries, bundle beats, and scenes and quests reveal.

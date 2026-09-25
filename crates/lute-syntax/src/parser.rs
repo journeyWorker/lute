@@ -140,6 +140,9 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         lines,
         cursor: 0,
         diags,
+        doc_kind: frontmatter_kind(&raw_yaml),
+        top_block: None,
+        hoisted: Vec::new(),
     };
     let (title, shots, quests, entries, beats) = p.parse_document_inner();
 
@@ -193,6 +196,9 @@ pub(crate) fn parse_body_fragment(text: &str) -> (Vec<Node>, Vec<Diagnostic>) {
         lines,
         cursor: 0,
         diags,
+        doc_kind: None,
+        top_block: None,
+        hoisted: Vec::new(),
     };
     let nodes = parser.parse_shot_body();
     (nodes, parser.diags)
@@ -210,6 +216,43 @@ pub(crate) struct Parser<'a> {
     lines: Vec<(usize, usize)>,
     cursor: usize,
     diags: Vec<Diagnostic>,
+    /// The frontmatter's literal `kind:` value, when written — only for
+    /// kind-aware recovery messages (`lore`/`quest` bodies have no shots).
+    doc_kind: Option<String>,
+    /// The top-level block (`<entry>` / `<beat>` / `<quest>`) whose body is
+    /// being parsed — what a top-level opener nested inside it names
+    /// (lamplight F23).
+    top_block: Option<TopBlock>,
+    /// Top-level blocks opened inside another one by mistake, parsed as its
+    /// siblings; `parse_document_inner` files them after the outer block.
+    hoisted: Vec<Hoisted>,
+}
+
+/// An open top-level block (see [`Parser::top_block`]).
+pub(crate) struct TopBlock {
+    tag: &'static str,
+    id: String,
+    /// 1-based line of its opener.
+    line: u32,
+    /// A nested opener was already reported against it (one error per
+    /// unclosed block, however many siblings follow).
+    reported: bool,
+}
+
+/// A top-level block parsed while another one was still open.
+pub(crate) enum Hoisted {
+    Entry(Entry),
+    Beat(BundleBeat),
+    Quest(Quest),
+}
+
+/// The literal `kind:` value of a frontmatter block (a top-level key only).
+fn frontmatter_kind(raw_yaml: &str) -> Option<String> {
+    raw_yaml.lines().find_map(|l| {
+        let v = l.strip_prefix("kind:")?.trim();
+        let v = v.trim_matches(|c| c == '"' || c == '\'');
+        (!v.is_empty()).then(|| v.to_string())
+    })
 }
 
 impl Parser<'_> {
@@ -352,17 +395,33 @@ impl Parser<'_> {
                 // dsl 0.5.0 §2.1: a content-shaped line reached here only
                 // because no shot/scene is currently open (this loop never
                 // sees a line consumed by `parse_shot_body`) — it belongs
-                // inside a shot/scene body, not at document top level.
-                self.emit_line(
-                    E_CONTENT_OUTSIDE_SHOT,
-                    "content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)",
-                    self.cursor,
-                    Layer::Content,
-                );
+                // inside a shot/scene body, not at document top level. A
+                // lore or quest document has no shots (lamplight F23): the
+                // advice names its own block instead of a `## ` heading.
+                let msg = match self.doc_kind.as_deref() {
+                    Some("lore") => {
+                        "content in a lore document lives inside an `<entry>` or `<beat>` block \
+                         (dsl 0.19.0 §2)"
+                    }
+                    Some("quest") => {
+                        "content in a quest document lives inside a `<quest>` block (dsl 0.2.0 §6.3)"
+                    }
+                    _ => "content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)",
+                };
+                self.emit_line(E_CONTENT_OUTSIDE_SHOT, msg, self.cursor, Layer::Content);
                 self.cursor += 1;
             } else {
                 self.emit_unclassified(self.cursor, Layer::Content);
                 self.cursor += 1;
+            }
+            // lamplight F23: blocks opened inside the one just parsed are
+            // its siblings.
+            for h in std::mem::take(&mut self.hoisted) {
+                match h {
+                    Hoisted::Entry(e) => entries.push(e),
+                    Hoisted::Beat(b) => beats.push(b),
+                    Hoisted::Quest(q) => quests.push(q),
+                }
             }
         }
         (title, shots, quests, entries, beats)
@@ -472,6 +531,10 @@ impl Parser<'_> {
                 Some("hub") => return Some(Node::Hub(self.parse_hub())),
                 Some("on") => return Some(Node::On(self.parse_on())),
                 Some("objective") => return Some(Node::Objective(self.parse_objective())),
+                Some(tag @ ("entry" | "beat" | "quest")) if self.top_block.is_some() => {
+                    self.parse_nested_top_block(tag);
+                    return None;
+                }
                 _ => {
                     self.emit_line(
                         E_UNCLASSIFIED,
@@ -1130,6 +1193,50 @@ mod tests {
         );
     }
 
+    /// lamplight F23: an `<entry>` pasted inside another names the open one
+    /// and its line — ONE diagnostic, no `## heading` advice, no stray-close
+    /// cascade — and both entries still parse, the outer keeping its tail.
+    #[test]
+    fn nested_entry_names_the_open_entry_once() {
+        let src = "---\nkind: lore\ntitle: T\n---\n\n<entry id=\"first\" title=\"First\">\n  @narrator: One.\n\
+                   <entry id=\"second\" title=\"Second\">\n  @narrator: Two.\n</entry>\n  ::assert{x(a)}\n</entry>\n";
+        let (doc, diags) = parse(src);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].code, E_UNCLOSED_TAG);
+        assert_eq!(diags[0].span.line, 8, "{diags:?}");
+        assert!(
+            diags[0].message.starts_with(
+                "entries cannot nest; `first` opened at line 6 is still open — close it with `</entry>`"
+            ),
+            "{}",
+            diags[0].message
+        );
+        let ids: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["first", "second"]);
+        assert_eq!(doc.entries[0].body.len(), 2, "the tail stays in `first`");
+    }
+
+    #[test]
+    fn an_unclosed_entry_before_siblings_is_reported_once_plus_its_close() {
+        let src = "---\nkind: lore\ntitle: T\n---\n<entry id=\"a\">\n  @narrator: a.\n\
+                   <entry id=\"b\">\n  @narrator: b.\n</entry>\n<entry id=\"c\">\n  @narrator: c.\n</entry>\n";
+        let (doc, diags) = parse(src);
+        let codes: Vec<&str> = diags.iter().map(|d| d.code.as_str()).collect();
+        assert_eq!(codes, [E_UNCLOSED_TAG, E_UNCLOSED_TAG], "{diags:?}");
+        assert!(diags.iter().any(|d| d.message.starts_with("entries cannot nest; `a`")), "{diags:?}");
+        assert!(diags.iter().any(|d| d.message == "<entry> is never closed"), "{diags:?}");
+        assert_eq!(doc.entries.len(), 3);
+    }
+
+    #[test]
+    fn lore_content_outside_an_entry_gets_no_heading_advice() {
+        let (_doc, diags) = parse("---\nkind: lore\ntitle: T\n---\n@narrator: stray.\n");
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].code, E_CONTENT_OUTSIDE_SHOT);
+        assert!(!diags[0].message.contains("##"), "{}", diags[0].message);
+        assert!(diags[0].message.contains("`<entry>`"), "{}", diags[0].message);
+    }
+
     #[test]
     fn free_shot_headings_parse_clean() {
         // dsl 0.6.0 §3.1: the `Shot|Scene <int>.`/bookend grammar is gone — any
@@ -1642,10 +1749,14 @@ mod tests {
     }
 
     #[test]
-    fn nested_quest_is_unclassified() {
-        // <quest> is top-level only; nested it must fall through to the error path.
-        let (_, diags) = parse("<quest id=\"q\">\n<quest id=\"inner\"></quest>\n</quest>\n");
-        assert!(diags.iter().any(|d| d.code == "E-UNCLASSIFIED"), "{diags:?}");
+    fn nested_quest_names_the_open_quest() {
+        // <quest> is top-level only; nested, it reports the open quest
+        // (lamplight F23) and parses as its sibling.
+        let (doc, diags) = parse("<quest id=\"q\">\n<quest id=\"inner\">\n</quest>\n</quest>\n");
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].code, E_UNCLOSED_TAG);
+        assert!(diags[0].message.starts_with("quests cannot nest; `q` opened at line 1"), "{diags:?}");
+        assert_eq!(doc.quests.len(), 2);
     }
 
     // -- dsl 0.19.0: top-level <entry> (lore documents) --
@@ -1792,8 +1903,8 @@ mod tests {
 
     #[test]
     fn nested_entry_behaves_like_nested_quest() {
-        // <entry> is top-level only, like <quest>: nested, it falls through
-        // to the same error path with the same diagnostics.
+        // <entry> is top-level only, like <quest>: nested, it reports the
+        // open block the same way.
         let codes = |tag: &str| {
             let (_, diags) = parse(&format!(
                 "<{tag} id=\"o\">\n<{tag} id=\"inner\">\n@x: hi\n</{tag}>\n</{tag}>\n"
@@ -1804,11 +1915,16 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         let entry = codes("entry");
-        assert!(entry.iter().any(|(c, ..)| c == E_UNCLASSIFIED), "{entry:?}");
+        assert_eq!(entry.len(), 1, "{entry:?}");
+        assert_eq!(entry[0].0, E_UNCLOSED_TAG);
         assert_eq!(entry, codes("quest"));
-        let (doc, _) = parse("<entry id=\"o\">\n<entry id=\"inner\">\n</entry>\n");
-        assert_eq!(doc.entries.len(), 1);
-        assert_eq!(doc.entries[0].id, "o");
+        // A mixed nesting names both tags.
+        let (doc, diags) = parse("<beat id=\"b\">\n<entry id=\"inner\">\n</entry>\n</beat>\n");
+        assert!(
+            diags[0].message.starts_with("a `<entry>` cannot sit inside a `<beat>`; `b` opened at line 1"),
+            "{diags:?}"
+        );
+        assert_eq!((doc.beats.len(), doc.entries.len()), (1, 1));
     }
 
     #[test]

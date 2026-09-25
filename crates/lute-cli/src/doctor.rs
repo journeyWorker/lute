@@ -311,12 +311,7 @@ fn language_server_check() -> Check {
             "not found (editors that launch `lute-lsp` from PATH get no diagnostics)".to_string(),
         );
     };
-    let reported = lsp_version_output(&lsp).and_then(|out| {
-        out.lines()
-            .next()
-            .and_then(|l| l.trim().strip_prefix("lute-lsp "))
-            .map(|v| v.trim().to_string())
-    });
+    let reported = lsp_reported_version(&lsp);
     let hint = "reinstall the language server from this toolchain \
                 (`cargo install --path crates/lute-lsp`) and restart the editor";
     match reported {
@@ -336,6 +331,170 @@ fn language_server_check() -> Check {
             ),
             hint,
         ),
+    }
+}
+
+/// The version a `lute-lsp` binary reports for `--version`, `None` when it
+/// reports none (older than 0.22.0).
+fn lsp_reported_version(lsp: &Path) -> Option<String> {
+    lsp_version_output(lsp).and_then(|out| {
+        out.lines()
+            .next()
+            .and_then(|l| l.trim().strip_prefix("lute-lsp "))
+            .map(|v| v.trim().to_string())
+    })
+}
+
+/// One running `lute-lsp` process: its pid, the binary it was started from
+/// (when it can be told), and whether that binary was replaced or deleted
+/// since it started.
+#[cfg(unix)]
+struct RunningLsp {
+    pid: u32,
+    exe: Option<PathBuf>,
+    replaced: bool,
+}
+
+/// `ps`'s `etime` (`[[dd-]hh:]mm:ss`) in seconds.
+#[cfg(unix)]
+fn parse_etime(s: &str) -> Option<u64> {
+    let (days, clock) = match s.split_once('-') {
+        Some((d, rest)) => (d.parse::<u64>().ok()?, rest),
+        None => (0, s),
+    };
+    let mut secs = 0u64;
+    for part in clock.split(':') {
+        secs = secs * 60 + part.parse::<u64>().ok()?;
+    }
+    Some(days * 86_400 + secs)
+}
+
+/// The binary a process command line (`ps`'s `args`) was started from, when
+/// it is `lute-lsp`: the longest prefix ending in `lute-lsp` that is the bare
+/// name or an existing file (a path may hold spaces; a script shows as
+/// `/bin/sh /path/lute-lsp`).
+#[cfg(unix)]
+fn lsp_argv_binary(args: &str) -> Option<&str> {
+    const NAME: &str = "lute-lsp";
+    for (idx, _) in args.match_indices(NAME) {
+        let end = idx + NAME.len();
+        if !args[end..].is_empty() && !args[end..].starts_with(' ') {
+            continue;
+        }
+        let starts = std::iter::once(0).chain(args[..idx].match_indices(' ').map(|(i, _)| i + 1));
+        for start in starts {
+            let candidate = &args[start..end];
+            if candidate == NAME || (candidate.ends_with("/lute-lsp") && Path::new(candidate).is_file()) {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Every running `lute-lsp` server (`ps`), `None` when processes cannot be
+/// listed. A `--version` probe is not a server and is skipped.
+#[cfg(unix)]
+fn running_lsps() -> Option<Vec<RunningLsp>> {
+    let ps = if Path::new("/bin/ps").is_file() { "/bin/ps" } else { "ps" };
+    let out = std::process::Command::new(ps)
+        .args(["-Ao", "pid=,etime=,args="])
+        .env("LC_ALL", "C")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let now = std::time::SystemTime::now();
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut found = Vec::new();
+    for row in text.lines() {
+        let row = row.trim_start();
+        let Some((pid, rest)) = row.split_once(char::is_whitespace) else { continue };
+        let Some((etime, args)) = rest.trim_start().split_once(char::is_whitespace) else { continue };
+        let (Ok(pid), Some(age)) = (pid.parse::<u32>(), parse_etime(etime)) else { continue };
+        let args = args.trim();
+        let Some(argv) = lsp_argv_binary(args) else { continue };
+        if args[argv.len()..].split_whitespace().any(|a| a == "--version") {
+            continue;
+        }
+        // Linux names the binary a process runs, and marks it replaced.
+        let proc_exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok();
+        let deleted = proc_exe
+            .as_ref()
+            .is_some_and(|p| p.to_string_lossy().ends_with(" (deleted)"));
+        let exe = match proc_exe {
+            Some(p) if !deleted => Some(p),
+            _ if argv.contains('/') => Some(PathBuf::from(argv)),
+            _ => find_on_path("lute-lsp"),
+        };
+        // `etime` is whole seconds rounded down, so the start is at most
+        // `now - etime`: a binary written after that was replaced while the
+        // server ran.
+        let started = now.checked_sub(std::time::Duration::from_secs(age));
+        let rebuilt = exe
+            .as_ref()
+            .and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+            .zip(started)
+            .is_some_and(|(modified, started)| modified > started);
+        found.push(RunningLsp {
+            pid,
+            exe,
+            replaced: deleted || rebuilt,
+        });
+    }
+    Some(found)
+}
+
+/// The `runningLanguageServers` check (seven-days F27): a server the editor
+/// started keeps running its old build after `lute-lsp` is reinstalled, so
+/// the binary on `PATH` can be current while the editor still reports a
+/// stale toolchain. Fail when a running `lute-lsp` was started from a binary
+/// replaced since, or from one that reports another version.
+#[cfg(unix)]
+fn running_language_servers_check() -> Check {
+    const KEY: &str = "runningLanguageServers";
+    const LABEL: &str = "running lute-lsp";
+    let ours = env!("CARGO_PKG_VERSION");
+    let Some(servers) = running_lsps() else {
+        return Check::info(KEY, LABEL, "cannot list processes (`ps` failed)".to_string());
+    };
+    if servers.is_empty() {
+        return Check::info(KEY, LABEL, "none running".to_string());
+    }
+    let mut versions: BTreeMap<PathBuf, Option<String>> = BTreeMap::new();
+    let (mut stale, mut current, mut unknown) = (Vec::new(), Vec::new(), Vec::new());
+    for s in &servers {
+        let Some(exe) = &s.exe else {
+            unknown.push(format!("pid {} (binary not found)", s.pid));
+            continue;
+        };
+        let at = format!("pid {} ({})", s.pid, exe.display());
+        if s.replaced {
+            stale.push(format!("{at} started before its binary was replaced, so it runs an older build"));
+            continue;
+        }
+        let reported = versions
+            .entry(exe.clone())
+            .or_insert_with(|| lsp_reported_version(exe));
+        match reported {
+            Some(v) if v == ours => current.push(format!("{at} {v}")),
+            Some(v) => stale.push(format!("{at} is {v}, not lute {ours}")),
+            None => stale.push(format!("{at} reports no version (older than 0.22.0)")),
+        }
+    }
+    let all: Vec<String> = stale.iter().chain(&current).chain(&unknown).cloned().collect();
+    if !stale.is_empty() {
+        Check::fail(
+            KEY,
+            LABEL,
+            all.join("; "),
+            "restart the editor (or its language server) so it launches this toolchain's lute-lsp",
+        )
+    } else if !current.is_empty() {
+        Check::pass(KEY, LABEL, all.join("; "))
+    } else {
+        Check::info(KEY, LABEL, all.join("; "))
     }
 }
 
@@ -582,6 +741,8 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
         "not detectable from the CLI".to_string(),
     ));
     checks.push(language_server_check());
+    #[cfg(unix)]
+    checks.push(running_language_servers_check());
 
     Some(checks)
 }

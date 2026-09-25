@@ -9,19 +9,21 @@
 //! (any `Error`-severity parse diagnostic, `lute loc`'s own guard) is named on
 //! stderr and skipped. Three sections:
 //!
-//! 1. **Entries by target** — every lore `<entry>`, grouped by its `target`
-//!    (targets byte-sorted, entries without one last under `(no target)`);
-//!    within a group, project order (file order, then declaration order — the
-//!    `ProjectIndex.entries` tiebreak, spec §6).
+//! 1. **Entries by target** — every lore `<entry>` and every beat (a lore
+//!    `<beat>` bundle under its canonical `<document id>.<beat id>`, dsl
+//!    0.23.0 §4, and a scene beat under its scene key, dsl 0.21.0 §4 —
+//!    labelled `beat`), grouped by its `target` (targets byte-sorted, rows
+//!    without one last under `(no target)`); within a group, project order
+//!    (file order, then declaration order — the `ProjectIndex.entries`
+//!    tiebreak, spec §6).
 //! 2. **Series** — every `series`, byte-sorted, its entries by `order`
 //!    (entries whose `order` is absent or not a non-negative integer follow,
 //!    in project order).
 //! 3. **Facts** — for every relation with at least one `::assert` anywhere,
-//!    each ground fact asserted, and who reveals it: lore entries (their ids)
-//!    and lore `<beat>` bundles (their canonical `<document id>.<beat id>`,
-//!    dsl 0.23.0 §4) — listed together as `entries` — scenes/quests (their
-//!    documents), or both. Relations and facts are byte-sorted; ids and
-//!    documents too.
+//!    each ground fact asserted, and who reveals it: lore entries (their
+//!    ids), lore `<beat>` bundles (their canonical ids, listed as `beats`),
+//!    scenes/quests (their documents), or more than one of those (`both`).
+//!    Relations and facts are byte-sorted; ids and documents too.
 //!
 //! Document paths are shown relative to `dir`. `--json` emits the same data as
 //! one object. Exit `0` on success, `2` on an I/O failure.
@@ -35,12 +37,18 @@ use lute_syntax::ast::{Arm, Document, Node};
 use lute_syntax::datalog::{FactPattern, FactTerm};
 use serde::Serialize;
 
-/// One lore entry as the report lists it.
+/// One lore entry, or one beat, as the report lists it.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EntryRow {
+    /// `Some("beat")` for a bundle beat or a scene beat; absent for an entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<&'static str>,
     id: String,
     document: String,
+    /// A beat's occasion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    on: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     target: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,10 +85,11 @@ struct SeriesGroup {
 #[serde(rename_all = "camelCase")]
 struct FactRow {
     fact: String,
-    /// `"entries"` (lore entries and bundle beats), `"scenes"` (scenes and
-    /// quests), or `"both"`.
+    /// `"entries"` (lore entries), `"beats"` (bundle beats), `"scenes"`
+    /// (scenes and quests), or `"both"` (more than one of those).
     revealed_by: &'static str,
     entries: Vec<String>,
+    beats: Vec<String>,
     documents: Vec<String>,
 }
 
@@ -97,11 +106,20 @@ struct Report {
     relations: Vec<RelationGroup>,
 }
 
-/// Who asserts one ground fact: entry ids and scene/quest documents.
+/// Who asserts one ground fact: entry ids, bundle beat ids and scene/quest
+/// documents.
 #[derive(Default)]
 struct Sources {
     entries: BTreeSet<String>,
+    beats: BTreeSet<String>,
     documents: BTreeSet<String>,
+}
+
+/// Which kind of source revealed a fact.
+enum Source<'a> {
+    Entry(&'a str),
+    Beat(&'a str),
+    Document,
 }
 
 /// Every well-formed ground `::assert` pattern in `nodes`, recursing into
@@ -169,12 +187,13 @@ fn fold_document(
     entries: &mut Vec<EntryRow>,
     facts: &mut BTreeMap<String, BTreeMap<String, Sources>>,
 ) {
-    let mut record = |fact: String, into_entry: Option<&str>| {
+    let mut record = |fact: String, source: Source<'_>| {
         let relation = fact[..fact.find('(').unwrap_or(fact.len())].to_string();
         let sources = facts.entry(relation).or_default().entry(fact).or_default();
-        match into_entry {
-            Some(id) => sources.entries.insert(id.to_string()),
-            None => sources.documents.insert(document.to_string()),
+        match source {
+            Source::Entry(id) => sources.entries.insert(id.to_string()),
+            Source::Beat(id) => sources.beats.insert(id.to_string()),
+            Source::Document => sources.documents.insert(document.to_string()),
         };
     };
     let mut scene_facts = Vec::new();
@@ -185,27 +204,49 @@ fn fold_document(
         collect_asserts(&quest.body, &mut scene_facts);
     }
     for fact in scene_facts {
-        record(fact, None);
+        record(fact, Source::Document);
     }
+    // dsl 0.21.0 §4: a scene beat (frontmatter `on:`) is listed under its
+    // target like a bundle beat; its asserts stay the scene's.
+    if let Some(key) = lute_check::connectivity::scene_key(doc) {
+        let meta = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
+        let field = |k: &str| {
+            meta.as_ref()?
+                .get(serde_yaml::Value::String(k.to_string()))?
+                .as_str()
+                .map(str::to_string)
+        };
+        if let Some(on) = field("on") {
+            entries.push(beat_row(key, document, Some(on), field("target"), field("title")));
+        }
+    }
+    // Entries and bundle beats in declaration order (the rows interleave by
+    // source position, as their compiled records do).
+    let mut rows: Vec<(usize, EntryRow)> = Vec::new();
     let doc_series = lute_check::document_series(&doc.meta);
     let resolved = lute_check::resolve_entry_series(doc_series.as_deref(), &doc.entries);
     for (entry, position) in doc.entries.iter().zip(resolved) {
         let mut entry_facts = Vec::new();
         collect_asserts(&entry.body, &mut entry_facts);
         for fact in entry_facts {
-            record(fact, Some(&entry.id));
+            record(fact, Source::Entry(&entry.id));
         }
-        entries.push(EntryRow {
-            id: entry.id.clone(),
-            document: document.to_string(),
-            target: entry.target.as_ref().map(|(v, _)| v.clone()),
-            category: entry.category.as_ref().map(|(v, _)| v.clone()),
-            title: entry.title.as_ref().map(|(v, _)| v.clone()),
-            series: position.series.map(str::to_string),
-            order: position.order,
-        });
+        rows.push((
+            entry.span.byte_start,
+            EntryRow {
+                kind: None,
+                id: entry.id.clone(),
+                document: document.to_string(),
+                on: None,
+                target: entry.target.as_ref().map(|(v, _)| v.clone()),
+                category: entry.category.as_ref().map(|(v, _)| v.clone()),
+                title: entry.title.as_ref().map(|(v, _)| v.clone()),
+                series: position.series.map(str::to_string),
+                order: position.order,
+            },
+        ));
     }
-    // dsl 0.23.0 §4: a bundle beat reveals its asserts like an entry, under
+    // dsl 0.23.0 §4: a bundle beat is listed and reveals its asserts under
     // its canonical id; without a well-formed document `id:` it has none (its
     // own `E-BEAT-ATTR`), so the bare beat id stands in.
     let doc_id = (!doc.beats.is_empty())
@@ -219,8 +260,36 @@ fn fold_document(
         let mut beat_facts = Vec::new();
         collect_asserts(&beat.body, &mut beat_facts);
         for fact in beat_facts {
-            record(fact, Some(&id));
+            record(fact, Source::Beat(&id));
         }
+        let value = |v: &Option<(String, lute_core_span::Span)>| v.as_ref().map(|(s, _)| s.clone());
+        rows.push((
+            beat.span.byte_start,
+            beat_row(id, document, value(&beat.on), value(&beat.target), value(&beat.title)),
+        ));
+    }
+    rows.sort_by_key(|(at, _)| *at);
+    entries.extend(rows.into_iter().map(|(_, row)| row));
+}
+
+/// A beat's row: labelled `beat`, never in a series.
+fn beat_row(
+    id: String,
+    document: &str,
+    on: Option<String>,
+    target: Option<String>,
+    title: Option<String>,
+) -> EntryRow {
+    EntryRow {
+        kind: Some("beat"),
+        id,
+        document: document.to_string(),
+        on,
+        target,
+        category: None,
+        title,
+        series: None,
+        order: None,
     }
 }
 
@@ -270,12 +339,18 @@ fn build_report(
                 .into_iter()
                 .map(|(fact, s)| FactRow {
                     fact,
-                    revealed_by: match (s.entries.is_empty(), s.documents.is_empty()) {
-                        (false, true) => "entries",
-                        (true, false) => "scenes",
+                    revealed_by: match (
+                        s.entries.is_empty(),
+                        s.beats.is_empty(),
+                        s.documents.is_empty(),
+                    ) {
+                        (false, true, true) => "entries",
+                        (true, false, true) => "beats",
+                        (true, true, false) => "scenes",
                         _ => "both",
                     },
                     entries: s.entries.into_iter().collect(),
+                    beats: s.beats.into_iter().collect(),
                     documents: s.documents.into_iter().collect(),
                 })
                 .collect(),
@@ -296,7 +371,8 @@ fn entry_label(e: &EntryRow) -> &str {
     }
 }
 
-/// One entry line: `id  [category]  "title"  document`.
+/// One entry line: `id  [category]  "title"  document`; a beat's reads
+/// `beat  id  "title"  document  (on occasion)`.
 fn entry_line(e: &EntryRow, lead: Option<String>) -> String {
     let mut s = String::from("    ");
     if let Some(lead) = lead {
@@ -311,6 +387,9 @@ fn entry_line(e: &EntryRow, lead: Option<String>) -> String {
         s.push_str(&format!("  \"{t}\""));
     }
     s.push_str(&format!("  {}", e.document));
+    if let Some(on) = &e.on {
+        s.push_str(&format!("  (on {on})"));
+    }
     s
 }
 
@@ -325,7 +404,7 @@ fn render_text(r: &Report) -> String {
             g.target.as_deref().unwrap_or("(no target)")
         ));
         for e in &g.entries {
-            out.push_str(&entry_line(e, None));
+            out.push_str(&entry_line(e, e.kind.map(str::to_string)));
             out.push('\n');
         }
     }
@@ -351,6 +430,9 @@ fn render_text(r: &Report) -> String {
             out.push_str(&format!("    {}  {}\n", f.fact, f.revealed_by));
             if !f.entries.is_empty() {
                 out.push_str(&format!("      entries: {}\n", f.entries.join(", ")));
+            }
+            if !f.beats.is_empty() {
+                out.push_str(&format!("      beats: {}\n", f.beats.join(", ")));
             }
             if !f.documents.is_empty() {
                 out.push_str(&format!(

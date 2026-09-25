@@ -93,3 +93,36 @@ fn a_line_after_a_bg_auto_hide_warns_until_the_character_is_shown_again() {
     );
     assert!(ds.is_empty(), "{ds:#?}");
 }
+
+/// seven F7 (dsl 0.23.1): shown in only SOME arms of a `<match>`, a
+/// character is hidden at the next `::bg` on the paths where she is on stage,
+/// so her later line without a re-show warns.
+#[test]
+fn a_character_shown_in_some_match_arms_is_hidden_at_the_next_bg() {
+    let body = "::auto{character=\"vesna\" action=\"hide\"}\n\
+                <match on=\"run.mood\">\n\
+                <when is=\"calm\">\n::auto{character=\"pell\" action=\"show\"}\n@pell: Here.\n</when>\n\
+                <when is=\"tense\">\n@narrator: Nobody.\n</when>\n</match>\n\
+                ::bg{location=\"slipway\"}\n@pell: Still here?";
+    let ds = absent(body);
+    assert_eq!(ds.len(), 1, "{ds:#?}");
+    assert!(ds[0].message.starts_with("`pell` was auto-hidden by an earlier `::bg`"), "{}", ds[0].message);
+    // Re-shown after the cut: silent.
+    let ds = absent(&format!(
+        "{}\n::auto{{character=\"pell\" action=\"show\"}}\n@pell: Back.",
+        body.trim_end_matches("\n@pell: Still here?")
+    ));
+    assert!(ds.is_empty(), "{ds:#?}");
+}
+
+/// lamplight N15: an exit of a character a `::bg` already hid does nothing,
+/// and the warning says so and names the fix — not "stages someone".
+#[test]
+fn an_exit_after_a_bg_auto_hide_is_named_redundant() {
+    let ds = absent("::bg{location=\"cafe\"}\n::auto{character=\"vesna\" action=\"hide\"}");
+    assert_eq!(ds.len(), 1, "{ds:#?}");
+    let m = &ds[0].message;
+    assert!(m.starts_with("`vesna` is already off stage (hidden by the `::bg` at line 18)"), "{m}");
+    assert!(m.contains("this exit does nothing. Move it before the `::bg`, or delete it"), "{m}");
+    assert!(!m.contains("stages"), "{m}");
+}
