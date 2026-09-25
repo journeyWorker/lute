@@ -27,7 +27,7 @@ state:
   for "captive Halsin" (spec section 3.1's one-id-one-kind rule).
 */
 
-<quest id="rescueHalsin" title="Rescue the First Druid" start="holds(inParty(shadowheart))" fail="holds(atLocation(halsin, moonrise))">
+<quest id="rescueHalsin" title="Rescue the First Druid" start="holds(inParty(shadowheart))" fail="holds(captive(halsin)) && holds(atLocation(halsin, moonrise))">
   <objective id="reach" title="Reach the grove" done="holds(canReach(player, grove))"/>
   <objective id="learn" title="Learn where Halsin is held" done="holds(believesLocation(player, halsin, grove))"/>
 
