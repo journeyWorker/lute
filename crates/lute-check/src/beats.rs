@@ -531,14 +531,23 @@ pub(crate) fn check_occasion(
 /// `Ok` for an occasion without a domain (`target: true` keeps the 0.21
 /// shape-only meaning), for a member of the named entity kind under the
 /// domain's prefix, and for any `<prefix>.<id>` of an `open:` kind (its
-/// members are engine-populated). The `Err` is the whole reason, with a
-/// did-you-mean over `<prefix>.<member>` when one is close.
+/// members are engine-populated). A domain with a `members:` subset admits
+/// exactly `<prefix>.<member>` for a listed member — and every listed member
+/// must belong to a closed kind (an `open:` kind's cannot be known). The
+/// `Err` is the whole reason, with a did-you-mean over the legal
+/// `<prefix>.<member>` targets (or, for a stray listed member, over the
+/// kind's members) when one is close.
 pub fn occasion_target_ok(
     decl: &OccasionDecl,
     target: &str,
     kinds: &BTreeMap<String, EntityKindDecl>,
 ) -> Result<(), String> {
-    let OccasionTarget::Domain { prefix, entity } = &decl.target else {
+    let OccasionTarget::Domain {
+        prefix,
+        entity,
+        members: subset,
+    } = &decl.target
+    else {
         return Ok(());
     };
     let on = &decl.name;
@@ -548,39 +557,57 @@ pub fn occasion_target_ok(
              does not declare under `entities:` (dsl 0.22.0 §8)"
         ));
     };
+    // `open:` members are engine-populated: only the prefix is checked. An
+    // invalid kind is `E-ENTITY-KIND-SHAPE`'s, never this rule's.
+    let kind_members: Option<&[String]> = match &kind.shape {
+        KindShape::Members(ms) => Some(ms),
+        KindShape::Open | KindShape::Invalid => None,
+    };
+    if let (Some(subset), Some(ms)) = (subset, kind_members) {
+        if let Some(stray) = subset.iter().find(|m| !ms.contains(m)) {
+            let hint = lute_manifest::suggest::nearest(stray, ms.iter().map(String::as_str), 2)
+                .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+            return Err(format!(
+                "occasion `{on}` lists `{stray}` in its target `members:`, but `{stray}` is not \
+                 a member of entity kind `{entity}`{hint} (dsl 0.22.0 §8)"
+            ));
+        }
+    }
     let member = target
         .strip_prefix(prefix.as_str())
         .and_then(|rest| rest.strip_prefix('.'))
         .filter(|m| !m.is_empty());
-    let members: &[String] = match &kind.shape {
-        KindShape::Members(ms) => ms,
-        // `open:` members are engine-populated: only the prefix is checked.
-        // An invalid kind is `E-ENTITY-KIND-SHAPE`'s, never this rule's.
-        KindShape::Open | KindShape::Invalid => {
-            return match member {
-                Some(_) => Ok(()),
-                None => Err(format!(
-                    "target `{target}` is outside occasion `{on}`'s domain: its targets are \
-                     `{prefix}.<{entity}>` (dsl 0.22.0 §8)"
-                )),
-            };
-        }
+    let Some(legal) = decl.target.domain_members(kind_members) else {
+        return match member {
+            Some(_) => Ok(()),
+            None => Err(format!(
+                "target `{target}` is outside occasion `{on}`'s domain: its targets are \
+                 `{prefix}.<{entity}>` (dsl 0.22.0 §8)"
+            )),
+        };
     };
-    if member.is_some_and(|m| members.iter().any(|x| x == m)) {
+    if member.is_some_and(|m| legal.iter().any(|x| x == m)) {
         return Ok(());
     }
-    let domain: Vec<String> = members.iter().map(|m| format!("{prefix}.{m}")).collect();
+    let domain: Vec<String> = legal.iter().map(|m| format!("{prefix}.{m}")).collect();
     let hint = lute_manifest::suggest::nearest(target, domain.iter().map(String::as_str), 2)
         .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
-    Err(format!(
-        "target `{target}` is outside occasion `{on}`'s domain `{prefix}.<{entity}>` ({}){hint} \
-         (dsl 0.22.0 §8)",
-        domain
-            .iter()
-            .map(|t| format!("`{t}`"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    ))
+    let listed = domain
+        .iter()
+        .map(|t| format!("`{t}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(if subset.is_some() {
+        format!(
+            "target `{target}` is outside occasion `{on}`'s member list ({listed}), a subset of \
+             entity kind `{entity}`{hint} (dsl 0.22.0 §8)"
+        )
+    } else {
+        format!(
+            "target `{target}` is outside occasion `{on}`'s domain `{prefix}.<{entity}>` \
+             ({listed}){hint} (dsl 0.22.0 §8)"
+        )
+    })
 }
 
 /// dsl 0.22.0 §8: every beat target of one document — the scene's own

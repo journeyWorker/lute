@@ -721,9 +721,24 @@ mod tests {
         let domain = |entity: &str| OccasionTarget::Domain {
             prefix: "npc".into(),
             entity: entity.into(),
+            members: None,
         };
         assert_ne!(stamp(domain("person")), stamp(true.into()));
         assert_ne!(stamp(domain("person")), stamp(domain("foe")));
+        // A domain without a member subset keeps its 0.22 stamp (pinned from
+        // the `{ prefix, entity }` shape); a subset narrows the contract and
+        // restamps, per list.
+        assert_eq!(
+            stamp(domain("person")),
+            "dbdc23d2e4e925eb7affe0c22aea62896a5ffaaf4ef7e2db820f82d846531c5a"
+        );
+        let subset = |members: &[&str]| OccasionTarget::Domain {
+            prefix: "npc".into(),
+            entity: "person".into(),
+            members: Some(members.iter().map(|m| m.to_string()).collect()),
+        };
+        assert_ne!(stamp(subset(&["maud"])), stamp(domain("person")));
+        assert_ne!(stamp(subset(&["maud"])), stamp(subset(&["maud", "ivo"])));
     }
 
     #[test]

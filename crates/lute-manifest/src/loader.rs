@@ -286,7 +286,8 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                     e,
                 )
             }),
-            "occasions" => read_kind::<OccasionsFile, _>(&path, &mut errs, |f, _file, e| {
+            "occasions" => read_kind::<OccasionsFile, _>(&path, &mut errs, |f, file, e| {
+                check_occasion_members(&f.occasions, &file.display().to_string(), e);
                 let decls: Vec<OccasionDecl> = f
                     .occasions
                     .into_iter()
@@ -397,6 +398,46 @@ fn check_asset_segment_types(kinds: &[AssetKindDecl], file: &str, errs: &mut Vec
                 }
             }
         }
+    }
+}
+
+/// An occasion target domain's `members:` list (the member subset) must name
+/// at least one member, each once. Whether each listed member belongs to the
+/// domain's entity kind is the checker's to judge: entity kinds are project
+/// vocabulary (`entities:`), unknown to a plugin package. Reported as a
+/// [`LoadError::Parse`] of `file`, the declaration file the list came from.
+fn check_occasion_members(
+    occasions: &BTreeMap<String, OccasionBody>,
+    file: &str,
+    errs: &mut Vec<LoadError>,
+) {
+    for (name, body) in occasions {
+        let OccasionTarget::Domain {
+            entity,
+            members: Some(members),
+            ..
+        } = &body.target
+        else {
+            continue;
+        };
+        let msg = if members.is_empty() {
+            format!(
+                "occasion `{name}`'s `target.members` is empty; list at least one member of \
+                 entity kind `{entity}`, or drop `members` to draw targets from the whole kind"
+            )
+        } else if let Some(dup) = members
+            .iter()
+            .enumerate()
+            .find_map(|(i, m)| members[..i].contains(m).then_some(m))
+        {
+            format!("occasion `{name}`'s `target.members` lists `{dup}` more than once")
+        } else {
+            continue;
+        };
+        errs.push(LoadError::Parse {
+            file: file.to_string(),
+            msg,
+        });
     }
 }
 
