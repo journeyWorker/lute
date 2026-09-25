@@ -320,7 +320,7 @@ expression: json
         "raw": "holds(inParty(shadowheart))"
       },
       "fail": {
-        "raw": "holds(atLocation(halsin, moonrise))"
+        "raw": "holds(captive(halsin)) && holds(atLocation(halsin, moonrise))"
       },
       "objectives": [
         {
