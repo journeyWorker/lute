@@ -2840,7 +2840,7 @@ the branch is not, because the `leave` path reaches it with her gone:
 
 <!-- lute-diagnostics -->
 ```
-platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)
+platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)
 ```
 
 An `::auto{character="marina" action="fade-in-up"}` before that line, or at the end of the `leave`
@@ -4781,6 +4781,7 @@ With `foe: { members: [gatekeeper, warden, cinderhound] }` under `entities:`, th
 targets are `boss.gatekeeper` and `boss.warden` only. `target: boss.cinderhound` is `E-BEAT-ATTR`
 although `cinderhound` is a `foe`, and the did-you-mean runs over the listed members:
 
+<!-- lute-diagnostics unverified="verbatim lute check output; the message ends in an optional did-you-mean slot that is empty here, and the matcher requires every interpolation to be non-empty" -->
 ```text
 ./scenes/hound.lute:5:9: error [E-BEAT-ATTR] target `boss.cinderhound` is outside occasion `bossDefeated`'s member list (`boss.gatekeeper`, `boss.warden`), a subset of entity kind `foe` (dsl 0.22.0 §8)
 ```

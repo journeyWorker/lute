@@ -383,6 +383,7 @@ With `foe: { members: [gatekeeper, warden, cinderhound] }` under `entities:`, th
 targets are `boss.gatekeeper` and `boss.warden` only. `target: boss.cinderhound` is `E-BEAT-ATTR`
 although `cinderhound` is a `foe`, and the did-you-mean runs over the listed members:
 
+<!-- lute-diagnostics unverified="verbatim lute check output; the message ends in an optional did-you-mean slot that is empty here, and the matcher requires every interpolation to be non-empty" -->
 ```text
 ./scenes/hound.lute:5:9: error [E-BEAT-ATTR] target `boss.cinderhound` is outside occasion `bossDefeated`'s member list (`boss.gatekeeper`, `boss.warden`), a subset of entity kind `foe` (dsl 0.22.0 §8)
 ```
