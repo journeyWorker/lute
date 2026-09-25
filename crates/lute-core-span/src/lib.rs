@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct TextIndex<'a> {
     text: &'a str,
     line_starts: Vec<usize>, // byte offset of each line start
+    line_utf16: Vec<u32>,    // file-relative UTF-16 offset of each line start
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -16,12 +17,20 @@ pub struct Position {
 impl<'a> TextIndex<'a> {
     pub fn new(text: &'a str) -> Self {
         let mut line_starts = vec![0usize];
-        for (i, b) in text.bytes().enumerate() {
-            if b == b'\n' {
+        let mut line_utf16 = vec![0u32];
+        let mut units = 0u32;
+        for (i, c) in text.char_indices() {
+            units += c.len_utf16() as u32;
+            if c == '\n' {
                 line_starts.push(i + 1);
+                line_utf16.push(units);
             }
         }
-        Self { text, line_starts }
+        Self {
+            text,
+            line_starts,
+            line_utf16,
+        }
     }
 
     /// The source text this index was built over. The byte offsets every `Span`
@@ -30,11 +39,15 @@ impl<'a> TextIndex<'a> {
         self.text
     }
 
-    pub fn position(&self, byte: usize) -> Position {
-        let line_ix = match self.line_starts.binary_search(&byte) {
+    fn line_of(&self, byte: usize) -> usize {
+        match self.line_starts.binary_search(&byte) {
             Ok(i) => i,
             Err(i) => i - 1,
-        };
+        }
+    }
+
+    pub fn position(&self, byte: usize) -> Position {
+        let line_ix = self.line_of(byte);
         let line_start = self.line_starts[line_ix];
         let slice = &self.text[line_start..byte];
         let byte_col = (byte - line_start) as u32;
@@ -46,13 +59,16 @@ impl<'a> TextIndex<'a> {
         }
     }
 
+    /// File-relative UTF-16 units before `byte`: the line's precomputed start
+    /// plus the units within the line, so a span costs O(line), not O(file).
     fn utf16_offset(&self, byte: usize) -> u32 {
-        // total UTF-16 units from start of file to byte (for LSP ranges we use per-line cols,
-        // but Span keeps a file-relative utf16_range for the divergence golden)
-        self.text[..byte]
-            .chars()
-            .map(|c| c.len_utf16() as u32)
-            .sum()
+        let line_ix = self.line_of(byte);
+        let line_start = self.line_starts[line_ix];
+        self.line_utf16[line_ix]
+            + self.text[line_start..byte]
+                .chars()
+                .map(|c| c.len_utf16() as u32)
+                .sum::<u32>()
     }
 }
 
