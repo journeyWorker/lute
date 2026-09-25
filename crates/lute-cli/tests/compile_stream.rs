@@ -229,7 +229,7 @@ defaults:\n  kind: scene\n  character: hero\n  season: 1\n  episode: 7\n  uses: 
     write_at(
         &dir,
         "plugins/demo.plugin/directives/announce.yaml",
-        "directives:\n  - name: announce\n    attrs:\n      - { name: id, required: true, type: { providerRef: speakerId } }\n    lower: { kind: builtin, name: noop }\n",
+        "directives:\n  - name: announce\n    attrs:\n      - { name: id, required: true, type: { providerRef: speakerId } }\n",
     );
     write_at(
         &dir,

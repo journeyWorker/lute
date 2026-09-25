@@ -227,8 +227,43 @@ fn defined_quests(docs: &[(PathBuf, Document)]) -> BTreeMap<&str, BTreeSet<&str>
 /// read twice in one document gets ONE diagnostic, anchored at its FIRST
 /// slot in [`lute_syntax::walk::for_each_cel_slot`]'s canonical pre-order.
 fn referenced_reserved_paths(doc: &Document) -> BTreeMap<String, Span> {
+    referenced_paths(doc, is_reserved_quest_path, |path| {
+        path.strip_prefix("quest.")
+            .and_then(|rest| rest.split('.').next())
+            .map(|id| ("quest.".len(), id.len()))
+    })
+}
+
+/// dsl 0.24.0 (T1-6): a scene beat's frontmatter `when:` (a scene with
+/// `on:`) as a slot over its inline value's source span — the one condition
+/// slot [`lute_syntax::walk::for_each_cel_slot`] cannot see (the frontmatter
+/// is YAML, lifted by the checker, not the parser).
+fn scene_when_slot(doc: &Document) -> Option<lute_syntax::ast::CelSlot> {
+    let map = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok()?;
+    let key = |k: &str| map.get(serde_yaml::Value::String(k.to_string()));
+    key("on")?;
+    let raw = key("when")?.as_str().filter(|w| !w.trim().is_empty())?;
+    Some(lute_syntax::ast::CelSlot::raw(
+        lute_syntax::ast::CelKind::Condition,
+        raw.to_string(),
+        crate::beats::top_value_span(&doc.meta, "when"),
+    ))
+}
+
+/// Every path `doc` references that `keep` admits, paired with where it was
+/// first found: the scene beat's frontmatter `when:` first (source order),
+/// narrowed to the referenced id (`id_at` gives its `(offset, len)` within
+/// the path) when the path appears verbatim in the value, then the enclosing
+/// slot of each body read in canonical [`lute_syntax::walk::for_each_cel_slot`]
+/// order. Each slot is re-parsed fresh; one that fails to parse contributes
+/// nothing (the normal CEL-parse pass reports it).
+fn referenced_paths(
+    doc: &Document,
+    keep: impl Fn(&str) -> bool,
+    id_at: impl Fn(&str) -> Option<(usize, usize)>,
+) -> BTreeMap<String, Span> {
     let mut out = BTreeMap::new();
-    lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
+    let mut visit = |slot: &lute_syntax::ast::CelSlot, frontmatter: bool| {
         let raw = slot.raw.trim();
         if raw.is_empty() {
             return;
@@ -241,18 +276,42 @@ fn referenced_reserved_paths(doc: &Document) -> BTreeMap<String, Span> {
             return;
         };
         for use_ in collect_path_uses(&rec.expr) {
-            if is_reserved_quest_path(&use_.path) {
-                out.entry(use_.path).or_insert(slot.span);
+            if !keep(&use_.path) {
+                continue;
             }
+            let span = match (frontmatter, slot.raw.find(&use_.path), id_at(&use_.path)) {
+                (true, Some(at), Some((off, len))) => {
+                    let start = slot.span.byte_start + at + off;
+                    Span {
+                        byte_start: start,
+                        byte_end: start + len,
+                        line: 0,
+                        column: 0,
+                        utf16_range: (0, 0),
+                    }
+                }
+                _ => slot.span,
+            };
+            out.entry(use_.path).or_insert(span);
         }
-    });
+    };
+    if let Some(slot) = scene_when_slot(doc) {
+        visit(&slot, true);
+    }
+    lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| visit(slot, false));
     out
 }
 
-fn unknown_quest_message(path: &str, id: &str) -> String {
+/// ` — did you mean `x`?` over `known`, or nothing when none is close.
+fn did_you_mean<'a>(id: &str, known: impl Iterator<Item = &'a str>) -> String {
+    lute_manifest::suggest::nearest(id, known, 2)
+        .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"))
+}
+
+fn unknown_quest_message(path: &str, id: &str, hint: &str) -> String {
     format!(
-        "`{path}` references quest `{id}`, which no project quest defines (dsl 0.5.1 §1.4) \
-         — a typo, or a quest defined outside this walked directory"
+        "`{path}` references quest `{id}`, which no project quest defines{hint} (dsl 0.5.1 \
+         §1.4) — a typo, or a quest defined outside this walked directory"
     )
 }
 
@@ -276,6 +335,9 @@ fn unknown_objective_message(path: &str, quest_id: &str, oid: &str) -> String {
 /// 0.5.1 §1.4).
 pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
     let defined = defined_quests(docs);
+    let unknown = |ref_path: &str, id: &str| {
+        unknown_quest_message(ref_path, id, &did_you_mean(id, defined.keys().copied()))
+    };
     let mut out = Vec::new();
     for (path, doc) in docs {
         for (ref_path, span) in referenced_reserved_paths(doc) {
@@ -285,25 +347,26 @@ pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
                     if !defined.contains_key(id) {
                         out.push((
                             path.clone(),
-                            ref_diag(unknown_quest_message(&ref_path, id), span),
+                            ref_diag(unknown(&ref_path, id), span),
                         ));
                     }
                 }
                 // dsl 0.8.0 §5: the reserved narrative-time anchor carries no
                 // objective segment, so its only project-wide obligation is
                 // that the quest id resolves — same rule as `quest.<id>.state`.
-                ["quest", id, "activatedAt"] => {
+                // So does dsl 0.24.0 §2's failure reason.
+                ["quest", id, "activatedAt" | "failedBy"] => {
                     if !defined.contains_key(id) {
                         out.push((
                             path.clone(),
-                            ref_diag(unknown_quest_message(&ref_path, id), span),
+                            ref_diag(unknown(&ref_path, id), span),
                         ));
                     }
                 }
-                ["quest", id, "objectives", oid, "done"] => match defined.get(id) {
+                ["quest", id, "objectives", oid, "done" | "failed"] => match defined.get(id) {
                     None => out.push((
                         path.clone(),
-                        ref_diag(unknown_quest_message(&ref_path, id), span),
+                        ref_diag(unknown(&ref_path, id), span),
                     )),
                     Some(objectives) => {
                         if !objectives.contains(oid) {
@@ -458,31 +521,16 @@ pub fn colliding_entry_occurrences(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf
     out
 }
 
-/// Every reserved `entry.<id>.read` path `doc` references, paired with the
-/// span of the enclosing CEL slot it was first found in (canonical
-/// [`lute_syntax::walk::for_each_cel_slot`] order) — the lore twin of
-/// [`referenced_reserved_paths`], same re-parse discipline.
+/// Every reserved `entry.<id>.read` / `entry.<id>.everRead` path `doc`
+/// references, paired with where it was first found — the lore twin of
+/// [`referenced_reserved_paths`] ([`referenced_paths`]: the scene beat's
+/// frontmatter `when:` included, anchored on the id).
 fn referenced_entry_reads(doc: &Document) -> BTreeMap<String, Span> {
-    let mut out = BTreeMap::new();
-    lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
-        let raw = slot.raw.trim();
-        if raw.is_empty() {
-            return;
-        }
-        let mut arena = CelArena::default();
-        let Ok(handle) = lute_cel::parse_slot(&mut arena, raw, 0) else {
-            return;
-        };
-        let Some(rec) = arena.get(handle) else {
-            return;
-        };
-        for use_ in collect_path_uses(&rec.expr) {
-            if reserved_entry_id(&use_.path).is_some() {
-                out.entry(use_.path).or_insert(slot.span);
-            }
-        }
-    });
-    out
+    referenced_paths(
+        doc,
+        |path| reserved_entry_id(path).is_some(),
+        |path| reserved_entry_id(path).map(|id| ("entry.".len(), id.len())),
+    )
 }
 
 /// dsl 0.19.0 §5: [`W_ENTRY_REF_UNKNOWN`] — every `entry.<id>.read` read
@@ -507,6 +555,7 @@ pub fn check_project_entry_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
             if declared.contains(id) {
                 continue;
             }
+            let hint = did_you_mean(id, declared.iter().copied());
             out.push((
                 path.clone(),
                 crate::lore::diag(
@@ -514,8 +563,8 @@ pub fn check_project_entry_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
                     Severity::Warning,
                     format!(
                         "`{ref_path}` references entry `{id}`, which no project lore document \
-                         declares (dsl 0.19.0 §5) — a typo, or an entry declared outside this \
-                         walked directory"
+                         declares{hint} (dsl 0.19.0 §5) — a typo, or an entry declared outside \
+                         this walked directory"
                     ),
                     span,
                 ),
@@ -1007,7 +1056,8 @@ pub fn check_project_quest_handlers(docs: &[(PathBuf, Document)]) -> Vec<(PathBu
         .filter(|q| {
             q.fail.as_ref().is_some_and(nonempty)
                 || q.body.iter().any(|n| {
-                    matches!(n, Node::Objective(o) if !o.optional && o.by.as_ref().is_some_and(nonempty))
+                    matches!(n, Node::Objective(o) if !o.optional
+                        && (o.by.as_ref().is_some_and(nonempty) || o.until.as_ref().is_some_and(nonempty)))
                 })
         })
         .map(|q| q.id.as_str())
@@ -1197,6 +1247,18 @@ pub fn domain_reads_from_relations(vocab: &crate::rel_schema::RelVocab) -> BTree
         .collect()
 }
 
+/// Every domain name a declared state path is typed against
+/// (`run.wd: { type: { domain: weekday } }`). Since dsl 0.24.0 §1 such a path
+/// renders the domain's member `labels` in `{{…}}`, so the declaration reaches
+/// rendered text — a read as real as a directive attr typed against it.
+pub fn domain_reads_from_state(schema: &crate::meta::StateSchema) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for decl in schema.decls.values() {
+        collect_domain_names(&decl.ty, &mut out);
+    }
+    out
+}
+
 /// Every `Type::Domain(name)` reachable from `ty`, including through the
 /// container types — a `{ list: { domain: X } }` slot reads `X` as surely as a
 /// bare one does.
@@ -1304,6 +1366,8 @@ mod tests {
             after: None,
             after_span: span(id_line),
             tier: None,
+            activate: None,
+            complete: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),
@@ -1731,6 +1795,7 @@ mod tests {
             on: None,
             by: None,
             target: None,
+            until: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),

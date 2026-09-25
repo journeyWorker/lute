@@ -67,8 +67,7 @@ fn write_manifest_dependent_project(dir: &std::path::Path) {
     write_at(
         dir,
         "plugins/demo.plugin/directives/d.yaml",
-        "directives:\n  - { name: announce, attrs: [ { name: text, type: string } ], \
-         lower: { kind: builtin, name: noop } }\n",
+        "directives:\n  - { name: announce, attrs: [ { name: text, type: string } ] }\n",
     );
     write_at(
         dir,
@@ -148,7 +147,13 @@ fn explicit_providers_flag_wins_over_the_projects_pinned_catalog() {
     write_at(
         &dir,
         "tests/t.test.yaml",
-        &format!("file: {}\nexpect:\n  exit: complete\n", scene.display()),
+        // dsl 0.24.0 §5: an unanswered bridge result reads unknown, so the
+        // `rank` match would halt the trace incomplete — answer the call.
+        &format!(
+            "file: {}\nbridges:\n  minigame:\n    - {{ score: 90, rank: gold, cleared: true }}\n\
+             expect:\n  exit: complete\n",
+            scene.display()
+        ),
     );
     let empty_providers = temp_dir("providers-precedence-empty");
 
@@ -242,9 +247,10 @@ fn project_resolution_error_gates_the_exit_code() {
 // ── 0.21.0 §7a.4: `expect.quests`, and the `visited:` / `occasions:` keys ──
 
 /// A shape-only project whose `holdLine` completes only when `haven.shed` is
-/// visited AND `runEnd` is raised; `sideJob` is accept-driven (no `start`).
-/// Writes `tests/t.test.yaml` = `test_yaml` and runs `lute test tests/
-/// --project <dir>` (plus `extra`), returning `(exit code, stdout)`.
+/// visited AND `runEnd` is raised; `sideJob` is accept-driven (no `start`)
+/// and the shed scene's `take` arm accepts it. Writes `tests/t.test.yaml` =
+/// `test_yaml` and runs `lute test tests/ --project <dir>` (plus `extra`),
+/// returning `(exit code, stdout)`.
 fn run_quest_test(tag: &str, test_yaml: &str, extra: &[&str]) -> (Option<i32>, String) {
     let dir = temp_dir(tag);
     write_at(
@@ -268,6 +274,15 @@ fn run_quest_test(tag: &str, test_yaml: &str, extra: &[&str]) -> (Option<i32>, S
          <quest id=\"sideJob\" title=\"Side job\">\n\
          <objective id=\"paid\" title=\"Get paid\" done=\"run.pressure > 5\"/>\n\
          </quest>\n",
+    );
+    write_at(
+        &dir,
+        "scenes/shed.lute",
+        "---\nkind: scene\nid: haven.shed\nuses: ../world.schema.yaml\n---\n\n\
+         ## Shed\n\n@guard: The shed is quiet.\n\n<branch id=\"offer\">\n\
+         <choice id=\"take\" label=\"Take the job\">\n@guard: Deal.\n\
+         ::accept{quest=\"sideJob\"}\n</choice>\n\
+         <choice id=\"pass\" label=\"Pass\">\n@guard: Suit yourself.\n</choice>\n</branch>\n",
     );
     write_at(&dir, "tests/t.test.yaml", test_yaml);
     let out = Command::new(BIN)
@@ -381,4 +396,100 @@ fn a_misspelt_visited_key_is_refused_and_suggests_the_real_one() {
         text.contains("E-TEST-KEY") && text.contains("did you mean `visited`?"),
         "{text}"
     );
+}
+
+// ── 0.24.0 T3-5: `expect.accepts` — the quests a scene's `::accept` took ──
+
+#[test]
+fn expect_accepts_is_the_set_of_quests_the_walk_accepted() {
+    let (code, text) = run_quest_test(
+        "accepts-pass",
+        "file: ../scenes/shed.lute\nchoose: { offer: take }\nexpect:\n  accepts: [sideJob]\n",
+        &[],
+    );
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("1 passed, 0 failed"), "{text}");
+
+    // The arm that skips `::accept` accepts nothing: the empty list passes…
+    let (code, text) = run_quest_test(
+        "accepts-empty",
+        "file: ../scenes/shed.lute\nchoose: { offer: pass }\nexpect:\n  accepts: []\n",
+        &[],
+    );
+    assert_eq!(code, Some(0), "{text}");
+
+    // …and expecting the accept there fails, naming both sets.
+    let (code, text) = run_quest_test(
+        "accepts-fail",
+        "file: ../scenes/shed.lute\nchoose: { offer: pass }\nexpect:\n  accepts: [sideJob]\n",
+        &[],
+    );
+    assert_eq!(code, Some(1), "{text}");
+    assert!(text.contains("accepts: expected [sideJob], got []"), "{text}");
+    assert!(text.contains("0 passed, 1 failed"), "{text}");
+}
+
+// ── 0.24.0 T1-12: a component `{{@param}}` bound to a def whose name length
+// differs from the param's renders whole in trace/test, as it does in play ──
+
+#[test]
+fn component_param_bound_to_a_longer_def_renders_in_trace_and_test() {
+    let dir = temp_dir("component-param-span");
+    write_at(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  uses: [world.schema.yaml]\n  components: [components/gauge.component.lute]\n",
+    );
+    write_at(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  user.bond: { type: number, default: 2 }\n\
+         defs:\n  bondTimesTen: \"user.bond * 10\"\n  b: \"user.bond\"\n",
+    );
+    write_at(
+        &dir,
+        "components/gauge.component.lute",
+        "---\ncomponent: gauge\nparams:\n  fathoms: number\n  marks: number\n---\n\n## Gauge\n\n\
+         @narrator: The gauge shows {{@fathoms}} fathoms, {{@marks}} marks, done.\n",
+    );
+    write_at(
+        &dir,
+        "scenes/g.lute",
+        "---\nkind: scene\nid: probe.g\ntitle: G\n---\n\n## G\n\n\
+         ::use{component=\"gauge\" fathoms=@bondTimesTen marks=@b}\n\
+         ::use{component=\"gauge\" fathoms=@b marks=@bondTimesTen}\n",
+    );
+    let trace = Command::new(BIN)
+        .args(["trace", dir.join("scenes/g.lute").to_str().unwrap()])
+        .args(["--project", dir.to_str().unwrap()])
+        .output()
+        .expect("run lute");
+    let text = String::from_utf8_lossy(&trace.stdout);
+    assert_eq!(trace.status.code(), Some(0), "{text}");
+    // Longer def (`bondTimesTen` > `fathoms`) and shorter def (`b`): both the
+    // rebound interp and the FOLLOWING one resolve.
+    assert!(
+        text.contains("The gauge shows 20 fathoms, 2 marks, done."),
+        "{text}"
+    );
+    assert!(
+        text.contains("The gauge shows 2 fathoms, 20 marks, done."),
+        "{text}"
+    );
+
+    write_at(
+        &dir,
+        "tests/t.test.yaml",
+        "file: ../scenes/g.lute\nexpect:\n  transcriptContains:\n    \
+         - \"shows 20 fathoms, 2 marks, done.\"\n    - \"shows 2 fathoms, 20 marks\"\n",
+    );
+    let out = Command::new(BIN)
+        .args(["test", dir.join("tests").to_str().unwrap()])
+        .args(["--project", dir.to_str().unwrap()])
+        .output()
+        .expect("run lute");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("1 passed, 0 failed"), "{text}");
 }

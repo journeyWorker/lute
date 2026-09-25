@@ -131,6 +131,18 @@ fn eval(expr: &Value, state: &Map<String, Value>) -> Value {
             "-" => number(as_f64(&a) - as_f64(&b)),
             "*" => number(as_f64(&a) * as_f64(&b)),
             "/" => number(as_f64(&a) / as_f64(&b)),
+            // dsl 0.24.0 §1: integer remainder, truncated (sign of the
+            // dividend). Fixtures only use integral operands and a non-zero
+            // divisor; anything else is unknown at runtime and has no JSON
+            // value to expect.
+            "%" => {
+                let (x, y) = (as_f64(&a), as_f64(&b));
+                assert!(
+                    x.fract() == 0.0 && y.fract() == 0.0 && y != 0.0,
+                    "`%` fixtures need integral operands and a non-zero divisor"
+                );
+                number(x % y + 0.0)
+            }
             "in" => {
                 let elems = b
                     .as_array()

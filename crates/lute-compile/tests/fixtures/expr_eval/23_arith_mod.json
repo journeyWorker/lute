@@ -1,0 +1,16 @@
+{
+  "name": "arith_mod",
+  "desc": "Integer remainder (dsl 0.24.0 §1): day 14 % 7 == 0.",
+  "cel": "run.day % 7 == 0",
+  "expr": {
+    "op": "==",
+    "l": {
+      "op": "%",
+      "l": { "path": "run.day" },
+      "r": { "lit": 7.0 }
+    },
+    "r": { "lit": 0.0 }
+  },
+  "state": { "run.day": 14 },
+  "expected": true
+}

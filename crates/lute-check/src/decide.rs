@@ -89,6 +89,17 @@ pub fn apply_op(name: &str, args: &[Decided]) -> Option<Decided> {
         [Decided::Num(a), Decided::Num(b)] if name == op::SUBSTRACT => finite(a - b),
         [Decided::Num(a), Decided::Num(b)] if name == op::MULTIPLY => finite(a * b),
         [Decided::Num(a), Decided::Num(b)] if name == op::DIVIDE => finite(a / b),
+        // dsl 0.24.0 §1: integer `%`, CEL's truncated remainder (the sign of
+        // the dividend, as Rust's `%` on integers). A fractional operand or a
+        // zero divisor decides nothing — the runtime rule every evaluator
+        // shares (docs/runtime/cel-and-facts.md).
+        [Decided::Num(a), Decided::Num(b)] if name == op::MODULO => {
+            if a.fract() != 0.0 || b.fract() != 0.0 || *b == 0.0 {
+                return None;
+            }
+            // `+ 0.0` folds `-0` (`-4 % 2`) into `0`.
+            finite(a % b + 0.0)
+        }
         [Decided::Num(a), Decided::Num(b)] if name == op::GREATER => Some(Decided::Bool(a > b)),
         [Decided::Num(a), Decided::Num(b)] if name == op::GREATER_EQUALS => {
             Some(Decided::Bool(a >= b))
@@ -534,7 +545,7 @@ fn subject(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<(String, PathDomain)> {
             let dom = match c.func_name.as_str() {
                 "holds" if crate::cel_resolve::is_profile_fact_query(c) => PathDomain::boolean(),
                 crate::cel_resolve::VISITED_FN if c.args.len() == 1 => PathDomain::boolean(),
-                "count" if crate::cel_resolve::is_profile_fact_query(c) => PathDomain {
+                "count" | "countDistinct" if crate::cel_resolve::is_profile_fact_query(c) => PathDomain {
                     kind: Kind::Number,
                     maybe_unset: false,
                 },
@@ -682,7 +693,8 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         (op::ADD, [a, b])
         | (op::SUBSTRACT, [a, b])
         | (op::MULTIPLY, [a, b])
-        | (op::DIVIDE, [a, b]) => {
+        | (op::DIVIDE, [a, b])
+        | (op::MODULO, [a, b]) => {
             let da = decide(&a.expr, ctx)?;
             let db = decide(&b.expr, ctx)?;
             apply_op(name, &[da, db])
@@ -715,28 +727,24 @@ fn decide_fact_query(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
             HoldsVerdict::Guaranteed(_) => Some(Decided::Bool(true)),
             HoldsVerdict::Possible => None,
         },
-        "count" => {
-            let iv = scope.count(&QueryPattern::from_call(pattern)?)?;
+        "count" | "countDistinct" => {
+            let (q, column) = crate::fact_env::count_query(c)?;
+            let iv = scope.count_in(&q, column)?;
             (iv.hi == Some(iv.lo)).then(|| Decided::Num(iv.lo as f64))
         }
         _ => None,
     }
 }
 
-/// The `count(P)` interval of `expr` when it is directly a well-shaped
-/// `count` call and a fact envelope is in scope.
+/// The `count(P)` / `countDistinct(P, V)` interval of `expr` when it is
+/// directly such a call and a fact envelope is in scope.
 fn count_interval(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<CountInterval> {
     let scope = ctx.facts?;
     let Expr::Call(c) = expr else {
         return None;
     };
-    if c.func_name != "count" || !crate::cel_resolve::is_profile_fact_query(c) {
-        return None;
-    }
-    let Expr::Call(pattern) = &c.args[0].expr else {
-        return None;
-    };
-    scope.count(&QueryPattern::from_call(pattern)?)
+    let (q, column) = crate::fact_env::count_query(c)?;
+    scope.count_in(&q, column)
 }
 
 /// dsl 0.20.0 §5: `count(P) ⋈ n` (either operand order) decided over the
@@ -1223,9 +1231,20 @@ mod tests {
             apply_op(op::INDEX, &[Decided::Num(1.0), Decided::Num(0.0)]),
             None
         );
-        assert_eq!(
-            apply_op("_%_", &[Decided::Num(5.0), Decided::Num(2.0)]),
-            None
-        );
+    }
+
+    /// dsl 0.24.0 §1: `%` is the integer truncated remainder; a fractional
+    /// operand or a zero divisor is undecided, never a float remainder.
+    #[test]
+    fn modulo_is_integer_truncated_remainder() {
+        let m = |a: f64, b: f64| apply_op(op::MODULO, &[Decided::Num(a), Decided::Num(b)]);
+        assert_eq!(m(14.0, 7.0), Some(Decided::Num(0.0)));
+        assert_eq!(m(15.0, 7.0), Some(Decided::Num(1.0)));
+        assert_eq!(m(-7.0, 3.0), Some(Decided::Num(-1.0)));
+        assert_eq!(m(7.0, -3.0), Some(Decided::Num(1.0)));
+        assert_eq!(m(-4.0, 2.0), Some(Decided::Num(0.0)));
+        assert_eq!(m(5.0, 0.0), None);
+        assert_eq!(m(5.5, 2.0), None);
+        assert_eq!(m(5.0, 2.5), None);
     }
 }

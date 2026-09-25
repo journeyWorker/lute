@@ -129,7 +129,7 @@ fn an_unknown_expect_key_is_a_usage_error_listing_the_legal_keys() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(2), "{t}");
     assert!(t.contains("`winer`"), "{t}");
-    assert!(t.contains("facts, notFacts, notOffered, offered, presented, quests, state, winner"), "{t}");
+    assert!(t.contains("facts, notFacts, notOffered, offered, options, presented, quests, state, winner"), "{t}");
 }
 
 #[test]
@@ -302,17 +302,22 @@ fn a_lore_test_presents_the_named_entries_in_order() {
         lute(&["test", dir.to_str().unwrap(), "--project", project.to_str().unwrap()])
     };
 
-    // Twice in a row: the second presentation is a re-read.
+    // Twice in a row: the second presentation is a re-read. The transcript
+    // expectations match presented content only (dsl 0.24.0, T1-2), so the
+    // first-read/re-read split is judged by its effect: the first read
+    // asserts `heardOf(meg)`.
     let out = test(
         "entries: [megNote, megNote]\nexpect:\n  \
-         transcriptContains: ['first read', 're-read: effects skipped']\n",
+         transcriptContains: [\"@meg: Don't get yourself killed out there.\"]\n  \
+         transcriptLacks: ['first read', 're-read']\n  facts: [heardOf(meg)]\n",
     );
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 
-    // `entriesRead:` seeds the save: the one presentation is already a re-read.
+    // `entriesRead:` seeds the save: the one presentation is already a
+    // re-read, so its `::assert` is skipped.
     let out = test(
         "entry: megNote\nentriesRead: { run: [megNote] }\nexpect:\n  \
-         transcriptLacks: ['first read']\n",
+         notFacts: [heardOf(meg)]\n",
     );
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 
@@ -360,7 +365,7 @@ fn a_selection_expect_on_a_non_occasion_step_is_a_usage_error() {
     );
     let t = text(&out);
     assert_eq!(out.status.code(), Some(2), "{t}");
-    assert!(t.contains("`expect.winner` applies only to an `occasion` step"), "{t}");
+    assert!(t.contains("`expect.winner` applies only to an `occasion` or `advance` step"), "{t}");
 }
 
 #[test]
@@ -393,4 +398,249 @@ fn a_test_asserts_facts_and_runs_alone_and_a_missing_document_is_one_failure() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(t.contains("notFacts met(meg): expected does not hold, got holds"), "{t}");
+}
+
+// ---------------------------------------------------------------------------
+// 0.24.0 T1-2: transcript expectations match presented content lines, in one
+// canonical form (`@speaker: text`) shared by `lute play` and `lute test`.
+// ---------------------------------------------------------------------------
+
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap() {
+        let e = e.unwrap();
+        let dest = to.join(e.file_name());
+        if e.file_type().unwrap().is_dir() {
+            copy_tree(&e.path(), &dest);
+        } else {
+            std::fs::copy(e.path(), dest).unwrap();
+        }
+    }
+}
+
+#[test]
+fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
+    let project = temp_dir("said");
+    copy_tree(&fixture(), &project);
+    // A guarded line the first visit never presents (`run.hubVisits` is 0).
+    write(
+        &project,
+        "scenes/hub/first-ever.lute",
+        "---\nkind: scene\nid: hub.firstEver\nuses: ../../world.schema.yaml\non: hubVisit\n\
+         priority: 20\nonce: user\n---\n\n## The House of Hades\n\n\
+         @hypnos: Oh, a new face.\n\
+         @hypnos{when=\"run.hubVisits >= 5\"}: Never said.\n\
+         ::set{user.metHypnos = true}\n::set{run.hubVisits = run.hubVisits + 1}\n",
+    );
+    let run_play = |script: &str| {
+        let s = write(&project, "plays/probe.play.yaml", script);
+        let out = lute(&["play", project.to_str().unwrap(), "--script", s.to_str().unwrap()]);
+        std::fs::remove_file(s).unwrap();
+        out
+    };
+    // The skipped line is in the human transcript (`skip @hypnos "…"`) but
+    // was never presented: `transcriptContains` misses, `transcriptLacks`
+    // holds.
+    let out = run_play(
+        "steps:\n  - occasion: hubVisit\nexpect:\n  transcriptContains: ['Never said.']\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(t.contains("skip @hypnos"), "the human transcript still shows the skip: {t}");
+    assert!(t.contains("\"Never said.\" absent"), "{t}");
+    let out = run_play(
+        "steps:\n  - occasion: hubVisit\nexpect:\n  transcriptLacks: ['Never said.', 'step 1', 'priority']\n  \
+         transcriptContains: ['@hypnos: Oh, a new face.']\n",
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+
+    // A scene test over the same document matches the same canonical form.
+    let tests = temp_dir("said-test");
+    write(
+        &tests,
+        "t.test.yaml",
+        &format!(
+            "file: {}\nexpect:\n  transcriptContains: ['@hypnos: Oh, a new face.']\n  \
+             transcriptLacks: ['Never said.', 'trace:']\n",
+            project.join("scenes/hub/first-ever.lute").display()
+        ),
+    );
+    let out = lute(&["test", tests.to_str().unwrap(), "--project", project.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+}
+
+/// 0.24.0 T1-13: a hub's `offered:` is the choices eligible at each visit
+/// (unioned), as a branch's is — it used to read `[]` for every hub.
+#[test]
+fn offered_judges_a_hub_like_a_branch() {
+    let dir = temp_dir("hub-offered");
+    write(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## H\n\n\
+         <hub id=\"chat\">\n  <choice id=\"a\" label=\"A\">\n    @narrator: a.\n  </choice>\n  \
+         <choice id=\"never\" label=\"N\" when=\"scene.visited.chat.leave\">\n    @narrator: n.\n  </choice>\n  \
+         <choice id=\"leave\" label=\"Leave\" exit>\n    @narrator: bye.\n  </choice>\n</hub>\n",
+    );
+    write(
+        &dir,
+        "t.test.yaml",
+        "file: s.lute\nchoose: { chat: [a, leave] }\nexpect:\n  offered: { chat: [a, leave] }\n",
+    );
+    let out = lute(&["test", dir.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    write(
+        &dir,
+        "t.test.yaml",
+        "file: s.lute\nchoose: { chat: [a, leave] }\nexpect:\n  offered: { chat: [a, never, leave] }\n",
+    );
+    let out = lute(&["test", dir.to_str().unwrap()]);
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(t.contains("got [a, leave]"), "{t}");
+}
+
+/// 0.24.0 T3-5: `eligible:` suppresses the note it answers, and a map key
+/// judges an entry of the file the test did not present — alone, under the
+/// same mocks; a lore test may carry it without presenting anything.
+#[test]
+fn eligible_answers_its_note_and_judges_unpresented_entries() {
+    let project = fixture();
+    let lore = project.join("lore/inbox.lute");
+    let dir = temp_dir("eligible-all");
+    let test = |body: &str| {
+        write(&dir, "t.test.yaml", &format!("file: {}\n{body}", lore.display()));
+        lute(&["test", dir.to_str().unwrap(), "--project", project.to_str().unwrap()])
+    };
+    let out = test("entry: dusaNote\nexpect:\n  eligible: { dusaNote: false }\n");
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}");
+    assert!(!t.contains("is not eligible under these mocks"), "asserted, so no note: {t}");
+
+    let out = test("entry: megNote\nexpect:\n  eligible: { megNote: true, dusaNote: false }\n");
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let out = test("expect:\n  eligible: { megNote: true, dusaNote: true }\n");
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(t.contains("eligible dusaNote: expected true, got false"), "{t}");
+    let out = test("expect:\n  eligible: { nope: true }\n");
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(t.contains("declares no such entry or beat"), "{t}");
+}
+
+/// 0.24.0 T3-10: a step `expect.options` judges a branch/hub's offered
+/// options; `select: all` with nothing offered needs no `pick:`; a `newRun`
+/// prints the `prev.run.*` values; an unquoted atom gets a quoting hint.
+#[test]
+fn play_harness_details() {
+    let project = temp_dir("harness");
+    copy_tree(&fixture(), &project);
+    write(
+        &project,
+        "plugins/hub.occasions/occasions/hub.yaml",
+        "occasions:\n  hubVisit: {}\n  talk: { target: true }\n  inbox: { select: all }\n  \
+         quiet: { select: all }\n  ask: {}\n",
+    );
+    write(
+        &project,
+        "scenes/ask.lute",
+        "---\nkind: scene\nid: ask\nuses: ../world.schema.yaml\non: ask\nonce: false\n---\n\n\
+         ## Ask\n\n@hypnos: Well?\n\
+         <branch id=\"fate\" prompt=\"?\">\n  <choice id=\"drowned\" label=\"D\">\n    @hypnos: d.\n  </choice>\n  \
+         <choice id=\"murdered\" label=\"M\">\n    @hypnos: m.\n  </choice>\n  \
+         <choice id=\"never\" label=\"N\" when=\"run.hubVisits > 9\">\n    @hypnos: n.\n  </choice>\n</branch>\n",
+    );
+    let run_play = |script: &str| {
+        let s = write(&project, "plays/probe.play.yaml", script);
+        let out = lute(&["play", project.to_str().unwrap(), "--script", s.to_str().unwrap()]);
+        std::fs::remove_file(s).unwrap();
+        out
+    };
+    let out = run_play(
+        "steps:\n  - occasion: quiet\n  - engine: { state: { run.hubVisits: 3 } }\n  - newRun: true\n  \
+         - occasion: ask\n    choose: { fate: drowned }\n    \
+         expect: { options: { fate: [drowned, murdered] } }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}");
+    assert!(t.contains("pick: none (nothing offered)"), "{t}");
+    assert!(t.contains("prev.run.hubVisits = 3"), "{t}");
+    let out = run_play(
+        "steps:\n  - occasion: ask\n    choose: { fate: drowned }\n    \
+         expect: { options: { fate: [drowned, murdered, never] } }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(t.contains("expect options fate"), "{t}");
+
+    let out = run_play("steps:\n  - occasion: inbox\n");
+    let t = text(&out);
+    assert_ne!(out.status.code(), Some(0), "{t}");
+    assert!(t.contains("offers [megNote]"), "{t}");
+
+    let out = run_play("facts: [heardOf(meg, meg)]\nsteps:\n  - occasion: quiet\n");
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(t.contains("quote the atom"), "{t}");
+}
+
+/// 0.24.0 T3-15: `lute trace --project` settles the "existence is
+/// unverified" note of a foreign quest read against the project's quests.
+#[test]
+fn trace_with_project_verifies_quest_existence() {
+    let project = temp_dir("trace-quests");
+    copy_tree(&fixture(), &project);
+    let scene = write(
+        &project,
+        "scenes/probe.lute",
+        "---\nkind: scene\nid: probe\nuses: ../world.schema.yaml\non: hubVisit\n---\n\n## P\n\n\
+         @hypnos{when=\"quest.firstEscape.state == 'active'\"}: Running.\n\
+         @hypnos{when=\"quest.firstEscap.state == 'active'\"}: Typo.\n",
+    );
+    let out = lute(&["trace", scene.to_str().unwrap()]);
+    let t = text(&out);
+    assert!(t.contains("quest `firstEscape`'s existence is unverified"), "{t}");
+    let out = lute(&["trace", scene.to_str().unwrap(), "--project", project.to_str().unwrap()]);
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}");
+    assert!(!t.contains("existence is unverified"), "{t}");
+    assert!(
+        t.contains("quest `firstEscap` is declared by no quest document of the project — did you mean `firstEscape`?"),
+        "{t}"
+    );
+}
+
+/// 0.24.0 T3-11: an `<on event>` handler of a quest an engine write already
+/// completed does not run — and the play says so.
+#[test]
+fn play_prints_the_skipped_handler_of_a_settled_quest() {
+    let project = temp_dir("handler-skip");
+    copy_tree(&fixture(), &project);
+    // `hubVisit` is also a world event here, so a quest may handle it.
+    write(
+        &project,
+        "plugins/hub.occasions/plugin.yaml",
+        "id: hub.occasions\nversion: 0.1.0\nkind: capability\n\
+         depends: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports:\n  occasions: occasions/\n  events: events/\n",
+    );
+    write(&project, "plugins/hub.occasions/events/e.yaml", "events:\n  - name: hubVisit\n");
+    write(
+        &project,
+        "quests/boss.lute",
+        "---\nkind: quest\nuses: ../world.schema.yaml\ntitle: Boss\n---\n\n\
+         <quest id=\"boss\" title=\"Boss\" start=\"true\">\n\
+         <objective id=\"slay\" title=\"Slay\" done=\"run.hubVisits >= 5\"/>\n\
+         <on event=\"hubVisit\">\n@narrator: The hall remembers.\n</on>\n</quest>\n",
+    );
+    let s = write(
+        &project,
+        "plays/probe.play.yaml",
+        "steps:\n  - engine: { state: { run.hubVisits: 5 } }\n  - occasion: hubVisit\n",
+    );
+    let out = lute(&["play", project.to_str().unwrap(), "--script", s.to_str().unwrap()]);
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}");
+    assert!(t.contains("<on event=hubVisit> of quest boss skipped — quest complete"), "{t}");
+    assert!(!t.contains("The hall remembers."), "{t}");
 }

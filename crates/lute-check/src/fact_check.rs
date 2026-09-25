@@ -217,9 +217,11 @@ enum Atom {
         pattern: QueryPattern,
         verdict: HoldsOutcome,
     },
-    /// A `count(P) ⋈ n` comparison the interval decided.
+    /// A `count(P) ⋈ n` / `countDistinct(P, V) ⋈ n` comparison the interval
+    /// decided; `column` is `countDistinct`'s counted position.
     Count {
         pattern: QueryPattern,
+        column: Option<usize>,
         interval: CountInterval,
         value: bool,
     },
@@ -283,8 +285,11 @@ impl SlotVerdict {
                     ..
                 } => Some(reason.clone()),
                 Atom::Count {
-                    pattern, interval, ..
-                } => Some(count_reason(pattern, interval)),
+                    pattern,
+                    column,
+                    interval,
+                    ..
+                } => Some(count_reason(pattern, *column, interval)),
                 Atom::Holds {
                     verdict: HoldsOutcome::Possible,
                     ..
@@ -305,12 +310,21 @@ impl SlotVerdict {
                 } => Some(reason.clone()),
                 Atom::Count {
                     pattern,
+                    column,
                     interval,
                     value: true,
-                } if interval.lo > 0 => Some(format!(
-                    "at least {} fact(s) matching `{pattern}` hold on every route to here",
-                    interval.lo
-                )),
+                } if interval.lo > 0 => Some(match column {
+                    None => format!(
+                        "at least {} fact(s) matching `{pattern}` hold on every route to here",
+                        interval.lo
+                    ),
+                    Some(i) => format!(
+                        "at least {} distinct value(s) at argument {} of `{pattern}` hold on \
+                         every route to here",
+                        interval.lo,
+                        i + 1
+                    ),
+                }),
                 _ => None,
             })
             .collect()
@@ -341,14 +355,21 @@ fn guaranteed_reason(m: &MustFact) -> String {
     }
 }
 
-fn count_reason(pattern: &QueryPattern, iv: &CountInterval) -> String {
+fn count_reason(pattern: &QueryPattern, column: Option<usize>, iv: &CountInterval) -> String {
     let range = match iv.hi {
         Some(hi) if hi == iv.lo => format!("exactly {hi}"),
         Some(hi) if iv.lo == 0 => format!("at most {hi}"),
         Some(hi) => format!("between {} and {hi}", iv.lo),
         None => format!("at least {}", iv.lo),
     };
-    format!("`count({pattern})` is {range} under your declared routes")
+    match column {
+        None => format!("`count({pattern})` is {range} under your declared routes"),
+        Some(i) => format!(
+            "the number of distinct values at argument {} of `{pattern}` is {range} under your \
+             declared routes",
+            i + 1
+        ),
+    }
 }
 
 impl<'a> Guards<'a> {
@@ -765,25 +786,21 @@ fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, out: &mut Vec<Atom>) {
     }
 }
 
-/// A `count(P) ⋈ n` comparison (either operand order) the interval decides.
+/// A `count(P) ⋈ n` / `countDistinct(P, V) ⋈ n` comparison (either operand
+/// order) the interval decides.
 fn count_atom(cmp: &Expr, a: &Expr, b: &Expr, ctx: &DecideCtx<'_>) -> Option<Atom> {
     let scope = ctx.facts.as_ref()?;
-    let pattern = [a, b].into_iter().find_map(|side| {
+    let (pattern, column) = [a, b].into_iter().find_map(|side| {
         let Expr::Call(c) = side else { return None };
-        if c.func_name != "count" || !crate::cel_resolve::is_profile_fact_query(c) {
-            return None;
-        }
-        let Expr::Call(p) = &c.args[0].expr else {
-            return None;
-        };
-        QueryPattern::from_call(p)
+        crate::fact_env::count_query(c)
     })?;
-    let interval = scope.count(&pattern)?;
+    let interval = scope.count_in(&pattern, column)?;
     let Some(Decided::Bool(value)) = decide(cmp, ctx) else {
         return None;
     };
     Some(Atom::Count {
         pattern,
+        column,
         interval,
         value,
     })

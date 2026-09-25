@@ -13,17 +13,19 @@
 
 use std::collections::BTreeMap;
 
-use lute_check::meta::StateSchema;
-use lute_check::{
-    decide_slot, is_pattern_literals, ComponentSet, DecideCtx, Decided, DefTable, DollarBinding,
+use lute_check::component_effects::{
+    bind_attrs, bind_slot_raw, cel_string_literal, fold_component_matches, speaker_display_args,
+    use_args,
 };
+use lute_check::meta::StateSchema;
+use lute_check::ComponentSet;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::schema::CastMember;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
     classify_interp, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive,
     Document, Interp, InterpKind, Line, Match, Node, Set,
 };
-use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 pub const COMPONENT_BEGIN: &str = "__component-begin";
 pub const COMPONENT_END: &str = "__component-end";
@@ -67,31 +69,8 @@ pub const COMPONENT_CODE_ATTR: &str = "__code";
 /// argument and one with a `@def` argument mint the same code for the same
 /// source line (decision 10: allocation never depends on the argument form).
 fn backfill_component_codes(body: &mut [Node]) {
-    fn visit(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
-        for node in nodes {
-            match node {
-                Node::Line(l) => f(l),
-                Node::Branch(b) => b.choices.iter_mut().for_each(|c| visit(&mut c.body, f)),
-                Node::Hub(h) => h.choices.iter_mut().for_each(|c| visit(&mut c.body, f)),
-                Node::Match(m) => {
-                    for arm in &mut m.arms {
-                        match arm {
-                            Arm::When { body, .. } | Arm::Otherwise { body, .. } => visit(body, f),
-                        }
-                    }
-                }
-                Node::Objective(o) => visit(&mut o.body, f),
-                Node::On(o) => visit(&mut o.body, f),
-                Node::Directive(_)
-                | Node::Set(_)
-                | Node::Timeline(_)
-                | Node::Assert(_)
-                | Node::Retract(_) => {}
-            }
-        }
-    }
     let mut max: BTreeMap<String, u64> = BTreeMap::new();
-    visit(body, &mut |l| {
+    visit_lines(body, &mut |l| {
         let cur = max.entry(l.speaker.clone()).or_insert(0);
         for a in l.attrs.iter().filter(|a| a.key == "code") {
             if let AttrValue::Str(s) = &a.value {
@@ -101,7 +80,7 @@ fn backfill_component_codes(body: &mut [Node]) {
             }
         }
     });
-    visit(body, &mut |l| {
+    visit_lines(body, &mut |l| {
         if l.attrs.iter().any(|a| a.key == "code") {
             return;
         }
@@ -120,6 +99,38 @@ fn backfill_component_codes(body: &mut [Node]) {
     });
 }
 
+/// Every content line of `nodes`, at any depth, in source order.
+fn visit_lines(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => f(l),
+            Node::Branch(b) => b.choices.iter_mut().for_each(|c| visit_lines(&mut c.body, f)),
+            Node::Hub(h) => h.choices.iter_mut().for_each(|c| visit_lines(&mut c.body, f)),
+            Node::Match(m) => {
+                for arm in &mut m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => visit_lines(body, f),
+                    }
+                }
+            }
+            Node::Objective(o) => visit_lines(&mut o.body, f),
+            Node::On(o) => visit_lines(&mut o.body, f),
+            Node::Directive(_)
+            | Node::Set(_)
+            | Node::Timeline(_)
+            | Node::Assert(_)
+            | Node::Retract(_) => {}
+        }
+    }
+}
+
+/// What a `::use` expands against: the imported components and the host's
+/// declared cast (dsl 0.24.0 §4: a `speaker` param renders the member's name).
+struct Components<'a> {
+    set: &'a ComponentSet,
+    cast: &'a BTreeMap<String, CastMember>,
+}
+
 /// Per-host `::use` ordinals, keyed by component name.
 type UseOrdinals = BTreeMap<String, u32>;
 
@@ -134,8 +145,13 @@ type UseOrdinals = BTreeMap<String, u32>;
 pub fn normalize_document(
     doc: &mut Document,
     components: &ComponentSet,
+    cast: &BTreeMap<String, CastMember>,
     schema: &StateSchema,
 ) -> Vec<Diagnostic> {
+    let components = &Components {
+        set: components,
+        cast,
+    };
     let mut diags = Vec::new();
     // One ordinal counter per identity scope (see `COMPONENT_SCOPE_ATTR`):
     // shots share one, each quest and each entry gets its own.
@@ -178,6 +194,11 @@ pub fn normalize_document(
 ///   an authored fail exists; the disjunction alone (no wrapping parens)
 ///   otherwise. Only REQUIRED children (`!optional`) contribute a `failed`
 ///   test; children appear in document order.
+/// - dsl 0.24.0 §2, `complete="any"`: the synthesized part is instead the
+///   `&&`-conjunction over EVERY required objective (a child's
+///   `quest.<c>.state == 'failed'`, any other's
+///   `quest.<q>.objectives.<o>.failed`), parenthesized when it has more
+///   than one term — one failed alternative leaves the others open.
 ///
 /// Non-goals: this pass does NOT validate anything the checker owns
 /// (`E-OBJECTIVE-QUEST-DONE` on a `quest=` + non-empty `done` collision;
@@ -194,9 +215,17 @@ fn synthesize_subquests(quests: &mut [lute_syntax::ast::Quest]) {
         // carry `quest=` (grammar admission, dsl 0.2.0 §6.4/§6.7 —
         // objectives never nest), so a single top-level pass is complete.
         let mut required_children: Vec<String> = Vec::new();
+        // dsl 0.24.0 §2: a `complete="any"` quest fails only once EVERY
+        // required objective has failed — a child by failing, any other
+        // objective by its reserved `failed` flag.
+        let mut required_exhausted: Vec<String> = Vec::new();
         for node in &mut quest.body {
             let Node::Objective(o) = node else { continue };
             let Some(child) = o.quest.clone() else {
+                if !o.optional && !o.id.is_empty() {
+                    required_exhausted
+                        .push(format!("quest.{}.objectives.{}.failed", quest.id, o.id));
+                }
                 continue;
             };
             // §2.1: fill an empty `done` slot only. A non-empty `done`
@@ -209,12 +238,30 @@ fn synthesize_subquests(quests: &mut [lute_syntax::ast::Quest]) {
                 o.done.raw = format!("quest.{child}.state == 'complete'");
             }
             if !o.optional {
+                required_exhausted.push(format!("quest.{child}.state == 'failed'"));
                 required_children.push(child);
             }
         }
-        if required_children.is_empty() {
+        let any = quest.completes_on_any();
+        if required_children.is_empty() && !(any && !required_exhausted.is_empty()) {
             continue;
         }
+        let disjunction = if any {
+            // One alternative failing leaves the others open; all of them
+            // failing (document order, `&&`-joined) fails the quest.
+            let all = required_exhausted.join(" && ");
+            if required_exhausted.len() > 1 {
+                format!("({all})")
+            } else {
+                all
+            }
+        } else {
+            required_children
+                .iter()
+                .map(|c| format!("quest.{c}.state == 'failed'"))
+                .collect::<Vec<_>>()
+                .join(" || ")
+        };
         // §2.2: `<authoredFail>` in parentheses (precedence-safe for any
         // authored expression — `||` binds looser than everything CEL
         // admits, but the parens make the wrapping legible and immune to
@@ -222,11 +269,6 @@ fn synthesize_subquests(quests: &mut [lute_syntax::ast::Quest]) {
         // child, `||`-joined in document order. No authored fail → the
         // bare disjunction (no surrounding parens; the whole slot IS the
         // disjunction).
-        let disjunction = required_children
-            .iter()
-            .map(|c| format!("quest.{c}.state == 'failed'"))
-            .collect::<Vec<_>>()
-            .join(" || ");
         match quest.fail.as_mut() {
             Some(slot) if !slot.raw.trim().is_empty() => {
                 slot.raw = format!("({}) || {}", slot.raw, disjunction);
@@ -245,7 +287,7 @@ fn synthesize_subquests(quests: &mut [lute_syntax::ast::Quest]) {
 
 fn normalize_nodes(
     nodes: &mut Vec<Node>,
-    components: &ComponentSet,
+    components: &Components<'_>,
     schema: &StateSchema,
     uses: &mut UseOrdinals,
     diags: &mut Vec<Diagnostic>,
@@ -392,27 +434,7 @@ fn synth_when_match(mut line: Line) -> Node {
         .take()
         .expect("caller guarantees `line.when.is_some()`");
     let span = line.span;
-    let test = CelSlot::raw(CelKind::Condition, "$".to_string(), span);
-    Node::Match(Match {
-        subject: guard,
-        // Synthesized, not authored: no residual attributes exist.
-        attrs: Vec::new(),
-        arms: vec![
-            Arm::When {
-                is: None,
-                test,
-                attrs: Vec::new(),
-                body: vec![Node::Line(line)],
-                span,
-            },
-            Arm::Otherwise {
-                attrs: Vec::new(),
-                body: Vec::new(),
-                span,
-            },
-        ],
-        span,
-    })
+    one_arm_match(guard, Node::Line(line), span)
 }
 
 /// dsl 0.12.0: `Node::Directive{tag:"next", when: Some(g), ..}` →
@@ -427,6 +449,29 @@ fn synth_when_match(mut line: Line) -> Node {
 fn synth_when_next_match(mut d: Directive) -> Node {
     let guard = d.when.take().expect("caller guarantees `d.when.is_some()`");
     let span = d.span;
+    one_arm_match(guard, Node::Directive(d), span)
+}
+
+/// dsl 0.24.0 §1: `Node::Set{when: Some(g), ..}` → the same one-arm
+/// `<match on="g"><when test="$">::set{…}</when><otherwise/></match>` as
+/// [`synth_when_match`], so the IR, `lute run`/`lute play` and `lute trace`
+/// all apply the write exactly when the guard holds with no new record
+/// shape. `s.when` is cleared on the nested copy (idempotent).
+///
+/// Unlike the line/`::next` sugar this runs from `expand::expand_nodes`, NOT
+/// [`normalize_nodes`]: a `::set` RHS may read an enclosing `<match>`'s `$`,
+/// which must expand against THAT subject before the write is wrapped in a
+/// match of its own (whose `$` is the guard).
+pub(crate) fn synth_when_set_match(mut s: Set) -> Node {
+    let guard = s.when.take().expect("caller guarantees `s.when.is_some()`");
+    let span = s.span;
+    one_arm_match(guard, Node::Set(s), span)
+}
+
+/// The canonical guard desugar shared by every `when=`-sugar above:
+/// `guard` hoisted verbatim as the subject, one `<when test="$">` arm
+/// holding `node`, and the implicit empty `<otherwise>` fall-through.
+fn one_arm_match(guard: CelSlot, node: Node, span: Span) -> Node {
     let test = CelSlot::raw(CelKind::Condition, "$".to_string(), span);
     Node::Match(Match {
         subject: guard,
@@ -437,7 +482,7 @@ fn synth_when_next_match(mut d: Directive) -> Node {
                 is: None,
                 test,
                 attrs: Vec::new(),
-                body: vec![Node::Directive(d)],
+                body: vec![node],
                 span,
             },
             Arm::Otherwise {
@@ -453,7 +498,7 @@ fn synth_when_next_match(mut d: Directive) -> Node {
 /// `::use{component="name" <arg>=…}` → `[begin, …bound body…, end]`.
 fn expand_use(
     d: &Directive,
-    components: &ComponentSet,
+    components: &Components<'_>,
     schema: &StateSchema,
     uses: &mut UseOrdinals,
     diags: &mut Vec<Diagnostic>,
@@ -466,7 +511,7 @@ fn expand_use(
             AttrValue::Str(s) => Some(s.clone()),
             _ => None,
         });
-    let Some(def) = name.as_deref().and_then(|n| components.table.get(n)) else {
+    let Some(def) = name.as_deref().and_then(|n| components.set.table.get(n)) else {
         // Gate-proven unreachable (E-COMPONENT-UNDECLARED); degrade.
         diags.push(Diagnostic {
             code: "E-COMPILE-COMPONENT".to_string(),
@@ -483,12 +528,7 @@ fn expand_use(
         return Vec::new();
     };
     let name = name.unwrap_or_default();
-    let args: BTreeMap<String, AttrValue> = d
-        .attrs
-        .iter()
-        .filter(|a| a.key != "component")
-        .map(|a| (a.key.clone(), a.value.clone()))
-        .collect();
+    let args = use_args(d);
     // Defensive arg/param validation (checker gate: E-COMPONENT-ARG). The
     // invocation's arg key set MUST match `def.params` exactly — no missing,
     // no extra. Compile gates on a clean check, so reaching here with a
@@ -536,6 +576,13 @@ fn expand_use(
         .flat_map(|s| s.body.iter().cloned())
         .collect();
     backfill_component_codes(&mut body);
+    // dsl 0.24.0 §4: `{{@p}}` over a `speaker` param renders the cast
+    // member's NAME; every other position (attrs, match subjects) binds the
+    // id below.
+    let names = speaker_display_args(def, &args, components.cast);
+    if !names.is_empty() {
+        visit_lines(&mut body, &mut |l| bind_text(l, &names));
+    }
     bind_params(&mut body, &args, &def.params);
     // Nested `::use` in the body expands recursively (acyclic per checker);
     // this expansion is the nested uses' host, so they count from 1 afresh.
@@ -573,152 +620,6 @@ fn expand_use(
     out
 }
 
-/// §6.4: fold a param-scoped `<match>` at `::use` expansion time (dsl 0.4.0
-/// §6.4) — runs at the END of [`expand_use`] on the bound clone, and ONLY
-/// there (B2: a scene-level `<match>` is never touched by this pass —
-/// `normalize_nodes`'s own `Node::Match` arm recurses into arm bodies only
-/// to expand a nested `::use`, never calling this fold).
-///
-/// By the time this runs, `bind_params` has ALREADY textually substituted
-/// every `@param` occurrence in `nodes` with its bound arg's CEL text: a
-/// literal arg becomes a literal (`'fond'`, `true`, `3`); a caller-side
-/// `@def` ref (`tier=@currentTier`) becomes that ref's bare text
-/// (`@currentTier`). A component body may never itself hold a `@def` (§6.2
-/// purity — `E-COMPONENT-STATE`), so no def table is ever needed here, and
-/// the substituted `@currentTier` text is unexpandable (D3: a bodiless ref
-/// stays a marker) — undecided by construction, exactly the case-2 split.
-///
-/// Case 1 (subject AND every needed arm condition decide): splice the
-/// selected arm's body in place of the match — no match record emitted.
-/// This function's OWN scan loop re-visits the spliced nodes at the SAME
-/// index (it never advances `i` after a splice), so a nested param
-/// `<match>` folds recursively too — `normalize_nodes`'s outer `::use` loop
-/// does NOT re-scan past a splice (`i += n`, above), so this recursion has
-/// to live here, not there.
-///
-/// Case 2 (subject or any needed condition undecided): leave the
-/// `Node::Match` intact — it lowers to the ordinary `MatchCmd` later
-/// (stage.rs `walk_match`) — but still recurse into every arm's body: an
-/// unrelated NESTED param `<match>` inside a residual arm may still fold on
-/// its own terms.
-pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &StateSchema) {
-    let mut i = 0;
-    while i < nodes.len() {
-        let selection = if let Node::Match(m) = &nodes[i] {
-            decide_component_expr(&m.subject.raw, None, schema)
-                .and_then(|subj| select_component_arm(&m.arms, &subj, schema))
-        } else {
-            None
-        };
-        if let Some(idx) = selection {
-            let Node::Match(m) = nodes.remove(i) else {
-                unreachable!("`selection` is Some only when nodes[i] was Node::Match")
-            };
-            let body = match m.arms.into_iter().nth(idx) {
-                Some(Arm::When { body, .. }) | Some(Arm::Otherwise { body, .. }) => body,
-                None => unreachable!("idx came from select_component_arm over these SAME arms"),
-            };
-            nodes.splice(i..i, body);
-            continue; // re-scan from `i`: the recursion this fold owns (see doc comment).
-        }
-        if let Node::Match(m) = &mut nodes[i] {
-            for arm in &mut m.arms {
-                match arm {
-                    Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                        fold_component_matches(body, schema)
-                    }
-                }
-            }
-        }
-        i += 1;
-    }
-}
-
-/// Decide `raw` under §5.1 with an empty def table and an empty param-domain
-/// map (nothing is ever left to resolve through either by the time this
-/// runs — see [`fold_component_matches`]'s doc comment). `dollar` is
-/// `Some(v)` in arm-decision mode (`$` bound to the already-decided
-/// subject, `DollarBinding::Value`) and `None` in subject-decision mode (no
-/// `$` in scope for the subject slot itself).
-fn decide_component_expr(
-    raw: &str,
-    dollar: Option<Decided>,
-    schema: &StateSchema,
-) -> Option<Decided> {
-    let empty_bodies = BTreeMap::new();
-    let empty_def_params = BTreeMap::new();
-    let defs = DefTable {
-        bodies: &empty_bodies,
-        params: &empty_def_params,
-    };
-    let empty_params = BTreeMap::new();
-    let ctx = DecideCtx {
-        schema,
-        dollar: dollar.map(DollarBinding::Value),
-        params: &empty_params,
-        facts: None,
-    };
-    decide_slot(raw, &defs, &ctx)
-}
-
-/// Walk `arms` top-to-bottom against the decided subject `subj` (§6.4 step
-/// 2): an `is` pattern is literal-set membership ([`is_pattern_literals`] +
-/// [`is_literal_matches`]) — always decidable given a decided subject, no
-/// runtime unknowns possible; a `test` guard decides via `decide_slot` with
-/// `$` bound to `subj`. `is` + `test` together is AND (dsl §7.3.1) — an
-/// `is` miss skips the arm WITHOUT needing `test` to decide (sound: the arm
-/// provably doesn't fire regardless of `test`'s value).
-///
-/// Returns `Some(idx)` — the DEFINITELY-selected arm — only when every arm
-/// visited before it definitely does NOT fire; `None` the instant an arm's
-/// firing is itself undecided (§6.4 case 2 — the caller leaves the whole
-/// match as a residual record). `<otherwise>` always selects when reached
-/// (exhaustiveness is proven statically, §6.3).
-fn select_component_arm(arms: &[Arm], subj: &Decided, schema: &StateSchema) -> Option<usize> {
-    for (idx, arm) in arms.iter().enumerate() {
-        match arm {
-            Arm::Otherwise { .. } => return Some(idx),
-            Arm::When { is, test, .. } => {
-                if let Some(pat) = is {
-                    let literals = is_pattern_literals(&pat.raw, pat.span);
-                    if !literals
-                        .iter()
-                        .any(|(lit, _)| is_literal_matches(lit, subj))
-                    {
-                        continue; // `is` provably misses: skip, `test` irrelevant.
-                    }
-                }
-                if test.raw.trim().is_empty() {
-                    return Some(idx); // `is` matched (or absent) and no guard to add.
-                }
-                match decide_component_expr(&test.raw, Some(subj.clone()), schema) {
-                    Some(Decided::Bool(true)) => return Some(idx),
-                    Some(Decided::Bool(false)) => continue,
-                    _ => return None, // undecided (or an ill-typed non-bool verdict): bail.
-                }
-            }
-        }
-    }
-    None // exhaustiveness is a checker invariant; total fallback: stay residual.
-}
-
-/// Compare one `is=` literal, classified by the shared
-/// [`classify_is_literal`] (dsl §7.3.1: `EnumMember | "true" | "false" |
-/// Number | "unset" | Range`), against a §6.4-decided constant. A param is
-/// never `unset` (§6.3, checker-enforced via `E-WHEN-LITERAL-DOMAIN`), so
-/// `unset` never matches here. A numeric range (dsl 0.18.0) matches a decided
-/// number inside its inclusive bounds and never a non-number; a malformed
-/// range (`E-WHEN-RANGE`) matches nothing.
-fn is_literal_matches(lit: &str, decided: &Decided) -> bool {
-    match (classify_is_literal(lit), decided) {
-        (Ok(IsLiteral::Bool(b)), Decided::Bool(d)) => b == *d,
-        (Ok(IsLiteral::Num(n)), Decided::Num(d)) => n == *d,
-        (Ok(IsLiteral::Range(range)), Decided::Num(d)) => range.contains(*d),
-        (Ok(IsLiteral::Str(s)), Decided::Str(d)) => s == *d,
-        _ => false,
-    }
-}
-
 /// Bind `@param` uses to `::use` args. A whole-slot `@param` attr value is
 /// replaced VALUE-LEVEL (a string arg becomes a plain `Str` attr — what a
 /// string-typed attr position needs); a `@param` inside a larger CEL is
@@ -741,7 +642,12 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                 bind_text(l, args);
             }
             Node::Directive(d) => bind_attrs(&mut d.attrs, args, params),
-            Node::Set(s) => bind_slot(&mut s.expr, args, params),
+            Node::Set(s) => {
+                bind_slot(&mut s.expr, args, params);
+                if let Some(w) = &mut s.when {
+                    bind_slot(w, args, params);
+                }
+            }
             Node::Branch(b) => {
                 for c in &mut b.choices {
                     if let Some(w) = &mut c.when {
@@ -794,8 +700,8 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                 if let Some(w) = &mut o.when {
                     bind_slot(w, args, params);
                 }
-                if let Some(b) = &mut o.by {
-                    bind_slot(b, args, params);
+                for deadline in o.by.iter_mut().chain(o.until.iter_mut()) {
+                    bind_slot(deadline, args, params);
                 }
                 bind_attrs(&mut o.attrs, args, params);
                 bind_params(&mut o.body, args, params);
@@ -806,56 +712,8 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
     }
 }
 
-fn bind_attrs(attrs: &mut [Attr], args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
-    for a in attrs {
-        let AttrValue::Ref(slot) = &mut a.value else {
-            continue;
-        };
-        // Whole-slot `@param` → value-level replacement.
-        if let Some(name) = slot.raw.trim().strip_prefix('@') {
-            if let Some(arg) = args.get(name) {
-                a.value = arg.clone();
-                continue;
-            }
-        }
-        bind_slot_raw(slot, args, params);
-    }
-}
-
 fn bind_slot(slot: &mut CelSlot, args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
     bind_slot_raw(slot, args, params);
-}
-
-/// Textual `@param` → arg substitution inside a CEL fragment (right-to-left).
-fn bind_slot_raw(
-    slot: &mut CelSlot,
-    args: &BTreeMap<String, AttrValue>,
-    params: &[(String, Type)],
-) {
-    let refs = lute_cel::scan_refs(&slot.raw);
-    for r in refs.iter().rev() {
-        if r.is_dollar || r.call.is_some() {
-            continue; // params are 0-arity; calls/`$` belong to the expander
-        }
-        let Some(arg) = args.get(&r.name) else {
-            continue;
-        };
-        let ty = params.iter().find(|(n, _)| n == &r.name).map(|(_, t)| t);
-        let text = arg_cel_text(arg, ty);
-        slot.raw
-            .replace_range(r.span.byte_start..r.span.byte_end, &text);
-    }
-}
-
-fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
-    match arg {
-        AttrValue::BoolTrue => "true".to_string(),
-        AttrValue::Ref(slot) => slot.raw.clone(),
-        AttrValue::Str(s) => match ty {
-            Some(Type::Number) | Some(Type::Bool) => s.clone(),
-            _ => cel_string_literal(s),
-        },
-    }
 }
 
 /// dsl §13 / 0.21.1 T1-3: bind a component body line's `{{@param}}`
@@ -868,6 +726,11 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
 ///
 /// Markers are walked with the parser's own scan rule (`\{{` is a literal,
 /// `{{…}}` pairs left to right), so the k-th marker IS `l.interps[k]`.
+///
+/// dsl 0.24.0 T1-12: every surviving interp's `span` is recomputed against
+/// the REWRITTEN `text` (base `l.text_span`), since a rebound `{{@def}}` and a
+/// spliced literal change the text's length — consumers slice `l.text` by
+/// `interp.span - text_span.byte_start` (trace's `render_line_text`).
 fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
     let bound = |interp: &Interp| -> Option<&AttrValue> {
         (interp.kind == InterpKind::Ref)
@@ -878,10 +741,12 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
     if !l.interps.iter().any(|i| bound(i).is_some()) {
         return;
     }
+    let base = l.text_span.byte_start;
     let text = &l.text;
     let b = text.as_bytes();
     let mut out = String::with_capacity(text.len());
-    let mut kept = Vec::with_capacity(l.interps.len());
+    // Each kept interp with its `[start, end)` in `out`.
+    let mut kept: Vec<(Interp, usize, usize)> = Vec::with_capacity(l.interps.len());
     let mut interps = std::mem::take(&mut l.interps).into_iter();
     let (mut j, mut copied) = (0, 0);
     while j + 1 < b.len() {
@@ -897,38 +762,81 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
             let Some(mut interp) = interps.next() else {
                 break;
             };
+            out.push_str(&text[copied..j]);
+            copied = end;
+            let at = out.len();
             match bound(&interp).cloned() {
                 Some(AttrValue::Ref(slot)) => {
-                    out.push_str(&text[copied..j]);
                     out.push_str("{{");
                     out.push_str(&slot.raw);
+                    // dsl 0.24.0 §4: the rebound marker keeps its hint.
+                    if let Some(format) = &interp.format {
+                        out.push(':');
+                        out.push_str(format);
+                    }
                     out.push_str("}}");
-                    copied = end;
                     interp.kind = classify_interp(&slot.raw);
                     interp.raw = slot.raw;
-                    kept.push(interp);
+                    kept.push((interp, at, out.len()));
                 }
                 Some(AttrValue::Str(s)) => {
-                    out.push_str(&text[copied..j]);
-                    out.push_str(&s);
-                    copied = end;
+                    // dsl 0.24.0 §4: no placeholder survives a literal splice
+                    // to carry the hint, so it applies here — `ordinal` on a
+                    // number literal renders its English ordinal.
+                    let ordinal = (interp.format.as_deref()
+                        == Some(lute_syntax::ast::INTERP_FORMAT_ORDINAL))
+                    .then(|| s.trim().parse::<f64>().ok())
+                    .flatten()
+                    .and_then(lute_syntax::ast::english_ordinal);
+                    out.push_str(ordinal.as_deref().unwrap_or(&s));
                 }
-                Some(AttrValue::BoolTrue) => {
-                    out.push_str(&text[copied..j]);
-                    out.push_str("true");
-                    copied = end;
+                Some(AttrValue::BoolTrue) => out.push_str("true"),
+                None => {
+                    out.push_str(&text[j..end]);
+                    kept.push((interp, at, out.len()));
                 }
-                None => kept.push(interp),
             }
             j = end;
             continue;
         }
         j += 1;
     }
+    // Markers the scan never reached keep their offset past `copied`, shifted
+    // by the length change so far (the parser only emits well-formed pairs,
+    // so this is defensive).
+    let shift = |at: usize| (at + out.len()).saturating_sub(copied);
+    for interp in interps {
+        let (s, e) = (interp.span.byte_start, interp.span.byte_end);
+        let (s, e) = (shift(s.saturating_sub(base)), shift(e.saturating_sub(base)));
+        kept.push((interp, s, e));
+    }
     out.push_str(&text[copied..]);
-    kept.extend(interps);
+    l.interps = kept
+        .into_iter()
+        .map(|(mut interp, start, end)| {
+            interp.span = text_sub_span(l.text_span, &out, start, end);
+            interp
+        })
+        .collect();
     l.text = out;
-    l.interps = kept;
+}
+
+/// The span of `text[start..end]` for a line text beginning at `text_span`
+/// (single-line: `line` is the text's, `column`/UTF-16 advance by the prefix).
+fn text_sub_span(text_span: Span, text: &str, start: usize, end: usize) -> Span {
+    let (start, end) = (start.min(text.len()), end.min(text.len()));
+    let u16_len = |s: &str| s.chars().map(|c| c.len_utf16() as u32).sum::<u32>();
+    let u16_start = text_span.utf16_range.0 + u16_len(text.get(..start).unwrap_or(""));
+    Span {
+        byte_start: text_span.byte_start + start,
+        byte_end: text_span.byte_start + end,
+        line: text_span.line,
+        column: text_span.column + start as u32,
+        utf16_range: (
+            u16_start,
+            u16_start + u16_len(text.get(start..end).unwrap_or("")),
+        ),
+    }
 }
 
 /// `<choice … into="run.<path>" [value="<lit>"]>` → append
@@ -964,6 +872,7 @@ fn push_set(choice: &mut Choice, path: String, cel: String, span: Span) {
         op: "=".to_string(),
         expr: CelSlot::raw(CelKind::SetExpr, cel, span),
         span,
+        when: None,
     }));
 }
 
@@ -975,20 +884,6 @@ fn into_value_cel(ty: &Type, value: Option<&str>) -> String {
         Type::Number => value.unwrap_or("0").to_string(),
         _ => cel_string_literal(value.unwrap_or_default()),
     }
-}
-
-/// Quote `s` as a single-quoted CEL string literal (backslash escaping, §4.4).
-pub fn cel_string_literal(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for c in s.chars() {
-        if c == '\\' || c == '\'' {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out.push('\'');
-    out
 }
 
 #[cfg(test)]
@@ -1022,7 +917,7 @@ mod tests {
         let mut doc = parse_clean(&scene);
         let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
         assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
-        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
         assert!(diags.is_empty(), "{diags:#?}");
 
         let body = &doc.shots[0].body;
@@ -1081,7 +976,7 @@ episode: 1
 "#;
         let mut doc = parse_clean(src);
         let comps = resolve_components(Path::new("."), &[], doc.meta.span);
-        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
         assert!(
             diags.iter().any(|d| d.code == "E-COMPILE-COMPONENT"),
             "expected E-COMPILE-COMPONENT for a ::use timeline clip, got {diags:#?}"
@@ -1112,7 +1007,7 @@ components: [greet.component.lute]
         let mut doc = parse_clean(src);
         let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
         assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
-        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
         let arg_err = diags
             .iter()
             .find(|d| d.code == "E-COMPILE-COMPONENT" && d.severity == Severity::Error);
@@ -1190,7 +1085,7 @@ episode: 1
                 owner: None,
             },
         );
-        let diags = normalize_document(&mut doc, &Default::default(), &schema);
+        let diags = normalize_document(&mut doc, &Default::default(), &Default::default(), &schema);
         assert!(diags.is_empty(), "{diags:#?}");
 
         let Node::Branch(b) = &doc.shots[0].body[0] else {
@@ -1260,7 +1155,7 @@ components: [greet.component.lute]
         assert_eq!(doc.quests.len(), 1, "fixture must parse one <quest>");
         let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
         assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
-        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
         assert!(diags.is_empty(), "{diags:#?}");
 
         let quest = &doc.quests[0];
@@ -1321,6 +1216,8 @@ params:
             "reactor".to_string(),
             lute_check::ComponentDef {
                 params: vec![("n".to_string(), Type::Number)],
+                speakers: Vec::new(),
+                effects: false,
                 body: comp_doc,
                 src: std::path::PathBuf::from("test://reactor"),
             },
@@ -1341,7 +1238,7 @@ kind: quest
 </quest>
 "#;
         let mut doc = parse_clean(src);
-        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
         assert!(diags.is_empty(), "{diags:#?}");
 
         let quest = &doc.quests[0];
@@ -1374,18 +1271,11 @@ kind: quest
         assert_eq!(s2.expr.raw, "5");
     }
 
-    #[test]
-    fn cel_string_literal_escapes_quotes_and_backslashes() {
-        assert_eq!(cel_string_literal("warm"), "'warm'");
-        assert_eq!(cel_string_literal("it's"), "'it\\'s'");
-        assert_eq!(cel_string_literal("a\\b"), "'a\\\\b'");
-    }
-
     fn normalize_quests(src: &str) -> lute_syntax::ast::Document {
         let mut doc = parse_clean(src);
         let comps = resolve_components(Path::new("."), &[], doc.meta.span);
         assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
-        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        let diags = normalize_document(&mut doc, &comps, &Default::default(), &StateSchema::default());
         // Subquest synthesis is pure text: it never produces diagnostics of
         // its own (structural / cross-doc violations are the checker's job).
         assert!(diags.is_empty(), "{diags:#?}");
@@ -1570,22 +1460,5 @@ state:
         let doc = normalize_quests(src);
         let obj = objective_by_id(quest_by_id(&doc, "parent"), "a");
         assert_eq!(obj.done.raw, "run.override");
-    }
-
-    /// dsl 0.18.0: a range literal decides against a folded number constant
-    /// by inclusive-bound membership, never against a non-number; a
-    /// malformed/empty range (`E-WHEN-RANGE`) matches nothing.
-    #[test]
-    fn range_literal_matches_decided_numbers_inclusively() {
-        let num = |n: f64| Decided::Num(n);
-        assert!(is_literal_matches("1..3", &num(1.0)));
-        assert!(is_literal_matches("1..3", &num(3.0)));
-        assert!(!is_literal_matches("1..3", &num(3.5)));
-        assert!(is_literal_matches("..0", &num(-1e9)));
-        assert!(is_literal_matches("2..", &num(1e9)));
-        assert!(!is_literal_matches("2..", &num(1.9)));
-        assert!(!is_literal_matches("1..3", &Decided::Str("2".into())));
-        assert!(!is_literal_matches("3..1", &num(2.0)));
-        assert!(!is_literal_matches("1..2..3", &num(2.0)));
     }
 }

@@ -1,0 +1,22 @@
+# The shared world schema, imported by every document through the manifest's
+# `defaults: uses:`. Every path carries a `default:` so reads are definitely
+# assigned.
+state:
+  # Written by the engine, read by content (dsl 0.22.0 §1.2): a `::set` of it
+  # is an error. `lute play` writes it with an `engine:` step.
+  run.day:        { type: number, default: 1, owner: engine }
+  user.bond.mara: { type: number, default: 0 }
+
+entities:
+  npc:  { members: [mara, tomas] }
+  item: { members: [lamp] }
+
+relations:
+  # What the player has learned this run.
+  knows: { args: [item], tier: run }
+
+# Named conditions, read as `@firstDay`. The shorthand is the CEL body alone;
+# its type is inferred (bool).
+defs:
+  firstDay: "run.day == 1"
+  trusted:  "user.bond.mara >= 1"

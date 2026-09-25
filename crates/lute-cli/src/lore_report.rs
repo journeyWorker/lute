@@ -7,7 +7,8 @@
 //! the checker runs ([`lute_syntax::parse`]). It does not check: a document
 //! that parses is reported whatever its diagnostics; one whose parse fails
 //! (any `Error`-severity parse diagnostic, `lute loc`'s own guard) is named on
-//! stderr and skipped. Three sections:
+//! stderr and skipped. Each entry and beat row carries its `when` as
+//! authored. Sections:
 //!
 //! 1. **Entries by target** — every lore `<entry>` and every beat (a lore
 //!    `<beat>` bundle under its canonical `<document id>.<beat id>`, dsl
@@ -24,6 +25,12 @@
 //!    ids), lore `<beat>` bundles (their canonical ids, listed as `beats`),
 //!    scenes/quests (their documents), or more than one of those (`both`).
 //!    Relations and facts are byte-sorted; ids and documents too.
+//! 4. **Derived** (dsl 0.24.0 T3-2, only when a relation is `derive`d) —
+//!    every derived atom the may set holds (the conclusions the rules can
+//!    reach from what the project asserts), each with the rule instances
+//!    that conclude it, the evidence it rests on, and the fact-guarded
+//!    conditions it gates — over the same per-root collection `lute
+//!    scenario knowledge` reads ([`crate::knowledge`]).
 //!
 //! Document paths are shown relative to `dir`. `--json` emits the same data as
 //! one object. Exit `0` on success, `2` on an I/O failure.
@@ -66,6 +73,9 @@ struct EntryRow {
     /// malformed value (`E-ENTRY-ATTR`) is reported as absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     order: Option<u32>,
+    /// The eligibility guard as authored (entry `when=`, beat `when`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    when: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -100,10 +110,20 @@ struct RelationGroup {
 }
 
 #[derive(Serialize)]
+struct DerivedGroup {
+    relation: String,
+    facts: Vec<crate::knowledge::DerivedFact>,
+}
+
+#[derive(Serialize)]
 struct Report {
     targets: Vec<TargetGroup>,
     series: Vec<SeriesGroup>,
     relations: Vec<RelationGroup>,
+    /// Every derived relation's reachable atoms (dsl 0.24.0 T3-2); absent
+    /// when the project declares no derived relation.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    derived: Vec<DerivedGroup>,
 }
 
 /// Who asserts one ground fact: entry ids, bundle beat ids and scene/quest
@@ -217,7 +237,9 @@ fn fold_document(
                 .map(str::to_string)
         };
         if let Some(on) = field("on") {
-            entries.push(beat_row(key, document, Some(on), field("target"), field("title")));
+            let mut row = beat_row(key, document, Some(on), field("target"), field("title"));
+            row.when = field("when").map(|w| w.trim().to_string());
+            entries.push(row);
         }
     }
     // Entries and bundle beats in declaration order (the rows interleave by
@@ -243,6 +265,7 @@ fn fold_document(
                 title: entry.title.as_ref().map(|(v, _)| v.clone()),
                 series: position.series.map(str::to_string),
                 order: position.order,
+                when: authored(&entry.when),
             },
         ));
     }
@@ -263,10 +286,9 @@ fn fold_document(
             record(fact, Source::Beat(&id));
         }
         let value = |v: &Option<(String, lute_core_span::Span)>| v.as_ref().map(|(s, _)| s.clone());
-        rows.push((
-            beat.span.byte_start,
-            beat_row(id, document, value(&beat.on), value(&beat.target), value(&beat.title)),
-        ));
+        let mut row = beat_row(id, document, value(&beat.on), value(&beat.target), value(&beat.title));
+        row.when = authored(&beat.when);
+        rows.push((beat.span.byte_start, row));
     }
     rows.sort_by_key(|(at, _)| *at);
     entries.extend(rows.into_iter().map(|(_, row)| row));
@@ -290,7 +312,14 @@ fn beat_row(
         title,
         series: None,
         order: None,
+        when: None,
     }
+}
+
+/// A guard as authored, whitespace-collapsed; `None` when absent or empty.
+fn authored(slot: &Option<lute_syntax::ast::CelSlot>) -> Option<String> {
+    let raw = slot.as_ref()?.raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!raw.is_empty()).then_some(raw)
 }
 
 /// Group the folded data into the report's three stable-sorted sections.
@@ -360,6 +389,7 @@ fn build_report(
         targets,
         series,
         relations,
+        derived: Vec::new(),
     }
 }
 
@@ -374,6 +404,7 @@ fn entry_label(e: &EntryRow) -> &str {
 /// One entry line: `id  [category]  "title"  document`; a beat's reads
 /// `beat  id  "title"  document  (on occasion)`.
 fn entry_line(e: &EntryRow, lead: Option<String>) -> String {
+    let lead_width = lead.as_ref().map_or(0, |l| l.chars().count() + 2);
     let mut s = String::from("    ");
     if let Some(lead) = lead {
         s.push_str(&lead);
@@ -389,6 +420,9 @@ fn entry_line(e: &EntryRow, lead: Option<String>) -> String {
     s.push_str(&format!("  {}", e.document));
     if let Some(on) = &e.on {
         s.push_str(&format!("  (on {on})"));
+    }
+    if let Some(w) = &e.when {
+        s.push_str(&format!("\n{}when: {w}", " ".repeat(6 + lead_width)));
     }
     s
 }
@@ -442,6 +476,29 @@ fn render_text(r: &Report) -> String {
             }
         }
     }
+    if !r.derived.is_empty() {
+        out.push_str("\nDerived (what the rules can conclude from what the project asserts)\n");
+    }
+    for g in &r.derived {
+        out.push_str(&format!("  {}\n", g.relation));
+        if g.facts.is_empty() {
+            out.push_str("    (nothing — no rule instance follows from what the project asserts)\n");
+        }
+        for f in &g.facts {
+            out.push_str(&format!("    {}\n", f.fact));
+            for from in &f.from {
+                out.push_str(&format!("      ⇐ {from}\n"));
+            }
+            if !f.evidence.is_empty() {
+                out.push_str(&format!("      evidence: {}\n", f.evidence.join(", ")));
+            }
+            if f.gates.is_empty() {
+                out.push_str("      gates: (no condition reads it)\n");
+            } else {
+                out.push_str(&format!("      gates: {}\n", f.gates.join(", ")));
+            }
+        }
+    }
     out
 }
 
@@ -479,7 +536,20 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
         let document = path.strip_prefix(dir).unwrap_or(path).display().to_string();
         fold_document(&document, &doc, &mut entries, &mut facts);
     }
-    let report = build_report(entries, facts);
+    let mut report = build_report(entries, facts);
+    // dsl 0.24.0 T3-2: the conclusions the rules can reach, over the same
+    // per-root collection `lute scenario knowledge` reads.
+    let (_, by_root) = match crate::collect_project_docs(dir, None, false) {
+        Ok(c) => c,
+        Err(code) => return code,
+    };
+    for k in crate::knowledge::collect(&by_root) {
+        report.derived.extend(
+            crate::knowledge::derived(&k)
+                .into_iter()
+                .map(|(relation, facts)| DerivedGroup { relation, facts }),
+        );
+    }
     let text = if json {
         match serde_json::to_string_pretty(&report) {
             Ok(s) => format!("{s}\n"),

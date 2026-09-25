@@ -148,6 +148,14 @@ pub struct TypedMeta {
     /// shrunken signature (dsl §13). `false` when `params:` is absent or wholly
     /// valid.
     pub params_malformed: bool,
+    /// dsl 0.24.0 §4: a component file's `effects: true` — its body may
+    /// `::set`/`::assert`/`::retract`, each write checked at every `::use`
+    /// site against the host's schema. `false` when absent.
+    pub effects: bool,
+    /// dsl 0.24.0 §4: the component params declared `speaker` (a cast id;
+    /// `{{@p}}` renders the cast name). Each is ALSO in [`Self::params`],
+    /// typed `string` there — the host's cast narrows it at a `::use`.
+    pub speaker_params: Vec<String>,
     /// Project-authored `entities:` entity-kind decls (0.3.0 draft §3.1, T4),
     /// parsed via `lute_manifest::relations::parse_entity_kinds`. Distinct
     /// from [`Self::domains`] (the 0.2.2 attr-layer projection): this is the
@@ -165,9 +173,23 @@ pub struct TypedMeta {
     /// `lute_syntax::datalog::parse_rule`. Same omit-on-error discipline as
     /// [`Self::rel_facts`].
     pub rel_rules: Vec<RuleDecl>,
+    /// dsl 0.24 T3-6: the head relation of every `rules:` entry that failed
+    /// to parse (when its head is still readable) — see
+    /// `RelVocab::unparsed_heads`.
+    pub rel_rule_failed_heads: std::collections::BTreeSet<String>,
+    /// dsl 0.24.0 §3: entity-indexed state families this document declares —
+    /// `run.approval: { …, per: companion }` maps `run.approval` →
+    /// `companion`. Each member's path (`run.approval.isolde`, …) is an
+    /// ordinary [`Self::state`] decl; this map is what lets a rule `cel()`
+    /// guard read `run.approval[P]` for a rule variable `P`.
+    pub state_index: BTreeMap<String, String>,
     /// dsl 0.23.0 §7: a schema document's `cast:` — declared speaker ids
     /// (and display names), in key order. Legal only on `MetaKind::Schema`.
     pub cast: Vec<lute_manifest::schema::CastMember>,
+    /// dsl 0.24.0 §1: a schema document's `clock:`, shape-checked. Legal
+    /// only on `MetaKind::Schema`; its paths are checked against the folded
+    /// schema by [`crate::clock::check_clock`].
+    pub clock: Option<lute_manifest::clock::ClockDecl>,
 }
 
 /// Frontmatter keys valid in EVERY root document kind (dsl 0.2.0 §6.1): the
@@ -227,7 +249,7 @@ const LORE_KEYS: &[&str] = &["id", "series"];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Schema` document: the
 /// declared cast (dsl 0.23.0 §7).
-const SCHEMA_KEYS: &[&str] = &["cast"];
+const SCHEMA_KEYS: &[&str] = &["cast", "clock"];
 
 /// The kind-specific core keys of `kind` beyond [`UNIVERSAL_KEYS`] and the
 /// root-wide `kind:`/`extra:` — empty for the import-role kinds.
@@ -242,9 +264,10 @@ fn kind_keys(kind: MetaKind) -> &'static [&'static str] {
 }
 
 /// Frontmatter keys that are valid ONLY in a component file (dsl §13): the
-/// component's own name (`component:`) and its parameter signature (`params:`).
+/// component's own name (`component:`), its parameter signature (`params:`),
+/// and (dsl 0.24.0 §4) whether its body writes state (`effects:`).
 /// In a scene or schema doc these are unknown top-level keys.
-const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params"];
+const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params", "effects"];
 
 /// 0.10.0 §6.3: is a `defaults:` key legal on `kind`? A default whose key is
 /// not legal on a document's resolved kind is NOT applied to that document,
@@ -1019,10 +1042,16 @@ pub fn parse_meta_kind_with_defaults(
     // `enums:` so a same-doc name collision resolves to the `entities:` entry
     // (last-write-wins; not diagnosed here — see `TypedMeta::domains`'s doc
     // comment).
-    let project_enums = lute_manifest::entities::parse_enums(
-        map.get(yaml_key("enums"))
-            .unwrap_or(&serde_yaml::Value::Null),
-    );
+    let enums_val = map
+        .get(yaml_key("enums"))
+        .unwrap_or(&serde_yaml::Value::Null);
+    let project_enums = lute_manifest::entities::parse_enums(enums_val);
+    // dsl 0.24.0 §1: `parse_enums` is total and drops a non-string label; the
+    // frontmatter value-shape code reports it (a label for a non-member is
+    // `E-ENUM-LABEL-NOT-MEMBER`, from the shared `validate_domain` rules).
+    for message in lute_manifest::entities::label_shape_errors(enums_val) {
+        diags.push(err_at("E-META-VALUE", message, meta_key_span(meta, "enums")));
+    }
     typed.domains = project_enums.clone();
     typed.rel_kinds = lute_manifest::relations::parse_entity_kinds(
         map.get(yaml_key("entities"))
@@ -1033,24 +1062,40 @@ pub fn parse_meta_kind_with_defaults(
             .unwrap_or(&serde_yaml::Value::Null),
     );
     // dsl 0.23.0 §7: `cast: { <id>: { name: "…" } }` (schema documents only;
-    // elsewhere the key was already `E-META-UNKNOWN-KEY` above).
+    // elsewhere the key was already `E-META-UNKNOWN-KEY` above). dsl 0.24.0
+    // §4: an entry may add `present: "<condition>"` and `emotions: [...]`,
+    // each checked here at the entry's key.
     if kind == MetaKind::Schema {
         if let Some(v) = map.get(yaml_key("cast")) {
             match serde_yaml::from_value::<std::collections::BTreeMap<String, lute_manifest::schema::CastBody>>(v.clone()) {
                 Ok(m) => {
                     typed.cast = m
                         .into_iter()
-                        .map(|(id, b)| lute_manifest::schema::CastMember { id, name: b.name })
+                        .map(|(id, b)| {
+                            let mut member = b.into_member(id);
+                            let span = meta_key_span(meta, &member.id);
+                            diags.extend(crate::cast::validate_member(&mut member, span, &typed.domains));
+                            member
+                        })
                         .collect();
                 }
                 Err(e) => diags.push(err_at(
                     "E-META-VALUE",
                     format!(
-                        "`cast:` must map each speaker id to `{{ name: \"…\" }}` (dsl 0.23.0 §7): {e}"
+                        "`cast:` must map each speaker id to `{{ name: \"…\", present: \"…\", \
+                         emotions: [...] }}` (dsl 0.23.0 §7, 0.24.0 §4): {e}"
                     ),
                     meta_key_span(meta, "cast"),
                 )),
             }
+        }
+    }
+    // dsl 0.24.0 §1: `clock:` (schema documents only, like `cast:`).
+    if kind == MetaKind::Schema {
+        if let Some(v) = map.get(yaml_key("clock")) {
+            let (clock, clock_diags) = crate::clock::parse_clock(v, meta_key_span(meta, "clock"));
+            typed.clock = clock;
+            diags.extend(clock_diags);
         }
     }
     // Domain projection for the 0.2.2 attr layer (entities win over enums, as before).
@@ -1127,7 +1172,19 @@ pub fn parse_meta_kind_with_defaults(
                     ));
                     continue;
                 };
-                match lute_syntax::datalog::parse_rule(raw) {
+                let parsed = lute_syntax::datalog::parse_rule(raw);
+                if parsed.is_err() {
+                    // dsl 0.24 T3-6: the head a failed rule meant to derive.
+                    let head: String = raw
+                        .trim_start()
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect();
+                    if head.starts_with(|c: char| c.is_ascii_alphabetic()) {
+                        typed.rel_rule_failed_heads.insert(head);
+                    }
+                }
+                match parsed {
                     Ok(rule) => typed.rel_rules.push(RuleDecl {
                         rule,
                         raw: raw.to_string(),
@@ -1270,9 +1327,22 @@ pub fn parse_meta_kind_with_defaults(
     }
     typed.components = get_ref_list(map, "components");
     typed.component = get_str(map, "component");
-    let (params, params_malformed) = get_params(map, "params");
+    let (params, speakers, params_malformed) = get_params(map, "params");
     typed.params = params;
+    typed.speaker_params = speakers;
     typed.params_malformed = params_malformed;
+    match map.get(yaml_key("effects")) {
+        None => {}
+        Some(serde_yaml::Value::Bool(b)) => typed.effects = *b,
+        Some(v) => diags.push(err_at(
+            "E-META-VALUE",
+            format!(
+                "`effects:` must be `true` or `false`, got {} (dsl 0.24.0 §4)",
+                yaml_shape(v)
+            ),
+            meta_key_span(meta, "effects"),
+        )),
+    }
 
     // Parse the inline `state:` schema (dsl §9.3).
     if let Some(state_val) = map.get(yaml_key("state")) {
@@ -1380,15 +1450,37 @@ pub fn parse_meta_kind_with_defaults(
                             ));
                         }
                         Ok(raw) => {
-                            typed.state.decls.insert(
-                                path.to_string(),
-                                StateDecl {
-                                    ty: raw.ty,
-                                    default: raw.default,
-                                    namespace,
-                                    owner: raw.owner,
+                            let decl = StateDecl {
+                                ty: raw.ty,
+                                default: raw.default,
+                                namespace,
+                                owner: raw.owner,
+                            };
+                            match raw.per {
+                                None => {
+                                    typed.state.decls.insert(path.to_string(), decl);
+                                }
+                                // dsl 0.24.0 §3: one decl per member of a
+                                // closed kind declared in this same document.
+                                Some(kind) => match per_members(&typed.rel_kinds, &kind) {
+                                    Ok(members) => {
+                                        for m in members {
+                                            typed.state.decls.insert(format!("{path}.{m}"), decl.clone());
+                                        }
+                                        typed.state_index.insert(path.to_string(), kind);
+                                    }
+                                    Err(why) => diags.push(err_at(
+                                        "E-STATE-DECL",
+                                        format!(
+                                            "invalid state declaration for `{path}`: `per: {kind}` {why}; \
+                                             `per:` indexes a path by a closed entity kind (`members: [...]`) \
+                                             declared in this document's `entities:`, declaring \
+                                             `{path}.<member>` for every member (dsl 0.24.0 §3)"
+                                        ),
+                                        meta_key_span(meta, path),
+                                    )),
                                 },
-                            );
+                            }
                         }
                         // dsl 0.5.0 §2.2 / #21 T10.2: this arm forwarded
                         // `serde_yaml`'s own error — "invalid type: unit
@@ -1758,8 +1850,8 @@ fn sanitize_dup_block_keys(raw_yaml: &str) -> String {
     out
 }
 
-/// Raw `state:` entry (dsl §9.3): `{ type, default?, owner? }`. `Type` reuses
-/// the manifest's manual serde (inline `{ enum: [...] }` etc. work).
+/// Raw `state:` entry (dsl §9.3): `{ type, default?, owner?, per? }`. `Type`
+/// reuses the manifest's manual serde (inline `{ enum: [...] }` etc. work).
 #[derive(serde::Deserialize)]
 struct StateDeclRaw {
     #[serde(rename = "type")]
@@ -1768,6 +1860,25 @@ struct StateDeclRaw {
     default: Option<Literal>,
     #[serde(default)]
     owner: Option<lute_manifest::types::Owner>,
+    /// dsl 0.24.0 §3: the closed entity kind this path is indexed by.
+    #[serde(default)]
+    per: Option<String>,
+}
+
+/// The members a `per: <kind>` state family is declared over (dsl 0.24.0
+/// §3), or why it cannot be: the kind is not declared in `kinds` (this
+/// document's own `entities:`), is `open:`, or is malformed.
+fn per_members<'a>(
+    kinds: &'a lute_manifest::relations::ParsedKinds,
+    kind: &str,
+) -> Result<&'a [String], &'static str> {
+    use lute_manifest::relations::KindShape;
+    match kinds.kinds.get(kind).map(|k| &k.shape) {
+        Some(KindShape::Members(ms)) => Ok(ms),
+        Some(KindShape::Open) => Err("names an `open:` entity kind, whose members the engine registers at runtime"),
+        Some(KindShape::Invalid) => Err("names a malformed entity kind"),
+        None => Err("names no entity kind declared in this document's `entities:`"),
+    }
 }
 
 fn yaml_key(k: &str) -> serde_yaml::Value {
@@ -1835,20 +1946,27 @@ fn get_sub_map(map: &serde_yaml::Mapping, key: &str) -> BTreeMap<String, serde_y
 /// param default would need a rule for how it interacts with
 /// `E-COMPONENT-ARG`, which the issue explicitly does not ask for.
 ///
-/// Returns the valid `(name, type)` pairs plus a `malformed` flag that is `true`
+/// dsl 0.24.0 §4: a component param MAY be typed `speaker` (a cast id). It is
+/// entered in the params list as `string` and ALSO named in the returned
+/// speaker list; `speaker` is a component-param spelling only, never a
+/// manifest [`Type`].
+///
+/// Returns the valid `(name, type)` pairs, the `speaker` param names, and a
+/// `malformed` flag that is `true`
 /// when `params:` is PRESENT but any part of it is invalid — not a mapping, a
 /// non-string key, or a value that fails `Type` deserialization. The caller
 /// (component resolver) turns a set flag into `E-COMPONENT-PARSE` so a malformed
-/// signature is never silently shrunk. Absent `params:` ⇒ `(empty, false)`.
+/// signature is never silently shrunk. Absent `params:` ⇒ `(empty, empty, false)`.
 /// Never panics.
-fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, bool) {
+fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, Vec<String>, bool) {
     let Some(raw) = map.get(yaml_key(key)) else {
-        return (Vec::new(), false); // absent — fine (no params)
+        return (Vec::new(), Vec::new(), false); // absent — fine (no params)
     };
     let Some(pm) = raw.as_mapping() else {
-        return (Vec::new(), true); // present but not a mapping — malformed
+        return (Vec::new(), Vec::new(), true); // present but not a mapping — malformed
     };
     let mut params = Vec::new();
+    let mut speakers = Vec::new();
     let mut malformed = false;
     for (k, tv) in pm.iter() {
         let Some(name) = k.as_str() else {
@@ -1856,6 +1974,14 @@ fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, bool) {
             continue;
         };
         let tv = unwrap_long_form(tv).unwrap_or(tv);
+        if tv.as_str() == Some("speaker") {
+            speakers.push(name.to_string());
+            params.push(DefParam {
+                name: name.to_string(),
+                ty: Type::Str,
+            });
+            continue;
+        }
         match serde_yaml::from_value::<Type>(tv.clone()) {
             Ok(ty) => params.push(DefParam {
                 name: name.to_string(),
@@ -1864,7 +1990,7 @@ fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, bool) {
             Err(_) => malformed = true, // value is not a valid Type
         }
     }
-    (params, malformed)
+    (params, speakers, malformed)
 }
 
 /// dsl 0.10.0 §12.4: unwrap the long form `{ type: X }` to `X`. `None` for

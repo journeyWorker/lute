@@ -22,6 +22,12 @@ impl InstalledPlugin {
 #[derive(Clone, Debug, Default)]
 pub struct InstalledPlugins {
     pub by_id: std::collections::BTreeMap<String, InstalledPlugin>,
+    /// Packages whose `plugin.yaml` parsed but which failed to load (an
+    /// export did not parse, a duplicate id, …), by manifest id, with the
+    /// codes of the load errors already reported for them. Not installed as
+    /// far as resolution goes; assembly names them as failed rather than
+    /// missing.
+    pub failed: std::collections::BTreeMap<String, Vec<&'static str>>,
 }
 
 impl InstalledPlugins {
@@ -485,6 +491,7 @@ mod tests {
                 "arcia.minigame".to_string(),
                 InstalledPlugin { loaded: loaded(m) },
             )]),
+            ..Default::default()
         };
         assert_eq!(
             reg.get("arcia.minigame").unwrap().manifest().version,
@@ -723,6 +730,7 @@ mod tests {
                 .into_iter()
                 .map(|m| (m.id.clone(), InstalledPlugin { loaded: loaded(m) }))
                 .collect(),
+            ..Default::default()
         }
     }
 

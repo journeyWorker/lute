@@ -779,6 +779,7 @@ mod tests {
                 span(),
             ),
             span: span(),
+            when: None,
         })
     }
 

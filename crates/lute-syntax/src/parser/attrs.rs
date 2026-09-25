@@ -92,7 +92,7 @@ impl Parser<'_> {
                     if j < n && b[j] == b'"' {
                         j += 1; // past closing quote (only when actually found)
                     }
-                    let value = unescape_quote(&self.body[inner_start..inner_end]);
+                    let value = decode_value(&self.body[inner_start..inner_end]);
                     let vspan = self.span(inner_start, inner_end);
                     attrs.push(Attr {
                         key,
@@ -274,33 +274,82 @@ impl Parser<'_> {
     }
 }
 
-/// The stored text of a `"`-quoted attribute value: its `\"` escapes become
-/// `"` (§4.4). Only the delimiter escape is resolved here, because the scanner
+/// The stored text of a `"`-quoted attribute value (§4.4): its `\"` escapes
+/// become `"`, and (dsl 0.24.0, round-3 T1-11) the XML character references
+/// an author reaches for first — `&quot;` `&apos;` `&amp;` `&lt;` `&gt;`,
+/// decimal `&#NN;` and hex `&#xHH;` — are decoded, so `label="&quot;Hi&quot;"`
+/// ships `"Hi"` instead of the literal entity text. Anything else starting
+/// with `&` (a bare `&`, `&&`, `&nbsp;`, an out-of-range code point) stays
+/// literal. Only the delimiter escape is resolved, because the scanner
 /// cannot tell a `String` from a `CelString` value: `\"` means `"` in both,
 /// while `\\`, `\n`, `\t` and `\'` inside a `CelString` belong to the CEL
 /// string literal they sit in and must reach the CEL parser untouched. Walks
-/// escape PAIRS exactly like the scanner, so `\\"` never reads as `\"`.
-fn unescape_quote(raw: &str) -> String {
-    if !raw.contains("\\\"") {
+/// escape PAIRS exactly like the scanner, so `\\"` never reads as `\"`. One
+/// left-to-right pass, so `&amp;quot;` decodes to `&quot;`, never `"`.
+fn decode_value(raw: &str) -> String {
+    if !raw.contains("\\\"") && !raw.contains('&') {
         return raw.to_string();
     }
     let mut out = String::with_capacity(raw.len());
-    let mut chars = raw.chars();
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            out.push(c);
-            continue;
-        }
-        match chars.next() {
-            Some('"') => out.push('"'),
-            Some(other) => {
-                out.push('\\');
-                out.push(other);
+    let mut rest = raw;
+    while let Some(c) = rest.chars().next() {
+        match c {
+            '\\' => {
+                let mut pair = rest[1..].chars();
+                match pair.next() {
+                    Some('"') => out.push('"'),
+                    Some(other) => {
+                        out.push('\\');
+                        out.push(other);
+                    }
+                    None => out.push('\\'),
+                }
+                rest = pair.as_str();
             }
-            None => out.push('\\'),
+            '&' => match char_reference(rest) {
+                Some((ch, len)) => {
+                    out.push(ch);
+                    rest = &rest[len..];
+                }
+                None => {
+                    out.push('&');
+                    rest = &rest[1..];
+                }
+            },
+            _ => {
+                out.push(c);
+                rest = &rest[c.len_utf8()..];
+            }
         }
     }
     out
+}
+
+/// The character a reference at the start of `s` (which begins with `&`)
+/// names, and its byte length through the `;`. `None` when it is not one of
+/// the decoded forms [`decode_value`] lists.
+fn char_reference(s: &str) -> Option<(char, usize)> {
+    let end = s[1..].find(';')? + 1;
+    let name = &s[1..end];
+    let ch = match name {
+        "quot" => '"',
+        "apos" => '\'',
+        "amp" => '&',
+        "lt" => '<',
+        "gt" => '>',
+        _ => {
+            let num = name.strip_prefix('#')?;
+            let code = match num.strip_prefix(['x', 'X']) {
+                Some(hex) if !hex.is_empty() && hex.len() <= 6 => u32::from_str_radix(hex, 16).ok()?,
+                None if !num.is_empty() && num.len() <= 7 && num.bytes().all(|b| b.is_ascii_digit()) => {
+                    num.parse().ok()?
+                }
+                _ => return None,
+            };
+            char::from_u32(code)?
+        }
+    };
+    Some((ch, end + 1))
 }
 
 /// Take (remove) the string value of attribute `key`, if present.
@@ -443,6 +492,30 @@ mod tests {
             note.value
         );
         assert!(d.attrs.iter().any(|a| a.key == "tail"), "{:?}", d.attrs);
+    }
+
+    // dsl 0.24.0 (round-3 T1-11): XML character references in a quoted value
+    // are decoded — they used to ship literally (`&quot;Quoted&quot;`).
+    #[test]
+    fn character_references_are_decoded_in_the_value() {
+        let label = first_choice_label(
+            "## Shot 1.\n<branch id=\"b\">\n\
+             <choice id=\"c\" label=\"&quot;Quoted&quot; &amp; &lt;b&gt; it&apos;s &#65;&#x42;\">\n\
+             @x: a\n</choice>\n</branch>\n",
+        );
+        assert_eq!(label, "\"Quoted\" & <b> it's AB");
+    }
+
+    // Only those forms: a bare `&`, `&&`, an unknown name, a bad number or a
+    // missing `;` stay literal, and decoding is one pass (`&amp;quot;`).
+    #[test]
+    fn other_ampersands_stay_literal() {
+        let label = first_choice_label(
+            "## Shot 1.\n<branch id=\"b\">\n\
+             <choice id=\"c\" label=\"a & b && c &nbsp; &#xZZ; &#; &amp;quot; &quot\">\n\
+             @x: a\n</choice>\n</branch>\n",
+        );
+        assert_eq!(label, "a & b && c &nbsp; &#xZZ; &#; &quot; &quot");
     }
 
     // T1-16: a single-quoted value is not attribute quoting; it used to become

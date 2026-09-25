@@ -339,7 +339,9 @@ pub fn compile_with_check(
     let (folded, _, _) = fold_env(&doc, input);
 
     // §5 pass 2 — AST normalization (D8): components + persist.
-    let mut diags = normalize::normalize_document(&mut doc, &input.components, &folded.env.state);
+    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
+    let mut diags =
+        normalize::normalize_document(&mut doc, &input.components, &cast, &folded.env.state);
 
     // §5 pass 3 — CEL expansion (D4).
     let table = DefTable {
@@ -546,7 +548,7 @@ pub fn compile_with_check(
         ir_version: LUTE_IR_VERSION.to_string(),
         capability_version: input.snapshot.version.clone(),
         meta,
-        state: state_entries(&folded.env.state, &branch_paths, &reserved),
+        state: state_entries(&folded.env.state, &branch_paths, &reserved, &folded.domains),
         entities,
         enums,
         relations,
@@ -555,6 +557,7 @@ pub fn compile_with_check(
         commands,
         prereq_edges: prereq_edge_entries(&doc, &folded),
         shots: shot_entries(&doc),
+        clock: folded.env.clock.clone(),
     })
 }
 
@@ -652,8 +655,9 @@ fn rel_entries(
                 .collect(),
         })
         .collect();
-    let rules = vocab
-        .rules
+    // dsl 0.24.0 §3: a rule reading `run.approval[P]` is emitted grounded,
+    // one instance per member, so every IR guard stays CEL over ground terms.
+    let rules = lute_check::evaluable_rules(vocab)
         .iter()
         .map(|r| RuleEntry {
             head: atom_entry(&r.rule.head),
@@ -1041,14 +1045,19 @@ fn state_entries(
     schema: &StateSchema,
     branch_paths: &BTreeSet<String>,
     reserved: &BTreeMap<String, String>,
+    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
 ) -> Vec<StateEntry> {
     schema
         .decls
         .iter()
         // dsl 0.23.0 §6: the checker's `prev.run.*` mirror decls are implied
-        // by the `run.*` entries (the engine snapshots them at run end), so
-        // the table carries only what content declares or quests reserve.
-        .filter(|(path, _)| !lute_check::cel_paths::is_prev_path(path))
+        // by the `run.*` entries (the engine snapshots them at run end), and
+        // dsl 0.24.0 §1's `clock.*` decls by the artifact's `clock` — so the
+        // table carries only what content declares or quests reserve.
+        .filter(|(path, _)| {
+            !lute_check::cel_paths::is_prev_path(path)
+                && !lute_manifest::clock::is_clock_path(path)
+        })
         .map(|(path, decl)| {
             // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is
             // one of the `scene.choices.<branchId>` paths folded in from an actual
@@ -1090,6 +1099,16 @@ fn state_entries(
                 domain,
                 default,
                 provenance,
+                // dsl 0.24.0 §1: a path typed against a named enum carries
+                // that enum's member labels, so an engine renders `{{path}}`
+                // from this one entry.
+                labels: match &decl.ty {
+                    Type::Domain(name) => domains
+                        .get(name)
+                        .map(|d| d.labels.clone())
+                        .unwrap_or_default(),
+                    _ => BTreeMap::new(),
+                },
             }
         })
         .collect()

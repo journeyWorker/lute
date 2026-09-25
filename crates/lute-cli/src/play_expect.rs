@@ -30,6 +30,7 @@ pub(crate) const STEP_EXPECT_KEYS: &[&str] = &[
     "notFacts",
     "notOffered",
     "offered",
+    "options",
     "presented",
     "quests",
     "state",
@@ -124,6 +125,9 @@ pub(crate) struct StepOutcome {
     /// The world right after the step settled — captured only when the
     /// step's `expect:` judges it ([`wants_world`]).
     pub world: Option<WorldView>,
+    /// dsl 0.24.0 (T3-10): per branch/hub id, every option offered at its
+    /// presentations during this step (unioned) — eligible, not spent.
+    pub options: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// Everything a play's expectations are judged against.
@@ -135,7 +139,11 @@ pub(crate) struct PlayOutcome {
     /// the seed, else the declared `default:`), every fact after
     /// derivation, every declared quest's status.
     pub end: WorldView,
-    pub transcript: String,
+    /// The presented content lines, one `@speaker: text` per line that
+    /// played (never a skipped `when=` line, a header, a candidate, staging
+    /// or a note) — what `transcriptContains` / `transcriptLacks` match, the
+    /// same canonical form `lute test` matches a scene walk against.
+    pub said: String,
     /// `complete | incomplete | error`.
     pub exit: &'static str,
 }
@@ -260,10 +268,30 @@ fn validate_value(key: &str, v: &Yaml) -> Result<(), String> {
         "offered" | "notOffered" | "presented" | "transcriptContains" | "transcriptLacks" => {
             string_list(key, v).map(|_| ())
         }
+        "options" => {
+            let Yaml::Mapping(m) = v else {
+                return Err(
+                    "`expect.options` must be a mapping `{ <branch or hub id>: [option ids] }`"
+                        .into(),
+                );
+            };
+            for (id, opts) in m {
+                let id = id
+                    .as_str()
+                    .ok_or("`expect.options` keys must be branch or hub ids")?;
+                string_list(&format!("options.{id}"), opts)?;
+            }
+            Ok(())
+        }
         "facts" | "notFacts" => {
             for atom in string_list(key, v)? {
                 parse_atom(&atom).ok_or_else(|| {
-                    format!("`expect.{key}` entry `{atom}` is not a ground atom `rel(a, b)`")
+                    let hint = if atom.matches('(').count() != atom.matches(')').count() {
+                        " — quote the atom: YAML splits an unquoted `[a(b, c)]` at the comma"
+                    } else {
+                        ""
+                    };
+                    format!("`expect.{key}` entry `{atom}` is not a ground atom `rel(a, b)`{hint}")
                 })?;
             }
             Ok(())
@@ -490,6 +518,26 @@ fn check_step(
             miss("presented".into(), list(&want), list(&row.presented));
         }
     }
+    // dsl 0.24.0 (T3-10): the options a branch/hub offered in this step, as
+    // a set — `lute test`'s `offered:` for a play step.
+    if let Some(Yaml::Mapping(want)) = m.get("options") {
+        for (id, opts) in want {
+            let (Some(id), Ok(opts)) = (id.as_str(), string_list("options", opts)) else {
+                continue;
+            };
+            let want: BTreeSet<String> = opts.into_iter().collect();
+            let shown = |s: &BTreeSet<String>| list(&s.iter().cloned().collect::<Vec<_>>());
+            match row.options.get(id) {
+                Some(got) if *got == want => {}
+                Some(got) => miss(format!("options {id}"), shown(&want), shown(got)),
+                None => miss(
+                    format!("options {id}"),
+                    shown(&want),
+                    format!("no branch or hub `{id}` was presented in this step"),
+                ),
+            }
+        }
+    }
     // 0.23.1: the world right after this step settled.
     if wants_world(expect).is_some() {
         match &row.world {
@@ -584,7 +632,7 @@ fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
             continue;
         };
         for sub in want {
-            let present = outcome.transcript.contains(&sub);
+            let present = outcome.said.contains(&sub);
             if present != want_present {
                 miss(
                     key.to_string(),
@@ -646,6 +694,7 @@ mod tests {
             offered: offered.iter().map(|s| s.to_string()).collect(),
             presented: winner.into_iter().map(str::to_string).collect(),
             world: None,
+            options: BTreeMap::new(),
         }
     }
 
@@ -668,7 +717,7 @@ mod tests {
                     ("side".to_string(), "unset".to_string()),
                 ]),
             },
-            transcript: "Oskar: Welcome back.\n".into(),
+            said: "@oskar: Welcome back.\n".into(),
             exit: "complete",
         }
     }
@@ -812,7 +861,7 @@ transcriptLacks: ["Welcome"]
         assert!(e.contains("`winer`"), "{e}");
         assert!(e.contains("did you mean `winner`"), "{e}");
         assert!(
-            e.contains("legal: facts, notFacts, notOffered, offered, presented, quests, state, winner"),
+            e.contains("legal: facts, notFacts, notOffered, offered, options, presented, quests, state, winner"),
             "{e}"
         );
         let e = validate(&y("{transcriptContains: [x]}"), false).unwrap_err();

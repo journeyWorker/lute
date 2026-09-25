@@ -88,6 +88,7 @@ fn member(id: &str, name: &str) -> CastMember {
     CastMember {
         id: id.into(),
         name: Some(name.into()),
+        ..Default::default()
     }
 }
 

@@ -71,6 +71,13 @@ pub struct Artifact {
     /// `prereqEdges`, the prior last field (byte-stability contract).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub shots: Vec<ShotEntry>,
+    /// dsl 0.24.0 §1: the project's declared clock, verbatim — the `day` /
+    /// `slot` paths, the slot order, the occasion raised after an advance,
+    /// the week. An engine derives `clock.index` / `clock.weekday` /
+    /// `clock.weekdayLabel` from it and spends `once: day|slot` by it.
+    /// Omitted without a clock. APPENDED LAST — after `shots`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clock: Option<lute_manifest::clock::ClockDecl>,
 }
 
 /// One authored shot heading (dsl 0.8.0 §6): the 1-based document-position
@@ -282,16 +289,19 @@ pub struct BeatIr {
     pub also: bool,
 }
 
-/// A scene beat's repetition policy (dsl 0.21.0 §3.1): `"run"` (once per
-/// run), `"user"` (once ever), or `"none"` (repeatable; source `once:
-/// false`). A compile-local serde mirror of `lute_check::BeatOnce`, kept
-/// separate for the same reason as [`DocKind`].
+/// A scene beat's repetition policy (dsl 0.21.0 §3.1, 0.24.0 §1): `"run"`
+/// (once per run), `"user"` (once ever), `"none"` (repeatable; source
+/// `once: false`), `"day"` / `"slot"` (once per clock day / slot). A
+/// compile-local serde mirror of `lute_check::BeatOnce`, kept separate for
+/// the same reason as [`DocKind`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BeatOnce {
     Run,
     User,
     None,
+    Day,
+    Slot,
 }
 
 impl From<lute_check::BeatOnce> for BeatOnce {
@@ -300,6 +310,8 @@ impl From<lute_check::BeatOnce> for BeatOnce {
             lute_check::BeatOnce::Run => BeatOnce::Run,
             lute_check::BeatOnce::User => BeatOnce::User,
             lute_check::BeatOnce::None => BeatOnce::None,
+            lute_check::BeatOnce::Day => BeatOnce::Day,
+            lute_check::BeatOnce::Slot => BeatOnce::Slot,
         }
     }
 }
@@ -373,6 +385,12 @@ pub struct StateEntry {
     pub default: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provenance: Option<String>,
+    /// dsl 0.24.0 §1: display label per value, from the named enum the path
+    /// is typed against (`{ domain: weekday }` + `enums: { weekday: {
+    /// labels } }`). A `{{path}}` interpolation renders `labels[value]` when
+    /// present, the value itself otherwise. Omitted when no label is declared.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
 }
 
 /// Cross-cutting optional stamps (§4.3), flattened into every stamped record:
@@ -510,11 +528,21 @@ pub enum Command {
 /// Kind-keyed referent — `{"kind":"path","path":…}`, `{"kind":"ref","ref":…}`,
 /// `{"kind":"reserved","token":…}` — matching the A3 example and the C1
 /// `ExprNode` kind-keyed convention. Entries appear in left-to-right order.
+///
+/// dsl 0.24.0 §4: a `path`/`ref` placeholder carries the interpolation's
+/// format hint as `format` (`{{user.deaths:ordinal}}` → `"format":"ordinal"`),
+/// omitted when the author wrote none — the engine renders the value in that
+/// format (runtime/state-lifecycle.md). `ordinal` is the only one; the
+/// checker rejects any other, and one on `userName` (a string).
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Placeholder {
     /// A state-path read (`{{run.coins}}` → `{"kind":"path","path":"run.coins"}`).
-    Path { path: String },
+    Path {
+        path: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
+    },
     /// A `@def` / `@fn(args)` reference; the referent includes the leading `@`.
     /// `expr` is the def body inlined at compile time (the artifact carries no
     /// defs table), so an engine renders the value by evaluating it like any
@@ -525,6 +553,8 @@ pub enum Placeholder {
         reference: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         expr: Option<CelPair>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
     },
     /// A reserved token (only `userName` in 0.1).
     Reserved { token: String },
@@ -540,10 +570,12 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
     match i.kind {
         InterpKind::Path => Placeholder::Path {
             path: i.raw.clone(),
+            format: i.format.clone(),
         },
         InterpKind::Ref => Placeholder::Ref {
             reference: i.raw.clone(),
             expr: None,
+            format: i.format.clone(),
         },
         InterpKind::Reserved => Placeholder::Reserved {
             token: i.raw.clone(),
@@ -771,8 +803,22 @@ pub struct RetractCmd {
 pub struct AcceptCmd {
     pub addr: String,
     pub quest: String,
+    /// dsl 0.24.0 §2: `"nextRun"` for `::accept{… at="nextRun"}` (named
+    /// `applies` on the wire: `at` is the flattened `Stamp` offset) — the
+    /// acceptance is queued and applies after the next run-start reset.
+    /// Omitted for an immediate accept (byte-stable 0.23 records).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub applies: Option<AcceptAt>,
     #[serde(flatten)]
     pub stamp: Stamp,
+}
+
+/// When a queued `::accept` applies (dsl 0.24.0 §2) — only the non-default
+/// `nextRun` is ever serialized.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AcceptAt {
+    NextRun,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -991,6 +1037,16 @@ pub struct QuestCmd {
     /// is byte-identical. Appended after `rewards` (byte-stability contract).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tier: Option<QuestTier>,
+    /// dsl 0.24.0 §2: `"accept"` for a `<quest activate="accept">` subquest
+    /// child — it does not activate with its parent but waits for an
+    /// accept while the parent is active. Omitted by default (byte-stable).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activate: Option<QuestActivate>,
+    /// dsl 0.24.0 §2: `"any"` for a `<quest complete="any">` — ANY required
+    /// objective done completes the quest and its other still-active
+    /// children fail `superseded`. Omitted for the default `all`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub complete: Option<QuestComplete>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1001,6 +1057,22 @@ pub struct QuestCmd {
 #[serde(rename_all = "lowercase")]
 pub enum QuestTier {
     Run,
+}
+
+/// A subquest child's activation mode (dsl 0.24.0 §2) — only the
+/// non-default `accept` is ever serialized.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QuestActivate {
+    Accept,
+}
+
+/// A quest's completion mode (dsl 0.24.0 §2) — only the non-default `any`
+/// is ever serialized.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QuestComplete {
+    Any,
 }
 
 /// One objective inlined in `QuestCmd.objectives` (dsl 0.2.0 §6.4, IR
@@ -1053,9 +1125,10 @@ pub struct ObjectiveEntry {
     /// unauthored, so every objective without it is byte-identical.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on: Option<String>,
-    /// dsl 0.23.0 §2: `by=` — while the objective is not done, the first
-    /// time this condition is true the objective FAILS (a required
-    /// objective fails its quest). Judged at every lifecycle settle.
+    /// dsl 0.23.0 §2, 0.24.0 §2.1: `by=` — while the objective is not done,
+    /// the first time this condition is true the objective FAILS (a
+    /// required objective fails its quest). Judged at every lifecycle
+    /// settle, `on=` or not — a deadline is a moment, not a place.
     /// Appended and skipped when unauthored (byte-stability).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub by: Option<CelPair>,
@@ -1063,6 +1136,12 @@ pub struct ObjectiveEntry {
     /// occasion is raised for this target (the beat target rule).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    /// dsl 0.24.0 §2.1: `until=` — the place-bound deadline: judged only
+    /// when the objective's `on` occasion (and `target`) is raised, after
+    /// its `done`; the first time it is true there the objective FAILS.
+    /// Appended and skipped when unauthored (byte-stability).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub until: Option<CelPair>,
 }
 
 /// `<on>` event-condition-action record (dsl 0.2.0 §4, §6.6, IR addendum
@@ -1076,6 +1155,11 @@ pub struct OnCmd {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<CelPair>,
     pub body: String,
+    /// dsl 0.24.0 §2: with a `target`, the handler fires only when the
+    /// same-named occasion is raised for that target. Appended after `body`
+    /// and omitted when unauthored (byte-stable).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }

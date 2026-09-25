@@ -312,3 +312,65 @@ fn component_gated_line_when_binds_param_before_fold() {
         "the guard decided false: the gated line must not show"
     );
 }
+
+// -- dsl 0.24.0 §1: `::set{… when="…"}` -------------------------------------
+
+fn set_scene(body: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: elena\nseason: 1\nepisode: 1\nstate:\n  \
+         run.n: {{ type: number, default: 0 }}\n  run.k: {{ type: number, default: 0 }}\n  \
+         run.b: {{ type: bool, default: false }}\n---\n## Shot 1.\n{body}\n@elena: after.\n"
+    )
+}
+
+fn sets(artifact: &serde_json::Value) -> Vec<&serde_json::Value> {
+    commands(artifact)
+        .iter()
+        .filter(|c| c["kind"] == "set")
+        .collect()
+}
+
+/// A guarded write lowers to exactly the record its hand-written one-arm
+/// match twin does — no new IR field, no new record shape.
+#[test]
+fn guarded_set_lowers_to_canonical_match_record() {
+    let sugared = compile_text(&set_scene("::set{run.n += 1 when=\"run.k < 3\"}"));
+    let explicit = compile_text(&set_scene(
+        "<match on=\"run.k < 3\">\n  <when test=\"$\">\n    ::set{run.n += 1}\n  </when>\n  \
+         <otherwise>\n  </otherwise>\n</match>",
+    ));
+    let mut sugared_cmds = sugared["commands"].clone();
+    let mut explicit_cmds = explicit["commands"].clone();
+    strip_addressing(&mut sugared_cmds);
+    strip_addressing(&mut explicit_cmds);
+    assert_eq!(sugared_cmds, explicit_cmds);
+    assert_eq!(match_count(&sugared), 1);
+    let s = sets(&sugared);
+    assert_eq!(s.len(), 1);
+    assert!(s[0].get("when").is_none(), "no IR `when` field: {}", s[0]);
+
+    // Unguarded writes stay a bare set record.
+    let plain = compile_text(&set_scene("::set{run.n += 1}"));
+    assert_eq!(match_count(&plain), 0);
+    assert_eq!(sets(&plain).len(), 1);
+}
+
+/// Inside an enclosing `<match>`, the RHS's `$` is THAT match's subject —
+/// not the guard the desugar hoists into its own one-arm match.
+#[test]
+fn guarded_set_rhs_dollar_is_the_enclosing_subject() {
+    let a = compile_text(&set_scene(
+        "<match on=\"run.k\">\n  <when test=\"$ > 1\">\n    ::set{run.n = $ when=\"run.b\"}\n  \
+         </when>\n  <otherwise>\n  </otherwise>\n</match>",
+    ));
+    let s = sets(&a);
+    assert_eq!(s.len(), 1);
+    let value = s[0]["value"].as_str().expect("set value");
+    assert!(value.contains("run.k") && !value.contains("run.b"), "{value}");
+    let subjects: Vec<&str> = commands(&a)
+        .iter()
+        .filter(|c| c["kind"] == "match")
+        .filter_map(|c| c["subject"].as_str())
+        .collect();
+    assert!(subjects.iter().any(|s| s.contains("run.b")), "{subjects:?}");
+}

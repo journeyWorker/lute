@@ -28,7 +28,8 @@ pub fn check_permissions(input: &CheckInput) -> Vec<Diagnostic> {
         return Vec::new();
     }
 
-    let (doc, _) = lute_syntax::parse(&input.text);
+    let (mut doc, _) = lute_syntax::parse(&input.text);
+    crate::component_effects::splice_component_effects(&mut doc, &input.components, &input.snapshot);
     let (folded, _, _) = crate::fold_env(&doc, input);
     let mut diagnostics = check_document_permissions(&doc, &folded.typed, input);
     diagnostics.sort_by(|a, b| {
@@ -58,6 +59,7 @@ pub(crate) fn check_document_permissions(
         components: &input.components,
         diagnostics: Vec::new(),
         using: Vec::new(),
+        in_effects: false,
     };
 
     checker.check_state_defaults(doc, typed, input);
@@ -101,6 +103,10 @@ struct PermissionChecker<'a> {
     components: &'a ComponentSet,
     diagnostics: Vec<Diagnostic>,
     using: Vec<String>,
+    /// Inside an `effects: true` component body (dsl 0.24.0 §4): its writes
+    /// are spliced into the host at the `::use` (`component_effects`) and
+    /// checked there, so the body walk skips them rather than report twice.
+    in_effects: bool,
 }
 
 impl PermissionChecker<'_> {
@@ -149,6 +155,10 @@ impl PermissionChecker<'_> {
     fn walk_nodes(&mut self, nodes: &[Node]) {
         for node in nodes {
             match node {
+                Node::Set(_) | Node::Assert(_) | Node::Retract(_) if self.in_effects => {}
+                Node::Directive(d)
+                    if self.in_effects
+                        && crate::check::directive_writes_state(self.snapshot, &d.tag) => {}
                 Node::Line(_) => {}
                 Node::Directive(d) => {
                     self.check_directive(d);
@@ -440,11 +450,14 @@ impl PermissionChecker<'_> {
         }
 
         self.using.push(name.to_string());
+        let outer = self.in_effects;
+        self.in_effects |= def.effects;
         let start = self.diagnostics.len();
         for shot in &def.body.shots {
             self.walk_nodes(&shot.body);
         }
         let nested = self.diagnostics.split_off(start);
+        self.in_effects = outer;
         self.using.pop();
 
         for diagnostic in nested {

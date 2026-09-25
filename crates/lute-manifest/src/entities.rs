@@ -28,13 +28,15 @@ use crate::snapshot::Domain;
 
 /// Parse a schema doc's `enums:` block: `{ <name>: [<member>…] }` (0.3.0
 /// draft §3.1) or the dsl 0.9.0 D-D long form `{ <name>: { members: […],
-/// default: …, exits: […] } }`. Each entry becomes a closed, ordered
+/// default: …, exits: […], labels: { <member>: <text> } } }` (`labels:` dsl
+/// 0.24.0 §1). Each entry becomes a closed, ordered
 /// enum-style [`Domain`] (`open: false`) — the identical shape
 /// `assemble.rs`/`core.rs` fold a plugin/core `enums` export into. `value` is
 /// the raw YAML node bound to the top-level `enums` key (pass `&Value::Null`
 /// when the key is absent — a non-mapping value yields an empty map). An
 /// entry value that is neither a sequence nor a mapping, a long form without
-/// a usable `members:`, or a non-string member is skipped for that entry.
+/// a usable `members:`, or a non-string member is skipped for that entry; a
+/// non-string label is skipped here and reported by [`label_shape_errors`].
 pub fn parse_enums(value: &Value) -> BTreeMap<String, Domain> {
     let mut out = BTreeMap::new();
     let Some(map) = value.as_mapping() else {
@@ -77,11 +79,56 @@ pub fn parse_enums(value: &Value) -> BTreeMap<String, Domain> {
                     .and_then(Value::as_str)
                     .map(str::to_string),
                 exits: strings("exits"),
+                labels: long
+                    .get(Value::from("labels"))
+                    .and_then(Value::as_mapping)
+                    .map(|m| {
+                        m.iter()
+                            .filter_map(|(k, v)| Some((k.as_str()?.to_string(), v.as_str()?.to_string())))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             }
         } else {
             continue;
         };
         out.insert(name.to_string(), domain);
+    }
+    out
+}
+
+/// The `labels:` shape mistakes in an `enums:` block that [`parse_enums`]
+/// (total, diagnostic-free) silently drops: a `labels:` value that is not a
+/// mapping, or a label that is not a string (dsl 0.24.0 §1). One message per
+/// mistake, in declaration order; the caller owns the diagnostic code.
+pub fn label_shape_errors(value: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(map) = value.as_mapping() else {
+        return out;
+    };
+    for (k, v) in map {
+        let (Some(name), Some(long)) = (k.as_str(), v.as_mapping()) else {
+            continue;
+        };
+        let Some(labels) = long.get(Value::from("labels")) else {
+            continue;
+        };
+        let Some(labels) = labels.as_mapping() else {
+            out.push(format!(
+                "enum `{name}`: `labels:` must map each member to its display text, \
+                 as `labels: {{ sun: Sunday }}` (dsl 0.24.0 §1)"
+            ));
+            continue;
+        };
+        for (member, label) in labels {
+            if label.as_str().is_none() {
+                let member = member.as_str().map_or_else(|| format!("{member:?}"), str::to_string);
+                out.push(format!(
+                    "enum `{name}`: the label for `{member}` must be a string of display text \
+                     (dsl 0.24.0 §1)"
+                ));
+            }
+        }
     }
     out
 }
@@ -128,5 +175,25 @@ mod tests {
         assert_eq!(doms["emotion"].members, vec!["neutral", "sad"]);
         assert_eq!(doms["emotion"].default, None);
         assert!(doms["emotion"].exits.is_empty());
+    }
+
+    #[test]
+    fn parse_enums_reads_labels_and_reports_non_string_ones() {
+        let v: Value = serde_yaml::from_str(
+            "weekday:\n  members: [mon, sun]\n  labels: { sun: Sunday }\n\
+             slot:\n  members: [am, pm]\n  labels: { am: 7, pm: Evening }\n\
+             mood:\n  members: [calm]\n  labels: [Calm]\n",
+        )
+        .unwrap();
+        let doms = parse_enums(&v);
+        assert_eq!(doms["weekday"].labels.get("sun").map(String::as_str), Some("Sunday"));
+        assert_eq!(doms["weekday"].labels.get("mon"), None);
+        // The non-string label is dropped; the string one beside it survives.
+        assert_eq!(doms["slot"].labels.len(), 1);
+        assert!(doms["mood"].labels.is_empty());
+        let errs = label_shape_errors(&v);
+        assert_eq!(errs.len(), 2, "{errs:?}");
+        assert!(errs[0].contains("`slot`") && errs[0].contains("`am`"), "{errs:?}");
+        assert!(errs[1].contains("`mood`") && errs[1].contains("must map"), "{errs:?}");
     }
 }

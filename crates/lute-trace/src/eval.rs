@@ -170,33 +170,45 @@ impl<'a> EffectiveState<'a> {
 /// `true` for a RESERVED quest path (dsl 0.2.0 §5.2, dsl 0.4.0 §4.4):
 /// `quest.<id>.state` (3 segments, segment 2 == `state`) or
 /// `quest.<id>.objectives.<oid>.done` (5 segments, segment 2 ==
-/// `objectives`, segment 4 == `done`) — [`EffectiveState::read`]'s own
-/// copy of `lute_check::cel_paths::is_reserved_quest_path` (`pub(crate)`
-/// there, so not reusable across the D1 quarantine boundary).
+/// `objectives`, segment 4 == `done`) — plus dsl 0.24.0 §2's
+/// `quest.<id>.failedBy` and `quest.<id>.objectives.<oid>.failed` —
+/// [`EffectiveState::read`]'s own copy of
+/// `lute_check::cel_paths::is_reserved_quest_path` (`pub(crate)` there, so
+/// not reusable across the D1 quarantine boundary).
 pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
     let segs: Vec<&str> = path.split('.').collect();
     matches!(
         segs.as_slice(),
-        ["quest", _, "state"] | ["quest", _, "objectives", _, "done"]
+        ["quest", _, "state" | "failedBy"] | ["quest", _, "objectives", _, "done" | "failed"]
     )
 }
 
-/// `true` specifically for the `quest.<id>.objectives.<oid>.done` shape —
-/// the sub-case of [`is_reserved_quest_path`] whose reserved default is
-/// `false` rather than `"unset"` ([`reserved_quest_default`]). Mirrors
+/// `true` for a boolean objective flag of [`is_reserved_quest_path`] —
+/// `quest.<id>.objectives.<oid>.done` or (dsl 0.24.0 §2) `….failed` — whose
+/// reserved default is `false` rather than `"unset"`
+/// ([`reserved_quest_default`]). Mirrors
 /// `lute_check::cel_paths::is_reserved_quest_objective_done` (`pub(crate)`
 /// there too).
 pub(crate) fn is_reserved_quest_objective_done_path(path: &str) -> bool {
     matches!(
         path.split('.').collect::<Vec<&str>>().as_slice(),
-        ["quest", _, "objectives", _, "done"]
+        ["quest", _, "objectives", _, "done" | "failed"]
     )
 }
 
-/// dsl 0.5.1 §1.2's reserved-path default: `objectives.<oid>.done` →
-/// `false` (its schema-decl default, mirrored here since trace bypasses
-/// that decl tier for reserved paths); `quest.<id>.state` → the literal
-/// string `"unset"` (its pre-activation value, dsl 0.2.0 §5.2).
+/// dsl 0.24.0 §2: `quest.<id>.failedBy` — the reason enum of a failed quest.
+pub(crate) fn is_reserved_quest_failed_by_path(path: &str) -> bool {
+    matches!(
+        path.split('.').collect::<Vec<&str>>().as_slice(),
+        ["quest", _, "failedBy"]
+    )
+}
+
+/// dsl 0.5.1 §1.2's reserved-path default: an objective flag (`done`, and
+/// dsl 0.24.0 §2's `failed`) → `false` (its schema-decl default, mirrored
+/// here since trace bypasses that decl tier for reserved paths);
+/// `quest.<id>.state` and `quest.<id>.failedBy` → the literal string
+/// `"unset"` (their pre-activation / pre-failure value, dsl 0.2.0 §5.2).
 pub(crate) fn reserved_quest_default(path: &str) -> Value {
     if is_reserved_quest_objective_done_path(path) {
         Value::Bool(false)
@@ -255,6 +267,10 @@ pub struct FactStore<'a> {
     /// Derived relations queried without derivation — walk-global like
     /// [`EffectiveState`]'s reserved-read log, so shared across snapshots.
     derived_reads: Rc<RefCell<BTreeSet<String>>>,
+    /// dsl 0.24 T1-1: derived relations whose materialized fixpoint read an
+    /// undecided rule guard ([`crate::datalog::Closure::undecided`]) — a
+    /// query over one is unknown, never a silent "no such fact".
+    undecided: BTreeMap<String, Vec<UnresolvedAtom>>,
 }
 
 impl<'a> FactStore<'a> {
@@ -265,12 +281,22 @@ impl<'a> FactStore<'a> {
             visited: BTreeSet::new(),
             derivation: None,
             derived_reads: Rc::new(RefCell::new(BTreeSet::new())),
+            undecided: BTreeMap::new(),
         }
     }
 
     /// Answer every query over `program`'s fixpoint of the held facts.
     pub fn with_derivation(mut self, program: &'a Program) -> Self {
         self.derivation = Some(program);
+        self
+    }
+
+    /// A held fact set that is ALREADY a fixpoint (the runner's materialized
+    /// `all_facts`): mark the relations whose derivation read an undecided
+    /// rule guard, so a query over one reads unknown with the atoms that
+    /// would decide it (dsl 0.24 T1-1).
+    pub fn with_undecided(mut self, undecided: BTreeMap<String, Vec<UnresolvedAtom>>) -> Self {
+        self.undecided = undecided;
         self
     }
 
@@ -333,15 +359,24 @@ impl<'a> FactStore<'a> {
             .unwrap_or(false)
     }
 
+    /// Matching facts, or — with `column` — the number of DISTINCT values at
+    /// that argument position among them (`countDistinct`, dsl 0.24 T3-9).
     fn scan<'f>(
         facts: impl IntoIterator<Item = &'f (String, Vec<String>)>,
         rel: &str,
         pattern: &[Pat],
+        column: Option<usize>,
     ) -> usize {
-        facts
+        let hits = facts
             .into_iter()
-            .filter(|(r, args)| r == rel && pattern_matches(pattern, args))
-            .count()
+            .filter(|(r, args)| r == rel && pattern_matches(pattern, args));
+        match column {
+            None => hits.count(),
+            Some(i) => hits
+                .filter_map(|(_, args)| args.get(i))
+                .collect::<BTreeSet<_>>()
+                .len(),
+        }
     }
 
     /// How many facts match `rel(pattern)` (§4.3: ground positions match,
@@ -355,17 +390,32 @@ impl<'a> FactStore<'a> {
         pattern: &[Pat],
         state: &EffectiveState<'_>,
     ) -> Result<usize, Vec<UnresolvedAtom>> {
+        self.lookup_distinct(rel, pattern, None, state)
+    }
+
+    /// [`FactStore::lookup`], counting distinct values at `column` when
+    /// given (`countDistinct(rel(…), V)`, dsl 0.24 T3-9).
+    pub fn lookup_distinct(
+        &self,
+        rel: &str,
+        pattern: &[Pat],
+        column: Option<usize>,
+        state: &EffectiveState<'_>,
+    ) -> Result<usize, Vec<UnresolvedAtom>> {
+        if let Some(atoms) = self.undecided.get(rel) {
+            return Err(atoms.clone());
+        }
         match self.derivation {
             Some(program) if !program.is_empty() => {
                 let closure = program.fixpoint(&self.facts, state);
                 if let Some(atoms) = closure.undecided.get(rel) {
                     return Err(atoms.clone());
                 }
-                Ok(Self::scan(&closure.facts, rel, pattern))
+                Ok(Self::scan(&closure.facts, rel, pattern, column))
             }
-            Some(_) => Ok(Self::scan(&self.facts, rel, pattern)),
+            Some(_) => Ok(Self::scan(&self.facts, rel, pattern, column)),
             None => {
-                let n = Self::scan(&self.facts, rel, pattern);
+                let n = Self::scan(&self.facts, rel, pattern, column);
                 if self.is_derived(rel) {
                     self.derived_reads.borrow_mut().insert(rel.to_string());
                     if n == 0 {
@@ -603,10 +653,12 @@ fn eval_index(
 /// (dsl 0.22.0 §6), a bounded scan otherwise. An unknown answer records
 /// the atoms that would decide it (for an unmatched derived relation
 /// without derivation, the rendered pattern as the "supply it as a mock"
-/// hint, §4.6).
+/// hint, §4.6). With `column` (`countDistinct`, dsl 0.24 T3-9) that
+/// position is a wildcard and the answer counts its distinct values.
 fn eval_fact_query(
     kind: &str,
     pattern: &IdedExpr,
+    column: Option<usize>,
     env: &EvalEnv<'_>,
     unresolved: &mut Vec<UnresolvedAtom>,
 ) -> Value {
@@ -614,10 +666,13 @@ fn eval_fact_query(
         return Value::Unknown; // caller guarantees this; defensive fallback
     };
     let relation = pat_call.func_name.as_str();
-    let Some(pats) = pattern_args(pat_call) else {
+    let Some(mut pats) = pattern_args(pat_call) else {
         return Value::Unknown; // non-ground pattern; defensive, unreachable post-check
     };
-    match env.facts.lookup(relation, &pats, env.state) {
+    if let Some(slot) = column.and_then(|i| pats.get_mut(i)) {
+        *slot = Pat::Wildcard;
+    }
+    match env.facts.lookup_distinct(relation, &pats, column, env.state) {
         Ok(n) if kind == "holds" => Value::Bool(n > 0),
         Ok(n) => Value::Num(n as f64),
         Err(atoms) => {
@@ -625,6 +680,17 @@ fn eval_fact_query(
             Value::Unknown
         }
     }
+}
+
+/// `countDistinct(rel(…, V, …), V)`: the one pattern position the variable
+/// names (dsl 0.24 T3-9; the checker admits nothing else).
+fn distinct_column(pattern: &IdedExpr, var: &IdedExpr) -> Option<usize> {
+    let (Expr::Call(p), Expr::Ident(v)) = (&pattern.expr, &var.expr) else {
+        return None;
+    };
+    p.args
+        .iter()
+        .position(|a| matches!(&a.expr, Expr::Ident(n) if n == v))
 }
 
 /// `isSet(<path>)`/`has(<path>)` are DEFINITE (D19): true iff an effective
@@ -647,6 +713,7 @@ fn eval_call(c: &CallExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAto
         | (op::SUBSTRACT, [a, b])
         | (op::MULTIPLY, [a, b])
         | (op::DIVIDE, [a, b])
+        | (op::MODULO, [a, b])
         | (op::GREATER, [a, b])
         | (op::GREATER_EQUALS, [a, b])
         | (op::LESS, [a, b])
@@ -654,8 +721,12 @@ fn eval_call(c: &CallExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAto
         | (op::EQUALS, [a, b])
         | (op::NOT_EQUALS, [a, b]) => eval_ground(c.func_name.as_str(), &[a, b], env, unresolved),
         ("holds", [pattern]) | ("count", [pattern]) if matches!(pattern.expr, Expr::Call(_)) => {
-            eval_fact_query(c.func_name.as_str(), pattern, env, unresolved)
+            eval_fact_query(c.func_name.as_str(), pattern, None, env, unresolved)
         }
+        ("countDistinct", [pattern, var]) => match distinct_column(pattern, var) {
+            Some(col) => eval_fact_query("countDistinct", pattern, Some(col), env, unresolved),
+            None => Value::Unknown, // ill-shaped; defensive, unreachable post-check
+        },
         // dsl 0.21.0 §7a.1: one string-literal scene id, definite (never an
         // unresolved atom — the presented set is the mock).
         ("visited", [arg]) => match &arg.expr {
@@ -1378,5 +1449,27 @@ mod tests {
             state2.read("quest.q.objectives.o.done"),
             Read::Value(Value::Bool(true))
         );
+    }
+
+    /// dsl 0.24.0 §1: integer `%` evaluates (truncated remainder); a
+    /// fractional value or a zero divisor is unknown, never a float remainder.
+    #[test]
+    fn integer_modulo_evaluates() {
+        let schema = schema_with(&[
+            ("run.day", Type::Number, Some(Literal::Num(14.0))),
+            ("run.half", Type::Number, Some(Literal::Num(2.5))),
+        ]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        let vocab = RelVocab::default();
+        let facts = FactStore::new(&vocab);
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
+        assert_eq!(eval_str("run.day % 7 == 0", &env).0, Value::Bool(true));
+        assert_eq!(eval_str("(run.day + 1) % 7", &env).0, Value::Num(1.0));
+        assert_eq!(eval_str("-7 % 3", &env).0, Value::Num(-1.0));
+        assert_eq!(eval_str("run.half % 2", &env).0, Value::Unknown);
+        assert_eq!(eval_str("run.day % 0", &env).0, Value::Unknown);
     }
 }

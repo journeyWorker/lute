@@ -133,6 +133,33 @@ target would be a separate core design with its own static and runtime
 semantics. Such a feature must be justified independently rather than inferred
 from the need to call an interactive host service.
 
-The reference `lute run` currently records bridge calls without invoking them;
-bridge-result effects remain unresolved there. Compiling the bundled bridge
+The reference runner never invokes a host service. Compiling the bundled bridge
 example proves its IR and result bindings, not live host-service execution.
+
+## Answering bridges in the reference tools (dsl 0.24.0 §5)
+
+Authoring tools stand in for the service with **bridge answers**:
+`bridges: { <tag>: [ {<field>: value}, … ] }`, where `<tag>` is the `plugin`
+record's `tag`, each list item answers ONE call of that tag in call order, and
+its fields are exactly the `bridgeResult` keys that call's effects read. Each
+value must fit the declared type (`bool`/`number`/`string`/enum member) of the
+result slot it lands on; an unknown tag, an unread or missing field, or a
+misfit value is a usage error.
+
+- **`lute run --mock`**: the mock's `bridges:` answers the calls. An answered
+  call writes its values and its transcript record carries
+  `"answered": [{"field", "value"}, …]`. A call with no answer keeps the
+  pre-0.24 record — `unresolvedEffects` lists its result paths — and the walk
+  goes on (the result slots keep whatever value they had).
+- **`lute play`**: top-level `bridges:` is consumed in order across the whole
+  play; a step's own `bridges:` is consumed first for the calls of that step,
+  and any of its answers left unconsumed fail the step (exit 1). A call with
+  a `bridgeResult` effect and no answer halts the play AT the call (exit 3,
+  incomplete; the record carries `"unanswered": [<fields>]`) — nothing after
+  it, a default `<match>` arm included, is walked. Answers land in `scene.*`
+  result slots even though a `state:` seed of `scene.*` is refused.
+- **`lute trace` / `lute test`**: mocks and `*.test.yaml` carry the same
+  `bridges:` key (`E-TRACE-MOCK-UNDECLARED` / `E-TRACE-MOCK-TYPE` on a bad
+  answer). An unanswered call leaves its result slots UNKNOWN — never the
+  state-shape default — so a guard reading one halts the trace incomplete
+  (exit 3), hinting the missing `bridges: { <tag>: [ { <field>: … } ] }`.

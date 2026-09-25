@@ -28,6 +28,12 @@ directives:
       - { name: action, type: { domain: action } }
     semantics: [ "reads.onStage", "usesAnchor", "mayExitCharacter", "writes.characterState" ]
     lower: { kind: builtin, name: autoStage }
+  # dsl 0.24.0 §4: every character on stage exits. No attrs; the compiler
+  # lowers it to one `sprite` exit record per character it has on stage.
+  - name: clear
+    attrs: []
+    semantics: [ "reads.onStage", "mayExitCharacter" ]
+    lower: { kind: builtin, name: clearStage }
   - name: vfx
     attrs:
       - { name: type, type: { domain: vfxType } }

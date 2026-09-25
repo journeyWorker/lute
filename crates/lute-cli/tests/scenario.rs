@@ -1173,8 +1173,9 @@ fn envelope_reports_the_relational_layer_not_only_the_scalar_one() {
         awake.contains("asserted by"),
         "the producer edge must be drawn: {awake}"
     );
+    // T3-2: the envelope names producers in `scenario knowledge`'s words.
     assert!(
-        awake.contains("facts: seed"),
+        awake.contains("seed facts awake("),
         "the seed is a producer too: {awake}"
     );
     assert!(

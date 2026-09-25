@@ -79,7 +79,28 @@ fn expand_nodes(
         match node {
             Node::Line(l) => expand_attrs(&mut l.attrs, defs, subject, diags),
             Node::Directive(d) => expand_attrs(&mut d.attrs, defs, subject, diags),
-            Node::Set(s) => expand_slot(&mut s.expr, defs, subject, diags),
+            Node::Set(s) => {
+                expand_slot(&mut s.expr, defs, subject, diags);
+                if let Some(mut guard) = s.when.take() {
+                    // dsl 0.24.0 §1: `$` is out of scope in the guard (the
+                    // checker's D9 rule), so it expands with no subject; the
+                    // RHS above already saw the ENCLOSING `$`. Then wrap the
+                    // write in its one-arm match, whose `$` test expands
+                    // against the guard exactly as a `<match>` arm would.
+                    expand_slot(&mut guard, defs, None, diags);
+                    s.when = Some(guard);
+                    let mut wrapped = crate::normalize::synth_when_set_match(s.clone());
+                    if let Node::Match(m) = &mut wrapped {
+                        let inner = m.subject.raw.clone();
+                        for arm in &mut m.arms {
+                            if let Arm::When { test, .. } = arm {
+                                expand_slot(test, defs, Some(&inner), diags);
+                            }
+                        }
+                    }
+                    *node = wrapped;
+                }
+            }
             Node::Branch(b) => {
                 expand_attrs(&mut b.attrs, defs, subject, diags);
                 for c in &mut b.choices {
@@ -144,8 +165,8 @@ fn expand_nodes(
                 if let Some(w) = &mut o.when {
                     expand_slot(w, defs, subject, diags);
                 }
-                if let Some(b) = &mut o.by {
-                    expand_slot(b, defs, subject, diags);
+                for deadline in o.by.iter_mut().chain(o.until.iter_mut()) {
+                    expand_slot(deadline, defs, subject, diags);
                 }
                 expand_attrs(&mut o.attrs, defs, subject, diags);
                 expand_nodes(&mut o.body, defs, subject, diags);
@@ -177,7 +198,12 @@ fn expand_slot(
     diags: &mut Vec<Diagnostic>,
 ) {
     match expand_cel(&slot.raw, defs, subject, &mut Vec::new()) {
-        Ok(s) => slot.raw = s,
+        // T3-12: keep the author's text beside its expansion (tools show it).
+        Ok(s) if s != slot.raw => {
+            let authored = std::mem::replace(&mut slot.raw, s);
+            slot.authored.get_or_insert(authored);
+        }
+        Ok(_) => {}
         Err(message) => diags.push(Diagnostic {
             code: "E-COMPILE-EXPAND".to_string(),
             severity: Severity::Error,
@@ -318,7 +344,10 @@ pub fn inline_ref_placeholders(
     let mut diags = Vec::new();
     let mut fill = |phs: &mut [Placeholder]| {
         for ph in phs {
-            if let Placeholder::Ref { reference, expr } = ph {
+            if let Placeholder::Ref {
+                reference, expr, ..
+            } = ph
+            {
                 match lute_check::inline_interp_ref(reference, defs) {
                     Ok(body) => *expr = Some(CelPair::from_raw(&body)),
                     Err(reason) => diags.push(lute_check::interp_def_diag(

@@ -1,0 +1,15 @@
+---
+kind: quest
+id: quest.lamp
+title: The lamp by the door
+---
+
+// No `start`: the quest begins when a scene runs ::accept{quest="lampOut"}.
+<quest id="lampOut" title="The lamp by the door">
+  <objective id="ask" title="Ask Tomas about the oil" done="holds(knows(lamp))"/>
+  // Judged when the engine raises `dayEnd` (dsl 0.21.0 §7a).
+  <objective id="wait" title="Wait for the day to end" on="dayEnd" done="run.day >= 2"/>
+  <on event="questComplete">
+    @narrator: By morning the lamp by the door is burning again.
+  </on>
+</quest>

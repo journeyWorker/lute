@@ -193,17 +193,21 @@ fn select_all_presents_the_pick() {
     assert_eq!(step(&v, 1)["presented"]["kind"], "entry");
 }
 
+/// dsl 0.24.0 (T3-10): a `select: all` step without `pick:` is `pick: none`
+/// only when nothing is offered; a non-empty list halts the step (exit 1,
+/// like an ineligible pick) naming what it offers. (It was a plan-time usage
+/// error even for an empty list.)
 #[test]
-fn select_all_without_a_pick_is_a_usage_error() {
+fn select_all_without_a_pick_halts_when_the_list_is_not_empty() {
     let out = play_in(
         &fixture(),
         "no-pick",
         "steps:\n  - occasion: inbox\n",
         false,
     );
-    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
-    assert!(stderr(&out).contains("`select: all`"), "{}", stderr(&out));
-    assert!(stdout(&out).is_empty(), "nothing plays: {}", stdout(&out));
+    let all = format!("{}{}", stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(1), "{all}");
+    assert!(all.contains("`select: all` and offers [megNote]"), "{all}");
 }
 
 #[test]
@@ -1263,7 +1267,7 @@ fn engine_writes_are_validated_before_anything_plays() {
         ),
         (
             "steps:\n  - engine: { facts: [feared(warden)] }\n",
-            "`feared` is derived by rules",
+            "entry `feared(warden)` is derived by rules and cannot be asserted",
         ),
         (
             "steps:\n  - engine: { facts: [slew(dragon)] }\n",
@@ -1293,7 +1297,7 @@ fn engine_writes_are_validated_before_anything_plays() {
         ),
         (
             "steps:\n  - engine: { state: { run.floor: 1 } }\n    pick: memo\n",
-            "`pick` applies only to an `occasion` step, not `engine`",
+            "`pick` applies only to an `occasion` or `advance` step, not `engine`",
         ),
         (
             "steps:\n  - occasion: hubVisit\n    repeat: 0\n",
@@ -1805,7 +1809,7 @@ fn a_by_deadline_fails_its_objective_and_the_quest_after_the_presentation_that_p
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(text.contains("  deadline.letter failed (by)\n"), "{text}");
-    assert!(text.contains("  quest deadline -> failed\n"), "{text}");
+    assert!(text.contains("  quest deadline -> failed (by)\n"), "{text}");
     assert!(text.contains("Too late."), "questFailed ran: {text}");
 
     // Done first: the deadline passes without failing it; the quest waits
@@ -1833,4 +1837,206 @@ fn a_targeted_objective_is_judged_only_at_a_step_for_its_target() {
     );
     assert!(quest_log(&v, 1).is_empty(), "{:?}", quest_log(&v, 1));
     assert_eq!(quest_log(&v, 2), ["errand.maud done", "errand -> complete"]);
+}
+
+/// dsl 0.24.0 §1 (T2-1): integer `%` in a match arm is lowered into the IR
+/// `expr` and evaluated by the runner. It used to be `E-CEL-PROFILE` (the
+/// project refused to play) and had no `expr` form at all.
+#[test]
+fn integer_modulo_in_a_match_arm_is_evaluated_by_the_runner() {
+    let dir = compose_project("modulo");
+    write(
+        &dir,
+        "scenes/main.lute",
+        "---\nkind: scene\nid: hub.main\nuses: ../world.schema.yaml\non: hubVisit\nonce: false\n---\n\n\
+         ## hub.main\n\n<match on=\"run.day\">\n<when test=\"$ % 7 == 0\">\n@maud: Sunday.\n</when>\n\
+         <otherwise>\n@maud: Weekday.\n</otherwise>\n</match>\n",
+    );
+    let out = play_in(
+        &dir,
+        "modulo-human",
+        "steps:\n  - engine: { state: { run.day: 14 } }\n  - occasion: hubVisit\n  \
+         - engine: { state: { run.day: 15 } }\n  - occasion: hubVisit\n",
+        false,
+    );
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    let (day14, day15) = text.split_once("── step 3").unwrap_or_else(|| panic!("{text}"));
+    assert!(day14.contains("Sunday.") && !day14.contains("Weekday."), "{text}");
+    assert!(day15.contains("Weekday.") && !day15.contains("Sunday."), "{text}");
+}
+
+/// dsl 0.24.0 §1: `::set{… when="…"}` — the playthrough applies the write
+/// only while the guard holds, and the transcript shows an applied write as
+/// `set` and a skipped one as a `skip set … — when: false` line (never the
+/// desugar's `match ->` plumbing, never a phantom `set`).
+#[test]
+fn a_guarded_set_writes_only_while_its_guard_holds() {
+    let dir = temp_dir("set-when");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.lamp: { type: bool, default: false }\n  run.coins: { type: number, default: 0 }\n",
+    );
+    write(
+        &dir,
+        "scenes/shop.lute",
+        "---\nkind: scene\nid: shop\nuses: ../world.schema.yaml\non: visit\nonce: false\n---\n\n\
+         ## Shop\n\n::set{run.coins += 5 when=\"run.lamp\"}\n::set{run.lamp = true when=\"!run.lamp\"}\n\
+         @narrator: Counted.\n",
+    );
+    let script = "steps:\n  - occasion: visit\n  - occasion: visit\n";
+    let out = play_in(&dir, "set-when", script, false);
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    let (first, second) = text.split_once("── step 2").unwrap_or_else(|| panic!("{text}"));
+    let has = |part: &str, line: &str| part.lines().any(|l| l == line);
+    assert!(has(first, "  skip set run.coins += 5 — when: false"), "{text}");
+    assert!(has(first, "  set run.lamp = true"), "{text}");
+    assert!(has(second, "  set run.coins = 5"), "{text}");
+    assert!(has(second, "  skip set run.lamp = true — when: false"), "{text}");
+    assert!(!text.contains("match ->"), "{text}");
+
+    let v = play_project_json(&dir, "set-when-json", script);
+    assert_eq!(v["exit"], "complete", "{v}");
+    let coins = |n: usize| -> Vec<Json> {
+        presented(&v, n)
+            .iter()
+            .filter(|r| r["kind"] == "set" && r["path"] == "run.coins")
+            .cloned()
+            .collect()
+    };
+    assert!(coins(1).is_empty(), "no phantom write: {}", step(&v, 1));
+    assert_eq!(coins(2).len(), 1, "{}", step(&v, 2));
+    assert_eq!(coins(2)[0]["value"].as_f64(), Some(5.0));
+}
+
+/// dsl 0.24.0 §4: one `visit` scene that stages two characters, interpolates
+/// `user.deaths` with and without `:ordinal` (and a fractional def with it),
+/// then `::clear`s the stage.
+fn hall_project(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  user.deaths: { type: number, default: 0 }\n",
+    );
+    write(
+        &dir,
+        "scenes/hall.lute",
+        "---\nkind: scene\nid: hall\nuses: ../world.schema.yaml\non: visit\nonce: false\n\
+         enums:\n  anchor: { members: [left, right], default: left }\n\
+         defs:\n  half: { type: number, cel: \"user.deaths / 2\" }\n---\n\n\
+         ## Hall\n\n::auto{character=\"maud\" anchor=\"left\"}\n\
+         ::auto{character=\"oskar\" anchor=\"right\"}\n\
+         @maud: Your {{user.deaths:ordinal}} death, {{user.deaths}} in all; half is {{@half:ordinal}}.\n\
+         ::clear\n@narrator: The hall is empty.\n",
+    );
+    dir
+}
+
+/// dsl 0.24.0 §4: `format: ordinal` renders an English ordinal (`3rd`,
+/// `11th`, `22nd`); the unhinted marker renders the plain number, and a
+/// value with no ordinal (a fraction) renders unchanged.
+#[test]
+fn an_ordinal_placeholder_renders_an_english_ordinal() {
+    let dir = hall_project("ordinal");
+    for (deaths, want) in [
+        (3, "Your 3rd death, 3 in all; half is 1.5."),
+        (11, "Your 11th death, 11 in all; half is 5.5."),
+        (22, "Your 22nd death, 22 in all; half is 11th."),
+    ] {
+        let script = format!("state:\n  user.deaths: {deaths}\nsteps:\n  - occasion: visit\n");
+        let v = play_project_json(&dir, "ordinal", &script);
+        let texts: Vec<&str> = presented(&v, 1)
+            .iter()
+            .filter(|r| r["kind"] == "line" && r["speaker"] == "maud")
+            .filter_map(|r| r["text"].as_str())
+            .collect();
+        assert_eq!(texts, [want], "{}", step(&v, 1));
+    }
+}
+
+/// dsl 0.24.0 §4: `::clear` exits both characters; the transcript prints the
+/// directive once, as authored, and `--ir` shows the two lowered exits.
+#[test]
+fn a_clear_prints_once_as_authored_and_lowers_to_an_exit_per_character() {
+    let dir = hall_project("clear");
+    let script = "steps:\n  - occasion: visit\n";
+    let out = play_in(&dir, "clear", script, false);
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    assert_eq!(text.lines().filter(|l| *l == "::clear").count(), 1, "{text}");
+    assert!(!text.contains("::sprite"), "{text}");
+
+    let s = write(&temp_dir("clear-ir"), "s.play.yaml", script);
+    let out = Command::new(BIN)
+        .args(["play", dir.to_str().unwrap(), "--script", s.to_str().unwrap(), "--ir"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}{}", stdout(&out), stderr(&out));
+    let ir = stdout(&out);
+    let exits: Vec<&str> = ir.lines().filter(|l| l.contains("(injected: stage-clear)")).collect();
+    assert_eq!(exits.len(), 2, "{ir}");
+    assert!(exits[0].contains("character=\"maud\"") && exits[0].contains("exit=true"), "{ir}");
+    assert!(exits[1].contains("character=\"oskar\""), "{ir}");
+}
+
+/// dsl 0.24.0 §6: on an occasion declared without a target, an entry's
+/// `target=` is metadata — the entry answers an untargeted raise.
+#[test]
+fn an_entry_target_on_an_untargeted_occasion_does_not_restrict_it() {
+    let dir = temp_dir("entry-meta-target");
+    let hub = fixture();
+    for rel in [
+        "lute.project.yaml",
+        "plugins/hub.occasions/plugin.yaml",
+        "plugins/hub.occasions/occasions/hub.yaml",
+    ] {
+        write(&dir, rel, &std::fs::read_to_string(hub.join(rel)).unwrap());
+    }
+    write(
+        &dir,
+        "lore/keepsakes.lute",
+        "---\nkind: lore\ntitle: Keepsakes\n---\n\n\
+         <entry id=\"compass\" on=\"hubVisit\" target=\"item.compass\" title=\"Compass\">\n\
+         @narrator: The compass still points home.\n</entry>\n",
+    );
+    let v = play_project_json(&dir, "entry-meta-target", "steps:\n  - occasion: hubVisit\n");
+    assert_eq!(winner(&v, 1), Some("compass"), "{}", step(&v, 1));
+}
+
+/// dsl 0.24.0 (T3-16): `W-RELATION-UNREAD` anchors at the declaring schema
+/// file, printed walk-relative like every other check-project diagnostic.
+#[test]
+fn an_unread_relation_is_reported_at_its_schema_line_walk_relative() {
+    let dir = temp_dir("relation-unread");
+    write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
+    write(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  person: { members: [sol] }\nrelations:\n  met: { args: [person], tier: run }\n",
+    );
+    write(
+        &dir,
+        "scenes/a.lute",
+        "---\nkind: scene\nid: a.one\nuses: ../world.schema.yaml\n---\n## A\n@narrator: Hi.\n::assert{ met(sol) }\n",
+    );
+    let out = Command::new(BIN).args(["check-project", "."]).current_dir(&dir).output().unwrap();
+    let text = stdout(&out);
+    assert!(
+        text.contains("./world.schema.yaml:4:3: warning [W-RELATION-UNREAD] relation `met`"),
+        "{text}{}",
+        stderr(&out)
+    );
 }

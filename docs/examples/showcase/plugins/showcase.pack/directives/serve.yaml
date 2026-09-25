@@ -26,4 +26,3 @@ directives:
         - { scope: scene, path: [serve, { fromAttr: { name: resultKey } }, cleared],  value: { fromBridgeResult: cleared } }
         - { scope: scene, path: [serve, { fromAttr: { name: resultKey } }, attempts], value: { op: increment, by: 1 } }
     bridge: { service: serve, operation: play }
-    lower: { kind: builtin, name: bridgeServe }

@@ -1,0 +1,13 @@
+# Lute project manifest. The `game` profile activates this project's own
+# occasions plugin (plugins/game.occasions): the moments the engine raises,
+# which beats answer (dsl 0.21.0).
+pluginsDir: plugins/
+defaultProfile: game
+profiles:
+  game:
+    plugins: { game.occasions: true }
+# Frontmatter every document inherits (dsl 0.10.0 §6): no document repeats
+# its language version or its schema imports.
+defaults:
+  luteVersion: "0.23.1"
+  uses: [world.schema.yaml, vocabulary.schema.yaml]

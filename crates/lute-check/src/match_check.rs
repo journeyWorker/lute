@@ -25,8 +25,13 @@
 //! - **`E-WHEN-RANGE`** — a malformed or empty range literal (dsl 0.18.0 §2);
 //!   it covers nothing.
 //! - **`E-NONEXHAUSTIVE`** — no `<otherwise>` and the domain is either infinite,
-//!   or finite/number but not fully covered by the `<when>` arms (a number
-//!   domain's message names the first uncovered gap, dsl 0.18.0 §4).
+//!   or finite/number but not fully covered by the `<when>` arms (a finite
+//!   domain's message names the uncovered members, a number domain's the first
+//!   uncovered gap, dsl 0.18.0 §4).
+//!
+//! A whole-subject `@def` (`<match on="@wd">`, dsl 0.24.0) takes its domain from
+//! [`resolve_subject`]: the one state path its body is, else its declared or
+//! inferred result type.
 //! - **`E-WHEN-PATTERN`** — a `<when>` arm with neither an `is` pattern nor a
 //!   `test` guard (§7.3.1); one of the two is REQUIRED.
 //! - **`E-UNSET-UNCOVERED`** — the subject is *maybe-unset* (`scene.choices.*`, or
@@ -70,7 +75,7 @@
 //! coverage is reconstructed from a throwaway re-parse of each slot's raw CEL and
 //! diagnostics fall back to the enclosing match/arm/branch span.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cel_parser::ast::Expr;
 use cel_parser::reference::Val;
@@ -323,24 +328,25 @@ pub struct HubRecord {
 /// [`check_match_with_domain`] (0.4.0 T7 — the SAME engine [`check_param_match`]
 /// drives over a component param's domain).
 pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
-    let dom = infer_domain(subject_path(m).as_deref(), schema);
-    check_match_with_domain(m, dom, ctx)
+    let subject = subject_path(m);
+    let dom = infer_domain(subject.as_deref(), schema);
+    check_match_with_domain(m, subject.as_deref(), dom, ctx)
 }
 
 /// The shared `<match>` engine (dsl §11.2, 0.4.0 §6.3): exhaustiveness, unset
 /// coverage, the age-gate, and provably-overlapping arms, over an
-/// ALREADY-RESOLVED subject `dom`ain. [`check_match`] infers `dom` from a
-/// scene's `state:` schema; [`check_param_match`] (0.4.0 T7) passes a
+/// ALREADY-RESOLVED subject path and `dom`ain. [`check_match`] infers `dom`
+/// from a scene's `state:` schema; [`check_param_match`] (0.4.0 T7) passes a
 /// component param's [`param_domain`] instead — same rules, same codes,
 /// different domain source (§6.3: "apply inside component bodies exactly as
-/// at scene level").
+/// at scene level"); a `@def` subject arrives through [`resolve_subject`].
 pub(crate) fn check_match_with_domain(
     m: &Match,
+    subject: Option<&str>,
     info: DomainInfo,
     ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    let subject = subject_path(m);
     let has_otherwise = m.arms.iter().any(|a| matches!(a, Arm::Otherwise { .. }));
 
     // §11.2: a `<match>` admits AT MOST ONE `<otherwise>`. With more than one,
@@ -389,7 +395,7 @@ pub(crate) fn check_match_with_domain(
                 .unwrap_or_default()
             {
                 let lit = match classify_is_literal(&lit_raw) {
-                    Ok(lit) => quest_state_is_literal(lit, subject.as_deref()),
+                    Ok(lit) => quest_state_is_literal(lit, subject),
                     Err(err) => {
                         diags.push(diag(
                             E_WHEN_RANGE,
@@ -409,7 +415,7 @@ pub(crate) fn check_match_with_domain(
                     ));
                 }
             }
-            let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref(), &ctx.env.state);
+            let cov = arm_coverage(is.as_ref(), &test.raw, subject, &ctx.env.state);
             if cov.values.iter().any(|v| covered.contains(v))
                 || cov.intervals.iter().any(|iv| covered_num.overlaps(*iv))
             {
@@ -434,7 +440,7 @@ pub(crate) fn check_match_with_domain(
 
     // Age-gate special case (§11.2): an age-gated `<match on="app.rating">` MUST
     // carry a `teen` arm or an `<otherwise>` — a release-build hard gate.
-    if subject.as_deref() == Some("app.rating")
+    if subject == Some("app.rating")
         && !has_otherwise
         && !covered.contains(&DomainValue::Str("teen".to_string()))
     {
@@ -454,16 +460,34 @@ pub(crate) fn check_match_with_domain(
     }
 
     let (fully_covered, gap) = match &info.domain {
-        Domain::Finite(vals) => (vals.iter().all(|v| covered.contains(v)), None),
+        Domain::Finite(vals) => {
+            let missing: Vec<DomainValue> =
+                vals.iter().filter(|v| !covered.contains(v)).cloned().collect();
+            let gap = match missing.as_slice() {
+                [] => None,
+                [one] => Some(format!("`{}` is not covered", domain_members_display(&[one.clone()]))),
+                many => Some(format!(
+                    "{} are not covered",
+                    many.iter()
+                        .map(|v| format!("`{}`", domain_members_display(std::slice::from_ref(v))))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+            };
+            (missing.is_empty(), gap)
+        }
         Domain::Number => (covered_num.covers_all(), covered_num.first_gap()),
         Domain::Infinite => (false, None),
     };
     if !fully_covered {
-        let message = match gap {
-            Some(gap) => format!(
+        let message = match (gap, &info.domain) {
+            (Some(gap), Domain::Number) => format!(
                 "non-exhaustive `<match>`: {gap} and there is no `<otherwise>` (dsl 0.18.0 §4)"
             ),
-            None => "non-exhaustive `<match>`: the subject's domain is not fully covered and \
+            (Some(gap), _) => format!(
+                "non-exhaustive `<match>`: {gap} and there is no `<otherwise>` (dsl §11.2)"
+            ),
+            (None, _) => "non-exhaustive `<match>`: the subject's domain is not fully covered and \
                      there is no `<otherwise>` (dsl §11.2)"
                 .to_string(),
         };
@@ -476,10 +500,8 @@ pub(crate) fn check_match_with_domain(
     // branch may not have run). A plain `scene.*` subject's maybe-unset status is
     // path-sensitive; it is owned by `check_definite_assignment` (E-MAYBE-UNSET),
     // so emitting E-UNSET-UNCOVERED here would false-positive the written case.
-    let unset_owned_here = subject
-        .as_deref()
-        .map(|p| p.starts_with("scene.choices.") || !p.starts_with("scene."))
-        .unwrap_or(false);
+    let unset_owned_here =
+        subject.is_some_and(|p| p.starts_with("scene.choices.") || !p.starts_with("scene."));
     if info.maybe_unset && unset_owned_here && !covers_unset {
         diags.push(diag(
             "E-UNSET-UNCOVERED",
@@ -504,7 +526,7 @@ pub(crate) fn check_match_with_domain(
 /// is structurally unreachable — no special-casing needed, the SAME engine
 /// proves it by construction.
 pub(crate) fn check_param_match(m: &Match, dom: DomainInfo, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
-    check_match_with_domain(m, dom, ctx)
+    check_match_with_domain(m, subject_path(m).as_deref(), dom, ctx)
 }
 
 /// Record a `<branch>` (dsl §11.1): flag a duplicate id within the episode
@@ -1328,17 +1350,28 @@ pub(crate) fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
 /// is not treated as a possible fall-through (its arms' join is an intersection,
 /// not the pre-block set). See the report's "exhaustiveness result shape".
 pub fn is_exhaustive(m: &Match, schema: &StateSchema) -> bool {
+    let subject = subject_path(m);
+    let info = infer_domain(subject.as_deref(), schema);
+    is_exhaustive_resolved(m, subject.as_deref(), &info, schema)
+}
+
+/// [`is_exhaustive`] over an already-resolved subject path and domain
+/// ([`resolve_subject`]).
+pub(crate) fn is_exhaustive_resolved(
+    m: &Match,
+    subject: Option<&str>,
+    info: &DomainInfo,
+    schema: &StateSchema,
+) -> bool {
     if m.arms.iter().any(|a| matches!(a, Arm::Otherwise { .. })) {
         return true;
     }
-    let subject = subject_path(m);
-    let info = infer_domain(subject.as_deref(), schema);
     let mut covered: BTreeSet<DomainValue> = BTreeSet::new();
     let mut covered_num = NumCoverage::default();
     let mut covers_unset = false;
     for arm in &m.arms {
         if let Arm::When { is, test, .. } = arm {
-            let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref(), schema);
+            let cov = arm_coverage(is.as_ref(), &test.raw, subject, schema);
             for v in cov.values {
                 covered.insert(v);
             }
@@ -1424,6 +1457,30 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
                     .map(|s| DomainValue::Str((*s).to_string()))
                     .collect(),
             ),
+            maybe_unset: false,
+            resolved: true,
+        };
+    }
+    // dsl 0.24.0 §2: the engine-derived failure reason and objective failure
+    // flag are never folded into a schema — every quest's, local or foreign,
+    // is typed here by shape. Both are always assigned: `failedBy` holds the
+    // member `unset` until the quest fails ([`quest_state_is_literal`]), and
+    // `failed` is `false` until the objective fails.
+    if crate::cel_paths::is_reserved_quest_failed_by(path) {
+        return DomainInfo {
+            domain: Domain::Finite(
+                crate::cel_paths::QUEST_FAILED_BY
+                    .iter()
+                    .map(|s| DomainValue::Str((*s).to_string()))
+                    .collect(),
+            ),
+            maybe_unset: false,
+            resolved: true,
+        };
+    }
+    if crate::cel_paths::is_reserved_quest_objective_failed(path) {
+        return DomainInfo {
+            domain: Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
             maybe_unset: false,
             resolved: true,
         };
@@ -1701,12 +1758,18 @@ pub(crate) const QUEST_STATES: &[&str] = &["active", "complete", "failed", "unse
 /// 0.21.1 T1-1: on a `quest.<id>.state` subject, `<when is="unset">` names the
 /// lifecycle MEMBER `unset` — the value the engine stores before the quest
 /// activates — not the never-set sentinel (that subject is always assigned,
-/// [`infer_domain`]). Every other literal, and every other subject, passes
-/// through unchanged. Applied wherever the checker classifies an `is=`
-/// literal, so coverage, `E-WHEN-LITERAL-DOMAIN` and reachability agree.
+/// [`infer_domain`]). dsl 0.24.0 §2: likewise on `quest.<id>.failedBy`,
+/// whose `unset` member means "has not failed". Every other literal, and
+/// every other subject, passes through unchanged. Applied wherever the
+/// checker classifies an `is=` literal, so coverage, `E-WHEN-LITERAL-DOMAIN`
+/// and reachability agree.
 pub(crate) fn quest_state_is_literal(lit: IsLiteral, subject: Option<&str>) -> IsLiteral {
+    let unset_is_member = |s: &str| {
+        crate::cel_paths::is_reserved_quest_state(s)
+            || crate::cel_paths::is_reserved_quest_failed_by(s)
+    };
     match lit {
-        IsLiteral::Unset if subject.is_some_and(crate::cel_paths::is_reserved_quest_state) => {
+        IsLiteral::Unset if subject.is_some_and(unset_is_member) => {
             IsLiteral::Str("unset".to_string())
         }
         other => other,
@@ -1929,6 +1992,67 @@ pub(crate) fn subject_path(m: &Match) -> Option<String> {
     crate::cel_paths::select_path(&expr)
 }
 
+/// `m`'s subject for domain inference (dsl §11.2): its state path, when it has
+/// one, and its domain. dsl 0.24.0: a whole-subject `@def` (`on="@wd"`,
+/// `on="@f(x)"`) is resolved through its expanded body — a body that is one
+/// state path (`wd2: "run.wd"`) is that path, domain included; any other body
+/// takes the domain of the def's declared or inferred result type, maybe-unset
+/// exactly when the body makes a read that is neither defaulted nor guarded
+/// inside it. Every other subject is [`subject_path`] + [`infer_domain`].
+pub(crate) fn resolve_subject(
+    m: &Match,
+    defs: &crate::cel_expand::DefTable<'_>,
+    def_types: &BTreeMap<String, Type>,
+    schema: &StateSchema,
+) -> (Option<String>, DomainInfo) {
+    if let Some(resolved) = def_subject(&m.subject.raw, defs, def_types, schema) {
+        return resolved;
+    }
+    let path = subject_path(m);
+    let info = infer_domain(path.as_deref(), schema);
+    (path, info)
+}
+
+/// [`resolve_subject`] for a subject that is exactly one `@def` use; `None`
+/// for anything else, or a def that does not expand (another pass reports it).
+fn def_subject(
+    raw: &str,
+    defs: &crate::cel_expand::DefTable<'_>,
+    def_types: &BTreeMap<String, Type>,
+    schema: &StateSchema,
+) -> Option<(Option<String>, DomainInfo)> {
+    let text = raw.trim();
+    // The first ref scanned is the outermost: a call's argument refs follow it.
+    let r = lute_cel::scan_refs(text).into_iter().next()?;
+    let end = r.call.as_ref().map_or(r.span.byte_end, |c| c.span.byte_end);
+    if r.is_dollar || r.span.byte_start != 0 || end != text.len() {
+        return None;
+    }
+    def_subject_of(&r, text, defs, def_types, schema)
+}
+
+fn def_subject_of(
+    r: &lute_cel::RefUse,
+    text: &str,
+    defs: &crate::cel_expand::DefTable<'_>,
+    def_types: &BTreeMap<String, Type>,
+    schema: &StateSchema,
+) -> Option<(Option<String>, DomainInfo)> {
+    if !defs.bodies.contains_key(&r.name) {
+        return None;
+    }
+    let expanded = crate::cel_expand::expand_cel(text, defs, None, &mut Vec::new()).ok()?;
+    let expr = parse_expr(&expanded)?;
+    if let Some(path) = crate::cel_paths::select_path(&expr) {
+        let info = infer_domain(Some(&path), schema);
+        return Some((Some(path), info));
+    }
+    let ty = def_types.get(&r.name)?;
+    let mut info = param_domain(ty);
+    info.maybe_unset = crate::defassign::may_read_unset(&expr, schema);
+    Some((None, info))
+}
+
 /// Throwaway re-parse of a raw CEL fragment into its root [`Expr`]. Per the
 /// cel-parser 0.10.1 carry-forward (T3.1) the AST is structure-only, so a fresh
 /// parse yields identical structure; malformed CEL (already reported in Phase 3)
@@ -1985,6 +2109,7 @@ mod tests {
             ast: None,
             span: span(),
             id: StableId(0),
+            authored: None,
         }
     }
 
@@ -1998,6 +2123,7 @@ mod tests {
                 ast: None,
                 span: span(),
                 id: StableId(0),
+                authored: None,
             },
             body: Vec::new(),
             span: span(),
@@ -2917,6 +3043,7 @@ mod tests {
                 ast: None,
                 span: span(),
                 id: StableId(0),
+                authored: None,
             },
             body: Vec::new(),
             span: span(),
@@ -3090,6 +3217,7 @@ mod tests {
             on: None,
             by: None,
             target: None,
+            until: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),
@@ -3107,6 +3235,8 @@ mod tests {
             after: None,
             after_span: span(),
             tier: None,
+            activate: None,
+            complete: None,
             attrs: Vec::new(),
             body,
             rewards: Vec::new(),
@@ -3199,6 +3329,7 @@ mod tests {
             on: None,
             by: None,
             target: None,
+            until: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),

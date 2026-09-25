@@ -166,7 +166,8 @@ fn scan_choice_record(choice: &Choice, out: &mut BTreeSet<String>) {
 /// over the whole quest document; this is a read-only re-derivation of its
 /// guaranteed-write set, not a second source of diagnostics.
 fn body_guaranteed(nodes: &[Node], schema: &StateSchema) -> BTreeSet<String> {
-    let (_diags, writes, _reads) = check_definite_assignment(nodes, schema);
+    let (_diags, writes, _reads) =
+        check_definite_assignment(nodes, &crate::defassign::Scope::bare(schema), None);
     guaranteed(&writes)
 }
 
@@ -323,7 +324,11 @@ pub fn propagate(
             continue;
         };
         let (mut env, is_tainted) = match &info.prereq {
-            PrereqState::Absent => (Env::default(), false),
+            // dsl 0.24.0 §2: an accept anchor is no `after` route — the
+            // quest activates mid-body of its anchor, so the anchor's
+            // writes are not guaranteed there. [`quest_envelope`] answers
+            // an `after`-less quest from the entry floor; so does its node.
+            PrereqState::Absent | PrereqState::Accepted(_) => (Env::default(), false),
             PrereqState::Invalid => (Env::default(), true),
             PrereqState::Valid(f) => {
                 if formula_tainted(f, per_doc, &tainted) {
@@ -809,7 +814,7 @@ mod tests {
         // proving `P` captures may-only writes `G` deliberately discards.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.a: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\">\n::set{run.a = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n@narrator: skip\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
 
         let g = guaranteed(&assigned);
@@ -840,7 +845,7 @@ mod tests {
         // three arms never wrote it), and `P` must remain a superset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
         assert!(
             errs.is_empty(),
             "guard-proven read should not flag E-MAYBE-UNSET, got {errs:?}"
@@ -866,7 +871,7 @@ mod tests {
         // superset. `into=` alone drives the record now.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
 
         let g = guaranteed(&assigned);

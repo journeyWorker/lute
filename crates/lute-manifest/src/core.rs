@@ -42,6 +42,14 @@ pub const MARK_DIRECTIVE: &str = "mark";
 /// on this tag and MUST agree.
 pub const NEXT_DIRECTIVE: &str = "next";
 
+/// The `lute.core` tag of the stage-clearing leaf (dsl 0.24.0 §4): `::clear`
+/// takes every character on stage off it. Shared as a const for the same
+/// reason [`END_DIRECTIVE`] is: `lute-check`'s stage reducer (the exits and
+/// `W-STAGE-ABSENT`), `lute-compile`'s lowering (one `sprite` exit record per
+/// character, no record of its own) and `lute-trace`'s walk all dispatch on
+/// this tag and MUST agree.
+pub const CLEAR_DIRECTIVE: &str = "clear";
+
 /// Build the built-in `lute.core` capability snapshot: all dsl Appendix A
 /// baseline directives (bg/music/sfx/auto/vfx/cut/video/camera) plus the 0.8.0
 /// walk terminator `::end`, stamped with a deterministic `capabilityVersion`
@@ -116,7 +124,8 @@ mod tests {
     use crate::types::Type;
 
     /// The `lute.core` baseline is CLOSED (dsl Appendix A + the 0.8.0
-    /// terminator + the 0.12.0 forward-jump pair): exactly these eleven
+    /// terminator + the 0.12.0 forward-jump pair + the 0.24.0 `::clear`):
+    /// exactly these twelve
     /// directives, no more. Asserting the exact set — not just presence — is
     /// what makes an accidental addition/removal in `staging.yaml` a test
     /// failure rather than a silent vocabulary change every downstream
@@ -131,6 +140,7 @@ mod tests {
                 "auto",
                 "bg",
                 "camera",
+                CLEAR_DIRECTIVE,
                 "cut",
                 END_DIRECTIVE,
                 MARK_DIRECTIVE,
@@ -140,7 +150,7 @@ mod tests {
                 "vfx",
                 "video",
             ],
-            "the lute.core baseline is exactly 11 directives"
+            "the lute.core baseline is exactly 12 directives"
         );
     }
 

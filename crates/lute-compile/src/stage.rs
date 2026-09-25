@@ -222,8 +222,21 @@ fn emit_primitive(
             emit_stamped(em, inject_cmd(ic), cx, clip);
         }
     } else {
+        // dsl 0.24.0 §4: `::clear` lowers to its exits alone; the first one
+        // carries the directive as authored, so `lute play` prints `::clear`
+        // once where it happened (an empty stage emits nothing to print).
+        let mut clear = match node {
+            Node::Directive(d) if d.tag == lute_manifest::core::CLEAR_DIRECTIVE => {
+                Some(crate::lower::authored_directive(d))
+            }
+            _ => None,
+        };
         for ic in &injected {
-            emit_stamped(em, inject_cmd(ic), cx, clip);
+            let mut cmd = inject_cmd(ic);
+            if let (Some(text), Some(stamp)) = (clear.take(), cmd.stamp_mut()) {
+                stamp.authored = Some(text);
+            }
+            emit_stamped(em, cmd, cx, clip);
         }
         if let Some(cmd) = authored {
             bind_line_label(em, node);
@@ -627,6 +640,8 @@ pub fn walk_quest(
                 // `done`) and the occasion target; both omitted when absent.
                 by: o.by.as_ref().map(|b| CelPair::from_raw(&b.raw)),
                 target: o.target.as_ref().map(|(t, _)| t.clone()),
+                // dsl 0.24.0 §2.1: the place-bound deadline, omitted when absent.
+                until: o.until.as_ref().map(|u| CelPair::from_raw(&u.raw)),
             });
             obj_labels.push(label);
         }
@@ -656,6 +671,14 @@ pub fn walk_quest(
             .as_ref()
             .filter(|(t, _)| t == "run")
             .map(|_| crate::ir::QuestTier::Run),
+        // dsl 0.24.0 §2: only the non-default modes are serialized
+        // (`E-ATTR-TYPE` already gated any other value).
+        activate: quest
+            .activates_on_accept()
+            .then_some(crate::ir::QuestActivate::Accept),
+        complete: quest
+            .completes_on_any()
+            .then_some(crate::ir::QuestComplete::Any),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -697,6 +720,7 @@ pub fn walk_quest(
                     event: on.event.clone(),
                     when: on.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
                     body: label.sym(),
+                    target: on.target.as_ref().map(|(t, _)| t.clone()),
                     stamp: Stamp::default(),
                 });
                 apply_source(&mut on_cmd, cx);
@@ -796,10 +820,13 @@ pub fn walk_entry(
             .priority
             .as_ref()
             .and_then(|(p, _)| lute_check::parse_beat_priority(p)),
-        // dsl 0.22.0 §7: `once="run"|"user"` (`E-BEAT-ATTR` gated the rest).
+        // dsl 0.22.0 §7, 0.24.0 §1: `once="run"|"user"|"day"|"slot"`
+        // (`E-BEAT-ATTR` gated the rest).
         once: entry.once.as_ref().and_then(|(o, _)| match o.as_str() {
             "run" => Some(crate::ir::BeatOnce::Run),
             "user" => Some(crate::ir::BeatOnce::User),
+            "day" => Some(crate::ir::BeatOnce::Day),
+            "slot" => Some(crate::ir::BeatOnce::Slot),
             _ => None,
         }),
         stamp: Stamp::default(),

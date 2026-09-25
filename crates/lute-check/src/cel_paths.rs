@@ -17,7 +17,7 @@
 //! unavailable on a successfully parsed AST, so the caller assigns spans from the
 //! enclosing slot; this walk yields only the reconstructed path strings + roles.
 
-use cel_parser::ast::{EntryExpr, Expr};
+use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr};
 
 /// State-tier roots that introduce a declared state-path read (dsl §9.1).
 /// Tier-GENERAL: kept scalar-agnostic on purpose (0.3.0's relational tiers
@@ -26,7 +26,9 @@ use cel_parser::ast::{EntryExpr, Expr};
 /// [`is_reserved_entry_read`] path, so any other `entry.*` read is
 /// `E-UNDECLARED` and every `entry.*` write is rejected. `prev` (dsl 0.23.0
 /// §6) is read-only too: `prev.run.<path>` mirrors each declared `run.<path>`.
-pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app", "quest", "entry", "prev"];
+/// So is `clock` (dsl 0.24.0 §1): the declared clock's derived paths.
+pub(crate) const STATE_ROOTS: &[&str] =
+    &["scene", "run", "user", "app", "quest", "entry", "prev", "clock"];
 
 /// `true` for any path rooted at the read-only `prev` mirror (dsl 0.23.0 §6).
 pub fn is_prev_path(path: &str) -> bool {
@@ -49,9 +51,10 @@ pub(crate) enum PathRole {
     /// A presence test (`has(p)`/`isSet(p)`) in a **dominating** position (top
     /// level or a conjunct of `&&`): it proves the path for the guarded body.
     Guard,
-    /// A presence test in a **non-dominating** position (under `||`/`!`): it
-    /// proves nothing (dsl §9.4). The path is still surfaced so read-site
-    /// declaration checks are unaffected, but definite-assignment ignores it.
+    /// A presence test in a **non-dominating** position (under `||`/`!`/`?:`):
+    /// it proves nothing for the guarded body (dsl §9.4). The path is still
+    /// surfaced so read-site declaration checks are unaffected; the reads it
+    /// short-circuits over carry it in [`PathUse::local`] instead.
     WeakGuard,
 }
 
@@ -60,6 +63,12 @@ pub(crate) enum PathRole {
 pub(crate) struct PathUse {
     pub path: String,
     pub role: PathRole,
+    /// dsl 0.24.0 (T1-7b): the paths an enclosing short-circuit proves present
+    /// at THIS read — `isSet(p) && …p…`, `isSet(p) ? …p… : …`,
+    /// `!isSet(p) || …p…`, `!isSet(p) ? … : …p…`, at any depth. Local to the
+    /// subexpression it sits in: it never proves the guarded body (that is
+    /// [`PathRole::Guard`]'s job). Empty when no guard encloses the read.
+    pub local: Vec<String>,
 }
 
 /// `true` when `path`'s leading segment is a state tier (`scene`/`run`/…).
@@ -69,19 +78,22 @@ pub(crate) fn is_state_path(path: &str) -> bool {
         .is_some_and(|root| STATE_ROOTS.contains(&root))
 }
 
-/// `true` for a RESERVED quest path (dsl 0.2.0 §5.2, dsl 0.8.0 §5):
-/// `quest.<id>.state` (3 segments, segment 2 == `state`),
-/// `quest.<id>.activatedAt` (3 segments, segment 2 == `activatedAt`), or
-/// `quest.<id>.objectives.<oid>.done` (5 segments, segment 2 == `objectives`,
-/// segment 4 == `done`). These are engine-populated, implicitly-declared
-/// sub-namespaces of `quest.<id>.*` — content MAY read them but MUST NOT
-/// `::set` them (`E-QUEST-RESERVED-WRITE`) nor author-declare them
+/// `true` for a RESERVED quest path (dsl 0.2.0 §5.2, dsl 0.8.0 §5, dsl
+/// 0.24.0 §2): `quest.<id>.state` (3 segments, segment 2 == `state`),
+/// `quest.<id>.activatedAt` (3 segments, segment 2 == `activatedAt`),
+/// `quest.<id>.failedBy` (3 segments, segment 2 == `failedBy`), or
+/// `quest.<id>.objectives.<oid>.done` / `.failed` (5 segments, segment 2 ==
+/// `objectives`, segment 4 == `done` / `failed`). These are
+/// engine-populated, implicitly-declared sub-namespaces of `quest.<id>.*` —
+/// content MAY read them but MUST NOT `::set` them
+/// (`E-QUEST-RESERVED-WRITE`) nor author-declare them
 /// (`E-QUEST-RESERVED-DECL`).
 pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
     let segs: Vec<&str> = path.split('.').collect();
     matches!(
         segs.as_slice(),
-        ["quest", _, "state"] | ["quest", _, "activatedAt"] | ["quest", _, "objectives", _, "done"]
+        ["quest", _, "state" | "activatedAt" | "failedBy"]
+            | ["quest", _, "objectives", _, "done" | "failed"]
     )
 }
 
@@ -170,6 +182,38 @@ pub(crate) fn is_reserved_quest_state(path: &str) -> bool {
     )
 }
 
+/// dsl 0.24.0 §2: the members of `quest.<id>.failedBy` — why the quest
+/// failed: its own `fail`, a required objective's `by` / `until` deadline, a
+/// cascade from its parent, or a sibling completing a `complete="any"`
+/// parent (`superseded`); `unset` while it has not failed.
+pub(crate) const QUEST_FAILED_BY: &[&str] =
+    &["unset", "fail", "by", "until", "cascade", "superseded"];
+
+/// `true` specifically for `quest.<id>.failedBy` (dsl 0.24.0 §2) — the
+/// sub-case of [`is_reserved_quest_path`] that is the failure-reason enum
+/// ([`QUEST_FAILED_BY`]). Like `quest.<id>.state` it is always assigned (the
+/// engine stores `unset` until the quest fails) and never folded into a
+/// document's schema: every quest's, local or foreign, is admitted by shape
+/// and typed here.
+pub(crate) fn is_reserved_quest_failed_by(path: &str) -> bool {
+    matches!(
+        path.split('.').collect::<Vec<&str>>().as_slice(),
+        ["quest", id, "failedBy"] if !id.is_empty()
+    )
+}
+
+/// `true` specifically for `quest.<id>.objectives.<oid>.failed` (dsl 0.24.0
+/// §2) — the sub-case of [`is_reserved_quest_path`] that is an objective's
+/// failure flag: a `bool` defaulting to `false`, always assigned, never
+/// folded into a document's schema (admitted by shape, like a foreign
+/// quest's `done`).
+pub(crate) fn is_reserved_quest_objective_failed(path: &str) -> bool {
+    matches!(
+        path.split('.').collect::<Vec<&str>>().as_slice(),
+        ["quest", _, "objectives", _, "failed"]
+    )
+}
+
 /// `E-PATH-IDENT`: a `-` in a CEL-facing name — a state-path segment, a `defs`
 /// name, or a def parameter name (dsl §8.4, §4.4 `CelIdent`). CEL parses `-` as
 /// subtraction, so these positions forbid it; `Ident` positions (directive/attr/
@@ -186,101 +230,192 @@ pub(crate) fn state_path_has_hyphen(path: &str) -> bool {
 /// Collect every maximal state-path use in `expr` (recursing into all
 /// sub-expressions: call args, list/map/struct elements, comprehensions).
 pub(crate) fn collect_path_uses(expr: &Expr) -> Vec<PathUse> {
-    let mut out = Vec::new();
-    walk(expr, true, &mut out);
-    out
+    let mut walk = Walk::default();
+    walk.expr(expr, true);
+    walk.out
 }
 
-fn push_path(out: &mut Vec<PathUse>, path: String, role: PathRole) {
-    if is_state_path(&path) {
-        out.push(PathUse { path, role });
-    }
+/// The path-use walk: `local` is the stack of paths the enclosing
+/// short-circuits prove at the current position ([`PathUse::local`]).
+#[derive(Default)]
+struct Walk {
+    out: Vec<PathUse>,
+    local: Vec<String>,
 }
 
-fn walk(expr: &Expr, dominating: bool, out: &mut Vec<PathUse>) {
-    match expr {
-        Expr::Ident(name) => push_path(out, name.clone(), PathRole::Read),
-        Expr::Select(sel) => {
-            // A test-only Select is the `has(p)` macro (dsl §9.4 guard).
-            let role = if sel.test {
-                if dominating {
-                    PathRole::Guard
-                } else {
-                    PathRole::WeakGuard
-                }
+impl Walk {
+    fn push(&mut self, path: String, role: PathRole) {
+        if is_state_path(&path) {
+            let local = if role == PathRole::Read {
+                self.local.clone()
             } else {
-                PathRole::Read
+                Vec::new()
             };
-            if let Some(path) = select_path(expr) {
-                push_path(out, path, role);
-            } else {
-                // Chain bottoms out in a non-ident (e.g. `f(x).field`,
-                // `xs[0].field`): not a static state path, but its operand may
-                // still contain reads.
-                walk(&sel.operand.expr, false, out);
-            }
+            self.out.push(PathUse { path, role, local });
         }
-        Expr::Call(call) => {
-            // `isSet(p)` — a DSL presence guard whose single arg is a static path.
-            if call.target.is_none()
-                && call.func_name.eq_ignore_ascii_case("isSet")
-                && call.args.len() == 1
-            {
-                if let Some(path) = select_path(&call.args[0].expr) {
-                    if is_state_path(&path) {
-                        let role = if dominating {
-                            PathRole::Guard
-                        } else {
-                            PathRole::WeakGuard
-                        };
-                        push_path(out, path, role);
-                        return;
+    }
+
+    /// Walk `expr` with `proved` in the local proof set for its duration only.
+    fn under(&mut self, expr: &Expr, dominating: bool, proved: Vec<String>) {
+        let depth = self.local.len();
+        self.local.extend(proved);
+        self.expr(expr, dominating);
+        self.local.truncate(depth);
+    }
+
+    fn expr(&mut self, expr: &Expr, dominating: bool) {
+        match expr {
+            Expr::Ident(name) => self.push(name.clone(), PathRole::Read),
+            Expr::Select(sel) => {
+                // A test-only Select is the `has(p)` macro (dsl §9.4 guard).
+                let role = if sel.test {
+                    if dominating {
+                        PathRole::Guard
+                    } else {
+                        PathRole::WeakGuard
+                    }
+                } else {
+                    PathRole::Read
+                };
+                if let Some(path) = select_path(expr) {
+                    self.push(path, role);
+                } else {
+                    // Chain bottoms out in a non-ident (e.g. `f(x).field`,
+                    // `xs[0].field`): not a static state path, but its operand
+                    // may still contain reads.
+                    self.expr(&sel.operand.expr, false);
+                }
+            }
+            Expr::Call(call) => {
+                // `isSet(p)` — a DSL presence guard whose single arg is a static path.
+                if let Some(path) = is_set_arg(call) {
+                    let role = if dominating {
+                        PathRole::Guard
+                    } else {
+                        PathRole::WeakGuard
+                    };
+                    self.push(path, role);
+                    return;
+                }
+                // Boolean structure controls dominance: `&&` preserves it for
+                // both args; `||`, `!`, `?:` (and any other call/operand) drop
+                // it. Short-circuit order controls LOCAL proof (dsl 0.24.0):
+                // the right operand of `&&` runs only when the left is true,
+                // of `||` only when it is false, and a conditional's branches
+                // only when its condition is true / false.
+                if call.target.is_none() {
+                    match (call.func_name.as_str(), call.args.as_slice()) {
+                        (op::LOGICAL_AND, [a, b]) => {
+                            self.expr(&a.expr, dominating);
+                            self.under(&b.expr, dominating, proved_if(&a.expr, true));
+                            return;
+                        }
+                        (op::LOGICAL_OR, [a, b]) => {
+                            self.expr(&a.expr, false);
+                            self.under(&b.expr, false, proved_if(&a.expr, false));
+                            return;
+                        }
+                        (op::CONDITIONAL, [c, then, other]) => {
+                            self.expr(&c.expr, false);
+                            self.under(&then.expr, false, proved_if(&c.expr, true));
+                            self.under(&other.expr, false, proved_if(&c.expr, false));
+                            return;
+                        }
+                        _ => {}
                     }
                 }
+                if let Some(target) = &call.target {
+                    self.expr(&target.expr, false);
+                }
+                for arg in &call.args {
+                    self.expr(&arg.expr, false);
+                }
             }
-            // Boolean structure controls dominance: `&&` preserves it for both
-            // args; `||` and `!` (and any other call/operand) drop it.
-            let child_dom = dominating && call.target.is_none() && call.func_name == "_&&_";
-            if let Some(target) = &call.target {
-                walk(&target.expr, false, out);
+            Expr::List(list) => {
+                for el in &list.elements {
+                    self.expr(&el.expr, false);
+                }
             }
-            for arg in &call.args {
-                walk(&arg.expr, child_dom, out);
+            Expr::Map(map) => {
+                for entry in &map.entries {
+                    self.entry(&entry.expr);
+                }
             }
+            Expr::Struct(st) => {
+                for entry in &st.entries {
+                    self.entry(&entry.expr);
+                }
+            }
+            Expr::Comprehension(c) => {
+                self.expr(&c.iter_range.expr, false);
+                self.expr(&c.accu_init.expr, false);
+                self.expr(&c.loop_cond.expr, false);
+                self.expr(&c.loop_step.expr, false);
+                self.expr(&c.result.expr, false);
+            }
+            Expr::Literal(_) | Expr::Unspecified => {}
         }
-        Expr::List(list) => {
-            for el in &list.elements {
-                walk(&el.expr, false, out);
+    }
+
+    fn entry(&mut self, entry: &EntryExpr) {
+        match entry {
+            EntryExpr::MapEntry(m) => {
+                self.expr(&m.key.expr, false);
+                self.expr(&m.value.expr, false);
             }
+            EntryExpr::StructField(f) => self.expr(&f.value.expr, false),
         }
-        Expr::Map(map) => {
-            for entry in &map.entries {
-                walk_entry(&entry.expr, out);
-            }
-        }
-        Expr::Struct(st) => {
-            for entry in &st.entries {
-                walk_entry(&entry.expr, out);
-            }
-        }
-        Expr::Comprehension(c) => {
-            walk(&c.iter_range.expr, false, out);
-            walk(&c.accu_init.expr, false, out);
-            walk(&c.loop_cond.expr, false, out);
-            walk(&c.loop_step.expr, false, out);
-            walk(&c.result.expr, false, out);
-        }
-        Expr::Literal(_) | Expr::Unspecified => {}
     }
 }
 
-fn walk_entry(entry: &EntryExpr, out: &mut Vec<PathUse>) {
-    match entry {
-        EntryExpr::MapEntry(m) => {
-            walk(&m.key.expr, false, out);
-            walk(&m.value.expr, false, out);
+/// The static state path of an `isSet(p)` call, or `None`.
+fn is_set_arg(call: &CallExpr) -> Option<String> {
+    if call.target.is_some()
+        || !call.func_name.eq_ignore_ascii_case("isSet")
+        || call.args.len() != 1
+    {
+        return None;
+    }
+    select_path(&call.args[0].expr).filter(|p| is_state_path(p))
+}
+
+/// The state paths provably set whenever `expr` evaluates to `outcome`:
+/// `isSet(p)`/`has(p)` proves `p` when true, `!e` flips the outcome, a true
+/// `a && b` (a false `a || b`) proves what either side does, and a false
+/// `a && b` (a true `a || b`) only what both sides do. Anything else proves
+/// nothing.
+pub(crate) fn proved_if(expr: &Expr, outcome: bool) -> Vec<String> {
+    match expr {
+        Expr::Select(sel) if sel.test => match select_path(expr) {
+            Some(p) if outcome && is_state_path(&p) => vec![p],
+            _ => Vec::new(),
+        },
+        Expr::Call(call) => {
+            if let Some(p) = is_set_arg(call) {
+                return if outcome { vec![p] } else { Vec::new() };
+            }
+            if call.target.is_some() {
+                return Vec::new();
+            }
+            let both = |a: &Expr, b: &Expr, o: bool| -> (Vec<String>, Vec<String>) {
+                (proved_if(a, o), proved_if(b, o))
+            };
+            match (call.func_name.as_str(), call.args.as_slice()) {
+                (op::LOGICAL_NOT, [a]) => proved_if(&a.expr, !outcome),
+                (op::LOGICAL_AND, [a, b]) | (op::LOGICAL_OR, [a, b]) => {
+                    let (mut l, r) = both(&a.expr, &b.expr, outcome);
+                    // `&&` true / `||` false: every operand took `outcome`.
+                    if (call.func_name == op::LOGICAL_AND) == outcome {
+                        l.extend(r);
+                    } else {
+                        l.retain(|p| r.contains(p));
+                    }
+                    l
+                }
+                _ => Vec::new(),
+            }
         }
-        EntryExpr::StructField(f) => walk(&f.value.expr, false, out),
+        _ => Vec::new(),
     }
 }
 

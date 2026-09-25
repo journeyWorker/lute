@@ -350,15 +350,18 @@ fn nearest_match<'a>(
 /// pushes one [`E_CONN_UNKNOWN_NODE`] anchored at `span` — the SOURCE
 /// formula's span (the scene's `after:` key span, or the quest's
 /// `after_span`), never a synthetic per-atom location (`PrereqFormula`
-/// carries none).
+/// carries none). `quest_after`: the formula is a `<quest after=…>` — its
+/// miss says how to drop `after=` instead (dsl 0.24.0 §2).
 fn check_formula_atoms(
     formula: &PrereqFormula,
     span: Span,
     path: &Path,
     key_set: &SceneKeys<'_>,
     quest_ids: &BTreeSet<String>,
+    quest_after: bool,
     out: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
+    let hint = quest_after.then_some(QUEST_AFTER_HINT);
     for atom in atoms(formula) {
         // `completed`/`active` (lang 0.8.0) BOTH name a quest and both resolve
         // against the SAME declared-quest set — `active(Q)` is a weaker CLAIM
@@ -366,7 +369,7 @@ fn check_formula_atoms(
         // name quoted back in the message differs.
         let (id, func) = match &atom {
             Atom::Visited(key) => {
-                check_scene_key(key, "dsl §2.3/§4.1", span, path, key_set, false, out);
+                check_scene_key(key, "dsl §2.3/§4.1", span, path, key_set, hint, out);
                 continue;
             }
             Atom::Completed(id) => (id, "completed"),
@@ -378,17 +381,25 @@ fn check_formula_atoms(
             if let Some(sugg) = nearest_match(id, quest_ids.iter().map(String::as_str), 2) {
                 message.push_str(&format!(" — did you mean `{sugg}`?"));
             }
+            if let Some(hint) = hint {
+                message.push_str(hint);
+            }
             out.push((path.to_path_buf(), unknown_node_diag(message, span)));
         }
     }
 }
 
-/// One `visited(K)` target against the project's scene keys: a miss is
+/// The tail of an unresolvable `<quest after=…>` miss (dsl 0.24.0 §2): a
+/// quest has no `when`, and an accept-driven quest needs no `after=` to be
+/// drawn — it is anchored at every `::accept` of it.
+const QUEST_AFTER_HINT: &str = "; if the quest is taken on by `::accept`, drop `after=` — an \
+     accept-driven quest is anchored at every document that accepts it (dsl 0.24.0 §2)";
+
+/// One `visited(K)` target against the project's scene and bundle beat keys
+/// (a bundle beat is a graph node, dsl 0.24.0 §2): a miss is
 /// [`E_CONN_UNKNOWN_NODE`] at `span`, with a "did you mean" when a key is
-/// close. `cite` names the surface the call came from. `bundles_ok`: a
-/// condition slot's `visited()` also resolves a bundle beat's canonical id
-/// (dsl 0.23.0 §4); an `after:` atom does not — a bundle beat is not a node
-/// of the prerequisite graph, so it is named as such.
+/// close and `hint` appended when given. `cite` names the surface the call
+/// came from.
 ///
 /// A miss is NOT reported when the key set is incomplete
 /// ([`SceneKeys::complete`]): some document in the root has a frontmatter that
@@ -402,30 +413,20 @@ fn check_scene_key(
     span: Span,
     path: &Path,
     key_set: &SceneKeys<'_>,
-    bundles_ok: bool,
+    hint: Option<&str>,
     out: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
-    let bundle = key_set.bundles.contains_key(key);
-    if key_set.keys.contains_key(key) || (bundles_ok && bundle) || !key_set.complete {
+    if key_set.keys.contains_key(key) || key_set.bundles.contains_key(key) || !key_set.complete {
         return;
     }
-    if bundle {
-        let message = format!(
-            "unknown node: `{key}` is a bundle beat, not a scene — `after:` orders scenes and \
-             quests; gate on `visited('{key}')` in a `when` condition instead (`visited`, {cite}, \
-             dsl 0.23.0 §4)"
-        );
-        out.push((path.to_path_buf(), unknown_node_diag(message, span)));
-        return;
-    }
-    let mut message = format!("unknown node: no scene resolves to key `{key}` (`visited`, {cite})");
-    let candidates = key_set
-        .keys
-        .keys()
-        .chain(key_set.bundles.keys().filter(|_| bundles_ok))
-        .map(String::as_str);
+    let mut message =
+        format!("unknown node: no scene or bundle beat resolves to key `{key}` (`visited`, {cite})");
+    let candidates = key_set.keys.keys().chain(key_set.bundles.keys()).map(String::as_str);
     if let Some(sugg) = nearest_match(key, candidates, 2) {
         message.push_str(&format!(" — did you mean `{sugg}`?"));
+    }
+    if let Some(hint) = hint {
+        message.push_str(hint);
     }
     out.push((path.to_path_buf(), unknown_node_diag(message, span)));
 }
@@ -461,7 +462,7 @@ fn check_visited_calls(
             return;
         };
         for key in crate::cel_resolve::visited_targets(&root.expr) {
-            check_scene_key(&key, "dsl 0.21.0 §7a.1", span, path, key_set, true, out);
+            check_scene_key(&key, "dsl 0.21.0 §7a.1", span, path, key_set, None, out);
         }
     };
     lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
@@ -517,7 +518,9 @@ pub fn resolve_nodes(
                 let after_span = meta_key_span(&doc.meta, "after");
                 let (formula, _) = parse_prereq(&after, after_span);
                 if let Some(formula) = formula {
-                    check_formula_atoms(&formula, after_span, path, key_set, quest_ids, &mut out);
+                    check_formula_atoms(
+                        &formula, after_span, path, key_set, quest_ids, false, &mut out,
+                    );
                 }
             }
         }
@@ -531,6 +534,7 @@ pub fn resolve_nodes(
                         path,
                         key_set,
                         quest_ids,
+                        true,
                         &mut out,
                     );
                 }
@@ -552,18 +556,41 @@ pub enum NodeId {
     /// `visited(K)` target: `K` is a [`scene_key_set`] canonical key.
     Scene(String),
     /// `completed(Q)`/`active(Q)` target: `Q` is an `after`-declaring
-    /// `<quest id>` (a plain, no-`after` quest is never a [`ConnGraph`] node
-    /// — see [`assemble_graph`]). BOTH lifecycle atoms resolve to the same
-    /// node; the atom they came from is recorded separately as an
-    /// [`EdgeKind`] (lang 0.8.0).
+    /// `<quest id>` (a plain quest — no `after`, no `::accept` anchor — is
+    /// never a [`ConnGraph`] node, see [`assemble_graph`]). BOTH lifecycle
+    /// atoms resolve to the same node; the atom they came from is recorded
+    /// separately as an [`EdgeKind`] (lang 0.8.0).
     Quest(String),
     /// A bundle beat (dsl 0.23.0 §4), keyed `<document id>.<beat id>`
     /// ([`bundle_beat_key_set`]). A bundle beat declares no `after`, so it is
-    /// always an entry node with no edges: `visited(K)` in an `after:` never
-    /// targets it (`E-CONN-UNKNOWN-NODE` names it a bundle beat). It is a node
-    /// so that `lute scenario` draws and answers for every beat a condition
-    /// may `visited()` (lamplight N8, ashen N9).
+    /// always an entry node: its occasion presents it whenever eligible. It
+    /// is a legal predecessor (dsl 0.24.0 §2): `visited(K)` in an `after`
+    /// targets it when no scene has key `K` (the two share one id
+    /// namespace, `E-CONN-EPISODE-ID-DUP`), and an `::accept` in its body
+    /// anchors the accepted quest.
     Beat(String),
+}
+
+impl NodeId {
+    /// The node a `visited(K)` atom names in `nodes`: the scene `K`, else
+    /// the bundle beat `K` (dsl 0.24.0 §2); the scene id when neither is a
+    /// node (an unknown key, `E-CONN-UNKNOWN-NODE`'s).
+    pub fn visited<V>(key: &str, nodes: &BTreeMap<NodeId, V>) -> NodeId {
+        let beat = NodeId::Beat(key.to_string());
+        if !nodes.contains_key(&NodeId::Scene(key.to_string())) && nodes.contains_key(&beat) {
+            beat
+        } else {
+            NodeId::Scene(key.to_string())
+        }
+    }
+
+    /// The node `atom` names in `nodes` ([`Self::visited`] for `visited`).
+    pub fn of_atom<V>(atom: &Atom, nodes: &BTreeMap<NodeId, V>) -> NodeId {
+        match atom {
+            Atom::Visited(key) => NodeId::visited(key, nodes),
+            Atom::Completed(id) | Atom::Active(id) => NodeId::Quest(id.clone()),
+        }
+    }
 }
 
 impl fmt::Display for NodeId {
@@ -582,7 +609,8 @@ impl fmt::Display for NodeId {
 /// parsed, `Invalid` for one present-but-malformed —
 /// [`crate::prereq::E_CONN_PROFILE`] already reports the malformed case once,
 /// from T2's per-file `check()`; only `Absent`/`Invalid` nodes here
-/// contribute no outgoing edges), and the span this node is anchored at for
+/// contribute no incoming edges; `Accepted` for an accept-anchored quest),
+/// and the span this node is anchored at for
 /// diagnostics (a scene's `character:` key span — the SAME span
 /// [`scene_key_set`] stores; a quest's `id_span`).
 #[derive(Clone, Debug)]
@@ -608,6 +636,26 @@ pub enum PrereqState {
     /// `after` present but [`parse_prereq`] returned `None` (malformed CEL,
     /// already reported once as `E-CONN-PROFILE` by T2's per-file `check()`).
     Invalid,
+    /// dsl 0.24.0 §2: no `after` declared on an accept-driven quest, which is
+    /// anchored at every document that `::accept`s it instead. The formula
+    /// is the disjunction of those anchors — `visited(<scene or bundle
+    /// beat>)` for a scene/beat body, `active(<quest>)` for a quest body —
+    /// synthesized, never authored (so never `E-CONN-PROFILE`/`-UNKNOWN-NODE`
+    /// material). Its edges are [`EdgeKind::Accept`]. It never proves the
+    /// quest `Unreachable`: the engine may accept a quest outside any
+    /// `::accept` (dsl 0.21.0 §7a.3), so a dead anchor reads `Unknown`.
+    Accepted(PrereqFormula),
+}
+
+impl PrereqState {
+    /// The formula the node's incoming edges come from — authored
+    /// ([`Self::Valid`]) or accept-anchored ([`Self::Accepted`]).
+    pub fn formula(&self) -> Option<&PrereqFormula> {
+        match self {
+            PrereqState::Valid(f) | PrereqState::Accepted(f) => Some(f),
+            PrereqState::Absent | PrereqState::Invalid => None,
+        }
+    }
 }
 
 /// Every edge in a [`ConnGraph`] is also tagged with the ATOM it came from
@@ -627,6 +675,9 @@ pub enum EdgeKind {
     /// difference is load-bearing in [`crate::envelope`], which may not
     /// assume the quest's completion writes landed.
     Active,
+    /// dsl 0.24.0 §2: an accept anchor — the prerequisite node's body
+    /// `::accept`s the dependent accept-driven quest ([`PrereqState::Accepted`]).
+    Accept,
 }
 
 impl EdgeKind {
@@ -638,6 +689,7 @@ impl EdgeKind {
             EdgeKind::Visited => "visited",
             EdgeKind::Completed => "completed",
             EdgeKind::Active => "active",
+            EdgeKind::Accept => "accept",
         }
     }
 }
@@ -727,17 +779,22 @@ pub fn cycle_diag(message: String, span: Span) -> Diagnostic {
 /// Node/edge model (Task 5 spec):
 /// - **Nodes**: every scene ([`scene_key_set`]'s `key_set`, as
 ///   `NodeId::Scene`) PLUS every quest that declares an `after` attribute
-///   (`NodeId::Quest`) — a quest with no `after` is NEVER a node — PLUS
-///   every bundle beat (`NodeId::Beat`, an edgeless entry node).
+///   (`NodeId::Quest`) PLUS every accept-driven quest without `after` that
+///   some node's body `::accept`s (dsl 0.24.0 §2, [`PrereqState::Accepted`])
+///   — any other quest is NEVER a node — PLUS every bundle beat
+///   (`NodeId::Beat`, an entry node).
 /// - **Edges**: flattened, over-approximating (ignoring `&&`/`||` position)
 ///   — for each atom `p` in node `n`'s formula, add `p -> n` IFF `p` is
-///   itself a node in this graph. `visited(K)` targets `NodeId::Scene(K)`;
+///   itself a node in this graph. `visited(K)` targets `NodeId::Scene(K)`,
+///   else the bundle beat `NodeId::Beat(K)` ([`NodeId::visited`]);
 ///   `completed(Q)` and `active(Q)` (lang 0.8.0) BOTH target
-///   `NodeId::Quest(Q)`, ONLY when `Q` is itself an `after`-declaring quest
-///   node — either lifecycle atom on a plain (no-`after`) quest is a LEAF
-///   dependency (Task 6's quest-lifecycle signal, never a DAG edge here).
-///   The two are structurally IDENTICAL edges; which atom produced each is
-///   recorded out-of-band in [`ConnGraph::edge_kinds`].
+///   `NodeId::Quest(Q)`, ONLY when `Q` is itself a quest node — either
+///   lifecycle atom on a plain quest is a LEAF dependency (Task 6's
+///   quest-lifecycle signal, never a DAG edge here). The two are
+///   structurally IDENTICAL edges; which atom produced each is recorded
+///   out-of-band in [`ConnGraph::edge_kinds`]. An accept anchor is an
+///   [`EdgeKind::Accept`] edge, added after the authored ones and only
+///   where it closes no cycle.
 ///
 /// `key_set` (T3 [`scene_key_set`]) is supplied by the caller — computed
 /// once per resolved project root (`lute-cli`'s `by_root` grouping), same
@@ -845,6 +902,25 @@ pub fn assemble_graph(
         }
     }
 
+    // Accept-anchored quest nodes (dsl 0.24.0 §2): an accept-driven quest
+    // with no `after` on any declaration, anchored at every node whose body
+    // `::accept`s it. Its edges are added below, after the authored ones.
+    for (id, (path, span, formula)) in accept_anchors(docs) {
+        let node = NodeId::Quest(id);
+        if nodes.contains_key(&node) {
+            continue;
+        }
+        nodes.insert(
+            node.clone(),
+            NodeInfo {
+                id: node,
+                path,
+                prereq: PrereqState::Accepted(formula),
+                span,
+            },
+        );
+    }
+
     // Edges: flattened union of atoms per formula -- `atom_target -> n` iff
     // `atom_target` is itself a node above (never a bare-string cross-check
     // against key_set/quest_ids -- membership in `nodes`, typed, is the only
@@ -858,27 +934,30 @@ pub fn assemble_graph(
     let mut edges: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
     let mut edge_kinds: BTreeMap<NodeId, BTreeMap<NodeId, BTreeSet<EdgeKind>>> = BTreeMap::new();
     for info in nodes.values() {
-        let formula = match &info.prereq {
-            PrereqState::Valid(f) => f,
-            PrereqState::Absent | PrereqState::Invalid => continue,
+        let PrereqState::Valid(formula) = &info.prereq else {
+            continue;
         };
         for atom in atoms(formula) {
-            let kind = atom_edge_kind(&atom);
-            let target = match atom {
-                Atom::Visited(key) => NodeId::Scene(key),
-                Atom::Completed(id) | Atom::Active(id) => NodeId::Quest(id),
-            };
+            let target = NodeId::of_atom(&atom, &nodes);
             if nodes.contains_key(&target) {
-                edges
-                    .entry(target.clone())
-                    .or_default()
-                    .insert(info.id.clone());
-                edge_kinds
-                    .entry(target)
-                    .or_default()
-                    .entry(info.id.clone())
-                    .or_default()
-                    .insert(kind);
+                add_edge(&mut edges, &mut edge_kinds, target, &info.id, atom_edge_kind(&atom));
+            }
+        }
+    }
+    // Accept anchors go in after every authored edge, and only where they
+    // close no cycle: an anchor downstream of the quest it accepts (a scene
+    // whose `after` needs the quest) cannot be the quest's route in, and an
+    // anchor is no `after` clause for `E-CONN-CYCLE` to report. Such an
+    // anchor stays in the formula; reachability reads it `Unknown` (it is
+    // never ordered before the quest).
+    for info in nodes.values() {
+        let PrereqState::Accepted(formula) = &info.prereq else {
+            continue;
+        };
+        for atom in atoms(formula) {
+            let target = NodeId::of_atom(&atom, &nodes);
+            if nodes.contains_key(&target) && !reaches(&edges, &info.id, &target) {
+                add_edge(&mut edges, &mut edge_kinds, target, &info.id, EdgeKind::Accept);
             }
         }
     }
@@ -903,6 +982,109 @@ pub fn assemble_graph(
         },
         diags,
     )
+}
+
+/// Record the `from -> to` edge with `kind` in both [`ConnGraph`] maps.
+fn add_edge(
+    edges: &mut BTreeMap<NodeId, BTreeSet<NodeId>>,
+    edge_kinds: &mut BTreeMap<NodeId, BTreeMap<NodeId, BTreeSet<EdgeKind>>>,
+    from: NodeId,
+    to: &NodeId,
+    kind: EdgeKind,
+) {
+    edges.entry(from.clone()).or_default().insert(to.clone());
+    edge_kinds
+        .entry(from)
+        .or_default()
+        .entry(to.clone())
+        .or_default()
+        .insert(kind);
+}
+
+/// Whether `to` is `from` or reachable from it along `edges`.
+fn reaches(edges: &BTreeMap<NodeId, BTreeSet<NodeId>>, from: &NodeId, to: &NodeId) -> bool {
+    let mut seen = BTreeSet::new();
+    let mut stack = vec![from];
+    while let Some(n) = stack.pop() {
+        if n == to {
+            return true;
+        }
+        if seen.insert(n) {
+            stack.extend(edges.get(n).into_iter().flatten());
+        }
+    }
+    false
+}
+
+/// dsl 0.24.0 §2: every accept-driven quest
+/// ([`crate::accept::accept_driven_quests`]) that declares no `after` on any
+/// declaration and is `::accept`ed in some graph node's body, with its first
+/// declaration's path and `id` span and its anchor formula — the
+/// disjunction, in document order, of `visited(<scene key>)` per accepting
+/// scene, `visited(<bundle beat key>)` per accepting bundle beat, and
+/// `active(<quest>)` per accepting quest body (the quest must be active for
+/// its body to run). A lore entry is no graph node, so an `::accept` there
+/// anchors nothing; a quest never anchors itself.
+fn accept_anchors(docs: &[(PathBuf, Document)]) -> BTreeMap<String, (PathBuf, Span, PrereqFormula)> {
+    let driven = crate::accept::accept_driven_quests(docs);
+    let with_after: BTreeSet<&str> = docs
+        .iter()
+        .flat_map(|(_, doc)| &doc.quests)
+        .filter(|q| q.after.is_some())
+        .map(|q| q.id.as_str())
+        .collect();
+    let mut sites: BTreeMap<&str, Vec<PrereqFormula>> = BTreeMap::new();
+    let mut record = |d: &lute_syntax::ast::Directive, anchor: &PrereqFormula, own: Option<&str>| {
+        let Some((id, _)) = d.accept_quest() else { return };
+        let Some(id) = driven.get(id).copied() else { return };
+        if with_after.contains(id) || own == Some(id) {
+            return;
+        }
+        let anchors = sites.entry(id).or_default();
+        if !anchors.contains(anchor) {
+            anchors.push(anchor.clone());
+        }
+    };
+    for (_, doc) in docs {
+        if let Some(key) = scene_key(doc) {
+            let anchor = PrereqFormula::Visited(key);
+            for shot in &doc.shots {
+                crate::accept::walk(&shot.body, &mut |d| record(d, &anchor, None));
+            }
+        }
+        if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Lore) {
+            if let Some(doc_id) = bundle_id(doc) {
+                for beat in doc.beats.iter().filter(|b| crate::lore::is_entry_ident(&b.id)) {
+                    let anchor =
+                        PrereqFormula::Visited(crate::bundles::bundle_beat_key(&doc_id, &beat.id));
+                    crate::accept::walk(&beat.body, &mut |d| record(d, &anchor, None));
+                }
+            }
+        }
+        for quest in doc.quests.iter().filter(|q| !q.id.is_empty()) {
+            let anchor = PrereqFormula::Active(quest.id.clone());
+            crate::accept::walk(&quest.body, &mut |d| {
+                record(d, &anchor, Some(quest.id.as_str()))
+            });
+        }
+    }
+    let mut out = BTreeMap::new();
+    for (path, doc) in docs {
+        for quest in &doc.quests {
+            if out.contains_key(&quest.id) {
+                continue;
+            }
+            let Some(anchors) = sites.remove(quest.id.as_str()) else {
+                continue;
+            };
+            let formula = anchors
+                .into_iter()
+                .reduce(|l, r| PrereqFormula::Or(Box::new(l), Box::new(r)))
+                .expect("an anchor list holds at least one site");
+            out.insert(quest.id.clone(), (path.clone(), quest.id_span, formula));
+        }
+    }
+    out
 }
 
 /// A prerequisite reference [`assemble_graph`] does not draw because a
@@ -961,7 +1143,7 @@ pub fn omitted_refs(
             for node in &quest.body {
                 if let Node::Objective(o) = node {
                     slots.push(&o.done);
-                    slots.extend(o.when.iter().chain(&o.by));
+                    slots.extend(o.when.iter().chain(&o.by).chain(&o.until));
                 }
             }
             for slot in slots {
@@ -1209,7 +1391,8 @@ fn too_complex_diag(message: String, span: Span) -> Diagnostic {
 ///   formula already earns `E-CONN-PROFILE` once (T1); this pass must
 ///   never additionally GUESS reachable or unreachable for it.
 /// - [`PrereqState::Valid`]`(f)`, recursing over `f`:
-///   - `visited(Y)`: `Y` a known [`NodeId::Scene`] ⇒ its own (already
+///   - `visited(Y)`: `Y` a known [`NodeId::Scene`] (else bundle beat,
+///     [`NodeId::visited`]) ⇒ its own (already
 ///     memoized, since it always precedes this node in `topo_order`)
 ///     reachability; not a known node ⇒ `Unknown` (that miss is
 ///     `E-CONN-UNKNOWN-NODE`'s problem, T4 — it must never CASCADE into a
@@ -1239,6 +1422,9 @@ fn too_complex_diag(message: String, span: Span) -> Diagnostic {
 ///   - `Or`: `Reachable` iff EITHER arm is `Reachable` (checked first —
 ///     it dominates, even against an `Unreachable` other arm); else
 ///     `Unreachable` iff BOTH `Unreachable`; else `Unknown`.
+///
+/// - [`PrereqState::Accepted`]`(f)` ⇒ `f` evaluated as above, except that
+///   `Unreachable` reads `Unknown` (see [`PrereqState::Accepted`]).
 ///
 /// A node whose formula's flattened atom count exceeds
 /// [`MAX_FORMULA_ATOMS`] earns [`E_CONN_FORMULA_TOO_COMPLEX`] instead of
@@ -1290,6 +1476,19 @@ pub fn check_reachability(
                     )
                 }
             }
+            // Accept anchors never prove a quest dead: the engine may accept
+            // it outside any `::accept` (dsl 0.24.0 §2).
+            PrereqState::Accepted(f) => match eval_reach(
+                f,
+                g,
+                &reach,
+                quest_ids,
+                ambiguous_quest_ids,
+                unreachable_quests,
+            ) {
+                Reachability::Unreachable => Reachability::Unknown,
+                r => r,
+            },
         };
         if r == Reachability::Unreachable {
             diags.push((
@@ -1320,7 +1519,7 @@ fn eval_reach(
 ) -> Reachability {
     match f {
         PrereqFormula::Visited(key) => {
-            let target = NodeId::Scene(key.clone());
+            let target = NodeId::visited(key, &g.nodes);
             if g.nodes.contains_key(&target) {
                 reach.get(&target).copied().unwrap_or(Reachability::Unknown)
             } else {

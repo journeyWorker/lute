@@ -471,3 +471,25 @@ fn match_is_arm_selects_on_compiled_expr_not_raw_test() {
         "{text}"
     );
 }
+
+/// dsl 0.24.0 §1: `::set{… when="…"}` writes only when its guard holds —
+/// the reference runner applies it on a true guard and records no `set` on a
+/// false one (the write is skipped, the walk continues).
+#[test]
+fn guarded_set_applies_only_when_its_guard_holds() {
+    let source = "---\nkind: scene\nluteVersion: \"0.10.0\"\ncharacter: hero\nseason: 1\n\
+         episode: 1\ntitle: T\nstate:\n  run.n: { type: number, default: 0 }\n  \
+         run.k: { type: number, default: 0 }\n---\n\n## Shot 1.\n\n\
+         ::set{run.n += 2 when=\"run.k > 0\"}\n@narrator: done.\n";
+    let n = |v: &serde_json::Value| v["state"]["run.n"].as_f64();
+
+    let skipped = compile_and_run("set-when-false", source, None);
+    assert_eq!(skipped["exit"], "complete", "{skipped}");
+    assert!(!kinds(&skipped).contains(&"set"), "{skipped}");
+    assert_eq!(n(&skipped), Some(0.0), "{skipped}");
+
+    let applied = compile_and_run("set-when-true", source, Some("state:\n  run.k: 1\n"));
+    assert_eq!(applied["exit"], "complete", "{applied}");
+    assert!(kinds(&applied).contains(&"set"), "{applied}");
+    assert_eq!(n(&applied), Some(2.0), "{applied}");
+}

@@ -146,8 +146,14 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("fail", "cel<bool>"),
             ("after", "prereq"),
             ("tier", "\"user\" | \"run\""),
+            ("activate", "\"accept\""),
+            ("complete", "\"all\" | \"any\""),
         ],
-        QuestConstruct::On => &[("event", "string"), ("when", "cel<bool>")],
+        QuestConstruct::On => &[
+            ("event", "string"),
+            ("when", "cel<bool>"),
+            ("target", "string"),
+        ],
         QuestConstruct::Objective => &[
             ("id", "string"),
             ("done", "cel<bool>"),
@@ -158,6 +164,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("on", "string"),
             ("by", "cel<bool>"),
             ("target", "string"),
+            ("until", "cel<bool>"),
         ],
         QuestConstruct::Entry => &[
             ("id", "string"),
@@ -169,7 +176,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("when", "cel<bool>"),
             ("on", "string"),
             ("priority", "integer"),
-            ("once", "\"run\" | \"user\""),
+            ("once", "\"run\" | \"user\" | \"day\" | \"slot\""),
         ],
         QuestConstruct::Beat => &[
             ("id", "string"),
@@ -178,7 +185,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("title", "string"),
             ("when", "cel<bool>"),
             ("priority", "integer"),
-            ("once", "\"run\" | \"user\" | \"false\""),
+            ("once", "\"run\" | \"user\" | \"false\" | \"day\" | \"slot\""),
             ("also", "bool"),
         ],
         QuestConstruct::Hub => &[("id", "string"), ("prompt", "string")],
@@ -398,17 +405,19 @@ fn attr_key_items(
     if !snapshot.permissions.allows_directive(directive) {
         return Vec::new();
     }
-    // dsl 0.21.0 §7a.3: the core `::accept` has one attribute, `quest`.
+    // dsl 0.21.0 §7a.3, 0.24.0 §2: the core `::accept` takes `quest` and `at`.
     if directive == ACCEPT_DIRECTIVE {
-        if present_attr_keys(doc, off).iter().any(|k| k == "quest") {
-            return Vec::new();
-        }
-        return vec![CompletionItem {
-            label: "quest".to_string(),
-            kind: Some(CompletionItemKind::FIELD),
-            detail: Some("quest id".to_string()),
-            ..Default::default()
-        }];
+        let present = present_attr_keys(doc, off);
+        return [("quest", "quest id"), ("at", "\"nextRun\"")]
+            .into_iter()
+            .filter(|(key, _)| !present.iter().any(|k| k == key))
+            .map(|(key, detail)| CompletionItem {
+                label: key.to_string(),
+                kind: Some(CompletionItemKind::FIELD),
+                detail: Some(detail.to_string()),
+                ..Default::default()
+            })
+            .collect();
     }
     let Some(decl) = snapshot.directive(directive) else {
         return Vec::new();
@@ -1525,8 +1534,8 @@ mod tests {
     }
 
     /// dsl 0.23.0 §4: a cursor inside a lore `<beat …>` open tag offers the
-    /// beat attributes — `once` documented with its three values — and never
-    /// an entry-only key.
+    /// beat attributes — `once` documented with its values (dsl 0.24.0 §1
+    /// adds the clock's `day`/`slot`) — and never an entry-only key.
     #[test]
     fn beat_attr_area_completion_lists_beat_attrs() {
         let text = "---\nid: ship.records\nkind: lore\n---\n<beat id=\"b\" >\n@narrator: hi\n</beat>\n";
@@ -1540,7 +1549,10 @@ mod tests {
             assert!(!ls.contains(&k), "entry-only {k} offered on a beat: {ls:?}");
         }
         let once = items.iter().find(|i| i.label == "once").unwrap();
-        assert_eq!(once.detail.as_deref(), Some("\"run\" | \"user\" | \"false\""));
+        assert_eq!(
+            once.detail.as_deref(),
+            Some("\"run\" | \"user\" | \"false\" | \"day\" | \"slot\"")
+        );
     }
 
     #[test]
@@ -1658,6 +1670,7 @@ mod tests {
             lute_manifest::schema::CastMember {
                 id: "maud".into(),
                 name: Some("Maud".into()),
+                ..Default::default()
             },
         );
         let items = complete_at(

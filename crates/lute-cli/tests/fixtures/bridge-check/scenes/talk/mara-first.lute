@@ -1,0 +1,24 @@
+---
+kind: scene
+id: mara.first
+title: Mara by the door
+on: talk
+target: npc.mara
+once: user
+priority: 10
+---
+
+## Mara
+
+@mara{emotion="content"}: You're new. The lamp by the door has been dark for a week.
+
+<branch id="maraAsk" prompt="What do you say?">
+  <choice id="lamp" label="Offer to find out why">
+    @mara{emotion="delighted"}: Would you? Tomas keeps the oil. Ask him.
+    ::set{ user.bond.mara += 1 }
+    ::accept{quest="lampOut"}
+  </choice>
+  <choice id="leave" label="Say nothing">
+    @mara: Suit yourself.
+  </choice>
+</branch>

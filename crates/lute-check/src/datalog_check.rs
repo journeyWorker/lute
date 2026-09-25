@@ -48,23 +48,36 @@ pub fn check_rules(vocab: &RelVocab, domains: &BTreeMap<String, Domain>) -> Vec<
     for rule_decl in &vocab.rules {
         let rule = &rule_decl.rule;
         let span = rule_decl.span;
-        check_head(vocab, domains, &rule.head, span, &mut out);
+        let mut here = Vec::new();
+        check_head(vocab, domains, &rule.head, span, &mut here);
         for lit in &rule.body {
             if let BodyLiteral::Pos(atom) | BodyLiteral::Neg(atom) = lit {
-                check_body_atom(vocab, domains, atom, span, &mut out);
+                check_body_atom(vocab, domains, atom, span, &mut here);
             }
         }
-        check_rule_safety(rule, span, &mut out);
+        check_rule_safety(rule, span, &mut here);
+        // dsl 0.24 T3-6: an imported rule's problem is reported at the
+        // schema's line, not at the rule's offset read into the importer.
+        let origin = vocab.origins.rules.get(&rule_decl.raw);
+        out.extend(here.into_iter().map(|d| crate::rel_schema::at_origin(d, origin)));
     }
     for (name, decl) in &vocab.relations {
-        if decl.derive && !vocab.rules.iter().any(|r| &r.rule.head.relation == name) {
-            out.push(warn(
-                W_DERIVE_NO_RULES,
-                format!(
-                    "relation `{name}` is declared `derive: true` but has no rules; the relation \
-                     is legal but permanently empty — almost always a typo'd head name (dsl 0.3.0 §7.1)"
+        // dsl 0.24 T3-6: a relation whose rule failed to parse HAS a rule —
+        // `E-DATALOG-PARSE` already says what is wrong with it.
+        if decl.derive
+            && !vocab.unparsed_heads.contains(name)
+            && !vocab.rules.iter().any(|r| &r.rule.head.relation == name)
+        {
+            out.push(crate::rel_schema::at_origin(
+                warn(
+                    W_DERIVE_NO_RULES,
+                    format!(
+                        "relation `{name}` is declared `derive: true` but has no rules; the relation \
+                         is legal but permanently empty — almost always a typo'd head name (dsl 0.3.0 §7.1)"
+                    ),
+                    zero_span(),
                 ),
-                zero_span(),
+                vocab.origins.relations.get(name),
             ));
         }
     }
@@ -333,8 +346,10 @@ fn check_rule_safety(rule: &Rule, span: Span, out: &mut Vec<Diagnostic>) {
         match lit {
             BodyLiteral::Neg(atom) => {
                 for term in &atom.terms {
+                    // A `_` (dsl 0.24 T3-9) is existential under negation —
+                    // `not seen(W, _)`: no `seen(W, …)` tuple at all.
                     if let RuleTerm::Var(v) = term {
-                        if !bound.contains(v.as_str()) {
+                        if !bound.contains(v.as_str()) && !lute_syntax::datalog::is_anonymous_var(v) {
                             out.push(diag(
                                 E_DATALOG_UNSAFE,
                                 format!(

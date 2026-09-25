@@ -530,6 +530,13 @@ fn resolve_set(s: &Set, off: usize) -> Option<Cursor<'_>> {
             in_match_subject: false,
         });
     }
+    // dsl 0.24.0 §1: the `when="…"` guard is a CEL slot too.
+    if let Some(w) = s.when.as_ref().filter(|w| span_contains(w.span, off)) {
+        return Some(Cursor::Cel {
+            slot: w,
+            in_match_subject: false,
+        });
+    }
     None
 }
 

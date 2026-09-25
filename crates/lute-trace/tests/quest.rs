@@ -1490,13 +1490,13 @@ fn a_by_never_fails_a_done_objective() {
 }
 
 #[test]
-fn an_on_objectives_deadline_is_judged_only_at_its_raise_after_done() {
-    // lamplight N2: `run.late` is true from the start. The `on="tick"`
-    // objective's `by` is not judged continuously — without the raise it
-    // neither completes nor fails — and at the raise `done` (also true)
-    // wins the tie.
+fn an_on_objectives_until_is_judged_only_at_its_raise_after_done() {
+    // lamplight N2, kept by dsl 0.24.0 §2.1 as `until=`: `run.late` is true
+    // from the start. The `on="tick"` objective's `until` is not judged
+    // continuously — without the raise it neither completes nor fails — and
+    // at the raise `done` (also true) wins the tie.
     let input = deadline_input(
-        "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.early\" by=\"run.late\"/>\n",
+        "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.early\" until=\"run.late\"/>\n",
     );
     let (report, _) = trace_document(&input, MockSet::default());
     assert!(objective_outcomes(&report.decisions, "named").is_empty(), "{:?}", report.decisions);
@@ -1513,10 +1513,24 @@ fn an_on_objectives_deadline_is_judged_only_at_its_raise_after_done() {
 
     // Not done at the raise: the deadline fails it there, and the quest.
     let input = deadline_input(
-        "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.got\" by=\"run.late\"/>\n",
+        "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.got\" until=\"run.late\"/>\n",
     );
     let (report, _) = trace_document(&input, raise);
     assert_eq!(objective_outcomes(&report.decisions, "named"), ["pending", "failed"]);
+    assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 1);
+    assert!(has_line_containing(&report.steps, "Too late."));
+}
+
+#[test]
+fn an_on_objectives_by_is_a_moment_judged_without_its_raise() {
+    // dsl 0.24.0 §2.1 reverses 0.23.1: `by` is judged at every settle, `on=`
+    // or not. `run.late` holds from the start, and `done` is judged only at
+    // the (never raised) occasion — so the deadline fails it, and the quest.
+    let input = deadline_input(
+        "<objective id=\"named\" title=\"Named\" on=\"tick\" done=\"run.early\" by=\"run.late\"/>\n",
+    );
+    let (report, _) = trace_document(&input, MockSet::default());
+    assert_eq!(objective_outcomes(&report.decisions, "named"), ["failed"], "{:?}", report.decisions);
     assert_eq!(count_quest_decisions(&report.decisions, "q", "failed"), 1);
     assert!(has_line_containing(&report.steps, "Too late."));
 }

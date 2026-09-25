@@ -162,6 +162,11 @@ pub struct ProjectIndex {
     /// project without beats stays byte-identical to 0.20.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub beats: Vec<IndexBeat>,
+    /// dsl 0.24.0 §1: the project's declared clock (the artifacts' `clock`,
+    /// one per project). OMITTED without one, so an index over a project
+    /// without a clock stays byte-identical to 0.23.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clock: Option<lute_manifest::clock::ClockDecl>,
 }
 
 impl ProjectIndex {
@@ -306,6 +311,9 @@ pub fn build_index(
     let mut enums = Axis::new("enum");
     let mut relations = Axis::new("relation");
     let mut prereqs = Axis::new("prerequisite node");
+    // dsl 0.24.0 §1: one clock per project — two documents carrying
+    // different ones is a conflict like any vocabulary's.
+    let mut clocks = Axis::new("clock");
     // Facts and rules always UNION (spec §4.1) — an identical tuple/rule from
     // two documents is ONE declaration, so these dedupe on the whole value and
     // can never conflict.
@@ -325,6 +333,9 @@ pub fn build_index(
         }
         for p in &a.prereq_edges {
             prereqs.push(&p.node, p, &d.path, &mut errors);
+        }
+        if let Some(c) = &a.clock {
+            clocks.push("clock", c, &d.path, &mut errors);
         }
         for f in &a.seed_facts {
             seed_facts
@@ -436,6 +447,7 @@ pub fn build_index(
         prereq_edges: prereqs.finish(),
         entries,
         beats,
+        clock: clocks.finish().into_iter().next(),
     })
 }
 
@@ -593,6 +605,7 @@ mod tests {
             commands: Vec::new(),
             prereq_edges: Vec::new(),
             shots: Vec::new(),
+            clock: None,
         }
     }
 

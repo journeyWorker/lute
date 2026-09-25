@@ -38,6 +38,7 @@ use serde::{Deserialize, Serialize};
 /// Deserialize` PLUS `PartialEq` — the batch contract asks for equality so
 /// consumers (and tests) can compare rule sets without hand-rolling one.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LintRuleDecl {
     /// Rule id, raw as authored in the plugin's YAML. The namespaced form
     /// `<plugin-id>/<id>` (design §3) is produced by

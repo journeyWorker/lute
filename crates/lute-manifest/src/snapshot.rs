@@ -87,7 +87,7 @@ pub struct CapabilitySnapshot {
 /// enumerable at compile time, so `members` stays empty and a later checker
 /// task (A4) must treat membership as always-accept (or provider-backed)
 /// rather than closed-list membership.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct Domain {
     pub members: Vec<String>,
     pub open: bool,
@@ -102,6 +102,29 @@ pub struct Domain {
     /// each carried their own copy of. Required for the `action` slot
     /// ([`crate::validate::SLOT_REQUIRES_EXITS`]), rejected elsewhere.
     pub exits: Vec<String>,
+    /// dsl 0.24.0 §1: display label per member (`labels: { sun: Sunday }`),
+    /// which a `{{…}}` interpolation of a value of this domain renders instead
+    /// of the member id. Partial: a member without a label renders its id.
+    /// Every key is a member (`E-ENUM-LABEL-NOT-MEMBER`, [`crate::validate`]).
+    pub labels: BTreeMap<String, String>,
+}
+
+/// Hand-written so a domain without `labels` prints exactly as it did before
+/// the field existed: `capabilityVersion` folds this `Debug`, and a
+/// vocabulary that declares no labels must keep its stamp. Declared labels
+/// DO fold in — they reach the IR (`StateEntry.labels`) and change rendering.
+impl std::fmt::Debug for Domain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("Domain");
+        s.field("members", &self.members)
+            .field("open", &self.open)
+            .field("default", &self.default)
+            .field("exits", &self.exits);
+        if !self.labels.is_empty() {
+            s.field("labels", &self.labels);
+        }
+        s.finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -551,6 +574,7 @@ mod tests {
             open: false,
             default: default.map(str::to_string),
             exits: exits.iter().map(|s| s.to_string()).collect(),
+            labels: BTreeMap::new(),
         }
     }
 
@@ -591,6 +615,30 @@ mod tests {
             mk(&["wave"]),
             "action.exits drives sprite.exit; it must affect the stamp"
         );
+    }
+
+    #[test]
+    fn domain_labels_fold_into_the_stamp_only_when_declared() {
+        // A label-less domain keeps the exact pre-labels `Debug` (so every
+        // existing artifact keeps its `capabilityVersion`); declared labels
+        // reach the IR and change rendering, so they restamp.
+        let d = dom(&["mon", "sun"], None, &[]);
+        assert_eq!(
+            format!("{d:?}"),
+            "Domain { members: [\"mon\", \"sun\"], open: false, default: None, exits: [] }"
+        );
+        let mk = |labels: &[(&str, &str)]| {
+            let mut d = dom(&["mon", "sun"], None, &[]);
+            d.labels = labels
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            let mut snap = CapabilitySnapshot::default();
+            snap.domains.insert("weekday".into(), d);
+            capability_version(&snap)
+        };
+        assert_ne!(mk(&[]), mk(&[("sun", "Sunday")]));
+        assert_ne!(mk(&[("sun", "Sunday")]), mk(&[("sun", "Sun")]));
     }
 
     #[test]
@@ -768,6 +816,33 @@ mod tests {
         );
         assert_ne!(stamp(OccasionSelect::Sequence), stamp(OccasionSelect::First));
         assert_ne!(stamp(OccasionSelect::Sequence), stamp(OccasionSelect::All));
+    }
+
+    #[test]
+    fn judge_before_restamps_and_default_keeps_the_0_23_stamp() {
+        // dsl 0.24.0 §2: `judge: before` joins the occasion contract. An
+        // occasion that never declares it keeps the stamp every artifact
+        // already carries (pinned from 0.23 above); `before` restamps.
+        let stamp = |judge: crate::schema::OccasionJudge| {
+            let mut s = CapabilitySnapshot::default();
+            s.occasions.insert(
+                "talk".into(),
+                OccasionDecl {
+                    name: "talk".into(),
+                    judge,
+                    ..Default::default()
+                },
+            );
+            capability_version(&s)
+        };
+        assert_eq!(
+            stamp(crate::schema::OccasionJudge::After),
+            "f8319417baa3545c8d48f883dbb97174ac1fd2cdb3e93073bd82117cff8b0a72"
+        );
+        assert_ne!(
+            stamp(crate::schema::OccasionJudge::Before),
+            stamp(crate::schema::OccasionJudge::After)
+        );
     }
 
     #[test]

@@ -11,6 +11,7 @@
       "state": "active"
     },
     {
+      "failedBy": "fail",
       "kind": "quest",
       "quest": "parentQ",
       "state": "failed"
@@ -25,6 +26,7 @@
       }
     },
     {
+      "failedBy": "cascade",
       "kind": "quest",
       "quest": "findKey",
       "state": "failed"
@@ -48,8 +50,10 @@
     "parentQ": "failed"
   },
   "state": {
+    "quest.findKey.failedBy": "cascade",
     "quest.findKey.objectives.found.done": false,
     "quest.findKey.state": "failed",
+    "quest.parentQ.failedBy": "fail",
     "quest.parentQ.objectives.delegate.done": false,
     "quest.parentQ.state": "failed",
     "run.giveUp": true,

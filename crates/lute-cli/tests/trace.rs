@@ -778,3 +778,110 @@ fn run_raises_an_occasion_on_a_compiled_quest_artifact() {
     let text = run(&["--occasion", "runEnd"]);
     assert!(text.lines().any(|l| l == "  occasion runEnd"), "{text}");
 }
+
+/// dsl 0.24.0 §1 (T2-1): integer `%` checks clean and `lute trace` / `lute
+/// test` evaluate it; a fractional literal operand is `E-CEL-TYPE`. `%` used
+/// to be `E-CEL-PROFILE`, so trace and test refused the document.
+#[test]
+fn integer_modulo_checks_and_evaluates_in_trace_and_test() {
+    let dir = temp_dir("modulo");
+    let scene = |test: &str| {
+        format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+             state:\n  run.day: {{ type: number, default: 1 }}\n---\n\n## S\n\n\
+             <match on=\"run.day\">\n<when test=\"{test}\">\n@narrator: Sunday.\n</when>\n\
+             <otherwise>\n@narrator: Weekday.\n</otherwise>\n</match>\n"
+        )
+    };
+    let file = dir.join("s.lute");
+    std::fs::write(&file, scene("$ % 7 == 0")).unwrap();
+    let f = file.to_str().unwrap();
+    let transcript = |day: &str| {
+        let out = trace(&[f, "--state", &format!("run.day={day}")]);
+        assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let t = transcript("14");
+    assert!(t.contains("Sunday.") && !t.contains("Weekday."), "{t}");
+    let t = transcript("15");
+    assert!(t.contains("Weekday.") && !t.contains("Sunday."), "{t}");
+
+    std::fs::write(
+        dir.join("t.test.yaml"),
+        "file: s.lute\nstate:\n  run.day: 21\nexpect:\n  transcriptContains: [\"Sunday.\"]\n",
+    )
+    .unwrap();
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+
+    std::fs::remove_file(dir.join("t.test.yaml")).unwrap();
+    std::fs::write(&file, scene("$ % 2.5 == 0")).unwrap();
+    let out = Command::new(BIN).args(["check", f]).output().unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(1), "{all}");
+    assert!(all.contains("E-CEL-TYPE") && all.contains("`2.5` is not an integer"), "{all}");
+    assert!(!all.contains("E-CEL-PROFILE"), "{all}");
+}
+
+/// dsl 0.24.0 T3-12: a `<match>` subject and an arm guard print as the
+/// author wrote them (`@weekday`, `@atLeast(3)`); `--expand` prints the
+/// expansion the walk evaluated, with no parentheses around an atomic
+/// argument; `--json` keeps the expansion and adds the authored text.
+#[test]
+fn trace_prints_authored_def_refs_and_expands_on_request() {
+    let dir = temp_dir("authored-defs");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.day: { type: number, default: 1 }\n\
+         defs:\n  weekday: \"run.day == 1 ? 'mon' : 'tue'\"\n  \
+         atLeast: { type: bool, cel: \"run.day >= n\", params: { n: number } }\n",
+    )
+    .unwrap();
+    let scene = dir.join("scenes/m.lute");
+    std::fs::write(
+        &scene,
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nuses: [../world.schema.yaml]\n---\n\n## M\n\n\
+         <match on=\"@weekday\">\n<when is=\"'mon'\">\n@a: Monday.\n</when>\n\
+         <otherwise>\n@a: Other.\n</otherwise>\n</match>\n\
+         <match on=\"true\">\n<when test=\"@atLeast(3)\">\n@a: Late.\n</when>\n\
+         <otherwise>\n@a: Early.\n</otherwise>\n</match>\n",
+    )
+    .unwrap();
+    let path = scene.to_str().unwrap();
+    let human = |extra: &[&str]| {
+        let mut args = vec![path, "--state", "run.day=4"];
+        args.extend_from_slice(extra);
+        let out = trace(&args);
+        let s = String::from_utf8_lossy(&out.stdout).to_string();
+        assert_eq!(out.status.code(), Some(0), "{s}{}", String::from_utf8_lossy(&out.stderr));
+        s
+    };
+
+    let authored = human(&[]);
+    assert!(authored.contains("<match @weekday>   -> otherwise"), "{authored}");
+    assert!(authored.contains("<match true>   -> arm 1 (@atLeast(3))"), "{authored}");
+    assert!(authored.contains("arms 1/2 (@weekday @"), "{authored}");
+    assert!(!authored.contains("run.day"), "{authored}");
+
+    let expanded = human(&["--expand"]);
+    assert!(
+        expanded.contains("<match (run.day == 1 ? 'mon' : 'tue')>   -> otherwise"),
+        "{expanded}"
+    );
+    assert!(expanded.contains("-> arm 1 ((run.day >= 3))"), "{expanded}");
+
+    let json = human(&["--json"]);
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let first = &v["decisions"][0];
+    assert_eq!(first["id"], "(run.day == 1 ? 'mon' : 'tue')");
+    assert_eq!(first["authoredId"], "@weekday");
+    assert_eq!(v["decisions"][1]["guard"], "(run.day >= 3)");
+    assert_eq!(v["decisions"][1]["authoredGuard"], "@atLeast(3)");
+    // An unchanged construct carries no authored key.
+    assert!(v["decisions"][1].get("authoredId").is_none(), "{json}");
+}

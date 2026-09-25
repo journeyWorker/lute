@@ -92,6 +92,9 @@ pub struct SchemaImports {
     /// schema, keyed by speaker id (a union — the same id in two schemas
     /// keeps the byte-sorted-first file's entry).
     pub cast: BTreeMap<String, lute_manifest::schema::CastMember>,
+    /// dsl 0.24.0 §1: every `clock:` an import-reachable schema declares,
+    /// by file (canonical path order). A project declares at most one.
+    pub clock: Vec<(PathBuf, lute_manifest::clock::ClockDecl)>,
     pub rel: RelImports,
 }
 
@@ -114,6 +117,14 @@ pub struct RelImports {
     pub facts: Vec<FactDecl>,
     /// Rules, same deterministic order. ALWAYS union (spec §4.1).
     pub rules: Vec<RuleDecl>,
+    /// dsl 0.24.0 §3: entity-indexed state families (`run.approval` →
+    /// `companion`) across every reachable schema — a union.
+    pub indexed_state: BTreeMap<String, String>,
+    /// dsl 0.24 T3-6: each imported relation / kind / def / rule / fact's
+    /// declaring file and span there (the winning file for a resolved name).
+    pub origins: crate::rel_schema::DeclOrigins,
+    /// dsl 0.24 T3-6: heads of imported `rules:` entries that failed to parse.
+    pub unparsed_heads: BTreeSet<String>,
 }
 
 /// Which frontmatter edge reached an imported document — used only to word the
@@ -162,8 +173,16 @@ struct ParsedDoc {
     /// Seed `facts:`/`rules:` (0.3.0 spec §4/§7.1), in this doc's own order.
     facts: Vec<FactDecl>,
     rules: Vec<RuleDecl>,
+    /// dsl 0.24.0 §3: this doc's `per:` state families.
+    state_index: BTreeMap<String, String>,
     /// dsl 0.23.0 §7: this schema's `cast:` members.
     cast: Vec<lute_manifest::schema::CastMember>,
+    /// dsl 0.24.0 §1: this schema's `clock:`.
+    clock: Option<lute_manifest::clock::ClockDecl>,
+    /// dsl 0.24 T3-6: this doc's declarations' spans, positioned in its text.
+    origins: crate::rel_schema::DeclOrigins,
+    /// dsl 0.24 T3-6: heads of this doc's `rules:` entries that failed to parse.
+    failed_heads: BTreeSet<String>,
 }
 
 fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
@@ -248,16 +267,26 @@ pub fn resolve_imports(
     // 0.3.0 T7: structural relation-decl validation (`E-ENTITY-KIND-SHAPE`,
     // `E-KIND-NAME-CLASH`/`E-RELATION-DUP` same-block dups,
     // `E-RELATION-EMPTY`/`-DOMAIN`, `E-DERIVE-TIER`,
-    // `E-RELATION-RESERVED-WRITE`) runs per IMPORTED file too, at the
-    // import-statement span `at` (matching how `E-USES-*` reports today) —
-    // so a malformed decl surfaces at every document that imports it, not
-    // only when that file is checked directly.
-    for doc in parsed.values() {
-        diags.extend(crate::rel_schema::validate_rel_decls(
-            &doc.rel_kinds,
-            &doc.rel_relations,
-            &|_| at,
-        ));
+    // `E-RELATION-RESERVED-WRITE`, `E-RELATION-RESERVED-NAME`) runs per
+    // IMPORTED file too — so a malformed decl surfaces at every document that
+    // imports it, not only when that file is checked directly — reported at
+    // the declaration's own line in that file (dsl 0.24 T3-6); the project
+    // roll-up folds the importers' identical copies into one.
+    for (canon, doc) in &parsed {
+        let span_of = |name: &str| {
+            doc.origins
+                .relations
+                .get(name)
+                .or_else(|| doc.origins.kinds.get(name))
+                .map_or(at, |o| o.span)
+        };
+        for d in crate::rel_schema::validate_rel_decls(&doc.rel_kinds, &doc.rel_relations, &span_of) {
+            let origin = crate::rel_schema::DeclOrigin {
+                file: canon.clone(),
+                span: d.span,
+            };
+            diags.push(crate::rel_schema::at_origin(d, Some(&origin)));
+        }
     }
 
     // --- Phase 2: gather EVERY declaration per NAME, then resolve deterministically.
@@ -489,6 +518,10 @@ pub fn resolve_imports(
     rule_entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
     let facts: Vec<FactDecl> = fact_entries.into_iter().map(|(_, _, _, f)| f).collect();
     let rules: Vec<RuleDecl> = rule_entries.into_iter().map(|(_, _, _, r)| r).collect();
+    let indexed_state: BTreeMap<String, String> = parsed
+        .values()
+        .flat_map(|doc| doc.state_index.iter().map(|(p, k)| (p.clone(), k.clone())))
+        .collect();
 
     // Every `<quest id>` reachable via the import graph (dsl 0.2.0 §6.3): unlike
     // `state`/`defs` above, quest-id uniqueness is NOT depth-scoped (no
@@ -559,6 +592,37 @@ pub fn resolve_imports(
             cast.entry(c.id.clone()).or_insert_with(|| c.clone());
         }
     }
+    // dsl 0.24.0 §1: every import-reachable `clock:`, path order —
+    // `crate::clock::check_clock` reports more than one.
+    let clock: Vec<(PathBuf, lute_manifest::clock::ClockDecl)> = parsed
+        .iter()
+        .filter_map(|(path, doc)| doc.clock.clone().map(|c| (path.clone(), c)))
+        .collect();
+
+    // dsl 0.24 T3-6: each resolved name's home — the shallowest declaring
+    // file, byte-least on a tie (`pick_winner`'s own rule); rules and facts
+    // union, so each keeps the first file (depth, path order) declaring it.
+    let mut by_depth: Vec<(usize, &PathBuf, &ParsedDoc)> = parsed
+        .iter()
+        .map(|(p, d)| (dist.get(p).copied().unwrap_or(0), p, d))
+        .collect();
+    by_depth.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
+    let mut origins = crate::rel_schema::DeclOrigins::default();
+    let mut unparsed_heads = BTreeSet::new();
+    for (_, _, doc) in &by_depth {
+        for (dst, src) in [
+            (&mut origins.relations, &doc.origins.relations),
+            (&mut origins.kinds, &doc.origins.kinds),
+            (&mut origins.defs, &doc.origins.defs),
+            (&mut origins.rules, &doc.origins.rules),
+            (&mut origins.facts, &doc.origins.facts),
+        ] {
+            for (k, v) in src {
+                dst.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+        }
+        unparsed_heads.extend(doc.failed_heads.iter().cloned());
+    }
 
     SchemaImports {
         state,
@@ -570,6 +634,7 @@ pub fn resolve_imports(
         imported_quest_ids,
         imported_entry_ids,
         cast,
+        clock,
         rel: RelImports {
             kinds: rel_kinds,
             relations: rel_relations,
@@ -579,6 +644,9 @@ pub fn resolve_imports(
                 .collect(),
             facts,
             rules,
+            indexed_state,
+            origins,
+            unparsed_heads,
         },
     }
 }
@@ -825,10 +893,14 @@ fn read_and_parse(
         quest_ids: BTreeSet::new(),
         entry_ids: BTreeSet::new(),
         cast: Vec::new(),
+        clock: None,
         rel_kinds: ParsedKinds::default(),
         rel_relations: ParsedRelations::default(),
         facts: Vec::new(),
         rules: Vec::new(),
+        state_index: BTreeMap::new(),
+        origins: Default::default(),
+        failed_heads: BTreeSet::new(),
     };
     let text = match std::fs::read_to_string(canon) {
         Ok(t) => t,
@@ -845,10 +917,10 @@ fn read_and_parse(
         canon.extension().and_then(|e| e.to_str()),
         Some("yaml") | Some("yml")
     );
-    let (tm, issue_diags, quest_ids, entry_ids) = if is_yaml_decl {
+    let (tm, issue_diags, quest_ids, entry_ids, meta) = if is_yaml_decl {
         let byte_end = text.len();
         let meta = Meta {
-            raw_yaml: text,
+            raw_yaml: text.clone(),
             span: Span {
                 byte_start: 0,
                 byte_end,
@@ -860,7 +932,7 @@ fn read_and_parse(
         let (tm, mut mdiags) =
             parse_meta_kind(&meta, &CapabilitySnapshot::default(), MetaKind::Schema);
         position_in(&meta.raw_yaml, &mut mdiags);
-        (tm, mdiags, BTreeSet::new(), BTreeSet::new())
+        (tm, mdiags, BTreeSet::new(), BTreeSet::new(), meta)
     } else {
         let (doc, pdiags) = lute_syntax::parse(&text);
         let (tm, mdiags) =
@@ -885,7 +957,7 @@ fn read_and_parse(
         let mut all = pdiags;
         all.extend(mdiags);
         position_in(&text, &mut all);
-        (tm, all, quest_ids, entry_ids)
+        (tm, all, quest_ids, entry_ids, doc.meta)
     };
     if !issue_diags.is_empty() {
         // dsl 0.5.0 §2.2, mirroring `component_import.rs:260-282`: carry the
@@ -914,6 +986,26 @@ fn read_and_parse(
             .collect();
         diags.push(d);
     }
+    // dsl 0.24 T3-6: where each declaration sits in THIS file, positioned, so
+    // an importer's diagnostic about it can name the schema line.
+    let idx = lute_core_span::TextIndex::new(&text);
+    let here = |s: Span| {
+        let end = s.byte_end.min(text.len());
+        let start = s.byte_start.min(end);
+        crate::rel_schema::DeclOrigin {
+            file: canon.to_path_buf(),
+            span: Span::from_bytes(&idx, start, end),
+        }
+    };
+    let key = |name: &str| here(crate::meta::meta_key_span(&meta, name));
+    let origins = crate::rel_schema::DeclOrigins {
+        relations: tm.rel_relations.relations.keys().map(|n| (n.clone(), key(n))).collect(),
+        kinds: tm.rel_kinds.kinds.keys().map(|n| (n.clone(), key(n))).collect(),
+        defs: tm.defs.keys().map(|n| (n.clone(), key(n))).collect(),
+        rules: tm.rel_rules.iter().map(|r| (r.raw.clone(), here(r.span))).collect(),
+        facts: tm.rel_facts.iter().map(|f| (f.raw.clone(), here(f.span))).collect(),
+    };
+    let failed_heads = tm.rel_rule_failed_heads.clone();
     let state = tm.state.decls;
     let defs = tm.defs;
     let domains = tm.domains;
@@ -921,7 +1013,9 @@ fn read_and_parse(
     let rel_relations = tm.rel_relations;
     let facts = tm.rel_facts;
     let rules = tm.rel_rules;
+    let state_index = tm.state_index;
     let cast = tm.cast;
+    let clock = tm.clock;
     let uses = tm.uses;
     let extends = tm.extends;
     (
@@ -935,7 +1029,11 @@ fn read_and_parse(
             rel_relations,
             facts,
             rules,
+            state_index,
             cast,
+            clock,
+            origins,
+            failed_heads,
         },
         uses,
         extends,

@@ -42,7 +42,7 @@
 //! opinion. The required keys appear in the tables only because a required key
 //! that survives into the residual list must be permitted.
 
-use lute_core_span::{Diagnostic, Layer, Severity};
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{
     Arm, Attr, AttrValue, Branch, BundleBeat, Choice, Entry, Hub, Match, Objective, On, Quest,
     Reward,
@@ -79,21 +79,25 @@ pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "
 pub const ENTRY_ATTRS: &[&str] = &[
     "id", "target", "category", "title", "series", "order", "when", "on", "priority", "once",
 ];
-/// dsl 0.2.0 §6.3 (+ `after`, connectivity T2; `tier`, dsl 0.22.0 §7):
-/// `<quest>`'s keys. The parser extracts each into a typed field, so one
-/// reaches the residual list only with a non-string value; every OTHER key —
-/// a `fial=` typo — used to be accepted and dropped from the IR without a
-/// word (0.21.1 T1-7).
-pub const QUEST_ATTRS: &[&str] = &["id", "title", "start", "fail", "after", "tier"];
-/// dsl 0.2.0 §6.4 (+ subquest `quest`, dsl 0.21.0 §7a.2 `on`, dsl 0.23.0 §2
-/// `by` / `target`): `<objective>`'s keys. A non-string `on=` / `target=`
-/// stays residual for `crate::beats` to report (`E-BEAT-ATTR`), so it is
-/// permitted here rather than double-reported.
-pub const OBJECTIVE_ATTRS: &[&str] = &[
-    "id", "done", "quest", "when", "title", "optional", "on", "by", "target",
+/// dsl 0.2.0 §6.3 (+ `after`, connectivity T2; `tier`, dsl 0.22.0 §7;
+/// `activate` / `complete`, dsl 0.24.0 §2): `<quest>`'s keys. The parser
+/// extracts each into a typed field, so one reaches the residual list only
+/// with a non-string value; every OTHER key — a `fial=` typo — used to be
+/// accepted and dropped from the IR without a word (0.21.1 T1-7).
+pub const QUEST_ATTRS: &[&str] = &[
+    "id", "title", "start", "fail", "after", "tier", "activate", "complete",
 ];
-/// dsl 0.2.0 §4.1: `<on>`'s keys.
-pub const ON_ATTRS: &[&str] = &["event", "when"];
+/// dsl 0.2.0 §6.4 (+ subquest `quest`, dsl 0.21.0 §7a.2 `on`, dsl 0.23.0 §2
+/// `by` / `target`, dsl 0.24.0 §2.1 `until`): `<objective>`'s keys. A
+/// non-string `on=` / `target=` stays residual for `crate::beats` to report
+/// (`E-BEAT-ATTR`), so it is permitted here rather than double-reported.
+pub const OBJECTIVE_ATTRS: &[&str] = &[
+    "id", "done", "quest", "when", "title", "optional", "on", "by", "target", "until",
+];
+/// dsl 0.2.0 §4.1 (+ `target`, dsl 0.24.0 §2): `<on>`'s keys. A non-string
+/// `target=` stays residual for [`crate::on::check_on_target`] to report
+/// (`E-BEAT-ATTR`), so it is permitted here rather than double-reported.
+pub const ON_ATTRS: &[&str] = &["event", "when", "target"];
 
 /// D-L: the two `<choice>` positions have DIFFERENT permitted sets. `once` and
 /// `exit` attach to `HubChoice` in `0.1.0 §7.3`'s grammar and to nothing else,
@@ -221,30 +225,71 @@ pub(crate) fn check_bundle_beat_attrs(b: &BundleBeat, diags: &mut Vec<Diagnostic
 
 pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
     close(&q.attrs, "quest", QUEST_ATTRS, &[], None, diags);
-    // dsl 0.22.0 §7: `tier` is `"run"` or `"user"` — a quoted string; a
-    // bare/non-string value stays residual.
-    let bad = q
-        .tier
-        .as_ref()
-        .filter(|(t, _)| !matches!(t.as_str(), "run" | "user"))
-        .map(|(_, span)| *span)
-        .into_iter()
-        .chain(q.attrs.iter().filter(|a| a.key == "tier").map(|a| a.span));
-    for span in bad {
-        diags.push(Diagnostic {
-            code: "E-ATTR-TYPE".to_string(),
-            severity: Severity::Error,
-            message: "attribute `tier` of `<quest>` expects \"run\" (status and objectives reset \
-                      at a new run) or \"user\" (persists across runs, the default) \
-                      (dsl 0.22.0 §7)"
-                .to_string(),
-            span,
-            layer: Layer::Logic,
-            fixits: Vec::new(),
-            provenance: None,
-            covered: Vec::new(),
-            related: Vec::new(),
-        });
+    // Each enumerated `<quest>` attribute is a quoted string from a fixed
+    // set; a bare/non-string value stays residual and is reported too.
+    let enumerated: [(&str, &Option<(String, Span)>, &[&str], &str); 3] = [
+        (
+            "tier",
+            &q.tier,
+            &["run", "user"],
+            "\"run\" (status and objectives reset at a new run) or \"user\" (persists across \
+             runs, the default) (dsl 0.22.0 §7)",
+        ),
+        (
+            "activate",
+            &q.activate,
+            &["accept"],
+            "\"accept\" (a subquest child that waits for `::accept` instead of activating with \
+             its parent) (dsl 0.24.0 §2)",
+        ),
+        (
+            "complete",
+            &q.complete,
+            &["all", "any"],
+            "\"all\" (every required objective done, the default) or \"any\" (one required \
+             objective done; the other still-active children fail as superseded) (dsl 0.24.0 §2)",
+        ),
+    ];
+    for (key, value, legal, expects) in enumerated {
+        let bad = value
+            .as_ref()
+            .filter(|(v, _)| !legal.contains(&v.as_str()))
+            .map(|(_, span)| *span)
+            .into_iter()
+            .chain(q.attrs.iter().filter(|a| a.key == key).map(|a| a.span));
+        for span in bad {
+            diags.push(attr_type(
+                format!("attribute `{key}` of `<quest>` expects {expects}"),
+                span,
+            ));
+        }
+    }
+    // dsl 0.24.0 §2: an accept-driven child activates when `::accept` names
+    // it, so a `start` condition beside `activate="accept"` contradicts it.
+    if let (Some((_, span)), true, Some(_)) = (&q.activate, q.activates_on_accept(), &q.start) {
+        diags.push(attr_type(
+            format!(
+                "`<quest id=\"{}\">` carries both `activate=\"accept\"` and `start`: an \
+                 accept-driven quest activates when `::accept` names it (while its parent is \
+                 active), never by a `start` condition; remove one (dsl 0.24.0 §2)",
+                q.id
+            ),
+            *span,
+        ));
+    }
+}
+
+fn attr_type(message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: "E-ATTR-TYPE".to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 

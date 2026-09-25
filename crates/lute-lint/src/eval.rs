@@ -238,6 +238,7 @@ fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
             | op::SUBSTRACT
             | op::MULTIPLY
             | op::DIVIDE
+            | op::MODULO
             | op::GREATER
             | op::GREATER_EQUALS
             | op::LESS
@@ -504,6 +505,15 @@ mod tests {
         assert_eq!(eval(&ex.expr, &e), Ok(Value::Bool(false)));
         let ex2 = parse_when("true || line.absent");
         assert_eq!(eval(&ex2.expr, &e), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn integer_modulo_shares_apply_op() {
+        let e = scenario_env();
+        let ex = parse_when("line.words % 2 == 1");
+        assert_eq!(eval(&ex.expr, &e), Ok(Value::Bool(true)));
+        // A fractional operand is not an integer remainder (dsl 0.24.0 §1).
+        assert!(eval(&parse_when("line.words % 2.5").expr, &e).is_err());
     }
 
     #[test]

@@ -41,6 +41,77 @@ pub struct RelVocab {
     /// feeding stratum (spec §6) — filled by `datalog_check` (Task 9); empty
     /// until then.
     pub guard_tainted: BTreeSet<String>,
+    /// dsl 0.24.0 §3: entity-indexed state families (`run.approval` → its
+    /// `per:` kind `companion`), imports ∪ this document. A rule `cel()`
+    /// guard reads `run.approval[P]` for a rule variable `P` only through
+    /// one of these ([`crate::rule_index`]).
+    pub indexed_state: BTreeMap<String, String>,
+    /// dsl 0.24 T3-6: where each IMPORTED declaration lives (a name declared
+    /// or redeclared inline by this document is absent), so a diagnostic
+    /// about it is reported once, at the schema's own line
+    /// ([`at_origin`]), instead of at `1:1` of every importer.
+    pub origins: DeclOrigins,
+    /// dsl 0.24 T3-6: relations heading a `rules:` entry that failed to
+    /// parse (`E-DATALOG-PARSE`/`-FUNCTION`). Their derivation is unknown, so
+    /// they draw no `W-DERIVE-NO-RULES` and are unbounded in the fact
+    /// envelope (no emptiness verdict cascades from the parse error).
+    pub unparsed_heads: BTreeSet<String>,
+}
+
+/// One imported declaration's home (dsl 0.24 T3-6): the schema file and the
+/// declaration's span IN THAT FILE (line/column already positioned).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeclOrigin {
+    pub file: std::path::PathBuf,
+    pub span: Span,
+}
+
+/// Imported declarations' homes, by kind of declaration (dsl 0.24 T3-6).
+/// `rules`/`facts` are keyed by their authored text (`RuleDecl::raw`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DeclOrigins {
+    pub relations: BTreeMap<String, DeclOrigin>,
+    pub kinds: BTreeMap<String, DeclOrigin>,
+    pub defs: BTreeMap<String, DeclOrigin>,
+    pub rules: BTreeMap<String, DeclOrigin>,
+    pub facts: BTreeMap<String, DeclOrigin>,
+}
+
+/// dsl 0.24 T3-6: re-home a diagnostic about an IMPORTED declaration. The
+/// importer carries it at its frontmatter start (byte 0, like
+/// `E-USES-PARSE`) with the schema file named, and the original — at the
+/// declaration's own line in that file — as its `related` entry; the project
+/// roll-up then folds the identical copies every importer carries into one
+/// report. `None` (a local declaration) returns `d` unchanged.
+pub fn at_origin(d: Diagnostic, origin: Option<&DeclOrigin>) -> Diagnostic {
+    let Some(origin) = origin else {
+        return d;
+    };
+    let file = origin.file.display().to_string();
+    let mut inner = d.clone();
+    inner.span = origin.span;
+    Diagnostic {
+        // The file NAME, not the importer-relative path: the message is the
+        // roll-up key, and importers in different directories must fold into
+        // one report; the `related` entry carries the full location.
+        message: format!(
+            "{} (declared in schema import `{}`)",
+            d.message,
+            origin.file.file_name().map_or(file.clone(), |n| n.to_string_lossy().into_owned())
+        ),
+        span: Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 0,
+            column: 0,
+            utf16_range: (0, 0),
+        },
+        related: vec![lute_core_span::RelatedDiagnostic {
+            file,
+            diagnostic: inner,
+        }],
+        ..d
+    }
 }
 
 impl RelVocab {
@@ -70,6 +141,22 @@ pub const E_DERIVE_TIER: &str = "E-DERIVE-TIER"; // §4/§7.1
 pub const E_RELATION_RESERVED_WRITE: &str = "E-RELATION-RESERVED-WRITE"; // §4/§5
 pub const E_RETRACT_WILDCARD_ASSERT: &str = "E-RETRACT-WILDCARD-ASSERT"; // §5
 pub const E_EXTENDS_RELATION_SIG: &str = "E-EXTENDS-RELATION-SIG"; // §4.1
+
+/// dsl 0.24 T3-8: a relation named like a CEL call/macro/keyword can never be
+/// queried — `holds(has(lamp))` does not even parse.
+pub const E_RELATION_RESERVED_NAME: &str = "E-RELATION-RESERVED-NAME";
+
+/// Names a relation may not take (dsl 0.24 T3-8): the Lute-CEL profile's
+/// calls (`isSet`, `holds`, `count`, `countDistinct`, `validAt`, `now`,
+/// `visited`), CEL's macros (`has`, `all`, `exists`, `exists_one`, `map`,
+/// `filter`) and CEL's reserved words — each either parses as something
+/// else inside a fact query or is not an identifier at all.
+pub const RESERVED_RELATION_NAMES: &[&str] = &[
+    "all", "as", "break", "const", "continue", "count", "countDistinct", "else", "exists",
+    "exists_one", "false", "filter", "for", "function", "has", "holds", "if", "import", "in",
+    "isSet", "let", "loop", "map", "namespace", "now", "null", "package", "return", "true",
+    "validAt", "var", "visited", "void", "while",
+];
 
 /// Build a `Layer::Logic` error diagnostic — rel_schema.rs's checks are
 /// schema/graph-level (Global Constraints' layer table).
@@ -128,6 +215,16 @@ pub fn validate_rel_decls(
         ));
     }
     for (name, decl) in &rels.relations {
+        if RESERVED_RELATION_NAMES.contains(&name.as_str()) {
+            out.push(diag(
+                E_RELATION_RESERVED_NAME,
+                format!(
+                    "relation `{name}` uses a reserved CEL name; `holds({name}(…))` cannot be \
+                     written — rename the relation (dsl 0.24 T3-8)"
+                ),
+                span_of(name),
+            ));
+        }
         if decl.args.is_empty() {
             out.push(diag(
                 E_RELATION_EMPTY,
@@ -291,6 +388,26 @@ pub fn build_rel_vocab(
         &span_of,
     ));
 
+    // dsl 0.24 T3-6: the imported declarations' homes, minus every name this
+    // document (re)declares inline — a merged-check diagnostic about an
+    // imported declaration is reported at the schema's line, once.
+    let mut origins = imports.rel.origins.clone();
+    for name in typed.rel_kinds.kinds.keys() {
+        origins.kinds.remove(name);
+    }
+    for name in typed.rel_relations.relations.keys() {
+        origins.relations.remove(name);
+    }
+    for name in typed.defs.keys() {
+        origins.defs.remove(name);
+    }
+    for r in &typed.rel_rules {
+        origins.rules.remove(&r.raw);
+    }
+    for f in &typed.rel_facts {
+        origins.facts.remove(&f.raw);
+    }
+
     // Merged check (a): every relation arg domain name must resolve to a
     // declared entity kind, enum, plugin/core domain, or `bool` — else
     // E-RELATION-DOMAIN (D4 residual bucket). Runs over the FULL merged set
@@ -304,12 +421,15 @@ pub fn build_rel_vocab(
             {
                 continue;
             }
-            diags.push(diag(
-                E_RELATION_DOMAIN,
-                format!(
-                    "relation `{name}` argument domain `{arg}` is not a declared entity kind, enum, or domain (dsl 0.3.0 §4)"
+            diags.push(at_origin(
+                diag(
+                    E_RELATION_DOMAIN,
+                    format!(
+                        "relation `{name}` argument domain `{arg}` is not a declared entity kind, enum, or domain (dsl 0.3.0 §4)"
+                    ),
+                    span_of(arg),
                 ),
-                span_of(arg),
+                origins.relations.get(name),
             ));
         }
     }
@@ -318,18 +438,23 @@ pub fn build_rel_vocab(
     // predicate namespace (§4) — a name declared as both is E-KIND-NAME-CLASH.
     for name in kinds.keys() {
         if relations.contains_key(name) {
-            diags.push(diag(
-                E_KIND_NAME_CLASH,
-                format!(
-                    "`{name}` is declared as both an entity kind and a relation; kinds and relations share one predicate namespace (dsl 0.3.0 §4)"
+            diags.push(at_origin(
+                diag(
+                    E_KIND_NAME_CLASH,
+                    format!(
+                        "`{name}` is declared as both an entity kind and a relation; kinds and relations share one predicate namespace (dsl 0.3.0 §4)"
+                    ),
+                    span_of(name),
                 ),
-                span_of(name),
+                origins.relations.get(name).filter(|_| origins.kinds.contains_key(name)),
             ));
         }
     }
 
     // Merged check (c): one-id-one-kind (§3.1) — an id in TWO closed kinds'
-    // `members:` is E-ENTITY-KIND-CLASH.
+    // `members:` is E-ENTITY-KIND-CLASH, unless the two kinds share a root:
+    // a dsl 0.24.0 §3 sub-kind (`subsetOf:`) re-lists members of its parent,
+    // and two sub-kinds of one parent may overlap.
     let closed: Vec<(&String, &Vec<String>)> = kinds
         .iter()
         .filter_map(|(name, decl)| match &decl.shape {
@@ -341,25 +466,34 @@ pub fn build_rel_vocab(
         for j in (i + 1)..closed.len() {
             let (name_a, members_a) = closed[i];
             let (name_b, members_b) = closed[j];
+            if root_kind(&kinds, name_a) == root_kind(&kinds, name_b) {
+                continue;
+            }
             for id in members_a {
                 if members_b.contains(id) {
-                    diags.push(diag(
-                        E_ENTITY_KIND_CLASH,
-                        format!(
-                            "id `{id}` is a member of both entity kinds `{name_a}` and `{name_b}`; an id belongs to exactly one kind (dsl 0.3.0 §3.1)"
+                    diags.push(at_origin(
+                        diag(
+                            E_ENTITY_KIND_CLASH,
+                            format!(
+                                "id `{id}` is a member of both entity kinds `{name_a}` and `{name_b}`; an id belongs to exactly one kind (dsl 0.3.0 §3.1) — declare one a sub-kind of the other with `subsetOf:` (dsl 0.24.0 §3)"
+                            ),
+                            span_of(id),
                         ),
-                        span_of(id),
+                        origins.kinds.get(name_b).filter(|_| origins.kinds.contains_key(name_a)),
                     ));
                 }
             }
         }
     }
+    diags.extend(check_sub_kinds(&kinds, &span_of));
 
     // Facts/rules always UNION (spec §4.1) — imports first, then inline.
     let mut facts = imports.rel.facts.clone();
     facts.extend(typed.rel_facts.iter().cloned());
     let mut rules = imports.rel.rules.clone();
     rules.extend(typed.rel_rules.iter().cloned());
+    let mut indexed_state = imports.rel.indexed_state.clone();
+    indexed_state.extend(typed.state_index.iter().map(|(p, k)| (p.clone(), k.clone())));
 
     let vocab = RelVocab {
         kinds,
@@ -368,6 +502,15 @@ pub fn build_rel_vocab(
         facts,
         rules,
         guard_tainted: BTreeSet::new(),
+        indexed_state,
+        origins,
+        unparsed_heads: imports
+            .rel
+            .unparsed_heads
+            .iter()
+            .chain(&typed.rel_rule_failed_heads)
+            .cloned()
+            .collect(),
     };
 
     // Merged check (d): every seed `facts:` entry is GROUND — checked as for
@@ -390,10 +533,75 @@ pub fn build_rel_vocab(
                 );
             }
         }
-        diags.extend(fdiags);
+        let origin = vocab.origins.facts.get(&f.raw);
+        diags.extend(fdiags.into_iter().map(|d| at_origin(d, origin)));
     }
 
     (vocab, diags)
+}
+
+/// The top of `kind`'s `subsetOf:` chain (itself when it has no parent).
+/// Cycle-safe: stops after one step per declared kind.
+fn root_kind<'a>(kinds: &'a BTreeMap<String, EntityKindDecl>, kind: &'a str) -> &'a str {
+    let mut cur = kind;
+    for _ in 0..kinds.len() {
+        match kinds.get(cur).and_then(|d| d.subset_of.as_deref()) {
+            Some(parent) if kinds.contains_key(parent) => cur = parent,
+            _ => break,
+        }
+    }
+    cur
+}
+
+/// dsl 0.24.0 §3: every `subsetOf:` names a declared, closed parent kind, is
+/// not a loop, belongs to a kind that lists its own `members:`, and every
+/// member is a member of the parent — else `E-ENTITY-KIND-SHAPE`.
+fn check_sub_kinds(
+    kinds: &BTreeMap<String, EntityKindDecl>,
+    span_of: &dyn Fn(&str) -> Span,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for (name, decl) in kinds {
+        let Some(parent) = decl.subset_of.as_deref() else {
+            continue;
+        };
+        let message = match (&decl.shape, kinds.get(parent).map(|p| &p.shape)) {
+            (KindShape::Invalid, _) | (_, Some(KindShape::Invalid)) => continue,
+            (_, None) => format!(
+                "entity kind `{name}` is `subsetOf: {parent}`, but `{parent}` is not a declared entity kind (dsl 0.24.0 §3)"
+            ),
+            (KindShape::Open, _) => format!(
+                "entity kind `{name}` is `subsetOf: {parent}` and `open:`; a sub-kind lists its `members:`, each a member of `{parent}` (dsl 0.24.0 §3)"
+            ),
+            (_, Some(KindShape::Open)) => format!(
+                "entity kind `{name}` is `subsetOf: {parent}`, but `{parent}` is `open:`; a sub-kind's parent lists its `members:` (dsl 0.24.0 §3)"
+            ),
+            (KindShape::Members(members), Some(KindShape::Members(parent_members))) => {
+                if lute_manifest::relations::kind_within(kinds, parent, name) {
+                    format!(
+                        "entity kind `{name}` is `subsetOf: {parent}`, which is `{name}` itself or one of its own sub-kinds; `subsetOf:` chains must not loop (dsl 0.24.0 §3)"
+                    )
+                } else {
+                    let outside: Vec<&str> = members
+                        .iter()
+                        .filter(|m| !parent_members.contains(m))
+                        .map(String::as_str)
+                        .collect();
+                    if outside.is_empty() {
+                        continue;
+                    }
+                    format!(
+                        "entity kind `{name}` is `subsetOf: {parent}`, but {} not a member of `{parent}`; every member of a sub-kind is a member of its parent — add {} to `{parent}`'s `members:` (dsl 0.24.0 §3)",
+                        outside.iter().map(|m| format!("`{m}`")).collect::<Vec<_>>().join(", ")
+                            + if outside.len() == 1 { " is" } else { " are" },
+                        if outside.len() == 1 { "it" } else { "them" }
+                    )
+                }
+            }
+        };
+        out.push(diag(E_ENTITY_KIND_SHAPE, message, span_of(name)));
+    }
+    out
 }
 
 /// The ONE atom/pattern closure checker (§4's closure checks, D10 included):

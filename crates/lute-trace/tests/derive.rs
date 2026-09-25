@@ -219,6 +219,71 @@ rules:
     assert!(report.forced_unknown.is_empty(), "{:?}", report.forced_unknown);
 }
 
+/// dsl 0.24 T1-1/T3-9: a rule guard's `@def` is expanded (it used to stay
+/// undecided and silently drop the rule), `_` in a rule body is an
+/// anonymous variable (existential under `not`), and `countDistinct` counts
+/// witnesses rather than tuples — `ann` saw two things, `bob` one: three
+/// tuples, two witnesses.
+const RULES_024: &str = r#"---
+kind: scene
+character: x
+season: 1
+episode: 1
+state:
+  run.day: { type: number, default: 1 }
+entities:
+  person: { members: [ann, bob, cy] }
+  place: { members: [dock, pier] }
+relations:
+  listed: { args: [person] }
+  sawAt: { args: [person, place] }
+  testified: { args: [person], derive: true }
+  quiet: { args: [person], derive: true }
+  early: { args: [person], derive: true }
+facts:
+  - "listed(ann)"
+  - "listed(bob)"
+  - "listed(cy)"
+  - "sawAt(ann, dock)"
+  - "sawAt(ann, pier)"
+  - "sawAt(bob, dock)"
+rules:
+  - "testified(W) :- sawAt(W, _)"
+  - "quiet(W) :- listed(W), not sawAt(W, _)"
+  - "early(W) :- listed(W), cel(\"@firstDay\")"
+defs:
+  firstDay: "run.day == 1"
+---
+## Shot 1.
+<branch id="count">
+<choice id="yes" label="Yes" when="holds(testified(bob)) && holds(quiet(cy)) && !holds(quiet(ann)) && holds(early(ann)) && countDistinct(sawAt(W, _), W) == 2">
+@narrator: yes
+</choice>
+<choice id="no" label="No" when="countDistinct(sawAt(W, _), W) >= 3">
+@narrator: no
+</choice>
+<choice id="other" label="Other">
+@narrator: other
+</choice>
+</branch>
+"#;
+
+#[test]
+fn anonymous_rule_variables_defs_in_rule_guards_and_count_distinct_evaluate() {
+    let input = input_for(RULES_024, "rules_024.lute", Path::new("."));
+    let pick = |id: &str| MockSet {
+        choose: [("count".to_string(), vec![id.to_string()])].into(),
+        ..Default::default()
+    };
+    let (report, exit) = trace_document(&input, pick("yes"));
+    assert!(matches!(exit, TraceExit::Complete), "{exit:?} {:?}", report.unresolved);
+    let d = report.decisions.iter().find(|d| d.id == "count").expect("decision");
+    assert!(!d.forced && d.eligible.contains(&"yes".to_string()), "{d:?}");
+    assert!(!d.eligible.contains(&"no".to_string()), "{d:?}");
+    let (_, exit) = trace_document(&input, pick("no"));
+    assert!(matches!(exit, TraceExit::Refused(_)), "three tuples are two witnesses: {exit:?}");
+}
+
 // ---------------------------------------------------------------------
 // `derive:` mock key and precedence.
 // ---------------------------------------------------------------------

@@ -132,8 +132,10 @@ fn directive_hover(snapshot: &CapabilitySnapshot, tag: &str) -> Option<String> {
     if tag == lute_syntax::ast::ACCEPT_DIRECTIVE {
         return Some(
             "**::accept** — core\n\nThe player accepts an accept-driven quest (one without \
-             `start`) at this point; the engine activates it if it is `unset` and ignores it \
-             otherwise (dsl 0.21.0 §7a.3).\n\n**attributes:**\n- `quest`: quest id (required)"
+             `start`; a subquest child only with `activate=\"accept\"`) at this point; the engine \
+             activates it if it is `unset` and ignores it otherwise (dsl 0.21.0 §7a.3, 0.24.0 \
+             §2).\n\n**attributes:**\n- `quest`: quest id (required)\n- `at`: `\"nextRun\"` — \
+             queue the acceptance until after the next `newRun` reset (optional)"
                 .to_string(),
         );
     }
@@ -273,13 +275,19 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `start`: cel<bool>\n- `fail`: cel<bool>\n\
              - `after`: prereq — `completed(q)`/`active(q)`/`visited(k)` gate\n\
              - `tier`: `\"user\"` (default, status persists across runs) or `\"run\"` \
-             (status and objectives reset when a run starts) (dsl 0.22.0 §7)"
+             (status and objectives reset when a run starts) (dsl 0.22.0 §7)\n\
+             - `activate`: `\"accept\"` — a subquest child waits for `::accept` instead of \
+             activating with its parent (dsl 0.24.0 §2)\n\
+             - `complete`: `\"all\"` (default) or `\"any\"` — `any` completes on the first \
+             required child done and fails the still-open rest as `superseded` (dsl 0.24.0 §2)"
                 .to_string()
         }
         QuestConstruct::On => {
             "**\\<on>** — an ECA trigger fired by a lifecycle or \
              capability-declared world event (dsl 0.2.0 §4).\n\n\
-             **attributes:**\n- `event` (required): string\n- `when`: cel<bool>"
+             **attributes:**\n- `event` (required): string\n- `when`: cel<bool>\n\
+             - `target`: dotted id — fires only when the same-named occasion is raised \
+             for this target (dsl 0.24.0 §2)"
                 .to_string()
         }
         QuestConstruct::Objective => {
@@ -288,7 +296,12 @@ fn construct_hover(construct: QuestConstruct) -> String {
              **attributes:**\n- `id` (required): string\n- `done`: cel<bool> (required unless `quest`)\n\
              - `quest`: string — a child quest whose completion completes this objective\n\
              - `when`: cel<bool>\n- `title`: string\n- `optional`: bool\n\
-             - `on`: ident — the occasion that judges this objective (dsl 0.21.0 §7a.2)"
+             - `on`: ident — the occasion that judges this objective (dsl 0.21.0 §7a.2)\n\
+             - `target`: dotted id — narrows `on` to the occasion raised for this target\n\
+             - `by`: cel<bool> — deadline, judged at every settle; `done` wins a tie \
+             (dsl 0.24.0 §2.1)\n\
+             - `until`: cel<bool> — place-bound deadline, judged only when `on` \
+             (and `target`) is raised, after `done` (requires `on`; dsl 0.24.0 §2.1)"
                 .to_string()
         }
         QuestConstruct::Entry => {
@@ -306,8 +319,10 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `when`: cel<bool> — eligibility; presented only while it holds\n\
              - `on`: ident — the occasion this entry answers as a beat (dsl 0.21.0 §3.2)\n\
              - `priority`: integer — beat priority, higher wins (requires `on`)\n\
-             - `once`: `\"run\"` or `\"user\"` — not eligible once read this run / ever \
-             (requires `on`; absent = repeatable) (dsl 0.22.0 §7)"
+             - `once`: `\"run\"`, `\"user\"`, `\"day\"`, or `\"slot\"` — not eligible once \
+             read this run / ever / this clock day / this clock slot (requires `on`; \
+             absent = repeatable; `day`/`slot` need a declared `clock:`) (dsl 0.22.0 §7, \
+             0.24.0 §1)"
                 .to_string()
         }
         QuestConstruct::Beat => {
@@ -322,8 +337,9 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `title`: string — menu label, localized\n\
              - `when`: cel<bool> — eligibility; may not read `scene.*`\n\
              - `priority`: integer — beat priority, higher wins (default 0)\n\
-             - `once`: `\"run\"` (default), `\"user\"`, or `\"false\"` — spent once \
-             presented this run / ever / never\n\
+             - `once`: `\"run\"` (default), `\"user\"`, `\"false\"`, `\"day\"`, or \
+             `\"slot\"` — spent once presented this run / ever / never / this clock day / \
+             this clock slot (`day`/`slot` need a declared `clock:`, dsl 0.24.0 §1)\n\
              - `also`: bool flag — on a `select: first` occasion, presented after \
              the winner in addition to it"
                 .to_string()
@@ -404,6 +420,18 @@ mod tests {
         let s = contents_text(&h);
         assert!(s.contains("number"), "shows the type: {s}");
         assert!(s.contains("3"), "shows the default: {s}");
+    }
+
+    /// dsl 0.24.0 §1: a state path inside a `::set{… when="…"}` guard
+    /// hovers like one in the expression.
+    #[test]
+    fn hover_on_state_path_in_set_guard() {
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.a: { type: number, default: 0 }\n  scene.gate: { type: bool, default: false }\n---\n## Shot 1.\n::set{scene.a += 1 when=\"scene.gate\"}\n";
+        let doc = parsed(text);
+        let off = pos_on(text, "scene.gate\"}");
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("bool"), "shows the guard path's type: {s}");
     }
 
     #[test]

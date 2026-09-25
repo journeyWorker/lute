@@ -31,6 +31,7 @@ fn snapshot() -> CapabilitySnapshot {
                 select,
                 target,
                 description: None,
+                ..Default::default()
             },
         );
     }

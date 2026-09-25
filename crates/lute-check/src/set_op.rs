@@ -68,6 +68,9 @@ pub enum WriteOwner {
     /// Any `prev.*` path (dsl 0.23.0 §6): the read-only mirror of the
     /// previous run's `run.*` values, snapshotted by the engine at run end.
     PrevReserved,
+    /// Any `clock.*` path (dsl 0.24.0 §1): derived from the clock's `day`
+    /// and `slot`, read-only.
+    ClockReserved,
     /// A declared path marked `owner: engine` (dsl 0.22.0 §1.2): the engine
     /// writes it at runtime (and `engine:` play steps / trace mocks in the
     /// toolchain); content may only read it.
@@ -87,6 +90,8 @@ pub(crate) fn classify_write(path: &str, schema: &StateSchema) -> WriteOwner {
         WriteOwner::EntryReserved
     } else if crate::cel_paths::is_prev_path(path) {
         WriteOwner::PrevReserved
+    } else if lute_manifest::clock::is_clock_path(path) {
+        WriteOwner::ClockReserved
     } else if engine_owned(path, schema) {
         WriteOwner::Engine
     } else {
@@ -181,6 +186,19 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnos
                     "`::set` cannot write `{}`: `prev.run.*` is the read-only mirror of the \
                      value `run.*` had when the previous run ended, snapshotted by the engine \
                      (dsl 0.23.0 §6)",
+                    set.path
+                ),
+                set.path_span,
+            ));
+            return diags;
+        }
+        WriteOwner::ClockReserved => {
+            diags.push(diag(
+                "E-QUEST-RESERVED-WRITE",
+                format!(
+                    "`::set` cannot write `{}`: `clock.*` is derived from the declared clock's \
+                     `day` and `slot` paths and is read-only; the engine moves the clock (in \
+                     `lute play`, an `advance:` step) (dsl 0.24.0 §1)",
                     set.path
                 ),
                 set.path_span,
@@ -350,6 +368,7 @@ mod tests {
             op: op.to_string(),
             expr: CelSlot::raw(CelKind::SetExpr, rhs.to_string(), test_span()),
             span: test_span(),
+            when: None,
         }
     }
 

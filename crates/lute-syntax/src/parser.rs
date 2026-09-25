@@ -600,7 +600,8 @@ impl Parser<'_> {
         Node::Directive(Directive { tag, attrs, when, span })
     }
 
-    /// `Set ::= "::set{" Path WS AssignOp WS CelExpr "}"` (§7.3.4). Layer = Logic.
+    /// `Set ::= "::set{" Path WS AssignOp WS CelExpr (WS "when=" Quoted)? "}"`
+    /// (§7.3.4; dsl 0.24.0 §1 adds the trailing guard). Layer = Logic.
     fn parse_set(&mut self) -> Node {
         let i = self.cursor;
         let (s, e) = self.lines[i];
@@ -643,11 +644,23 @@ impl Parser<'_> {
             j += 1;
         }
         let expr_start = j;
-        let expr_raw = inner[expr_start..].trim_end();
-        let expr_end = expr_start + expr_raw.len();
+        let tail = &inner[expr_start..];
+        let (expr_len, when) = match split_set_when(tail) {
+            Some((expr_len, q_open, q_close)) => {
+                let (a, b) = (inner_start + expr_start + q_open, inner_start + expr_start + q_close);
+                let slot = CelSlot::raw(
+                    CelKind::Condition,
+                    self.body[a..b].to_string(),
+                    self.span(a, b),
+                );
+                (expr_len, Some(slot))
+            }
+            None => (tail.trim_end().len(), None),
+        };
+        let expr_end = expr_start + expr_len;
         let expr = CelSlot::raw(
             CelKind::SetExpr,
-            expr_raw.to_string(),
+            inner[expr_start..expr_end].to_string(),
             self.span(inner_start + expr_start, inner_start + expr_end),
         );
         let span = self.span(cstart, node_end);
@@ -658,6 +671,7 @@ impl Parser<'_> {
             op: op.to_string(),
             expr,
             span,
+            when,
         })
     }
 
@@ -906,10 +920,9 @@ impl Parser<'_> {
                         break;
                     }
                     Some(rel) => {
-                        let inner = text[j + 2..j + 2 + rel].trim().to_string();
-                        let kind = crate::ast::classify_interp(&inner);
                         let (s, e) = (text_start_body + j, text_start_body + j + 2 + rel + 2);
-                        out.push(Interp { kind, raw: inner, span: self.span(s, e) });
+                        let span = self.span(s, e);
+                        out.push(crate::ast::interp_from_inner(&text[j + 2..j + 2 + rel], span));
                         j = j + 2 + rel + 2;
                         continue;
                     }
@@ -941,6 +954,64 @@ pub(crate) fn is_ident_byte(b: u8) -> bool {
 
 fn leading_ws(s: &str) -> usize {
     s.len() - s.trim_start().len()
+}
+
+/// dsl 0.24.0 §1: split a `::set` tail (`<expr> when="<cel>"`) at its
+/// trailing guard. Returns `(expr_len, q_open, q_close)` — the trimmed
+/// expression's length and the byte range of the guard text between its
+/// double quotes, all relative to `tail` — or `None` when the tail does not
+/// END in a well-formed `when="…"`. The scan skips quoted CEL strings (so a
+/// `"when=…"` string literal in the expression never splits) and requires a
+/// non-empty expression before whitespace-separated `when`. A malformed or
+/// non-trailing `when=` stays part of the expression, where the CEL parse
+/// reports it.
+fn split_set_when(tail: &str) -> Option<(usize, usize, usize)> {
+    let b = tail.as_bytes();
+    let mut quote: Option<u8> = None;
+    let mut k = 0;
+    while k < b.len() {
+        let c = b[k];
+        if let Some(q) = quote {
+            if c == b'\\' {
+                k += 2;
+                continue;
+            }
+            if c == q {
+                quote = None;
+            }
+            k += 1;
+            continue;
+        }
+        if c == b'"' || c == b'\'' {
+            quote = Some(c);
+            k += 1;
+            continue;
+        }
+        if k > 0 && (b[k - 1] == b' ' || b[k - 1] == b'\t') && tail[k..].starts_with("when") {
+            let mut m = k + "when".len();
+            while m < b.len() && (b[m] == b' ' || b[m] == b'\t') {
+                m += 1;
+            }
+            if m < b.len() && b[m] == b'=' {
+                m += 1;
+                while m < b.len() && (b[m] == b' ' || b[m] == b'\t') {
+                    m += 1;
+                }
+                if m < b.len() && b[m] == b'"' {
+                    let q_open = m + 1;
+                    if let Some(rel) = tail[q_open..].find('"') {
+                        let q_close = q_open + rel;
+                        let expr_len = tail[..k].trim_end().len();
+                        if tail[q_close + 1..].trim().is_empty() && expr_len > 0 {
+                            return Some((expr_len, q_open, q_close));
+                        }
+                    }
+                }
+            }
+        }
+        k += 1;
+    }
+    None
 }
 
 /// The D13 malformed-parse sentinel: an empty-relation [`FactPattern`] every
@@ -1158,6 +1229,71 @@ mod tests {
             matches!(body[0], Node::Set(_)),
             "::set must classify as Set, not Directive"
         );
+    }
+
+    fn only_set(src_body: &str) -> Set {
+        let src = format!("---\ncharacter: x\n---\n## Shot 1.\n{src_body}\n");
+        let (doc, diags) = parse(&src);
+        assert!(diags.is_empty(), "{diags:?}");
+        match &doc.shots[0].body[0] {
+            Node::Set(s) => {
+                // Slot spans index the source text verbatim.
+                assert_eq!(&src[s.expr.span.byte_start..s.expr.span.byte_end], s.expr.raw);
+                if let Some(w) = &s.when {
+                    assert_eq!(&src[w.span.byte_start..w.span.byte_end], w.raw);
+                }
+                s.clone()
+            }
+            other => panic!("expected Set, got {other:?}"),
+        }
+    }
+
+    /// dsl 0.24.0 §1: a trailing `when="…"` is the write's guard, split off
+    /// the expression into a Condition slot.
+    #[test]
+    fn set_trailing_when_is_a_condition_slot() {
+        let s = only_set("::set{run.aff.wren += 1 when=\"run.warmed.wren < run.day\"}");
+        assert_eq!((s.path.as_str(), s.op.as_str()), ("run.aff.wren", "+="));
+        assert_eq!(s.expr.raw, "1");
+        let w = s.when.expect("guard parsed");
+        assert_eq!(w.raw, "run.warmed.wren < run.day");
+        assert_eq!(w.kind, CelKind::Condition);
+
+        // Unguarded stays byte-identical.
+        let s = only_set("::set{run.route = 'sol'}");
+        assert_eq!(s.expr.raw, "'sol'");
+        assert!(s.when.is_none());
+    }
+
+    /// A `when=` inside a string literal, or one not at the end, is still
+    /// expression text (the CEL parse reports the latter).
+    #[test]
+    fn set_when_inside_a_string_or_not_trailing_stays_expression() {
+        let s = only_set("::set{run.note = \"a when=\\\"b\\\"\"}");
+        assert!(s.when.is_none(), "{s:?}");
+        assert_eq!(s.expr.raw, "\"a when=\\\"b\\\"\"");
+        let s = only_set("::set{run.n = 1 when=\"run.n > 0\" + 2}");
+        assert!(s.when.is_none(), "{s:?}");
+        let s = only_set("::set{run.note = 'x' when=\"run.note == 'y'\"}");
+        assert_eq!(s.expr.raw, "'x'");
+        assert_eq!(s.when.expect("guard").raw, "run.note == 'y'");
+    }
+
+    /// A guarded write is logic; a `<track>` holds none (§7.4).
+    #[test]
+    fn set_when_in_a_track_clip_is_timeline_content() {
+        let (doc, diags) = parse(
+            "---\ncharacter: x\n---\n## Shot 1.\n<timeline duration=\"1\">\n<track subject=\"a\">\n\
+             ::set{scene.e = 5 when=\"scene.f\"}\n</track>\n</timeline>\n",
+        );
+        assert!(diags.iter().any(|d| d.code == E_TIMELINE_CONTENT), "{diags:?}");
+        let Node::Timeline(t) = &doc.shots[0].body[0] else {
+            panic!("expected timeline");
+        };
+        let crate::ast::ClipNode::Set(s) = &t.tracks[0].clips[0].node else {
+            panic!("expected set clip");
+        };
+        assert!(s.when.is_none(), "a clip set never carries a guard");
     }
 
     #[test]
@@ -1702,6 +1838,40 @@ mod tests {
         let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
         let kinds: Vec<_> = l.interps.iter().map(|p| (p.kind, p.raw.as_str())).collect();
         assert_eq!(kinds, [(InterpKind::Path, "later")]);
+    }
+
+    #[test]
+    fn interp_format_hint_is_split_off_the_referent() {
+        // dsl 0.24.0 §4: `{{x:hint}}` — `raw` is the referent alone, so every
+        // referent consumer (checker, trace, compile) is unchanged by a hint;
+        // an unknown hint is still scanned (the checker rejects it).
+        let (doc, diags) = parse(
+            "## Shot 1.\n@marina: {{user.deaths:ordinal}} {{ @nth(run.a ? 1 : 2) : ordinal }} {{run.n:plural}} {{run.n}}\n",
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        let got: Vec<_> = l
+            .interps
+            .iter()
+            .map(|p| (p.kind, p.raw.as_str(), p.format.as_deref()))
+            .collect();
+        assert_eq!(got, [
+            (InterpKind::Path, "user.deaths", Some("ordinal")),
+            (InterpKind::Ref, "@nth(run.a ? 1 : 2)", Some("ordinal")),
+            (InterpKind::Path, "run.n", Some("plural")),
+            (InterpKind::Path, "run.n", None),
+        ]);
+        // The span still covers the whole marker, hint included.
+        let s = &l.interps[0].span;
+        assert_eq!(&l.text[(s.byte_start - l.text_span.byte_start)..(s.byte_end - l.text_span.byte_start)], "{{user.deaths:ordinal}}");
+    }
+
+    #[test]
+    fn a_colon_inside_a_call_or_before_a_non_identifier_is_not_a_hint() {
+        let (doc, _) = parse("## Shot 1.\n@marina: {{@f(a ? b : c)}} {{run.n:}} {{run.n:1}}\n");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        let got: Vec<_> = l.interps.iter().map(|p| (p.raw.as_str(), p.format.is_some())).collect();
+        assert_eq!(got, [("@f(a ? b : c)", false), ("run.n:", false), ("run.n:1", false)]);
     }
 
     #[test]

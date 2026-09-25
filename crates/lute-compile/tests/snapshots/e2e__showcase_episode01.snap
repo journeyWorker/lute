@@ -6,7 +6,7 @@ expression: json
   "kind": "scene",
   "lute": "0.23.1",
   "irVersion": "0.23.1",
-  "capabilityVersion": "b7333d56c368f060dd7f6792712f8a73e12ddb6acea156e85b968a07b1e8b315",
+  "capabilityVersion": "c8e63e6b3a4a27d4e0dad1e6d492e0665b92d12895b487a3330f63cacb9e9e55",
   "meta": {
     "id": "marina.s01ep01",
     "character": "marina",
@@ -456,7 +456,7 @@ expression: json
           "id": "linger",
           "label": "Ask, and linger a while",
           "lineId": "marina.s01ep01.approach.linger",
-          "when": "(user.level >= (1))",
+          "when": "(user.level >= 1)",
           "expr": {
             "op": ">=",
             "l": {
@@ -818,7 +818,7 @@ expression: json
       "subject": "scene.affect.marina",
       "arms": [
         {
-          "test": "(user.level >= (3))",
+          "test": "(user.level >= 3)",
           "target": "006-0700",
           "expr": {
             "op": ">=",

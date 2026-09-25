@@ -37,12 +37,19 @@ use lute_manifest::types::Type;
 /// map/struct literals. Emitted at the slot span. New in 0.1.0.
 pub const E_CEL_PROFILE: &str = "E-CEL-PROFILE";
 
+/// dsl 0.24.0 §1: an operand of integer `%` that is not an integer — a
+/// non-`number` operand (`'a' % 2`, `run.flag % 2`) or a fractional literal
+/// (`run.day % 2.5`). A `number` path is accepted: whether its value is
+/// integral is a runtime question (`%` of a fractional value is unknown).
+/// Emitted at the slot span.
+pub const E_CEL_TYPE: &str = "E-CEL-TYPE";
+
 /// dsl 0.3.0 §9.3 + D7: names whose read implies a hidden non-monotonic
 /// dependency on the fact store or narrative time — banned inside a rule-body
 /// CEL guard (`cel("...")` in a `rules:` entry). `now` is D7's deliberate
 /// extension beyond the spec's `holds`/`count`/`validAt` — a guard has no
 /// business reading the clock either.
-const GUARD_FIREWALL_CALLS: &[&str] = &["holds", "count", "validAt", "now"];
+const GUARD_FIREWALL_CALLS: &[&str] = &["holds", "count", "countDistinct", "validAt", "now"];
 
 /// `E-DATALOG-GUARD-FACT` (0.3.0, §7.2/§7.3 + D7): a rule-body guard reads
 /// the fact store or narrative time via `holds`/`count`/`validAt`/`now`.
@@ -232,6 +239,8 @@ pub fn check_cel_slot(
                     // comparison against another narrative-time value, or as
                     // `validAt`'s second argument (`E-TEMPORAL-ARG`).
                     crate::temporal::check_temporal(&mroot.expr, slot, ctx, &mut diags);
+                    // dsl 0.24.0 §1: both operands of `%` are integers.
+                    check_modulo_operands(&mroot.expr, slot.span, &ctx.env.state, &mut diags);
                 }
             }
         }
@@ -258,9 +267,19 @@ pub fn check_cel_slot(
 pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in &vocab.rules {
+        let first = diags.len();
         for lit in &rule.rule.body {
             let BodyLiteral::Guard { cel, .. } = lit else {
                 continue;
+            };
+            // dsl 0.24.0 §3: `run.approval[P]` reads the member bound to `P`;
+            // validated here, then checked below as a member path.
+            let cel = &match crate::rule_index::check_indexed_guard(&rule.rule, cel, vocab, rule.span) {
+                Ok(cel) => cel,
+                Err(ds) => {
+                    diags.extend(ds);
+                    continue;
+                }
             };
             let mut arena = CelArena::default();
             let Some(handle) = lute_cel::parse_slot_marked_refs(&mut arena, cel) else {
@@ -275,6 +294,76 @@ pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
                 check_state_path(&use_.path, &slot, ctx, &mut diags);
             }
             check_cel_profile(&root.expr, &slot, &[], &mut diags);
+            check_modulo_operands(&root.expr, rule.span, &ctx.env.state, &mut diags);
+        }
+        // dsl 0.24 T3-6: an imported rule's guard problems at the schema line.
+        if let Some(origin) = vocab.origins.rules.get(&rule.raw) {
+            for d in &mut diags[first..] {
+                *d = crate::rel_schema::at_origin(d.clone(), Some(origin));
+            }
+        }
+    }
+    diags
+}
+
+/// dsl 0.24 T1-1: a rule `cel("…")` guard whose `@def` / `@def(args)` cannot
+/// be expanded — the def is undefined, takes a different number of args, or
+/// expands through a cycle — or that uses the match subject `$`, which a rule
+/// guard never has. Emitted at the rule's span.
+pub const E_RULE_GUARD_DEF: &str = "E-RULE-GUARD-DEF";
+
+/// Expand every `@def` / `@def(args)` in one rule-guard fragment against the
+/// project's def table (dsl 0.24 T1-1). The output is `@`-free; an argument
+/// naming a rule variable (`@open(L)`) is spliced as `(L)` and bound by the
+/// evaluator exactly as an inline `L` is. A guard without refs is returned
+/// verbatim. `Err` says why the guard cannot be expanded.
+pub fn expand_rule_guard(cel: &str, defs: &crate::cel_expand::DefTable<'_>) -> Result<String, String> {
+    for r in lute_cel::scan_refs(cel) {
+        if r.is_dollar {
+            return Err("`$` (a match subject) has no meaning in a rule guard".to_string());
+        }
+        let Some(params) = defs.bodies.get(&r.name).map(|_| defs.params.get(&r.name)) else {
+            return Err(format!("`@{}` names no def", r.name));
+        };
+        let want = params.map_or(0, Vec::len);
+        let got = r.call.as_ref().map_or(0, |c| c.args.len());
+        if want != got {
+            return Err(format!("`@{}` takes {want} arg(s), got {got}", r.name));
+        }
+    }
+    crate::cel_expand::expand_cel(cel, defs, None, &mut Vec::new())
+}
+
+/// dsl 0.24 T1-1: rewrite every rule guard of `vocab` to its def-expanded
+/// text, in place, BEFORE the vocabulary is frozen — so the checker's own
+/// guard passes ([`check_rule_guards`]: the fact/time firewall, profile and
+/// path checks), the compiled IR `rules` and trace's `Program::from_vocab`
+/// all see one expanded body, and the runtime never evaluates an `@ref` it
+/// cannot resolve. A guard that cannot be expanded keeps its text and is
+/// [`E_RULE_GUARD_DEF`].
+pub fn expand_rule_guards(vocab: &mut RelVocab, defs: &crate::cel_expand::DefTable<'_>) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let RelVocab { rules, origins, .. } = vocab;
+    for rule in rules.iter_mut() {
+        for lit in &mut rule.rule.body {
+            let BodyLiteral::Guard { cel, .. } = lit else {
+                continue;
+            };
+            match expand_rule_guard(cel, defs) {
+                Ok(expanded) => *cel = expanded,
+                Err(why) => diags.push(crate::rel_schema::at_origin(
+                    diag(
+                        E_RULE_GUARD_DEF,
+                        format!(
+                            "rule `{}`: guard `cel(\"{cel}\")` cannot be expanded: {why}; a \
+                             rule guard may use any def a condition may (dsl 0.24 T1-1)",
+                            rule.raw
+                        ),
+                        rule.span,
+                    ),
+                    origins.rules.get(&rule.raw),
+                )),
+            }
         }
     }
     diags
@@ -282,15 +371,22 @@ pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
 
 /// 0.21.1 T1-6: the closed-profile gate over one def BODY (`defs: name: { cel }`).
 /// A `@name` use site is exempt from the gate as a compile-time macro, and
-/// nothing else ever looked at the body it expands to, so `wd: "run.day % 7"`
+/// nothing else ever looked at the body it expands to, so `size(x)` in a def
 /// passed `check` while the same CEL inline was `E-CEL-PROFILE` — and the
-/// runner, which cannot evaluate `%`, silently took `<otherwise>`. The body
-/// now gets the SAME [`check_cel_profile`] walk (plus the reserved-marker and
-/// [`W_QUEST_STATE_ISSET`] checks) an inline slot gets, with the def's own
+/// runner, which cannot evaluate it, silently took `<otherwise>`. The body
+/// now gets the SAME [`check_cel_profile`] walk (plus the reserved-marker,
+/// [`W_QUEST_STATE_ISSET`] and integer-`%` [`E_CEL_TYPE`] checks) an inline
+/// slot gets, with the def's own
 /// `params` admitted as bare identifiers. Every diagnostic lands at `span`
 /// (the def's key) and names the def. A body that does not parse returns
 /// nothing here — the caller reports it as `E-CEL-PARSE`.
-pub(crate) fn check_def_body(name: &str, cel: &str, params: &[String], span: Span) -> Vec<Diagnostic> {
+pub(crate) fn check_def_body(
+    name: &str,
+    cel: &str,
+    params: &[String],
+    span: Span,
+    schema: &crate::meta::StateSchema,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let slot = CelSlot::raw(CelKind::Condition, cel.to_string(), span);
     if raw_uses_reserved_marker(cel) {
@@ -307,6 +403,7 @@ pub(crate) fn check_def_body(name: &str, cel: &str, params: &[String], span: Spa
     if let Some(root) = lute_cel::parse_slot_marked_refs(&mut marked, cel).and_then(|h| marked.get(h)) {
         check_cel_profile(&root.expr, &slot, params, &mut diags);
         check_quest_state_isset(&root.expr, span, &mut diags);
+        check_modulo_operands(&root.expr, span, schema, &mut diags);
     }
     for d in &mut diags {
         d.message = format!("def `{name}`: {}", d.message);
@@ -425,8 +522,8 @@ fn check_guard_fact_access(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>)
 ///   `size`). A same-named *runtime* call keeps its bare name and is NOT exempt,
 ///   closing the `@gate && gate(x)` bypass.
 /// * CEL lowers operators to synthetic `Call` names ([`is_profile_operator`]),
-///   matched against an EXPLICIT allow-list — `%` (`_%_`, not in §8.4) and
-///   leading-dot global calls are therefore rejected, not blanket-accepted.
+///   matched against an EXPLICIT allow-list — leading-dot global calls and
+///   the optional operators are therefore rejected, not blanket-accepted.
 /// * the valid `has(path)` macro parses as a test-only [`Expr::Select`], never a
 ///   `Call` — so a residual `Call` named `has` (`has(x,y)`, `x.has()`) is NOT the
 ///   macro and IS rejected. The only allowed `Call` is `isSet(<path>)` with NO
@@ -508,8 +605,9 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, bound: &[String], diags: &mut 
                     format!(
                         "`{name}(…)` is outside the Lute-CEL profile — only operators, \
                          literals, lists, `?:`, `in`, `has()`, `isSet()`, `holds()`, \
-                         `count()`, `validAt()`, `now()`, and `visited('<scene id>')` are \
-                         permitted (dsl §8.4, 0.3.0 §8, 0.21.0 §7a.1)"
+                         `count()`, `countDistinct(<pattern>, <Var>)`, `validAt()`, `now()`, and \
+                         `visited('<scene id>')` are permitted (dsl §8.4, 0.3.0 §8, 0.21.0 §7a.1, \
+                         0.24 T3-9)"
                     ),
                     slot.span,
                 ));
@@ -566,13 +664,14 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, bound: &[String], diags: &mut 
 /// profile permits (dsl §8.4). cel-parser 0.10.1 lowers each operator to a fixed
 /// synthetic name; we match that EXACT allow-list (via `cel_parser::ast::operators`
 /// constants) so out-of-profile operators are NOT accepted just for being
-/// punctuated. Deliberately EXCLUDED: modulo `_%_` (no integer domain, §8.4),
-/// the optional operators `_[?_]`/`_?._`, and the internal `@not_strictly_false`.
+/// punctuated. Deliberately EXCLUDED: the optional operators `_[?_]`/`_?._`
+/// and the internal `@not_strictly_false`. Integer `%` (`_%_`) is in since
+/// dsl 0.24.0 §1; its operand typing is [`check_modulo_operands`].
 fn is_profile_operator(func_name: &str) -> bool {
     use cel_parser::ast::operators as op;
-    // The profile's operators: `? :`, `&& || !`, `+ - * /`, `== != >= <= > <`,
-    // unary `-`, index `[]`, and `in`. EXCLUDES `_%_` (modulo), the optional
-    // operators, and the internal `@not_strictly_false`.
+    // The profile's operators: `? :`, `&& || !`, `+ - * / %`, `== != >= <= > <`,
+    // unary `-`, index `[]`, and `in`. EXCLUDES the optional operators and the
+    // internal `@not_strictly_false`.
     const ALLOWED: &[&str] = &[
         op::CONDITIONAL,
         op::LOGICAL_AND,
@@ -582,6 +681,7 @@ fn is_profile_operator(func_name: &str) -> bool {
         op::SUBSTRACT,
         op::MULTIPLY,
         op::DIVIDE,
+        op::MODULO,
         op::EQUALS,
         op::NOT_EQUALS,
         op::GREATER_EQUALS,
@@ -593,6 +693,48 @@ fn is_profile_operator(func_name: &str) -> bool {
         op::IN,
     ];
     ALLOWED.contains(&func_name)
+}
+
+/// dsl 0.24.0 §1: both operands of every `%` in `expr` must be integers —
+/// [`E_CEL_TYPE`] at `span` for a non-`number` operand or a fractional
+/// literal ([`crate::set_type::modulo_operand_fault`], the same typing
+/// `::set` right-hand sides and def result types use). Walks every
+/// sub-expression, so a `%` nested in a def-ref argument or another `%` is
+/// checked too.
+fn check_modulo_operands(
+    expr: &Expr,
+    span: Span,
+    schema: &crate::meta::StateSchema,
+    diags: &mut Vec<Diagnostic>,
+) {
+    match expr {
+        Expr::Call(c) => {
+            if c.func_name == cel_parser::ast::operators::MODULO {
+                for a in &c.args {
+                    if let Some(why) = crate::set_type::modulo_operand_fault(&a.expr, schema) {
+                        diags.push(diag(
+                            E_CEL_TYPE,
+                            format!("`%` takes two integers: {why} (dsl 0.24.0 §1)"),
+                            span,
+                        ));
+                    }
+                }
+            }
+            if let Some(t) = &c.target {
+                check_modulo_operands(&t.expr, span, schema, diags);
+            }
+            for a in &c.args {
+                check_modulo_operands(&a.expr, span, schema, diags);
+            }
+        }
+        Expr::List(list) => {
+            for el in &list.elements {
+                check_modulo_operands(&el.expr, span, schema, diags);
+            }
+        }
+        Expr::Select(sel) => check_modulo_operands(&sel.operand.expr, span, schema, diags),
+        _ => {}
+    }
 }
 
 /// True when this `Call` is the in-profile `isSet(<path>)` extension (dsl §8.4):
@@ -691,10 +833,36 @@ pub(crate) fn is_profile_fact_query(c: &cel_parser::ast::CallExpr) -> bool {
     }
     match c.func_name.as_str() {
         "holds" | "count" => c.args.len() == 1 && matches!(c.args[0].expr, Expr::Call(_)),
+        "countDistinct" => count_distinct_column(c).is_some(),
         "validAt" => c.args.len() == 2 && matches!(c.args[0].expr, Expr::Call(_)),
         "now" => c.args.is_empty(),
         _ => false,
     }
+}
+
+/// dsl 0.24 T3-9: `countDistinct(<pattern>, V)` counts the distinct values of
+/// the pattern position named by the capitalised variable `V` among the
+/// matching facts (`countDistinct(sawAt(W, _, _, _), W)` — witnesses, not
+/// tuples). `Some(column)` when the call is well-shaped: no receiver, a
+/// relation pattern, and a capitalised identifier that names EXACTLY one
+/// pattern position; every other position is ground or `_` as in `count`.
+pub(crate) fn count_distinct_column(c: &cel_parser::ast::CallExpr) -> Option<usize> {
+    if c.target.is_some() || c.func_name != "countDistinct" || c.args.len() != 2 {
+        return None;
+    }
+    let (Expr::Call(pattern), Expr::Ident(var)) = (&c.args[0].expr, &c.args[1].expr) else {
+        return None;
+    };
+    if !var.starts_with(|ch: char| ch.is_ascii_uppercase()) {
+        return None;
+    }
+    let mut hits = pattern
+        .args
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| matches!(&a.expr, Expr::Ident(n) if n == var));
+    let (col, _) = hits.next()?;
+    hits.next().is_none().then_some(col)
 }
 
 /// Vocabulary-aware fact-query pass (dsl 0.3.0 §6/§8, T11): validates every
@@ -778,7 +946,7 @@ fn check_fact_query_call(
         unreachable!("is_profile_fact_query guarantees args[0] is a Call");
     };
     let relation = pattern.func_name.as_str();
-    let Some(args) = pattern_terms(pattern) else {
+    let Some(mut args) = pattern_terms(pattern) else {
         diags.push(diag(
             E_CEL_PROFILE,
             "fact-query patterns take compile-time-ground literals or `_` \
@@ -788,6 +956,10 @@ fn check_fact_query_call(
         ));
         return;
     };
+    // `countDistinct(p, V)`: the position `V` names ranges over every value.
+    if let Some(col) = count_distinct_column(c) {
+        args[col].term = FactTerm::Wildcard;
+    }
     let vocab: &RelVocab = &ctx.env.rel_vocab;
     // 0.3.0 T11 fix: `check_atom`'s `domains` parameter (the merged
     // plugin/core/project catalog vocabulary, A4) is threaded here from
@@ -1000,7 +1172,14 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
         let mut msg = format!("state path `{path}` is not declared in `state:` (dsl §9.4)");
         // dsl 0.5.0 §2.2 "did you mean": suggest the nearest declared path
         // within a small edit distance, advisory text only (no new code).
-        if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2) {
+        if let Some(kind) = ctx.env.rel_vocab.indexed_state.get(path) {
+            // dsl 0.24.0 §3: the family itself is not a value.
+            msg = format!(
+                "state path `{path}` is entity-indexed (`per: {kind}`): read one member by name, \
+                 `{path}.<member>`; `{path}[P]` reads a rule variable's member only inside a \
+                 rule `cel()` guard (dsl 0.24.0 §3)"
+            );
+        } else if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2) {
             msg.push_str(&format!(" — did you mean `{sugg}`?"));
         }
         diags.push(diag("E-UNDECLARED", msg, slot.span));
@@ -1411,28 +1590,64 @@ mod tests {
         );
     }
 
+    /// dsl 0.24.0 §1 (T2-1): integer `%` is in the profile. Before 0.24 it was
+    /// `E-CEL-PROFILE` (no integer domain); now a `number` operand is clean
+    /// and only a non-integer operand — a non-`number` or a fractional
+    /// literal — is `E-CEL-TYPE`.
     #[test]
-    fn modulo_operator_rejected_arithmetic_ok() {
-        // Bypass (3): `%` lowers to `_%_`, which is NOT in the §8.4 operator set
-        // (no integer domain) -> E-CEL-PROFILE; `+ - * /` stay in profile.
-        let env = Env::default();
-        let ctx = mk_ctx(&env);
-        let slot = cel_slot_condition("scene.a % 2");
-        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
-        assert!(
-            d.iter().any(|e| e.code == E_CEL_PROFILE),
-            "modulo `%` must flag E-CEL-PROFILE, got {:?}",
-            d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+    fn integer_modulo_in_profile_non_integer_is_cel_type() {
+        let mut env = env_with_state("run.day", Type::Number);
+        env.state.decls.insert(
+            "run.flag".to_string(),
+            crate::meta::StateDecl {
+                ty: Type::Bool,
+                default: None,
+                namespace: crate::meta::Namespace::Run,
+                owner: None,
+            },
         );
-        for ok in ["scene.a + 1", "scene.a - 1 * 2 / 3"] {
-            let slot = cel_slot_condition(ok);
-            let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+        let ctx = mk_ctx(&env);
+        let codes = |raw: &str| {
+            let slot = cel_slot_condition(raw);
+            check_cel_slot(&slot, &arena_for(&slot), &ctx, None)
+                .into_iter()
+                .map(|d| d.code)
+                .collect::<Vec<_>>()
+        };
+        for ok in [
+            "run.day % 7 == 0",
+            "(run.day - 1) % 7 == 3",
+            "run.day % 7.0 == 0",
+            "run.day + 1",
+            "run.day - 1 * 2 / 3",
+        ] {
+            let c = codes(ok);
             assert!(
-                d.iter().all(|e| e.code != E_CEL_PROFILE),
-                "arithmetic `{ok}` must stay in profile, got {:?}",
-                d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+                !c.iter().any(|x| x == E_CEL_PROFILE || x == E_CEL_TYPE),
+                "`{ok}` must be clean, got {c:?}"
             );
         }
+        for bad in [
+            "run.day % 2.5 == 0",
+            "run.day % -0.5 == 0",
+            "'a' % 2 == 0",
+            "run.flag % 2 == 0",
+            "(run.day % 2.5) % 2 == 0",
+        ] {
+            let c = codes(bad);
+            assert_eq!(
+                c.iter().filter(|x| *x == E_CEL_TYPE).count(),
+                1,
+                "`{bad}` must flag E-CEL-TYPE once, got {c:?}"
+            );
+            assert!(!c.iter().any(|x| x == E_CEL_PROFILE), "`{bad}`: {c:?}");
+        }
+        let slot = cel_slot_condition("run.day % 2.5 == 0");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+        assert!(
+            d.iter().any(|x| x.message.contains("`2.5` is not an integer")),
+            "{d:?}"
+        );
     }
 
     #[test]

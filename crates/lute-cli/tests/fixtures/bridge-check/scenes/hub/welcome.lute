@@ -1,0 +1,14 @@
+---
+kind: scene
+id: hub.welcome
+title: First arrival
+# A beat: answers `hubVisit`, once per save (`once: user`).
+on: hubVisit
+once: user
+priority: 10
+---
+
+## The hub
+
+::bg{location="hub" time="day"}
+@narrator: The lamps along the square are lit — all but the one by the door.

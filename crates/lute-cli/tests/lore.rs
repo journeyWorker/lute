@@ -58,13 +58,16 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
 }
 
 /// dsl 0.19.0 §2.1: `lute new quest` scaffolds a document id too, and the two
-/// scaffolds for one name share a project without an id collision.
+/// scaffolds for one name share a project without an id collision. The quest
+/// is `--start`ed: the default accept-driven stub carries the never-accepted
+/// advisory until content `::accept`s it, and this test pins "no diagnostics
+/// at all".
 #[test]
 fn new_quest_and_lore_scaffolds_check_clean_together() {
     let dir = temp_dir("new-quest");
     write(&dir, "lute.project.yaml", "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n");
     let d = dir.to_str().unwrap();
-    assert_eq!(run(&["new", "quest", "ship-records", "--dir", d]).status.code(), Some(0));
+    assert_eq!(run(&["new", "quest", "ship-records", "--start", "--dir", d]).status.code(), Some(0));
     assert_eq!(run(&["new", "lore", "ship-records", "--dir", d]).status.code(), Some(0));
     let quest = std::fs::read_to_string(dir.join("quests/ship-records.lute")).unwrap();
     assert!(quest.contains("kind: quest\nid: quest.shipRecords\n"), "{quest}");

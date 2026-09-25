@@ -65,12 +65,13 @@ fn cel_parse_diag(raw: &str) -> Diagnostic {
 }
 
 /// 0.10.0 §12.1: a CEL parse failure inside a `::set` BODY says that `::set`
-/// has no attribute surface, and suppresses the `==` suggestion — which does
-/// not parse when applied, because the `when=` was swallowed into the
-/// expression in the first place.
+/// has no attribute surface (beyond dsl 0.24.0 §1's one trailing `when=`),
+/// and suppresses the `==` suggestion — which does not parse when applied,
+/// because the attribute was swallowed into the expression in the first
+/// place. (Until 0.24.0 this case was a `when=`; that is now the guard.)
 #[test]
 fn set_body_parse_failure_names_the_empty_attribute_surface() {
-    let text = format!("{FM_STR}## Shot 1.\n::set{{run.s += 3 when=\"run.s > 0\"}}\n");
+    let text = format!("{FM_STR}## Shot 1.\n::set{{run.s += 3 once=\"true\"}}\n");
     let res = run(&text);
     let d = res
         .diagnostics
@@ -83,8 +84,8 @@ fn set_body_parse_failure_names_the_empty_attribute_surface() {
         d.message
     );
     assert!(
-        d.message.contains("<match>") || d.message.contains("<when>"),
-        "the message must name the remedy; got {}",
+        d.message.contains("when=\""),
+        "the message must name the one attribute there is; got {}",
         d.message
     );
     assert!(

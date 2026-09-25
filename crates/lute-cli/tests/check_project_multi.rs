@@ -46,13 +46,13 @@ fn core_only_project_yaml() -> String {
 }
 
 /// A self-contained, otherwise-CLEAN `kind: quest` doc declaring exactly one
-/// quest id (its own state decl + a `done` slot that reads it, so no other
-/// diagnostic — E-UNDECLARED/E-MAYBE-UNSET/etc — fires). Mirrors
-/// `check_project.rs`'s own helper.
+/// quest id (its own state decl + a `done` slot that reads it, and
+/// `start="true"` so W-QUEST-NEVER-ACCEPTED stays quiet — no other
+/// diagnostic fires). Mirrors `check_project.rs`'s own helper.
 fn clean_quest_doc(quest_id: &str, state_path: &str) -> String {
     format!(
         "---\nkind: quest\nstate:\n  {state_path}: {{ type: bool, default: false }}\n---\n\
-         <quest id=\"{quest_id}\">\n<objective id=\"o\" done=\"{state_path}\"/>\n</quest>\n"
+         <quest id=\"{quest_id}\" start=\"true\">\n<objective id=\"o\" done=\"{state_path}\"/>\n</quest>\n"
     )
 }
 

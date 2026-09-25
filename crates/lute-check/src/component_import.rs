@@ -33,10 +33,15 @@ use crate::meta::{parse_meta_kind, MetaKind};
 
 /// One resolved component (dsl §13): its ordered params (the `::use` named-arg
 /// namespace, source order), its parsed presentational body document, and the
-/// file it was loaded from.
+/// file it was loaded from. dsl 0.24.0 §4: `speakers` names the params typed
+/// `speaker` (each also in `params`, typed `string` — the host's cast narrows
+/// it, [`crate::component_effects::host_param_types`]); `effects` is the
+/// file's `effects: true` (its body may write state).
 #[derive(Clone, Debug)]
 pub struct ComponentDef {
     pub params: Vec<(String, Type)>,
+    pub speakers: Vec<String>,
+    pub effects: bool,
     pub body: Document,
     pub src: PathBuf,
 }
@@ -70,6 +75,8 @@ struct ParsedComponent {
     /// `E-COMPONENT-PARSE` — such a file never enters the table).
     name: Option<String>,
     params: Vec<(String, Type)>,
+    speakers: Vec<String>,
+    effects: bool,
     body: Document,
     src: PathBuf,
 }
@@ -138,6 +145,8 @@ pub fn resolve_components(base_dir: &Path, components: &[String], at: Span) -> C
             name,
             ComponentDef {
                 params: pc.params.clone(),
+                speakers: pc.speakers.clone(),
+                effects: pc.effects,
                 body: pc.body.clone(),
                 src: pc.src.clone(),
             },
@@ -246,6 +255,8 @@ fn read_and_parse(
                 ParsedComponent {
                     name: None,
                     params: Vec::new(),
+                    speakers: Vec::new(),
+                    effects: false,
                     body: empty,
                     src: canon.to_path_buf(),
                 },
@@ -315,6 +326,8 @@ fn read_and_parse(
         ParsedComponent {
             name: tm.component.clone(),
             params,
+            speakers: tm.speaker_params.clone(),
+            effects: tm.effects,
             body: doc,
             src: canon.to_path_buf(),
         },

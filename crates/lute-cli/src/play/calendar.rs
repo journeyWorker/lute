@@ -1,23 +1,44 @@
-//! `lute calendar <dir> [--axis <path>=<values>]… [--occasion O]… [--target
-//! T]… [--script route.play.yaml [--until <step>]] [--where <cel>] [--json |
-//! --csv]` (dsl 0.23.0 §1, D-A; 0.23.1).
+//! `lute calendar <dir> [--axis <axis>=<values>]… [--occasion
+//! O[@<axis>[=<value>],…]]… [--target T]… [--facts <relation>]… [--script
+//! route.play.yaml [--until <step>]] [--where <cel>] [--json | --csv]` (dsl
+//! 0.23.0 §1, D-A; 0.23.1; 0.24.0).
 //!
 //! The calendar is a tool over play, not a schedule file. Every cell of the
 //! axes' product starts from one world: the `--script`'s save (0.22.0 §3)
 //! with its `steps:` replayed exactly as `lute play` plays them — up to the
 //! `--until` step, which is not played — or the declared defaults. The
-//! cell's values are then written as an `engine:` step would write them (a
-//! `quest.<id>.state` axis seeds the quest's status as a save's `quests:`
-//! does; a `holds(<fact>)` axis asserts or retracts a base fact), the quest
-//! lifecycle settles, `--where` drops the cell when it does not hold, and
-//! every listed occasion (and target) is evaluated with play's own
-//! eligibility, [`super::eligible_at`]: a cell reads exactly what `lute
-//! play` would decide there. Cells are independent — no presentation
-//! happens, so nothing one cell does is seen by the next. An axis the
-//! calendar cannot apply is a usage error, never silently dropped.
+//! cell's values are then written into that world, the quest lifecycle
+//! settles, `--where` drops the cell when it does not hold, and every listed
+//! occasion (and target) is evaluated with play's own eligibility,
+//! [`super::eligible_at`]: a cell reads exactly what `lute play` would
+//! decide there. Cells are independent — no presentation happens, so
+//! nothing one cell does is seen by the next.
 //!
-//! Output: a grid (text), `--json`, or `--csv`; beats that were a candidate
-//! somewhere but eligible in no cell are listed at the end with why.
+//! Axis kinds ([`AXIS_KINDS`], one [`Apply`] arm each): a declared state
+//! path, written as an `engine:` step writes it; `quest.<id>.state`, the
+//! quest's status seeded as a save's `quests:` does;
+//! `quest.<id>.objectives.<oid>.done`, objective progress as a save keeps
+//! it; `holds(<fact>)=true,false`, a base fact asserted or retracted;
+//! `visited('<id>')=true,false`, a scene or bundle-beat id added to or
+//! removed from the visited set a save's `visited:` seeds (what `after:` and
+//! CEL `visited()` read). An axis the calendar cannot apply is a usage
+//! error naming the kinds, never silently dropped.
+//!
+//! Per-occasion axes: `--occasion dayEnd@run.day` varies only `run.day` for
+//! `dayEnd` — the occasion is evaluated in the cells where every other axis
+//! is at its first value (once per `run.day` value) and is blank elsewhere;
+//! `dayEnd@run.day,run.slot=night` holds `run.slot` at `night` instead. An
+//! occasion the engine raises once per day is read once per day.
+//!
+//! Presence: `--facts <relation>` lists, per cell, the facts of that
+//! relation that hold once the cell has settled (the runner's fixpoint, as
+//! play's end-of-play `facts:` judge them) — in text one table per relation,
+//! a row per first argument and a column per cell.
+//!
+//! Output: a grid (text), `--json`, or `--csv`. At the end: beats that were
+//! a candidate somewhere but eligible in no cell, with why; and beats
+//! eligible somewhere but presented in no cell, with the beats presented
+//! over them (`?` where an unknown `when` decided the cell).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -30,10 +51,10 @@ use lute_trace::Value;
 use serde_json::{json, Value as Json};
 
 use super::{
-    advance_quests, compile_project, deciding_unknown, describe_atoms, eligible_at, execute,
-    is_candidate, kind_label, parse_script_with, plan_steps, presented, quest_state_id,
-    resolve_fact, resolve_state, seed_quest, seed_world, value_to_json, Candidate, PlayScript,
-    Project, ScriptStep, Verdict, World, QUEST_STATES,
+    advance_quests, compile_project, deciding_unknown, describe_atoms, domain_members,
+    eligible_at, entry_flag, execute, is_candidate, kind_label, parse_script_with, plan_steps,
+    presented, quest_state_id, render_fact, resolve_fact, resolve_state, seed_quest, seed_world,
+    unknown_id, value_to_json, PlayScript, Project, ScriptStep, Verdict, World, QUEST_STATES,
 };
 use crate::runner::{Fact, Runner};
 
@@ -41,10 +62,48 @@ use crate::runner::{Fact, Runner};
 /// is refused rather than ground through.
 const MAX_CELLS: usize = 10_000;
 
+/// Every axis kind the calendar applies — the usage error for an axis it
+/// cannot apply lists them.
+pub(crate) const AXIS_KINDS: &str = "a declared state path (`run.day=1..7`), \
+     `quest.<id>.state=<status>,…`, `quest.<id>.objectives.<oid>.done=true,false`, \
+     `holds(<fact>)=true,false`, `visited('<scene or bundle-beat id>')=true,false`, \
+     `clock[=<d1>..<d2>]` (every slot of those days, in order)";
+
+/// dsl 0.24.0 §1: the axis over the declared clock — `clock=d1..d2` (or a
+/// day list), every slot of each day in clock order; bare `clock` is one
+/// week from day 1 (day 1 alone without a `week:`).
+const CLOCK_AXIS: &str = "clock";
+
+/// Split `s` at every `sep` outside parentheses and quotes, so a
+/// `holds(at(a, b))` or `visited('x')` axis path stays whole.
+fn split_top(s: &str, sep: char) -> Vec<&str> {
+    let (mut depth, mut quote, mut start) = (0i32, None::<char>, 0);
+    let mut out = Vec::new();
+    for (i, c) in s.char_indices() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            Some(_) => {}
+            None if c == '\'' || c == '"' => quote = Some(c),
+            None if c == '(' => depth += 1,
+            None if c == ')' => depth -= 1,
+            None if c == sep && depth == 0 => {
+                out.push(&s[start..i]);
+                start = i + c.len_utf8();
+            }
+            None => {}
+        }
+    }
+    out.push(&s[start..]);
+    out
+}
+
 /// clap `value_parser` for `--axis <path>=<values>`: an inclusive integer
 /// range `lo..hi` or a comma list `a,b,c`. The path may be a
 /// `holds(<fact>)` (its commas are the fact's, before the `=`).
 pub(crate) fn parse_axis_flag(raw: &str) -> Result<(String, Vec<String>), String> {
+    if raw.trim() == CLOCK_AXIS {
+        return Ok((CLOCK_AXIS.to_string(), Vec::new()));
+    }
     let (path, spec) = raw
         .split_once('=')
         .ok_or_else(|| format!("expected <path>=<lo>..<hi> or <path>=<a>,<b>,…, got `{raw}`"))?;
@@ -87,6 +146,22 @@ enum Apply {
     Quest(String),
     /// `holds(<fact>)`: a base fact asserted (`true`) or retracted (`false`).
     Fact(Fact),
+    /// `visited('<id>')`: a scene or bundle-beat id in (`true`) or out of
+    /// (`false`) the visited set — save state, as a save's `visited:`.
+    Visited(String),
+    /// dsl 0.24.0 §1: `clock`: a position on the declared clock (the value
+    /// is its `clock.index`), written to the clock's day and slot paths.
+    Clock,
+}
+
+/// The id of a `visited('<id>')` axis path (`'…'`, `"…"` or bare).
+fn visited_id(path: &str) -> Option<&str> {
+    let inner = path.strip_prefix("visited(")?.strip_suffix(')')?.trim();
+    let unquoted = ['\'', '"']
+        .iter()
+        .find_map(|q| inner.strip_prefix(*q)?.strip_suffix(*q))
+        .unwrap_or(inner);
+    Some(unquoted.trim())
 }
 
 /// One axis, its values resolved.
@@ -106,15 +181,29 @@ fn is_objective_done(path: &str) -> bool {
 /// Resolve one `--axis` against the project; `Err` is the usage error.
 fn resolve_axis(p: &Project, path: &str, values: &[String]) -> Result<Axis, String> {
     let at = |e: String| format!("`--axis {path}`: {e}");
+    if path == CLOCK_AXIS {
+        return resolve_clock_axis(p, values).map_err(at);
+    }
+    let unsupported = |why: String| at(format!("{why}; an axis is one of: {AXIS_KINDS}"));
     let apply = if let Some(inner) = path.strip_prefix("holds(").and_then(|s| s.strip_suffix(')')) {
         Apply::Fact(resolve_fact(p, inner).map_err(|e| at(format!("`{inner}` {e}")))?)
+    } else if let Some(id) = visited_id(path) {
+        if !p.scene_ids.contains(id) {
+            return Err(at(unknown_id(
+                "it",
+                id,
+                "scene or bundle beat",
+                p.scene_ids.iter().map(String::as_str),
+            )));
+        }
+        Apply::Visited(id.to_string())
     } else if let Some(id) = quest_state_id(path) {
-        if !p.quest_ids.contains(id) {
-            return Err(at(super::unknown_id(
+        if !p.quest_objectives.contains_key(id) {
+            return Err(at(unknown_id(
                 "it",
                 id,
                 "quest",
-                p.quest_ids.iter().map(String::as_str),
+                p.quest_objectives.keys().map(String::as_str),
             )));
         }
         Apply::Quest(id.to_string())
@@ -124,19 +213,40 @@ fn resolve_axis(p: &Project, path: &str, values: &[String]) -> Result<Axis, Stri
              an axis over a quest is `quest.<id>.state` (its status) or \
              `quest.<id>.objectives.<oid>.done`"
         )));
+    } else if path.contains('(') {
+        return Err(unsupported(format!("`{path}` is no axis the calendar can apply")));
     } else {
+        let declared = match path.strip_prefix("prev.") {
+            Some(run) if run.starts_with("run.") => run,
+            _ => path,
+        };
+        if !path.starts_with("scene.")
+            && entry_flag(path).is_none()
+            && !p.state_table.contains_key(declared)
+        {
+            let hint = lute_manifest::suggest::nearest(path, p.state_table.keys().map(String::as_str), 3)
+                .map(|k| format!(" — did you mean `{k}`?"))
+                .unwrap_or_default();
+            return Err(unsupported(format!(
+                "`{path}` is not a declared state path in this project{hint}"
+            )));
+        }
         Apply::State
     };
     let mut typed = Vec::with_capacity(values.len());
     for v in values {
         let value = match &apply {
-            Apply::Fact(_) => match v.as_str() {
+            Apply::Fact(_) | Apply::Visited(_) => match v.as_str() {
                 "true" => Value::Bool(true),
                 "false" => Value::Bool(false),
                 _ => {
+                    let (kind, yes) = match &apply {
+                        Apply::Fact(_) => ("holds(…)", "asserted"),
+                        _ => ("visited(…)", "visited"),
+                    };
                     return Err(at(format!(
-                        "a `holds(…)` axis takes `true` (asserted) and `false` (absent), not `{v}`"
-                    )))
+                        "a `{kind}` axis takes `true` ({yes}) and `false` (absent), not `{v}`"
+                    )));
                 }
             },
             Apply::Quest(_) if QUEST_STATES.contains(&v.as_str()) => Value::Str(v.clone()),
@@ -147,6 +257,7 @@ fn resolve_axis(p: &Project, path: &str, values: &[String]) -> Result<Axis, Stri
                 )))
             }
             Apply::State => resolve_state(p, path, v).map_err(|e| at(format!("`{path}` {e}")))?,
+            Apply::Clock => unreachable!("a clock axis is resolved by `resolve_clock_axis`"),
         };
         typed.push((v.clone(), value));
     }
@@ -155,6 +266,58 @@ fn resolve_axis(p: &Project, path: &str, values: &[String]) -> Result<Axis, Stri
         apply,
         values: typed,
     })
+}
+
+/// dsl 0.24.0 §1: `--axis clock[=<days>]` — every slot of each day, in
+/// clock order; each value is the position's `clock.index`, its text `day
+/// slot` (`1 Mon morning` with week labels).
+fn resolve_clock_axis(p: &Project, days: &[String]) -> Result<Axis, String> {
+    let Some(clock) = &p.index.clock else {
+        return Err(format!(
+            "no schema of this project declares a `clock:` (dsl 0.24.0 §1); an axis is one of: \
+             {AXIS_KINDS}"
+        ));
+    };
+    let days: Vec<i64> = if days.is_empty() {
+        let length = clock.week.as_ref().map_or(1, |w| i64::from(w.length.max(1)));
+        (1..=length).collect()
+    } else {
+        days.iter()
+            .map(|d| {
+                d.parse::<i64>()
+                    .ok()
+                    .filter(|d| *d >= 1)
+                    .ok_or_else(|| format!("`{d}` is not a day — a clock axis takes days ≥ 1 (`clock=1..7`)"))
+            })
+            .collect::<Result<_, _>>()?
+    };
+    let mut values = Vec::with_capacity(days.len() * clock.slots.len());
+    for day in days {
+        for (slot, name) in clock.slots.iter().enumerate() {
+            let at = lute_manifest::clock::ClockAt { day, slot };
+            let text = match clock.weekday_label(day) {
+                Some(label) => format!("{day} {label} {name}"),
+                None => format!("{day} {name}"),
+            };
+            values.push((text, Value::Num(clock.index(at) as f64)));
+        }
+    }
+    Ok(Axis {
+        path: CLOCK_AXIS.to_string(),
+        apply: Apply::Clock,
+        values,
+    })
+}
+
+/// The position of a clock axis value (its `clock.index`).
+fn clock_axis_at(clock: &lute_manifest::clock::ClockDecl, value: &Value) -> lute_manifest::clock::ClockAt {
+    let Value::Num(index) = value else { unreachable!("a clock axis value is its index") };
+    let len = clock.slots.len().max(1) as i64;
+    let index = *index as i64;
+    lute_manifest::clock::ClockAt {
+        day: index.div_euclid(len) + 1,
+        slot: index.rem_euclid(len) as usize,
+    }
 }
 
 /// Write one axis value into a cell's world.
@@ -187,12 +350,26 @@ fn apply_axis(p: &Project, w: &mut World, axis: &Axis, text: &str, value: &Value
                 w.facts.remove(f);
             }
         }
+        Apply::Visited(id) => {
+            if value == &Value::Bool(true) {
+                w.visited.insert(id.clone());
+            } else {
+                w.visited.remove(id);
+            }
+        }
+        Apply::Clock => {
+            let clock = p.index.clock.as_ref().expect("a clock axis was resolved against a clock");
+            let at = clock_axis_at(clock, value);
+            w.state.insert(clock.day.clone(), Value::Num(at.day as f64));
+            w.state.insert(clock.slot.clone(), Value::Str(clock.slots[at.slot].clone()));
+            super::refresh_clock(p, w);
+        }
     }
 }
 
 /// What the settle did to an axis value the cell was given — a quest
 /// handler's write, a seeded quest status the lifecycle moved on.
-fn settled_away(w: &World, axis: &Axis, text: &str, value: &Value) -> Option<String> {
+fn settled_away(p: &Project, w: &World, axis: &Axis, text: &str, value: &Value) -> Option<String> {
     match &axis.apply {
         Apply::State => {
             let now = w.state.get(&axis.path)?;
@@ -208,7 +385,12 @@ fn settled_away(w: &World, axis: &Axis, text: &str, value: &Value) -> Option<Str
             let now = w.quests.get(id).map_or("unset", String::as_str);
             (now != text).then(|| format!("{} settled to {now}", axis.path))
         }
-        Apply::Fact(_) => None,
+        Apply::Fact(_) | Apply::Visited(_) => None,
+        Apply::Clock => {
+            let clock = p.index.clock.as_ref()?;
+            let now = super::clock_at(p, w)?;
+            (now != clock_axis_at(clock, value)).then(|| format!("clock settled to {}", clock.describe(now)))
+        }
     }
 }
 
@@ -220,6 +402,10 @@ struct Column {
     /// none): only its untargeted beats are candidates.
     any_target: bool,
     select: OccasionSelect,
+    /// `--occasion O@<axes>`: per axis, `None` when the occasion varies over
+    /// it, else the one value index it is evaluated at. `None` for an
+    /// occasion that varies over every axis.
+    pins: Option<Vec<Option<usize>>>,
 }
 
 impl Column {
@@ -230,6 +416,81 @@ impl Column {
             None => self.occasion.clone(),
         }
     }
+
+    /// Whether the column is evaluated at the cell whose axis value indices
+    /// are `picks`.
+    fn applies(&self, picks: &[usize]) -> bool {
+        self.pins.as_ref().is_none_or(|pins| {
+            pins.iter().zip(picks).all(|(pin, &k)| pin.is_none_or(|p| p == k))
+        })
+    }
+}
+
+/// One `--occasion`: its name and, after `@`, the axes it varies over
+/// (`path`) or is held at (`path=value`); every axis it does not name is
+/// held at its first value.
+struct OccasionSpec<'a> {
+    raw: &'a str,
+    name: &'a str,
+    only: Option<Vec<(&'a str, Option<&'a str>)>>,
+}
+
+fn parse_occasion(raw: &str) -> Result<OccasionSpec<'_>, String> {
+    let Some((name, list)) = raw.split_once('@') else {
+        return Ok(OccasionSpec { raw, name: raw.trim(), only: None });
+    };
+    let mut only = Vec::new();
+    for item in split_top(list, ',') {
+        let (path, value) = match split_top(item, '=').as_slice() {
+            [path] => (path.trim(), None),
+            [path, value] => (path.trim(), Some(value.trim())),
+            _ => return Err(format!("`--occasion {raw}`: `{item}` has more than one `=`")),
+        };
+        if path.is_empty() || value == Some("") {
+            return Err(format!(
+                "`--occasion {raw}`: expected <occasion>@<axis>[=<value>],…, with no empty item"
+            ));
+        }
+        only.push((path, value));
+    }
+    Ok(OccasionSpec { raw, name: name.trim(), only: Some(only) })
+}
+
+/// Resolve an [`OccasionSpec`]'s `@` list against the axes into
+/// [`Column::pins`].
+fn occasion_pins(spec: &OccasionSpec<'_>, axes: &[Axis]) -> Result<Option<Vec<Option<usize>>>, String> {
+    let Some(only) = &spec.only else {
+        return Ok(None);
+    };
+    let raw = spec.raw;
+    let mut pins = vec![Some(0); axes.len()];
+    let mut named = BTreeSet::new();
+    for &(path, value) in only {
+        let Some(i) = axes.iter().position(|a| a.path == path) else {
+            let paths: Vec<&str> = axes.iter().map(|a| a.path.as_str()).collect();
+            let hint = lute_manifest::suggest::nearest(path, paths.iter().copied(), 3)
+                .map(|k| format!(" — did you mean `{k}`?"))
+                .unwrap_or_default();
+            return Err(format!(
+                "`--occasion {raw}`: `{path}` is no `--axis` of this calendar (axes: {}){hint}",
+                if paths.is_empty() { "none".to_string() } else { paths.join(", ") }
+            ));
+        };
+        if !named.insert(i) {
+            return Err(format!("`--occasion {raw}`: `{path}` is named twice"));
+        }
+        pins[i] = match value {
+            None => None,
+            Some(v) => Some(axes[i].values.iter().position(|(t, _)| t == v).ok_or_else(|| {
+                let vals: Vec<&str> = axes[i].values.iter().map(|(t, _)| t.as_str()).collect();
+                format!(
+                    "`--occasion {raw}`: `{v}` is not a value of `--axis {path}` ({})",
+                    vals.join(", ")
+                )
+            })?),
+        };
+    }
+    Ok(Some(pins))
 }
 
 /// What one column decides at one cell.
@@ -248,11 +509,14 @@ struct Outcome {
     undecided: bool,
 }
 
-/// One cell: its values, quest-settle notes, and one outcome per column.
+/// One cell: its values, quest-settle notes, one outcome per column (`None`
+/// where a per-occasion `@` list leaves the column out of the cell), and
+/// per `--facts` relation the facts that hold there.
 struct Cell {
     at: Vec<(String, String, Json)>,
     notes: Vec<String>,
-    outcomes: Vec<Outcome>,
+    outcomes: Vec<Option<Outcome>>,
+    facts: Vec<Vec<Fact>>,
 }
 
 /// A candidate beat's record across every cell.
@@ -260,12 +524,26 @@ struct Cell {
 struct Seen {
     eligible: bool,
     reasons: BTreeSet<String>,
+    /// Presented in some cell where it was eligible.
+    presented: bool,
+    /// What was presented over it where it was eligible but not presented
+    /// (`?`: an unknown `when` decided the cell).
+    beaten_by: BTreeSet<String>,
+}
+
+/// A `--facts` relation: its name, argument domains, and the members of
+/// its first argument's domain when closed (every row the table shows).
+struct FactsRel {
+    name: String,
+    args: Vec<String>,
+    members: Vec<String>,
 }
 
 /// `lute calendar`'s options (see [`crate::Command::Calendar`]).
 pub(crate) struct CalendarArgs<'a> {
     pub axes: &'a [(String, Vec<String>)],
     pub occasions: &'a [String],
+    pub facts: &'a [String],
     pub targets: &'a [String],
     pub script: Option<&'a Path>,
     pub until: Option<&'a str>,
@@ -398,7 +676,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
                 Ok(t) => t,
                 Err(e) => return usage(format!("cannot read {}: {e}", path.display())),
             };
-            match parse_script_with(&text, false) {
+            match parse_script_with(&text, path, false) {
                 Ok(s) => s,
                 Err(e) => return usage(format!("invalid play script {}: {e}", path.display())),
             }
@@ -430,6 +708,16 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
             Err(e) => return usage(e),
         }
     }
+    // dsl 0.24.0 §1: the clock axis writes the day and slot paths itself.
+    if let (Some(clock), true) = (&p.index.clock, resolved.iter().any(|a| matches!(a.apply, Apply::Clock))) {
+        if let Some(a) = resolved.iter().find(|a| a.path == clock.day || a.path == clock.slot) {
+            return usage(format!(
+                "`--axis {}` and `--axis clock` both set the clock — the clock axis already \
+                 varies `{}` and `{}`",
+                a.path, clock.day, clock.slot
+            ));
+        }
+    }
     let cell_count = resolved
         .iter()
         .try_fold(1usize, |n, a| n.checked_mul(a.values.len()))
@@ -437,10 +725,54 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     let Some(cell_count) = cell_count else {
         return usage(format!("the axes' product exceeds {MAX_CELLS} cells"));
     };
-    let columns = match columns(&p, args.occasions, args.targets) {
+    let mut specs = Vec::with_capacity(args.occasions.len());
+    for raw in args.occasions {
+        match parse_occasion(raw) {
+            Ok(s) if specs.iter().any(|o: &OccasionSpec<'_>| o.name == s.name) => {
+                return usage(format!("`--occasion {}` is given twice", s.name))
+            }
+            Ok(s) => specs.push(s),
+            Err(e) => return usage(e),
+        }
+    }
+    let names: Vec<String> = specs.iter().map(|s| s.name.to_string()).collect();
+    let mut columns = match columns(&p, &names, args.targets) {
         Ok(c) => c,
         Err(e) => return usage(e),
     };
+    for spec in &specs {
+        let pins = match occasion_pins(spec, &resolved) {
+            Ok(p) => p,
+            Err(e) => return usage(e),
+        };
+        for col in columns.iter_mut().filter(|c| c.occasion == spec.name) {
+            col.pins.clone_from(&pins);
+        }
+    }
+    let mut rels: Vec<FactsRel> = Vec::with_capacity(args.facts.len());
+    for name in args.facts {
+        let Some(r) = p.index.relations.iter().find(|r| &r.name == name) else {
+            return usage(unknown_id(
+                "`--facts`",
+                name,
+                "relation",
+                p.index.relations.iter().map(|r| r.name.as_str()),
+            ));
+        };
+        if rels.iter().any(|f| &f.name == name) {
+            return usage(format!("`--facts {name}` is given twice"));
+        }
+        rels.push(FactsRel {
+            name: name.clone(),
+            members: r
+                .args
+                .first()
+                .and_then(|d| domain_members(&p, d))
+                .map(<[String]>::to_vec)
+                .unwrap_or_default(),
+            args: r.args.clone(),
+        });
+    }
     let (base, origin) = match start_world(&p, &save, args.script, args.until) {
         Ok(b) => b,
         Err(e) => return usage(e),
@@ -470,7 +802,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         }
         for (axis, &i) in resolved.iter().zip(&picks) {
             let (text, value) = &axis.values[i];
-            notes.extend(settled_away(&w, axis, text, value));
+            notes.extend(settled_away(&p, &w, axis, text, value));
         }
         if let Some(cel) = args.where_ {
             match holds_at(&p, &w, cel) {
@@ -491,33 +823,74 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         }
         let outcomes = columns
             .iter()
-            .map(|col| evaluate(&p, &w, col, &mut seen))
+            .map(|col| col.applies(&picks).then(|| evaluate(&p, &w, col, &mut seen)))
             .collect();
-        cells.push(Cell { at, notes, outcomes });
+        let facts = cell_facts(&p, &w, &rels);
+        cells.push(Cell { at, notes, outcomes, facts });
     }
-    let never: Vec<(&IndexBeat, &Seen)> = seen
-        .iter()
-        .filter(|(_, s)| !s.eligible)
-        .map(|(&i, s)| (&p.index.beats[i], s))
-        .collect();
-
-    let from = origin.describe();
+    let listed = |keep: fn(&Seen) -> bool| -> Vec<(&IndexBeat, &Seen)> {
+        seen.iter()
+            .filter(|(_, s)| keep(s))
+            .map(|(&i, s)| (&p.index.beats[i], s))
+            .collect()
+    };
+    let report = Report {
+        from: origin.describe(),
+        pruned,
+        axes: &resolved,
+        columns: &columns,
+        cells: &cells,
+        rels: &rels,
+        never_eligible: listed(|s| !s.eligible),
+        never_presented: listed(|s| s.eligible && !s.presented),
+    };
     let out = if args.json {
-        let mut s = serde_json::to_string_pretty(&render_json(
-            &from, pruned, &resolved, &columns, &cells, &never,
-        ))
-        .unwrap_or_default();
+        let mut s = serde_json::to_string_pretty(&render_json(&report)).unwrap_or_default();
         s.push('\n');
         s
     } else if args.csv {
-        render_csv(&resolved, &columns, &cells)
+        render_csv(&report)
     } else {
-        render_text(dir, &from, pruned, &resolved, &columns, &cells, &never)
+        render_text(dir, &report)
     };
     match crate::write_stdout(&out) {
         Ok(()) => ExitCode::SUCCESS,
         Err(_) => ExitCode::from(2),
     }
+}
+
+/// Everything a rendering reads.
+struct Report<'a> {
+    /// Where every cell starts ([`Origin::describe`]).
+    from: String,
+    /// Cells `--where` dropped.
+    pruned: usize,
+    axes: &'a [Axis],
+    columns: &'a [Column],
+    cells: &'a [Cell],
+    rels: &'a [FactsRel],
+    /// Candidates eligible in no cell.
+    never_eligible: Vec<(&'a IndexBeat, &'a Seen)>,
+    /// Eligible in some cell, presented in none.
+    never_presented: Vec<(&'a IndexBeat, &'a Seen)>,
+}
+
+/// Per `--facts` relation, the facts of it that hold over the settled
+/// cell: the runner's fixpoint, as [`super::world_view`] derives them.
+fn cell_facts(p: &Project, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
+    if rels.is_empty() {
+        return Vec::new();
+    }
+    let eval = Runner::with_carryover(
+        &p.eval_json,
+        w.mock(),
+        w.state.clone(),
+        w.facts.clone(),
+        w.quests.clone(),
+    );
+    rels.iter()
+        .map(|r| eval.all_facts().iter().filter(|(rel, _)| *rel == r.name).cloned().collect())
+        .collect()
 }
 
 /// The columns: every listed occasion (default: every occasion a beat
@@ -569,6 +942,7 @@ fn columns(p: &Project, occasions: &[String], targets: &[String]) -> Result<Vec<
             any_target: targeted && target.is_none(),
             target,
             select,
+            pins: None,
         };
         if !targeted {
             out.push(column(None));
@@ -603,10 +977,18 @@ fn columns(p: &Project, occasions: &[String], targets: &[String]) -> Result<Vec<
 /// (keyed by its `ProjectIndex.beats` row).
 fn evaluate(p: &Project, w: &World, col: &Column, seen: &mut BTreeMap<usize, Seen>) -> Outcome {
     let cands = eligible_at(p, w, &col.occasion, col.target.as_deref());
-    for c in &cands {
-        let Some(row) = p.index.beats.iter().position(|b| {
-            b.id == c.id && b.document == c.document && is_candidate(b, &col.occasion, col.target.as_deref())
-        }) else {
+    let rows: Vec<Option<usize>> = cands
+        .iter()
+        .map(|c| {
+            p.index.beats.iter().position(|b| {
+                b.id == c.id
+                    && b.document == c.document
+                    && is_candidate(b, &col.occasion, col.target.as_deref())
+            })
+        })
+        .collect();
+    for (c, row) in cands.iter().zip(&rows) {
+        let Some(row) = *row else {
             continue;
         };
         let s = seen.entry(row).or_default();
@@ -628,22 +1010,41 @@ fn evaluate(p: &Project, w: &World, col: &Column, seen: &mut BTreeMap<usize, See
         })
         .collect();
     let undecided = deciding_unknown(&cands, col.select).is_some();
-    let shown: Vec<&Candidate> = if undecided {
+    let shown: Vec<usize> = if undecided {
         Vec::new()
     } else {
-        presented(col.select, &cands).into_iter().map(|i| &cands[i]).collect()
+        presented(col.select, &cands)
     };
-    let shadowed = cands
-        .iter()
-        .filter(|c| matches!(c.verdict, Verdict::Eligible))
-        .filter(|c| !shown.iter().any(|s| std::ptr::eq(*s, *c)))
-        .map(|c| c.id.clone())
-        .collect();
+    let winner = (col.select == OccasionSelect::First)
+        .then(|| shown.iter().map(|&i| &cands[i]).find(|c| !c.also).map(|c| c.id.clone()))
+        .flatten();
+    let presented: Vec<String> = shown.iter().map(|&i| cands[i].id.clone()).collect();
+    // What a shadowed beat lost to: the winner, else the presented list.
+    let beater = if undecided {
+        "?".to_string()
+    } else {
+        winner.clone().unwrap_or_else(|| presented.join(", "))
+    };
+    let mut shadowed = Vec::new();
+    for (i, c) in cands.iter().enumerate() {
+        if !matches!(c.verdict, Verdict::Eligible) {
+            continue;
+        }
+        let s = rows[i].map(|row| seen.entry(row).or_default());
+        if shown.contains(&i) {
+            if let Some(s) = s {
+                s.presented = true;
+            }
+        } else {
+            shadowed.push(c.id.clone());
+            if let Some(s) = s {
+                s.beaten_by.insert(beater.clone());
+            }
+        }
+    }
     Outcome {
-        winner: (col.select == OccasionSelect::First)
-            .then(|| shown.iter().find(|c| !c.also).map(|c| c.id.clone()))
-            .flatten(),
-        presented: shown.iter().map(|c| c.id.clone()).collect(),
+        winner,
+        presented,
         shadowed,
         unknown,
         undecided,
@@ -675,27 +1076,127 @@ fn cell_label(cell: &Cell) -> String {
         .join(" ")
 }
 
-fn render_text(
-    dir: &Path,
-    from: &str,
-    pruned: usize,
-    axes: &[Axis],
-    columns: &[Column],
-    cells: &[Cell],
-    never: &[(&IndexBeat, &Seen)],
-) -> String {
+/// A cell's values alone, `/`-joined — a presence table's column head.
+fn cell_short(cell: &Cell) -> String {
+    if cell.at.is_empty() {
+        return "(start)".to_string();
+    }
+    cell.at.iter().map(|(_, text, _)| text.as_str()).collect::<Vec<_>>().join("/")
+}
+
+/// `occasion[@target]` of a beat.
+fn beat_on(b: &IndexBeat) -> String {
+    match &b.target {
+        Some(t) => format!("{}@{t}", b.on),
+        None => b.on.clone(),
+    }
+}
+
+/// Left-aligned columns two spaces apart; trailing blanks trimmed.
+fn table(rows: &[Vec<String>]) -> String {
     let mut out = String::new();
-    let pruned = match pruned {
+    let widths: Vec<usize> = (0..rows.first().map_or(0, Vec::len))
+        .map(|i| rows.iter().map(|r| r[i].chars().count()).max().unwrap_or(0))
+        .collect();
+    for row in rows {
+        let mut line = String::new();
+        for (i, v) in row.iter().enumerate() {
+            if i + 1 == row.len() {
+                line.push_str(v);
+            } else {
+                let _ = write!(line, "{v:<w$}  ", w = widths[i]);
+            }
+        }
+        out.push_str(line.trim_end());
+        out.push('\n');
+    }
+    out
+}
+
+/// `(varies, held)` of a per-occasion column: the axes it varies over and
+/// `(path, value text, value)` of every axis it is held at.
+fn pinned<'a>(pins: &[Option<usize>], axes: &'a [Axis]) -> (Vec<&'a str>, Vec<(&'a str, &'a str, &'a Value)>) {
+    let mut varies = Vec::new();
+    let mut held = Vec::new();
+    for (pin, axis) in pins.iter().zip(axes) {
+        match pin {
+            None => varies.push(axis.path.as_str()),
+            Some(k) => {
+                let (text, value) = &axis.values[*k];
+                held.push((axis.path.as_str(), text.as_str(), value));
+            }
+        }
+    }
+    (varies, held)
+}
+
+/// A presence table's rows: per first argument (the closed domain's
+/// members, then any other first argument some cell holds), its text at
+/// every cell — the remaining arguments, `yes` for a unary relation, `-`
+/// when nothing holds. A nullary relation is one row under its name.
+fn fact_rows(ri: usize, rel: &FactsRel, cells: &[Cell]) -> Vec<(String, Vec<String>)> {
+    if rel.args.is_empty() {
+        let row = cells
+            .iter()
+            .map(|c| if c.facts[ri].is_empty() { "-" } else { "yes" }.to_string())
+            .collect();
+        return vec![(rel.name.clone(), row)];
+    }
+    let mut firsts = rel.members.clone();
+    let seen: BTreeSet<&str> = cells
+        .iter()
+        .flat_map(|c| c.facts[ri].iter().map(|(_, args)| args[0].as_str()))
+        .filter(|a| !rel.members.iter().any(|m| m == a))
+        .collect();
+    firsts.extend(seen.into_iter().map(str::to_string));
+    firsts
+        .into_iter()
+        .map(|first| {
+            let row = cells
+                .iter()
+                .map(|c| {
+                    let here: Vec<String> = c.facts[ri]
+                        .iter()
+                        .filter(|(_, args)| args[0] == first)
+                        .map(|(_, args)| {
+                            if args.len() == 1 { "yes".to_string() } else { args[1..].join(", ") }
+                        })
+                        .collect();
+                    if here.is_empty() { "-".to_string() } else { here.join(" | ") }
+                })
+                .collect();
+            (first, row)
+        })
+        .collect()
+}
+
+fn render_text(dir: &Path, r: &Report<'_>) -> String {
+    let (axes, columns, cells) = (r.axes, r.columns, r.cells);
+    let mut out = String::new();
+    let pruned = match r.pruned {
         0 => String::new(),
         n => format!(" ({n} dropped by --where)"),
     };
     let _ = writeln!(
         out,
-        "calendar: {} — {} cell(s){pruned} × {} column(s), from {from}",
+        "calendar: {} — {} cell(s){pruned} × {} column(s), from {}",
         dir.display(),
         cells.len(),
-        columns.len()
+        columns.len(),
+        r.from
     );
+    let mut noted = BTreeSet::new();
+    for c in columns {
+        let Some(pins) = &c.pins else { continue };
+        if !noted.insert(c.occasion.as_str()) {
+            continue;
+        }
+        let (varies, held) = pinned(pins, axes);
+        let varies = if varies.is_empty() { "no axis".to_string() } else { varies.join(", ") };
+        let held: Vec<String> = held.iter().map(|(p, t, _)| format!("{p}={t}")).collect();
+        let held = if held.is_empty() { String::new() } else { format!(", at {}", held.join(" ")) };
+        let _ = writeln!(out, "  {}: varies over {varies} only{held}; blank elsewhere", c.occasion);
+    }
     out.push('\n');
     // Two header rows: the axis paths and occasions, then the targets.
     let mut rows: Vec<Vec<String>> = Vec::with_capacity(cells.len() + 2);
@@ -720,23 +1221,19 @@ fn render_text(
     }
     for cell in cells {
         let mut row: Vec<String> = cell.at.iter().map(|(_, text, _)| text.clone()).collect();
-        row.extend(cell.outcomes.iter().map(cell_text));
+        row.extend(cell.outcomes.iter().map(|o| o.as_ref().map(cell_text).unwrap_or_default()));
         rows.push(row);
     }
-    let widths: Vec<usize> = (0..rows[0].len())
-        .map(|i| rows.iter().map(|r| r[i].chars().count()).max().unwrap_or(0))
-        .collect();
-    for row in &rows {
-        let mut line = String::new();
-        for (i, v) in row.iter().enumerate() {
-            if i + 1 == row.len() {
-                line.push_str(v);
-            } else {
-                let _ = write!(line, "{v:<w$}  ", w = widths[i]);
-            }
-        }
-        out.push_str(line.trim_end());
-        out.push('\n');
+    out.push_str(&table(&rows));
+
+    for (ri, rel) in r.rels.iter().enumerate() {
+        let _ = writeln!(out, "\nfacts {}({}):", rel.name, rel.args.join(", "));
+        let first = rel.args.first().unwrap_or(&rel.name).clone();
+        let mut rows = vec![std::iter::once(first).chain(cells.iter().map(cell_short)).collect::<Vec<_>>()];
+        rows.extend(fact_rows(ri, rel, cells).into_iter().map(|(label, row)| {
+            std::iter::once(label).chain(row).collect()
+        }));
+        out.push_str(&table(&rows));
     }
 
     let mut shadowed = String::new();
@@ -748,6 +1245,7 @@ fn render_text(
             let _ = writeln!(notes, "  {label}: {n}");
         }
         for (col, o) in columns.iter().zip(&cell.outcomes) {
+            let Some(o) = o else { continue };
             if !o.shadowed.is_empty() {
                 // An undecided cell presents nothing: the eligible beats wait
                 // behind the unknown `when`, which `?` stands for.
@@ -775,23 +1273,28 @@ fn render_text(
             let _ = write!(out, "\n{title}\n{body}");
         }
     }
-    let _ = write!(out, "\nnever eligible in any cell: ");
-    if never.is_empty() {
-        out.push_str("none\n");
-    } else {
-        let _ = writeln!(out, "{}", never.len());
-        for (b, s) in never {
-            let on = match &b.target {
-                Some(t) => format!("{}@{t}", b.on),
-                None => b.on.clone(),
-            };
-            let why: Vec<&str> = s.reasons.iter().map(String::as_str).collect();
+    for (title, list, detail) in [
+        ("never eligible in any cell", &r.never_eligible, "" as &str),
+        ("eligible but never presented in any cell", &r.never_presented, "lost to "),
+    ] {
+        let _ = write!(out, "\n{title}: ");
+        if list.is_empty() {
+            out.push_str("none\n");
+            continue;
+        }
+        let _ = writeln!(out, "{}", list.len());
+        for (b, s) in list {
+            let why: Vec<&str> = if detail.is_empty() { &s.reasons } else { &s.beaten_by }
+                .iter()
+                .map(String::as_str)
+                .collect();
             let _ = writeln!(
                 out,
-                "  {} [{}, {}] {on} — {}",
+                "  {} [{}, {}] {} — {detail}{}",
                 b.id,
                 kind_label(b.kind),
                 b.document,
+                beat_on(b),
                 why.join("; ")
             );
         }
@@ -799,14 +1302,7 @@ fn render_text(
     out
 }
 
-fn render_json(
-    from: &str,
-    pruned: usize,
-    axes: &[Axis],
-    columns: &[Column],
-    cells: &[Cell],
-    never: &[(&IndexBeat, &Seen)],
-) -> Json {
+fn render_json(r: &Report<'_>) -> Json {
     let col_json = |c: &Column| {
         let mut m = serde_json::Map::new();
         m.insert("occasion".into(), json!(c.occasion));
@@ -819,15 +1315,36 @@ fn render_json(
         m.insert("select".into(), json!(c.select.as_str()));
         m
     };
+    let beat_json = |b: &IndexBeat| {
+        let mut m = serde_json::Map::new();
+        m.insert("id".into(), json!(b.id));
+        m.insert("kind".into(), json!(kind_label(b.kind)));
+        m.insert("document".into(), json!(b.document));
+        m.insert("on".into(), json!(b.on));
+        if let Some(t) = &b.target {
+            m.insert("target".into(), json!(t));
+        }
+        m
+    };
     json!({
-        "from": from,
-        "pruned": pruned,
-        "axes": axes.iter().map(|a| json!({
+        "from": r.from,
+        "pruned": r.pruned,
+        "axes": r.axes.iter().map(|a| json!({
             "path": a.path,
             "values": a.values.iter().map(|(_, v)| value_to_json(v)).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
-        "columns": columns.iter().map(|c| Json::Object(col_json(c))).collect::<Vec<_>>(),
-        "cells": cells.iter().map(|cell| {
+        "columns": r.columns.iter().map(|c| {
+            let mut m = col_json(c);
+            if let Some(pins) = &c.pins {
+                let (varies, held) = pinned(pins, r.axes);
+                m.insert("varies".into(), json!(varies));
+                m.insert("heldAt".into(), Json::Object(
+                    held.iter().map(|(p, _, v)| (p.to_string(), value_to_json(v))).collect(),
+                ));
+            }
+            Json::Object(m)
+        }).collect::<Vec<_>>(),
+        "cells": r.cells.iter().map(|cell| {
             let at: serde_json::Map<String, Json> =
                 cell.at.iter().map(|(p, _, v)| (p.clone(), v.clone())).collect();
             let mut m = serde_json::Map::new();
@@ -835,7 +1352,8 @@ fn render_json(
             if !cell.notes.is_empty() {
                 m.insert("notes".into(), json!(cell.notes));
             }
-            m.insert("results".into(), Json::Array(columns.iter().zip(&cell.outcomes).map(|(c, o)| {
+            m.insert("results".into(), Json::Array(r.columns.iter().zip(&cell.outcomes).filter_map(|(c, o)| {
+                let o = o.as_ref()?;
                 let mut r = col_json(c);
                 r.insert("winner".into(), json!(o.winner));
                 r.insert("presented".into(), json!(o.presented));
@@ -848,20 +1366,23 @@ fn render_json(
                 if o.undecided {
                     r.insert("undecided".into(), json!(true));
                 }
-                Json::Object(r)
+                Some(Json::Object(r))
             }).collect()));
+            if !r.rels.is_empty() {
+                m.insert("facts".into(), Json::Object(r.rels.iter().zip(&cell.facts).map(|(rel, fs)| {
+                    (rel.name.clone(), json!(fs.iter().map(render_fact).collect::<Vec<_>>()))
+                }).collect()));
+            }
             Json::Object(m)
         }).collect::<Vec<_>>(),
-        "neverEligible": never.iter().map(|(b, s)| {
-            let mut m = serde_json::Map::new();
-            m.insert("id".into(), json!(b.id));
-            m.insert("kind".into(), json!(kind_label(b.kind)));
-            m.insert("document".into(), json!(b.document));
-            m.insert("on".into(), json!(b.on));
-            if let Some(t) = &b.target {
-                m.insert("target".into(), json!(t));
-            }
+        "neverEligible": r.never_eligible.iter().map(|(b, s)| {
+            let mut m = beat_json(b);
             m.insert("reasons".into(), json!(s.reasons));
+            Json::Object(m)
+        }).collect::<Vec<_>>(),
+        "neverPresented": r.never_presented.iter().map(|(b, s)| {
+            let mut m = beat_json(b);
+            m.insert("beatenBy".into(), json!(s.beaten_by));
             Json::Object(m)
         }).collect::<Vec<_>>(),
     })
@@ -876,20 +1397,35 @@ fn csv_field(s: &str) -> String {
     }
 }
 
-/// One row per cell × column; list fields `;`-joined.
-fn render_csv(axes: &[Axis], columns: &[Column], cells: &[Cell]) -> String {
+fn csv_line(out: &mut String, fields: &[String]) {
+    let _ = writeln!(out, "{}", fields.iter().map(|f| csv_field(f)).collect::<Vec<_>>().join(","));
+}
+
+/// One row per cell × evaluated column (a cell no column is evaluated at
+/// still gets one row when `--facts` asks for its facts); list fields
+/// `;`-joined, a `facts:<relation>` field per `--facts`. The beats eligible
+/// somewhere but never presented follow as a second table after a blank
+/// line, when there are any.
+fn render_csv(r: &Report<'_>) -> String {
     let mut out = String::new();
-    let mut head: Vec<String> = axes.iter().map(|a| a.path.clone()).collect();
+    let mut head: Vec<String> = r.axes.iter().map(|a| a.path.clone()).collect();
     head.extend(
         ["occasion", "target", "select", "winner", "presented", "shadowed", "unknown", "notes"]
             .map(str::to_string),
     );
-    let _ = writeln!(out, "{}", head.iter().map(|h| csv_field(h)).collect::<Vec<_>>().join(","));
-    for cell in cells {
-        for (c, o) in columns.iter().zip(&cell.outcomes) {
-            let mut row: Vec<String> = cell.at.iter().map(|(_, text, _)| text.clone()).collect();
+    head.extend(r.rels.iter().map(|rel| format!("facts:{}", rel.name)));
+    csv_line(&mut out, &head);
+    for cell in r.cells {
+        let facts: Vec<String> = cell
+            .facts
+            .iter()
+            .map(|fs| fs.iter().map(render_fact).collect::<Vec<_>>().join(";"))
+            .collect();
+        let mut rows: Vec<[String; 8]> = Vec::new();
+        for (c, o) in r.columns.iter().zip(&cell.outcomes) {
+            let Some(o) = o else { continue };
             let unknown: Vec<&str> = o.unknown.iter().map(|(id, _)| id.as_str()).collect();
-            row.extend([
+            rows.push([
                 c.occasion.clone(),
                 c.target.clone().unwrap_or_else(|| {
                     if c.any_target { "(any)".to_string() } else { String::new() }
@@ -901,7 +1437,37 @@ fn render_csv(axes: &[Axis], columns: &[Column], cells: &[Cell]) -> String {
                 unknown.join(";"),
                 cell.notes.join(";"),
             ]);
-            let _ = writeln!(out, "{}", row.iter().map(|f| csv_field(f)).collect::<Vec<_>>().join(","));
+        }
+        if rows.is_empty() && !r.rels.is_empty() {
+            let mut bare: [String; 8] = Default::default();
+            bare[7] = cell.notes.join(";");
+            rows.push(bare);
+        }
+        for fields in rows {
+            let mut row: Vec<String> = cell.at.iter().map(|(_, text, _)| text.clone()).collect();
+            row.extend(fields);
+            row.extend(facts.iter().cloned());
+            csv_line(&mut out, &row);
+        }
+    }
+    if !r.never_presented.is_empty() {
+        out.push('\n');
+        csv_line(
+            &mut out,
+            &["neverPresented", "kind", "document", "occasion", "target", "beatenBy"].map(str::to_string),
+        );
+        for (b, s) in &r.never_presented {
+            csv_line(
+                &mut out,
+                &[
+                    b.id.clone(),
+                    kind_label(b.kind).to_string(),
+                    b.document.clone(),
+                    b.on.clone(),
+                    b.target.clone().unwrap_or_default(),
+                    s.beaten_by.iter().cloned().collect::<Vec<_>>().join(";"),
+                ],
+            );
         }
     }
     out

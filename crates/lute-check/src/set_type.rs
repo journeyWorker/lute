@@ -221,7 +221,7 @@ fn decide_call(c: &CallExpr, schema: &StateSchema) -> Decision {
         // how §3.2's `narrativeTime` clause is DERIVED from this closed rule
         // set rather than asserted beside it.
         "holds" => Decision::Ty(Type::Bool),
-        "count" => Decision::Ty(Type::Number),
+        "count" | "countDistinct" => Decision::Ty(Type::Number),
         "now" => Decision::Ty(Type::NarrativeTime),
         // Rule 5: `-` (binary and unary), `*` and `/` produce `number`, and
         // ANY operand whose type is decidable and is not `number` makes the
@@ -234,6 +234,22 @@ fn decide_call(c: &CallExpr, schema: &StateSchema) -> Decision {
                         return Decision::Ill(operand_desc(&a.expr, &t))
                     }
                     _ => {}
+                }
+            }
+            Decision::Ty(Type::Number)
+        }
+        // dsl 0.24.0 §1: integer `%` produces `number`. An operand that is not
+        // an integer is `E-CEL-TYPE` — [`modulo_operand_fault`], reported by
+        // `cel_resolve` on every slot — so it is undecidable here rather than
+        // a second diagnostic (`E-SET-TYPE`) for the same fault.
+        op::MODULO => {
+            for a in &c.args {
+                let d = decide(&a.expr, schema);
+                if let Decision::Ill(w) = d {
+                    return Decision::Ill(w);
+                }
+                if integer_fault(&a.expr, &d).is_some() {
+                    return Decision::Undecidable;
                 }
             }
             Decision::Ty(Type::Number)
@@ -314,7 +330,12 @@ fn is_string_family(t: &Type) -> bool {
 /// spelling — §3.3's own worked case wants the message to name the comparison,
 /// not the whole write.
 fn operand_desc(expr: &Expr, t: &Type) -> String {
-    let what = match expr {
+    format!("{} is a `{}`, not a `number`", operand_subject(expr), scalar_name(t))
+}
+
+/// How [`operand_desc`] and [`integer_fault`] name an operand.
+fn operand_subject(expr: &Expr) -> String {
+    match expr {
         Expr::Call(c) => match op_spelling(&c.func_name) {
             Some(sym) => format!("the `{sym}` comparison"),
             None => format!("the `{}(…)` call", c.func_name),
@@ -323,8 +344,49 @@ fn operand_desc(expr: &Expr, t: &Type) -> String {
             Some(p) => format!("`{p}`"),
             None => "an operand".to_string(),
         },
+    }
+}
+
+/// dsl 0.24.0 §1: why one `%` operand is not an integer, or `None` when it
+/// may be one. Statically an integer is any operand whose type is `number`
+/// (or undecidable) and that is not a fractional numeric literal: a number
+/// PATH cannot be proven integral here, so the runtime owns that half — a
+/// fractional value makes `%` unknown there (docs/runtime/cel-and-facts.md).
+/// The namespaced id family stays undecidable, as in rule 5.
+pub(crate) fn modulo_operand_fault(expr: &Expr, schema: &StateSchema) -> Option<String> {
+    integer_fault(expr, &decide(expr, schema))
+}
+
+/// [`modulo_operand_fault`] over an already-decided operand.
+fn integer_fault(expr: &Expr, decided: &Decision) -> Option<String> {
+    if let Some(lit) = fractional_literal(expr) {
+        return Some(format!("`{lit}` is not an integer"));
+    }
+    let Decision::Ty(t) = decided else {
+        return None;
     };
-    format!("{what} is a `{}`, not a `number`", scalar_name(t))
+    if !arith_rejects(t) {
+        return None;
+    }
+    let what = match expr {
+        Expr::Literal(Val::String(s)) => format!("`'{s}'`"),
+        Expr::Literal(Val::Boolean(b)) => format!("`{b}`"),
+        _ => operand_subject(expr),
+    };
+    Some(format!("{what} is a `{}`, not an integer", scalar_name(t)))
+}
+
+/// The authored spelling of a numeric literal (or its negation) that has a
+/// fractional part — `2.5`, `-0.5`. `None` for everything else, `7.0`
+/// included: it is an integer value.
+fn fractional_literal(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Val::Double(d)) if d.fract() != 0.0 || !d.is_finite() => Some(d.to_string()),
+        Expr::Call(c) if c.func_name == op::NEGATE && c.args.len() == 1 => {
+            fractional_literal(&c.args[0].expr).map(|s| format!("-{s}"))
+        }
+        _ => None,
+    }
 }
 
 /// The authored spelling of a CEL synthetic operator name.

@@ -78,6 +78,56 @@ pub struct MockSet {
     /// which an unmocked derived atom is unknown. Read it through
     /// [`MockSet::derives`].
     pub derive: Option<bool>,
+    /// `bridges:` (dsl 0.24.0 §5): plugin directive tag -> its answers, one
+    /// per call of that tag, consumed in call order. Each answer names the
+    /// `bridgeResult` fields the call's effects read, as literal TEXT (the
+    /// `state:` idiom); [`validate_bridges`] types them.
+    pub bridges: BTreeMap<String, Vec<BridgeAnswer>>,
+}
+
+/// One bridge answer (dsl 0.24.0 §5): `(bridgeResult field, literal TEXT)`,
+/// in the order written.
+pub type BridgeAnswer = Vec<(String, String)>;
+
+/// Parse a `bridges:` value (dsl 0.24.0 §5) — `{ <tag>: [ {<field>: value},
+/// … ] }` — shared by the mock grammar and `lute play`'s per-step key. `Err`
+/// is the reason, unprefixed.
+pub fn parse_bridges(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<BridgeAnswer>>, String> {
+    let shape = "`bridges:` must be a mapping of plugin directive tag -> a list of answers, \
+                 each a mapping of bridge result field -> literal (dsl 0.24.0 §5)";
+    let serde_yaml::Value::Mapping(m) = v else {
+        return Err(shape.to_string());
+    };
+    let mut out = BTreeMap::new();
+    for (tag, answers) in m {
+        let (Some(tag), serde_yaml::Value::Sequence(answers)) = (tag.as_str(), answers) else {
+            return Err(shape.to_string());
+        };
+        let mut list = Vec::with_capacity(answers.len());
+        for (i, answer) in answers.iter().enumerate() {
+            let serde_yaml::Value::Mapping(fields) = answer else {
+                return Err(format!(
+                    "`bridges.{tag}` answer {} must be a mapping of bridge result field -> \
+                     literal, e.g. `{{ passed: true }}` (dsl 0.24.0 §5)",
+                    i + 1
+                ));
+            };
+            let mut one = Vec::with_capacity(fields.len());
+            for (field, value) in fields {
+                let (Some(field), Some(lit)) = (field.as_str(), scalar_to_text(value)) else {
+                    return Err(format!(
+                        "`bridges.{tag}` answer {} must map field names to scalar literals \
+                         (bool/number/string, dsl 0.24.0 §5)",
+                        i + 1
+                    ));
+                };
+                one.push((field.to_string(), lit));
+            }
+            list.push(one);
+        }
+        out.insert(tag.to_string(), list);
+    }
+    Ok(out)
 }
 
 impl MockSet {
@@ -237,6 +287,7 @@ fn scalar_to_text(v: &serde_yaml::Value) -> Option<String> {
 pub const MOCK_TOP_KEYS: &[&str] = &[
     "accept",
     "accepts",
+    "bridges",
     "choose",
     "derive",
     "entriesRead",
@@ -590,6 +641,11 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         }
     }
 
+    // dsl 0.24.0 §5: `bridges:` answers plugin calls, per tag, in order.
+    if let Some(v) = top.get("bridges") {
+        mocks.bridges = parse_bridges(v).map_err(|e| diag(E_TRACE_MOCK_PARSE, e, span))?;
+    }
+
     // dsl 0.22.0 §6: `derive: false` restores the 0.21 lookup-only model.
     if let Some(v) = top.get("derive") {
         let Some(b) = v.as_bool() else {
@@ -707,6 +763,8 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
 
     let mut occasions = file.occasions;
     occasions.extend(flags.occasions);
+    let mut bridges = file.bridges;
+    bridges.extend(flags.bridges);
 
     MockSet {
         state,
@@ -717,6 +775,7 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
         visited,
         occasions,
         derive: flags.derive.or(file.derive),
+        bridges,
     }
 }
 
@@ -878,10 +937,16 @@ fn reserved_quest_unreferenced_diag(path: &str, span: Span) -> Diagnostic {
 
 /// `true` iff `literal` inhabits the reserved path's own domain (§1.1):
 /// `active|complete|failed|unset` for `quest.<id>.state`, `true|false` for
-/// `quest.<id>.objectives.<oid>.done`.
+/// `quest.<id>.objectives.<oid>.done` (and dsl 0.24.0 §2's `.failed`), the
+/// failure reasons for `quest.<id>.failedBy`.
 fn reserved_quest_literal_valid(path: &str, literal: &str) -> bool {
     if crate::eval::is_reserved_quest_objective_done_path(path) {
         matches!(literal, "true" | "false")
+    } else if crate::eval::is_reserved_quest_failed_by_path(path) {
+        matches!(
+            literal,
+            "unset" | "fail" | "by" | "until" | "cascade" | "superseded"
+        )
     } else {
         matches!(literal, "active" | "complete" | "failed" | "unset")
     }
@@ -890,6 +955,8 @@ fn reserved_quest_literal_valid(path: &str, literal: &str) -> bool {
 fn reserved_quest_domain_text(path: &str) -> &'static str {
     if crate::eval::is_reserved_quest_objective_done_path(path) {
         "true, false"
+    } else if crate::eval::is_reserved_quest_failed_by_path(path) {
+        "unset, fail, by, until, cascade, superseded"
     } else {
         "active, complete, failed, unset"
     }
@@ -1110,7 +1177,8 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
             ));
             continue;
         }
-        if referenced_children.contains(id.as_str()) {
+        // dsl 0.24.0 §2: an `activate="accept"` child IS accept-driven.
+        if referenced_children.contains(id.as_str()) && !quest.activates_on_accept() {
             out.push(diag(
                 E_TRACE_ACCEPT,
                 format!(
@@ -1253,4 +1321,144 @@ pub fn validate(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Diag
     diags.extend(validate_events(mocks));
     diags.extend(validate_accept(mocks, doc));
     diags
+}
+
+/// The `bridgeResult` writes of a directive declaration (dsl 0.24.0 §5):
+/// `(field, write)` in declared order — what one call of the tag reads off
+/// its bridge result. Empty for a directive with no such effect.
+pub fn bridge_result_writes(
+    decl: &lute_manifest::schema::DirectiveDecl,
+) -> Vec<(&str, &lute_manifest::schema::WriteDecl)> {
+    decl.effects
+        .iter()
+        .flat_map(|e| &e.writes)
+        .filter_map(|w| match &w.value {
+            lute_manifest::schema::WriteValue::FromBridgeResult { from_bridge_result } => {
+                Some((from_bridge_result.as_str(), w))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether declared state path `path` is a slot `write` can land on: its
+/// scope and literal segments match, a `fromAttr` segment matches any one.
+fn write_lands_on(write: &lute_manifest::schema::WriteDecl, path: &str) -> bool {
+    let mut segs = path.split('.');
+    if segs.next() != Some(write.scope.as_str()) {
+        return false;
+    }
+    let rest: Vec<&str> = segs.collect();
+    rest.len() == write.path.len()
+        && write.path.iter().zip(&rest).all(|(p, s)| match p {
+            lute_manifest::types::PathSegment::Literal(l) => l == s,
+            lute_manifest::types::PathSegment::FromAttr { .. } => true,
+        })
+}
+
+/// dsl 0.24.0 §5: every `bridges:` answer against the plugin directive it
+/// answers. The tag names a directive whose effects read a `bridgeResult`;
+/// each answer gives exactly the fields those effects read; each value fits
+/// the declared type of every state slot this document's calls of the tag
+/// write it to. A tag, field or slot miss is [`E_TRACE_MOCK_UNDECLARED`], a
+/// value that does not fit [`E_TRACE_MOCK_TYPE`] — the `state:` codes, since
+/// an answer is a supplied value of those slots.
+pub fn validate_bridges(
+    mocks: &MockSet,
+    folded: &FoldedEnv,
+    snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
+) -> Vec<Diagnostic> {
+    let span = synthetic_span();
+    let mut out = Vec::new();
+    for (tag, answers) in &mocks.bridges {
+        let reads = snapshot
+            .directives
+            .get(tag)
+            .map(bridge_result_writes)
+            .unwrap_or_default();
+        if reads.is_empty() {
+            let bridged = snapshot
+                .directives
+                .values()
+                .filter(|d| !bridge_result_writes(d).is_empty())
+                .map(|d| d.name.as_str());
+            let sugg = lute_manifest::suggest::nearest(tag, bridged, 2)
+                .map(|k| format!(" — did you mean `{k}`?"))
+                .unwrap_or_default();
+            out.push(diag(
+                E_TRACE_MOCK_UNDECLARED,
+                format!(
+                    "`bridges.{tag}` answers no plugin call: no resolved directive `::{tag}` \
+                     reads a bridge result{sugg} (dsl 0.24.0 §5)"
+                ),
+                span,
+            ));
+            continue;
+        }
+        let fields: Vec<&str> = reads.iter().map(|(f, _)| *f).collect();
+        for (i, answer) in answers.iter().enumerate() {
+            let n = i + 1;
+            for (field, _) in answer {
+                if !fields.contains(&field.as_str()) {
+                    out.push(diag(
+                        E_TRACE_MOCK_UNDECLARED,
+                        format!(
+                            "`bridges.{tag}` answer {n} gives `{field}`, which no effect of \
+                             `::{tag}` reads (it reads: {}) (dsl 0.24.0 §5)",
+                            fields.join(", ")
+                        ),
+                        span,
+                    ));
+                }
+            }
+            for (field, write) in &reads {
+                let Some((_, lit)) = answer.iter().find(|(f, _)| f == field) else {
+                    out.push(diag(
+                        E_TRACE_MOCK_UNDECLARED,
+                        format!(
+                            "`bridges.{tag}` answer {n} lacks `{field}` — an answer gives every \
+                             bridge result `::{tag}` reads ({}) (dsl 0.24.0 §5)",
+                            fields.join(", ")
+                        ),
+                        span,
+                    ));
+                    continue;
+                };
+                let slots: Vec<_> = folded
+                    .env
+                    .state
+                    .decls
+                    .iter()
+                    .filter(|(p, _)| write_lands_on(write, p))
+                    .collect();
+                if slots.is_empty() {
+                    out.push(diag(
+                        E_TRACE_MOCK_UNDECLARED,
+                        format!(
+                            "`bridges.{tag}` answers `{field}`, but no `::{tag}` call of this \
+                             document writes it to a declared state slot — nothing reads the \
+                             answer (dsl 0.24.0 §5)"
+                        ),
+                        span,
+                    ));
+                    continue;
+                }
+                for (path, decl) in slots {
+                    let ok = coerce_state_literal(&decl.ty, lit)
+                        .is_some_and(|l| type_accepts(&decl.ty, &l));
+                    if !ok {
+                        out.push(diag(
+                            E_TRACE_MOCK_TYPE,
+                            format!(
+                                "`bridges.{tag}` answer {n}: `{field}: {lit}` is not compatible \
+                                 with `{path}`'s declared type (dsl 0.24.0 §5)"
+                            ),
+                            span,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    out
 }

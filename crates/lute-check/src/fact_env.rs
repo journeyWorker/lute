@@ -151,6 +151,38 @@ impl QueryPattern {
     }
 }
 
+/// A well-shaped `count(P)` / `countDistinct(P, V)` call (dsl 0.24 T3-9):
+/// its pattern — the column `V` names read as `_` — and, for
+/// `countDistinct`, that column. `None` for anything else, or a pattern that
+/// is not compile-time ground.
+pub fn count_query(c: &CallExpr) -> Option<(QueryPattern, Option<usize>)> {
+    if !crate::cel_resolve::is_profile_fact_query(c) {
+        return None;
+    }
+    let column = match c.func_name.as_str() {
+        "count" => None,
+        "countDistinct" => Some(crate::cel_resolve::count_distinct_column(c)?),
+        _ => return None,
+    };
+    let cel_parser::ast::Expr::Call(p) = &c.args[0].expr else {
+        return None;
+    };
+    let mut q = QueryPattern::from_call(p)?;
+    if let Some(col) = column {
+        q.args[col] = None;
+    }
+    Some((q, column))
+}
+
+/// How many of `facts` there are — or, with `column`, how many distinct
+/// values they carry at that position.
+fn tally<'f>(facts: impl Iterator<Item = &'f [String]>, column: Option<usize>) -> usize {
+    match column {
+        None => facts.count(),
+        Some(i) => facts.filter_map(|a| a.get(i)).collect::<BTreeSet<_>>().len(),
+    }
+}
+
 impl fmt::Display for QueryPattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let args: Vec<&str> = self
@@ -194,6 +226,9 @@ pub struct RootVocab {
     /// reads every relation as unbounded, so no fact is impossible, as
     /// connectivity already declines to call a `visited()` key unknown.
     incomplete: bool,
+    /// dsl 0.24 T3-6: relations heading a rule that failed to parse — their
+    /// derivation is unknown, so they are unbounded (no verdict cascades).
+    unparsed_heads: BTreeSet<String>,
 }
 
 impl RootVocab {
@@ -252,6 +287,7 @@ impl RootVocab {
                 self.rules.push(rule.rule.clone());
             }
         }
+        self.unparsed_heads.extend(vocab.unparsed_heads.iter().cloned());
     }
 
     /// seven F3 (dsl 0.23.1): mark the root incomplete when any of `docs`
@@ -291,6 +327,7 @@ impl RootVocab {
     /// domain, or a declaration two documents disagree on.
     pub(crate) fn is_unbounded(&self, name: &str, decl: &RelationDecl) -> bool {
         decl.reserved
+            || self.unparsed_heads.contains(name)
             || self.conflicting.contains(name)
             || decl
                 .args
@@ -306,6 +343,7 @@ impl RootVocab {
             .iter()
             .filter(|(name, decl)| {
                 !decl.reserved
+                    && !self.unparsed_heads.contains(*name)
                     && !asserted.contains(*name)
                     && !self.seeds.iter().any(|s| &s.relation == *name)
                     && !self.rules.iter().any(|r| &r.head.relation == *name)
@@ -654,14 +692,18 @@ impl MaySet {
 
     /// `|May ∩ q|`; `None` = unbounded (∞).
     pub fn count_matching(&self, q: &QueryPattern) -> Option<usize> {
+        self.count_matching_in(q, None)
+    }
+
+    /// `|May ∩ q|`, or the number of distinct values at `column` among those
+    /// facts (`countDistinct`); `None` = unbounded (∞).
+    fn count_matching_in(&self, q: &QueryPattern, column: Option<usize>) -> Option<usize> {
         if self.unbounded.contains(&q.relation) {
             return None;
         }
-        Some(
-            self.facts
-                .get(&q.relation)
-                .map_or(0, |set| set.iter().filter(|a| q.matches_args(a)).count()),
-        )
+        Some(self.facts.get(&q.relation).map_or(0, |set| {
+            tally(set.iter().filter(|a| q.matches_args(a)).map(Vec::as_slice), column)
+        }))
     }
 
     /// `true` iff some fact in `May` may match `q`.
@@ -1041,9 +1083,17 @@ impl FactEnv {
         }
     }
 
-    /// §5's `count(P)` interval at the slot; `None` for a query this set does
-    /// not decide.
-    fn count(&self, path: &Path, span: Span, q: &QueryPattern, wip: bool) -> Option<CountInterval> {
+    /// §5's `count(P)` interval at the slot — with `column`, the interval of
+    /// `countDistinct(P, V)` (distinct values at that position, dsl 0.24
+    /// T3-9); `None` for a query this set does not decide.
+    fn count(
+        &self,
+        path: &Path,
+        span: Span,
+        q: &QueryPattern,
+        column: Option<usize>,
+        wip: bool,
+    ) -> Option<CountInterval> {
         let may = self.may_set(wip);
         if !may.decides(q) {
             return None;
@@ -1058,8 +1108,8 @@ impl FactEnv {
         guaranteed.sort();
         guaranteed.dedup();
         Some(CountInterval {
-            lo: guaranteed.len(),
-            hi: may.count_matching(q),
+            lo: tally(guaranteed.iter().map(|f| f.args.as_slice()), column),
+            hi: may.count_matching_in(q, column),
         })
     }
 }
@@ -1101,9 +1151,14 @@ impl<'a> FactScope<'a> {
     }
 
     pub fn count(&self, q: &QueryPattern) -> Option<CountInterval> {
+        self.count_in(q, None)
+    }
+
+    /// [`FactScope::count`]; with `column`, `countDistinct`'s interval.
+    pub fn count_in(&self, q: &QueryPattern, column: Option<usize>) -> Option<CountInterval> {
         if !self.in_vocab(q) {
             return None;
         }
-        self.env.count(self.path, self.span, q, self.wip)
+        self.env.count(self.path, self.span, q, column, self.wip)
     }
 }

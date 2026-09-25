@@ -57,16 +57,29 @@ pub enum BeatOnce {
     User,
     /// `once: false` — repeatable; never spent.
     None,
+    /// dsl 0.24.0 §1: `once: day` — spent until the clock's day changes.
+    Day,
+    /// dsl 0.24.0 §1: `once: slot` — spent until the clock's slot (or day)
+    /// changes.
+    Slot,
 }
 
 impl BeatOnce {
-    /// The IR spelling (dsl 0.21.0 §8): `"run"`, `"user"`, or `"none"`.
+    /// The IR spelling (dsl 0.21.0 §8, 0.24.0 §1): `"run"`, `"user"`,
+    /// `"none"`, `"day"`, or `"slot"`.
     pub fn as_str(self) -> &'static str {
         match self {
             BeatOnce::Run => "run",
             BeatOnce::User => "user",
             BeatOnce::None => "none",
+            BeatOnce::Day => "day",
+            BeatOnce::Slot => "slot",
         }
+    }
+
+    /// Spent per clock period (`day` / `slot`) — needs a declared clock.
+    pub fn is_clock(self) -> bool {
+        matches!(self, BeatOnce::Day | BeatOnce::Slot)
     }
 }
 
@@ -219,11 +232,14 @@ pub(crate) fn lift_scene_beat(
         Some(v) => match v.as_str() {
             Some("run") => BeatOnce::Run,
             Some("user") => BeatOnce::User,
+            Some("day") => BeatOnce::Day,
+            Some("slot") => BeatOnce::Slot,
             _ => {
                 push(
                     format!(
                         "`once:` must be `run` (once per run, the default), `user` (once ever), \
-                         or `false` (repeatable), got {} (dsl 0.21.0 §3.1)",
+                         `day` / `slot` (once per clock day / slot), or `false` (repeatable), \
+                         got {} (dsl 0.21.0 §3.1, 0.24.0 §1)",
                         describe(v)
                     ),
                     top_value_span(meta, "once"),
@@ -351,12 +367,13 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
         }
     }
     if let Some((raw, span)) = &entry.once {
-        if !matches!(raw.as_str(), "run" | "user") {
+        if !matches!(raw.as_str(), "run" | "user" | "day" | "slot") {
             push(
                 format!(
                     "`<entry>` `once=\"{raw}\"` must be `run` (not eligible again this run once \
-                     read) or `user` (never again once read); omit it for a repeatable entry \
-                     beat (dsl 0.22.0 §7)"
+                     read), `user` (never again once read), or `day` / `slot` (not again this \
+                     clock day / slot once read); omit it for a repeatable entry beat \
+                     (dsl 0.22.0 §7, 0.24.0 §1)"
                 ),
                 *span,
             );
@@ -373,9 +390,11 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
 }
 
 /// The occasion vocabulary of every entry beat of one document (dsl 0.21.0
-/// §2): [`E_OCCASION_UNKNOWN`] and the untargeted-occasion `target`
-/// [`E_BEAT_ATTR`], exactly as a scene beat's. Shape-only while
-/// `occasions` is empty.
+/// §2): [`E_OCCASION_UNKNOWN`], exactly as a scene beat's. Shape-only while
+/// `occasions` is empty. dsl 0.24.0 §6: on an occasion declared without a
+/// target an entry's `target=` is metadata (what the entry is about, the
+/// ordinary lore lookup key), not a candidate restriction — so, unlike a
+/// scene or bundle beat's, it is no `E-BEAT-ATTR` there.
 pub(crate) fn check_entry_occasions(
     entries: &[Entry],
     occasions: &BTreeMap<String, OccasionDecl>,
@@ -385,14 +404,18 @@ pub(crate) fn check_entry_occasions(
         let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_entry_ident(on)) else {
             continue;
         };
-        let target_span = entry
-            .target
-            .as_ref()
-            .filter(|(t, _)| is_entry_target(t))
-            .map(|(_, span)| *span);
-        check_occasion(on, *on_span, target_span, occasions, Layer::Logic, &mut diags);
+        check_occasion(on, *on_span, None, occasions, Layer::Logic, &mut diags);
     }
     diags
+}
+
+/// dsl 0.24.0 §6: whether a beat's `target` restricts its candidacy on
+/// occasion `on` — every occasion but one DECLARED without a target, where an
+/// entry's `target=` is metadata. (An undeclared occasion keeps the 0.21
+/// shape-only meaning: a target restricts.) The one rule the checker's beat
+/// passes and `lute play`'s candidate filter share.
+pub fn beat_target_restricts(on: &str, occasions: &BTreeMap<String, OccasionDecl>) -> bool {
+    occasions.get(on).is_none_or(|d| d.target.takes_target())
 }
 
 /// dsl 0.21.0 §7a.2 (D-I): every `<objective on="<occasion>">` of `quests`
@@ -456,6 +479,21 @@ pub(crate) fn check_objective_occasions(
             Some((_, span)) => Some(*span),
             None => None,
         };
+        // dsl 0.24.0 §2.1: `until` is the place-bound deadline — judged only
+        // when the objective's occasion is raised, so it needs one.
+        if let (Some(until), None) = (&o.until, &o.on) {
+            if !o.attrs.iter().any(|a| a.key == "on") {
+                diags.push(beat_diag(
+                    E_BEAT_ATTR,
+                    Severity::Error,
+                    "`<objective>` `until` requires `on`; it is judged only when that occasion \
+                     is raised — a deadline that holds everywhere is `by=` (dsl 0.24.0 §2.1)"
+                        .to_string(),
+                    until.span,
+                    Layer::Logic,
+                ));
+            }
+        }
         let Some((on, span)) = &o.on else { continue };
         if !is_entry_ident(on) {
             diags.push(beat_diag(
@@ -830,15 +868,21 @@ pub fn project_beats<'a>(
                     None => continue,
                 },
             };
+            // dsl 0.24.0 §6: on an occasion declared without a target the
+            // entry's `target=` is metadata, not a candidate restriction.
             let target = match &entry.target {
                 None => None,
-                Some((t, _)) if is_entry_target(t) => Some(t.as_str()),
+                Some((t, _)) if is_entry_target(t) => {
+                    beat_target_restricts(on, &folded.occasions).then_some(t.as_str())
+                }
                 Some(_) => continue,
             };
             let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
                 None => BeatOnce::None,
                 Some("run") => BeatOnce::Run,
                 Some("user") => BeatOnce::User,
+                Some("day") => BeatOnce::Day,
+                Some("slot") => BeatOnce::Slot,
                 Some(_) => continue,
             };
             lore.push((entry.span.byte_start, ProjectBeat {
@@ -919,9 +963,14 @@ struct Beat<'a> {
     /// Never spent: a scene's `once: false`, or an entry without `once`.
     unspent: bool,
     /// The `when` after `@def` expansion in its own document (`None` when
-    /// absent) — what the tie check conjoins across documents.
+    /// absent) — what messages quote.
     when: Option<String>,
-    /// The `when`'s in-domain conjuncts, typed in its own document.
+    /// dsl 0.24.0 (T3-3): the eligibility the tie check conjoins across
+    /// documents — the expanded `when` AND what the beat's `once` requires
+    /// ([`once_guard`]); `None` when neither constrains.
+    eligible: Option<String>,
+    /// [`Self::eligible`]'s in-domain conjuncts, typed in its own document
+    /// (a pure-schedule `holds(A)` contributing its rules' `cel()` guards).
     conjuncts: crate::reachability::Conjuncts,
     /// A defaulted `once: run` (a scene's or bundle beat's; never an
     /// entry's, whose `once` is always written) with a `when` that reads
@@ -952,24 +1001,38 @@ pub const W_BEAT_ONCE_RUN_USER: &str = "W-BEAT-ONCE-RUN-USER";
 ///   so `A` is a candidate whenever `B` is — that is always eligible (no
 ///   `after:`, `when` absent or deciding true without facts) and never spent
 ///   (`once: false`, or an entry without `once`). `A` then wins every time
-///   `B` could. Conservative: an undecided `when` never shadows.
+///   `B` could. Conservative: an undecided `when` never shadows. dsl 0.24.0
+///   (T1-8): an untargeted `B` on an occasion whose target domain is closed
+///   is also shadowed when, for EVERY `<prefix>.<member>` of the domain, some
+///   earlier such `A` targets that member (or none) — it can win no ladder.
 /// - [`W_BEAT_PRIORITY_TIE`]: an unshadowed `B` with EQUAL priority to
 ///   earlier beats on the same `select: first` occasion that can be
-///   candidates at once (either target absent, or equal) and whose `when`s
-///   are not provably exclusive — neither the decider folds their
-///   conjunction to `false` nor two of their comparisons pin one path to
-///   disjoint values. File order then picks the winner. One warning per
-///   `B`, naming every such partner.
+///   candidates at once (either target absent, or equal) and whose
+///   eligibilities are not provably exclusive — neither the decider folds
+///   their conjunction to `false` nor two of their conjuncts pin one path to
+///   disjoint values. dsl 0.24.0 (T3-3): the eligibility is the `when` AND
+///   what the `once` requires ([`once_guard`]), and a `holds(A)` conjunct of
+///   a pure-schedule derived atom contributes its rules' `cel()` guards. File
+///   order then picks the winner. One warning per `B`, naming every partner.
 /// - [`W_BEAT_ONCE_RUN_USER`]: a beat whose `once: run` is DEFAULTED (not
 ///   written — dsl 0.23.1) and whose `when` reads state, all of it user-tier
-///   (`user.*`, `entry.<id>.everRead`; `prev.run.*` is run history, not
-///   user-tier) with no fact or scene query: once true it stays true across
-///   runs, so the beat plays again at the start of every run.
+///   ([`reads_only_user`]: `user.*`, `entry.<id>.everRead`, a user-tier
+///   quest's `quest.<id>.*`, a `tier: user` relation's `holds`/`count`;
+///   `prev.run.*` is run history, not user-tier): once true it stays true
+///   across runs, so the beat plays again at the start of every run.
 pub fn check_project_beats(
     docs: &[(PathBuf, Document)],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let params = BTreeMap::new();
+    // dsl 0.23.0 §6: a quest's tier (`tier="run"`, else user) — project-wide,
+    // since a beat may read a quest declared anywhere.
+    let quest_tiers: BTreeMap<&str, bool> = docs
+        .iter()
+        .flat_map(|(_, doc)| &doc.quests)
+        .filter(|q| !q.id.is_empty())
+        .map(|q| (q.id.as_str(), !q.tier.as_ref().is_some_and(|(t, _)| t == "run")))
+        .collect();
     let mut beats: Vec<Beat<'_>> = project_beats(docs, foldeds)
         .into_iter()
         .map(|pb| {
@@ -987,6 +1050,15 @@ pub fn check_project_beats(
             let holds = pb.when_slot.is_none_or(|w| {
                 matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true)))
             });
+            let eligible = match (pb.when.as_deref(), once_guard(&pb)) {
+                (Some(w), Some(g)) => Some(format!("({w}) && {g}")),
+                (Some(w), None) => Some(w.to_string()),
+                (None, g) => g,
+            };
+            let user_tier = UserTier {
+                relations: &folded.env.rel_vocab.relations,
+                quests: &quest_tiers,
+            };
             Beat {
                 path: pb.path,
                 name: pb.name(),
@@ -998,10 +1070,16 @@ pub fn check_project_beats(
                 unspent: pb.once == BeatOnce::None,
                 run_once_user_when: pb.once == BeatOnce::Run
                     && !pb.once_authored
-                    && pb.when.as_deref().is_some_and(reads_only_user),
-                conjuncts: pb.when_slot.map_or_else(Default::default, |w| {
-                    crate::reachability::when_conjuncts(&w.raw, &defs, &folded.env.state)
+                    && pb.when.as_deref().is_some_and(|w| reads_only_user(w, &user_tier)),
+                conjuncts: eligible.as_deref().map_or_else(Default::default, |e| {
+                    crate::reachability::when_conjuncts(
+                        e,
+                        &defs,
+                        &folded.env.state,
+                        Some(&folded.env.rel_vocab),
+                    )
                 }),
+                eligible,
                 when: pb.when,
                 anchor: pb.anchor,
                 folded,
@@ -1075,6 +1153,38 @@ pub fn check_project_beats(
             ));
             continue;
         }
+        // dsl 0.24.0 (T1-8): an untargeted `B` on an occasion with a closed
+        // target domain is a candidate at every member — and shadowed when,
+        // at EVERY member, an earlier always-eligible never-spent beat for
+        // that member wins (the per-target ladders of `lute beats`).
+        if b.target.is_none() {
+            if let Some(shadowers) = shadowed_on_every_target(b, &beats[..j]) {
+                let listed: Vec<String> = shadowers
+                    .iter()
+                    .map(|(t, a)| format!("`{t}`: {}", a.name))
+                    .collect();
+                out.push((
+                    b.path.clone(),
+                    beat_diag(
+                        W_BEAT_SHADOWED,
+                        Severity::Warning,
+                        format!(
+                            "{} can never win occasion `{}`: it answers every target, but on \
+                             every target of the occasion's domain an earlier beat for that \
+                             target is always eligible (no `after:`, and its `when` is absent \
+                             or always true) and never spent, so it wins every time — {} \
+                             (dsl 0.21.0 §5)",
+                            b.name,
+                            b.on,
+                            listed.join(", ")
+                        ),
+                        b.anchor,
+                        Layer::Logic,
+                    ),
+                ));
+                continue;
+            }
+        }
         let partners: Vec<&Beat<'_>> = beats[..j]
             .iter()
             .filter(|a| {
@@ -1114,12 +1224,69 @@ pub fn check_project_beats(
     out
 }
 
+/// dsl 0.24.0 (T1-8): for an untargeted `b` on an occasion whose target
+/// domain is closed (enumerable members), the shadowing beat per target —
+/// `Some` only when EVERY `<prefix>.<member>` has an earlier (in `earlier`,
+/// selection order) non-`also` beat on the occasion, targeted at that member
+/// or untargeted, that is always eligible and never spent.
+fn shadowed_on_every_target<'b, 'a>(
+    b: &Beat<'a>,
+    earlier: &'b [Beat<'a>],
+) -> Option<Vec<(String, &'b Beat<'a>)>> {
+    let decl = b.folded.occasions.get(b.on)?;
+    let OccasionTarget::Domain { prefix, entity, .. } = &decl.target else {
+        return None;
+    };
+    let kind_members = match &b.folded.env.rel_vocab.kinds.get(entity)?.shape {
+        KindShape::Members(ms) => Some(ms.as_slice()),
+        KindShape::Open | KindShape::Invalid => None,
+    };
+    let members = decl.target.domain_members(kind_members)?;
+    if members.is_empty() {
+        return None;
+    }
+    members
+        .iter()
+        .map(|m| {
+            let t = format!("{prefix}.{m}");
+            let a = earlier.iter().find(|a| {
+                !a.also
+                    && a.on == b.on
+                    && a.target.is_none_or(|at| at == t)
+                    && a.always
+                    && a.unspent
+            })?;
+            Some((t, a))
+        })
+        .collect()
+}
+
+/// dsl 0.24.0 (T3-3): what a beat's `once` adds to its eligibility, as a
+/// condition over the flags that spend it — an entry's `once="user"` is
+/// `!entry.<id>.everRead`, `once="run"` `!entry.<id>.read`; a scene's or
+/// bundle beat's `once: user` is `!visited('<id>')` (the save-scoped visited
+/// set). A scene's `once: run` has no readable run-scoped flag, and a
+/// repeatable beat adds nothing.
+fn once_guard(pb: &ProjectBeat<'_>) -> Option<String> {
+    match (pb.kind, pb.once) {
+        (ProjectBeatKind::Entry, BeatOnce::User) => Some(format!("!entry.{}.everRead", pb.id)),
+        (ProjectBeatKind::Entry, BeatOnce::Run) => Some(format!("!entry.{}.read", pb.id)),
+        (ProjectBeatKind::Scene, BeatOnce::User)
+            if crate::meta::canonical_scene_key(&pb.folded.typed).is_some() =>
+        {
+            Some(format!("!visited('{}')", pb.id))
+        }
+        (ProjectBeatKind::Bundle, BeatOnce::User) => Some(format!("!visited('{}')", pb.id)),
+        _ => None,
+    }
+}
+
 /// `a` and `b` can never be eligible together: the decider folds the
-/// conjunction of their `when`s to `false` (in `b`'s document), or two of
-/// their comparisons pin one path to disjoint values. Absent `when` never
-/// excludes anything.
+/// conjunction of their eligibilities (`when` and `once`, [`once_guard`]) to
+/// `false` (in `b`'s document), or two of their conjuncts pin one path to
+/// disjoint values. An unconstrained eligibility never excludes anything.
 fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> bool {
-    let (Some(wa), Some(wb)) = (&a.when, &b.when) else {
+    let (Some(wa), Some(wb)) = (&a.eligible, &b.eligible) else {
         return false;
     };
     if crate::reachability::provably_exclusive(&a.conjuncts, &b.conjuncts) {
@@ -1142,31 +1309,51 @@ fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> bool {
     )
 }
 
-/// `when` (already `@def`-expanded) reads at least one state path, every
-/// one of them user-tier (`user.*`, `entry.<id>.everRead`), and calls no
-/// function but the CEL operators and `isSet`/`has` — a fact query,
-/// `visited()`, or `now()` may change within a run. `prev.run.*` is the
-/// previous run's snapshot, which every run replaces: run history, not
-/// user-tier (dsl 0.23.1).
-fn reads_only_user(when: &str) -> bool {
+/// What [`reads_only_user`] needs to know about tiers: the relations the
+/// beat's document sees, and every project quest's tier (`true` = user).
+struct UserTier<'a> {
+    relations: &'a BTreeMap<String, lute_manifest::relations::RelationDecl>,
+    quests: &'a BTreeMap<&'a str, bool>,
+}
+
+/// `when` (already `@def`-expanded) reads at least one piece of state, every
+/// one of them user-tier, and calls no function but the CEL operators,
+/// `isSet`/`has`, and a query of a user-tier relation. User-tier reads
+/// (dsl 0.24.0, T3-4): `user.*`, `entry.<id>.everRead`, `quest.<id>.*` of a
+/// quest without `tier="run"`, and `holds` / `count` / `countDistinct` of a
+/// relation declared `tier: user`. A run-tier relation or quest, `visited()`,
+/// or `now()` may change within a run. `prev.run.*` is the previous run's
+/// snapshot, which every run replaces: run history, not user-tier (dsl
+/// 0.23.1).
+fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
     use cel_parser::ast::Expr;
-    fn walk(expr: &Expr, reads: &mut usize) -> bool {
+    fn walk(expr: &Expr, tiers: &UserTier<'_>, reads: &mut usize) -> bool {
         match expr {
             Expr::Ident(_) | Expr::Select(_) => {
-                match crate::cel_paths::select_path(expr) {
-                    Some(p) if p.starts_with("user.") || crate::cel_paths::is_entry_ever_read(&p) => {
-                        *reads += 1;
-                        true
-                    }
-                    _ => false,
-                }
+                let user = crate::cel_paths::select_path(expr).is_some_and(|p| {
+                    p.starts_with("user.")
+                        || crate::cel_paths::is_entry_ever_read(&p)
+                        || p.strip_prefix("quest.")
+                            .and_then(|rest| rest.split('.').next())
+                            .is_some_and(|id| tiers.quests.get(id) == Some(&true))
+                });
+                *reads += usize::from(user);
+                user
+            }
+            Expr::Call(c) if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct") => {
+                let user = c.target.is_none()
+                    && matches!(c.args.first().map(|a| &a.expr), Some(Expr::Call(atom))
+                        if tiers.relations.get(&atom.func_name)
+                            .is_some_and(|r| r.tier.as_deref() == Some("user")));
+                *reads += usize::from(user);
+                user
             }
             Expr::Call(c) => {
                 let operator = !c.func_name.starts_with(|ch: char| ch.is_ascii_alphabetic())
                     || matches!(c.func_name.as_str(), "isSet" | "has");
-                c.target.is_none() && operator && c.args.iter().all(|a| walk(&a.expr, reads))
+                c.target.is_none() && operator && c.args.iter().all(|a| walk(&a.expr, tiers, reads))
             }
-            Expr::List(l) => l.elements.iter().all(|e| walk(&e.expr, reads)),
+            Expr::List(l) => l.elements.iter().all(|e| walk(&e.expr, tiers, reads)),
             Expr::Literal(_) => true,
             _ => false,
         }
@@ -1178,7 +1365,7 @@ fn reads_only_user(when: &str) -> bool {
         return false;
     };
     let mut reads = 0;
-    walk(&ided.expr, &mut reads) && reads > 0
+    walk(&ided.expr, tiers, &mut reads) && reads > 0
 }
 
 /// The YAML value an author wrote, for the "got …" half of a message.

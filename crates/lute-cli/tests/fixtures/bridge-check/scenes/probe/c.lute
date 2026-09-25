@@ -1,0 +1,28 @@
+---
+kind: scene
+id: probe.c
+title: C
+on: hubVisit
+priority: 50
+---
+
+## C
+
+::check{skill="persuasion" dc="12" resultKey="guards" sync="true"}
+<match on="scene.check.guards.passed">
+  <when is="true">
+    @narrator: Passed.
+  </when>
+  <when is="false">
+    @narrator: Failed.
+  </when>
+</match>
+::check{skill="stealth" dc="10" resultKey="sneak" sync="true"}
+<match on="scene.check.sneak.passed">
+  <when is="true">
+    @narrator: Sneaked.
+  </when>
+  <when is="false">
+    @narrator: Spotted.
+  </when>
+</match>

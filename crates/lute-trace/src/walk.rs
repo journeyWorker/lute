@@ -105,6 +105,13 @@ struct Walk<'a> {
     /// are then reported as [`Step::Skipped`] instead of applied. `true`
     /// for every scene/quest walk and for an entry's first read.
     apply_effects: bool,
+    /// dsl 0.24.0 §5: per plugin directive tag, how many `bridges:` answers
+    /// earlier calls consumed.
+    bridge_cursor: BTreeMap<String, usize>,
+    /// dsl 0.24.0 §5: result slot -> `(tag, field)` of a plugin call that
+    /// found no `bridges:` answer — the slot reads UNKNOWN (never its shape
+    /// default), and a read of it is hinted as the missing answer.
+    bridge_unanswered: BTreeMap<String, (String, String)>,
 }
 
 impl<'a> Walk<'a> {
@@ -138,6 +145,8 @@ impl<'a> Walk<'a> {
             forced,
             auto,
             eligible,
+            authored_id: None,
+            authored_guard: None,
         };
         self.decisions.push(d.clone());
         self.steps.push(Step::Decision(d));
@@ -164,18 +173,42 @@ impl<'a> Walk<'a> {
                 visited: 1,
                 total,
                 label: id.to_string(),
+                authored_label: None,
             });
     }
 
+    /// dsl 0.24.0 T3-12: the author's text for the decision just pushed —
+    /// its id (a `<match>` subject) and/or guard, when `@def`/`$` expansion
+    /// rewrote them. The human transcript shows these unless `--expand`.
+    fn author_last(&mut self, id: Option<String>, guard: Option<String>) {
+        if id.is_none() && guard.is_none() {
+            return;
+        }
+        if let Some(d) = self.decisions.last_mut() {
+            d.authored_id.clone_from(&id);
+            d.authored_guard.clone_from(&guard);
+        }
+        if let Some(Step::Decision(d)) = self.steps.last_mut() {
+            d.authored_id = id;
+            d.authored_guard = guard;
+        }
+    }
+
+    /// `subject` is the (expanded) match subject slot; its authored text
+    /// rides along for display (T3-12), as does the arm guard's
+    /// (`guard` = `(expanded, authored)`).
     fn record_match_decision(
         &mut self,
-        id: &str,
+        subject: &CelSlot,
         span: Span,
         outcome: String,
-        guard: Option<String>,
+        guard: (Option<String>, Option<String>),
         total: usize,
     ) {
-        self.push_decision("match", id, span, outcome, guard, false, false, Vec::new());
+        let id = subject.raw.as_str();
+        self.push_decision("match", id, span, outcome, guard.0, false, false, Vec::new());
+        let authored_id = subject.authored.clone();
+        self.author_last(authored_id.clone(), guard.1);
         // Keyed on the SITE, not the subject text. `record_choice_decision`
         // above keeps the branch/hub id: its `span` is the CHOSEN CHOICE's
         // (`walk_branch`/`walk_hub` pass the choice span), so keying on it
@@ -186,6 +219,7 @@ impl<'a> Walk<'a> {
                 visited: 1,
                 total,
                 label: id.to_string(),
+                authored_label: authored_id,
             },
         );
     }
@@ -209,7 +243,7 @@ impl<'a> Walk<'a> {
         if dup {
             return;
         }
-        let rendered = atoms.iter().map(render_atom).collect();
+        let rendered = atoms.iter().map(|a| self.render_atom(a)).collect();
         self.unresolved.push(UnresolvedEntry {
             construct: construct.to_string(),
             id: id.to_string(),
@@ -234,8 +268,24 @@ impl<'a> Walk<'a> {
             id: format!("{id} -> {}", choice.id),
             span: choice.span,
             expression: render_choice_guard(choice.when.as_ref()).unwrap_or_default(),
-            atoms: atoms.iter().map(render_atom).collect(),
+            atoms: atoms.iter().map(|a| self.render_atom(a)).collect(),
         });
+    }
+
+    /// [`render_atom`], except a read of a result slot an unanswered plugin
+    /// call left unknown (dsl 0.24.0 §5) names the `bridges:` answer that
+    /// would decide it — a `--state` seed of that slot is not the surface.
+    fn render_atom(&self, a: &UnresolvedAtom) -> String {
+        match a {
+            UnresolvedAtom::Path(p) => match self.bridge_unanswered.get(p) {
+                Some((tag, field)) => format!(
+                    "bridges: {{ {tag}: [ {{ {field}: <value> }} ] }} (plugin `{tag}` call \
+                     unanswered; `{p}` reads its `{field}` result)"
+                ),
+                None => render_atom(a),
+            },
+            _ => render_atom(a),
+        }
     }
 }
 
@@ -300,6 +350,16 @@ fn render_choice_guard(when: Option<&CelSlot>) -> Option<String> {
             Some(t.to_string())
         }
     })
+}
+
+/// dsl 0.24.0 T3-12: a guard slot's authored text, when `@def`/`$`
+/// expansion rewrote it (`None` otherwise — the expanded text IS the
+/// author's).
+fn authored_guard(slot: Option<&CelSlot>) -> Option<String> {
+    slot.and_then(|s| s.authored.as_deref())
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
 }
 
 /// `lit` (a `<when is="…">` alternative, already trimmed, never `"unset"` —
@@ -486,15 +546,40 @@ fn resolve_interp(interp: &Interp, w: &Walk<'_>) -> Option<String> {
         InterpKind::Path => {
             let mut atoms = Vec::new();
             let v = eval_path_read(&interp.raw, &w.env(), &mut atoms);
-            report::value_text(&v)
+            // dsl 0.24.0 §1: a value of a named enum renders its member label.
+            if let Value::Str(s) = &v {
+                let label = match w.check_env.state.decls.get(interp.raw.trim()).map(|d| &d.ty) {
+                    Some(lute_manifest::types::Type::Domain(name)) => {
+                        w.domains.get(name).and_then(|d| d.labels.get(s))
+                    }
+                    _ => None,
+                };
+                if let Some(label) = label {
+                    return Some(label.clone());
+                }
+            }
+            formatted_text(interp, &v)
         }
         InterpKind::Ref => {
             let expanded = expand_cel(&interp.raw, w.defs, None, &mut Vec::new()).ok()?;
             let expr = slot_expr(&expanded)?;
             let mut atoms = Vec::new();
             let v = eval(&expr, &w.env(), &mut atoms);
-            report::value_text(&v)
+            formatted_text(interp, &v)
         }
+    }
+}
+
+/// A decided interpolation value as text, its format hint applied (dsl
+/// 0.24.0 §4): `ordinal` renders a number as an English ordinal — the
+/// reference runner's rule ([`lute_syntax::ast::english_ordinal`]); a value
+/// with no ordinal, or no hint, renders as itself.
+fn formatted_text(interp: &Interp, v: &Value) -> Option<String> {
+    match (interp.format.as_deref(), v) {
+        (Some(lute_syntax::ast::INTERP_FORMAT_ORDINAL), Value::Num(n)) => {
+            lute_syntax::ast::english_ordinal(*n).or_else(|| report::value_text(v))
+        }
+        _ => report::value_text(v),
     }
 }
 
@@ -550,6 +635,7 @@ fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
     if let Some((quest, _)) = d.accept_quest() {
         w.steps.push(Step::Accept {
             quest: quest.to_string(),
+            next_run: d.accept_at().is_some_and(|(at, _)| at == "nextRun"),
         });
         return Flow::Continue;
     }
@@ -563,8 +649,10 @@ fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
     // #32 / T2.5: an `::auto` whose `action=` names a declared exit member
     // ENDS a presence. Declared, never inferred — `Domain.exits` is the same
     // list `lute-check::inject` and `lute-compile::lower` read (dsl 0.9.0
-    // D-D), which replaced three private prefix heuristics.
-    let exit = d.tag == "auto"
+    // D-D), which replaced three private prefix heuristics. dsl 0.24.0 §4: a
+    // `::clear` ends every presence on stage.
+    let exit = d.tag == lute_manifest::core::CLEAR_DIRECTIVE
+        || d.tag == "auto"
         && d.attrs.iter().any(|a| {
             a.key == "action"
                 && matches!(&a.value, lute_syntax::ast::AttrValue::Str(s)
@@ -588,11 +676,59 @@ fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
         exit,
         reason,
     });
+    walk_bridge_call(d, w);
     if d.tag == lute_manifest::core::END_DIRECTIVE || d.tag == lute_manifest::core::NEXT_DIRECTIVE {
         Flow::Ended
     } else {
         Flow::Continue
     }
+}
+
+/// dsl 0.24.0 §5: a plugin call whose effects read a bridge result consumes
+/// the next `bridges:` answer of its tag and writes each answered field to
+/// its result slot, typed by the slot's declared type ([`mock::validate_bridges`]
+/// proved every answer fits). With no answer left, every result slot reads
+/// UNKNOWN — never its state-shape default — so a guard over it halts the
+/// walk incomplete, hinted as the missing answer ([`Walk::render_atom`]).
+/// Any other directive records nothing.
+fn walk_bridge_call(d: &Directive, w: &mut Walk<'_>) {
+    let Some(decl) = w.snapshot.directives.get(&d.tag) else {
+        return;
+    };
+    let reads = mock::bridge_result_writes(decl);
+    if reads.is_empty() {
+        return;
+    }
+    let used = w.bridge_cursor.entry(d.tag.clone()).or_insert(0);
+    let answer = w.mocks.bridges.get(&d.tag).and_then(|list| list.get(*used)).cloned();
+    if answer.is_some() {
+        *used += 1;
+    }
+    for (field, write) in reads {
+        let path = lute_compile::lower::resolve_effect(write, d).path;
+        let lit = answer
+            .as_ref()
+            .and_then(|a| a.iter().find(|(f, _)| f == field))
+            .map(|(_, lit)| lit);
+        let value = lit
+            .and_then(|lit| {
+                let decl = w.check_env.state.decls.get(&path)?;
+                mock::coerce_state_literal(&decl.ty, lit)
+            })
+            .map(|l| crate::eval::literal_to_value(&l))
+            .unwrap_or(Value::Unknown);
+        if value == Value::Unknown {
+            w.bridge_unanswered
+                .insert(path.clone(), (d.tag.clone(), field.to_string()));
+        } else {
+            w.bridge_unanswered.remove(&path);
+        }
+        w.state.write(&path, value);
+    }
+    w.steps.push(Step::Bridge {
+        tag: d.tag.clone(),
+        answered: answer,
+    });
 }
 
 fn combine_numeric(op: &str, a: Value, b: Value) -> Value {
@@ -691,10 +827,10 @@ fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
         match arm {
             Arm::Otherwise { body, .. } => {
                 w.record_match_decision(
-                    &subject_raw,
+                    &m.subject,
                     m.span,
                     "otherwise".to_string(),
-                    None,
+                    (None, None),
                     total_arms,
                 );
                 return walk_nodes(body, w, None);
@@ -705,11 +841,15 @@ fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
                 match v {
                     Value::Bool(true) => {
                         let guard = render_guard_text(is.as_ref(), &test.raw);
+                        let authored = test
+                            .authored
+                            .as_deref()
+                            .and_then(|t| render_guard_text(is.as_ref(), t));
                         w.record_match_decision(
-                            &subject_raw,
+                            &m.subject,
                             m.span,
                             format!("arm {}", idx + 1),
-                            guard,
+                            (guard, authored),
                             total_arms,
                         );
                         return walk_nodes(body, w, None);
@@ -727,6 +867,7 @@ fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
                                 visited: 0,
                                 total: total_arms,
                                 label: subject_raw.clone(),
+                                authored_label: m.subject.authored.clone(),
                             });
                         return Flow::Incomplete;
                     }
@@ -744,12 +885,14 @@ fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
         false,
         Vec::new(),
     );
+    w.author_last(m.subject.authored.clone(), None);
     w.coverage_arms
         .entry(crate::report::site_key(&m.span))
         .or_insert(CoverageCount {
             visited: 0,
             total: total_arms,
             label: subject_raw,
+            authored_label: m.subject.authored.clone(),
         });
     Flow::Continue
 }
@@ -841,6 +984,7 @@ fn walk_branch(b: &Branch, w: &mut Walk<'_>) -> Flow {
                 visited: 0,
                 total,
                 label: b.id.clone(),
+                authored_label: None,
             });
         return Flow::Incomplete;
     };
@@ -861,6 +1005,7 @@ fn walk_branch(b: &Branch, w: &mut Walk<'_>) -> Flow {
         eligible,
         total,
     );
+    w.author_last(None, authored_guard(choice.when.as_ref()));
     w.state.write(
         &format!("scene.choices.{}", b.id),
         Value::Str(choice.id.clone()),
@@ -887,14 +1032,27 @@ fn eval_hub_choice_eligibility(
     eval_choice_guard(choice.when.as_ref(), &w.env(), unresolved)
 }
 
+/// Record one hub pick. `eligible` is every choice offered at THIS
+/// presentation point — its `when` decided true and, when `once`, not yet
+/// visited — evaluated before the pick's own `visited` write, so `lute
+/// test`'s `offered:` sees a hub's options as it sees a branch's (dsl 0.24.0,
+/// T1-13).
 fn record_hub_pick(
     w: &mut Walk<'_>,
+    h: &Hub,
     id: &str,
     choice: &Choice,
     forced: bool,
     auto: bool,
-    total: usize,
 ) {
+    let eligible: Vec<String> = h
+        .choices
+        .iter()
+        .filter(|c| {
+            eval_hub_choice_eligibility(c, id, w, &mut Vec::new()) == Value::Bool(true)
+        })
+        .map(|c| c.id.clone())
+        .collect();
     let guard = render_choice_guard(choice.when.as_ref());
     w.record_choice_decision(
         "hub",
@@ -904,9 +1062,10 @@ fn record_hub_pick(
         guard,
         forced,
         auto,
-        Vec::new(),
-        total,
+        eligible,
+        h.choices.len(),
     );
+    w.author_last(None, authored_guard(choice.when.as_ref()));
     w.state.write(
         &format!("scene.visited.{id}.{}", choice.id),
         Value::Bool(true),
@@ -954,7 +1113,7 @@ fn walk_hub(h: &Hub, w: &mut Walk<'_>) -> Flow {
                     if forced {
                         w.record_forced_unknown("hub", &id, choice, &atoms);
                     }
-                    record_hub_pick(w, &id, choice, forced, false, total);
+                    record_hub_pick(w, h, &id, choice, forced, false);
                     let flow = walk_nodes(&choice.body, w, Some(choice));
                     if !matches!(flow, Flow::Continue) {
                         return flow;
@@ -976,7 +1135,7 @@ fn walk_hub(h: &Hub, w: &mut Walk<'_>) -> Flow {
         let mut atoms = Vec::new();
         let elig = eval_hub_choice_eligibility(choice, &id, w, &mut atoms);
         if elig == Value::Bool(true) {
-            record_hub_pick(w, &id, choice, false, true, total);
+            record_hub_pick(w, h, &id, choice, false, true);
             let flow = walk_nodes(&choice.body, w, Some(choice));
             if !matches!(flow, Flow::Continue) {
                 return flow;
@@ -1001,7 +1160,7 @@ fn walk_hub(h: &Hub, w: &mut Walk<'_>) -> Flow {
     }
     match chosen {
         Some(choice) => {
-            record_hub_pick(w, &id, choice, false, true, total);
+            record_hub_pick(w, h, &id, choice, false, true);
             walk_nodes(&choice.body, w, Some(choice))
         }
         None => {
@@ -1018,6 +1177,7 @@ fn walk_hub(h: &Hub, w: &mut Walk<'_>) -> Flow {
                     visited: 0,
                     total,
                     label: id.clone(),
+                    authored_label: None,
                 });
             Flow::Incomplete
         }
@@ -1252,6 +1412,16 @@ fn objective_done_path(quest_id: &str, objective_id: &str) -> String {
     format!("quest.{quest_id}.objectives.{objective_id}.done")
 }
 
+/// dsl 0.24.0 §2: the reserved `quest.<id>.failedBy` reason path.
+fn quest_failed_by_path(quest_id: &str) -> String {
+    format!("quest.{quest_id}.failedBy")
+}
+
+/// dsl 0.24.0 §2: the reserved `quest.<id>.objectives.<oid>.failed` path.
+fn objective_failed_path(quest_id: &str, objective_id: &str) -> String {
+    format!("quest.{quest_id}.objectives.{objective_id}.failed")
+}
+
 /// An `<objective done="…">` slot's rendered guard text — mirrors
 /// [`render_choice_guard`] for a non-optional [`CelSlot`] (`done` is never
 /// `Option`; a missing `done=` still yields a syntactically valid, possibly
@@ -1311,6 +1481,28 @@ fn judge_deadline(o: &Objective, by: &CelSlot, w: &mut Walk<'_>) {
             w.record_unresolved("objective", &o.id, o.span, by.raw.trim().to_string(), atoms);
         }
     }
+}
+
+/// dsl 0.24.0 §2: why `o` failed — `Some("by")` / `Some("until")` read off
+/// its `failed` decision's guard (a deadline failure's guard is the `by`
+/// text, an `until` failure's the `until` text); `None` when not failed.
+fn objective_failed_by(o: &Objective, w: &Walk<'_>) -> Option<&'static str> {
+    let guard = failed_decision_guard(o, w)?;
+    let by = o.by.as_ref().map(|b| b.raw.trim());
+    Some(if by.is_some_and(|by| guard.as_deref().map(str::trim) == Some(by)) {
+        "by"
+    } else {
+        "until"
+    })
+}
+
+/// The guard of `o`'s `failed` decision (`Some(None)` when it carried
+/// none); `None` when `o` has not failed.
+fn failed_decision_guard(o: &Objective, w: &Walk<'_>) -> Option<Option<String>> {
+    w.decisions
+        .iter()
+        .find(|d| d.construct == "objective" && d.span == o.span && d.outcome == "failed")
+        .map(|d| d.guard.clone())
 }
 
 /// The first REQUIRED objective of `quest` whose `by` failed it — an active
@@ -1513,11 +1705,22 @@ fn reevaluate_objectives(quest: &Quest, occasion: Option<&str>, w: &mut Walk<'_>
             }
         }
     }
+    // dsl 0.24.0 §2.1: `by` is judged at every (continuous) settle for every
+    // objective, `on=` or not — a deadline is a moment, not a place; `until`
+    // only in the raise pass that judges the objective, after its `done`.
     for node in &quest.body {
         let Node::Objective(o) = node else { continue };
-        let Some(by) = &o.by else { continue };
-        if open(o, w) {
-            judge_deadline(o, by, w);
+        let (slot, judged_now) = match occasion {
+            None => (o.by.as_ref(), true),
+            Some(_) => (o.until.as_ref(), judged_at(o, occasion)),
+        };
+        let Some(slot) = slot else { continue };
+        if judged_now
+            && !o.id.is_empty()
+            && !is_objective_done(w, &quest.id, &o.id)
+            && !is_objective_failed(w, o)
+        {
+            judge_deadline(o, slot, w);
         }
     }
     Flow::Continue
@@ -1533,10 +1736,15 @@ fn quest_required_objectives(quest: &Quest) -> impl Iterator<Item = &Objective> 
 /// "All required objectives done" (§4.4 completion) — vacuously `false`
 /// for a quest with zero required objectives: a quest can never complete
 /// by having nothing to complete (only `fail`, or an unending `active`,
-/// applies to such a quest).
+/// applies to such a quest). dsl 0.24.0 §2: a `complete="any"` quest needs
+/// only ONE required objective done.
 fn quest_complete(quest: &Quest, w: &Walk<'_>) -> bool {
+    let mut required = quest_required_objectives(quest);
+    if quest.completes_on_any() {
+        return required.any(|o| is_objective_done(w, &quest.id, &o.id));
+    }
     let mut any = false;
-    for o in quest_required_objectives(quest) {
+    for o in required {
         any = true;
         if !is_objective_done(w, &quest.id, &o.id) {
             return false;
@@ -1556,7 +1764,10 @@ fn quest_complete(quest: &Quest, w: &Walk<'_>) -> bool {
 /// `unknown` records unresolved and does not fire (trace never guesses);
 /// only a NESTED `<match>`/`<branch>`/`<hub>` inside a firing handler's
 /// body can propagate a non-`Continue` [`Flow`] out of this function.
-fn dispatch_event(quest: &Quest, event_name: &str, w: &mut Walk<'_>) -> Flow {
+/// `target` is the target an occasion was raised for (dsl 0.24.0 §2): an
+/// `<on target>` fires only for that target — never for a plain event or a
+/// lifecycle transition (`None`).
+fn dispatch_event(quest: &Quest, event_name: &str, target: Option<&str>, w: &mut Walk<'_>) -> Flow {
     let snap_state = w.state.clone();
     let snap_facts = w.facts.clone();
     let snap_env = EvalEnv {
@@ -1565,7 +1776,9 @@ fn dispatch_event(quest: &Quest, event_name: &str, w: &mut Walk<'_>) -> Flow {
     };
     for node in &quest.body {
         let Node::On(on) = node else { continue };
-        if on.event != event_name {
+        if on.event != event_name
+            || on.target.as_ref().is_some_and(|(t, _)| Some(t.as_str()) != target)
+        {
             continue;
         }
         let mut atoms = Vec::new();
@@ -1643,14 +1856,31 @@ fn purge_terminal_objectives(quest: &Quest, w: &mut Walk<'_>) {
 /// Fires exactly one of `questFailed`/`questComplete` on a fresh
 /// transition; a quest already `Complete`/`Failed` never reaches this
 /// function again (`walk_quest`'s own `Active`-only loop guard).
+///
+/// dsl 0.24.0 §2: every failed objective reads
+/// `quest.<id>.objectives.<oid>.failed == true` from here on (written
+/// before `fail` is judged, so a `complete="any"` quest's synthesized
+/// `fail` sees it); a `complete="any"` quest is not failed by one missed
+/// alternative; a failure writes its reason to `quest.<id>.failedBy`.
 fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow {
     let flow = reevaluate_objectives(quest, None, w);
     if !matches!(flow, Flow::Continue) {
         return flow;
     }
+    for node in &quest.body {
+        let Node::Objective(o) = node else { continue };
+        if !o.id.is_empty() && is_objective_failed(w, o) {
+            w.state
+                .write(&objective_failed_path(&quest.id, &o.id), Value::Bool(true));
+        }
+    }
     // A required objective whose `by` failed it — in this settle, or at an
     // occasion raise just before it — fails the quest.
-    let missed = missed_required(quest, w);
+    let missed = if quest.completes_on_any() {
+        None
+    } else {
+        missed_required(quest, w)
+    };
 
     let mut fail_atoms = Vec::new();
     let fail_v = match quest.fail.as_ref().and_then(|f| slot_expr(&f.raw)) {
@@ -1664,11 +1894,18 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
             &quest_state_path(&quest.id),
             Value::Str("failed".to_string()),
         );
+        // A missed objective is the more specific cause (the runner's
+        // order): its kind is the reason, its deadline text the guard.
+        let reason = match missed {
+            Some(o) => objective_failed_by(o, w).unwrap_or("by"),
+            None => "fail",
+        };
+        w.state
+            .write(&quest_failed_by_path(&quest.id), Value::Str(reason.to_string()));
         purge_terminal_objectives(quest, w);
-        let guard = if failed_by_fail {
-            render_choice_guard(quest.fail.as_ref())
-        } else {
-            missed.and_then(|o| o.by.as_ref()).and_then(render_done_guard)
+        let guard = match missed {
+            Some(o) => failed_decision_guard(o, w).flatten(),
+            None => render_choice_guard(quest.fail.as_ref()),
         };
         w.push_decision(
             "quest",
@@ -1684,7 +1921,7 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
         // in declaration order (only `on="failed"` entries match here).
         // Runs BEFORE `questFailed` handler bodies play (spec D-D).
         emit_grants(&quest.id, None, &quest.rewards, GrantEvent::Failed, w);
-        return dispatch_event(quest, "questFailed", w);
+        return dispatch_event(quest, "questFailed", None, w);
     }
 
     if quest_complete(quest, w) {
@@ -1708,7 +1945,7 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
         // (unmarked-`on`) rewards in declaration order. Runs BEFORE
         // `questComplete` handler bodies play.
         emit_grants(&quest.id, None, &quest.rewards, GrantEvent::Complete, w);
-        return dispatch_event(quest, "questComplete", w);
+        return dispatch_event(quest, "questComplete", None, w);
     }
 
     Flow::Continue
@@ -1749,8 +1986,12 @@ fn build_child_parent_map(doc: &Document) -> BTreeMap<String, String> {
 /// cascade source, then fires `questFailed` — the SAME sequence
 /// [`settle_quest`] runs for an authored-`fail`-driven failure, so an
 /// engine consumer sees no structural difference between the two.
+/// dsl 0.24.0 §2: `reason` is the direct children's `failedBy` —
+/// `superseded` when a `complete="any"` parent completed, else `cascade`;
+/// deeper levels are always `cascade`.
 fn cascade_terminal(
     parent_id: &str,
+    reason: &str,
     doc: &Document,
     parents: &BTreeMap<String, String>,
     states: &mut BTreeMap<String, QuestState>,
@@ -1768,13 +2009,15 @@ fn cascade_terminal(
             &quest_state_path(&child.id),
             Value::Str("failed".to_string()),
         );
+        w.state
+            .write(&quest_failed_by_path(&child.id), Value::Str(reason.to_string()));
         purge_terminal_objectives(child, w);
         w.push_decision(
             "quest",
             &child.id,
             child.span,
             "failed".to_string(),
-            Some(format!("cascade from quest.{parent_id}")),
+            Some(format!("{reason} from quest.{parent_id}")),
             false,
             false,
             Vec::new(),
@@ -1786,11 +2029,11 @@ fn cascade_terminal(
         // ordering an authored-`fail` uses in [`settle_quest`], so an
         // engine consumer reads no structural difference between the two.
         emit_grants(&child.id, None, &child.rewards, GrantEvent::Failed, w);
-        let flow = dispatch_event(child, "questFailed", w);
+        let flow = dispatch_event(child, "questFailed", None, w);
         if !matches!(flow, Flow::Continue) {
             return flow;
         }
-        let flow = cascade_terminal(&child.id, doc, parents, states, w);
+        let flow = cascade_terminal(&child.id, "cascade", doc, parents, states, w);
         if !matches!(flow, Flow::Continue) {
             return flow;
         }
@@ -1821,7 +2064,13 @@ fn settle_and_cascade(
         return flow;
     }
     if local.is_terminal() {
-        return cascade_terminal(&quest.id, doc, parents, states, w);
+        // dsl 0.24.0 §2: an `any` quest's untaken alternatives are superseded.
+        let reason = if local == QuestState::Complete && quest.completes_on_any() {
+            "superseded"
+        } else {
+            "cascade"
+        };
+        return cascade_terminal(&quest.id, reason, doc, parents, states, w);
     }
     Flow::Continue
 }
@@ -1911,14 +2160,16 @@ fn try_activate_state(
             }
         }
         None => {
-            if parent_id.is_some() {
+            // dsl 0.24.0 §2: an `activate="accept"` child waits for an
+            // accept like an unreferenced quest (its parent is Active here).
+            if parent_id.is_some() && !quest.activates_on_accept() {
                 // Referenced no-start child: parent guaranteed Active above.
                 (None, false)
             } else {
-                // Unreferenced no-start: accept-driven (§4.4). `--accept`
-                // on a referenced no-start child is pre-walk
-                // `E-TRACE-ACCEPT`-refused (`mock::validate_accept`), so
-                // accepts here always name an unreferenced target.
+                // Unreferenced no-start (or accept-activated child):
+                // accept-driven (§4.4). `--accept` on a referenced child
+                // that activates with its parent is pre-walk
+                // `E-TRACE-ACCEPT`-refused (`mock::validate_accept`).
                 if !w.mocks.accepts.iter().any(|id| id == &quest.id) {
                     w.push_decision(
                         "quest",
@@ -2006,7 +2257,7 @@ fn quest_settle_fixpoint(
             if states.get(&quest.id).copied() != Some(QuestState::Active) {
                 continue;
             }
-            let flow = dispatch_event(quest, "questActive", w);
+            let flow = dispatch_event(quest, "questActive", None, w);
             if !matches!(flow, Flow::Continue) {
                 return flow;
             }
@@ -2062,7 +2313,7 @@ fn walk_quests(doc: &Document, events: &[String], w: &mut Walk<'_>) -> Flow {
             if states.get(&quest.id).copied() != Some(QuestState::Active) {
                 break;
             }
-            let flow = dispatch_event(quest, event, w);
+            let flow = dispatch_event(quest, event, None, w);
             if !matches!(flow, Flow::Continue) {
                 return flow;
             }
@@ -2090,13 +2341,14 @@ fn walk_quests(doc: &Document, events: &[String], w: &mut Walk<'_>) -> Flow {
         // active quest's `<on event>` handlers run first, then the occasion
         // judges (as `lute play` / `lute run` raise it). A lifecycle event
         // name is never raised this way: the settle fires those itself.
-        let (name, _) = mock::split_occasion(occasion);
+        // dsl 0.24.0 §2: an `<on target>` answers only a raise for it.
+        let (name, raise_target) = mock::split_occasion(occasion);
         if !lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&name) {
             for quest in &doc.quests {
                 if states.get(&quest.id).copied() != Some(QuestState::Active) {
                     continue;
                 }
-                let flow = dispatch_event(quest, name, w);
+                let flow = dispatch_event(quest, name, raise_target, w);
                 if !matches!(flow, Flow::Continue) {
                     return flow;
                 }
@@ -2273,7 +2525,7 @@ fn reserved_quest_notes(
     mocks: &MockSet,
     reserved_reads: &BTreeMap<String, ReservedReadKind>,
     doc_quest_ids: &BTreeSet<&str>,
-) -> Vec<String> {
+) -> Vec<(String, String)> {
     let mut defaulted_by_id: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for (path, kind) in reserved_reads {
         if !matches!(kind, ReservedReadKind::Defaulted) {
@@ -2311,16 +2563,23 @@ fn reserved_quest_notes(
             .collect();
         defaults.sort();
         let mut msg = format!(
-            "quest `{id}`'s existence is unverified by trace (run `check-project` to confirm it is \
-             defined by a project quest, dsl 0.5.1 §1.3/§1.4)"
+            "{}(run `check-project`, or trace with `--project`, to confirm it is defined by a \
+             project quest, dsl 0.5.1 §1.3/§1.4)",
+            unverified_quest_note_head(id)
         );
         if !defaults.is_empty() {
             msg.push_str("; ");
             msg.push_str(&defaults.join("; "));
         }
-        notes.push(msg);
+        notes.push((id.to_string(), msg));
     }
     notes
+}
+
+/// The fixed head of a foreign quest's "existence is unverified" note —
+/// what [`crate::TraceReport::verify_quests`] finds it by.
+pub(crate) fn unverified_quest_note_head(id: &str) -> String {
+    format!("quest `{id}`'s existence is unverified by trace ")
 }
 
 /// The `<id>` segment of a reserved `quest.<id>.state`/`quest.<id>.
@@ -2654,6 +2913,7 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         final_state: BTreeMap::new(),
         final_facts: BTreeSet::new(),
         final_undecided: BTreeSet::new(),
+        foreign_quests: BTreeSet::new(),
     }
 }
 
@@ -2813,6 +3073,7 @@ fn trace_pipeline(
     }
     if mock_diags.is_empty() {
         mock_diags = mock::validate(&mocks, &folded, &doc);
+        mock_diags.extend(mock::validate_bridges(&mocks, &folded, &input.snapshot));
     }
     if !mock_diags.is_empty() {
         return (
@@ -2824,8 +3085,13 @@ fn trace_pipeline(
     // 4. D14: normalize (components bound, §6.4 folds, when=/into=
     //    desugared) then expand (@/$-free) — the SAME lute-compile passes,
     //    in the SAME order, `compile` itself runs.
-    let mut diags =
-        lute_compile::normalize::normalize_document(&mut doc, &input.components, &folded.env.state);
+    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
+    let mut diags = lute_compile::normalize::normalize_document(
+        &mut doc,
+        &input.components,
+        &cast,
+        &folded.env.state,
+    );
     let table = DefTable {
         bodies: &folded.def_bodies,
         params: &folded.env.def_params,
@@ -2840,7 +3106,24 @@ fn trace_pipeline(
     //    never populates both, so running both unconditionally is safe. With
     //    `--entry` (dsl 0.19.0 §8) only those entries are presented; with
     //    `--beat` (dsl 0.23.0 §4) only that bundle beat.
-    let seed = seed_state(&mocks, &folded.env.state);
+    let mut seed = seed_state(&mocks, &folded.env.state);
+    // dsl 0.24.0 §1: the reserved `clock.*` values follow from the mocked
+    // (else declared-default) `day` / `slot` — engine-owned, so constant for
+    // the whole walk. An explicit mock of a `clock.*` path is kept.
+    if let Some(clock) = &folded.env.clock {
+        let mut at = seed.clone();
+        for p in [&clock.day, &clock.slot] {
+            if let Some(d) = folded.env.state.decls.get(p).and_then(|d| d.default.as_ref()) {
+                at.entry(p.clone())
+                    .or_insert_with(|| crate::eval::literal_to_value(d));
+            }
+        }
+        if let Some(pos) = crate::clock::position(clock, &at) {
+            for (k, v) in crate::clock::values(clock, pos) {
+                seed.entry(k).or_insert(v);
+            }
+        }
+    }
     let state = EffectiveState::new(&folded.env.state, seed);
     // dsl 0.22.0 §6 (D-B): by default the project's seed facts join the
     // mocked ones and every query reads the Datalog fixpoint — the runner's
@@ -2872,6 +3155,8 @@ fn trace_pipeline(
         coverage_arms: BTreeMap::new(),
         domains: &folded.domains,
         apply_effects: true,
+        bridge_cursor: BTreeMap::new(),
+        bridge_unanswered: BTreeMap::new(),
     };
 
     // T1-13: a beat scene is only presented when its frontmatter `when`
@@ -2926,11 +3211,9 @@ fn trace_pipeline(
         notes.extend(seed_fact_notes(&mocks, &folded.env.rel_vocab.facts));
         notes.extend(derived_read_notes(&w.facts.derived_reads()));
     }
-    notes.extend(reserved_quest_notes(
-        &mocks,
-        &w.state.reserved_reads(),
-        &doc_quest_ids,
-    ));
+    let quest_notes = reserved_quest_notes(&mocks, &w.state.reserved_reads(), &doc_quest_ids);
+    let foreign_quests: BTreeSet<String> = quest_notes.iter().map(|(id, _)| id.clone()).collect();
+    notes.extend(quest_notes.into_iter().map(|(_, note)| note));
     notes.extend(unmatched_event_notes(&doc, &mocks.events));
     notes.extend(occasion_notes(&doc, &mocks.occasions, &w.decisions));
     notes.extend(mock_unproducible_notes(&mocks, &folded, &doc, project_asserts));
@@ -3004,6 +3287,7 @@ fn trace_pipeline(
         final_state,
         final_facts,
         final_undecided,
+        foreign_quests,
     };
     (report, exit)
 }

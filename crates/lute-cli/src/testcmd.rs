@@ -99,6 +99,7 @@ const TEST_TOP_KEYS: &[&str] = &[
     "accept",
     "accepts",
     "beat",
+    "bridges",
     "choose",
     "derive",
     "entries",
@@ -127,8 +128,10 @@ const HARNESS_KEYS: &[&str] = &["beat", "entries", "entry", "expect"];
 /// `quests:` (dsl 0.21.0 §7a.4) asserts the quest lifecycle the trace ran;
 /// `offered:` / `transcriptLacks:` are dsl 0.22.0 §5; `facts:` / `notFacts:`
 /// (every fact that holds at the end, after derivation) and `eligible:` (a
-/// presented entry's or beat's `when`) are 0.23.1.
+/// presented entry's or beat's `when`) are 0.23.1; `accepts:` (the quests a
+/// scene's `::accept` took) is 0.24.0.
 const TEST_EXPECT_KEYS: &[&str] = &[
+    "accepts",
     "eligible",
     "exit",
     "facts",
@@ -688,6 +691,15 @@ fn run_one_test(
         return Err(ExitCode::from(1));
     }
 
+    // A map-form `expect.eligible` judges every entry / bundle beat of the
+    // file it names under the test's mocks, presented or not (dsl 0.24.0,
+    // T3-5) — so a lore test may carry it alone, presenting nothing.
+    let judges_eligibility_by_id = map
+        .get("expect")
+        .and_then(|e| e.get("eligible"))
+        .is_some_and(serde_yaml::Value::is_mapping);
+    let mut lore_lookup_only = false;
+
     // T1-13: a lore document is looked up, not played — `lute trace` refuses
     // one without `--entry`/`--beat`, and a test naming it without `entry:`
     // / `entries:` / `beat:` would walk nothing and PASS `exit: complete`.
@@ -695,7 +707,9 @@ fn run_one_test(
     if entries.is_empty() && beat.is_none() {
         let (doc, _) = lute_syntax::parse(&input.text);
         let (folded, _, _) = lute_check::fold_env(&doc, &input);
-        if folded.doc_kind == lute_check::DocKind::Lore {
+        if folded.doc_kind == lute_check::DocKind::Lore && judges_eligibility_by_id {
+            lore_lookup_only = true;
+        } else if folded.doc_kind == lute_check::DocKind::Lore {
             let ids: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
             let beats: Vec<&str> = doc.beats.iter().map(|b| b.id.as_str()).collect();
             return Ok(TestResult::refused(
@@ -706,7 +720,8 @@ fn run_one_test(
                     "error [E-TEST-LORE] `file: {rel}` is a lore document — a lore document is \
                      looked up, not played, so there is no walk to assert against until the \
                      test names what to present: `entry: <id>` or `entries: [ids]` (declared: \
-                     {}), or `beat: <id>` (declared: {})",
+                     {}), or `beat: <id>` (declared: {}), or judges them with `expect: \
+                     {{ eligible: {{ <id>: true|false }} }}`",
                     if ids.is_empty() { "none".to_string() } else { ids.join(", ") },
                     if beats.is_empty() { "none".to_string() } else { beats.join(", ") }
                 )],
@@ -722,9 +737,13 @@ fn run_one_test(
             .for_document(&lute_path, project, providers)
             .cloned()
     };
+    // The mocks an unpresented entry / beat is judged under (T3-5).
+    let eligibility_mocks = judges_eligibility_by_id.then(|| mocks.clone());
     let checked = lute_check::check(&input);
     let (report, exit) = if let Some(beat) = &beat {
         trace_beat_with_check(&input, checked, mocks, beat, project_asserts.as_ref())
+    } else if lore_lookup_only {
+        trace_entries_with_check(&input, checked, mocks, &[], project_asserts.as_ref())
     } else if entries.is_empty() {
         trace_with_check(&input, checked, mocks, project_asserts.as_ref())
     } else {
@@ -796,11 +815,13 @@ fn run_one_test(
         }
 
         // transcriptContains / transcriptLacks: [substrings] — against the
-        // human transcript (dsl 0.22.0 §5 adds the negative form).
+        // presented content lines as `@speaker: text` (dsl 0.24.0, T1-2),
+        // the same canonical form `lute play` matches; never the trace's
+        // human rendering (headers, decisions, staging).
         let transcript = if expect.contains_key("transcriptContains")
             || expect.contains_key("transcriptLacks")
         {
-            report.render_human()
+            report.said()
         } else {
             String::new()
         };
@@ -942,7 +963,10 @@ fn run_one_test(
 
         // eligible: bool | { <id>: bool } (0.23.1) — the `when` verdict of
         // the presented entry/beat. Trace presents it either way (the
-        // engine's gate, shown, not enforced); this asserts the verdict.
+        // engine's gate, shown, not enforced); this asserts the verdict. A
+        // map key naming an entry / bundle beat of the file this test did
+        // NOT present is judged on its own under the same mocks (dsl 0.24.0,
+        // T3-5) — `eligible:` covers the whole file, not only what played.
         if let Some(want) = expect.get("eligible") {
             let presented = presented_eligibility(&report);
             let wants: Vec<(Option<String>, Option<bool>)> = match want {
@@ -953,13 +977,16 @@ fn run_one_test(
                 other => vec![(None, other.as_bool())],
             };
             for (id, want) in wants {
-                let matched: Vec<&(String, Option<bool>)> = presented
+                let mut matched: Vec<(String, Option<bool>)> = presented
                     .iter()
-                    .filter(|(p, _)| {
-                        id.as_deref()
-                            .is_none_or(|id| p == id || p.ends_with(&format!(".{id}")))
-                    })
+                    .filter(|(p, _)| id.as_deref().is_none_or(|id| names_presented(p, id)))
+                    .cloned()
                     .collect();
+                if matched.is_empty() {
+                    if let (Some(id), Some(mocks)) = (id.as_deref(), &eligibility_mocks) {
+                        matched = eligibility_alone(&input, mocks, id, project_asserts.as_ref());
+                    }
+                }
                 let actual = (!matched.is_empty()).then(|| {
                     matched
                         .iter()
@@ -985,6 +1012,36 @@ fn run_one_test(
                     actual,
                 });
             }
+        }
+
+        // accepts: [quest ids] (dsl 0.24.0, T3-5) — the quests the walk's
+        // `::accept{quest=…}` accepted, as a set. A scene never holds the
+        // quest, so its lifecycle (`quests:`) cannot show the accept.
+        if let Some(v) = expect.get("accepts") {
+            let want: Option<BTreeSet<&str>> = v
+                .as_sequence()
+                .and_then(|s| s.iter().map(|i| i.as_str()).collect());
+            let actual: BTreeSet<&str> = report
+                .steps
+                .iter()
+                .filter_map(|s| match s {
+                    lute_trace::Step::Accept { quest, .. } => Some(quest.as_str()),
+                    _ => None,
+                })
+                .collect();
+            let set_text = |s: &BTreeSet<&str>| {
+                format!("[{}]", s.iter().copied().collect::<Vec<_>>().join(", "))
+            };
+            expectations.push(ExpectResult {
+                kind: "accepts",
+                subject: String::new(),
+                expected: match &want {
+                    Some(w) => set_text(w),
+                    None => "a list of quest ids".to_string(),
+                },
+                actual: Some(set_text(&actual)),
+                passed: want.as_ref() == Some(&actual),
+            });
         }
     }
 
@@ -1040,7 +1097,10 @@ fn run_one_test(
             .iter()
             .filter(|n| n.starts_with(lute_trace::NOTE_BEAT_WHEN))
             .cloned()
-            .chain(ineligible_notes(&report))
+            .chain(ineligible_notes(
+                &report,
+                expect.and_then(|e| e.get("eligible")),
+            ))
             .collect(),
     })
 }
@@ -1202,22 +1262,62 @@ fn presented_eligibility(report: &TraceReport) -> Vec<(String, Option<bool>)> {
         .collect()
 }
 
+/// Does the `expect.eligible` key `id` name the presented entry / beat `p`
+/// (a local id matches its canonical `<document id>.<id>`)?
+fn names_presented(p: &str, id: &str) -> bool {
+    p == id || p.ends_with(&format!(".{id}"))
+}
+
+/// `id`'s eligibility judged on its own under `mocks` (dsl 0.24.0, T3-5):
+/// the entry / bundle beat of `input`'s document is presented alone, from
+/// the mocked start, and its head's verdict read back. Empty when the
+/// document declares no such entry or beat.
+fn eligibility_alone(
+    input: &lute_check::CheckInput,
+    mocks: &lute_trace::MockSet,
+    id: &str,
+    project_asserts: Option<&BTreeSet<String>>,
+) -> Vec<(String, Option<bool>)> {
+    let (doc, _) = lute_syntax::parse(&input.text);
+    let checked = lute_check::check(input);
+    let (report, _) = if doc.entries.iter().any(|e| e.id == id) {
+        trace_entries_with_check(input, checked, mocks.clone(), &[id], project_asserts)
+    } else if doc.beats.iter().any(|b| names_presented(id, &b.id) || b.id == id) {
+        trace_beat_with_check(input, checked, mocks.clone(), id, project_asserts)
+    } else {
+        return Vec::new();
+    };
+    presented_eligibility(&report)
+}
+
 /// A note for every presented entry / bundle beat whose `when` does not
 /// hold under the test's mocks: trace presents it anyway (the engine's gate,
 /// shown, not enforced), so a passing test says so instead of staying
-/// silent (lamplight N6).
-fn ineligible_notes(report: &TraceReport) -> Vec<String> {
+/// silent (lamplight N6) — unless the test's `expect.eligible` already
+/// asserts that verdict (the scalar form covers every presented one, the
+/// map form the ids it names; dsl 0.24.0, T3-5).
+fn ineligible_notes(report: &TraceReport, asserted: Option<&serde_yaml::Value>) -> Vec<String> {
+    let covered = |id: &str| match asserted {
+        None => false,
+        Some(serde_yaml::Value::Mapping(m)) => m
+            .keys()
+            .filter_map(serde_yaml::Value::as_str)
+            .any(|k| names_presented(id, k)),
+        Some(_) => true,
+    };
     presented_eligibility(report)
         .into_iter()
+        .filter(|(id, _)| !covered(id))
         .filter_map(|(id, eligible)| {
             let why = match eligible {
                 Some(false) => "its `when` is false",
                 None => "its `when` is undecided",
                 Some(true) => return None,
             };
+            let local = id.rsplit('.').next().unwrap_or(&id);
             Some(format!(
                 "`{id}` is not eligible under these mocks ({why}); the test presents it anyway \
-                 — assert it with `expect: {{ eligible: false }}`"
+                 — assert it with `expect: {{ eligible: {{ {local}: false }} }}`"
             ))
         })
         .collect()
@@ -1553,10 +1653,20 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
             if e.subject.is_empty() { String::new() } else { format!(" {}", e.subject) },
             e.expected
         ),
+        ("eligible", None) if e.subject.is_empty() => outln!(
+            out,
+            "      eligible: expected {}, but the test presented no entry or beat",
+            e.expected
+        ),
         ("eligible", None) => outln!(
             out,
-            "      eligible{}: expected {}, but the test presented no such entry or beat",
-            if e.subject.is_empty() { String::new() } else { format!(" {}", e.subject) },
+            "      eligible {}: expected {}, but the document declares no such entry or beat",
+            e.subject,
+            e.expected
+        ),
+        ("accepts", Some(actual)) => outln!(
+            out,
+            "      accepts: expected {}, got {actual}",
             e.expected
         ),
         _ => {}

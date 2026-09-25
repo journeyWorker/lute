@@ -23,7 +23,8 @@
 //! - path      → `{"path": "user.level"}`
 //! - unary     → `{"op": "!"|"-", "l": <node>}`
 //! - binary    → `{"op": "<sym>", "l": <node>, "r": <node>}` where `<sym>` ∈
-//!   `&& || == != < <= > >= + - * / in`
+//!   `&& || == != < <= > >= + - * / % in` (`%` is integer remainder, dsl
+//!   0.24.0 §1)
 //! - ternary   → `{"cond": <node>, "then": <node>, "else": <node>}`
 //! - list      → `{"list": [<node>, ...]}`
 //! - `isSet(p)`→ `{"isSet": "<path>"}`
@@ -350,8 +351,8 @@ fn lower_call(c: &CallExpr) -> Option<ExprNode> {
 }
 
 /// Map a `cel_parser` synthetic operator `func_name` to its binary symbol, or
-/// `None` when it is not an in-profile binary operator. `%` (modulo), the
-/// optional operators, and index are deliberately excluded (dsl §8.4).
+/// `None` when it is not an in-profile binary operator. The optional
+/// operators and index are deliberately excluded (dsl §8.4).
 fn binary_symbol(name: &str) -> Option<&'static str> {
     use cel_parser::ast::operators as op;
     let sym = if name == op::EQUALS {
@@ -374,6 +375,8 @@ fn binary_symbol(name: &str) -> Option<&'static str> {
         "*"
     } else if name == op::DIVIDE {
         "/"
+    } else if name == op::MODULO {
+        "%"
     } else if name == op::LOGICAL_AND {
         "&&"
     } else if name == op::LOGICAL_OR {
