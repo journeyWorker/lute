@@ -6,7 +6,7 @@ description: "Three read-only views of a story chosen by occasions (dsl 0.23.0):
 Once a story is selected by [occasions](/tooling/play/) rather than read top to bottom, no single file answers "what plays at the inn on the evening of day two?". The answer is spread over every beat's `on`, `target`, `priority`, `once`, `after:` and `when`, over the project's rules, and over whatever the save already holds. Since dsl 0.23.0 three commands put it on one screen:
 
 - [`lute beats`](#lute-beats) — the **ladder**: every beat of each occasion and target in selection order, with what `check-project` concludes about it. Static; the project need not check clean.
-- [`lute calendar`](#lute-calendar) — the **grid**: for every combination of the state values you name, which beat `lute play` would present. It runs play's own eligibility, so it is exact where the checker is conservative.
+- [`lute calendar`](#lute-calendar) — the **grid**: for every combination of the state values, quest statuses and facts you name — from a save, or partway along a played route — which beat `lute play` would present. It runs play's own eligibility, so it is exact where the checker is conservative.
 - [`lute scenario knowledge`](#lute-scenario-knowledge) — the **knowledge map**: for every condition that reads a fact, which rules conclude it and who produces the facts they need, down to the ones nothing produces yet.
 
 All three are read-only. The normative text is §1 of the [0.23.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md).
@@ -195,17 +195,20 @@ Exit **0** on success, **2** on an I/O failure or an unknown `--occasion`.
 ## `lute calendar`
 
 ```console
-$ lute calendar <dir> --axis <path>=<lo>..<hi> | <path>=<a>,<b>,…  [--axis …]…
-                [--occasion <O>]… [--target <T>]… [--script <save.play.yaml>]
+$ lute calendar <dir> [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,…]…
+                [--occasion <O>]… [--target <T>]…
+                [--script <route.play.yaml> [--until <step>]] [--where <cel>]
                 [--json | --csv]
 ```
 
-Evaluate, for **every cell** of a grid of state values and every occasion column, which beats [`lute play`](/tooling/play/) would find eligible there — its own candidates, `once`, `after:` and `when`, with the project's rules applied — and report the winner. Nothing is presented and no step is played: each cell is one question, "if the engine raised this occasion now, what would play?".
+Evaluate, for **every cell** of a grid of state values and every occasion column, which beats [`lute play`](/tooling/play/) would find eligible there — its own candidates, `once`, `after:` and `when`, with the project's rules applied — and report the winner. Every cell starts from the same world — the declared defaults, or a play script's save with its steps replayed — then gets its axis values written, and its quests settle. Nothing is presented within the grid: each cell is one question, "if the engine raised this occasion now, what would play?", and no cell sees what another did.
 
-- `--axis` (required, repeatable) names a declared state path and its values: an inclusive integer range `run.day=1..7`, or a list `run.slot=morning,evening`. Each value is checked against the path's declared type. The grid is the product of the axes, and the **first axis varies slowest**.
+- `--axis` (optional, repeatable) names a declared state path and its values: an inclusive integer range `run.day=1..7`, or a list `run.slot=morning,evening`. Each value is checked against the path's declared type. The grid is the product of the axes, and the **first axis varies slowest**; with no `--axis` it is a single cell. Two more kinds of axis reach what a state write cannot — a quest's status and a fact — see [Quest and fact axes](#quest-and-fact-axes).
 - `--occasion <O>` (repeatable) — the occasions to evaluate; by default every occasion a beat answers.
-- `--target <T>` (repeatable) — the targets to raise a targeted occasion for; by default the occasion's declared [target domain](/tooling/play/#occasions), else every target its beats name. Each (occasion, target) pair is one column.
-- `--script <file>` — a play script whose **save** every cell starts from: `state:`, `facts:`, `visited:`, `presented:`, `quests:`, `entriesRead:` ([Starting from a save](/tooling/play/#starting-from-a-save)). Its `steps:` are not played and may be omitted. Without it, every cell starts from the declared defaults and the seed facts.
+- `--target <T>` (repeatable) — the targets to raise a targeted occasion for; by default every target its beats name, not the rest of its declared [target domain](/tooling/play/#occasions), where no beat answers and every cell would read as a hole. When none of its beats names a target, the occasion gets a single column headed `(any)` (`<occasion>@(any)` in the lists below the grid), which only its untargeted beats answer. Each (occasion, target) pair is one column.
+- `--script <file>` — a play script every cell starts from: its **save** — `state:`, `facts:`, `visited:`, `presented:`, `quests:`, `entriesRead:` ([Starting from a save](/tooling/play/#starting-from-a-save)) — and then its `steps:`, replayed exactly as `lute play` plays them. A save needs no steps. Without it, every cell starts from the declared defaults and the seed facts.
+- `--until <step>` — with `--script`, replay only the steps before this one, named by its 1-based number or its `label:`; the step itself is not played. See [Along a route](#along-a-route).
+- `--where <cel>` — keep only the cells where this condition holds; see [Dropping cells no run reaches](#dropping-cells-no-run-reaches).
 - `--json` / `--csv` — machine-readable output instead of the grid.
 
 Over the town's first three days:
@@ -282,7 +285,94 @@ shadowed (eligible, not presented):
 never eligible in any cell: none
 ```
 
-The visit opens `inn.again`'s `after:`, and `met(ada)` makes `trusted(ada)` derive, so Ada's second scene wins the inn in every cell. The quests **settle in every cell**, after the cell's values are written: the visit starts `ferry`, and from day 3 its objectives both hold, so the quest is complete there and `day.farewell` (`after: completed("ferry")`) joins the morning sequence. A cell whose quest settle halts — an objective the reference runtime cannot decide — or ends the playthrough carries a note, listed under `notes:` after the grid.
+The visit opens `inn.again`'s `after:`, and `met(ada)` makes `trusted(ada)` derive, so Ada's second scene wins the inn in every cell. The quests **settle in every cell**, after the cell's values are written: the visit starts `ferry`, and from day 3 its objectives both hold, so the quest is complete there and `day.farewell` (`after: completed("ferry")`) joins the morning sequence. A cell whose quest settle halts — an objective the reference runtime cannot decide — carries a note, listed under `notes:` after the grid, and so does a cell where the settle moves an axis value away from what the cell wrote: a handler's write to that path, or a seeded quest status the lifecycle moves on (see [below](#quest-and-fact-axes)).
+
+### Along a route
+
+A save is history written down by hand. A route is history played: when the script has `steps:`, every cell starts from the world those steps leave, replayed exactly as `lute play` plays them — presentations, `once` spent, facts asserted, quests advanced. `--until <step>` stops the replay before a step, named by its number or its `label:`, so the grid shows what that step would find. This route spends an evening at the inn and comes back:
+
+```yaml
+# plays/evening.play.yaml
+state: { run.slot: evening }
+steps:
+  - occasion: placeVisit
+    target: place.inn
+  - label: back at the inn
+    occasion: placeVisit
+    target: place.inn
+```
+
+Stopping before the way back, and asking whether a rumour about Ada would change it:
+
+```console
+$ lute calendar . --script plays/evening.play.yaml --until "back at the inn" \
+    --axis 'holds(rumor(ada))=false,true' --occasion placeVisit --target place.inn
+calendar: . — 2 cell(s) × 1 column(s), from the save in plays/evening.play.yaml, then its step 1 replayed (stopping before step 2, back at the inn)
+
+holds(rumor(ada))  placeVisit
+                   place.inn
+false              inn.again
+true               -
+
+never eligible in any cell: 3
+  innQuiet [entry, lore/places.lute] placeVisit@place.inn — when: false
+  inn.ada [scene, scenes/inn/ada.lute] placeVisit@place.inn — once: run — already presented this run
+  inn.regular [scene, scenes/inn/regular.lute] placeVisit@place.inn — when: false
+```
+
+The replayed step presents `inn.ada`, which asserts `met(ada)` and starts `ferry`, and spends it for the run. Without a rumour, Ada trusts you and `inn.again` wins the way back; with one, nothing at the inn is eligible — a hole the rumour opens. The header names where the cells start; `--json` carries the same text as `from`.
+
+`--until` needs `--script`. A step number the script does not have, or a label it does not declare, is a usage error — a label gets a did-you-mean — and so is a replay that halts (an unscripted choice, say): the calendar cannot say what a route reaches if it does not play.
+
+### Quest and fact axes
+
+An axis over a declared state path writes it as an `engine:` step would. Two paths need more than a write, and each has an axis of its own:
+
+- `quest.<id>.state=unset,active,complete,failed` seeds the quest's **status**, as a save's `quests:` does; a plain write would be overwritten by the lifecycle the cell settles. `unset` and `active` also clear the objective progress a replayed route made, since the axis names a status, not the route's objectives. `quest.<id>.objectives.<oid>.done=false,true` is taken as written, as a save's objective progress. Any other `quest.*` path — `activatedAt`, say — is the lifecycle's own bookkeeping and a usage error, and so is an id no quest declares.
+- `holds(<fact>)=true,false` asserts (`true`) or retracts (`false`) a base fact before the rules derive, so derived facts follow it. The fact must be ground, of a declared relation, with members of its domains; a derived relation is refused, since the rules decide it. Quote the axis in the shell: `--axis 'holds(rumor(ada))=false,true'`.
+
+The status is a seed, and the settle still runs. From the save above — Ada met, `inn.ada` visited — a quest seeded `unset` does not stay there:
+
+```console
+$ lute calendar . --script plays/regular.play.yaml --axis quest.ferry.state=unset,active --occasion dayStart
+calendar: . — 2 cell(s) × 1 column(s), from the save in plays/regular.play.yaml
+
+quest.ferry.state  dayStart (sequence)
+unset              day.bell
+active             day.bell
+
+notes:
+  quest.ferry.state=unset: quest.ferry.state settled to active
+
+never eligible in any cell: 2
+  day.farewell [scene, scenes/day/farewell.lute] dayStart — after: prerequisite not satisfied
+  day.market [scene, scenes/day/market.lute] dayStart — when: false
+```
+
+`ferry` starts on `visited('inn.ada')`, which the save holds, so the settle activates it and the note says so.
+
+### Dropping cells no run reaches
+
+Axes are independent, so their product holds combinations no run can reach. `--where <cel>` keeps only the cells where a condition holds — evaluated after the cell's values are written and its quests settle — and the header counts the rest. `ferry` completes only from day 3, so a completed ferry before then is not a state to plan for:
+
+```console
+$ lute calendar . --axis run.day=1..3 --axis quest.ferry.state=unset,active,complete \
+    --where "quest.ferry.state != 'complete' || run.day >= 3" --occasion dayStart
+calendar: . — 7 cell(s) (2 dropped by --where) × 1 column(s), from declared defaults
+
+run.day  quest.ferry.state  dayStart (sequence)
+1        unset              day.bell
+1        active             day.bell
+2        unset              day.bell
+2        active             day.bell
+3        unset              day.bell, day.market
+3        active             day.bell, day.market
+3        complete           day.bell, day.farewell, day.market
+
+never eligible in any cell: none
+```
+
+`--where` is plain CEL: an `@def` call is not expanded there. A condition that does not parse is a usage error before anything is evaluated, and one that evaluates unknown at some cell — it reads a path that cell leaves undecided — is a usage error naming the cell, since a cell is never dropped, or kept, on a guess. `--json` counts the dropped cells as `pruned`.
 
 ### Undecided cells
 
@@ -310,7 +400,7 @@ An unknown `when` below the winner does not make a cell undecided: the winner is
 
 ### Machine-readable output
 
-`--json` emits the axes, the columns, one record per cell, and the never-eligible list. A cell's `results` hold one entry per column: `winner` (`null` on a `select: all` or `sequence` column, or when nothing is eligible), `presented` (the winner, or the whole offered or sequence list), `shadowed`, and, when a `when` evaluated unknown, `unknown` (`[{ id, reason }]`). A cell carries `note` when its quest settle halted or ended:
+`--json` emits where the cells start (`from`, the header's text), how many cells `--where` dropped (`pruned`), the axes, the columns, one record per cell, and the never-eligible list. A column of a targeted occasion carries `target`, or `"anyTarget": true` for the `(any)` column. A cell's `results` hold one entry per column: `winner` (`null` on a `select: all` or `sequence` column, or when nothing is eligible), `presented` (the winner, or the whole offered or sequence list), `shadowed`, and, when a `when` evaluated unknown, `unknown` (`[{ id, reason }]`), with `"undecided": true` when that unknown decides the cell. A cell carries `notes` — a list — when its quest settle halted or moved an axis value:
 
 ```json
 {
@@ -327,18 +417,20 @@ An unknown `when` below the winner does not make a cell undecided: the winner is
     }
   ],
   "columns": [ { "occasion": "board", "select": "all" }, … ],
+  "from": "declared defaults",
   "neverEligible": [
     { "id": "dockBo", "kind": "entry", "document": "lore/places.lute", "on": "placeVisit", "target": "place.dock", "reasons": ["when: false"] },
     …
-  ]
+  ],
+  "pruned": 0
 }
 ```
 
-`--csv` writes one row per cell and column — the axis values, then `occasion,target,select,winner,presented,shadowed,unknown,note`, lists joined with `;` — for a spreadsheet:
+`--csv` writes one row per cell and column — the axis values, then `occasion,target,select,winner,presented,shadowed,unknown,notes`, lists joined with `;` (an `(any)` column's target reads `(any)`) — for a spreadsheet:
 
 ```console
 $ lute calendar . --axis run.day=2..3 --axis run.slot=evening --occasion placeVisit --csv
-run.day,run.slot,occasion,target,select,winner,presented,shadowed,unknown,note
+run.day,run.slot,occasion,target,select,winner,presented,shadowed,unknown,notes
 2,evening,placeVisit,place.inn,first,inn.ada,inn.ada,,,
 2,evening,placeVisit,place.dock,first,dock.storm,dock.storm,dockGulls;dockEmpty,,
 3,evening,placeVisit,place.inn,first,inn.ada,inn.ada,,,
@@ -357,11 +449,15 @@ $ lute calendar . --axis run.day=1..3
 
 Standard error adds `lute play: 1 of 9 document(s) failed to compile; refusing to play`, and the exit is **1**.
 
-Every axis is validated before a cell is evaluated. An undeclared path, a value outside the path's type, an empty or non-integer range, a `--target` that none of the listed occasions takes, and a grid of more than **10,000 cells** are usage errors:
+Every axis is validated before a cell is evaluated. An undeclared path, a value outside the path's type, an empty or non-integer range, an axis given twice, a quest path other than a status or an objective's `done`, an undeclared quest, a `holds(…)` over a derived or undeclared relation (or with a value other than `true`/`false`), a `--target` that none of the listed occasions takes, and a grid of more than **10,000 cells** are usage errors, as are an `--until` that names no step, a replay that halts, and a `--where` that does not parse or is unknown at some cell:
 
 ```console
 $ lute calendar . --axis run.slot=noon
 lute calendar: `--axis run.slot`: `run.slot` does not take `noon`: the enum's members are morning, evening
+$ lute calendar . --axis quest.ferry.activatedAt=1
+lute calendar: `--axis quest.ferry.activatedAt`: `quest.ferry.activatedAt` is the quest lifecycle's own bookkeeping and cannot be set per cell — an axis over a quest is `quest.<id>.state` (its status) or `quest.<id>.objectives.<oid>.done`
+$ lute calendar . --script plays/evening.play.yaml --until "back at the ink"
+lute calendar: plays/evening.play.yaml: `--until back at the ink` names no step number or `label:` of the script — did you mean `back at the inn`?
 $ lute calendar . --axis run.day=1..200 --axis user.visits=0..60
 lute calendar: the axes' product exceeds 10000 cells
 ```
@@ -470,6 +566,8 @@ project root: .
 ```
 
 `--format json` carries the same list as `omitted` on the root, each `{ from, kind, quest }` for a `completed`/`active` reference or `{ from, kind: "visited", scene }` for a quest's `visited()` read. Give `ferry` an `after=""` and both references become edges.
+
+Lore entries are not graph nodes, but bundle beats are. Add the gossip beat from [above](#lute-scenario-knowledge) and layer 0 ends with `beat(town.gossip.whisper)`, an entry node with no edges: a `<beat>` declares no `after`, and its occasion, target and `when` decide when it plays. `lute scenario . reach town.gossip.whisper` (or `reach beat:town.gossip.whisper`) prints the file that declares it with its `on`, `target` and `when`; see [The scene graph](/connectivity/scene-graph/#bundle-beats).
 
 ## Beat rows in `project.index.json`
 

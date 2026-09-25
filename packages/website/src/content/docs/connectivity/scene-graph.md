@@ -1,6 +1,6 @@
 ---
 title: The scene graph and `after:`
-description: How Lute assembles a project-wide prerequisite graph from each document's after declaration, the restricted visited/completed/active formula grammar, and the lute scenario graph view with its per-edge atom kinds.
+description: How Lute assembles a project-wide prerequisite graph from each document's after declaration, the restricted visited/completed/active formula grammar, and the lute scenario graph view with its per-edge atom kinds and its bundle beat nodes.
 ---
 
 Scenes and quests declare their **prerequisites** — what must have happened before this node is available — and `check-project` assembles them into a project-wide graph. This closes the one asymmetry in the language: quests already had a declarative activation predicate (`<quest start>`), but scenes had no prerequisite surface at all. `after:` gives episodes what quests already had.
@@ -88,3 +88,44 @@ A quest becomes a graph node by declaring `after` (even `after=""`); a quest tha
 - **`dot`** — an edge justified **only** by `active` atoms renders `[style=dashed]`; anything carrying a `visited` or `completed` atom stays solid, because the stronger claim is what a reader should see.
 
 The kind is presentational and analytical, never structural: the DAG shape is identical either way, since an `active` edge constrains ordering exactly as a `completed` edge does.
+
+### Bundle beats
+
+A lore document's [bundle beats](/tooling/play/#bundle-beats) (dsl 0.23.0) are nodes too, each drawn `beat(<document id>.<beat id>)`. A `<beat>` has no `after` surface — its occasion, target and `when` decide when it plays — so every bundle beat is an entry node in layer 0, with no edges. Add a porter's line to the project above, in a lore document with `id: harbor`:
+
+```lute
+<beat id="porter" on="talk" target="npc.porter" when="visited('narrator.s01ep02')">
+  @porter: Back again? The boats won't wait.
+</beat>
+```
+
+```console
+$ lute scenario .
+project root: .
+  topological layers:
+    layer 0: scene(narrator.s01ep01), beat(harbor.porter)
+    layer 1: quest(findkai)
+    layer 2: scene(narrator.s01ep02)
+    layer 3: scene(narrator.s01ep03)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(narrator.s01ep01) -> quest(findkai) [visited]
+    scene(narrator.s01ep02) -> scene(narrator.s01ep03) [visited]
+    quest(findkai) -> scene(narrator.s01ep02) [active]
+    quest(findkai) -> scene(narrator.s01ep03) [completed]
+```
+
+The `visited()` in its `when` draws no edge: a `when` is a runtime condition, not a prerequisite. In `--format json` the node's `kind` is `beat` (its `prereq` is `null`), and in `--format dot` it is drawn `shape=note`. `lute scenario <dir> reach` and `envelope` take its canonical id, bare or as `beat:<id>`, and `reach` names where the beat is declared and what selects it:
+
+```console
+$ lute scenario . reach harbor.porter
+project root: .
+reach beat(harbor.porter):
+  verdict: Reachable — a satisfiable route exists under your declared routes.
+  after: (a bundle beat declares no `after`) — an entry node: it plays when its occasion is raised and its `when` holds.
+  declared in: ./lore/harbor.lute
+  on: talk
+  target: npc.porter
+  when: visited('narrator.s01ep02')
+```
+
+The graph orders scenes and quests only, so an `after:` cannot name a bundle beat: `visited('harbor.porter')` there is `E-CONN-UNKNOWN-NODE`, and the message says to gate on `visited('harbor.porter')` in a `when` instead.

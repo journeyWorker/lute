@@ -125,6 +125,37 @@ opaque, or an arm uses a `test` guard the checker cannot prove covers the domain
 reading `app.rating` in a release build is a hard content gate that must cover `teen` or carry
 `<otherwise>`.
 
+### Arms narrow their subject
+
+Reading a maybe-unset path — a `run.*`/`app.*` path with no default — is `E-MAYBE-UNSET` until
+something proves it set. When the `<match>` subject is a plain state path, the arms supply that
+proof for reads of the subject inside them:
+
+- Inside `<when is="…">` whose alternatives name values and none of them is `unset`, the subject
+  equals one of those values, so it is set.
+- Once an arm takes every unset value — `is="unset"` with no `test` — no later arm and no
+  `<otherwise>` can see the subject unset, so they read it as set.
+
+```lute
+<match on="run.rival">
+  <when is="unset">
+    @narrator: Nobody has taken your measure yet.
+  </when>
+  <when test="$ >= 3">
+    @narrator: Your rival is {{run.rival}} bouts ahead.
+  </when>
+  <otherwise>
+    @narrator: Your rival sits at {{run.rival}}.
+  </otherwise>
+</match>
+```
+
+Neither interpolation is `E-MAYBE-UNSET`: both arms come after the `unset` arm. The proof stays
+inside the match and runs downward only. An `<otherwise>` (or a `test`-only arm) can still see the
+subject unset when no arm above it takes every unset value — there is no `is="unset"` arm, or the
+one there carries a `test` — so a read of the subject there still reports. A read after
+`</match>` is as unproven as it was before the match.
+
 ## The `when=` content-line sugar
 
 A single content line may carry a `when="G"` guard directly: the line is emitted only if `G` holds.

@@ -185,13 +185,15 @@ once: user
 ## `lute play`
 
 ```console
-$ lute play <PROJECT_DIR> --script <FILE> [--json] [--no-derive] [--explain <ATOM>]…
+$ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--no-derive] [--explain <ATOM>]…
 ```
 
 - `<PROJECT_DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --all`과 같은
   게이트와 선언 유니온(씬, 퀘스트, 로어 문서)으로 메모리에서 통째로 컴파일됩니다.
 - `--script <FILE>` — 필수: 플레이 스크립트, `*.play.yaml` 파일.
 - `--json` — 같은 트랜스크립트를 stdout에 JSON 객체 하나로 출력합니다.
+- `--ir` — 스테이징을 작성한 그대로의 지시어 대신 낮춰진 IR 레코드(`::background`, `::sprite`, 그리고
+  컴파일러가 주입한 프리로드와 포즈 리셋)로 출력합니다. [트랜스크립트](#트랜스크립트)를 보세요.
 - `--no-derive` — 프로젝트의 Datalog 규칙을 적용하지 않습니다(dsl 0.22.0 §6). 스크립트의 `derive:`보다
   우선합니다. [파생과 `--explain`](#파생과---explain)을 보세요.
 - `--explain <ATOM>` — 반복 가능: 플레이가 끝난 뒤, 그라운드 원자가 왜 성립하는지 또는 왜 성립하지
@@ -298,8 +300,9 @@ rules:
 | `derive` | `false`면 프로젝트의 Datalog 규칙 적용을 멈춥니다 — [파생과 `--explain`](#파생과---explain) 참고. |
 
 모든 스텝은 정확히 한 가지 일을 합니다 — `occasion`을 발생시키거나, `engine` 쓰기를 적용하거나,
-`newRun`을 시작하거나, `event`를 발생시킵니다 — 그리고 어떤 스텝이든 `label`과 `repeat` 횟수를 가질 수
-있습니다. 탑에 대해 모든 모양을 한 번씩 둘러보면:
+`newRun`을 시작하거나, `event`를 발생시키거나, 플레이스루를 끝냅니다(`end: true`) — 그리고 어떤 스텝이든
+`label`, `repeat` 횟수, [`expect:`](#기대값)를 가질 수 있습니다. 단, `end` 스텝은 `label`만 받습니다. 탑에
+대해 모든 모양을 한 번씩 둘러보면:
 
 ```yaml
 state: { user.runs: 2 }                   # path -> scalar literal, over the declared defaults
@@ -333,8 +336,10 @@ expect:                                   # assert the end of the play
 - `state:` 시드는 선언된 경로 — `scene.*`는 안 됨 — 를 가리키며, 값은 선언된 타입에 맞아야
   합니다(`number`면 숫자, enum이면 멤버). 그 밖의 경우는 사용법 오류(종료 코드 2)입니다.
   `quest.<id>.state` 시드(`state: { quest.lostCup.state: active }`)는 `quests:` 항목과 똑같이 처음부터
-  그 퀘스트의 라이프사이클 상태가 됩니다. `prev.run.<path>` 시드(dsl 0.23.0)는 지난 런이 끝났을 때
-  `run.<path>`가 가졌던 값이며, 그 run 경로의 타입을 따릅니다 — [런 경계](#런-경계)를 보세요.
+  그 퀘스트의 라이프사이클 상태가 되고, `quest.<id>.objectives.<oid>.done: true` 시드는 세이브가 이미
+  완료한 목표입니다 — [세이브에서 시작하기](#세이브에서-시작하기)를 보세요. `prev.run.<path>`
+  시드(dsl 0.23.0)는 지난 런이 끝났을 때 `run.<path>`가 가졌던 값이며, 그 run 경로의 타입을 따릅니다 —
+  [런 경계](#런-경계)를 보세요.
 - `facts:` 항목은 선언된 비파생 관계의 그라운드 원자로, 인자 수가 맞고 닫힌 인자 도메인의 멤버를 써야
   합니다. **예약된(reserved)** 관계도 허용됩니다 — 그것을 단언하는 주체가 바로 엔진입니다.
 - `choose:`의 결정 하나는 그 branch나 hub가 제시될 때마다 답합니다. **hub**의 목록은 방문 순서 하나이며
@@ -450,7 +455,8 @@ steps:
 
 `{ event: <name> }`은 어떤 플러그인이 선언한 월드 이벤트를 trace의 `events:`와 똑같이 발생시킵니다: 모든
 **활성** 퀘스트의 `<on event="<name>">` 핸들러가 실행되고, 라이프사이클이 정착합니다. 계기를 가리키는
-`event:`나 월드 이벤트를 가리키는 `occasion:`은 올바른 키를 알려 주는 사용법 오류입니다
+`event:`나, 어떤 플러그인도 계기로 선언하지 않은 월드 이벤트를 가리키는 `occasion:`은 올바른 키를 알려
+주는 사용법 오류입니다
 (`` `event: dayEnd` names no declared world event — `dayEnd` is an occasion; raise it with `occasion: dayEnd` ``).
 퀘스트 라이프사이클 이벤트 `questActive` / `questComplete` / `questFailed`는 전이 때 발생하며 스크립트가
 발생시킬 수 없습니다.
@@ -479,6 +485,50 @@ steps:
 
 `climb`이 스텝 2에서 완료되었으므로, 그 핸들러는 두 번째 폭풍에 더 이상 응답하지 않습니다.
 
+계기와 월드 이벤트는 이름을 공유할 수 있습니다 — 엔진이 둘을 한꺼번에 발생시키므로 `occasions:`와
+`events:` 양쪽에 `bossDefeated`를 선언하는 경우입니다. 그런 계기를 발생시키면 이벤트도 함께 발생합니다:
+모든 활성 퀘스트의 `<on event="bossDefeated">` 핸들러가 **먼저** 실행되고, 그다음 계기가
+`on="bossDefeated"` 목표를 판정하므로, 목표의 `done`은 핸들러가 방금 쓴 값을 읽을 수 있습니다. 스텝은
+그 둘보다 앞서 비트를 제시합니다. `lute run`과 `lute trace`도 계기를 같은 방식으로 발생시킵니다.
+
+### 플레이스루 끝내기
+
+`end: true`는 플레이스루를 완료(종료 코드 0)로 끝냅니다. 이 스텝은 다른 일을 하지 않으며, 이후의 모든
+스텝은 건너뛴 것으로 표시되고, `── end:` 줄이 그 스텝을 댑니다:
+
+```yaml
+steps:
+  - occasion: hubVisit
+  - end: true
+  - label: never reached
+    occasion: hubVisit
+```
+
+```
+── start ──────────────
+  quest climb -> active
+  quest veteran -> active
+  quest notices -> active
+── step 1 · hubVisit ──────────────
+  ✓ hub.idle [scene, priority 0]
+  ✗ hub.victory [scene, priority 10] — when: false
+  → hub.idle
+@maud: Quiet night.
+── step 2 · end (the playthrough ends) ──────────────
+── step 3 (never reached) · skipped (the playthrough ended) ──────────────
+── end: `end: true` at step 2 (1 later step skipped) ──────────────
+```
+
+`--json`에서 이 스텝은 `{ "step": 2, "end": true, … }`이고, `endReason`은 `── end:` 뒤의 텍스트이며,
+`skipped`는 재생되지 않은 스텝을 나열합니다(`[{ "step": 3, "label": "never reached" }]`). `true`만
+받습니다 — `end: false`는 사용법 오류(종료 코드 2)이고, `end` 옆의 `repeat`나 `expect`도 마찬가지입니다:
+기대값은 그 앞 스텝이나 최상위에 두세요. 최상위 기대값은 여전히 플레이의 끝을 판정합니다.
+
+콘텐츠의 `::end`는 플레이스루를 끝내지 **않습니다**. 그것이 실행된 제시만 — 퀘스트 핸들러 안이라면 그
+퀘스트 문서의 진행만 — 끝내고, 플레이는 다음 스텝으로 이어집니다. [각 스텝이 하는 일](#각-스텝이-하는-일)을
+보세요. 0.23.1 전에는 씬의 `::end`가 플레이 전체를 멈췄습니다. 그 동작에 기대던 스크립트는 씬이 끝나는
+스텝 뒤에 `- end: true`를 추가하세요.
+
 ### 레이블과 반복
 
 `label: <text>`는 스텝에 이름을 붙입니다: 스텝 헤더에 출력되고(`── step 4 (the engine closes the day) · engine`),
@@ -497,7 +547,7 @@ steps:
 |---|---|
 | `visited: [scene ids]` | 이 세이브에서 제시된 씬 — `visited('<id>')`와 `after: visited(…)`가 읽습니다. |
 | `presented: { run: [beat ids], user: [beat ids] }` | 이미 제시된 씬 비트: `user` — 이전 런에서, 그래서 `once: user` 비트가 소진됨. `run` — 현재 런에서, 그래서 `once: run`과 `once: user`가 모두 소진됨. 나열된 모든 씬은 방문한 것으로도 셉니다. |
-| `quests: { <id>: unset \| active \| complete \| failed }` | 퀘스트 라이프사이클 상태. 시작 정착은 퀘스트를 처음부터 다시 시작하지 않고 이 상태를 이어받습니다. |
+| `quests: { <id>: unset \| active \| complete \| failed }` | 퀘스트 라이프사이클 상태. 시작 정착은 퀘스트를 처음부터 다시 시작하지 않고 이 상태를 이어받습니다. 모든 목표는 미완료로 시작합니다 — 목표 진행은 `state:`로 시드하세요(아래). |
 | `entriesRead: { run: [entry ids], user: [entry ids] }` | `run` — 현재 런에서 읽음: `entry.<id>.read`와 `entry.<id>.everRead`. `user` — 이전 런에서 읽음: `entry.<id>.everRead`만. |
 
 프로젝트가 선언하지 않은 id는 did-you-mean이 붙은 사용법 오류이며
@@ -533,16 +583,34 @@ steps:
 세워진 엔트리 비트는 자격 여부와 상관없이 후보 줄에 그렇게 표시되므로, `select: all` 메뉴는 플레이어가
 이미 본 엔트리를 보여 줄 수 있습니다. `notice`는 이전 런에서만 읽혔으므로 표시되지 않습니다.
 
+`quests:`는 상태만 담습니다. 일부 목표를 이미 완료한 세이브는 최상위 `state:` 아래에 목표마다
+`quest.<id>.objectives.<oid>.done: true`를 퀘스트 상태와 나란히 시드합니다:
+
+```yaml
+quests: { houndHunt: active }
+state:
+  run.floor: 3
+  quest.houndHunt.objectives.collar.done: true
+```
+
+시작 정착은 `collar`를 완료된 것으로 세고 다시 완료시키지 않습니다 — `houndHunt.collar done` 줄도 없고
+목표 본문도 다시 재생되지 않습니다 — 그리고 완료된 목표의 `by` 기한은 더 이상 적용되지 않으므로 4층을
+지나도 아무것도 실패하지 않습니다. `report`는 여전히 열려 있습니다. 값은 bool이어야 하고, 다른 `state:`
+시드처럼 퀘스트와 목표가 선언되어 있어야 합니다. 이를 위한 `quests:`의 긴 형태는 없습니다.
+
 ### 런 경계
 
-`newRun: true`는 새 런을 시작합니다. 먼저 모든 `run.*` 값을 **`prev.run.*`**(dsl 0.23.0)로 스냅숏합니다
-— 런이 끝났을 때 각 경로가 가졌던 값 — 그다음 다음을 초기화합니다:
+`newRun: true`는 새 런을 시작합니다. 먼저 모든 `run.*` 값을 **`prev.run.*`**(dsl 0.23.0)로 스냅숏하고
+— 런이 끝났을 때 각 경로가 가졌던 값 — 첫 줄에서 그렇다고 알린 뒤(`…; prev.run.* holds the ended run (1 value)`)
+다음을 초기화합니다:
 
 - `run.*` 상태를 선언된 기본값으로, 그리고 모든 run 등급 `entry.<id>.read` 플래그를. 그래서 새 런의 첫
   읽기에서 엔트리 효과가 다시 적용되고 `once="run"` 엔트리가 다시 자격을 얻습니다.
 - run 등급 팩트를 프로젝트의 시드 팩트로.
 - 모든 `<quest tier="run">` 퀘스트를 `unset`으로, 목표도 되돌려서. `start`가 있는 퀘스트는 뒤따르는
-  정착에서 다시 활성화되고, 수락으로 시작하는 퀘스트는 새 수락을 기다립니다.
+  정착에서 다시 활성화되고, 수락으로 시작하는 퀘스트는 새 수락을 기다립니다. `unset`을 벗어났던
+  퀘스트는 런이 남긴 상태와 함께 나열되고(`quest climb -> unset (tier: run; was complete)`), 여전히
+  `unset`인 퀘스트는 조용히 초기화됩니다.
 - `once: run` 소진 기록.
 
 `user.*` / `app.*` 상태, user 등급 퀘스트(기본 `tier`), `entry.<id>.everRead`, user·app 등급 팩트,
@@ -579,8 +647,8 @@ steps:
   climb.high done
   quest climb -> complete
 ── step 2 · new run ──────────────
-  run.* state, run-tier facts and once: run reset
-  quest climb -> unset (tier: run)
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
+  quest climb -> unset (tier: run; was complete)
   set run.floor = 1
   quest climb -> active
 ── step 3 · hubVisit ──────────────
@@ -650,8 +718,8 @@ steps:
   entry old (first read)
 @maud: The same notice as ever.
 ── step 4 · new run ──────────────
-  run.* state, run-tier facts and once: run reset
-  quest climb -> unset (tier: run)
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
+  quest climb -> unset (tier: run; was active)
   quest climb -> active
 ── step 5 · board (select: all, pick: memo) ──────────────
   ✓ memo [entry, priority 0]
@@ -696,8 +764,8 @@ steps:
   set run.floor = 3
   set user.runs = 1
 ── step 3 · new run ──────────────
-  run.* state, run-tier facts and once: run reset
-  quest climb -> unset (tier: run)
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
+  quest climb -> unset (tier: run; was active)
   quest climb -> active
 ── step 4 · runStart (select: sequence) ──────────────
   ✓ start.gear [scene, priority 10]
@@ -752,10 +820,8 @@ expect:
   ✓ oskar.rumor [beat, priority 0, also]
   → oskar.hunt
   + oskar.rumor (also)
-  beat
 @oskar: The hound took my dog's collar. Bring it back before you pass floor four.
   quest houndHunt accepted
-  beat
 @oskar: They say the warden sleeps on floor six.
   quest houndHunt -> active
 ── step 3 (the hound falls) · engine ──────────────
@@ -770,18 +836,17 @@ expect:
   ✗ oskar.hunt [beat, priority 10] — once: run — already presented this run
   → (no eligible main beat)
   + oskar.rumor (also)
-  beat
 @oskar: They say the warden sleeps on floor six.
   houndHunt.report done
   quest houndHunt -> complete
-  grant houndHunt EMBERS 50 (credits user.embers = 50.0)
+  grant houndHunt EMBERS 50 (credits user.embers = 50)
 ── end: complete (5 steps) ──────────────
 ── expect: every expectation held ──────────────
 ```
 
 - **스텝 2** — `oskar.hunt`가 이깁니다. 자격 있는 `also` 비트는 `+ oskar.rumor (also)`로 표시되고 그
-  뒤에 재생됩니다. 둘 다 번들 비트이므로 각 제시는 `beat` 레코드로 시작합니다. hunt는 `houndHunt`를
-  수락하고, 퀘스트는 스텝 뒤의 정착에서 활성화됩니다.
+  뒤에 재생됩니다. 둘 다 번들 비트입니다: `→`와 `+` 줄이 이름을 대고, `beat` 레코드는 `--json`과
+  `--ir`에만 나타납니다. hunt는 `houndHunt`를 수락하고, 퀘스트는 스텝 뒤의 정착에서 활성화됩니다.
 - **스텝 5** — hunt는 소진되었으므로(`once`의 기본값은 `run`) 주 비트는 하나도 자격이 없고 —
   `→ (no eligible main beat)` — 곁들이는 대사는 그래도 재생됩니다. 트랜스크립트의 나머지는 퀘스트입니다:
   [기한과 대상 지정 목표](#기한과-대상-지정-목표)를 보세요.
@@ -818,9 +883,10 @@ expect:
 
 - `by="<condition>"` — 기한. 목표가 완료되지 않은 동안 `by`가 처음 성립하면 목표는 **실패**하고 다시는
   판정되지 않습니다. 실패한 필수 목표는 퀘스트를 실패시킵니다: `failed` 보상, `questFailed` 핸들러, 부모
-  퀘스트로의 연쇄. 매 정착에서 `done`이 먼저 판정되므로 기한이 지나는 순간 완료된 목표는 실패하지
-  않으며, `by`는 모든 정착 — 제시, `engine:` 쓰기, `newRun` 뒤 — 에서 판정되고, `on=` 목표에서도
-  마찬가지입니다.
+  퀘스트로의 연쇄. `done`이 `by`보다 먼저 판정되므로 기한이 지나는 순간 완료된 목표는 실패하지
+  않습니다. `on=`이 없는 목표의 `by`는 모든 정착 — 제시, `engine:` 쓰기, `newRun` 뒤 — 에서 판정됩니다.
+  `on=` 목표의 `by`는 그 목표가 판정될 때만 — 계기가 (`target`이 있으면 그 대상을 위해) 발생했을 때,
+  `done` 바로 뒤에 — 판정되므로, 발생과 발생 사이에는 기한이 기다립니다.
 - `on=` 옆의 `target="<target>"` — 목표는 **그 대상을 위해** 발생한 계기 스텝에서만 판정됩니다. 다른
   대상의 계기 스텝이나 대상이 없는 스텝은 그 목표를 건드리지 않습니다.
 
@@ -835,6 +901,7 @@ steps:
     target: npc.oskar
   - label: the climber passes floor four
     engine: { state: { run.floor: 4 } }
+    expect: { quests: { houndHunt: failed } }
 ```
 
 ```
@@ -846,7 +913,6 @@ steps:
   ✓ oskar.hunt [beat, priority 10]
   ✗ oskar.rumor [beat, priority 0, also] — when: false
   → oskar.hunt
-  beat
 @oskar: The hound took my dog's collar. Bring it back before you pass floor four.
   quest houndHunt accepted
   quest houndHunt -> active
@@ -856,23 +922,26 @@ steps:
   quest houndHunt -> failed
 @oskar: Floor four already? Then it's gone to ground.
 ── end: complete (2 steps) ──────────────
+── expect: every expectation held ──────────────
 ```
 
 `houndHunt.collar failed (by)`가 기한입니다(`--json`: `"failed": true`인 `objective` 레코드). 필수 목표가
-퀘스트를 실패시키고, 퀘스트의 `questFailed` 핸들러가 재생됩니다. 실패는 상태 경로가 아니라 라이프사이클
-상태이며, `tier="run"` 퀘스트라면 `newRun`이 지웁니다.
+퀘스트를 실패시키고, 퀘스트의 `questFailed` 핸들러가 재생됩니다. 스텝 자신의 `expect:`는 그 정착 직후의
+상태를 확인합니다. 실패는 상태 경로가 아니라 라이프사이클 상태이며, `tier="run"` 퀘스트라면 `newRun`이
+지웁니다.
 
 **상태에 적립되는 보상.** 탑의 `EMBERS` 보상 종류는
 [`credits: user.embers`](/plugins/manifests/#rewards-that-credit-state)를 선언하므로, 위 스텝 5가 퀘스트
-보상을 지급할 때 스칼라 수량이 그 경로에 더해집니다 — `grant houndHunt EMBERS 50 (credits user.embers = 50.0)`,
-그리고 플레이 끝의 `state: { user.embers: 50 }`이 성립합니다. `--json`에서 `grant` 레코드는
-`"credited": { "path": "user.embers", "value": 50.0 }`을 가집니다. 범위 수량은 엔진의 굴림이라 여기서는
+보상을 지급할 때 스칼라 수량이 그 경로에 더해집니다 — `grant houndHunt EMBERS 50 (credits user.embers = 50)`,
+그리고 플레이 끝의 `state: { user.embers: 50 }`이 성립합니다. 정수는 소수점 없이 출력됩니다. `--json`에서
+`grant` 레코드는 `"credited": { "path": "user.embers", "value": 50 }`을 가집니다. 범위 수량은 엔진의 굴림이라 여기서는
 적립되지 않으며, 퀘스트 자신의 `<on>`이나 목표 본문에서 같은 경로를 `::set`하면 두 번 지급됩니다
 (`W-REWARD-DOUBLE-CREDIT`).
 
 ### 기대값
 
-계기 스텝은 `expect:`를 가질 수 있고, 그 스텝이 한 일에 대해 판정됩니다:
+스텝은 `expect:`를 가질 수 있고, 그 스텝이 한 일에 대해 판정됩니다. 네 키는 계기의 선택을 판정하므로
+`occasion` 스텝에만 쓸 수 있습니다:
 
 | 키 | 성립 조건 |
 |---|---|
@@ -880,6 +949,21 @@ steps:
 | `offered: [beat ids]` | 나열된 모든 비트가 그 스텝에서 자격이 있었음 — 부분집합, 순서 무관 |
 | `notOffered: [beat ids]` | 나열된 비트 중 어느 것도 자격이 없었음 |
 | `presented: [beat ids]` | 정확히 이 비트들이 이 순서로 제시됨(dsl 0.23.0): [`select: sequence`](#계기-조합하기) 스텝의 목록 전체, 또는 승자와 그 뒤의 `also` 비트. `[]` — 아무것도 제시되지 않음 |
+
+네 키가 더 있어 **스텝이 정착한 직후**의 월드를 판정합니다 — 계기 스텝이라면 제시, 계기의 목표 판정,
+그 뒤의 정착이 모두 끝난 다음 — 그리고 어떤 종류의 스텝에든 쓸 수 있습니다(`end` 옆은 안 됨). 각 키는
+아래 최상위에서와 같은 뜻을 그 시점에 대해 가집니다:
+
+| 키 | 성립 조건 |
+|---|---|
+| `quests: { <id>: <status> }` | 스텝 뒤에 퀘스트가 그 상태임 |
+| `state: { <path>: <value> }` | 스텝 뒤 경로의 유효 값이 그 값과 같음. 타입까지 비교 |
+| `facts: [atoms]` / `notFacts: [atoms]` | 각 원자가 스텝 뒤에, **파생 이후** 성립함 / 성립하지 않음 |
+
+그래서 `engine:` 스텝은 자신의 쓰기가 한 일을 단언할 수 있고 — [기한 예제](#기한과-대상-지정-목표)의
+`expect: { quests: { houndHunt: failed } }` — 계기 스텝은 끝까지 기다리지 않고 퀘스트 진행을 확인할 수
+있습니다. `occasion`이 아닌 스텝의 `winner`, `offered`, `notOffered`, `presented`는 사용법 오류(종료
+코드 2)입니다: `` step 2: `expect.winner` applies only to an `occasion` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
 
 최상위 `expect:`는 플레이의 끝을 판정합니다:
 
@@ -889,7 +973,7 @@ steps:
 | `quests: { <id>: <status> }` | 퀘스트가 그 상태로 끝남(아무것도 활성화하지 않은 퀘스트는 `unset`) |
 | `state: { <path>: <value> }` | 경로의 최종 **유효** 값 — 마지막 쓰기, 없으면 시드, 없으면 선언된 기본값 — 이 그 값과 같음. 타입까지 비교(`1`은 `"1"`이 아님) |
 | `facts: [atoms]` / `notFacts: [atoms]` | 각 원자가 끝에서, **파생 이후** 성립함 / 성립하지 않음 |
-| `transcriptContains: [text]` / `transcriptLacks: [text]` | 각 텍스트가 사람이 읽는 트랜스크립트의 부분 문자열임 / 아님 |
+| `transcriptContains: [text]` / `transcriptLacks: [text]` | 각 텍스트가 사람이 읽는 트랜스크립트의 부분 문자열임 / 아님. `--ir`이 낮춰진 레코드를 출력할 때도 소스 수준 트랜스크립트로 판정 |
 
 `repeat:` 스텝의 기대값은 반복마다 판정되며, 워크가 도달하지 못한 스텝의 기대값은 그 자체로 불일치입니다.
 각 `expect:`는 아무것도 재생하기 전에 검증됩니다 — 알 수 없는 키는 합법 키 목록과 did-you-mean을 붙인
@@ -898,7 +982,7 @@ steps:
 
 트랜스크립트 뒤에, 기대값이 있는 스크립트는 `── expect: every expectation held` 또는
 `── expect: <n> missed`를 출력하고, 불일치마다 스텝, 레이블, 계기, 반복 번호, 실제 값을 댄 줄을 하나씩
-출력합니다:
+출력합니다. `state` 불일치는 문자열을 양쪽 모두 따옴표로 감싸므로 `"3"`과 `3`이 구별됩니다:
 
 ```
 ── expect: 3 missed ──────────────
@@ -1005,7 +1089,9 @@ explain threat(warden): does not hold
 
 - 읽을 수 없거나 잘못된 YAML, 알 수 없는 최상위 키, `steps`가 없거나 비어 있음.
 - 스텝이 동작을 하나도 적지 않거나 둘 이상 적음, 알 수 없는 키, `occasion`이 아닌 스텝의 `target` /
-  `pick` / `choose` / `expect`, 1 이상의 정수가 아닌 `repeat`.
+  `pick` / `choose`나 계기 전용 `expect:` 키(`winner`, `offered`, `notOffered`, `presented`), 1 이상의
+  정수가 아닌 `repeat`.
+- `end` 스텝이 `end: true`가 아니거나, `repeat`나 `expect`를 가짐.
 - 계기 스텝이 해석된 플러그인 중 아무도 선언하지 않은 계기를 가리킴(어떤 플러그인이 계기를 선언한 경우),
   또는 모양만 검사하는 프로젝트에서 어떤 비트도 응답하지 않고 어떤 `<objective on>`도 판정하지 않는 계기를
   가리킴. 대상이 있는 계기를 `target` 없이, 또는 대상 없는 계기를 `target`과 함께 발생시킴. 계기 도메인
@@ -1047,33 +1133,37 @@ explain threat(warden): does not hold
    그 위에 스텝 자신의 `choose:` — 가 branch와 hub를 결정합니다. 스크립트에 없는 결정은
    **미완료(종료 코드 3)**로 정지합니다. 번들 비트도 로어 산출물의 `beat` 레코드부터 같은 방식으로
    실행됩니다. 엔트리 비트는 로어 엔트리 규칙으로 제시됩니다: 효과는 첫 읽기에만
-   적용되고, 그 뒤 `entry.<id>.read`와 `entry.<id>.everRead`가 true가 됩니다. 씬의 `::end`는 플레이스루
-   전체를 완료로 끝냅니다. 단, 그 스텝이 먼저 정산됩니다: 그 스텝의 퀘스트 진행(6)과 계기의 목표 판정(7)이
-   실행된 뒤 워크가 멈춥니다. 씬의 `::accept{quest="<id>"}`는 `quest <id> accepted`를 출력하고, 퀘스트는
+   적용되고, 그 뒤 `entry.<id>.read`와 `entry.<id>.everRead`가 true가 됩니다. `::end`는 그것이 실행된
+   제시만 끝냅니다: 퀘스트 진행(6), 스텝의 다른 제시(`also` 비트, `sequence`의 나머지), 계기의 목표
+   판정(7)은 그대로 실행되고, 플레이스루는 다음 스텝으로 이어집니다 — 플레이스루를 끝내는 것은
+   [`end: true` 스텝](#플레이스루-끝내기)뿐입니다. 씬의 `::accept{quest="<id>"}`는 `quest <id> accepted`를 출력하고, 퀘스트는
    제시 직후의 진행에서 활성화됩니다. 씬이나 번들 비트는 제시가 끝나면 — `after:`와 모든 조건의
    `visited('<id>')`에 대해 — 방문한 것으로 셉니다. 한 스텝이 여러 비트를 제시하면(`sequence`,
    `also`) (5)와 (6)이 비트마다 차례로 실행됩니다.
 6. **퀘스트** — 매 제시 후, 모든 퀘스트 라이프사이클이 `lute run`이 퀘스트 산출물을 진행시키는 것과
    정확히 같게 진행됩니다: 활성화(`start`, 없으면 제시된 씬의 `::accept` — `start` 없는 퀘스트는 스스로
-   활성화되지 않음), 목표 완료(단조적이며 목표 본문은 한 번만 재생), 그다음 열린 목표마다 `by` 기한(처음
-   참이 되면 실패, `failed (by)`), 완료 전의 `fail`, `<on>` 핸들러, `<reward>` 지급 — 보상 종류의
-   `credits:` 경로에 스칼라 수량을 더함. 그래서 이후의 `quest.*`에 대한 `when`이나 `after: completed(…)` / `active(…)`는 실제
+   활성화되지 않음), 목표 완료(단조적이며 목표 본문은 한 번만 재생), 그다음 `on=`이 없는 열린 목표마다
+   `by` 기한(처음 참이 되면 실패, `failed (by)`), 완료 전의 `fail`, `<on>` 핸들러, `<reward>` 지급 — 보상
+   종류의 `credits:` 경로에 스칼라 수량을 더함. 핸들러나 목표 본문의 `::end`는 스텝이 아니라 그 퀘스트
+   문서의 진행을 끝냅니다. 그래서 이후의 `quest.*`에 대한 `when`이나 `after: completed(…)` / `active(…)`는 실제
    진행을 봅니다.
-7. **계기 판정 목표** — 이어서 스텝의 계기가 모든 **활성** 퀘스트의 `<objective on="<occasion>">`
-   목표를 판정하고(dsl 0.21.0 §7a.2) — `target=`도 가진 목표는 스텝의 `target`이 같을 때만(dsl 0.23.0) —
-   라이프사이클이 다시 정착하므로, 퀘스트가 정확히 그 스텝에서 완료(또는
-   실패)할 수 있습니다. `on` 목표는 그 밖의 시점에는 판정되지 않습니다. 목표만 판정하는 계기도 shape-only
-   프로젝트에서 합법적인 스텝이며, 제시할 비트가 없으면 `(no candidates)`를 출력하고 지나간 뒤 판정합니다.
+7. **발생** — 이어서 스텝의 계기가 퀘스트에 발생합니다. 같은 이름의 월드 이벤트가 선언되어 있으면 모든
+   **활성** 퀘스트의 `<on event="<occasion>">` 핸들러가 먼저 실행됩니다. 그다음 계기가 모든 활성 퀘스트의
+   `<objective on="<occasion>">` 목표를 판정하고(dsl 0.21.0 §7a.2) — `target=`도 가진 목표는 스텝의
+   `target`이 같을 때만(dsl 0.23.0) — 각 목표의 `done`, 그다음 `by`를 판정한 뒤 라이프사이클이 다시
+   정착하므로, 퀘스트가 정확히 그 스텝에서 완료(또는 실패)할 수 있습니다. `on` 목표는 그 밖의 시점에는
+   판정되지 않습니다. 목표만 판정하는 계기도 shape-only 프로젝트에서 합법적인 스텝이며, 제시할 비트가
+   없으면 `(no candidates)`를 출력하고 지나간 뒤 판정합니다.
 
-라이프사이클은 스텝 1 전에 한 번(세이브의 퀘스트 상태가 이미 반영된 채로), 모든 `engine:` 스텝 뒤, 모든
-`newRun` 뒤(초기화, 시드, 그다음 정착)에도 정착합니다. `event:` 스텝은 이벤트를 모든 퀘스트 문서에 한 번씩
-발생시킨 뒤 정착합니다.
+라이프사이클은 스텝 1 전에 한 번(세이브의 퀘스트 상태와 목표 시드가 이미 반영된 채로), 모든 `engine:`
+스텝 뒤, 모든 `newRun` 뒤(초기화, 시드, 그다음 정착)에도 정착합니다. `event:` 스텝은 이벤트를 모든 퀘스트
+문서에 한 번씩 발생시킨 뒤 정착합니다. `end` 스텝은 플레이스루를 끝내는 것 말고는 아무것도 하지 않습니다.
 
 ### 종료 코드
 
 | 코드 | 의미 |
 |---|---|
-| `0` | 완료 — 모든 스텝이 재생되었거나 씬의 `::end`가 플레이스루를 끝냈고, 모든 기대값이 성립함. |
+| `0` | 완료 — 모든 스텝이 재생되었거나 `end: true` 스텝이 플레이스루를 끝냈고, 모든 기대값이 성립함. |
 | `1` | 오류 — 프로젝트 컴파일 실패, 어휘 충돌, 자격이 없는 `pick`, 메뉴가 제시하지 않는 `choose:` 결정(자격 없는 선택지나 이미 고른 `once` hub 선택지), 또는 기대값 불일치. |
 | `2` | 사용법 또는 I/O — 잘못된 스크립트([사용법 오류](#사용법-오류) 참고), 알 수 없는 계기나 월드 이벤트, 누락되었거나 도메인 밖인 `target`, 잘못된 시드나 `engine:` 쓰기, 그라운드가 아닌 `--explain` 원자, 읽을 수 없는 프로젝트, 잘못된 산출물. |
 | `3` | 미완료 — 스크립트에 없는 choice나 hub, 바닥난 branch `choose:` 목록, unknown으로 평가되는 `when`이나 퀘스트 목표, 또는 해석되지 않은 `now()` / `validAt()` / 플러그인 `bridgeResult`. |
@@ -1115,8 +1205,8 @@ explain threat(warden): does not hold
   veteran.three done
   quest veteran -> complete
 ── step 6 · new run ──────────────
-  run.* state, run-tier facts and once: run reset
-  quest climb -> unset (tier: run)
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
+  quest climb -> unset (tier: run; was complete)
   set run.floor = 1
   quest climb -> active
 ── step 7 [1/2] · hubVisit ──────────────
@@ -1137,7 +1227,8 @@ explain threat(warden): does not hold
   전이를 담습니다. 각 스텝은 `── step <n>`으로 시작하고, 그 뒤에 `(label)`, 반복이면 `[k/n]`, 그리고 하는
   일이 옵니다: `· <occasion>` — 대상이 있는 스텝에는 `→ <target>`, `select: all` 계기에는
   `(select: all, pick: <id>)`, `select: sequence` 계기에는 `(select: sequence)` — 또는 `· engine`,
-  `· new run`, `· event <name>`.
+  `· new run`, `· event <name>`, `· end (the playthrough ends)`. `end: true` 스텝 때문에 재생되지 않은
+  스텝은 `── step <n> (label) · skipped (the playthrough ended)`로 출력됩니다.
 - 후보는 자격 있는 것(`✓`)을 선택 순서대로 먼저, 그다음 나머지를 선택 순서대로 나열하며, 각각 종류 —
   `scene`, `entry`, 번들 비트는 `beat` — 와 priority를 표시하고, `also` 비트에는 `also`, 이번 런에 이미
   읽은 엔트리에는 `read`를 덧붙입니다(dsl 0.23.0). 자격 없는 후보(`✗`)에는 이유가 붙습니다:
@@ -1149,13 +1240,18 @@ explain threat(warden): does not hold
 - `→ <id>`가 승자를 가리킵니다 — `select: sequence` 스텝에서는 비트마다 `→` 줄 하나 — 그리고
   `+ <id> (also)`가 그 뒤를 잇는 `also` 비트를 가리킵니다. 승자가 없으면
   `→ (no eligible beat — the occasion passes)`, `also` 비트만 재생되면 `→ (no eligible main beat)`, 또는
-  `→ (pick: none — the list closes; nothing presented)`로 표시됩니다. 번들 비트의 제시는 그 `beat`
-  레코드인 `beat` 줄로 시작하고, 목표의 기한 실패는 `<quest>.<objective> failed (by)`, 상태에 적립되는
-  보상 지급은 `grant <quest> <KIND> <amount> (credits <path> = <value>)`로 표시됩니다.
+  `→ (pick: none — the list closes; nothing presented)`로 표시됩니다. 번들 비트의 `beat` 레코드는
+  출력되지 않습니다 — `→`나 `+` 줄이 이미 그 비트를 가리킵니다. 목표의 기한 실패는
+  `<quest>.<objective> failed (by)`, 상태에 적립되는 보상 지급은
+  `grant <quest> <KIND> <amount> (credits <path> = <value>)`로 표시되며, 정수 값은 소수점 없이
+  나옵니다(`= 50`).
 - 그 뒤에 제시된 비트 자신의 트랜스크립트가 소스처럼 읽히게 이어집니다: 콘텐츠 줄은 `@speaker: text`로,
   전달 방식을 유지합니다(`@wren{mono}: …`, `@maud{as="Barkeep"}: …`). `when=`이 거짓인 줄은
-  `skip @maud "You again." — when: false`로 표시됩니다. 작가가 쓴 연출 디렉티브는 그대로 나오고,
-  컴파일러가 주입한 연출(프리로드, 포즈 리셋, `::bg` 자동 숨김)은 빠집니다. 결정은
+  `skip @maud "You again." — when: false`로 표시됩니다. 연출 디렉티브는 작가가 쓴 그대로 나옵니다 —
+  `::bg{location="parlor"}`, `::auto{character="maud" anchor="left"}`, `::vfx{type=…}`, 그리고
+  플러그인 자신의 디렉티브는 그 이름 그대로 — 컴파일러가 주입한 연출(프리로드, 포즈 리셋, `::bg` 자동
+  숨김)은 빠집니다. 참조 플레이어가 실행할 수 없는 플러그인 디렉티브에는 `(plugin call, not invoked)`가
+  붙고, `::end`는 쓴 그대로 뒤에 `(this presentation ends; the play goes on)`이 붙습니다. 결정은
   `▷ choice <id>: … ← chosen: <id>`(또는 `▷ hub <id>: …`)이며, 메뉴에서 고른 선택지는 `[table]`,
   가드가 거짓인 선택지는 `piano✗`, 이미 고른 `once` 선택지는 `table(spent)`로 표시됩니다. 상태 쓰기는
   `set <path> = <value>`, 씬의 `::accept`는 `quest <id> accepted`(JSON: `presented.commands`의
@@ -1163,15 +1259,23 @@ explain threat(warden): does not hold
   `entry <id> (re-read: effects skipped)`와 함께 건너뛴 각 효과에 `(skipped: re-read)` 표시. 퀘스트
   전이가 마지막에 옵니다 — 제시가 일으킨 것, 그다음 스텝의 계기가 판정한 것: `<quest>.<objective> done`,
   `quest <id> -> <state>`, 보상 지급. JSON에서는 둘 다 스텝의 `quests`에 들어갑니다.
+- `--ir`은 대신 낮춰진 레코드를 출력합니다: 각 연출 레코드를 IR 형태의 `::<kind>{…}`로(`::bg`라면
+  `::background{location="parlor" wait=true}`), 컴파일러가 주입한 레코드도 포함해 `(injected: <by>)`를
+  붙여서, 번들 비트의 `beat` 레코드는 `beat` 줄로. `--ir`은 출력만 바꿉니다: `transcriptContains` /
+  `transcriptLacks`는 언제나 소스 수준 트랜스크립트로 판정하며, `--json`은 어느 쪽이든 모든 레코드를
+  담습니다.
 - `engine:` 스텝은 쓰기를 나열합니다: `set <path> = <value>`, `assert <atom>`, `retract <atom>` — 팩트가
   아니었으면 `retract <atom> (did not hold)`.
-- `newRun` 스텝은 `run.* state, run-tier facts and once: run reset`을 출력하고, 이어서 run 등급 퀘스트마다
-  `quest <id> -> unset (tier: run)`, 그다음 시드의 쓰기를 출력합니다.
+- `newRun` 스텝은 `run.* state, run-tier facts and once: run reset`을 출력하고, 끝난 런이 스냅숏할
+  `run.*` 값을 남겼으면 `; prev.run.* holds the ended run (<n> values)`를 덧붙이며, 이어서 `unset`을
+  벗어났던 run 등급 퀘스트마다 `quest <id> -> unset (tier: run; was <status>)`, 그다음 시드의 쓰기를
+  출력합니다.
 - `event:` 스텝은 실행된 핸들러를 출력합니다. 라이프사이클 전이는 모든 종류의 스텝 뒤에 따라옵니다.
 - `--json`에서 `presented.commands`의 줄 레코드는 해당하는 경우 `role`, `lineId`, `voiceKey`, `as`,
   `emotion`을 담고, choice와 hub 레코드는 제시되지 않은 선택지를 `ineligible`에, 이미 고른 `once`
   선택지를 `spent`에 나열합니다.
-- 워크는 `── end: complete (<n> steps)` — 모든 반복을 셈 — 로, 중간에 멈추면 `── halted: <message>`로
+- 워크는 `── end: complete (<n> steps)` — 모든 반복을 셈 — 로, `end` 스텝 뒤에는
+  ``── end: `end: true` at step <n> (<k> later steps skipped)``로, 중간에 멈추면 `── halted: <message>`로
   끝납니다. 그 뒤에 `--explain` 트리, 그다음 `── expect:` 블록이 옵니다.
 
 플러그인이 없는 모양만 검사하는 프로젝트에서, 부업을 제안하는 허브 씬과 `calm` 목표가 `runEnd`에서
@@ -1221,13 +1325,14 @@ type PlayTranscript = {
   exit: "complete" | "incomplete" | "error";
   start: { quests: QuestGroup[] };         // transitions made before step 1
   steps: Step[];                           // one record per repetition
-  endReason?: string;
+  skipped?: { step: number; label?: string }[]; // the steps an `end: true` step left unplayed
+  endReason?: string;                      // "complete (8 steps)", or "`end: true` at step 2 (1 later step skipped)"
   error?: { message: string };
   expect?: { misses: ExpectMiss[] };       // when the script carries an `expect:`
   explain?: Explanation[];                 // one per `--explain` atom
 };
 
-type Step = (OccasionStep | EngineStep | NewRunStep | EventStep) & {
+type Step = (OccasionStep | EngineStep | NewRunStep | EventStep | EndStep) & {
   step: number;                            // the script step (shared by its repetitions)
   label?: string;
   iteration?: number;                      // 1-based repetition, when `repeat` > 1
@@ -1265,8 +1370,13 @@ type Presentation = {
 };
 
 type EngineStep = { engine: WriteRecord[] };
-type NewRunStep = { newRun: true; seed: WriteRecord[] };
+type NewRunStep = {
+  newRun: true;
+  seed: WriteRecord[];
+  resetQuests?: Record<string, string>;    // run-tier quest -> the status it had before the reset
+};
 type EventStep = { event: string };
+type EndStep = { end: true };
 
 type WriteRecord =
   | { kind: "set"; path: string; value: unknown }
@@ -1446,7 +1556,7 @@ $ lute play . --script plays/first-day.play.yaml
   ✓ hub.welcome [scene, priority 10]
   ✗ hub.morning [scene, priority 0] — when: false
   → hub.welcome
-::background{location="hub" time="day" wait=true}
+::bg{location="hub" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 · talk → npc.mara ──────────────
   ✓ mara.first [scene, priority 10]
@@ -1527,7 +1637,7 @@ expect:
   ✓ hub.welcome [scene, priority 10]
   ✗ hub.morning [scene, priority 0] — when: false
   → hub.welcome
-::background{location="hub" time="day" wait=true}
+::bg{location="hub" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 · talk → npc.mara ──────────────
   ✓ mara.first [scene, priority 10]
@@ -1586,7 +1696,7 @@ expect:
 
 ```
 ── step 1 (the engine starts run two on day 3) · new run ──────────────
-  run.* state, run-tier facts and once: run reset
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
   set run.day = 3
 ── step 2 · hubVisit ──────────────
   ✓ hub.morning [scene, priority 0]

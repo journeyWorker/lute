@@ -109,12 +109,13 @@ For `select: sequence` and `also`, eligibility is decided **once, when the occas
 ## `lute play`
 
 ```console
-$ lute play <PROJECT_DIR> --script <FILE> [--json] [--no-derive] [--explain <ATOM>]…
+$ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--no-derive] [--explain <ATOM>]…
 ```
 
 - `<PROJECT_DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents).
 - `--script <FILE>` — required: the play script, a `*.play.yaml` file.
 - `--json` — the same transcript as one JSON object on stdout.
+- `--ir` — print staging as the lowered IR records (`::background`, `::sprite`, and the preloads and pose resets the compiler injects) instead of the directives as authored. See [The transcript](#the-transcript).
 - `--no-derive` — do not apply the project's Datalog rules (dsl 0.22.0 §6); overrides the script's `derive:`. See [Derivation and `--explain`](#derivation-and---explain).
 - `--explain <ATOM>` — repeatable: after the play, print why a ground atom holds or does not.
 
@@ -206,7 +207,7 @@ A play script is a YAML mapping. `steps` is required; every other top-level key 
 | `expect` | Assertions about the end of the play — see [Expectations](#expectations). |
 | `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--explain`](#derivation-and---explain). |
 
-Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, or fires an `event` — and any step may carry a `label` and a `repeat` count. A tour of every shape, against the tower:
+Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, and an [`expect:`](#expectations); an `end` step takes only a `label`. A tour of every shape, against the tower:
 
 ```yaml
 state: { user.runs: 2 }                   # path -> scalar literal, over the declared defaults
@@ -236,7 +237,7 @@ Its transcript is the example in [The transcript](#the-transcript).
 
 `state:`, `facts:`, and `choose:` use exactly the grammar of a [`lute trace --mock`](/tooling/tracing/) file.
 
-- A `state:` seed names a declared path — never `scene.*` — and its value must fit the declared type (a number for a `number`, a member for an enum); anything else is a usage error (exit 2). A `quest.<id>.state` seed (`state: { quest.lostCup.state: active }`) is that quest's lifecycle status from the start, exactly as a `quests:` entry. A `prev.run.<path>` seed (dsl 0.23.0) is the value `run.<path>` had when the previous run ended, typed like its run path — see [Run boundaries](#run-boundaries).
+- A `state:` seed names a declared path — never `scene.*` — and its value must fit the declared type (a number for a `number`, a member for an enum); anything else is a usage error (exit 2). A `quest.<id>.state` seed (`state: { quest.lostCup.state: active }`) is that quest's lifecycle status from the start, exactly as a `quests:` entry, and a `quest.<id>.objectives.<oid>.done: true` seed is an objective the save has already done — see [Starting from a save](#starting-from-a-save). A `prev.run.<path>` seed (dsl 0.23.0) is the value `run.<path>` had when the previous run ended, typed like its run path — see [Run boundaries](#run-boundaries).
 - A `facts:` entry is a ground atom of a declared, non-derived relation at its arity, with members of its closed argument domains. A **reserved** relation is allowed — the engine is exactly who asserts one.
 - A single `choose:` decision answers every presentation of its branch or hub. A list for a **hub** is one visit sequence, replayed at each presentation. A list of two or more for a **branch** is consumed one entry per presentation, in order, across the whole playthrough — so a scene that plays on three nights can decide differently each night. When the list runs out, the walk halts incomplete (exit 3) and says so.
 - A decision the menu does not offer at that moment halts the walk with an error (exit 1): a choice whose guard is false, or a `once` hub option already taken (`E-TRACE-CHOICE`, as in `lute trace`).
@@ -329,7 +330,7 @@ The kill makes `threat(warden)` stop deriving, so `hub.victory` becomes eligible
 
 ### Events
 
-`{ event: <name> }` fires a world event some plugin declares, exactly as trace's `events:` does: the `<on event="<name>">` handlers of every **active** quest run, then the lifecycle settles. An `event:` naming an occasion, or an `occasion:` naming a world event, is a usage error that names the right key (`` `event: dayEnd` names no declared world event — `dayEnd` is an occasion; raise it with `occasion: dayEnd` ``). The quest lifecycle events `questActive` / `questComplete` / `questFailed` fire on transitions and cannot be fired by a script.
+`{ event: <name> }` fires a world event some plugin declares, exactly as trace's `events:` does: the `<on event="<name>">` handlers of every **active** quest run, then the lifecycle settles. An `event:` naming an occasion, or an `occasion:` naming a world event no plugin declares as an occasion, is a usage error that names the right key (`` `event: dayEnd` names no declared world event — `dayEnd` is an occasion; raise it with `occasion: dayEnd` ``). The quest lifecycle events `questActive` / `questComplete` / `questFailed` fire on transitions and cannot be fired by a script.
 
 ```yaml
 steps:
@@ -355,6 +356,39 @@ steps:
 
 `climb` completed at step 2, so its handler no longer answers the second storm.
 
+An occasion and a world event can share a name — `bossDefeated` declared both in `occasions:` and in `events:`, because the engine raises both at once. Raising such an occasion also fires the event: every active quest's `<on event="bossDefeated">` handlers run **first**, then the occasion judges its `on="bossDefeated"` objectives, so an objective's `done` can read what a handler just wrote. The step still presents its beats before either. `lute run` and `lute trace` raise an occasion the same way.
+
+### Ending the playthrough
+
+`end: true` ends the playthrough, complete (exit 0). The step does nothing else; every later step is listed as skipped, and the `── end:` line names the step:
+
+```yaml
+steps:
+  - occasion: hubVisit
+  - end: true
+  - label: never reached
+    occasion: hubVisit
+```
+
+```
+── start ──────────────
+  quest climb -> active
+  quest veteran -> active
+  quest notices -> active
+── step 1 · hubVisit ──────────────
+  ✓ hub.idle [scene, priority 0]
+  ✗ hub.victory [scene, priority 10] — when: false
+  → hub.idle
+@maud: Quiet night.
+── step 2 · end (the playthrough ends) ──────────────
+── step 3 (never reached) · skipped (the playthrough ended) ──────────────
+── end: `end: true` at step 2 (1 later step skipped) ──────────────
+```
+
+In `--json` the step is `{ "step": 2, "end": true, … }`, `endReason` is the text after `── end:`, and `skipped` lists the steps that did not play (`[{ "step": 3, "label": "never reached" }]`). Only `true` is accepted — `end: false` is a usage error (exit 2), and so is `repeat` or `expect` beside `end`: put the expectation on the step before it, or at the top level, where it still judges the end of the play.
+
+A `::end` in content does **not** end the playthrough. It ends only the presentation it runs in — or, in a quest's handler, that quest document's advance — and the play goes on with the next step; see [What each step does](#what-each-step-does). Before 0.23.1 a scene's `::end` stopped the whole play; a script that relied on that adds `- end: true` after the step whose scene ends.
+
 ### Labels and repetition
 
 `label: <text>` names a step: it is printed in the step header (`── step 4 (the engine closes the day) · engine`), carried in `--json`, and named by every expectation miss on the step. `repeat: <n>` (a whole number ≥ 1) runs the step `n` times — `── step 7 [1/2] · hubVisit`, `── step 7 [2/2] · hubVisit` — and each repetition is its own step record, settles the quest lifecycle on its own, and counts in `── end: complete (<n> steps)`. `repeat` suits the engine's routine: three runs ending (`engine: { state: { user.runs: { add: 1 } } }`, `repeat: 3`), or a visit the player makes every day.
@@ -367,7 +401,7 @@ Four top-level keys seed the playthrough's history before step 1, so a script ca
 |---|---|
 | `visited: [scene ids]` | Scenes presented in this save — read by `visited('<id>')` and `after: visited(…)`. |
 | `presented: { run: [beat ids], user: [beat ids] }` | Scene beats already presented: `user` — in an earlier run, so a `once: user` beat is spent; `run` — in the current run, so `once: run` and `once: user` are both spent. Every listed scene also counts as visited. |
-| `quests: { <id>: unset \| active \| complete \| failed }` | Quest lifecycle status. The start settle resumes it rather than starting the quest over. |
+| `quests: { <id>: unset \| active \| complete \| failed }` | Quest lifecycle status. The start settle resumes it rather than starting the quest over. Every objective starts undone — seed objective progress under `state:` (below). |
 | `entriesRead: { run: [entry ids], user: [entry ids] }` | `run` — read in the current run: `entry.<id>.read` and `entry.<id>.everRead`; `user` — read in an earlier run: `entry.<id>.everRead` only. |
 
 An id the project does not declare is a usage error with a did-you-mean (`` `visited:` names `hub.welcom`, which is no scene in this project — did you mean `hub.welcome`? ``), and so is an entry under `presented:` (an entry's read history is `entriesRead:`) or a status outside the four.
@@ -398,13 +432,24 @@ steps:
 
 `veteran` stays complete — it is not activated again at the start — and the save's reads spend both entries while opening `old`. `memo` is marked `read` (dsl 0.23.0): an entry beat whose `entry.<id>.read` is set in this run says so in its candidate line, eligible or not, so a `select: all` menu can show which entries the player has already seen. `notice` was read in an earlier run only, so it is not.
 
+`quests:` holds a status only. A save in which some objectives are already done seeds each one under the top-level `state:` as `quest.<id>.objectives.<oid>.done: true`, beside the quest's status:
+
+```yaml
+quests: { houndHunt: active }
+state:
+  run.floor: 3
+  quest.houndHunt.objectives.collar.done: true
+```
+
+The start settle counts `collar` as done without completing it again — no `houndHunt.collar done` line, no objective body replayed — and a done objective's `by` deadline no longer applies, so passing floor four fails nothing; `report` is still open. The value must be a bool, and the quest and objective must be declared, as for any `state:` seed. There is no long form of `quests:` for this.
+
 ### Run boundaries
 
-`newRun: true` starts a new run. First it snapshots every `run.*` value as **`prev.run.*`** (dsl 0.23.0) — the value each path had when the run ended — then it resets:
+`newRun: true` starts a new run. First it snapshots every `run.*` value as **`prev.run.*`** (dsl 0.23.0) — the value each path had when the run ended — and says so on its first line (`…; prev.run.* holds the ended run (1 value)`); then it resets:
 
 - `run.*` state to its declared defaults, and every run-tier `entry.<id>.read` flag, so an entry's effects apply again on its first read in the new run and a `once="run"` entry is eligible again;
 - run-tier facts to the project's seed facts;
-- every `<quest tier="run">` quest to `unset`, with its objectives undone — a `start`-having one activates again at the settle that follows, an accept-driven one waits for a new accept;
+- every `<quest tier="run">` quest to `unset`, with its objectives undone — a `start`-having one activates again at the settle that follows, an accept-driven one waits for a new accept. Each one that had left `unset` is listed with the status the run left it in, `quest climb -> unset (tier: run; was complete)`; one still `unset` is reset silently;
 - `once: run` spending.
 
 `user.*` / `app.*` state, user-tier quests (the default `tier`), `entry.<id>.everRead`, user- and app-tier facts, the `visited` history, and `once: user` spending persist. `once: user` across separate `lute play` invocations is not modelled — put the runs in one script separated by `newRun` steps, or start from a save.
@@ -437,8 +482,8 @@ steps:
   climb.high done
   quest climb -> complete
 ── step 2 · new run ──────────────
-  run.* state, run-tier facts and once: run reset
-  quest climb -> unset (tier: run)
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
+  quest climb -> unset (tier: run; was complete)
   set run.floor = 1
   quest climb -> active
 ── step 3 · hubVisit ──────────────
@@ -503,8 +548,8 @@ steps:
   entry old (first read)
 @maud: The same notice as ever.
 ── step 4 · new run ──────────────
-  run.* state, run-tier facts and once: run reset
-  quest climb -> unset (tier: run)
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
+  quest climb -> unset (tier: run; was active)
   quest climb -> active
 ── step 5 · board (select: all, pick: memo) ──────────────
   ✓ memo [entry, priority 0]
@@ -546,8 +591,8 @@ steps:
   set run.floor = 3
   set user.runs = 1
 ── step 3 · new run ──────────────
-  run.* state, run-tier facts and once: run reset
-  quest climb -> unset (tier: run)
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
+  quest climb -> unset (tier: run; was active)
   quest climb -> active
 ── step 4 · runStart (select: sequence) ──────────────
   ✓ start.gear [scene, priority 10]
@@ -596,10 +641,8 @@ expect:
   ✓ oskar.rumor [beat, priority 0, also]
   → oskar.hunt
   + oskar.rumor (also)
-  beat
 @oskar: The hound took my dog's collar. Bring it back before you pass floor four.
   quest houndHunt accepted
-  beat
 @oskar: They say the warden sleeps on floor six.
   quest houndHunt -> active
 ── step 3 (the hound falls) · engine ──────────────
@@ -614,16 +657,15 @@ expect:
   ✗ oskar.hunt [beat, priority 10] — once: run — already presented this run
   → (no eligible main beat)
   + oskar.rumor (also)
-  beat
 @oskar: They say the warden sleeps on floor six.
   houndHunt.report done
   quest houndHunt -> complete
-  grant houndHunt EMBERS 50 (credits user.embers = 50.0)
+  grant houndHunt EMBERS 50 (credits user.embers = 50)
 ── end: complete (5 steps) ──────────────
 ── expect: every expectation held ──────────────
 ```
 
-- **Step 2** — `oskar.hunt` wins; the eligible `also` beat is listed `+ oskar.rumor (also)` and plays after it. Both are bundle beats, so each presentation opens with its `beat` record. The hunt accepts `houndHunt`, which activates in the settle after the step.
+- **Step 2** — `oskar.hunt` wins; the eligible `also` beat is listed `+ oskar.rumor (also)` and plays after it. Both are bundle beats: the `→` and `+` lines name them, and their `beat` records appear only in `--json` and `--ir`. The hunt accepts `houndHunt`, which activates in the settle after the step.
 - **Step 5** — the hunt is spent (`once` defaults to `run`), so no main beat is eligible — `→ (no eligible main beat)` — and the side remark still plays. The rest of the transcript is the quest: see [Deadlines and targeted objectives](#deadlines-and-targeted-objectives).
 
 An `also` beat spends its `once` when presented, like any beat; `oskar.rumor` is `once="false"`, so it repeats. In `--json`, a step's `presented` is the winner — or, with no winner, the first `also` beat — and `then` lists the beats presented after it, in order, each with `"also": true` when it is one; the candidate records carry `"also": true` too:
@@ -652,7 +694,7 @@ A `select: sequence` step uses the same two keys: `presented` is the first beat 
 
 Two objective attributes (dsl 0.23.0) change **when** an objective is judged — the language side is in [Quests & scenes](/language/quests-and-scenes/#deadlines):
 
-- `by="<condition>"` — a deadline. While the objective is not done, the first time `by` holds the objective **fails** and is never judged again. A failed required objective fails its quest: `failed` rewards, the `questFailed` handlers, and the cascade to a parent quest. `done` is judged first in every settle, so an objective done at the moment its deadline passes does not fail, and `by` is judged at every settle — after a presentation, an `engine:` write, a `newRun` — even on an `on=` objective.
+- `by="<condition>"` — a deadline. While the objective is not done, the first time `by` holds the objective **fails** and is never judged again. A failed required objective fails its quest: `failed` rewards, the `questFailed` handlers, and the cascade to a parent quest. `done` is judged before `by`, so an objective done at the moment its deadline passes does not fail. On an objective without `on=`, `by` is judged at every settle — after a presentation, an `engine:` write, a `newRun`. On an `on=` objective it is judged only when that objective is — when its occasion is raised (for its `target`, when it has one), right after its `done` — so between raises its deadline waits.
 - `target="<target>"`, beside `on=` — the objective is judged only at an occasion step raised **for that target**. An occasion step with another target, or none, leaves it alone.
 
 In the [`also` example](#composing-occasions) above, the collar objective completes in the settle after step 3, when the engine asserts the kill. Step 4 raises `talk` for Maud, so the report objective (`on="talk" target="npc.oskar"`) is not judged; step 5 raises it for Oskar, and the quest completes. Without the kill, the climb passes the deadline:
@@ -663,6 +705,7 @@ steps:
     target: npc.oskar
   - label: the climber passes floor four
     engine: { state: { run.floor: 4 } }
+    expect: { quests: { houndHunt: failed } }
 ```
 
 ```
@@ -674,7 +717,6 @@ steps:
   ✓ oskar.hunt [beat, priority 10]
   ✗ oskar.rumor [beat, priority 0, also] — when: false
   → oskar.hunt
-  beat
 @oskar: The hound took my dog's collar. Bring it back before you pass floor four.
   quest houndHunt accepted
   quest houndHunt -> active
@@ -684,15 +726,16 @@ steps:
   quest houndHunt -> failed
 @oskar: Floor four already? Then it's gone to ground.
 ── end: complete (2 steps) ──────────────
+── expect: every expectation held ──────────────
 ```
 
-`houndHunt.collar failed (by)` is the deadline (`--json`: an `objective` record with `"failed": true`), and the required objective fails the quest, whose `questFailed` handler plays. A failure is lifecycle state, not a state path; a `newRun` clears it for a `tier="run"` quest.
+`houndHunt.collar failed (by)` is the deadline (`--json`: an `objective` record with `"failed": true`), and the required objective fails the quest, whose `questFailed` handler plays; the step's own `expect:` checks the status right after that settle. A failure is lifecycle state, not a state path; a `newRun` clears it for a `tier="run"` quest.
 
-**Rewards that credit state.** The tower's `EMBERS` reward kind declares [`credits: user.embers`](/plugins/manifests/#rewards-that-credit-state), so when step 5 above grants the quest's reward, the scalar amount is added to that path — `grant houndHunt EMBERS 50 (credits user.embers = 50.0)`, and the end-of-play `state: { user.embers: 50 }` holds. In `--json`, the `grant` record carries `"credited": { "path": "user.embers", "value": 50.0 }`. A range amount is the engine's roll and credits nothing here, and a `::set` of the same path in one of the quest's own `<on>` or objective bodies would pay twice (`W-REWARD-DOUBLE-CREDIT`).
+**Rewards that credit state.** The tower's `EMBERS` reward kind declares [`credits: user.embers`](/plugins/manifests/#rewards-that-credit-state), so when step 5 above grants the quest's reward, the scalar amount is added to that path — `grant houndHunt EMBERS 50 (credits user.embers = 50)`, and the end-of-play `state: { user.embers: 50 }` holds. A whole number prints without a decimal point. In `--json`, the `grant` record carries `"credited": { "path": "user.embers", "value": 50 }`. A range amount is the engine's roll and credits nothing here, and a `::set` of the same path in one of the quest's own `<on>` or objective bodies would pay twice (`W-REWARD-DOUBLE-CREDIT`).
 
 ### Expectations
 
-An occasion step may carry `expect:`, judged against what that step did:
+A step may carry `expect:`, judged against what that step did. Four keys judge an occasion's selection, so they belong only on an `occasion` step:
 
 | Key | Holds when |
 |---|---|
@@ -700,6 +743,16 @@ An occasion step may carry `expect:`, judged against what that step did:
 | `offered: [beat ids]` | every listed beat was eligible at the step — a subset, in any order |
 | `notOffered: [beat ids]` | none of the listed beats was eligible |
 | `presented: [beat ids]` | exactly these beats were presented, in this order (dsl 0.23.0): the whole list of a [`select: sequence`](#composing-occasions) step, or a winner followed by its `also` beats; `[]` — nothing was |
+
+Four more judge the world **right after the step settled** — for an occasion step, after its presentations, its occasion's objective judging, and the settle that follows — and are legal on any step kind (not beside `end`). Each means what it means at the top level, below, at that moment:
+
+| Key | Holds when |
+|---|---|
+| `quests: { <id>: <status> }` | the quest is in that status after the step |
+| `state: { <path>: <value> }` | the path's effective value after the step equals the value, compared typed |
+| `facts: [atoms]` / `notFacts: [atoms]` | each atom holds / does not hold after the step, **after derivation** |
+
+So an `engine:` step can assert what its write did — `expect: { quests: { houndHunt: failed } }` in the [deadline example](#deadlines-and-targeted-objectives) — and an occasion step can check its quest progress without waiting for the end. `winner`, `offered`, `notOffered`, or `presented` on a step that is not an `occasion` is a usage error (exit 2): `` step 2: `expect.winner` applies only to an `occasion` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
 
 A top-level `expect:` judges the end of the play:
 
@@ -709,11 +762,11 @@ A top-level `expect:` judges the end of the play:
 | `quests: { <id>: <status> }` | the quest ended in that status (`unset` for one nothing activated) |
 | `state: { <path>: <value> }` | the path's final **effective** value — the last write, else the seed, else the declared default — equals the value, compared typed (`1` is not `"1"`) |
 | `facts: [atoms]` / `notFacts: [atoms]` | each atom holds / does not hold at the end, **after derivation** |
-| `transcriptContains: [text]` / `transcriptLacks: [text]` | each text is / is not a substring of the human transcript |
+| `transcriptContains: [text]` / `transcriptLacks: [text]` | each text is / is not a substring of the human transcript — the source-level one, even when `--ir` prints the lowered records |
 
 An expectation on a `repeat:` step is judged at every repetition; one on a step the walk never reached is itself a miss. Each `expect:` is validated before anything plays — an unknown key is a usage error (exit 2) listing the legal keys, with a did-you-mean, and saying when the key belongs at the other level (`` unknown top-level `expect:` key `winner` (`winner` belongs in a step `expect:`) ``).
 
-After the transcript, a script with any expectation prints `── expect: every expectation held` or `── expect: <n> missed`, one line per miss naming the step, its label, the occasion, the repetition, and the actual value:
+After the transcript, a script with any expectation prints `── expect: every expectation held` or `── expect: <n> missed`, one line per miss naming the step, its label, the occasion, the repetition, and the actual value. A `state` miss quotes a string on both sides, so `"3"` and `3` read apart:
 
 ```
 ── expect: 3 missed ──────────────
@@ -797,7 +850,8 @@ The explanation is printed before the `── expect:` block, and `--json` carri
 The script is rejected before anything plays — a **usage error, exit 2**, naming the step — when:
 
 - it is unreadable or malformed YAML, has an unknown top-level key, or `steps` is missing or empty;
-- a step names no action or more than one, has an unknown key, carries `target` / `pick` / `choose` / `expect` on a step that is not an `occasion`, or has a `repeat` that is not a whole number ≥ 1;
+- a step names no action or more than one, has an unknown key, carries `target` / `pick` / `choose` on a step that is not an `occasion`, carries an occasion-only `expect:` key (`winner`, `offered`, `notOffered`, `presented`) on one, or has a `repeat` that is not a whole number ≥ 1;
+- an `end` step is anything but `end: true`, or carries `repeat` or `expect`;
 - an occasion step names an occasion no resolved plugin declares (when some plugin declares occasions) or, in a shape-only project, one that neither a beat answers nor an `<objective on>` judges; raises a targeted occasion without `target`, or an untargeted one with it; names a target outside the occasion's domain; carries `pick` on a `select: first` or `select: sequence` occasion; lacks it on a `select: all` one; or picks a beat that does not answer that occasion;
 - an `event:` names no declared world event, or a quest lifecycle event;
 - an `engine:` or `newRun` write names an undeclared or `scene.*` / `quest.*` path, a value that does not fit the declared type, `{ add: … }` on a path that is not a `number`, or a fact that is not ground, names an undeclared or derived relation, has the wrong arity, or names a non-member of a closed domain; or it writes nothing;
@@ -814,17 +868,17 @@ An occasion step:
 2. **Verdicts** — a candidate is eligible when its `once` is not spent (a scene or bundle beat: `run` — not presented since the last `newRun`; `user` — never presented in this play or the save; `false` — never spent. An entry: `run` — `entry.<id>.read` not set; `user` — `entry.<id>.everRead` not set; no `once` — never spent), its `after:` holds (scene beats; evaluated against the **live** `visited` set of presented scenes and the `completed` / `active` sets of real quest states), and its `when` holds (evaluated by the reference runner's CEL evaluator over live state and facts, with the Datalog rules applied). A `when` that evaluates to unknown — `validAt(…)`, `now()`, or a derived atom under `--no-derive` — halts the walk **incomplete (exit 3)** naming the beat, unless a definitely-eligible beat outranks it on a `select: first` occasion, where it cannot change the winner. Verdicts are decided once, here: nothing a presentation does in (5) changes which of this step's beats play.
 3. **Order** — eligible beats by priority descending, then project order.
 4. **Select** — the occasion's `select` comes from the resolved plugins' `occasions` export (an undeclared occasion is `first`). `first`: the first eligible beat that is not `also` wins, and every eligible `also` beat follows it (or plays alone when nothing else is eligible); none eligible, and the occasion passes with no story. `all`: the step's `pick` is presented; a pick that is not eligible at that moment is an **error (exit 1)**; `pick: none` presents nothing. `sequence`: every eligible beat, in order.
-5. **Present** — a scene beat runs through the reference runner (`lute run`'s evaluator): `scene.*` resets to the scene's own defaults, `run.*` / `user.*` / `app.*` / `quest.*` state and facts carry over, and the script's `choose:` — with the step's own `choose:` over it — decides branches and hubs; an unscripted decision halts **incomplete (exit 3)**. A bundle beat runs the same way, from its `beat` record in the lore artifact. An entry beat is presented by the lore-entry rules: its effects apply on the first read only, then `entry.<id>.read` and `entry.<id>.everRead` become true. A scene's `::end` ends the whole playthrough, complete — after the step settles: the quest advance (6) and the occasion's objective judging (7) still run for that step, then the walk stops. A scene's `::accept{quest="<id>"}` prints `quest <id> accepted`; the quest activates at the advance right after the presentation. A scene or bundle beat counts as visited — for `after:` and for `visited('<id>')` in any condition — once its presentation finished. When a step presents several beats (`sequence`, `also`), (5) and (6) run for each in turn.
-6. **Quests** — after every presentation, every quest lifecycle advances exactly as `lute run` advances a quest artifact: activation (`start`, or — for a quest with no `start` — an accept from a presented scene's `::accept`; a start-less quest never activates on its own), objective completion (monotone; objective bodies play once), then each open objective's `by` deadline (a first true fails it, `failed (by)`), `fail` before completion, `<on>` handlers, and `<reward>` grants — adding a scalar amount to the reward kind's `credits:` path. So a later `when` over `quest.*`, or an `after: completed(…)` / `active(…)`, sees real progress.
-7. **Occasion-judged objectives** — then the step's occasion judges the `<objective on="<occasion>">` objectives of every **active** quest (dsl 0.21.0 §7a.2) — an objective that also carries `target=` only when the step's `target` equals it (dsl 0.23.0) — and the lifecycles settle again, so a quest can complete (or fail) at exactly that step. An `on` objective is judged at no other time. An occasion that only objectives judge is a legal step even in a shape-only project; with no beat to present it prints `(no candidates)` and passes, then judges.
+5. **Present** — a scene beat runs through the reference runner (`lute run`'s evaluator): `scene.*` resets to the scene's own defaults, `run.*` / `user.*` / `app.*` / `quest.*` state and facts carry over, and the script's `choose:` — with the step's own `choose:` over it — decides branches and hubs; an unscripted decision halts **incomplete (exit 3)**. A bundle beat runs the same way, from its `beat` record in the lore artifact. An entry beat is presented by the lore-entry rules: its effects apply on the first read only, then `entry.<id>.read` and `entry.<id>.everRead` become true. A `::end` ends only the presentation it runs in: the quest advance (6), the step's other presentations (`also` beats, the rest of a `sequence`), and the occasion's objective judging (7) still run, and the playthrough goes on with the next step — only an [`end: true` step](#ending-the-playthrough) ends it. A scene's `::accept{quest="<id>"}` prints `quest <id> accepted`; the quest activates at the advance right after the presentation. A scene or bundle beat counts as visited — for `after:` and for `visited('<id>')` in any condition — once its presentation finished. When a step presents several beats (`sequence`, `also`), (5) and (6) run for each in turn.
+6. **Quests** — after every presentation, every quest lifecycle advances exactly as `lute run` advances a quest artifact: activation (`start`, or — for a quest with no `start` — an accept from a presented scene's `::accept`; a start-less quest never activates on its own), objective completion (monotone; objective bodies play once), then the `by` deadline of each open objective without `on=` (a first true fails it, `failed (by)`), `fail` before completion, `<on>` handlers, and `<reward>` grants — adding a scalar amount to the reward kind's `credits:` path. A `::end` in a handler or objective body ends that quest document's advance, not the step. So a later `when` over `quest.*`, or an `after: completed(…)` / `active(…)`, sees real progress.
+7. **Raise** — then the step's occasion is raised to the quests. When a world event of the same name is declared, every **active** quest's `<on event="<occasion>">` handlers run first. Then the occasion judges the `<objective on="<occasion>">` objectives of every active quest (dsl 0.21.0 §7a.2) — an objective that also carries `target=` only when the step's `target` equals it (dsl 0.23.0) — each one's `done`, then its `by`; and the lifecycles settle again, so a quest can complete (or fail) at exactly that step. An `on` objective is judged at no other time. An occasion that only objectives judge is a legal step even in a shape-only project; with no beat to present it prints `(no candidates)` and passes, then judges.
 
-The lifecycles also settle once before step 1 (with the save's quest statuses already in place), after every `engine:` step, and after every `newRun` (reset, then seed, then settle). An `event:` step raises its event once for every quest document, then settles.
+The lifecycles also settle once before step 1 (with the save's quest statuses and objective seeds already in place), after every `engine:` step, and after every `newRun` (reset, then seed, then settle). An `event:` step raises its event once for every quest document, then settles. An `end` step does nothing but end the playthrough.
 
 ### Exit codes
 
 | Code | Meaning |
 |---|---|
-| `0` | Complete — every step played, or a scene's `::end` ended the playthrough — and every expectation held. |
+| `0` | Complete — every step played, or an `end: true` step ended the playthrough — and every expectation held. |
 | `1` | Error — the project fails to compile, a vocabulary conflict, a `pick` that is not eligible, a `choose:` decision the menu does not offer (an ineligible choice, or a spent `once` hub option), or a missed expectation. |
 | `2` | Usage or I/O — a bad script (see [Usage errors](#usage-errors)), an unknown occasion or world event, a missing or out-of-domain `target`, an invalid seed or `engine:` write, a non-ground `--explain` atom, an unreadable project, a malformed artifact. |
 | `3` | Incomplete — an unscripted choice or hub, a branch `choose:` list that ran out, a `when` or quest objective that evaluates to unknown, or an unresolved `now()` / `validAt()` / plugin `bridgeResult`. |
@@ -865,8 +919,8 @@ The human transcript names every step, lists its candidates with their verdicts,
   veteran.three done
   quest veteran -> complete
 ── step 6 · new run ──────────────
-  run.* state, run-tier facts and once: run reset
-  quest climb -> unset (tier: run)
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
+  quest climb -> unset (tier: run; was complete)
   set run.floor = 1
   quest climb -> active
 ── step 7 [1/2] · hubVisit ──────────────
@@ -883,15 +937,16 @@ The human transcript names every step, lists its candidates with their verdicts,
 ── expect: every expectation held ──────────────
 ```
 
-- Every header is its text followed by a fixed `──────────────` rule. `── start` carries the quest transitions made before step 1. Each step opens with `── step <n>`, then its `(label)`, then `[k/n]` for a repetition, then what it does: `· <occasion>` — plus `→ <target>` for a targeted step, `(select: all, pick: <id>)` on a `select: all` occasion, and `(select: sequence)` on a `select: sequence` one — `· engine`, `· new run`, or `· event <name>`.
+- Every header is its text followed by a fixed `──────────────` rule. `── start` carries the quest transitions made before step 1. Each step opens with `── step <n>`, then its `(label)`, then `[k/n]` for a repetition, then what it does: `· <occasion>` — plus `→ <target>` for a targeted step, `(select: all, pick: <id>)` on a `select: all` occasion, and `(select: sequence)` on a `select: sequence` one — `· engine`, `· new run`, `· event <name>`, or `· end (the playthrough ends)`. A step an `end: true` step left unplayed prints `── step <n> (label) · skipped (the playthrough ended)`.
 - Candidates are listed eligible first (`✓`), in selection order, then the rest, in selection order, each with its kind — `scene`, `entry`, or `beat` for a bundle beat — and priority, then `also` for an `also` beat and `read` for an entry already read in this run (dsl 0.23.0). An ineligible candidate (`✗`) carries its reason: `once: run — already presented this run`, `once: user — already presented`, `once: run — already read this run`, `once: user — already read`, `after: prerequisite not satisfied`, or `when: false`; a candidate whose `when` evaluated to unknown is marked `?` with `when: unknown (<detail>)`. A step whose occasion no beat answers lists `(no candidates)`.
 - `→ <id>` names the winner — one `→` line per beat on a `select: sequence` step — and `+ <id> (also)` each `also` beat that follows it. With no winner the line reads `→ (no eligible beat — the occasion passes)`, `→ (no eligible main beat)` when only `also` beats play, or `→ (pick: none — the list closes; nothing presented)`.
-- The presented beat's own transcript follows, written the way the source reads: content lines as `@speaker: text`, keeping their delivery (`@wren{mono}: …`, `@maud{as="Barkeep"}: …`); a line whose `when=` is false as `skip @maud "You again." — when: false`; authored staging directives as themselves, while compiler-injected staging (preloads, pose resets, the `::bg` auto-hide) is left out; decisions as `▷ choice <id>: … ← chosen: <id>` (or `▷ hub <id>: …`), where the menu marks the chosen option `[table]`, an option whose guard is false `piano✗`, and a `once` option already taken `table(spent)`; state writes as `set <path> = <value>`, a scene's `::accept` as `quest <id> accepted` (JSON: an `{"kind": "accept", "quest": "<id>"}` record in `presented.commands`), and an entry's `entry <id> (first read)` — or `entry <id> (re-read: effects skipped)`, with each skipped effect marked `(skipped: re-read)`. A bundle beat's presentation opens with a bare `beat` line, its `beat` record. Several presented beats follow one another in presentation order. Quest transitions come last — those the presentations caused, then those the step's occasion judged: `<quest>.<objective> done`, `<quest>.<objective> failed (by)` for a missed deadline, `quest <id> -> <state>`, and reward grants — `grant <quest> <KIND> <amount>`, followed by `(credits <path> = <value>)` when the reward kind credits state. In JSON both land in the step's `quests`.
+- The presented beat's own transcript follows, written the way the source reads: content lines as `@speaker: text`, keeping their delivery (`@wren{mono}: …`, `@maud{as="Barkeep"}: …`); a line whose `when=` is false as `skip @maud "You again." — when: false`; staging directives as authored — `::bg{location="parlor"}`, `::auto{character="maud" anchor="left"}`, `::vfx{type=…}`, and a plugin's own directive by its own name — while compiler-injected staging (preloads, pose resets, the `::bg` auto-hide) is left out; a plugin directive the reference player cannot run adds `(plugin call, not invoked)`; a `::end` as written, followed by `(this presentation ends; the play goes on)`; decisions as `▷ choice <id>: … ← chosen: <id>` (or `▷ hub <id>: …`), where the menu marks the chosen option `[table]`, an option whose guard is false `piano✗`, and a `once` option already taken `table(spent)`; state writes as `set <path> = <value>`, a scene's `::accept` as `quest <id> accepted` (JSON: an `{"kind": "accept", "quest": "<id>"}` record in `presented.commands`), and an entry's `entry <id> (first read)` — or `entry <id> (re-read: effects skipped)`, with each skipped effect marked `(skipped: re-read)`. A bundle beat's `beat` record is not printed; the `→` or `+` line already names it. Several presented beats follow one another in presentation order. Quest transitions come last — those the presentations caused, then those the step's occasion judged: `<quest>.<objective> done`, `<quest>.<objective> failed (by)` for a missed deadline, `quest <id> -> <state>`, and reward grants — `grant <quest> <KIND> <amount>`, followed by `(credits <path> = <value>)` when the reward kind credits state (a whole number without a decimal point: `= 50`). In JSON both land in the step's `quests`.
+- `--ir` prints the lowered records instead: each staging record as `::<kind>{…}` in its IR form (`::background{location="parlor" wait=true}` for that `::bg`), the ones the compiler injected included and marked `(injected: <by>)`, and a bundle beat's `beat` record as a `beat` line. `--ir` changes only what is printed: `transcriptContains` / `transcriptLacks` always judge the source-level transcript, and `--json` carries every record either way.
 - An `engine:` step lists its writes: `set <path> = <value>`, `assert <atom>`, `retract <atom>` — `retract <atom> (did not hold)` when it was not a fact.
-- A `newRun` step prints `run.* state, run-tier facts and once: run reset`, then `quest <id> -> unset (tier: run)` for each run-tier quest, then its seed's writes.
+- A `newRun` step prints `run.* state, run-tier facts and once: run reset`, then `; prev.run.* holds the ended run (<n> values)` when the ended run left any `run.*` value to snapshot, then `quest <id> -> unset (tier: run; was <status>)` for each run-tier quest that had left `unset`, then its seed's writes.
 - An `event:` step prints the handlers that ran; the lifecycle's transitions follow every step kind.
 - In `--json`, a line record in `presented.commands` carries `role`, `lineId`, `voiceKey`, `as`, and `emotion` where they apply, and a choice or hub record lists the options not offered under `ineligible` and the taken `once` options under `spent`.
-- The walk ends with `── end: complete (<n> steps)` — every repetition counted — or `── halted: <message>` when it stops early. Then the `--explain` trees, then the `── expect:` block.
+- The walk ends with `── end: complete (<n> steps)` — every repetition counted — or ``── end: `end: true` at step <n> (<k> later steps skipped)`` after an `end` step, or `── halted: <message>` when it stops early. Then the `--explain` trees, then the `── expect:` block.
 
 A shape-only project (no plugins) with a hub scene that offers a side job, and a quest whose `calm` objective is judged at `runEnd`:
 
@@ -937,13 +992,14 @@ type PlayTranscript = {
   exit: "complete" | "incomplete" | "error";
   start: { quests: QuestGroup[] };         // transitions made before step 1
   steps: Step[];                           // one record per repetition
-  endReason?: string;
+  skipped?: { step: number; label?: string }[]; // the steps an `end: true` step left unplayed
+  endReason?: string;                      // "complete (8 steps)", or "`end: true` at step 2 (1 later step skipped)"
   error?: { message: string };
   expect?: { misses: ExpectMiss[] };       // when the script carries an `expect:`
   explain?: Explanation[];                 // one per `--explain` atom
 };
 
-type Step = (OccasionStep | EngineStep | NewRunStep | EventStep) & {
+type Step = (OccasionStep | EngineStep | NewRunStep | EventStep | EndStep) & {
   step: number;                            // the script step (shared by its repetitions)
   label?: string;
   iteration?: number;                      // 1-based repetition, when `repeat` > 1
@@ -981,8 +1037,13 @@ type Presentation = {
 };
 
 type EngineStep = { engine: WriteRecord[] };
-type NewRunStep = { newRun: true; seed: WriteRecord[] };
+type NewRunStep = {
+  newRun: true;
+  seed: WriteRecord[];
+  resetQuests?: Record<string, string>;    // run-tier quest -> the status it had before the reset
+};
 type EventStep = { event: string };
+type EndStep = { end: true };
 
 type WriteRecord =
   | { kind: "set"; path: string; value: unknown }
@@ -1159,7 +1220,7 @@ $ lute play . --script plays/first-day.play.yaml
   ✓ hub.welcome [scene, priority 10]
   ✗ hub.morning [scene, priority 0] — when: false
   → hub.welcome
-::background{location="hub" time="day" wait=true}
+::bg{location="hub" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 · talk → npc.mara ──────────────
   ✓ mara.first [scene, priority 10]
@@ -1233,7 +1294,7 @@ expect:
   ✓ hub.welcome [scene, priority 10]
   ✗ hub.morning [scene, priority 0] — when: false
   → hub.welcome
-::background{location="hub" time="day" wait=true}
+::bg{location="hub" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 · talk → npc.mara ──────────────
   ✓ mara.first [scene, priority 10]
@@ -1291,7 +1352,7 @@ expect:
 
 ```
 ── step 1 (the engine starts run two on day 3) · new run ──────────────
-  run.* state, run-tier facts and once: run reset
+  run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
   set run.day = 3
 ── step 2 · hubVisit ──────────────
   ✓ hub.morning [scene, priority 0]

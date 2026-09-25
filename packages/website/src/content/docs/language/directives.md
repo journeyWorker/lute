@@ -165,6 +165,10 @@ table above that is not a staging leaf, so it is not admitted inside a
 [`<track>`](/language/timeline-and-property-tracks/) clip (`E-TIMELINE-CONTENT`), which takes
 staging leaves and `::set` only.
 
+In [`lute play`](/tooling/play/), an `::end` ends only the presentation (or quest handler) it runs
+in; the step still settles and the playthrough goes on with the next step. A play script stops
+early with a step `end: true`.
+
 Anything after an `::end` **in the same straight-line body** can never run, and the checker says so
 once per body, anchored at the first dead node: `W-CODE-AFTER-END` — *unreachable content after
 `::end` (the walk terminates here)*. It is a warning; promote it with

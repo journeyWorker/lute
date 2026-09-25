@@ -45,7 +45,7 @@ before, because `once: user` spends it for good the first time it plays.
 | Key | Meaning |
 |---|---|
 | `on` | the occasion this scene answers; it is what makes the scene a beat |
-| `target` | optional; the scene is a candidate only when the occasion is raised for this target, a dotted id in the `<entry target>` shape (`npc.achilles`, `place.lab_b2`). When the occasion declares a [target domain](#target-domains), it must be `<prefix>.<member>` of that domain |
+| `target` | optional; the scene is a candidate only when the occasion is raised for this target, a dotted id in the `<entry target>` shape (`npc.achilles`, `place.lab_b2`). When the occasion declares a [target domain](#target-domains), it must be `<prefix>.<member>` of that domain, and one of its listed `members:` when it lists them |
 | `when` | optional CEL condition over `run` / `user` / `app` state, `quest.*`, `entry.<id>.read` / `entry.<id>.everRead`, and fact queries (`holds(…)`, `count(…)`) |
 | `priority` | optional integer, default `0`; higher wins |
 | `once` | `run` (the default: at most once per run), `user` (at most once ever), or `false` (repeatable) |
@@ -326,6 +326,22 @@ target, and inside the occasion's domain. Without `target`, an objective is judg
 occasion is raised, whatever the target. See
 [Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions).
 
+A raise answers quests after its beats. Once the occasion's beats have been presented (or none
+was eligible, or the player closed a `select: all` list without picking), the raise does two more
+things, in this order:
+
+1. When a plugin also declares a **world event** of the same name under `events:`, raising the
+   occasion fires it: every active quest's `<on event>` handler for that name runs, once. The
+   event carries no target.
+2. The occasion judges the `on=` objectives of every active quest, so an objective can read what
+   a handler just wrote. Then the quests settle.
+
+An occasion that only objectives or same-named handlers reference is still raised: it presents
+nothing and does just these two steps. [`lute play`](/tooling/play/), `lute run`, and
+[`lute trace`](/tooling/tracing/) answer a raise in the same order. So when a plugin declares
+`dayEnd` as both an occasion and a world event, an active quest's `<on event="dayEnd">` handler
+runs every time the engine raises `dayEnd`, with no separate event to fire.
+
 ### Target domains
 
 `target: true` keeps its 0.21.0 meaning: the occasion is raised *for* something, and a beat's
@@ -355,6 +371,31 @@ is `E-BEAT-ATTR` on every target of that occasion. Scene, entry, and bundle beat
 checked alike, and so are objective targets. [`lute play`](/tooling/play/) refuses a step target
 outside the domain with the same did-you-mean.
 
+A domain can also narrow its kind with **`members:`**, when the engine raises the occasion for only
+some members:
+
+```yaml
+occasions:
+  bossDefeated: { select: first, target: { prefix: boss, entity: foe, members: [gatekeeper, warden] } }
+```
+
+With `foe: { members: [gatekeeper, warden, cinderhound] }` under `entities:`, the occasion's
+targets are `boss.gatekeeper` and `boss.warden` only. `target: boss.cinderhound` is `E-BEAT-ATTR`
+although `cinderhound` is a `foe`, and the did-you-mean runs over the listed members:
+
+```text
+./scenes/hound.lute:5:9: error [E-BEAT-ATTR] target `boss.cinderhound` is outside occasion `bossDefeated`'s member list (`boss.gatekeeper`, `boss.warden`), a subset of entity kind `foe` (dsl 0.22.0 §8)
+```
+
+Every listed member must belong to the kind. One the kind does not declare makes every target of
+the occasion `E-BEAT-ATTR`, well-spelled ones included, and the message names the stray member:
+``occasion `bossFled` lists `wardne` in its target `members:`, but `wardne` is not a member of
+entity kind `foe` — did you mean `warden`?``. An `open:` kind's members are not known to the
+checker, so there the list is taken as written. An empty list, or a member listed twice, fails the
+plugin load (see [Manifests](/plugins/manifests/)). The subset narrows every consumer of the
+domain alike: beat, entry, and objective targets, a `lute play` step's `target:`,
+`lute new scene --target`, and `lute calendar --target`.
+
 ## What the checker proves
 
 | Code | When |
@@ -364,7 +405,7 @@ outside the domain with the same did-you-mean.
 | `E-BEAT-UNREACHABLE` | a scene or bundle beat's `when` provably never holds; see [How a `when` is decided](#how-a-when-is-decided). `lute check` decides what one file settles, and `lute check-project` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
 | `W-BEAT-SHADOWED` | `check-project` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry without `once`, or a scene or bundle beat with `once: false`). `also` beats neither shadow nor are shadowed. |
 | `W-BEAT-PRIORITY-TIE` | `check-project` only: two beats on one `select: first` occasion, either untargeted or for the same target, with equal `priority` and `when`s that are not provably exclusive. When both are eligible, project order picks the winner, so renaming or moving a file changes it. Give one a different `priority`, or make the conditions exclusive: conditions that cannot hold together, such as `run.slot == 'morning'` against `run.slot == 'night'`, `run.day > 5` against `run.day < 3`, or `holds(P)` against `!holds(P)`. A shadowed beat reports `W-BEAT-SHADOWED` instead, and an `also` beat never ties. |
-| `W-BEAT-ONCE-RUN-USER` | `check-project` only: a beat spent once per run (a scene's or bundle beat's default `once: run`, or an entry's `once="run"`) whose `when` reads only user-tier state (`user.*`, `entry.<id>.everRead`) and no fact query or `visited()`. Once that condition holds it holds in every run, so the beat plays again each run. Use `once: user` for a beat heard once ever, or gate it on run-tier state. |
+| `W-BEAT-ONCE-RUN-USER` | `check-project` only: a scene or bundle beat whose `once` is left at its default `run` and whose `when` reads only user-tier state (`user.*`, `entry.<id>.everRead`) and no fact query or `visited()`. Once that condition holds it holds in every run, so the beat plays again each run. Use `once: user` for a beat heard once ever, or gate it on run-tier state. If replaying every run is the point, write `once: run`: an authored `once: run`, like an entry's `once="run"`, says so and silences the warning. `prev.run.*` is run history, not user state, so a `when` reading it never warns. |
 
 ### How a `when` is decided
 

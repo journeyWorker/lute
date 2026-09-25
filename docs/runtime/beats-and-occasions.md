@@ -41,11 +41,22 @@ occasions:
   `<prefix>.<id>` when the kind is `open:`, its members engine-populated).
   Raise it with targets of that shape: they are the ids every beat target of
   the occasion was checked against.
+- `target: { prefix, entity, members: [ids] }` (0.23.1) — a target domain
+  narrowed to a **member subset**: the occasion is raised only for
+  `<prefix>.<member>` of a listed member. Every listed member must belong to
+  `entity` when that kind is closed (`E-BEAT-ATTR` names the stray member,
+  with a did-you-mean over the kind's members); under an `open:` kind the list
+  itself is the domain. An empty list, or a member listed twice, is a load
+  error of the declaration file. The subset narrows every consumer alike:
+  beat and objective targets, `lute play` step targets, `lute calendar`
+  columns.
 
 Occasion declarations are not in the artifact; they are part of the capability
 snapshot (`capabilityVersion`), where an occasion's `target` serializes as
-`false`, `true`, or `{ "prefix", "entity" }`. A domain changes the stamp; an
-occasion declared only with `target: true` / `false` keeps its 0.21 stamp. An
+`false`, `true`, `{ "prefix", "entity" }`, or `{ "prefix", "entity",
+"members" }`. A domain changes the stamp, and so does its member list; a
+domain without `members` keeps its 0.22 stamp, and an occasion declared only
+with `target: true` / `false` keeps its 0.21 stamp. An
 engine raising an occasion that no resolved plugin declares uses
 `select: first`. The checker guarantees every compiled beat names a declared
 occasion once any plugin declares one (`E-OCCASION-UNKNOWN`), a target only on
@@ -343,8 +354,11 @@ one `select: first` occasion, either untargeted or for the same target, with
 equal priority and `when`s not provably exclusive, whose winner therefore
 falls to `ProjectIndex.beats` order. Both ignore `also` beats, which never
 compete for the win: an `also` beat is never shadowed, never shadows, and
-never ties. `W-BEAT-ONCE-RUN-USER` names a beat spent once per run whose
-`when` reads only user-tier state, so once it holds it replays every run.
+never ties. `W-BEAT-ONCE-RUN-USER` names a beat whose `once` is defaulted to
+`run` and whose `when` reads only user-tier state, so once it holds it
+replays every run; an authored `once: run` (an entry's `once="run"`)
+acknowledges that and silences it, and a `prev.run.*` read counts as run
+history, not user state.
 
 ## Reference tooling
 
