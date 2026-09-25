@@ -428,15 +428,19 @@ fn running_lsps() -> Option<Vec<RunningLsp>> {
             _ if argv.contains('/') => Some(PathBuf::from(argv)),
             _ => find_on_path("lute-lsp"),
         };
-        // `etime` is whole seconds rounded down, so the start is at most
-        // `now - etime`: a binary written after that was replaced while the
+        // `etime` is whole seconds, and macOS computes it as
+        // floor(now) - floor(start), so it can read one second more than the
+        // process has lived. Allow that second of slack: only a binary written
+        // more than a second after `now - etime` was replaced while the
         // server ran.
         let started = now.checked_sub(std::time::Duration::from_secs(age));
         let rebuilt = exe
             .as_ref()
             .and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
             .zip(started)
-            .is_some_and(|(modified, started)| modified > started);
+            .is_some_and(|(modified, started)| {
+                modified > started + std::time::Duration::from_secs(1)
+            });
         found.push(RunningLsp {
             pid,
             exe,

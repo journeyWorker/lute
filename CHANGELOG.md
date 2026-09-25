@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.23.0`, the grammar and semantics the checker
+- **Language** — currently `0.23.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.23.0`) and gated on by consuming engines.
+  artifact (currently `0.23.1`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,7 +36,19 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.23.1] - 2026-09-25
+
+**Trace, test and play agree.**
+
+A patch on the `0.23` line from a second dogfood round over three games. Where
+`lute trace`, `lute test` and `lute play` answered one question three ways — a
+deadline judged before its objective, a reward credit only play applied, an
+occasion that never reached its quest's event handlers, a `::end` that stopped
+the whole playthrough — they now give one answer, the one the runtime contract
+specifies; the checker closes a few more gaps (`E-QUEST-TIER-MIX`, match-arm
+narrowing, negation over stable derived facts). No syntax is added and the IR
+shape does not move. See [`docs/versioning.md`](docs/versioning.md) for what
+each axis earned.
 
 ### Changed
 
@@ -146,15 +158,61 @@ table.
   each running server and fails, advising an editor restart, when one was
   started before its binary was replaced or its binary reports another
   version.
+- **`lute doctor` no longer flags a freshly started `lute-lsp` as replaced**
+  (macOS): `ps` reports a process's elapsed time as whole seconds counted
+  from the second it started, up to a second more than it has run, so a
+  server launched within a second of its binary being written read as
+  "started before its binary was replaced". The check now allows that second
+  of slack.
 - **Docs: `pov` is descriptive** (ashen N8): the pages claimed the `pov`
   speaker compiles to a reserved player role; no such IR role exists and
   `pov` does not reach the artifact. The dialogue, frontmatter and cheatsheet
   pages (and `llms-full.txt`) now say so.
 
+### Compatibility
+
+- **Untagged component lines may change `lineId` once.** An untagged line in
+  a component now takes the code `lute tag` would write into the component
+  file (source order, per speaker) before a param-scoped `<match>` folds, so
+  a component whose untagged lines sit in a non-first `<match>` arm compiles
+  to new `lineId`s / `voiceKey`s — the ones `lute tag` persists, so they do
+  not move again. Re-export localization and voice manifests once; tagged
+  lines and lines outside components are unchanged.
+- **`::end` in `lute play` ends only its presentation.** It used to stop the
+  playthrough; now the presentation (or quest handler) it runs in ends and
+  the play goes on with the next step. A script that relied on `::end`
+  stopping the play adds a step `- end: true` after that step; later steps
+  print as skipped and `--json` lists them under `skipped`.
+- **A raised occasion fires the same-named world event.** When a world event
+  of the occasion's name is declared, raising the occasion runs every active
+  quest's `<on event>` handlers for it, once, before its `on=` objectives are
+  judged — in `lute play`, `lute run`, `lute trace` and the runtime contract.
+  A handler that ran only on an explicit `event:` now also runs whenever the
+  same-named occasion is raised; an engine that fired that event itself at
+  the raise stops doing so, or the handler runs twice.
+- **Trace and test apply reward credits and objective bodies.** `lute trace`
+  and `lute test` now add a reward kind's `credits:` amount and walk
+  objective completion bodies as `lute play` does, so a test that expected
+  the state without them now fails; update its `expect:`.
+- **`E-QUEST-TIER-MIX` rejects mixed-tier quest trees.** A subquest whose
+  `tier` differs from its parent's used to check clean and then lock at
+  runtime; it is now an error (`check` within one document, `check-project`
+  across documents). Give the child its parent's tier.
+- **An `on=` objective's `by` waits for its occasion.** Its deadline is judged
+  only when the occasion is raised, right after its `done`, so a beat that
+  answers the occasion can no longer lose to a deadline judged earlier in the
+  same settle.
+- **`lute calendar --json`:** a cell's `note` is now `notes` (the CSV column
+  too), and the output gains `from`, `pruned` and `anyTarget`.
+- **IR shape unchanged.** The version strings move to `0.23.1`;
+  [`schemas/lute-ir-0.23.schema.json`](schemas/lute-ir-0.23.schema.json)
+  keeps its name and `$id`, and engines, gating on MAJOR, widen nothing.
+  `capabilityVersion` moves only for a snapshot whose occasion target domain
+  declares `members:`; the tree-sitter grammar is unchanged.
+
 ### Known limitations
 
 - `lute play` coverage counts presented documents only, not branch choices or match arms (trace keys arms by source position; play records compiled addresses).
-
 
 ## [0.23.0] - 2026-09-25
 

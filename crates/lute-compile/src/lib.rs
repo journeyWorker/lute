@@ -278,7 +278,15 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// Documents that use none of it compile byte-identically apart from the
 /// version strings. `schemas/lute-ir-0.22.schema.json` is renamed to
 /// `schemas/lute-ir-0.23.schema.json` and gains `cmdBeat` and those fields.
-pub const LUTE_IR_VERSION: &str = "0.23.0";
+///
+/// IR `0.23.1` is a patch on the `0.23` line with NO shape change: the
+/// schema keeps its `schemas/lute-ir-0.23.schema.json` name and `$id`, and
+/// documents compile byte-identically apart from the version strings, with
+/// one content change: an untagged component line takes the code `lute tag`
+/// would write into the component file (source order, per speaker) before a
+/// param-scoped `<match>` folds, so a line in a non-first arm may get a new
+/// `lineId` / `voiceKey` once — the one `lute tag` persists.
+pub const LUTE_IR_VERSION: &str = "0.23.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1264,14 +1272,12 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.23.0 axis alignment (docs/versioning.md): a minor release. The
-        // language earns the move (deadlines, objective targets, `sequence`
-        // / `also`, beat bundles, `prev.run`, cast, reward credits, a
-        // sharper decider) and so does the IR (additive `beat` records and
-        // optional beat / objective / hub / reward fields) — both move
-        // independently of the toolchain pin.
-        assert_eq!(super::LUTE_IR_VERSION, "0.23.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.23.0");
+        // 0.23.1 axis alignment (docs/versioning.md): a patch on the 0.23
+        // line. The language tightens static semantics (`E-QUEST-TIER-MIX`)
+        // and the IR moves no shape (the schema keeps its 0.23 name) — both
+        // still move independently of the toolchain pin.
+        assert_eq!(super::LUTE_IR_VERSION, "0.23.1");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.23.1");
     }
 
     #[test]
@@ -1280,8 +1286,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.23.0");
-        assert_eq!(v["irVersion"], "0.23.0");
+        assert_eq!(v["lute"], "0.23.1");
+        assert_eq!(v["irVersion"], "0.23.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

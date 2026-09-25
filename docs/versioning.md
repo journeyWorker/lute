@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.23.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.23.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.23.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.23.schema.json`](../schemas/lute-ir-0.23.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.23.1` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.23.1` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.23.1` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.23.schema.json`](../schemas/lute-ir-0.23.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -544,6 +544,33 @@ bundle beats rejects a lore artifact that carries a `beat` record (unknown
 `kind`). `capabilityVersion` moves only for a project that declares
 `select: sequence`, a plugin cast, or a crediting reward kind, and the
 tree-sitter grammar gains `<beat>`.
+
+**`0.23.1` aligns all three axes at `0.23.1`, a patch on the `0.23` line; the
+toolchain earns it, the language carries a small compatible move, and the IR
+moves no shape.** A second dogfood round over three games found `lute trace`,
+`lute test` and `lute play` answering one question three ways; they now agree
+with each other and with the runtime contract. The runtime contract itself
+settles two orders: raising an occasion first fires a same-named declared
+world event (every active quest's `<on event>` handlers, once) and then judges
+its `on=` objectives, and an `on=` objective's `by` deadline is judged only
+there, right after its `done`. `lute play` ends only the presentation a
+`::end` runs in (a step `end: true` ends the play), and trace and test apply
+reward `credits:` and objective bodies as play does. The language adds no
+syntax, but its static semantics tighten and sharpen: a subquest whose `tier`
+differs from its parent's is the new `E-QUEST-TIER-MIX`; a match arm narrows
+its subject, so reads after an arm that takes every unset value are no longer
+`E-MAYBE-UNSET`; a negation over a stably derived fact is decided; mis-nested
+`<entry>` / `<beat>` / `<quest>` blocks report one `E-UNCLOSED-TAG`; and
+`W-BEAT-ONCE-RUN-USER` fires only on a defaulted `once`. An occasion target
+domain may narrow to a member subset (`members:`), which moves
+`capabilityVersion` only for a snapshot that declares one. The IR shape does
+not move, so
+[`schemas/lute-ir-0.23.schema.json`](../schemas/lute-ir-0.23.schema.json)
+keeps its name and `$id` (the `0.21.1` precedent). One content change: an
+untagged component line takes the code `lute tag` would write before a
+param-scoped `<match>` folds, so a line in a non-first arm gets a new
+`lineId` / `voiceKey` once — the one `lute tag` persists. Engines gate on
+MAJOR, so nothing widens, and the tree-sitter grammar is unchanged.
 
 ## Which bump when
 
