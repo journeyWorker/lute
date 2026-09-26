@@ -1,23 +1,29 @@
 //! The one walker over a COMPILED artifact (the executable counterpart of
 //! `docs/runtime/` + `schemas/lute-ir-0.26.schema.json`), parameterised by a
 //! [`Driver`] (`docs/design/runtime-unification.md` §3.2). `lute run`
-//! (`RunDriver`) and `lute play` (`PlayDriver`) execute through it.
+//! (`RunDriver`), `lute play` (`PlayDriver`) and `lute trace` / `lute test`
+//! (`TraceDriver`) execute through it.
 //!
 //! What it implements, grounded in the runtime contract docs:
 //! - the **dispatcher loop** (execution-model.md): a program counter over
 //!   `commands`, resolving every control-flow target (`jump`/`choice`/`hub`/
 //!   `match`/`converge`) against an `addr → index` map, with fall-through
 //!   resolution for a `converge` that points one past the last record;
-//! - **CEL guards** (cel-and-facts.md): every guard/`::set` value is evaluated
-//!   from its `raw` CEL via `lute_cel::parse_slot` + [`crate::eval`] — the
-//!   tree's one CEL evaluator — so guard semantics match the checker exactly
-//!   (including the `holds`/`count` fact-query functions the structured `expr`
-//!   AST deliberately omits);
-//! - a **real stratified Datalog least-fixpoint** over the artifact's `rules`
-//!   (cel-and-facts.md) — recomputed after every `assert`/`retract` delta — so
-//!   a `derive: true` relation queried in a guard returns a *definite* answer.
-//!   The evaluator is [`crate::datalog`], the one `lute trace`/`lute test`
-//!   apply too (dsl 0.22.0 §6); a seed's `derive: false` skips it;
+//! - **CEL guards** (cel-and-facts.md): every guard, `::set` value and match
+//!   arm is evaluated from CEL via `lute_cel::parse_slot` + [`crate::eval`] —
+//!   the tree's one CEL evaluator (an `is` arm without `test` text through
+//!   its structured `expr`, [`expr_to_cel`]) — so guard semantics match the
+//!   checker exactly (including `holds`/`count`);
+//! - **one write path** ([`Machine::write`] over the [`Store`]): every state
+//!   write — `::set`, a directive effect, a bridge answer, a grant credit, a
+//!   menu's record key, a quest or entry flag — refreshes the clock when it
+//!   moves it, marks the Datalog closure stale when a rule reads state (a
+//!   **real stratified least-fixpoint** over the artifact's `rules`,
+//!   recomputed lazily at the next query, so a derived relation is never
+//!   stale after a `::set`), and is checked for exclusive relations holding
+//!   together (dsl 0.25.0 §1); a seed's `derive: false` skips the rules;
+//! - every undecidable value the walk needs is an [`UnknownSite`]: the
+//!   driver decides whether it halts the walk ([`Driver::unknown`]);
 //! - **`choice` / `hub` / `match`** control flow, with `hub` `once`/`exit`
 //!   re-presentation; every decision comes from [`Driver::choose`];
 //! - the **quest lifecycle** (quest-lifecycle.md): `start` activation, and
@@ -56,16 +62,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use lute_cel::CelArena;
-use lute_check::{RelVocab, StateSchema};
 use serde_json::{json, Value as Json};
 
 use super::driver::{
     BridgeCall, BridgeReply, Driver, Forced, Menu, MenuKind, MenuOption, OnUnknown, Pick, SiteKind,
     UnknownSite, Verdict,
 };
-use crate::datalog::{Fact, Program};
-use crate::{eval, EffectiveState, EvalEnv, FactStore, MockSet, UnresolvedAtom, Value};
+pub use super::store::render_fact;
+use super::store::{json_arg_to_string, json_to_value, Store};
+use crate::datalog::Fact;
+use crate::eval::Read;
+use crate::{MockSet, UnresolvedAtom, Value};
 
 /// A parsed quest declaration head (quest-lifecycle.md).
 struct QuestDecl {
@@ -154,6 +161,8 @@ enum GrantEvent {
 /// events (`questActive`/`questComplete`/`questFailed`) fire only for their
 /// own enclosing quest (quest-lifecycle.md); world events are unscoped.
 struct Handler {
+    /// The `on` record's `addr`.
+    addr: String,
     event: String,
     when: Option<String>,
     body: String,
@@ -288,38 +297,13 @@ pub struct Machine<D: Driver> {
     addr_index: BTreeMap<String, usize>,
     /// `(addr, index)` in stream (== addr-sorted) order, for fall-through.
     addr_order: Vec<(String, usize)>,
-    /// Declared value-type per state path (from the artifact `state` table),
-    /// so a seed literal is coerced against the same type the compiler folded.
-    types: BTreeMap<String, String>,
-    /// dsl 0.24.0 §1: per state path, the member → display-label map its
-    /// artifact `state[].labels` declares; `{{path}}` renders through it.
-    labels: BTreeMap<String, BTreeMap<String, String>>,
     /// Prerelease N8: cast id -> display name, what an `occasionTarget`
-    /// placeholder renders a member by (`lute play` fills it; empty renders
-    /// the id).
+    /// placeholder renders a member by (`lute play` and `lute trace` fill
+    /// it; empty renders the id).
     display_names: BTreeMap<String, String>,
 
-    // Evaluation environments — empty by construction: all live state lives in
-    // `state`, so an empty `StateSchema` never shadows a read; an empty
-    // `RelVocab` makes every relation non-derived, so `holds`/`count` over the
-    // fully-materialized fixpoint return DEFINITE answers. Under `derive:
-    // false` (dsl 0.22.0 §6) `vocab` marks the derived relations instead.
-    schema: StateSchema,
-    vocab: RelVocab,
-
-    /// The artifact's Datalog rules ([`crate::datalog`]).
-    program: Program,
-
-    /// Live scalar state (path → value).
-    state: BTreeMap<String, Value>,
-    /// Base facts (seeds ∪ asserted − retracted), before derivation.
-    base_facts: BTreeSet<Fact>,
-    /// `base_facts` ∪ the derived least-fixpoint — what guards query.
-    all_facts: BTreeSet<Fact>,
-    /// Derived relations whose last fixpoint read an undecided rule guard
-    /// (dsl 0.24 T1-1): a guard querying one is unknown, so `lute play`
-    /// halts on it instead of reading the relation as silently empty.
-    undecided: BTreeMap<String, Vec<UnresolvedAtom>>,
+    /// State, facts, the closure and the visited set ([`Store`]).
+    store: Store,
 
     seed: Seed,
 
@@ -366,10 +350,13 @@ pub struct Machine<D: Driver> {
     /// `entry.<id>.read` is already true — `set`/`assert`/`retract` records
     /// are then recorded as `skipped` instead of applied.
     apply_effects: bool,
-    /// dsl 0.21.0 §7a.1: the ids of the scenes presented in this save — what
-    /// `visited('<id>')` reads. Seeded from the seed's `visited` and the
-    /// playthrough's presentation history ([`Machine::with_visited`]).
-    visited: BTreeSet<String>,
+    /// Quests whose `never` / `awaiting accept` judgment was already
+    /// observed ([`Driver::observe`]): a quest a later round judges the same
+    /// way is not reported again.
+    observed_waiting: BTreeSet<String>,
+    /// Observe every `expr` arm judgment with the state it read
+    /// ([`Machine::with_arm_probe`]).
+    probe_arms: bool,
     /// dsl 0.21.0 §7a.3: the quest ids every `accept` record this walk
     /// executed named, in order. An accept-driven quest of THIS artifact
     /// activates from it on the next lifecycle round; `lute play` carries
@@ -388,9 +375,6 @@ pub struct Machine<D: Driver> {
     /// project's (`lute play`, [`Machine::with_bridge_reads`]) or the
     /// artifact's ([`Machine::new`]).
     bridge_reads: Arc<BridgeReads>,
-    /// dsl 0.25.0 §1: every pair of relations the artifact's `relations[].excludes`
-    /// declares exclusive (`a < b`); empty when none.
-    excludes: Vec<(String, String)>,
     /// dsl 0.24.0 §2: why each `<quest>.<objective>` in `failed_objectives`
     /// failed (`by` / `until`) — read when a required objective's failure
     /// fails its quest, to stamp `quest.<id>.failedBy`.
@@ -549,12 +533,10 @@ fn ir_read_paths(v: &Json, in_expr: bool, out: &mut BTreeSet<String>) {
 }
 
 impl<D: Driver> Machine<D> {
-    /// Build a Machine skeleton straight off an artifact: addr map, typed
-    /// state table (types only — NOT yet seeded with defaults; see below),
-    /// parsed Datalog rules/strata. Live `state`/`base_facts` start as the
-    /// artifact's own `state[].default`/`seedFacts` ([`Machine::new`], a
-    /// fresh `lute run` walk); [`Machine::resume`] (`lute play`, dsl 0.21.0
-    /// §6) replaces them with the PRIOR scene's [`Carry`]. Both then layer
+    /// Build a Machine skeleton straight off an artifact: addr map, the
+    /// [`Store`] (declared types, labels, defaults, seed facts, rules).
+    /// [`Machine::resume`] (`lute play`, dsl 0.21.0 §6) then replaces the
+    /// live world with the PRIOR scene's [`Carry`]. Both constructors layer
     /// the seed's own `state`/`facts` on top via [`Machine::apply_seeds`] —
     /// the one place that override rule lives.
     fn blank(art: &Json, seed: Seed, driver: D) -> Self {
@@ -579,102 +561,9 @@ impl<D: Driver> Machine<D> {
         }
         addr_order.sort();
 
-        // Declared types + initial state defaults (state-lifecycle.md).
-        let mut types = BTreeMap::new();
-        let mut labels = BTreeMap::new();
-        let mut state = BTreeMap::new();
-        if let Some(entries) = art.get("state").and_then(Json::as_array) {
-            for e in entries {
-                let path = e.get("path").and_then(Json::as_str).unwrap_or("");
-                if path.is_empty() {
-                    continue;
-                }
-                let ty = e.get("type").and_then(Json::as_str).unwrap_or("string");
-                types.insert(path.to_string(), ty.to_string());
-                if let Some(map) = e.get("labels").and_then(Json::as_object) {
-                    let map: BTreeMap<String, String> = map
-                        .iter()
-                        .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
-                        .collect();
-                    labels.insert(path.to_string(), map);
-                }
-                if let Some(default) = e.get("default") {
-                    if let Some(v) = json_to_value(default) {
-                        state.insert(path.to_string(), v);
-                    }
-                }
-            }
-        }
-
-        // Base facts: artifact seedFacts.
-        let mut base_facts: BTreeSet<Fact> = BTreeSet::new();
-        if let Some(seeds) = art.get("seedFacts").and_then(Json::as_array) {
-            for s in seeds {
-                let rel = s.get("relation").and_then(Json::as_str).unwrap_or("");
-                let args: Vec<String> = s
-                    .get("args")
-                    .and_then(Json::as_array)
-                    .map(|a| a.iter().map(json_arg_to_string).collect())
-                    .unwrap_or_default();
-                if !rel.is_empty() {
-                    base_facts.insert((rel.to_string(), args));
-                }
-            }
-        }
-
-        // Parsed rules (the shared evaluator). Under `derive: false` every
-        // derived relation — declared `derive: true` or concluded by a rule —
-        // is marked so, making an unmatched query unknown, not false.
-        let program = Program::from_ir(art.get("rules"))
-            .with_kinds(crate::datalog::ir_kinds(art.get("entities")));
-        let mut vocab = RelVocab::default();
-        if !seed.derive {
-            let declared = art
-                .get("relations")
-                .and_then(Json::as_array)
-                .into_iter()
-                .flatten()
-                .filter(|r| r.get("derive").and_then(Json::as_bool) == Some(true))
-                .filter_map(|r| r.get("name").and_then(Json::as_str));
-            let heads = art
-                .get("rules")
-                .and_then(Json::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(|r| r.pointer("/head/relation").and_then(Json::as_str));
-            for rel in declared.chain(heads) {
-                vocab.relations.insert(
-                    rel.to_string(),
-                    lute_manifest::relations::RelationDecl {
-                        derive: true,
-                        ..Default::default()
-                    },
-                );
-            }
-        }
+        let mut store = Store::of_artifact(art, seed.derive);
         // dsl 0.21.0 §7a.1: the seed's `visited` seeds the presented set.
-        let visited = seed.visited.iter().cloned().collect();
-        let excludes = art
-            .get("relations")
-            .and_then(Json::as_array)
-            .into_iter()
-            .flatten()
-            .flat_map(|r| {
-                let name = r
-                    .get("name")
-                    .and_then(Json::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                r.get("excludes")
-                    .and_then(Json::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Json::as_str)
-                    .filter(|o| name.as_str() < *o)
-                    .map(|o| (name.clone(), o.to_string()))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
+        store.visited.extend(seed.visited.iter().cloned());
 
         Machine {
             driver,
@@ -682,16 +571,8 @@ impl<D: Driver> Machine<D> {
             commands,
             addr_index,
             addr_order,
-            types,
-            labels,
             display_names: BTreeMap::new(),
-            schema: StateSchema::default(),
-            vocab,
-            program,
-            state,
-            base_facts,
-            all_facts: BTreeSet::new(),
-            undecided: BTreeMap::new(),
+            store,
             seed,
             quest_status: BTreeMap::new(),
             incomplete: false,
@@ -703,7 +584,8 @@ impl<D: Driver> Machine<D> {
             entry: None,
             bundle_beat: None,
             apply_effects: true,
-            visited,
+            observed_waiting: BTreeSet::new(),
+            probe_arms: false,
             accepted: Vec::new(),
             accepted_next_run: Vec::new(),
             failed_objectives: BTreeSet::new(),
@@ -711,20 +593,18 @@ impl<D: Driver> Machine<D> {
             defer_by: Vec::new(),
             deferred_handlers: None,
             bridge_reads: Arc::default(),
-            excludes,
         }
     }
 
-    /// A fresh walk (`lute run`) of `art`: its declared defaults and seed
-    /// facts, the `seed` layered over them. The artifact's own content is
-    /// the reader of its bridge results (dsl 0.25.0 §7; `lute play` hands
-    /// the project's in [`Machine::with_bridge_reads`]).
+    /// A fresh walk (`lute run`, `lute trace`) of `art`: its declared
+    /// defaults and seed facts, the `seed` layered over them. The artifact's
+    /// own content is the reader of its bridge results (dsl 0.25.0 §7; `lute
+    /// play` hands the project's in [`Machine::with_bridge_reads`]).
     pub fn new(art: &Json, seed: Seed, driver: D) -> Self {
         let mut m = Self::blank(art, seed, driver);
         m.bridge_reads = Arc::new(BridgeReads::of([art]));
         m.apply_seeds();
-        refresh_clock(art, &mut m.state);
-        m.recompute_facts();
+        m.store.derive();
         m
     }
 
@@ -740,12 +620,10 @@ impl<D: Driver> Machine<D> {
     /// carry's `state`, `base_facts` and `quest_status` are read.
     pub fn resume(art: &Json, seed: Seed, carry: Carry, driver: D) -> Self {
         let mut m = Self::blank(art, seed, driver);
-        m.state = carry.state;
-        m.base_facts = carry.base_facts;
+        m.store.restore(carry.state, carry.base_facts);
         m.quest_status = carry.quest_status;
         m.apply_seeds();
-        refresh_clock(art, &mut m.state);
-        m.recompute_facts();
+        m.store.derive();
         m
     }
 
@@ -765,9 +643,20 @@ impl<D: Driver> Machine<D> {
     }
 
     /// Prerelease N8: the cast display names `{{occasion.target}}` renders a
-    /// member by (`lute play`).
+    /// member by (`lute play`, `lute trace`).
     pub fn with_display_names(mut self, names: &BTreeMap<String, String>) -> Self {
         self.display_names = names.clone();
+        self
+    }
+
+    /// The differential harness's IR oracle (design §4.4): every `match` arm
+    /// judged by its structured `expr` is observed ([`Driver::observe`]) as
+    /// `{"kind":"armExpr","addr","arm","expr","held","reads"}` — `held` the
+    /// evaluator's verdict (`null`: undecided), `reads` each state path the
+    /// `expr` names with its value (`null`: unset) — so the `expr` can be
+    /// judged again by the IR's own evaluator.
+    pub fn with_arm_probe(mut self) -> Self {
+        self.probe_arms = true;
         self
     }
 
@@ -776,21 +665,17 @@ impl<D: Driver> Machine<D> {
     pub fn bind_occasion_target(&mut self, member: Option<&str>) {
         let path = lute_check::beats::OCCASION_TARGET;
         match member {
-            Some(m) => {
-                self.state
-                    .insert(path.to_string(), Value::Str(m.to_string()));
-            }
-            None => {
-                self.state.remove(path);
-            }
+            Some(m) => self.store.put(path.to_string(), Value::Str(m.to_string())),
+            None => self.store.remove(path),
         }
+        self.store.derive();
     }
 
     /// `lute play` (dsl 0.21.0 §7a.1): the playthrough's presented scenes,
     /// joined to any seed `visited`, so `visited('<id>')` reads real
     /// presentation history.
     pub fn with_visited(mut self, visited: &BTreeSet<String>) -> Self {
-        self.visited.extend(visited.iter().cloned());
+        self.store.visited.extend(visited.iter().cloned());
         self
     }
 
@@ -829,224 +714,96 @@ impl<D: Driver> Machine<D> {
     /// constructor already set (override, per path/fact — never a reset):
     /// shared by [`Machine::new`] (over the artifact's own defaults) and
     /// [`Machine::resume`] (over the prior scene's carryover), so the "seed
-    /// wins on conflict" rule applies identically either way.
+    /// wins on conflict" rule applies identically either way. The reserved
+    /// `clock.*` values then follow the (seeded) `day` / `slot` — an
+    /// explicitly seeded `clock.*` value is kept.
     fn apply_seeds(&mut self) {
         let seeds = std::mem::take(&mut self.seed.state);
         for (path, lit) in &seeds {
-            let v = self.coerce_literal(path, lit);
-            self.state.insert(path.clone(), v);
+            let v = self.store.coerce_literal(path, lit);
+            self.store.put(path.clone(), v);
+        }
+        self.store.refresh_clock();
+        for (path, lit) in &seeds {
+            if lute_manifest::clock::is_clock_path(path) {
+                let v = self.store.coerce_literal(path, lit);
+                self.store.put(path.clone(), v);
+            }
         }
         self.seed.state = seeds;
         for f in &self.seed.facts {
             if let Some(fact) = parse_ground_fact(f) {
-                self.base_facts.insert(fact);
+                self.store.assert(fact);
             }
         }
     }
 
-    /// Coerce a raw mock literal against a path's declared value-type.
-    fn coerce_literal(&self, path: &str, lit: &str) -> Value {
-        match self.types.get(path).map(String::as_str) {
-            Some("bool") => match lit {
-                "true" => Value::Bool(true),
-                "false" => Value::Bool(false),
-                _ => Value::Str(lit.to_string()),
-            },
-            Some("number") => lit
-                .parse::<f64>()
-                .map(Value::Num)
-                .unwrap_or(Value::Str(lit.to_string())),
-            // enum / string / reserved / unknown: keep verbatim, but recognize
-            // an obvious bool/number so an un-typed seed still evaluates.
-            _ => match lit {
-                "true" => Value::Bool(true),
-                "false" => Value::Bool(false),
-                _ => lit
-                    .parse::<f64>()
-                    .map(Value::Num)
-                    .unwrap_or(Value::Str(lit.to_string())),
-            },
-        }
+    /// Evaluate a `raw` CEL fragment over live state + the closure, through
+    /// the one CEL evaluator. The one chokepoint every CEL evaluation in
+    /// this walk funnels through, so recording each produced
+    /// [`UnresolvedAtom`] into `self.unresolved` here covers guards, `::set`
+    /// values, and quest predicates alike. `lute play`'s honesty gate reads
+    /// it ([`Carry::unresolved`]); the returned atoms feed an
+    /// [`UnknownSite`].
+    fn eval_atoms(&mut self, raw: &str) -> (Value, Vec<UnresolvedAtom>) {
+        let (v, atoms) = self.store.eval(raw);
+        self.unresolved.extend(atoms.iter().cloned());
+        (v, atoms)
     }
 
-    /// Recompute the least-fixpoint: `all_facts = base ∪ derive(base)`,
-    /// through the shared [`crate::datalog`] evaluator trace uses too.
-    /// Under `derive: false` (dsl 0.22.0 §6) the rules are not applied: the
-    /// derived relations are marked in `vocab`, so an unmatched one reads
-    /// unknown ([`Machine::blank`]).
-    fn recompute_facts(&mut self) {
-        if self.seed.derive {
-            let eff = EffectiveState::new(&self.schema, self.state.clone());
-            let closure = self.program.fixpoint(&self.base_facts, &eff);
-            self.all_facts = closure.facts;
-            self.undecided = closure.undecided;
-        } else {
-            self.all_facts = self.base_facts.clone();
-            self.undecided.clear();
-        }
-    }
-
-    /// Evaluate a `raw` CEL fragment over live state + the current fixpoint.
-    /// Reuses `lute_cel` (parse) + `crate::eval` (the one CEL evaluator).
-    /// The one chokepoint every CEL evaluation in this walk funnels through,
-    /// so recording each produced [`UnresolvedAtom`] into `self.unresolved`
-    /// here (rather than at each call site) covers guards, `::set` RHS
-    /// values, and quest predicates alike with one line. `lute run` itself
-    /// never reads `self.unresolved` — its own output/exit code are
-    /// unchanged; the field exists for `lute play`'s honesty gate
-    /// ([`Carry::unresolved`], [`Machine::eval_guard`]).
     fn eval_raw(&mut self, raw: &str) -> Value {
-        if raw.trim().is_empty() {
-            return Value::Unknown;
-        }
-        let mut arena = CelArena::default();
-        let handle = match lute_cel::parse_slot(&mut arena, raw, 0) {
-            Ok(h) => h,
-            Err(_) => return Value::Unknown,
-        };
-        let ided = match arena.get(handle) {
-            Some(e) => e,
-            None => return Value::Unknown,
-        };
-        let eff = EffectiveState::new(&self.schema, self.state.clone());
-        let mut fs = FactStore::new(&self.vocab).with_undecided(self.undecided.clone());
-        for (rel, args) in &self.all_facts {
-            fs.assert(rel, args);
-        }
-        for id in &self.visited {
-            fs.visit(id);
-        }
-        let env = EvalEnv {
-            state: &eff,
-            facts: &fs,
-        };
-        let mut unresolved = Vec::new();
-        let v = eval(&ided.expr, &env, &mut unresolved);
-        self.unresolved.extend(unresolved);
-        v
+        self.eval_atoms(raw).0
     }
 
-    /// `Some(bool)` for a decided guard, `None` when unknown.
-    fn truthy(&mut self, raw: &str) -> Option<bool> {
-        match self.eval_raw(raw) {
+    /// A guard judged at `site`: `Some(bool)` when decided; `None` when
+    /// undecided — the driver was asked ([`Driver::unknown`]) and, when it
+    /// halts, the walk is incomplete from here.
+    fn judge(&mut self, raw: &str, site: Site<'_>) -> Option<bool> {
+        let (v, atoms) = self.eval_atoms(raw);
+        match v {
             Value::Bool(b) => Some(b),
-            _ => None,
+            _ => {
+                self.at_unknown(site, raw, &atoms);
+                None
+            }
         }
     }
 
-    /// Truthiness of an IR structured `expr` node (`lute_compile::expr::ExprNode`'s
-    /// serialized shape — `lit`/`path`/`op`/`cond`/`list`/`isSet`/`has`), the
-    /// executable surface a compiled `<when is=…>` match arm carries (IR A13).
-    /// Three-valued like [`Machine::truthy`]: `None` = unknown, never a guess.
-    fn expr_node_truthy(&mut self, node: &Json) -> Option<bool> {
-        match self.expr_node_value(node) {
-            Value::Bool(b) => Some(b),
-            _ => None,
+    /// Report an undecided value at `site` to the driver; a halt makes the
+    /// walk incomplete. `true` when it halted.
+    fn at_unknown(&mut self, site: Site<'_>, raw: &str, atoms: &[UnresolvedAtom]) -> bool {
+        let halt = self.driver.unknown(&UnknownSite {
+            kind: site.kind,
+            id: site.id,
+            addr: site.addr,
+            raw,
+            atoms,
+            quest: site.quest,
+            arm: site.arm,
+        }) == OnUnknown::Halt;
+        if halt {
+            self.incomplete = true;
         }
+        halt
     }
 
-    /// Evaluate one structured expr node against live state. Total over the
-    /// `ExprNode` kind set; anything unimplementable against the runner's
-    /// state model (`isSet`/`has` set-ness tracking, an unknown operator)
-    /// evaluates `Unknown` rather than crashing or guessing — the same
-    /// honesty rule every other guard surface follows.
-    fn expr_node_value(&mut self, node: &Json) -> Value {
-        if let Some(lit) = node.get("lit") {
-            return json_to_value(lit).unwrap_or(Value::Unknown);
+    /// Whether the walk stopped: ended, halted, or failed.
+    fn stopped(&self) -> bool {
+        self.terminated || self.incomplete || self.fatal.is_some()
+    }
+
+    /// The one state write (design §3.4): the [`Store`] write (clock
+    /// refresh, closure staleness), then exclusivity — a write that makes
+    /// facts of exclusive relations hold together is recorded right under
+    /// it and refuses the walk (dsl 0.25.0 §1).
+    fn write(&mut self, path: &str, v: Value) {
+        if !self.store.has_excludes() {
+            self.store.write(path, v);
+            return;
         }
-        if let Some(path) = node.get("path").and_then(Json::as_str) {
-            return self.state.get(path).cloned().unwrap_or(Value::Unknown);
-        }
-        // `isSet(p)` / `has(p)` are definite presence (D19): every live value
-        // — a default, a carried or seeded value, a write — is in `state`.
-        // Without this, every `isSet(…) && …` guard read unknown, so a
-        // gated line on a maybe-unset path (dsl 0.23.0 §6 `prev.run.*`)
-        // could never play.
-        if let Some(path) = node
-            .get("isSet")
-            .or_else(|| node.get("has"))
-            .and_then(Json::as_str)
-        {
-            return Value::Bool(self.state.contains_key(path));
-        }
-        if let (Some(cond), Some(then), Some(otherwise)) =
-            (node.get("cond"), node.get("then"), node.get("else"))
-        {
-            return match self.expr_node_value(cond) {
-                Value::Bool(true) => self.expr_node_value(then),
-                Value::Bool(false) => self.expr_node_value(otherwise),
-                _ => Value::Unknown,
-            };
-        }
-        if let Some(op) = node.get("op").and_then(Json::as_str) {
-            let l = node
-                .get("l")
-                .map(|n| self.expr_node_value(n))
-                .unwrap_or(Value::Unknown);
-            let r = node.get("r").map(|n| self.expr_node_value(n));
-            return match (op, r) {
-                ("!", None) => match l {
-                    Value::Bool(b) => Value::Bool(!b),
-                    _ => Value::Unknown,
-                },
-                ("-", None) => match l {
-                    Value::Num(n) => Value::Num(-n),
-                    _ => Value::Unknown,
-                },
-                ("&&", Some(r)) => match (l, r) {
-                    (Value::Bool(false), _) | (_, Value::Bool(false)) => Value::Bool(false),
-                    (Value::Bool(true), Value::Bool(true)) => Value::Bool(true),
-                    _ => Value::Unknown,
-                },
-                ("||", Some(r)) => match (l, r) {
-                    (Value::Bool(true), _) | (_, Value::Bool(true)) => Value::Bool(true),
-                    (Value::Bool(false), Value::Bool(false)) => Value::Bool(false),
-                    _ => Value::Unknown,
-                },
-                ("==", Some(r)) => expr_node_eq(&l, &r)
-                    .map(Value::Bool)
-                    .unwrap_or(Value::Unknown),
-                ("!=", Some(r)) => expr_node_eq(&l, &r)
-                    .map(|b| Value::Bool(!b))
-                    .unwrap_or(Value::Unknown),
-                ("<", Some(r)) => expr_node_cmp(&l, &r)
-                    .map(|o| Value::Bool(o == std::cmp::Ordering::Less))
-                    .unwrap_or(Value::Unknown),
-                ("<=", Some(r)) => expr_node_cmp(&l, &r)
-                    .map(|o| Value::Bool(o != std::cmp::Ordering::Greater))
-                    .unwrap_or(Value::Unknown),
-                (">", Some(r)) => expr_node_cmp(&l, &r)
-                    .map(|o| Value::Bool(o == std::cmp::Ordering::Greater))
-                    .unwrap_or(Value::Unknown),
-                (">=", Some(r)) => expr_node_cmp(&l, &r)
-                    .map(|o| Value::Bool(o != std::cmp::Ordering::Less))
-                    .unwrap_or(Value::Unknown),
-                ("+", Some(r)) => match (l, r) {
-                    (Value::Num(a), Value::Num(b)) => Value::Num(a + b),
-                    (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
-                    _ => Value::Unknown,
-                },
-                ("-", Some(r)) | ("*", Some(r)) | ("/", Some(r)) | ("%", Some(r)) => match (l, r) {
-                    (Value::Num(a), Value::Num(b)) => match op {
-                        "-" => Value::Num(a - b),
-                        "*" => Value::Num(a * b),
-                        "/" if b != 0.0 => Value::Num(a / b),
-                        // dsl 0.24.0 §1: integer `%` — the truncated
-                        // remainder of two integral values (`+ 0.0` folds
-                        // `-0`); a fractional operand or a zero divisor is
-                        // unknown, as in trace (`lute_check::apply_op`).
-                        "%" if a.fract() == 0.0 && b.fract() == 0.0 && b != 0.0 => {
-                            Value::Num(a % b + 0.0)
-                        }
-                        _ => Value::Unknown,
-                    },
-                    _ => Value::Unknown,
-                },
-                _ => Value::Unknown,
-            };
-        }
-        // `list` / `isSet` / `has` / anything newer: no runner-side model yet.
-        Value::Unknown
+        let before = self.store.exclusive_now();
+        self.store.write(path, v);
+        self.exclusive_check(&before);
     }
 
     /// Resolve a control-flow target `addr` to a command index. A `converge`
@@ -1079,6 +836,7 @@ impl<D: Driver> Machine<D> {
         } else {
             self.run_range(0, self.commands.len());
         }
+        self.store.derive();
         match self.fatal.take() {
             Some(msg) => Err(msg),
             None => Ok(()),
@@ -1090,10 +848,12 @@ impl<D: Driver> Machine<D> {
     /// the scripted-choice cursor, the unconsumed bridge answers). Only
     /// meaningful post-`run`; a pre-run carry would just echo the seeds back.
     pub fn into_carry(self) -> (Carry, D) {
+        let quest_status = self.quest_status;
+        let (state, base_facts) = self.store.into_parts();
         let carry = Carry {
-            state: self.state,
-            base_facts: self.base_facts,
-            quest_status: self.quest_status,
+            state,
+            base_facts,
+            quest_status,
             incomplete: self.incomplete,
             unresolved: self.unresolved,
             accepted: self.accepted,
@@ -1110,6 +870,11 @@ impl<D: Driver> Machine<D> {
         &self.driver
     }
 
+    /// The driver, to hand it what it needs between walks.
+    pub fn driver_mut(&mut self) -> &mut D {
+        &mut self.driver
+    }
+
     /// The artifact's `kind` (`scene` when absent).
     pub fn kind(&self) -> &str {
         &self.kind
@@ -1117,7 +882,45 @@ impl<D: Driver> Machine<D> {
 
     /// Live state (path → value).
     pub fn state(&self) -> &BTreeMap<String, Value> {
-        &self.state
+        &self.store.values
+    }
+
+    /// A state path's value in the [`Store`]'s read order (reserved
+    /// defaults included).
+    pub fn read(&self, path: &str) -> Read {
+        self.store.read(path)
+    }
+
+    /// Base facts (seeds ∪ asserted − retracted), before derivation.
+    pub fn base_facts(&self) -> &BTreeSet<Fact> {
+        self.store.base_facts()
+    }
+
+    /// Derived relations whose closure read an undecided rule guard.
+    pub fn undecided(&self) -> &BTreeMap<String, Vec<UnresolvedAtom>> {
+        self.store.undecided()
+    }
+
+    /// dsl 0.5.1 §1.3: every reserved quest path an evaluation read and
+    /// whether it read a seeded value (`false`) or the reserved default
+    /// (`true`).
+    pub fn reserved_reads(&self) -> BTreeMap<String, bool> {
+        self.store
+            .reserved_reads()
+            .iter()
+            .map(|(p, k)| (p.clone(), *k == crate::eval::ReservedReadKind::Defaulted))
+            .collect()
+    }
+
+    /// dsl 0.25.0 §1: every pair of exclusive facts holding together now.
+    pub fn exclusive_violations(&mut self) -> Vec<String> {
+        self.store.exclusive_now()
+    }
+
+    /// dsl 0.22.0 §6: the derived relations a query read under `derive:
+    /// false` — looked up, not derived.
+    pub fn derived_reads(&self) -> &BTreeSet<String> {
+        self.store.derived_reads()
     }
 
     /// Quest statuses (quest id → `unset`/`active`/`complete`/`failed`).
@@ -1142,11 +945,11 @@ impl<D: Driver> Machine<D> {
 
     /// Drive the dispatcher over `[start, stop)`. Used for the whole scene
     /// (`0..len`) and for bounded hub-option / quest-body segments. Once an
-    /// `end` record has run the walk is over, so every LATER segment (a quest
-    /// `<on>` body, an objective body) is a no-op — the one guard here is what
-    /// makes that true for all of them at once.
+    /// `end` record has run (or the walk halted) the walk is over, so every
+    /// LATER segment (a quest `<on>` body, an objective body) is a no-op —
+    /// the one guard here is what makes that true for all of them at once.
     fn run_range(&mut self, start: usize, stop: usize) {
-        if self.terminated {
+        if self.stopped() {
             return;
         }
         let mut pc = start;
@@ -1203,6 +1006,10 @@ impl<D: Driver> Machine<D> {
                 Step::Next(pc + 1)
             }
             "jump" => {
+                // Not a transcript record: `lute trace` reports an authored
+                // `::next` and the source-only steps that ride on the jump.
+                self.driver
+                    .observe(json!({ "kind": "jump", "addr": cmd.get("addr") }));
                 let t = cmd.get("target").and_then(Json::as_str).unwrap_or("");
                 Step::Next(self.resolve(t))
             }
@@ -1317,12 +1124,13 @@ impl<D: Driver> Machine<D> {
         }));
     }
 
-    /// Substitute `{{…}}` markers: a `path` with its live value, a `ref` by
-    /// evaluating its inlined def body (`expr.raw`, lute 0.21.1). A marker whose
-    /// value is unknown (unset path, undecided ref) or a reserved token keeps
-    /// its verbatim text (state-lifecycle.md). A placeholder's `format`
-    /// (dsl 0.24.0 §4) applies to the value: `ordinal` renders a number as an
-    /// English ordinal ([`formatted`]).
+    /// Substitute `{{…}}` markers: a `path` with its value (reserved
+    /// defaults included), a `ref` by evaluating its inlined def body
+    /// (`expr.raw`, lute 0.21.1). A marker whose value is unknown (unset
+    /// path, undecided value or ref) or a reserved token keeps its verbatim
+    /// text (state-lifecycle.md). A placeholder's `format` (dsl 0.24.0 §4)
+    /// applies to the value: `ordinal` renders a number as an English
+    /// ordinal ([`formatted`]).
     fn interpolate(&mut self, text: &str, placeholders: Option<&Vec<Json>>) -> String {
         let Some(phs) = placeholders else {
             return text.to_string();
@@ -1343,22 +1151,22 @@ impl<D: Driver> Machine<D> {
             let rendered = match it.next() {
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("path") => {
                     let path = ph.get("path").and_then(Json::as_str).unwrap_or("");
-                    match self.state.get(path) {
-                        Some(v) => formatted(ph, v).unwrap_or_else(|| self.path_text(path, v)),
-                        None => marker.to_string(),
+                    match self.store.eval(path).0 {
+                        Value::Unknown => marker.to_string(),
+                        v => formatted(ph, &v).unwrap_or_else(|| self.path_text(path, &v)),
                     }
                 }
                 // Prerelease N8: the raised member of a kind beat, by its cast
                 // display name when it is a cast id, else the id.
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("occasionTarget") => {
-                    match self.state.get(lute_check::beats::OCCASION_TARGET) {
+                    match self.store.values.get(lute_check::beats::OCCASION_TARGET) {
                         Some(Value::Str(m)) => self
                             .display_names
                             .get(m)
                             .cloned()
                             .unwrap_or_else(|| m.clone()),
+                        Some(Value::Unknown) | None => marker.to_string(),
                         Some(v) => value_to_string(v),
-                        None => marker.to_string(),
                     }
                 }
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("ref") => {
@@ -1382,10 +1190,10 @@ impl<D: Driver> Machine<D> {
     /// anything else its plain value.
     fn path_text(&self, path: &str, v: &Value) -> String {
         if let Value::Str(s) = v {
-            let labels = self
-                .labels
-                .get(path)
-                .or_else(|| path.strip_prefix("prev.").and_then(|p| self.labels.get(p)));
+            let labels = self.store.labels.get(path).or_else(|| {
+                path.strip_prefix("prev.")
+                    .and_then(|p| self.store.labels.get(p))
+            });
             if let Some(label) = labels.and_then(|l| l.get(s)) {
                 return label.clone();
             }
@@ -1395,6 +1203,11 @@ impl<D: Driver> Machine<D> {
 
     // ── state & facts ──────────────────────────────────────────────────
 
+    /// `::set` (state-lifecycle.md): `=` stores the value; a compound op
+    /// (`+=`, `-=`, `*=`, `/=`) folds it into the current value — an operand
+    /// that is not a number (unknown, absent, another type) makes the result
+    /// unknown, never a guessed `0` (D5). An unknown result is a
+    /// [`SiteKind::SetValue`] site.
     fn exec_set(&mut self, cmd: &Json) {
         let path = cmd
             .get("path")
@@ -1403,35 +1216,42 @@ impl<D: Driver> Machine<D> {
             .to_string();
         let op = cmd.get("op").and_then(Json::as_str).unwrap_or("=");
         let rhs_raw = cmd.get("value").and_then(Json::as_str).unwrap_or("");
-        let rhs = self.eval_raw(rhs_raw);
+        let (rhs, mut atoms) = self.eval_atoms(rhs_raw);
         let new = if op == "=" {
             rhs
         } else {
-            // Compound arithmetic op: fold against the current value (0 default).
-            let cur = match self.state.get(&path) {
-                Some(Value::Num(n)) => *n,
-                _ => 0.0,
+            let cur = match self.store.read(&path) {
+                Read::Value(v) => v,
+                Read::Unset => {
+                    atoms.push(UnresolvedAtom::Path(path.clone()));
+                    Value::Unknown
+                }
             };
-            let by = match rhs {
-                Value::Num(n) => n,
-                _ => 0.0,
-            };
-            let folded = match op {
-                "+=" => cur + by,
-                "-=" => cur - by,
-                "*=" => cur * by,
-                "/=" if by != 0.0 => cur / by,
-                _ => cur,
-            };
-            Value::Num(folded)
+            fold_op(op, &cur, &rhs)
         };
-        self.state.insert(path.clone(), new.clone());
-        self.driver.emit(json!({
+        if new == Value::Unknown {
+            let site = Site::new(SiteKind::SetValue, &path, addr(cmd));
+            if self.at_unknown(site, rhs_raw, &atoms) {
+                return;
+            }
+        }
+        let rec = json!({
             "addr": addr(cmd),
             "kind": "set",
             "path": path,
             "value": value_to_json(&new),
-        }));
+        });
+        self.write_recorded(&path, new, rec);
+    }
+
+    /// [`Machine::write`] whose record is emitted between the write and its
+    /// exclusivity check, so an `exclusive` record follows the write that
+    /// caused it.
+    fn write_recorded(&mut self, path: &str, v: Value, rec: Json) {
+        let before = self.store.exclusive_now();
+        self.store.write(path, v);
+        self.driver.emit(rec);
+        self.exclusive_check(&before);
     }
 
     fn exec_assert(&mut self, cmd: &Json) {
@@ -1445,9 +1265,8 @@ impl<D: Driver> Machine<D> {
             .and_then(Json::as_array)
             .map(|a| a.iter().map(json_arg_to_string).collect())
             .unwrap_or_default();
-        let before = self.exclusive_now();
-        self.base_facts.insert((rel.clone(), args.clone()));
-        self.recompute_facts();
+        let before = self.store.exclusive_now();
+        self.store.assert((rel.clone(), args.clone()));
         self.driver.emit(json!({
             "addr": addr(cmd),
             "kind": "assert",
@@ -1467,14 +1286,9 @@ impl<D: Driver> Machine<D> {
             .and_then(Json::as_array)
             .map(|a| a.iter().map(json_arg_to_string).collect())
             .unwrap_or_default();
-        let before = self.exclusive_now();
+        let before = self.store.exclusive_now();
         // `_` positions are a bulk wildcard over the ground positions.
-        self.base_facts.retain(|(r, a)| {
-            !(r == &rel
-                && a.len() == args.len()
-                && args.iter().zip(a).all(|(p, v)| p == "_" || p == v))
-        });
-        self.recompute_facts();
+        self.store.retract(&rel, &args);
         self.driver.emit(json!({
             "addr": addr(cmd),
             "kind": "retract",
@@ -1483,32 +1297,15 @@ impl<D: Driver> Machine<D> {
         self.exclusive_check(&before);
     }
 
-    /// dsl 0.25.0 §1: every pair of facts of exclusive relations holding now
-    /// (derived ones included), rendered `a(x) and b(x) both hold`.
-    fn exclusive_now(&self) -> Vec<String> {
-        let mut out = Vec::new();
-        for (a, b) in &self.excludes {
-            for (_, args) in self.all_facts.iter().filter(|(r, _)| r == a) {
-                if self.all_facts.contains(&(b.clone(), args.clone())) {
-                    out.push(format!(
-                        "{} and {} both hold",
-                        render_fact(a, args),
-                        render_fact(b, args)
-                    ));
-                }
-            }
-        }
-        out
-    }
-
     /// dsl 0.25.0 §1: a write that made exclusive relations hold together —
     /// even for a moment a later write undoes — is recorded at the write and
-    /// halts the walk like `lute trace` refuses it (`lute play` exit 1).
+    /// refuses the walk (`lute trace` exit 1, `lute play` exit 1).
     fn exclusive_check(&mut self, before: &[String]) {
-        if self.excludes.is_empty() {
+        if !self.store.has_excludes() {
             return;
         }
         let new: Vec<String> = self
+            .store
             .exclusive_now()
             .into_iter()
             .filter(|v| !before.contains(v))
@@ -1566,11 +1363,10 @@ impl<D: Driver> Machine<D> {
     /// with the atoms this evaluation recorded (left in
     /// [`Machine::unresolved`]).
     fn option_verdict(&mut self, when: &str) -> Verdict {
-        let mark = self.unresolved.len();
-        match self.truthy(when) {
-            Some(true) => Verdict::Open,
-            Some(false) => Verdict::Closed,
-            None => Verdict::Unknown(self.unresolved[mark..].to_vec()),
+        match self.eval_atoms(when) {
+            (Value::Bool(true), _) => Verdict::Open,
+            (Value::Bool(false), _) => Verdict::Closed,
+            (_, atoms) => Verdict::Unknown(atoms),
         }
     }
 
@@ -1661,6 +1457,7 @@ impl<D: Driver> Machine<D> {
                 0,
             ),
             Pick::Unscripted { scripted } => (None, scripted),
+            Pick::Leave => (None, 0),
         };
         let incomplete_rec = |note: &str| {
             let mut rec = serde_json::Map::new();
@@ -1678,6 +1475,12 @@ impl<D: Driver> Machine<D> {
             Json::Object(rec)
         };
         let Some(forced) = chosen else {
+            if auto {
+                // Nothing open: every option closed or undecided.
+                let atoms = unknown_atoms(&judged);
+                let site = Site::new(SiteKind::BranchAllUnknown, &branch, addr(cmd));
+                self.at_unknown(site, "", &atoms);
+            }
             self.incomplete = true;
             let note = if auto {
                 NOTE_NO_ELIGIBLE
@@ -1726,7 +1529,7 @@ impl<D: Driver> Machine<D> {
             }
         }
         if let Some(key) = record_key {
-            self.state.insert(key, Value::Str(forced.clone()));
+            self.write(&key, Value::Str(forced.clone()));
         }
         let mut rec = serde_json::Map::new();
         rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
@@ -1782,20 +1585,22 @@ impl<D: Driver> Machine<D> {
         let mut presentation = 0usize;
         // [`Pick::HubAutoPass`]: the next menu position the pass considers.
         let mut auto_at = 0usize;
-        let mut visited_once: BTreeSet<String> = BTreeSet::new();
         loop {
-            // Eligible = not an already-exhausted `once` option, and its
-            // guard does not DECIDE false right now (an unknown guard stays
-            // eligible — the same three-valued discipline `do_choice`'s
-            // guard refusal uses). The spent and guard-closed options ride
-            // the visit record, so a menu shows what was really offered.
+            // Eligible = not a `once` option already taken (its
+            // `scene.visited.<hub>.<option>` is true, D8: the memory is the
+            // reserved visit record, so a hub `::next` re-enters still knows
+            // it), and its guard does not DECIDE false right now (an unknown
+            // guard stays eligible — the same three-valued discipline
+            // `do_choice`'s guard refusal uses). The spent and guard-closed
+            // options ride the visit record, so a menu shows what was really
+            // offered.
             let mut judged = Vec::new();
             for o in &options {
                 let Some(oid) = o.get("id").and_then(Json::as_str) else {
                     continue;
                 };
                 let once = o.get("once").and_then(Json::as_bool).unwrap_or(false);
-                let verdict = if once && visited_once.contains(oid) {
+                let verdict = if once && self.hub_visited(&id, oid) {
                     Verdict::Spent
                 } else {
                     match o.get("when").and_then(Json::as_str) {
@@ -1859,6 +1664,7 @@ impl<D: Driver> Machine<D> {
             let (choice_id, auto) = match self.driver.choose(&menu) {
                 Pick::Option(c) => (Some(c), false),
                 Pick::Unscripted { .. } => (None, false),
+                Pick::Leave => break,
                 Pick::AutoFirst => (first_open(None, 0).map(|(_, o)| o.id.clone()), true),
                 Pick::HubAutoPass => match first_open(Some(false), auto_at) {
                     Some((i, o)) => {
@@ -1876,6 +1682,14 @@ impl<D: Driver> Machine<D> {
                 if !auto && !any_eligible {
                     // Natural convergence: nothing left eligible to present.
                     break;
+                }
+                if auto {
+                    // No open exit: the exits are closed or undecided.
+                    let exits: Vec<MenuOption> =
+                        judged.iter().filter(|o| o.exit).cloned().collect();
+                    let atoms = unknown_atoms(&exits);
+                    let site = Site::new(SiteKind::HubAllUnknown, &id, addr(cmd));
+                    self.at_unknown(site, "", &atoms);
                 }
                 // The decisions ran out but the hub would still be
                 // re-presented (eligible options remain) — halt incomplete
@@ -1910,7 +1724,7 @@ impl<D: Driver> Machine<D> {
                 // conformance contract) skips it; `lute play` refuses it, as
                 // `lute trace` does — a silent skip lets the rest of the
                 // script drift out of step with what the player was offered.
-                if once && visited_once.contains(&choice_id) {
+                if once && self.hub_visited(&id, &choice_id) {
                     match self.driver.forced(&menu, &choice_id, &Verdict::Spent) {
                         Forced::Take => {}
                         Forced::Skip => continue,
@@ -1939,12 +1753,16 @@ impl<D: Driver> Machine<D> {
                 }
             }
             if let Some(key) = &record_key {
-                self.state
-                    .insert(key.clone(), Value::Str(choice_id.clone()));
+                self.write(key, Value::Str(choice_id.clone()));
             }
             // hub visit record slot (scene.visited.<hub>.<opt>, state-lifecycle.md).
-            self.state
-                .insert(format!("scene.visited.{id}.{choice_id}"), Value::Bool(true));
+            self.write(
+                &format!("scene.visited.{id}.{choice_id}"),
+                Value::Bool(true),
+            );
+            if self.stopped() {
+                return Step::Halt;
+            }
             let mut rec = head(Json::String(choice_id.clone()));
             marks(&mut rec);
             self.driver.emit(Json::Object(rec));
@@ -1956,11 +1774,8 @@ impl<D: Driver> Machine<D> {
                 .copied()
                 .unwrap_or(self.commands.len());
             self.run_range(start, stop);
-            if self.fatal.is_some() || self.incomplete || self.terminated {
+            if self.stopped() {
                 return Step::Halt;
-            }
-            if once {
-                visited_once.insert(choice_id);
             }
             if is_exit {
                 break;
@@ -1969,6 +1784,26 @@ impl<D: Driver> Machine<D> {
         Step::Next(converge_idx)
     }
 
+    /// Whether hub `hub`'s option `option` was taken (its reserved
+    /// `scene.visited.<hub>.<option>` visit record).
+    fn hub_visited(&self, hub: &str, option: &str) -> bool {
+        matches!(
+            self.store.read(&format!("scene.visited.{hub}.{option}")),
+            Read::Value(Value::Bool(true))
+        )
+    }
+
+    /// `<match>`: the first arm whose condition holds is taken, else
+    /// `otherwise`, else converge. Every arm is judged by the one CEL
+    /// evaluator: its `test` text, or — an `is` arm without one — its
+    /// structured `expr` ([`expr_to_cel`]); S3 guarantees one of the two.
+    /// An `is` pattern over a bare path subject that is unset matches only
+    /// `unset` (definite, as `isSet` is), so an arm the unset subject cannot
+    /// match is false, never unknown — except `occasion.target`, a binding,
+    /// which is unknown until bound (T1-9). An undecided arm is an
+    /// [`UnknownSite`] ([`SiteKind::Arm`], or [`SiteKind::OccasionTarget`]
+    /// when the unbound target is what is missing): a driver that halts
+    /// stops the walk here; one that continues skips the arm.
     fn do_match(&mut self, cmd: &Json) -> Step {
         let arms = cmd
             .get("arms")
@@ -1976,22 +1811,68 @@ impl<D: Driver> Machine<D> {
             .cloned()
             .unwrap_or_default();
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
+        let subject = cmd.get("subject").and_then(Json::as_str).unwrap_or("");
+        let subject_unset = super::store::parse(subject)
+            .and_then(|e| crate::eval::expr_path(&e))
+            .filter(|p| p != lute_check::beats::OCCASION_TARGET)
+            .is_some_and(|p| self.store.read(&p) == Read::Unset);
         for (i, arm) in arms.iter().enumerate() {
-            // An `is`-form arm compiles to an EMPTY `test` plus a structured
-            // `expr` (IR A13, `stage.rs::walk_match`) — the executable surface
-            // an engine must read. A `test`-form arm carries raw CEL. Prefer
-            // the structured expr whenever present; falling back to the raw
-            // `test` keeps pre-A13 artifacts working. Evaluating ONLY `test`
-            // here was a defect: every `is` arm read as empty→unknown and the
-            // whole match fell through to `otherwise`.
-            let matched = match arm.get("expr") {
-                Some(expr) => self.expr_node_truthy(expr),
-                None => {
-                    let test = arm.get("test").and_then(Json::as_str).unwrap_or("");
-                    self.truthy(test)
+            let test = arm.get("test").and_then(Json::as_str).unwrap_or("");
+            let is_arm = test.trim().is_empty();
+            let raw = if is_arm {
+                arm.get("expr").and_then(expr_to_cel).unwrap_or_default()
+            } else {
+                test.to_string()
+            };
+            let (v, atoms) = self.eval_atoms(&raw);
+            if self.probe_arms && is_arm {
+                if let Some(expr) = arm.get("expr") {
+                    let mut paths = BTreeSet::new();
+                    expr_paths(expr, &mut paths);
+                    let reads: serde_json::Map<String, Json> = paths
+                        .into_iter()
+                        .map(|p| {
+                            let v = match self.store.read(&p) {
+                                Read::Value(Value::Unknown) => json!({ "unknown": true }),
+                                Read::Value(v) => value_to_json(&v),
+                                Read::Unset => Json::Null,
+                            };
+                            (p, v)
+                        })
+                        .collect();
+                    let held = match &v {
+                        Value::Bool(b) => Json::Bool(*b),
+                        _ => Json::Null,
+                    };
+                    self.driver.observe(json!({
+                        "kind": "armExpr", "addr": addr(cmd), "arm": i, "expr": expr,
+                        "held": held, "reads": reads,
+                    }));
+                }
+            }
+            let matched = match v {
+                Value::Bool(b) => b,
+                _ if is_arm && subject_unset => false,
+                _ => {
+                    let target_unbound = atoms.iter().any(|a| {
+                        matches!(a, UnresolvedAtom::Path(p) if p == lute_check::beats::OCCASION_TARGET)
+                    });
+                    let kind = if target_unbound {
+                        SiteKind::OccasionTarget
+                    } else {
+                        SiteKind::Arm
+                    };
+                    let site = Site {
+                        arm: Some(i),
+                        ..Site::new(kind, subject, addr(cmd))
+                    };
+                    if self.at_unknown(site, &raw, &atoms) {
+                        return Step::Halt;
+                    }
+                    false
                 }
             };
-            if matched == Some(true) {
+            if matched {
                 let target = arm.get("target").and_then(Json::as_str).unwrap_or(converge);
                 self.driver.emit(json!({
                     "addr": addr(cmd),
@@ -2036,19 +1917,22 @@ impl<D: Driver> Machine<D> {
         }));
     }
 
-    /// A `plugin` command (bridge-protocol.md). Effects that need no bridge
-    /// result apply. A `bridgeResult` effect reads the driver's answer to
-    /// the call ([`Driver::bridge`]; dsl 0.24.0 §5): the answered values are
-    /// written, typed by each result slot's declared type; a field the
-    /// answer leaves out (dsl 0.25.0 §7: one no content reads) is
-    /// unresolved. With no answer the effects are recorded unresolved and
-    /// the walk goes on (no host bridge is invoked) — unless content reads
-    /// one of the call's result slots and the driver halts at the
-    /// [`SiteKind::BridgeResult`] site (`lute play`): the walk then stops
-    /// AT the call, incomplete, before anything after it — a default arm
-    /// over the result slot included — is walked. `false` = the walk stops
-    /// here (that halt, or an answer that does not fit the call, which is
-    /// fatal).
+    /// A `plugin` command (bridge-protocol.md) and its declared effects (IR
+    /// A12; T1-3). A `bridgeResult` effect reads the driver's answer to the
+    /// call ([`Driver::bridge`]; dsl 0.24.0 §5): the answered values are
+    /// typed by each result slot's declared type; a field the answer leaves
+    /// out (dsl 0.25.0 §7: one no content reads), or every field of an
+    /// unanswered call, is written UNKNOWN (D7) and listed in
+    /// `unresolvedEffects`. An unanswered call whose results content reads is
+    /// a [`SiteKind::BridgeResult`] site: a driver that halts stops the walk
+    /// AT the call, before anything after it — a default arm over the result
+    /// slot included — is walked.
+    ///
+    /// After the `plugin` record, every decided write — a literal (a
+    /// resolved `fromAttr` included), an `op` fold, an answered result — goes
+    /// through the one write path and is recorded as a `set` with `effectOf:
+    /// <tag>`. `false` = the walk stops here (that halt, an answer that does
+    /// not fit the call, or a write the exclusivity check refused).
     fn exec_plugin(&mut self, cmd: &Json) -> bool {
         let tag = cmd
             .get("tag")
@@ -2087,13 +1971,7 @@ impl<D: Driver> Machine<D> {
             .any(|(_, p)| self.bridge_reads.paths.contains(p));
         let halt = answer.is_none()
             && read
-            && self.driver.unknown(&UnknownSite {
-                kind: SiteKind::BridgeResult,
-                id: &tag,
-                addr: addr(cmd),
-                raw: "",
-                atoms: &[],
-            }) == OnUnknown::Halt;
+            && self.at_unknown(Site::new(SiteKind::BridgeResult, &tag, addr(cmd)), "", &[]);
         let answered = match &answer {
             Some(a) => match self.bridge_values(&tag, &reads, a) {
                 Ok(values) => Some(values),
@@ -2103,7 +1981,6 @@ impl<D: Driver> Machine<D> {
                 }
             },
             None if halt => {
-                self.incomplete = true;
                 // The fields every answer to the tag gives (dsl 0.25.0 §7).
                 let (fields, paths): (Vec<&str>, Vec<&str>) = reads
                     .iter()
@@ -2123,73 +2000,88 @@ impl<D: Driver> Machine<D> {
             }
             None => None,
         };
-        let mut unresolved = Vec::new();
-        for e in &effects {
-            let path = e
-                .get("path")
-                .and_then(Json::as_str)
-                .unwrap_or("")
-                .to_string();
-            let Some(from) = e.get("from") else {
-                continue;
-            };
-            if let Some(lit) = from.as_bool() {
-                self.state.insert(path, Value::Bool(lit));
-            } else if let Some(n) = from.as_f64() {
-                self.state.insert(path, Value::Num(n));
-            } else if let Some(s) = from.as_str() {
-                self.state.insert(path, Value::Str(s.to_string()));
-            } else if from.get("op").is_some() {
-                let by = from.get("by").and_then(Json::as_f64).unwrap_or(0.0);
-                let cur = match self.state.get(&path) {
-                    Some(Value::Num(n)) => *n,
-                    _ => 0.0,
-                };
-                let op = from.get("op").and_then(Json::as_str).unwrap_or("");
-                let v = match op {
-                    "increment" => cur + by,
-                    "decrement" => cur - by,
-                    _ => cur,
-                };
-                self.state.insert(path, Value::Num(v));
-            } else if let Some(field) = from.get("bridgeResult").and_then(Json::as_str) {
-                match answered
+        let unresolved: Vec<&str> = reads
+            .iter()
+            .filter(|(f, _)| {
+                !answered
                     .as_ref()
-                    .and_then(|a| a.iter().find(|(f, _)| f == field))
-                {
-                    Some((_, v)) => {
-                        self.state.insert(path, v.clone());
-                    }
-                    None => unresolved.push(path),
-                }
-            }
-        }
-        let rec = match answered {
+                    .is_some_and(|a| a.iter().any(|(af, _)| af == f))
+            })
+            .map(|(_, p)| p.as_str())
+            .collect();
+        let mut rec = serde_json::Map::new();
+        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("kind".into(), Json::String("plugin".into()));
+        rec.insert("tag".into(), Json::String(tag.clone()));
+        rec.insert("external".into(), Json::Bool(true));
+        rec.insert("unresolvedEffects".into(), json!(unresolved));
+        match &answered {
             Some(values) => {
                 let fields: Vec<Json> = values
                     .iter()
                     .map(|(f, v)| json!({ "field": f, "value": value_to_json(v) }))
                     .collect();
-                json!({
-                    "addr": addr(cmd),
-                    "kind": "plugin",
-                    "tag": tag,
-                    "external": true,
-                    "unresolvedEffects": unresolved,
-                    "answered": fields,
-                    "note": "external bridge call — answered from `bridges:`",
-                })
+                rec.insert("answered".into(), Json::Array(fields));
+                rec.insert(
+                    "note".into(),
+                    json!("external bridge call — answered from `bridges:`"),
+                );
             }
-            None => json!({
-                "addr": addr(cmd),
-                "kind": "plugin",
-                "tag": tag,
-                "external": true,
-                "unresolvedEffects": unresolved,
-                "note": "external bridge call — not invoked; bridgeResult effects unresolved",
-            }),
-        };
-        self.driver.emit(rec);
+            None if !reads.is_empty() => {
+                rec.insert(
+                    "note".into(),
+                    json!("external bridge call — not invoked; bridgeResult effects unresolved"),
+                );
+            }
+            // Only declared effects: nothing about the call is external.
+            None => {}
+        }
+        self.driver.emit(Json::Object(rec));
+        for e in &effects {
+            let path = e.get("path").and_then(Json::as_str).unwrap_or("");
+            let Some(from) = e.get("from") else {
+                continue;
+            };
+            let value = if let Some(field) = from.get("bridgeResult").and_then(Json::as_str) {
+                answered
+                    .as_ref()
+                    .and_then(|a| a.iter().find(|(f, _)| f == field))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or(Value::Unknown)
+            } else if let Some(op) = from.get("op").and_then(Json::as_str) {
+                let by = from
+                    .get("by")
+                    .and_then(Json::as_f64)
+                    .map_or(Value::Unknown, Value::Num);
+                let cur = match self.store.read(path) {
+                    Read::Value(v) => v,
+                    Read::Unset => Value::Unknown,
+                };
+                match op {
+                    "increment" => fold_op("+=", &cur, &by),
+                    "decrement" => fold_op("-=", &cur, &by),
+                    _ => Value::Unknown,
+                }
+            } else {
+                json_to_value(from).unwrap_or(Value::Unknown)
+            };
+            if value == Value::Unknown {
+                // An unanswered result (D7), or a fold over no number.
+                self.write(path, Value::Unknown);
+            } else {
+                let rec = json!({
+                    "addr": addr(cmd),
+                    "kind": "set",
+                    "path": path,
+                    "value": value_to_json(&value),
+                    "effectOf": tag,
+                });
+                self.write_recorded(path, value, rec);
+            }
+            if self.stopped() {
+                return false;
+            }
+        }
         true
     }
 
@@ -2236,6 +2128,7 @@ impl<D: Driver> Machine<D> {
             // capability's `result:` shape; an untyped answer is refused —
             // never stored as a string that no bool/number read can match.
             let ty = self
+                .store
                 .types
                 .get(path)
                 .map(String::as_str)
@@ -2294,6 +2187,7 @@ impl<D: Driver> Machine<D> {
                         // record is emitted inside its quest's walk, after the
                         // quest declaration head (stage.rs `walk_quest`).
                         quest: quests.last().map(|q| q.id.clone()),
+                        addr: addr(cmd).to_string(),
                         target: cmd.get("target").and_then(Json::as_str).map(str::to_string),
                     });
                 }
@@ -2324,11 +2218,12 @@ impl<D: Driver> Machine<D> {
         self.quest_resume = true;
         let (_, _, seg_starts) = self.quest_program();
         for body in bodies {
-            if self.terminated {
+            if self.stopped() {
                 break;
             }
             self.run_segment(body, &seg_starts);
         }
+        self.store.derive();
         match self.fatal.take() {
             Some(msg) => Err(msg),
             None => Ok(()),
@@ -2338,17 +2233,38 @@ impl<D: Driver> Machine<D> {
     fn run_quest(&mut self) {
         let (quests, handlers, seg_starts) = self.quest_program();
 
-        // A fresh walk (`lute run`) starts every quest `unset`. A resumed one
-        // (`lute play`) keeps each carried status and registers only a quest it
-        // has never seen — populating its `quest.<id>.state` as `unset` so a
-        // beat `when` over it decides instead of reading an unset path.
+        // A fresh walk (`lute run`, `lute trace`) starts every quest `unset`
+        // — unless the seed holds it `active` / `complete` / `failed` (a
+        // mock's `quests:`, dsl 0.26.0 §7 T3-5): it was there before the
+        // walk, as a play's save holds it, so it starts there and no
+        // `questActive` fires (D9). A resumed one (`lute play`) keeps each
+        // carried status and registers only a quest it has never seen —
+        // populating its `quest.<id>.state` as `unset` so a beat `when` over
+        // it decides instead of reading an unset path.
         for q in &quests {
             if !self.quest_resume {
-                self.quest_status.insert(q.id.clone(), "unset".to_string());
+                let seeded = match self.store.values.get(&format!("quest.{}.state", q.id)) {
+                    Some(Value::Str(s))
+                        if matches!(s.as_str(), "active" | "complete" | "failed") =>
+                    {
+                        Some(s.clone())
+                    }
+                    _ => None,
+                };
+                match seeded {
+                    Some(state) => {
+                        self.driver.observe(json!({
+                            "kind": "quest", "quest": q.id, "outcome": state, "guard": "seeded",
+                        }));
+                        self.quest_status.insert(q.id.clone(), state);
+                    }
+                    None => {
+                        self.quest_status.insert(q.id.clone(), "unset".to_string());
+                    }
+                }
             } else if !self.quest_status.contains_key(&q.id) {
                 self.quest_status.insert(q.id.clone(), "unset".to_string());
-                self.state
-                    .insert(format!("quest.{}.state", q.id), Value::Str("unset".into()));
+                self.write(&format!("quest.{}.state", q.id), Value::Str("unset".into()));
             }
         }
 
@@ -2377,13 +2293,23 @@ impl<D: Driver> Machine<D> {
             {
                 continue;
             }
-            let activate = match &q.start {
-                None => false,
-                Some(raw) => self.truthy(raw) == Some(true),
-            } || self.is_accepted(&q.id);
-            if activate {
-                self.set_quest_state(&q.id, "active", None);
-                self.fire_event("questActive", Some(&q.id), None, &handlers, &seg_starts);
+            let started = match &q.start {
+                None => None,
+                Some(raw) => Some(self.judge(raw, Site::quest(SiteKind::QuestStart, &q.id, &q.id))),
+            };
+            if self.stopped() {
+                return;
+            }
+            match started {
+                Some(Some(true)) => {
+                    self.activate_quest(&q.id, q.start.as_deref(), false, &handlers, &seg_starts)
+                }
+                _ if self.is_accepted(&q.id) => {
+                    self.activate_quest(&q.id, None, true, &handlers, &seg_starts)
+                }
+                Some(Some(false)) => self.observe_waiting(&q.id, "never", q.start.as_deref()),
+                None => self.observe_waiting(&q.id, "awaiting accept", None),
+                Some(None) => {}
             }
         }
 
@@ -2395,7 +2321,7 @@ impl<D: Driver> Machine<D> {
             for (qi, q) in quests.iter().enumerate() {
                 for (oi, o) in q.objectives.iter().enumerate() {
                     let path = format!("quest.{}.objectives.{}.done", q.id, o.id);
-                    if self.state.get(&path) == Some(&Value::Bool(true)) {
+                    if self.store.values.get(&path) == Some(&Value::Bool(true)) {
                         done.insert((qi, oi));
                     }
                 }
@@ -2411,7 +2337,7 @@ impl<D: Driver> Machine<D> {
         // later event is delivered — nothing downstream of the terminator runs.
         let events: Vec<String> = self.seed.events.clone();
         for ev in events {
-            if self.terminated {
+            if self.stopped() {
                 break;
             }
             self.fire_event(&ev, None, None, &handlers, &seg_starts);
@@ -2427,7 +2353,7 @@ impl<D: Driver> Machine<D> {
         // name is never raised this way: the runner fires those itself.)
         let occasions: Vec<String> = self.seed.occasions.clone();
         for occasion in &occasions {
-            if self.terminated {
+            if self.stopped() {
                 break;
             }
             let (name, target) = crate::split_occasion(occasion);
@@ -2442,7 +2368,7 @@ impl<D: Driver> Machine<D> {
                 // dsl 0.24.0 §2: an `<on target>` answers only a raise for
                 // its target.
                 self.fire_event(name, None, target, &handlers, &seg_starts);
-                if self.terminated {
+                if self.stopped() {
                     break;
                 }
             }
@@ -2454,8 +2380,14 @@ impl<D: Driver> Machine<D> {
         // objective (a missing mock left the `done` predicate unknown). An
         // `end` record makes this moot: the author declared the walk finished,
         // so an unsettled objective is a deliberate outcome, not a missing mock.
-        if self.terminated {
+        if self.stopped() {
+            if !self.quest_resume {
+                self.observe_spent_accepts(&quests, &parent_of);
+            }
             return;
+        }
+        if !self.quest_resume {
+            self.observe_spent_accepts(&quests, &parent_of);
         }
         for (qi, q) in quests.iter().enumerate() {
             if self.quest_status.get(&q.id).map(String::as_str) == Some("active") {
@@ -2519,6 +2451,7 @@ impl<D: Driver> Machine<D> {
     pub fn advance_quests(&mut self) -> Result<(), String> {
         self.quest_resume = true;
         self.run_quest();
+        self.store.derive();
         match self.fatal.take() {
             Some(msg) => Err(msg),
             None => Ok(()),
@@ -2541,7 +2474,7 @@ impl<D: Driver> Machine<D> {
     /// live snapshot — base facts plus the derived fixpoint (base only under
     /// `derive: false`) — the end-of-play `facts:` expectations judge.
     pub fn all_facts(&self) -> &BTreeSet<Fact> {
-        &self.all_facts
+        self.store.all_facts()
     }
 
     /// Re-evaluate the quest lifecycle to a fixpoint: referenced-child
@@ -2560,7 +2493,7 @@ impl<D: Driver> Machine<D> {
     ) {
         let mut changed = true;
         let mut rounds = 0;
-        while changed && !self.terminated && rounds < quests.len() * 8 + 16 {
+        while changed && !self.stopped() && rounds < quests.len() * 8 + 16 {
             changed = false;
             rounds += 1;
             // 0. referenced-child activation (§2.4): a pending child whose
@@ -2581,20 +2514,42 @@ impl<D: Driver> Machine<D> {
                             continue;
                         }
                         match &q.start {
-                            None if q.accept_activated => self.is_accepted(&q.id),
-                            None => true,
-                            Some(raw) => self.truthy(raw) == Some(true),
+                            None if q.accept_activated => {
+                                if self.is_accepted(&q.id) {
+                                    Some((None, true))
+                                } else {
+                                    self.observe_waiting(&q.id, "awaiting accept", None);
+                                    None
+                                }
+                            }
+                            None => Some((None, false)),
+                            Some(raw) => {
+                                let site = Site::quest(SiteKind::QuestStart, &q.id, &q.id);
+                                match self.judge(raw, site) {
+                                    Some(true) => Some((Some(raw.as_str()), false)),
+                                    Some(false) => {
+                                        self.observe_waiting(&q.id, "never", Some(raw));
+                                        None
+                                    }
+                                    None => None,
+                                }
+                            }
                         }
                     }
-                    None => q.start.is_none() && self.is_accepted(&q.id),
+                    None => (q.start.is_none() && self.is_accepted(&q.id)).then_some((None, true)),
                 };
-                if activate {
-                    self.set_quest_state(&q.id, "active", None);
-                    self.fire_event("questActive", Some(&q.id), None, handlers, seg_starts);
+                if self.stopped() {
+                    return;
+                }
+                if let Some((guard, by_accept)) = activate {
+                    self.activate_quest(&q.id, guard, by_accept, handlers, seg_starts);
                     changed = true;
                 }
             }
             for (qi, q) in quests.iter().enumerate() {
+                if self.stopped() {
+                    return;
+                }
                 if self.quest_status.get(&q.id).map(String::as_str) != Some("active") {
                     continue;
                 }
@@ -2604,6 +2559,7 @@ impl<D: Driver> Machine<D> {
                 // one never again.
                 for (oi, o) in q.objectives.iter().enumerate() {
                     if o.on.is_some()
+                        || o.id.is_empty()
                         || done.contains(&(qi, oi))
                         || self
                             .failed_objectives
@@ -2611,9 +2567,11 @@ impl<D: Driver> Machine<D> {
                     {
                         continue;
                     }
-                    if self.truthy(&o.done) == Some(true) {
-                        self.complete_objective(q, qi, oi, seg_starts, done);
+                    if self.judge_done(q, qi, oi, seg_starts, done) {
                         changed = true;
+                    }
+                    if self.stopped() {
+                        return;
                     }
                 }
                 // 1b. dsl 0.23.0 §2, 0.24.0 §2.1: deadlines, after the
@@ -2632,6 +2590,9 @@ impl<D: Driver> Machine<D> {
                     if !deferred {
                         changed |= self.judge_deadline(q, qi, oi, done, "by");
                     }
+                    if self.stopped() {
+                        return;
+                    }
                 }
                 // 2. fail BEFORE derived completion (§6.3 precedence): an
                 // authored `fail`, or a required objective whose `by`
@@ -2644,19 +2605,29 @@ impl<D: Driver> Machine<D> {
                 } else {
                     q.objectives.iter().find_map(|o| {
                         let key = format!("{}.{}", q.id, o.id);
-                        (!o.optional && self.failed_objectives.contains(&key))
-                            .then(|| self.objective_failed_by.get(&key).copied().unwrap_or("by"))
+                        (!o.optional && self.failed_objectives.contains(&key)).then(|| {
+                            let kind = self.objective_failed_by.get(&key).copied().unwrap_or("by");
+                            let text = if kind == "until" { &o.until } else { &o.by };
+                            (kind, text.clone())
+                        })
                     })
                 };
                 let failed_by = match missed {
-                    Some(kind) => Some(kind),
-                    None => q
-                        .fail
-                        .as_ref()
-                        .is_some_and(|fail| self.truthy(fail) == Some(true))
-                        .then_some("fail"),
+                    Some((kind, text)) => Some((kind, text)),
+                    None => match &q.fail {
+                        Some(fail) => {
+                            let site = Site::quest(SiteKind::QuestFail, &q.id, &q.id);
+                            (self.judge(fail, site) == Some(true))
+                                .then(|| ("fail", Some(fail.clone())))
+                        }
+                        None => None,
+                    },
                 };
-                if let Some(reason) = failed_by {
+                if self.stopped() {
+                    return;
+                }
+                if let Some((reason, guard)) = failed_by {
+                    self.observe_quest(&q.id, "failed", guard.as_deref());
                     self.set_quest_failed(&q.id, reason);
                     // dsl 0.16.0 §3 D-D: fresh `failed` → grant
                     // `on="failed"` quest rewards BEFORE `questFailed`
@@ -2683,6 +2654,7 @@ impl<D: Driver> Machine<D> {
                         .all(|(oi, o)| o.optional || done.contains(&(qi, oi)))
                 };
                 if complete {
+                    self.observe_quest(&q.id, "complete", None);
                     self.set_quest_state(&q.id, "complete", None);
                     // dsl 0.16.0 §3 D-D: fresh `complete` → grant this
                     // quest's default-on rewards BEFORE `questComplete`
@@ -2703,6 +2675,100 @@ impl<D: Driver> Machine<D> {
         }
     }
 
+    /// `→ active`: the transition (reserved state, status, `quest` record),
+    /// the observation `lute trace` reports (`guard`: the `start` that held;
+    /// `forced`: activated by an accept), then the quest's `questActive`
+    /// handlers.
+    fn activate_quest(
+        &mut self,
+        id: &str,
+        guard: Option<&str>,
+        by_accept: bool,
+        handlers: &[Handler],
+        seg_starts: &[usize],
+    ) {
+        self.driver.observe(json!({
+            "kind": "quest", "quest": id, "outcome": "active",
+            "guard": guard.map(str::trim), "forced": by_accept,
+        }));
+        self.set_quest_state(id, "active", None);
+        self.fire_event("questActive", Some(id), None, handlers, seg_starts);
+    }
+
+    /// A quest transition `lute trace` reports as a decision.
+    fn observe_quest(&mut self, id: &str, outcome: &str, guard: Option<&str>) {
+        self.driver.observe(json!({
+            "kind": "quest", "quest": id, "outcome": outcome, "guard": guard.map(str::trim),
+        }));
+    }
+
+    /// A quest that did not activate — `never` (its `start` decided false)
+    /// or `awaiting accept` — observed once per walk.
+    fn observe_waiting(&mut self, id: &str, outcome: &str, guard: Option<&str>) {
+        if self.observed_waiting.insert(id.to_string()) {
+            self.observe_quest(id, outcome, guard);
+        }
+    }
+
+    /// dsl 0.24.0 §2 (ER N15): an accept of an `activate="accept"` child
+    /// that the walk left `unset` because its parent was not active when
+    /// it came — spent without effect, observed so `lute trace` can say so.
+    fn observe_spent_accepts(
+        &mut self,
+        quests: &[QuestDecl],
+        parent_of: &BTreeMap<String, String>,
+    ) {
+        for q in quests.iter().filter(|q| q.accept_activated) {
+            let Some(parent) = parent_of.get(&q.id) else {
+                continue;
+            };
+            if !self.is_accepted(&q.id)
+                || self.quest_status.get(&q.id).map(String::as_str) != Some("unset")
+            {
+                continue;
+            }
+            let why = match self.quest_status.get(parent).map(String::as_str) {
+                Some("complete") => "already complete",
+                Some("failed") => "already failed",
+                Some("active") => continue,
+                _ => "never active",
+            };
+            self.driver.observe(json!({
+                "kind": "acceptSpent", "quest": q.id, "parent": parent, "why": why,
+            }));
+        }
+    }
+
+    /// Judge objective `oi`'s `done` (continuous or at its occasion): a
+    /// fresh `true` completes it ([`Machine::complete_objective`]); `false`
+    /// is observed pending; undecided is an [`SiteKind::ObjectiveDone`] site.
+    /// `true` when it completed now.
+    fn judge_done(
+        &mut self,
+        q: &QuestDecl,
+        qi: usize,
+        oi: usize,
+        seg_starts: &[usize],
+        done: &mut BTreeSet<(usize, usize)>,
+    ) -> bool {
+        let o = &q.objectives[oi];
+        let site = Site::quest(SiteKind::ObjectiveDone, &o.id, &q.id);
+        match self.judge(&o.done, site) {
+            Some(true) => {
+                self.complete_objective(q, qi, oi, seg_starts, done);
+                true
+            }
+            Some(false) => {
+                self.driver.observe(json!({
+                    "kind": "objective", "quest": q.id, "objective": o.id,
+                    "outcome": "pending", "guard": o.done.trim(),
+                }));
+                false
+            }
+            None => false,
+        }
+    }
+
     /// A fresh `done` (monotone — `done` records it; the body plays once):
     /// write `quest.<id>.objectives.<oid>.done`, record it, fire the
     /// objective's rewards (dsl 0.16.0 §3 D-D: BEFORE the body runs, and
@@ -2718,8 +2784,12 @@ impl<D: Driver> Machine<D> {
     ) {
         let o = &q.objectives[oi];
         done.insert((qi, oi));
-        self.state.insert(
-            format!("quest.{}.objectives.{}.done", q.id, o.id),
+        self.driver.observe(json!({
+            "kind": "objective", "quest": q.id, "objective": o.id,
+            "outcome": "done", "guard": o.done.trim(),
+        }));
+        self.write(
+            &format!("quest.{}.objectives.{}.done", q.id, o.id),
             Value::Bool(true),
         );
         self.driver.emit(json!({
@@ -2762,7 +2832,7 @@ impl<D: Driver> Machine<D> {
                 .map(|(oi, _)| oi)
                 .collect();
             for &oi in &judged {
-                if self.terminated
+                if self.stopped()
                     || self.quest_status.get(&q.id).map(String::as_str) != Some("active")
                 {
                     break;
@@ -2775,12 +2845,10 @@ impl<D: Driver> Machine<D> {
                 {
                     continue;
                 }
-                if self.truthy(&o.done) == Some(true) {
-                    self.complete_objective(q, qi, oi, seg_starts, done);
-                }
+                self.judge_done(q, qi, oi, seg_starts, done);
             }
             for &oi in &judged {
-                if self.terminated
+                if self.stopped()
                     || self.quest_status.get(&q.id).map(String::as_str) != Some("active")
                 {
                     break;
@@ -2811,9 +2879,22 @@ impl<D: Driver> Machine<D> {
         if done.contains(&(qi, oi)) || self.failed_objectives.contains(&key) {
             return false;
         }
-        if self.truthy(cond) != Some(true) {
+        let site = Site::quest(
+            if kind == "until" {
+                SiteKind::ObjectiveUntil
+            } else {
+                SiteKind::ObjectiveBy
+            },
+            &o.id,
+            &q.id,
+        );
+        if self.judge(cond, site) != Some(true) {
             return false;
         }
+        self.driver.observe(json!({
+            "kind": "objective", "quest": q.id, "objective": o.id,
+            "outcome": "failed", "guard": cond.trim(),
+        }));
         self.record_objective_failure(&q.id, &o.id, kind);
         self.driver.emit(json!({
             "kind": "objective",
@@ -2831,8 +2912,8 @@ impl<D: Driver> Machine<D> {
     /// one fails its quest with that `failedBy`.
     fn record_objective_failure(&mut self, quest: &str, objective: &str, kind: &'static str) {
         let key = format!("{quest}.{objective}");
-        self.state.insert(
-            format!("quest.{quest}.objectives.{objective}.failed"),
+        self.write(
+            &format!("quest.{quest}.objectives.{objective}.failed"),
             Value::Bool(true),
         );
         self.objective_failed_by.insert(key.clone(), kind);
@@ -2859,7 +2940,7 @@ impl<D: Driver> Machine<D> {
     ) {
         let mut stack = vec![(terminal.to_string(), reason)];
         while let Some((parent, reason)) = stack.pop() {
-            if self.terminated {
+            if self.stopped() {
                 return;
             }
             let children: Vec<String> = quests
@@ -2881,6 +2962,11 @@ impl<D: Driver> Machine<D> {
                     .find(|q| q.id == child)
                     .map(|q| q.rewards.as_slice())
                     .unwrap_or(&[]);
+                self.observe_quest(
+                    &child,
+                    "failed",
+                    Some(&format!("{reason} from quest.{parent}")),
+                );
                 self.set_quest_failed(&child, reason);
                 self.emit_grants(&child, None, child_rewards, GrantEvent::Failed);
                 self.fire_event("questFailed", Some(&child), None, handlers, seg_starts);
@@ -2901,8 +2987,7 @@ impl<D: Driver> Machine<D> {
     /// status, and the `quest` record (with `failedBy` for a failure, whose
     /// reserved path is written after the state's).
     fn set_quest_state(&mut self, id: &str, state: &str, failed_by: Option<&str>) {
-        self.state
-            .insert(format!("quest.{id}.state"), Value::Str(state.to_string()));
+        self.write(&format!("quest.{id}.state"), Value::Str(state.to_string()));
         self.quest_status.insert(id.to_string(), state.to_string());
         let mut rec = json!({
             "kind": "quest",
@@ -2910,8 +2995,8 @@ impl<D: Driver> Machine<D> {
             "state": state,
         });
         if let Some(reason) = failed_by {
-            self.state.insert(
-                format!("quest.{id}.failedBy"),
+            self.write(
+                &format!("quest.{id}.failedBy"),
                 Value::Str(reason.to_string()),
             );
             rec["failedBy"] = json!(reason);
@@ -2949,7 +3034,8 @@ impl<D: Driver> Machine<D> {
                 continue;
             }
             if let Some(raw) = &r.when {
-                if self.truthy(raw) != Some(true) {
+                let site = Site::quest(SiteKind::Reward, &r.kind, quest_id);
+                if self.judge(raw, site) != Some(true) {
                     continue;
                 }
             }
@@ -2974,20 +3060,21 @@ impl<D: Driver> Machine<D> {
                 rec.insert("objective".into(), Json::String(oid.to_string()));
             }
             rec.insert("reward".into(), Json::Object(reward));
-            // dsl 0.23.0 §8: a kind that credits a path adds the amount there.
-            // A range is the engine's roll (D-C), so the reference runner
-            // credits scalar amounts only.
+            // dsl 0.23.0 §8: a kind that credits a path adds the amount there
+            // (an unknown or absent current value stays unknown, as `+=`
+            // folds it). A range is the engine's roll (D-C), so the reference
+            // runner credits scalar amounts only.
             if let (Some(path), Some(n)) = (&r.credits, r.amount) {
-                let before = match self.state.get(path) {
-                    Some(Value::Num(v)) => *v,
-                    _ => 0.0,
+                let before = match self.store.read(path) {
+                    Read::Value(v) => v,
+                    Read::Unset => Value::Unknown,
                 };
-                let after = before + n as f64;
-                self.state.insert(path.clone(), Value::Num(after));
+                let after = fold_op("+=", &before, &Value::Num(n as f64));
                 rec.insert(
                     "credited".into(),
-                    json!({ "path": path, "value": value_to_json(&Value::Num(after)) }),
+                    json!({ "path": path, "value": value_to_json(&after) }),
                 );
+                self.write(path, after);
             }
             if matches!(event, GrantEvent::Failed) {
                 rec.insert("onFailed".into(), Json::Bool(true));
@@ -2996,15 +3083,18 @@ impl<D: Driver> Machine<D> {
         }
     }
 
-    /// Fire every handler matching `event` whose `when` holds over the current
-    /// (pre-event) state snapshot, running each body once. `scope` is the
-    /// transitioning quest's id for the engine-derived lifecycle events —
-    /// those fire ONLY for their own enclosing quest (quest-lifecycle.md);
-    /// `None` (a mock world event) fires every matching handler — under
-    /// `lute play` (dsl 0.22.0 §9) only those of an ACTIVE quest, as `lute
-    /// trace` delivers `events:`. `target` is the target an occasion was
-    /// raised for (dsl 0.24.0 §2): a handler with a `target` fires only for
-    /// that target, never for a plain event or a lifecycle transition.
+    /// Fire every handler matching `event` whose `when` holds over the
+    /// PRE-EVENT state: every matching handler's `when` is judged before any
+    /// of their bodies runs, so a sibling's write never decides another
+    /// sibling of the same event (D10, quest-lifecycle.md) — then each firing
+    /// body runs once, in document order. `scope` is the transitioning
+    /// quest's id for the engine-derived lifecycle events — those fire ONLY
+    /// for their own enclosing quest (quest-lifecycle.md); `None` (a mock
+    /// world event) fires every matching handler — under `lute play` (dsl
+    /// 0.22.0 §9) only those of an ACTIVE quest, as `lute trace` delivers
+    /// `events:`. `target` is the target an occasion was raised for (dsl
+    /// 0.24.0 §2): a handler with a `target` fires only for that target,
+    /// never for a plain event or a lifecycle transition.
     fn fire_event(
         &mut self,
         event: &str,
@@ -3031,18 +3121,45 @@ impl<D: Driver> Machine<D> {
             })
             .map(|(i, _)| i)
             .collect();
+        let mut verdicts: Vec<(usize, Option<bool>)> = Vec::with_capacity(matching.len());
         for i in matching {
             let h = &handlers[i];
-            let when_ok = match &h.when {
-                None => true,
-                Some(raw) => self.truthy(raw) == Some(true),
-            };
-            if when_ok {
-                let body = h.body.clone();
-                match &mut self.deferred_handlers {
-                    Some(later) => later.push(body),
-                    None => self.run_segment(&body, seg_starts),
+            let verdict = match &h.when {
+                None => Some(true),
+                Some(raw) => {
+                    let site = Site {
+                        quest: h.quest.as_deref(),
+                        ..Site::new(SiteKind::Handler, event, &h.addr)
+                    };
+                    self.judge(raw, site)
                 }
+            };
+            if self.stopped() {
+                return;
+            }
+            verdicts.push((i, verdict));
+        }
+        for (i, verdict) in verdicts {
+            let h = &handlers[i];
+            let outcome = match verdict {
+                Some(true) => "fires",
+                Some(false) => "skipped",
+                None => continue,
+            };
+            self.driver.observe(json!({
+                "kind": "on", "event": event, "quest": h.quest, "addr": h.addr,
+                "outcome": outcome, "guard": h.when.as_deref().map(str::trim),
+            }));
+            if verdict != Some(true) {
+                continue;
+            }
+            let body = h.body.clone();
+            match &mut self.deferred_handlers {
+                Some(later) => later.push(body),
+                None => self.run_segment(&body, seg_starts),
+            }
+            if self.stopped() {
+                return;
             }
         }
     }
@@ -3088,11 +3205,17 @@ impl<D: Driver> Machine<D> {
         };
         let cmd = self.commands[at].clone();
         let read_path = format!("entry.{id}.read");
-        let first_read = self.state.get(&read_path) != Some(&Value::Bool(true));
+        let first_read = self.store.read(&read_path) != Read::Value(Value::Bool(true));
         let eligible = match cel_raw(cmd.get("when")) {
             None => Json::Bool(true),
-            Some(raw) => self.truthy(&raw).map(Json::Bool).unwrap_or(Json::Null),
+            Some(raw) => {
+                let site = Site::new(SiteKind::EntryWhen, &id, addr(&cmd));
+                self.judge(&raw, site).map(Json::Bool).unwrap_or(Json::Null)
+            }
         };
+        if self.stopped() {
+            return;
+        }
         self.driver.emit(json!({
             "addr": addr(&cmd),
             "kind": "entry",
@@ -3106,8 +3229,13 @@ impl<D: Driver> Machine<D> {
         self.apply_effects = first_read;
         self.run_range(start, stop);
         self.apply_effects = true;
-        if first_read && !self.incomplete && self.fatal.is_none() {
-            self.state.insert(read_path, Value::Bool(true));
+        if !self.incomplete && self.fatal.is_none() {
+            // D11: the engine's post-presentation flags, for every driver —
+            // `read` on a first read, `everRead` on any completed read.
+            if first_read {
+                self.write(&read_path, Value::Bool(true));
+            }
+            self.write(&format!("entry.{id}.everRead"), Value::Bool(true));
         }
     }
 
@@ -3158,10 +3286,21 @@ impl<D: Driver> Machine<D> {
             return;
         };
         let cmd = self.commands[at].clone();
+        let canonical = cmd
+            .get("id")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
         let eligible = match cel_raw(cmd.get("when")) {
             None => Json::Bool(true),
-            Some(raw) => self.truthy(&raw).map(Json::Bool).unwrap_or(Json::Null),
+            Some(raw) => {
+                let site = Site::new(SiteKind::BeatWhen, &canonical, addr(&cmd));
+                self.judge(&raw, site).map(Json::Bool).unwrap_or(Json::Null)
+            }
         };
+        if self.stopped() {
+            return;
+        }
         self.driver.emit(json!({
             "addr": addr(&cmd),
             "kind": "beat",
@@ -3177,44 +3316,132 @@ impl<D: Driver> Machine<D> {
 
 // ── free helpers ────────────────────────────────────────────────────────
 
-/// Value equality for structured-arm evaluation: same-type compares decide;
-/// an Unknown or cross-type pair is undecidable (`None`), mirroring CEL's
-/// three-valued reads rather than JS-style coercion.
-fn expr_node_eq(l: &Value, r: &Value) -> Option<bool> {
-    match (l, r) {
-        (Value::Bool(a), Value::Bool(b)) => Some(a == b),
-        (Value::Num(a), Value::Num(b)) => Some(a == b),
-        (Value::Str(a), Value::Str(b)) => Some(a == b),
-        _ => None,
+/// Where an undecided value was met ([`UnknownSite`] minus the evaluation).
+#[derive(Clone, Copy)]
+struct Site<'a> {
+    kind: SiteKind,
+    id: &'a str,
+    addr: &'a str,
+    quest: Option<&'a str>,
+    arm: Option<usize>,
+}
+
+impl<'a> Site<'a> {
+    fn new(kind: SiteKind, id: &'a str, addr: &'a str) -> Self {
+        Site {
+            kind,
+            id,
+            addr,
+            quest: None,
+            arm: None,
+        }
+    }
+
+    /// A quest-level site (a quest, objective or reward) of quest `quest`.
+    fn quest(kind: SiteKind, id: &'a str, quest: &'a str) -> Self {
+        Site {
+            quest: Some(quest),
+            ..Site::new(kind, id, "")
+        }
     }
 }
 
-/// Ordering for structured-arm comparison: numbers numerically, strings
-/// lexicographically; anything else undecidable.
-fn expr_node_cmp(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
-    match (l, r) {
-        (Value::Num(a), Value::Num(b)) => a.partial_cmp(b),
-        (Value::Str(a), Value::Str(b)) => Some(a.cmp(b)),
-        _ => None,
+/// A compound assignment `op` (`+=`, `-=`, `*=`, `/=`) of `by` into `cur`:
+/// numbers fold; anything else — an unknown operand, another type, a zero
+/// divisor — is unknown (D5: never a guessed `0`).
+fn fold_op(op: &str, cur: &Value, by: &Value) -> Value {
+    match (cur, by) {
+        (Value::Num(a), Value::Num(b)) => match op {
+            "+=" => Value::Num(a + b),
+            "-=" => Value::Num(a - b),
+            "*=" => Value::Num(a * b),
+            "/=" if *b != 0.0 => Value::Num(a / b),
+            _ => Value::Unknown,
+        },
+        _ => Value::Unknown,
+    }
+}
+
+/// The atoms of every undecided option of a menu.
+fn unknown_atoms(options: &[MenuOption]) -> Vec<UnresolvedAtom> {
+    options
+        .iter()
+        .filter_map(|o| match &o.verdict {
+            Verdict::Unknown(atoms) => Some(atoms.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
+/// An IR structured `expr` node (`lute_compile::expr::ExprNode`'s serialized
+/// shape — `lit` / `path` / `op` / `cond` / `list` / `isSet` / `has`, a
+/// subset of CEL) as CEL text, so an `is` arm is judged by the one CEL
+/// evaluator (design §3.4). Every operand is parenthesized. `None` for a
+/// shape outside the set.
+/// Every state path an IR `expr` node names (`path`, `isSet`, `has`).
+fn expr_paths(node: &Json, out: &mut BTreeSet<String>) {
+    match node {
+        Json::Object(map) => {
+            for (k, v) in map {
+                match (k.as_str(), v) {
+                    ("path" | "isSet" | "has", Json::String(p)) => {
+                        out.insert(p.clone());
+                    }
+                    ("lit", _) => {}
+                    _ => expr_paths(v, out),
+                }
+            }
+        }
+        Json::Array(items) => items.iter().for_each(|n| expr_paths(n, out)),
+        _ => {}
+    }
+}
+
+pub fn expr_to_cel(node: &Json) -> Option<String> {
+    if let Some(lit) = node.get("lit") {
+        return Some(match lit {
+            Json::String(s) => format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'")),
+            Json::Bool(b) => b.to_string(),
+            Json::Number(n) => match n.as_f64() {
+                Some(f) if f.fract() == 0.0 && f.abs() < 9.007e15 => format!("{}", f as i64),
+                Some(f) => f.to_string(),
+                None => return None,
+            },
+            _ => return None,
+        });
+    }
+    if let Some(path) = node.get("path").and_then(Json::as_str) {
+        return Some(path.to_string());
+    }
+    if let Some(path) = node.get("isSet").and_then(Json::as_str) {
+        return Some(format!("isSet({path})"));
+    }
+    if let Some(path) = node.get("has").and_then(Json::as_str) {
+        return Some(format!("has({path})"));
+    }
+    if let Some(items) = node.get("list").and_then(Json::as_array) {
+        let items: Option<Vec<String>> = items.iter().map(expr_to_cel).collect();
+        return Some(format!("[{}]", items?.join(", ")));
+    }
+    if let (Some(c), Some(t), Some(e)) = (node.get("cond"), node.get("then"), node.get("else")) {
+        return Some(format!(
+            "({}) ? ({}) : ({})",
+            expr_to_cel(c)?,
+            expr_to_cel(t)?,
+            expr_to_cel(e)?
+        ));
+    }
+    let op = node.get("op").and_then(Json::as_str)?;
+    let l = expr_to_cel(node.get("l")?)?;
+    match node.get("r") {
+        Some(r) => Some(format!("({l}) {op} ({})", expr_to_cel(r)?)),
+        None => Some(format!("{op}({l})")),
     }
 }
 
 fn addr(cmd: &Json) -> &str {
     cmd.get("addr").and_then(Json::as_str).unwrap_or("")
-}
-
-/// dsl 0.24.0 §1: the artifact's declared clock (`clock`), if any.
-fn artifact_clock(art: &Json) -> Option<lute_manifest::clock::ClockDecl> {
-    serde_json::from_value(art.get("clock")?.clone()).ok()
-}
-
-/// dsl 0.24.0 §1: re-derive the reserved `clock.*` values from the live
-/// `day` / `slot` state — a runner starts from whatever the carried state
-/// holds, and the clock paths are never stored, only derived.
-fn refresh_clock(art: &Json, state: &mut BTreeMap<String, Value>) {
-    if let Some(clock) = artifact_clock(art) {
-        crate::clock::refresh(&clock, state);
-    }
 }
 
 /// The `raw` of a `{raw, expr}` CEL pair, when present and non-empty.
@@ -3318,30 +3545,6 @@ fn parse_ground_fact(s: &str) -> Option<Fact> {
         inner.split(',').map(|a| a.trim().to_string()).collect()
     };
     Some((rel, args))
-}
-
-pub fn render_fact(rel: &str, args: &[String]) -> String {
-    format!("{rel}({})", args.join(", "))
-}
-
-/// A JSON artifact scalar → a trace [`Value`]; `None` for a non-scalar default.
-fn json_to_value(j: &Json) -> Option<Value> {
-    match j {
-        Json::Bool(b) => Some(Value::Bool(*b)),
-        Json::Number(n) => n.as_f64().map(Value::Num),
-        Json::String(s) => Some(Value::Str(s.clone())),
-        _ => None,
-    }
-}
-
-/// A fact-arg JSON scalar → its ground string (bools as `"true"`/`"false"`).
-fn json_arg_to_string(j: &Json) -> String {
-    match j {
-        Json::String(s) => s.clone(),
-        Json::Bool(b) => b.to_string(),
-        Json::Number(n) => n.to_string(),
-        _ => j.to_string(),
-    }
 }
 
 /// A trace [`Value`] → JSON (integral numbers collapse to integers).

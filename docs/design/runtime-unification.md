@@ -1064,3 +1064,125 @@ are stable across machines.
 canonical line (with attribute blocks) for both sides; then delete
 `ALLOWLIST`, `allowlist()`, `Allowed`, the listed / fixed checks and the
 allowlist file, so any divergence fails.
+
+### S5: session and one transcript (in progress at hand-off)
+
+**Where.** `crates/lute-trace/src/exec/{record.rs, session.rs}` (`pub mod`,
+session items are not re-exported at the `exec` root: `Verdict` / `Pick`
+there are the menu types).
+
+**record.rs.** `said_line(rec, cmd)` = `line_head(speaker, cmd)` + `: ` +
+text, `cmd` the artifact command at the record's `addr`; `line_head` /
+`render_attrs` / `str_of` moved here from `play.rs`, so play's human line
+and the canonical `said` line are one string. `record::{find, nearest,
+judge}` is the one needle matcher: substring over the bare `@speaker: text`
+form, and every needle line with a `{…}` block must start at a transcript
+line whose attributes include the ones it names (values compared unquoted,
+so `variant=0` and `variant="0"` agree). `judge` returns the miss text:
+`absent (nearest line: "…")` / `present (line: "…")`. `play_expect`'s
+`transcript_needle` / `nearest_said_line` are gone; play's `said`, testcmd
+and `TraceReport::said` use it. `TraceReport` gained a seventh skip field,
+`said: Vec<String>`; `said()` joins it. Contract with S4: the TraceDriver
+pushes `said_line(&rec, cmd)` per `line` record. Until then walk.rs fills it
+from the authored delivery (`@speaker{delivery}: text`), which differs from
+the canonical form only in attribute order / number quoting — the matcher
+does not care, the harness would; so the harness's `said_line` switch waits
+for S4.
+
+**Envelope.** `impl ReconciledProject { fn gate(&self, file) }` (main.rs) is
+the one "document's project verdict" lookup: `project_gate_result`
+(`lute trace/compile --project`), the harness's `Gates::gate`, and
+`lute test` (new `Shared::gates`, one reconciliation per project root, the
+root being `--project` else the nearest manifest; `eligibility_alone` takes
+the same verdict). Regression: `tests/test_project.rs`
+`a_test_gates_its_document_on_the_project_verdict_as_trace_does` over
+`fixtures/diff/test-project-envelope`.
+
+**Session.** `play.rs`'s `Project` is `session::ExecProject` (all fields,
+`authored` included; the pure half of `compile_project` is
+`ExecProject::assemble`, returning `(exit code, lines)` on a vocabulary /
+state-type conflict). `World` (+ a `choose` field: the script-wide
+`choose:`), `SaveSeed`, `WorldSeed`, `Write(s)`, the resolvers
+(`resolve_state/fact/bridges`, `typed_literal`, `domain_members`),
+`seed_world`, `new_run`, `apply_writes`, `absorb`, `PlayHalt`
+(`exit_code() -> u8`, wasm-clean), `outcome_halt`, `QuestAdvance`,
+`advance_quests`, `raise`, `advance_pass`, `run_deferred_handlers`,
+`handlers_skipped`, `Candidate`, `eligible_at` (per-beat judgment split out
+as `judge_beat`), `deciding_unknown`, `presented`, `Presented` (now always
+`Clone`), `spend_*`, `present`, `StepBody` / `DayRaise` / `Played`,
+`run_occasion`, `run_advance`, clock moves, `exclusive_violations`,
+`world_view`, `WorldView` / `ClockView` moved verbatim. `Session<'p>
+{ project, pub world }`: `seed`, `resume`, `settle`, `exclusive`, `view`,
+`clock_at`, `refresh_clock`, `candidates`, `eligibility(id, member)`,
+`occasion`, `advance`, `engine`, `new_run`, `event`, each returning
+`StepOutcome = (StepBody, Vec<QuestAdvance>, Option<PlayHalt>)`. `play.rs`
+keeps parsing, planning, `execute` (the step loop over a `Session`),
+`run_step` (a dispatch on `Action`), rendering. `lute calendar` uses the
+session's free functions and `execute(…, Session::resume(…))`.
+
+**Deviations from §3.7.** The session builds every walk's Machine, so the
+walk driver is the session's: `PlayDriver` and `Walked` moved into
+`session.rs` (no `&mut dyn Driver` parameters — the driver's state, cursor
+and bridge queues, is world state carried between walks). `PlayDriver::unknown`
+answers `Halt` for every site (S4 item 8, R4; the post-walk honesty gate
+stays). Step operations take the step number `n` for their messages.
+
+**Not done at hand-off** (budget): testcmd `eligible:` and trace's scene
+gate do not call `Session::eligibility` yet (S4 kept its own port of
+`scene_eligibility`); D11's allowlist lines (16 in-repo, 994 opt-in), the
+harness `said_line` switch and the allowlist/loader deletion wait for S4's
+Machine (`everRead` write, TraceDriver `said`); byte-identity (§6.3) and the
+opt-in corpus run were not repeated after the session move.
+
+### S4 (integration)
+
+**Landed.** `crates/lute-trace/src/trace.rs` is the trace pipeline (check
+gate → mock validation → normalize/expand for the static notes →
+`compile_mapped` → `Machine<&mut TraceDriver>` → notes → `TraceReport`);
+`lib.rs` exports `trace_*` and `NOTE_*` from it; `walk.rs` and
+`tests/source_map.rs` (S3's proof of the map against the old walker; the
+report is now built from the map) are deleted. An entry sequence builds one
+Machine per entry (`new`, then `resume` over the previous carry); the
+report's reads (reserved quest reads, derived reads) accumulate across them.
+The Machine observes every `jump` (`{kind:"jump", addr}`) so trace shows an
+authored `::next` and the component / `::mark` markers the map hangs on a
+structural jump; a menu pick or a halt at an arm / menu opens its shot head
+and markers before (or instead of) its record.
+
+**Old-vs-new** (every `docs/examples` document with its `mocks/`, every
+inline document of the lute-trace tests; default mock, each branch / hub
+option forced, each entry read and re-read, the entry sequence twice, each
+bundle beat: 220 reports, human + JSON + the skip fields). Differences, all
+accepted: the `said` form (canonical `@speaker{…}: text`, S5); final state
+lists every declared default (`scene.choices.<branch>: unset` on a walk that
+never reached the branch); pending objectives reported once, not once per
+settle pass, quest decisions in `reevaluate` order, an all-optional quest
+completes (D9); a reserved read the one evaluator makes on both sides of a
+false `&&` adds its "unverified" note (D13).
+
+**`lute run`.** State output omits an undeclared `entry.<id>.everRead`
+(conformance byte-identical); `plugin_call_note` is empty for a call with
+only declared effects; play renders an effect write `set … = v  (effect of
+::tag)`.
+
+**Harness.** The allowlist file, its loader, `Allowed` and the listed /
+fixed checks are gone: any divergence fails. `said` is
+`exec::said_line` on both sides; the run path passes the cast display names;
+a run refusal with an `exclusive` record is `refused:E-FACT-EXCLUSIVE`, as is
+a presentation whose transcript holds one. The IR oracle (§4.4):
+`Machine::with_arm_probe` observes each `expr`-judged arm with the state it
+read; `differential::Oracle` (wrapping `RunDriver`) re-judges it with
+`expr_node_value` (moved here) and a decided disagreement is an `ir-expr`
+divergence. Runs: in-repo 208 compared, 9 not concrete, 0 divergences (46
+arm exprs judged by the oracle); opt-in (round 3/4/5 copies) 2934 compared,
+424 not concrete, 0 divergences. Allowlist before: 36 in-repo + 1108 opt-in
+lines; after: none.
+
+**Not done.** `lute test`'s `eligible:` (`eligibility_alone`, the presented
+path) and trace's scene gate (`trace.rs` `scene_eligibility`) still judge
+with their own rule rather than `Session::eligibility` / `judge_beat` over a
+one-document `ExecProject` (their explanation texts — `its \`when\` (…) is
+false`, the `after:` mock hint — would have to be derived from the session
+verdict). §6.3 byte identity against a `b8dc82c` binary and `node
+crates/lute-wasm/smoke.mjs` were not run in this pass (`cargo check -p
+lute-wasm --target wasm32-unknown-unknown` is clean).

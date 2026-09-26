@@ -18,9 +18,9 @@
 //! mock. Play level: every presentation of every `*.play.yaml` is replayed
 //! through trace from the world the play presented it in.
 //!
-//! Known divergences are pinned, one per `(case, field)`, in
-//! `differential/allowlist.txt`. The test fails on an unlisted divergence
-//! and on a listed one that no longer diverges, so the list only shrinks.
+//! The runtimes must agree on every compared case: any divergence fails the
+//! test (§4.5; the allowlist of known divergences is gone with the last of
+//! them).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -33,13 +33,12 @@ use rayon::prelude::*;
 use serde_json::Value as Json;
 
 use lute_trace::datalog::Fact;
-use lute_trace::exec::{Carry, Machine, Seed};
+use lute_trace::exec::{
+    BridgeCall, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown, Pick, Seed,
+    UnknownSite, Verdict,
+};
 
-use crate::runner::{run_machine, RunDriver};
-
-/// The allowlist of known divergences (§4.5): `<case id> <field> <class>
-/// <slice> <reason…>`, whitespace-separated, `#` comments.
-const ALLOWLIST: &str = include_str!("differential/allowlist.txt");
+use crate::runner::RunDriver;
 
 /// The in-repo cases the first S1 run compared (§4.2). A run comparing fewer
 /// than 90% of this fails: a broken enumerator must not pass vacuously.
@@ -48,8 +47,8 @@ const COMPARED_FLOOR: usize = 201;
 /// What one runtime observed for one case (§4.1).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Observation {
-    /// Canonical transcript lines, `@speaker: text`. Attribute blocks join
-    /// once both runtimes report them (design §8, S1 notes).
+    /// Canonical transcript lines with attribute blocks
+    /// ([`lute_trace::exec::said_line`]: `@sol{emotion="happy"}: Vega.`).
     pub(crate) said: Vec<String>,
     /// Every state path the runtime reports a value for (quest `state` paths
     /// live in `quests`). [`compare`] fills a path only one side reports
@@ -61,6 +60,8 @@ pub(crate) struct Observation {
     pub(crate) quests: BTreeMap<String, String>,
     /// `complete | ended | incomplete | refused:<code> | fatal`.
     pub(crate) exit: String,
+    /// The IR oracle's disagreements (§4.4): run only; trace reports none.
+    pub(crate) ir: Vec<String>,
 }
 
 /// One comparison (§4.3).
@@ -126,6 +127,9 @@ struct Subject {
     beats: Vec<String>,
     /// Declared state path -> default, rendered (the artifact's `state[]`).
     defaults: BTreeMap<String, String>,
+    /// The cast's display names (`name:`), what `{{occasion.target}}`
+    /// interpolates to (D12).
+    names: BTreeMap<String, String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +166,7 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
         }
     };
     let mut transcript: Vec<Json> = Vec::new();
+    let mut ir: Vec<String> = Vec::new();
     let (state, facts, quests, flags) = match &c.present {
         Present::Entries(ids) if ids.len() > 1 => {
             // Each later entry resumes the world the previous one left,
@@ -170,17 +175,20 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
             let mut last = None;
             for id in ids {
                 let m = match carry.take() {
-                    None => run_machine(art, &c.mock, None, None),
+                    None => probed(art, &c.mock, &c.subject.names),
                     Some((s, f, q)) => {
                         let mut mock = c.mock.clone();
                         mock.state.clear();
                         mock.facts.clear();
-                        let driver = RunDriver::from_mock(&mock);
+                        let driver = Oracle::new(RunDriver::from_mock(&mock));
                         Machine::resume(art, Seed::from(&mock), Carry::world(s, f, q), driver)
+                            .with_display_names(&c.subject.names)
+                            .with_arm_probe()
                     }
                 };
                 let r = run_one(m.with_entry(id));
                 transcript.extend(r.transcript.iter().cloned());
+                ir.extend(r.ir.iter().cloned());
                 let stop = r.flags.stops();
                 carry = Some((r.state.clone(), r.base_facts.clone(), r.quests.clone()));
                 last = Some(r);
@@ -192,20 +200,23 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
             (r.state, r.facts, r.quests, r.flags)
         }
         present => {
-            let (entry, beat) = match present {
-                Present::Document => (None, None),
-                Present::Entries(ids) => (Some(ids[0].as_str()), None),
-                Present::Beat(id) => (None, Some(id.as_str())),
-            };
-            let r = run_one(run_machine(art, &c.mock, entry, beat));
+            let mut m = probed(art, &c.mock, &c.subject.names);
+            match present {
+                Present::Document => {}
+                Present::Entries(ids) => m = m.with_entry(&ids[0]),
+                Present::Beat(id) => m = m.with_bundle_beat(id),
+            }
+            let r = run_one(m);
             transcript = r.transcript;
+            ir = r.ir;
             (r.state, r.facts, r.quests, r.flags)
         }
     };
     let mut obs = Observation {
-        said: transcript.iter().filter_map(record_line).collect(),
+        said: said_of(&transcript, art),
         facts,
         exit: flags.exit(&transcript),
+        ir,
         ..Observation::default()
     };
     for (path, v) in &state {
@@ -223,6 +234,18 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
     obs
 }
 
+/// `lute run`'s walk of `art` (the `run_machine` construction) with the
+/// IR oracle's probe on.
+fn probed(art: &Json, mock: &MockSet, names: &BTreeMap<String, String>) -> Machine<Oracle> {
+    Machine::new(
+        art,
+        Seed::from(mock),
+        Oracle::new(RunDriver::from_mock(mock)),
+    )
+    .with_display_names(names)
+    .with_arm_probe()
+}
+
 struct RunFlags {
     error: Option<String>,
     refused: bool,
@@ -236,11 +259,20 @@ impl RunFlags {
 
     fn exit(&self, transcript: &[Json]) -> String {
         if let Some(msg) = &self.error {
-            return if self.refused {
-                format!("refused:{}", bracketed_code(msg).unwrap_or("?"))
-            } else {
-                "fatal".to_string()
+            if !self.refused {
+                return "fatal".to_string();
+            }
+            // The Machine's exclusivity refusal is recorded at the write (an
+            // `exclusive` record), its message carries no code.
+            let exclusive = transcript
+                .iter()
+                .any(|r| r.get("kind").and_then(Json::as_str) == Some("exclusive"));
+            let code = match bracketed_code(msg) {
+                Some(code) => code,
+                None if exclusive => lute_check::fact_check::E_FACT_EXCLUSIVE,
+                None => "?",
             };
+            return format!("refused:{code}");
         }
         if self.incomplete {
             "incomplete".to_string()
@@ -262,14 +294,16 @@ struct RunResult {
     facts: BTreeSet<String>,
     quests: BTreeMap<String, String>,
     flags: RunFlags,
+    /// The IR oracle's disagreements (§4.4).
+    ir: Vec<String>,
 }
 
-fn run_one(mut m: Machine<RunDriver>) -> RunResult {
+fn run_one(mut m: Machine<Oracle>) -> RunResult {
     let result = m.run();
     let facts = m.all_facts().iter().map(render_fact).collect();
     let (out, driver) = m.into_carry();
     RunResult {
-        transcript: driver.transcript,
+        transcript: driver.run.transcript,
         state: out.state,
         base_facts: out.base_facts,
         facts,
@@ -279,6 +313,168 @@ fn run_one(mut m: Machine<RunDriver>) -> RunResult {
             refused: out.refused,
             incomplete: out.incomplete,
         },
+        ir: driver.disagreements,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The IR oracle (§4.4).
+// ---------------------------------------------------------------------------
+
+/// `lute run`'s [`RunDriver`], plus the IR oracle: every `match` arm the
+/// Machine judged through its structured `expr` (an `armExpr` observation,
+/// [`Machine::with_arm_probe`]) is judged again by [`expr_node_value`] — the
+/// IR's own evaluator, which execution no longer uses — over the state the
+/// arm read. A decided oracle verdict that differs from the Machine's is a
+/// disagreement: the engine-facing `expr` is not the guard trace evaluated.
+struct Oracle {
+    run: RunDriver,
+    disagreements: Vec<String>,
+}
+
+impl Oracle {
+    fn new(run: RunDriver) -> Self {
+        Oracle {
+            run,
+            disagreements: Vec::new(),
+        }
+    }
+}
+
+impl Driver for Oracle {
+    fn choose(&mut self, menu: &Menu<'_>) -> Pick {
+        self.run.choose(menu)
+    }
+    fn forced(&mut self, menu: &Menu<'_>, option: &str, verdict: &Verdict) -> Forced {
+        self.run.forced(menu, option, verdict)
+    }
+    fn bridge(&mut self, call: &BridgeCall<'_>) -> BridgeReply {
+        self.run.bridge(call)
+    }
+    fn unknown(&mut self, site: &UnknownSite<'_>) -> OnUnknown {
+        self.run.unknown(site)
+    }
+    fn emit(&mut self, rec: Json) {
+        self.run.emit(rec)
+    }
+    fn observe(&mut self, rec: Json) {
+        if rec.get("kind").and_then(Json::as_str) != Some("armExpr") {
+            return;
+        }
+        let empty = serde_json::Map::new();
+        let reads = rec.get("reads").and_then(Json::as_object).unwrap_or(&empty);
+        let oracle = match expr_node_value(&rec["expr"], reads) {
+            Value::Bool(b) => b,
+            // No IR-side model (`list`, an undecided read): nothing to judge.
+            _ => return,
+        };
+        if rec.get("held").and_then(Json::as_bool) != Some(oracle) {
+            self.disagreements.push(format!(
+                "{} arm {}: expr {} is {oracle}, the evaluated guard is {}",
+                rec["addr"].as_str().unwrap_or(""),
+                rec["arm"].as_u64().map_or(0, |i| i + 1),
+                rec["expr"],
+                rec["held"]
+            ));
+        }
+    }
+}
+
+/// One IR structured `expr` node (`lute_compile::expr::ExprNode`'s shape —
+/// `lit` / `path` / `op` / `cond` / `list` / `isSet` / `has`) over `reads`
+/// (path → value; `null` unset, `{"unknown": true}` undecided): the `lute
+/// run` evaluator of IR A13 arms before execution moved to the one CEL
+/// evaluator (design §3.4). `isSet` / `has` are definite presence; anything
+/// it has no model for is `Unknown`, never a guess.
+fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value {
+    if let Some(lit) = node.get("lit") {
+        return lute_trace::exec::session::json_to_value(lit).unwrap_or(Value::Unknown);
+    }
+    if let Some(path) = node.get("path").and_then(Json::as_str) {
+        return reads
+            .get(path)
+            .and_then(lute_trace::exec::session::json_to_value)
+            .unwrap_or(Value::Unknown);
+    }
+    if let Some(path) = node
+        .get("isSet")
+        .or_else(|| node.get("has"))
+        .and_then(Json::as_str)
+    {
+        return Value::Bool(reads.get(path).is_some_and(|v| !v.is_null()));
+    }
+    if let (Some(cond), Some(then), Some(otherwise)) =
+        (node.get("cond"), node.get("then"), node.get("else"))
+    {
+        return match expr_node_value(cond, reads) {
+            Value::Bool(true) => expr_node_value(then, reads),
+            Value::Bool(false) => expr_node_value(otherwise, reads),
+            _ => Value::Unknown,
+        };
+    }
+    let Some(op) = node.get("op").and_then(Json::as_str) else {
+        return Value::Unknown;
+    };
+    let l = node
+        .get("l")
+        .map_or(Value::Unknown, |n| expr_node_value(n, reads));
+    let r = node.get("r").map(|n| expr_node_value(n, reads));
+    let eq = |l: &Value, r: &Value| match (l, r) {
+        (Value::Bool(a), Value::Bool(b)) => Some(a == b),
+        (Value::Num(a), Value::Num(b)) => Some(a == b),
+        (Value::Str(a), Value::Str(b)) => Some(a == b),
+        _ => None,
+    };
+    let cmp = |l: &Value, r: &Value| match (l, r) {
+        (Value::Num(a), Value::Num(b)) => a.partial_cmp(b),
+        (Value::Str(a), Value::Str(b)) => Some(a.cmp(b)),
+        _ => None,
+    };
+    use std::cmp::Ordering::{Greater, Less};
+    let decided = |b: Option<bool>| b.map_or(Value::Unknown, Value::Bool);
+    match (op, r) {
+        ("!", None) => match l {
+            Value::Bool(b) => Value::Bool(!b),
+            _ => Value::Unknown,
+        },
+        ("-", None) => match l {
+            Value::Num(n) => Value::Num(-n),
+            _ => Value::Unknown,
+        },
+        ("&&", Some(r)) => match (l, r) {
+            (Value::Bool(false), _) | (_, Value::Bool(false)) => Value::Bool(false),
+            (Value::Bool(true), Value::Bool(true)) => Value::Bool(true),
+            _ => Value::Unknown,
+        },
+        ("||", Some(r)) => match (l, r) {
+            (Value::Bool(true), _) | (_, Value::Bool(true)) => Value::Bool(true),
+            (Value::Bool(false), Value::Bool(false)) => Value::Bool(false),
+            _ => Value::Unknown,
+        },
+        ("==", Some(r)) => decided(eq(&l, &r)),
+        ("!=", Some(r)) => decided(eq(&l, &r).map(|b| !b)),
+        ("<", Some(r)) => decided(cmp(&l, &r).map(|o| o == Less)),
+        ("<=", Some(r)) => decided(cmp(&l, &r).map(|o| o != Greater)),
+        (">", Some(r)) => decided(cmp(&l, &r).map(|o| o == Greater)),
+        (">=", Some(r)) => decided(cmp(&l, &r).map(|o| o != Less)),
+        ("+", Some(r)) => match (l, r) {
+            (Value::Num(a), Value::Num(b)) => Value::Num(a + b),
+            (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
+            _ => Value::Unknown,
+        },
+        ("-" | "*" | "/" | "%", Some(r)) => match (l, r) {
+            (Value::Num(a), Value::Num(b)) => match op {
+                "-" => Value::Num(a - b),
+                "*" => Value::Num(a * b),
+                "/" if b != 0.0 => Value::Num(a / b),
+                // dsl 0.24.0 §1: integer `%` (truncated remainder of two
+                // integral values); a fraction or a zero divisor is unknown.
+                "%" if a.fract() == 0.0 && b.fract() == 0.0 && b != 0.0 => Value::Num(a % b + 0.0),
+                _ => Value::Unknown,
+            },
+            _ => Value::Unknown,
+        },
+        _ => Value::Unknown,
     }
 }
 
@@ -296,14 +492,7 @@ fn trace(s: &Subject, present: &Present, mock: &MockSet) -> (TraceReport, TraceE
 
 fn trace_observation((report, exit): &(TraceReport, TraceExit)) -> Observation {
     let mut obs = Observation {
-        said: report
-            .steps
-            .iter()
-            .filter_map(|s| match s {
-                Step::Line { speaker, text, .. } => Some(said_line(speaker, text)),
-                _ => None,
-            })
-            .collect(),
+        said: report.said.clone(),
         facts: report.final_facts.clone(),
         exit: match exit {
             TraceExit::Complete if report.disposition == "ended" => "ended".to_string(),
@@ -426,6 +615,9 @@ fn compare(
     }
     if trace.exit != run.exit {
         push("exit", format!("trace={} run={}", trace.exit, run.exit));
+    }
+    if !run.ir.is_empty() {
+        push("ir-expr", run.ir.join("; "));
     }
     out
 }
@@ -618,17 +810,10 @@ impl Gates {
     /// verdict `lute play` / `lute compile --project` gate on), else the
     /// standalone check.
     fn gate(&self, file: &Path, project: Option<&Path>, input: &CheckInput) -> CheckResult {
-        let canon = std::fs::canonicalize(file).ok();
-        if let Some(rec) = project.and_then(|p| self.project(p)) {
-            let hit = rec
-                .per_doc
-                .iter()
-                .find(|(path, _)| canon.is_some() && std::fs::canonicalize(path).ok() == canon);
-            if let Some((key, base)) = hit {
-                return crate::gate_for_doc(rec, key, base);
-            }
-        }
-        lute_check::check(input)
+        project
+            .and_then(|p| self.project(p))
+            .and_then(|rec| rec.gate(file))
+            .unwrap_or_else(|| lute_check::check(input))
     }
 }
 
@@ -647,7 +832,13 @@ fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> O
         Err(first_error(&gate.diagnostics))
     };
     let (doc, _) = lute_syntax::parse(&input.text);
-    let lore = lute_check::fold_env(&doc, &input).0.doc_kind == lute_check::DocKind::Lore;
+    let folded = lute_check::fold_env(&doc, &input).0;
+    let lore = folded.doc_kind == lute_check::DocKind::Lore;
+    // The cast's display names, as `lute trace` and `lute play` pass them.
+    let names = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast)
+        .into_iter()
+        .filter_map(|(id, c)| Some((id, c.name?)))
+        .collect();
     let defaults = artifact
         .as_ref()
         .ok()
@@ -670,6 +861,7 @@ fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> O
         artifact,
         lore,
         defaults,
+        names,
     })
 }
 
@@ -737,8 +929,6 @@ struct Corpus {
     plays_refused: usize,
     /// Plays that could not be loaded for another reason (a usage error).
     plays_failed: Vec<String>,
-    /// Every case id enumerated, compared or not.
-    enumerated: BTreeSet<String>,
 }
 
 fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
@@ -749,7 +939,6 @@ fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
         check_refused: 0,
         plays_refused: 0,
         plays_failed: Vec::new(),
-        enumerated: BTreeSet::new(),
     };
     let mut plays: Vec<(PathBuf, &Root)> = Vec::new();
     for root in roots {
@@ -817,7 +1006,6 @@ fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
                     if only.is_some_and(|o| !id.contains(o)) {
                         continue;
                     }
-                    corpus.enumerated.insert(id.clone());
                     corpus.cases.push(Case::Doc(DocCase {
                         id,
                         subject: subject.clone(),
@@ -837,7 +1025,6 @@ fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
                     if only.is_some_and(|o| !c.id().contains(o)) {
                         continue;
                     }
-                    corpus.enumerated.insert(c.id().to_string());
                     corpus.cases.push(c);
                 }
             }
@@ -1002,7 +1189,7 @@ fn presentation_cases(
 
         // What the play observed.
         let mut obs = Observation {
-            said: pr.transcript.iter().filter_map(record_line).collect(),
+            said: said_of(&pr.transcript, art),
             state: pr
                 .state_after
                 .iter()
@@ -1010,8 +1197,16 @@ fn presentation_cases(
                 .collect(),
             facts: pr.facts_after.iter().map(render_fact).collect(),
             quests: BTreeMap::new(),
+            ir: Vec::new(),
             exit: match pb.halted {
-                _ if pb.step_exclusive => {
+                // Exclusivity broken at a write (the `exclusive` record), or
+                // held at the step's end.
+                _ if pb.step_exclusive
+                    || pr
+                        .transcript
+                        .iter()
+                        .any(|r| r.get("kind").and_then(Json::as_str) == Some("exclusive")) =>
+                {
                     format!("refused:{}", lute_check::fact_check::E_FACT_EXCLUSIVE)
                 }
                 Some("incomplete") => "incomplete".to_string(),
@@ -1046,17 +1241,24 @@ fn presentation_cases(
 // Rendering helpers.
 // ---------------------------------------------------------------------------
 
-fn said_line(speaker: &str, text: &str) -> String {
-    format!("@{speaker}: {text}")
-}
-
-fn record_line(rec: &Json) -> Option<String> {
-    (rec.get("kind").and_then(Json::as_str) == Some("line")).then(|| {
-        said_line(
-            rec.get("speaker").and_then(Json::as_str).unwrap_or(""),
-            rec.get("text").and_then(Json::as_str).unwrap_or(""),
-        )
-    })
+/// The canonical transcript lines of `transcript` ([`lute_trace::exec::said_line`]:
+/// the attribute block read off the artifact command at each record's `addr`).
+fn said_of(transcript: &[Json], art: &Json) -> Vec<String> {
+    let cmds: HashMap<&str, &Json> = art
+        .get("commands")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| Some((c.get("addr")?.as_str()?, c)))
+        .collect();
+    transcript
+        .iter()
+        .filter(|r| r.get("kind").and_then(Json::as_str) == Some("line"))
+        .map(|r| {
+            let at = r.get("addr").and_then(Json::as_str).unwrap_or("");
+            lute_trace::exec::said_line(r, cmds.get(at).copied())
+        })
+        .collect()
 }
 
 fn render_fact((rel, args): &Fact) -> String {
@@ -1121,73 +1323,6 @@ fn bracketed_code(msg: &str) -> Option<&str> {
 }
 
 // ---------------------------------------------------------------------------
-// Allowlist (§4.5).
-// ---------------------------------------------------------------------------
-
-const FIELDS: [&str; 5] = ["said", "state", "facts", "quests", "exit"];
-
-struct Allowed {
-    line: usize,
-    case: String,
-    field: String,
-}
-
-fn allowlist() -> Result<Vec<Allowed>, Vec<String>> {
-    let mut out = Vec::new();
-    let mut errors = Vec::new();
-    let mut seen = BTreeSet::new();
-    for (i, raw) in ALLOWLIST.lines().enumerate() {
-        let line = raw.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let cols: Vec<&str> = line.split_whitespace().collect();
-        let n = i + 1;
-        if cols.len() < 5 {
-            errors.push(format!(
-                "allowlist line {n}: `<case> <field> <class> <slice> <reason…>` expected: {line}"
-            ));
-            continue;
-        }
-        let (case, field, class, slice) = (cols[0], cols[1], cols[2], cols[3]);
-        if !FIELDS.contains(&field) {
-            errors.push(format!("allowlist line {n}: unknown field `{field}`"));
-        }
-        // One divergence may mix classes (`D7,D11`), each with its slice.
-        let ids = |text: &str, prefix: char| {
-            text.split(',').all(|t| {
-                t.strip_prefix(prefix)
-                    .is_some_and(|d| d.parse::<u32>().is_ok())
-            })
-        };
-        if !ids(class, 'D') {
-            errors.push(format!(
-                "allowlist line {n}: class `{class}` is not a (comma-separated) D-id of the \
-                 design §2.3"
-            ));
-        }
-        if !ids(slice, 'S') {
-            errors.push(format!(
-                "allowlist line {n}: slice `{slice}` is not S<n>[,S<n>…]"
-            ));
-        }
-        if !seen.insert((case.to_string(), field.to_string())) {
-            errors.push(format!("allowlist line {n}: `{case} {field}` listed twice"));
-        }
-        out.push(Allowed {
-            line: n,
-            case: case.to_string(),
-            field: field.to_string(),
-        });
-    }
-    if errors.is_empty() {
-        Ok(out)
-    } else {
-        Err(errors)
-    }
-}
-
-// ---------------------------------------------------------------------------
 // The test.
 // ---------------------------------------------------------------------------
 
@@ -1236,7 +1371,6 @@ struct Tally {
     compared_in_repo: usize,
     not_concrete: BTreeMap<String, usize>,
     divergences: Vec<Divergence>,
-    compared_ids: BTreeSet<String>,
 }
 
 fn run_cases(cases: &[Case], verbose: bool) -> Tally {
@@ -1299,7 +1433,6 @@ fn run_cases(cases: &[Case], verbose: bool) -> Tally {
         compared_in_repo: 0,
         not_concrete: BTreeMap::new(),
         divergences: Vec::new(),
-        compared_ids: BTreeSet::new(),
     };
     for (id, outcome) in outcomes {
         match outcome {
@@ -1309,7 +1442,6 @@ fn run_cases(cases: &[Case], verbose: bool) -> Tally {
                     tally.compared_in_repo += 1;
                 }
                 tally.divergences.extend(divs);
-                tally.compared_ids.insert(id);
             }
             Outcome::Skipped(Skip::CheckRefused) => {}
             Outcome::Skipped(Skip::NotConcrete(why)) => {
@@ -1339,55 +1471,12 @@ fn differential_trace_vs_run() {
         .filter(|o| !o.is_empty());
     let corpus = enumerate(&roots, only.as_deref());
     let tally = run_cases(&corpus.cases, only.is_some());
-    let allowed = match allowlist() {
-        Ok(a) => a,
-        Err(errors) => panic!("{}", errors.join("\n")),
-    };
-
-    let listed: BTreeSet<(&str, &str)> = allowed
-        .iter()
-        .map(|a| (a.case.as_str(), a.field.as_str()))
-        .collect();
-    let diverged: BTreeSet<(&str, &str)> = tally
+    // Zero divergences (§4.5): a difference between the runtimes is a bug.
+    let mut failures: Vec<String> = tally
         .divergences
         .iter()
-        .map(|d| (d.case.as_str(), d.field))
+        .map(|d| format!("divergence: {} {}: {}", d.case, d.field, d.detail))
         .collect();
-    let allowlisted = tally
-        .divergences
-        .iter()
-        .filter(|d| listed.contains(&(d.case.as_str(), d.field)))
-        .count();
-
-    let mut failures: Vec<String> = Vec::new();
-    for d in &tally.divergences {
-        if !listed.contains(&(d.case.as_str(), d.field)) {
-            failures.push(format!(
-                "unlisted divergence: {} {}: {}\n    allowlist line: {} {} D? S? <reason>",
-                d.case, d.field, d.detail, d.case, d.field
-            ));
-        }
-    }
-    for a in &allowed {
-        // An opt-in line is judged only when its corpus was enumerated here;
-        // under `LUTE_DIFF_ONLY`, only the lines of the selected cases.
-        if (a.case.starts_with("corpus:") || only.is_some()) && !corpus.enumerated.contains(&a.case)
-        {
-            continue;
-        }
-        if !tally.compared_ids.contains(&a.case) {
-            failures.push(format!(
-                "allowlist line {}: case `{}` was not compared this run (renamed, removed, or no \
-                 longer concrete); delete the line",
-                a.line, a.case
-            ));
-        } else if !diverged.contains(&(a.case.as_str(), a.field.as_str())) {
-            failures.push(format!(
-                "allowlist entry `{} {}` (line {}) is fixed; delete the line",
-                a.case, a.field, a.line
-            ));
-        }
-    }
     for p in &corpus.plays_failed {
         failures.push(format!("play did not load: {p}"));
     }
@@ -1395,13 +1484,8 @@ fn differential_trace_vs_run() {
     let skipped: usize = tally.not_concrete.values().sum();
     println!(
         "differential: {} case(s) compared ({} in-repo), {} skipped as not concrete, {} \
-         document(s) and {} play(s) refused by check, {} divergence(s) allowlisted",
-        tally.compared,
-        tally.compared_in_repo,
-        skipped,
-        corpus.check_refused,
-        corpus.plays_refused,
-        allowlisted
+         document(s) and {} play(s) refused by check",
+        tally.compared, tally.compared_in_repo, skipped, corpus.check_refused, corpus.plays_refused,
     );
     for (why, n) in &tally.not_concrete {
         println!("  skipped (not concrete): {n} × {why}");

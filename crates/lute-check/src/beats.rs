@@ -864,7 +864,7 @@ pub(crate) fn occasion_target_scope_message() -> String {
 
 /// dsl 0.26.0 §5: the members the document's kind beats answer — the domain
 /// of [`OCCASION_TARGET`], sorted, empty without a (well-formed) kind beat.
-pub(crate) fn occasion_target_members(
+pub fn occasion_target_members(
     doc: &Document,
     beat: Option<&BeatMeta>,
     occasions: &BTreeMap<String, OccasionDecl>,

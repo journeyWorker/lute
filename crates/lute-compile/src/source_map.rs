@@ -96,7 +96,7 @@ pub struct ArmSource {
 }
 
 impl ArmSource {
-    /// A `<when is test>` arm (`walk.rs` `render_guard_text`).
+    /// A `<when is test>` arm (the guard text `lute trace` shows).
     pub fn when(span: Span, is: Option<&IsPattern>, test: &CelSlot) -> Self {
         ArmSource {
             span,
@@ -166,7 +166,7 @@ pub struct ObjectiveSource {
     pub until: Option<String>,
 }
 
-/// `walk.rs` `render_guard_text`: an arm's `is` pattern and `test` guard as
+/// The guard text `lute trace` shows for an arm: its `is` pattern and `test` guard as
 /// one line.
 fn render_arm_guard(is: Option<&IsPattern>, test_raw: &str) -> Option<String> {
     let test = test_raw.trim();

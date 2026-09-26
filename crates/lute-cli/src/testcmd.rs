@@ -616,6 +616,11 @@ struct Shared {
     quests: BTreeMap<PathBuf, Option<BTreeSet<String>>>,
     /// The compiled project per play project directory.
     plays: BTreeMap<PathBuf, crate::play::PlayProject>,
+    /// The reconciled project analysis per project root a test resolves
+    /// its document against (`None` when it failed): every test gates its
+    /// document on its project's verdict, as `lute trace --project` and
+    /// `lute play` do — one envelope (round-5 `test-project-envelope`).
+    gates: BTreeMap<PathBuf, Option<crate::ReconciledProject>>,
 }
 
 /// The root whose producer set judges `lute_path`'s mocked facts:
@@ -642,6 +647,7 @@ impl Shared {
     fn for_tests(test_files: &[PathBuf], project: Option<&Path>, providers: Option<&Path>) -> Self {
         let mut producer_roots: BTreeSet<(PathBuf, bool)> = BTreeSet::new();
         let mut quest_roots: BTreeSet<PathBuf> = BTreeSet::new();
+        let mut gate_roots: BTreeSet<PathBuf> = BTreeSet::new();
         for test_file in test_files {
             let Ok(text) = std::fs::read_to_string(test_file) else {
                 continue;
@@ -661,6 +667,7 @@ impl Shared {
             if !mocks.accepts.is_empty() {
                 quest_roots.extend(project_dir_of(&lute_path, project));
             }
+            gate_roots.extend(project_dir_of(&lute_path, project));
         }
         let mut shared = Shared::default();
         for (root, single_root) in producer_roots {
@@ -670,6 +677,10 @@ impl Shared {
         for root in quest_roots {
             let ids = crate::project_quest_ids(&root, providers);
             shared.quests.insert(root, ids);
+        }
+        for root in gate_roots {
+            let rec = crate::reconciled_project_results(&root, providers).ok();
+            shared.gates.insert(root, rec);
         }
         shared
     }
@@ -713,6 +724,14 @@ impl Shared {
             Some(ids) => ids.clone(),
             None => crate::project_quest_ids(root, providers),
         }
+    }
+
+    /// `lute_path`'s gate verdict in the project at `root` (the spec §5
+    /// gate `lute trace --project` applies); `None` when the project could
+    /// not be analysed or does not hold the document — the standalone
+    /// check then decides, as `lute trace` without a project does.
+    fn gate(&self, root: &Path, lute_path: &Path) -> Option<lute_check::CheckResult> {
+        self.gates.get(root)?.as_ref()?.gate(lute_path)
     }
 }
 
@@ -1048,9 +1067,14 @@ fn run_one_test(
             .collect(),
         accepted: mocks.accepts.clone(),
     };
-    // The mocks an unpresented entry / beat is judged under (T3-5).
-    let eligibility_mocks = judges_eligibility_by_id.then(|| mocks.clone());
-    let checked = lute_check::check(&input);
+    // One envelope: the document is gated on its project's verdict (what
+    // `lute trace --project` and `lute play` gate on), else the standalone
+    // check. An unpresented entry / beat is judged under the same mocks and
+    // verdict (T3-5).
+    let checked = resolve_with
+        .and_then(|root| shared.gate(root, &lute_path))
+        .unwrap_or_else(|| lute_check::check(&input));
+    let eligibility_mocks = judges_eligibility_by_id.then(|| (mocks.clone(), checked.clone()));
     let (report, exit) = if let Some(beat) = &beat {
         trace_beat_with_check(&input, checked, mocks, beat, project_asserts.as_ref())
     } else if lore_lookup_only {
@@ -1135,9 +1159,11 @@ fn run_one_test(
         }
 
         // transcriptContains / transcriptLacks: [substrings] — against the
-        // presented content lines as `@speaker: text` (dsl 0.24.0, T1-2),
-        // the same canonical form `lute play` matches; never the trace's
-        // human rendering (headers, decisions, staging).
+        // presented content lines in the one canonical transcript form
+        // (`lute_trace::exec::said_line`, dsl 0.24.0 T1-2), the form `lute
+        // play` matches too; never the trace's human rendering (headers,
+        // decisions, staging). A needle's attribute block binds the line it
+        // lands on (0.27, T1-11).
         let transcript = if expect.contains_key("transcriptContains")
             || expect.contains_key("transcriptLacks")
         {
@@ -1150,23 +1176,16 @@ fn run_one_test(
                 continue;
             };
             for sub in list.iter().filter_map(|i| i.as_str()) {
-                // dsl 0.26.0 §7 (T3-6): a needle copied from `lute play`
-                // output carries line attributes the presented form lacks.
-                let needle = crate::play_expect::transcript_needle(sub);
-                let present = transcript.contains(&needle);
-                let actual = match crate::play_expect::nearest_said_line(&transcript, &needle) {
-                    Some(line) if want_present && !present => {
-                        format!("absent (nearest line: {line:?})")
-                    }
-                    _ => if present { "present" } else { "absent" }.to_string(),
-                };
+                let miss = lute_trace::exec::record::judge(&transcript, sub, want_present);
                 expectations.push(ExpectResult {
                     why: None,
                     kind,
                     subject: String::new(),
                     expected: sub.to_string(),
-                    actual: Some(actual),
-                    passed: present == want_present,
+                    passed: miss.is_none(),
+                    actual: Some(miss.unwrap_or_else(|| {
+                        if want_present { "present" } else { "absent" }.to_string()
+                    })),
                 });
             }
         }
@@ -1321,8 +1340,10 @@ fn run_one_test(
                     .cloned()
                     .collect();
                 if matched.is_empty() {
-                    if let (Some(id), Some(mocks)) = (id.as_deref(), &eligibility_mocks) {
-                        matched = eligibility_alone(&input, mocks, id, project_asserts.as_ref());
+                    if let (Some(id), Some((mocks, checked))) = (id.as_deref(), &eligibility_mocks)
+                    {
+                        matched =
+                            eligibility_alone(&input, checked, mocks, id, project_asserts.as_ref());
                     }
                 }
                 let actual = (!matched.is_empty()).then(|| {
@@ -1702,18 +1723,20 @@ fn names_presented(p: &str, id: &str) -> bool {
     p == id || p.ends_with(&format!(".{id}"))
 }
 
-/// `id`'s eligibility judged on its own under `mocks` (dsl 0.24.0, T3-5):
-/// the entry / bundle beat of `input`'s document is presented alone, from
-/// the mocked start, and its head's verdict read back. Empty when the
-/// document declares no such entry or beat.
+/// `id`'s eligibility judged on its own under `mocks` and the gate verdict
+/// `checked` (dsl 0.24.0, T3-5): the entry / bundle beat of `input`'s
+/// document is presented alone, from the mocked start, and its head's
+/// verdict read back. Empty when the document declares no such entry or
+/// beat.
 fn eligibility_alone(
     input: &lute_check::CheckInput,
+    checked: &lute_check::CheckResult,
     mocks: &lute_trace::MockSet,
     id: &str,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> Vec<(String, Option<bool>)> {
     let (doc, _) = lute_syntax::parse(&input.text);
-    let checked = lute_check::check(input);
+    let checked = checked.clone();
     let (report, _) = if doc.entries.iter().any(|e| e.id == id) {
         trace_entries_with_check(input, checked, mocks.clone(), &[id], project_asserts)
     } else if doc

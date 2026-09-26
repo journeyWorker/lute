@@ -51,11 +51,16 @@ use lute_trace::datalog::Fact;
 use lute_trace::Value;
 use serde_json::{json, Value as Json};
 
+use lute_trace::exec::session::{
+    advance_quests, clock_at, deciding_unknown, describe_atoms, eligible_at, presented,
+    quest_state_id, refresh_clock, render_fact, seed_quest, seed_world, unknown_id, Session,
+    WorldSeed, QUEST_STATES,
+};
+
 use super::{
-    advance_quests, compile_project, deciding_unknown, describe_atoms, domain_members, eligible_at,
-    entry_flag, execute, is_candidate, kind_label, parse_script_with, plan_steps, presented,
-    quest_state_id, render_fact, resolve_fact, resolve_state, seed_quest, seed_world, unknown_id,
-    value_to_json, PlayScript, Project, ScriptStep, Verdict, World, QUEST_STATES,
+    compile_project, domain_members, entry_flag, execute, is_candidate, kind_label,
+    parse_script_with, plan_steps, resolve_fact, resolve_state, value_to_json, ExecProject,
+    PlayScript, ScriptStep, Verdict, World,
 };
 
 /// The most cells one invocation evaluates — a typo'd range (`1..70000`)
@@ -179,7 +184,7 @@ fn is_objective_done(path: &str) -> bool {
 }
 
 /// Resolve one `--axis` against the project; `Err` is the usage error.
-fn resolve_axis(p: &Project, path: &str, values: &[String]) -> Result<Axis, String> {
+fn resolve_axis(p: &ExecProject, path: &str, values: &[String]) -> Result<Axis, String> {
     let at = |e: String| format!("`--axis {path}`: {e}");
     if path == CLOCK_AXIS {
         return resolve_clock_axis(p, values).map_err(at);
@@ -277,7 +282,7 @@ fn resolve_axis(p: &Project, path: &str, values: &[String]) -> Result<Axis, Stri
 /// dsl 0.24.0 §1: `--axis clock[=<days>]` — every slot of each day, in
 /// clock order; each value is the position's `clock.index`, its text `day
 /// slot` (`1 Mon morning` with week labels).
-fn resolve_clock_axis(p: &Project, days: &[String]) -> Result<Axis, String> {
+fn resolve_clock_axis(p: &ExecProject, days: &[String]) -> Result<Axis, String> {
     let Some(clock) = &p.index.clock else {
         return Err(format!(
             "no schema of this project declares a `clock:` (dsl 0.24.0 §1); an axis is one of: \
@@ -341,7 +346,7 @@ fn clock_axis_at(
 }
 
 /// Write one axis value into a cell's world.
-fn apply_axis(p: &Project, w: &mut World, axis: &Axis, text: &str, value: &Value) {
+fn apply_axis(p: &ExecProject, w: &mut World, axis: &Axis, text: &str, value: &Value) {
     match &axis.apply {
         Apply::State => {
             w.state.insert(axis.path.clone(), value.clone());
@@ -388,14 +393,20 @@ fn apply_axis(p: &Project, w: &mut World, axis: &Axis, text: &str, value: &Value
             if let (Some(path), Some(name)) = (&clock.slot, clock.slot_name(at.slot)) {
                 w.state.insert(path.clone(), Value::Str(name.to_string()));
             }
-            super::refresh_clock(p, w);
+            refresh_clock(p, w);
         }
     }
 }
 
 /// What the settle did to an axis value the cell was given — a quest
 /// handler's write, a seeded quest status the lifecycle moved on.
-fn settled_away(p: &Project, w: &World, axis: &Axis, text: &str, value: &Value) -> Option<String> {
+fn settled_away(
+    p: &ExecProject,
+    w: &World,
+    axis: &Axis,
+    text: &str,
+    value: &Value,
+) -> Option<String> {
     match &axis.apply {
         Apply::State => {
             let now = w.state.get(&axis.path)?;
@@ -408,7 +419,7 @@ fn settled_away(p: &Project, w: &World, axis: &Axis, text: &str, value: &Value) 
         Apply::Fact(_) | Apply::Visited(_) => None,
         Apply::Clock => {
             let clock = p.index.clock.as_ref()?;
-            let now = super::clock_at(p, w)?;
+            let now = clock_at(p, w)?;
             (now != clock_axis_at(clock, value))
                 .then(|| format!("clock settled to {}", clock.describe(now)))
         }
@@ -749,7 +760,7 @@ fn until_index(steps: &[ScriptStep], until: &str) -> Result<usize, String> {
 /// `--until` step. A replay that halts is a usage error: the calendar
 /// cannot say what a route that does not play reaches.
 fn start_world(
-    p: &Project,
+    p: &ExecProject,
     save: &PlayScript,
     script: Option<&Path>,
     until: Option<&str>,
@@ -758,7 +769,15 @@ fn start_world(
         Some(s) => format!("{}: {e}", s.display()),
         None => e,
     };
-    let w = seed_world(p, save).map_err(at)?;
+    let w = seed_world(
+        p,
+        &WorldSeed {
+            surfaces: &save.surfaces,
+            save: &save.save,
+            derive: save.derive,
+        },
+    )
+    .map_err(at)?;
     let stop = match until {
         Some(u) => until_index(&save.steps, u).map_err(at)?,
         None => save.steps.len(),
@@ -772,7 +791,7 @@ fn start_world(
         return Ok((w, origin));
     }
     let plan = plan_steps(p, &save.steps[..stop]).map_err(at)?;
-    let play = execute(p, save, &plan, w);
+    let play = execute(save, &plan, Session::resume(p, w));
     match play.outcome {
         Ok(_) => Ok((play.world, origin)),
         Err(h) => Err(at(format!(
@@ -784,7 +803,7 @@ fn start_world(
 
 /// `--where`: whether `cel` holds over the cell's world. Unknown is an
 /// error — a cell is never dropped (or kept) on a guess.
-fn holds_at(p: &Project, w: &World, cel: &str) -> Result<bool, String> {
+fn holds_at(p: &ExecProject, w: &World, cel: &str) -> Result<bool, String> {
     let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
     eval.eval_guard(cel).map_err(|atoms| describe_atoms(&atoms))
 }
@@ -798,7 +817,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     let save = match args.script {
         None => PlayScript {
             surfaces: lute_trace::MockSet::default(),
-            save: super::SaveSeed::default(),
+            save: lute_trace::exec::session::SaveSeed::default(),
             steps: Vec::new(),
             step_expects: Vec::new(),
             expect: None,
@@ -1030,7 +1049,7 @@ struct Report<'a> {
 
 /// Per `--facts` relation, the facts of it that hold over the settled
 /// cell: the runner's fixpoint, as [`super::world_view`] derives them.
-fn cell_facts(p: &Project, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
+fn cell_facts(p: &ExecProject, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
     if rels.is_empty() {
         return Vec::new();
     }
@@ -1052,7 +1071,11 @@ fn cell_facts(p: &Project, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
 /// its declared domain, where no beat answers and every cell would read as
 /// a hole). A targeted occasion none of whose beats names a target gets one
 /// column its untargeted beats answer.
-fn columns(p: &Project, occasions: &[String], targets: &[String]) -> Result<Vec<Column>, String> {
+fn columns(
+    p: &ExecProject,
+    occasions: &[String],
+    targets: &[String],
+) -> Result<Vec<Column>, String> {
     let answered: BTreeSet<&str> = p.index.beats.iter().map(|b| b.on.as_str()).collect();
     let listed: Vec<&str> = if occasions.is_empty() {
         answered.iter().copied().collect()
@@ -1136,7 +1159,7 @@ fn columns(p: &Project, occasions: &[String], targets: &[String]) -> Result<Vec<
 
 /// One column at one cell, recording every candidate's verdict in `seen`
 /// (keyed by its `ProjectIndex.beats` row).
-fn evaluate(p: &Project, w: &World, col: &Column, seen: &mut BTreeMap<usize, Seen>) -> Outcome {
+fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTreeMap<usize, Seen>) -> Outcome {
     let cands = eligible_at(p, w, &col.occasion, col.target.as_deref());
     let rows: Vec<Option<usize>> = cands
         .iter()

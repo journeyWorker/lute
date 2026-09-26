@@ -545,3 +545,38 @@ fn component_param_bound_to_a_longer_def_renders_in_trace_and_test() {
     assert_eq!(out.status.code(), Some(0), "{text}");
     assert!(text.contains("1 passed, 0 failed"), "{text}");
 }
+
+/// Round-5 `test-project-envelope`: a scene reading `run.metMira` that only an
+/// earlier `after:` scene sets is `E-MAYBE-UNSET` to the standalone check but
+/// clean under its project's verdict. `lute trace --project` walked it while
+/// `lute test --project` refused it; every test now gates its document on the
+/// project it resolves against, as trace and play do — one envelope.
+#[test]
+fn a_test_gates_its_document_on_the_project_verdict_as_trace_does() {
+    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/diff/test-project-envelope/episodes");
+    let trace = Command::new(BIN)
+        .args(["trace", "--project"])
+        .arg(&project)
+        .arg(project.join("booth.lute"))
+        .args(["--state", "run.metMira=true"])
+        .output()
+        .unwrap();
+    let t = String::from_utf8_lossy(&trace.stdout).into_owned()
+        + &String::from_utf8_lossy(&trace.stderr);
+    assert_eq!(trace.status.code(), Some(0), "{t}");
+    for args in [
+        &["test", "--project", "."][..],
+        &["test", "tests/booth.test.yaml"],
+    ] {
+        let out = Command::new(BIN)
+            .current_dir(&project)
+            .args(args)
+            .output()
+            .unwrap();
+        let t = String::from_utf8_lossy(&out.stdout).into_owned()
+            + &String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(0), "{args:?}: {t}");
+        assert!(!t.contains("E-MAYBE-UNSET"), "{t}");
+    }
+}

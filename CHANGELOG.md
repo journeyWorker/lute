@@ -127,6 +127,54 @@ table.
 
 ### Fixed
 
+- **`lute trace`, `lute test` and `trace_source` execute the compiled IR**
+  on the same walker `lute run` and `lute play` use (runtime unification,
+  wave 2); the AST walker is gone. Behaviour the two runtimes used to
+  disagree on now has one rule:
+  - a plugin directive's declared effects (literal, `op`, `fromAttr`,
+    `bridgeResult`) apply in trace too and show as `set` steps; `lute play`
+    prints each as `set run.sanity = 9  (effect of ::fright)` and drops the
+    "plugin call, not invoked" note for a call with only declared effects;
+    `lute run --json` `set` records carry `effectOf` (T1-3, D1);
+  - exclusivity is checked after every write, so a `::set` that makes a
+    derived exclusive pair hold refuses right there (`E-FACT-EXCLUSIVE`) in
+    trace, run and play (T1-7, D3);
+  - a derived relation whose rule reads state is re-derived after a `::set`
+    in play and run (D4);
+  - an unbound `occasion.target` in a kind-target beat is undecided: trace
+    exits incomplete naming `--state occasion.target=<member|…>` (T1-9);
+  - an unanswered bridge result is unknown in every runtime (D7); hub
+    `once` is remembered in `scene.visited.<hub>.<option>` (D8); quests
+    settle in one order everywhere, a pending objective is reported once
+    per trace, and a quest whose objectives are all optional completes
+    (D9); an unmocked `quest.<id>.state` reads `unset` in run and play too
+    (D17); `{{path}}` labels read the artifact `labels` with the `prev.`
+    fallback, and `{{occasion.target}}` the cast `name:` (D12);
+  - the engine writes `entry.<id>.everRead` after every read in every
+    runtime (D11); `lute run` output still omits it unless the artifact
+    declares it.
+  Trace's final state now lists every declared path with its default (e.g.
+  an unreached `scene.choices.<branch>` as `unset`), and its `said` form is
+  the canonical `@speaker{…}: text` line.
+- **`transcriptContains` / `transcriptLacks` judge line attributes**
+  (round-5 T1-11): `lute play`, play files in `lute test` and scene tests
+  now match needles against one canonical transcript form,
+  `@speaker{delivery}: text` — the head `lute play` prints (role flag, then
+  the line's attributes). A needle line with an attribute block
+  (`@sol{emotion="sad"}: …`) matches only a line carrying those attributes;
+  one without a block matches whatever the line carries. A
+  `transcriptContains` miss quotes the nearest real line (a line with the
+  same text but other attributes first, then the needle's speaker's lines),
+  and a `transcriptLacks` miss quotes the line that matched
+  (`present (line: "…")`), never the needle. A `transcriptLacks` needle
+  naming attributes the line does not carry now holds (it failed in 0.26).
+- **`lute test` gates a document on its project's verdict**, as `lute trace
+  --project` and `lute play` do (round-5 `test-project-envelope`): a scene
+  whose read is `E-MAYBE-UNSET` alone but settled by the project's `after:`
+  order no longer refuses under `lute test` while `lute trace --project`
+  walks it. The project is `--project`, else the nearest
+  `lute.project.yaml`; a document outside it keeps the standalone check.
+
 - `::set{ path … }` without an assignment operator is **`E-SET-SHAPE`**
   naming `=` / `+=` / `-=` and the write you likely meant
   (`::set{ run.clues - 1 }` → "did you mean `run.clues -= 1`?"). It used to

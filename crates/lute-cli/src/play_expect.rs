@@ -77,31 +77,7 @@ pub(crate) struct WorldWants {
     pub facts: bool,
 }
 
-/// The world at one moment of a play: the effective state, every fact that
-/// holds after derivation (rendered `rel(a, b)`), every declared quest's
-/// status, and the declared clock's position.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct WorldView {
-    pub state: BTreeMap<String, Value>,
-    pub facts: BTreeSet<String>,
-    pub quests: BTreeMap<String, String>,
-    /// `None` without a declared clock, or while its day/slot paths name no
-    /// position on it.
-    pub clock: Option<ClockView>,
-}
-
-/// Where the declared clock stands (dsl 0.26.0 §7, T2-5: step
-/// `expect.clock`).
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ClockView {
-    pub day: i64,
-    /// The slot's name — `None` on a day-granular clock.
-    pub slot: Option<String>,
-    /// `clock.weekday` — `None` without a `week:`.
-    pub weekday: Option<i64>,
-    /// `clock.weekdayLabel` — `None` without week labels.
-    pub weekday_label: Option<String>,
-}
+pub(crate) use lute_trace::exec::session::{ClockView, WorldView};
 
 /// The complete legal key set of the top-level (end-of-play) `expect:`.
 pub(crate) const PLAY_EXPECT_KEYS: &[&str] = &[
@@ -457,64 +433,6 @@ pub(crate) fn canonical_atom(text: &str) -> String {
     }
 }
 
-/// dsl 0.26.0 §7 (T3-6): a `transcriptContains` / `transcriptLacks` needle
-/// in the canonical `@speaker: text` form the transcript is matched in —
-/// line attributes copied from `lute play`'s output
-/// (`@granny{emotion="happy"}: …`) are dropped from each line of it, since
-/// the presented form carries none.
-pub(crate) fn transcript_needle(needle: &str) -> String {
-    needle
-        .split('\n')
-        .map(|line| {
-            let Some(rest) = line.strip_prefix('@') else {
-                return line.to_string();
-            };
-            let name_end = rest
-                .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '.' || c == '-'))
-                .unwrap_or(rest.len());
-            let (name, after) = rest.split_at(name_end);
-            let Some(attrs) = after.strip_prefix('{') else {
-                return line.to_string();
-            };
-            // The attribute block ends at the first `}` outside quotes.
-            let mut quote = None;
-            let close = attrs.char_indices().find_map(|(i, c)| match (quote, c) {
-                (None, '"' | '\'') => {
-                    quote = Some(c);
-                    None
-                }
-                (Some(q), c) if c == q => {
-                    quote = None;
-                    None
-                }
-                (None, '}') => Some(i),
-                _ => None,
-            });
-            match close {
-                Some(i) => format!("@{name}{}", &attrs[i + 1..]),
-                None => line.to_string(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// dsl 0.26.0 §7 (T3-6): the presented line of `said` nearest to a needle
-/// that matched none — what a `transcriptContains` miss shows. `None` when
-/// nothing was presented.
-pub(crate) fn nearest_said_line<'a>(said: &'a str, needle: &str) -> Option<&'a str> {
-    let needle = needle.trim();
-    said.lines()
-        .filter(|l| !l.trim().is_empty())
-        .min_by_key(|line| {
-            // A needle is a substring, so the length difference is free: a
-            // short needle is not penalized for the rest of a long line.
-            let dist = lute_manifest::suggest::levenshtein(line, needle);
-            let shorter = line.chars().count().abs_diff(needle.chars().count());
-            dist.saturating_sub(shorter)
-        })
-}
-
 // ===========================================================================
 // Judging.
 // ===========================================================================
@@ -823,15 +741,8 @@ fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
             continue;
         };
         for sub in want {
-            let needle = transcript_needle(&sub);
-            let present = outcome.said.contains(&needle);
-            if present != want_present {
-                let actual = match nearest_said_line(&outcome.said, &needle) {
-                    Some(line) if want_present => {
-                        format!("{sub:?} absent (nearest line: {line:?})")
-                    }
-                    _ => format!("{sub:?} {}", if present { "present" } else { "absent" }),
-                };
+            if let Some(actual) = lute_trace::exec::record::judge(&outcome.said, &sub, want_present)
+            {
                 miss(
                     key.to_string(),
                     format!(

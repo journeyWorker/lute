@@ -3940,6 +3940,21 @@ struct ReconciledProject {
     nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
 }
 
+impl ReconciledProject {
+    /// The spec §5 gate verdict of `file` ([`gate_for_doc`]), matched in
+    /// the project by canonical identity; `None` when `file` is not one of
+    /// its documents. The one envelope `lute trace --project`, `lute test`
+    /// and the differential harness gate a document on.
+    fn gate(&self, file: &Path) -> Option<lute_check::CheckResult> {
+        let canon = std::fs::canonicalize(file).ok()?;
+        let (key, base) = self
+            .per_doc
+            .iter()
+            .find(|(path, _)| std::fs::canonicalize(path).is_ok_and(|c| c == canon))?;
+        Some(gate_for_doc(self, key, base))
+    }
+}
+
 /// Collect + reconcile every `.lute` under `dir`, treating `dir` itself as THE
 /// single project root for every file (connectivity spec §5: `--project <dir>`
 /// resolves BOTH capabilities and connectivity against exactly that `<dir>`,
@@ -4000,30 +4015,18 @@ fn project_gate_result(
     providers: Option<&Path>,
 ) -> Result<lute_check::CheckResult, ExitCode> {
     let reconciled = reconciled_project_results(dir, providers)?;
-    let target_canon = match std::fs::canonicalize(file) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("lute: cannot read {}: {e}", file.display());
-            return Err(ExitCode::from(2));
-        }
-    };
-    // Match the target within the project by CANONICAL identity (the collected
-    // display path may differ in form from the CLI-supplied `file`, and
-    // `find_lute_files` already dedupes symlink aliases by canonical identity).
-    let matched = reconciled.per_doc.iter().find(|(path, _)| {
-        std::fs::canonicalize(path)
-            .map(|c| c == target_canon)
-            .unwrap_or(false)
-    });
-    let Some((matched_key, base)) = matched else {
+    if let Err(e) = std::fs::canonicalize(file) {
+        eprintln!("lute: cannot read {}: {e}", file.display());
+        return Err(ExitCode::from(2));
+    }
+    reconciled.gate(file).ok_or_else(|| {
         eprintln!(
             "lute: {} is not within --project {} (the connectivity gate requires the target to be part of the project)",
             file.display(),
             dir.display()
         );
-        return Err(ExitCode::from(2));
-    };
-    Ok(gate_for_doc(&reconciled, matched_key, base))
+        ExitCode::from(2)
+    })
 }
 
 /// The spec §5 gate verdict for ONE already-reconciled document: its own

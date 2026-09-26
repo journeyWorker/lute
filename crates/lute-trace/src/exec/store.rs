@@ -1,0 +1,426 @@
+//! The [`crate::exec::Machine`]'s world (`docs/design/runtime-unification.md`
+//! §3.4): live state, base facts, the Datalog closure over them, the visited
+//! set — and the one write path every construct uses.
+//!
+//! - **Reads** go value (a declared default, a seed, a carried value or a
+//!   write) → reserved default (`entry.<id>.read` / `.everRead` `false`,
+//!   `quest.<id>.state` / `.failedBy` `unset`, an objective flag `false`) →
+//!   unset: the order [`crate::EffectiveState`] implements, over an empty
+//!   schema because every declared default is already a value.
+//! - **Derivation is lazy.** An assert or retract, or a write while some rule
+//!   reads state (`cel(…)`), marks the closure dirty; the next query
+//!   recomputes it. A derived relation whose rule reads state is therefore
+//!   never stale after a `::set` (D4).
+//! - **Writes** refresh the reserved `clock.*` values when they move the
+//!   clock's `day` / `slot` (D14). Exclusivity after a write is the
+//!   Machine's (it records and refuses).
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use cel_parser::ast::Expr;
+use lute_cel::CelArena;
+use lute_check::{RelVocab, StateSchema};
+use serde_json::Value as Json;
+
+use crate::datalog::{Fact, Program};
+use crate::eval::{Read, ReservedReadKind};
+use crate::{eval, EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value};
+
+pub(crate) struct Store {
+    /// Live scalar state (path → value).
+    pub(crate) values: BTreeMap<String, Value>,
+    /// Declared value-type per state path (the artifact `state[]` table).
+    pub(crate) types: BTreeMap<String, String>,
+    /// dsl 0.24.0 §1: per state path, the member → display-label map its
+    /// artifact `state[].labels` declares.
+    pub(crate) labels: BTreeMap<String, BTreeMap<String, String>>,
+    /// Always empty: every declared default is already in `values`, so a
+    /// schema tier would only shadow reserved defaults.
+    schema: StateSchema,
+    /// Empty under `derive: true` (every relation is materialized, so a
+    /// query is definite); under `derive: false` (dsl 0.22.0 §6) it marks
+    /// the derived relations, so an unmatched query of one is unknown.
+    vocab: RelVocab,
+    program: Program,
+    derive: bool,
+    /// Some rule body reads state: a write can change the closure.
+    rules_read_state: bool,
+    /// Seeds ∪ asserted − retracted.
+    base: BTreeSet<Fact>,
+    /// `base` ∪ the derived least fixpoint (valid unless `dirty`).
+    all: BTreeSet<Fact>,
+    /// Derived relations whose last fixpoint read an undecided rule guard.
+    undecided: BTreeMap<String, Vec<UnresolvedAtom>>,
+    dirty: bool,
+    /// dsl 0.21.0 §7a.1: the scene ids `visited('<id>')` reads.
+    pub(crate) visited: BTreeSet<String>,
+    /// dsl 0.25.0 §1: relation pairs declared exclusive (`a < b`).
+    excludes: Vec<(String, String)>,
+    clock: Option<lute_manifest::clock::ClockDecl>,
+    /// dsl 0.5.1 §1.3: every reserved quest path an evaluation read, and how
+    /// it resolved (what `lute trace`'s foreign-quest notes name).
+    reserved_reads: BTreeMap<String, ReservedReadKind>,
+    /// dsl 0.22.0 §6: derived relations a query read under `derive: false`
+    /// (looked up, not derived).
+    derived_reads: BTreeSet<String>,
+}
+
+impl Store {
+    /// The artifact's declared state table, defaults, seed facts, rules and
+    /// exclusive pairs. `derive: false` leaves the rules unapplied.
+    pub(crate) fn of_artifact(art: &Json, derive: bool) -> Self {
+        let mut types = BTreeMap::new();
+        let mut labels = BTreeMap::new();
+        let mut values = BTreeMap::new();
+        for e in art
+            .get("state")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let path = e.get("path").and_then(Json::as_str).unwrap_or("");
+            if path.is_empty() {
+                continue;
+            }
+            let ty = e.get("type").and_then(Json::as_str).unwrap_or("string");
+            types.insert(path.to_string(), ty.to_string());
+            if let Some(map) = e.get("labels").and_then(Json::as_object) {
+                let map: BTreeMap<String, String> = map
+                    .iter()
+                    .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+                    .collect();
+                labels.insert(path.to_string(), map);
+            }
+            if let Some(v) = e.get("default").and_then(json_to_value) {
+                values.insert(path.to_string(), v);
+            }
+        }
+        let mut base = BTreeSet::new();
+        // dsl 0.22.0 §6: under `derive: false` the world is exactly the
+        // supplied facts — the project's seed `facts:` are not loaded.
+        let seeds = art
+            .get("seedFacts")
+            .and_then(Json::as_array)
+            .filter(|_| derive);
+        for s in seeds.into_iter().flatten() {
+            let rel = s.get("relation").and_then(Json::as_str).unwrap_or("");
+            let args: Vec<String> = s
+                .get("args")
+                .and_then(Json::as_array)
+                .map(|a| a.iter().map(json_arg_to_string).collect())
+                .unwrap_or_default();
+            if !rel.is_empty() {
+                base.insert((rel.to_string(), args));
+            }
+        }
+        let program = Program::from_ir(art.get("rules"))
+            .with_kinds(crate::datalog::ir_kinds(art.get("entities")));
+        let mut vocab = RelVocab::default();
+        if !derive {
+            let declared = art
+                .get("relations")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter(|r| r.get("derive").and_then(Json::as_bool) == Some(true))
+                .filter_map(|r| r.get("name").and_then(Json::as_str));
+            let heads = art
+                .get("rules")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|r| r.pointer("/head/relation").and_then(Json::as_str));
+            for rel in declared.chain(heads) {
+                vocab.relations.insert(
+                    rel.to_string(),
+                    lute_manifest::relations::RelationDecl {
+                        derive: true,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+        let excludes = art
+            .get("relations")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .flat_map(|r| {
+                let name = r
+                    .get("name")
+                    .and_then(Json::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                r.get("excludes")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Json::as_str)
+                    .filter(|o| name.as_str() < *o)
+                    .map(|o| (name.clone(), o.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        Store {
+            values,
+            types,
+            labels,
+            schema: StateSchema::default(),
+            vocab,
+            rules_read_state: derive && program.reads_state(),
+            program,
+            derive,
+            base,
+            all: BTreeSet::new(),
+            undecided: BTreeMap::new(),
+            dirty: true,
+            visited: BTreeSet::new(),
+            excludes,
+            clock: art
+                .get("clock")
+                .and_then(|c| serde_json::from_value(c.clone()).ok()),
+            reserved_reads: BTreeMap::new(),
+            derived_reads: BTreeSet::new(),
+        }
+    }
+
+    /// Replace the live world with a carried one (`lute play`'s resume).
+    pub(crate) fn restore(&mut self, values: BTreeMap<String, Value>, base: BTreeSet<Fact>) {
+        self.values = values;
+        self.base = base;
+        self.dirty = true;
+    }
+
+    /// Coerce a raw seed literal against a path's declared value-type.
+    pub(crate) fn coerce_literal(&self, path: &str, lit: &str) -> Value {
+        match self.types.get(path).map(String::as_str) {
+            Some("bool") => match lit {
+                "true" => Value::Bool(true),
+                "false" => Value::Bool(false),
+                _ => Value::Str(lit.to_string()),
+            },
+            Some("number") => lit
+                .parse::<f64>()
+                .map(Value::Num)
+                .unwrap_or(Value::Str(lit.to_string())),
+            // enum / string / reserved / unknown: keep verbatim, but recognize
+            // an obvious bool/number so an un-typed seed still evaluates.
+            _ => match lit {
+                "true" => Value::Bool(true),
+                "false" => Value::Bool(false),
+                _ => lit
+                    .parse::<f64>()
+                    .map(Value::Num)
+                    .unwrap_or(Value::Str(lit.to_string())),
+            },
+        }
+    }
+
+    /// A value in the reserved tiers' read order (see the module doc).
+    pub(crate) fn read(&self, path: &str) -> Read {
+        if let Some(v) = self.values.get(path) {
+            return Read::Value(v.clone());
+        }
+        if lute_check::is_reserved_entry_read(path) || is_entry_ever_read(path) {
+            return Read::Value(Value::Bool(false));
+        }
+        if crate::eval::is_reserved_quest_path(path) {
+            return Read::Value(crate::eval::reserved_quest_default(path));
+        }
+        Read::Unset
+    }
+
+    /// Set a value with no consequence (a seed, a carried value).
+    pub(crate) fn put(&mut self, path: String, v: Value) {
+        self.values.insert(path, v);
+        self.dirty |= self.rules_read_state;
+    }
+
+    /// Forget a value (an unbound `occasion.target`).
+    pub(crate) fn remove(&mut self, path: &str) {
+        if self.values.remove(path).is_some() {
+            self.dirty |= self.rules_read_state;
+        }
+    }
+
+    /// The one write: the value, then the reserved `clock.*` values when it
+    /// moved the clock (dsl 0.24.0 §1).
+    pub(crate) fn write(&mut self, path: &str, v: Value) {
+        self.values.insert(path.to_string(), v);
+        self.dirty |= self.rules_read_state;
+        if self
+            .clock
+            .as_ref()
+            .is_some_and(|c| c.day == path || c.slot.as_deref() == Some(path))
+        {
+            self.refresh_clock();
+        }
+    }
+
+    /// Re-derive the reserved `clock.*` values from the live `day` / `slot`.
+    pub(crate) fn refresh_clock(&mut self) {
+        if let Some(clock) = &self.clock {
+            crate::clock::refresh(clock, &mut self.values);
+            self.dirty |= self.rules_read_state;
+        }
+    }
+
+    pub(crate) fn assert(&mut self, fact: Fact) {
+        self.base.insert(fact);
+        self.dirty = true;
+    }
+
+    /// Retract every base fact of `rel` matching `args` (`_` is a wildcard).
+    pub(crate) fn retract(&mut self, rel: &str, args: &[String]) {
+        self.base.retain(|(r, a)| {
+            !(r == rel
+                && a.len() == args.len()
+                && args.iter().zip(a).all(|(p, v)| p == "_" || p == v))
+        });
+        self.dirty = true;
+    }
+
+    /// Recompute the closure when a change since the last one could move it.
+    pub(crate) fn derive(&mut self) {
+        if !self.dirty {
+            return;
+        }
+        self.dirty = false;
+        if self.derive {
+            let eff = EffectiveState::new(&self.schema, self.values.clone());
+            let closure = self.program.fixpoint(&self.base, &eff);
+            self.all = closure.facts;
+            self.undecided = closure.undecided;
+        } else {
+            self.all = self.base.clone();
+            self.undecided.clear();
+        }
+    }
+
+    /// Evaluate a `raw` CEL fragment over live state and the closure. Empty
+    /// or unparsable text is unknown, with no atom.
+    pub(crate) fn eval(&mut self, raw: &str) -> (Value, Vec<UnresolvedAtom>) {
+        match parse(raw) {
+            Some(expr) => self.eval_expr(&expr),
+            None => (Value::Unknown, Vec::new()),
+        }
+    }
+
+    pub(crate) fn eval_expr(&mut self, expr: &Expr) -> (Value, Vec<UnresolvedAtom>) {
+        self.derive();
+        let eff = EffectiveState::new(&self.schema, self.values.clone());
+        let mut fs = FactStore::new(&self.vocab).with_undecided(self.undecided.clone());
+        for (rel, args) in &self.all {
+            fs.assert(rel, args);
+        }
+        for id in &self.visited {
+            fs.visit(id);
+        }
+        let env = EvalEnv {
+            state: &eff,
+            facts: &fs,
+        };
+        let mut atoms = Vec::new();
+        let v = eval(expr, &env, &mut atoms);
+        for (path, kind) in eff.reserved_reads() {
+            self.reserved_reads.entry(path).or_insert(kind);
+        }
+        self.derived_reads.extend(fs.derived_reads());
+        (v, atoms)
+    }
+
+    /// dsl 0.25.0 §1: every pair of facts of exclusive relations holding now
+    /// (derived ones included), rendered `a(x) and b(x) both hold`.
+    pub(crate) fn exclusive_now(&mut self) -> Vec<String> {
+        if self.excludes.is_empty() {
+            return Vec::new();
+        }
+        self.derive();
+        let mut out = Vec::new();
+        for (a, b) in &self.excludes {
+            for (_, args) in self.all.iter().filter(|(r, _)| r == a) {
+                if self.all.contains(&(b.clone(), args.clone())) {
+                    out.push(format!(
+                        "{} and {} both hold",
+                        render_fact(a, args),
+                        render_fact(b, args)
+                    ));
+                }
+            }
+        }
+        out
+    }
+
+    pub(crate) fn has_excludes(&self) -> bool {
+        !self.excludes.is_empty()
+    }
+
+    /// The closure as of the last [`Store::derive`] — the Machine derives
+    /// before handing control back, so a caller never sees it stale.
+    pub(crate) fn all_facts(&self) -> &BTreeSet<Fact> {
+        &self.all
+    }
+
+    pub(crate) fn base_facts(&self) -> &BTreeSet<Fact> {
+        &self.base
+    }
+
+    /// Derived relations whose closure read an undecided guard.
+    pub(crate) fn undecided(&self) -> &BTreeMap<String, Vec<UnresolvedAtom>> {
+        &self.undecided
+    }
+
+    pub(crate) fn reserved_reads(&self) -> &BTreeMap<String, ReservedReadKind> {
+        &self.reserved_reads
+    }
+
+    pub(crate) fn derived_reads(&self) -> &BTreeSet<String> {
+        &self.derived_reads
+    }
+
+    pub(crate) fn into_parts(self) -> (BTreeMap<String, Value>, BTreeSet<Fact>) {
+        (self.values, self.base)
+    }
+}
+
+/// `entry.<id>.everRead` — engine-written, `false` until a read completes.
+fn is_entry_ever_read(path: &str) -> bool {
+    matches!(
+        path.split('.').collect::<Vec<_>>().as_slice(),
+        ["entry", _, "everRead"]
+    )
+}
+
+/// Parse `raw` fresh (`None` for blank or unparsable text).
+pub(crate) fn parse(raw: &str) -> Option<Expr> {
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let mut arena = CelArena::default();
+    let handle = lute_cel::parse_slot(&mut arena, raw, 0).ok()?;
+    arena.get(handle).map(|e| e.expr.clone())
+}
+
+pub fn render_fact(rel: &str, args: &[String]) -> String {
+    format!("{rel}({})", args.join(", "))
+}
+
+/// A JSON artifact scalar → a [`Value`]; `None` for a non-scalar.
+pub(crate) fn json_to_value(j: &Json) -> Option<Value> {
+    match j {
+        Json::Bool(b) => Some(Value::Bool(*b)),
+        Json::Number(n) => n.as_f64().map(Value::Num),
+        Json::String(s) => Some(Value::Str(s.clone())),
+        _ => None,
+    }
+}
+
+/// A fact-arg JSON scalar → its ground string (bools as `"true"`/`"false"`).
+pub(crate) fn json_arg_to_string(j: &Json) -> String {
+    match j {
+        Json::String(s) => s.clone(),
+        Json::Bool(b) => b.to_string(),
+        Json::Number(n) => n.to_string(),
+        _ => j.to_string(),
+    }
+}

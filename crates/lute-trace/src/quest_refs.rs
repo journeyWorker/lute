@@ -19,8 +19,7 @@ use crate::eval::{expr_path, is_reserved_quest_path};
 
 /// Every reserved quest path referenced anywhere in `doc` (§1.1). Each
 /// [`lute_syntax::ast::CelSlot`]'s `raw` text is re-parsed fresh into a
-/// scratch [`CelArena`] — mirrors [`crate::walk`]'s own "never trust
-/// `slot.ast`" idiom (its private `slot_expr`), kept local here rather than
+/// scratch [`CelArena`] ("never trust `slot.ast`"), kept local here rather than
 /// depending on `validate`'s pipeline position (it happens to run BEFORE
 /// `normalize`/`expand` ever touch `doc`, but re-parsing avoids this
 /// module silently relying on that ordering fact). A slot that fails to

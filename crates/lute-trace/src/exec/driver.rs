@@ -22,6 +22,12 @@ pub trait Driver {
     fn unknown(&mut self, site: &UnknownSite<'_>) -> OnUnknown;
     /// Every transcript record, in execution order.
     fn emit(&mut self, rec: Json);
+    /// A judgment that wrote no transcript record — an objective still
+    /// pending, a handler whose `when` is false, a quest that will never
+    /// start or awaits an accept, a seeded quest status, an accept spent
+    /// without effect (shapes in `exec/mod.rs`). Only `lute trace` reports
+    /// them; the default ignores them.
+    fn observe(&mut self, _rec: Json) {}
 }
 
 impl<D: Driver + ?Sized> Driver for &mut D {
@@ -39,6 +45,9 @@ impl<D: Driver + ?Sized> Driver for &mut D {
     }
     fn emit(&mut self, rec: Json) {
         (**self).emit(rec)
+    }
+    fn observe(&mut self, rec: Json) {
+        (**self).observe(rec)
     }
 }
 
@@ -100,6 +109,10 @@ pub enum Pick {
     /// is open and halts incomplete otherwise. `scripted` is how many
     /// decisions a scripted list held when it ran out (`0`: no list).
     Unscripted { scripted: usize },
+    /// A hub: end this visit and converge, whatever is still open (`lute
+    /// trace`'s scripted hub: the `choose:` list is the whole visit). A
+    /// branch treats it as [`Pick::Unscripted`].
+    Leave,
 }
 
 /// The driver's ruling on a picked option that is not [`Verdict::Open`].
@@ -135,12 +148,19 @@ pub enum BridgeReply {
 #[derive(Debug)]
 pub struct UnknownSite<'a> {
     pub kind: SiteKind,
-    /// The construct's id (a branch/hub/quest/objective id, a plugin tag…).
+    /// The construct's id (a branch/hub/quest/objective id, a match subject,
+    /// an event name, a plugin tag…).
     pub id: &'a str,
+    /// The deciding record's `addr` (the `match`, `choice`, `hub`, `on`,
+    /// `plugin`, `entry` or `beat` record; empty for a quest-level site).
     pub addr: &'a str,
     /// The undecided CEL text (empty when the site has none).
     pub raw: &'a str,
     pub atoms: &'a [UnresolvedAtom],
+    /// The enclosing quest of a quest, objective, handler or reward site.
+    pub quest: Option<&'a str>,
+    /// A match arm's 0-based index.
+    pub arm: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
