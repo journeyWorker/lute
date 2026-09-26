@@ -86,6 +86,7 @@ pub(crate) fn explain(code: &Code) -> ExitCode {
 /// (`packages/website/src/content/docs/reference/diagnostics.md`), rendered
 /// from [`CODES`]: one `### <CODE>` section per code — the anchor
 /// [`lute_core_span::doc_url`] and the editor link to — errors first.
+#[cfg(test)]
 pub(crate) fn reference_page() -> String {
     let mut out = String::from(
         "---\n\
