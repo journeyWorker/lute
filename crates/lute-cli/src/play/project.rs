@@ -49,6 +49,21 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
     }
 
     let reconciled = crate::reconciled_project_results(project_dir, None)?;
+    // Round-5 G-17: a schema or plugin fault every importing document
+    // shares is reported once, at its own line, as `check-project` folds it
+    // — not once per document that fails to compile over it.
+    let faults = reconciled.schema_faults(project_dir);
+    if !faults.is_empty() {
+        for line in &faults {
+            println!("{line}");
+        }
+        eprintln!(
+            "lute play: {} schema or plugin error(s) every importing document shares; refusing \
+             to play",
+            faults.len()
+        );
+        return Err(ExitCode::from(1));
+    }
     let identity = lute_manifest::project::load_project(project_dir)
         .ok()
         .flatten()

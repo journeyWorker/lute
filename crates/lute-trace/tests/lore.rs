@@ -8,7 +8,6 @@
 use std::path::Path;
 
 use lute_check::{CheckInput, Mode};
-use lute_core_span::Span;
 use lute_trace::{trace_document, trace_entry, MockSet, Step, TraceExit, E_TRACE_ENTRY};
 
 fn input_for(text: &str) -> CheckInput {
@@ -69,21 +68,11 @@ state:
 </entry>
 "#;
 
-fn span0() -> Span {
-    Span {
-        byte_start: 0,
-        byte_end: 0,
-        line: 0,
-        column: 0,
-        utf16_range: (0, 0),
-    }
-}
-
 fn state(pairs: &[(&str, &str)]) -> MockSet {
     MockSet {
         state: pairs
             .iter()
-            .map(|(p, v)| (p.to_string(), v.to_string(), span0()))
+            .map(|(p, v)| (p.to_string(), v.to_string(), None))
             .collect(),
         ..Default::default()
     }

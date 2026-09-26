@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use lute_check::{CheckInput, Mode};
-use lute_core_span::Span;
 use lute_trace::{
     trace_beat, trace_beat_with_check, trace_entry, MockSet, Step, TraceExit, E_TRACE_BEAT,
 };
@@ -66,16 +65,6 @@ state:
   </branch>
 </beat>
 "#;
-
-fn span0() -> Span {
-    Span {
-        byte_start: 0,
-        byte_end: 0,
-        line: 0,
-        column: 0,
-        utf16_range: (0, 0),
-    }
-}
 
 fn choose(branch: &str, choice: &str) -> MockSet {
     MockSet {
@@ -153,7 +142,7 @@ fn bundle_beat_accepts_the_canonical_id_and_follows_another_choice() {
 #[test]
 fn bundle_beat_when_is_shown_not_enforced() {
     let mocks = MockSet {
-        state: vec![("run.porterTrust".into(), "-1".into(), span0())],
+        state: vec![("run.porterTrust".into(), "-1".into(), None)],
         ..choose("porterTalk", "leave")
     };
     let (report, exit) = trace_beat(&input_for(BUNDLE), mocks, "porter");

@@ -46,6 +46,36 @@ impl ReconciledProject {
             .find(|(path, _)| std::fs::canonicalize(path).is_ok_and(|c| c == canon))?;
         Some(gate_for_doc(self, key, base))
     }
+
+    /// Round-5 G-17: every error whose cause lies in a schema or plugin
+    /// file (not a walked document), folded as `check-project` folds it
+    /// ([`crate::project::reconcile::relocate_imported_diags`]) — one line
+    /// at the fault's own position counting its importers, instead of one
+    /// copy per importing document. `dir` is the project directory the
+    /// lines are shown under.
+    pub(crate) fn schema_faults(&self, dir: &Path) -> Vec<String> {
+        let mut per_doc: Vec<(PathBuf, lute_check::CheckResult)> = self
+            .per_doc
+            .iter()
+            .map(|(p, r)| (p.clone(), r.clone()))
+            .collect();
+        let mut moved = Vec::new();
+        crate::project::reconcile::relocate_imported_diags(&mut per_doc, &mut moved, dir);
+        moved
+            .into_iter()
+            .filter(|(_, d)| d.severity == Severity::Error)
+            .map(|(path, d)| {
+                format!(
+                    "{}:{}:{}: error [{}] {}",
+                    path.display(),
+                    d.span.line,
+                    d.span.column,
+                    d.code,
+                    d.text()
+                )
+            })
+            .collect()
+    }
 }
 
 /// Collect + reconcile every `.lute` under `dir`, treating `dir` itself as THE

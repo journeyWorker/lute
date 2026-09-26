@@ -255,6 +255,56 @@ fn a_test_judges_the_gate_and_terminal_like_play() {
     assert!(not_raised("open.test.yaml").is_null(), "{v}");
 }
 
+/// HW27-15: `lute trace` heads a beat the engine would not raise with that
+/// premise — its occasion's false `raisedWhen`, a holding `terminal:` — not
+/// with a `when` that holds; a false `when` names itself.
+#[test]
+fn a_trace_names_the_gate_or_terminal_a_beat_is_not_raised_by() {
+    let dir = open_ward("trace-gate");
+    write(
+        &dir,
+        "lore/notes.lute",
+        "---\nkind: lore\nid: notes\n---\n\n\
+         <beat id=\"door\" on=\"enter\" target=\"room.office\" when=\"run.hp > 0\">\n  \
+         @narrator: The door.\n</beat>\n",
+    );
+    let trace = |extra: &[&str]| {
+        let out = Command::new(BIN)
+            .current_dir(&dir)
+            .args([
+                "trace",
+                "lore/notes.lute",
+                "--project",
+                ".",
+                "--beat",
+                "door",
+            ])
+            .args(extra)
+            .output()
+            .unwrap();
+        text(&out)
+    };
+    let t = trace(&[]);
+    assert!(
+        t.contains(
+            "<beat notes.door>   (not eligible: the engine does not raise `enter`: its \
+             `raisedWhen: holds(canEnter(occasion.target))` is false since `canEnter(office)` \
+             does not hold)"
+        ),
+        "{t}"
+    );
+    let t = trace(&["--fact", "canEnter(office)", "--state", "run.fate=taken"]);
+    assert!(
+        t.contains("(not eligible: the game is over (`terminal: run.fate == 'taken'` holds)"),
+        "{t}"
+    );
+    let t = trace(&["--fact", "canEnter(office)", "--state", "run.hp=0"]);
+    assert!(
+        t.contains("(not eligible: its `when` (run.hp > 0) is false (`run.hp` is 0))"),
+        "{t}"
+    );
+}
+
 /// HW27-01: an `occasion:` step's `engine:` write is part of the step, not
 /// a step of its own — the step's `expect:` judges the raise (and the world
 /// after it), a `repeat:` counts its repetitions only, and the end counts

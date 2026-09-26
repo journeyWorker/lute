@@ -166,22 +166,12 @@ pub(crate) fn run_trace(
         None => MockSet::default(),
     };
 
-    // `--state`/`--mock` literals and `--choose` targets carry no real
-    // source text, so every flag-origin entry is spanned at the same
-    // zeroed placeholder ([`lute_trace::mock`]'s own "CLI-arg synthetic
-    // span" convention — that helper is `pub(crate)` there, so this mirrors
-    // it byte-for-byte rather than reaching into the crate's internals).
-    let span = lute_core_span::Span {
-        byte_start: 0,
-        byte_end: 0,
-        line: 0,
-        column: 0,
-        utf16_range: (0, 0),
-    };
+    // `--state`/`--mock` literals and `--choose` targets carry no source
+    // text: a diagnostic about one renders at the synthetic point.
     let flag_mocks = MockSet {
         state: state
             .into_iter()
-            .map(|(path, literal)| (path, literal, span))
+            .map(|(path, literal)| (path, literal, None))
             .collect(),
         facts: fact,
         choose: choose.into_iter().collect(),

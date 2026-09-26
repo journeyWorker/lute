@@ -167,10 +167,20 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
         }
         scan.declared_occasions
             .extend(built.input.snapshot.occasions.keys().cloned());
-        if let Some(beat) = &built.meta.beat {
+        // The desugared document (dsl 0.27.0 §8 `sequence:`, §6 templates):
+        // a scene whose `on:` the manifest's `sequence:` derives answers it
+        // too (round-5 First N1).
+        let (mut doc, _) = lute_syntax::parse(&built.input.text);
+        let _ = lute_check::desugar_document(&mut doc, &built.input);
+        let (meta, _) = lute_check::meta::parse_meta_kind_with_defaults(
+            &doc.meta,
+            &built.input.snapshot,
+            lute_check::meta::MetaKind::Scene,
+            &built.defaults,
+        );
+        if let Some(beat) = &meta.beat {
             *scan.beats.entry(beat.on.clone()).or_default() += 1;
         }
-        let (doc, _) = lute_syntax::parse(&built.input.text);
         for entry in &doc.entries {
             if let Some((on, _)) = &entry.on {
                 *scan.beats.entry(on.clone()).or_default() += 1;

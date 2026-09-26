@@ -134,6 +134,32 @@ fn doctor_counts_bundle_beats_answering_an_occasion() {
     );
 }
 
+/// dsl 0.27.0 §8 (round-5 First N1): a scene whose `on:` the manifest's
+/// `sequence:` derives answers that occasion, so doctor counts it.
+#[test]
+fn doctor_counts_scenes_a_sequence_puts_on_an_occasion() {
+    let proj = occasions_project("sequence");
+    write_at(
+        &proj,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    plugins: { demo.occasions: true }\n\
+         sequence:\n  occasion: hubVisit\n  scenes: [ch.one, ch.two]\n",
+    );
+    for id in ["one", "two"] {
+        write_at(
+            &proj,
+            &format!("scenes/{id}.lute"),
+            &format!("---\nkind: scene\nid: ch.{id}\n---\n\n## One\n\n@narrator: {id}.\n"),
+        );
+    }
+    let text = doctor(&proj, &temp_dir("sequence-path"));
+    assert_eq!(
+        line(&text, "occasions (beats answering)").trim(),
+        "• occasions (beats answering): 2 declared, 4 beat(s) — hubVisit (4), talk (0)",
+        "{text}"
+    );
+}
+
 /// Write an executable `lute-lsp` into a fresh directory that prints `stdout`
 /// — standing in for whatever build an editor would find on `PATH`.
 #[cfg(unix)]

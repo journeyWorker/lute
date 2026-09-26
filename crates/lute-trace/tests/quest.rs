@@ -670,16 +670,6 @@ state:
     .to_string()
 }
 
-fn synth_span() -> lute_core_span::Span {
-    lute_core_span::Span {
-        byte_start: 0,
-        byte_end: 0,
-        line: 0,
-        column: 0,
-        utf16_range: (0, 0),
-    }
-}
-
 /// (a) Parent + child same file: seeding the child's own objective true
 /// completes the child during the fixpoint's initial-settle pass; the
 /// parent's synth objective (`quest.findKey.state == 'complete'`) then
@@ -695,7 +685,7 @@ fn subquest_child_completion_propagates_to_parent() {
     let text = subquest_parent_child_fixture();
     let input = input_for(&text, "subquest_child_complete.lute", Path::new("."));
     let mocks = MockSet {
-        state: vec![("run.gotKey".to_string(), "true".to_string(), synth_span())],
+        state: vec![("run.gotKey".to_string(), "true".to_string(), None)],
         ..Default::default()
     };
 

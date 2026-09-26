@@ -439,6 +439,30 @@ fn a_season_fault_in_a_schema_is_reported_once_at_the_schema() {
                 && errors[0].ends_with("(imported by 3 documents)"),
             "{tag}: {t}"
         );
+        // G-17: `lute play` and `lute test` fold it the same way — one
+        // error at the schema line, then refuse (exit 1).
+        write(&dir, "tests/a.test.yaml", "file: ../scenes/a.lute\n");
+        let tested = Command::new(BIN)
+            .args(["test", &dir.display().to_string(), "--project"])
+            .arg(&dir)
+            .output()
+            .unwrap();
+        for (what, out) in [
+            ("play", play(&dir, "steps:\n  - occasion: talk\n")),
+            ("test", tested),
+        ] {
+            let t = text(&out);
+            assert_eq!(out.status.code(), Some(1), "{tag} {what}: {t}");
+            let errors: Vec<&str> = t.lines().filter(|l| l.contains(": error [")).collect();
+            assert_eq!(errors.len(), 1, "{tag} {what}: {t}");
+            assert!(
+                errors[0].contains("world.schema.yaml:")
+                    && errors[0].contains(want)
+                    && errors[0].ends_with("(imported by 3 documents)"),
+                "{tag} {what}: {t}"
+            );
+            assert!(t.contains("refusing to"), "{tag} {what}: {t}");
+        }
     }
 }
 

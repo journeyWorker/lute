@@ -328,6 +328,13 @@ pub struct NeedleVocab {
     members: BTreeMap<String, Option<BTreeSet<String>>>,
     /// The plugin-declared cross-cutting `stampAttrs` keys (plugin §14.1).
     stamps: BTreeSet<String>,
+    /// The speaker ids a line can show — the declared cast plus `narrator`
+    /// (dsl 0.23.0 §7); `None` while some document's speakers are
+    /// shape-only (no cast declared), when any id may speak.
+    speakers: Option<BTreeSet<String>>,
+    /// Whether any document contributed — the first one to
+    /// [`NeedleVocab::union`] decides `speakers`.
+    seen: bool,
 }
 
 impl NeedleVocab {
@@ -348,6 +355,7 @@ impl NeedleVocab {
             meta,
             nowhere,
         );
+        let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &meta.cast);
         NeedleVocab {
             members: lute_check::content_line::CONTENT_LINE_DOMAIN_SLOTS
                 .iter()
@@ -360,6 +368,12 @@ impl NeedleVocab {
                 })
                 .collect(),
             stamps: input.snapshot.stamp_attrs.keys().cloned().collect(),
+            speakers: (!cast.is_empty()).then(|| {
+                cast.into_keys()
+                    .chain(std::iter::once("narrator".to_string()))
+                    .collect()
+            }),
+            seen: true,
         }
     }
 
@@ -377,6 +391,18 @@ impl NeedleVocab {
             }
         }
         self.stamps.extend(other.stamps);
+        self.speakers = match (self.seen, other.seen) {
+            (_, false) => self.speakers.take(),
+            (false, true) => other.speakers,
+            (true, true) => match (self.speakers.take(), other.speakers) {
+                (Some(mut ours), Some(theirs)) => {
+                    ours.extend(theirs);
+                    Some(ours)
+                }
+                _ => None,
+            },
+        };
+        self.seen |= other.seen;
     }
 
     /// Every key a line head can show, flags first.
@@ -398,10 +424,22 @@ impl NeedleVocab {
 /// the line's identity and `id` is a `::next` label.
 const HEAD_SKIP_AUTHORED: [&str; 2] = ["code", "id"];
 
-/// Why `needle`'s attribute block(s) can never match a presented line, as a
-/// usage error with a did-you-mean — `None` when every key is one a line
-/// head shows and every value is one it can carry (0.27 prerelease OT-F-2).
-/// A needle without an attribute block is never refused.
+/// The speaker a needle line's head names — `@name` right before its `:`
+/// or attribute block — or `None` when the line is no speaker head.
+fn head_speaker(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix('@')?;
+    let end = rest
+        .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '.' || c == '-'))
+        .unwrap_or(rest.len());
+    let (name, after) = rest.split_at(end);
+    (!name.is_empty() && (after.starts_with(':') || after.starts_with('{'))).then_some(name)
+}
+
+/// Why `needle` can never match a presented line, as a usage error with a
+/// did-you-mean — `None` when every head names a speaker of the project
+/// (its cast or `narrator`; any id while speakers are shape-only), every
+/// key is one a line head shows and every value is one it can carry (0.27
+/// prerelease OT-F-2, OT N-2). A needle without a head is never refused.
 pub fn needle_problem(needle: &str, vocab: &NeedleVocab) -> Option<String> {
     let near = |s: &str, known: &[&str]| {
         lute_manifest::suggest::nearest(s, known.iter().copied(), 2)
@@ -410,6 +448,17 @@ pub fn needle_problem(needle: &str, vocab: &NeedleVocab) -> Option<String> {
     };
     let keys = vocab.keys();
     for line in needle.split('\n') {
+        if let (Some(who), Some(speakers)) = (head_speaker(line), &vocab.speakers) {
+            if !speakers.contains(who) {
+                let known: Vec<&str> = speakers.iter().map(String::as_str).collect();
+                return Some(format!(
+                    "needle {needle:?}: `@{who}` is not a speaker of this project{} (speakers: \
+                     {})",
+                    near(who, &known),
+                    known.join(", ")
+                ));
+            }
+        }
         let (_, Some(attrs)) = split(line) else {
             continue;
         };
@@ -582,6 +631,8 @@ mod tests {
                 ("action".to_string(), None),
             ]),
             stamps: BTreeSet::from(["take".to_string()]),
+            speakers: None,
+            seen: true,
         };
         let problem = |n: &str| needle_problem(n, &vocab);
         for ok in [
