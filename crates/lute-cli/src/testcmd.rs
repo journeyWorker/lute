@@ -1608,12 +1608,32 @@ fn ineligible_why(report: &TraceReport, id: &str) -> String {
             return why.clone();
         }
     }
+    let entry_heads: Vec<Option<&String>> = report
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            lute_trace::Step::Entry { id: e, spent, .. } if e == id => Some(spent.as_ref()),
+            _ => None,
+        })
+        .collect();
+    if let Some(at) = entry_heads.iter().position(Option::is_some) {
+        let once = entry_heads[at].map_or("", String::as_str);
+        let flag = if once == "run" { "read" } else { "everRead" };
+        let by = if at > 0 {
+            "an earlier presentation in this test read it".to_string()
+        } else if once == "run" {
+            format!("the mocked `entriesRead: {{ run: [{id}] }}` read it")
+        } else {
+            format!("the mocked `entriesRead:` (`{{ user: [{id}] }}` or `run:`) read it")
+        };
+        return format!("it is `once=\"{once}\"` and already spent — {by} (`entry.{id}.{flag}`)");
+    }
     let after_unmet = report
         .steps
         .iter()
         .any(|s| matches!(s, lute_trace::Step::Beat { id: b, after_unmet: true, .. } if b == id));
     if after_unmet {
-        "its `after=` is false — mock the `visited:` / quest states it names".to_string()
+        "its `after=` is false — mock the `visited:` / `quests:` entries it names".to_string()
     } else {
         "its `when` is false".to_string()
     }

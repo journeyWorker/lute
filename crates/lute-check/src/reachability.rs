@@ -36,11 +36,20 @@
 //! TRUE and never reaches the dead-arm path, exactly like `==`). It OWNS
 //! (suppresses) the derivative `E-ARM-DEAD` a `==` form would otherwise
 //! cause — mirrors D4 above via the SAME causality substitution
-//! [`crate::decide::analyze_unset_sentinel_slot`] performs (re-deciding a
+//! [`crate::decide::analyze_literal_comparisons`] performs (re-deciding a
 //! copy of the guard with every detected comparison replaced by an
 //! undecided placeholder): `E-ARM-DEAD` survives when the guard is ALSO
 //! independently dead for another reason. `E-MAYBE-UNSET` is NOT a
 //! derivative — it stays independent (§4).
+//!
+//! ## dsl 0.26.0 (compared literals)
+//! The same guard-slot lint catches any other string literal compared
+//! (`==`/`!=`, either order, or an `in [...]` element) with a subject whose
+//! finite domain is a set of strings but has no such member — an enum path,
+//! `occasion.target`, a quest's `state`/`failedBy`, `scene.choices.*`, an
+//! enum param, `$` — as `E-WHEN-LITERAL-DOMAIN`, the code a foreign `<when
+//! is>` literal gets, with a did-you-mean. It owns the dead guard exactly as
+//! `E-UNSET-LITERAL` does.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -57,11 +66,12 @@ use lute_syntax::ast::{
 use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
 use crate::decide::{
-    analyze_unset_sentinel_slot, decide_slot, DecideCtx, Decided, DollarBinding, UnsetSentinelHit,
+    analyze_literal_comparisons, decide_slot, DecideCtx, Decided, DollarBinding, LiteralCmpHit,
+    LiteralCmpKind,
 };
 use crate::match_check::{
     is_pattern_literals, literal_is_foreign, param_domain, quest_state_is_literal, subject_path,
-    CoverItem, Domain, DomainInfo, DomainValue, Interval, NumCoverage,
+    CoverItem, Domain, DomainInfo, DomainValue, Interval, NumCoverage, E_WHEN_LITERAL_DOMAIN,
 };
 use crate::solution::{disjoint, solution_set, SolutionSet};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
@@ -132,18 +142,27 @@ pub const E_ENTRY_UNREACHABLE: &str = "E-ENTRY-UNREACHABLE";
 /// mirrors D4 above).
 pub(crate) const E_UNSET_LITERAL: &str = "E-UNSET-LITERAL";
 
-/// Push one `E-UNSET-LITERAL` per hit (§2.1: every distinct comparison in
-/// the slot, not just the first) at `span` — the enclosing guard slot's
-/// location (CEL `Expr` nodes carry no per-node span of their own, only the
-/// slot's, `cel_paths.rs`'s carry-forward note).
-fn push_unset_literal_diags(diags: &mut Vec<Diagnostic>, hits: &[UnsetSentinelHit], span: Span) {
+/// Push one diagnostic per faulty literal comparison (§2.1: every distinct
+/// comparison in the slot, not just the first) at `span` — the enclosing
+/// guard slot's location (CEL `Expr` nodes carry no per-node span of their
+/// own, only the slot's, `cel_paths.rs`'s carry-forward note): a misspelt
+/// unset sentinel is `E-UNSET-LITERAL`, a string no member of the
+/// subject's finite domain is `E-WHEN-LITERAL-DOMAIN` (dsl 0.26.0) — the
+/// code a foreign `<when is>` literal gets, since `S == 'x'` is the same
+/// claim.
+fn push_literal_cmp_diags(diags: &mut Vec<Diagnostic>, hits: &[LiteralCmpHit], span: Span) {
     for hit in hits {
-        diags.push(diag(
-            E_UNSET_LITERAL,
-            Severity::Error,
-            unset_literal_message(&hit.subject, hit.not_equals),
-            span,
-        ));
+        let (code, message) = match &hit.kind {
+            LiteralCmpKind::UnsetSentinel { not_equals } => (
+                E_UNSET_LITERAL,
+                unset_literal_message(&hit.subject, *not_equals),
+            ),
+            LiteralCmpKind::ForeignMember { literal, members } => (
+                E_WHEN_LITERAL_DOMAIN,
+                foreign_comparison_message(&hit.subject, literal, members),
+            ),
+        };
+        diags.push(diag(code, Severity::Error, message, span));
     }
 }
 
@@ -282,8 +301,8 @@ pub(crate) fn check_reachability(
         .and_then(|b| b.when.as_ref())
         .filter(|w| !w.raw.trim().is_empty())
     {
-        let analysis = analyze_unset_sentinel_slot(&when.raw, &defs, &base_ctx);
-        push_unset_literal_diags(&mut diags, &analysis.hits, when.span);
+        let analysis = analyze_literal_comparisons(&when.raw, &defs, &base_ctx);
+        push_literal_cmp_diags(&mut diags, &analysis.hits, when.span);
         if let Some(Decided::Bool(false)) = decide_slot(&when.raw, &defs, &base_ctx) {
             diags.push(diag(
                 crate::beats::E_BEAT_UNREACHABLE,
@@ -303,8 +322,8 @@ pub(crate) fn check_reachability(
         let Some(when) = beat.when.as_ref().filter(|w| !w.raw.trim().is_empty()) else {
             continue;
         };
-        let analysis = analyze_unset_sentinel_slot(&when.raw, &defs, &base_ctx);
-        push_unset_literal_diags(&mut diags, &analysis.hits, when.span);
+        let analysis = analyze_literal_comparisons(&when.raw, &defs, &base_ctx);
+        push_literal_cmp_diags(&mut diags, &analysis.hits, when.span);
         if let Some(Decided::Bool(false)) = decide_slot(&when.raw, &defs, &base_ctx) {
             diags.push(diag(
                 crate::beats::E_BEAT_UNREACHABLE,
@@ -620,8 +639,8 @@ fn walk_reach(
                 // is bound to it below). No dead-arm derivative to own here
                 // (a subject has no guarded body of its own), so no
                 // suppression accompanies this one.
-                let subject_analysis = analyze_unset_sentinel_slot(&m.subject.raw, defs, ctx);
-                push_unset_literal_diags(diags, &subject_analysis.hits, m.subject.span);
+                let subject_analysis = analyze_literal_comparisons(&m.subject.raw, defs, ctx);
+                push_literal_cmp_diags(diags, &subject_analysis.hits, m.subject.span);
                 let match_ctx = DecideCtx {
                     schema: ctx.schema,
                     dollar: Some(DollarBinding::Domain(&dom)),
@@ -674,8 +693,8 @@ fn walk_reach(
                 // accompanies this — mirrors the `<match on>` subject and
                 // quest/objective slots above.
                 if let Some(when) = &o.when {
-                    let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
-                    push_unset_literal_diags(diags, &analysis.hits, when.span);
+                    let analysis = analyze_literal_comparisons(&when.raw, defs, ctx);
+                    push_literal_cmp_diags(diags, &analysis.hits, when.span);
                 }
                 walk_reach(&o.body, defs, rx, ctx, diags);
             }
@@ -693,15 +712,13 @@ fn walk_reach(
                     if !when.raw.trim().is_empty() {
                         // dsl 0.5.2 §2.1: independent lint, regardless of
                         // `decide_slot`'s outcome.
-                        let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
-                        push_unset_literal_diags(diags, &analysis.hits, when.span);
-                        // §2.3: suppress `E-ARM-DEAD` only when the
-                        // sentinel comparison(s) are LOAD-BEARING for the
+                        let analysis = analyze_literal_comparisons(&when.raw, defs, ctx);
+                        push_literal_cmp_diags(diags, &analysis.hits, when.span);
+                        // §2.3: suppress `E-ARM-DEAD` only when the literal
+                        // comparison(s) are LOAD-BEARING for the
                         // decided-false — an independently-dead guard (a
-                        // literal `false`, an unrelated foreign-typo
-                        // comparison, `@never`, …) must still flag it.
-                        let suppress_arm_dead =
-                            !analysis.hits.is_empty() && analysis.load_bearing_for_false;
+                        // literal `false`, `@never`, …) must still flag it.
+                        let suppress_arm_dead = analysis.owns_dead_guard();
                         if !suppress_arm_dead {
                             if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
                                 diags.push(diag(
@@ -784,9 +801,9 @@ fn guard_reach(
         return;
     };
     let mut own = Vec::new();
-    let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
-    push_unset_literal_diags(&mut own, &analysis.hits, when.span);
-    let suppress_arm_dead = !analysis.hits.is_empty() && analysis.load_bearing_for_false;
+    let analysis = analyze_literal_comparisons(&when.raw, defs, ctx);
+    push_literal_cmp_diags(&mut own, &analysis.hits, when.span);
+    let suppress_arm_dead = analysis.owns_dead_guard();
     if !suppress_arm_dead {
         if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
             own.push(diag(E_ARM_DEAD, Severity::Error, what, when.span));
@@ -943,10 +960,10 @@ fn check_match_reach(
                 let analysis = if test.raw.trim().is_empty() {
                     None
                 } else {
-                    Some(analyze_unset_sentinel_slot(&test.raw, defs, ctx))
+                    Some(analyze_literal_comparisons(&test.raw, defs, ctx))
                 };
                 if let Some(a) = &analysis {
-                    push_unset_literal_diags(&mut diags, &a.hits, *span);
+                    push_literal_cmp_diags(&mut diags, &a.hits, *span);
                 }
 
                 // Cause 1: decided-false guard (dsl 0.4.0 §5.2 rule 1). A
@@ -958,18 +975,16 @@ fn check_match_reach(
                 // OWNS the root, so cause 1 MUST NOT also fire on it, even
                 // when the guard independently decides false (avoids the
                 // `is="platnum" test="1 > 2"` double-report). §2.3: a
-                // LOAD-BEARING unset-sentinel guard is likewise already
-                // rooted by `E-UNSET-LITERAL` above — an independently-dead
-                // guard (a literal `false`, an unrelated foreign typo,
-                // `@never`, …) still flags E-ARM-DEAD even when a sentinel
-                // comparison is ALSO present.
+                // LOAD-BEARING literal comparison (`'unset'` sentinel or a
+                // foreign member) is likewise already rooted above — an
+                // independently-dead guard (a literal `false`, `@never`, …)
+                // still flags E-ARM-DEAD even when such a comparison is ALSO
+                // present.
                 let foreign_literal = is
                     .as_ref()
                     .is_some_and(|pat| arm_has_foreign_literal(pat, &dom, subject));
-                let sentinel_load_bearing = analysis
-                    .as_ref()
-                    .is_some_and(|a| !a.hits.is_empty() && a.load_bearing_for_false);
-                if !foreign_literal && !sentinel_load_bearing && !test.raw.trim().is_empty() {
+                let literal_cmp_owns = analysis.as_ref().is_some_and(|a| a.owns_dead_guard());
+                if !foreign_literal && !literal_cmp_owns && !test.raw.trim().is_empty() {
                     if let Some(Decided::Bool(false)) = decide_slot(&test.raw, defs, ctx) {
                         diags.push(diag(
                             E_ARM_DEAD,
@@ -1136,12 +1151,12 @@ pub(crate) fn check_choices_reach<'a>(
         }
         // dsl 0.5.2 §2.1: independent lint, regardless of `decide_slot`'s
         // outcome.
-        let analysis = analyze_unset_sentinel_slot(&slot.raw, defs, ctx);
-        push_unset_literal_diags(&mut diags, &analysis.hits, span);
-        // §2.3: suppress `E-ARM-DEAD` only when the sentinel comparison(s)
+        let analysis = analyze_literal_comparisons(&slot.raw, defs, ctx);
+        push_literal_cmp_diags(&mut diags, &analysis.hits, span);
+        // §2.3: suppress `E-ARM-DEAD` only when the literal comparison(s)
         // are LOAD-BEARING for the decided-false (mirrors the arm-level
         // causality check above).
-        let suppress_arm_dead = !analysis.hits.is_empty() && analysis.load_bearing_for_false;
+        let suppress_arm_dead = analysis.owns_dead_guard();
         if !suppress_arm_dead {
             if let Some(Decided::Bool(false)) = decide_slot(&slot.raw, defs, ctx) {
                 diags.push(diag(
@@ -1171,8 +1186,8 @@ fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) ->
     // revision's §2.3 ownership clause does NOT scope (it names only
     // `E-ARM-DEAD`/`W-OTHERWISE-DEAD`), so no suppression accompanies this.
     for slot in [&quest.start, &quest.fail].into_iter().flatten() {
-        let analysis = analyze_unset_sentinel_slot(&slot.raw, defs, ctx);
-        push_unset_literal_diags(&mut diags, &analysis.hits, slot.span);
+        let analysis = analyze_literal_comparisons(&slot.raw, defs, ctx);
+        push_literal_cmp_diags(&mut diags, &analysis.hits, slot.span);
     }
     let dead_start = quest
         .start
@@ -1390,11 +1405,11 @@ fn check_objective_reach(
     // §2.3's ownership clause does NOT scope (it names only
     // `E-ARM-DEAD`/`W-OTHERWISE-DEAD`), so no suppression accompanies this.
     if let Some(when) = &o.when {
-        let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
-        push_unset_literal_diags(&mut diags, &analysis.hits, when.span);
+        let analysis = analyze_literal_comparisons(&when.raw, defs, ctx);
+        push_literal_cmp_diags(&mut diags, &analysis.hits, when.span);
     }
-    let done_analysis = analyze_unset_sentinel_slot(&o.done.raw, defs, ctx);
-    push_unset_literal_diags(&mut diags, &done_analysis.hits, o.done.span);
+    let done_analysis = analyze_literal_comparisons(&o.done.raw, defs, ctx);
+    push_literal_cmp_diags(&mut diags, &done_analysis.hits, o.done.span);
     if let Some(Decided::Bool(false)) = decide_slot(&o.done.raw, defs, ctx) {
         diags.push(diag(
             E_OBJECTIVE_UNSATISFIABLE,
@@ -2177,6 +2192,18 @@ fn unset_literal_message(subject: &str, not_equals: bool) -> String {
          unset sentinel (the CEL `null` literal, dsl 0.1 §11.2). Test for unset with \
          `!isSet({subject})`, or in a `<match on=\"{subject}\">` use `<when is=\"unset\">` \
          (dsl 0.2 §5.2)"
+    )
+}
+
+/// `E-WHEN-LITERAL-DOMAIN` message for a guard's comparison (dsl 0.26.0):
+/// the `<when is>` wording — the literal and the subject's members — plus
+/// the nearest member when one is close.
+fn foreign_comparison_message(subject: &str, literal: &str, members: &[String]) -> String {
+    let hint = lute_manifest::suggest::nearest(literal, members.iter().map(String::as_str), 2)
+        .map_or_else(String::new, |near| format!(" — did you mean `'{near}'`?"));
+    format!(
+        "`'{literal}'` is not a member of `{subject}`'s domain [{}]{hint} (dsl 0.4 §5.2)",
+        members.join(", ")
     )
 }
 

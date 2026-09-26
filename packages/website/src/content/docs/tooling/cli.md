@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, run, play, trace, test, lint, scenario, beats, calendar, loc, context, tag, fix, lore, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
+description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
 ---
 
 `lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot. Without it, `check` applies the nearest `lute.project.yaml` above the file; the other single-file commands (`compile`, `trace`, `context`, `test`) resolve core-only (`lute.core`). On the permission-aware authoring commands below, `--permission-profile <NAME>` requires project resolution and applies that trusted profile's [permissions](/tooling/capability-permissions/) as an additional ceiling without activating its plugins or changing the source profile.
@@ -26,12 +26,24 @@ Since dsl 0.24.0 `check-project` also warns `W-QUEST-NEVER-ACCEPTED` (an accept-
 
 Since dsl 0.25.0 (draft): an `accepts:` mock or test no longer silences `W-QUEST-NEVER-ACCEPTED` (the message names it), a `<quest accept="external">` does, and `accept="external"` on a child that activates with its parent is `E-ACCEPT-TARGET`; [exclusive relations](/state/facts-and-datalog/#exclusive-relations-excludes) make a guard needing both dead, its negation guaranteed (`W-FACT-GUARANTEED`), an assert of one where the other holds on every route `E-FACT-EXCLUSIVE`, and a rule that can only break the exclusion `E-RULE-EXCLUSIVE`; beats of one [`share`](/language/beats/#one-event-several-places-share) key with different `once`s are `E-BEAT-ATTR`; and a bundle beat's `after=` names known nodes (`E-CONN-UNKNOWN-NODE`). A reserved relation's [`changedOn:`](/language/dialogue-and-cast/#presence-after-engine-events-changedon) orders cast presence over the scenario graph, so `assume: true` no longer covers a line after one of its occasions (`W-CAST-ABSENT`). A stale `luteVersion` that every document inherits from the manifest's `defaults:` is one `W-LUTE-VERSION-STALE` at that line of `lute.project.yaml`, ending `— every document inherits it (N documents)`, not one per document; a single-file `lute check` still reports it on the document.
 
-`--wip` (dsl 0.23.0) is for a project whose content is still being written. `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` become warnings when the guard is dead **only** because it reads a relation that nothing produces yet — no seed fact, no `::assert` anywhere, no rule, not `reserved`. A relation that has producers but can never match stays an error, and so does a downstream `E-CONN-UNREACHABLE` (a quest dead for want of unwritten content still feeds connectivity). An entry guarded on a `rumor` relation no document asserts yet:
+Since dsl 0.26.0 (draft), for a project several authors write at once: `E-STATE-DECL-CONFLICT` compares every frontmatter `state:` declaration of one path — inline, or imported from a schema — and names both files and lines when `type`, `default`, `per` or `owner` disagree (`scene.*` paths are scene-local and exempt, and a declaration that refines one it `extends:` is no conflict); `E-REWARD-TARGET` checks a reward kind's `target:` contract — an `{ entity: <kind> }` or `{ provider: <name> }` contract validates the `target=` value, with a did-you-mean, and `required: true` rejects a reward with none; and `E-RULE-AGGREGATE-CYCLE` rejects a rule whose `count(…)` / `countDistinct(…)` reads a relation that depends on the rule's own head. Two advisories join them: `W-DISPLAY-NAME-DUP`, two speakers the dialogue box shows under one name (see [`lint`](#lint) and the [multi-author guide](/guides/multi-author/)), and `W-ENTRY-WRITE-REREAD`, an entry beat without `once` whose body has `::set` or `::retract` — it is presented again on every raise, but its writes apply on its first read in a run only (`::assert` is exempt: the fact holds for the rest of the run either way). Two documents declaring `run.mood` two ways, a misspelt reward target and a missing one, and a repeatable entry that pays out:
+
+<!-- lute-diagnostics -->
+```console
+./scenes/hub/welcome.lute:10:3: error [E-STATE-DECL-CONFLICT] state path `run.mood` is declared as number, default 0 at `./scenes/hub/morning.lute:10` but as enum(calm|tense), default "calm" at `./scenes/hub/welcome.lute:10`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import) (dsl 0.26.0 §2.1)
+./quests/fishing.lute:8:31: error [E-REWARD-TARGET] `goodRodd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets (dsl 0.26.0 §2.5) — did you mean `goodRod`?
+./quests/fishing.lute:9:3: error [E-REWARD-TARGET] `<reward kind="ITEM">` needs a `target=`: the reward kind declares `target: { required: true }` (dsl 0.26.0 §2.5)
+./lore/contest.lute:17:3: warning [W-ENTRY-WRITE-REREAD] `<entry id="deskNote">` has no `once`, so it can be presented again in a run, but its `::set` applies on the first read in a run only (dsl 0.19.0 §6); a write meant to repeat belongs in a `<beat once="false">`, and an entry read once per run says so with `once="run"`
+```
+
+The same release makes the fact analysis behind these passes cost what the project reads, not beats × facts: the seeds' derived closure is prepared once per project root and extended per slot, so on Monster League (818 beats, 211 static facts) `check-project` fell from 6.1 s to about 1.2 s, with the same output.
+
+`--wip` (dsl 0.23.0) is for a project whose content is still being written. `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` become warnings when the guard is dead **only** because it reads a relation that nothing produces yet — no seed fact, no `::assert` anywhere, no rule, not `reserved`. Since dsl 0.26.0 §2.6 a relation whose only producer is a component `::assert` with an unbound `@param` — `hasBadge(@badge)` in a badge component no `::use` calls yet — counts as unproduced for specific arguments too, and a required `<objective quest=…>` whose child is dead only for that reason is a warning as well, so a lead can check a spine before the areas that fill it exist. A relation that has producers but can never match stays an error, and so does a downstream `E-CONN-UNREACHABLE` (a quest dead for want of unwritten content still feeds connectivity). An entry guarded on a `rumor` relation no document asserts yet:
 
 <!-- lute-diagnostics unverified="verbatim lute check-project --wip output, but the message is composed at runtime: the E-ENTRY-UNREACHABLE literal plus the `--wip` downgrade suffix appended by lute-check, so no single format! literal spans it" -->
 ```console
 $ lute check-project . --wip
-./lore/places.lute:35:72: warning [E-ENTRY-UNREACHABLE] entry `noteWanted` is never eligible: its `when` guard `holds(rumor(bo))` is provably false — no seed, assert, rule, or engine relation produces `rumor(bo)` under your declared routes (dsl 0.20.0 §5) — a warning under `--wip`: only relations that nothing produces yet (no seed, assert, rule, or reserved declaration) make it so (dsl 0.23.0 §10)
+./lore/tomas.lute:22:74: warning [E-ENTRY-UNREACHABLE] entry `noteWanted` is never eligible: its `when` guard `holds(rumor(mara))` is provably false — no seed, assert, rule, or engine relation produces `rumor(mara)` under your declared routes (dsl 0.20.0 §5) — a warning under `--wip`: it is dead only for want of producers not written yet (relations with no seed, assert, rule, or reserved declaration, or written only by a component `::assert` with an unbound `@param`) (dsl 0.23.0 §10, 0.26.0 §2.6)
 ```
 
 Without `--wip` the same line is an `error` and the command exits **1**; with it the project passes. [`lute scenario knowledge`](/tooling/overviews/#lute-scenario-knowledge) lists every such relation as `NO PRODUCER`. Since 0.23.0 the decider behind these three codes, `E-ARM-DEAD`, and `W-BEAT-PRIORITY-TIE` also reasons per path across `&&`/`||`, so a contradiction such as `run.slot == 'morning' && run.slot == 'evening'` is now reported where 0.22 missed it — see [how a `when` is decided](/language/beats/#how-a-when-is-decided).
@@ -155,7 +167,7 @@ $ lute trace <file> [--state P=L]… [--fact "R(A…)"]… [--choose ID=C[,C]]�
 
 Preview a document against author-supplied mocks (see the [tracing guide](/tooling/tracing/)). Exit **0** complete, **1** refused (check errors or invalid mocks — the `E-TRACE-*` codes render like check diagnostics — or, dsl 0.25.0, a write or a seed that makes two [exclusive relations](/tooling/tracing/#exclusive-relations) hold together, `E-FACT-EXCLUSIVE`), **2** I/O, **3** incomplete (an `unknown` guard halted the walk). `--occasion <O>` (repeatable, dsl 0.21.0) raises an occasion after a quest walk settles: every active quest's same-named `<on event="O">` handlers run first, then the `<objective on="O">` objectives of every active quest are judged; the mock file's `occasions:` list does the same, and its `visited:` list seeds the scenes `visited('<id>')` reads as presented (unlisted scenes are not visited). A quest walk settles as `lute play` settles it: a grant whose reward kind declares `credits:` adds its scalar amount to that path (the grant line ends `(credits <path> = <value>)`, JSON `credited`), and an objective's body plays once when the objective turns done — see [Rewards and objective bodies](/tooling/tracing/#rewards-and-objective-bodies).
 
-A mock can also start from a save (dsl 0.22.0): `quests: { <id>: unset | active | complete | failed }` seeds `quest.<id>.state`, and `entriesRead: { run: [ids], user: [ids] }` seeds `entry.<id>.read` and `entry.<id>.everRead`. Each follows the mock rules of the reserved path it spells — the document must read that path.
+A mock can also start from a save (dsl 0.22.0): `quests: { <id>: unset | active | complete | failed }` seeds `quest.<id>.state`, and `entriesRead: { run: [ids], user: [ids] }` seeds the entry read flags — `run:` both `entry.<id>.read` and `entry.<id>.everRead`, `user:` `entry.<id>.everRead` alone. Each follows the mock rules of the reserved path it spells — the document must read that path, or (for an entry) declare the entry.
 
 **Derivation is on by default** (dsl 0.22.0). Trace loads the project's seed `facts:` and applies its Datalog rules (stratified negation) over the mocked and asserted facts, so a rule-derived fact satisfies a guard, `done`, or `start` without mocking the conclusion, and a derived fact that is false because a negated premise holds can be traced. Mocking a derived atom still works — it is a seed like any other. `--no-derive`, or `derive: false` in the mock (the flag wins), restores the 0.21 model: seeds are not loaded, an unmocked derived atom is unknown, and a note names each derived relation read. Trace, `test`, `run`, and `play` share one Datalog evaluator, so they cannot disagree about what a project's rules conclude.
 
@@ -165,10 +177,12 @@ A mock can also start from a save (dsl 0.22.0): `quests: { <id>: unset | active 
 
 Since dsl 0.24.0: a `<match on="@def">` subject, a guard, and the coverage summary print a def reference as authored (`<match @weekday>`, `-> old (@atLeast(3))`), and `--expand` prints the expansion instead (`--json` keeps the expansion and adds `authoredId` / `authoredGuard` / `authoredLabel`). A mock's `bridges:` answers plugin calls that read a bridge result; an unanswered one leaves its result slots unknown, so a guard over them halts the walk with a `bridges:` hint. `--accept` takes an `activate="accept"` child quest, a `complete="any"` parent's untaken alternative reads `superseded from quest.<parent>`, a raise `E@target` runs the `<on event="E" target="…">` handlers for that target, and with a project trace settles whether a read quest exists. See [Tracing](/tooling/tracing/).
 
+Since dsl 0.26.0 (draft): a taken `::next` is followed to its label (`<next -> hall>`, JSON `{"kind": "jump", "to": "hall"}`), so `trace complete` means the walk reached the end of the document; an `::accept` in a quest `<on>` handler activates a quest of the same document, as in play; with a project `--accept` / `accepts:` resolve any quest of the project, and a quest document may seed its own `quest.<id>.*`; `--entry` also takes `<document id>.<entry id>`; and a [kind beat](/tooling/play/#kind-targets) reads its member from `--state occasion.target=<member>`. See [Following a taken `::next`](/tooling/tracing/#following-a-taken-next).
+
 ## scenario
 
 ```console
-$ lute scenario <dir> [--providers <DIR>] [--format text|json|dot]
+$ lute scenario <dir> [--providers <DIR>] [--format text|json|dot] [--facts]
               [reach <nodeId> | envelope <nodeId> | knowledge [--for <node>]]
 ```
 
@@ -180,11 +194,15 @@ Read-only reporting over the connectivity layer. With no subcommand, prints the 
 - `json` — `{"roots":[{"root":…,"layers":[[…]],"nodes":[…],"edges":[…]}]}`. Each node is `{id, kind, prereq, reach}` (`kind` is `scene`, `quest`, `beat`, or `entry` — the source of a quest's `[start]` anchor, dsl 0.25.0 §4; `prereq` is the raw declared formula, `null` for an entry node); each edge is `{from, to, kinds}`, where `kinds` is an array because one formula may reference the same node under more than one atom. A root with unanchored nodes also carries `"unanchored": ["quest(<id>)", …]` and, for the scene and beat hints, `"unanchoredHints": { "<node>": "<hint>" }` (each omitted when empty).
 - `dot` — one Graphviz `digraph` per root; scenes are boxes, quests ellipses, bundle beats `shape=note`, entries `shape=tab`, and an `active`-only edge is drawn `[style=dashed]`. An unanchored quest is a dashed blue ellipse labelled `quest(<id>) (unanchored)`.
 
+**Fact edges** (dsl 0.26.0 §8). Progress gated by facts — a badge, a key item — draws no `after:` edge, so every gym sits in layer 0. `--facts` adds an edge `producer -> reader [fact]` wherever a scene, beat or quest's gate (`when:` / `start=`) reads `holds(F)` and the producer asserts `F`, or — through the rules — a fact a rule deriving `F` needs, written `[hasItem(goodRod), via canPass(pier)]`; the layers are then drawn over those edges too, wherever one closes no cycle. Text lists them under `fact edges (producer -> reader) [asserted fact]:` and heads the layers `topological layers (after: and fact edges):`; `--format json` adds `factEdges`, each `{from, to, fact, via?, layered}`; `--format dot` draws them dotted, labelled with the fact. See [Story overviews](/tooling/overviews/#fact-edges-lute-scenario---facts).
+
 **Bundle beats are nodes** (dsl 0.23.0 §4). Every `<beat>` of a lore document is drawn as `beat(<document id>.<beat id>)` — an entry node in layer 0 with no edges when it declares no `after=`, selected by its occasion, target and `when` instead, and (dsl 0.25.0 §3) the dependent of the edges its `after=` draws when it does. `reach <beat id>` answers `Reachable`, then an `after:` line (`(none declared) — an entry node: …`, or the beat's `after=` formula), the file that declares it (`declared in:`), and its `on:`, `target:` and `when:` as written; `envelope <beat id>` prints the entry-floor tables, with the seed facts as its guaranteed facts. Since dsl 0.24.0 §2 an `after:` may name a bundle beat (`visited('<doc>.<beat>')`), and connectivity routes through it like a scene. See [The scene graph](/connectivity/scene-graph/#bundle-beats).
 
 An unanchored quest (dsl 0.21.0 §7a.5) sits in no layer and on no edge, but it is not missing from the report: `reach quest:<id>` gives it the verdict ``Unanchored — a quest with no declared `after` prerequisite: available from the start of play; …`` (JSON `"reach": "unanchored"`), and its `after:` line reads `(none declared) — unanchored: this quest is in no prerequisite graph layer and on no edge; it is available from the start of play.` A quest anchored without `after=` — by the `::accept`s that take it up, its parent (a subquest), or its `start` conjuncts (dsl 0.25.0 §4) — lists its anchors instead, `[start] entry(keeperLog)` one per line (`anchors` in JSON, each `{ kind, from }`).
 
 Since 0.23.0 the graph view also ends with a `note:` listing the `completed()`/`active()`/`visited()` references it did not draw — a quest's edges come from its `after`, its subquest tree, its `start` conjuncts and its `::accept`s, so a `completed()` naming a quest on no edge, and a quest's `visited()` read outside its anchoring `start` conjuncts, are listed (`omitted` in `--format json`); see [What the scenario graph leaves out](/tooling/overviews/#what-the-scenario-graph-leaves-out). `knowledge [--for <node>]` traces every fact-guarded condition through the rules to the producers of its facts — asserting documents, seed facts, `reserved`, or `NO PRODUCER`. Since dsl 0.24.0 it covers every guard slot — beat, entry and objective guards, line `when=`, `<choice when>`, `<when>` arm tests, `::next`/`::set` `when`, `<on when>`, reward `when`, quest `start`/`fail` and objective `until` — grouped by document with each guard's source line; a negation reads "holds unless defeated" with one `defeated when …` line per defeater — a derived defeater with every derivation route, `⇐ … / ⇐ …` (dsl 0.25.0 §9) — or "always holds (…) — cannot be defeated", and a derived atom's rules print once (later mentions say `traced above under …`). `knowledge` takes `--format text` or `json` (before the subcommand; JSON elements carry `for` and `line`); `--for` takes a scene (every guard in it), a bundle beat, an entry id, `<quest>.<objective>`, `quest:<id>`, or `<scene>#<branch>.<choice>` for one choice, and an unmatched one is exit **2** with a did-you-mean. A rule's premises are traced too: an entity-kind atom reads as membership (`person(ada) — entity kind `person`; ada is a member`, not an undeclared relation), and a `cel(…)` premise names the state it reads (`cel("run.slot == 'evening'") — state condition on run.slot, decided at run time`); in `--format json` a rule's premises are `{ relation, negated? }`, `{ entityKind }`, or `{ cel }`. `envelope`'s Facts rows use the same producer wording (`seed facts …`, `reserved — the engine asserts it`, `derived by 1 rule`). Both are described, with real output, in [Story overviews](/tooling/overviews/#lute-scenario-knowledge).
+
+Since dsl 0.26.0 §6 a rule body may count (`canPass(earthGymDoor) :- count(hasBadge(_)) >= 7`), and `knowledge` traces such a premise as `count(hasBadge(_)) >= 7 — counts:` with the producers of the counted facts beneath it.
 
 ## beats
 
@@ -193,6 +211,8 @@ $ lute beats <dir> [--occasion <O>]… [--target <T>]… [--expand] [--json]
 ```
 
 Print every beat of the project as one ladder per occasion — and per target of a targeted occasion — in selection order (dsl 0.23.0): priority, beat and title, kind (`scene`, `entry`, `bundle`), `once` (`run`, `user`, `day`, `slot`, or `no` — a bundle beat's `once="day"` / `once="slot"` included — and `also`, and since dsl 0.25.0 a `share` key: `day, share solWarm`; `share` in `--json`), the `check-project` verdicts (`unreachable`, `shadowed`, `tied`, `once-run-user`), `after:` (a bundle beat's `after=` included), and `when` as the author wrote it — `@def` references included (dsl 0.24.0); `--expand` prints each `when` with its defs expanded, and `--json` carries both, `when` (expanded) and `whenAuthored`. `--occasion` and `--target` (both repeatable) filter the ladders; `--json` carries each verdict's full diagnostic. Read-only, and the project need not check clean. Exit **0** on success, **2** on I/O or an unknown `--occasion`. See [Story overviews](/tooling/overviews/#lute-beats).
+
+Since dsl 0.26.0: a fallback that an earlier, never-spent beat whose `when` it implies always beats shows `covered by <id>` in the verdict column (`coveredBy` in `--json`) — informational, not a diagnostic, so a lead can tell a fallback that still plays from one that no longer can; a [kind beat](/tooling/play/#kind-targets) is listed in the ladder of every member some beat names, and in a `kind:<kind>` ladder for the members no beat names on its own; and `--target` accepts any member of a targeted occasion's domain.
 
 ## calendar
 
@@ -304,6 +324,30 @@ Derived (what the rules can conclude from what the project asserts)
       gates: objective `ferry.word` (quests/ferry.lute), scene `inn.again` (scenes/inn/again.lute)
 ```
 
+## refs
+
+```console
+$ lute refs <dir> [--attr <DIRECTIVE.ATTR>]… [--reward <KIND>]… [--json]
+```
+
+Who uses which engine content id (dsl 0.26.0 §2.5): every value of a directive attribute (`--attr give.item`) or every `target=` of a reward kind (`--reward ITEM`), with the documents and lines using it, so a lead sees who gives what before merging several authors' work — the same rod handed out by three areas, a TM spelt two ways. Both flags repeat and combine; naming neither is a usage error (exit **2**). A value that reaches the attribute through a component — `::use{component="gift" item="goodRod"}` over a body `::give{item=@item}`, through nested `::use`s too — is listed at the `::use` line that binds it, ``(via component `gift`)``; a reward with no `target=` is listed as `(no target)`; an attribute or kind nothing uses reads `no uses`.
+
+```console
+$ lute refs . --attr give.item --reward ITEM
+::give.item: 2 value(s)
+  `goodRod` — 1 use(s) in 1 document(s)
+    scenes/wren.lute:15 (via component `gift`)
+  `potion` — 1 use(s) in 1 document(s)
+    scenes/wren.lute:13
+reward ITEM: 2 value(s)
+  (no target) — 1 use(s) in 1 document(s)
+    quests/fishing.lute:9
+  `goodRod` — 1 use(s) in 1 document(s)
+    quests/fishing.lute:8
+```
+
+`--json` emits `{ "queries": [ { "kind": "attr" | "reward", "name", "values": [ { "value", "uses": [ { "document", "line", "via"? } ] } ] } ] }`, with `value` `null` for `(no target)` and `via` the component name. The report lists, it does not validate: an attribute typed by an entity kind (`item: { type: { entity: bagItem } }`) and a reward kind's `target:` contract are what `check` judges. Read-only; documents need not check clean. Exit **0** on success, **2** on I/O or a usage failure. See the [multi-author guide](/guides/multi-author/).
+
 ## new
 
 ```console
@@ -340,7 +384,7 @@ Outside a project `--on` is refused, since no occasion is declared. Exit **0** o
 ## doctor
 
 ```console
-$ lute doctor [<dir>] [--json]
+$ lute doctor [<dir>] [--json] [--strict]
 ```
 
 Diagnose the local toolchain and project setup: the version axes, the project manifest, the content documents, play scripts (`*.play.yaml`) and scenario tests (`*.test.yaml`), provider snapshots, the active plugins, every declared occasion with the number of beats answering it, the declared vocabulary slots, and editor integration. `<dir>` is the project directory to inspect (default: the current directory). Provider snapshots are looked for in the manifest's `catalogDir:` (default `catalog/`), the directory `check` reads; with none there the line says `no pinned provider snapshots`. The editor check runs `lute-lsp --version` on the first `lute-lsp` on `PATH` and flags one that reports another version — or none, as a server older than 0.22.0 does — with how to reinstall it. It also compares the `lute-lsp` beside the running `lute` with the one on `PATH` (`lute-lsp beside lute`; `siblingLanguageServer` in `--json`): another build first on `PATH` — same version or not — fails the check, naming both binaries, with the fix: put the `lute` directory first on `PATH`, or point the editor's language server at the `lute-lsp` beside it.
@@ -371,7 +415,7 @@ An editor keeps running the `lute-lsp` it started, so reinstalling the toolchain
       → restart the editor (or its language server) so it launches this toolchain's lute-lsp
 ```
 
-`--json` emits the same checks as one object, `{ "dir", "checks": { <key>: { label, ok, detail, hint } } }` (`ok` is `null` for an informational line). A report, never a gate: exit **0** whatever the checks find, **2** when `<dir>` cannot be read.
+`--json` emits the same checks as one object, `{ "dir", "checks": { <key>: { label, ok, detail, hint } } }` (`ok` is `null` for an informational line). By default doctor is a report, never a gate: exit **0** whatever the checks find. `--strict` (dsl 0.26.0) exits **1** when any check fails (`✗`) — a stale running `lute-lsp`, another build beside `lute`, a stale snapshot — so a harness or CI step can refuse to start on a broken setup. Exit **2** when `<dir>` cannot be read. Since dsl 0.26.0 a replaced `lute-lsp` also says so itself in the editor — see [Editors](/tooling/editors/#a-server-older-than-its-binary).
 
 ## run
 
@@ -396,6 +440,8 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--no-derive] [--expla
 ```
 
 Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project is compiled once, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), fire a world `event:`, move a declared clock with `advance: slot | day | <n>` (dsl 0.24.0: writes the clock's paths, settles the quests, raises `dayEnd` / `dayStart` at each midnight it crosses and the `slot` occasion once where it stops, per the clock's `raise:`; it may carry the same moment's `engine:` writes, which land where the clock arrives — after any `dayEnd` / `dayStart` on the way, before the final settle and raise), or end the playthrough with `end: true` — and any step may carry `label:`, `repeat: <n>`, its own `bridges:` answers, and `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`; `- include: <file>` splices another file's steps in place. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, `choose:` and `bridges:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none`, or no `pick` when nothing is eligible, presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
+
+Since dsl 0.26.0 (draft): `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }` moves the clock to the next such position (forward only, never zero steps), and a step `expect:` takes `clock: { weekday, slot, day }`; `engine: { accept: [quest ids] }` accepts an accept-driven quest mid-play (`quest <id> accepted (engine)`); an entry may be named `<document id>.<entry id>` in `pick:`, `entriesRead:` and the selection expectations; a beat targeting `kind:<kind>` answers every member of the kind; a guarded directive that did not run prints `skip ::give{item="potion"} — when: false`; a bridge answer is typed by its result slot or the capability's `result:`, and an untyped one is refused (exit **2**); and a project whose documents declare one state path with two types is refused (exit **1**). The project loads once per play — on Monster League a play load fell from about 12 s to about 1.5 s. See [Playing a story](/tooling/play/).
 
 `--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--explain <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
 
@@ -433,6 +479,8 @@ A play passes when every step and top-level expectation holds and the play compl
 
 A failing test says why its walk stopped: the unresolved guards and the `state:`/`facts:` entries that would decide them (`--json`: `unresolved`, each with `atoms` and `supply`).
 
+`lute test` loads and checks each project **once** (dsl 0.26.0 §1) and shares it across every test and play under it: the producer set and quest ids are collected once, a play project is compiled once for all its plays — its compile diagnostics print once, not once per play — and then the tests, and then the plays, run in parallel on every logical core (set `RAYON_NUM_THREADS` to cap the threads). Results are reported in the usual file order, each one's standard error replayed in that order.
+
 `--coverage` also reports branch/arm coverage across the tested documents and lists the **untested** documents — every testable document no `*.test.yaml` names and no play presents — under `--project`, or else under the nearest `lute.project.yaml` above `<dir>`, so `lute test tests --coverage` still measures the whole project. Every document a play presented counts as covered — through an `occasion:` step or through the occasions a clock raises after an `advance:` step — while the branch/hub and arm rows come from traced paths alone, as the header says. Since a lore document is testable, an untested one is listed too:
 
 ```console
@@ -468,7 +516,11 @@ expect:
 
 Since dsl 0.24.0 a test takes the mock's `bridges:` key too (see [Bridge answers](/tooling/tracing/#bridge-answers)), and three expectations read more: `expect.accepts: [quest ids]` asserts the quests the scene's `::accept`s took, as a set (`accepts: expected [toll], got [parley]`); `expect.offered` of a `<hub>` is every choice eligible at any of its visits, unioned (it was always `[]`); and `transcriptContains` / `transcriptLacks` match only the content lines that played, each in the form `@speaker: text` — the form a play script matches, so `"@narrator: Always shown."` works in both, and a guarded line that never played no longer satisfies `transcriptContains`.
 
+Since dsl 0.26.0 a needle's own line attributes are dropped too, so a line pasted from a play or a trace — `"@mara{emotion=\"content\"}: You're new."` — matches, and a `transcriptContains` miss names the presented line nearest to the needle: `transcriptContains "@mara: Tomas keeps the oil. Ask her.": absent (nearest line: "@mara: Would you? Tomas keeps the oil. Ask him.") (expected present)`.
+
 **An incomplete walk fails.** When an unknown guard halts the trace, the expectations after it were never walked, so the test fails — whatever else it asserts — unless it declares `expect: { exit: incomplete }`. Derivation is on (see [trace](#trace)): a rule-derived fact follows from the test's `facts:` and the project's seed facts, with no need to mock the conclusion. **Migration from 0.21:** a test that relied on an unmocked derived atom being unknown (exit `incomplete`), or on a seeded relation reading empty, now sees the derived or seeded answer; pin `derive: false` to keep the old verdict.
+
+**`exit: complete` means the end of the document** (dsl 0.26.0 §7). The walk follows a taken `::next` to its label, as play does, so `exit: complete` holds only when the walk reached the end — not when it stopped at a jump — and the transcript and state expectations see what play sees (see [Following a taken `::next`](/tooling/tracing/#following-a-taken-next)). The walk also applies an `::accept` in a quest `<on>` handler to a quest of the same document, so `expect: { quests: { second: active } }` holds as it does in play; `accepts:` resolves quests project-wide, a quest another document declares included; and a quest document may seed its own `quest.<id>.*` — `quests: { lampOut: active }` in a test of `quests/lamp.lute` — which starts the quest there. Before 0.26.0 each of these disagreed with `lute play`.
 
 `file:` may name a lore document when the test says what to present: `entry: <id>`, or `entries: [ids]` to present several in order with the read flags set between them, so a repeated id is a re-read that skips first-read effects — or `beat: <id>`, one [bundle beat](/tooling/tracing/#bundle-beats) by its bare or canonical `<document id>.<beat id>`, walked as `lute trace --beat` walks it. A test takes `beat:` or `entry:`/`entries:`, not both (exit **2**), and a lore test that names none is `E-TEST-LORE`, which lists the declared entry ids and beat ids. Two entries, read in order:
 
@@ -480,7 +532,9 @@ expect:
   transcriptContains: ["Top shelf.", "Busy."]
 ```
 
-Trace presents an entry or a beat whether or not its `when` holds — the `when` is the engine's gate, shown, not enforced — so a test that presents one its mocks make ineligible says so, even when it passes. Without the `quests:` seed, `quest.lampOut.state` reads `unset` and Tomas's oil entry is not eligible:
+An entry may be named `<document id>.<entry id>` in `entry:`, `entries:` and `expect.eligible` keys (`entries: [lore.tomas.tomasBusy]`, dsl 0.26.0 §8). A bundle beat that targets a [whole kind](/tooling/play/#kind-targets) reads its member from a seed, `state: { occasion.target: r16Gus }`, typed by the kind, as a play step's `target` would bind it.
+
+Trace presents an entry or a beat whether or not its `when` holds — the `when` is the engine's gate, shown, not enforced. `lute test` enforces it (dsl 0.26.0 §7): a test that presents an entry, a bundle beat or a scene beat its mocks make ineligible — its `when` is false, its `after:` does not hold, its `once: user` is spent, or an entry's `once="run"` / `once="user"` is spent — **fails** unless it asserts `expect.eligible`, since the engine would never present it and the walk proves nothing about play. An entry's `once` is spent by its read flags, which the mock's `entriesRead:` seeds (`run:` sets `entry.<id>.read` and `everRead`, `user:` sets `everRead` alone) and an earlier presentation in the same test sets, so the failure names which: ``it is `once="run"` and already spent — the mocked `entriesRead: { run: [<id>] }` read it (`entry.<id>.read`)``. Without the `quests:` seed, `quest.lampOut.state` reads `unset` and Tomas's oil entry is not eligible:
 
 ```yaml
 # tests/tomas-oil.test.yaml
@@ -491,11 +545,13 @@ expect:
 ```
 
 ```console
-PASS  ./tests/tomas-oil.test.yaml  (./tests/../lore/tomas.lute)
-      note: `tomasOil` is not eligible under these mocks (its `when` is false); the test presents it anyway — assert it with `expect: { eligible: { tomasOil: false } }`
+FAIL  ./tests/tomas-oil.test.yaml  (./tests/../lore/tomas.lute)
+      eligible tomasOil: not eligible under these mocks (its `when` is false) — the engine would never present it, so the walk proves nothing about play; fix the mocks, or assert `expect: { eligible: { tomasOil: false } }` (the body is then not walked)
 ```
 
-`expect.eligible` asserts that verdict: `true` or `false` for every entry and beat the test presents, or a mapping from id to verdict (`eligible: { tomasOil: false }`; a beat may be named by its bare id). An `eligible:` expectation silences the note it answers. A map key may also name an entry or bundle beat of the file that the test did not present (dsl 0.24.0): it is judged alone, under the same mocks, so a lore test may carry a map-form `eligible:` without presenting anything. A `when` the mocks leave undecided matches neither verdict. A miss reads `eligible tomasOil: expected true, got false`.
+The failure names the premise that is false and, where one exists, the mock that makes it hold: ``its `when` (user.bond.mara >= 1) is false``, ``its `after: visited('hub.welcome')` is false — mock `visited: [hub.welcome]` ``, or ``it is `once: user` and the mocked `visited:` already lists it``. Before 0.26.0 such a test passed with a note, so a contract test of another author's scene stayed green after that scene could no longer be presented.
+
+`expect.eligible` asserts the verdict: `true` or `false` for every entry and beat the test presents, or a mapping from id to verdict (`eligible: { tomasOil: false }`; a beat may be named by its bare id). With it asserted an ineligible body is not walked: an `eligible: false` test needs no bridge answers for a body the engine never plays, and a transcript expectation on that body fails as absent. Since dsl 0.26.0 it works on a scene beat (`on:`) too, judged by the scene's `when`, `after:` and `once`. A map key may also name an entry or bundle beat of the file that the test did not present (dsl 0.24.0): it is judged alone, under the same mocks, so a lore test may carry a map-form `eligible:` without presenting anything. A `when` the mocks leave undecided matches neither verdict. A miss reads `eligible tomasOil: expected true, got false`.
 
 `expect.quests` (dsl 0.21.0 §7a.4) asserts a quest document's lifecycle outcome directly — the state each quest ended the trace in, one of `unset`, `active`, `complete`, `failed`:
 
@@ -516,6 +572,8 @@ $ lute lint [<path>] [--json] [--config <FILE>] [--deny <CODE>]… [--deny-warni
 ```
 
 Run the advisory content lints — line length, dialogue ratio, emotion streaks, missing assets, and project-local rules — over a file or a directory tree (default: the current directory). The linear-VN norms (`L-SHOT-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO`, `L-SCENE-LENGTH-SPREAD`) judge only linear scenes, never beats, components, quests, or lore. Documents are grouped by their nearest `lute.project.yaml`, and each project's `lute.lint.yaml` (or `--config <FILE>`) sets rule levels, thresholds, ignore globs, and `custom:` rules. Findings are `L-*` codes, separate from `lute check`: lints never enter the capability snapshot or change an artifact. `--deny`/`--deny-warnings` promote findings as in `check`. Exit **0** clean or only sub-error findings, **1** any error-severity finding (including `E-LINT-CONFIG`/`E-LINT-EXPR`), **2** on I/O, malformed YAML, or usage. Rules, metrics, and the config format: [Linting](/tooling/linting/).
+
+Since dsl 0.26.0 lint also reports `W-DISPLAY-NAME-DUP`, the advisory `check-project` reports too: two speakers the dialogue box would show under one name — two cast entries with the same `name:`, a cast name equal to a `::use{… name="…"}` display string, or two such strings for different speakers (`who=`). A cast entry marked `sharedName: true` is an intended role name several speakers share and is not counted. The code is not a `lute.lint.yaml` rule; `--deny W-DISPLAY-NAME-DUP` makes it an error. See [Linting](/tooling/linting/#display-names).
 
 ## loc export
 

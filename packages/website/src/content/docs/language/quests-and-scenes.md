@@ -118,6 +118,17 @@ A [subquest](#subquests) is the exception: it must share its parent's tier (`E-Q
 [`lute play`](/tooling/play/) performs the reset at every `newRun` step, so a play script can walk
 several runs and assert each one.
 
+A game whose quests are all run quests says so once, in `lute.project.yaml` (dsl 0.26.0 §2.4):
+
+```yaml
+defaults:
+  questTier: run
+```
+
+Every `<quest>` that writes no `tier=` then takes `run`, and one that writes `tier="user"` keeps it.
+`questTier` takes `run` or `user`; without it the default stays `user`. See
+[Project defaults](/language/imports/#project-defaults).
+
 A quest declares its own prerequisite as an **attribute** on the element, not as
 a frontmatter key — the one place this page's opening heading, "Scenes and
 `after:`", does not apply:
@@ -279,7 +290,10 @@ choice where the player agrees:
 </branch>
 ```
 
-Accepting while the quest is already active, complete, or failed does nothing. `lute check-project`
+Accepting while the quest is already active, complete, or failed does nothing. An `::accept` may
+carry a guard, `::accept{quest="calmTheShed" when="run.shedPressure > 2"}` (dsl 0.26.0 §4, see
+[Guarding a directive](/language/directives/#guarding-a-directive-when)), and is then skipped when
+the guard is false. `lute check-project`
 warns **`W-QUEST-NEVER-ACCEPTED`** (dsl 0.24.0 §2) at an accept-driven quest that no `::accept` in
 the project names: nothing can ever activate it. Since dsl 0.25.0 §5 an `accepts:` mock
 (`mocks/*.yaml`, `*.test.yaml`) no longer counts. A mock proves a test, not the game, so a quest
@@ -328,7 +342,11 @@ wolfBounty accepted (queued at="nextRun")` under the next `newRun` step.
 observe completion. A test, a trace mock, or a play script can also start from a saved status with
 a top-level `quests: {<questId>: complete}` (dsl 0.22.0). That is the way to seed one: a play
 script's `engine:` step refuses a `quest.*` write, because a status change belongs to the lifecycle,
-whose transitions fire handlers and grants.
+whose transitions fire handlers and grants. Since dsl 0.26.0 §7 a test or `lute trace --project`
+resolves the quest ids in `accepts:` against the whole project, so a scene's test may accept a
+quest declared in another document (an id no quest of the project declares is `E-TRACE-ACCEPT`),
+and a test of a quest document may seed its own quests (`quests: { salvage: active }`): the walk
+starts the quest there.
 
 #### Accepted outside the script: `accept="external"`
 
@@ -352,8 +370,26 @@ state:
 The quest is accept-driven: it stays `unset` until the engine accepts it, whenever the player
 chooses, and the IR carries `"accept": "external"` on its `QuestCmd` (omitted by default).
 `accept="external"` is the one non-content source of acceptance that silences
-`W-QUEST-NEVER-ACCEPTED`. A scene may still `::accept` it as well. In `lute play`, `lute trace`
-and `lute test`, the engine's acceptance is written the usual way, with `accepts:` or `--accept`.
+`W-QUEST-NEVER-ACCEPTED`. A scene may still `::accept` it as well.
+
+The toolchain stands in for the engine's acceptance:
+
+- A test or `lute trace` takes the quest up with `accepts: [salvage]` (or `--accept salvage`). That
+  is how a test walks an external quest, and it proves the test only: since 0.25.0 it no longer
+  silences `W-QUEST-NEVER-ACCEPTED` for a quest that has neither `accept="external"` nor an
+  `::accept`.
+- A play script accepts it mid-play with an `engine:` step (dsl 0.26.0 §7), as a quest board
+  would, rather than seeding a status up front:
+
+  ```yaml
+  steps:
+    - engine: { accept: [salvage] }
+      expect: { quests: { salvage: active } }
+  ```
+
+  `lute play` prints `quest salvage accepted (engine)` and settles the lifecycle, so the quest's
+  `questActive` handlers run on that step. `engine: { accept }` takes accept-driven quests only; a
+  quest with a `start` is refused.
 
 `accept` takes only `external`; any other value is `E-ATTR-TYPE`. So is `accept="external"` beside
 `start`, since the quest would have two ways to activate. On a [subquest](#subquests) child that
@@ -640,6 +676,23 @@ must be a quoted dotted id, the occasion named like the event must take a target
 must lie inside its domain. A
 lifecycle event is never raised for a target, so `target` on `questActive`, `questComplete`, or
 `questFailed` is `E-BEAT-ATTR` too. Without `target`, a handler answers every raise of its event.
+
+A handler body may `::accept` another quest of its document, so taking up one quest can open the
+next:
+
+```lute
+<quest id="salvage" title="Salvage the wreck" accept="external">
+  <objective id="dive" title="Dive the wreck" done="run.dived"/>
+  <on event="questActive">
+    @narrator: The wreck is marked on your map.
+    ::accept{quest="tides"}
+  </on>
+</quest>
+```
+
+`lute play` applies such an accept. Since dsl 0.26.0 §7 `lute trace` and `lute test`
+apply it too, so a test of this document with `accepts: [salvage]` ends with `tides` active, as the
+play does. Before 0.26.0 trace and test did not apply it, and disagreed with play.
 
 A `questFailed` handler on a quest that can never fail is dead code. `lute check-project` warns
 `W-QUEST-HANDLER-DEAD` at the handler's `event` when its quest has no `fail`, no required objective

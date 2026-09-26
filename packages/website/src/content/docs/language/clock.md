@@ -134,7 +134,8 @@ Both weekday paths are typed tightly, so the checker treats them like any closed
 `<otherwise>`, and leaving out Sunday is `E-NONEXHAUSTIVE` naming the gap (`` `6` is not
 covered ``). `is="7"` is `E-WHEN-LITERAL-DOMAIN`, and a guard `clock.weekday == 7` is dead
 (`E-ARM-DEAD` on a line). The labels are the members of `clock.weekdayLabel`, so a misspelled
-`is="Sundy"` or `== 'Sundy'` is caught the same way:
+`is="Sundy"` is `E-WHEN-LITERAL-DOMAIN` too, and since dsl 0.26.0 so is a guard's `== 'Sundy'`,
+naming the nearest label (`` did you mean `'Sun'`? ``):
 
 ```lute
 <match on="clock.weekday">

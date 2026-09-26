@@ -150,10 +150,16 @@ pub enum Step {
     /// absent or true, `false` when decided false, `null` when unknown (the
     /// guard is then also listed in `unresolved`). Trace presents the entry
     /// either way — eligibility is the engine's gate, shown, not enforced.
+    /// `spent` (dsl 0.26.0 §7) names the `once` policy (`run` / `user`) an
+    /// earlier read already spent — `entry.<id>.read` / `.everRead` true,
+    /// from `entriesRead:` or an earlier presentation — which makes the
+    /// entry ineligible whatever its `when`, as `lute play` judges it.
     Entry {
         id: String,
         first_read: bool,
         eligible: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        spent: Option<String>,
     },
     /// dsl 0.23.0 §4 (`lute trace --beat`): the presented bundle `<beat>`'s
     /// head. `id` is the canonical `<document id>.<beat id>`. `eligible` is
@@ -680,16 +686,20 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
             id,
             first_read,
             eligible,
+            spent,
         } => {
             let read = if *first_read {
                 "first read"
             } else {
                 "re-read: effects skipped"
             };
-            let gate = match eligible {
-                Some(true) => "",
-                Some(false) => ", not eligible (`when` is false)",
-                None => ", eligibility unknown",
+            let gate = match (eligible, spent) {
+                (Some(false), Some(once)) => {
+                    format!(", not eligible (`once=\"{once}\"` is already spent)")
+                }
+                (Some(true), _) => String::new(),
+                (Some(false), None) => ", not eligible (`when` is false)".to_string(),
+                (None, _) => ", eligibility unknown".to_string(),
             };
             out.push_str(&format!("  <entry {id}>   ({read}{gate})\n"));
         }

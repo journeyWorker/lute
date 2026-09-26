@@ -824,6 +824,8 @@ fn quests_and_entries_read_seed_their_reserved_paths() {
         [
             ("quest.foo.state", "complete"),
             ("entry.ember.read", "true"),
+            // Read this run is read ever, as a `lute play` save seeds it.
+            ("entry.ember.everRead", "true"),
             ("entry.ash.everRead", "true"),
         ]
     );

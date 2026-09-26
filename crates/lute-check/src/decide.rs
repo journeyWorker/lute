@@ -932,40 +932,63 @@ pub fn decide_slot(raw: &str, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Optio
     decide(&ided.expr, ctx)
 }
 
-/// dsl 0.5.2 §2.1: one detected unset-sentinel misspelling — `S ==/!= 'unset'`
-/// with `S` a maybe-unset finite-domain subject and the string `'unset'`
-/// FOREIGN to `S`'s domain (not a declared enum member literally named
-/// `unset`). `subject` is a best-effort display name for the §2.2 message (a
-/// dotted state path, `$`, or a bound component param's bare name);
-/// `not_equals` distinguishes `S != 'unset'` (decides true, R2) from
-/// `S == 'unset'` (decides false — a candidate `E-ARM-DEAD` root, §2.3).
-/// `id` is the comparison `Call` node's own arena id — used ONLY internally
-/// by [`analyze_unset_sentinel_slot`]'s causality substitution, never read
-/// outside this file.
-pub(crate) struct UnsetSentinelHit {
+/// One literal comparison a guard slot gets wrong. `subject` is a
+/// best-effort display name for the message (a dotted state path, `$`, or a
+/// bound component param's bare name); `id` is the comparison `Call` node's
+/// own arena id — used ONLY internally by [`analyze_literal_comparisons`]'s
+/// causality substitution, never read outside this file.
+pub(crate) struct LiteralCmpHit {
     pub subject: String,
-    pub not_equals: bool,
+    pub kind: LiteralCmpKind,
     id: u64,
 }
 
+/// What is wrong with one [`LiteralCmpHit`].
+pub(crate) enum LiteralCmpKind {
+    /// dsl 0.5.2 §2.1: `S ==/!= 'unset'` with `S` a maybe-unset
+    /// finite-domain subject and the string `'unset'` FOREIGN to `S`'s
+    /// domain (not a declared enum member literally named `unset`) — the
+    /// DSL's unset sentinel misspelt. `not_equals` distinguishes
+    /// `S != 'unset'` (decides true, R2) from `S == 'unset'` (decides false —
+    /// a candidate `E-ARM-DEAD` root, §2.3).
+    UnsetSentinel { not_equals: bool },
+    /// dsl 0.26.0: a string literal compared (`==`, `!=`, either operand
+    /// order, or an `in [...]` element) against a subject whose finite
+    /// domain is a set of strings — an enum path, `occasion.target`, a
+    /// quest's `state`/`failedBy`, a branch's `scene.choices.*`, an enum
+    /// param — that has no such member: a typo, `E-WHEN-LITERAL-DOMAIN`.
+    /// `members` is the subject's domain, in declaration order.
+    ForeignMember {
+        literal: String,
+        members: Vec<String>,
+    },
+}
+
 /// dsl 0.5.2 §2.1/§2.3: the full analysis of one CEL guard slot.
-pub(crate) struct UnsetSentinelAnalysis {
-    /// EVERY distinct sentinel comparison found (§2.1: "scans every
+pub(crate) struct LiteralCmpAnalysis {
+    /// EVERY distinct faulty comparison found (§2.1: "scans every
     /// comparison sub-expression, not only a top-level guard") — one
-    /// `E-UNSET-LITERAL` per hit.
-    pub hits: Vec<UnsetSentinelHit>,
+    /// diagnostic per hit.
+    pub hits: Vec<LiteralCmpHit>,
     /// §2.3: "that comparison is its root" — `true` iff `hits` is
     /// non-empty AND substituting an UNDECIDED placeholder for every
     /// detected comparison (so the guard reasons about it exactly as
     /// little as an ordinary state-path read) no longer lets the guard
     /// decide `false`. `false` when the guard is ALSO independently dead
-    /// for another reason (a literal `false`, an unrelated foreign-typo
-    /// comparison, `@never`, …) — that independent deadness must still
-    /// surface as `E-ARM-DEAD`, so the two diagnostics can pile on when
-    /// genuinely warranted. Meaningful only when the ORIGINAL guard itself
-    /// decides `Some(Decided::Bool(false))`; the caller (`reachability.rs`)
-    /// only ever consults this flag inside that branch.
+    /// for another reason (a literal `false`, `@never`, …) — that
+    /// independent deadness must still surface as `E-ARM-DEAD`, so the
+    /// diagnostics can pile on when genuinely warranted. Meaningful only
+    /// when the ORIGINAL guard itself decides `Some(Decided::Bool(false))`;
+    /// callers only ever consult this flag inside that branch.
     pub load_bearing_for_false: bool,
+}
+
+impl LiteralCmpAnalysis {
+    /// The literal comparisons alone are why the guard decides false: the
+    /// diagnostics they raise own the dead-guard root (§2.3, D4).
+    pub(crate) fn owns_dead_guard(&self) -> bool {
+        !self.hits.is_empty() && self.load_bearing_for_false
+    }
 }
 
 /// Best-effort display name for a resolved-domain subject expr (§2.2's
@@ -1011,17 +1034,51 @@ fn unset_sentinel_operand(subject: &Expr, other: &Expr, ctx: &DecideCtx<'_>) -> 
     Some(subject_display(subject).unwrap_or_else(|| "this subject".to_string()))
 }
 
-/// dsl 0.5.2 §2.1's independent AST lint: collect EVERY unset-sentinel
-/// mistake in `ided`'s tree — nested inside `&&`/`||`/`!`/anything else,
-/// not only a top-level comparison. Recurses the whole closed CEL-profile
-/// shape (mirrors `cel_paths::walk`) AND into a matched comparison's own
-/// operands (a pathological `S == (T == 'unset' ? a : b)` still finds the
-/// inner mistake), so a sentinel mistake buried anywhere is found.
-fn collect_unset_sentinel_cmp(
-    ided: &IdedExpr,
+/// One operand order of the dsl 0.26.0 foreign-member trigger:
+/// `subject ==/!= 'lit'` (or one `in` element), where `subject` resolves —
+/// via the SAME [`resolve_domain`] R2 uses — to a `resolved` FINITE domain
+/// of strings and `'lit'` is not one of them (the SAME [`domain_contains`]
+/// R2 uses, so the diagnostic and R2 never disagree about membership).
+/// Returns the subject's display name, the literal and the members. A
+/// bool domain is left alone: a string against it is a type question.
+fn foreign_member_operand(
+    subject: &Expr,
+    other: &Expr,
     ctx: &DecideCtx<'_>,
-    out: &mut Vec<UnsetSentinelHit>,
-) {
+) -> Option<(String, String, Vec<String>)> {
+    let Expr::Literal(Val::String(s)) = other else {
+        return None;
+    };
+    let dom = resolve_domain(subject, ctx)?;
+    let Domain::Finite(vals) = &dom.domain else {
+        return None;
+    };
+    let members: Vec<String> = vals
+        .iter()
+        .filter_map(|v| match v {
+            DomainValue::Str(m) => Some(m.clone()),
+            DomainValue::Bool(_) => None,
+        })
+        .collect();
+    if !dom.resolved
+        || members.is_empty()
+        || domain_contains(&dom, &Constant::Value(Decided::Str(s.clone())))
+    {
+        return None;
+    }
+    let name = subject_display(subject).unwrap_or_else(|| "this subject".to_string());
+    Some((name, s.clone(), members))
+}
+
+/// The guard-slot literal lint: collect EVERY faulty literal comparison in
+/// `ided`'s tree — nested inside `&&`/`||`/`!`/anything else, not only a
+/// top-level comparison. Recurses the whole closed CEL-profile shape
+/// (mirrors `cel_paths::walk`) AND into a matched comparison's own operands
+/// (a pathological `S == (T == 'unset' ? a : b)` still finds the inner
+/// mistake), so a mistake buried anywhere is found. A comparison that
+/// misspells the unset sentinel (dsl 0.5.2 §2.1) is reported as that, never
+/// also as a foreign member.
+fn collect_literal_cmp(ided: &IdedExpr, ctx: &DecideCtx<'_>, out: &mut Vec<LiteralCmpHit>) {
     match &ided.expr {
         Expr::Call(c) => {
             if (c.func_name == op::EQUALS || c.func_name == op::NOT_EQUALS) && c.args.len() == 2 {
@@ -1030,33 +1087,56 @@ fn collect_unset_sentinel_cmp(
                 if let Some(subject) =
                     unset_sentinel_operand(a, b, ctx).or_else(|| unset_sentinel_operand(b, a, ctx))
                 {
-                    out.push(UnsetSentinelHit {
+                    out.push(LiteralCmpHit {
                         subject,
-                        not_equals,
+                        kind: LiteralCmpKind::UnsetSentinel { not_equals },
+                        id: ided.id,
+                    });
+                } else if let Some((subject, literal, members)) =
+                    foreign_member_operand(a, b, ctx).or_else(|| foreign_member_operand(b, a, ctx))
+                {
+                    out.push(LiteralCmpHit {
+                        subject,
+                        kind: LiteralCmpKind::ForeignMember { literal, members },
                         id: ided.id,
                     });
                 }
             }
+            if c.func_name == op::IN && c.args.len() == 2 {
+                if let Expr::List(list) = &c.args[1].expr {
+                    for el in &list.elements {
+                        if let Some((subject, literal, members)) =
+                            foreign_member_operand(&c.args[0].expr, &el.expr, ctx)
+                        {
+                            out.push(LiteralCmpHit {
+                                subject,
+                                kind: LiteralCmpKind::ForeignMember { literal, members },
+                                id: ided.id,
+                            });
+                        }
+                    }
+                }
+            }
             if let Some(target) = &c.target {
-                collect_unset_sentinel_cmp(target, ctx, out);
+                collect_literal_cmp(target, ctx, out);
             }
             for a in &c.args {
-                collect_unset_sentinel_cmp(a, ctx, out);
+                collect_literal_cmp(a, ctx, out);
             }
         }
         Expr::List(list) => {
             for el in &list.elements {
-                collect_unset_sentinel_cmp(el, ctx, out);
+                collect_literal_cmp(el, ctx, out);
             }
         }
         Expr::Map(map) => {
             for e in &map.entries {
-                collect_unset_sentinel_cmp_entry(&e.expr, ctx, out);
+                collect_literal_cmp_entry(&e.expr, ctx, out);
             }
         }
         Expr::Struct(st) => {
             for e in &st.entries {
-                collect_unset_sentinel_cmp_entry(&e.expr, ctx, out);
+                collect_literal_cmp_entry(&e.expr, ctx, out);
             }
         }
         Expr::Comprehension(c) => {
@@ -1067,25 +1147,21 @@ fn collect_unset_sentinel_cmp(
                 &c.loop_step,
                 &c.result,
             ] {
-                collect_unset_sentinel_cmp(e, ctx, out);
+                collect_literal_cmp(e, ctx, out);
             }
         }
-        Expr::Select(sel) => collect_unset_sentinel_cmp(&sel.operand, ctx, out),
+        Expr::Select(sel) => collect_literal_cmp(&sel.operand, ctx, out),
         Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => {}
     }
 }
 
-fn collect_unset_sentinel_cmp_entry(
-    entry: &EntryExpr,
-    ctx: &DecideCtx<'_>,
-    out: &mut Vec<UnsetSentinelHit>,
-) {
+fn collect_literal_cmp_entry(entry: &EntryExpr, ctx: &DecideCtx<'_>, out: &mut Vec<LiteralCmpHit>) {
     match entry {
         EntryExpr::MapEntry(m) => {
-            collect_unset_sentinel_cmp(&m.key, ctx, out);
-            collect_unset_sentinel_cmp(&m.value, ctx, out);
+            collect_literal_cmp(&m.key, ctx, out);
+            collect_literal_cmp(&m.value, ctx, out);
         }
-        EntryExpr::StructField(f) => collect_unset_sentinel_cmp(&f.value, ctx, out),
+        EntryExpr::StructField(f) => collect_literal_cmp(&f.value, ctx, out),
     }
 }
 
@@ -1093,7 +1169,7 @@ fn collect_unset_sentinel_cmp_entry(
 /// `decide()`'s `Expr::Ident(_) => None` arm treats it — like any other
 /// bare ident — as UNDECIDED, exactly what the substitution needs: "reason
 /// about this node as little as an ordinary state-path read".
-const UNDECIDED_PLACEHOLDER: &str = "__lute_unset_sentinel_undecided__";
+const UNDECIDED_PLACEHOLDER: &str = "__lute_literal_cmp_undecided__";
 
 /// Clone `ided`'s tree, replacing every node whose id is in `ids` with
 /// [`UNDECIDED_PLACEHOLDER`] (a leaf — its own children are dropped, never
@@ -1159,17 +1235,17 @@ fn undecide_ids_mut_entry(entry: &mut EntryExpr, ids: &[u64]) {
 /// The §2.1/§2.3 entry point (mirrors [`decide_slot`]'s expand-then-parse
 /// pipeline exactly, so the lint and R2 can never see different trees for
 /// the same raw text): expand `@def`s, re-parse MARKED, collect every
-/// sentinel hit, then (§2.3) re-decide a COPY of the tree with every hit
-/// substituted to an undecided placeholder — `decide()`'s own contract is
-/// untouched, this only ever runs on a cloned, throwaway tree. An empty
-/// analysis (no hits, not load-bearing) on a parse failure — mirrors
-/// `decide_slot`'s `?` chain: an unparseable guard makes no claim.
-pub(crate) fn analyze_unset_sentinel_slot(
+/// faulty literal comparison, then (§2.3) re-decide a COPY of the tree with
+/// every hit substituted to an undecided placeholder — `decide()`'s own
+/// contract is untouched, this only ever runs on a cloned, throwaway tree.
+/// An empty analysis (no hits, not load-bearing) on a parse failure —
+/// mirrors `decide_slot`'s `?` chain: an unparseable guard makes no claim.
+pub(crate) fn analyze_literal_comparisons(
     raw: &str,
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
-) -> UnsetSentinelAnalysis {
-    let empty = || UnsetSentinelAnalysis {
+) -> LiteralCmpAnalysis {
+    let empty = || LiteralCmpAnalysis {
         hits: Vec::new(),
         load_bearing_for_false: false,
     };
@@ -1183,7 +1259,7 @@ pub(crate) fn analyze_unset_sentinel_slot(
         return empty();
     };
     let mut hits = Vec::new();
-    collect_unset_sentinel_cmp(ided, ctx, &mut hits);
+    collect_literal_cmp(ided, ctx, &mut hits);
     if hits.is_empty() {
         return empty();
     }
@@ -1191,7 +1267,7 @@ pub(crate) fn analyze_unset_sentinel_slot(
     let substituted = undecide_ids(ided, &ids);
     let load_bearing_for_false =
         !matches!(decide(&substituted.expr, ctx), Some(Decided::Bool(false)));
-    UnsetSentinelAnalysis {
+    LiteralCmpAnalysis {
         hits,
         load_bearing_for_false,
     }

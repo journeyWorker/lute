@@ -62,9 +62,9 @@ rules:
 @isolde{when="holds(loyal(isolde))"}: I'm with you.
 ```
 
-Every member of a sub-kind must also be a member of its parent, and a member it shares with its parent, or with a sibling sub-kind, is no clash. A sub-kind is legal wherever a kind is: a relation argument, a `per:` index ([State model](/state/state-model/)), an occasion's target domain. A value of the sub-kind is also a value of the parent, so `trusts(isolde, player)` is legal and the rule above joins a `companion` with a `person` argument. The reverse does not hold: `::assert{ inParty(hollis) }` is `E-FACT-DOMAIN`, because `hollis` is a person but not a companion.
+A sub-kind's members are members of its parent (dsl 0.26.0 §2.3): a member it shares with its parent, or with a sibling sub-kind, is no clash, and the parent need not list it again (restating it there is allowed and is no duplicate). A sub-kind is legal wherever a kind is: a relation argument, a `per:` index ([State model](/state/state-model/)), an occasion's target domain, a [kind target](/language/beats/#kind-targets). A value of the sub-kind is also a value of the parent, so `trusts(isolde, player)` is legal and the rule above joins a `companion` with a `person` argument. The reverse does not hold: `::assert{ inParty(hollis) }` is `E-FACT-DOMAIN`, because `hollis` is a person but not a companion.
 
-A sub-kind lists its own `members:`. A member outside the parent is `E-ENTITY-KIND-SHAPE`, naming the outsider. The same code covers a parent the document does not declare, a parent declared `open:`, a sub-kind declared `open:`, and a `subsetOf:` chain that loops back on itself.
+A sub-kind lists its own `members:`. A parent the document does not declare, a parent declared `open:`, a sub-kind declared `open:`, and a `subsetOf:` chain that loops back on itself are `E-ENTITY-KIND-SHAPE`, reported once at the schema line. Before 0.26.0 a sub-kind member missing from the parent's list was an error too. A kind's members may also be assembled across schema files with [`add:`](/state/schemas/#kinds-assembled-across-files-add).
 
 `check-project`'s `W-DOMAIN-UNREAD` flags a kind that nothing reads. It counts a sub-kind's `subsetOf:` parent, a kind used as a `per:` index, and a kind atom in a rule body or a `holds(…)` condition as reads, alongside relation arguments. The warning lands on the line of the schema that declares the kind, or on the document's own `entities:` key, rather than on the first importer.
 
@@ -153,6 +153,7 @@ A rule is `head :- body`, where the body is a comma-separated conjunction of the
 | anonymous variable | `sawAt(W, _, _)` | each `_` is a fresh variable that matches anything (dsl 0.24.0); under `not`, no matching tuple exists at all |
 | inequality | `A != B` | two bound terms differ |
 | scalar guard | `cel("run.act == 1")` | a CEL condition over scalar state, never a fact query |
+| count | `count(hasBadge(_)) >= 7` | dsl 0.26.0 §6: the number of matching facts compared with `>=` `>` `<=` `<` `==` `!=`; also `countDistinct(R(…), V) op n`. See [Counts in a rule body](#counts-in-a-rule-body) |
 
 ```yaml
 rules:
@@ -201,6 +202,46 @@ facts:
 ```
 
 Three sightings, two witnesses: `ada` saw two people and `bram` one. `<Var>` must be a variable that appears in the pattern, otherwise the call is `E-CEL-PROFILE`. `check-project` decides `countDistinct` from its fact envelope as it does `count`, and trace, test and play evaluate it. Like `count` and `holds`, it reads the fact store, so it is forbidden in a rule guard (`E-DATALOG-GUARD-FACT`).
+
+### Counts in a rule body
+
+Since dsl 0.26.0 §6 a rule body may count, with the same two forms a condition uses: `count(R(…)) <op> n` and `countDistinct(R(…), V…) <op> n`, where `<op>` is `>=`, `>`, `<=`, `<`, `==` or `!=`. A variable another literal of the rule binds is read, so the count is per binding; any other variable ranges over the facts:
+
+```lute check
+---
+kind: scene
+id: inquest.verdict
+entities:
+  person: { members: [ada, bram, cole, dora] }
+  place:  { members: [dock, mill] }
+relations:
+  sawAt:        { args: [person, person, place], tier: run }
+  corroborated: { args: [person], derive: true }
+  caseOpen:     { args: [place], derive: true }
+rules:
+  - "corroborated(S) :- person(S), count(sawAt(_, S, _)) >= 2"
+  - "caseOpen(dock) :- countDistinct(sawAt(W, _, dock), W) >= 2"
+facts:
+  - "sawAt(ada, cole, dock)"
+  - "sawAt(bram, cole, mill)"
+  - "sawAt(bram, dora, dock)"
+---
+
+## The verdict
+
+@narrator{when="holds(corroborated(cole))"}: Two people put Cole at the scene.
+@narrator{when="holds(caseOpen(dock))"}: Two witnesses were at the dock.
+@narrator{when="!holds(corroborated(dora))"}: Only one saw Dora.
+```
+
+`lute trace` takes all three arms. The IR carries a count literal as `{ kind: "count", atom, distinct?, op, n }`, and `trace`, `test`, `play` and `run` evaluate it one stratum above the counted relation, so the count is final before the head is derived. A count over a relation that depends on the rule's own head has no such stratum and is **`E-RULE-AGGREGATE-CYCLE`**:
+
+<!-- lute-diagnostics -->
+```
+cr/cyc.lute:13:6: error [E-RULE-AGGREGATE-CYCLE] a rule deriving `popular` counts `known`, which depends on `popular` itself (cycle: `known`, `popular`) — a `count(…)` / `countDistinct(…)` may only read a relation its rule's head does not feed, so the count is final before the head is derived (dsl 0.26.0 §6)
+```
+
+That rule was `popular(P) :- person(P), count(known(_, P)) >= 2` beside `known(A, B) :- popular(A), person(B)`. A gate that opens at seven badges is one rule, `canPass(earthGymDoor) :- count(hasBadge(_)) >= 7`, and `lute scenario knowledge` traces the count to the producers of the facts it counts.
 
 ### `@def`s in a rule guard
 

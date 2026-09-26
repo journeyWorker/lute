@@ -38,7 +38,7 @@ options:                   # OPTIONAL — typed activation options
 
 ## Export files
 
-Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `number` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, and shape refs). State paths use **structured segments**, never `$name` interpolation.
+Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `number` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation.
 
 - `directives/*.yaml` — `::name` directive declarations (see [Bridge](/plugins/bridge/)).
 - `state/*.yaml` — reusable typed record shapes (`stateShapes:`) and structured path templates (`stateTemplates:`); one file may hold both (since 0.24.0; before, the second was dropped).
@@ -50,7 +50,7 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `enums/*.yaml`, `frontmatter/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, and hover docs.
 - `events/*.yaml` — world events a quest's `<on event>` may name and `lute trace --event` fires.
 - `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0), each optionally raised for a target drawn from a project entity kind (dsl 0.22.0), and presented as one winner, an offered list, or a sequence (dsl 0.23.0).
-- `rewardkinds/*.yaml` — the closed set of `<reward kind>` values, with an optional target provider, extra attributes, and the state path a grant credits (dsl 0.23.0).
+- `rewardkinds/*.yaml` — the closed set of `<reward kind>` values, with an optional [target contract](#reward-target-contracts), extra attributes, and the state path a grant credits (dsl 0.23.0).
 - `cast/*.yaml` — the speakers content lines may use, with display names (dsl 0.23.0).
 - `lints/*.yaml` — advisory [lint rules](/tooling/linting/), namespaced `<plugin-id>/<rule-id>`; excluded from the capability snapshot.
 
@@ -147,6 +147,65 @@ A range amount (`amount="10..20"`) is the engine's roll, so the toolchain grants
 
 A kind without `credits:` hashes exactly as it did before 0.23.0, so adding the key to one kind restamps only the snapshots that declare it.
 
+### Engine ids typed by an entity kind
+
+An attribute that names something the engine owns, such as a bag item, a species, or a shop's stock list, may be typed by an **entity kind** the project declares (dsl 0.26.0 §2.5):
+
+```yaml
+# directives/engine.yaml
+directives:
+  - name: give
+    attrs:
+      - { name: item, required: true, type: { entity: bagItem } }
+      - { name: qty,  type: number, default: 1 }
+```
+
+The plugin names the kind and the project lists its members, the same split as an occasion's [target domain](/language/beats/#target-domains). The kind lives in a schema every document imports, typically one lead-owned file of the ids the engine ships:
+
+```yaml
+# schema/items.schema.yaml
+entities:
+  bagItem: { members: [potion, superPotion, goodRod, nugget] }
+```
+
+A value outside the kind is `E-BAD-ENUM`, with a did-you-mean. An attribute typed by a kind that no schema of the document declares is `E-DOMAIN-UNKNOWN` at every use:
+
+<!-- lute-diagnostics unverified="verbatim lute check-project output; the E-DOMAIN-UNKNOWN message spells the type with escaped braces, which the scraper does not read back as a literal" -->
+```
+./scenes/mart.lute:9:14: error [E-BAD-ENUM] `potoin` is not a member of entity kind `bagItem` (attribute `item` of `::give`) — did you mean `potion`?
+./scenes/mart.lute:10:22: error [E-DOMAIN-UNKNOWN] attribute `species` of `::encounter` is typed `{ entity: monster }`, but `monster` is not a declared entity kind — declare it under `entities:` in a project schema this document reaches through `uses:` (dsl 0.26.0 §2.5)
+```
+
+A value that reaches the attribute through a component param is checked at the `::use` argument, or at the param's `default:` (see [Engine ids through a param](/language/components-and-extends/#engine-ids-through-a-param)). `lute refs <dir> --attr give.item` lists every value with the documents and lines that use it, so a lead sees who gives what before merging several authors' work.
+
+### Reward target contracts
+
+A reward kind's `target:` says what a `<reward target="…">` value names, and since dsl 0.26.0 §2.5 the checker holds rewards to it:
+
+```yaml
+# rewardkinds/league.yaml
+rewardKinds:
+  MONEY: { credits: run.money }
+  ITEM:  { target: { entity: bagItem, required: true } }
+  TM:    { target: { entity: tm, required: true } }
+```
+
+| Contract key | Meaning |
+|---|---|
+| `entity: <kind>` | the target is a member of that project entity kind; a non-member is `E-REWARD-TARGET` with a did-you-mean |
+| `provider: <name>` | the target is an id of that provider's catalog; the provider must be active (the plugin load fails otherwise), an unknown id is `E-REWARD-TARGET`, and a stale snapshot only warns (`W-CATALOG-STALE`) |
+| `required: true` | a reward of the kind without `target=` is `E-REWARD-TARGET`; without it a target may be omitted |
+
+A contract names `entity:` or `provider:`, not both: one with both fails the plugin load (`E-PLUGIN-PARSE`). A kind without `target:` takes any `target=` or none, as before. The ITEM contract above catches both mistakes a hand-maintained list lets through:
+
+<!-- lute-diagnostics -->
+```
+./quests/dex.lute:11:3: error [E-REWARD-TARGET] `<reward kind="ITEM">` needs a `target=`: the reward kind declares `target: { required: true }` (dsl 0.26.0 §2.5)
+./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets (dsl 0.26.0 §2.5) — did you mean `goodRod`?
+```
+
+Which form to use for ids the engine owns: an **entity kind** when the ids can be listed in the repository and reviewed there (one lead-owned schema such as `schema/items.schema.yaml` above), a **provider** when the engine's catalog is the source of truth and the project checks against a pinned snapshot of it (see [Providers & catalog](/tooling/providers-and-catalog/)). Either way, type the directive attribute and the reward kind by the **same** kind or provider, so `::give{item}` and `<reward kind="ITEM" target>` share one id space, and `lute refs <dir> --attr give.item --reward ITEM` lists both (a reward without a target as `(no target)`).
+
 ### Cast
 
 ```yaml
@@ -158,6 +217,8 @@ cast:
 ```
 
 A `cast` export (dsl 0.23.0) declares the speakers an engine pack is built for: each map key is a speaker id, and every field is optional. `name` is the display name. Since 0.24.0 an entry may also declare `present:`, the condition under which the character is with the player, `emotions:`, the `emotion=` values their lines may use, and `assume: true`, which lets the presence check take the engine's `reserved:` facts that `present:` negates as absent. A line whose guards do not imply `present:` is `W-CAST-ABSENT`, and an `emotion=` outside `emotions:` is `E-BAD-ENUM` (see [The cast](/language/dialogue-and-cast/#the-cast)). Any other key is `E-PLUGIN-PARSE`. Once any cast is declared, by a plugin or by a schema document's `cast:` key, a content line whose speaker is outside it is `E-CAST-UNKNOWN` with a did-you-mean, and so is an `::auto{character}` or `::camera{focus}` that names someone outside it. The plugin casts and the schema casts a document imports are unioned, and a plugin's entry wins an id they share, because it carries the engine's display name. Two active plugins declaring the same id is `E-PLUGIN-DUP-ACROSS` at assembly. A non-empty cast folds into `capabilityVersion`; a plugin that exports none leaves the stamp alone, and a cast that uses none of the 0.24.0 keys keeps the stamp it had under 0.23.
+
+Since dsl 0.26.0 §2.8 an entry may also say `sharedName: true`: its `name` is a role name several speakers share on purpose, such as a villain team's rank and file (`grunt1: { name: Eclipse Grunt, sharedName: true }`). `check-project` and `lute lint` report two speakers shown under exactly the same name as the advisory `W-DISPLAY-NAME-DUP`, and a `sharedName` entry is not counted (see [Display names shared by two speakers](/language/dialogue-and-cast/#display-names-shared-by-two-speakers)).
 
 ## Cross-cutting attributes (`stampAttrs`)
 
@@ -217,15 +278,15 @@ directives:
   - name: backdrop
     attrs:
       - { name: img,  required: true, type: string }
-      - { name: when, type: string }
+      - { name: time, type: string }
     lower:
       record: background
       fields:
         assetId: { fromAttr: img }
-        time:    { fromAttr: when }
+        time:    { fromAttr: time }
 ```
 
-`::backdrop{img="bg.lounge" when="night"}` then compiles to a real `background` record — not a `kind: "plugin"` passthrough:
+`::backdrop{img="bg.lounge" time="night"}` then compiles to a real `background` record — not a `kind: "plugin"` passthrough:
 
 ```json
 { "kind": "background", "addr": "001-0100", "time": "night", "assetId": "bg.lounge", "wait": true }
@@ -234,6 +295,8 @@ directives:
 The emitted record inherits the **target kind's** `wait` default (`background` and `video` block, `cut` and `camera` do not, the rest omit the key), so it is indistinguishable from the core directive an author could have written by hand. An optional source attribute that was not authored leaves its target field absent.
 
 Those eight are the whole vocabulary, and the exclusion is principled rather than a shortlist: control-flow kinds (`jump`, `choice`, `match`, `hub`, `barrier`, `end`, `quest`, `on`) carry addresses the compiler's own passes resolve, and content kinds (`line`) carry identity — `lineId` / `voiceKey` — derived from the authored `code`. Neither is a finite attrs→fields mapping, so neither is data.
+
+Like the core staging directive it stands for, a directive with a `lower:` record refuses the [`when=` guard](/language/directives/#guarding-a-directive-when) (`E-UNKNOWN-ATTR`); a passthrough or bridge directive takes it. Since dsl 0.26.0 §4 `when` is that guard on every directive, so a plugin attribute of that name can no longer be written: a use of it is `E-UNKNOWN-ATTR`, asking to rename the attribute in the plugin.
 
 Both failures are caught at **assembly**, before anything is lowered — a declaration that fails validation never reaches the compiler:
 

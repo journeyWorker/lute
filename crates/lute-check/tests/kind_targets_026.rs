@@ -52,9 +52,33 @@ fn lore(body: &str) -> String {
 #[test]
 fn a_kind_beat_reads_the_raised_member_typed_by_the_kind() {
     let errs = errors(&lore(
-        "<beat id=\"catch\" on=\"caught\" target=\"kind:bugMon\" once=\"false\" when=\"occasion.target != 'slumbear' || run.best == 0\">\n  ::set{run.best = 3 when=\"occasion.target == 'hornbeetle'\"}\n  @narrator: A {{occasion.target}}!\n</beat>\n",
+        "<beat id=\"catch\" on=\"caught\" target=\"kind:bugMon\" once=\"false\" when=\"occasion.target != 'bladebug' || run.best == 0\">\n  ::set{run.best = 3 when=\"occasion.target == 'hornbeetle'\"}\n  @narrator: A {{occasion.target}}!\n</beat>\n",
     ));
     assert!(errs.is_empty(), "{errs:?}");
+}
+
+#[test]
+fn occasion_target_compared_with_a_non_member_is_literal_domain() {
+    let errs = errors(&lore(
+        "<beat id=\"catch\" on=\"caught\" target=\"kind:bugMon\" once=\"false\" when=\"occasion.target != 'slumbear'\">\n  ::set{run.best = 3 when=\"occasion.target == 'hornbetle'\"}\n  @narrator: A {{occasion.target}}!\n</beat>\n",
+    ));
+    let lit: Vec<&String> = errs
+        .iter()
+        .filter(|(c, _)| c == "E-WHEN-LITERAL-DOMAIN")
+        .map(|(_, m)| m)
+        .collect();
+    assert_eq!(lit.len(), 2, "{errs:?}");
+    assert!(
+        lit.iter().any(|m| m.contains(
+            "`'slumbear'` is not a member of `occasion.target`'s domain [bladebug, hornbeetle]"
+        )),
+        "{lit:?}"
+    );
+    assert!(
+        lit.iter()
+            .any(|m| m.contains("did you mean `'hornbeetle'`")),
+        "{lit:?}"
+    );
 }
 
 #[test]

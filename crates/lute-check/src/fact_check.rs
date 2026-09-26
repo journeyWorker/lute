@@ -38,7 +38,7 @@ use lute_syntax::ast::{Arm, CelSlot, Document, Node, Objective, Quest};
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
 use crate::decide::{
-    analyze_unset_sentinel_slot, and_chain_holds, decide, exclusive_pairs, DecideCtx, Decided,
+    analyze_literal_comparisons, and_chain_holds, decide, exclusive_pairs, DecideCtx, Decided,
     DollarBinding,
 };
 use crate::fact_env::{
@@ -517,13 +517,14 @@ impl<'a> Guards<'a> {
             .is_some_and(|v| v.with == Some(Decided::Bool(value)) && !v.wip)
     }
 
-    /// dsl 0.5.2 §2.3: a load-bearing `S == 'unset'` comparison already roots
-    /// the dead guard as `E-UNSET-LITERAL` (per-file); the dead-arm
-    /// derivative is owned by it here too.
-    fn sentinel_owns(&self, slot: &CelSlot, dollar: Option<&DomainInfo>) -> bool {
+    /// dsl 0.5.2 §2.3 / 0.26.0: a load-bearing literal comparison — `S ==
+    /// 'unset'` or a string outside `S`'s domain — already roots the dead
+    /// guard per file (`E-UNSET-LITERAL` / `E-WHEN-LITERAL-DOMAIN`); the
+    /// dead-arm derivative is owned by it here too.
+    fn literal_owns(&self, slot: &CelSlot, dollar: Option<&DomainInfo>) -> bool {
         let a =
-            analyze_unset_sentinel_slot(&slot.raw, &self.defs, &self.ctx(dollar, slot.span, true));
-        !a.hits.is_empty() && a.load_bearing_for_false
+            analyze_literal_comparisons(&slot.raw, &self.defs, &self.ctx(dollar, slot.span, true));
+        a.owns_dead_guard()
     }
 
     /// A dead guard with its own dead-code verdict, else `W-FACT-GUARANTEED`.
@@ -539,7 +540,7 @@ impl<'a> Guards<'a> {
             return;
         };
         if v.newly_false() {
-            if !self.sentinel_owns(slot, dollar) {
+            if !self.literal_owns(slot, dollar) {
                 // dsl 0.23.0 §10: `--wip` grades a dead arm, choice, gated
                 // line, or `::next` like every other dead guard.
                 out.push(v.grade(dead(&v)));

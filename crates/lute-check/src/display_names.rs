@@ -35,11 +35,14 @@ struct Speaker {
 /// document's bound `@@p:` lines by `::use` offset
 /// ([`crate::FoldedEnv::use_lines`]). One warning per shared display name,
 /// at the first place the second speaker is shown; the other speakers'
-/// sites are `related`.
+/// sites are `related`. When no speaker is shown anywhere, the warning sits
+/// at the cast entry `cast_home` locates (file, span) — the second's, else
+/// the first's.
 pub fn check_display_names(
     docs: &[(PathBuf, Document)],
     casts: &[&BTreeMap<String, CastMember>],
     use_lines: &[&BTreeMap<usize, Vec<Line>>],
+    cast_home: &dyn Fn(&str) -> Option<(PathBuf, Span)>,
 ) -> Vec<(PathBuf, Diagnostic)> {
     // display name -> speakers showing it, in first-seen order
     let mut shown: BTreeMap<&str, Vec<Speaker>> = BTreeMap::new();
@@ -129,11 +132,18 @@ pub fn check_display_names(
             speakers.len()
         );
         // Anchor at the second speaker's first site, else the first site
-        // anyone has, else the first document's head.
+        // anyone has, else (nobody speaks the name) the cast entry declaring
+        // it, else the first document's head.
         let anchor = speakers[1]
             .site
             .or(speakers[0].site)
-            .map(|(d, sp)| (docs[d].0.clone(), sp));
+            .map(|(d, sp)| (docs[d].0.clone(), sp))
+            .or_else(|| {
+                speakers[1..]
+                    .iter()
+                    .chain(&speakers[..1])
+                    .find_map(|s| s.id.as_deref().and_then(cast_home))
+            });
         let Some((path, span)) =
             anchor.or_else(|| docs.first().map(|(p, d)| (p.clone(), d.meta.span)))
         else {

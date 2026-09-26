@@ -50,8 +50,11 @@ defs:
 ```
 
 A def is its CEL body as a string — `helped: "run.choseHelp"` — and its type is inferred from that
-body. A def with `params:`, or one whose type the checker cannot infer, takes the long form
-`{ type: bool, cel: "…" }`; any other shape is `E-DEF-DECL`.
+body. Since dsl 0.26.0 §2.7 a body that is a `visited('…')` or `validAt(…)` call infers `bool`, so
+`pierSeen: "visited('south.pier')"` needs no long form. A def with `params:`, or one whose type the
+checker cannot infer, takes the long form `{ type: bool, cel: "…" }`; any other shape is
+`E-DEF-DECL`. For a def in an imported schema, `E-DEF-DECL` is reported once, at the schema line,
+with the other importers folded into `(+N more callers)`, rather than at every importing document.
 
 Import paths are resolved **relative to the importing scene file**, so a scene and its schema must
 travel together (copying a scene to `/tmp` without its schema reports `E-USES-NOT-FOUND`).
@@ -90,3 +93,33 @@ uses: child.schema.yaml
 
 Missing files, cycles, and parse errors on any imported file — schema or component — surface through
 the shared `E-USES-{NOT-FOUND,CYCLE,PARSE}` diagnostics.
+
+## Project defaults
+
+A project whose every document imports the same schemas says so once, under `defaults:` in
+`lute.project.yaml`. Every document under the manifest inherits the keys, and `uses:` paths there
+resolve against the manifest's directory:
+
+```yaml
+defaults:
+  luteVersion: "0.25.1"
+  uses:
+    - schema/world.schema.yaml
+    - schema/items.schema.yaml
+    - schema/areas/*.schema.yaml
+  questTier: run
+```
+
+Since dsl 0.26.0 §2.4:
+
+- A `defaults.uses` entry may be a **glob** (`*`, `**`). It expands in path order, so each area of
+  a project written by several authors keeps its own `schema/areas/<area>.schema.yaml`, and a new
+  area needs no manifest edit. A glob that matches nothing, over an empty directory or one that
+  does not exist yet (git keeps no empty directory), imports nothing and is no error. A literal
+  path must exist.
+- **`questTier: run | user`** sets the `tier=` of every `<quest>` that writes none (see
+  [`<quest>`](/language/quests-and-scenes/#quest)). Without it the default stays `user`.
+
+The files a glob brings in are peers like any other `uses:` import: a name two of them declare is
+still a conflict, except that an entity kind may be [extended with `add:`](/state/schemas/#kinds-assembled-across-files-add).
+See [Multi-author projects](/guides/multi-author/) for how the areas divide the schema.

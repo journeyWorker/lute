@@ -787,6 +787,7 @@ pub fn resolve_imports(
             (&mut origins.domains, &doc.origins.domains),
             (&mut origins.state, &doc.origins.state),
             (&mut origins.members, &doc.origins.members),
+            (&mut origins.cast, &doc.origins.cast),
         ] {
             for (k, v) in src {
                 dst.entry(k.clone()).or_insert_with(|| v.clone());
@@ -1218,6 +1219,14 @@ fn read_and_parse(
                     .into_iter()
                     .rev()
                     .map(|(m, span)| (crate::rel_schema::member_origin_key(k, &m), here(span)))
+            })
+            .collect(),
+        cast: tm
+            .cast
+            .iter()
+            .filter_map(|c| {
+                let span = crate::rel_schema::cast_entry_span(&meta, &c.id)?;
+                Some((c.id.clone(), here(span)))
             })
             .collect(),
     };

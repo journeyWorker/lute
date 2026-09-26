@@ -169,7 +169,8 @@ defs:
 
 Both matches are exhaustive with no `<otherwise>`. Before 0.24.0 a def subject had no domain, so
 both were `E-NONEXHAUSTIVE`. An arm outside the domain, such as a typo `is="lat"`, is
-`E-WHEN-LITERAL-DOMAIN`.
+`E-WHEN-LITERAL-DOMAIN`. Since 0.26.0 so is a string a guard compares with an enum-typed subject,
+such as `test="$ == 'lat'"` on a match over a path, with a did-you-mean.
 
 ### Arms narrow their subject
 

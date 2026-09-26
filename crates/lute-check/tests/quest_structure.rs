@@ -438,10 +438,16 @@ fn failed_by_and_objective_failed_read_as_always_assigned_typed_paths() {
 }
 
 #[test]
-fn a_failed_by_literal_outside_its_members_is_dead() {
+fn a_failed_by_literal_outside_its_members_is_a_literal_domain_error() {
     let src = reader("quest.road.failedBy == 'supersed'");
     let ds = diags(&src);
-    assert_eq!(with_code(&ds, "E-ARM-DEAD").len(), 1, "{ds:?}");
+    let d = only(&ds, "E-WHEN-LITERAL-DOMAIN");
+    assert!(
+        d.message.contains("did you mean `'superseded'`"),
+        "{}",
+        d.message
+    );
+    assert!(with_code(&ds, "E-ARM-DEAD").is_empty(), "{ds:?}");
     let src = scene_doc(
         "camp.epilogue",
         "<match on=\"quest.road.failedBy\">\n<when is=\"supersed\">\n@narrator: x\n</when>\n\

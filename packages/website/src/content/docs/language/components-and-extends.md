@@ -1,6 +1,6 @@
 ---
 title: Components & extends
-description: Two reuse mechanisms — reusable content components invoked with ::use, including string params that carry a sentence into each call site, speaker params, and effects components that write state — and extends schema composition with base-layer override precedence.
+description: Two reuse mechanisms — reusable content components invoked with ::use, including string params that carry a sentence into each call site, speaker params a body speaks as with @@who, param defaults, a body that reads its own plugin directive results, guarded ::use, and effects components that write state — and extends schema composition with base-layer override precedence.
 ---
 
 Lute has three reuse mechanisms, each for a different thing: `defs` reuse typed CEL *values*,
@@ -128,6 +128,12 @@ values at run time, so `::use{component="cheers" to=@place}` is `E-REF-TYPE` at 
 check follows the param through nested components, so a component that passes its own `@to` on to
 `cheers` needs a literal from its caller too.
 
+A literal argument may itself hold `{{…}}` interpolations (dsl 0.26.0 §3.1). They keep their
+placeholder records after expansion, exactly as in a line written in the host:
+`::use{component="cheers" to="you, {{userName}}"}` compiles to the text `To you, {{userName}}!` with
+`"placeholders": [{"kind": "reserved", "token": "userName"}]`, so the engine renders the player's
+name. Before 0.26.0 the placeholder record was dropped and the braces shipped as literal text.
+
 ### Component body rules
 
 A component body is **presentational**: lines, staging directives, and `@param` refs only. It may
@@ -162,6 +168,10 @@ uses: ../base.schema.yaml
 
 *(From [`docs/examples/components/reaction.component.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/components/reaction.component.lute).)* The three arms cover the declared
 enum and a param is never `unset`, so no `<otherwise>` is needed.
+
+The second exception (dsl 0.26.0 §3.3) is the result of a plugin directive in the body itself: a
+component that calls `::battle{… resultKey="fight"}` may read `scene.battle.fight.won`. See
+[A component's own directive results](#a-components-own-directive-results).
 
 ### Components that write state: `effects: true`
 
@@ -233,9 +243,10 @@ the argument must be a constant: an entity or enum member id, `true` or `false`.
 `@param` in a fact is `E-FACT-DOMAIN`.
 
 Writing is the only thing `effects: true` unlocks. A guard or match subject in the body still may not
-read state (`E-COMPONENT-STATE`). A presentational component that `::use`s an effects component is
-`E-COMPONENT-BODY`, and the message asks for `effects: true` on it as well. Without `effects: true`, a
-write is `E-COMPONENT-BODY`, as before.
+read state (`E-COMPONENT-STATE`), apart from the results of its own plugin directives
+([below](#a-components-own-directive-results)). A presentational component that `::use`s an effects
+component is `E-COMPONENT-BODY`, and the message asks for `effects: true` on it as well. Without
+`effects: true`, a write is `E-COMPONENT-BODY`, as before.
 
 ### Speaker params
 
@@ -243,7 +254,12 @@ A param typed **`speaker`** (dsl 0.24.0 §4) takes a cast id, as `who` does in `
 
 - `{{@who}}` in a line renders the member's display `name` from the [cast](/language/dialogue-and-cast/#the-cast),
   or the id when the member has none. So `who="corvin"` renders `Corvin Hale nods.`
-- Attributes and `<match on="@who">` see the id. The match ranges over the declared cast plus
+- The line attribute `as=@who` renders the display name too, and so does `{{@who}}` inside a quoted
+  line attribute (`as="{{@who}}, again"` compiles to `"as": "Corvin Hale, again"`) (dsl 0.26.0
+  §3.1). Before 0.26.0 `as=@who` shipped the id and the braces in an attribute string stayed
+  literal.
+- Other attributes (`::auto{character=@who}`, a plugin directive's `foe=@who`) and
+  `<match on="@who">` see the id. The match ranges over the declared cast plus
   `narrator`, so arms named after cast members check against it: a typo arm is
   `E-WHEN-LITERAL-DOMAIN`, and a match with neither every member nor `<otherwise>` is
   `E-NONEXHAUSTIVE` (`narrator` counts as a member).
@@ -251,6 +267,138 @@ A param typed **`speaker`** (dsl 0.24.0 §4) takes a cast id, as `who` does in `
   (`who="corvn"` suggests `corvin`). Without a declared cast any identifier is accepted.
 - The argument must be a literal. A def argument, `who=@lead`, is `E-COMPONENT-ARG`, because the
   name is chosen when the component expands, not at run time.
+
+### Speaking as a param: `@@who:`
+
+A component body may speak **as** the member a `speaker` param names (dsl 0.26.0 §3.2). `@@who:`
+is a content line whose speaker is the argument of `who` at each `::use`:
+
+```lute check
+---
+component: greeter
+params:
+  who: speaker
+  line: string
+  times: { type: number, default: 1 }
+---
+
+## Greeter
+
+@@who: {{@line}}
+@narrator{as=@who}: ({{@times}} times today.)
+```
+
+`::use{component="greeter" who="mira" line="Morning."}` in a scene `harbor.gate` compiles the first
+line with `"speaker": "mira"` and `"lineId": "harbor.gate.greeter#1.mira_0010"`: the member's own
+portrait, voice and line identity, as if the host had written `@mira: Morning.`. The member's cast
+checks are judged at the `::use`: an `emotion=` outside its `emotions:` is `E-BAD-ENUM`, a line its
+`present:` does not cover is `W-CAST-ABSENT` (once per member and guard), and a line after the member
+left the stage is `W-STAGE-ABSENT`.
+
+`@@x` for a param that is not a `speaker` param, for a name that is no param, or in a document that
+is no component is `E-COMPONENT-ARG`:
+
+<!-- lute-diagnostics -->
+```
+./components/challenge.component.lute:11:1: error [E-COMPONENT-ARG] `@@taunt:` speaks as the cast member a `speaker` param names, and `taunt` is not a `speaker` param — declare `taunt: speaker` (dsl 0.26.0 §3.2)
+./scenes/pier.lute:9:1: error [E-COMPONENT-ARG] `@@mira:` speaks as a component's `speaker` param `mira`, and this document is no component — write the cast id (`@mira:`) (dsl 0.26.0 §3.2)
+```
+
+### Param defaults
+
+A param may declare a **`default:`** (dsl 0.26.0 §3.3) in the long form
+`name: { type: <type>, default: <value> }`, as `times` does in `greeter` above. A `::use` that omits
+the argument takes the default, and the default is judged at the `::use` like the argument it
+stands for. It is a literal or a `@def` the **host** resolves; quote a def, since YAML does not start
+a plain value with `@`:
+
+```yaml
+params:
+  kind: { type: { enum: [rival, champion] }, default: rival }
+  won:  { type: bool, default: "@wonFight" }
+```
+
+A `params:` entry that is neither `name: <type>` nor the long form is `E-COMPONENT-PARSE`, and the
+message spells both shapes.
+
+### A component's own directive results
+
+A plugin directive that declares result slots, such as a bridge `::battle` that writes
+`scene.battle.<resultKey>.*`, may sit in a component body, and the body may read the slots it
+declares (dsl 0.26.0 §3.3). This is the trainer battle of a monster-collecting game, where every
+route trainer is one `::use`:
+
+```lute unverified="needs the engine plugin that declares the ::battle bridge directive and the cast; checked with lute check-project on a scratch project that declares both"
+---
+component: trainerBattle
+effects: true
+params:
+  who: speaker
+  intro: string
+  win: string
+  lose: string
+  prize: { type: number, default: 100 }
+---
+
+## Trainer battle
+
+@@who: {{@intro}}
+::battle{foe=@who resultKey="fight"}
+<match on="scene.battle.fight.won">
+  <when is="true">
+    @@who: {{@win}}
+    ::assert{defeated(@who)}
+    ::set{run.money += @prize}
+    @narrator: {{userName}} got {{@prize}} coins for winning!
+  </when>
+  <otherwise>
+    @@who: {{@lose}}
+  </otherwise>
+</match>
+```
+
+`scene.battle.fight.won` is not ambient state: it is the slot this body's own `::battle` declares,
+so a `<match>`, a guard or a `{{scene.battle.fight.turns}}` interpolation may read it. Any other
+`scene.*` or `run.*` read is still `E-COMPONENT-STATE`.
+
+Each `::use` also **declares** those slots in its host, bound to the use's arguments (dsl 0.26.0
+§3.1). The host's check, its compiled `state` table (`scene.battle.fight.won`,
+`scene.battle.fight.turns`), trace mocks and `lute play` all see them, and the host declares nothing
+of its own. `lute play` types the bridge's answer by that slot, or else by the capability's
+`result:` shape, and refuses an answer it cannot type instead of storing it as a string. Before
+0.26.0 a host had to declare the slot in its schema, and the component took the outcome as a
+param (`won=@wonFight`) instead of reading it.
+
+### Guarding a `::use`: `when=`
+
+`::use` takes `when="<condition>"` like [`::set`](/language/directives/#guarding-a-directive-when)
+(dsl 0.26.0 §4). The whole expansion runs, or none of it: the lines, the `::battle` and the writes
+alike. The use's argument reads are judged under its guard. A dungeon floor skips a trainer who is
+already beaten in one line:
+
+```lute
+::use{component="trainerBattle" who="lassMina" intro="You look strong, {{userName}}." win="Oh no!" lose="Hehe." prize="200" when="!holds(defeated(lassMina))"}
+```
+
+`lute play` prints a skipped use with its arguments, `skip ::use{component="trainerBattle"
+who="lassMina" …} — when: false`, and trace and test skip it the same way.
+
+### Engine ids through a param
+
+A plugin may type a directive attribute by a project entity kind, `::give{item}` by
+`{ entity: bagItem }` (see [Manifests](/plugins/manifests/#engine-ids-typed-by-an-entity-kind)).
+The check reaches through components (dsl 0.26.0 §2.5). When a body passes a param whole to such an
+attribute (`::give{item=@item}`, through nested `::use`s as well), or the param is itself typed
+`{ entity: bagItem }` or `{ domain: … }`, each `::use` argument, or the param's `default:`, is
+checked against the kind, with a did-you-mean:
+
+<!-- lute-diagnostics -->
+```
+./scenes/route2.lute:9:30: error [E-BAD-ENUM] `superPotoin` is not a member of entity kind `bagItem` (attribute `item` of `::give` in component `gift`) — did you mean `superPotion`?
+```
+
+[`lute refs <dir> --attr give.item`](/tooling/cli/) lists such a value at the `::use` line that
+binds it, marked ``(via component `gift`)``.
 
 ### Line identity
 

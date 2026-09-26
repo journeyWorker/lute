@@ -2876,7 +2876,17 @@ fn reconcile_collected(
             Box::new(|| {
                 let casts: Vec<_> = beat_foldeds.iter().map(|f| &f.cast).collect();
                 let use_lines: Vec<_> = beat_foldeds.iter().map(|f| &f.use_lines).collect();
-                lute_check::display_names::check_display_names(group, &casts, &use_lines)
+                let origins: Vec<_> = beat_foldeds
+                    .iter()
+                    .map(|f| &f.env.rel_vocab.origins.cast)
+                    .collect();
+                // A name nobody speaks is reported at the cast entry.
+                let home = |id: &str| {
+                    let project = load_project(root).ok().flatten();
+                    let plugins = project.as_ref().map(|p| p.plugins_dir.as_path());
+                    lint::cast_home(root, plugins, &origins, id)
+                };
+                lute_check::display_names::check_display_names(group, &casts, &use_lines, &home)
             }),
         ];
         let (chain, (standalone_diags, (ladder, producers))) = rayon::join(
