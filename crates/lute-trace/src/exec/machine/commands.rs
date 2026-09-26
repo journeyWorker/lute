@@ -1,0 +1,252 @@
+//! The content and effect commands: `accept`, `line` and staging records,
+//! `::set` / `assert` / `retract` over the one write path, `skipped`
+//! records, `barrier` and `end`.
+
+use serde_json::{json, Value as Json};
+
+use super::format::value_to_json;
+use super::{addr, fold_op, Machine, Site, LINE_DELIVERY_KEYS};
+use crate::eval::Read;
+use crate::exec::driver::{Driver, SiteKind};
+use crate::exec::store::{json_arg_to_string, render_fact};
+use crate::{UnresolvedAtom, Value};
+
+impl<D: Driver> Machine<D> {
+    /// dsl 0.21.0 §7a.3 (`docs/runtime/quest-lifecycle.md`): the player
+    /// accepts quest `quest` here. Recorded as `quest <id> accepted`; the
+    /// activation itself belongs to the quest lifecycle — an accept-driven
+    /// quest of THIS artifact activates on the next lifecycle round
+    /// ([`Machine::is_accepted`]), and `lute play` hands the id to the quest
+    /// documents' next advance. A quest this walk already knows to be past
+    /// `unset` is left alone, and the record says so. dsl 0.24.0 §2: an
+    /// accept with `applies: "nextRun"` is queued instead
+    /// ([`Machine::accepted_next_run`]) and recorded with `at: "nextRun"`.
+    pub(super) fn exec_accept(&mut self, cmd: &Json) {
+        let quest = cmd
+            .get("quest")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        let mut rec = serde_json::Map::new();
+        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("kind".into(), Json::String("accept".into()));
+        rec.insert("quest".into(), Json::String(quest.clone()));
+        if cmd.get("applies").and_then(Json::as_str) == Some("nextRun") {
+            rec.insert("at".into(), Json::String("nextRun".into()));
+            self.driver.emit(Json::Object(rec));
+            self.accepted_next_run.push(quest);
+            return;
+        }
+        if let Some(state) = self
+            .quest_status
+            .get(&quest)
+            .filter(|s| s.as_str() != "unset")
+        {
+            rec.insert("ignored".into(), Json::String(format!("already {state}")));
+        }
+        self.driver.emit(Json::Object(rec));
+        self.accepted.push(quest);
+    }
+
+    /// An accept-driven quest's activation signal: a mock `accepts:` entry
+    /// or an `accept` record this walk executed.
+    pub(super) fn is_accepted(&self, id: &str) -> bool {
+        self.seed.accepts.iter().any(|a| a == id) || self.accepted.iter().any(|a| a == id)
+    }
+
+    pub(super) fn rec_line(&mut self, cmd: &Json) {
+        let speaker = cmd.get("speaker").and_then(Json::as_str).unwrap_or("");
+        let raw = cmd.get("text").and_then(Json::as_str).unwrap_or("");
+        let text = self.interpolate(raw, cmd.get("placeholders").and_then(Json::as_array));
+        let mut rec = serde_json::Map::new();
+        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("kind".into(), Json::String("line".into()));
+        rec.insert("speaker".into(), Json::String(speaker.to_string()));
+        rec.insert("text".into(), Json::String(text));
+        // The line's identity and delivery ride the record verbatim, so a
+        // `lute play --json` consumer never has to re-join the artifact to
+        // know who spoke, how, and under which audio key. (`lute run`'s
+        // driver drops them: its record is the conformance contract.)
+        for key in LINE_DELIVERY_KEYS {
+            if let Some(v) = cmd.get(key).filter(|v| !v.is_null()) {
+                rec.insert(key.into(), v.clone());
+            }
+        }
+        self.driver.emit(Json::Object(rec));
+    }
+
+    pub(super) fn rec_stage(&mut self, cmd: &Json, kind: &str) {
+        self.driver.emit(json!({
+            "addr": addr(cmd),
+            "kind": kind,
+        }));
+    }
+
+    /// `::set` (state-lifecycle.md): `=` stores the value; a compound op
+    /// (`+=`, `-=`, `*=`, `/=`) folds it into the current value — an operand
+    /// that is not a number (unknown, absent, another type) makes the result
+    /// unknown, never a guessed `0` (D5). An unknown result is a
+    /// [`SiteKind::SetValue`] site.
+    pub(super) fn exec_set(&mut self, cmd: &Json) {
+        let path = cmd
+            .get("path")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        let op = cmd.get("op").and_then(Json::as_str).unwrap_or("=");
+        let rhs_raw = cmd.get("value").and_then(Json::as_str).unwrap_or("");
+        let (rhs, mut atoms) = self.eval_atoms(rhs_raw);
+        let new = if op == "=" {
+            rhs
+        } else {
+            let cur = match self.store.read(&path) {
+                Read::Value(v) => v,
+                Read::Unset => {
+                    atoms.push(UnresolvedAtom::Path(path.clone()));
+                    Value::Unknown
+                }
+            };
+            fold_op(op, &cur, &rhs)
+        };
+        if new == Value::Unknown {
+            let site = Site::new(SiteKind::SetValue, &path, addr(cmd));
+            if self.at_unknown(site, rhs_raw, &atoms) {
+                return;
+            }
+        }
+        let rec = json!({
+            "addr": addr(cmd),
+            "kind": "set",
+            "path": path,
+            "value": value_to_json(&new),
+        });
+        self.write_recorded(&path, new, rec);
+    }
+
+    /// [`Machine::write`] whose record is emitted between the write and its
+    /// exclusivity check, so an `exclusive` record follows the write that
+    /// caused it.
+    pub(super) fn write_recorded(&mut self, path: &str, v: Value, rec: Json) {
+        let before = self.store.exclusive_now();
+        self.store.write(path, v);
+        self.driver.emit(rec);
+        self.exclusive_check(&before);
+    }
+
+    pub(super) fn exec_assert(&mut self, cmd: &Json) {
+        let rel = cmd
+            .get("relation")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        let args: Vec<String> = cmd
+            .get("args")
+            .and_then(Json::as_array)
+            .map(|a| a.iter().map(json_arg_to_string).collect())
+            .unwrap_or_default();
+        let before = self.store.exclusive_now();
+        self.store.assert((rel.clone(), args.clone()));
+        self.driver.emit(json!({
+            "addr": addr(cmd),
+            "kind": "assert",
+            "fact": render_fact(&rel, &args),
+        }));
+        self.exclusive_check(&before);
+    }
+
+    pub(super) fn exec_retract(&mut self, cmd: &Json) {
+        let rel = cmd
+            .get("relation")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        let args: Vec<String> = cmd
+            .get("args")
+            .and_then(Json::as_array)
+            .map(|a| a.iter().map(json_arg_to_string).collect())
+            .unwrap_or_default();
+        let before = self.store.exclusive_now();
+        // `_` positions are a bulk wildcard over the ground positions.
+        self.store.retract(&rel, &args);
+        self.driver.emit(json!({
+            "addr": addr(cmd),
+            "kind": "retract",
+            "pattern": render_fact(&rel, &args),
+        }));
+        self.exclusive_check(&before);
+    }
+
+    /// dsl 0.25.0 §1: a write that made exclusive relations hold together —
+    /// even for a moment a later write undoes — is recorded at the write and
+    /// refuses the walk (`lute trace` exit 1, `lute play` exit 1).
+    pub(super) fn exclusive_check(&mut self, before: &[String]) {
+        if !self.store.has_excludes() {
+            return;
+        }
+        let new: Vec<String> = self
+            .store
+            .exclusive_now()
+            .into_iter()
+            .filter(|v| !before.contains(v))
+            .collect();
+        if new.is_empty() {
+            return;
+        }
+        for v in &new {
+            self.driver.emit(json!({ "kind": "exclusive", "text": v }));
+        }
+        self.refuse(format!(
+            "exclusive relations hold together — {}",
+            new.join("; ")
+        ));
+    }
+
+    /// dsl 0.19.0 §6: a first-read-only effect record NOT applied on a
+    /// re-read — recorded with the same identifying field its applied form
+    /// carries (`path` / `fact` / `pattern`), never evaluated.
+    pub(super) fn rec_skipped(&mut self, cmd: &Json, kind: &str) {
+        let mut rec = serde_json::Map::new();
+        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("kind".into(), Json::String("skipped".into()));
+        rec.insert("effect".into(), Json::String(kind.to_string()));
+        match kind {
+            "set" => {
+                let path = cmd.get("path").and_then(Json::as_str).unwrap_or("");
+                rec.insert("path".into(), Json::String(path.to_string()));
+            }
+            _ => {
+                let rel = cmd.get("relation").and_then(Json::as_str).unwrap_or("");
+                let args: Vec<String> = cmd
+                    .get("args")
+                    .and_then(Json::as_array)
+                    .map(|a| a.iter().map(json_arg_to_string).collect())
+                    .unwrap_or_default();
+                let key = if kind == "assert" { "fact" } else { "pattern" };
+                rec.insert(key.into(), Json::String(render_fact(rel, &args)));
+            }
+        }
+        self.driver.emit(Json::Object(rec));
+    }
+
+    pub(super) fn rec_barrier(&mut self, cmd: &Json) {
+        self.driver.emit(json!({
+            "addr": addr(cmd),
+            "kind": "barrier",
+            "timeline": cmd.get("timeline").cloned().unwrap_or(Json::Null),
+            "at": cmd.get("at").cloned().unwrap_or(Json::Null),
+            "note": "timeline join — no real clock simulated",
+        }));
+    }
+
+    /// Record the `end` record and mark the walk over (dsl 0.8.0). `reason` is
+    /// optional in the IR; it rides the transcript as JSON `null` when absent so
+    /// the machine record's key set never varies with authoring.
+    pub(super) fn rec_end(&mut self, cmd: &Json) {
+        self.terminated = true;
+        self.driver.emit(json!({
+            "addr": addr(cmd),
+            "kind": "end",
+            "reason": cmd.get("reason").cloned().unwrap_or(Json::Null),
+        }));
+    }
+}
