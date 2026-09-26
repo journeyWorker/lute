@@ -1,0 +1,8 @@
+---
+kind: scene
+id: explicit
+---
+
+## A
+
+::use{component="gauge" fathoms=@lastFathoms}

@@ -47,6 +47,7 @@ use std::process::ExitCode;
 
 use lute_compile::index::IndexBeat;
 use lute_manifest::schema::OccasionSelect;
+use lute_trace::datalog::Fact;
 use lute_trace::Value;
 use serde_json::{json, Value as Json};
 
@@ -56,7 +57,6 @@ use super::{
     quest_state_id, render_fact, resolve_fact, resolve_state, seed_quest, seed_world, unknown_id,
     value_to_json, PlayScript, Project, ScriptStep, Verdict, World, QUEST_STATES,
 };
-use crate::runner::{Fact, Runner};
 
 /// The most cells one invocation evaluates — a typo'd range (`1..70000`)
 /// is refused rather than ground through.
@@ -785,14 +785,7 @@ fn start_world(
 /// `--where`: whether `cel` holds over the cell's world. Unknown is an
 /// error — a cell is never dropped (or kept) on a guess.
 fn holds_at(p: &Project, w: &World, cel: &str) -> Result<bool, String> {
-    let mut eval = Runner::with_carryover(
-        &p.eval_json,
-        w.mock(),
-        w.state.clone(),
-        w.facts.clone(),
-        w.quests.clone(),
-    )
-    .with_visited(&w.visited);
+    let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
     eval.eval_guard(cel).map_err(|atoms| describe_atoms(&atoms))
 }
 
@@ -1041,13 +1034,7 @@ fn cell_facts(p: &Project, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
     if rels.is_empty() {
         return Vec::new();
     }
-    let eval = Runner::with_carryover(
-        &p.eval_json,
-        w.mock(),
-        w.state.clone(),
-        w.facts.clone(),
-        w.quests.clone(),
-    );
+    let eval = w.evaluator(&p.eval_json);
     rels.iter()
         .map(|r| {
             eval.all_facts()

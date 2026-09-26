@@ -1,0 +1,11 @@
+state:
+  run.slot: { type: { enum: [morning, night] }, default: morning, owner: engine }
+  run.warmth: { type: number, default: 0 }
+entities:
+  person: { members: [sol] }
+  place:  { members: [radio, roof, deck] }
+relations:
+  at: { args: [person, place], derive: true }
+rules:
+  - "at(sol, radio) :- cel(\"run.slot == 'morning'\")"
+  - "at(sol, roof)  :- cel(\"run.slot == 'night'\")"

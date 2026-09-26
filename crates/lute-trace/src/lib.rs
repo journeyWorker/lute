@@ -45,6 +45,7 @@
 pub mod clock;
 pub mod datalog;
 pub mod eval;
+pub mod exec;
 pub mod mock;
 pub mod quest_refs;
 pub mod report;

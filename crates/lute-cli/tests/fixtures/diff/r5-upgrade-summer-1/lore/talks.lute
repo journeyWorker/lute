@@ -1,0 +1,14 @@
+---
+kind: lore
+id: talks
+---
+
+// Wherever Sol is, once: one beat over the whole kind.
+<beat id="solWarm" on="visit" target="kind:place" once="false" when="holds(at(sol, occasion.target))">
+  @narrator: Sol makes room for you.
+  ::set{run.warmth += 1}
+</beat>
+
+<entry id="empty" on="visit" target="kind:place" priority="-1">
+  @narrator: Nobody.
+</entry>

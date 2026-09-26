@@ -49,10 +49,11 @@
 //! - Beat table and declaration union: `lute_compile::index::build_index` —
 //!   the SAME `beats` rows (and tiebreak order), rules, seed facts and
 //!   relation tiers `compile --all` writes to `project.index.json`.
-//! - Execution: [`crate::runner::Runner`] — `lute run`'s evaluator — runs
-//!   every scene beat, every entry beat (its `--entry` path: first-read
-//!   effects, `entry.<id>.read`), every quest-lifecycle advance
-//!   ([`Runner::advance_quests`]) and every `when` ([`Runner::eval_guard`]).
+//! - Execution: [`lute_trace::exec::Machine`] — the walker `lute run` uses
+//!   — driven by [`PlayDriver`], runs every scene beat, every entry beat
+//!   (its `--entry` path: first-read effects, `entry.<id>.read`), every
+//!   quest-lifecycle advance ([`Machine::advance_quests`]) and every `when`
+//!   ([`Machine::eval_guard`]).
 //! - Script surfaces: `state:` / `facts:` / `choose:` are parsed by the
 //!   trace-mock grammar ([`lute_trace::parse_mock_yaml`]); only `steps:` is
 //!   this module's own.
@@ -76,8 +77,14 @@ use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use lute_trace::{MockSet, UnresolvedAtom, Value};
 use serde_json::{json, Value as Json};
 
+use lute_trace::datalog::Fact;
+use lute_trace::exec::{
+    BridgeCall, BridgeQueues, BridgeReads, BridgeReply, Carry, Driver, Forced, Machine, Menu,
+    OnUnknown, Pick as MenuPick, ScriptedChoices, Seed, SiteKind, UnknownSite,
+    Verdict as OptionVerdict,
+};
+
 use crate::play_expect::{ExpectMiss, PlayOutcome, StepOutcome, WorldView};
-use crate::runner::{Fact, Runner, RunnerOutcome};
 
 pub(crate) mod calendar;
 
@@ -855,7 +862,7 @@ struct Project {
     kinds: BTreeMap<String, EntityKindDecl>,
     /// dsl 0.25.0 §7: what the project's content reads of its plugin calls'
     /// bridge results — the fields a `bridges:` answer must give.
-    bridge_reads: std::sync::Arc<crate::runner::BridgeReads>,
+    bridge_reads: std::sync::Arc<BridgeReads>,
     /// Prerelease N8: cast id -> display name, unioned across the documents
     /// — how `{{occasion.target}}` renders a member that is a cast id.
     display_names: BTreeMap<String, String>,
@@ -918,7 +925,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
     let policy = crate::DenyPolicy::default();
     let mut world_events: BTreeSet<String> = BTreeSet::new();
     // dsl 0.26.0 §3.1: the bridge capabilities' `result:` types, per tag.
-    let mut bridge_types = crate::runner::BridgeReads::default();
+    let mut bridge_types = BridgeReads::default();
     let cache = crate::InputCache::default();
     let mut display_names: BTreeMap<String, String> = BTreeMap::new();
 
@@ -1239,9 +1246,9 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         eval_json["clock"] = serde_json::to_value(clock).unwrap_or(Json::Null);
     }
 
-    let bridge_reads = std::sync::Arc::new(crate::runner::BridgeReads {
+    let bridge_reads = std::sync::Arc::new(BridgeReads {
         result_types: bridge_types.result_types,
-        ..crate::runner::BridgeReads::of(artifacts.values())
+        ..BridgeReads::of(artifacts.values())
     });
     Ok(Project {
         artifacts,
@@ -1269,7 +1276,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
     })
 }
 
-/// The artifact JSON handed to a presentation's [`Runner`]: this document's
+/// The artifact JSON handed to a presentation's [`Machine`]: this document's
 /// OWN `commands`/`meta`/`kind`/`prereqEdges`, with `rules`/`state` REPLACED
 /// by the project-wide union — a relation asserted in one document is
 /// derived over in another, and a `run.*`/`user.*`/`quest.*` path declared
@@ -1521,7 +1528,7 @@ fn resolve_bridges(
             }
         }
     }
-    Ok(crate::runner::BridgeAnswers::queue(raw))
+    Ok(BridgeQueues::queue(raw))
 }
 
 /// Resolve one ground atom a script asserts or retracts (`facts:`,
@@ -1984,7 +1991,7 @@ struct World {
     /// to `accepts` right after the next `newRun` reset.
     next_run_accepts: Vec<String>,
     /// Per `<branch>` id: the decisions of a multi-decision `choose:` list
-    /// earlier presentations consumed ([`Runner::with_choice_cursor`]).
+    /// earlier presentations consumed ([`ScriptedChoices::cursor`]).
     choice_cursor: BTreeMap<String, usize>,
     /// `Some(false)` under `--no-derive` / `derive: false` (dsl 0.22.0 §6):
     /// handed to every runner's mock.
@@ -1994,11 +2001,11 @@ struct World {
     failed_objectives: BTreeSet<String>,
     /// dsl 0.24.0 §5: the bridge answers not yet consumed — the running
     /// step's own, then the script's top-level ones; every presentation and
-    /// quest advance hands them to its runner and takes back the rest.
-    bridges: crate::runner::BridgeAnswers,
+    /// quest advance hands them to its [`PlayDriver`] and takes back the rest.
+    bridges: BridgeQueues,
     /// dsl 0.24.0 §2.1: the raise (`name` / `name@target`) the running step
     /// makes, until it is made — the settles before it defer the `by` of
-    /// the `on=` objectives it judges ([`Runner::with_deferred_by`]).
+    /// the `on=` objectives it judges ([`Machine::with_deferred_by`]).
     defer_by: Option<String>,
     /// dsl 0.24.0 §2: `true` while a `judge: before` raise is answered —
     /// the `<on>` handlers it fires are collected in `deferred_handlers`
@@ -2014,6 +2021,104 @@ impl World {
         MockSet {
             derive: self.derive,
             ..MockSet::default()
+        }
+    }
+
+    /// The world as a [`Machine::resume`] carry: its state, facts, quests.
+    fn carry(&self) -> Carry {
+        Carry::world(self.state.clone(), self.facts.clone(), self.quests.clone())
+    }
+
+    /// A Machine over `art` resumed from this world that only evaluates
+    /// (a `when`, the fact closure) — it never walks, so its driver has no
+    /// script.
+    fn evaluator(&self, art: &Json) -> Machine<PlayDriver> {
+        Machine::resume(
+            art,
+            Seed::from(&self.mock()),
+            self.carry(),
+            PlayDriver::default(),
+        )
+    }
+}
+
+/// `lute play`'s [`Driver`]: the script's `choose:` over the playthrough's
+/// cursor, the playthrough's bridge answers (the running step's, then the
+/// top level's), every scripted pick of an option that is not offered
+/// refused (`E-TRACE-CHOICE`, as `lute trace` refuses it — a silent skip
+/// would let the script drift out of step with what the player was really
+/// offered), and a halt AT a plugin call whose unanswered result content
+/// reads. Records are collected verbatim; [`render_record`] renders them.
+#[derive(Default)]
+struct PlayDriver {
+    choices: ScriptedChoices,
+    bridges: BridgeQueues,
+    transcript: Vec<Json>,
+}
+
+impl PlayDriver {
+    /// A walk scripted by `choose`, resuming `w`'s choice cursor and bridge
+    /// queues.
+    fn new(choose: &BTreeMap<String, Vec<String>>, w: &World) -> Self {
+        PlayDriver {
+            choices: ScriptedChoices::new(choose.clone(), w.choice_cursor.clone()),
+            bridges: w.bridges.clone(),
+            transcript: Vec::new(),
+        }
+    }
+}
+
+impl Driver for PlayDriver {
+    fn choose(&mut self, menu: &Menu<'_>) -> MenuPick {
+        self.choices.pick(menu)
+    }
+
+    fn forced(&mut self, _menu: &Menu<'_>, _option: &str, verdict: &OptionVerdict) -> Forced {
+        match verdict {
+            OptionVerdict::Spent | OptionVerdict::Closed => Forced::Refuse,
+            OptionVerdict::Open | OptionVerdict::Unknown(_) => Forced::Take,
+        }
+    }
+
+    fn bridge(&mut self, call: &BridgeCall<'_>) -> BridgeReply {
+        match self.bridges.next(call.tag) {
+            Some(a) => BridgeReply::Answer(a),
+            None => BridgeReply::Unanswered,
+        }
+    }
+
+    fn unknown(&mut self, site: &UnknownSite<'_>) -> OnUnknown {
+        // Every other unknown reaches the honesty gate after the walk
+        // ([`outcome_halt`] over [`Carry::unresolved`]).
+        match site.kind {
+            SiteKind::BridgeResult => OnUnknown::Halt,
+            _ => OnUnknown::Continue,
+        }
+    }
+
+    fn emit(&mut self, rec: Json) {
+        self.transcript.push(rec);
+    }
+}
+
+/// A finished walk: the machine's carry plus what its [`PlayDriver`]
+/// collected — the transcript play's renderer reuses verbatim, and the
+/// choice cursor and bridge answers the next walk resumes from.
+struct Walked {
+    carry: Carry,
+    transcript: Vec<Json>,
+    choice_cursor: BTreeMap<String, usize>,
+    bridges: BridgeQueues,
+}
+
+impl Walked {
+    fn of(m: Machine<PlayDriver>) -> Self {
+        let (carry, d) = m.into_carry();
+        Walked {
+            carry,
+            transcript: d.transcript,
+            choice_cursor: d.choices.cursor,
+            bridges: d.bridges,
         }
     }
 }
@@ -2125,10 +2230,9 @@ fn seed_world(p: &Project, script: &PlayScript) -> Result<World, String> {
         choice_cursor: BTreeMap::new(),
         derive: None,
         failed_objectives: BTreeSet::new(),
-        bridges: crate::runner::BridgeAnswers {
+        bridges: BridgeQueues {
             top: resolve_bridges(p, "top level", &script.surfaces.bridges)?,
             step: BTreeMap::new(),
-            reads: p.bridge_reads.clone(),
         },
         defer_by: None,
         defer_handlers: false,
@@ -2391,32 +2495,33 @@ fn render_fact((rel, args): &Fact) -> String {
     format!("{rel}({})", args.join(", "))
 }
 
-/// Fold a finished runner back into the world: persistent tiers only
+/// Fold a finished walk back into the world: persistent tiers only
 /// (`scene.*` never carries), facts, quest statuses, the accepts it made
 /// (dsl 0.21.0 §7a.3) for the next quest advance, and how far it consumed
-/// the script's multi-decision `choose:` lists.
-fn absorb(w: &mut World, outcome: &RunnerOutcome) {
-    for (k, v) in &outcome.state {
+/// the script's multi-decision `choose:` lists and the bridge answers.
+fn absorb(w: &mut World, outcome: &Walked) {
+    let carry = &outcome.carry;
+    for (k, v) in &carry.state {
         // dsl 0.26.0 §5: `occasion.target` lives only while its beat runs.
         if !k.starts_with("scene.") && k != lute_check::beats::OCCASION_TARGET {
             w.state.insert(k.clone(), v.clone());
         }
     }
-    w.facts = outcome.base_facts.clone();
-    w.quests = outcome.quest_status.clone();
-    for id in &outcome.accepted {
+    w.facts = carry.base_facts.clone();
+    w.quests = carry.quest_status.clone();
+    for id in &carry.accepted {
         if !w.accepts.contains(id) {
             w.accepts.push(id.clone());
         }
     }
-    for id in &outcome.accepted_next_run {
+    for id in &carry.accepted_next_run {
         if !w.next_run_accepts.contains(id) {
             w.next_run_accepts.push(id.clone());
         }
     }
     w.choice_cursor = outcome.choice_cursor.clone();
     w.failed_objectives
-        .extend(outcome.failed_objectives.iter().cloned());
+        .extend(carry.failed_objectives.iter().cloned());
     w.bridges = outcome.bridges.clone();
 }
 
@@ -2502,17 +2607,15 @@ fn describe_atoms(atoms: &[UnresolvedAtom]) -> String {
     }
 }
 
-/// The honesty gate every runner outcome passes (`what` names the
+/// The honesty gate every finished walk passes (`what` names the
 /// presentation or quest document): an unscripted decision, a plugin call
-/// with no bridge answer (dsl 0.24.0 §5 — the runner halted AT the call),
+/// with no bridge answer (dsl 0.24.0 §5 — the walk halted AT the call),
 /// an undecidable quest objective, `now()`/`validAt(...)`.
-fn outcome_halt(outcome: &RunnerOutcome, what: &str, doc_json: &Json) -> Option<PlayHalt> {
-    if outcome.incomplete {
-        if let Some(rec) =
-            outcome.transcript.iter().rev().find(|c| {
-                c.get("note").and_then(Json::as_str) == Some("no mock decision — incomplete")
-            })
-        {
+fn outcome_halt(outcome: &Walked, what: &str, doc_json: &Json) -> Option<PlayHalt> {
+    if outcome.carry.incomplete {
+        if let Some(rec) = outcome.transcript.iter().rev().find(|c| {
+            c.get("note").and_then(Json::as_str) == Some(lute_trace::exec::NOTE_NO_DECISION)
+        }) {
             let kind = rec.get("kind").and_then(Json::as_str).unwrap_or("choice");
             let id = rec
                 .get("branch")
@@ -2578,6 +2681,7 @@ fn outcome_halt(outcome: &RunnerOutcome, what: &str, doc_json: &Json) -> Option<
         return Some(PlayHalt::Incomplete(format!("{what} is incomplete")));
     }
     if outcome
+        .carry
         .unresolved
         .iter()
         .any(|a| matches!(a, UnresolvedAtom::Time))
@@ -2643,7 +2747,7 @@ struct QuestAdvance {
 }
 
 /// Advance every quest lifecycle to a fixpoint (dsl 0.21.0 §6, D-H): each
-/// quest document's [`Runner::advance_quests`], repeated in path order until
+/// quest document's [`Machine::advance_quests`], repeated in path order until
 /// a whole pass transitions nothing — a quest in one document may gate on
 /// another's state. The pending accepts (§7a.3) ride every pass and are
 /// spent once the lifecycle settles.
@@ -2728,19 +2832,11 @@ fn run_deferred_handlers(
         let bodies: Vec<String> = rest[..len].iter().map(|(_, b)| b.clone()).collect();
         rest = &rest[len..];
         let doc_json = &p.artifacts[doc];
-        let mut runner = Runner::with_carryover(
-            &play_artifact_json(doc_json, p),
-            w.mock(),
-            w.state.clone(),
-            w.facts.clone(),
-            w.quests.clone(),
-        )
-        .with_visited(&w.visited)
-        .with_choice_cursor(&w.choice_cursor)
-        .with_failed_objectives(&w.failed_objectives)
-        .with_bridges(&w.bridges);
-        let result = runner.run_deferred_handlers(&bodies);
-        let outcome = runner.into_outcome();
+        let no_script = BTreeMap::new();
+        let mut m = play_machine(p, w, doc_json, Seed::from(&w.mock()), w.carry(), &no_script)
+            .with_failed_objectives(&w.failed_objectives);
+        let result = m.run_deferred_handlers(&bodies);
+        let outcome = Walked::of(m);
         absorb(w, &outcome);
         let stop = walk_stop(
             result,
@@ -2786,24 +2882,17 @@ fn advance_pass(
             None => {}
         }
         let skipped = handlers_skipped(doc_json, &w.quests, moment);
-        let mut runner = Runner::with_carryover(
-            &play_artifact_json(doc_json, p),
-            mock,
-            w.state.clone(),
-            w.facts.clone(),
-            w.quests.clone(),
-        )
-        .with_visited(&w.visited)
-        .with_choice_cursor(&w.choice_cursor)
-        .with_failed_objectives(&w.failed_objectives)
-        .with_bridges(&w.bridges)
-        .with_deferred_by(w.defer_by.as_deref())
-        .with_deferred_handlers(w.defer_handlers);
-        let result = runner.advance_quests();
-        let outcome = runner.into_outcome();
+        let no_script = BTreeMap::new();
+        let mut m = play_machine(p, w, doc_json, Seed::from(&mock), w.carry(), &no_script)
+            .with_failed_objectives(&w.failed_objectives)
+            .with_deferred_by(w.defer_by.as_deref())
+            .with_deferred_handlers(w.defer_handlers);
+        let result = m.advance_quests();
+        let outcome = Walked::of(m);
         absorb(w, &outcome);
         w.deferred_handlers.extend(
             outcome
+                .carry
                 .deferred_handlers
                 .iter()
                 .map(|b| (doc.clone(), b.clone())),
@@ -2887,12 +2976,12 @@ fn handlers_skipped(
 /// goes on with the next step (0.23.1) — only a script `end: true` ends it.
 fn walk_stop(
     result: Result<(), String>,
-    outcome: &RunnerOutcome,
+    outcome: &Walked,
     what: &str,
     doc_json: &Json,
 ) -> Option<PlayHalt> {
     match result {
-        Err(msg) if outcome.refused => Some(PlayHalt::Error(format!("{what}: {msg}"))),
+        Err(msg) if outcome.carry.refused => Some(PlayHalt::Error(format!("{what}: {msg}"))),
         Err(msg) => Some(PlayHalt::Fatal(format!("{what}: {msg}"))),
         Ok(()) => outcome_halt(outcome, what, doc_json),
     }
@@ -3028,14 +3117,7 @@ fn record_kind(kind: BeatKind) -> &'static str {
 /// the world — what a play step presents from and what `lute calendar`
 /// evaluates at every cell (dsl 0.23.0 §1).
 fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> Vec<Candidate> {
-    let mut eval = Runner::with_carryover(
-        &p.eval_json,
-        w.mock(),
-        w.state.clone(),
-        w.facts.clone(),
-        w.quests.clone(),
-    )
-    .with_visited(&w.visited);
+    let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
     let flag = |path: String| w.state.get(&path) == Some(&Value::Bool(true));
     let clock_now = p
         .index
@@ -3206,14 +3288,35 @@ fn presented(select: OccasionSelect, cands: &[Candidate]) -> Vec<usize> {
     }
 }
 
-/// One presented beat.
-struct Presented {
-    id: String,
-    kind: BeatKind,
-    document: String,
-    transcript: Vec<Json>,
-    state_before: BTreeMap<String, Value>,
-    state_after: BTreeMap<String, Value>,
+/// One presented beat. `pub(crate)` with the `*_before` / `facts_after` /
+/// `bridges` / `member` captures for the differential harness
+/// (`crate::differential`, docs/design/runtime-unification.md §4.3), which
+/// replays each presentation through trace from exactly this world.
+#[cfg_attr(test, derive(Clone))]
+pub(crate) struct Presented {
+    pub(crate) id: String,
+    pub(crate) kind: BeatKind,
+    pub(crate) document: String,
+    pub(crate) transcript: Vec<Json>,
+    pub(crate) state_before: BTreeMap<String, Value>,
+    pub(crate) state_after: BTreeMap<String, Value>,
+    /// The member a kind-target beat was raised for (`occasion.target`).
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) member: Option<String>,
+    /// The world's base facts before and after the presentation.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) facts_before: BTreeSet<Fact>,
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) facts_after: BTreeSet<Fact>,
+    /// The presented scenes `visited(…)` read before the presentation.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) visited_before: BTreeSet<String>,
+    /// Quest id -> state before the presentation.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) quests_before: BTreeMap<String, String>,
+    /// The bridge answers the presentation consumed, per tag, in call order.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) bridges: BTreeMap<String, Vec<lute_trace::BridgeAnswer>>,
 }
 
 /// dsl 0.24.0 §1: record where on the declared clock beat `id` was just
@@ -3280,11 +3383,32 @@ fn once_word(once: BeatOnce) -> &'static str {
     }
 }
 
-/// Present `beat`: a scene through the runner (`scene.*` fresh), an entry
-/// through the runner's entry path (first-read effects, `entry.<id>.read`),
-/// a bundle beat through its `beat` record's body (dsl 0.23.0 §4). `member`
-/// is the raised member a kind beat reads as `occasion.target` (dsl 0.26.0
-/// §5).
+/// A presentation or quest walk of `doc_json` — widened by
+/// [`play_artifact_json`] — resumed from `carry`, scripted by `choose`
+/// over `w`'s choice cursor and bridge answers, reading `w`'s presented
+/// scenes and the project's bridge-result readers.
+fn play_machine(
+    p: &Project,
+    w: &World,
+    doc_json: &Json,
+    seed: Seed,
+    carry: Carry,
+    choose: &BTreeMap<String, Vec<String>>,
+) -> Machine<PlayDriver> {
+    Machine::resume(
+        &play_artifact_json(doc_json, p),
+        seed,
+        carry,
+        PlayDriver::new(choose, w),
+    )
+    .with_visited(&w.visited)
+    .with_bridge_reads(p.bridge_reads.clone())
+}
+
+/// Present `beat`: a scene through the Machine (`scene.*` fresh), an entry
+/// through its entry path (first-read effects, `entry.<id>.read`), a bundle
+/// beat through its `beat` record's body (dsl 0.23.0 §4). `member` is the
+/// raised member a kind beat reads as `occasion.target` (dsl 0.26.0 §5).
 fn present(
     p: &Project,
     w: &mut World,
@@ -3294,25 +3418,27 @@ fn present(
 ) -> (Presented, Option<PlayHalt>) {
     let doc_json = &p.artifacts[&beat.document];
     let state_before = w.state.clone();
-    let mut runner = Runner::with_carryover(
-        &play_artifact_json(doc_json, p),
-        mock.clone(),
+    let (facts_before, visited_before, quests_before, bridges_before) = (
+        w.facts.clone(),
+        w.visited.clone(),
+        w.quests.clone(),
+        w.bridges.clone(),
+    );
+    let carry = Carry::world(
         scene_initial_state(doc_json, &w.state),
         w.facts.clone(),
         w.quests.clone(),
-    )
-    .with_visited(&w.visited)
-    .with_choice_cursor(&w.choice_cursor)
-    .with_bridges(&w.bridges)
-    .with_display_names(&p.display_names);
-    runner.bind_occasion_target(member);
-    let mut runner = match beat.kind {
-        BeatKind::Entry => runner.with_entry(&beat.id),
-        BeatKind::Scene => runner,
-        BeatKind::Bundle => runner.with_bundle_beat(&beat.id),
+    );
+    let mut m = play_machine(p, w, doc_json, Seed::from(mock), carry, &mock.choose)
+        .with_display_names(&p.display_names);
+    m.bind_occasion_target(member);
+    let mut m = match beat.kind {
+        BeatKind::Entry => m.with_entry(&beat.id),
+        BeatKind::Scene => m,
+        BeatKind::Bundle => m.with_bundle_beat(&beat.id),
     };
-    let result = runner.run();
-    let outcome = runner.into_outcome();
+    let result = m.run();
+    let outcome = Walked::of(m);
     absorb(w, &outcome);
     match beat.kind {
         BeatKind::Scene | BeatKind::Bundle => {
@@ -3347,8 +3473,35 @@ fn present(
         transcript: outcome.transcript,
         state_before,
         state_after: w.state.clone(),
+        member: member.map(str::to_string),
+        facts_before,
+        facts_after: w.facts.clone(),
+        visited_before,
+        quests_before,
+        bridges: consumed_bridges(&bridges_before, &w.bridges),
     };
     (presented, stop)
+}
+
+/// The bridge answers a walk consumed: per tag, the head of `before`'s step
+/// queue then of its top queue, as many as `after` no longer holds.
+fn consumed_bridges(
+    before: &BridgeQueues,
+    after: &BridgeQueues,
+) -> BTreeMap<String, Vec<lute_trace::BridgeAnswer>> {
+    let mut out: BTreeMap<String, Vec<lute_trace::BridgeAnswer>> = BTreeMap::new();
+    for (was, now) in [(&before.step, &after.step), (&before.top, &after.top)] {
+        for (tag, queue) in was {
+            let left = now.get(tag).map_or(0, VecDeque::len);
+            let taken = queue.len().saturating_sub(left);
+            if taken > 0 {
+                out.entry(tag.clone())
+                    .or_default()
+                    .extend(queue.iter().take(taken).cloned());
+            }
+        }
+    }
+    out
 }
 
 /// One script step's record.
@@ -5562,14 +5715,8 @@ fn exclusive_violations(p: &Project, w: &World) -> Vec<String> {
     if pairs.is_empty() {
         return Vec::new();
     }
-    let runner = Runner::with_carryover(
-        &p.eval_json,
-        w.mock(),
-        w.state.clone(),
-        w.facts.clone(),
-        w.quests.clone(),
-    );
-    let facts = runner.all_facts();
+    let evaluator = w.evaluator(&p.eval_json);
+    let facts = evaluator.all_facts();
     let mut out = Vec::new();
     for (a, b) in pairs {
         for (_, args) in facts.iter().filter(|(rel, _)| rel == a) {
@@ -5593,17 +5740,11 @@ fn exclusive_violations(p: &Project, w: &World) -> Vec<String> {
 /// `done` and `failed` `false`.
 fn world_view(p: &Project, w: &World, with_facts: bool) -> WorldView {
     let facts = if with_facts {
-        Runner::with_carryover(
-            &p.eval_json,
-            w.mock(),
-            w.state.clone(),
-            w.facts.clone(),
-            w.quests.clone(),
-        )
-        .all_facts()
-        .iter()
-        .map(render_fact)
-        .collect()
+        w.evaluator(&p.eval_json)
+            .all_facts()
+            .iter()
+            .map(render_fact)
+            .collect()
     } else {
         BTreeSet::new()
     };
@@ -5836,4 +5977,64 @@ pub(crate) fn run_play_for_test(
             .into_iter()
             .collect(),
     })
+}
+
+/// One presentation a play made, as the differential harness replays it
+/// (`crate::differential`, docs/design/runtime-unification.md §4.3).
+#[cfg(test)]
+pub(crate) struct PlayedBeat {
+    pub(crate) presented: Presented,
+    /// The last presentation of a step that ended holding exclusive relations
+    /// together (`StepRecord::exclusive`), which fails the play there.
+    pub(crate) step_exclusive: bool,
+    /// The play halted at this presentation's step and it is the last one:
+    /// [`PlayHalt::exit_label`].
+    pub(crate) halted: Option<&'static str>,
+}
+
+/// Run the play `script` over the project at `dir` in process and hand back
+/// every presentation it made, in order (an `advance:`'s midnight raises
+/// before its slot raise).
+#[cfg(test)]
+pub(crate) fn presentations_for_diff(dir: &Path, script: &Path) -> Result<Vec<PlayedBeat>, String> {
+    let Loaded {
+        script,
+        project,
+        plan,
+        world,
+    } = load(dir, script, false).map_err(|(_, msg)| msg)?;
+    let play = execute(&project, &script, &plan, world);
+    let halt = play.outcome.as_ref().err().map(PlayHalt::exit_label);
+    let mut out: Vec<PlayedBeat> = Vec::new();
+    let steps = play.steps.len();
+    for (i, s) in play.steps.iter().enumerate() {
+        let before = out.len();
+        let days = s.body.days_played();
+        let raised = match s.body.occasion() {
+            Some(StepBody::Occasion { presented, .. }) => presented.iter().collect(),
+            _ => Vec::new(),
+        };
+        let beats = days
+            .into_iter()
+            .filter_map(|p| match p {
+                Played::Beat(pr) => Some(pr),
+                Played::Quest(_) => None,
+            })
+            .chain(raised);
+        for pr in beats {
+            out.push(PlayedBeat {
+                presented: pr.clone(),
+                step_exclusive: false,
+                halted: None,
+            });
+        }
+        if out.len() > before {
+            let last = out.last_mut().expect("pushed above");
+            last.step_exclusive = !s.exclusive.is_empty();
+            if i + 1 == steps {
+                last.halted = halt;
+            }
+        }
+    }
+    Ok(out)
 }

@@ -1,0 +1,22 @@
+---
+kind: scene
+id: wrong
+on: chapter
+when: "run.accused == 'tilly'"
+state:
+  run.accused: { type: { enum: [none, tilly, ruben, hester] }, default: none }
+---
+
+## Handcuffs
+
+<match on="run.accused">
+  <when is="tilly">
+    @narrator: Tilly.
+  </when>
+  <when is="hester">
+    @narrator: Hester.
+  </when>
+  <when is="ruben">
+    @narrator: Ruben.
+  </when>
+</match>

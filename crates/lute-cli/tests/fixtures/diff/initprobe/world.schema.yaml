@@ -1,0 +1,5 @@
+# Minimal shared world schema (dsl §9). Imported by scenes via
+# `uses: ../world.schema.yaml`. Every path carries a `default:` so each read is
+# definitely assigned even in a standalone single-file `lute check`.
+state:
+  run.greeted: { type: bool, default: false }

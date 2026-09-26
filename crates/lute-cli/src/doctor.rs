@@ -270,7 +270,10 @@ fn find_on_path(name: &str) -> Option<PathBuf> {
 
 /// Run `<lsp> --version` and return its stdout. A pre-0.22.0 server ignores the
 /// flag and starts serving; with stdin closed it reads EOF and exits, but it is
-/// also killed after a short grace period so `doctor` can never hang on one.
+/// also killed after a grace period so `doctor` can never hang on one. The
+/// grace period is generous: macOS scans an executable on its first launch,
+/// which can take seconds on a busy machine, and a timeout reads as "no
+/// version".
 fn lsp_version_output(lsp: &Path) -> Option<String> {
     use std::io::Read;
     use std::process::{Command, Stdio};
@@ -281,7 +284,7 @@ fn lsp_version_output(lsp: &Path) -> Option<String> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {
         match child.try_wait() {
             Ok(Some(_)) => break,

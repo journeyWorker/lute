@@ -1,0 +1,7 @@
+entities:
+  suitor: { members: [ren, kai] }
+relations:
+  locked:    { args: [suitor], tier: run }
+  routeOpen: { args: [suitor], derive: true }
+rules:
+  - "routeOpen(S) :- suitor(S), not locked(S)"

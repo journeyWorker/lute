@@ -1,0 +1,2 @@
+occasions:
+  enter: { select: first, target: { prefix: room, entity: room } }

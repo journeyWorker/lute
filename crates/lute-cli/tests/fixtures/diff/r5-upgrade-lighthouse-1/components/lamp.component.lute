@@ -1,0 +1,18 @@
+---
+component: lamp
+params:
+  keeper: { type: string, default: "The inspector" }
+  glass: { type: { enum: [steady, guttering] }, default: steady }
+---
+
+## Lamp
+
+@narrator: {{@keeper}} lights the lamp.
+<match on="@glass">
+  <when is="steady">
+    @narrator: Steady.
+  </when>
+  <when is="guttering">
+    @narrator: Guttering.
+  </when>
+</match>

@@ -1,0 +1,2 @@
+occasions:
+  poke: { select: first }

@@ -1,0 +1,24 @@
+# Your project's content vocabulary (dsl 0.9.0).
+#
+# Lute's compiler ships NO members — a general authoring tool should not decide
+# what emotions your characters have. This file is yours to edit; the starter
+# set below is a convention, not a rule.
+#
+# `action` must declare `exits:` (which members end a character's presence on
+# stage) and `anchor` must declare `default:` (the member used when a `::auto`
+# omits it). The compiler reads those instead of guessing from names.
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fade-in-up, sway, lean, idle, fade-out, hide]
+    exits: [fade-out, hide]
+  # The four remaining slots, typed by the staging directives (`::music`,
+  # `::vfx`, `::auto`). Declared up front so reaching for one is an edit to
+  # THIS list rather than an `E-DOMAIN-UNKNOWN`.
+  mood: [peaceful, tense, romantic, sad, upbeat]
+  volume: [silent, down, normal, up, full]
+  musicAction: [start, change, stop, resume, fade-out]
+  vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]

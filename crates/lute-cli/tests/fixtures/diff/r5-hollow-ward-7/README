@@ -1,0 +1,8 @@
+Round-5 T1-5(b) (differential fixture D2), in the shape that still checks clean
+after 0.27 wave 1 (the `holds(...)` def subject is now E-MATCH-RELATION-SUBJECT).
+A def subject `d: "visited('find')"` under `<match on="@d"><when is="true">`
+lowers to an arm with neither `test` nor `expr`: with `find` visited, the line
+guard `when="@d"` is true, but the IR walk (play / run) falls to `<otherwise>`,
+while trace, walking the AST, takes the true arm.
+  lute test . --project .          -> passes (trace takes the arm)
+  lute play . --script p.play.yaml -> "(match otherwise) Alone."

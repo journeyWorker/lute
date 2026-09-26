@@ -1,0 +1,2 @@
+occasions:
+  visit: { select: first, target: { prefix: place, entity: place } }

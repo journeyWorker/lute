@@ -1,0 +1,7 @@
+directives:
+  - name: fright
+    attrs:
+      - { name: amount, type: number }
+    effects:
+      writes:
+        - { scope: run, path: [sanity], value: { op: increment, by: { fromAttr: amount } } }

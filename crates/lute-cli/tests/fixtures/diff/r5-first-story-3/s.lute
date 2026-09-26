@@ -1,0 +1,11 @@
+---
+kind: scene
+id: s
+title: A title
+pov: wren
+when: "run.suspicion == "ruben""
+---
+
+## One
+
+@narrator: Hello.

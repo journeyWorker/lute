@@ -1,0 +1,3 @@
+state: { user.bond.aria: 100 }
+steps:
+  - occasion: hubVisit

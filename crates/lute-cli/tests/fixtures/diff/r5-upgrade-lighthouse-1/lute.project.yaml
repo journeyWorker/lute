@@ -1,0 +1,5 @@
+defaultProfile: game
+profiles:
+  game: {}
+defaults:
+  luteVersion: "0.26.0"

@@ -1,0 +1,9 @@
+state:
+  run.ending: { type: { domain: ending }, default: none }
+  run.flat:   { type: { domain: flat }, default: a }
+  run.inline: { type: { enum: [a, b] }, default: a }
+enums:
+  ending: { members: [none, good], labels: { none: nothing, good: the good end } }
+  flat: [a, b]
+entities:
+  outcome: { members: [good, tragic] }

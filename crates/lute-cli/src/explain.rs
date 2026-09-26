@@ -19,7 +19,7 @@ use lute_trace::datalog::{
 use lute_trace::{EffectiveState, Value};
 use serde_json::{json, Value as Json};
 
-use crate::runner::Fact;
+use lute_trace::datalog::Fact;
 
 /// Explain every atom in `atoms` over `rules` (the project's IR rules
 /// array, whose bodies may name the closed entity `kinds`) applied to

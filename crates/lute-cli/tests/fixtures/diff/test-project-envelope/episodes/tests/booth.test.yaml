@@ -1,0 +1,5 @@
+file: ../booth.lute
+visited: [mira.s01ep01]
+state: { run.metMira: true }
+expect:
+  transcriptContains: ["@mira: Back again. You know where you sit."]

@@ -41,7 +41,7 @@ fn flatten(body: &str) -> (Vec<Rec>, Vec<Label>) {
         &[],
         &mut Vec::new(),
     );
-    let (recs, trailing, _) = em.finish();
+    let lute_compile::cfg::Finished { recs, trailing, .. } = em.finish();
     (recs, trailing)
 }
 

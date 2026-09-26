@@ -1,0 +1,4 @@
+lute check s.lute        -> ok (0 warnings)
+lute trace s.lute        -> "::set run.clues = 1" then "::set run.clues = unknown"
+lute compile s.lute      -> {"kind":"set","path":"run.clues","op":"=","value":"1",...}
+A `::set{ path <op-less expr> }` silently becomes `path = <tail>`, dropping the author's operator.

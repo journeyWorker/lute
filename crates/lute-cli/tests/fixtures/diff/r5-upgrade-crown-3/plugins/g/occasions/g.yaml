@@ -1,0 +1,2 @@
+occasions:
+  bossDefeated: { select: first, target: { prefix: foe, entity: foe }, description: a foe falls }

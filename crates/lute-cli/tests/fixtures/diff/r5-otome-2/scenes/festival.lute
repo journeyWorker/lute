@@ -1,0 +1,13 @@
+---
+kind: scene
+id: festival
+on: hubVisit
+---
+
+## Jetty
+
+::assert{locked(ren)}
+@narrator: Ren's route is locked.
+::set{run.route = 'ren'}
+@narrator: This line plays although the write above already broke the pair.
+@narrator: So does this one.

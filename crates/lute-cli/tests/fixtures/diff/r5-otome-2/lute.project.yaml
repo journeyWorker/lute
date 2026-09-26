@@ -1,0 +1,7 @@
+defaultProfile: game
+profiles:
+  game:
+    plugins: {}
+defaults:
+  luteVersion: "0.26.0"
+  uses: [world.schema.yaml]

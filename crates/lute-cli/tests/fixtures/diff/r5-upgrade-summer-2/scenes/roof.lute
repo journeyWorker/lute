@@ -1,0 +1,9 @@
+---
+kind: scene
+id: roof
+on: visit
+---
+
+## The roof
+
+@sol{emotion="happy"}: Vega, Deneb, Altair.

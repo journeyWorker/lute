@@ -1,0 +1,4 @@
+file: ../scenes/festival.lute
+expect:
+  facts: ["locked(ren)", "onRoute(ren)"]
+  exit: complete

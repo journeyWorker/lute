@@ -1,0 +1,4 @@
+Curly (“smart”) quotes, as typed by Word/Pages/Notes, around an attribute value.
+lute check s.lute -> E-UNKNOWN-ATTR `<choice>` has no attribute `the` — did you mean `when`?  (x3, one per word)
+Expected: a diagnostic naming the curly quote (e.g. "attribute values use straight quotes \" — found “").
+The did-you-mean maps unrelated words (`the`, `oven`) to `when`.

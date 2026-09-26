@@ -1,0 +1,5 @@
+# No occasion.target mock: nothing should be able to pass by walking no arm.
+file: ../barks.lute
+entry: again
+expect:
+  transcriptLacks: ["The eel again."]

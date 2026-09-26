@@ -1,0 +1,4 @@
+steps:
+  - occasion: hubVisit
+expect:
+  state: { run.ending: none }

@@ -1,0 +1,7 @@
+defaultProfile: base
+profiles:
+  base: { plugins: {} }
+defaults:
+  luteVersion: "0.26.0"
+  uses: [world.schema.yaml]
+  components: [components/hello.component.lute]

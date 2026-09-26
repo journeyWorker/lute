@@ -1,0 +1,10 @@
+state:
+  run.route: { type: { enum: [none, ren] }, default: none }
+entities:
+  suitor: { members: [ren] }
+relations:
+  locked:  { args: [suitor], tier: run }
+  # derived from state: holds while the route is Ren's
+  onRoute: { args: [suitor], derive: true, excludes: [locked] }
+rules:
+  - "onRoute(ren) :- cel(\"run.route == 'ren'\")"

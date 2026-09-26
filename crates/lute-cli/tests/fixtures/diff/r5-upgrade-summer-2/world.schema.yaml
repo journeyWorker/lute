@@ -1,0 +1,4 @@
+enums:
+  emotion: [happy, sad]
+cast:
+  sol: { name: Sol, emotions: [happy, sad] }

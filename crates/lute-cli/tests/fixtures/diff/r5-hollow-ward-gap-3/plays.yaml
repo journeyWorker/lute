@@ -1,0 +1,6 @@
+steps:
+  - engine: { state: { run.stalker: chapel } }
+  - occasion: enter
+    target: room.chapel
+  - occasion: enter
+    target: room.lobby

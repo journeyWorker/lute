@@ -1,0 +1,19 @@
+state:
+  user.day: { type: number, default: 1, owner: engine }
+  user.bond: { type: number, default: 0, per: hero, owner: engine }
+  user.tokens: { type: number, default: 0, owner: engine }
+entities:
+  hero: { members: [aria, bram, cyra] }
+  ssr: { subsetOf: hero, members: [aria] }
+relations:
+  owned: { args: [hero], reserved: true, changedOn: [summon] }
+  bond2: { args: [hero], derive: true }
+rules:
+  - "bond2(H) :- hero(H), cel(\"user.bond[H] >= 200\")"
+defs:
+  inWindow: { type: bool, params: { a: number, b: number }, cel: "clock.index >= a && clock.index < b" }
+  harvestLive: "@inWindow(10, 17) || @inWindow(40, 47)"
+clock:
+  day: user.day
+  raise: { dayStart: dailyReset }
+  week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }

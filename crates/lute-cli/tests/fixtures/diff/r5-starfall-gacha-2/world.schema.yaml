@@ -1,0 +1,22 @@
+state:
+  user.day: { type: number, default: 1, owner: engine }
+  user.bond: { type: number, default: 0, per: hero, owner: engine }
+  user.birthday: { type: number, per: hero, default: { _: 0, aria: 3, bram: 5 } }
+  user.tokens: { type: number, default: 0, owner: engine }
+  user.pullCopies: { type: number, default: 1, owner: engine }
+entities:
+  hero: { members: [aria, bram, cyra] }
+  ssr: { subsetOf: hero, members: [aria, cyra] }
+relations:
+  bond2: { args: [hero], derive: true }
+  bday: { args: [hero], derive: true }
+rules:
+  - "bond2(H) :- hero(H), cel(\"user.bond[H] >= 200\")"
+  - "bday(H) :- hero(H), cel(\"user.day % 28 == user.birthday[H]\")"
+defs:
+  onDays: { type: bool, params: { a: number, b: number }, cel: "user.day >= a && user.day <= b" }
+  harvestLive: "@onDays(3, 4) || @onDays(8, 9)"
+clock:
+  day: user.day
+  raise: { dayStart: dailyReset }
+  week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }

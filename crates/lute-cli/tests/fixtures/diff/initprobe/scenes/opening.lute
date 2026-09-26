@@ -1,0 +1,17 @@
+---
+kind: scene
+luteVersion: "0.26.0"
+character: narrator
+season: 1
+episode: 1
+title: Opening
+uses:
+  - ../world.schema.yaml
+  - ../vocabulary.schema.yaml
+---
+
+## Opening
+
+@narrator{emotion="delighted"}: Welcome to your new Lute project.
+::set{ run.greeted = true }
+@narrator{when="run.greeted"}: Edit this scene, then run `lute check-project`.

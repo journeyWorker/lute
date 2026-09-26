@@ -1,0 +1,8 @@
+pluginsDir: plugins/
+defaultProfile: g
+profiles:
+  g:
+    plugins: { p: true }
+defaults:
+  luteVersion: "0.26.0"
+  uses: [world.schema.yaml]

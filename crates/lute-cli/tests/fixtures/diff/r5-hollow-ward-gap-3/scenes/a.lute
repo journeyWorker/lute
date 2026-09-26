@@ -1,0 +1,10 @@
+---
+kind: lore
+id: a
+---
+
+<beat id="anyRoom" on="enter" target="kind:room" once="false">
+  @narrator: You step into {{occasion.target}}.
+  @narrator{when="holds(close(occasion.target))"}: Wheels, close.
+  @narrator{when="run.stalker == occasion.target"}: He is here.
+</beat>

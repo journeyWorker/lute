@@ -1,0 +1,6 @@
+# Lute project manifest — core-only profile (no plugins). Every document under
+# this directory resolves against the built-in `lute.core` capability snapshot.
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}

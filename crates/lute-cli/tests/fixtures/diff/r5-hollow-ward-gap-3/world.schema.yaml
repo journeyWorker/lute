@@ -1,0 +1,12 @@
+state:
+  run.stalker: { type: { domain: room }, default: morgue, owner: engine }
+entities:
+  room: { members: [lobby, morgue, chapel] }
+relations:
+  adjacent: { args: [room, room] }
+  close: { args: [room], derive: true }
+facts:
+  - "adjacent(lobby, chapel)"
+  - "adjacent(chapel, morgue)"
+rules:
+  - "close(R) :- adjacent(R, S), cel(\"run.stalker == S\")"

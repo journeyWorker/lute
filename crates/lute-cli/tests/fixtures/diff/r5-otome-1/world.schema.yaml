@@ -1,0 +1,4 @@
+state:
+  run.aff: { type: number, default: 0, per: suitor }
+entities:
+  suitor: { members: [ren, kai] }

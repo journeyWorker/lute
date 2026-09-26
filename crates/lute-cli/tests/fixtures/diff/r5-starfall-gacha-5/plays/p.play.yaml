@@ -1,0 +1,3 @@
+steps:
+  - advance: day
+    expect: { presented: [r.resetLine] }

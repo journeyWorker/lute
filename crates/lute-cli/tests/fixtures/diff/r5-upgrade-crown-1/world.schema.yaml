@@ -1,0 +1,4 @@
+state:
+  run.depth: { type: number, default: 0 }
+defs:
+  lastFathoms: "prev.run.depth * 10"

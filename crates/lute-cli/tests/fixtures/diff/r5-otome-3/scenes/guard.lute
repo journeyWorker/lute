@@ -1,0 +1,11 @@
+---
+kind: scene
+id: guard
+---
+
+## Guard
+
+::set{run.ending = 'tragic'}
+::set{run.flat = 'zzz'}
+@narrator{when="run.ending == 'tragic'"}: long-form compare.
+@narrator{when="run.flat == 'zzz'"}: flat compare.

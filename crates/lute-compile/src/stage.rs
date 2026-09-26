@@ -3,7 +3,7 @@
 
 use lute_check::ctx::Env;
 use lute_check::{lower_node, Ctx, InjectKind, InjectedCommand, StageState};
-use lute_core_span::{Diagnostic, Layer, Severity};
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
     Arm, AttrValue, Branch, BundleBeat, ClipNode, Directive, Entry, Hub, Match, Node, Quest,
@@ -13,10 +13,12 @@ use lute_syntax::ast::{
 use crate::cfg::{Emitter, Label};
 use crate::ir::*;
 use crate::lower::{
-    attr_bool, attr_string, lower_assert, lower_directive, lower_line, lower_retract, lower_set,
+    attr_bool, attr_string, fact_text, lower_assert, lower_directive, lower_line, lower_retract,
+    lower_set,
 };
 use crate::normalize::{component_scope, COMPONENT_BEGIN, COMPONENT_END};
 use crate::schedule::schedule_timeline;
+use crate::source_map::{ArmSource, ComponentBoundary, SourceInfo, SourceMarker};
 
 /// Walk context: the read-only capability surface + the component-source
 /// stack (sentinel-driven: each open expansion's name and its
@@ -51,10 +53,12 @@ pub fn walk_seq(
     for (i, node) in nodes.iter().enumerate() {
         match node {
             Node::Directive(d) if d.tag == COMPONENT_BEGIN => {
+                em.marker(|| directive_marker(d));
                 cx.components
                     .push((component_attr(d), component_scope(d).to_string()));
             }
             Node::Directive(d) if d.tag == COMPONENT_END => {
+                em.marker(|| directive_marker(d));
                 cx.components.pop();
             }
             // dsl 0.12.0: `::mark{id}` emits NO record — bind the author's
@@ -63,6 +67,7 @@ pub fn walk_seq(
             // a branch/match converge's `em.bind`, keyed by the author's
             // string instead of a fresh anonymous `Label`).
             Node::Directive(d) if d.tag == lute_manifest::core::MARK_DIRECTIVE => {
+                em.marker(|| directive_marker(d));
                 if let Some(id) = attr_string(&d.attrs, "id") {
                     em.bind_named(id);
                 }
@@ -168,11 +173,14 @@ fn walk_timeline(
             }),
         );
     }
-    em.push(Command::Barrier(BarrierCmd {
-        addr: String::new(),
-        timeline: ordinal,
-        at: barrier_at,
-    }));
+    em.push(
+        Command::Barrier(BarrierCmd {
+            addr: String::new(),
+            timeline: ordinal,
+            at: barrier_at,
+        }),
+        || SourceInfo::at(tl.span),
+    );
     state
 }
 
@@ -210,6 +218,12 @@ fn emit_primitive(
         Node::Retract(r) => Some(lower_retract(r)),
         _ => None,
     };
+    // A directive that lowers to no record of its own (`::clear`, whose
+    // exits are injected; `::use`) is still a step of the walk.
+    if let (Node::Directive(d), None) = (node, &authored) {
+        em.marker(|| directive_marker(d));
+    }
+    let span = node_span(node);
     // Placement (plan spec-gap note 4): an `::auto`'s injections (anchor,
     // preload) FOLLOW the authored show (§4.5); a line's posReset and a
     // scene-change's hides PRECEDE theirs.
@@ -217,10 +231,10 @@ fn emit_primitive(
     if auto_first {
         if let Some(cmd) = authored {
             bind_line_label(em, node);
-            emit_stamped(em, cmd, cx, clip);
+            emit_authored(em, cmd, node, cx, clip);
         }
         for ic in &injected {
-            emit_stamped(em, inject_cmd(ic), cx, clip);
+            emit_stamped(em, inject_cmd(ic), cx, clip, || injected_origin(span));
         }
     } else {
         // dsl 0.24.0 §4: `::clear` lowers to its exits alone; the first one
@@ -237,14 +251,81 @@ fn emit_primitive(
             if let (Some(text), Some(stamp)) = (clear.take(), cmd.stamp_mut()) {
                 stamp.authored = Some(text);
             }
-            emit_stamped(em, cmd, cx, clip);
+            emit_stamped(em, cmd, cx, clip, || injected_origin(span));
         }
         if let Some(cmd) = authored {
             bind_line_label(em, node);
-            emit_stamped(em, cmd, cx, clip);
+            emit_authored(em, cmd, node, cx, clip);
         }
     }
     next
+}
+
+/// Push the record `node` lowered to, with where it came from.
+fn emit_authored(
+    em: &mut Emitter,
+    cmd: Command,
+    node: &Node,
+    cx: &WalkCx<'_>,
+    clip: Option<ClipStamp>,
+) {
+    let sugar = matches!(node, Node::Set(s) if em.is_into_sugar(&s.path, s.span));
+    let authored_jump = matches!(cmd, Command::Jump(_));
+    emit_stamped(em, cmd, cx, clip, || {
+        let mut info = SourceInfo::at(node_span(node));
+        info.sugar = sugar;
+        info.authored_jump = authored_jump;
+        match node {
+            Node::Directive(d) => info.directive = Some(d.tag.clone()),
+            Node::Set(s) => {
+                info.write_text = Some(format!("{} {} {}", s.path, s.op, s.expr.raw.trim()));
+            }
+            Node::Assert(a) => info.write_text = Some(fact_text(&a.pattern)),
+            Node::Retract(r) => info.write_text = Some(fact_text(&r.pattern)),
+            _ => {}
+        }
+        info
+    });
+}
+
+fn injected_origin(span: Span) -> SourceInfo {
+    SourceInfo {
+        injected: true,
+        ..SourceInfo::at(span)
+    }
+}
+
+/// The span of `node`.
+fn node_span(node: &Node) -> Span {
+    match node {
+        Node::Line(l) => l.span,
+        Node::Directive(d) => d.span,
+        Node::Set(s) => s.span,
+        Node::Assert(a) => a.span,
+        Node::Retract(r) => r.span,
+        Node::Branch(b) => b.span,
+        Node::Match(m) => m.span,
+        Node::Hub(h) => h.span,
+        Node::Timeline(t) => t.span,
+        Node::On(o) => o.span,
+        Node::Objective(o) => o.span,
+    }
+}
+
+/// A source-only step for directive `d`.
+fn directive_marker(d: &Directive) -> SourceMarker {
+    let component = if d.tag == COMPONENT_BEGIN {
+        Some(ComponentBoundary::Begin)
+    } else if d.tag == COMPONENT_END {
+        Some(ComponentBoundary::End)
+    } else {
+        None
+    };
+    SourceMarker {
+        tag: d.tag.clone(),
+        span: d.span,
+        component,
+    }
 }
 
 /// dsl 0.12.0: a content line's `id=` (forward-jump label, mirrors
@@ -262,10 +343,16 @@ fn bind_line_label(em: &mut Emitter, node: &Node) {
     }
 }
 
-fn emit_stamped(em: &mut Emitter, mut cmd: Command, cx: &WalkCx<'_>, clip: Option<ClipStamp>) {
+fn emit_stamped(
+    em: &mut Emitter,
+    mut cmd: Command,
+    cx: &WalkCx<'_>,
+    clip: Option<ClipStamp>,
+    origin: impl FnOnce() -> SourceInfo,
+) {
     apply_source(&mut cmd, cx);
     apply_clip(&mut cmd, clip);
-    em.push(cmd);
+    em.push(cmd, origin);
 }
 
 /// `InjectKind` → a SEPARATE `sprite` record with provenance (§7.4).
@@ -349,7 +436,10 @@ fn walk_branch(
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
-    em.push(cmd);
+    em.push(cmd, || SourceInfo {
+        arms: b.choices.iter().map(ArmSource::choice).collect(),
+        ..SourceInfo::at(b.span)
+    });
     // Fork (D9): every arm starts from the ENTRY state. Entry diagnostics are
     // drained first so per-arm clones don't duplicate them.
     let mut state = state;
@@ -357,11 +447,17 @@ fn walk_branch(
     let mut exits = Vec::with_capacity(b.choices.len());
     for (c, l) in b.choices.iter().zip(&arms) {
         em.bind(*l);
+        let into = into_attr(c);
+        em.enter_into(into.clone());
         let exit = walk_seq(em, &c.body, state.clone(), cx, tail, diags);
-        em.push(Command::Jump(JumpCmd {
-            addr: String::new(),
-            target: conv.sym(),
-        }));
+        em.leave_into(into.as_ref());
+        em.push(
+            Command::Jump(JumpCmd {
+                addr: String::new(),
+                target: conv.sym(),
+            }),
+            || SourceInfo::at(b.span),
+        );
         exits.push(exit);
     }
     em.bind(conv);
@@ -418,7 +514,10 @@ fn walk_hub(
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
-    em.push(cmd);
+    em.push(cmd, || SourceInfo {
+        arms: h.choices.iter().map(ArmSource::choice).collect(),
+        ..SourceInfo::at(h.span)
+    });
     // Fork (D9): every arm starts from the ENTRY state; entry diagnostics are
     // drained first so per-arm clones don't duplicate them (as in `walk_branch`).
     let mut state = state;
@@ -426,17 +525,23 @@ fn walk_hub(
     let mut exits = Vec::with_capacity(h.choices.len());
     for (c, l) in h.choices.iter().zip(&arms) {
         em.bind(*l);
+        let into = into_attr(c);
+        em.enter_into(into.clone());
         let exit = walk_seq(em, &c.body, state.clone(), cx, tail, diags);
+        em.leave_into(into.as_ref());
         // Flat-VM contract (A2 §7): an EXIT arm ends in a forward Jump→converge,
         // exactly like a `<choice>` arm; a NON-exit arm emits NO trailing jump —
         // its completion returns control to the hub loop head, a RUNTIME property
         // of the `hub` kind. No backward jump is emitted (D2/§3.2 stays flat,
         // forward-only, "reduces to data").
         if attr_bool(&c.attrs, "exit").unwrap_or(false) {
-            em.push(Command::Jump(JumpCmd {
-                addr: String::new(),
-                target: conv.sym(),
-            }));
+            em.push(
+                Command::Jump(JumpCmd {
+                    addr: String::new(),
+                    target: conv.sym(),
+                }),
+                || SourceInfo::at(h.span),
+            );
         }
         exits.push(exit);
     }
@@ -465,36 +570,54 @@ fn walk_match(
     for (arm, l) in m.arms.iter().zip(&labels) {
         match arm {
             Arm::When { is, test, span, .. } => {
-                let expr = match crate::expr::synth_arm_expr(
-                    is.as_ref().map(|p| p.raw.as_str()),
-                    &test.raw,
-                    &m.subject.raw,
-                ) {
+                let is_raw = is.as_ref().map(|p| p.raw.as_str());
+                let expr = match crate::expr::synth_arm_expr(is_raw, &test.raw, &m.subject.raw) {
                     crate::expr::ArmExpr::Lowered(expr) => expr,
                     crate::expr::ArmExpr::UnsetOnCompoundSubject => {
                         // A13 rule 5: `<when is="unset">` lowers to `!isSet(path)`,
                         // which needs a bare-path subject. A compound subject cannot
                         // be lowered — surface a compile error rather than silently
-                        // dropping the arm (its `expr` stays `None`).
-                        diags.push(Diagnostic {
-                            code: "E-WHEN-UNSET-SUBJECT".to_string(),
-                            severity: Severity::Error,
-                            message: "`<when is=\"unset\">` on a non-path <match> subject \
-                                      cannot be lowered to an executable expr (dsl §7.3.1 / \
-                                      IR A13)"
+                        // dropping the arm.
+                        diags.push(arm_diag(
+                            "E-WHEN-UNSET-SUBJECT",
+                            "`<when is=\"unset\">` on a non-path <match> subject \
+                             cannot be lowered to an executable expr (dsl §7.3.1 / \
+                             IR A13)"
                                 .to_string(),
-                            span: *span,
-                            layer: Layer::Logic,
-                            fixits: Vec::new(),
-                            provenance: None,
-                            covered: Vec::new(),
-                            related: Vec::new(),
+                            *span,
+                        ));
+                        arms.push(MatchArm {
+                            test: test.raw.clone(),
+                            target: l.sym(),
+                            expr: None,
                         });
-                        None
+                        continue;
                     }
                 };
+                // dsl 0.27.0 T1-5(b): an arm always carries an executable guard.
+                // With no `expr`, an `is` arm's `test` is its whole raw CEL
+                // condition (the subject compared, the `test` guard conjoined) —
+                // never an empty `test` an engine reads as unknown.
+                let test = match (&expr, is_raw) {
+                    (None, Some(is_raw)) => {
+                        crate::expr::raw_arm_test(is_raw, &test.raw, &m.subject.raw)
+                            .unwrap_or_default()
+                    }
+                    _ => test.raw.clone(),
+                };
+                if expr.is_none() && test.trim().is_empty() {
+                    diags.push(arm_diag(
+                        "E-COMPILE-INTERNAL",
+                        format!(
+                            "internal compiler error: a <match on=\"{}\"> arm lowers to \
+                             neither an `expr` nor a `test`, so no engine could take it",
+                            m.subject.raw.trim()
+                        ),
+                        *span,
+                    ));
+                }
                 arms.push(MatchArm {
-                    test: test.raw.clone(),
+                    test,
                     target: l.sym(),
                     expr,
                 });
@@ -519,7 +642,18 @@ fn walk_match(
         },
     });
     apply_source(&mut cmd, cx);
-    em.push(cmd);
+    em.push(cmd, || SourceInfo {
+        authored_id: m.subject.authored.clone(),
+        arms: m
+            .arms
+            .iter()
+            .map(|arm| match arm {
+                Arm::When { is, test, span, .. } => ArmSource::when(*span, is.as_ref(), test),
+                Arm::Otherwise { span, .. } => ArmSource::otherwise(*span),
+            })
+            .collect(),
+        ..SourceInfo::at(m.span)
+    });
     let mut state = state;
     let base_diags = std::mem::take(&mut state.diags);
     let mut exits = Vec::with_capacity(m.arms.len());
@@ -529,10 +663,13 @@ fn walk_match(
         };
         em.bind(*l);
         let exit = walk_seq(em, body, state.clone(), cx, tail, diags);
-        em.push(Command::Jump(JumpCmd {
-            addr: String::new(),
-            target: conv.sym(),
-        }));
+        em.push(
+            Command::Jump(JumpCmd {
+                addr: String::new(),
+                target: conv.sym(),
+            }),
+            || SourceInfo::at(m.span),
+        );
         exits.push(exit);
     }
     em.bind(conv);
@@ -541,6 +678,30 @@ fn walk_match(
     diags.append(&mut joined.diags);
     joined.diags = diags;
     joined
+}
+
+/// A choice's `into="<path>"` attr — the `::set` normalize synthesized
+/// from it carries this attr's span (`normalize::synth_into`).
+fn into_attr(c: &lute_syntax::ast::Choice) -> Option<(String, Span)> {
+    c.attrs.iter().find_map(|a| match (&*a.key, &a.value) {
+        ("into", AttrValue::Str(p)) => Some((p.clone(), a.span)),
+        _ => None,
+    })
+}
+
+/// A compile-stage Error at a `<when>` arm.
+fn arm_diag(code: &str, message: String, span: lute_core_span::Span) -> Diagnostic {
+    Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
 }
 
 /// `source { component }` from the sentinel-driven stack (§4.3, D8), plus
@@ -695,7 +856,7 @@ pub fn walk_quest(
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
-    em.push(cmd);
+    em.push(cmd, || SourceInfo::at(quest.span));
 
     // Pass 2: real document-order walk. Each objective-body / on-arm body is
     // an INDEPENDENT, temporally-disconnected trigger (not "one of N
@@ -737,7 +898,7 @@ pub fn walk_quest(
                     stamp: Stamp::default(),
                 });
                 apply_source(&mut on_cmd, cx);
-                em.push(on_cmd);
+                em.push(on_cmd, || SourceInfo::at(on.span));
                 if on.body.is_empty() {
                     empty_on_labels.push(label);
                 } else {
@@ -748,6 +909,7 @@ pub fn walk_quest(
             // dsl 0.12.0: mirrors `walk_seq`'s `mark` interception exactly
             // — see its own comment.
             Node::Directive(d) if d.tag == lute_manifest::core::MARK_DIRECTIVE => {
+                em.marker(|| directive_marker(d));
                 if let Some(id) = attr_string(&d.attrs, "id") {
                     em.bind_named(id);
                 }
@@ -854,7 +1016,7 @@ pub fn walk_entry(
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
-    em.push(cmd);
+    em.push(cmd, || SourceInfo::at(entry.span));
     em.bind(label);
     walk_seq(em, &entry.body, StageState::default(), cx, &[], diags);
 }
@@ -906,7 +1068,7 @@ pub fn walk_bundle_beat(
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
-    em.push(cmd);
+    em.push(cmd, || SourceInfo::at(beat.span));
     em.bind(label);
     walk_seq(em, &beat.body, StageState::default(), cx, &[], diags);
 }

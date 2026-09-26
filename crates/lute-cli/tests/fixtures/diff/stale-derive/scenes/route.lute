@@ -1,0 +1,10 @@
+---
+kind: scene
+id: route
+on: hubVisit
+---
+
+## Jetty
+
+::set{run.route = 'ren'}
+@narrator{when="holds(onRoute(ren))"}: Derived after the set.

@@ -1,0 +1,4 @@
+file: ../scenes/route.lute
+expect:
+  transcriptContains: ["@narrator: Derived after the set."]
+  facts: ["onRoute(ren)"]

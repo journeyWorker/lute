@@ -1,0 +1,9 @@
+---
+kind: scene
+id: find
+on: found
+---
+
+## Find
+
+@narrator: Found him.

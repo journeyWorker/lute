@@ -1,0 +1,4 @@
+occasions:
+  dailyReset: { select: sequence }
+  summon: { select: first, target: { prefix: hero, entity: hero } }
+  bondUp: { select: first, target: { prefix: hero, entity: hero } }

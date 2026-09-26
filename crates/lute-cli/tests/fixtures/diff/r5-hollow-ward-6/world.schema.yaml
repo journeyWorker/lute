@@ -1,0 +1,4 @@
+state:
+  run.stalker: { type: { domain: room }, default: morgue, owner: engine }
+entities:
+  room: { members: [lobby, morgue, chapel], labels: { lobby: "the lobby", morgue: "the morgue", chapel: "the chapel" } }

@@ -1,0 +1,8 @@
+---
+kind: scene
+id: defaulted
+---
+
+## A
+
+::use{component="gauge"}

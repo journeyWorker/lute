@@ -1,0 +1,12 @@
+---
+kind: lore
+id: r
+---
+
+<beat id="closeLine" on="dayClose" once="day">
+  @narrator: The day closes.
+</beat>
+
+<beat id="resetLine" on="dailyReset" once="day">
+  @narrator: A new day.
+</beat>

@@ -23,10 +23,12 @@ pub mod locale;
 pub mod lower;
 pub mod normalize;
 pub mod schedule;
+pub mod source_map;
 pub mod stage;
 pub mod streaming;
 
 pub use ir::*;
+pub use source_map::SourceMap;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -349,6 +351,29 @@ pub fn compile_with_check(
     result: CheckResult,
     identity: &IdentityTemplates,
 ) -> Result<Artifact, Vec<Diagnostic>> {
+    compile_inner(input, result, identity, None)
+}
+
+/// [`compile_with_check`], plus the document's [`SourceMap`]: where every
+/// emitted record came from (runtime-unification design §3.5). The map is
+/// never serialized; the artifact is byte-identical to [`compile_with_check`]'s.
+pub fn compile_mapped(
+    input: &CheckInput,
+    result: CheckResult,
+    identity: &IdentityTemplates,
+) -> Result<(Artifact, SourceMap), Vec<Diagnostic>> {
+    let mut map = SourceMap::default();
+    let artifact = compile_inner(input, result, identity, Some(&mut map))?;
+    Ok((artifact, map))
+}
+
+/// The one compile pipeline; `map` is filled when given.
+fn compile_inner(
+    input: &CheckInput,
+    result: CheckResult,
+    identity: &IdentityTemplates,
+    mut map: Option<&mut SourceMap>,
+) -> Result<Artifact, Vec<Diagnostic>> {
     // D6 gate: codegen runs only on a clean check, so every pass below may
     // RELY on checker-proven invariants (declared paths, exhaustiveness,
     // acyclic components, @ref arity, unique choice ids via E-CHOICE-DUP).
@@ -419,21 +444,18 @@ pub fn compile_with_check(
             let prefix = meta.id.clone();
             let mut shots = Vec::new();
             for (i, shot) in doc.shots.iter().enumerate() {
-                let mut em = cfg::Emitter::default();
+                let mut em = cfg::Emitter::new(map.is_some());
                 // Top-level per-shot walk: no CFG continuation past the shot end.
                 state = stage::walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut diags);
                 // dsl 0.6.0 §3.2: a shot's number is its 1-based document
                 // position. Authored numbers and the monotone guard are removed
                 // (the quest path was already positional).
                 let shot_no = i as i64 + 1;
-                let (recs, trailing, trailing_named) = em.finish();
-                shots.push(address::ShotRecords {
-                    shot: shot_no,
-                    prefix: prefix.clone(),
-                    recs,
-                    trailing,
-                    trailing_named,
-                });
+                shots.push(address::ShotRecords::new(
+                    shot_no,
+                    prefix.clone(),
+                    em.finish(),
+                ));
             }
             // `check()` is the diagnostic surface, the artifact is ours (plan
             // note 8): whatever this walk re-derives on `StageState::diags` is
@@ -484,7 +506,8 @@ pub fn compile_with_check(
             // disagrees with another; it is a precision boundary, not the
             // divergence Task 7g closed.
             state.diags.clear();
-            let (commands, addr_diags) = address::assign_addresses(shots, identity);
+            let (commands, addr_diags) =
+                address::assign_addresses_into(shots, identity, map.as_deref_mut());
             (ArtifactMeta::Scene(meta), commands, addr_diags)
         }
         lute_check::DocKind::Quest => {
@@ -494,18 +517,16 @@ pub fn compile_with_check(
             // per-segment code-counter reset).
             let mut shots = Vec::new();
             for (i, quest) in doc.quests.iter().enumerate() {
-                let mut em = cfg::Emitter::default();
+                let mut em = cfg::Emitter::new(map.is_some());
                 stage::walk_quest(&mut em, quest, &mut cx, &mut diags);
-                let (recs, trailing, trailing_named) = em.finish();
-                shots.push(address::ShotRecords {
-                    shot: (i as i64) + 1,
-                    prefix: quest.id.clone(),
-                    recs,
-                    trailing,
-                    trailing_named,
-                });
+                shots.push(address::ShotRecords::new(
+                    (i as i64) + 1,
+                    quest.id.clone(),
+                    em.finish(),
+                ));
             }
-            let (commands, addr_diags) = address::assign_addresses(shots, identity);
+            let (commands, addr_diags) =
+                address::assign_addresses_into(shots, identity, map.as_deref_mut());
             (
                 ArtifactMeta::Quest(quest_meta(&doc, &folded, &input.snapshot)),
                 commands,
@@ -540,7 +561,7 @@ pub fn compile_with_check(
             let doc_id = folded.typed.id.clone().unwrap_or_default();
             let mut shots = Vec::new();
             for (i, (_, unit)) in units.iter().enumerate() {
-                let mut em = cfg::Emitter::default();
+                let mut em = cfg::Emitter::new(map.is_some());
                 let prefix = match unit {
                     Unit::Entry(entry, series) => {
                         stage::walk_entry(&mut em, entry, series, &mut cx, &mut diags);
@@ -552,16 +573,14 @@ pub fn compile_with_check(
                         key
                     }
                 };
-                let (recs, trailing, trailing_named) = em.finish();
-                shots.push(address::ShotRecords {
-                    shot: (i as i64) + 1,
+                shots.push(address::ShotRecords::new(
+                    (i as i64) + 1,
                     prefix,
-                    recs,
-                    trailing,
-                    trailing_named,
-                });
+                    em.finish(),
+                ));
             }
-            let (commands, addr_diags) = address::assign_addresses(shots, identity);
+            let (commands, addr_diags) =
+                address::assign_addresses_into(shots, identity, map.as_deref_mut());
             (
                 ArtifactMeta::Lore(lore_meta(&doc, &folded, &input.snapshot)),
                 commands,
@@ -591,6 +610,9 @@ pub fn compile_with_check(
     if diags.iter().any(|d| d.severity == Severity::Error) {
         return Err(diags);
     }
+    if let Some(map) = map {
+        source_side_tables(map, &doc, folded.typed.id.as_deref(), &commands);
+    }
     let branch_paths = collect_branch_paths(&doc);
     let mut reserved = collect_quest_reserved_paths(&doc);
     reserved.extend(collect_entry_reserved_paths(&doc));
@@ -612,6 +634,68 @@ pub fn compile_with_check(
         shots: shot_entries(&doc),
         clock: folded.env.clock.clone(),
     })
+}
+
+/// The [`SourceMap`] tables keyed by construct id rather than `addr`: every
+/// `<quest>` (its objectives, and its `<on>` handlers by record `addr`),
+/// `<entry>` and bundle `<beat>` of the lowered document.
+fn source_side_tables(
+    map: &mut SourceMap,
+    doc: &Document,
+    doc_id: Option<&str>,
+    commands: &[Command],
+) {
+    use source_map::{trimmed, ObjectiveSource, QuestSource};
+    let text = |slot: Option<&lute_syntax::ast::CelSlot>| trimmed(slot.map(|s| s.raw.as_str()));
+    for quest in &doc.quests {
+        let objectives = quest
+            .body
+            .iter()
+            .filter_map(|n| match n {
+                Node::Objective(o) => Some((
+                    o.id.clone(),
+                    ObjectiveSource {
+                        span: o.span,
+                        done: text(Some(&o.done)),
+                        by: text(o.by.as_ref()),
+                        until: text(o.until.as_ref()),
+                    },
+                )),
+                _ => None,
+            })
+            .collect();
+        map.quests.insert(
+            quest.id.clone(),
+            QuestSource {
+                span: quest.span,
+                start: text(quest.start.as_ref()),
+                fail: text(quest.fail.as_ref()),
+                objectives,
+                handlers: BTreeMap::new(),
+            },
+        );
+    }
+    let mut quest: Option<&str> = None;
+    for cmd in commands {
+        match cmd {
+            Command::Quest(q) => quest = Some(&q.id),
+            Command::On(on) => {
+                let span = map.by_addr.get(&on.addr).map(|i| i.span);
+                if let (Some(q), Some(span)) = (quest.and_then(|q| map.quests.get_mut(q)), span) {
+                    q.handlers.insert(on.addr.clone(), span);
+                }
+            }
+            _ => {}
+        }
+    }
+    for entry in &doc.entries {
+        map.entries.insert(entry.id.clone(), entry.span);
+    }
+    let doc_id = doc_id.unwrap_or_default();
+    for beat in &doc.beats {
+        map.beats
+            .insert(lute_check::bundle_beat_key(doc_id, &beat.id), beat.span);
+    }
 }
 
 /// Collect the authored `## ` shot headings (dsl 0.8.0 §6) into the artifact's
