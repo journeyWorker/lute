@@ -139,6 +139,10 @@ struct Walk<'a> {
     pending_accepts: Vec<String>,
     /// The quest ids the traced document declares.
     doc_quests: BTreeSet<String>,
+    /// The cast the document is checked against — dsl 0.26.0 §5: a
+    /// `{{occasion.target}}` member that is a cast id renders its `name:`,
+    /// as `lute play` renders it.
+    cast: &'a BTreeMap<String, lute_manifest::schema::CastMember>,
 }
 
 impl<'a> Walk<'a> {
@@ -617,6 +621,15 @@ fn resolve_interp(interp: &Interp, w: &Walk<'_>) -> Option<String> {
         InterpKind::Path => {
             let mut atoms = Vec::new();
             let v = eval_path_read(&interp.raw, &w.env(), &mut atoms);
+            // dsl 0.26.0 §5: the raised member by its cast display name
+            // when it is a cast id, else the id — as `lute play` renders it.
+            if let Value::Str(m) = &v {
+                if interp.raw.trim() == lute_check::beats::OCCASION_TARGET {
+                    if let Some(name) = w.cast.get(m).and_then(|c| c.name.clone()) {
+                        return Some(name);
+                    }
+                }
+            }
             // dsl 0.24.0 §1: a value of a named enum renders its member label.
             if let Value::Str(s) = &v {
                 let label = match w
@@ -1562,11 +1575,30 @@ fn skip_effect(effect: &str, text: String, w: &mut Walk<'_>) {
 fn walk_entry(entry: &Entry, w: &mut Walk<'_>) -> Flow {
     let read_path = lute_check::entry_read_path(&entry.id);
     let first_read = !matches!(w.state.read(&read_path), Read::Value(Value::Bool(true)));
-    let eligible = eval_eligibility(entry.when.as_ref(), "entry", &entry.id, w);
+    // dsl 0.26.0 §7: an entry's `once` is spent by its read flag —
+    // `entry.<id>.read` (`run`) / `.everRead` (`user`) — as `lute play`
+    // judges it; a spent entry is ineligible whatever its `when`.
+    let spent = match entry.once.as_ref().map(|(o, _)| o.trim()) {
+        Some("run") if !first_read => Some("run"),
+        Some("user")
+            if matches!(
+                w.state.read(&format!("entry.{}.everRead", entry.id)),
+                Read::Value(Value::Bool(true))
+            ) =>
+        {
+            Some("user")
+        }
+        _ => None,
+    };
+    let eligible = match spent {
+        Some(_) => Some(false),
+        None => eval_eligibility(entry.when.as_ref(), "entry", &entry.id, w),
+    };
     w.steps.push(Step::Entry {
         id: entry.id.clone(),
         first_read,
         eligible,
+        spent: spent.map(str::to_string),
     });
     if eligible == Some(false) && w.mocks.gate_eligibility {
         return Flow::Continue;
@@ -3694,6 +3726,7 @@ fn trace_pipeline(
         accepted: mocks.accepts.clone(),
         pending_accepts: Vec::new(),
         doc_quests: doc.quests.iter().map(|q| q.id.clone()).collect(),
+        cast: &cast,
     };
 
     // T1-13: a beat scene is only presented when its frontmatter `when`

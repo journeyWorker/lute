@@ -30,6 +30,23 @@ Author `state:` is **scalar-only** — `number`, `bool`, `string`, or `enum`, an
 
 Enforcement is new in 0.8.0, but it removes an ambiguity rather than adding a restriction. The normative text always said scalar, but the shape validator accepted the whole type union and the runtime documentation described `list<…>` / `map<…>` / `record` as valid entry types — three sources, three answers. All three now agree. Collections were always meant to be modelled **relationally**: an inventory is `ownsItem(item)`, not a `list<string>`, so reach for [`relations:`](/state/facts-and-datalog/) instead. Collection-shaped entry types do still reach the compiled artifact, but only through a plugin `state_shapes` expansion — never from an author's `state:` block.
 
+### One path, one declaration
+
+A frontmatter `state:` declaration is not private to its document: `run.southFossil` declared in
+two documents is one value at run time. Since dsl 0.26.0 §2.1 `check-project` compares every
+declaration of a path, inline or imported, and reports **`E-STATE-DECL-CONFLICT`** naming both
+files and lines when their `type`, `default`, `per` or `owner` differ. `lute play` refuses a
+project that declares one path with two types.
+
+<!-- lute-diagnostics -->
+```
+./scenes/b.lute:5:3: error [E-STATE-DECL-CONFLICT] state path `run.southFossil` is declared as bool, default false at `./scenes/a.lute:5` but as enum(none|dome|spiral), default "none" at `./scenes/b.lute:5`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import) (dsl 0.26.0 §2.1)
+```
+
+`scene.*` paths are scene-local and exempt, and a declaration that refines one it
+[`extends:`](/state/schemas/#composition-uses-and-extends) (an overridden default) is no conflict.
+To share a path, declare it once in a schema both documents import.
+
 ### Paths typed by a named enum
 
 A path may take its type from a named enum instead of listing members inline: `{ type: { domain: weekday } }` reads its members from the `weekday` enum of the schema, and it counts as a read of that enum, so the enum draws no `W-DOMAIN-UNREAD`. Since `0.24.0` a long-form enum may give its members display **labels**, and interpolating a path typed against it renders the label rather than the member id:

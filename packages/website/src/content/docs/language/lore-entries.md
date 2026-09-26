@@ -57,7 +57,7 @@ heading, no `## ` shots, no `<quest>`.
 | Attr | Meaning |
 |---|---|
 | `id` | required; unique across the project |
-| `target` | the engine-owned thing it belongs to — `item.rusty_key`, `place.lab_b2`, `npc.vesna` |
+| `target` | the engine-owned thing it belongs to — `item.rusty_key`, `place.lab_b2`, `npc.vesna`; on an entry beat also `kind:<kind>`, every member of a kind (dsl 0.26.0 §5) |
 | `category` | what kind of text it is — `note`, `item`, `place`, `codex`, `bark`, … (engine vocabulary) |
 | `title` | display title, localized like a quest title |
 | `series` / `order` | multi-part text: `order` is the position within `series` (a document-level `series:` can supply both — see below) |
@@ -71,6 +71,10 @@ exception is an entry beat whose occasion declares a
 that domain. On an occasion declared without any target, an entry beat's `target` is metadata
 (dsl 0.24.0 §6): it still says what the entry is about, and the entry answers every raise of the
 occasion. Before 0.24.0 that was `E-BEAT-ATTR`, and for a scene or bundle beat it still is.
+
+An entry beat may also target a whole kind, `target="kind:bugRare"`, on an occasion with a target
+domain, and read the raised member as `occasion.target` in its `when` and its body, as a scene or
+bundle beat does (see [Kind targets](/language/beats/#kind-targets)).
 
 ## The document is the bundle
 
@@ -144,6 +148,13 @@ react with `holds(…)`:
 The **first** time an entry is presented in a run, its `::set` / `::assert` / `::retract` apply.
 Afterwards the engine sets **`entry.<id>.read`** to `true`, and later readings show the text only —
 a `<match>` may pick a different arm by then, but nothing else changes.
+
+So an entry that is read again in the same run, a repeatable [entry beat](/language/beats/#entry-beats)
+above all, changes state only the first time. `lute check` warns `W-ENTRY-WRITE-REREAD` (dsl
+0.26.0 §8) at the `::set` or `::retract` of an entry beat without `once`; an `::assert` is exempt,
+because its fact holds for the rest of the run either way. A write meant to happen on every
+presentation belongs in a `<beat once="false">` ([below](#entries-and-beats-in-one-file)), whose
+effects apply every time.
 
 `entry.<id>.read` is a reserved `bool` any document can read: gate the next page of a series
 (`when="entry.scientistLog1.read"`), branch a scene on it, or complete a quest objective. Content
@@ -257,9 +268,12 @@ the `<beat>` attributes, the canonical id, and how a bundle beat is checked and 
 ## Tooling
 
 - `lute trace <doc> --entry <id> --mock m.yaml` previews one entry against mocked state; seed
-  `entry.<id>.read: true`, or `entriesRead: { run: [<id>] }`, to preview a re-read.
-  `entriesRead: { user: [<id>] }` seeds `entry.<id>.everRead` instead, for a document that reads
-  it. `lute run <artifact> --entry <id>` does the same over a compiled lore artifact.
+  `entry.<id>.read: true`, or `entriesRead: { run: [<id>] }`, to preview a re-read. A `run:` id
+  sets both `entry.<id>.read` and `entry.<id>.everRead` (read this run is read ever);
+  `entriesRead: { user: [<id>] }` sets `entry.<id>.everRead` alone. Either is legal for any entry
+  the document declares. An entry whose `once="run"` or `once="user"` those flags spend is
+  ineligible in trace and test, as it is in `lute play`. `lute run <artifact> --entry <id>` does
+  the same over a compiled lore artifact.
 - `lute trace <doc> --beat <id> --mock m.yaml` previews one `<beat>` by its local or canonical id,
   with the mock's `choose:` picking its branches; `lute run <artifact> --beat <id>` does the same
   over a compiled lore artifact. The beat's `when` and `after=` are shown, not enforced. An id that names no beat
@@ -280,6 +294,14 @@ the `<beat>` attributes, the canonical id, and how a bundle beat is checked and 
   A lore test that names neither is `E-TEST-LORE`, and the message lists the document's entry ids.
   Since lore is testable, `lute test --coverage` lists an untested lore document with the other
   untested documents.
+
+  Since dsl 0.26.0 §8 a test (`entry:`, `entries:`, `expect.eligible` keys), a play script
+  (`pick:`, `entriesRead:`, a step's `winner` / `offered` / `notOffered` / `presented`), and
+  `lute trace --entry` also accept `<document id>.<entry id>` as an alias for an entry id:
+  `entry: shipRecords.bridgeLog` names `bridgeLog` of the document on this page whose `id:` is
+  `shipRecords`. A test of an entry or beat that targets a
+  [kind](/language/beats/#kind-targets) names the raised member with
+  `state: { occasion.target: <member> }`.
 - `lute lore <dir>` prints the world-narrative map: entries by target and by series, with each
   entry's and beat's `when` under it, and which facts entries reveal versus scenes and quests. It
   reads beat bodies too. When the project's rules derive a relation, a **Derived** section lists
@@ -295,6 +317,8 @@ the normative specs are
 [`0.22.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
 for `everRead` and lore tests,
 [`0.23.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
-for beats in a lore document, and
+for beats in a lore document,
 [`0.24.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
-§6 for entry targets as metadata and what a read proves.
+§6 for entry targets as metadata and what a read proves, and the draft
+[`0.26.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)
+for kind targets, `W-ENTRY-WRITE-REREAD`, and `<document id>.<entry id>`.

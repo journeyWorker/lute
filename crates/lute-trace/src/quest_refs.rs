@@ -69,6 +69,28 @@ pub(crate) fn collect_referenced_in_raw(
     collect_paths(&rec.expr, keep, out);
 }
 
+/// Add `quest.<id>.state` for every `completed("id")` / `active("id")` atom
+/// of the prerequisite `after` (a scene's `after:`, a bundle beat's
+/// `after=`, dsl 0.25.0 §3) — the eligibility premise reads that quest's
+/// state, so a `quests:` seed of it can change the verdict (dsl 0.26.0 §7).
+pub(crate) fn collect_prereq_quest_paths(after: &str, out: &mut BTreeSet<String>) {
+    if after.trim().is_empty() {
+        return;
+    }
+    let span = crate::mock::synthetic_span();
+    let Some(f) = lute_check::parse_prereq(after, span).0 else {
+        return;
+    };
+    for atom in lute_check::prereq::atoms(&f) {
+        match atom {
+            lute_check::prereq::Atom::Completed(q) | lute_check::prereq::Atom::Active(q) => {
+                out.insert(format!("quest.{q}.state"));
+            }
+            lute_check::prereq::Atom::Visited(_) => {}
+        }
+    }
+}
+
 /// Collect every maximal reserved path (as decided by `keep`) referenced in
 /// `expr`, recursing into every sub-expression (call args, list/map/struct
 /// elements, comprehensions) — mirrors `lute-check/src/cel_paths.rs`'s

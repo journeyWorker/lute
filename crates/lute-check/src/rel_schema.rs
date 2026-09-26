@@ -82,6 +82,65 @@ pub struct DeclOrigins {
     /// Prerelease N4: each member an entity kind's `members:` lists, keyed
     /// [`member_origin_key`] — where a duplicate `add:` names its first line.
     pub members: BTreeMap<String, DeclOrigin>,
+    /// dsl 0.26.0 §2.8: each `cast:` entry, at its id key — where an
+    /// advisory about a cast entry nobody speaks as is anchored.
+    pub cast: BTreeMap<String, DeclOrigin>,
+}
+
+/// Byte offset (in `yaml`) of the `<id>:` key of `id`'s entry under the
+/// top-level `cast:` map of a schema or a plugin cast export — a line scan,
+/// never a YAML re-parse; `None` when the shape is not recognized.
+pub fn cast_entry_offset(yaml: &str, id: &str) -> Option<usize> {
+    // `Some(indent of the entry keys)` inside `cast:`, once the first entry
+    // is seen; `Some(None)` right after the `cast:` line.
+    let mut in_cast: Option<Option<usize>> = None;
+    let mut off = 0;
+    for line in yaml.split_inclusive('\n') {
+        let at = off;
+        off += line.len();
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = line.len() - trimmed.len();
+        if indent == 0 {
+            in_cast = trimmed.starts_with("cast:").then_some(None);
+            continue;
+        }
+        let Some(entry_indent) = in_cast else {
+            continue;
+        };
+        let want = entry_indent.unwrap_or(indent);
+        if want != indent {
+            continue;
+        }
+        in_cast = Some(Some(want));
+        let key = trimmed
+            .strip_prefix(['"', '\''])
+            .unwrap_or(trimmed)
+            .strip_prefix(id);
+        if key.is_some_and(|rest| {
+            rest.trim_start_matches(['"', '\''])
+                .trim_start()
+                .starts_with(':')
+        }) {
+            return Some(at + indent);
+        }
+    }
+    None
+}
+
+/// [`cast_entry_offset`] of `id` in a schema's frontmatter, as a line-less
+/// `meta`-document span (like [`kind_list_spans`]').
+pub(crate) fn cast_entry_span(meta: &Meta, id: &str) -> Option<Span> {
+    let (base, _) = frontmatter_base(meta);
+    cast_entry_offset(&meta.raw_yaml, id).map(|o| Span {
+        byte_start: base + o,
+        byte_end: base + o + id.len(),
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    })
 }
 
 /// The [`DeclOrigins::members`] key of `member` of entity kind `kind`.

@@ -575,7 +575,7 @@ pub fn check_stratification(vocab: &mut RelVocab) -> Vec<Diagnostic> {
             .map(|(name, _)| name.as_str())
             .collect();
         members.sort_unstable();
-        out.push(match edge.kind {
+        let d = match edge.kind {
             EdgeKind::Aggregate => diag(
                 E_RULE_AGGREGATE_CYCLE,
                 format!(
@@ -600,7 +600,13 @@ pub fn check_stratification(vocab: &mut RelVocab) -> Vec<Diagnostic> {
                 ),
                 edge.span,
             ),
-        });
+        };
+        // dsl 0.26.0 §2.7: an imported rule's cycle is reported once, at its
+        // schema line, folded across importers — not past every importer's end.
+        out.push(crate::rel_schema::at_origin(
+            d,
+            vocab.origins.rules.get(edge.raw),
+        ));
     }
 
     vocab.guard_tainted = compute_guard_taint(vocab, &adjacency);
@@ -618,13 +624,16 @@ enum EdgeKind {
 
 /// One structural predicate-dependency edge (§7.2): `from` is a body atom's
 /// relation, `to` is the rule's head relation ("`to`'s rule reads `from`"),
-/// `kind` how the body literal reads it, and `span` is the owning rule's
-/// span (where a stratification diagnostic for this edge is anchored).
-struct PredEdge {
+/// `kind` how the body literal reads it, `span` is the owning rule's span
+/// (where a stratification diagnostic for this edge is anchored) and `raw`
+/// its authored text (the [`crate::rel_schema::DeclOrigins::rules`] key an
+/// imported rule's diagnostic is re-homed by).
+struct PredEdge<'a> {
     from: String,
     to: String,
     kind: EdgeKind,
     span: Span,
+    raw: &'a str,
 }
 
 /// Build the predicate-dependency graph (§7.2) over `vocab.rules`: an
@@ -633,10 +642,10 @@ struct PredEdge {
 /// check). Only atoms naming a `node` (a declared relation) contribute an
 /// edge — an entity-kind atom (`K(X)`) or an atom naming an undeclared
 /// relation is invisible to this graph (see [`check_stratification`]'s doc).
-fn predicate_edges(
-    vocab: &RelVocab,
+fn predicate_edges<'a>(
+    vocab: &'a RelVocab,
     nodes: &BTreeSet<String>,
-) -> (BTreeMap<String, Vec<String>>, Vec<PredEdge>) {
+) -> (BTreeMap<String, Vec<String>>, Vec<PredEdge<'a>>) {
     let mut adjacency: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut edges = Vec::new();
     for rule_decl in &vocab.rules {
@@ -663,6 +672,7 @@ fn predicate_edges(
                 to: head.clone(),
                 kind,
                 span: rule_decl.span,
+                raw: &rule_decl.raw,
             });
         }
     }

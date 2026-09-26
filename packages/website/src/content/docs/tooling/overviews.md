@@ -1,6 +1,6 @@
 ---
 title: Story overviews
-description: "Three read-only views of a story chosen by occasions (dsl 0.23.0): `lute beats` prints each occasion's beat ladder with the checker's verdicts, `lute calendar` evaluates play's own eligibility over a grid of state values, and `lute scenario knowledge` traces every fact-guarded condition through the rules to whatever produces its facts. Since 0.24.0: clock and visited axes, per-occasion axes, `--facts` tables and the never-presented list in the calendar, and defs as written with `--expand`."
+description: "Three read-only views of a story chosen by occasions (dsl 0.23.0): `lute beats` prints each occasion's beat ladder with the checker's verdicts, `lute calendar` evaluates play's own eligibility over a grid of state values, and `lute scenario knowledge` traces every fact-guarded condition through the rules to whatever produces its facts. Since 0.24.0: clock and visited axes, per-occasion axes, `--facts` tables and the never-presented list in the calendar, and defs as written with `--expand`. Since 0.26.0 (draft): covered fallbacks and kind ladders in `lute beats`, fact-producer edges in `lute scenario --facts`, and counted rule premises in `knowledge`."
 ---
 
 Once a story is selected by [occasions](/tooling/play/) rather than read top to bottom, no single file answers "what plays at the inn on the evening of day two?". The answer is spread over every beat's `on`, `target`, `priority`, `once`, `after:` and `when`, over the project's rules, and over whatever the save already holds. Since dsl 0.23.0 three commands put it on one screen:
@@ -10,6 +10,8 @@ Once a story is selected by [occasions](/tooling/play/) rather than read top to 
 - [`lute scenario knowledge`](#lute-scenario-knowledge) — the **knowledge map**: for every condition that reads a fact, which rules conclude it and who produces the facts they need, down to the ones nothing produces yet.
 
 All three are read-only. The normative text is §1 of the [0.23.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md).
+
+Since dsl 0.26.0 (draft) the views follow a project several authors write at once: `lute beats` marks a fallback another beat always covers and lists a [kind beat](/tooling/play/#kind-targets) for every member it answers, [`lute scenario --facts`](#fact-edges-lute-scenario---facts) draws which scene's facts open which gate — progress an `after:` graph cannot see — and [`lute refs`](/tooling/cli/#refs) lists who gives what: every value of a directive attribute or reward target, with the documents that use it.
 
 ## The example project
 
@@ -149,6 +151,33 @@ project root: .
 
 A targeted occasion gets one ladder per target its beats name; a beat with no `target` answers every raise, so it appears in every target's ladder. When no beat names a target, the occasion has a single ladder headed `(any target)` (`"anyTarget": true` in JSON). Shadowing and ties are `select: first` notions, so a `select: all` or `sequence` ladder never shows them.
 
+**Covered fallbacks** (dsl 0.26.0 §8). A fallback that an earlier, never-spent beat whose `when` it implies always beats can never play, yet it is not shadowed — the beat above it is not always eligible. It is there on purpose (a lead's gate line, kept until an area answers the gate), so the verdict column says what covers it instead of warning: `covered by <id>` (`coveredBy` in `--json`). An area's `solGate` (priority 0) and the lead's `gateFallback` (priority -10) share the `when` `!holds(metWren(wren))`, and entries without `once` are never spent. A [kind beat](/tooling/play/#kind-targets) (dsl 0.26.0 §5) is listed in the ladder of every member some beat names — Gus's own beat outranks it there — and in a `kind:<kind>` ladder for the members no beat names on its own:
+
+```console
+$ lute beats . --occasion talk
+project root: .
+
+  talk @ npc.gus — select: first
+    #  priority  beat                                       kind    once  verdict  after  when
+    1  0         trainers.gusRematch "Gus wants a rematch"  bundle  no    -        -      -
+    2  0         trainers.challenge "A trainer squares up"  bundle  no    -        -      -
+
+  talk @ npc.sol — select: first
+    #  priority  beat          kind   once  verdict             after  when
+    1  0         solGate       entry  no    -                   -      !holds(metWren(wren))
+    2  -10       gateFallback  entry  no    covered by solGate  -      !holds(metWren(wren))
+
+  talk @ npc.wren — select: first
+    #  priority  beat                          kind   once  verdict  after  when
+    1  0         wren.talk "Wren at the pier"  scene  no    -        -      -
+
+  talk @ kind:trainer — select: first
+    #  priority  beat                                       kind    once  verdict  after  when
+    1  0         trainers.challenge "A trainer squares up"  bundle  no    -        -      -
+```
+
+`--target` accepts any member of the occasion's domain: `lute beats . --occasion talk --target npc.r16Gus` prints the one ladder `talk @ npc.r16Gus`, the kind beat alone. On Monster League the twelve `covered by` rows are the lead's gate fallbacks, each covered by the area beat that answers its gate.
+
 **The project need not check clean.** The ladder is most useful exactly when something is wrong. With the storm's condition written as a contradiction, `check-project` fails with `E-BEAT-UNREACHABLE`, and the ladder still lists the beat, at the top of the dock, marked:
 
 ```console
@@ -170,7 +199,7 @@ $ lute beats . --occasion daystart
 lute beats: `--occasion daystart` is not an occasion of this project (known: board, dayStart, placeVisit)
 ```
 
-`--json` emits `{ "roots": [ { "root", "ladders": [ { "occasion", "select", "target"? | "anyTarget"?, "beats": [ … ] } ] } ] }`. Each beat is `{ id, kind, document, priority, once, share?, target?, also?, after?, when?, whenAuthored?, title?, verdicts }`, where `once` is `"run"`, `"user"`, `"day"`, `"slot"`, or `"none"`, `share` the beat's shared-spend key (dsl 0.25.0), `when` carries the expansion and `whenAuthored` the author's text (dsl 0.24.0), and `verdicts` carries the full diagnostics, each `{ code, severity, message }`:
+`--json` emits `{ "roots": [ { "root", "ladders": [ { "occasion", "select", "target"? | "anyTarget"?, "beats": [ … ] } ] } ] }`. Each beat is `{ id, kind, document, priority, once, share?, target?, also?, after?, when?, whenAuthored?, title?, coveredBy?, verdicts }`, where `once` is `"run"`, `"user"`, `"day"`, `"slot"`, or `"none"`, `share` the beat's shared-spend key (dsl 0.25.0), `when` carries the expansion and `whenAuthored` the author's text (dsl 0.24.0), `coveredBy` the id of the beat that always beats it (dsl 0.26.0), and `verdicts` carries the full diagnostics, each `{ code, severity, message }`; a kind ladder's `target` is `"kind:<kind>"`:
 
 ```json
 {
@@ -225,7 +254,7 @@ Evaluate, for **every cell** of a grid of state values and every occasion column
 - `--axis` (optional, repeatable) names a declared state path and its values: an inclusive integer range `run.day=1..7`, or a list `run.slot=morning,evening`. Each value is checked against the path's declared type. The grid is the product of the axes, and the **first axis varies slowest**; with no `--axis` it is a single cell. More kinds of axis reach what a state write cannot — a quest's status, a fact, the visited set, a declared clock — see [Quest, fact, visited and clock axes](#quest-and-fact-axes).
 - `--occasion <O>` (repeatable) — the occasions to evaluate; by default every occasion a beat answers. `<O>@<axis>,…` varies only some axes for that occasion — see [Per-occasion axes and who is where](#per-occasion-axes-and-who-is-where).
 - `--facts <relation>` (repeatable, dsl 0.24.0) — print the relation's facts in every cell, once it has settled.
-- `--target <T>` (repeatable) — the targets to raise a targeted occasion for; by default every target its beats name, not the rest of its declared [target domain](/tooling/play/#occasions), where no beat answers and every cell would read as a hole. When none of its beats names a target, the occasion gets a single column headed `(any)` (`<occasion>@(any)` in the lists below the grid), which only its untargeted beats answer. Each (occasion, target) pair is one column.
+- `--target <T>` (repeatable) — the targets to raise a targeted occasion for; by default every target its beats name, not the rest of its declared [target domain](/tooling/play/#occasions), where no beat answers and every cell would read as a hole. A [kind beat](/tooling/play/#kind-targets) (dsl 0.26.0) names every member of its kind, so each member gets a column, and a cell offers it at that member's raise, after the member's own beats of its priority. When none of its beats names a target, the occasion gets a single column headed `(any)` (`<occasion>@(any)` in the lists below the grid), which only its untargeted beats answer. Each (occasion, target) pair is one column.
 - `--script <file>` — a play script every cell starts from: its **save** — `state:`, `facts:`, `visited:`, `presented:`, `quests:`, `entriesRead:` ([Starting from a save](/tooling/play/#starting-from-a-save)) — and then its `steps:`, replayed exactly as `lute play` plays them. A save needs no steps. Without it, every cell starts from the declared defaults and the seed facts.
 - `--until <step>` — with `--script`, replay only the steps before this one, named by its 1-based number or its `label:`; the step itself is not played. See [Along a route](#along-a-route).
 - `--where <cel>` — keep only the cells where this condition holds; see [Dropping cells no run reaches](#dropping-cells-no-run-reaches).
@@ -674,6 +703,22 @@ project root: .
           not rumor(ada) — always holds (nothing produces rumor(ada): no assert, seed fact, engine write or rule) — cannot be defeated
 ```
 
+Since dsl 0.26.0 §6 a rule body may count — `canPass(pier) :- count(hasItem(_)) >= 2` — and the count is traced like any premise: the facts it counts, with their producers beneath it:
+
+```console
+$ lute scenario . knowledge --for pier.boat
+project root: .
+  knowledge (every fact-guarded condition, by document -> relations read -> producers):
+
+  scenes/boat.lute
+    scene `pier.boat`
+      when: holds(canPass(pier))
+      canPass(pier) — derived by 1 rule
+        rule: canPass(pier) :- count(hasItem(_)) >= 2
+          count(hasItem(_)) >= 2 — counts:
+            hasItem(_) — asserted by scene `wren.talk` (scenes/wren.lute)
+```
+
 A negated premise the project **can** make false is followed by what would do it. The rule body is instantiated against every fact that may hold in some run (the may set `check-project` decides guards with, here counting every assert site as live), and constants the positive premises force are carried into the negation (`not liar(hollis)`, not `not liar(_)`). Once a bundle beat writes the rumour:
 
 ```console
@@ -781,9 +826,38 @@ reach quest(relight):
 
 Lore entries join the graph only as the source of a quest's `start` anchor, `entry(<id>)`. Bundle beats are always nodes: a beat without `after=` is an entry node, and one with `after=` is the dependent of the edges it draws. `lute scenario . reach keeper.greeting` (or `reach beat:keeper.greeting`) prints the file that declares it with its `on`, `target` and `when`; see [The scene graph](/connectivity/scene-graph/#bundle-beats).
 
+### Fact edges (`lute scenario --facts`)
+
+```console
+$ lute scenario <dir> [--format text|json|dot] --facts
+```
+
+Progress in a collecting game is gated by facts, not by visits: a gym opens on a badge, a tower on a lens. Those gates draw no `after:` edge, so the bare graph puts every gym in layer 0. `--facts` (dsl 0.26.0 §8) adds a **fact edge** `producer -> reader [fact]` wherever a scene's, beat's or quest's gate — its `when:` or `start=` — reads `holds(F)` and the producer asserts `F`; when `F` is derived, the edge runs from whatever asserts a fact the deriving rule needs and names the rule's conclusion, `[hasItem(goodRod), via canPass(pier)]`. The layers are then drawn over the fact edges too, wherever one closes no cycle, so what a fact unlocks sits below what gives it. Wren's scene gives a rod (`::assert{hasItem(goodRod)}`); the lake reads `holds(hasItem(goodRod))`, and the boat reads `holds(canPass(pier))`, which the rule `canPass(pier) :- hasItem(goodRod)` derives:
+
+```console
+$ lute scenario .
+project root: .
+  topological layers:
+    layer 0: scene(pier.boat), scene(pier.lake), scene(wren.talk)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    (none)
+$ lute scenario . --facts
+project root: .
+  topological layers (after: and fact edges):
+    layer 0: scene(wren.talk)
+    layer 1: scene(pier.boat), scene(pier.lake)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    (none)
+  fact edges (producer -> reader) [asserted fact]:
+    scene(wren.talk) -> scene(pier.boat) [hasItem(goodRod), via canPass(pier)]
+    scene(wren.talk) -> scene(pier.lake) [hasItem(goodRod)]
+```
+
+Across a whole game the edges show one area's gate hanging on another's scene — on Monster League, `scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`. `--format json` adds `factEdges` to the root, each `{ from, to, fact, via?, layered }` (`via` when the gate reads a derived fact; `layered` whether the edge took part in the layering); `--format dot` draws each one dotted and purple, labelled with the fact. `--facts` is an option of this graph view only: `reach`, `envelope`, and `check-project`'s connectivity passes still read the declared `after:` structure.
+
 ## Beat rows in `project.index.json`
 
-The overviews read the same beat table an engine does. Since 0.23.0, a beat row in [`project.index.json`](/tooling/cli/#--all--project-wide-compile-and-index) carries the beat's `when` — with every `@def` expanded, so an engine or a tool can show it without the schema — and its `title`, the label a `select: all` menu shows. Both are omitted when the beat has none, so a project that uses neither compiles byte-identically. A [bundle beat](/tooling/play/#bundle-beats)'s row has kind `bundle`.
+The overviews read the same beat table an engine does. Since 0.23.0, a beat row in [`project.index.json`](/tooling/cli/#--all--project-wide-compile-and-index) carries the beat's `when` — with every `@def` expanded, so an engine or a tool can show it without the schema — and its `title`, the label a `select: all` menu shows. Both are omitted when the beat has none, so a project that uses neither compiles byte-identically. A [bundle beat](/tooling/play/#bundle-beats)'s row has kind `bundle`. Since dsl 0.26.0 a [kind beat](/tooling/play/#kind-targets)'s row has `target: "kind:<kind>"` and `targetKind: { kind, prefix, members }` — `{"kind": "trainer", "prefix": "npc", "members": ["gus", "r16Gus"]}` — so an engine can offer it for every `<prefix>.<member>` raise.
 
 ```json
 {"id": "noteFerry", "kind": "entry", "document": "lore/places.lute", "on": "board", "priority": 0, "when": "run.day <= 2", "title": "Ferry times"}

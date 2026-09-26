@@ -110,6 +110,7 @@ fn first_read_applies_assert_and_set() {
                 id: "scientistLog1".into(),
                 first_read: true,
                 eligible: Some(true),
+                spent: None,
             },
             Step::Line {
                 speaker: "scientist".into(),
@@ -142,6 +143,7 @@ fn re_read_shows_the_text_and_skips_every_effect() {
                 id: "scientistLog1".into(),
                 first_read: false,
                 eligible: Some(true),
+                spent: None,
             },
             Step::Line {
                 speaker: "scientist".into(),

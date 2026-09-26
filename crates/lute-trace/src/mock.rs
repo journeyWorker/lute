@@ -901,14 +901,17 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                     return Err(diag(E_TRACE_MOCK_PARSE, shape.to_string(), span));
                 };
                 // `run`: `entry.<id>.read`; `user`: `entry.<id>.everRead`
-                // (dsl 0.22.0 §7). Neither implies the other: a new run
-                // clears `read` and keeps `everRead`.
-                let path = if tier == "run" {
-                    lute_check::entry_read_path(id)
-                } else {
-                    format!("entry.{id}.everRead")
-                };
-                mocks.state.push((path, "true".to_string(), span));
+                // (dsl 0.22.0 §7). A new run clears `read` and keeps
+                // `everRead`; read this run is read ever — as a `lute play`
+                // save seeds it.
+                if tier == "run" {
+                    mocks
+                        .state
+                        .push((lute_check::entry_read_path(id), "true".to_string(), span));
+                }
+                mocks
+                    .state
+                    .push((format!("entry.{id}.everRead"), "true".to_string(), span));
             }
         }
     }
@@ -1140,13 +1143,31 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                         &mut set,
                     );
                 }
+                // dsl 0.26.0 §7 (T1-7): so is a prerequisite — a scene's
+                // `after:`, a bundle beat's `after=` — the eligibility the
+                // harness judges reads the quest states it names.
+                let afters = folded.typed.after.as_deref().into_iter().chain(
+                    doc.beats
+                        .iter()
+                        .filter_map(|b| b.after.as_ref().map(|(a, _)| a.as_str())),
+                );
+                for after in afters {
+                    crate::quest_refs::collect_prereq_quest_paths(after, &mut set);
+                }
                 set
             });
             // dsl 0.26.0 §7 (T3-5): a quest document may seed its OWN quests'
-            // reserved paths — the walk starts the quest there — read or not.
+            // reserved paths — the walk starts the quest there — read or not;
+            // under a resolved project, a quest's status may be seeded for any
+            // quest of the project (a save's history, as `accepts:`).
             let own = {
                 let id = path.split('.').nth(1).unwrap_or_default();
                 doc.quests.iter().any(|q| q.id == id)
+                    || (path == &format!("quest.{id}.state")
+                        && mocks
+                            .project_quests
+                            .as_ref()
+                            .is_some_and(|p| p.contains(id)))
             };
             if own || referenced.contains(path) {
                 if !reserved_quest_literal_valid(path, literal) {
@@ -1165,18 +1186,23 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
             out.push(reserved_quest_unreferenced_diag(path, *span));
             continue;
         }
-        // dsl 0.19.0 §5: `entry.<id>.read` is admitted when the document
-        // declares that entry (the checker folds its bool decl) OR reads the
-        // path from any CEL slot — the reserved-quest-path rule above,
-        // checked against the reserved `bool` domain.
-        if lute_check::is_reserved_entry_read(path) {
-            let declared = folded.env.state.decls.contains_key(path);
-            let referenced = declared
+        // dsl 0.19.0 §5 / 0.22.0 §7: an entry's read flags
+        // (`entry.<id>.read` / `.everRead`, an `entriesRead:` seed) are
+        // admitted when the document declares that entry OR reads either
+        // flag of it from any CEL slot — the reserved-quest-path rule above,
+        // checked against the reserved `bool` domain. A save that read the
+        // entry is one fact with two tiers, so both flags go together.
+        if let Some(id) = lute_check::reserved_entry_id(path) {
+            let referenced = folded.env.state.decls.contains_key(path)
+                || doc.entries.iter().any(|e| e.id == id)
                 || referenced_entry_reads
                     .get_or_insert_with(|| {
                         crate::quest_refs::collect_referenced_entry_read_paths(doc)
+                            .iter()
+                            .filter_map(|p| lute_check::reserved_entry_id(p).map(str::to_string))
+                            .collect()
                     })
-                    .contains(path);
+                    .contains(id);
             if !referenced {
                 out.push(undeclared_diag(path, *span));
             } else if !matches!(literal.as_str(), "true" | "false") {
@@ -1234,7 +1260,7 @@ fn reserved_quest_unreferenced_diag(path: &str, span: Span) -> Diagnostic {
         E_TRACE_MOCK_UNDECLARED,
         format!(
             "the seed of `{path}` (a `quests:` entry or `state:`/`--state` seed) is refused: \
-             no condition in this document — body slot or beat `when:` — reads it, so the \
+             no condition in this document — body slot, beat `when:` or `after:` — reads it, so the \
              seed could not change the walk (dsl 0.5.1 §1.1, 0.22.0 §3)"
         ),
         span,

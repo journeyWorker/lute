@@ -95,4 +95,50 @@ state:
 
 Precedence runs low → high: a document's `extends` bases (recursively) < its `uses` peers < its own inline `state:`/`defs:`. Because persisted state must keep a stable type, an override that changes a path's declared `type` is `E-EXTENDS-STATE-TYPE`; a `default`-only refinement of the same type is allowed silently. `extends` edges reuse the same cycle / missing-file / parse diagnostics (`E-USES-{CYCLE,NOT-FOUND,PARSE}`) as `uses:`.
 
+### Kinds assembled across files: `add:`
+
+When several authors share one project, each area wants to add its own people and places to a kind
+the lead owns. Since dsl 0.26.0 §2.3 a schema may **add** members to a kind that exactly one of the
+document's imports declares:
+
+```yaml
+# schema/roster.schema.yaml (the lead's)
+entities:
+  person:  { members: [professorOak, mom] }
+  trainer: { subsetOf: person, members: [rival] }
+```
+
+```yaml unverified="an add: needs the base schema above beside it; both checked together with lute check-project"
+# schema/areas/south.schema.yaml (one area's)
+entities:
+  person:  { add: [grannyWren, oldSalt] }
+  trainer: { add: [youngsterTodd, lassMina] }
+```
+
+A document importing both sees `person` with every member, and the added trainers are persons too
+(a [sub-kind's](/state/facts-and-datalog/#sub-kinds-subsetof) members belong to its parent). Each of
+these is `E-ENTITY-KIND-SHAPE`, naming both files:
+
+- an `add:` for a kind no import declares, with a did-you-mean (`persn` suggests `person`);
+- an `add:` onto an `open:` kind, whose members the engine registers;
+- `add:` beside `members:` or `open:` in one declaration;
+- a member listed twice: by two `add:` lists, re-added over the declaration, or twice in one
+  kind's or enum's own list (dsl 0.26.0 §2.2), reported at the second one's line with both lines.
+
+<!-- lute-diagnostics -->
+```
+schema/areas/south.schema.yaml:3:35: error [E-ENTITY-KIND-SHAPE] entity kind `trainer` lists `lassMina` twice — in the `add:` of `schema/areas/east.schema.yaml` (line 7) and in the `add:` of `schema/areas/south.schema.yaml` (line 3); list each member once (dsl 0.26.0 §2.2)
+```
+
+### Declarations across documents
+
+A path declared in two documents' frontmatter `state:` is one runtime value, so since dsl 0.26.0
+§2.1 `check-project` compares the declarations and reports `E-STATE-DECL-CONFLICT` when their
+`type`, `default`, `per` or `owner` differ (see [Declaration](/state/state-model/#declaration)).
+
+Schema errors that every importer would repeat — sub-kind and `add:` `E-ENTITY-KIND-SHAPE`,
+`E-USES-DUP-STATE`, `E-USES-DUP-DEF`, `E-USES-DUP-RELATION`, a peer `E-KIND-NAME-CLASH`, and
+`E-DEF-DECL` for an imported def — are reported once at the schema line (dsl 0.26.0 §2.7), with
+the other importers folded into `(+N more callers)`, rather than at every importing document.
+
 The state schema is *game content* — separate from the engine **capability manifest** (engine vocabulary), which has its own owner and change cadence.

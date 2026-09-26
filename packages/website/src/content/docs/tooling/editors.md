@@ -1,6 +1,6 @@
 ---
 title: Editors and LSP
-description: Editor support for .lute — installing lute-lsp, wiring clients, and sharing project/plugin/capability-permission diagnostics and completions with the CLI checker.
+description: Editor support for .lute — installing lute-lsp, wiring clients, sharing project/plugin/capability-permission diagnostics and completions with the CLI checker, and a server that notices its own binary was replaced.
 ---
 
 All editor clients associate `.lute` with the `lute` language and drive the same `lute-lsp` stdio language server, so you get identical language intelligence everywhere. A project root is located by the markers `lute.project.yaml`, then `.git`.
@@ -45,6 +45,25 @@ not implement a second authorization algorithm. Editor filtering is guidance,
 not a security boundary: a host accepting source independently pins its trusted
 ceiling with CLI `--permission-profile`, then checks or compiles under that
 ceiling.
+
+## A server older than its binary
+
+An editor starts `lute-lsp` once and keeps it running, so reinstalling the toolchain — or rebuilding a dev checkout — replaces the binary under a server that still runs the old build. Before dsl 0.26.0 that server went on publishing the old build's diagnostics, often hundreds of false ones per save. Since dsl 0.26.0 (draft) the server compares its binary file — length, modification time, inode — with the one it started from on every analysis. Once the file has been replaced or removed, it publishes one diagnostic in place of any results: severity error at the top of the document, code `lute-lsp-stale`, source `lute-lsp`, naming its own version:
+
+> stale server: lute-lsp `<version>` was started from `<path>`, which has been replaced since, so its diagnostics would come from an older build — restart the language server
+
+Checker-backed requests — hover, completion, go-to-definition, references and code actions — answer nothing until the server restarts, rather than answer from the old build. Restart the language server (or the editor), and the new build takes over.
+
+[`lute doctor`](/tooling/cli/#doctor) finds the same condition from the command line — a running `lute-lsp` started before its binary was replaced, another build beside `lute`, a `lute-lsp` on `PATH` that reports another version — and `lute doctor --strict` exits 1 when any check fails, so a harness can refuse to start on a stale setup:
+
+```console
+$ lute doctor . --strict
+…
+  ✗ running lute-lsp: pid 12430 (/Users/you/.bun/bin/lute-lsp) started before its binary was replaced, so it runs an older build
+      → restart the editor (or its language server) so it launches this toolchain's lute-lsp
+$ echo $?
+1
+```
 
 ## Highlighting model
 

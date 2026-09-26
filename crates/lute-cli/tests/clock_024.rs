@@ -674,8 +674,12 @@ fn weekday_matches_are_exhaustive_and_checked() {
         "{t}"
     );
     assert!(
-        t.contains("E-ARM-DEAD"),
-        "the `== 'Sundy'` guard can never hold: {t}"
+        t.contains("`'Sundy'` is not a member of `clock.weekdayLabel`'s domain"),
+        "the `== 'Sundy'` guard compares a non-member (dsl 0.26.0): {t}"
+    );
+    assert!(
+        !t.contains("E-ARM-DEAD"),
+        "the literal owns the dead guard: {t}"
     );
 }
 

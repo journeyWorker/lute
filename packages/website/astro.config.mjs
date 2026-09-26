@@ -77,6 +77,11 @@ export default defineConfig({
           translations: { ko: "치트시트" },
         },
         {
+          label: "Guides",
+          translations: { ko: "가이드" },
+          items: [{ slug: "guides/multi-author" }],
+        },
+        {
           label: "Language",
           translations: { ko: "언어" },
           items: [

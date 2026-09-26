@@ -1,6 +1,6 @@
 ---
 title: Core directives
-description: The ten lute.core directives — nine single-line staging leaves, including ::clear, plus the walk terminator ::end — with their attributes, attribute quoting, timing keys, and the wait blocking model.
+description: The ten lute.core directives — nine single-line staging leaves, including ::clear, plus the walk terminator ::end — with their attributes, attribute quoting, timing keys, the wait blocking model, and the when= guard that ::use, ::accept, ::assert, ::retract and plugin directives take.
 ---
 
 A **staging directive** is a single-line leaf that stages the scene: background, music, sound,
@@ -334,3 +334,62 @@ the parent is not active is spent without effect, and the toolchain says so (`lu
 queues the acceptance until just after the next `newRun` reset, so a run-tier quest taken at a hub
 between runs survives that reset. `nextRun` is the only value `at` takes, and any other is
 `E-ACCEPT-TARGET`. Both are described in [Quests & scenes](/language/quests-and-scenes/).
+
+## Guarding a directive: `when=`
+
+`::set{… when="<condition>"}` has always been skipped when its condition is false. Since dsl
+0.26.0 §4, `::use`, `::accept`, `::assert`, `::retract`, and plugin passthrough and bridge
+directives take the same `when=`, with the same meaning:
+
+```lute check
+---
+kind: scene
+id: dock.recruiter
+state:
+  run.pitchHeard: { type: bool, default: false }
+entities:
+  item: { members: [nugget] }
+relations:
+  hasItem: { args: [item], tier: run }
+---
+
+## The Dock
+
+@recruiter: Think it over. The pay is good.
+::assert{hasItem(nugget) when="!run.pitchHeard"}
+::set{run.pitchHeard = true}
+::accept{quest="recruiterJob" when="holds(hasItem(nugget))"}
+@narrator{when="holds(hasItem(nugget))"}: The nugget is heavy in your pocket.
+```
+
+A guarded directive compiles to a one-arm `match` around it: when the condition is false, it is
+skipped and the walk goes on. A guarded [`::use`](/language/components-and-extends/#guarding-a-use-when)
+runs its whole expansion or none of it, and its argument reads are judged under its guard. A plugin
+directive is guarded the same way, `::give{item="nugget" when="!run.pitchHeard"}`, which is how a
+repeatable beat hands out a one-time gift.
+
+For the checker a guarded directive is never a definite effect: a guarded `::assert` is not a fact
+that holds on every route, a guarded `::set` is not a definite write, and a guarded `::accept` is
+not a certain acceptance. That is why the last line above is not `W-FACT-GUARANTEED`. `lute trace`,
+`lute test` and `lute play` apply the same writes, facts and accepts, and `lute play` prints each
+skip where it happened, as it does a skipped `::set`:
+
+```
+  skip ::give{item="potion"} — when: false
+  skip ::use{component="trainerBattle" who="lassMina" …} — when: false
+```
+
+A directive that lowers to a builtin record runs where it stands and refuses `when=`
+(`E-UNKNOWN-ATTR`): every staging directive in the [table above](#core-vocabulary), `::end`,
+`::mark`, and a plugin directive with a declarative [`lower:` record](/plugins/manifests/#declarative-lowering).
+Put such a directive in a `<match>` instead. A clip inside a
+[`<track>`](/language/timeline-and-property-tracks/) refuses it too (`E-TIMELINE-CONTENT`), since a
+conditional clip is logic:
+
+<!-- lute-diagnostics unverified="verbatim lute check output; the message's source names E-UNKNOWN-ATTR through a constant rather than a string literal, so the scraper cannot pair quote and code" -->
+```
+./scenes/dock.lute:14:28: error [E-UNKNOWN-ATTR] `::bg` cannot take `when=`: it lowers to a builtin record and runs where it stands — put it in a `<match>`; `when=` guards `::use`, `::accept`, `::assert`, `::retract`, `::set` and plugin passthrough directives (dsl 0.26.0 §4)
+```
+
+A plugin that declares an attribute named `when` collides with the guard, and a use of that
+attribute is `E-UNKNOWN-ATTR` asking to rename it in the plugin.

@@ -101,6 +101,36 @@ scene: a `cast:` key in a scene's frontmatter is `E-META-UNKNOWN-KEY`.
 `lute context <file>` lists the cast with its display names (pass `--project <dir>` to include a
 plugin's cast), and the language server offers the cast when it completes a speaker after `@`.
 
+### Display names shared by two speakers
+
+Two speakers shown under the same name look like one person in the dialogue box. When several
+authors add characters to one project, that happens by accident: two areas each write a
+`Hiker Gus`. `check-project` reports it as the advisory **`W-DISPLAY-NAME-DUP`** (dsl 0.26.0
+§2.8), and `lute lint` reports it too. It compares two cast entries with exactly the same `name:`,
+a cast name equal to a component's `::use{… name="…"}` display string, and two such strings for
+different speakers (`who=`):
+
+<!-- lute-diagnostics -->
+```
+./scenes/a.lute:11:1: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (./scenes/a.lute:10), `gus2` (./scenes/a.lute:11) — the dialogue box cannot tell them apart; rename one (dsl 0.26.0 §2.8)
+```
+
+Some names are shared on purpose: a role several speakers play, such as a villain team's rank and
+file. Mark such an entry **`sharedName: true`**, and it is not counted:
+
+```yaml
+cast:
+  gus:    { name: Hiker Gus }
+  gus2:   { name: Hiker Gus Jr. }
+  grunt1: { name: Eclipse Grunt, sharedName: true }
+  grunt2: { name: Eclipse Grunt, sharedName: true }
+```
+
+A plugin's `cast/*.yaml` entry takes the same key. A merge gate that runs
+`check-project --deny-warnings` passes again once the intended role names are marked, and
+`lute lint --deny W-DISPLAY-NAME-DUP` promotes the code on its own. See
+[Multi-author projects](/guides/multi-author/).
+
 ### Staging is checked against the cast too
 
 With a cast declared, the character a staging directive names must be in it, like a speaker (dsl 0.24.0 §4). `::auto{character}` and `::camera{focus}` outside the cast are `E-CAST-UNKNOWN`, with the same did-you-mean. Timeline clips and the bodies of `<match>` arms and choices are checked as well. Before 0.24.0, `::auto{character="marra"}` passed while `@marra:` did not:

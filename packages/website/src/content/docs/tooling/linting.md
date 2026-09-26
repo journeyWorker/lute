@@ -1,6 +1,6 @@
 ---
 title: Linting
-description: "lute lint — advisory, per-project editorial lints (L-* codes) configured in lute.lint.yaml: the seven core rules, project-local custom rules, plugin lint exports, the metric tables rules read, and the exit-code contract."
+description: "lute lint — advisory, per-project editorial lints (L-* codes) configured in lute.lint.yaml: the seven core rules, project-local custom rules, plugin lint exports, the metric tables rules read, the display-name advisory W-DISPLAY-NAME-DUP (dsl 0.26.0), and the exit-code contract."
 ---
 
 `lute lint [PATH]` reviews project content for configurable editorial and
@@ -155,6 +155,51 @@ project built on [beats and occasions](/tooling/play/) no longer drowns in
 `L-SHOT-STARTS-WITH-BACKGROUND` for every bark. To hold beats to a norm of their
 own, write a `custom:` rule that guards on `scene.kind == "beat"` (or
 `shot.kind == "beat"`).
+
+## Display names
+
+Since dsl 0.26.0 (draft) `lute lint` also reports `W-DISPLAY-NAME-DUP` (dsl
+0.26.0 §2.8): two different speakers the dialogue box would show under the same
+name. Ids are unique across a project, but a player reads names, and two authors
+who each cast a "Hiker Gus" have written one person twice. It fires for two cast
+entries with exactly the same `name:`, a cast name equal to a component's
+`::use{… name="…"}` display string, and two such strings for different speakers
+(`who=`). It is the advisory `check-project` reports too, and it keeps its `W-`
+code rather than an `L-*` one. The comparison covers the whole project the path
+belongs to, so linting one file still compares every cast entry; the finding is
+anchored at the first line that speaks one of the names, or at the document's
+first line when neither is spoken:
+
+<!-- lute-diagnostics -->
+```console
+$ lute lint .
+lore/trainers.lute:12:3: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one (dsl 0.26.0 §2.8)
+ok: . (0 error(s), 1 warning(s))
+```
+
+A role name several speakers share on purpose — "Eclipse Grunt", "Gym Guide" —
+is not a collision. Mark each such cast entry `sharedName: true` and it is not
+counted:
+
+```yaml
+cast:
+  grunt1: { name: Eclipse Grunt, sharedName: true }
+  grunt2: { name: Eclipse Grunt, sharedName: true }
+```
+
+The code is not a `lute.lint.yaml` rule, so it has no level to set there (a
+`rules:` entry naming it is an unknown rule id, `E-LINT-CONFIG`). `--deny
+W-DISPLAY-NAME-DUP`, or `--deny-warnings`, makes it an error and fails the run:
+
+<!-- lute-diagnostics -->
+```console
+$ lute lint . --deny W-DISPLAY-NAME-DUP
+lore/trainers.lute:12:3: error [W-DISPLAY-NAME-DUP] [denied] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one (dsl 0.26.0 §2.8)
+failed: . (1 error(s), 0 warning(s))
+```
+
+A project that gates a merge on `check-project --deny-warnings` marks its role
+names `sharedName: true` first. See the [multi-author guide](/guides/multi-author/).
 
 ## Plugin rule authoring
 

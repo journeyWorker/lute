@@ -200,9 +200,35 @@ table.
 - `lute scenario knowledge` traces a rule's `count(…)` / `countDistinct(…)`
   premise with the producers of the facts it counts beneath it (dsl 0.26.0
   §6).
+- A string a guard compares with a path whose values are a closed set of
+  strings — an enum path, `occasion.target`, a quest's `state` /
+  `failedBy`, `scene.choices.<id>`, an enum param, `$` — must be one of
+  them: `==` or `!=` on either side, or an `in [...]` element, outside the
+  domain is `E-WHEN-LITERAL-DOMAIN` (the code a foreign `<when is>` literal
+  gets) with a did-you-mean (`` `'actve'` is not a member of
+  `quest.q.state`'s domain [active, complete, failed, unset] — did you mean
+  `'active'`? ``). It owns the dead-guard error such a comparison used to
+  raise (`E-ARM-DEAD` on a line, choice, arm or guarded directive), as
+  `E-UNSET-LITERAL` does, and fires for `!=`, which never reached it
+  (dsl 0.26.0).
 
 ### Fixed
 
+- 0.26 docs pass (tool contradictions): the T1-7 ineligible-presentation
+  failure only suggests mocks the loader accepts — a `quests:` seed of a
+  quest a scene's `after:` / a bundle beat's `after=` names is legal (under a
+  resolved project, any project quest's status), and trace/test judge an
+  entry's spent `once` (`once="user"` by `entriesRead: { user: [id] }`,
+  `once="run"` by `entriesRead: { run: [id] }`, which also sets `everRead` as
+  a play save does), naming the mock in the failure; `entriesRead:` is legal
+  for any entry the document declares. An imported rule's
+  `E-RULE-AGGREGATE-CYCLE` / `E-DATALOG-UNSTRATIFIED` is reported at the
+  schema line, folded across importers, and by `lute check <schema>.yaml`.
+  `lute trace` / `lute test` render `{{occasion.target}}` by the cast
+  `name:` like `lute play`. `W-DISPLAY-NAME-DUP` for cast entries nobody
+  speaks as is anchored at the cast entry (plugin export or schema), not at
+  the project's first document. A plugin directive attribute named `when` is
+  `E-PLUGIN-PARSE` at load (`when=` is the core directive condition).
 - 0.26 prerelease review (Monster League): a `{ entity: K }` / `{ domain: K }`
   directive attribute reached through a component param (or a param typed
   that way) is checked at the `::use` argument, with a did-you-mean (N1);
@@ -230,6 +256,11 @@ table.
   after expansion; `as=@who` over a `speaker` param and `{{@p}}` inside a
   line attribute string render as in the text (the cast display name)
   (dsl 0.26.0 §3.1, T1-6).
+- `lute play`: `engine: { accept: [q] }` on a quest that is already active,
+  complete or failed prints `note: quest q is already active — engine
+  accept ignored` (with its status; JSON `{"kind": "acceptIgnored", …}`)
+  instead of a second `quest q accepted (engine)`, and changes nothing
+  (dsl 0.26.0 §7).
 
 ### Performance
 

@@ -344,10 +344,13 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
 
         // dsl 0.26.0 §2.8: `W-DISPLAY-NAME-DUP` over the root's documents,
         // each against the cast its own profile and imports declare.
-        if project.is_some() {
-            outcome
-                .diagnostics
-                .extend(display_name_dups(&root, &files, &inputs));
+        if let Some(project) = &project {
+            outcome.diagnostics.extend(display_name_dups(
+                &root,
+                &project.plugins_dir,
+                &files,
+                &inputs,
+            ));
         }
 
         aggregated.diagnostics.extend(outcome.diagnostics);
@@ -376,6 +379,7 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
 /// root-relative display paths the other lint diagnostics carry.
 fn display_name_dups(
     root: &Path,
+    plugins_dir: &Path,
     files: &[PathBuf],
     inputs: &[LintDocInput],
 ) -> Vec<(PathBuf, Diagnostic)> {
@@ -390,6 +394,7 @@ fn display_name_dups(
             (
                 lute_check::declared_cast(&built.input.snapshot, &built.input.imports, &[]),
                 lute_check::check::use_speaker_lines(&input.doc, &built.input.components),
+                built.input.imports.rel.origins.cast.clone(),
             )
         })
         .collect();
@@ -397,9 +402,89 @@ fn display_name_dups(
         .iter()
         .map(|i| (i.path.clone(), i.doc.clone()))
         .collect();
-    let casts: Vec<_> = per_doc.iter().map(|(c, _)| c).collect();
-    let use_lines: Vec<_> = per_doc.iter().map(|(_, u)| u).collect();
-    lute_check::display_names::check_display_names(&docs, &casts, &use_lines)
+    let casts: Vec<_> = per_doc.iter().map(|(c, _, _)| c).collect();
+    let use_lines: Vec<_> = per_doc.iter().map(|(_, u, _)| u).collect();
+    let origins: Vec<_> = per_doc.iter().map(|(_, _, o)| o).collect();
+    let home = |id: &str| {
+        let (path, span) = cast_home(root, Some(plugins_dir), &origins, id)?;
+        // Root-relative, like every other lint path.
+        let shown = path
+            .strip_prefix(root)
+            .map_or(path.clone(), Path::to_path_buf);
+        Some((shown, span))
+    };
+    lute_check::display_names::check_display_names(&docs, &casts, &use_lines, &home)
+}
+
+/// dsl 0.26.0 §2.8: where cast entry `id` is written — an installed
+/// plugin's `cast` export under `plugins_dir` (a plugin entry wins a same-id
+/// clash, as in [`lute_check::declared_cast`]), else the schema `cast:` an
+/// import resolves (`origins`, canonical paths). The path is `root`-joined;
+/// the span is positioned. `None` when neither line scan finds it.
+pub(crate) fn cast_home(
+    root: &Path,
+    plugins_dir: Option<&Path>,
+    origins: &[&BTreeMap<String, lute_check::rel_schema::DeclOrigin>],
+    id: &str,
+) -> Option<(PathBuf, Span)> {
+    if let Some(found) = plugins_dir.and_then(|d| plugin_cast_home(d, id)) {
+        return Some(found);
+    }
+    let o = origins.iter().find_map(|o| o.get(id))?;
+    let canon_root = std::fs::canonicalize(root).ok();
+    let shown = canon_root
+        .as_deref()
+        .and_then(|c| o.file.strip_prefix(c).ok())
+        .map_or_else(|| o.file.clone(), |rel| root.join(rel));
+    Some((shown, o.span))
+}
+
+/// [`cast_home`] over every plugin package under `plugins_dir` (sorted, as
+/// the loader scans them): the first `cast` export file declaring `id`.
+fn plugin_cast_home(plugins_dir: &Path, id: &str) -> Option<(PathBuf, Span)> {
+    let yaml_files = |p: PathBuf| -> Vec<PathBuf> {
+        if !p.is_dir() {
+            return vec![p];
+        }
+        let mut fs: Vec<PathBuf> = std::fs::read_dir(&p)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|f| matches!(f.extension().and_then(|e| e.to_str()), Some("yaml" | "yml")))
+            .collect();
+        fs.sort();
+        fs
+    };
+    let mut subs: Vec<PathBuf> = std::fs::read_dir(plugins_dir)
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.join("plugin.yaml").is_file())
+        .collect();
+    subs.sort();
+    for sub in subs {
+        let Ok(text) = std::fs::read_to_string(sub.join("plugin.yaml")) else {
+            continue;
+        };
+        let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+            continue;
+        };
+        let Some(rel) = manifest
+            .get("exports")
+            .and_then(|e| e.get("cast"))
+            .and_then(serde_yaml::Value::as_str)
+        else {
+            continue;
+        };
+        for file in yaml_files(sub.join(rel)) {
+            let Ok(t) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            if let Some(o) = lute_check::rel_schema::cast_entry_offset(&t, id) {
+                return Some((file, Span::from_bytes(&TextIndex::new(&t), o, o + id.len())));
+            }
+        }
+    }
+    None
 }
 
 fn severity_str(s: Severity) -> &'static str {

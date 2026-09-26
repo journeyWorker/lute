@@ -237,11 +237,12 @@ fn decided_false_test_is_arm_dead() {
     );
 }
 
-// Cause 1 via R2: `$ == 'gone'` against a domain without `gone` decides
-// false — the `$`-bound-to-subject-domain path (`ctx.dollar = Domain(&dom)`
-// for match arms).
+// dsl 0.26.0: `$ == 'gone'` against a domain without `gone` is a foreign
+// literal — `E-WHEN-LITERAL-DOMAIN`, the code `<when is="gone">` gets — and
+// it owns the dead arm R2 would otherwise report (`ctx.dollar =
+// Domain(&dom)` for match arms).
 #[test]
-fn foreign_dollar_eq_guard_is_arm_dead() {
+fn foreign_dollar_eq_guard_is_literal_domain() {
     let out = codes(&format!(
         "{HDR}<match on=\"run.rank\">\n\
          <when test=\"$ == 'gone'\">\n@narrator: x\n</when>\n\
@@ -249,9 +250,63 @@ fn foreign_dollar_eq_guard_is_arm_dead() {
          </match>\n"
     ));
     assert!(
-        out.contains(&"E-ARM-DEAD".to_string()),
-        "`$ == 'gone'` against a domain without `gone` decides false (R2): {out:?}"
+        out.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+        "`$ == 'gone'` against a domain without `gone` is a foreign literal: {out:?}"
     );
+    assert!(!out.contains(&"E-ARM-DEAD".to_string()), "{out:?}");
+}
+
+// dsl 0.26.0: a string literal compared with an enum-typed path — `==` or
+// `!=`, either operand order, or an `in [...]` element — must be one of its
+// members: `E-WHEN-LITERAL-DOMAIN` with a did-you-mean, including the
+// reserved `quest.<id>.state`. A member, a bool path, and an undeclared
+// path stay silent.
+#[test]
+fn a_compared_string_outside_the_enum_is_literal_domain() {
+    for when in [
+        "run.rank == 'silvr'",
+        "'silvr' != run.rank",
+        "run.rank in ['gold', 'silvr']",
+        "run.flag && run.rank != 'silvr'",
+    ] {
+        let result = run(&format!("{HDR}@narrator{{when=\"{when}\"}}: x\n"));
+        let hits: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "E-WHEN-LITERAL-DOMAIN")
+            .collect();
+        assert_eq!(hits.len(), 1, "{when}: {:?}", result.diagnostics);
+        assert_eq!(
+            hits[0].message,
+            "`'silvr'` is not a member of `run.rank`'s domain [fail, bronze, silver, gold] — \
+             did you mean `'silver'`? (dsl 0.4 §5.2)",
+            "{when}"
+        );
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "E-ARM-DEAD"),
+            "{when}: the literal owns the dead guard: {:?}",
+            result.diagnostics
+        );
+    }
+    let out = codes(&format!(
+        "{HDR}@narrator{{when=\"quest.q.state == 'actve'\"}}: x\n"
+    ));
+    assert!(
+        out.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+        "{out:?}"
+    );
+    for when in [
+        "run.rank == 'silver'",
+        "run.rank in ['gold', 'silver']",
+        "run.flag == 'yes'",
+        "quest.q.state == 'unset'",
+    ] {
+        let out = codes(&format!("{HDR}@narrator{{when=\"{when}\"}}: x\n"));
+        assert!(
+            !out.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+            "{when}: {out:?}"
+        );
+    }
 }
 
 // A `test="@never"` guard hidden behind a frontmatter `defs:` entry whose
@@ -657,7 +712,7 @@ fn holds_guards_stay_undecided() {
 // `walk_component_body`'s own reachability call, diagnosed these).
 
 #[test]
-fn standalone_component_dollar_eq_guard_foreign_to_param_is_arm_dead() {
+fn standalone_component_dollar_eq_guard_foreign_to_param_is_literal_domain() {
     let cs = codes(
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
          ## Scene 1.\n\
@@ -667,9 +722,9 @@ fn standalone_component_dollar_eq_guard_foreign_to_param_is_arm_dead() {
          </match>\n",
     );
     assert!(
-        cs.contains(&"E-ARM-DEAD".to_string()),
-        "a $ comparison foreign to the dispatched param's domain must decide \
-         false in a STANDALONE component self-check: {cs:?}"
+        cs.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+        "a $ comparison foreign to the dispatched param's domain must be caught \
+         in a STANDALONE component self-check: {cs:?}"
     );
 }
 
@@ -703,7 +758,7 @@ fn scene_reachability_not_polluted_by_param_seeding() {
          </match>\n"
     ));
     assert!(
-        out.contains(&"E-ARM-DEAD".to_string()),
+        out.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
         "the ordinary state-path domain path must still decide: {out:?}"
     );
 }
@@ -828,11 +883,11 @@ fn unset_sentinel_match_arm_dollar_flags_literal_owns_arm_dead() {
 // -- Controls: prove no over-suppression ----------------------------------
 
 // An UNDEFAULTED enum compared to a foreign literal that is NOT the string
-// `'unset'` must behave exactly as before this revision: still E-ARM-DEAD,
-// never E-UNSET-LITERAL (the detector only ever matches the literal string
-// `'unset'`, dsl 0.5.2 §2.1 condition 3).
+// `'unset'` is a foreign member (dsl 0.26.0), never E-UNSET-LITERAL (the
+// sentinel detector only ever matches the literal string `'unset'`, dsl
+// 0.5.2 §2.1 condition 3); the literal code owns the dead guard.
 #[test]
-fn control_undefaulted_foreign_enum_not_unset_stays_arm_dead() {
+fn control_undefaulted_foreign_enum_not_unset_is_literal_domain() {
     let hdr = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
                run.grade: { type: { enum: [bronze, silver, gold] } }\n  \
                run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n";
@@ -842,30 +897,30 @@ fn control_undefaulted_foreign_enum_not_unset_stays_arm_dead() {
          </branch>\n"
     ));
     assert!(
-        out.contains(&"E-ARM-DEAD".to_string()),
-        "a foreign (non-'unset') literal against an undefaulted enum must still flag \
-         E-ARM-DEAD, unaffected by this revision: {out:?}"
+        out.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+        "a foreign (non-'unset') literal against an undefaulted enum is a foreign member: {out:?}"
     );
+    assert!(!out.contains(&"E-ARM-DEAD".to_string()), "{out:?}");
     assert!(
         !out.contains(&"E-UNSET-LITERAL".to_string()),
         "a foreign literal that is not the string 'unset' must never flag E-UNSET-LITERAL: {out:?}"
     );
 }
 
-// A DEFAULTED enum (never maybe-unset) compared to an ordinary foreign typo
-// also stays E-ARM-DEAD-only — this revision only ever touches the literal
-// string `'unset'`.
+// A DEFAULTED enum (never maybe-unset) compared to an ordinary foreign typo:
+// the same foreign member, never the sentinel code.
 #[test]
-fn control_defaulted_enum_foreign_typo_stays_arm_dead() {
+fn control_defaulted_enum_foreign_typo_is_literal_domain() {
     let out = codes(&format!(
         "{HDR}<branch id=\"b\">\n\
          <choice id=\"c\" label=\"C\" when=\"run.rank == 'legendary'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(
-        out.contains(&"E-ARM-DEAD".to_string()),
-        "a defaulted-enum foreign typo must still flag E-ARM-DEAD: {out:?}"
+        out.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+        "a defaulted-enum foreign typo is a foreign member: {out:?}"
     );
+    assert!(!out.contains(&"E-ARM-DEAD".to_string()), "{out:?}");
     assert!(!out.contains(&"E-UNSET-LITERAL".to_string()), "{out:?}");
 }
 
@@ -958,11 +1013,11 @@ fn sentinel_alongside_independently_false_clause_keeps_arm_dead() {
     );
 }
 
-// A foreign (non-'unset') enum typo alongside the sentinel comparison: also
-// independently decides false (R2, unrelated to the sentinel), so
-// E-ARM-DEAD must survive.
+// A foreign (non-'unset') enum typo alongside the sentinel comparison: each
+// comparison is its own root (E-WHEN-LITERAL-DOMAIN, E-UNSET-LITERAL), and
+// together they own the dead guard.
 #[test]
-fn sentinel_alongside_independent_foreign_typo_keeps_arm_dead() {
+fn sentinel_alongside_foreign_typo_flags_both_roots() {
     let hdr = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
                run.grade: { type: { enum: [bronze, silver, gold] } }\n  \
                run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n";
@@ -977,10 +1032,10 @@ fn sentinel_alongside_independent_foreign_typo_keeps_arm_dead() {
         "the sentinel mistake is still present and must still flag E-UNSET-LITERAL: {out:?}"
     );
     assert!(
-        out.contains(&"E-ARM-DEAD".to_string()),
-        "an independent foreign-typo comparison must keep E-ARM-DEAD even though a sentinel \
-         comparison is also present: {out:?}"
+        out.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+        "the foreign typo is its own root: {out:?}"
     );
+    assert!(!out.contains(&"E-ARM-DEAD".to_string()), "{out:?}");
 }
 
 // The sentinel comparison IS the sole decidable cause: `run.flag` is an

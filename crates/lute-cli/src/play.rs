@@ -2370,8 +2370,14 @@ fn apply_writes(w: &mut World, writes: &Writes) -> Result<Vec<Json>, String> {
         let held = w.facts.remove(f);
         records.push(json!({ "kind": "retract", "pattern": render_fact(f), "held": held }));
     }
-    // dsl 0.26.0 §7 (T2-9): the next quest settle activates them.
+    // dsl 0.26.0 §7 (T2-9): the next quest settle activates them. A quest
+    // already active or settled is not taken again: the transcript says so
+    // and nothing changes.
     for id in &writes.accept {
+        if let Some(status) = w.quests.get(id).filter(|s| *s != "unset") {
+            records.push(json!({ "kind": "acceptIgnored", "quest": id, "status": status }));
+            continue;
+        }
         records.push(json!({ "kind": "accept", "quest": id, "by": "engine" }));
         if !w.accepts.contains(id) {
             w.accepts.push(id.clone());
@@ -4659,6 +4665,11 @@ fn render_write(rec: &Json) -> String {
         "assert" => format!("  assert {}", str_of(rec, "fact")),
         // dsl 0.26.0 §7 (T2-9).
         "accept" => format!("  quest {} accepted (engine)", str_of(rec, "quest")),
+        "acceptIgnored" => format!(
+            "  note: quest {} is already {} — engine accept ignored",
+            str_of(rec, "quest"),
+            str_of(rec, "status")
+        ),
         _ if rec.get("held").and_then(Json::as_bool) == Some(false) => {
             format!("  retract {} (did not hold)", str_of(rec, "pattern"))
         }

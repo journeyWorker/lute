@@ -965,6 +965,30 @@ fn the_engine_accepts_an_accept_driven_quest_mid_play() {
     assert!(t.contains("no accept-driven quest of this project"), "{t}");
 }
 
+/// dsl 0.26.0 §7 (T2-9): an engine accept of a quest that is already active
+/// (or settled) is ignored with a note — it is not accepted a second time
+/// and its status does not change.
+#[test]
+fn an_engine_accept_of_an_active_quest_is_ignored_with_a_note() {
+    let project = bridge_project("engine-accept-twice", &[]);
+    let out = play_in(
+        &project,
+        "steps:\n  - engine: { accept: [lampOut] }\n    expect: { quests: { lampOut: active } }\n  \
+         - engine: { accept: [lampOut] }\n    expect: { quests: { lampOut: active } }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}");
+    assert_eq!(
+        t.matches("quest lampOut accepted (engine)").count(),
+        1,
+        "{t}"
+    );
+    assert!(
+        t.contains("note: quest lampOut is already active — engine accept ignored"),
+        "{t}"
+    );
+}
+
 /// dsl 0.26.0 §7 (T3-6): a `transcriptContains` needle copied from a line
 /// with attributes (`@narrator{emotion="…"}: …`) matches the presented line;
 /// a miss shows the nearest presented line — in play and test alike.

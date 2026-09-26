@@ -229,7 +229,23 @@ fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadErr
             continue;
         }
         match export.as_str() {
-            "directives" => read_kind::<DirectivesFile, _>(&path, &mut errs, |f, _file, e| {
+            "directives" => read_kind::<DirectivesFile, _>(&path, &mut errs, |f, file, e| {
+                // dsl 0.26.0 §4: `when=` is the core directive condition on
+                // every plugin passthrough directive; an attribute of that
+                // name could never be written.
+                for d in &f.directives {
+                    if d.attrs.iter().any(|a| a.name == "when") {
+                        e.push(LoadError::Parse {
+                            file: file.display().to_string(),
+                            msg: format!(
+                                "directive `{}` declares an attribute `when`, which is reserved: \
+                                 `when=\"<condition>\"` is the core condition every directive \
+                                 takes (dsl 0.26.0 §4) — rename the attribute",
+                                d.name
+                            ),
+                        });
+                    }
+                }
                 merge_directives(&mut out.directives, f.directives, e)
             }),
             "state" => read_state(&path, &mut out, &mut errs),

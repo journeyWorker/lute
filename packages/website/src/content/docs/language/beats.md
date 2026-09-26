@@ -1,6 +1,6 @@
 ---
 title: Beats
-description: "Scenes, lore entries, and bundled <beat> blocks that answer engine occasions — the scene frontmatter keys on, target, when, priority, once, and also, the entry attributes on=, priority=, and once=, beat bundles in a lore document, occasion target domains, select: first / all / sequence, how eligible beats are ordered and presented, and what the checker proves about them (E-BEAT-ATTR, E-OCCASION-UNKNOWN, E-BEAT-UNREACHABLE, W-BEAT-SHADOWED, W-BEAT-PRIORITY-TIE, W-BEAT-ONCE-RUN-USER)."
+description: "Scenes, lore entries, and bundled <beat> blocks that answer engine occasions — the scene frontmatter keys on, target, when, priority, once, and also, the entry attributes on=, priority=, and once=, beat bundles in a lore document, occasion target domains and kind targets, select: first / all / sequence, how eligible beats are ordered and presented, and what the checker proves about them (E-BEAT-ATTR, E-OCCASION-UNKNOWN, E-BEAT-UNREACHABLE, W-BEAT-SHADOWED, W-BEAT-PRIORITY-TIE, W-BEAT-ONCE-RUN-USER, W-ENTRY-WRITE-REREAD)."
 ---
 
 A lot of games do not advance on a clock. The story moves when something happens: a hub visit,
@@ -45,7 +45,7 @@ before, because `once: user` spends it for good the first time it plays.
 | Key | Meaning |
 |---|---|
 | `on` | the occasion this scene answers; it is what makes the scene a beat |
-| `target` | optional; the scene is a candidate only when the occasion is raised for this target, a dotted id in the `<entry target>` shape (`npc.achilles`, `place.lab_b2`). When the occasion declares a [target domain](#target-domains), it must be `<prefix>.<member>` of that domain, and one of its listed `members:` when it lists them |
+| `target` | optional; the scene is a candidate only when the occasion is raised for this target, a dotted id in the `<entry target>` shape (`npc.achilles`, `place.lab_b2`). When the occasion declares a [target domain](#target-domains), it must be `<prefix>.<member>` of that domain, and one of its listed `members:` when it lists them. `kind:<kind>` (dsl 0.26.0 §5) answers every member of a kind instead: see [Kind targets](#kind-targets) |
 | `when` | optional CEL condition over `run` / `user` / `app` state, `quest.*`, `entry.<id>.read` / `entry.<id>.everRead`, and fact queries (`holds(…)`, `count(…)`) |
 | `priority` | optional integer, default `0`; higher wins |
 | `once` | `run` (the default: at most once per run), `user` (at most once ever), or `false` (repeatable). On a project with a [clock](/language/clock/), also `day` (at most once per clock day) or `slot` (at most once per clock slot) |
@@ -127,6 +127,20 @@ entry the engine looked up by its `target` spends a `run` or `user` `once` too. 
 (dsl 0.24.0 §1) need a declared [clock](/language/clock/). They count time rather than reads: the
 engine remembers where on the clock the entry was last presented, as it does for a scene beat, so a
 bark with `once="slot"` answers again in the next slot although `entry.<id>.read` is still set.
+
+An entry's `::set` and `::retract` apply on its **first read in a run** only; a later
+presentation in the same run shows the text and changes nothing (see
+[Reading twice](/language/lore-entries/#reading-twice)). A repeatable entry beat that writes is
+therefore a counter that stops at one. Since dsl 0.26.0 §8, an entry beat without `once` whose body
+has a `::set` or `::retract` is **`W-ENTRY-WRITE-REREAD`**. An `::assert` is exempt: the fact holds
+for the rest of the run either way. Put a write meant to repeat in a
+[`<beat once="false">`](#beat-bundles), whose effects apply on every presentation, or say
+`once="run"` when the entry is read once per run:
+
+<!-- lute-diagnostics -->
+```
+./lore/barks.lute:9:3: warning [W-ENTRY-WRITE-REREAD] `<entry id="achillesBark1">` has no `once`, so it can be presented again in a run, but its `::set` applies on the first read in a run only (dsl 0.19.0 §6); a write meant to repeat belongs in a `<beat once="false">`, and an entry read once per run says so with `once="run"`
+```
 
 `once` takes `run`, `user`, `day`, or `slot`; there is no `once="false"`, so omit the attribute
 for a repeatable entry. Any other value is `E-BEAT-ATTR`, and so are `day` and `slot` in a project
@@ -242,15 +256,17 @@ covers the entry side of the file.
 
 When the engine raises occasion `O`, optionally for target `T`:
 
-1. The **candidates** are the beats with `on: O` whose `target` is absent or equal to `T`. Scene,
-   entry, and bundle beats on the same occasion compete in one list.
+1. The **candidates** are the beats with `on: O` whose `target` is absent or equal to `T`, and
+   (dsl 0.26.0) the [kind beats](#kind-targets) whose kind has `T`'s member. Scene, entry, and
+   bundle beats on the same occasion compete in one list.
 2. A candidate is **eligible** when its `after:` (a bundle beat's `after=`) and `when` hold and its
    `once` is not spent: a scene's or bundle beat's by its presentation record, an entry's by its
    read flags (or, for `once="day"` / `"slot"`, by when it was last presented). A beat with a
    [`share`](#one-event-several-places-share) key is spent when any beat of its key is.
 3. Eligible beats are ordered by **priority, descending, then project order**: document path,
    then declaration order within the document. `project.index.json` lists every beat in that
-   order under `beats`.
+   order under `beats`. At equal priority a kind beat comes after the other candidates, so the
+   beat that names `T` itself outranks it.
 4. The occasion's `select` decides what is presented. For `select: first` the engine presents the
    first eligible beat that is not `also` (the **winner**), then every eligible
    [`also`](#side-remarks-with-also) beat. For `select: sequence` it presents every eligible beat,
@@ -491,16 +507,100 @@ plugin load (see [Manifests](/plugins/manifests/)). The subset narrows every con
 domain alike: beat, entry, and objective targets, a `lute play` step's `target:`,
 `lute new scene --target`, and `lute calendar --target`.
 
+### Kind targets
+
+A beat may answer **every member of a kind** with `target="kind:<kind>"` (dsl 0.26.0 §5). A
+bug-catching contest scores a dozen species in a few tiers. Rather than one `caught` beat per
+species, the project declares the tiers as sub-kinds of `species`, the entity kind of the
+occasion's `{ prefix: mon, entity: species }` domain:
+
+```yaml
+entities:
+  species:   { members: [inchlet, cocoonix, stingle, hornbeetle, bladebug] }
+  bugRare:   { subsetOf: species, members: [hornbeetle, bladebug] }
+  bugCommon: { subsetOf: species, members: [inchlet, cocoonix, stingle] }
+```
+
+and writes one beat per tier, in a lore document `contest`:
+
+```lute
+<beat id="catchRare" on="caught" target="kind:bugRare" once="false" when="run.contest == 'entered'">
+  ::set{run.contestScore = 3}
+  @narrator: A {{occasion.target}}! The nets all around you go still.
+</beat>
+
+<beat id="catchCommon" on="caught" target="kind:bugCommon" once="false" when="run.contest == 'entered'">
+  ::set{run.contestScore = 1 when="run.contestScore < 1"}
+  @narrator: A {{occasion.target}}. It counts.
+</beat>
+
+<beat id="firstInchlet" on="caught" target="mon.inchlet" once="user">
+  @narrator: Your very first inchlet. The judges smile.
+</beat>
+```
+
+- **The kind.** `kind:<kind>` names a closed kind (one with `members:`) inside the occasion's
+  domain: the domain's own kind or one of its [sub-kinds](/state/facts-and-datalog/#sub-kinds-subsetof).
+  The occasion must be declared by a plugin with a `{ prefix, entity }` domain. Anything else is
+  `E-BEAT-ATTR`, with a did-you-mean for a misspelled kind. The beat is a candidate whenever the
+  occasion is raised for `<prefix>.<member>` of one of its members. Scene, entry, and bundle beats
+  take a kind target alike, and it counts as a read of the kind, so the kind draws no
+  `W-DOMAIN-UNREAD`.
+- **`occasion.target`.** In the beat's `when`, its guards, and its text, `occasion.target` is the
+  member the occasion was raised for (`inchlet` for `mon.inchlet`), typed by the kind. A
+  `<match on="occasion.target">` checks its arms against the kind's members, and needs no `unset`
+  arm, because the engine always assigns it. The value lasts for that presentation only. Reading
+  `occasion.target` in a beat or entry that does not target a kind is `E-UNDECLARED`.
+- **Display.** `{{occasion.target}}` compiles to the placeholder
+  `{"kind": "occasionTarget", "entityKind": "bugCommon"}`, so an engine can show the member's
+  display name. [`lute play`](/tooling/play/) renders the member's cast `name:` when the member is a
+  cast id, and the id otherwise (`A inchlet. It counts.`).
+- **Ranking.** At equal priority the beat that names the member outranks the kind beat, and the
+  two never draw `W-BEAT-PRIORITY-TIE`. `W-BEAT-SHADOWED` judges a kind beat member by member.
+
+`lute play` shows the member beat winning its first raise and the kind beat answering after it:
+
+```
+── step 1 · caught → mon.inchlet ──────────────
+  ✓ contest.firstInchlet [beat, priority 0]
+  ✓ contest.catchCommon [beat, priority 0]
+  → contest.firstInchlet
+@narrator: Your very first inchlet. The judges smile.
+── step 2 · caught → mon.inchlet ──────────────
+  ✓ contest.catchCommon [beat, priority 0]
+  ✗ contest.firstInchlet [beat, priority 0] — once: user — already presented
+  → contest.catchCommon
+  set run.contestScore = 1
+@narrator: A inchlet. It counts.
+```
+
+Each shape fault names what is wrong:
+
+<!-- lute-diagnostics -->
+```
+./lore/contest.lute:24:42: error [E-BEAT-ATTR] `target="kind:bugRar"`: `bugRar` is not a declared entity kind — did you mean `kind:bugRare`? (dsl 0.26.0 §5)
+./lore/contest.lute:28:40: error [E-BEAT-ATTR] `target="kind:bugRare"`: `hornbeetle`, `bladebug` are outside occasion `talk`'s domain `npc.<person>`; a kind target names `person` or one of its sub-kinds (dsl 0.26.0 §5)
+./lore/contest.lute:33:23: error [E-UNDECLARED] `occasion.target` is readable only in a beat or entry that targets a kind (`target="kind:<kind>"`), where it is the member the occasion was raised for (dsl 0.26.0 §5)
+```
+
+`lute play` and `lute calendar` offer a kind beat for every member's raise. `lute beats` lists it
+in each member's ladder that names a beat of its own, and in a `kind:<kind>` ladder for the rest
+(`caught @ kind:bugCommon`); its `--target` accepts any member. A [`lute test`](/tooling/cli/) of a
+kind beat names the member in `state: { occasion.target: inchlet }`. The compiled beat carries
+`targetKind: { kind, prefix, members }` on its scene `meta.beat`, its `entry` or `beat` record, and
+its `project.index.json` row.
+
 ## What the checker proves
 
 | Code | When |
 |---|---|
-| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not an identifier, `target` not a dotted id or outside its occasion's [target domain](#target-domains), `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/)), `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, a `share` that is not an identifier or has no spending `once` beside it, beats of one `share` key with different `once`s (`check-project`), beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
+| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not an identifier, `target` not a dotted id or outside its occasion's [target domain](#target-domains), a [`kind:` target](#kind-targets) that names no closed kind within the occasion's domain, `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/)), `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, a `share` that is not an identifier or has no spending `once` beside it, beats of one `share` key with different `once`s (`check-project`), beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
 | `E-OCCASION-UNKNOWN` | `on` names an occasion no resolved plugin declares (only once some plugin declares occasions) |
 | `E-BEAT-UNREACHABLE` | a scene or bundle beat's `when` provably never holds; see [How a `when` is decided](#how-a-when-is-decided). `lute check` decides what one file settles, and `lute check-project` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
-| `W-BEAT-SHADOWED` | `check-project` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry without `once`, or a scene or bundle beat with `once: false`). On an occasion whose target domain is closed, an untargeted beat is also reported when, at every `<prefix>.<member>`, such a beat for that member wins; the message names the shadower per target. `also` beats neither shadow nor are shadowed. |
-| `W-BEAT-PRIORITY-TIE` | `check-project` only: two beats on one `select: first` occasion, either untargeted or for the same target, with equal `priority` and `when`s that are not provably exclusive. When both are eligible, project order picks the winner, so renaming or moving a file changes it. Give one a different `priority`, or make the conditions exclusive: conditions that cannot hold together, such as `run.slot == 'morning'` against `run.slot == 'night'`, `run.day > 5` against `run.day < 3`, or `holds(P)` against `!holds(P)`. A beat's `once` counts as part of its condition: an entry's `once="user"` as `!entry.<id>.everRead`, its `once="run"` as `!entry.<id>.read`, a scene's or bundle beat's `once: user` as `!visited('<id>')`. So a bark with `once="user"` and one whose `when` reads that bark's `everRead` do not tie. A `holds(…)` of a derived atom whose rules are all ground, `cel()`-only schedules counts as those `cel()` guards, so beats on two different schedule slots do not tie either. A shadowed beat reports `W-BEAT-SHADOWED` instead, and an `also` beat never ties. |
+| `W-BEAT-SHADOWED` | `check-project` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry without `once`, or a scene or bundle beat with `once: false`). On an occasion whose target domain is closed, an untargeted beat is also reported when, at every `<prefix>.<member>`, such a beat for that member wins; the message names the shadower per target. A [kind beat](#kind-targets) is judged member by member the same way. `also` beats neither shadow nor are shadowed. |
+| `W-BEAT-PRIORITY-TIE` | `check-project` only: two beats on one `select: first` occasion, either untargeted or for the same target, with equal `priority` and `when`s that are not provably exclusive. When both are eligible, project order picks the winner, so renaming or moving a file changes it. Give one a different `priority`, or make the conditions exclusive: conditions that cannot hold together, such as `run.slot == 'morning'` against `run.slot == 'night'`, `run.day > 5` against `run.day < 3`, or `holds(P)` against `!holds(P)`. A beat's `once` counts as part of its condition: an entry's `once="user"` as `!entry.<id>.everRead`, its `once="run"` as `!entry.<id>.read`, a scene's or bundle beat's `once: user` as `!visited('<id>')`. So a bark with `once="user"` and one whose `when` reads that bark's `everRead` do not tie. A `holds(…)` of a derived atom whose rules are all ground, `cel()`-only schedules counts as those `cel()` guards, so beats on two different schedule slots do not tie either. Since dsl 0.26.0 §8 negations are normalized first (De Morgan, `!(run.money < 100)` as `run.money >= 100`, so it is exclusive with `run.money < 100`) and each condition's alternatives are compared; the fact analysis's must set at either beat's `when` is read; a fact that only a beat's own unplayed `once: run` / `user` presentation asserts counts as absent while that beat is eligible; and the message says why the two are not exclusive: a flag that outlives `once: run`, a fact asserted elsewhere or `tier: user`, or the paths each `when` reads (``beat `tie.first` reads `run.metMira` and beat `tie.again` reads `run.money`: no path both constrain``). A member beat and a [kind beat](#kind-targets) never tie: the member beat ranks first. A shadowed beat reports `W-BEAT-SHADOWED` instead, and an `also` beat never ties. |
 | `W-BEAT-ONCE-RUN-USER` | `check-project` only: a scene or bundle beat whose `once` is left at its default `run` and whose `when` reads only user-tier state: `user.*`, `entry.<id>.everRead`, `holds` / `count` of a `tier: user` relation, or `quest.<id>.*` of a user-tier quest, and no run-tier path, run-tier fact, or `visited()`. Once that condition holds it holds in every run, so the beat plays again each run. Use `once: user` for a beat heard once ever, or gate it on run-tier state. If replaying every run is the point, write `once: run`: an authored `once: run`, like an entry's `once="run"`, says so and silences the warning. `prev.run.*` is run history, not user state, so a `when` reading it never warns. |
+| `W-ENTRY-WRITE-REREAD` | an entry beat without `once` whose body has a `::set` or `::retract` (dsl 0.26.0 §8): it is presented again by every raise, but its writes apply on its first read in a run only. `::assert` is exempt. See [Entry beats](#entry-beats). |
 
 ### How a `when` is decided
 
@@ -576,9 +676,24 @@ for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
   each one. A step on a `select: all` occasion names the player's choice with `pick:`, or closes
   the list with `pick: none`, and a step's `expect: { presented: [ids] }` asserts the presented
   beats in order. Bundle beats play like scene beats. See [Playing a story](/tooling/play/).
+  Since dsl 0.26.0 §8 `lute play` and `lute test` also accept an entry by
+  `<document id>.<entry id>` (`talks.miraBark`) wherever they take an entry id: `pick:`,
+  `entriesRead:`, a step's `winner` / `offered` / `notOffered` / `presented`, a test's `entry:` /
+  `entries:` and `expect.eligible` keys, and `lute trace --entry`.
 - `lute beats <dir>` prints each occasion's (and each target's) beat ladder in selection order,
   with priority, `once` (and its `share` key), `also`, `after:`, `when`, title, and the `check-project` verdicts above,
-  even for a project that does not check clean yet. `lute calendar <dir> --axis …` evaluates
+  even for a project that does not check clean yet. Since dsl 0.26.0 §8 it also marks a fallback
+  that an earlier, never-spent beat always beats, because the fallback's `when` implies the
+  earlier beat's, as `covered by <id>` (`--json`: `coveredBy`). It is informational, not a warning:
+
+  ```
+    hubVisit — select: first
+      #  priority  beat               kind    once  verdict               after  when
+      1  5         gate.open          bundle  no    -                     -      run.badges >= 1
+      2  0         gate.shutFallback  bundle  no    covered by gate.open  -      run.badges >= 3
+  ```
+
+  `lute calendar <dir> --axis …` evaluates
   eligibility over a grid of state values, such as every day and time slot, and shows what each
   cell presents: the winner, or a sequence's whole list. `lute scenario <dir> knowledge` traces
   each fact-gated beat to the facts it queries and whatever produces them. See
@@ -603,9 +718,11 @@ the normative specs are
 [`0.22.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
 for entry `once` and target domains,
 [`0.23.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
-for `select: sequence`, `also`, beat bundles, the sharper decider, and `--wip`, and
+for `select: sequence`, `also`, beat bundles, the sharper decider, and `--wip`,
 [`0.24.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 for `once: day` / `once: slot`, entry targets as metadata, and bundle beats as `after:`
-predecessors, and the draft
+predecessors,
 [`0.25.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
-for `share` and bundle beat `after=`.
+for `share` and bundle beat `after=`, and the draft
+[`0.26.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)
+for kind targets, `W-ENTRY-WRITE-REREAD`, the sharper `W-BEAT-PRIORITY-TIE`, and `covered by`.

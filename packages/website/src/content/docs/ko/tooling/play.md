@@ -1,6 +1,6 @@
 ---
 title: 스토리 플레이
-description: "계기(occasion)와 비트(beat, dsl 0.21.0) — 어떤 스토리 조각이 어떤 엔진 순간에 응답하는지 프로젝트가 선언하는 방법 — 그리고 스크립트로 적은 플레이스루를 프로젝트 전체에 걸쳐 걷는 참조 플레이어 `lute play`: 발생시킨 계기, 엔진 자신의 쓰기, 출발점이 되는 세이브, `lute test`가 실행하는 단언(dsl 0.22.0), 시퀀스 전체를 재생하는 계기, 곁들이는 대사, 기한, 대상 지정 목표, 비트 번들(dsl 0.23.0), 그리고 스크립트가 앞으로 돌리는 시계, 플러그인 브리지 호출에 대한 응답, 트랜스크립트에 드러나는 퀘스트 구조(dsl 0.24.0)."
+description: "계기(occasion)와 비트(beat, dsl 0.21.0) — 어떤 스토리 조각이 어떤 엔진 순간에 응답하는지 프로젝트가 선언하는 방법 — 그리고 스크립트로 적은 플레이스루를 프로젝트 전체에 걸쳐 걷는 참조 플레이어 `lute play`: 발생시킨 계기, 엔진 자신의 쓰기, 출발점이 되는 세이브, `lute test`가 실행하는 단언(dsl 0.22.0), 시퀀스 전체를 재생하는 계기, 곁들이는 대사, 기한, 대상 지정 목표, 비트 번들(dsl 0.23.0), 스크립트가 앞으로 돌리는 시계, 플러그인 브리지 호출에 대한 응답, 트랜스크립트에 드러나는 퀘스트 구조(dsl 0.24.0), 그리고 이름 붙은 슬롯이나 요일까지 돌리는 시계, 엔진이 수락하는 퀘스트, 엔티티 종류 전체에 응답하는 비트(dsl 0.26.0, 초안)."
 ---
 
 내러티브 게임은 저마다의 순간에 다음 스토리 조각을 고릅니다: 허브 방문, 방 입장, NPC와의 대화, 새로운
@@ -27,11 +27,19 @@ description: "계기(occasion)와 비트(beat, dsl 0.21.0) — 어떤 스토리 
 트랜스크립트는 각 퀘스트가 왜 실패했는지 밝히고, `judge: before` 계기가 비트보다 먼저 퀘스트를 정착시키는
 모습을 보여 주며, `newRun`이 스냅숏한 값과 이전 런에서 넘겨받아 적용하는 것을 출력합니다.
 
+dsl 0.26.0(초안)부터 스크립트는 시계를 다음의 이름 붙은 슬롯이나 요일까지 돌리고(`advance: { to: night }`)
+시계가 어디에 있는지 단언하므로(`expect: { clock: … }`), 나눠 쓰는 steps 파일이 자신이 기대하는 시각을 밝힐 수
+있습니다. `engine:` 스텝은 플레이 도중에 수락 방식 퀘스트를 수락하고, 비트 하나가 엔티티 종류의 모든 멤버에
+응답할 수 있으며(`target="kind:trainer"`), 실행되지 않은 가드된 디렉티브는 건너뛴 것으로 표시되고, 엔트리는
+`<문서 id>.<엔트리 id>`로 가리킬 수 있습니다. 컴포넌트가 하는 호출이라도 브리지 응답은 결과 슬롯의 타입을
+따르고, 트랜스크립트 바늘(needle)은 복사해 온 줄 속성을 그대로 가져도 됩니다.
+
 규범 텍스트는 [0.21.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md)이고,
 [0.22.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)(플레이·테스트
 하네스), [0.23.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)(계기
 조합, 기한, 번들), [0.24.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)(시계,
-퀘스트 구조, 브리지 응답)가 이를 확장합니다. 엔진 측 계약(IR 필드와 엔진이 구현하는 선택 알고리즘)은
+퀘스트 구조, 브리지 응답), 초안인 [0.26.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)(시계
+목표, 엔진 수락, 종류 대상, 테스트와 플레이의 일치)가 이를 확장합니다. 엔진 측 계약(IR 필드와 엔진이 구현하는 선택 알고리즘)은
 [`docs/runtime/beats-and-occasions.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/beats-and-occasions.md)입니다.
 0.21.0 이전의 `lute play`는 틱 클록 스케줄 파일을 걸었습니다. 그 레이어와 클록/레인/배치 모델, 그리고
 관련 플래그는 모두 제거되었습니다. 이제 시간은 틀이 아니라 비트 조건의 입력 중 하나입니다.
@@ -103,7 +111,7 @@ once: user
 | 키 | 의미 |
 |---|---|
 | `on` | 이 씬이 응답하는 계기. 씬을 비트로 만듭니다. |
-| `target` | 선택. 계기가 이 대상을 위해 발생했을 때만 씬이 후보가 됩니다(점으로 구분된 id, `<entry target>`과 같은 모양. 계기가 대상 도메인을 선언했다면 `<prefix>.<member>`). |
+| `target` | 선택. 계기가 이 대상을 위해 발생했을 때만 씬이 후보가 됩니다(점으로 구분된 id, `<entry target>`과 같은 모양. 계기가 대상 도메인을 선언했다면 `<prefix>.<member>`). dsl 0.26.0부터 `kind:<kind>`는 한 종류의 모든 멤버에 응답합니다 — [종류 대상](#종류-대상) 참고. |
 | `when` | 선택. `run` / `user` / `app` 상태, `quest.*`, `entry.<id>.read` / `entry.<id>.everRead`, 팩트 질의에 대한 CEL 조건. 씬 자신의 `scene.*` 상태는 아직 존재하지 않으므로 거부됩니다. |
 | `priority` | 선택 정수, 기본값 `0`. 높을수록 이깁니다. |
 | `once` | `run`(기본값 — 런마다 한 번), `user`(평생 한 번), 또는 `false`(반복 가능). [시계](/language/clock/)가 선언되어 있으면 `day`나 `slot`(dsl 0.24.0 §1): 시계의 날이나 슬롯이 바뀔 때까지 소진됩니다. |
@@ -167,11 +175,61 @@ once: user
 `lute trace --beat`와 `lute run --beat`는 번들 비트 하나를 따로 제시합니다([트레이싱](/tooling/tracing/#bundle-beats)
 참고).
 
+### 종류 대상
+
+비트는 멤버 하나 대신 엔티티 종류 전체에 응답할 수 있습니다(dsl 0.26.0 §5): 씬 프런트매터의
+`target: kind:<kind>`, 엔트리나 번들 비트의 `target="kind:<kind>"`. 그 종류는 계기의 대상 도메인 안의 닫힌
+종류 — 도메인 자신의 종류이거나 그것의 `subsetOf:`로 선언된 종류 — 여야 하며, 비트는 계기가 그 멤버 누구를
+위해 발생하든 후보가 됩니다. 발생한 멤버는 비트의 `when`, 가드, 텍스트에서 `occasion.target`으로 읽을 수
+있고, 타입은 그 종류이며, 비트가 제시되는 동안에만 바인딩됩니다. 도메인 밖의 종류는 did-you-mean이 붙은
+`E-BEAT-ATTR`이고, 종류를 대상으로 하지 않는 비트에서 `occasion.target`을 읽으면 `E-UNDECLARED`입니다. 도전
+비트 하나가 길 위의 모든 트레이너에 응답합니다:
+
+```yaml
+entities:
+  person:  { members: [wren, sol] }
+  trainer: { subsetOf: person, members: [gus, r16Gus] }
+```
+
+```lute
+<beat id="challenge" on="talk" target="kind:trainer" title="A trainer squares up" once="false">
+  @narrator: {{occasion.target}} squares up. "You look like you've never lost."
+</beat>
+
+<beat id="gusRematch" on="talk" target="npc.gus" title="Gus wants a rematch" once="false">
+  @gus: Back for another round?
+</beat>
+```
+
+priority가 같으면 종류 비트는 다른 후보들 뒤에 옵니다. 그래서 `npc.gus`에서는 거스 자신의 비트가 — 둘 사이에
+`W-BEAT-PRIORITY-TIE` 없이 — 이기고, 종류 비트는 나머지 트레이너 모두에 응답합니다. `lute play`는
+`{{occasion.target}}`을 멤버가 cast id이면 그 cast `name:`으로, 아니면 id로 렌더링합니다. 컴파일된
+placeholder는 `{"kind": "occasionTarget", "entityKind": "trainer"}`이므로 엔진은 자신의 표시 이름을
+렌더링합니다. `r16Gus`의 cast 이름이 "Hiker Brom"이고 로어 문서 id가 `trainers`일 때:
+
+```
+── step 1 · talk → npc.r16Gus ──────────────
+  ✓ trainers.challenge [beat, priority 0]
+  → trainers.challenge
+@narrator: Hiker Brom squares up. "You look like you've never lost."
+── step 2 · talk → npc.gus ──────────────
+  ✓ trainers.gusRematch [beat, priority 0]
+  ✓ trainers.challenge [beat, priority 0]
+  → trainers.gusRematch
+@gus: Back for another round?
+```
+
+`lute beats`는 종류 비트를, 어떤 비트가 이름으로 가리키는 멤버마다의 사다리와, 어떤 비트도 따로 가리키지 않는
+멤버를 위한 `kind:<kind>` 사다리에 나열합니다([스토리 개요](/tooling/overviews/#lute-beats) 참고). `lute trace`와
+`lute test`는 멤버를 `state: { occasion.target: r16Gus }` 시드에서 읽습니다([`lute test`](/tooling/cli/#test)
+참고). 언어 규칙은 [비트](/language/beats/)에 있습니다.
+
 ## 선택
 
 엔진이 계기 `O`를, 선택적으로 대상 `T`를 위해 발생시키면:
 
-1. **후보**는 `on: O`이고 `target`이 없거나 `T`와 같은 비트입니다. 대상 없이 발생한 계기에는 대상이
+1. **후보**는 `on: O`이고 `target`이 없거나 `T`와 같은 비트, 그리고 dsl 0.26.0부터는 `T`의 멤버가 속한
+   종류 `K`를 `kind:<K>`로 대상 삼는 비트입니다([종류 대상](#종류-대상)). 대상 없이 발생한 계기에는 대상이
    없는 후보만 있습니다.
 2. 후보는 `after:`가 성립하고(씬 비트), `when`이 성립하고, `once`가 소진되지 않았을 때 **자격이
    있습니다**. 씬(또는 번들 비트)의 `once`: `run` — 이번 런에 아직 제시되지 않음, `user` — 한 번도
@@ -180,7 +238,7 @@ once: user
    `entry.<id>.everRead`가 세워지지 않음, `day` / `slot` — 씬과 같음, 없음 — 소진되지 않음.
 3. 자격 있는 비트는 **priority 내림차순, 그다음 프로젝트 순서**로 정렬됩니다: 문서 경로, 그다음 문서 안의
    선언 순서 — `project.index.json`의 `beats` 순서입니다. 같은 계기의 씬·엔트리·번들 비트는 한 목록에서
-   경쟁합니다.
+   경쟁합니다. priority가 같으면 종류 비트는 다른 후보들 뒤에 옵니다(dsl 0.26.0 §5).
 4. `select: first`는 `also`가 아닌 첫 번째 자격 있는 비트를 제시하고, 이어서 자격 있는 `also` 비트를
    모두 제시합니다. `select: all`은 정렬된 목록을 제시한 뒤 플레이어가 고른 것을 제시하고,
    `select: sequence`는 정렬된 목록 전체를 제시합니다.
@@ -205,7 +263,11 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--no-derive] [--expla
 ```
 
 - `<PROJECT_DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --all`과 같은
-  게이트와 선언 유니온(씬, 퀘스트, 로어 문서)으로 메모리에서 통째로 컴파일됩니다.
+  게이트와 선언 유니온(씬, 퀘스트, 로어 문서)으로 메모리에서 통째로 컴파일됩니다. 문서들이 한 상태 경로를
+  두 타입으로 선언한 프로젝트는 그 게이트에서 실패하고(`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), 플레이는
+  시작을 거부합니다(종료 코드 1). 프로젝트는 플레이마다 한 번 로드됩니다. dsl 0.26.0부터 팩트 분석을 비트마다가
+  아니라 프로젝트 루트마다 한 번 준비하므로, Monster League(비트 818개, 정적 팩트 211개)의 로드는 약 12초에서
+  약 1.5초로 줄었고, 긴 플레이의 시간은 로드가 아니라 스텝이 정합니다.
 - `--script <FILE>` — 필수: 플레이 스크립트, `*.play.yaml` 파일.
 - `--json` — 같은 트랜스크립트를 stdout에 JSON 객체 하나로 출력합니다.
 - `--ir` — 스테이징을 작성한 그대로의 지시어 대신 낮춰진 IR 레코드(`::background`, `::sprite`, 그리고
@@ -411,18 +473,32 @@ steps:
   맵은 다른 모든 스텝의 기본값으로 남습니다. 스텝 로컬 목록은 첫 항목부터 시작하며, 같은 id에 대한
   스크립트 전역 목록의 소비 위치는 건드리지 않습니다. [예제](#한-스텝만-다르게-결정하기)에서 씁니다.
 - `expect` — 이 스텝이 했어야 하는 일. [기대값](#기대값)을 보세요.
+- 스크립트가 엔트리를 가리키는 곳이면 어디서든 — `pick:`, 세이브의 `entriesRead:`, 스텝의 `winner`,
+  `offered`, `notOffered`, `presented` — 엔트리를 `<문서 id>.<엔트리 id>`로 쓸 수 있습니다(dsl 0.26.0 §8).
+  그래서 `lore.tomas.tomasOil`은 토마스의 기름 엔트리가 어느 문서에 있는지 밝힙니다. 트랜스크립트와 불일치는
+  엔트리 id를 출력합니다. 번들 비트는 언제나 정식 id `<문서 id>.<비트 id>`로 가리킵니다.
 
 ### 엔진 스텝
 
-`{ engine: { state?, facts?, retract? } }`는 엔진이 계기 사이에 하듯이 엔진이 소유한 것을 씁니다:
+`{ engine: { state?, facts?, retract?, accept? } }`는 엔진이 계기 사이에 하듯이 엔진이 소유한 것을 씁니다:
 
 - `state:` — 선언된 경로 → 리터럴, 또는 `number` 경로의 현재 값에 더하는 `{ add: <number> }`. 선언되지
   않은 경로, `scene.*`, `quest.*` 경로는 거부됩니다: 퀘스트 상태는 전이가 핸들러와 보상을 발동시키는
   퀘스트 라이프사이클의 것이니, 세이브의 퀘스트 상태는 최상위 `quests:`로 시드하세요.
 - `facts:` / `retract:` — 선언된 기반 관계의 그라운드 원자, **예약된 관계 포함**. 최상위 `facts:`와 같은
   검사를 받습니다. 성립하지 않는 원자를 철회하면 거부되지 않고 기록됩니다.
+- `accept:`(dsl 0.26.0) — 엔진이 이 순간에 수락하는 퀘스트 id들. 플레이어가 게시판에서 공지를 떼어 갈 때
+  엔진이 하는 일입니다: 각각 수락 방식 퀘스트(`start` 없음, 보통 `accept="external"`)여야 하며, 스텝 바로 뒤의
+  정착에서 활성화됩니다. 트랜스크립트는 `quest <id> accepted (engine)`을 출력하고, `--json`은 스텝의 쓰기
+  사이에 `{ "kind": "accept", "quest": "<id>", "by": "engine" }`을 기록합니다. 이미 활성이거나 완료·실패한
+  퀘스트는 다시 수락되지 않습니다: 트랜스크립트는 `note: quest <id> is already active — engine accept ignored`(그
+  상태로)를 출력하고, `--json`은 `{ "kind": "acceptIgnored", "quest": "<id>", "status": "<status>" }`을 기록하며,
+  아무것도 바뀌지 않습니다. `start`가 있는 퀘스트나 어떤
+  퀘스트도 선언하지 않은 id는 사용법 오류(종료 코드 2)입니다:
+  `` step 1: `engine.accept` names `auto`, which is no accept-driven quest of this project (a quest with no `start`, e.g. `accept="external"`) ``.
+  0.26.0 전에는 그런 퀘스트를 최상위 `quests:`로만 시드할 수 있었고, 스텝 1부터 활성이었습니다.
 
-쓰기는 그 순서대로 — 상태, 팩트, 철회 — 적용됩니다. 이 스텝은 아무것도 제시하지 않고 계기도 발생시키지
+쓰기는 그 순서대로 — 상태, 팩트, 철회, 수락 — 적용됩니다. 이 스텝은 아무것도 제시하지 않고 계기도 발생시키지
 않으며, 바로 뒤에 퀘스트 라이프사이클이 정착하므로 쓰기 하나로 그 스텝에서 퀘스트가 완료되거나 실패할 수
 있습니다. [`owner: engine`](/state/state-model/#owner-engine) 상태가 바로 이 스텝을 위한 것입니다:
 콘텐츠는 그것을 `::set`할 수 없지만 `engine:` 스텝은 쓸 수 있습니다 — `scene.*`와 `quest.*`를 제외한
@@ -474,6 +550,43 @@ steps:
 
 처치로 `threat(warden)`이 더 이상 파생되지 않으므로 스텝 3에서 `hub.victory`가 자격을 얻고, 철회가
 그것을 다시 닫습니다.
+
+수락도 엔진의 일입니다. [예제](#예제)의 마을에 게시판 퀘스트 `parcel` — `accept="external"`로 선언하고 목표
+하나가 `on="talk" target="npc.tomas"`인 퀘스트 — 을 더하고, 플레이어가 플레이 도중에 공지를 떼어 갑니다:
+
+```yaml
+steps:
+  - occasion: hubVisit
+  - label: the player takes a notice from the board
+    engine: { accept: [parcel] }
+    expect: { quests: { parcel: active } }
+  - occasion: talk
+    target: npc.tomas
+expect:
+  quests: { parcel: complete }
+```
+
+```
+── step 1 · hubVisit ──────────────
+  ✓ hub.welcome [scene, priority 10]
+  ✗ hub.morning [scene, priority 0] — when: false
+  → hub.welcome
+::bg{location="hub" time="day"}
+@narrator: The lamps along the square are lit — all but the one by the door.
+── step 2 (the player takes a notice from the board) · engine ──────────────
+  quest parcel accepted (engine)
+  quest parcel -> active
+── step 3 · talk → npc.tomas ──────────────
+  ✓ tomasBusy [entry, priority 0]
+  ✗ tomasOil [entry, priority 10] — when: false
+  → tomasBusy
+  entry tomasBusy (first read)
+@tomas: Busy.
+  parcel.deliver done
+  quest parcel -> complete
+── end: complete (3 steps) ──────────────
+── expect: every expectation held ──────────────
+```
 
 ### 이벤트
 
@@ -888,7 +1001,72 @@ expect:
 ```
 
 `newRun`은 run 등급의 나머지와 함께 시계를 초기화합니다. 시계를 선언하지 않은 프로젝트의 `advance:`,
-`advance: 0`, 또는 `slot`, `day`, 1 이상의 정수가 아닌 값은 아무것도 재생하기 전에 거부됩니다.
+`advance: 0`, 또는 `slot`, `day`, 1 이상의 정수, `{ to: … }` 형태가 아닌 값은 아무것도 재생하기 전에 거부됩니다.
+
+**이름 붙은 순간으로 돌리기**(dsl 0.26.0 §7). `advance: { to: <slot> }`와
+`advance: { to: { weekday: <label or number>, slot: <slot> } }`(둘 중 하나, 또는 둘 다)는 시계를 현재 위치
+다음의, 그 슬롯과/또는 요일을 가진 위치로 옮깁니다 — 요일은 `week.labels`의 레이블이나 `clock.weekday`
+숫자이며, 요일만 주면 그날의 첫 슬롯에 멈춥니다. 앞으로만 움직이고, 제자리에 머무는 일은 없습니다: 밤에 서
+있으면 `{ to: night }`는 다음 날 밤으로 갑니다. 모든 advance가 시계를 움직이는 것과 같습니다. 이것은 advance
+하나이며 `advance: <n>`처럼 발생시킵니다: `slot` 계기는 시계가 멈춘 곳에서 한 번 발생하고 — 지나친
+슬롯에서는 발생하지 않습니다 — 건너는 자정마다 `dayEnd`와 `dayStart`가 발생합니다. 그래서 아침에서
+`{ to: night }`는 `slotStart`를 하나 발생시키고, `advance: slot` 스텝 둘은 둘을 발생시킵니다. 사이의 슬롯에
+응답하는 콘텐츠가 있으면 `advance: slot` 스텝을 따로 쓰세요. 스텝의 `expect: { clock: { weekday, slot, day } }`
+(셋 중 아무거나)는 스텝 뒤에 시계가 어디에 있는지 판정합니다. 위의 하루 시계에서:
+
+```yaml
+steps:
+  - occasion: visit
+  - advance: { to: night }
+    expect: { clock: { weekday: Mon, slot: night } }
+  - advance: { to: night }
+    expect: { clock: { day: 2, slot: night } }
+  - advance: { to: { weekday: Fri, slot: morning } }
+    expect: { clock: { weekday: Fri, slot: morning, day: 5 } }
+```
+
+```
+── start ──────────────
+  quest fest -> active
+── step 1 · visit ──────────────
+  ✓ cafe.wren [scene, priority 0]
+  → cafe.wren
+@narrator: Back again?
+── step 2 · advance to night: day 1 (Mon) morning → day 1 (Mon) night ──────────────
+  set run.slot = "night"
+── step 2 · slotStart (select: sequence) ──────────────
+  ✓ routine.night [scene, priority 5]
+  ✗ routine.morning [scene, priority 5] — when: false
+  → routine.night
+@narrator: The lamps go out on day 1.
+── step 3 · advance to night: day 1 (Mon) night → day 2 (Tue) night ──────────────
+  set run.day = 2
+── step 3 · slotStart (select: sequence) ──────────────
+  ✓ routine.night [scene, priority 5]
+  ✗ routine.morning [scene, priority 5] — when: false
+  → routine.night
+@narrator: The lamps go out on day 2.
+── step 4 · advance to Fri morning: day 2 (Tue) night → day 5 (Fri) morning ──────────────
+  set run.day = 5
+  set run.slot = "morning"
+  fest.go failed (by)
+  quest fest -> failed (by)
+── step 4 · slotStart (select: sequence) ──────────────
+  ✓ routine.morning [scene, priority 5]
+  ✗ routine.night [scene, priority 5] — when: false
+  → routine.morning
+@narrator: Fri morning. The kettle sings.
+── end: complete (4 steps) ──────────────
+── expect: every expectation held ──────────────
+```
+
+스텝 2는 오후를 건너뜁니다: 오후의 `slotStart`는 발생하지 않습니다. 스텝 3은 이미 밤이므로 다음 밤으로
+갑니다. 스텝 4는 자정 셋을 건너 금요일 아침으로 갑니다. 이 시계는 `dayEnd` / `dayStart`를 정하지 않았으므로
+마지막 `slotStart`만 발생하고, 3일째를 지나는 이동이 도중에 `fest`의 기한을 실패시킵니다. `--json`에서
+advance의 `by`는 `"to night"`이나 `"to Fri morning"`입니다. 시계가 선언하지 않은 슬롯이나 요일은 아무것도
+재생하기 전의 사용법 오류입니다
+(`` step 2: `advance:` to slot `dusk` — the clock's slots are: morning, afternoon, night ``,
+`` step 2: `advance:` to weekday `Fry` — a weekday is a number 0..6 or one of: Mon, Tue, Wed, Thu, Fri, Sat, Sun ``).
 
 **일과 나눠 쓰기.** `include: <file>`(키가 `include` 하나뿐인 스텝)은 다른 파일의 스텝을 그 자리에 끼워
 넣습니다: 파일은 스텝 목록이거나, 키가 `steps:` 하나뿐인 매핑입니다. 경로는 포함하는 파일을 기준으로
@@ -915,6 +1093,32 @@ steps:
 끼워 넣은 스텝의 번호를 댑니다. 읽을 수 없는 파일, 모양이 틀린 파일, 다른 키와 함께 쓴 `include:`, 그리고
 이미 포함되는 중인 파일은 사용법 오류입니다:
 `` plays/routes/loop.yaml: `include: ../loop.play.yaml` is a cycle — plays/routes/../loop.play.yaml is already being included ``.
+
+**인터페이스로서의 steps 파일.** 여러 작가가 한 플레이스루를 나눠 쓸 때 — 각 지역이 `include:`되는 steps
+파일을 소유하고, 리드의 스크립트가 그것들을 지도 순서대로 포함할 때 — steps 파일은 자신의 계약을 밝히므로,
+앞쪽의 변경은 세 파일 뒤의 빠진 비트가 아니라 그것이 깨뜨린 파일에서 실패합니다. 첫 스텝의
+`expect: { clock: … }`는 도착할 때 기대하는 시각을 밝히고(dsl 0.26.0 §7), 마지막 스텝의 `expect:`는
+인계입니다: 다음 파일이 기대는 팩트, 상태, 퀘스트 상태, 시계. 플러그인 호출에는 스텝 수준 `bridges:`를,
+결정에는 스텝 수준 `choose:`를 주어 그 응답이 다른 파일의 스텝에 소비되지 않게 하세요.
+[여러 작가 가이드](/guides/multi-author/)를 보세요. 하루만 앞으로 돌린 경로 뒤에 포함된, 수요일 아침을
+기대하는 시장:
+
+```yaml
+# plays/steps/market.steps.yaml — arrives Wednesday morning, leaves Wednesday night
+steps:
+  - occasion: visit
+    label: the market opens
+    expect: { clock: { weekday: Wed, slot: morning } }
+  - advance: { to: night }
+    label: market hand-off
+    expect: { clock: { weekday: Wed, slot: night } }
+```
+
+```
+── expect: 2 missed ──────────────
+  ✗ step 2 (the market opens) at visit: expect clock weekday: expected Wed, actual Tue (1)
+  ✗ step 3 (market hand-off) at slotStart: expect clock weekday: expected Wed, actual Tue (1)
+```
 
 ### 레이블과 반복
 
@@ -1620,6 +1824,17 @@ steps:
   결과 슬롯의 `state:` 시드는 아무것도 재생하기 전에 거부됩니다(종료 코드 2:
   `` `state.scene.check.guards.passed` is `scene.*`, which resets at every scene boundary and cannot be written ``).
   그런 시드를 쓰던 0.23.1 스크립트는 대신 `bridges:`로 호출에 답합니다.
+- **슬롯의 타입을 따름**(dsl 0.26.0 §3.1). 응답의 타입은 그 효과가 쓰는 결과 슬롯이 정합니다 — 디렉티브의
+  `state:` 모양이 선언한 슬롯이며, 호출이 컴포넌트 본문에서 와도 마찬가지입니다: 컴포넌트의 플러그인
+  디렉티브는 `::use`마다 호스트에 결과 슬롯을 선언합니다. 그런 슬롯이 없으면 브리지 capability의 `result:`
+  모양이 정합니다. 어느 쪽도 타입을 정하지 않는 응답은 호출에서 거부되며, 문자열로 저장되는 일은 없습니다
+  (0.26.0 전에는 컴포넌트의 `::battle`이 `won: true`를 `"true"`로 저장해 `<match>`가 다른 갈래를 탔습니다).
+  거부는 워크를 멈춥니다(종료 코드 2):
+
+```
+── halted: scene `ping.s` (scenes/ping.lute): the `bridges.ping` answer to plugin call `ping`: `ok` lands on `scene.ping.k.ok`, which no state slot of this artifact declares, and no bridge capability declares a `result:` type for it — an untyped answer is refused (dsl 0.26.0 §3.1) ──────────────
+```
+
 - **응답이 없으면 추측도 없음.** 남은 응답이 없는 호출은 워크를 **그 호출에서** 미완료(종료 코드 3)로
   멈추며, 그 뒤의 것 — `<match>`와 기본 갈래 포함 — 은 걷지 않습니다. 0.24 전에는 기본 갈래를 출력한 뒤에야
   멈췄습니다:
@@ -1646,20 +1861,25 @@ steps:
 | `notOffered: [beat ids]` | 나열된 비트 중 어느 것도 자격이 없었음 |
 | `presented: [beat ids]` | 정확히 이 비트들이 이 순서로 제시됨(dsl 0.23.0): [`select: sequence`](#계기-조합하기) 스텝의 목록 전체, 또는 승자와 그 뒤의 `also` 비트. `[]` — 아무것도 제시되지 않음 |
 
-네 키가 더 있어 **스텝이 정착한 직후**의 월드를 판정합니다 — 계기 스텝이라면 제시, 계기의 목표 판정,
+다섯 키가 더 있어 **스텝이 정착한 직후**의 월드를 판정합니다 — 계기 스텝이라면 제시, 계기의 목표 판정,
 그 뒤의 정착이 모두 끝난 다음 — 그리고 어떤 종류의 스텝에든 쓸 수 있습니다(`end` 옆은 안 됨). 각 키는
-아래 최상위에서와 같은 뜻을 그 시점에 대해 가집니다:
+`clock`을 빼면 아래 최상위에서와 같은 뜻을 그 시점에 대해 가집니다:
 
 | 키 | 성립 조건 |
 |---|---|
 | `quests: { <id>: <status> }` | 스텝 뒤에 퀘스트가 그 상태임 |
 | `state: { <path>: <value> }` | 스텝 뒤 경로의 유효 값이 그 값과 같음. 타입까지 비교 |
 | `facts: [atoms]` / `notFacts: [atoms]` | 각 원자가 스텝 뒤에, **파생 이후** 성립함 / 성립하지 않음 |
+| `clock: { weekday, slot, day }` | 스텝 뒤에 시계가 그 위치에 있음(dsl 0.26.0 §7): `weekday`는 `week.labels` 레이블이나 `clock.weekday` 숫자, `slot`은 선언된 슬롯, `day`는 날 번호 — 셋 중 아무거나 |
 
 그래서 `engine:` 스텝은 자신의 쓰기가 한 일을 단언할 수 있고 — [기한 예제](#기한과-대상-지정-목표)의
 `expect: { quests: { houndHunt: failed } }` — 계기 스텝은 끝까지 기다리지 않고 퀘스트 진행을 확인할 수
 있습니다. `occasion`이 아닌 스텝의 `winner`, `offered`, `notOffered`, `presented`는 사용법 오류(종료
 코드 2)입니다: `` step 2: `expect.winner` applies only to an `occasion` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
+
+`clock:` 불일치는 키를 대고, 요일 레이블 옆에 그 숫자를 출력합니다(`expect clock weekday: expected Wed, actual Tue (1)`).
+시계를 선언하지 않은 프로젝트에서는 모든 `clock:` 키가 불일치입니다(`actual no clock position …`).
+`include:`되는 steps 파일이 이 키를 쓰는 방법은 [시계 앞으로 돌리기](#시계-앞으로-돌리기)를 보세요.
 
 스텝 키가 하나 더 있으며 어떤 스텝에든 쓸 수 있습니다: `options: { <branch or hub>: [ids] }`(dsl 0.24.0)는
 그 스텝 동안 그 branch나 hub에서 정확히 그 선택지들이 제시되었을 때 성립합니다 — 집합이며, 어느 제시에서든
@@ -1699,6 +1919,15 @@ steps:
   ✗ step 1 at runStart: expect presented: expected [start.recap, start.gear], actual [start.gear, start.recap]
 ```
 
+dsl 0.26.0부터 `transcriptContains` / `transcriptLacks`의 바늘도 자신의 전달 속성을 버리므로, 트랜스크립트에서
+복사한 줄 — `"@mara{emotion=\"content\"}: You're new."` — 도 일치하고, `transcriptContains` 불일치는 바늘에
+가장 가까운 제시된 줄을 댑니다:
+
+```
+── expect: 1 missed ──────────────
+  ✗ end of play: expect transcriptContains: expected "@mara: Tomas keeps the oil. Ask her." present, actual "@mara: Tomas keeps the oil. Ask her." absent (nearest line: "@mara: Would you? Tomas keeps the oil. Ask him.")
+```
+
 불일치가 있으면 `lute play`는 종료 코드 1로 끝납니다. 단, 워크 자체가 이미 오류(종료 코드 1)나 잘못된
 산출물로 인한 러너 실패(종료 코드 2)로 끝났다면 그 코드를 따릅니다. 모든 기대값이 성립했어도 미완료(3)로
 멈춘 워크는 여전히 3으로 끝납니다.
@@ -1710,7 +1939,9 @@ steps:
 `expect:`가 종료를 선언하지 않는 한(`expect: { exit: incomplete }`) 실패합니다. `--coverage`에서는 플레이가
 — `occasion:` 스텝으로든 `advance:`가 발생시킨 계기로든 — 제시한 모든 문서와, 라이프사이클을 움직인 모든
 퀘스트 문서가 커버된 것으로 셉니다. 플레이는 제시된 문서에만 반영되며, branch/hub와 갈래 행은 추적한
-경로에서만 나옵니다.
+경로에서만 나옵니다. dsl 0.26.0부터 `lute test`는 플레이 프로젝트를 모든 플레이에 대해 한 번만 컴파일하고 —
+컴파일 진단도 플레이마다가 아니라 한 번 출력됩니다 — 플레이를 모든 논리 코어에서 병렬로 실행하며
+(`RAYON_NUM_THREADS`를 따름) 파일 순서대로 보고합니다.
 [`lute test`](/tooling/cli/#test)를 보세요.
 
 ### 파생과 `--explain`
@@ -1838,7 +2069,9 @@ explain safe(warden): holds
 - 스텝이 동작을 하나도 적지 않거나 둘 이상 적음(`engine:`을 함께 가진 `advance`는 하나로 셈), 알 수 없는 키, `occasion`이 아닌 스텝의 `target`,
   `occasion`도 `advance`도 아닌 스텝의 `pick` / `choose`, 그런 스텝의 계기 전용 `expect:` 키(`winner`,
   `offered`, `notOffered`, `presented`), 1 이상의 정수가 아닌 `repeat`.
-- `advance`가 `slot`, `day`, 1 이상의 정수가 아님. 프로젝트가 시계를 선언하지 않음. 시계의 `raise:`가 `slot`
+- `advance`가 `slot`, `day`, 1 이상의 정수, `{ to: <slot> }`, `{ to: { weekday, slot } }`가 아님. `to`가 시계가
+  선언하지 않은 슬롯이나, `week.labels` 레이블도 0..6 숫자도 아닌 요일을 가리킴. 프로젝트가 시계를 선언하지
+  않음. 시계의 `raise:`가 `slot`
   계기를 정하지 않았는데 `pick` / `choose` / 선택 `expect:`를 가짐. 또는 그 `engine:`이 시계 자신의 `day`나
   `slot` 경로를 씀. `include:`가 읽을 수 없거나 모양이 틀린 파일을 가리키거나,
   다른 키와 함께 쓰였거나, 순환을 만듦.
@@ -1854,7 +2087,8 @@ explain safe(warden): holds
 - `event:`가 선언된 월드 이벤트를 가리키지 않거나, 퀘스트 라이프사이클 이벤트를 가리킴.
 - `engine:`이나 `newRun` 쓰기가 선언되지 않았거나 `scene.*` / `quest.*`인 경로, 선언된 타입에 맞지 않는
   값, `number`가 아닌 경로의 `{ add: … }`, 또는 그라운드가 아니거나 선언되지 않았거나 파생된 관계를
-  가리키거나 인자 수가 틀리거나 닫힌 도메인의 멤버가 아닌 팩트를 가짐. 또는 아무것도 쓰지 않음.
+  가리키거나 인자 수가 틀리거나 닫힌 도메인의 멤버가 아닌 팩트를 가짐. `engine: { accept }`가 수락 방식이
+  아닌 퀘스트를 가리킴. 또는 아무것도 쓰지 않음.
 - `state:` / `facts:` 시드가 같은 검사에 실패하거나, 세이브 시드가 알 수 없는 id나 퀘스트 상태를 가리킴.
 - `expect:`에 알 수 없는 키나 잘못된 값이 있음.
 
@@ -1871,8 +2105,9 @@ explain safe(warden): holds
 
 계기 스텝:
 
-1. **후보** — 프로젝트의 비트 목록에서 `on`이 스텝의 계기와 같고 `target`이 없거나 스텝의 `target`과
-   같은 모든 비트.
+1. **후보** — 프로젝트의 비트 목록에서 `on`이 스텝의 계기와 같고, `target`이 없거나 스텝의 `target`과
+   같거나, (dsl 0.26.0 §5) 스텝의 대상 멤버가 속한 종류 `K`의 `kind:<K>`인 모든 비트. 종류 비트는 같은
+   priority의 다른 후보들 뒤에 놓이고, 제시되는 동안 그 멤버를 `occasion.target`으로 읽습니다.
 2. **판정** — 후보는 `once`가 소진되지 않았고(씬이나 번들 비트: `run` — 마지막 `newRun` 이후 제시되지 않음,
    `user` — 이 플레이나 세이브에서 한 번도 제시되지 않음, `day` / `slot` — 시계의 날 / 슬롯이 마지막으로
    바뀐 뒤 제시되지 않음, `false` — 소진되지 않음. 엔트리: `run` — `entry.<id>.read`가 세워지지 않음,
@@ -1937,8 +2172,8 @@ explain safe(warden): holds
 | 코드 | 의미 |
 |---|---|
 | `0` | 완료 — 모든 스텝이 재생되었거나 `end: true` 스텝이 플레이스루를 끝냈고, 모든 기대값이 성립함. |
-| `1` | 오류 — 프로젝트 컴파일 실패, 어휘 충돌, 자격이 없는 `pick`, 자격 있는 비트가 있는데 `pick`이 없는 `select: all` 스텝, 메뉴가 제시하지 않는 `choose:` 결정(자격 없는 선택지나 이미 고른 `once` hub 선택지), 스텝 자신의 `bridges:` 응답이 다 소비되지 않음, 함께 성립한 두 [배타 관계](#배타-관계)(dsl 0.25.0), 또는 기대값 불일치. |
-| `2` | 사용법 또는 I/O — 잘못된 스크립트([사용법 오류](#사용법-오류) 참고), 알 수 없는 계기나 월드 이벤트, 누락되었거나 도메인 밖인 `target`, 잘못된 시드나 `engine:` 쓰기, 시계를 뒤로 움직이는 `engine:` 스텝, 어떤 호출에도 맞지 않는 `bridges:` 응답, 그라운드가 아닌 `--explain` 원자, 읽을 수 없는 프로젝트, 잘못된 산출물. |
+| `1` | 오류 — 프로젝트 컴파일 실패(dsl 0.26.0부터 문서들이 한 상태 경로를 두 가지로 선언한 경우, `E-STATE-DECL-CONFLICT`도 포함), 어휘 충돌, 자격이 없는 `pick`, 자격 있는 비트가 있는데 `pick`이 없는 `select: all` 스텝, 메뉴가 제시하지 않는 `choose:` 결정(자격 없는 선택지나 이미 고른 `once` hub 선택지), 스텝 자신의 `bridges:` 응답이 다 소비되지 않음, 함께 성립한 두 [배타 관계](#배타-관계)(dsl 0.25.0), 또는 기대값 불일치. |
+| `2` | 사용법 또는 I/O — 잘못된 스크립트([사용법 오류](#사용법-오류) 참고), 알 수 없는 계기나 월드 이벤트, 누락되었거나 도메인 밖인 `target`, 잘못된 시드나 `engine:` 쓰기, 수락 방식이 아닌 퀘스트의 `engine: { accept }`, 선언된 슬롯이나 요일을 가리키지 않는 `advance: { to }`, 시계를 뒤로 움직이는 `engine:` 스텝, 어떤 호출에도 맞지 않거나 어떤 결과 슬롯이나 capability `result:`도 타입을 정하지 않는 `bridges:` 응답(dsl 0.26.0), 그라운드가 아닌 `--explain` 원자, 읽을 수 없는 프로젝트, 잘못된 산출물. |
 | `3` | 미완료 — 스크립트에 없는 choice나 hub, 바닥난 branch `choose:` 목록, unknown으로 평가되는 `when`이나 퀘스트 목표, 해석되지 않은 `now()` / `validAt()`, 또는 브리지 결과에 `bridges:` 응답이 없는 플러그인 호출. |
 
 ## 트랜스크립트
@@ -2002,7 +2237,8 @@ explain safe(warden): holds
   일이 옵니다: `· <occasion>` — 대상이 있는 스텝에는 `→ <target>`, `select: all` 계기에는
   `(select: all, pick: <id>)`(`pick` 없는 스텝이 자격 있는 비트를 찾지 못하면 `pick: none (nothing offered)`),
   `select: sequence` 계기에는 `(select: sequence)` — 또는 `· engine`, `· new run`, `· event <name>`,
-  `· advance <slot | day | n>: <from> → <to>`(시계의 발생이 같은 스텝 번호 아래에 이어짐: 자정의 멈춤마다
+  `· advance <slot | day | n>: <from> → <to>`(dsl 0.26.0부터 `{ to: … }` 형태는 `· advance to night: …`나
+  `· advance to Fri morning: …`. 시계의 발생이 같은 스텝 번호 아래에 이어짐: 자정의 멈춤마다
   `── step <n> · <position> · dayEnd` / `· dayStart`, 거기서 아무것도 발생시키지 않는 이동은 맨
   `── step <n> · <position>`, 그다음 `slot` 계기 자신의 헤더),
   `· end (the playthrough ends)`. `end: true` 스텝 때문에 재생되지 않은
@@ -2028,9 +2264,13 @@ explain safe(warden): holds
   소수점 없이 나옵니다(`= 50`).
 - 그 뒤에 제시된 비트 자신의 트랜스크립트가 소스처럼 읽히게 이어집니다: 콘텐츠 줄은 `@speaker: text`로,
   전달 방식을 유지하며(`@wren{mono}: …`, `@maud{as="Barkeep"}: …`), 보간은 엔진처럼 렌더링됩니다 —
-  `{{user.deaths:ordinal}}`은 `2nd`, `labels:`가 있는 enum에 타입이 매인 경로는 그 멤버의 레이블(dsl 0.24.0 §1, §4).
+  `{{user.deaths:ordinal}}`은 `2nd`, `labels:`가 있는 enum에 타입이 매인 경로는 그 멤버의 레이블(dsl 0.24.0 §1, §4),
+  `{{occasion.target}}`은 발생한 멤버의 cast `name:`(dsl 0.26.0 §5).
   `when=`이 거짓인 줄은 `skip @maud "You again." — when: false`로, 적용되지 않은 가드된 쓰기는
-  `skip set run.aff += 1 — when: false`로 표시됩니다. 연출 디렉티브는 작가가 쓴 그대로 나옵니다 —
+  `skip set run.aff += 1 — when: false`로 표시됩니다. dsl 0.26.0부터 `when=`이 거짓인 다른 디렉티브도 모두
+  같은 식입니다: `skip ::give{item="potion"} — when: false`, `skip assert metWren(wren) — when: false`, 그리고
+  확장을 하나도 재생하지 않는 `::use`는 `skip ::use{component="…" …} — when: false`. 연출 디렉티브는 작가가
+  쓴 그대로 나옵니다 —
   `::bg{location="parlor"}`, `::auto{character="maud" anchor="left"}`, `::vfx{type=…}`, 그리고
   플러그인 자신의 디렉티브는 그 이름 그대로 — 컴파일러가 주입한 연출(프리로드, 포즈 리셋, `::bg` 자동
   숨김)은 빠집니다. 참조 플레이어가 실행할 수 없는 플러그인 디렉티브에는 `(plugin call, not invoked)`가
@@ -2051,7 +2291,8 @@ explain safe(warden): holds
   `transcriptLacks`는 언제나 콘텐츠 줄로 판정하며, `--json`은 어느 쪽이든 모든 레코드를
   담습니다.
 - `engine:` 스텝은 쓰기를 나열합니다: `set <path> = <value>`, `assert <atom>`, `retract <atom>` — 팩트가
-  아니었으면 `retract <atom> (did not hold)`.
+  아니었으면 `retract <atom> (did not hold)` — 그리고 dsl 0.26.0부터 `accept:`마다 `quest <id> accepted (engine)`,
+  이미 활성·완료·실패한 퀘스트라면 아무것도 바꾸지 않는 `note: quest <id> is already active — engine accept ignored`.
 - `newRun` 스텝은 `run.* state, run-tier facts and once: run reset`을 출력하고, 끝난 런이 스냅숏할
   `run.*` 값을 남겼으면 `; prev.run.* holds the ended run (<n> values)`를 덧붙이며, 이어서 스냅숏한 값마다
   `prev.run.<path> = <value>`(dsl 0.24.0), `unset`을 벗어났던 run 등급 퀘스트마다
@@ -2176,7 +2417,7 @@ type EndStep = { end: true };
 // occasion, is carried as the OccasionStep fields beside `advance`.
 type AdvanceStep = {
   advance: {
-    by: string;                            // "slot", "day", or the slot count
+    by: string;                            // "slot", "day", the slot count, or "to night" / "to Fri morning" (dsl 0.26.0)
     from: string;                          // "day 1 (Mon) afternoon"
     to: string;
     days?: DayStop[];                      // each midnight stop, in order, when `raise:` names `dayEnd` / `dayStart`
@@ -2193,7 +2434,8 @@ type DayStop = {
 type WriteRecord =
   | { kind: "set"; path: string; value: unknown }
   | { kind: "assert"; fact: string }
-  | { kind: "retract"; pattern: string; held: boolean };
+  | { kind: "retract"; pattern: string; held: boolean }
+  | { kind: "accept"; quest: string; by: "engine" };   // an `engine: { accept }` (dsl 0.26.0)
 
 type QuestGroup = {
   document: string;                        // the quest document
