@@ -3,7 +3,7 @@ title: CLI reference
 description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
 ---
 
-`lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot. Without it, `check` applies the nearest `lute.project.yaml` above the file; the other single-file commands (`compile`, `trace`, `context`, `test`) resolve core-only (`lute.core`). On the permission-aware authoring commands below, `--permission-profile <NAME>` requires project resolution and applies that trusted profile's [permissions](/tooling/capability-permissions/) as an additional ceiling without activating its plugins or changing the source profile.
+`lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot. Without it, every single-file command (`check`, `compile`, `compile-stream`, `trace`, `context`, `test`) applies the nearest `lute.project.yaml` above the file and says so on stderr (`lute: note: using project <dir> (nearest lute.project.yaml); pass --project to choose another`); with no manifest above the file it resolves core-only (`lute.core`). Before 0.27.0 only `check` and `test` looked for the manifest, so `trace` could refuse with `E-UNDECLARED` a document `check` passed. On the permission-aware authoring commands below, `--permission-profile <NAME>` requires project resolution and applies that trusted profile's [permissions](/tooling/capability-permissions/) as an additional ceiling without activating its plugins or changing the source profile.
 
 ## check
 
@@ -59,7 +59,7 @@ $ lute compile --all --project <DIR> -o <DIR> [--providers <DIR>] [--locales <FI
                       [--deny <CODE>]… [--deny-warnings]
 ```
 
-Compile a document to its JSON command-record artifact (gated on a clean check and a compiler-side recheck of the effective permission policy). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict. A `--permission-profile` ceiling is checked again immediately before lowering, so a check result created under another policy cannot authorize forbidden IR.
+Compile a document to its JSON command-record artifact (gated on a clean check and a compiler-side recheck of the effective permission policy). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict; without it, the nearest `lute.project.yaml` above the file supplies the project (0.27.0, with the same stderr note as `check`) and the gate is that file's `lute check` verdict. A `--permission-profile` ceiling is checked again immediately before lowering, so a check result created under another policy cannot authorize forbidden IR.
 
 
 ### `--all` — project-wide compile and index
@@ -136,7 +136,8 @@ $ lute compile-stream <scene.lute> [--project <DIR>] [--providers <DIR>]
                       [--permission-profile <NAME>]
 ```
 
-Resolve and check a complete scene template once, then read append-only ordinary
+Resolve and check a complete scene template once — against `--project`, else the nearest
+`lute.project.yaml` above it (0.27.0) — then read append-only ordinary
 Lute shot-body text from stdin. Each complete accepted line/directive/block is
 compiled through the existing cumulative whole-document pipeline and flushed to
 stdout as NDJSON: `start` with the initial full artifact, one `update` with a
@@ -165,7 +166,7 @@ $ lute trace <file> [--state P=L]… [--fact "R(A…)"]… [--choose ID=C[,C]]�
               [--providers <DIR>] [--project <DIR>] [--entry <ID> | --beat <ID>] [--no-derive] [--expand]
 ```
 
-Preview a document against author-supplied mocks (see the [tracing guide](/tooling/tracing/)). Exit **0** complete, **1** refused (check errors or invalid mocks — the `E-TRACE-*` codes render like check diagnostics — or, dsl 0.25.0, a write or a seed that makes two [exclusive relations](/tooling/tracing/#exclusive-relations) hold together, `E-FACT-EXCLUSIVE`), **2** I/O, **3** incomplete (an `unknown` guard halted the walk). `--occasion <O>` (repeatable, dsl 0.21.0) raises an occasion after a quest walk settles: every active quest's same-named `<on event="O">` handlers run first, then the `<objective on="O">` objectives of every active quest are judged; the mock file's `occasions:` list does the same, and its `visited:` list seeds the scenes `visited('<id>')` reads as presented (unlisted scenes are not visited). A quest walk settles as `lute play` settles it: a grant whose reward kind declares `credits:` adds its scalar amount to that path (the grant line ends `(credits <path> = <value>)`, JSON `credited`), and an objective's body plays once when the objective turns done — see [Rewards and objective bodies](/tooling/tracing/#rewards-and-objective-bodies).
+Preview a document against author-supplied mocks (see the [tracing guide](/tooling/tracing/)). Without `--project`, the nearest `lute.project.yaml` above the file supplies the project, as for `check` (0.27.0; before, trace resolved core-only and refused what a project's `defaults:` supplied). Exit **0** complete, **1** refused (check errors or invalid mocks — the `E-TRACE-*` codes render like check diagnostics — or, dsl 0.25.0, a write or a seed that makes two [exclusive relations](/tooling/tracing/#exclusive-relations) hold together, `E-FACT-EXCLUSIVE`), **2** I/O, **3** incomplete (an `unknown` guard halted the walk). `--occasion <O>` (repeatable, dsl 0.21.0) raises an occasion after a quest walk settles: every active quest's same-named `<on event="O">` handlers run first, then the `<objective on="O">` objectives of every active quest are judged; the mock file's `occasions:` list does the same, and its `visited:` list seeds the scenes `visited('<id>')` reads as presented (unlisted scenes are not visited). A quest walk settles as `lute play` settles it: a grant whose reward kind declares `credits:` adds its scalar amount to that path (the grant line ends `(credits <path> = <value>)`, JSON `credited`), and an objective's body plays once when the objective turns done — see [Rewards and objective bodies](/tooling/tracing/#rewards-and-objective-bodies).
 
 A mock can also start from a save (dsl 0.22.0): `quests: { <id>: unset | active | complete | failed }` seeds `quest.<id>.state`, and `entriesRead: { run: [ids], user: [ids] }` seeds the entry read flags — `run:` both `entry.<id>.read` and `entry.<id>.everRead`, `user:` `entry.<id>.everRead` alone. Each follows the mock rules of the reserved path it spells — the document must read that path, or (for an entry) declare the entry.
 
@@ -245,7 +246,7 @@ $ lute context <file> [--json] [--providers <DIR>] [--project <DIR>]
                       [--permission-profile <NAME>]
 ```
 
-Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, effective permission layers, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. With `--permission-profile`, JSON `permissions` is `{ "layers": [...] }`, `bridges` contains only allowed bridge capability objects, `rewardKinds` is the allowed name-keyed object (empty when rewards are denied), and `questsAllowed` is a boolean. `directives` excludes both directive-denied entries and bridge directives whose `service/operation` is denied. External read-only state remains visible. Text output describes a compile-time authoring restriction and explicitly does not claim runtime sandboxing. Exit **0** on success, **2** on I/O; project/profile resolution errors are surfaced rather than treated as unrestricted.
+Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, effective permission layers, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. Without `--project`, the nearest `lute.project.yaml` above the file is the project (0.27.0), as for `check`. With `--permission-profile`, JSON `permissions` is `{ "layers": [...] }`, `bridges` contains only allowed bridge capability objects, `rewardKinds` is the allowed name-keyed object (empty when rewards are denied), and `questsAllowed` is a boolean. `directives` excludes both directive-denied entries and bridge directives whose `service/operation` is denied. External read-only state remains visible. Text output describes a compile-time authoring restriction and explicitly does not claim runtime sandboxing. Exit **0** on success, **2** on I/O; project/profile resolution errors are surfaced rather than treated as unrestricted.
 
 Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `type`, `params`, and `body`), the language's built-in directives under `builtinDirectives` (`::set`, `::assert`, `::retract`, `::accept`, `::use`, each with its `syntax` and `meaning`), and `ids` — every scene, quest, and lore entry id in the `--project` (`{ scenes, quests, entries }`; without `--project`, the document's own). A relation reports its `tier` and whether it is `reserved`, a state path declared `owner: engine` says so, an occasion carries its `description` and its `target` (`false`, `true`, or a `{ prefix, entity }` domain — human: `talk (select: first, target: npc.<npc>)`), and the human outline prints each imported component's parameters with their types. See the [AI harness guide](/tooling/ai-harness/#prompt-context-lute-context---json).
 
@@ -524,7 +525,7 @@ expect:
 
 Since dsl 0.24.0 a test takes the mock's `bridges:` key too (see [Bridge answers](/tooling/tracing/#bridge-answers)), and three expectations read more: `expect.accepts: [quest ids]` asserts the quests the scene's `::accept`s took, as a set (`accepts: expected [toll], got [parley]`); `expect.offered` of a `<hub>` is every choice eligible at any of its visits, unioned (it was always `[]`); and `transcriptContains` / `transcriptLacks` match only the content lines that played, each in the form `@speaker: text` — the form a play script matches, so `"@narrator: Always shown."` works in both, and a guarded line that never played no longer satisfies `transcriptContains`.
 
-Since dsl 0.26.0 a needle's own line attributes are dropped too, so a line pasted from a play or a trace — `"@mara{emotion=\"content\"}: You're new."` — matches, and a `transcriptContains` miss quotes the presented line nearest to the needle, as it was said: `` transcriptContains "@mara: Tomas keeps the oil. Ask her.": absent (nearest line: "@mara{emotion=\"delighted\"}: Would you? Tomas keeps the oil. Ask him.") (expected present) ``. Since 0.27.0 the nearest line is a line of the needle's speaker first, then the one the needle needs the fewest edits to occur in, so a short line is no longer "near" a long needle (round-5 T3-16).
+A needle with no attribute block matches a line whatever its delivery attributes. Since dsl 0.27.0 a needle's own attribute block is judged (0.26.0 dropped it): a needle line written `@mara{emotion="content"}: You're new.` matches only a line whose attributes include `emotion="content"` (the line may carry more), so a line pasted from a play or a trace matches the line it came from and not the same words said another way. A `transcriptLacks` needle with a block therefore holds when the words are said with other attributes — write it bare (`"@mara: You're new."`) to mean "never said". The block's keys and values are checked first: a key a transcript line never shows (with a did-you-mean), a value outside its domain, a non-integer `variant`, or a value on a delivery flag makes the test invalid (`E-TEST-NEEDLE`, reported as a `FAIL` like `E-TEST-KEY`), in `transcriptContains` and `transcriptLacks` alike. A `transcriptContains` miss quotes the presented line nearest to the needle, as it was said: `` transcriptContains "@mara: Tomas keeps the oil. Ask her.": absent (nearest line: "@mara{emotion=\"delighted\"}: Would you? Tomas keeps the oil. Ask him.") (expected present) ``. Since 0.27.0 the nearest line is a line of the needle's speaker first, then the one the needle needs the fewest edits to occur in, so a short line is no longer "near" a long needle (round-5 T3-16).
 
 **An incomplete walk fails.** When an unknown guard halts the trace, the expectations after it were never walked, so the test fails — whatever else it asserts — unless it declares `expect: { exit: incomplete }`. Derivation is on (see [trace](#trace)): a rule-derived fact follows from the test's `facts:` and the project's seed facts, with no need to mock the conclusion. **Migration from 0.21:** a test that relied on an unmocked derived atom being unknown (exit `incomplete`), or on a seeded relation reading empty, now sees the derived or seeded answer; pin `derive: false` to keep the old verdict.
 
@@ -624,6 +625,24 @@ $ lute loc report <dir> [--json]
 ```
 
 Word-count and line-count report per document and per speaker — a production-planning view over the same content lines. `--json` emits the report as JSON instead of human table lines. Exit **0** on success, **2** on I/O.
+
+## --explain
+
+```console
+$ lute --explain <CODE>
+```
+
+Explain one diagnostic code — the bracketed `CODE` in `file:line:col: error [CODE] message`, in any letter case (`e-set-shape` works): its severity, what raises it, the spec sections behind it, and the link to its entry in the [diagnostics reference](/reference/diagnostics/), which lists every code. A code it does not know is a usage error (exit **2**); otherwise it exits **0**. This is a top-level flag, not a subcommand, and it is unrelated to [`lute play --explain <ATOM>`](#play), which prints the derivation of a fact after a play.
+
+```
+$ lute --explain E-LEGACY-CONTENT-SIGIL
+E-LEGACY-CONTENT-SIGIL (error)
+
+A content line uses the old `:` speaker sigil, which `@` replaced — write `@speaker{…}: text` instead.
+
+Spec: dsl §7.1
+More: https://lute-lang.vercel.app/reference/diagnostics/#e-legacy-content-sigil
+```
 
 ## version
 

@@ -967,6 +967,25 @@ fn run_one_test(
             key_violations,
         ));
     }
+    // 0.27 prerelease OT-F-3: every string `expect.state` value and where it
+    // was written — member-checked once the document's schema is folded.
+    let expect_state: Vec<(String, String, String)> = map
+        .get("expect")
+        .and_then(|e| e.get("state"))
+        .and_then(|v| v.as_mapping())
+        .into_iter()
+        .flatten()
+        .filter_map(|(k, v)| {
+            use lute_trace::YamlStep::Key;
+            let (path, want) = (k.as_str()?, v.as_str()?);
+            let at = lute_trace::yaml_span(&text, &[Key("expect"), Key("state"), Key(path)])
+                .map_or_else(
+                    || test_file.display().to_string(),
+                    |s| format!("{}:{}:{}", test_file.display(), s.line, s.column),
+                );
+            Some((path.to_string(), want.to_string(), at))
+        })
+        .collect();
     let rel = match lute_trace::mock_subject(&text) {
         Ok(Some(s)) => s,
         Ok(None) => {
@@ -1035,6 +1054,8 @@ fn run_one_test(
     // failure, never the whole suite's abort.
     /// A test whose `file:` names no document (0.23.1).
     const E_TEST_FILE: &str = "E-TEST-FILE";
+    /// A transcript needle naming what no presented line can carry (0.27).
+    const E_TEST_NEEDLE: &str = "E-TEST-NEEDLE";
     if !lute_path.is_file() {
         return Ok(TestResult::refused(
             test_file,
@@ -1092,6 +1113,7 @@ fn run_one_test(
     let crate::BuiltInput {
         input,
         resolve_error,
+        meta,
         ..
     } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
@@ -1099,6 +1121,61 @@ fn run_one_test(
     // error; it printed above, and it MUST gate here or it would pass silently.
     if resolve_error {
         return Err(ExitCode::from(1));
+    }
+
+    // 0.27 prerelease OT-F-2: a needle attribute no presented line can
+    // carry makes `transcriptContains` a sure miss and `transcriptLacks` a
+    // vacuous pass — refused like a misspelt key, before anything is walked.
+    let needles = lute_trace::exec::record::NeedleVocab::of(&input, &meta);
+    let needle_problems: Vec<String> = ["transcriptContains", "transcriptLacks"]
+        .into_iter()
+        .flat_map(|key| {
+            map.get("expect")
+                .and_then(|e| e.get(key))
+                .and_then(|v| v.as_sequence())
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str())
+                .filter_map(|n| lute_trace::exec::record::needle_problem(n, &needles))
+                .map(move |why| format!("error [{E_TEST_NEEDLE}] `expect.{key}` {why}"))
+        })
+        .collect();
+    if !needle_problems.is_empty() {
+        return Ok(TestResult::refused(
+            test_file,
+            lute_display,
+            "invalid",
+            needle_problems,
+        ));
+    }
+
+    // 0.27 prerelease OT-F-3: an `expect.state` value outside its path's
+    // closed domain (`{ domain: K }` / `{ entity: K }`, an inline enum) can
+    // never hold — refused like a seed outside it, with the members and the
+    // nearest one, not reported as a miss. `unset` is the spelling of "no
+    // value" (an implicit choice slot, a quest), never a typo.
+    if !expect_state.is_empty() {
+        let doc = desugared(&input);
+        let (folded, _, _) = lute_check::fold_env(&doc, &input);
+        let problems: Vec<String> = expect_state
+            .iter()
+            .filter(|(_, want, _)| want != "unset")
+            .filter_map(|(path, want, at)| {
+                let why = lute_trace::mock::state_member_problem(&folded.env.state, path, want)?;
+                Some(format!(
+                    "{at}: error [E-TRACE-MOCK-TYPE] `expect.state.{path}: {want}` can never \
+                     hold: {why}"
+                ))
+            })
+            .collect();
+        if !problems.is_empty() {
+            return Ok(TestResult::refused(
+                test_file,
+                lute_display,
+                "invalid",
+                problems,
+            ));
+        }
     }
 
     // `expect.eligible`, a map key naming an entry by its `<document

@@ -203,9 +203,10 @@ fn a_season_reopening_resets_its_tier_and_a_rearm_takes_the_quest_again() {
 }
 
 #[test]
-fn one_long_advance_observes_every_day_it_crosses() {
+fn one_long_advance_settles_every_day_it_crosses() {
     // Day 3 opens the window; the next advance crosses day 5 (closes), day
-    // 8 (opens again) and lands on day 10 (closed) — all inside one step.
+    // 8 (opens again: both quests reset and start afresh) and lands on day
+    // 10 (closed) — all inside one step.
     let dir = project(
         "season-long",
         SEASON_SCHEMA,
@@ -219,7 +220,7 @@ fn one_long_advance_observes_every_day_it_crosses() {
          - engine: { state: { season.harvest.tokens: 2 } }\n    \
          expect: { quests: { missions: complete, festival: complete } }\n  \
          - advance: 7\n    \
-         expect:\n      quests: { missions: unset, festival: unset }\n      \
+         expect:\n      quests: { missions: active, festival: active }\n      \
          state: { run.day: 10, season.harvest.tokens: 0, prev.season.harvest.tokens: 2 }\n",
     );
     let t = text(&out);
@@ -236,14 +237,107 @@ fn one_long_advance_observes_every_day_it_crosses() {
         last.contains("last window: prev.season.harvest.tokens = 2"),
         "{t}"
     );
+    // Each crossed position that moved a quest prints its clock move first.
+    let at = |s: &str| last.find(s).unwrap_or_else(|| panic!("`{s}` in\n{t}"));
+    assert!(at("set run.day = 5") < at("season harvest closes"), "{t}");
+    assert!(at("set run.day = 8") < at("season harvest opens"), "{t}");
     assert!(
-        last.contains("quest missions -> unset (season:harvest opened; was complete)"),
+        at("season harvest opens")
+            < at("quest missions -> unset (season:harvest opened; was complete)"),
         "{t}"
     );
     assert!(
-        last.contains("quest festival -> unset (rearmed; was complete)"),
+        at("quest festival -> unset (rearmed; was complete)") < at("quest festival -> active"),
         "{t}"
     );
+    assert!(
+        at("quest missions -> active") < at("set run.day = 10"),
+        "{t}"
+    );
+}
+
+/// G-3: on a clock that raises no `dayStart` / `dayEnd`, a season window
+/// that opens and closes inside one `advance:` starts its season-tier quest
+/// where it opens and fails its deadline where it closes.
+#[test]
+fn one_long_advance_starts_and_fails_a_season_quest_inside_the_window() {
+    let schema = "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+                  run.slot: { type: { enum: [morning, night] }, default: morning, owner: engine }\n  \
+                  season.fair.stalls: { type: number, default: 0 }\n\
+                  clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, night]\n\
+                  defs:\n  fairLive: \"run.day == 3\"\n\
+                  seasons:\n  fair: { live: \"@fairLive\" }\n";
+    let quests = "---\nkind: quest\nid: fair\nuses: ../world.schema.yaml\n---\n\n\
+                  <quest id=\"stalls\" title=\"Stalls\" tier=\"season:fair\" start=\"@fairLive\">\n  \
+                  <objective id=\"one\" title=\"One stall\" done=\"season.fair.stalls >= 1\" \
+                  by=\"!@fairLive\"/>\n</quest>\n";
+    let dir = project("season-inside", schema, &[("quests/fair.lute", quests)]);
+    let out = check_project(&dir);
+    assert!(out.status.success(), "{}", text(&out));
+    // Day 1 morning -> day 4 morning: the fair opens on day 3 and closes
+    // before the clock stops.
+    let out = play(
+        &dir,
+        "steps:\n  - advance: 6\n    \
+         expect: { clock: { day: 4 }, quests: { stalls: failed } }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    let at = |s: &str| t.find(s).unwrap_or_else(|| panic!("`{s}` in\n{t}"));
+    assert!(at("set run.day = 3") < at("season fair opens"), "{t}");
+    assert!(
+        at("season fair opens") < at("quest stalls -> active"),
+        "{t}"
+    );
+    assert!(at("quest stalls -> active") < at("set run.day = 4"), "{t}");
+    assert!(
+        at("set run.day = 4") < at("quest stalls -> failed (by)"),
+        "{t}"
+    );
+}
+
+/// G-3: a `rearm` fires at the crossed position where its condition turns
+/// true, and the quest's `start` is judged there too — not at an arrival
+/// where both are false.
+#[test]
+fn one_long_advance_rearms_at_the_crossed_position() {
+    let schema = format!(
+        "state:\n  run.day: {{ type: number, default: 1, owner: engine }}\n  \
+         run.floors: {{ type: number, default: 0, owner: engine }}\n\
+         clock:\n  day: run.day\n{WEEK_CLOCK}\
+         defs:\n  monday: \"clock.weekday == 0\"\n"
+    );
+    let quests = "---\nkind: quest\nid: tower\nuses: ../world.schema.yaml\n---\n\n\
+                  <quest id=\"weekly\" title=\"Weekly\" start=\"@monday\" rearm=\"@monday\">\n  \
+                  <objective id=\"climb\" title=\"Climb\" done=\"run.floors >= 10\"/>\n</quest>\n";
+    let dir = project("rearm-cross", &schema, &[("quests/tower.lute", quests)]);
+    let out = check_project(&dir);
+    assert!(out.status.success(), "{}", text(&out));
+    // Monday day 1: taken and done; the floors reset; Friday -> Tuesday
+    // crosses Monday day 8.
+    let out = play(
+        &dir,
+        "steps:\n  - engine: { state: { run.floors: 10 } }\n    \
+         expect: { quests: { weekly: complete } }\n  \
+         - engine: { state: { run.floors: 0 } }\n  \
+         - advance: 4\n    expect: { quests: { weekly: complete } }\n  \
+         - advance: { to: { weekday: Tue } }\n    \
+         expect: { clock: { day: 9 }, quests: { weekly: active } }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    let last = &t[t.find("advance to Tue").expect("the last step's header")..];
+    let at = |s: &str| last.find(s).unwrap_or_else(|| panic!("`{s}` in\n{t}"));
+    assert!(
+        at("set run.day = 8") < at("quest weekly -> unset (rearmed; was complete)"),
+        "{t}"
+    );
+    assert!(
+        at("quest weekly -> unset (rearmed; was complete)") < at("quest weekly -> active"),
+        "{t}"
+    );
+    assert!(at("quest weekly -> active") < at("set run.day = 9"), "{t}");
+    assert_eq!(last.matches("rearmed").count(), 1, "{t}");
 }
 
 #[test]

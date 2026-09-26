@@ -123,6 +123,11 @@ pub(crate) const W_OBJECTIVE_HIDDEN: &str = "W-OBJECTIVE-HIDDEN";
 /// judged, unless both happen in the step that raises the occasion.
 pub(crate) const W_DEADLINE_BEFORE_DONE: &str = "W-DEADLINE-BEFORE-DONE";
 
+/// `W-DEADLINE-NEVER` (dsl 0.24.0 §2.1): an objective's `by=` deadline is
+/// provably false — typically a moment past the end of a clock that ends —
+/// so it never fails the objective.
+pub(crate) const W_DEADLINE_NEVER: &str = "W-DEADLINE-NEVER";
+
 /// `E-ENTRY-UNREACHABLE` (dsl 0.20.0 §5): a lore entry whose `when`
 /// eligibility guard provably never holds — the entry is never presented.
 /// Decided per file when the guard is scalar-decidable (here), and by the
@@ -150,7 +155,11 @@ pub(crate) const E_UNSET_LITERAL: &str = "E-UNSET-LITERAL";
 /// subject's finite domain is `E-WHEN-LITERAL-DOMAIN` (dsl 0.26.0) — the
 /// code a foreign `<when is>` literal gets, since `S == 'x'` is the same
 /// claim.
-fn push_literal_cmp_diags(diags: &mut Vec<Diagnostic>, hits: &[LiteralCmpHit], span: Span) {
+pub(crate) fn push_literal_cmp_diags(
+    diags: &mut Vec<Diagnostic>,
+    hits: &[LiteralCmpHit],
+    span: Span,
+) {
     for hit in hits {
         let (code, message) = match &hit.kind {
             LiteralCmpKind::UnsetSentinel { not_equals } => (
@@ -366,6 +375,10 @@ pub(crate) fn check_reachability(
     }
     // dsl 0.27.0 §4: beats judged under their occasion's gate and `!terminal`.
     diags.extend(crate::gates::seam_reachability(
+        doc, folded, &defs, &base_ctx,
+    ));
+    // dsl 0.27.0 §5: a `spentBy` that always holds, or already holds at start.
+    diags.extend(crate::spent_by::check_spent_by(
         doc, folded, &defs, &base_ctx,
     ));
     diags
@@ -1474,6 +1487,25 @@ fn check_objective_reach(
             }
         }
     }
+    // HW27-05: a `by` that can never hold never fails the objective — most
+    // often a deadline past the end of a clock that ends.
+    if let Some(by) = o.by.as_ref().filter(|b| !b.raw.trim().is_empty()) {
+        if decide_slot(&by.raw, defs, ctx) == Some(Decided::Bool(false)) {
+            let why = crate::clock::end_reason(ctx.schema, &by.raw)
+                .map_or_else(String::new, |r| format!(" — {r}"));
+            diags.push(diag(
+                W_DEADLINE_NEVER,
+                Severity::Warning,
+                format!(
+                    "objective `{}`'s deadline `by: {}` can never hold{why}, so it never fails \
+                     the objective (dsl 0.24.0 §2.1)",
+                    o.id,
+                    by.raw.trim()
+                ),
+                by.span,
+            ));
+        }
+    }
     // dsl 0.24.0 §2.1: `done ⇒ by` on an `on=` objective — proven as
     // "`done && !by` decides false"; undecided stays silent.
     if let (Some((on, _)), Some(by), None) = (&o.on, &o.by, &o.until) {
@@ -2322,7 +2354,7 @@ fn foreign_comparison_message(subject: &str, literal: &str, members: &[String]) 
 }
 
 /// Build a `Layer::Logic` diagnostic (a §5.2 reachability check).
-fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnostic {
+pub(crate) fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
         severity,

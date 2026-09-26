@@ -33,14 +33,21 @@ fn compile_marina_exits_zero_with_artifact_json() {
 
 #[test]
 fn compile_error_doc_exits_one_and_emits_no_artifact() {
-    // date-minigame needs its project; core-only it checks with errors.
+    // A loose scene (no manifest above it) writing an undeclared path.
+    let dir = std::env::temp_dir().join(format!("lute-compile-error-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("bad.lute");
+    std::fs::write(
+        &file,
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         ::set{ run.nowhere = 1 }\n@narrator: hi.\n",
+    )
+    .unwrap();
     let out = Command::new(BIN)
-        .args([
-            "compile",
-            "../../docs/examples/arcia-project/date-minigame.lute",
-        ])
+        .args(["compile", file.to_str().unwrap()])
         .output()
         .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(out.status.code(), Some(1));
     assert!(
         out.stdout.is_empty() || !out.stdout.starts_with(b"{"),

@@ -50,6 +50,11 @@ pub(super) fn render_json(play: &Playthrough) -> Json {
             if !s.exclusive.is_empty() {
                 o.insert("exclusive".into(), json!(s.exclusive));
             }
+            // dsl 0.27.0 §4: an occasion step's `engine:` write, landed
+            // before its raise (the next object, the same `step`).
+            if s.before_raise {
+                o.insert("beforeRaise".into(), json!(true));
+            }
             match &s.body {
                 StepBody::NewRun {
                     writes,

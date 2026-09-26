@@ -813,7 +813,9 @@ fn body_interpolates(
 /// an earlier one inside a guarded `::use`. The guard rides every write the
 /// `::use` splices into the host ([`crate::component_effects`]), each
 /// anchored at the `::use`, so the host passes judge the one guard once per
-/// write.
+/// write. dsl 0.27.0 §6: likewise at a `<beat use=…>` — its derived header
+/// and its body's `::use` all anchor at the `use=` value, so one argument
+/// judged by both (a header `when` and a body `::assert`) is one report.
 pub(super) fn dedup_guarded_use_reports(doc: &Document, diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     let mut dirs = Vec::new();
     for body in doc
@@ -830,6 +832,11 @@ pub(super) fn dedup_guarded_use_reports(doc: &Document, diags: Vec<Diagnostic>) 
         .into_iter()
         .filter(|d| d.when.is_some())
         .map(|d| d.span)
+        .chain(
+            doc.beats
+                .iter()
+                .filter_map(|b| Some(b.template.as_ref()?.span)),
+        )
         .collect();
     if guarded.is_empty() {
         return diags;

@@ -72,9 +72,19 @@ fn project(tag: &str, arms: &str) -> PathBuf {
 }
 
 fn arms_of(dir: &Path) -> Vec<serde_json::Value> {
-    let (code, out) = run(dir, &["compile", "m.lute"]);
-    assert_eq!(code, Some(0), "{out}");
-    let art: serde_json::Value = serde_json::from_str(&out).unwrap();
+    // The artifact is stdout; stderr carries the nearest-project note.
+    let o = Command::new(BIN)
+        .args(["compile", "m.lute"])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let art: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
     art["commands"]
         .as_array()
         .unwrap()

@@ -523,7 +523,21 @@ failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 **Reading a diagnostic:** `file:line:col: error [CODE] message`. It names the exact line, the exact
-problem, and exactly what to write instead. For this mechanical class of fix, run:
+problem, and exactly what to write instead. When a message is not enough, `lute --explain <CODE>`
+prints what the code means and links its entry in the [diagnostics reference](/reference/diagnostics/),
+which lists every code:
+
+```
+$ lute --explain E-LEGACY-CONTENT-SIGIL
+E-LEGACY-CONTENT-SIGIL (error)
+
+A content line uses the old `:` speaker sigil, which `@` replaced — write `@speaker{…}: text` instead.
+
+Spec: dsl §7.1
+More: https://lute-lang.vercel.app/reference/diagnostics/#e-legacy-content-sigil
+```
+
+For this mechanical class of fix, run:
 
 ```
 $ lute fix my-scene.lute
@@ -757,9 +771,9 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
     - run.metMira   written by: scene(mira.s01ep01)
   Possible (set on SOME but not every declared route reaching this node; the Guaranteed paths above are not repeated):
     (none)
-  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+  Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
     (none)
 ```
 
@@ -882,7 +896,10 @@ behalf so a later construct can read which option the player took, and `prev.run
 read-only value `run.metMira` had when the previous run ended.
 
 `builtinDirectives` lists the directives the language itself provides — `::set` you have already
-used — and `scenes` lists the ids `visited("…")` can name. Pass `--project episodes` and that list
+used. `beatKeys` and `questKeys` list every key a beat's header (a scene's frontmatter, an
+`<entry>` or `<beat>`) and a `<quest>` element may carry, with one line on what each does — the
+place to look when you meet `on:` or `once:` in someone else's scene. `scenes` lists the ids
+`visited("…")` can name. Pass `--project episodes` and that list
 covers every scene in the project, alongside its quests and lore entries.
 
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
@@ -1958,7 +1975,7 @@ $ lute play . --script plays/story.play.yaml        # the transcript of one play
 
 ```
 my-game/
-├── lute.project.yaml            profiles, plugins, identity, defaults
+├── lute.project.yaml            profiles, plugins, identity, defaults, sequence
 ├── world.schema.yaml            run/user/app state, enums, defs, facts, rules
 ├── plugins/game.occasions/      optional: plugin.yaml + occasions/*.yaml + events/*.yaml
 ├── scenes/*.lute                kind: scene
@@ -3237,8 +3254,11 @@ expect:                                 # judged at the end; a miss exits 1
   refuses `quest.*`: a quest's status is the lifecycle's, seeded with `quests:`. `newRun` takes the
   same `state:` and `facts:` as the new run's seed.
 - `target` belongs to an `occasion` step, and `pick` and `choose` to an `occasion` or `advance`
-  step; `label` goes on any step, and `repeat` on any but `end`. An `include:` step is the
-  exception: it names only its file, with no `label`, `repeat`, or `expect`. A step `expect:` takes
+  step; `label` goes on any step, and `repeat` on any but `end`. An `include:` step takes no
+  `label` or `expect`; since 0.27.0 it MAY carry `repeat: n` (the file is spliced n times) and its
+  own `choose:` / `bridges:`, which script every step it splices in over the script's own and are
+  dropped when the segment ends. The script's own list for an overridden key does not move while
+  the segment plays. A step `expect:` takes
   `winner` (`none` when the occasion passes), `offered` (a subset of the eligible beats),
   `notOffered`, and `presented` (0.23.0: the exact ids presented, in order) on an `occasion` step,
   and on an `advance` step, where `winner`, `offered`, and `notOffered` judge the raise where the
@@ -3266,9 +3286,11 @@ expect:                                 # judged at the end; a miss exits 1
   `select: all` occasion with nothing eligible needs no `pick:`.
 - `transcriptContains` / `transcriptLacks` match only lines that played, one `@speaker: text` per
   line (a bare text fragment matches too). A skipped guarded line, a step header, or staging never
-  counts, in `lute play` and `lute test` alike. Since 0.26.0 line attributes are dropped from the
-  needle too (`"@mara{emotion=\"shy\"}: Any luck?"` matches `@mara: Any luck?`), and a miss names
-  the nearest presented line.
+  counts, in `lute play` and `lute test` alike. A needle with no attribute block matches the line
+  whatever its attributes. Since 0.27.0 a needle's block is judged (0.26.0 dropped it):
+  `"@mara{emotion=\"shy\"}: Any luck?"` matches only a line carrying `emotion="shy"` (and maybe
+  more), so a `transcriptLacks` needle with a block holds when the words are said another way —
+  write it bare to mean "never said". A miss names the nearest presented line.
 - A kind-target beat (0.26.0) renders `{{occasion.target}}` as the member's cast `name:` in `lute
   play`; a bridge answer is typed by its result slot or the capability's `result:` shape, and an
   untyped answer is refused rather than stored as a string.
@@ -3962,7 +3984,11 @@ steps:
 Rules for an included steps file:
 
 - Put `choose:` and `bridges:` on the **step** (`bridges: { battle: [ { won: true } ] }`), never at
-  the top level of the steps file: the spine play owns the top level.
+  the top level of the steps file: the spine play owns the top level. Since 0.27.0 the spine can
+  also put them on its `include:` step (`- include: steps/north.steps.yaml` with
+  `choose: { gate: open }` beside it): they script every step that include splices in, before the
+  spine's own top-level lists, and are dropped when the segment ends — the natural fit when the
+  same area file plays twice with different choices. See [Sharing a routine](/tooling/play/#advancing-the-clock).
 - Name winners by their canonical ids: a scene by its id, a bundle beat as `<doc>.<beat>`, an entry
   by its id or `<doc>.<entry>`.
 - An accept-driven quest the engine takes up outside any document (`accept="external"`, a quest
@@ -5951,7 +5977,7 @@ left the stage is `W-STAGE-ABSENT`.
 `@@x` for a param that is not a `speaker` param, for a name that is no param, or in a document that
 is no component is `E-COMPONENT-ARG`:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="copied verbatim from lute check output; since the 0.27 module split the message literals live in crates/lute-check/src/check/component_body.rs, which names the code through the E_COMPONENT_ARG constant rather than a string literal, so the scraper cannot pair quote and code" -->
 ```
 ./components/challenge.component.lute:11:1: error [E-COMPONENT-ARG] `@@taunt:` speaks as the cast member a `speaker` param names, and `taunt` is not a `speaker` param — declare `taunt: speaker`
 ./scenes/pier.lute:9:1: error [E-COMPONENT-ARG] `@@mira:` speaks as a component's `speaker` param `mira`, and this document is no component — write the cast id (`@mira:`)
@@ -8081,7 +8107,7 @@ Each shape fault names what is wrong:
 ```
 ./lore/contest.lute:24:42: error [E-BEAT-ATTR] `target="kind:bugRar"`: `bugRar` is not a declared entity kind — did you mean `kind:bugRare`?
 ./lore/contest.lute:28:40: error [E-BEAT-ATTR] `target="kind:bugRare"`: `hornbeetle`, `bladebug` are outside occasion `talk`'s domain `npc.<person>`; a kind target names `person` or one of its sub-kinds
-./lore/contest.lute:33:23: error [E-UNDECLARED] `occasion.target` is readable only in a beat or entry that targets a kind (`target="kind:<kind>"`), where it is the member the occasion was raised for
+./lore/contest.lute:33:23: error [E-UNDECLARED] `occasion.target` is readable only in a beat or entry that targets a kind (`target="kind:<kind>"`) or runs once for each member of one (`for="kind:<kind>"`), where it is the member the beat answers
 ```
 
 `lute play` and `lute calendar` offer a kind beat for every member's raise. `lute beats` lists it
@@ -10065,7 +10091,7 @@ envelope for scene(narrator.s01ep02) (pre-entry — state available when control
   Possible (set on at least one declared route reaching this node):
     - run.greeted
     - run.kaiFound
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
     - ./scenes/whileActive.lute:14:17: state path `run.kaiFound` is set under your declared routes on SOME routes reaching this node, but not every one — not yet guaranteed (dsl §4.3)
 ```
 
@@ -10090,7 +10116,7 @@ From the Haven example, the purser scene (ep09):
 ```console
 $ lute scenario docs/examples/haven envelope haven.s01ep09
 …
-  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+  Guaranteed facts (hold on every declared route reaching this node):
     - awake(ottavio) (docs/examples/haven/scenes/stowaway.lute:20)
     - awake(vesna) (`facts:` seed)
     - found(ottavio) (docs/examples/haven/scenes/stowaway.lute:19)
@@ -11532,7 +11558,7 @@ steps:
 
 Step 2 skips the afternoon: the afternoon's `slotStart` is never raised. Step 3 is already at night, so it goes to the next night. Step 4 crosses three midnights to Friday morning; this clock names no `dayEnd` / `dayStart`, so only the final `slotStart` is raised, and the move past day 3 fails `fest`'s deadline on the way. In `--json` the advance's `by` is `"to night"` or `"to Fri morning"`. A slot or weekday the clock does not declare is a usage error before anything plays (`` step 2: `advance:` to slot `dusk` — the clock's slots are: morning, afternoon, night ``; `` step 2: `advance:` to weekday `Fry` — a weekday is a number 0..6 or one of: Mon, Tue, Wed, Thu, Fri, Sat, Sun ``).
 
-**Sharing a routine.** `include: <file>` (a step whose only key is `include`) splices another file's steps in its place: the file is a list of steps, or a mapping whose only key is `steps:`. The path resolves against the including file, and includes may nest. A day of routine lives in one file that several routes share:
+**Sharing a routine.** `include: <file>` (a step whose action is `include`; since 0.27.0 it may also carry `repeat`, `choose` and `bridges`) splices another file's steps in its place: the file is a list of steps, or a mapping whose only key is `steps:`. The path resolves against the including file, and includes may nest. A day of routine lives in one file that several routes share:
 
 ```yaml
 # plays/routes/day.yaml — one day of routine, shared by every route
@@ -12196,7 +12222,7 @@ A top-level `expect:` judges the end of the play:
 | `quests: { <id>: <status> }` | the quest ended in that status (`unset` for one nothing activated) |
 | `state: { <path>: <value> }` | the path's final **effective** value — the last write, else the seed, else the declared default — equals the value, compared typed (`1` is not `"1"`) |
 | `facts: [atoms]` / `notFacts: [atoms]` | each atom holds / does not hold at the end, **after derivation** |
-| `transcriptContains: [text]` / `transcriptLacks: [text]` | each text is / is not a substring of the content lines that played, each in one form, `@speaker: text` (dsl 0.24.0): a line's delivery attributes are left out, so `"@mara: Any luck with the lamp?"` matches the line printed `@mara{emotion="shy"}: Any luck with the lamp?`, and step headers, candidates, staging, notes and `skip` lines are never matched — a guarded line that did not play satisfies no `transcriptContains`. `lute test` matches the same form, whatever `--ir` prints |
+| `transcriptContains: [text]` / `transcriptLacks: [text]` | each text is / is not a substring of the content lines that played, each in one form, `@speaker: text` (dsl 0.24.0). A needle with no attribute block matches a line whatever its delivery attributes, so `"@mara: Any luck with the lamp?"` matches the line printed `@mara{emotion="shy"}: Any luck with the lamp?`; a needle line that carries a block matches only a line carrying those attributes (see below). Step headers, candidates, staging, notes and `skip` lines are never matched — a guarded line that did not play satisfies no `transcriptContains`. `lute test` matches the same form, whatever `--ir` prints |
 
 An expectation on a `repeat:` step is judged at every repetition; one on a step the walk never reached is itself a miss. Each `expect:` is validated before anything plays — an unknown key is a usage error (exit 2) listing the legal keys, with a did-you-mean, and saying when the key belongs at the other level (`` unknown top-level `expect:` key `winner` (`winner` belongs in a step `expect:`) ``).
 

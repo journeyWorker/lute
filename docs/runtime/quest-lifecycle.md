@@ -213,6 +213,39 @@ Two more resets reuse the run-tier reset above verbatim (the quest returns to
   `quest festival -> unset (rearmed; was complete)`, and a season-tier reset
   `quest missions -> unset (season:harvest opened; was complete)`.
 
+**A rearm resets the quest, not the state its objectives read.** A `done`
+over state that survives the reset — a run- or user-tier total
+(`done="run.barley >= 10"`), a flag — still holds when the quest is rearmed,
+so the same settle that rearmed it activates it and completes it again at
+once (its rewards and `questComplete` fire again). Read state that starts
+over with the quest instead: a `season.<name>.*` counter under `tier:
+"season:<name>"`, or a counter the engine zeroes no later than the moment
+the rearm condition turns true (in `lute play`, an `engine:` step before the
+`advance:` that reaches it — an advance's own `engine:` writes land only
+where it arrives, after the positions it crosses). The checker does not
+warn about this shape.
+
+**Every position an advance crosses is an evaluation instant** (dsl 0.27.0
+§5). An advance that moves the clock several positions at once (`advance:
+<n>`, `advance: { to: … }`, the walk between two midnight raises) settles
+the quests at each position it passes, one slot at a time (one day on a
+clock without slots), whether or not the clock raises anything there: the
+clock moves to the position; the engine observes every season's `live` and
+every `rearm` in that world and applies their transitions, then runs the
+re-evaluation cadence (§Re-evaluation cadence) — `start`, `done`, `by`,
+`fail` — in the same world; then the clock moves on. So a season window
+that opens and closes inside one advance starts its season-tier quests
+where it opens and fails their `by` deadlines where it closes, and a
+`rearm` fires at the crossed position where its condition turned true —
+never at an arrival where it is false. One long advance ends in the same
+quest states as the same advance taken a position at a time, and a clock
+that raises no `dayStart` / `dayEnd` agrees with one that does. Only
+`advance: day` skips the rest of the day it leaves (it sleeps through
+those slots). `lute play` prints each crossed position whose settle moved
+anything as the clock's `set` records of the move there, then that
+settle's records; in `--json` they are entries of the step's
+`advance.quests` (the `set` records under `document: ""`).
+
 ## Objectives
 
 Each `ObjectiveEntry` in `QuestCmd.objectives`:
@@ -516,7 +549,9 @@ are opaque to the checker.
 
 ## Re-evaluation cadence
 
-After **activation** and after **every event**, the engine (0.4.0 §4.6):
+After **activation**, after **every event**, and at every clock position an
+advance reaches or crosses (§Season-tier and rearmed quests), the engine
+(0.4.0 §4.6):
 
 1. re-evaluates each objective's `done` predicate (monotonic — once `true`,
    recorded) — except an objective with `on`, which is evaluated only when

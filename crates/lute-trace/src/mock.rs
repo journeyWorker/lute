@@ -1266,12 +1266,17 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
         if let Some(decl) = folded.env.state.decls.get(path) {
             let ok = coerce_state_literal(&decl.ty, literal)
                 .is_some_and(|lit| type_accepts(&decl.ty, &lit));
-            if !ok {
+            // dsl 0.27.0 §2 (T1-2): a `{ domain: K }` / `{ entity: K }` path
+            // over a closed `K` takes a member of `K` — the rule `::set` and
+            // `lute play` apply — and a refused enum literal names its members.
+            let not_member = state_member_problem(&folded.env.state, path, literal);
+            if !ok || not_member.is_some() {
                 out.push(diag(
                     E_TRACE_MOCK_TYPE,
                     format!(
                         "`--state {path}={literal}` is not compatible with `{path}`'s declared type \
-                         (dsl 0.4.0 §4.3)"
+                         (dsl 0.4.0 §4.3){}",
+                        not_member.map(|why| format!(": {why}")).unwrap_or_default()
                     ),
                     *span,
                 ));
@@ -1281,6 +1286,23 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
         out.push(undeclared_diag(path, *span));
     }
     out
+}
+
+/// Why `literal` is no member of the finite string domain declared at
+/// `path` — a `{ domain: K }` / `{ entity: K }` path's closed `K`, or an
+/// inline enum — naming the members and the nearest one; `None` when it is
+/// one, or the path has no such domain.
+pub fn state_member_problem(
+    schema: &lute_check::meta::StateSchema,
+    path: &str,
+    literal: &str,
+) -> Option<String> {
+    let (domain, members) = match schema.domain_members.get(path) {
+        Some((domain, members)) => (domain.as_str(), members.as_slice()),
+        // An inline `{ enum: […] }` has no name of its own: its path is it.
+        None => (path, schema.string_members(path)?),
+    };
+    crate::exec::session::member_of(domain, members, literal).err()
 }
 
 /// `E-TRACE-MOCK-UNDECLARED` for `path` (dsl 0.4.0 §4.3, 0.1 §11.1.1) —

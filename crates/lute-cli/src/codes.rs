@@ -45,6 +45,14 @@ pub(crate) fn lookup(code: &str) -> Option<&'static Code> {
         .map(|i| &CODES[i])
 }
 
+/// ` — did you mean `CODE`?` for the registered code nearest a mistyped one,
+/// else nothing.
+fn code_suggestion(raw: &str) -> String {
+    lute_manifest::suggest::nearest(raw, CODES.iter().map(|c| c.code), 3)
+        .map(|c| format!(" — did you mean `{c}`?"))
+        .unwrap_or_default()
+}
+
 /// clap `value_parser` for `--deny <CODE>`: any registered code (spec §5). A
 /// typo or a made-up string is a clap usage error (exit 2), never a promotion
 /// that silently protects nothing.
@@ -52,8 +60,9 @@ pub(crate) fn parse_deny_code(raw: &str) -> Result<String, String> {
     match lookup(raw) {
         Some(c) => Ok(c.code.to_string()),
         None => Err(format!(
-            "unknown diagnostic code `{raw}` — a typo'd `--deny` would silently protect \
-             nothing; every code is listed at {DIAGNOSTICS_REFERENCE}"
+            "unknown diagnostic code `{raw}`{}; a typo'd `--deny` would silently protect \
+             nothing, and every code is listed at {DIAGNOSTICS_REFERENCE}",
+            code_suggestion(raw)
         )),
     }
 }
@@ -61,8 +70,12 @@ pub(crate) fn parse_deny_code(raw: &str) -> Result<String, String> {
 /// clap `value_parser` for `lute --explain <CODE>`: a registered code, in
 /// any letter case.
 pub(crate) fn parse_explain_code(raw: &str) -> Result<&'static Code, String> {
-    lookup(&raw.trim().to_ascii_uppercase()).ok_or_else(|| {
-        format!("unknown diagnostic code `{raw}`; every code is listed at {DIAGNOSTICS_REFERENCE}")
+    let code = raw.trim().to_ascii_uppercase();
+    lookup(&code).ok_or_else(|| {
+        format!(
+            "unknown diagnostic code `{raw}`{}; every code is listed at {DIAGNOSTICS_REFERENCE}",
+            code_suggestion(&code)
+        )
     })
 }
 
@@ -102,18 +115,44 @@ pub(crate) fn reference_page() -> String {
          a code's entry below in the terminal, and an editor links each code to its section \
          here.\n\n\
          A message says what is wrong in plain words. The spec sections behind a code are listed \
-         under it, and `--json` output carries them in each diagnostic's `spec` field.\n",
+         under it, each linked to its proposal, and `--json` output carries them in each \
+         diagnostic's `spec` field.\n",
     );
     for (heading, grade) in [("Errors", "error"), ("Warnings", "warning")] {
         out.push_str(&format!("\n## {heading}\n"));
         for c in CODES.iter().filter(|c| c.grade() == grade) {
             out.push_str(&format!("\n### {}\n\n{}\n", c.code, c.summary));
             if !c.spec.is_empty() {
-                out.push_str(&format!("\nSpec: {}\n", c.spec.join(", ")));
+                let links: Vec<String> = c.spec.iter().map(|s| spec_link(s)).collect();
+                out.push_str(&format!("\nSpec: {}\n", links.join(", ")));
             }
         }
     }
     out
+}
+
+/// A spec citation as a Markdown link: `dsl X.Y.Z …` to that proposal in
+/// the repository (the normative text), anything else — an unversioned
+/// `dsl §7.6`, a plugin-system section — to the site's specification index.
+#[cfg(test)]
+pub(crate) fn spec_link(spec: &str) -> String {
+    let version = spec
+        .strip_prefix("dsl ")
+        .and_then(|rest| rest.split(' ').next())
+        .filter(|v| {
+            v.split('.').count() == 3
+                && v.split('.')
+                    .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+        });
+    let proposals =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/proposals/scenario-dsl");
+    match version {
+        Some(v) if proposals.join(format!("{v}.md")).is_file() => format!(
+            "[{spec}](https://github.com/journeyWorker/lute/blob/main/docs/proposals/\
+             scenario-dsl/{v}.md)"
+        ),
+        _ => format!("[{spec}](/spec/)"),
+    }
 }
 
 pub(crate) const CODES: &[Code] = &[
@@ -944,7 +983,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-QUEST-RESERVED-WRITE",
-        summary: "An `::set` writes a reserved, engine-populated path — `quest.<id>.state`, `objectives.<oid>.done`, an `entry.*` path, `prev.run.*`, or `clock.*`.",
+        summary: "An `::set` writes a reserved, engine-populated path — `quest.<id>.state`, `objectives.<oid>.done`, an `entry.*` path, `prev.run.*`, `prev.season.*`, or `clock.*`.",
         spec: &["dsl 0.2.0 §5.4", "dsl 0.19.0 §5"],
     },
     Code {
@@ -1054,12 +1093,12 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-SEASON-DECL",
-        summary: r#"A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or content writes `prev.season.*`."#,
+        summary: r#"A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead."#,
         spec: &["dsl 0.27.0 §5"],
     },
     Code {
         code: "E-SEQUENCE",
-        summary: "The project's `sequence:` is malformed (not `{ occasion, scenes }`, an id listed twice) or lists an id no scene declares, or a listed scene whose own `on:` answers another occasion.",
+        summary: "The project's `sequence:` is malformed (not `{ occasion, scenes }`, a key that is neither, an id listed twice), names an occasion no plugin declares (or, shape-only, a near-miss of one other beats answer), lists an id no scene declares, or lists a scene whose own `on:` answers another occasion. Reported at the manifest line; the documents are still checked.",
         spec: &["dsl 0.27.0 §8"],
     },
     Code {
@@ -1069,7 +1108,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-SET-SHAPE",
-        summary: "An `::set` is malformed: it has no valid assignment operator (`=`/`+=`/`-=`) after the path, uses `==` where `=` was meant, or indexes a state-family path with a param instead of a concrete key.",
+        summary: "An `::set` is malformed: it has no valid assignment operator (`=`/`+=`/`-=`/`*=`) after the path, uses `==` where `=` was meant, or indexes a state-family path with a param instead of a concrete key.",
         spec: &["dsl 0.27.0 §2"],
     },
     Code {
@@ -1171,6 +1210,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-TEST-LORE",
         summary: "A test's `file:` names a lore document, which is looked up rather than played, so the test must instead name what to present (`entry:`/`entries:`, `beat:`) or judge it with `expect:`.",
         spec: &["dsl 0.22.0 §5"],
+    },
+    Code {
+        code: "E-TEST-NEEDLE",
+        summary: "A `*.test.yaml`'s `transcriptContains`/`transcriptLacks` needle names an attribute no transcript line shows, or a value outside its domain, so it could never match a presented line.",
+        spec: &[],
     },
     Code {
         code: "E-TEST-NO-EXPECT",
@@ -1383,6 +1427,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.21.0 §5"],
     },
     Code {
+        code: "W-BEAT-SPENT-AT-START",
+        summary: "A beat's `spentBy` already holds at the start of a run (often an inverted `!holds(…)` copied from an old `when`), so the beat is not eligible until that stops holding.",
+        spec: &["dsl 0.27.0 §5"],
+    },
+    Code {
         code: "W-CAST-ABSENT",
         summary: "A content line's speaker has a cast entry declaring a `present:` condition, but the line's enclosing guards do not imply that condition holds.",
         spec: &["dsl 0.24.0 §4"],
@@ -1410,6 +1459,11 @@ pub(crate) const CODES: &[Code] = &[
     Code {
         code: "W-DEADLINE-BEFORE-DONE",
         summary: "An `on=` objective's `by=` deadline (with no `until=`) provably implies before its `done` predicate can ever be judged, so the deadline fails the objective before it can complete.",
+        spec: &["dsl 0.24.0 §2.1"],
+    },
+    Code {
+        code: "W-DEADLINE-NEVER",
+        summary: "An objective's `by=` deadline can never hold — typically a moment past the end of a clock that ends — so it never fails the objective.",
         spec: &["dsl 0.24.0 §2.1"],
     },
     Code {
@@ -1461,6 +1515,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-L10N-MISSING",
         summary: "A compiled line record is missing text for a locale its localization bundle declares.",
         spec: &["dsl 0.8.0 §7"],
+    },
+    Code {
+        code: "W-LABEL-CAST-SHADOWED",
+        summary: "An entity kind's `labels:` entry names a cast member whose cast `name:` is what text renders, so the label is never shown.",
+        spec: &["dsl 0.27.0 §7"],
     },
     Code {
         code: "W-LUTE-VERSION-STALE",
@@ -1526,6 +1585,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-REWARD-DOUBLE-CREDIT",
         summary: r#"A quest handler's `::set` writes the same path a `<reward kind="…" credits=…>` already credits when granted, so the reward pays twice."#,
         spec: &["dsl 0.23.0 §8"],
+    },
+    Code {
+        code: "W-SEQUENCE-STALL",
+        summary: "A scene listed in the project's `sequence:` has its own `when:`, and the next listed scene waits on it through the `after:` the sequence writes — when the first does not play, the chain stalls. Give the next scene its own `after:`, or take the optional scene out of the list.",
+        spec: &["dsl 0.27.0 §8"],
     },
     Code {
         code: "W-STAGE-ABSENT",
@@ -1668,7 +1732,8 @@ mod tests {
     }
 
     /// The Korean twin holds one `### <CODE>` section per registered code, in
-    /// the registry's order, each naming the same spec sections.
+    /// the registry's order, each naming the same spec sections with the same
+    /// links ([`spec_link`]).
     #[test]
     fn the_korean_reference_page_has_every_code() {
         let path = docs().join("ko/reference/diagnostics.md");
@@ -1688,7 +1753,7 @@ mod tests {
             .map(|c| {
                 (
                     c.code.to_string(),
-                    c.spec.iter().map(|s| s.to_string()).collect(),
+                    c.spec.iter().map(|s| spec_link(s)).collect(),
                 )
             })
             .collect();

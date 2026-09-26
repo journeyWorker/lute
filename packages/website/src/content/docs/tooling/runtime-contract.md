@@ -141,8 +141,8 @@ Text (dsl 0.27.0 §7):
 - **`entities[].labels: { <member>: "<text>" }`**: display text for a kind's members, with a
   sub-kind's and its ancestors' labels for shared members. Render an `occasionTarget`
   placeholder of `entityKind` K as the cast `name:` when the member is a cast id, else
-  `labels[member]` of K, else the id. A `{ domain: K }` state path carries the same map as its
-  `state[].labels`, which `path` placeholders already render. Omitted when none.
+  `labels[member]` of K, else the id. A `{ domain: K }` or `{ entity: K }` state path carries the same map as
+  its `state[].labels`, which `path` placeholders already render. Omitted when none.
 - **Placeholder `format: "plural"` with `forms: [one, other]`**: render `one` when the number is
   1, `other` otherwise, each `#` in the form replaced by the number (`{{n:plural(# lamp|# lamps)}}`
   → `3 lamps`). A localizing engine may choose its own plural categories from the two English

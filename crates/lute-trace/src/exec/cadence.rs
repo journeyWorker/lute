@@ -18,11 +18,12 @@
 //! settle pass that moved a quest (a `rearm` or a `live` may read quest
 //! states), so a transition is applied before the lifecycle fixpoint goes on
 //! (a rearmed quest whose `start` holds activates in the same settle) and
-//! before the next eligibility judgment. An `advance:` also observes every
-//! position the clock crosses ([`walk_clock`]): a window that opens and
-//! closes inside one advance is still seen. The first observation is the
-//! baseline: a condition already true when the playthrough starts opens
-//! nothing.
+//! before the next eligibility judgment. An `advance:` settles the quests —
+//! and so observes — at every position the clock crosses
+//! ([`walk_clock`](crate::exec::session::walk_clock)): a window that opens
+//! and closes inside one advance is still seen, and its quests start, fail
+//! and reset there. The first observation is the baseline: a condition
+//! already true when the playthrough starts opens nothing.
 //!
 //! wasm-clean: no filesystem, process or threads.
 
@@ -33,8 +34,7 @@ use lute_compile::BeatOnce;
 use serde_json::{json, Value as Json};
 
 use crate::exec::session::{
-    ever_read_path, json_to_value, move_clock, spend_group, value_to_json, ExecProject,
-    QuestAdvance, World,
+    ever_read_path, json_to_value, spend_group, value_to_json, ExecProject, QuestAdvance, World,
 };
 use crate::Value;
 
@@ -385,37 +385,6 @@ pub fn observe(p: &ExecProject, w: &mut World) -> Vec<QuestAdvance> {
         }
     }
     out
-}
-
-/// Move the clock from `from` to `to` ([`move_clock`]), observing every
-/// position strictly between — each day, and each slot on a slotted clock
-/// — so a season window or a rearm condition that opens and closes inside
-/// one `advance:` is still seen; the observations append to `observed`.
-/// `to` itself is observed by the settle that follows the move. The `set`
-/// records are the whole move's, as [`move_clock`] writes them.
-pub fn walk_clock(
-    p: &ExecProject,
-    w: &mut World,
-    clock: &lute_manifest::clock::ClockDecl,
-    from: lute_manifest::clock::ClockAt,
-    to: lute_manifest::clock::ClockAt,
-    observed: &mut Vec<QuestAdvance>,
-) -> Vec<Json> {
-    if !p.cadence.is_empty() {
-        let mut at = from;
-        while at < to {
-            let next = clock
-                .advance(at, lute_manifest::clock::Advance::Slots(1))
-                .min(to);
-            move_clock(p, w, clock, at, next);
-            at = next;
-            if at < to {
-                observed.extend(observe(p, w));
-            }
-        }
-    }
-    // Already at `to` after a walk: the rewrite only yields the records.
-    move_clock(p, w, clock, from, to)
 }
 
 /// Open season `s`: the last window's values (when `had_window`) move to

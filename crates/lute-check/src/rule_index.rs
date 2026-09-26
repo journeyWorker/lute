@@ -150,13 +150,15 @@ fn var_uses(cel: &str) -> Vec<VarUse> {
         if next == Some(b'(') || next == Some(b'.') || (prev == Some(b'[') && next == Some(b']')) {
             continue;
         }
-        // `path == V` / `path != V`, or `V == path` / `V != path`.
+        // `path == V` / `path != V`, or `V == path` / `V != path`. Bytes,
+        // not `str` slices: a neighbouring multi-byte char (`≥`) would put
+        // a slice bound inside it (FS-F1).
         let op_before = before >= 2
-            && matches!(&cel[before - 2..before], "==" | "!=")
+            && matches!(&b[before - 2..before], b"==" | b"!=")
             && before
                 .checked_sub(3)
                 .is_none_or(|k| !matches!(b[k], b'=' | b'!' | b'<' | b'>'));
-        let op_after = after + 2 <= b.len() && matches!(&cel[after..after + 2], "==" | "!=");
+        let op_after = after + 2 <= b.len() && matches!(&b[after..after + 2], b"==" | b"!=");
         let path = if op_before {
             let e = skip_ws_back(before - 2);
             let mut s = e;
@@ -687,5 +689,23 @@ mod tests {
             rewrite(cel, &uses, &|_| "isolde".to_string()),
             "run.approval.isolde >= 3 && run.approval.isolde < 9"
         );
+    }
+
+    /// FS-F1: a multi-byte char beside a variable (`≥`, a full-width `＝`)
+    /// is not a comparison operator — and never a slice inside a char.
+    #[test]
+    fn a_multibyte_neighbour_is_no_operator() {
+        for cel in [
+            "run.x ≥ S",
+            "S ≥ run.x",
+            "run.x ＝ S",
+            "S＝ run.x",
+            "run.x == S",
+        ] {
+            let uses = var_uses(cel);
+            assert_eq!(uses.len(), 1, "{cel}");
+            let compared = cel.contains("==");
+            assert_eq!(uses[0].path.is_some(), compared, "{cel}");
+        }
     }
 }

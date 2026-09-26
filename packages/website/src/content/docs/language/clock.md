@@ -277,8 +277,12 @@ their tier like any other state, so a clock over `run.day` and `run.slot` starts
 morning with every new run.
 
 A single `raise: slotStart` is raised once per advance, where the clock stops, never at the slots
-it passes. When a day's end or start needs its own story, `raise` takes a map instead, each key
-optional:
+it passes. The quests, though, settle at every slot an advance passes, raised there or not: a
+[season](/state/schemas/#seasons) that opens and closes on the way starts its quests and fails
+their deadlines where it does, and a [`rearm=`](/language/quests-and-scenes/#quests-that-come-back-season-tiers-and-rearm)
+fires on the day its condition turns true, so one long advance ends in the same quest states as
+the same advance taken a slot at a time. When a day's end or start needs its own story, `raise`
+takes a map instead, each key optional:
 
 ```yaml
 clock:
@@ -302,7 +306,7 @@ raised, so a `dayEnd` beat still reads the old day. Writing the clock paths dire
 - `advance: <n>` moves `n` slots at once. It never skips a day's close: with `dayEnd` declared it
   stops at each day's last slot on the way to raise it;
 - `advance: day` moves to the first slot of the next day, whatever slot it starts from. It raises
-  `dayEnd` where the clock stands; the rest of the day is skipped.
+  `dayEnd` where the clock stands; the rest of the day is skipped, its slots unsettled.
 
 On a clock without slots, all three move whole days. The step writes the clock paths, settles, and
 raises `slot`, taking the raised occasion's `pick:`, `choose:`, and selection `expect:` exactly as

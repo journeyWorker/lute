@@ -110,7 +110,9 @@ pub fn run(
             // under the tree is inert. Warn only where that inertness would
             // have changed the resolved surface.
             crate::manifests::mark_inert_under(&mut verdicts, project);
-            if crate::manifests::report_and_gate(&verdicts) {
+            if crate::manifests::report_and_gate(&verdicts)
+                | crate::manifests::gate_sequences(&verdicts)
+            {
                 return ExitCode::from(1);
             }
         }

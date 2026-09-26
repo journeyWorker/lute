@@ -12,7 +12,7 @@
 //! attributes (every one it names, the line may carry more); a needle line
 //! without one matches a line whatever its attributes (round-5 T1-11).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value as Json;
 
@@ -312,6 +312,156 @@ pub fn judge(said: &str, steps: &[usize], needle: &str, want_present: bool) -> O
     }
 }
 
+/// The delivery flags a line head shows for its role ([`line_head`]).
+const HEAD_FLAGS: [&str; 3] = ["mono", "os", "vo"];
+
+/// What a transcript needle's attribute block may name — the keys a line
+/// head ([`line_head`]) can show and the values they can take in one
+/// project (0.27 prerelease OT-F-2). A needle naming anything else can never
+/// match a line, so `transcriptContains` could only miss and
+/// `transcriptLacks` could only hold — vacuously, even when the line was
+/// said.
+#[derive(Clone, Debug, Default)]
+pub struct NeedleVocab {
+    /// `emotion` / `action` -> the members of its domain; `None` when some
+    /// document leaves it open or undeclared (any value).
+    members: BTreeMap<String, Option<BTreeSet<String>>>,
+    /// The plugin-declared cross-cutting `stampAttrs` keys (plugin §14.1).
+    stamps: BTreeSet<String>,
+}
+
+impl NeedleVocab {
+    /// One document's vocabulary: its capability snapshot's `stampAttrs`
+    /// and its merged domains (`merge_domains` over the snapshot, the
+    /// `uses:` imports and its own frontmatter `meta`).
+    pub fn of(input: &lute_check::CheckInput, meta: &lute_check::TypedMeta) -> Self {
+        let nowhere = lute_core_span::Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 0,
+            column: 0,
+            utf16_range: (0, 0),
+        };
+        let (domains, _) = lute_check::schema_import::merge_domains(
+            &input.snapshot,
+            &input.imports,
+            meta,
+            nowhere,
+        );
+        NeedleVocab {
+            members: lute_check::content_line::CONTENT_LINE_DOMAIN_SLOTS
+                .iter()
+                .map(|slot| {
+                    let members = domains
+                        .get(*slot)
+                        .filter(|d| !d.open)
+                        .map(|d| d.members.iter().cloned().collect());
+                    (slot.to_string(), members)
+                })
+                .collect(),
+            stamps: input.snapshot.stamp_attrs.keys().cloned().collect(),
+        }
+    }
+
+    /// The union with another document's vocabulary: a value is legal when
+    /// any document of the project could show it.
+    pub fn union(&mut self, other: NeedleVocab) {
+        for (slot, theirs) in other.members {
+            match (self.members.get_mut(&slot), theirs) {
+                (Some(Some(ours)), Some(theirs)) => ours.extend(theirs),
+                (Some(ours), None) => *ours = None,
+                (Some(None), Some(_)) => {}
+                (None, theirs) => {
+                    self.members.insert(slot, theirs);
+                }
+            }
+        }
+        self.stamps.extend(other.stamps);
+    }
+
+    /// Every key a line head can show, flags first.
+    fn keys(&self) -> Vec<&str> {
+        let valued = lute_check::content_line::KNOWN_ATTRS
+            .iter()
+            .copied()
+            .filter(|k| !HEAD_FLAGS.contains(k) && !HEAD_SKIP_AUTHORED.contains(k));
+        HEAD_FLAGS
+            .iter()
+            .copied()
+            .chain(valued)
+            .chain(self.stamps.iter().map(String::as_str))
+            .collect()
+    }
+}
+
+/// Authored content-line attributes a line head never shows: `code` feeds
+/// the line's identity and `id` is a `::next` label.
+const HEAD_SKIP_AUTHORED: [&str; 2] = ["code", "id"];
+
+/// Why `needle`'s attribute block(s) can never match a presented line, as a
+/// usage error with a did-you-mean — `None` when every key is one a line
+/// head shows and every value is one it can carry (0.27 prerelease OT-F-2).
+/// A needle without an attribute block is never refused.
+pub fn needle_problem(needle: &str, vocab: &NeedleVocab) -> Option<String> {
+    let near = |s: &str, known: &[&str]| {
+        lute_manifest::suggest::nearest(s, known.iter().copied(), 2)
+            .map(|k| format!(" — did you mean `{k}`?"))
+            .unwrap_or_default()
+    };
+    let keys = vocab.keys();
+    for line in needle.split('\n') {
+        let (_, Some(attrs)) = split(line) else {
+            continue;
+        };
+        for (key, value) in attrs {
+            let why = if !keys.contains(&key.as_str()) {
+                let never = if HEAD_SKIP_AUTHORED.contains(&key.as_str()) {
+                    format!(" (`{key}` is never shown on a transcript line)")
+                } else if key == "when" {
+                    " (a `when=` line that plays is shown without it; one that is skipped is \
+                     not in the transcript)"
+                        .to_string()
+                } else {
+                    String::new()
+                };
+                format!(
+                    "`{key}` is not an attribute a transcript line shows{}{never} (a line shows: \
+                     {})",
+                    near(&key, &keys),
+                    keys.join(", ")
+                )
+            } else if HEAD_FLAGS.contains(&key.as_str()) {
+                match value {
+                    None => continue,
+                    Some(_) => format!("`{key}` is a bare flag — write `{key}`, not `{key}=…`"),
+                }
+            } else {
+                let Some(value) = value else {
+                    return Some(format!(
+                        "needle {needle:?}: `{key}` takes a value — write `{key}=\"…\"`"
+                    ));
+                };
+                match (key.as_str(), vocab.members.get(&key)) {
+                    ("variant", _) if value.parse::<i64>().is_err() => {
+                        format!("`variant={value}` is not a number")
+                    }
+                    (_, Some(Some(members))) if !members.contains(&value) => {
+                        let known: Vec<&str> = members.iter().map(String::as_str).collect();
+                        format!(
+                            "`{value}` is not a member of `{key}`{} (members: {})",
+                            near(&value, &known),
+                            known.join(", ")
+                        )
+                    }
+                    _ => continue,
+                }
+            };
+            return Some(format!("needle {needle:?}: {why}"));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,5 +566,50 @@ mod tests {
             nearest(said, &[], needle),
             Some("@wren: The stars are out.")
         );
+    }
+
+    /// OT-F-2: a needle attribute no line head can show, or a value its
+    /// domain lacks, is refused with a did-you-mean — it could only ever make
+    /// `transcriptLacks` hold vacuously.
+    #[test]
+    fn a_needle_naming_what_no_line_can_show_is_refused() {
+        let vocab = NeedleVocab {
+            members: BTreeMap::from([
+                (
+                    "emotion".to_string(),
+                    Some(BTreeSet::from(["sad".to_string(), "happy".to_string()])),
+                ),
+                ("action".to_string(), None),
+            ]),
+            stamps: BTreeSet::from(["take".to_string()]),
+        };
+        let problem = |n: &str| needle_problem(n, &vocab);
+        for ok in [
+            "@soren{emotion=\"sad\"}: We ran out.",
+            "@soren{mono}: We ran out.",
+            "@soren{variant=1 as=\"The Smith\" take=\"b\" action=\"wave\"}: x",
+            "@soren: We ran out.",
+            "no speaker at all",
+        ] {
+            assert_eq!(problem(ok), None, "{ok}");
+        }
+        let e = problem("@soren{emotoin=\"sad\"}: We ran out.").unwrap();
+        assert!(
+            e.contains("`emotoin`") && e.contains("did you mean `emotion`?"),
+            "{e}"
+        );
+        let e = problem("@soren{emotion=\"sadd\"}: We ran out.").unwrap();
+        assert!(e.contains("did you mean `sad`?"), "{e}");
+        let e = problem("@soren{emotion=\"sad\" when=\"true\"}: x").unwrap();
+        assert!(e.contains("`when`"), "{e}");
+        for bad in [
+            "@soren{mono=true}: x",
+            "@soren{emotion}: x",
+            "@soren{variant=two}: x",
+            "@soren{code=\"a1\"}: x",
+            "@a: fine\n@soren{sadd}: x",
+        ] {
+            assert!(problem(bad).is_some(), "{bad}");
+        }
     }
 }

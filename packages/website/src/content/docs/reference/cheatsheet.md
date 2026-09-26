@@ -99,7 +99,7 @@ $ lute play . --script plays/story.play.yaml        # the transcript of one play
 
 ```
 my-game/
-├── lute.project.yaml            profiles, plugins, identity, defaults
+├── lute.project.yaml            profiles, plugins, identity, defaults, sequence
 ├── world.schema.yaml            run/user/app state, enums, defs, facts, rules
 ├── plugins/game.occasions/      optional: plugin.yaml + occasions/*.yaml + events/*.yaml
 ├── scenes/*.lute                kind: scene
@@ -131,7 +131,17 @@ defaults:                               # frontmatter every document inherits
     - world.schema.yaml
     - schema/areas/*.schema.yaml        # 0.26.0: a glob, expanded in path order; matching nothing is fine
   questTier: run                        # 0.26.0: the tier= of every <quest> that writes none
+sequence:                               # 0.27.0: chain scenes by id, in play order
+  occasion: chapter                     # the occasion every listed scene answers
+  scenes: [prologue, counter, accusation]
 ```
+
+`sequence:` (0.27.0) writes `on:`, `after: 'visited("<previous id>")'` and a descending
+`priority:` (30, 20, 10, …) into every listed scene; a key the scene writes itself wins. An id no
+scene declares, an unknown occasion, or a malformed block is `E-SEQUENCE`. It is unrelated to an
+occasion's `select: sequence` (every eligible beat of one raise plays, in selection order): when
+the sequence's occasion is itself `select: sequence`, the chain derives only `on:` and `priority:`,
+so the listed scenes play in one raise, in list order. See [Connect scenes](/getting-started/connect-scenes/).
 
 `defaults:` accepts only `kind`, `character`, `season`, `episode`, `pov`, `luteVersion`,
 `contentLang`, `uses`, `extends`, `components`, `extra`, and (0.26.0) `questTier: run | user` (anything
@@ -244,7 +254,7 @@ path per member of a closed kind (`run.trust.vesna`); an open or unknown kind is
 `default:` gives members their own values, with `_` for the rest; an unknown member key, a member
 left with no value and no `_`, or a map default without `per:` is `E-STATE-DECL`.
 `labels:` on a long-form enum is what `{{path}}` renders for a path typed `{ domain: … }`; a label
-for a non-member is `E-ENUM-LABEL-NOT-MEMBER`. An entity kind takes `labels:` the same way (0.27.0, `room: { members: [chapel], labels: { chapel: the chapel } }`); a label for a non-member is `E-ENTITY-KIND-SHAPE`. The `clock:` block is under [Clock](#clock).
+for a non-member is `E-ENUM-LABEL-NOT-MEMBER`. An entity kind takes `labels:` the same way (0.27.0, `room: { members: [chapel], labels: { chapel: the chapel } }`); a label for a non-member is `E-ENTITY-KIND-SHAPE`. A cast member's `name:` wins over a label, so a label for a cast member with a `name:` is never shown and is `W-LABEL-CAST-SHADOWED`, at the label. The `clock:` block is under [Clock](#clock).
 `seasons:` (0.27.0) names recurring windows, `harvest: { live: "@harvestLive" }`: each opening
 (`live` false→true) moves `season.<name>.*` into `prev.season.<name>.*` and resets it to its
 defaults, clears `once: season:<name>` spends and resets `tier="season:<name>"` quests; a malformed
@@ -1247,17 +1257,17 @@ timed pause.
 | `lute check-project <dir> [--wip] [--deny-warnings]` | Check every document, plus connectivity, quest ids, `::accept` targets, occasions, and fact guards. It also compiles every clean document, so compile-stage errors (`E-DUP-VOICEKEY`, `E-CAPABILITY-MISMATCH`) fail here. Project advisories such as `W-BEAT-PRIORITY-TIE` and `W-QUEST-HANDLER-DEAD` come from here too. `--wip` (0.23.0) reports `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings when the guard is dead only because a relation has no producer yet (no seed, assert, rule, or `reserved`; since 0.26.0 also a relation only a component `::assert` with an unbound `@param` writes); a relation that has producers but never matches stays an error. |
 | `lute fix <file\|dir>` | Mechanical migrations in place: the old `:line` sigil, `as=` → `into=`, and `test="$ == …"` → `is=`. A directory covers every `.lute` file under it, recursively, in sorted order. |
 | `lute tag <file\|dir>` | Back-fill a stable `code` on every line, of one file or every `.lute` file under a directory. |
-| `lute compile <file> -o out.json` · `--all --project <dir> -o <outdir>` | Build artifacts. `--all` also writes `project.index.json`, including `beats`. |
-| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | Preview the source against mocks, with the project's seed facts and rules applied. Exit `3` means a guard was unknown. `--occasion talk@npc.mira` raises an occasion for a target (0.23.0). `--beat` presents one bundle beat by local or canonical id (`E-TRACE-BEAT` when it names none); `--entry` takes `<doc>.<entry>` too (0.26.0). A `@def` prints as written (`<match @weekday>`); `--expand` (0.24.0) prints its expansion. `--accept` also takes an `activate="accept"` child. Since 0.26.0 a taken `::next` is followed to its label. |
+| `lute compile <file> -o out.json` · `--all --project <dir> -o <outdir>` | Build artifacts. `--all` also writes `project.index.json`, including `beats`. Without `--project`, one file compiles against the nearest `lute.project.yaml` above it (0.27.0), as `check` does. |
+| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | Preview the source against mocks, with the project's seed facts and rules applied; without `--project`, the project is the nearest `lute.project.yaml` above the file (0.27.0), as for `check`. Exit `3` means a guard was unknown. `--occasion talk@npc.mira` raises an occasion for a target (0.23.0). `--beat` presents one bundle beat by local or canonical id (`E-TRACE-BEAT` when it names none); `--entry` takes `<doc>.<entry>` too (0.26.0). A `@def` prints as written (`<match @weekday>`); `--expand` (0.24.0) prints its expansion. `--accept` also takes an `activate="accept"` child. Since 0.26.0 a taken `::next` is followed to its label. |
 | `lute run <artifact> [--mock m.yaml] [--occasion o[@target]] [--entry id \| --beat id]` | Run a compiled artifact the way an engine would. A lore artifact needs exactly one of `--entry` and `--beat` (a bundle beat's canonical id, or its bare id when unambiguous). The mock's `bridges:` answers plugin calls (0.24.0). |
 | `lute play <dir> --script p.play.yaml [--json] [--ir] [--quiet] [--explain <atom>] [--no-derive]` | Raise occasions through the whole project, advancing quests. A missed `expect:` exits `1`. Staging prints as authored; `--ir` prints the lowered records instead, injected ones marked. `--explain` (repeatable) prints, after the play, the derivation tree of a ground atom, or the failing premises of every rule that could conclude it; since 0.24.0 each asserted leaf names its source (``asserted by scene `cafe.open`, step 1``). |
-| `lute test [<dir> \| <file>] [--project <dir>] [--coverage] [--no-derive]` | Run every `*.test.yaml`, and every `*.play.yaml` that carries an `expect:`, or the one test or play file given. Without `--project`, tests resolve against the nearest `lute.project.yaml` (noted on stderr). An incomplete walk fails, and so does a test whose `file:` is missing (`E-TEST-FILE`), without stopping the suite. `--coverage` lists the documents no test traced and no play presented, of `--project` or of the nearest `lute.project.yaml`; since 0.24.0 a document an `advance:` step's raise presented counts, and the header reads `coverage over N traced path(s) and M play(s) (plays count toward documents presented only, not branches or arms):`. Since 0.26.0 it loads each project once and runs the tests, then the plays, in parallel (`RAYON_NUM_THREADS` is respected), reporting in the usual order. Since 0.27.0 the unit is the beat: each bundle beat and entry is listed on its own (`lore/endings/ren.lute: ember`), a play's picks count in the branch/hub rows, the header reads `(plays count toward what they presented and the choices they picked, not match arms)`, and a last section lists the beats no play presented (`--json`: `untested`, `notPresentedByPlay`, each `{file, id, kind}`). |
+| `lute test [<dir> \| <file>] [--project <dir>] [--coverage] [--no-derive]` | Run every `*.test.yaml`, and every `*.play.yaml` that carries an `expect:`, or the one test or play file given. Without `--project`, tests resolve against the nearest `lute.project.yaml` (noted on stderr). An incomplete walk fails, and so does a test whose `file:` is missing (`E-TEST-FILE`), without stopping the suite. `--coverage` lists the documents no test traced and no play presented, of `--project` or of the nearest `lute.project.yaml`; since 0.24.0 a document an `advance:` step's raise presented counts, and the header counts both: `coverage over N traced path(s) and M play(s) (…):`. Since 0.26.0 it loads each project once and runs the tests, then the plays, in parallel (`RAYON_NUM_THREADS` is respected), reporting in the usual order. Since 0.27.0 the unit is the beat: each bundle beat and entry is listed on its own (`lore/endings/ren.lute: ember`), a play's picks count in the branch/hub rows, the header reads `(plays count toward what they presented and the choices they picked, not match arms)`, and a last section lists the beats no play presented (`--json`: `untested`, `notPresentedByPlay`, each `{file, id, kind}`). |
 | `lute scenario <dir> [reach <node> \| envelope <node> \| knowledge [--for <node>]] [--facts] [--format text\|json\|dot]` | The `after:` graph, reachability, and guaranteed state and facts. A node is a scene id, `quest:<id>`, or a bundle beat's canonical id (bare or `beat:<doc>.<beat>`; drawn as an edgeless entry node). `knowledge` (0.23.0) traces every fact-guarded beat, entry, and objective to the relations it queries and each relation to its producers through the rules: asserting documents, seed facts, the engine (`reserved`), or no producer, and names what can defeat a negated premise. Its `--for` also takes an entry id or `<quest>.<objective>`. Since 0.24.0 it covers every guard slot, reads a kind atom as membership (``suitor(sol) — entity kind `suitor`; sol is a member``), and names what a rule's `cel()` premise reads; since 0.26.0 it traces a rule's `count(…)` premise to the producers of the facts it counts. `--facts` (0.26.0) also draws fact-producer edges (`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`; `--format json`: `factEdges`, `dot`: dotted). `reach --endings[=<occasion>]` (0.27.0) lists every ending — the beats answering the occasion, or bare, every beat whose content can run `::end` — with its `after:` verdict, its `when` verdict (never holds / never wins), what a satisfiable `when` reads and who writes it (`nothing writes it` when nothing does), and `N ending(s): A reachable, B unreachable, C unknown`. |
 | `lute beats <dir> [--occasion o] [--target t] [--json] [--expand]` | 0.23.0. Each occasion's (and target's) beat ladder in selection order, with priority, `once` (including bundle beats' `day` / `slot`), `also`, `after:`, `when` (a `@def` as written; `--expand` expands it), title, and the `check-project` verdicts (unreachable, shadowed, tied, once-run-user). The project need not check clean. Since 0.26.0 a fallback that an earlier, never-spent beat whose `when` it implies always beats shows `covered by <id>` (`--json`: `coveredBy`), a kind-target beat gets a `kind:<kind>` ladder, and `--target` takes any member. |
 | `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. Every value of a directive attribute (`give.item`) or every reward target of a kind, with the documents and lines using it; a value passed through a component is listed at its `::use` (`via component <name>`), a reward without a target as `(no target)`. Who gives what, before a merge. |
 | `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds(awake(toma))=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>[@<axis>[=<value>],…]] [--target <T>] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name; `--target mon.inchlet` names one instead (the `@` of `--occasion` takes axes, not targets). 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion dusk@clock.day` (or `@run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--facts at` prints who is where per cell. 0.27.0: `--axis run.aff.*=6,7` sets every member of a `per:` family, `--axis 'run.aff[run.route]=6,7'` only the member the `run.route` axis names in each cell (the others keep their seed or default); a bare `--axis run.aff` is a usage error naming both forms. |
 | `lute lore <dir>` | Entries and beats by target and series, and which facts they reveal. |
-| `lute context <file> [--project <dir>]` | Everything legal to write here: directives (built-ins included), vocabulary, state (marking `owner: engine`), defs, relations with their tier and `reserved`, occasions with target domains, the cast, component signatures, and every scene, quest, and entry id. |
+| `lute context <file> [--project <dir>]` | Everything legal to write here: directives (built-ins included), vocabulary, state (marking `owner: engine`), defs, relations with their tier and `reserved`, occasions with target domains, the cast, component signatures, and every scene, quest, and entry id. Without `--project`, of the nearest `lute.project.yaml` above the file (0.27.0). |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | Advisory editorial lints (`L-*`), configured per project. The linear-VN metrics skip beats, components, quests, and lore. Since 0.26.0 it also reports `W-DISPLAY-NAME-DUP` (`--deny W-DISPLAY-NAME-DUP` accepts the code). |
 | `lute doctor [<dir>] [--strict]` | Toolchain and project setup: versions, active plugins, occasions with the number of beats answering each, play scripts and tests, whether the `lute-lsp` on `PATH` is this version, whether (0.24.0) it is the build beside the running `lute` (`lute-lsp beside lute`), and whether a running `lute-lsp` is stale (restart the editor). `--strict` (0.26.0) exits `1` when any check fails (`✗`). Since 0.26.0 `lute-lsp` itself notices that its binary was replaced and publishes one `lute-lsp-stale` "restart" diagnostic instead of an older build's results. |
 | `lute new scene\|quest\|lore\|schema <name> [--dir <dir>]` · `lute init <dir> [--template minimal\|investigation\|beats]` | Scaffold a document or a project. New documents get an `id:` and omit what `defaults:` supplies. `lute new scene <name> --on <occasion> [--target <prefix>.<member>]` writes a beat, checking both against the project. |
@@ -1391,6 +1401,10 @@ steps:
     expect: { clock: { slot: night } }  # 0.26.0: where the clock stands (weekday, slot, day)
   - engine: { accept: [lostCup] }       # 0.26.0: the engine accepts an accept-driven quest (quest lostCup accepted (engine))
   - include: common.steps.yaml          # 0.24.0: splice another script's steps here (path relative to this file)
+  - include: day.steps.yaml             # 0.27.0: repeat / choose / bridges on an include script its spliced steps
+    repeat: 3
+    choose: { firstLook: ren }
+    bridges: { exam: [ { grade: pass } ] }
   - newRun: { facts: ["knows(vesna, manifest)"] }   # or `true`; resets run.*, run facts, once: run, tier="run" quests
   - occasion: hubVisit
     repeat: 2
@@ -1411,8 +1425,11 @@ expect:                                 # judged at the end; a miss exits 1
   refuses `quest.*`: a quest's status is the lifecycle's, seeded with `quests:`. `newRun` takes the
   same `state:` and `facts:` as the new run's seed.
 - `target` belongs to an `occasion` step, and `pick` and `choose` to an `occasion` or `advance`
-  step; `label` goes on any step, and `repeat` on any but `end`. An `include:` step is the
-  exception: it names only its file, with no `label`, `repeat`, or `expect`. A step `expect:` takes
+  step; `label` goes on any step, and `repeat` on any but `end`. An `include:` step takes no
+  `label` or `expect`; since 0.27.0 it MAY carry `repeat: n` (the file is spliced n times) and its
+  own `choose:` / `bridges:`, which script every step it splices in over the script's own and are
+  dropped when the segment ends. The script's own list for an overridden key does not move while
+  the segment plays. A step `expect:` takes
   `winner` (`none` when the occasion passes), `offered` (a subset of the eligible beats),
   `notOffered`, and `presented` (0.23.0: the exact ids presented, in order) on an `occasion` step,
   and on an `advance` step, where `winner`, `offered`, and `notOffered` judge the raise where the
@@ -1440,9 +1457,14 @@ expect:                                 # judged at the end; a miss exits 1
   `select: all` occasion with nothing eligible needs no `pick:`.
 - `transcriptContains` / `transcriptLacks` match only lines that played, one `@speaker: text` per
   line (a bare text fragment matches too). A skipped guarded line, a step header, or staging never
-  counts, in `lute play` and `lute test` alike. Since 0.26.0 line attributes are dropped from the
-  needle too (`"@mara{emotion=\"shy\"}: Any luck?"` matches `@mara: Any luck?`), and a miss names
-  the nearest presented line.
+  counts, in `lute play` and `lute test` alike. A needle with no attribute block matches the line
+  whatever its attributes. Since 0.27.0 a needle's block is judged (0.26.0 dropped it):
+  `"@mara{emotion=\"shy\"}: Any luck?"` matches only a line carrying `emotion="shy"` (and maybe
+  more), so a `transcriptLacks` needle with a block holds when the words are said another way —
+  write it bare to mean "never said". A block key a line never shows (`emotoin=`, `when=`) or a
+  value outside its domain is refused before anything plays, with a did-you-mean: a usage error
+  (exit 2) in `lute play`, `E-TEST-NEEDLE` (the test fails) in a scenario test. A miss names the
+  nearest presented line.
 - A kind-target beat (0.26.0) renders `{{occasion.target}}` as the member's cast `name:` in `lute
   play`; a bridge answer is typed by its result slot or the capability's `result:` shape, and an
   untyped answer is refused rather than stored as a string.
@@ -1649,12 +1671,14 @@ id: choice.readback
 </match>
 ```
 
-**`lute check` finds the project; the other single-file commands do not.** `lute check <file>`
-applies the nearest `lute.project.yaml` above the file (a stderr note names it). `trace`, `compile`,
-`context`, and `test` resolve the project only with `--project <dir>`; without it, anything hoisted
-by `defaults:` or declared by a plugin is missing. `check-project`, `play`, and `scenario` load the
-project from the directory you give them, and `lute test` plays its `*.play.yaml` files against
-`--project` or the nearest `lute.project.yaml`.
+**Every single-file command finds the nearest project (0.27.0).** Without `--project`, `lute check`,
+`trace`, `compile`, `compile-stream`, and `context` apply the nearest `lute.project.yaml` above the
+file and say so on stderr (`lute: note: using project <dir> (nearest lute.project.yaml); pass
+--project to choose another`). Before 0.27.0 only `check` did, and the others resolved without
+anything hoisted by `defaults:` or declared by a plugin. `lute test` resolves its test documents and
+plays against `--project` or the nearest `lute.project.yaml`; `check-project`, `play`, and
+`scenario` load the project from the directory you give them. With no manifest above the file,
+resolution is core-only.
 
 **`trace`, `test`, and `play` derive: mock the premises, not the conclusion.** They load the
 schema's `facts:` seeds and apply its Datalog rules over the mocked and asserted facts, as `lute run`

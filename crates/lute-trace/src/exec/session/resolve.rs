@@ -55,16 +55,64 @@ pub fn typed_literal(entry: &Json, lit: &str) -> Result<Value, String> {
             if domain.contains(&lit) {
                 Ok(Value::Str(lit.to_string()))
             } else {
-                Err(format!("the enum's members are {}", domain.join(", ")))
+                Err(format!(
+                    "the enum's members are {}{}",
+                    domain.join(", "),
+                    did_you_mean(lit, domain.iter().copied())
+                ))
             }
         }
         _ => Ok(Value::Str(lit.to_string())),
     }
 }
 
+/// ` — did you mean `x`?` for the member nearest a misspelt `lit`, or empty.
+fn did_you_mean<'a>(lit: &str, members: impl IntoIterator<Item = &'a str>) -> String {
+    lute_manifest::suggest::nearest(lit, members, 2)
+        .map(|k| format!(" — did you mean `{k}`?"))
+        .unwrap_or_default()
+}
+
+/// dsl 0.27.0 §2 (T1-2): `lit` against a closed domain `K` (a named enum or
+/// an entity kind with `members:`) — `Err` names the members and the one
+/// nearest the literal (`` `rne` is not a member of `route` (ren, mika) —
+/// did you mean `ren`? ``).
+pub fn member_of(domain: &str, members: &[String], lit: &str) -> Result<(), String> {
+    if members.iter().any(|m| m == lit) {
+        return Ok(());
+    }
+    Err(format!(
+        "`{lit}` is not a member of `{domain}` ({}){}",
+        members.join(", "),
+        did_you_mean(lit, members.iter().map(String::as_str))
+    ))
+}
+
+/// A literal written to the declared state path `path` (its state-table
+/// `entry`): [`typed_literal`], and — a path typed `{ domain: K }` /
+/// `{ entity: K }` over a closed `K` — a member of `K` ([`member_of`]).
+pub fn state_literal(
+    p: &ExecProject,
+    path: &str,
+    entry: &Json,
+    lit: &str,
+) -> Result<Value, String> {
+    let value = typed_literal(entry, lit)?;
+    if let Some((domain, members)) = p.state_domains.get(path) {
+        member_of(domain, members, lit)?;
+    }
+    Ok(value)
+}
+
 /// dsl 0.27.0 §3: a payload literal against its declared type — the
-/// [`typed_literal`] rule over a manifest [`lute_manifest::types::Type`].
-pub fn payload_value(ty: &lute_manifest::types::Type, lit: &str) -> Result<Value, String> {
+/// [`typed_literal`] rule over a manifest [`lute_manifest::types::Type`];
+/// a `{ domain: K }` / `{ entity: K }` field over a closed `K` takes a
+/// member of `K` ([`member_of`]).
+pub fn payload_value(
+    p: &ExecProject,
+    ty: &lute_manifest::types::Type,
+    lit: &str,
+) -> Result<Value, String> {
     use lute_manifest::types::Type;
     match ty {
         Type::Bool => typed_literal(&serde_json::json!({ "type": "bool" }), lit),
@@ -73,6 +121,12 @@ pub fn payload_value(ty: &lute_manifest::types::Type, lit: &str) -> Result<Value
             &serde_json::json!({ "type": "enum", "domain": members }),
             lit,
         ),
+        Type::Domain(name) | Type::Entity(name) => {
+            if let Some(members) = domain_members(p, name) {
+                member_of(name, members, lit)?;
+            }
+            Ok(Value::Str(lit.to_string()))
+        }
         _ => Ok(Value::Str(lit.to_string())),
     }
 }
@@ -113,7 +167,7 @@ pub fn typed_payload(
             ));
         };
         let value =
-            payload_value(ty, lit).map_err(|why| format!("`payload.{field}: {lit}` — {why}"))?;
+            payload_value(p, ty, lit).map_err(|why| format!("`payload.{field}: {lit}` — {why}"))?;
         out.insert(
             format!("{}.{field}", lute_check::occasion_bind::OCCASION_PAYLOAD),
             value,
@@ -167,7 +221,7 @@ pub fn resolve_state(p: &ExecProject, path: &str, lit: &str) -> Result<Value, St
     let Some(entry) = p.state_table.get(declared) else {
         return Err("is not a declared state path in this project".to_string());
     };
-    typed_literal(entry, lit).map_err(|why| format!("does not take `{lit}`: {why}"))
+    state_literal(p, declared, entry, lit).map_err(|why| format!("does not take `{lit}`: {why}"))
 }
 
 /// dsl 0.24.0 §5: resolve a script's `bridges:` (`at` names where it was
@@ -236,13 +290,13 @@ pub fn resolve_bridges(
             for (field, lit) in answer {
                 let Some(paths) = fields.get(field.as_str()) else {
                     return Err(format!(
-                        "{at}: `bridges.{tag}` answer {n} gives `{field}`, which no effect of a \
-                         `{tag}` call reads (they read: {reads})"
+                        "{at}: `bridges.{tag}` answer {n} gives `{field}`, which no effect of the \
+                         `::{tag}` calls reads (they read: {reads})"
                     ));
                 };
                 for path in paths {
                     if let Some(entry) = p.state_table.get(*path) {
-                        typed_literal(entry, lit).map_err(|why| {
+                        state_literal(p, path, entry, lit).map_err(|why| {
                             format!(
                                 "{at}: `bridges.{tag}` answer {n}: `{field}: {lit}` does not fit \
                                  `{path}` — {why}"

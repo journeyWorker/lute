@@ -160,52 +160,26 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
             beat.id_span,
         ));
     }
-    match &beat.on {
-        None if !residual.contains("on") => diags.push(beat_attr(
+    if beat.on.is_none()
+        && !residual.contains("on")
+        && !beat.template.as_ref().is_some_and(|t| t.failed)
+    {
+        diags.push(beat_attr(
             format!(
                 "`<beat id=\"{id}\">` names no occasion; a bundle beat answers one — add \
                  `on=\"<occasion>\"` (dsl 0.23.0 §4)"
             ),
             beat.id_span,
-        )),
-        Some((on, span)) if !is_entry_ident(on) => diags.push(beat_attr(
-            format!(
-                "`<beat>` `on=\"{on}\"` must name an occasion — an identifier \
-                 (`[A-Za-z][A-Za-z0-9_-]*`) (dsl 0.23.0 §4)"
-            ),
-            *span,
-        )),
-        _ => {}
+        ));
     }
-    if let Some((target, span)) = &beat.target {
-        if !is_beat_target(target) {
-            diags.push(beat_attr(
-                format!(
-                    "`<beat>` `target=\"{target}\"` is malformed; a target is a dotted id \
-                     `Ident (\".\" Segment)*` with `Segment ::= [A-Za-z0-9_-]+`, e.g. \
-                     `npc.porter`, or `kind:<entity kind>` (dsl 0.23.0 §4, 0.26.0 §5)"
-                ),
-                *span,
-            ));
-        }
-    }
-    if let Some((raw, span)) = &beat.priority {
-        if parse_beat_priority(raw).is_none() {
-            diags.push(beat_attr(
-                format!("`<beat>` `priority=\"{raw}\"` must be an integer (dsl 0.23.0 §4)"),
-                *span,
-            ));
-        }
-    }
-    if let Some((raw, span)) = &beat.once {
-        if raw != "false" && BeatOnce::parse(raw).is_none() {
-            diags.push(beat_attr(
-                format!(
-                    "`<beat>` `once=\"{raw}\"` must be {} (dsl 0.23.0 §4, 0.24.0 §1, 0.27.0 §5)",
-                    crate::beats::ONCE_VALUES
-                ),
-                *span,
-            ));
+    for (key, value) in [
+        ("on", &beat.on),
+        ("target", &beat.target),
+        ("priority", &beat.priority),
+        ("once", &beat.once),
+    ] {
+        if let Some((raw, span)) = value {
+            diags.extend(value_faults(key, raw, *span));
         }
     }
     // dsl 0.27.0 §5: `spentBy` replaces `once`.
@@ -224,19 +198,45 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
     if let Some((key, span)) = &beat.share {
         let once = beat.once.as_ref().map(|(o, _)| o.as_str());
         if !is_entry_ident(key) {
-            diags.push(beat_attr(
-                crate::beats::share_malformed("`<beat>`", key),
-                *span,
-            ));
+            diags.extend(value_faults("share", key, *span));
         } else if once == Some("false") || (once.is_none() && !residual.contains("once")) {
             diags.push(beat_attr(crate::beats::share_without_once(key), *span));
         }
     }
-    // dsl 0.25.0 §3: `after=` under the scene `after:` grammar
-    // (`E-CONN-PROFILE`); an exact empty value declares no prerequisite.
-    if let Some((after, span)) = beat.after.as_ref().filter(|(a, _)| !a.is_empty()) {
-        diags.extend(crate::prereq::parse_prereq(after, *span).1);
+    if let Some((after, span)) = &beat.after {
+        diags.extend(value_faults("after", after, *span));
     }
+}
+
+/// The shape of one `<beat>` header value on its own ([`E_BEAT_ATTR`],
+/// `E-CONN-PROFILE` for `after`), whatever the other keys say — the rules
+/// [`check_shape`] and a beat template's header (`crate::templates`, dsl
+/// 0.27.0 §6) share. Keys without a shape of their own yield nothing.
+pub(crate) fn value_faults(key: &str, raw: &str, span: Span) -> Vec<Diagnostic> {
+    let message = match key {
+        "on" if !is_entry_ident(raw) => format!(
+            "`<beat>` `on=\"{raw}\"` must name an occasion — an identifier \
+             (`[A-Za-z][A-Za-z0-9_-]*`) (dsl 0.23.0 §4)"
+        ),
+        "target" if !is_beat_target(raw) => format!(
+            "`<beat>` `target=\"{raw}\"` is malformed; a target is a dotted id \
+             `Ident (\".\" Segment)*` with `Segment ::= [A-Za-z0-9_-]+`, e.g. \
+             `npc.porter`, or `kind:<entity kind>` (dsl 0.23.0 §4, 0.26.0 §5)"
+        ),
+        "priority" if parse_beat_priority(raw).is_none() => {
+            format!("`<beat>` `priority=\"{raw}\"` must be an integer (dsl 0.23.0 §4)")
+        }
+        "once" if raw != "false" && BeatOnce::parse(raw).is_none() => format!(
+            "`<beat>` `once=\"{raw}\"` must be {} (dsl 0.23.0 §4, 0.24.0 §1, 0.27.0 §5)",
+            crate::beats::ONCE_VALUES
+        ),
+        "share" if !is_entry_ident(raw) => crate::beats::share_malformed("`<beat>`", raw),
+        // dsl 0.25.0 §3: `after=` under the scene `after:` grammar
+        // (`E-CONN-PROFILE`); an exact empty value declares no prerequisite.
+        "after" if !raw.is_empty() => return crate::prereq::parse_prereq(raw, span).1,
+        _ => return Vec::new(),
+    };
+    vec![beat_attr(message, span)]
 }
 
 fn beat_attr(message: String, span: Span) -> Diagnostic {

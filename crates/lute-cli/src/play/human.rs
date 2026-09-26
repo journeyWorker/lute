@@ -53,6 +53,9 @@ pub(super) struct DocCmds<'a> {
     authored: Option<&'a BTreeMap<String, String>>,
     /// `--ir`: print lowered records, injected ones included.
     ir: bool,
+    /// `--quiet` (ML-F8): a declared effect that only restates the bridge
+    /// answer printed on its call's line is left out.
+    quiet: bool,
 }
 
 impl<'a> DocCmds<'a> {
@@ -74,6 +77,7 @@ impl<'a> DocCmds<'a> {
             at,
             authored: p.authored.get(document),
             ir,
+            quiet: false,
         }
     }
 
@@ -226,6 +230,11 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
         // T1-3 / dsl 0.27.0 §4: a directive's declared effect names the call
         // it came from.
         "set" | "assert" | "retract" => {
+            // ML-F8: `--quiet` drops a `set` that only restates the bridge
+            // answer its call's line already shows.
+            if cmds.quiet && rec.get("bridgeResult").is_some() {
+                return None;
+            }
             let effect = rec
                 .get("effectOf")
                 .and_then(Json::as_str)
@@ -451,8 +460,11 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
     })
 }
 
-fn render_records(out: &mut String, p: &ExecProject, ir: bool, document: &str, records: &[Json]) {
-    let cmds = DocCmds::new(p, document, ir);
+fn render_records(out: &mut String, p: &ExecProject, view: View, document: &str, records: &[Json]) {
+    let cmds = DocCmds {
+        quiet: view.quiet,
+        ..DocCmds::new(p, document, view.ir)
+    };
     for line in records.iter().filter_map(|rec| render_record(rec, &cmds)) {
         out.push_str(&line);
         out.push('\n');
@@ -530,12 +542,11 @@ pub(crate) struct View {
 }
 
 pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> String {
-    let ir = view.ir;
     let mut out = String::new();
     if !play.start.is_empty() {
         out.push_str(&format!("── start {RULE}\n"));
         for q in &play.start {
-            render_records(&mut out, p, ir, &q.document, &q.transcript);
+            render_records(&mut out, p, view, &q.document, &q.transcript);
         }
     }
     for s in &play.steps {
@@ -625,7 +636,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                         out.push('\n');
                     }
                     for q in &d.settled {
-                        render_records(&mut out, p, ir, &q.document, &q.transcript);
+                        render_records(&mut out, p, view, &q.document, &q.transcript);
                     }
                     render_occasion_human(
                         &mut out,
@@ -635,7 +646,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                         &d.occasion,
                     );
                     for q in &d.quests {
-                        render_records(&mut out, p, ir, &q.document, &q.transcript);
+                        render_records(&mut out, p, view, &q.document, &q.transcript);
                     }
                 }
                 if !days.is_empty() && !(writes.is_empty() && settled.is_empty()) {
@@ -646,7 +657,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                     out.push('\n');
                 }
                 for q in settled {
-                    render_records(&mut out, p, ir, &q.document, &q.transcript);
+                    render_records(&mut out, p, view, &q.document, &q.transcript);
                 }
                 if let Some(body) = raised {
                     render_occasion_human(&mut out, p, view, &head, body);
@@ -663,7 +674,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
             out.push_str(&format!("  ✗ exclusive: {v}\n"));
         }
         for q in &s.quests {
-            render_records(&mut out, p, ir, &q.document, &q.transcript);
+            render_records(&mut out, p, view, &q.document, &q.transcript);
         }
     }
     for (n, label) in &play.skipped {
@@ -693,7 +704,6 @@ fn render_occasion_human(
     head: &str,
     body: &StepBody,
 ) {
-    let ir = view.ir;
     let StepBody::Occasion {
         occasion,
         target,
@@ -726,7 +736,7 @@ fn render_occasion_human(
     }
     out.push_str(&format!("{header} {RULE}\n"));
     for q in judged {
-        render_records(out, p, ir, &q.document, &q.transcript);
+        render_records(out, p, view, &q.document, &q.transcript);
     }
     if candidates.is_empty() {
         out.push_str("  (no candidates)\n");
@@ -792,7 +802,7 @@ fn render_occasion_human(
         }
     }
     for pr in presented {
-        render_records(out, p, ir, &pr.document, &pr.transcript);
+        render_records(out, p, view, &pr.document, &pr.transcript);
     }
 }
 

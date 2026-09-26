@@ -411,7 +411,10 @@ rules:
 참고). dsl 0.27.0부터 이 스텝은 `repeat: n`(파일을 n번 끼워 넣음)과 자신만의 `choose:` / `bridges:`를 가질 수
 있습니다. 이것들은 끼워 넣는 모든 스텝에 대해 스크립트 자신의 것 위에 놓입니다 — 키별로, 태그별로, 반복마다
 처음부터 소비되고, 구간이 끝나면 버려집니다 — 그래서 여러 학기짜리 플레이는 학기마다 자신의 선택을 그 학기
-옆에 적습니다. 옆에 `label`이나 `expect:`를 쓰면 사용법 오류입니다. 스텝의 사용법 오류는 그 오류가 가리키는
+옆에 적습니다. include가 덮어쓴 키에 대한 스크립트 자신의 목록은 그 자리에 머뭅니다: 최상위
+`choose: { firstLook: [soren, mika] }`에 첫 학기가 `choose: { firstLook: ren }`으로 include하면, 둘째 학기는
+`mika`가 아니라 목록의 첫 항목 `soren`을 고릅니다. 위치 목록을 include별 `choose:`로 바꿀 때는 한 학기씩이
+아니라 모든 학기를 한꺼번에 바꾸세요. 옆에 `label`이나 `expect:`를 쓰면 사용법 오류입니다. 스텝의 사용법 오류는 그 오류가 가리키는
 키의 파일, 줄, 열을 댑니다 — 스텝이 포함된 파일에서 왔으면 그 파일에서, 뒤에
 `(included from <play>:<line>:<col>)`을 붙여서 — 그리고 계기 이름과 키에는 did-you-mean을 붙입니다. 탑에
 대해 모든 모양을 한 번씩 둘러보면:
@@ -1125,10 +1128,11 @@ steps:
   → routine.night
 @narrator: The lamps go out on day 2.
 ── step 4 · advance to Fri morning: day 2 (Tue) night → day 5 (Fri) morning ──────────────
-  set run.day = 5
+  set run.day = 3
   set run.slot = "morning"
   fest.go failed (by)
   quest fest -> failed (by)
+  set run.day = 5
 ── step 4 · slotStart (select: sequence) ──────────────
   ✓ routine.morning [scene, priority 5]
   ✗ routine.night [scene, priority 5] — when: false
@@ -1140,7 +1144,10 @@ steps:
 
 스텝 2는 오후를 건너뜁니다: 오후의 `slotStart`는 발생하지 않습니다. 스텝 3은 이미 밤이므로 다음 밤으로
 갑니다. 스텝 4는 자정 셋을 건너 금요일 아침으로 갑니다. 이 시계는 `dayEnd` / `dayStart`를 정하지 않았으므로
-마지막 `slotStart`만 발생하고, 3일째를 지나는 이동이 도중에 `fest`의 기한을 실패시킵니다. `--json`에서
+마지막 `slotStart`만 발생합니다. 그래도 퀘스트는 이동이 지나는 모든 위치에서 정산되므로, `fest`의 기한은
+시계가 처음 3일째에 닿는 수요일 아침에 실패합니다. 트랜스크립트는 그 위치까지의 이동, 그 정산, 남은 이동
+순서로 출력합니다. 도중에 열리고 닫히는 시즌이나 그곳에서 참이 되는 `rearm=`도 같은 방식으로 그 위치에서
+작동합니다. `--json`에서
 advance의 `by`는 `"to night"`이나 `"to Fri morning"`입니다. 시계가 선언하지 않은 슬롯이나 요일은 아무것도
 재생하기 전의 사용법 오류입니다
 (`` step 2: `advance:` to slot `dusk` — the clock's slots are: morning, afternoon, night ``,
@@ -1164,7 +1171,7 @@ advance의 `by`는 `"to night"`이나 `"to Fri morning"`입니다. 시계가 선
 ── halted: step 3: `advance:` past the clock's last position (day 1 h05) — the clock ended; a `newRun` starts it over (E-CLOCK-END) ──────────────
 ```
 
-**일과 나눠 쓰기.** `include: <file>`(키가 `include` 하나뿐인 스텝)은 다른 파일의 스텝을 그 자리에 끼워
+**일과 나눠 쓰기.** `include: <file>`(동작이 `include`인 스텝. 0.27.0부터 `repeat`, `choose`, `bridges`도 함께 쓸 수 있음)은 다른 파일의 스텝을 그 자리에 끼워
 넣습니다: 파일은 스텝 목록이거나, 키가 `steps:` 하나뿐인 매핑입니다. 경로는 포함하는 파일을 기준으로
 해석되고, include는 중첩될 수 있습니다. 하루치 일과를 파일 하나에 두고 여러 경로가 나눠 씁니다:
 
@@ -1440,6 +1447,8 @@ steps:
 상태로 만듭니다(`quest missions -> unset (season:harvest opened; was complete)`). [`rearm=`](/language/quests-and-scenes/#quests-that-come-back-season-tiers-and-rearm)이 있는
 퀘스트는 첫 정산 뒤로 조건이 참이 될 때마다 `unset`으로 돌아가며 `quest festival -> unset (rearmed; was complete)`로
 출력되고, 성립하는 `start`가 있으면 같은 정산에서 다시 활성화됩니다.
+여러 날을 건너는 `advance:` 하나는 지나는 모든 위치에서 둘 다 살핍니다: 도중에 열리고 닫히는 시즌은 그 자리에서
+퀘스트를 시작하고 실패시키며, rearm은 조건이 참이 되는 날에 작동하고, 각각 그 위치로의 시계 이동 뒤에 출력됩니다.
 [`spentBy`](/language/beats/#until-it-is-solved-spentby) 조건으로 소진된 비트는 ``spentBy: `run.solved` holds``라는
 이유와 함께, 소진된 `once: week` 비트는 `once: week — already presented this week`와 함께 나열됩니다.
 
@@ -2005,7 +2014,7 @@ steps:
 | `quests: { <id>: <status> }` | 퀘스트가 그 상태로 끝남(아무것도 활성화하지 않은 퀘스트는 `unset`) |
 | `state: { <path>: <value> }` | 경로의 최종 **유효** 값 — 마지막 쓰기, 없으면 시드, 없으면 선언된 기본값 — 이 그 값과 같음. 타입까지 비교(`1`은 `"1"`이 아님) |
 | `facts: [atoms]` / `notFacts: [atoms]` | 각 원자가 끝에서, **파생 이후** 성립함 / 성립하지 않음 |
-| `transcriptContains: [text]` / `transcriptLacks: [text]` | 각 텍스트가 재생된 콘텐츠 줄의 부분 문자열임 / 아님. 콘텐츠 줄은 한 가지 형태 `@speaker: text`로만 비교합니다(dsl 0.24.0): 줄의 전달 속성은 빠지므로 `"@mara: Any luck with the lamp?"`는 `@mara{emotion="shy"}: Any luck with the lamp?`로 출력된 줄과 일치하고, 스텝 헤더, 후보, 연출, 노트, `skip` 줄은 결코 일치하지 않습니다 — 재생되지 않은 가드된 줄은 어떤 `transcriptContains`도 만족시키지 않습니다. `lute test`도 같은 형태로 비교하며, `--ir`이 무엇을 출력하든 같습니다 |
+| `transcriptContains: [text]` / `transcriptLacks: [text]` | 각 텍스트가 재생된 콘텐츠 줄의 부분 문자열임 / 아님. 콘텐츠 줄은 한 가지 형태 `@speaker: text`로만 비교합니다(dsl 0.24.0). 속성 블록이 없는 바늘은 줄의 전달 속성과 상관없이 맞으므로 `"@mara: Any luck with the lamp?"`는 `@mara{emotion="shy"}: Any luck with the lamp?`로 출력된 줄과 일치하고, 블록이 있는 바늘 줄은 그 속성을 가진 줄과만 맞습니다(아래 참고). 스텝 헤더, 후보, 연출, 노트, `skip` 줄은 결코 일치하지 않습니다 — 재생되지 않은 가드된 줄은 어떤 `transcriptContains`도 만족시키지 않습니다. `lute test`도 같은 형태로 비교하며, `--ir`이 무엇을 출력하든 같습니다 |
 
 `repeat:` 스텝의 기대값은 반복마다 판정되며, 워크가 도달하지 못한 스텝의 기대값은 그 자체로 불일치입니다.
 각 `expect:`는 아무것도 재생하기 전에 검증됩니다 — 알 수 없는 키는 합법 키 목록과 did-you-mean을 붙인
@@ -2030,9 +2039,17 @@ steps:
   ✗ step 1 at runStart: expect presented: expected [start.recap, start.gear], actual [start.gear, start.recap]
 ```
 
-dsl 0.26.0부터 `transcriptContains` / `transcriptLacks`의 바늘도 자신의 전달 속성을 버리므로, 트랜스크립트에서
-복사한 줄 — `"@mara{emotion=\"content\"}: You're new."` — 도 일치하고, `transcriptContains` 불일치는 바늘에
-가장 가까운 제시된 줄을 말해진 그대로 댑니다:
+dsl 0.27.0부터 바늘의 속성 블록은 버리지 않고 판정합니다(0.26.0은 버렸습니다): `@speaker{…}: text`로 쓴 바늘
+줄은 블록이 적은 속성을 모두 같은 값으로 가진 제시된 줄(속성이 더 있어도 됨)에서 시작해야 합니다.
+그래서 트랜스크립트에서 복사한 줄 — `"@mara{emotion=\"content\"}: You're new."` — 은 복사해 온 그 줄과 맞지만,
+같은 말을 다른 감정으로 또는 감정 없이 한 줄과는 맞지 않습니다. `transcriptLacks`에서는 그만큼 조건이
+좁아집니다: `'@ren{emotion="sad"}: X'`는 X를 *슬프게* 말한 적이 없으면 성립하며, 평범하게 말했어도
+마찬가지입니다. "X를 결코 말하지 않음"이라는 뜻이면 `'@ren: X'`로 쓰세요. 블록은 무엇이든 재생하기 전에,
+`transcriptContains`와 `transcriptLacks` 모두에서 검사됩니다: 트랜스크립트 줄이 보여 주지 않는 키(`emotoin=`,
+`when=`, `code=`), 도메인 밖의 값(`emotion="sadd"`), 정수가 아닌 `variant`, 값을 단 전달 플래그는 did-you-mean과
+함께 사용법 오류(종료 코드 2)입니다 — 그래서 철자가 틀린 블록이 아무 줄과도 맞지 않아 `transcriptLacks`를
+성립시키는 일은 더 이상 없습니다. `transcriptContains` 불일치는
+바늘에 가장 가까운 제시된 줄을 말해진 그대로 댑니다:
 
 ```
 ── expect: 1 missed ──────────────

@@ -81,15 +81,15 @@ fn a_kind_beat_queries_facts_and_families_by_its_member() {
 #[test]
 fn a_member_outside_the_relation_domain_is_named() {
     // `visitedRoom` takes a room: every hero member is outside its domain,
-    // so the finding is shared and reported once, without a member suffix.
+    // so the finding is reported once and lists the members it covers.
     let errs = errors(&lore(
         "<beat id=\"x\" on=\"summon\" target=\"kind:hero\" once=\"false\" when=\"holds(visitedRoom(occasion.target))\">\n  @narrator: hi\n</beat>\n",
     ));
     let dom: Vec<_> = errs.iter().filter(|(c, _)| c == "E-FACT-DOMAIN").collect();
-    assert_eq!(
-        dom.len(),
-        3,
-        "one per member (each message names it): {errs:?}"
+    assert_eq!(dom.len(), 1, "one report for every member: {errs:?}");
+    assert!(
+        dom[0].1.contains("`aria`") && dom[0].1.contains("`cyra`"),
+        "{errs:?}"
     );
 }
 
@@ -100,8 +100,8 @@ fn a_family_of_another_kind_is_undeclared_per_member() {
     ));
     assert!(
         errs.iter().any(|(c, m)| c == "E-UNDECLARED"
-            && m.contains("user.heat.aria")
-            && m.contains("`occasion.target` = `aria`")),
+            && m.contains("user.heat[occasion.target]")
+            && m.contains("`aria`")),
         "{errs:?}"
     );
 }
@@ -126,6 +126,39 @@ fn a_for_beat_binds_each_member_on_a_sequence_occasion() {
          @narrator: Happy birthday, {{occasion.target}}!\n</beat>\n",
     ));
     assert!(errs.is_empty(), "{errs:?}");
+}
+
+/// FS-F1: a non-ASCII char outside a CEL string literal — `≥`, curly quotes,
+/// Hangul, a full-width `＝`, an em dash — anywhere a condition or a write is
+/// read is `E-CEL-PARSE`, never a crash (0.27 rc panicked slicing inside it).
+#[test]
+fn non_ascii_outside_a_literal_is_a_parse_error_not_a_crash() {
+    let bad = [
+        "user.bond[occasion.target] ≥ 2",
+        "occasion.target == ‘aria’",
+        "occasion.target == 아리아",
+        "user.bond[occasion.target] ＝＝ 2",
+        "holds(owned(occasion.target)) — true",
+    ];
+    for cel in bad {
+        let errs = errors(&lore(&format!(
+            "<beat id=\"x\" on=\"summon\" target=\"kind:hero\" once=\"false\" when=\"{cel}\">\n  \
+             @narrator{{when=\"{cel}\"}}: hi\n</beat>\n"
+        )));
+        assert!(
+            !errs.is_empty() && errs.iter().all(|(c, _)| c == "E-CEL-PARSE"),
+            "{cel}: {errs:?}"
+        );
+    }
+    let scene = "---\nkind: scene\nid: s\non: morning\nwhen: \"run.who == ‘ruben’\"\nstate:\n  \
+                 run.who: { type: string, default: \"\" }\n---\n## A\n\
+                 @narrator{when=\"run.who ≥ 2\"}: hi\n::set{ run.who = “ruben” }\n";
+    let errs = errors(scene);
+    assert_eq!(
+        errs.iter().filter(|(c, _)| c == "E-CEL-PARSE").count(),
+        3,
+        "{errs:?}"
+    );
 }
 
 #[test]

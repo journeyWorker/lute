@@ -246,6 +246,23 @@ fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadErr
                         });
                     }
                 }
+                // dsl 0.27.0 §4: a declared effect that reads an attr the
+                // directive lacks is this file's fault, at its line.
+                let text = std::fs::read_to_string(file).unwrap_or_default();
+                for d in &f.directives {
+                    for me in crate::validate::validate_effects(d) {
+                        let at = effect_error_line(&text, &d.name, &me.message());
+                        e.push(LoadError::Parse {
+                            file: file.display().to_string(),
+                            msg: match at {
+                                Some((line, col)) => {
+                                    format!("{} at line {line} column {col}", me.message())
+                                }
+                                None => me.message(),
+                            },
+                        });
+                    }
+                }
                 merge_directives(&mut out.directives, f.directives, e)
             }),
             "state" => read_state(&path, &mut out, &mut errs),
@@ -316,6 +333,11 @@ fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadErr
             }),
             "occasions" => read_kind::<OccasionsFile, _>(&path, &mut errs, |f, file, e| {
                 check_occasion_members(&f.occasions, &file.display().to_string(), e);
+                check_gate_types(
+                    &std::fs::read_to_string(file).unwrap_or_default(),
+                    &file.display().to_string(),
+                    e,
+                );
                 let decls: Vec<OccasionDecl> = f
                     .occasions
                     .into_iter()
@@ -470,6 +492,63 @@ fn check_occasion_members(
             msg,
         });
     }
+}
+
+/// dsl 0.27.0 §4: an occasion's `raisedWhen:` is a condition string. A YAML
+/// scalar that is not a string (`raisedWhen: true`, a number) would be read
+/// as its text; it is refused like a non-string `terminal:`.
+fn check_gate_types(text: &str, file: &str, errs: &mut Vec<LoadError>) {
+    let Ok(doc) = serde_yaml::from_str::<serde_yaml::Value>(text) else {
+        return;
+    };
+    let Some(occasions) = doc.get("occasions").and_then(|o| o.as_mapping()) else {
+        return;
+    };
+    for (name, body) in occasions {
+        let Some(gate) = body.get("raisedWhen") else {
+            continue;
+        };
+        if gate.is_string() || gate.is_null() {
+            continue;
+        }
+        let shown = serde_yaml::to_string(gate).unwrap_or_default();
+        let shown = shown.trim();
+        errs.push(LoadError::Parse {
+            file: file.to_string(),
+            msg: format!(
+                "occasion `{}`'s `raisedWhen: {shown}` is not a condition string — quote it \
+                 (`raisedWhen: \"{shown}\"`), or drop `raisedWhen` for an occasion the engine \
+                 may always raise",
+                name.as_str().unwrap_or_default()
+            ),
+        });
+    }
+}
+
+/// `(line, column)` (1-based) of what an effect error names — its first
+/// backticked token after the directive's name, e.g. `holding(@itm)` —
+/// inside directive `directive`'s entry of `text`; `None` when not found.
+fn effect_error_line(text: &str, directive: &str, message: &str) -> Option<(usize, usize)> {
+    let entry = text.lines().scan(0usize, |off, line| {
+        let at = *off;
+        *off += line.len() + 1;
+        Some((at, line))
+    });
+    let from = entry
+        .filter(|(_, l)| {
+            let t = l.trim_start().trim_start_matches("- ").trim_start();
+            t.strip_prefix("name:")
+                .is_some_and(|r| r.trim().trim_matches(['"', '\'']) == directive)
+        })
+        .map(|(at, _)| at)
+        .next()?;
+    // Skip the leading `directive `::give` effects.asserts:` tokens.
+    let detail = message.split_once(": ").map_or(message, |(_, d)| d);
+    let needle = detail.split('`').nth(1).filter(|n| !n.is_empty())?;
+    let at = from + text[from..].find(needle)?;
+    let line = text[..at].matches('\n').count() + 1;
+    let col = at - text[..at].rfind('\n').map_or(0, |n| n + 1) + 1;
+    Some((line, col))
 }
 
 /// Scan `dir` for plugin packages (each immediate subdirectory containing a

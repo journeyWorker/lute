@@ -11,7 +11,7 @@ use crate::cmd_check::{component_name_of, component_root_diag};
 use crate::input::{build_input, BuiltInput};
 use crate::output::{print_diagnostics, write_stdout, DenyPolicy};
 use crate::project::gate::project_gate_result;
-use crate::project::{nearest_manifest_dir, project_assert_relations, project_quest_ids};
+use crate::project::{discover_project, project_assert_relations, project_quest_ids};
 
 /// Run `trace` over one file (dsl 0.4.0 §4.3/§4.5): resolve the document
 /// IDENTICALLY to `check`/`compile` ([`build_input`]), load + merge the
@@ -49,7 +49,12 @@ pub(crate) fn run_trace(
     no_derive: bool,
     expand: bool,
 ) -> ExitCode {
-    let Some(built) = build_input(file, providers, project, None) else {
+    // FS-F2: resolved against the same project `lute check` resolves it
+    // against — `--project`, else the nearest manifest. Only an explicit
+    // `--project` switches the gate to the reconciled project verdict below.
+    let discovered = discover_project(file, project);
+    let resolved = project.or(discovered.as_deref());
+    let Some(built) = build_input(file, providers, resolved, None) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();
@@ -196,7 +201,7 @@ pub(crate) fn run_trace(
     // dsl 0.26.0 §7 (T3-5): `--accept` / `accepts:` resolve against every
     // quest of the project, not only this document's.
     if !mocks.accepts.is_empty() {
-        mocks.project_quests = project.and_then(|dir| project_quest_ids(dir, providers));
+        mocks.project_quests = resolved.and_then(|dir| project_quest_ids(dir, providers));
     }
     // Project-aware gate (connectivity spec §5, mirrors `run_compile`): WITH
     // `--project <dir>` trace gates on the target's RECONCILED `check-project`
@@ -243,10 +248,10 @@ pub(crate) fn run_trace(
     let project_asserts = if mocks.facts.is_empty() {
         None
     } else {
-        match project {
-            Some(dir) => project_assert_relations(dir, true, providers),
-            None => nearest_manifest_dir(file)
-                .and_then(|root| project_assert_relations(&root, false, providers)),
+        match (project, &discovered) {
+            (Some(dir), _) => project_assert_relations(dir, true, providers),
+            (None, Some(root)) => project_assert_relations(root, false, providers),
+            (None, None) => None,
         }
     };
     let (mut report, exit) = match (entry, beat) {
@@ -258,10 +263,10 @@ pub(crate) fn run_trace(
         }
         (None, None) => lute_trace::trace_with_check(&input, gate, mocks, project_asserts.as_ref()),
     };
-    // T3-15: `--project` knows every quest of the project — settle the
+    // T3-15: the project knows every quest — settle the
     // "existence is unverified" notes instead of repeating them.
     if !report.foreign_quests.is_empty() {
-        if let Some(declared) = project.and_then(|dir| project_quest_ids(dir, providers)) {
+        if let Some(declared) = resolved.and_then(|dir| project_quest_ids(dir, providers)) {
             report.verify_quests(&declared);
         }
     }

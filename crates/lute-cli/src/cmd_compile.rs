@@ -6,7 +6,6 @@ use std::process::ExitCode;
 
 use lute_check::check;
 use lute_core_span::Severity;
-use lute_manifest::project::load_project;
 
 use crate::cmd_check::{component_name_of, component_root_diag};
 use crate::compile_all;
@@ -116,13 +115,20 @@ fn run_compile(
         Ok(b) => b,
         Err(code) => return code,
     };
-    let Some(built) = build_input(file, providers, project, permission_profile) else {
+    // FS-F2: the same project `lute check` resolves the file against —
+    // `--project`, else the nearest manifest (its `defaults:`, profile and
+    // `identity:` apply). Only an explicit `--project` switches the gate to
+    // the reconciled project verdict below.
+    let discovered = crate::project::discover_project(file, project);
+    let resolved = project.or(discovered.as_deref());
+    let Some(built) = build_input(file, providers, resolved, permission_profile) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();
     let BuiltInput {
         input,
         resolve_error,
+        identity,
         ..
     } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
@@ -136,24 +142,17 @@ fn run_compile(
     // envelope-Guaranteed `run.*`/`user.*` read no longer blocks; a read no
     // route guarantees blocks with `E-STATE-MAYBE-UNAVAILABLE`). WITHOUT it,
     // the standalone single-file `check` gate, unchanged.
+    //
     // 0.8.0 §9: the `identity:` block templates `lineId`/`voiceKey`. It is a
-    // PROJECT setting, so it only applies on the `--project` path; a loose
-    // scene keeps `IdentityTemplates::default()`, i.e. 0.7.0's pair. A project
-    // that fails to load already printed its error in `build_input`; falling
-    // back to the default here matches that core-only degradation.
-    let (gate, identity) = match project {
-        Some(dir) => {
-            let identity = load_project(dir)
-                .ok()
-                .flatten()
-                .map(|p| p.identity)
-                .unwrap_or_default();
-            match project_gate_result(file, dir, providers) {
-                Ok(gate) => (gate, identity),
-                Err(code) => return code,
-            }
-        }
-        None => (check(&input), Default::default()),
+    // PROJECT setting, taken from the same manifest load as the snapshot: a
+    // loose scene keeps `IdentityTemplates::default()`, i.e. 0.7.0's pair,
+    // and so does a project that failed to load (its error already printed).
+    let gate = match project {
+        Some(dir) => match project_gate_result(file, dir, providers) {
+            Ok(gate) => gate,
+            Err(code) => return code,
+        },
+        None => check(&input),
     };
 
     // A component is not a root document (see [`component_root_diag`]): there is

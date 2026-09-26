@@ -141,7 +141,49 @@ pub fn beat_seam(
     target: Option<&str>,
     when: Option<&str>,
 ) -> Option<BeatSeam> {
-    let gate = gate_of(occasions, on);
+    seam_with(
+        gate_of(occasions, on),
+        occasions.get(on),
+        kinds,
+        terminal,
+        target,
+        when,
+    )
+}
+
+/// [`beat_seam`] in `folded`'s project, leaving out a gate or terminal
+/// text that compares a subject with a string outside its domain: that
+/// text's own `E-WHEN-LITERAL-DOMAIN` ([`check_seam_texts`]) owns the
+/// fault, and every beat judged under it would only repeat it as a dead
+/// beat (HW27-02).
+pub(crate) fn folded_seam(
+    folded: &crate::check::FoldedEnv,
+    on: &str,
+    target: Option<&str>,
+    when: Option<&str>,
+) -> Option<BeatSeam> {
+    let sound = |raw: &str| literal_hits(raw, folded).is_empty();
+    let gate = gate_of(&folded.occasions, on)
+        .filter(|g| ground_gate(folded, on, g).is_none_or(|g| sound(&g)));
+    let terminal = folded.env.terminal.as_deref().filter(|t| sound(t));
+    seam_with(
+        gate,
+        folded.occasions.get(on),
+        &folded.env.rel_vocab.kinds,
+        terminal,
+        target,
+        when,
+    )
+}
+
+fn seam_with(
+    gate: Option<&str>,
+    decl: Option<&OccasionDecl>,
+    kinds: &BTreeMap<String, EntityKindDecl>,
+    terminal: Option<&str>,
+    target: Option<&str>,
+    when: Option<&str>,
+) -> Option<BeatSeam> {
     let terminal = terminal.map(str::trim).filter(|t| !t.is_empty());
     if gate.is_none() && terminal.is_none() {
         return None;
@@ -149,8 +191,7 @@ pub fn beat_seam(
     let when = when.map(str::trim).filter(|w| !w.is_empty());
     let reads_target = gate.is_some_and(mentions_target) || when.is_some_and(mentions_target);
     let members: Vec<Option<String>> = if reads_target {
-        let decl = occasions.get(on)?;
-        let ms = beat_members(decl, target, kinds)?;
+        let ms = beat_members(decl?, target, kinds)?;
         if ms.is_empty() {
             return None;
         }
@@ -295,15 +336,7 @@ pub fn beat_never_eligible(
     if when.is_some_and(|w| !w.trim().is_empty() && dead(w)) {
         return true;
     }
-    beat_seam(
-        &folded.occasions,
-        &folded.env.rel_vocab.kinds,
-        folded.env.terminal.as_deref(),
-        on,
-        target,
-        when,
-    )
-    .is_some_and(|s| s.judge(dead) != SeamVerdict::Live)
+    folded_seam(folded, on, target, when).is_some_and(|s| s.judge(dead) != SeamVerdict::Live)
 }
 
 /// dsl 0.27.0 §4 (`lute beats`): whether occasion `on`'s `raisedWhen` gate
@@ -323,14 +356,16 @@ pub fn gate_never_holds(
 
 /// The seam's CEL checked like any condition slot (dsl 0.27.0 §4): the
 /// gate of every occasion a beat of this document answers — ground with
-/// its first member when it reads `occasion.target` — reported at that
-/// beat's `on`; the document's own `terminal:` at its value; an imported
-/// schema's `terminal:` at the schema's line (`check-project` folds the
-/// importers' identical reports into one).
+/// its first member when it reads `occasion.target` — reported at the
+/// plugin's `raisedWhen:` line when the CLI placed it (`check-project` folds
+/// the importers' identical reports into one), else at that beat's `on`;
+/// the document's own `terminal:` at its value; an imported schema's
+/// `terminal:` at the schema's line. A string literal no member of its
+/// subject's domain is `E-WHEN-LITERAL-DOMAIN`, as in a `when`.
 pub(crate) fn check_seam_texts(
     doc: &lute_syntax::ast::Document,
     folded: &crate::check::FoldedEnv,
-    imported_terminals: &[(std::path::PathBuf, String, Span)],
+    imports: &crate::SchemaImports,
     ctx: &crate::ctx::Ctx<'_>,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
@@ -343,56 +378,88 @@ pub(crate) fn check_seam_texts(
         let Some(gate) = gate_of(&folded.occasions, &b.on) else {
             continue;
         };
-        let Some(decl) = folded.occasions.get(&b.on) else {
+        let origin = imports.plugin_origins.gates.get(&b.on);
+        if mentions_target(gate)
+            && folded
+                .occasions
+                .get(&b.on)
+                .is_some_and(|d| d.target == OccasionTarget::Shape(false))
+        {
+            out.push(crate::rel_schema::at_plugin_origin(
+                untargeted_gate_diag(&b.on, gate, b.on_span),
+                origin,
+            ));
+            continue;
+        }
+        let Some(ground) = ground_gate(folded, &b.on, gate) else {
+            // A shape-only or open target: nothing ground to check by.
             continue;
         };
-        let ground = if mentions_target(gate) {
-            match &decl.target {
-                OccasionTarget::Shape(false) => {
-                    out.push(untargeted_gate_diag(&b.on, gate, b.on_span));
-                    continue;
-                }
-                _ => match domain_members(decl, &folded.env.rel_vocab.kinds)
-                    .and_then(|ms| ms.into_iter().next())
-                {
-                    Some(first) => instantiate(gate, &first),
-                    // A shape-only or open target: nothing ground to check by.
-                    None => continue,
-                },
-            }
-        } else {
-            gate.to_string()
-        };
-        out.extend(
-            check_condition(&ground, b.on_span, ctx)
-                .into_iter()
-                .map(|d| gate_diag(&b.on, gate, d, b.on_span)),
-        );
+        let mut found = check_condition(&ground, b.on_span, ctx);
+        found.extend(foreign_literals(&ground, folded, b.on_span));
+        out.extend(found.into_iter().map(|d| {
+            crate::rel_schema::at_plugin_origin(gate_diag(&b.on, gate, d, b.on_span), origin)
+        }));
     }
     if let Some(own) = &folded.typed.terminal {
+        let mut found = check_condition(&own.raw, own.span, ctx);
+        found.extend(foreign_literals(&own.raw, folded, own.span));
         out.extend(
-            check_condition(&own.raw, own.span, ctx)
+            found
                 .into_iter()
                 .map(|d| terminal_diag(&own.raw, d, own.span)),
         );
     }
-    for (file, raw, span) in imported_terminals {
+    for (file, raw, span) in &imports.terminal {
         let origin = crate::rel_schema::DeclOrigin {
             file: file.clone(),
             span: *span,
         };
-        out.extend(
-            check_condition(raw, doc.meta.span, ctx)
-                .into_iter()
-                .map(|d| {
-                    crate::rel_schema::at_origin(
-                        terminal_diag(raw, d, doc.meta.span),
-                        Some(&origin),
-                    )
-                }),
-        );
+        let mut found = check_condition(raw, doc.meta.span, ctx);
+        found.extend(foreign_literals(raw, folded, doc.meta.span));
+        out.extend(found.into_iter().map(|d| {
+            crate::rel_schema::at_origin(terminal_diag(raw, d, doc.meta.span), Some(&origin))
+        }));
     }
     out
+}
+
+/// Occasion `on`'s `gate` as the checker judges its text: ground with the
+/// first member it is raised for when it reads `occasion.target`; `None`
+/// when that member is not known (a shape-only or open target).
+fn ground_gate(folded: &crate::check::FoldedEnv, on: &str, gate: &str) -> Option<String> {
+    if !mentions_target(gate) {
+        return Some(gate.to_string());
+    }
+    let decl = folded.occasions.get(on)?;
+    let first = domain_members(decl, &folded.env.rel_vocab.kinds)?
+        .into_iter()
+        .next()?;
+    Some(instantiate(gate, &first))
+}
+
+/// `E-WHEN-LITERAL-DOMAIN` / `E-UNSET-LITERAL` for each comparison of a
+/// finite-domain subject with a string outside its domain in `raw`, at `at`
+/// — the literal check every `when` gets.
+fn foreign_literals(raw: &str, folded: &crate::check::FoldedEnv, at: Span) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    crate::reachability::push_literal_cmp_diags(&mut out, &literal_hits(raw, folded), at);
+    out
+}
+
+fn literal_hits(raw: &str, folded: &crate::check::FoldedEnv) -> Vec<crate::decide::LiteralCmpHit> {
+    let params = BTreeMap::new();
+    let defs = crate::cel_expand::DefTable {
+        bodies: &folded.def_bodies,
+        params: &folded.env.def_params,
+    };
+    let ctx = crate::decide::DecideCtx {
+        schema: &folded.env.state,
+        dollar: None,
+        params: &params,
+        facts: None,
+    };
+    crate::decide::analyze_literal_comparisons(raw, &defs, &ctx).hits
 }
 
 /// `raw` checked as a `Bool` condition slot; every diagnostic anchored at
@@ -507,10 +574,8 @@ pub(crate) fn seam_beats<'d>(
 impl SeamBeat<'_> {
     /// The beat's [`BeatSeam`] in `folded`'s project.
     pub(crate) fn seam(&self, folded: &crate::check::FoldedEnv) -> Option<BeatSeam> {
-        beat_seam(
-            &folded.occasions,
-            &folded.env.rel_vocab.kinds,
-            folded.env.terminal.as_deref(),
+        folded_seam(
+            folded,
             &self.on,
             self.target.as_deref(),
             self.when.map(|w| w.raw.as_str()),

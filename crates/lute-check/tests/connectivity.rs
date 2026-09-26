@@ -2577,6 +2577,38 @@ fn meta_parse_error_is_anchored_at_the_file_line_with_a_fix() {
     assert!(msg.contains("YAML indents with spaces, not tabs"), "{msg}");
 }
 
+/// FS-F15: an unterminated quote and `key:value` surface as a YAML error on
+/// the NEXT line; the diagnostic sits at the slip itself and names the fix.
+#[test]
+fn meta_parse_error_names_a_slip_on_an_earlier_line() {
+    let parse_error = |text: &str| {
+        let ds = check(&input_for(text)).diagnostics;
+        let d = ds
+            .iter()
+            .find(|d| d.code == "E-META-PARSE")
+            .unwrap_or_else(|| panic!("{ds:?}"))
+            .clone();
+        (d.span.line, d.span.column, d.message)
+    };
+    let (line, col, msg) = parse_error(
+        "---\nkind: scene\nid: s\nwhen: \"run.accused == 'ruben'\nafter: 'visited(\"a\")'\n\
+         ---\n## One\n@narrator: Hello.\n",
+    );
+    assert_eq!((line, col), (4, 7), "{msg}");
+    assert!(
+        msg.contains("the `\"` that opens `when:`'s value is never closed"),
+        "{msg}"
+    );
+    let (line, col, msg) = parse_error(
+        "---\nkind: scene\nid: s\npov:wren\ntitle: A\n---\n## One\n@narrator: Hello.\n",
+    );
+    assert_eq!((line, col), (4, 4), "{msg}");
+    assert!(
+        msg.contains("a key needs a space after its colon — `pov: wren`"),
+        "{msg}"
+    );
+}
+
 // ── dsl 0.24.0 §2 (T2-13): bundle beats as predecessors, accept anchors ──
 
 const CAMP_TALKS: &str = "---\nkind: lore\nid: camp.talks\n---\n\

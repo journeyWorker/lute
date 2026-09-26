@@ -202,7 +202,13 @@ impl StepSource {
             .map(|c| c.split('.').filter(|k| !k.is_empty()).collect::<Vec<_>>())
             .find(|keys| !keys.is_empty() && self.span(keys).is_some())
             .unwrap_or_default();
-        let mut out = format!("{}: {msg}", self.at(&keys));
+        self.locate_keys(&keys, msg)
+    }
+
+    /// `msg` located at the node `keys` names inside the step (the nearest
+    /// one the text has), naming the `include:` lines that spliced it in.
+    pub(super) fn locate_keys(&self, keys: &[&str], msg: &str) -> String {
+        let mut out = format!("{}: {msg}", self.at(keys));
         for via in &self.via {
             out.push_str(&format!(" (included from {via})"));
         }
@@ -217,8 +223,44 @@ impl StepSource {
 pub(super) struct Segment {
     /// `include: <file>` at `file:line:col`, for messages.
     pub(super) include: String,
+    /// Where the `include:` item was written — its `choose:` / `bridges:`
+    /// usage errors are located there.
+    pub(super) at: StepSource,
     pub(super) choose: BTreeMap<String, Vec<String>>,
     pub(super) bridges: BTreeMap<String, Vec<lute_trace::BridgeAnswer>>,
+}
+
+/// Where a play script was written: its top-level keys (`choose:`, …) are
+/// located in its text.
+#[derive(Clone)]
+pub(super) struct ScriptSource {
+    file: PathBuf,
+    text: Arc<str>,
+}
+
+impl Default for ScriptSource {
+    fn default() -> Self {
+        ScriptSource {
+            file: PathBuf::new(),
+            text: Arc::from(""),
+        }
+    }
+}
+
+impl ScriptSource {
+    /// `file:line:col` of the top-level node `keys` names — the deepest
+    /// one the text has —, else the file.
+    pub(super) fn at(&self, keys: &[&str]) -> String {
+        use lute_trace::YamlStep::Key;
+        let span = (1..=keys.len()).rev().find_map(|end| {
+            let path: Vec<_> = keys[..end].iter().map(|k| Key(k)).collect();
+            lute_trace::yaml_span(&self.text, &path)
+        });
+        match span {
+            Some(s) => format!("{}:{}:{}", self.file.display(), s.line, s.column),
+            None => self.file.display().to_string(),
+        }
+    }
 }
 
 /// A parsed play script.
@@ -227,6 +269,8 @@ pub(super) struct PlayScript {
     pub(super) surfaces: MockSet,
     pub(super) save: SaveSeed,
     pub(super) steps: Vec<ScriptStep>,
+    /// Where the script was written.
+    pub(super) source: ScriptSource,
     /// Every step `expect:` (dsl 0.22.0 §4): `(step n, label, expect)`.
     pub(super) step_expects: Vec<(usize, Option<String>, serde_yaml::Value)>,
     /// The top-level (end-of-play) `expect:`.
@@ -368,6 +412,10 @@ pub(super) fn parse_script_with(
         surfaces,
         save,
         steps: parsed,
+        source: ScriptSource {
+            file: path.to_path_buf(),
+            text: Arc::from(text),
+        },
         step_expects,
         expect,
         derive,
@@ -495,13 +543,7 @@ fn expand_includes(
             continue;
         };
         let here = from.source(index);
-        let err = |key: &str, msg: String| {
-            let mut out = format!("{}: {msg}", here.at(&[key]));
-            for via in &here.via {
-                out.push_str(&format!(" (included from {via})"));
-            }
-            out
-        };
+        let err = |key: &str, msg: String| here.locate_keys(&[key], &msg);
         let serde_yaml::Value::Mapping(m) = item else {
             unreachable!("`get` found a key")
         };
@@ -592,6 +634,7 @@ fn expand_includes(
             if !choose.is_empty() || !bridges.is_empty() {
                 segments.push(Arc::new(Segment {
                     include: format!("`include: {rel}` at {include_at}"),
+                    at: here.clone(),
                     choose: choose.clone(),
                     bridges: bridges.clone(),
                 }));

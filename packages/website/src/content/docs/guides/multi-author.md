@@ -335,7 +335,11 @@ steps:
 Rules for an included steps file:
 
 - Put `choose:` and `bridges:` on the **step** (`bridges: { battle: [ { won: true } ] }`), never at
-  the top level of the steps file: the spine play owns the top level.
+  the top level of the steps file: the spine play owns the top level. Since 0.27.0 the spine can
+  also put them on its `include:` step (`- include: steps/north.steps.yaml` with
+  `choose: { gate: open }` beside it): they script every step that include splices in, before the
+  spine's own top-level lists, and are dropped when the segment ends — the natural fit when the
+  same area file plays twice with different choices. See [Sharing a routine](/tooling/play/#advancing-the-clock).
 - Name winners by their canonical ids: a scene by its id, a bundle beat as `<doc>.<beat>`, an entry
   by its id or `<doc>.<entry>`.
 - An accept-driven quest the engine takes up outside any document (`accept="external"`, a quest

@@ -510,11 +510,32 @@ fn check_scene_key(
         .map(String::as_str);
     if let Some(sugg) = nearest_match(key, candidates, 2) {
         message.push_str(&format!(" — did you mean `{sugg}`?"));
+    } else if let Some(canonical) = local_bundle_id(key, path, key_set) {
+        // A bundle beat's own `id=` is local to its document.
+        message.push_str(&format!(
+            " — did you mean `{canonical}`? A bundle beat's key is `<document id>.<beat id>`"
+        ));
     }
     if let Some(hint) = hint {
         message.push_str(hint);
     }
     out.push((path.to_path_buf(), unknown_node_diag(message, span)));
+}
+
+/// dsl 0.23.0 §4: the canonical key of the bundle beat whose local `id=` is
+/// `key` — the one in `path`'s own document, else the only one in the
+/// project.
+fn local_bundle_id(key: &str, path: &Path, key_set: &SceneKeys<'_>) -> Option<String> {
+    let local: Vec<(&String, &Vec<(PathBuf, Span)>)> = key_set
+        .bundles
+        .iter()
+        .filter(|(k, _)| k.rsplit_once('.').is_some_and(|(_, id)| id == key))
+        .collect();
+    local
+        .iter()
+        .find(|(_, at)| at.iter().any(|(p, _)| p == path))
+        .or_else(|| (local.len() == 1).then(|| &local[0]))
+        .map(|(k, _)| (*k).clone())
 }
 
 /// The project's scene keys ([`scene_key_set`]) plus whether they are all of
@@ -599,7 +620,12 @@ pub fn resolve_nodes(
     };
     let mut out = Vec::new();
     for (path, doc) in docs {
-        if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
+        // dsl 0.27.0 §8: an `after:` the manifest's `sequence:` derived names
+        // the entry before this one; a bad entry is `E-SEQUENCE`'s, at the
+        // manifest, never this scene's.
+        if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene)
+            && !crate::sequence::derived(&doc.meta, "after")
+        {
             if let SceneAfter::String(after) = scene_after(doc) {
                 let after_span = meta_key_span(&doc.meta, "after");
                 let (formula, _) = parse_prereq(&after, after_span);

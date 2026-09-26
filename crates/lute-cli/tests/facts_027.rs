@@ -111,6 +111,41 @@ fn the_checker_knows_a_directive_asserts_its_declared_facts() {
     }
 }
 
+/// HW27-06: a directive an entry cannot call is refused with the 0.27 rule
+/// (effect-only directives are admitted) and why this one is not.
+#[test]
+fn an_entry_directive_without_effects_is_refused_with_the_reason() {
+    let dir = project("lure");
+    write(
+        &dir,
+        "plugins/ward/directives/d.yaml",
+        "directives:\n  - name: fright\n    attrs:\n      \
+         - { name: amount, type: number, default: 1 }\n    effects:\n      writes:\n        \
+         - { scope: run, path: [sanity], value: { op: decrement, by: { fromAttr: amount } } }\n  \
+         - name: lure\n    attrs:\n      - { name: room, type: { entity: room } }\n",
+    );
+    write(
+        &dir,
+        "scenes/tub.lute",
+        "---\nkind: scene\nid: tub\non: search\n---\n\n## Tub\n\n@narrator: Tub.\n",
+    );
+    write(
+        &dir,
+        "lore/notes.lute",
+        "---\nkind: lore\nid: notes\n---\n\n<entry id=\"diary\">\n::fright{amount=3}\n\
+         ::lure{room=\"lobby\"}\n@narrator: Wet.\n</entry>\n",
+    );
+    let (code, t) = run(&dir, &["check-project", "."]);
+    assert_ne!(code, Some(0), "{t}");
+    assert!(
+        t.contains(
+            "notes.lute:8:1: error [E-GRAMMAR-NOT-ADMITTED] `::lure` is not admitted in an entry"
+        ) && t.contains("`::lure` declares no `effects:`"),
+        "{t}"
+    );
+    assert_eq!(t.matches("E-GRAMMAR-NOT-ADMITTED").count(), 1, "{t}");
+}
+
 #[test]
 fn a_directive_fact_on_an_undeclared_relation_is_refused_at_the_call() {
     let dir = project("undeclared");

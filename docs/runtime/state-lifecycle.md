@@ -226,7 +226,12 @@ last slot, settles, raises `dayEnd`; moves to the next day's first slot,
 settles, raises `dayStart`. Then it moves to where the advance ends, applies
 any other engine writes of the same moment (so a day's `dayEnd` still reads
 the day it closes), settles, and raises `slot` — once, never at the slots
-it passed.
+it passed. The quests also settle at **every** position the advance passes
+on the way, one slot at a time, raised there or not: seasons open and close,
+rearms fire, and `start` / `done` / `by` are judged in the world of each
+position (`quest-lifecycle.md` §Season-tier and rearmed quests), so a long
+advance ends in the quest states of the same advance taken a slot at a
+time. `advance: day` alone skips the rest of the day it leaves.
 
 The reference tooling models exactly this. A `lute play` step `advance:
 slot` (one slot), `advance: <n>` (`n` slots) or `advance: day` (the first
@@ -322,8 +327,9 @@ a `live` condition. The artifact and `ProjectIndex` carry them as
 expansion (absent without seasons). Their state paths `season.<name>.<field>`
 are declared under `state:` with defaults, like any tier.
 
-The engine evaluates every season's `live` and opens a season when it goes
-false→true. Opening, in this order:
+The engine evaluates every season's `live` at every quest settle — so at
+every clock position an advance crosses (§The clock) — and opens a season
+when it goes false→true. Opening, in this order:
 
 1. copy every `season.<name>.*` value to `prev.season.<name>.*` (a
    read-only mirror, like `prev.run.*`; content writing it is

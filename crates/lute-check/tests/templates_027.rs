@@ -208,3 +208,92 @@ beat:\n  on: talk\n  id: nope\n  target: \"npc.@whom\"\n---\n";
     assert!(t.iter().any(|m| m.contains("names its own `id=`")));
     assert!(t.iter().any(|m| m.contains("`@whom`")));
 }
+
+/// `text` (a component file) checked on its own, as `lute check` does.
+fn check_component(text: &str) -> Vec<Diagnostic> {
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "bond.lute".into(),
+        snapshot: vocab_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Ci,
+        imports: SchemaImports::default(),
+        components: ComponentSet::default(),
+        defaults: Default::default(),
+    };
+    check(&input).diagnostics
+}
+
+/// ML-F1: a header value no argument changes is judged once, at its key in
+/// the component; the uses derive nothing for it and report nothing.
+#[test]
+fn a_fixed_header_fault_is_reported_once_at_the_header() {
+    let bad = BOND.replace("once: user", "once: sometimes");
+    let lore = format!(
+        "{LORE_HEAD}<beat use=\"bondStory\" id=\"a\" who=\"x\">\n@narrator: Hi.\n</beat>\n\n\
+<beat use=\"bondStory\" id=\"b\" who=\"y\">\n@narrator: Hi.\n</beat>\n"
+    );
+    let (input, diags) = run(&bad, &lore);
+    assert!(diags.is_empty(), "the uses report nothing: {diags:#?}");
+    assert!(
+        desugared(&input).beats[0].once.is_none(),
+        "the bad value is not derived"
+    );
+
+    let own = check_component(&bad);
+    let at: Vec<_> = own.iter().filter(|d| d.code == "E-BEAT-ATTR").collect();
+    assert_eq!(at.len(), 1, "{own:#?}");
+    assert_eq!(at[0].span.byte_start, bad.find("once: sometimes").unwrap());
+    assert!(at[0].message.contains("`beat.once`"), "{}", at[0].message);
+}
+
+/// ML-F1 / ML-F5: a use of a template that cannot be applied whole — a
+/// misspelt header key, an unknown template — says nothing about the `on=`
+/// the template would have supplied; one `@param` no param declares is not
+/// derived, so it cannot fail to parse at every use.
+#[test]
+fn a_failed_template_does_not_cascade_into_its_uses() {
+    let lore = format!(
+        "{LORE_HEAD}<beat use=\"bondStory\" id=\"a\" who=\"x\">\n@narrator: Hi.\n</beat>\n"
+    );
+    // The importer carries the component's own fault as one related
+    // `E-COMPONENT-PARSE` (check-project drops it for the component's line).
+    let typo = BOND.replace("  on: bond", "  onn: bond");
+    let (_, diags) = run(&typo, &lore);
+    assert_eq!(codes(&diags), vec!["E-COMPONENT-PARSE"], "{diags:#?}");
+
+    let undeclared = BOND.replace("after: \"@prev\"", "after: \"@previous\"");
+    let (_, diags) = run(&undeclared, &lore);
+    assert_eq!(codes(&diags), vec!["E-COMPONENT-PARSE"], "{diags:#?}");
+
+    let unknown = lore.replace("bondStory", "bondStry");
+    let (_, diags) = run(BOND, &unknown);
+    assert_eq!(codes(&diags), vec!["E-TEMPLATE"], "{diags:#?}");
+}
+
+/// ML-F7: an optional extra condition passed as a param and left empty or
+/// `true` drops out of the derived `when`, never `… && (true)`.
+#[test]
+fn an_empty_condition_param_drops_its_conjunct() {
+    let only = BOND
+        .replace(
+            "prev: { type: string, default: \"\" }",
+            "prev: { type: string, default: \"\" }\n  only: { type: string, default: \"true\" }",
+        )
+        .replace(
+            "when: \"user.bond >= @need\"",
+            "when: \"user.bond >= @need && (@only)\"",
+        );
+    let lore = format!(
+        "{LORE_HEAD}<beat use=\"bondStory\" id=\"a\" who=\"x\">\n@narrator: Hi.\n</beat>\n\n\
+<beat use=\"bondStory\" id=\"b\" who=\"x\" only=\"user.bond > 5\">\n@narrator: Hi.\n</beat>\n"
+    );
+    let (input, diags) = run(&only, &lore);
+    assert!(diags.is_empty(), "{diags:#?}");
+    let doc = desugared(&input);
+    assert_eq!(doc.beats[0].when.as_ref().unwrap().raw, "user.bond >= 0");
+    assert_eq!(
+        doc.beats[1].when.as_ref().unwrap().raw,
+        "user.bond >= 0 && (user.bond > 5)"
+    );
+}

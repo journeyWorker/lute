@@ -77,6 +77,10 @@ pub struct RelationDecl {
 #[derive(Clone, Debug, Default)]
 pub struct ParsedKinds {
     pub kinds: BTreeMap<String, EntityKindDecl>,
+    /// The names of [`Self::kinds`] in the order the block declares them
+    /// (first occurrence) — the order [`imply_sub_kind_members`] visits
+    /// sub-kinds in, so a union kind's members follow the schema.
+    pub order: Vec<String>,
     /// Names declared more than once IN THIS BLOCK, in encounter order
     /// (checker → `E-KIND-NAME-CLASH`). `serde_yaml::Value::as_mapping()`
     /// collapses duplicate YAML keys before this function ever sees them, so
@@ -228,6 +232,9 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
             continue;
         }
         let labels = kind_labels(name, v, &mut out.label_problems);
+        if !out.kinds.contains_key(name) {
+            out.order.push(name.to_string());
+        }
         out.kinds.insert(
             name.to_string(),
             EntityKindDecl {
@@ -248,19 +255,24 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
 
 /// dsl 0.26.0 §2.3: every member of a `subsetOf:` sub-kind is a member of its
 /// parent, so the parent need not restate it. Appends each `members:`
-/// sub-kind's members to every `members:` ancestor (after the ancestor's own
-/// list, sub-kinds in name order, each member once). The walk stops at a
-/// missing or `open:` parent and skips a `subsetOf:` loop — the checker
-/// reports those (`E-ENTITY-KIND-SHAPE`).
+/// sub-kind's members to every `members:` ancestor: after the ancestor's own
+/// list, sub-kinds in declaration order (`order`, the kind names as the
+/// schemas declare them; a kind it does not name follows, in name order),
+/// each member once, where it first appears. The walk stops at a missing or
+/// `open:` parent and skips a `subsetOf:` loop — the checker reports those
+/// (`E-ENTITY-KIND-SHAPE`).
 ///
 /// dsl 0.27.0 §7: a label names a member, whichever kind wrote it — so an
 /// ancestor takes its sub-kinds' labels, and a sub-kind its ancestors' labels
 /// for its own members (nearest first). A kind's own label always wins.
-pub fn imply_sub_kind_members(kinds: &mut BTreeMap<String, EntityKindDecl>) {
+pub fn imply_sub_kind_members(kinds: &mut BTreeMap<String, EntityKindDecl>, order: &[String]) {
     let mut implied: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut up: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     let mut chains: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for (name, decl) in kinds.iter() {
+    let declared = order.iter().filter(|n| kinds.contains_key(*n));
+    let rest = kinds.keys().filter(|n| !order.contains(n));
+    for name in declared.chain(rest) {
+        let decl = &kinds[name];
         let KindShape::Members(members) = &decl.shape else {
             continue;
         };
@@ -626,15 +638,38 @@ mod tests {
     /// sub-kind's labels and the sub-kind its parent's; own labels win.
     #[test]
     fn labels_follow_the_sub_kind_chain() {
-        let mut kinds = parse_entity_kinds(&yaml(
+        let parsed = parse_entity_kinds(&yaml(
             "room: { members: [hall], labels: { hall: the hall, ward: a room } }\n\
              ward: { subsetOf: room, members: [ward, crypt], labels: { crypt: the crypt } }",
-        ))
-        .kinds;
-        imply_sub_kind_members(&mut kinds);
+        ));
+        let mut kinds = parsed.kinds;
+        imply_sub_kind_members(&mut kinds, &parsed.order);
         assert_eq!(kinds["room"].labels["crypt"], "the crypt");
         assert_eq!(kinds["room"].labels["ward"], "a room", "own label wins");
         assert_eq!(kinds["ward"].labels["ward"], "a room");
         assert_eq!(kinds["ward"].labels.get("hall"), None, "not a ward member");
+    }
+
+    /// G-8: a union kind's members follow the schema — its sub-kinds in the
+    /// order they are declared, not by name — each member where it first
+    /// appears.
+    #[test]
+    fn a_union_kind_lists_its_sub_kinds_members_in_declaration_order() {
+        let parsed = parse_entity_kinds(&yaml(
+            "hero: { members: [] }\nssr: { subsetOf: hero, members: [aria, cyra, vesper] }\n\
+             sr: { subsetOf: hero, members: [bram, dax] }\n\
+             limited: { subsetOf: ssr, members: [cyra, vesper] }",
+        ));
+        assert_eq!(parsed.order, ["hero", "ssr", "sr", "limited"]);
+        let mut kinds = parsed.kinds;
+        imply_sub_kind_members(&mut kinds, &parsed.order);
+        assert_eq!(
+            kinds["hero"].shape,
+            KindShape::Members(
+                ["aria", "cyra", "vesper", "bram", "dax"]
+                    .map(String::from)
+                    .to_vec()
+            )
+        );
     }
 }

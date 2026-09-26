@@ -56,7 +56,7 @@ profiles:
 /// `::vfx`, which is exactly the first contact this file exists to prevent.
 fn vocabulary_schema() -> String {
     "\
-# Your project's content vocabulary (dsl 0.9.0).
+# Your project's content vocabulary.
 #
 # Lute's compiler ships NO members — a general authoring tool should not decide
 # what emotions your characters have. This file is yours to edit; the starter
@@ -132,7 +132,7 @@ uses:
         File {
             rel: "mocks/playthrough.yaml",
             content: "\
-# Trace mock (dsl 0.4.0 §4.3). `file:` names the document this mock previews,
+# Trace mock. `file:` names the document this mock previews,
 # resolved against this file. Preview with:
 #   lute trace scenes/opening.lute --mock mocks/playthrough.yaml
 file: ../scenes/opening.lute
@@ -181,13 +181,13 @@ fn investigation_files() -> Vec<File> {
                 "\
 # Lute project manifest. The `case` profile activates this project's own
 # occasions plugin (plugins/case.occasions): the moments the engine raises
-# while the detective works, which beats and lore entries answer (dsl 0.21.0).
+# while the detective works, which beats and lore entries answer.
 pluginsDir: plugins/
 defaultProfile: case
 profiles:
   case:
     plugins: {{ case.occasions: true }}
-# Frontmatter every document inherits (dsl 0.10.0 §6): no document repeats
+# Frontmatter every document inherits: no document repeats
 # its language version or its schema imports.
 defaults:
   luteVersion: \"{lang}\"
@@ -212,10 +212,10 @@ exports:
         File {
             rel: "plugins/case.occasions/occasions/case.yaml",
             content: "\
-# The moments your engine raises (dsl 0.21.0 §2). A targeted occasion is
+# The moments your engine raises. A targeted occasion is
 # raised FOR something: `examine`'s targets are `item.<member>` of the
 # `evidence` entity kind, `interview`'s are `npc.<member>` of `suspect`
-# (world.schema.yaml, dsl 0.22.0 §8).
+# (world.schema.yaml).
 occasions:
   arrive:    { select: first, description: The detective arrives at the scene of the crime }
   examine:   { select: first, target: { prefix: item, entity: evidence }, description: The detective studies a piece of evidence (item.<name>) }
@@ -249,7 +249,7 @@ relations:
   cleared:   { args: [suspect], derive: true }
   culprit:   { args: [suspect], derive: true }
 
-# Datalog (dsl 0.3.0 §7) with stratified negation: `not` reads a relation
+# Datalog with stratified negation: `not` reads a relation
 # that is fully derived first. A suspect is cleared by an alibi UNLESS the
 # evidence contradicts it, and is the culprit if implicated and not cleared.
 rules:
@@ -435,7 +435,7 @@ title: The evidence
         File {
             rel: "plays/the-case.play.yaml",
             content: "\
-# The whole case, end to end (dsl 0.22.0):
+# The whole case, end to end:
 #   lute play . --script plays/the-case.play.yaml
 # Each step raises an occasion the way your engine would; `expect:` asserts
 # what happened, and `lute test` runs this script alongside tests/.
@@ -519,13 +519,13 @@ fn beats_files() -> Vec<File> {
                 "\
 # Lute project manifest. The `game` profile activates this project's own
 # occasions plugin (plugins/game.occasions): the moments the engine raises,
-# which beats answer (dsl 0.21.0).
+# which beats answer.
 pluginsDir: plugins/
 defaultProfile: game
 profiles:
   game:
     plugins: {{ game.occasions: true }}
-# Frontmatter every document inherits (dsl 0.10.0 §6): no document repeats
+# Frontmatter every document inherits: no document repeats
 # its language version or its schema imports.
 defaults:
   luteVersion: \"{lang}\"
@@ -550,10 +550,10 @@ exports:
         File {
             rel: "plugins/game.occasions/occasions/game.yaml",
             content: "\
-# The moments your engine raises (dsl 0.21.0 §2). A beat answers one with
+# The moments your engine raises. A beat answers one with
 # `on:`; `select: first` presents the single best eligible beat. A targeted
 # occasion is raised FOR something: `talk`'s targets are `npc.<member>` for a
-# member of the `npc` entity kind (world.schema.yaml, dsl 0.22.0 §8).
+# member of the `npc` entity kind (world.schema.yaml).
 occasions:
   hubVisit: { select: first, description: The player arrives at the hub }
   talk:     { select: first, target: { prefix: npc, entity: npc }, description: The player talks to someone (npc.<name>) }
@@ -568,7 +568,7 @@ occasions:
 # `defaults: uses:`. Every path carries a `default:` so reads are definitely
 # assigned.
 state:
-  # Written by the engine, read by content (dsl 0.22.0 §1.2): a `::set` of it
+  # Written by the engine, read by content: a `::set` of it
   # is an error. `lute play` writes it with an `engine:` step.
   run.day:        { type: number, default: 1, owner: engine }
   user.bond.mara: { type: number, default: 0 }
@@ -712,7 +712,7 @@ title: The lamp by the door
 // `tier=\"run\"`: it belongs to this run — a new run starts it over.
 <quest id=\"lampOut\" title=\"The lamp by the door\" tier=\"run\">
   <objective id=\"ask\" title=\"Ask Tomas about the oil\" done=\"holds(knows(lamp))\"/>
-  // Judged when the engine raises `dayEnd` (dsl 0.21.0 §7a).
+  // Judged when the engine raises `dayEnd`.
   <objective id=\"wait\" title=\"Wait for the day to end\" on=\"dayEnd\" done=\"run.day >= 2\"/>
   <on event=\"questComplete\">
     @narrator: By morning the lamp by the door is burning again.
@@ -746,7 +746,7 @@ title: Tomas
         File {
             rel: "plays/first-day.play.yaml",
             content: "\
-# One day, end to end (dsl 0.22.0):
+# One day, end to end:
 #   lute play . --script plays/first-day.play.yaml
 # Each step raises an occasion the way your engine would; an `engine:` step
 # writes what the engine owns; `expect:` asserts what happened, and `lute test`
@@ -1259,16 +1259,35 @@ fn lowest_beat_priority(root: &Path, on: &str) -> Option<i64> {
 /// answering that occasion (dsl 0.21.0 §3); the occasion and target are
 /// validated against the project, and the file is removed again when they
 /// do not resolve (exit `2`). Without `--on` it is a linear scene opening on
-/// a `::bg`.
+/// a `::bg`. dsl 0.27.0 §8: `--on` the occasion of the project's
+/// `sequence:` (untargeted) writes no `on:`/`priority:` — the chain derives
+/// them once the id is listed — and says to list it.
 fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&str>) -> ExitCode {
     let path = dest.root.join("scenes").join(format!("{name}.lute"));
     let id = to_id(name, "scene");
     let title = title_case(name);
     let mut content = dest.head("scene", &id, &title);
+    let sequenced = on.filter(|on| {
+        target.is_none()
+            && lute_manifest::project::load_project(&dest.root)
+                .ok()
+                .flatten()
+                .is_some_and(|p| p.defaults.sequence().is_some_and(|s| s.occasion == *on))
+    });
     let body = match on {
+        Some(on) if sequenced.is_some() => {
+            content.push_str(&format!(
+                "# A chapter: add `{id}` to `sequence.scenes` in lute.project.yaml, where\n\
+                 # it goes in the chain; the sequence then gives it `on: {on}`, its\n\
+                 # `after:` and its `priority:`.\n"
+            ));
+            format!(
+                "## {title}\n\n@narrator: What happens in this chapter. Replace this with your own lines.\n"
+            )
+        }
         Some(on) => {
             content.push_str(&format!(
-                "# A beat (dsl 0.21.0 §3): presented when the engine raises `{on}`. Add\n\
+                "# A beat: presented when the engine raises `{on}`. Add\n\
                  # `priority:`, `once:` (run | user | false) and `when:` as needed.\n\
                  on: {on}\n"
             ));
@@ -1300,6 +1319,16 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
     content.push_str(&body);
     if let Err(code) = create(&path, &content) {
         return code;
+    }
+    if let Some(on) = sequenced {
+        return created(
+            &path,
+            &format!(
+                "add `{id}` to `sequence.scenes` in lute.project.yaml (the `{on}` chain), \
+                 then check it with: lute check-project {}",
+                dest.root.display()
+            ),
+        );
     }
     if let Some(on) = on {
         if let Err(reason) = validate_beat(&path, &dest.root, on, target) {

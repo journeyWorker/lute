@@ -44,6 +44,10 @@ pub fn run(
     project: Option<&Path>,
     permission_profile: Option<&str>,
 ) -> ExitCode {
+    // FS-F2: the same project `lute check` and `lute compile` resolve the
+    // file against — `--project`, else the nearest manifest.
+    let discovered = crate::project::discover_project(file, project);
+    let project = project.or(discovered.as_deref());
     let Some(built) = crate::build_input(file, providers, project, permission_profile) else {
         return ExitCode::from(2);
     };

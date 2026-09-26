@@ -348,6 +348,26 @@ impl Store {
         (v, atoms)
     }
 
+    /// HW27-10: why the derived `fact` does not hold — every rule that could
+    /// conclude it, with the premises it misses ([`Program::explain`] over
+    /// the live closure). `None` for a relation no rule concludes (or under
+    /// `derive: false`); empty for a fact that holds.
+    pub(crate) fn why_not(&mut self, fact: &Fact) -> Option<Vec<crate::datalog::Attempt>> {
+        self.derive();
+        if !self.derive || !self.program.derives(&fact.0) {
+            return None;
+        }
+        if self.all.contains(fact) {
+            return Some(Vec::new());
+        }
+        let eff = EffectiveState::new(&self.schema, self.values.clone());
+        let closure = crate::datalog::Closure::of_facts(self.all.clone());
+        Some(match self.program.explain(&closure, fact, &eff) {
+            crate::datalog::Explanation::Fails { attempts, .. } => attempts,
+            crate::datalog::Explanation::Holds(_) => Vec::new(),
+        })
+    }
+
     /// dsl 0.25.0 §1: every pair of facts of exclusive relations holding now
     /// (derived ones included), rendered `a(x) and b(x) both hold`.
     pub(crate) fn exclusive_now(&mut self) -> Vec<String> {

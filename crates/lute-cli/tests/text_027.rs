@@ -1,6 +1,7 @@
 //! dsl 0.27.0 §7: entity-kind `labels:` render wherever a value of the kind
 //! is interpolated — `{{occasion.target}}` in a kind beat and a
-//! `{ domain: <kind> }` state path — in `lute play` and `lute trace` alike,
+//! `{ domain: <kind> }` or `{ entity: <kind> }` state path — in `lute play`
+//! and `lute trace` alike,
 //! and `{{n:plural(one|other)}}` picks the English form (the IR placeholder
 //! carries both forms). The checker rejects a malformed plural hint and a
 //! label for an id the kind does not have.
@@ -66,7 +67,8 @@ fn project(tag: &str, rooms: &str) -> PathBuf {
         "world.schema.yaml",
         &format!(
             "state:\n  run.lamps: {{ type: number, default: 1 }}\n  \
-             run.last: {{ type: {{ domain: room }}, default: chapel }}\n\
+             run.last: {{ type: {{ domain: room }}, default: chapel }}\n  \
+             run.near: {{ type: {{ entity: room }}, default: chapel }}\n\
              entities:\n{rooms}"
         ),
     );
@@ -75,7 +77,7 @@ fn project(tag: &str, rooms: &str) -> PathBuf {
         "lore/rooms.lute",
         "---\nkind: lore\nid: rooms\nuses: ../world.schema.yaml\n---\n\n\
          <beat id=\"enter\" on=\"visit\" target=\"kind:ward\" once=\"false\">\n\
-         \x20 @narrator: You step into {{occasion.target}}, past {{run.last}}.\n\
+         \x20 @narrator: You step into {{occasion.target}}, past {{run.last}} and {{run.near}}.\n\
          \x20 ::set{run.lamps += 1}\n\
          \x20 @narrator: {{run.lamps:plural(# lamp is|# lamps are)}} lit.\n\
          </beat>\n",
@@ -117,7 +119,7 @@ fn play_renders_kind_labels_and_the_plural_form() {
     assert_eq!(
         lines(&v["steps"][0]),
         [
-            "You step into the children's ward, past the chapel.",
+            "You step into the children's ward, past the chapel and the chapel.",
             "2 lamps are lit."
         ],
         "{v}"
@@ -142,7 +144,7 @@ fn trace_renders_what_play_renders() {
     ]);
     let t = text(&out);
     assert!(
-        t.contains("You step into the children's ward, past the chapel."),
+        t.contains("You step into the children's ward, past the chapel and the chapel."),
         "{t}"
     );
     assert!(t.contains("1 lamp is lit."), "{t}");
@@ -183,6 +185,9 @@ fn the_artifact_carries_labels_and_plural_forms() {
     let state = art["state"].as_array().unwrap();
     let last = state.iter().find(|e| e["path"] == "run.last").unwrap();
     assert_eq!(last["labels"]["chapel"], "the chapel", "{last}");
+    // `{ entity: K }` is the same type as `{ domain: K }` and carries the labels too.
+    let near = state.iter().find(|e| e["path"] == "run.near").unwrap();
+    assert_eq!(near["labels"]["chapel"], "the chapel", "{near}");
     let line = art["commands"]
         .as_array()
         .unwrap()
@@ -287,4 +292,41 @@ fn a_plural_hint_needs_two_forms() {
         "{t}"
     );
     assert!(t.contains("[E-REF-TYPE]"), "a plural of a non-number: {t}");
+}
+
+/// G-16: a label for a cast member with a `name:` is never shown — text
+/// renders the cast name — so `check-project` warns once, at the label, however
+/// many documents import the schema. A label equal to the cast name, and a
+/// label for a member outside the cast, are fine.
+#[test]
+fn a_label_a_cast_name_hides_is_warned_once_at_the_label() {
+    let dir = project(
+        "castshadow",
+        "  room:\n    members: [chapel, crypt]\n    labels: { chapel: the chapel, crypt: Crypt, \
+         childrensWard: \"the children's ward\" }\n  \
+         ward:\n    subsetOf: room\n    members: [childrensWard]\n\
+         cast:\n  chapel: { name: Old Chapel }\n  crypt: { name: Crypt }\n",
+    );
+    write(
+        &dir,
+        "lore/more.lute",
+        "---\nkind: lore\nid: more\nuses: ../world.schema.yaml\n---\n\n\
+         <entry id=\"note\">\n@narrator: {{run.last}}.\n</entry>\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(0), "a warning: {t}");
+    let warned: Vec<&str> = t
+        .lines()
+        .filter(|l| l.contains("[W-LABEL-CAST-SHADOWED]"))
+        .collect();
+    assert_eq!(warned.len(), 1, "{t}");
+    assert!(warned[0].contains("world.schema.yaml:8:15:"), "{t}");
+    assert!(
+        warned[0].contains(
+            "label `the chapel` for `chapel` is never shown: `chapel` is a cast member, whose \
+             `name:` (`Old Chapel`) is what text renders"
+        ),
+        "{t}"
+    );
 }

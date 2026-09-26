@@ -187,6 +187,35 @@ pub fn check_cel_slot(
         }
     }
 
+    // A condition that is one bare state path of another type (`live:
+    // "user.day"`, `rearm="user.loginStreak"`) is never true: the same
+    // `E-REF-TYPE` a whole-slot `@def` of that type gets (G-5).
+    if let Some(ExpectedType::Bool) = expected {
+        let path = slot.raw.trim();
+        let bare = path.contains('.')
+            && path.split('.').all(|seg| {
+                seg.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+                    && seg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            });
+        if let Some(decl) = ctx.env.state.decls.get(path).filter(|_| bare) {
+            if !compatible(&decl.ty, &ExpectedType::Bool) {
+                let example = match decl.ty {
+                    Type::Number => format!("{path} > 0"),
+                    _ => format!("{path} == '…'"),
+                };
+                diags.push(diag(
+                    "E-REF-TYPE",
+                    format!(
+                        "`{path}` is {} but this position expects a bool — compare it (for \
+                         example `{example}`) (dsl §8)",
+                        ty_desc(&decl.ty)
+                    ),
+                    slot.span,
+                ));
+            }
+        }
+    }
+
     // dsl 0.27.0 §3: a slot reading `occasion.target` as a fact-query
     // argument or family index is judged once per member of its kind beat
     // (`holds(owned(aria))`, `user.bond.aria`, …). Outside any kind beat the
@@ -283,9 +312,12 @@ fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec
 
 /// dsl 0.27.0 §3: [`check_parsed_slot`] over `slot` instantiated for each
 /// member ([`crate::occasion_bind::instantiate_bound`]). A finding every
-/// member shares is reported once; one only some members hit names them
-/// (`… (for occasion.target = bram)`), since the beat is still raised for
-/// those.
+/// member shares is reported once. So is one that several members hit and
+/// that differs only by the member's name (the swapped arguments of
+/// `holds(bondRank(r1, occasion.target))` fail for every hero alike): it
+/// reads `occasion.target` where the member stood and lists the members. A
+/// finding only one member hits names it (`… (for occasion.target =
+/// bram)`), since the beat is still raised for the others.
 fn check_per_member(slot: &CelSlot, ctx: &Ctx<'_>, members: &[String]) -> Vec<Diagnostic> {
     let mut per: Vec<(&str, Vec<Diagnostic>)> = Vec::new();
     for m in members {
@@ -300,26 +332,89 @@ fn check_per_member(slot: &CelSlot, ctx: &Ctx<'_>, members: &[String]) -> Vec<Di
         }
         per.push((m.as_str(), ds));
     }
-    let mut out: Vec<Diagnostic> = Vec::new();
     let key = |d: &Diagnostic| (d.code.clone(), d.message.clone());
-    for (i, (member, ds)) in per.iter().enumerate() {
+    // Each finding with its members, in first-seen order: an exact message
+    // every member shares keys on itself; any other keys on its message
+    // with the member's name abstracted.
+    let mut groups: Vec<((String, String), Diagnostic, Vec<&str>)> = Vec::new();
+    for (member, ds) in &per {
         for d in ds {
             let shared = per.iter().all(|(_, o)| o.iter().any(|x| key(x) == key(d)));
-            if shared {
-                if i == 0 {
-                    out.push(d.clone());
+            let k = if shared {
+                key(d)
+            } else {
+                (d.code.clone(), abstract_member(&d.message, member))
+            };
+            match groups.iter_mut().find(|(gk, _, _)| *gk == k) {
+                Some((_, _, ms)) => {
+                    if !ms.contains(member) {
+                        ms.push(member)
+                    }
                 }
-                continue;
+                None => groups.push((k, d.clone(), vec![member])),
             }
-            let mut d = d.clone();
-            d.message = format!(
-                "{} (for `{}` = `{member}`, dsl 0.27.0 §3)",
-                d.message,
-                crate::beats::OCCASION_TARGET
-            );
-            out.push(d);
         }
     }
+    let target = crate::beats::OCCASION_TARGET;
+    groups
+        .into_iter()
+        .map(|((_, abstracted), mut d, ms)| {
+            if ms.len() == members.len() && abstracted == d.message {
+                // Shared verbatim: the member never mattered.
+            } else if ms.len() == 1 {
+                d.message = format!(
+                    "{} (for `{target}` = `{}`, dsl 0.27.0 §3)",
+                    d.message, ms[0]
+                );
+            } else {
+                const SHOWN: usize = 8;
+                let mut list = ms
+                    .iter()
+                    .take(SHOWN)
+                    .map(|m| format!("`{m}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if ms.len() > SHOWN {
+                    list.push_str(&format!(" and {} more", ms.len() - SHOWN));
+                }
+                let which = if ms.len() == members.len() {
+                    "every member"
+                } else {
+                    "members"
+                };
+                d.message = format!(
+                    "{} (for `{target}` = {which} {list}, dsl 0.27.0 §3)",
+                    abstracted
+                        .replace(&format!(".{MEMBER_MARK}"), &format!("[{target}]"))
+                        .replace(MEMBER_MARK, target)
+                );
+            }
+            d
+        })
+        .collect()
+}
+
+/// Stands in for the member's name in an abstracted per-member message.
+const MEMBER_MARK: &str = "\u{0}member\u{0}";
+
+/// `message` with each whole-identifier occurrence of `member` replaced by
+/// [`MEMBER_MARK`], so two members' copies of one finding compare equal.
+fn abstract_member(message: &str, member: &str) -> String {
+    let ident = |c: char| c == '_' || c.is_ascii_alphanumeric();
+    let mut out = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(at) = rest.find(member) {
+        let before = rest[..at].chars().next_back();
+        let after = rest[at + member.len()..].chars().next();
+        out.push_str(&rest[..at]);
+        if before.is_some_and(ident) || after.is_some_and(ident) {
+            out.push_str(member);
+        } else {
+            out.push_str(MEMBER_MARK);
+        }
+        rest = &rest[at + member.len()..];
+    }
+    out.push_str(rest);
     out
 }
 
@@ -1359,6 +1454,21 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
                  `{path}.<member>`; `{path}[P]` reads a rule variable's member only inside a \
                  rule `cel()` guard (dsl 0.24.0 §3)"
             );
+        } else if let Some(field) = path
+            .strip_prefix(crate::occasion_bind::OCCASION_PAYLOAD)
+            .and_then(|f| f.strip_prefix('.'))
+        {
+            // dsl 0.27.0 §3: payload fields come from the answered occasion.
+            msg = format!(
+                "`{path}` is not a `payload:` field of any occasion this document's beats \
+                 answer — a beat reads the payload of the occasion it answers, so declare \
+                 `{field}` under that occasion's `payload:` (dsl 0.27.0 §3)"
+            );
+            if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2)
+                .filter(|s| s.starts_with(crate::occasion_bind::OCCASION_PAYLOAD))
+            {
+                msg.push_str(&format!(" — did you mean `{sugg}`?"));
+            }
         } else if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2)
         {
             msg.push_str(&format!(" — did you mean `{sugg}`?"));

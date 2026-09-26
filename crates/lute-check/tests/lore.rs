@@ -277,10 +277,10 @@ fn entry_body_rejects_played_constructs() {
     ] {
         let ds = not_admitted(&entry(body));
         assert_eq!(ds.len(), 1, "{body}: {ds:#?}");
+        // Both the generic reason and the directive-specific one (HW27-06)
+        // say why: an entry is looked up, not played.
         assert!(
-            ds[0]
-                .message
-                .contains("entry bodies are looked up, not played"),
+            ds[0].message.contains("looked up, not played"),
             "{}",
             ds[0].message
         );

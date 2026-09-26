@@ -3,6 +3,7 @@
 
 use std::path::Path;
 
+use lute_check::rel_schema::PluginOrigins;
 use lute_check::{CheckInput, Mode};
 use lute_core_span::Diagnostic;
 use lute_manifest::project::{resolve_permissions, ResolveDiag};
@@ -150,7 +151,6 @@ pub(crate) fn assemble_input(
     // default snapshot suffices to type them (they are not capability-gated).
     let mut parsed = lute_syntax::parse(&text);
     lute_check::meta::apply_quest_tier_default(&mut parsed.0, &defaults);
-    lute_check::sequence::apply_sequence(&mut parsed.0, &defaults);
     let doc = &parsed.0;
     let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
         &doc.meta,
@@ -158,9 +158,13 @@ pub(crate) fn assemble_input(
         lute_check::meta::MetaKind::Scene,
         &defaults,
     );
+    let meta_span = doc.meta.span;
 
     let resolved = cache.snapshot(root, project, meta0.profile.as_deref(), &meta0.plugins);
     let (mut snapshot, mut rdiags) = (resolved.0.clone(), resolved.1.clone());
+    // dsl 0.27.0 §8: the chain a `sequence:` derives depends on its
+    // occasion's `select:`, so it is applied once the vocabulary is known.
+    lute_check::sequence::apply_sequence(&mut parsed.0, &defaults, &snapshot.occasions);
     if let Some(name) = permission_profile {
         match project.as_ref() {
             Some(config) => match resolve_permissions(config, name) {
@@ -202,12 +206,17 @@ pub(crate) fn assemble_input(
     // component imports (dsl §13) relative to the scene's own directory; the LSP
     // resolves identically -> no divergence.
     let base = file.parent().unwrap_or_else(|| Path::new("."));
-    let imports = cache
+    let mut imports = cache
         .imports
-        .resolve(base, &meta0.uses, &meta0.extends, doc.meta.span);
+        .resolve(base, &meta0.uses, &meta0.extends, meta_span);
+    // dsl 0.27.0 §4: where the project's plugins declare their gates and
+    // fact effects, so a fault in one is reported once, at that line.
+    if let Some(p) = project {
+        imports.plugin_origins = PluginOrigins::clone(&cache.plugin_origins(&p.plugins_dir));
+    }
     let components = cache
         .imports
-        .resolve_components(base, &meta0.components, doc.meta.span);
+        .resolve_components(base, &meta0.components, meta_span);
 
     let built = BuiltInput {
         input: CheckInput {

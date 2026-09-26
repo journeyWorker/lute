@@ -928,17 +928,30 @@ pub fn parse_meta_kind_with_defaults(
     // defaults-merged) `id:` IS the canonical scene key — the required-key
     // rule no longer fires on a document that supplies one.
     if kind == MetaKind::Scene && !map.contains_key(yaml_key("id")) {
-        for missing in REQUIRED_KEYS
+        let missing: Vec<&str> = REQUIRED_KEYS
             .iter()
+            .copied()
             .filter(|k| !map.contains_key(yaml_key(k)))
-        {
+            .collect();
+        if missing.len() == REQUIRED_KEYS.len() {
+            // No identity at all (an empty file, a first scene): teach `id:`,
+            // not the legacy triple.
             diags.push(err(
                 "E-META-MISSING",
-                format!(
-                    "required meta key `{missing}` is missing (authored `id:` also \
-                     satisfies scene identity, dsl 0.15.0 §2/§4)"
-                ),
+                "a scene needs an `id:`, its key in the project — write `id: opening` in the \
+                 frontmatter (dsl 0.15.0 §2/§4)"
+                    .to_string(),
             ));
+        } else {
+            for missing in missing {
+                diags.push(err(
+                    "E-META-MISSING",
+                    format!(
+                        "required meta key `{missing}` is missing (authored `id:` also \
+                         satisfies scene identity, dsl 0.15.0 §2/§4)"
+                    ),
+                ));
+            }
         }
     }
     // Unknown-key check over the top-level keys (dsl §6.1); applies to every kind.
@@ -1957,20 +1970,26 @@ fn yaml_parse_error(meta: &Meta, e: &serde_yaml::Error) -> (String, Span) {
         .nth(loc.line().saturating_sub(1))
         .unwrap_or("");
     let indent = &bad_line[..bad_line.len() - bad_line.trim_start().len()];
+    let mut start = loc.index().min(meta.raw_yaml.len());
     let hint = if indent.contains('\t') {
         Some(
             "YAML indents with spaces, not tabs: replace the tab at the start of the line with \
              spaces"
                 .to_string(),
         )
+    } else if let Some(hint) = nested_quote_hint(bad_line) {
+        Some(hint)
+    } else if let Some((at, hint)) = earlier_line_fault(&meta.raw_yaml, loc.line()) {
+        // The error surfaced on a later line; the anchor is the slip.
+        start = at;
+        Some(hint)
     } else {
-        nested_quote_hint(bad_line)
+        None
     };
     let message = match hint {
         Some(hint) => format!("invalid meta frontmatter YAML — {hint} (YAML: {problem})"),
         None => format!("invalid meta frontmatter YAML: {problem}"),
     };
-    let mut start = loc.index().min(meta.raw_yaml.len());
     while !meta.raw_yaml.is_char_boundary(start) {
         start -= 1;
     }
@@ -2013,6 +2032,71 @@ fn nested_quote_hint(line: &str) -> Option<String> {
         format!(
             "a `'` inside a single-quoted value ends the value early: quote the value with \
              double quotes instead — `{key}: \"{inner}\"`"
+        )
+    })
+}
+
+/// FS-F15: the two slips whose YAML error surfaces on a LATER line — a
+/// quoted value not closed on its own line (the quote swallows the next
+/// lines), and `key:value` with no space after the colon (a plain scalar,
+/// so the mapping breaks on the next line). The nearest such line at or
+/// before the error's 1-based line `upto`: the raw-YAML offset of the
+/// opening quote / the colon, and the fix.
+fn earlier_line_fault(raw_yaml: &str, upto: usize) -> Option<(usize, String)> {
+    let mut offset = 0;
+    let mut found = None;
+    for line in raw_yaml.split_inclusive('\n').take(upto) {
+        let text = line.trim_end_matches(['\n', '\r']);
+        if let Some((at, hint)) = unclosed_quote(text).or_else(|| missing_colon_space(text)) {
+            found = Some((offset + at, hint));
+        }
+        offset += line.len();
+    }
+    found
+}
+
+/// `key: "value` with no closing quote on the line.
+fn unclosed_quote(line: &str) -> Option<(usize, String)> {
+    let colon = line.find(": ")?;
+    let key = line[..colon].trim().trim_start_matches("- ");
+    let after = &line[colon + 2..];
+    let at = colon + 2 + (after.len() - after.trim_start().len());
+    let value = &line[at..];
+    let quote = value.chars().next().filter(|c| matches!(c, '"' | '\''))?;
+    let rest = value[1..].as_bytes();
+    let closed = if quote == '"' {
+        (0..rest.len()).any(|i| rest[i] == b'"' && (i == 0 || rest[i - 1] != b'\\'))
+    } else {
+        value[1..].replace("''", "").contains('\'')
+    };
+    (!closed).then(|| {
+        (
+            at,
+            format!(
+                "the `{quote}` that opens `{key}:`'s value is never closed — end the value with \
+                 `{quote}` on the same line"
+            ),
+        )
+    })
+}
+
+/// `key:value` — a mapping key with no space after its colon.
+fn missing_colon_space(line: &str) -> Option<(usize, String)> {
+    let t = line.trim_start();
+    if t.starts_with(['#', '-']) || line.contains(": ") {
+        return None;
+    }
+    let colon = t.find(':')?;
+    let key = &t[..colon];
+    let value = t[colon + 1..].trim_end();
+    let is_key = !key.is_empty()
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c));
+    (is_key && !value.is_empty() && !value.starts_with(char::is_whitespace)).then(|| {
+        (
+            line.len() - t.len() + colon,
+            format!("a key needs a space after its colon — `{key}: {value}`"),
         )
     })
 }
@@ -2170,7 +2254,7 @@ fn per_members(
     match kinds.kinds.get(kind).map(|k| &k.shape) {
         Some(KindShape::Members(_)) => {
             let mut closed = kinds.kinds.clone();
-            lute_manifest::relations::imply_sub_kind_members(&mut closed);
+            lute_manifest::relations::imply_sub_kind_members(&mut closed, &kinds.order);
             match closed.remove(kind).map(|k| k.shape) {
                 Some(KindShape::Members(ms)) => Ok(ms),
                 _ => Err("names a malformed entity kind"),
@@ -2516,6 +2600,19 @@ mod tests {
             diags.iter().any(|d| d.code == "E-META-MISSING"),
             "without `id:` the legacy required-key rule still fires (§4): {diags:?}"
         );
+    }
+
+    /// FS-F14: a scene with no identity at all gets one error teaching
+    /// `id:`, not the legacy `character`/`season`/`episode` triple.
+    #[test]
+    fn no_identity_asks_for_id_once() {
+        let (_m, diags) = parse_meta_str("title: A first scene\n");
+        let missing: Vec<_> = diags
+            .iter()
+            .filter(|d| d.code == "E-META-MISSING")
+            .collect();
+        assert_eq!(missing.len(), 1, "{diags:?}");
+        assert!(missing[0].message.contains("needs an `id:`"), "{diags:?}");
     }
 
     #[test]

@@ -121,6 +121,7 @@ pub fn fold_env(
     let (mut vocab, rel_diags) =
         crate::rel_schema::build_rel_vocab(&input.imports, &typed, &domains, &doc.meta);
     vocab.effect_directives = crate::directive_facts::effect_directives(&input.snapshot);
+    vocab.effect_origins = input.imports.plugin_origins.effect_facts.clone();
     // dsl 0.26.0 §2.3: a project kind's domain is the kind's final member
     // list — this document's `add:`s and sub-kinds included — and (dsl 0.27.0
     // §7) its final labels, so a `{ domain: K }` path renders them.
@@ -382,7 +383,12 @@ pub fn fold_env(
         .imports
         .seasons
         .iter()
-        .map(|(path, _, _)| path.display().to_string())
+        .map(|(path, _, _)| {
+            path.file_name().map_or_else(
+                || path.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            )
+        })
         .collect();
     let (seasons, season_diags) = crate::season::fold_seasons(
         input
@@ -390,8 +396,14 @@ pub fn fold_env(
             .seasons
             .iter()
             .zip(&season_names)
-            .map(|((_, s, _), name)| (name.as_str(), s))
-            .chain(std::iter::once(("this schema", &typed.seasons))),
+            .map(|((path, s, at), name)| {
+                let origin = crate::rel_schema::DeclOrigin {
+                    file: path.clone(),
+                    span: *at,
+                };
+                (name.as_str(), s, Some(origin))
+            })
+            .chain(std::iter::once(("this schema", &typed.seasons, None))),
         season_span,
     );
     fold_diags.extend(season_diags);
@@ -399,6 +411,7 @@ pub fn fold_env(
         &schema,
         &seasons,
         crate::meta::meta_key_span(&doc.meta, "state"),
+        &vocab.origins.state,
     );
     schema.decls.extend(mirrors);
     fold_diags.extend(season_diags);
@@ -418,6 +431,14 @@ pub fn fold_env(
         &doc.beats,
         &input.snapshot.occasions,
     ));
+    // dsl 0.27.0 §6: a template component's header values every use derives
+    // unchanged, judged once here at the header key.
+    if let Some(template) = &typed.beat_template {
+        fold_diags.extend(crate::templates::check_template_header(
+            template,
+            &input.snapshot.occasions,
+        ));
+    }
     // dsl 0.21.0 §7a.2: every objective's `on` occasion, checked like a beat's.
     fold_diags.extend(crate::beats::check_objective_occasions(
         &doc.quests,
@@ -491,6 +512,14 @@ pub fn fold_env(
         &vocab,
         &input.snapshot.occasions,
         &doc.meta,
+    ));
+    // 0.27 prerelease G-6: a `{ domain: K }` payload field names a declared K.
+    fold_diags.extend(crate::occasion_bind::check_payload_domains(
+        doc,
+        typed.beat.as_ref(),
+        &input.snapshot.occasions,
+        &domains,
+        &input.imports.plugin_origins,
     ));
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
@@ -713,6 +742,13 @@ pub fn fold_env(
         occasion_scopes,
     };
     let declared_cast = crate::cast::declared_cast(&input.snapshot, &input.imports, &typed.cast);
+    // dsl 0.27.0 §7 (G-16): a kind label a cast `name:` hides.
+    fold_diags.extend(crate::cast::check_label_shadows(
+        &input.imports.rel,
+        &typed.rel_kinds,
+        &doc.meta,
+        &declared_cast,
+    ));
     let use_lines = use_speaker_lines(doc, &input.components);
     (
         FoldedEnv {

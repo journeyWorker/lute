@@ -32,12 +32,13 @@ $ lute scenario . envelope narrator.s01ep02
 project root: .
 envelope for scene(narrator.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
-    - run.greeted
-  Possible (set on at least one declared route reaching this node):
-    - run.greeted
-    - run.kaiFound
-  Possible \ Guaranteed -- warning-grade reads (…):
-    - ./scenes/whileActive.lute:14:17: state path `run.kaiFound` is set under your declared routes on SOME routes reaching this node, but not every one — not yet guaranteed (dsl §4.3)
+    - run.greeted   written by: (nothing on a declared route reaching here — schema default only)
+  Possible (set on SOME but not every declared route reaching this node; the Guaranteed paths above are not repeated):
+    - run.kaiFound   written by: …
+  Guaranteed facts (hold on every declared route reaching this node):
+    (none)
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
+    - ./scenes/whileActive.lute:13:36: state path `run.kaiFound` is set under your declared routes on SOME routes reaching this node, but not every one — not yet guaranteed; order this scene `after:` a scene every route passes that sets it, or guard the read with `isSet(run.kaiFound)`
 ```
 
 Swap that node's `after` to `completed("findkai")` and `run.kaiFound` moves into Guaranteed, leaving `Possible \ Guaranteed` empty. (`run.greeted` carries a schema `default`, so it is in `D` and guaranteed under both.)
@@ -63,7 +64,7 @@ From the Haven example, the purser scene (ep09):
 ```console
 $ lute scenario docs/examples/haven envelope haven.s01ep09
 …
-  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+  Guaranteed facts (hold on every declared route reaching this node):
     - awake(ottavio) (docs/examples/haven/scenes/stowaway.lute:20)
     - awake(vesna) (`facts:` seed)
     - found(ottavio) (docs/examples/haven/scenes/stowaway.lute:19)

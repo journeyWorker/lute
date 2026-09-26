@@ -30,6 +30,11 @@ pub(super) struct StepRecord {
     /// dsl 0.25.0 §1: exclusive relations that both hold after the step
     /// (`seenAfter(elias) and fell(elias) both hold`) — each fails the play.
     pub(super) exclusive: Vec<String>,
+    /// dsl 0.27.0 §4: this record is the `engine:` write an `occasion:` step
+    /// lands before its raise; the step itself is the next record. It is
+    /// part of the step, not a step (or repetition) of its own: the step's
+    /// `expect:` judges the raise, and the end count skips it.
+    pub(super) before_raise: bool,
 }
 
 /// The whole playthrough: the initial quest settle, then every step, and
@@ -92,6 +97,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                 world: None,
                 notes: Vec::new(),
                 exclusive: Vec::new(),
+                before_raise: false,
             });
             let skipped: Vec<(usize, Option<String>)> = plan[i + 1..]
                 .iter()
@@ -141,6 +147,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                     world: None,
                     notes: Vec::new(),
                     exclusive: Vec::new(),
+                    before_raise: true,
                 });
                 if let Some(h) = halt {
                     return finish(start, steps, h, s.world);
@@ -183,6 +190,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                 world: wants.map(|wants| s.view(wants.facts)),
                 notes,
                 exclusive,
+                before_raise: false,
             });
             if let Some(h) = halt {
                 return finish(start, steps, h, s.world);
@@ -203,7 +211,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
             world: s.world,
         };
     }
-    let n = steps.len();
+    let n = steps.iter().filter(|s| !s.before_raise).count();
     Playthrough {
         start,
         steps,

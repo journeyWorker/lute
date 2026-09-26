@@ -331,7 +331,13 @@ pub(crate) fn reconcile_collected(
             Box::new(|| lute_check::check_project_quest_handlers(group)),
             Box::new(|| lute_check::connectivity::check_conn_episode_dup(group)),
             // dsl 0.27.0 §8: the manifest's `sequence:` names this root's scenes.
-            Box::new(|| lute_check::sequence::check_project_sequence(root, group)),
+            Box::new(|| {
+                let occasions = beat_foldeds
+                    .first()
+                    .map(|f| f.occasions.clone())
+                    .unwrap_or_default();
+                lute_check::sequence::check_project_sequence(root, group, &occasions)
+            }),
             // dsl 0.26.0 §2.1: every declaration of one state path agrees.
             Box::new(|| lute_check::state_decls::check_project_state_decls(group, &beat_foldeds)),
             // dsl 0.26.0 §2.8: advisory — two speakers sharing a display name.

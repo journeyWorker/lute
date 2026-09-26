@@ -15,6 +15,25 @@ use crate::exec::driver::{
 };
 use crate::{UnresolvedAtom, Value};
 
+/// One premise of a failed rule attempt, named for a refusal when it is
+/// what the attempt misses (HW27-10).
+fn missing(p: &crate::datalog::Premise) -> Option<String> {
+    use crate::datalog::{render_fact, Premise};
+    match p {
+        Premise::Missing { atom, .. } => Some(format!("`{atom}` does not hold")),
+        Premise::Present(proof) => {
+            let f = render_fact(proof.fact());
+            Some(format!("`not {f}` fails: `{f}` holds"))
+        }
+        Premise::Test {
+            text,
+            holds: Some(false),
+        } => Some(format!("`{text}` is false")),
+        Premise::Test { text, holds: None } => Some(format!("`{text}` is undecided")),
+        _ => None,
+    }
+}
+
 impl<D: Driver> Machine<D> {
     /// A walk-time `E-TRACE-CHOICE`: the script forced an option that is not
     /// offered at this presentation point. Halts like a fatal error, flagged
@@ -37,18 +56,28 @@ impl<D: Driver> Machine<D> {
 
     /// [`Machine::option_verdict`] for a scripted pick the driver rules on:
     /// a guard that decided false names the reads it is false over
-    /// (round-5 T3-12) — every state path with its value, every fact
-    /// pattern that does not hold, every scene `visited(…)` has not seen.
+    /// ([`Machine::false_reads`], round-5 T3-12).
     fn picked_verdict(&mut self, when: &str) -> Verdict {
-        let verdict = self.option_verdict(when);
-        if !matches!(verdict, Verdict::Closed(_)) {
-            return verdict;
+        match self.option_verdict(when) {
+            Verdict::Closed(_) => Verdict::Closed(self.false_reads(when)),
+            verdict => verdict,
         }
+    }
+
+    /// The premises a guard `raw` that decided false is false over (round-5
+    /// T3-12, HW27-10), in document order: every state path it reads with
+    /// its value, every fact pattern that does not hold (its path arguments
+    /// read, `canEnter(occasion.target)` → `canEnter(office)`; a derived
+    /// one with each rule that could conclude it and the premises that rule
+    /// misses), every scene `visited(…)` has not seen. What a refusal
+    /// names — a scripted pick's (`E-TRACE-CHOICE`), an occasion gate's
+    /// (`E-OCCASION-GATE`) — so each tool says what to change.
+    pub fn false_reads(&mut self, raw: &str) -> Vec<GuardRead> {
         let mut atoms = Vec::new();
-        if let Some(expr) = crate::exec::store::parse(when) {
+        if let Some(expr) = crate::exec::store::parse(raw) {
             crate::eval::guard_atoms(&expr, &mut atoms);
         }
-        let reads = atoms
+        atoms
             .into_iter()
             .filter_map(|a| match a {
                 crate::eval::GuardAtom::Path(p) => {
@@ -58,15 +87,57 @@ impl<D: Driver> Machine<D> {
                     };
                     Some(GuardRead::Path(p, v))
                 }
-                crate::eval::GuardAtom::Fact(f) => (self.store.eval(&format!("holds({f})")).0
-                    == Value::Bool(false))
-                .then_some(GuardRead::Fact(f)),
+                crate::eval::GuardAtom::Fact(f) => {
+                    if self.store.eval(&format!("holds({f})")).0 != Value::Bool(false) {
+                        return None;
+                    }
+                    Some(self.fact_read(&f))
+                }
                 crate::eval::GuardAtom::Visited(k) => {
                     (!self.store.visited.contains(&k)).then_some(GuardRead::Visited(k))
                 }
             })
+            .collect()
+    }
+
+    /// A fact pattern `rel(a, b)` that does not hold, its path arguments
+    /// read (an unset one kept as written); a ground fact of a derived
+    /// relation carries why no rule concludes it.
+    fn fact_read(&mut self, pattern: &str) -> GuardRead {
+        let (rel, args) = pattern
+            .strip_suffix(')')
+            .and_then(|p| p.split_once('('))
+            .unwrap_or((pattern, ""));
+        let args: Vec<String> = args
+            .split(", ")
+            .filter(|a| !a.is_empty())
+            .map(|a| match self.store.read(a) {
+                Read::Value(v) if a.contains('.') => {
+                    crate::report::value_text(&v).unwrap_or_else(|| a.to_string())
+                }
+                _ => a.to_string(),
+            })
             .collect();
-        Verdict::Closed(reads)
+        let fact = format!("{rel}({})", args.join(", "));
+        let ground = !args.iter().any(|a| a == "_" || a.contains('.'));
+        match ground
+            .then(|| self.store.why_not(&(rel.to_string(), args)))
+            .flatten()
+        {
+            Some(attempts) => GuardRead::Derived {
+                fact,
+                rules: attempts
+                    .iter()
+                    .map(|a| {
+                        (
+                            a.rule.clone(),
+                            a.premises.iter().filter_map(missing).collect(),
+                        )
+                    })
+                    .collect(),
+            },
+            None => GuardRead::Fact(fact),
+        }
     }
 
     /// A branch's options judged right now — what its menu shows. Display

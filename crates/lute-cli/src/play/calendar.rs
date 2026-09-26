@@ -1028,6 +1028,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
             surfaces: lute_trace::MockSet::default(),
             save: lute_trace::exec::session::SaveSeed::default(),
             steps: Vec::new(),
+            source: super::script::ScriptSource::default(),
             step_expects: Vec::new(),
             expect: None,
             derive: None,

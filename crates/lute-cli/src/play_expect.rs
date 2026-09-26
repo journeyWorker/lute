@@ -155,6 +155,9 @@ pub(crate) struct PlayOutcome {
     pub said_steps: Vec<usize>,
     /// `complete | incomplete | error`.
     pub exit: &'static str,
+    /// The last step the play ran (or halted in); `None` when it stopped
+    /// before step 1.
+    pub last_step: Option<usize>,
     /// dsl 0.26.0 §7 (T3-10): `<document id>.<entry id>` -> the entry id —
     /// a step's `winner` / `offered` / `notOffered` / `presented` may name
     /// an entry by that alias.
@@ -459,18 +462,13 @@ pub(crate) fn check(
     top: Option<&Yaml>,
 ) -> Vec<ExpectMiss> {
     let mut misses = Vec::new();
+    // OT-F-15: the steps whose `expect:` the play never reached — one
+    // summary line, not one miss per step.
+    let mut unreached: Vec<(usize, Option<&String>)> = Vec::new();
     for (index, label, expect) in steps {
         let rows: Vec<&StepOutcome> = outcome.steps.iter().filter(|s| s.index == *index).collect();
         if rows.is_empty() {
-            misses.push(ExpectMiss {
-                step: Some(*index),
-                label: label.clone(),
-                occasion: None,
-                repetition: None,
-                key: "(step reached)".to_string(),
-                expected: "the step to run".to_string(),
-                actual: format!("not reached — the play ended {} before it", outcome.exit),
-            });
+            unreached.push((*index, label.as_ref()));
             continue;
         }
         let repeated = rows.len() > 1;
@@ -485,10 +483,56 @@ pub(crate) fn check(
             );
         }
     }
+    if let Some(&(first, label)) = unreached.first() {
+        misses.push(unreached_miss(outcome, first, label, &unreached));
+    }
     if let Some(top) = top {
         check_end(outcome, top, &mut misses);
     }
     misses
+}
+
+/// OT-F-15: the one miss for every step `expect:` the play never reached,
+/// saying where and how it stopped.
+fn unreached_miss(
+    outcome: &PlayOutcome,
+    first: usize,
+    label: Option<&String>,
+    unreached: &[(usize, Option<&String>)],
+) -> ExpectMiss {
+    const SHOWN: usize = 8;
+    let expected = match unreached.len() {
+        1 => "the step to run".to_string(),
+        k => {
+            let mut ns: Vec<String> = unreached
+                .iter()
+                .take(SHOWN)
+                .map(|(n, _)| n.to_string())
+                .collect();
+            if k > SHOWN {
+                ns.push("…".to_string());
+            }
+            format!("steps {} to run ({k} expectations)", ns.join(", "))
+        }
+    };
+    let how = match outcome.exit {
+        "complete" => "ended (`end: true`)",
+        "incomplete" => "stopped incomplete",
+        _ => "halted with an error",
+    };
+    let at = match outcome.last_step {
+        Some(k) => format!(" at step {k}"),
+        None => " before step 1".to_string(),
+    };
+    ExpectMiss {
+        step: Some(first),
+        label: label.cloned(),
+        occasion: None,
+        repetition: None,
+        key: "(step reached)".to_string(),
+        expected,
+        actual: format!("not reached — the play {how}{at}"),
+    }
 }
 
 /// Render a list for a miss line: `[a, b]`.
@@ -532,20 +576,16 @@ fn check_step(
     if let Some(want) = m.get("winner").and_then(scalar_text).map(resolve) {
         let holds = match (&row.winner, want.as_str()) {
             (None, NO_WINNER) => true,
-            (Some(w), want) => w == want,
+            (Some(w), want) => names(want, w),
             (None, _) => false,
         };
         if !holds {
             miss("winner".into(), want, actual_winner.clone());
         }
     }
-    let offered: BTreeSet<&str> = row.offered.iter().map(String::as_str).collect();
+    let offered = |w: &str| row.offered.iter().any(|o| names(w, o));
     if let Some(want) = ids("offered") {
-        let missing: Vec<String> = want
-            .iter()
-            .filter(|w| !offered.contains(w.as_str()))
-            .cloned()
-            .collect();
+        let missing: Vec<String> = want.iter().filter(|w| !offered(w)).cloned().collect();
         if !missing.is_empty() {
             miss(
                 "offered".into(),
@@ -559,11 +599,7 @@ fn check_step(
         }
     }
     if let Some(want) = ids("notOffered") {
-        let present: Vec<String> = want
-            .iter()
-            .filter(|w| offered.contains(w.as_str()))
-            .cloned()
-            .collect();
+        let present: Vec<String> = want.iter().filter(|w| offered(w)).cloned().collect();
         if !present.is_empty() {
             miss(
                 "notOffered".into(),
@@ -575,7 +611,9 @@ fn check_step(
     // dsl 0.23.0 §3: the exact presentation order. On an `advance:` step
     // every raise's presentations, each named by its raise (T3-8).
     if let Some(want) = ids("presented") {
-        if want != row.presented {
+        let holds = want.len() == row.presented.len()
+            && want.iter().zip(&row.presented).all(|(w, a)| names(w, a));
+        if !holds {
             let actual = if row.presented_from.len() == row.presented.len() {
                 let tagged: Vec<String> = row
                     .presented
@@ -621,6 +659,16 @@ fn check_step(
             ),
         }
     }
+}
+
+/// G-9: whether the expected beat `want` names `actual` — the same id, or
+/// (dsl 0.27.0 §3) a bare `for` beat id naming its presentation for any
+/// member (`actual` spelled `<id> for <member>`, as the transcript prints).
+fn names(want: &str, actual: &str) -> bool {
+    actual == want
+        || actual
+            .strip_prefix(want)
+            .is_some_and(|rest| rest.starts_with(" for "))
 }
 
 /// Judge the world keys (`quests`, `state`, `facts`, `notFacts`, `clock`)
@@ -862,6 +910,7 @@ mod tests {
             said: "@oskar: Welcome back.\n".into(),
             said_steps: vec![0, 1],
             exit: "complete",
+            last_step: Some(3),
             entry_aliases: BTreeMap::new(),
         }
     }
@@ -930,18 +979,26 @@ transcriptLacks: ["Goodbye"]
     }
 
     #[test]
-    fn a_step_the_play_never_reached_is_a_miss() {
+    fn steps_the_play_never_reached_are_one_summary_miss() {
         let o = PlayOutcome {
-            exit: "incomplete",
+            exit: "error",
             ..outcome()
         };
         let misses = check(&o, &[(2, None, y("{winner: none}"))], None);
         assert_eq!(misses.len(), 1);
-        assert_eq!(misses[0].step, Some(2));
-        assert!(
-            misses[0].actual.contains("incomplete"),
-            "{}",
-            misses[0].actual
+        assert_eq!(
+            misses[0].to_string(),
+            "step 2: expect (step reached): expected the step to run, actual not reached — \
+             the play halted with an error at step 3"
+        );
+
+        let later: Vec<(usize, Option<String>, Yaml)> =
+            (4..=14).map(|n| (n, None, y("{winner: none}"))).collect();
+        let misses = check(&o, &later, None);
+        assert_eq!(misses.len(), 1, "{misses:?}");
+        assert_eq!(
+            misses[0].expected,
+            "steps 4, 5, 6, 7, 8, 9, 10, 11, … to run (11 expectations)"
         );
     }
 

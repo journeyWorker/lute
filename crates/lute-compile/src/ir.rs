@@ -589,6 +589,13 @@ pub struct StateEntry {
     /// present, the value itself otherwise. Omitted when no label is declared.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub labels: BTreeMap<String, String>,
+    /// dsl 0.27.0 §2 (T1-2): the named domain `K` of a path typed
+    /// `{ domain: K }` / `{ entity: K }` whose `K` is closed, and its members
+    /// — what a play or test seed / `engine:` write of the path is
+    /// member-checked against. In memory only: the wire entry keeps the
+    /// `string` type the IR has always carried for these paths.
+    #[serde(skip)]
+    pub member_domain: Option<(String, Vec<String>)>,
 }
 
 /// Cross-cutting optional stamps (§4.3), flattened into every stamped record:
@@ -752,7 +759,9 @@ pub enum Placeholder {
     /// `expr` is the def body inlined at compile time (the artifact carries no
     /// defs table), so an engine renders the value by evaluating it like any
     /// other `{raw, expr}` slot. Filled by `expand::inline_ref_placeholders`;
-    /// always present in a compiled artifact.
+    /// always present in a compiled artifact. A family read indexed by the
+    /// raised member (`user.bond[occasion.target]`, dsl 0.27.0 §3) is a `ref`
+    /// too: its referent has no `@` and `expr` is the read itself.
     Ref {
         #[serde(rename = "ref")]
         reference: String,
@@ -782,6 +791,16 @@ pub enum Placeholder {
 pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placeholder {
     use lute_syntax::ast::InterpKind;
     match i.kind {
+        // dsl 0.27.0 §3: `{{user.bond[occasion.target]}}` is a computed read,
+        // so it ships as CEL an engine evaluates like any `ref` body.
+        InterpKind::Path if lute_check::cel_paths::occasion_indexed_family(&i.raw).is_some() => {
+            Placeholder::Ref {
+                reference: i.raw.clone(),
+                expr: Some(CelPair::from_raw(&i.raw)),
+                format: i.format.clone(),
+                forms: i.forms.clone(),
+            }
+        }
         InterpKind::Path => Placeholder::Path {
             path: i.raw.clone(),
             format: i.format.clone(),

@@ -264,3 +264,80 @@ fn test_and_trace_judge_a_kind_beat_by_the_mocked_member() {
         "{t}"
     );
 }
+
+/// Every `forKind` object in an artifact, depth-first.
+fn for_kinds(v: &Json, out: &mut Vec<Json>) {
+    match v {
+        Json::Object(m) => {
+            if let Some(fk) = m.get("forKind") {
+                out.push(fk.clone());
+            }
+            m.values().for_each(|x| for_kinds(x, out));
+        }
+        Json::Array(a) => a.iter().for_each(|x| for_kinds(x, out)),
+        _ => {}
+    }
+}
+
+/// G-8: a union kind (`hero: { members: [] }`) lists its sub-kinds' members
+/// in the order the sub-kinds are declared, not by sub-kind name — the
+/// order `for=` presents in, the artifact's `forKind.members`, and trace's
+/// mock hint.
+#[test]
+fn a_union_kind_orders_its_members_as_the_schema_declares_them() {
+    let dir = project("union");
+    write(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  hero: { members: [] }\n  ssr: { subsetOf: hero, members: [aria, cyra] }\n  \
+         sr: { subsetOf: hero, members: [bram] }\n  limited: { subsetOf: ssr, members: [cyra] }\n\
+         relations:\n  owned: { args: [hero], reserved: true }\n  birthday: { args: [hero] }\n\
+         state:\n  user.bond: { type: number, default: 0, per: hero, owner: engine }\n  \
+         run.total: { type: number, default: 0 }\n",
+    );
+    let (code, v, t) = play(
+        &dir,
+        "facts: [birthday(bram), birthday(cyra), birthday(aria)]\nsteps:\n  - occasion: dailyReset\n",
+    );
+    assert_eq!(code, Some(0), "{t}");
+    assert_eq!(
+        step_lines(&v["steps"][0]),
+        [
+            "Happy birthday, aria!",
+            "Happy birthday, cyra!",
+            "Happy birthday, bram!"
+        ],
+        "{t}"
+    );
+
+    let out = run(&dir, &["compile", "lore/g.lute", "--project", "."]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let art: Json = serde_json::from_slice(&out.stdout).unwrap();
+    let mut found = Vec::new();
+    for_kinds(&art, &mut found);
+    assert!(!found.is_empty(), "{art}");
+    for fk in &found {
+        assert_eq!(
+            fk["members"],
+            serde_json::json!(["aria", "cyra", "bram"]),
+            "{fk}"
+        );
+    }
+    let out = run(
+        &dir,
+        &[
+            "trace",
+            "lore/g.lute",
+            "--project",
+            ".",
+            "--beat",
+            "dupe",
+            "--state",
+            "user.bond.bram=3",
+            "--fact",
+            "owned(bram)",
+        ],
+    );
+    let t = text(&out);
+    assert!(t.contains("occasion.target=<aria|cyra|bram>"), "{t}");
+}

@@ -52,6 +52,7 @@ pub(crate) struct InputCache {
     projects: Memo<PathBuf, LoadedProject>,
     providers: Memo<ProvidersKey, Arc<ProviderSet>>,
     snapshots: Memo<SnapshotKey, ResolvedSnapshot>,
+    plugin_origins: Memo<PathBuf, Arc<lute_check::rel_schema::PluginOrigins>>,
     pub imports: ImportCache,
 }
 
@@ -102,5 +103,13 @@ impl InputCache {
         self.snapshots.get_or_init(key, || {
             Arc::new(resolve_document_snapshot(project, profile, plugins))
         })
+    }
+
+    /// [`crate::plugin_origins::plugin_origins`] of `plugins_dir`, once.
+    pub fn plugin_origins(&self, plugins_dir: &Path) -> Arc<lute_check::rel_schema::PluginOrigins> {
+        self.plugin_origins
+            .get_or_init(plugins_dir.to_path_buf(), || {
+                Arc::new(crate::plugin_origins::plugin_origins(plugins_dir))
+            })
     }
 }

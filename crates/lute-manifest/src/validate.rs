@@ -269,6 +269,16 @@ pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
     if let Lowering::Record { record, fields } = &d.lower {
         validate_record_lowering(d, record, fields, &mut errs);
     }
+    errs.extend(validate_effects(d));
+    errs
+}
+
+/// dsl 0.27.0 §2, §4: the directive's declared `effects` against its own
+/// attrs. The loader runs this where it knows the file, so a fault names
+/// its line ([`crate::loader`]); assembly re-runs it for a declaration that
+/// never came from a file.
+pub fn validate_effects(d: &DirectiveDecl) -> Vec<ManifestError> {
+    let mut errs = Vec::new();
     validate_effect_writes(d, &mut errs);
     validate_effect_facts(d, &mut errs);
     errs

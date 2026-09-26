@@ -448,6 +448,7 @@ fn envelope_serializes_with_state_entries() {
             default: None,
             provenance: Some("branch:number".into()),
             labels: BTreeMap::new(),
+            member_domain: None,
         }],
         entities: Vec::new(),
         enums: Vec::new(),
