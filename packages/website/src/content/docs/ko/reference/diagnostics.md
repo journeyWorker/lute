@@ -1171,7 +1171,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-TEST-NEEDLE
 
-`*.test.yaml`의 `transcriptContains`/`transcriptLacks` 니들이 어떤 트랜스크립트 줄에도 나타나지 않는 속성이나 도메인 밖의 값을 지정해, 표시된 줄과 결코 일치할 수 없습니다.
+`*.test.yaml`의 `transcriptContains`/`transcriptLacks` 니들이 프로젝트 캐스트 밖의 화자, 어떤 트랜스크립트 줄에도 나타나지 않는 속성, 또는 도메인 밖의 값을 지정해, 표시된 줄과 결코 일치할 수 없습니다.
 
 ### E-TEST-NO-EXPECT
 
@@ -1233,7 +1233,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-TRACE-MOCK-FACT
 
-`--fact`/`facts:` 항목이 정형화된 사실 패턴으로 파싱되지 않거나, 알 수 없는 관계·잘못된 자릿수·다른 문서의 인자를 지정했습니다.
+`--fact`/`facts:` 항목이나 테스트의 `expect.facts`/`expect.notFacts` 원자가 정형화된 사실 패턴으로 파싱되지 않거나, 알 수 없는 관계·잘못된 자릿수·다른 문서의 인자를 지정했습니다.
 
 명세: [dsl 0.4.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
 
@@ -1245,9 +1245,9 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-TRACE-MOCK-TYPE
 
-`--state <path>=<literal>` 시드의 리터럴이 해당 경로의 예약된 도메인이나 선언된 타입과 맞지 않거나, 응답한 브리지 결과에 콘텐츠가 읽는 필드가 빠져 있습니다.
+목 또는 테스트 시드의 리터럴(`--state <path>=<literal>`, `state:`, `quests:`)이나 테스트의 `expect.state` 값이 해당 경로의 예약된 도메인이나 선언된 타입과 맞지 않거나 — `{ domain: K }`, `{ entity: K }` 또는 enum 경로라면 그 멤버가 아니거나 — 응답한 브리지 결과에 콘텐츠가 읽는 필드가 빠져 있습니다.
 
-명세: [dsl 0.4.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.24.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
+명세: [dsl 0.4.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.24.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
 
 ### E-TRACE-MOCK-UNDECLARED
 

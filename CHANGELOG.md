@@ -376,6 +376,13 @@ table.
 
 ### Fixed
 
+- `lute play` and `lute test` refuse a `facts:` / `notFacts:` expectation atom that names an undeclared relation, the wrong arity, or a non-member argument (with a did-you-mean), and a `transcriptContains` / `transcriptLacks` needle whose `@speaker` is not in the project's cast. Such an expectation used to hold vacuously. It is a usage error in `lute play` (exit 2) and an invalid test in `lute test` (`E-TRACE-MOCK-FACT` / `E-TEST-NEEDLE`), located at the entry. A needle refusal now carries its `file:line:col` too.
+- A seed or `engine:` fact that names a non-member now reads ``… names `sorn`, which is not a member of `suitor` — did you mean `soren`? (…)``, and a wrong arity names the relation's signature.
+- `W-QUEST-TIER-IMPLICIT` no longer misses a run-reading quest whose quest tree has a sibling that reads nothing (`done="true"`). A quest that reads nothing takes no side, and it is named among the quests that must change together.
+- `lute doctor` counts the scenes whose `on:` comes from the manifest's `sequence:` (and template-expanded beats) in its occasion tally.
+- `lute trace` heads a beat or entry the engine would not raise with that reason (its occasion's `raisedWhen` is false, or `terminal:` holds), and a false `when` names itself with what it read. It used to say `` `when` is false `` in every case.
+- `lute play` and `lute test` report a schema or plugin fault every importing document shares once, at its own line (as `check-project` does), and then refuse. They used to repeat it once per document.
+
 - The seam in every runtime (0.27 prerelease). `lute test` and `lute trace` judge a beat whose
   occasion has a `raisedWhen` gate, or a project with `terminal:`, by the same rule `lute play`
   refuses a raise by: `eligible: true` on a beat the engine would not raise under the mocks used
@@ -391,7 +398,8 @@ table.
   `expect.state` value outside a `{ domain: K }` / enum path's members is refused with a
   did-you-mean (`run.route: rne` → `ren`), and so is an occasion payload field typed
   `{ domain: K }` naming an undeclared K (`E-DOMAIN-UNKNOWN`, at the plugin line) or a play payload
-  value outside it.
+  value outside it. A refused mock or test seed (`state:`, `quests:`, `entriesRead:`) is located at
+  its key in the mock or test file, not at the traced document's `0:0`.
 
 - Seam and cadence checks close their silent holes (0.27 prerelease). A literal in `terminal:` or
   `raisedWhen:` is member-checked like one in a `when` (`E-WHEN-LITERAL-DOMAIN` with a

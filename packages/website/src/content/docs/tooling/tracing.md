@@ -67,7 +67,7 @@ trace: lore/tomas.lute  (seeds: 1 paths, 0 facts; 0 selections)
 trace complete: 0 decisions
 ```
 
-Without the mock the entry reads ``(first read, not eligible (`when` is false))``, and the same `quests:` against a scene that never reads `quest.lampOut.state` is refused with `E-TRACE-MOCK-UNDECLARED`. With `--project` (or a manifest above the file) trace settles whether a quest the document reads exists (dsl 0.24.0): a quest the project declares draws no note, and one it does not says so with a did-you-mean — ``quest `lampOot` is declared by no quest document of the project — did you mean `lampOut`? (every read of `quest.lampOot.*` takes its reserved default)``. Only a trace with no project still notes that existence is unverified.
+Without the mock the entry reads ``(first read, not eligible: its `when` (quest.lampOut.state == 'active') is false (`quest.lampOut.state` is unset))``, and a beat the engine would not raise names that instead (its occasion's `raisedWhen` is false, or the project's `terminal:` holds), and the same `quests:` against a scene that never reads `quest.lampOut.state` is refused with `E-TRACE-MOCK-UNDECLARED`. With `--project` (or a manifest above the file) trace settles whether a quest the document reads exists (dsl 0.24.0): a quest the project declares draws no note, and one it does not says so with a did-you-mean — ``quest `lampOot` is declared by no quest document of the project — did you mean `lampOut`? (every read of `quest.lampOot.*` takes its reserved default)``. Only a trace with no project still notes that existence is unverified.
 
 ## Targets, deadlines, and the previous run
 

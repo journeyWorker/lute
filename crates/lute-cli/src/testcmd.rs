@@ -624,6 +624,38 @@ pub fn run_test(
     let mut noted: BTreeSet<PathBuf> = BTreeSet::new();
     let mut shared = Shared::for_tests(&test_files, project, providers);
 
+    // Round-5 G-17: a schema or plugin fault every importing document
+    // shares is reported once, at its own line, as `check-project` folds it
+    // — then the run is refused, instead of one failed test (and one
+    // `<doc>:1:1` copy) per document that imports it.
+    let play_roots: BTreeSet<PathBuf> = play_files
+        .iter()
+        .filter_map(|p| project_dir_of(p, project))
+        .collect();
+    for root in play_roots {
+        if !shared.gates.contains_key(&root) {
+            let rec = crate::reconciled_project_results(&root, providers).ok();
+            shared.gates.insert(root, rec);
+        }
+    }
+    let faults: Vec<String> = shared
+        .gates
+        .iter()
+        .filter_map(|(root, rec)| Some(rec.as_ref()?.schema_faults(root)))
+        .flatten()
+        .collect();
+    if !faults.is_empty() {
+        for line in &faults {
+            println!("{line}");
+        }
+        eprintln!(
+            "lute test: {} schema or plugin error(s) every importing document shares; \
+             refusing to run the tests",
+            faults.len()
+        );
+        return ExitCode::from(1);
+    }
+
     let runs: Vec<_> = test_files
         .par_iter()
         .map(|test_file| {
@@ -1098,8 +1130,8 @@ fn run_one_test(
     }
     let resolve_with = project.or(discovered.as_deref());
 
-    let text = match crate::read_document(&lute_path) {
-        Ok(text) => text,
+    let doc_text = match crate::read_document(&lute_path) {
+        Ok(doc_text) => doc_text,
         Err(message) => {
             eprintln!("{message}");
             return Err(ExitCode::from(2));
@@ -1108,7 +1140,7 @@ fn run_one_test(
     let (built, _) = crate::assemble_input(
         &shared.inputs,
         &lute_path,
-        text,
+        doc_text,
         providers,
         resolve_with,
         None,
@@ -1129,21 +1161,35 @@ fn run_one_test(
         return Err(ExitCode::from(1));
     }
 
-    // 0.27 prerelease OT-F-2: a needle attribute no presented line can
-    // carry makes `transcriptContains` a sure miss and `transcriptLacks` a
-    // vacuous pass — refused like a misspelt key, before anything is walked.
+    // 0.27 prerelease OT-F-2 / OT N-2: a needle speaker or attribute no
+    // presented line can carry makes `transcriptContains` a sure miss and
+    // `transcriptLacks` a vacuous pass — refused like a misspelt key, before
+    // anything is walked, located at the needle.
+    let item_at = |key: &str, i: usize| {
+        use lute_trace::YamlStep::{Item, Key};
+        lute_trace::yaml_span(&text, &[Key("expect"), Key(key), Item(i)]).map_or_else(
+            || test_file.display().to_string(),
+            |s| format!("{}:{}:{}", test_file.display(), s.line, s.column),
+        )
+    };
+    let expect_items = |key: &'static str| {
+        map.get("expect")
+            .and_then(|e| e.get(key))
+            .and_then(|v| v.as_sequence())
+            .into_iter()
+            .flatten()
+            .enumerate()
+            .filter_map(move |(i, v)| Some((key, i, v.as_str()?)))
+    };
     let needles = lute_trace::exec::record::NeedleVocab::of(&input, &meta);
-    let needle_problems: Vec<String> = ["transcriptContains", "transcriptLacks"]
-        .into_iter()
-        .flat_map(|key| {
-            map.get("expect")
-                .and_then(|e| e.get(key))
-                .and_then(|v| v.as_sequence())
-                .into_iter()
-                .flatten()
-                .filter_map(|v| v.as_str())
-                .filter_map(|n| lute_trace::exec::record::needle_problem(n, &needles))
-                .map(move |why| format!("error [{E_TEST_NEEDLE}] `expect.{key}` {why}"))
+    let needle_problems: Vec<String> = expect_items("transcriptContains")
+        .chain(expect_items("transcriptLacks"))
+        .filter_map(|(key, i, n)| {
+            let why = lute_trace::exec::record::needle_problem(n, &needles)?;
+            Some(format!(
+                "{}: error [{E_TEST_NEEDLE}] `expect.{key}` {why}",
+                item_at(key, i)
+            ))
         })
         .collect();
     if !needle_problems.is_empty() {
@@ -1153,6 +1199,62 @@ fn run_one_test(
             "invalid",
             needle_problems,
         ));
+    }
+
+    // 0.27 prerelease OT N-2: an `expect.facts` / `expect.notFacts` atom
+    // naming an undeclared relation, the wrong arity or a foreign argument
+    // names no fact that can hold — a `notFacts` one would pass vacuously.
+    // Refused as a seed `facts:` entry is ([`lute_check::check_atom`], a
+    // derived relation included), located at the atom.
+    let expect_atoms: Vec<(&str, usize, &str)> = expect_items("facts")
+        .chain(expect_items("notFacts"))
+        .collect();
+    if !expect_atoms.is_empty() {
+        let doc = desugared(&input);
+        let (folded, _, _) = lute_check::fold_env(&doc, &input);
+        let problems: Vec<String> = expect_atoms
+            .iter()
+            .flat_map(|&(key, i, atom)| {
+                let whys: Vec<String> = match lute_syntax::datalog::parse_fact(
+                    &crate::play_expect::canonical_atom(atom),
+                ) {
+                    Err(_) => Vec::new(),
+                    Ok(pattern) => lute_check::check_atom(
+                        &folded.env.rel_vocab,
+                        &folded.env.domains,
+                        &pattern.relation,
+                        &pattern.args,
+                        false,
+                        lute_core_span::Span {
+                            byte_start: 0,
+                            byte_end: 0,
+                            line: 0,
+                            column: 0,
+                            utf16_range: (0, 0),
+                        },
+                    )
+                    .into_iter()
+                    .map(|d| d.message)
+                    .collect(),
+                };
+                whys.into_iter().map(move |why| {
+                    format!(
+                        "{}: error [{}] `expect.{key}` entry `{atom}` names no fact that can \
+                         hold: {why}",
+                        item_at(key, i),
+                        lute_trace::E_TRACE_MOCK_FACT
+                    )
+                })
+            })
+            .collect();
+        if !problems.is_empty() {
+            return Ok(TestResult::refused(
+                test_file,
+                lute_display,
+                "invalid",
+                problems,
+            ));
+        }
     }
 
     // 0.27 prerelease OT-F-3: an `expect.state` value outside its path's

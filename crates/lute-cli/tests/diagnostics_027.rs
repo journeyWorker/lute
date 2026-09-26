@@ -226,3 +226,49 @@ fn an_implicit_quest_tree_is_flagged_together() {
         "{t}"
     );
 }
+
+/// League R1: a quest that reads nothing (`done="true"`) takes no side —
+/// its run-looking sibling and their parent are still flagged, and it is
+/// named in the tree that must change together.
+#[test]
+fn a_quest_reading_nothing_does_not_hide_its_run_looking_tree() {
+    let dir = temp_dir("tier-neutral");
+    write(&dir, "lute.project.yaml", MANIFEST);
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.fish: { type: number, default: 0 }\n",
+    );
+    write(
+        &dir,
+        "quests/q.lute",
+        "---\nkind: quest\nid: q\ntitle: Q\n---\n\n\
+         <quest id=\"gardens\" title=\"Gardens\" start=\"true\">\n  \
+         <objective id=\"seeds\" title=\"Seeds\" quest=\"seeds\"/>\n  \
+         <objective id=\"bees\" title=\"Bees\" quest=\"bees\"/>\n</quest>\n\n\
+         <quest id=\"seeds\" title=\"Seeds\" start=\"true\">\n  \
+         <objective id=\"deliver\" title=\"Deliver\" done=\"true\"/>\n</quest>\n\n\
+         <quest id=\"bees\" title=\"Bees\" start=\"true\">\n  \
+         <objective id=\"three\" title=\"Three\" done=\"run.fish >= 3\"/>\n</quest>\n\n\
+         <quest id=\"idle\" title=\"Idle\" start=\"true\">\n  \
+         <objective id=\"x\" title=\"X\" done=\"true\"/>\n</quest>\n",
+    );
+    let t = check_project(&dir);
+    let warned: Vec<&str> = t
+        .lines()
+        .filter(|l| l.contains("[W-QUEST-TIER-IMPLICIT]"))
+        .collect();
+    assert_eq!(warned.len(), 3, "gardens, seeds, bees — not idle: {t}");
+    assert!(
+        warned
+            .iter()
+            .any(|l| l.contains("quest `bees`") && l.contains("on `gardens`, `seeds` together")),
+        "{t}"
+    );
+    assert!(
+        warned
+            .iter()
+            .any(|l| l.contains("quest `seeds`") && l.contains("it reads no state itself")),
+        "{t}"
+    );
+}

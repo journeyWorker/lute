@@ -43,16 +43,6 @@ fn halsin() -> CheckInput {
     input_for(&text, path, Path::new("../../docs/examples"))
 }
 
-fn span0() -> lute_core_span::Span {
-    lute_core_span::Span {
-        byte_start: 0,
-        byte_end: 0,
-        line: 0,
-        column: 0,
-        utf16_range: (0, 0),
-    }
-}
-
 fn decided(report: &TraceReport, construct: &str, id: &str, outcome: &str) -> bool {
     report
         .decisions
@@ -241,7 +231,7 @@ rules:
     );
 
     let decided_day = MockSet {
-        state: vec![("run.day".to_string(), "3".to_string(), span0())],
+        state: vec![("run.day".to_string(), "3".to_string(), None)],
         ..forced
     };
     let (report, exit) = trace_document(&input, decided_day);

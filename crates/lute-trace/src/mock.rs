@@ -34,13 +34,14 @@ use lute_syntax::datalog::{parse_fact, DatalogError};
 /// per-flag repeats compose with ([`merge`]).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MockSet {
-    /// `(state path, literal TEXT, synthetic span)`. The literal arrives as
-    /// raw text from either origin (a YAML scalar rendered back to text, or
-    /// a CLI `path=literal` flag) — [`validate`] is the ONE place it is
-    /// coerced against the path's declared [`Type`]. The span is never
-    /// text-precise (there is no `--mock`/CLI source index to anchor
-    /// against); every mock diagnostic renders at this same synthetic point.
-    pub state: Vec<(String, String, Span)>,
+    /// `(state path, literal TEXT, where it is written)`. The literal arrives
+    /// as raw text from either origin (a YAML scalar rendered back to text,
+    /// or a CLI `path=literal` flag) — [`validate`] is the ONE place it is
+    /// coerced against the path's declared [`Type`]. The span is the seed's
+    /// key in the mock's own text (a `state:` / `quests:` key, an
+    /// `entriesRead:` id) — a [`validate`] diagnostic about it is
+    /// [`MOCK_TEXT`] there — and `None` for a flag, which has no text.
+    pub state: Vec<(String, String, Option<Span>)>,
     /// Raw `"rel(a, b)"` fact-pattern text, one per `--fact`/`facts:` entry,
     /// in the order supplied.
     pub facts: Vec<String>,
@@ -451,8 +452,8 @@ pub fn raise_judges(raw: &str, on: &str, target: Option<&str>) -> bool {
 /// span"), mirroring the house zero-then-normalize convention
 /// (`lute-check/src/check.rs`'s `zeroed_span`) other ad hoc span producers
 /// use — there is simply no source `TextIndex` to normalize against here.
-/// The one exception is a `bridges:` entry parsed from a mock's text
-/// ([`BridgeSpans`]): its [`validate_bridges`] diagnostics are [`MOCK_TEXT`].
+/// The exception is an entry parsed from a mock's text — a `bridges:`,
+/// `choose:` or seed entry: its diagnostics are [`MOCK_TEXT`], at the entry.
 pub(crate) fn synthetic_span() -> Span {
     Span {
         byte_start: 0,
@@ -521,9 +522,9 @@ pub const E_TRACE_MOCK_PARSE: &str = "E-TRACE-MOCK-PARSE";
 ///
 /// Anchored at the mock file and naming the offending key in its message,
 /// never at a line and column: `parse_mock_yaml` deserializes into
-/// `serde_yaml::Value`, which retains no position, so every mock entry but a
-/// located `bridges:` one ([`MOCK_TEXT`]) carries the all-zeros
-/// [`synthetic_span`] (D-AB).
+/// `serde_yaml::Value`, which retains no position, so a mock entry not
+/// re-located in the text ([`yaml_span`], [`MOCK_TEXT`]) carries the
+/// all-zeros [`synthetic_span`] (D-AB).
 pub const E_MOCK_SUBJECT: &str = "E-MOCK-SUBJECT";
 
 /// Build a `Layer::Logic` error diagnostic — mock validation is a
@@ -544,10 +545,10 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 }
 
 /// The [`Diagnostic::provenance`] of a mock diagnostic anchored in the
-/// mock's OWN text (a `bridges:` entry of a `--mock` file, a `mocks/*.yaml`
-/// or a `*.test.yaml`, dsl 0.24.0 §5): its span is a position in that file,
-/// not in the traced document, and a renderer prints it against the mock's
-/// path. Every other mock diagnostic is [`synthetic_span`]-anchored.
+/// mock's OWN text (a `bridges:`, `choose:` or seed entry of a `--mock`
+/// file, a `mocks/*.yaml` or a `*.test.yaml`): its span is a position in
+/// that file, not in the traced document, and a renderer prints it against
+/// the mock's path. Every other mock diagnostic is [`synthetic_span`]-anchored.
 pub const MOCK_TEXT: &str = "mock";
 
 /// [`diag`] at `at` in the mock's text ([`MOCK_TEXT`]); at the
@@ -731,7 +732,8 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                     span,
                 ));
             };
-            mocks.state.push((path.to_string(), literal, span));
+            let at = yaml_span(text, &[YamlStep::Key("state"), YamlStep::Key(path)]);
+            mocks.state.push((path.to_string(), literal, at));
         }
     }
 
@@ -919,9 +921,10 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                     span,
                 ));
             }
+            let at = yaml_span(text, &[YamlStep::Key("quests"), YamlStep::Key(id)]);
             mocks
                 .state
-                .push((format!("quest.{id}.state"), status.to_string(), span));
+                .push((format!("quest.{id}.state"), status.to_string(), at));
         }
     }
     if let Some(v) = top.get("entriesRead") {
@@ -935,10 +938,18 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             let (serde_yaml::Value::Sequence(ids), "run" | "user") = (ids, tier) else {
                 return Err(diag(E_TRACE_MOCK_PARSE, shape.to_string(), span));
             };
-            for id in ids {
+            for (i, id) in ids.iter().enumerate() {
                 let Some(id) = id.as_str() else {
                     return Err(diag(E_TRACE_MOCK_PARSE, shape.to_string(), span));
                 };
+                let at = yaml_span(
+                    text,
+                    &[
+                        YamlStep::Key("entriesRead"),
+                        YamlStep::Key(tier),
+                        YamlStep::Item(i),
+                    ],
+                );
                 // `run`: `entry.<id>.read`; `user`: `entry.<id>.everRead`
                 // (dsl 0.22.0 §7). A new run clears `read` and keeps
                 // `everRead`; read this run is read ever — as a `lute play`
@@ -946,11 +957,11 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                 if tier == "run" {
                     mocks
                         .state
-                        .push((lute_check::entry_read_path(id), "true".to_string(), span));
+                        .push((lute_check::entry_read_path(id), "true".to_string(), at));
                 }
                 mocks
                     .state
-                    .push((format!("entry.{id}.everRead"), "true".to_string(), span));
+                    .push((format!("entry.{id}.everRead"), "true".to_string(), at));
             }
         }
     }
@@ -1154,7 +1165,7 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
     let mut out = Vec::new();
     let mut referenced_reserved: Option<BTreeSet<String>> = None;
     let mut referenced_entry_reads: Option<BTreeSet<String>> = None;
-    for (path, literal, span) in &mocks.state {
+    for (path, literal, at) in &mocks.state {
         // dsl 0.24.0 §1: `clock.*` is derived from the clock's day / slot
         // paths, never stored — a seed of it would contradict them.
         if let Some(clock) = folded
@@ -1167,13 +1178,13 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                 Some(slot) => format!("`{}` / `{slot}`", clock.day),
                 None => format!("`{}`", clock.day),
             };
-            out.push(diag(
+            out.push(mock_diag(
                 E_TRACE_MOCK_UNDECLARED,
                 format!(
                     "`--state {path}=…` seeds a path the clock derives from its day and slot, \
                      which no mock may set — seed {seedable} instead (dsl 0.24.0 §1)"
                 ),
-                *span,
+                *at,
             ));
             continue;
         }
@@ -1217,19 +1228,19 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
             };
             if own || referenced.contains(path) {
                 if !reserved_quest_literal_valid(path, literal) {
-                    out.push(diag(
+                    out.push(mock_diag(
                         E_TRACE_MOCK_TYPE,
                         format!(
                             "`--state {path}={literal}` is not compatible with `{path}`'s reserved \
                              domain ({}) (dsl 0.5.1 §1.1)",
                             reserved_quest_domain_text(path)
                         ),
-                        *span,
+                        *at,
                     ));
                 }
                 continue;
             }
-            out.push(reserved_quest_unreferenced_diag(path, *span));
+            out.push(reserved_quest_unreferenced_diag(path, *at));
             continue;
         }
         // dsl 0.19.0 §5 / 0.22.0 §7: an entry's read flags
@@ -1250,15 +1261,15 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                     })
                     .contains(id);
             if !referenced {
-                out.push(undeclared_diag(path, *span));
+                out.push(undeclared_diag(path, *at));
             } else if !matches!(literal.as_str(), "true" | "false") {
-                out.push(diag(
+                out.push(mock_diag(
                     E_TRACE_MOCK_TYPE,
                     format!(
                         "`--state {path}={literal}` is not compatible with `{path}`'s reserved \
                          domain (true, false) (dsl 0.19.0 §5)"
                     ),
-                    *span,
+                    *at,
                 ));
             }
             continue;
@@ -1271,19 +1282,19 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
             // `lute play` apply — and a refused enum literal names its members.
             let not_member = state_member_problem(&folded.env.state, path, literal);
             if !ok || not_member.is_some() {
-                out.push(diag(
+                out.push(mock_diag(
                     E_TRACE_MOCK_TYPE,
                     format!(
                         "`--state {path}={literal}` is not compatible with `{path}`'s declared type \
                          (dsl 0.4.0 §4.3){}",
                         not_member.map(|why| format!(": {why}")).unwrap_or_default()
                     ),
-                    *span,
+                    *at,
                 ));
             }
             continue;
         }
-        out.push(undeclared_diag(path, *span));
+        out.push(undeclared_diag(path, *at));
     }
     out
 }
@@ -1309,29 +1320,29 @@ pub fn state_member_problem(
 /// shared by [`validate_state`]'s two "no admissible schema/reserved
 /// entry" exits (ordinary undeclared path; reserved path the document
 /// does not reference) so the message stays byte-identical either way.
-fn undeclared_diag(path: &str, span: Span) -> Diagnostic {
-    diag(
+fn undeclared_diag(path: &str, at: Option<Span>) -> Diagnostic {
+    mock_diag(
         E_TRACE_MOCK_UNDECLARED,
         format!(
             "`--state {path}=…` names a state path not declared in the resolved schema \
              (state-by-typo MUST fail in mocks exactly as in documents, dsl 0.4.0 §4.3, \
              0.1 §11.1.1)"
         ),
-        span,
+        at,
     )
 }
 
 /// A seed of a reserved quest path (a `quests:` entry, or `state:` /
 /// `--state` on `quest.<id>.…`) that no condition of this document reads.
-fn reserved_quest_unreferenced_diag(path: &str, span: Span) -> Diagnostic {
-    diag(
+fn reserved_quest_unreferenced_diag(path: &str, at: Option<Span>) -> Diagnostic {
+    mock_diag(
         E_TRACE_MOCK_UNDECLARED,
         format!(
             "the seed of `{path}` (a `quests:` entry or `state:`/`--state` seed) is refused: \
              no condition in this document — body slot, beat `when:` or `after:` — reads it, so the \
              seed could not change the walk (dsl 0.5.1 §1.1, 0.22.0 §3)"
         ),
-        span,
+        at,
     )
 }
 

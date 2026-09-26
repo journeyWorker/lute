@@ -346,25 +346,55 @@ pub fn resolve_fact(p: &ExecProject, f: &str) -> Result<Fact, String> {
                 "is not a ground fact `rel(arg, …)`".to_string()
             }
         })?;
-    let Some(r) = p.index.relations.iter().find(|r| r.name == fact.0) else {
-        return Err(format!("names an undeclared relation `{}`", fact.0));
-    };
-    if r.derive {
+    if p.index
+        .relations
+        .iter()
+        .any(|r| r.name == fact.0 && r.derive)
+    {
         return Err("is derived by rules and cannot be asserted".to_string());
     }
-    if r.args.len() != fact.1.len() {
-        return Err(format!("`{}` takes {} argument(s)", fact.0, r.args.len()));
+    match atom_problem(p, &fact.0, &fact.1) {
+        Some(why) => Err(why),
+        None => Ok(fact),
     }
-    for (arg, domain) in fact.1.iter().zip(&r.args) {
-        let members = domain_members(p, domain);
-        if let Some(ms) = members.filter(|ms| !ms.contains(arg)) {
-            return Err(format!(
-                "`{arg}` is not a member of `{domain}` ({})",
+}
+
+/// Why the atom `rel(args)` names no fact this project can hold — an
+/// undeclared relation, the wrong arity, or a closed-domain argument that
+/// is not a member — with a did-you-mean; `None` when it can. A derived
+/// relation is fine: an expectation (`facts:` / `notFacts:`) judges what
+/// holds after derivation (0.27 prerelease OT N-2). The reason reads after
+/// the atom, unprefixed.
+pub fn atom_problem(p: &ExecProject, rel: &str, args: &[String]) -> Option<String> {
+    let near = |s: &str, known: &mut dyn Iterator<Item = &str>| {
+        lute_manifest::suggest::nearest(s, known, 2)
+            .map(|k| format!(" — did you mean `{k}`?"))
+            .unwrap_or_default()
+    };
+    let Some(r) = p.index.relations.iter().find(|r| r.name == rel) else {
+        return Some(format!(
+            "names an undeclared relation `{rel}`{}",
+            near(rel, &mut p.index.relations.iter().map(|r| r.name.as_str()))
+        ));
+    };
+    if r.args.len() != args.len() {
+        return Some(format!(
+            "has {} argument(s), and `{rel}` takes {}: `{rel}({})`",
+            args.len(),
+            r.args.len(),
+            r.args.join(", ")
+        ));
+    }
+    for (arg, domain) in args.iter().zip(&r.args) {
+        if let Some(ms) = domain_members(p, domain).filter(|ms| !ms.contains(arg)) {
+            return Some(format!(
+                "names `{arg}`, which is not a member of `{domain}`{} ({})",
+                near(arg, &mut ms.iter().map(String::as_str)),
                 ms.join(", ")
             ));
         }
     }
-    Ok(fact)
+    None
 }
 
 /// The members of a closed argument domain — an entity kind's `members:`

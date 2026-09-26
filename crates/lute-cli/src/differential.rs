@@ -1104,13 +1104,6 @@ fn presentation_cases(
             .collect();
 
         // The trace mock: the world the play presented this beat in.
-        let span = lute_core_span::Span {
-            byte_start: 0,
-            byte_end: 0,
-            line: 0,
-            column: 0,
-            utf16_range: (0, 0),
-        };
         let mut mock = MockSet::default();
         // The persistent tiers the document declares, and the `prev.` copy
         // of each (what the last `newRun` left, which content may read).
@@ -1123,21 +1116,21 @@ fn presentation_cases(
                 || (path.starts_with("entry.") && subject.input.text.contains(path.as_str()));
             if seeded {
                 if let Some(text) = mock_literal(v) {
-                    mock.state.push((path.clone(), text, span));
+                    mock.state.push((path.clone(), text, None));
                 }
             }
         }
         for (id, st) in &pr.quests_before {
             if subject.input.text.contains(&format!("quest.{id}.")) {
                 mock.state
-                    .push((format!("quest.{id}.state"), st.clone(), span));
+                    .push((format!("quest.{id}.state"), st.clone(), None));
             }
         }
         if let Some(m) = &pr.member {
             mock.state.push((
                 lute_check::beats::OCCASION_TARGET.to_string(),
                 m.clone(),
-                span,
+                None,
             ));
         }
         // A mock's facts join the project's seeds; a world that retracted a

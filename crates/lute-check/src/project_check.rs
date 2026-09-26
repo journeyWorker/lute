@@ -990,10 +990,12 @@ pub const W_QUEST_TIER_IMPLICIT: &str = "W-QUEST-TIER-IMPLICIT";
 /// run when `c` is itself flagged here — so a parent of run-looking
 /// subquests is flagged with them, and each warning names the quests of its
 /// tree that must change together (a subquest's tier must equal its
-/// parent's, [`E_QUEST_TIER_MIX`]). A run-looking subquest whose parent stays
-/// user-tier is not flagged: alone it cannot change. A quest of this
-/// document with an explicit tier classifies its `quest.<id>.*`; any other
-/// quest's is unknown.
+/// parent's, [`E_QUEST_TIER_MIX`]). A quest that reads nothing takes no
+/// side: it neither keeps its parent user-tier nor is flagged alone, but it
+/// is flagged with a flagged quest of its tree (round-4 League R1). A
+/// run-looking subquest whose parent stays user-tier is not flagged: alone
+/// it cannot change. A quest of this document with an explicit tier
+/// classifies its `quest.<id>.*`; any other quest's is unknown.
 pub fn check_quest_tier_implicit(
     doc: &Document,
     folded: &crate::check::FoldedEnv,
@@ -1060,36 +1062,54 @@ pub fn check_quest_tier_implicit(
         }
         own.insert(q.id.as_str(), (read, children));
     }
-    let run_looking = |reads: &[ReadTier]| {
-        reads.contains(&ReadTier::Run)
-            && !reads
-                .iter()
-                .any(|t| matches!(t, ReadTier::User | ReadTier::App))
+    // Each implicit quest's standing, a join over what it reads — its own
+    // conditions and its `quest=` children: nothing (neutral) < only run
+    // state (run-looking) < any user or app state. A quest that reads
+    // nothing (a `done="true"` sibling, round-4 League R1) takes no side.
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    enum Standing {
+        Neutral,
+        Run,
+        User,
+    }
+    let of_reads = |reads: &[ReadTier]| {
+        if reads
+            .iter()
+            .any(|t| matches!(t, ReadTier::User | ReadTier::App))
+        {
+            Standing::User
+        } else if reads.contains(&ReadTier::Run) {
+            Standing::Run
+        } else {
+            Standing::Neutral
+        }
     };
-    // Grows monotonically: a child found run-looking turns its parent's
-    // read of it from user to run.
-    let mut flagged: BTreeSet<&str> = BTreeSet::new();
+    // Monotone: a standing only rises, so the loop settles.
+    let mut standing: BTreeMap<&str, Standing> =
+        own.keys().map(|id| (*id, Standing::Neutral)).collect();
     loop {
-        let before = flagged.len();
+        let mut changed = false;
         for (id, (reads, children)) in &own {
-            let mut all = reads.clone();
-            for c in children {
-                all.push(match quests.get(c) {
-                    Some(true) => ReadTier::User,
-                    Some(false) => ReadTier::Run,
-                    None if flagged.contains(c) => ReadTier::Run,
-                    None if own.contains_key(c) => ReadTier::User,
-                    None => ReadTier::Other,
-                });
-            }
-            if run_looking(&all) {
-                flagged.insert(id);
+            let from_children = children.iter().map(|c| match quests.get(c) {
+                Some(true) => Standing::User,
+                Some(false) => Standing::Run,
+                None => standing.get(c).copied().unwrap_or(Standing::Neutral),
+            });
+            let now = from_children.fold(of_reads(reads), Ord::max);
+            if standing[id] != now {
+                standing.insert(id, now);
+                changed = true;
             }
         }
-        if flagged.len() == before {
+        if !changed {
             break;
         }
     }
+    let mut flagged: BTreeSet<&str> = standing
+        .iter()
+        .filter(|(_, s)| **s == Standing::Run)
+        .map(|(id, _)| *id)
+        .collect();
     let parents_of = |id: &str| -> Vec<&str> {
         own.iter()
             .filter(|(_, (_, cs))| cs.contains(&id))
@@ -1107,6 +1127,26 @@ pub fn check_quest_tier_implicit(
             )
             .collect()
     };
+    // A neutral quest in the tree of a flagged one changes with it: the
+    // tree must share one tier.
+    loop {
+        let joining: Vec<&str> = standing
+            .iter()
+            .filter(|(id, s)| **s == Standing::Neutral && !flagged.contains(*id))
+            .map(|(id, _)| *id)
+            .filter(|id| {
+                own[id]
+                    .1
+                    .iter()
+                    .chain(&parents_of(id))
+                    .any(|n| flagged.contains(n))
+            })
+            .collect();
+        if joining.is_empty() {
+            break;
+        }
+        flagged.extend(joining);
+    }
     // A subquest whose parent stays user-tier keeps it: not flagged.
     let stays_user =
         |p: &str| quests.get(p) == Some(&true) || (own.contains_key(p) && !flagged.contains(p));
@@ -1158,8 +1198,13 @@ pub fn check_quest_tier_implicit(
             severity: Severity::Warning,
             message: format!(
                 "quest `{id}` has no `tier=`, so it is user-tier (it persists across runs), but \
-                 its conditions read only run state — {fix}",
-                id = q.id
+                 {reads} — {fix}",
+                id = q.id,
+                reads = if standing.get(q.id.as_str()) == Some(&Standing::Neutral) {
+                    "it reads no state itself and the rest of its quest tree reads only run state"
+                } else {
+                    "its conditions read only run state"
+                }
             ),
             span: q.id_span,
             layer: Layer::Logic,

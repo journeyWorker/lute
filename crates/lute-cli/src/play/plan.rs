@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use lute_manifest::schema::OccasionSelect;
 use lute_trace::exec::session::{
-    entry_flag, is_candidate, project_decisions, resolve_bridges, resolve_fact, resolve_state,
-    seed_world, ExecProject, Pick, World, WorldSeed, Write, Writes,
+    atom_problem, entry_flag, is_candidate, project_decisions, resolve_bridges, resolve_fact,
+    resolve_state, seed_world, ExecProject, Pick, World, WorldSeed, Write, Writes,
 };
 use serde_json::Value as Json;
 
@@ -740,8 +740,9 @@ pub(super) fn plan_script(
     let plan = plan_located(project, &script.steps, script_path).map_err(usage)?;
     check_expect_names(project, script)
         .map_err(|e| usage(locate_step_error(&script.steps, &e).unwrap_or_else(|| at(e).1)))?;
-    check_needles(project, script).map_err(at)?;
+    check_needles(project, script).map_err(usage)?;
     check_expect_state_values(project, script).map_err(usage)?;
+    check_expect_facts(project, script).map_err(usage)?;
     let mut world = seed_world(
         project,
         &WorldSeed {
@@ -757,11 +758,12 @@ pub(super) fn plan_script(
     Ok((plan, world))
 }
 
-/// 0.27 prerelease OT-F-2: every top-level `transcriptContains` /
-/// `transcriptLacks` needle names only attributes a presented line can
-/// carry in this project ([`lute_trace::exec::record::needle_problem`]) —
-/// otherwise the needle can never match, and a `transcriptLacks` holds
-/// although the line was said. A usage error (exit 2) before anything plays.
+/// 0.27 prerelease OT-F-2 / OT N-2: every top-level `transcriptContains` /
+/// `transcriptLacks` needle names only speakers and attributes a presented
+/// line can carry in this project
+/// ([`lute_trace::exec::record::needle_problem`]) — otherwise the needle can
+/// never match, and a `transcriptLacks` holds although the line was said. A
+/// usage error (exit 2) before anything plays, located at the needle.
 fn check_needles(p: &ExecProject, script: &PlayScript) -> Result<(), String> {
     let Some(expect) = &script.expect else {
         return Ok(());
@@ -770,11 +772,55 @@ fn check_needles(p: &ExecProject, script: &PlayScript) -> Result<(), String> {
         let Some(serde_yaml::Value::Sequence(needles)) = expect.get(key) else {
             continue;
         };
-        for needle in needles.iter().filter_map(serde_yaml::Value::as_str) {
+        for (i, needle) in needles.iter().enumerate() {
+            let Some(needle) = needle.as_str() else {
+                continue;
+            };
             if let Some(why) = lute_trace::exec::record::needle_problem(needle, &p.needles) {
-                return Err(format!("`expect.{key}` {why}"));
+                return Err(format!(
+                    "{}: `expect.{key}` {why}",
+                    script.source.at_item(&["expect", key], i)
+                ));
             }
         }
+    }
+    Ok(())
+}
+
+/// 0.27 prerelease OT N-2: every `facts:` / `notFacts:` atom of a step or
+/// end-of-play `expect:` names a fact the project can hold — a declared
+/// relation (derived ones too) at its arity whose closed-domain arguments
+/// are members ([`lute_trace::exec::session::atom_problem`]). A misspelt
+/// `notFacts` atom would hold vacuously, a `facts` one could only miss: a
+/// usage error (exit 2) with a did-you-mean, located at the atom.
+fn check_expect_facts(p: &ExecProject, script: &PlayScript) -> Result<(), String> {
+    let problem = |expect: &serde_yaml::Value| -> Option<(&'static str, usize, String)> {
+        ["facts", "notFacts"].into_iter().find_map(|key| {
+            let serde_yaml::Value::Sequence(atoms) = expect.get(key)? else {
+                return None;
+            };
+            atoms.iter().enumerate().find_map(|(i, atom)| {
+                let atom = scalar_text(atom)?;
+                let (rel, args) = crate::play_expect::parse_atom(&atom)?;
+                let why = atom_problem(p, &rel, &args)?;
+                Some((key, i, format!("`expect.{key}` entry `{atom}` {why}")))
+            })
+        })
+    };
+    for (n, _, expect) in &script.step_expects {
+        if let Some((key, i, why)) = problem(expect) {
+            let msg = format!("step {n}: {why}");
+            return Err(match script.steps.iter().find(|s| s.n == *n) {
+                Some(step) => step.at.locate_item(&["expect", key], i, &msg),
+                None => msg,
+            });
+        }
+    }
+    if let Some((key, i, why)) = script.expect.as_ref().and_then(problem) {
+        return Err(format!(
+            "{}: end of play: {why}",
+            script.source.at_item(&["expect", key], i)
+        ));
     }
     Ok(())
 }

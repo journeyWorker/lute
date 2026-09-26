@@ -15,22 +15,11 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use lute_check::{CheckInput, FoldedEnv, Mode};
-use lute_core_span::Span;
 use lute_syntax::ast::Document;
 use lute_trace::{
     merge, parse_mock_yaml, validate, MockSet, E_TRACE_ACCEPT, E_TRACE_CHOICE, E_TRACE_EVENT,
     E_TRACE_MOCK_FACT, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED,
 };
-
-fn zero_span() -> Span {
-    Span {
-        byte_start: 0,
-        byte_end: 0,
-        line: 0,
-        column: 0,
-        utf16_range: (0, 0),
-    }
-}
 
 /// Assemble `(FoldedEnv, Document)` for `text` exactly as `lute check`/
 /// `lute compile` do (no `--project`; `base` resolves any `uses:`/
@@ -95,11 +84,7 @@ fn codes(diags: &[lute_core_span::Diagnostic]) -> Vec<&str> {
 fn appendix_a_state_typo_is_undeclared() {
     let (folded, doc) = load("../../docs/examples/choice-persist.lute");
     let mocks = MockSet {
-        state: vec![(
-            "run.metHelpfuly".to_string(),
-            "true".to_string(),
-            zero_span(),
-        )],
+        state: vec![("run.metHelpfuly".to_string(), "true".to_string(), None)],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -112,7 +97,7 @@ fn appendix_a_state_typo_is_undeclared() {
 fn appendix_a_state_wrong_type_is_type_error() {
     let (folded, doc) = load("../../docs/examples/choice-persist.lute");
     let mocks = MockSet {
-        state: vec![("run.tip".to_string(), "warm".to_string(), zero_span())],
+        state: vec![("run.tip".to_string(), "warm".to_string(), None)],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -398,21 +383,13 @@ fn merge_choose_flag_replaces_file_entry_per_id() {
 fn merge_flag_state_wins_per_path() {
     let file = MockSet {
         state: vec![
-            (
-                "run.metHelpfully".to_string(),
-                "true".to_string(),
-                zero_span(),
-            ),
-            ("run.tip".to_string(), "5".to_string(), zero_span()),
+            ("run.metHelpfully".to_string(), "true".to_string(), None),
+            ("run.tip".to_string(), "5".to_string(), None),
         ],
         ..Default::default()
     };
     let flags = MockSet {
-        state: vec![(
-            "run.metHelpfully".to_string(),
-            "false".to_string(),
-            zero_span(),
-        )],
+        state: vec![("run.metHelpfully".to_string(), "false".to_string(), None)],
         ..Default::default()
     };
     let merged = merge(file, flags);
@@ -479,11 +456,7 @@ fn end_to_end_yaml_file_plus_flag_state_win_validates_clean() {
     let yaml = "state:\n  run.metHelpfully: false\n";
     let file = parse_mock_yaml(yaml).expect("valid mock yaml");
     let flags = MockSet {
-        state: vec![(
-            "run.metHelpfully".to_string(),
-            "true".to_string(),
-            zero_span(),
-        )],
+        state: vec![("run.metHelpfully".to_string(), "true".to_string(), None)],
         ..Default::default()
     };
     let merged = merge(file, flags);
@@ -519,11 +492,7 @@ fn reserved_quest_state_mock_admitted_when_document_references_it() {
         Path::new("."),
     );
     let mocks = MockSet {
-        state: vec![(
-            "quest.foo.state".to_string(),
-            "complete".to_string(),
-            zero_span(),
-        )],
+        state: vec![("quest.foo.state".to_string(), "complete".to_string(), None)],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -544,7 +513,7 @@ fn reserved_quest_objective_done_mock_admitted_when_document_references_it() {
         state: vec![(
             "quest.foo.objectives.bar.done".to_string(),
             "true".to_string(),
-            zero_span(),
+            None,
         )],
         ..Default::default()
     };
@@ -564,11 +533,7 @@ fn reserved_quest_path_mock_rejected_when_document_does_not_reference_it() {
         Path::new("."),
     );
     let mocks = MockSet {
-        state: vec![(
-            "quest.bar.state".to_string(),
-            "complete".to_string(),
-            zero_span(),
-        )],
+        state: vec![("quest.bar.state".to_string(), "complete".to_string(), None)],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -587,11 +552,7 @@ fn reserved_quest_state_mock_admitted_when_only_the_beat_when_reads_it() {
         Path::new("."),
     );
     let seed = |quest: &str| MockSet {
-        state: vec![(
-            format!("quest.{quest}.state"),
-            "failed".to_string(),
-            zero_span(),
-        )],
+        state: vec![(format!("quest.{quest}.state"), "failed".to_string(), None)],
         ..Default::default()
     };
     let diags = validate(&seed("lighthouse"), &folded, &doc);
@@ -615,11 +576,7 @@ fn reserved_quest_state_mock_outside_domain_is_type_error() {
         Path::new("."),
     );
     let mocks = MockSet {
-        state: vec![(
-            "quest.foo.state".to_string(),
-            "paused".to_string(),
-            zero_span(),
-        )],
+        state: vec![("quest.foo.state".to_string(), "paused".to_string(), None)],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -639,7 +596,7 @@ fn reserved_quest_objective_done_mock_outside_domain_is_type_error() {
         state: vec![(
             "quest.foo.objectives.bar.done".to_string(),
             "yes".to_string(),
-            zero_span(),
+            None,
         )],
         ..Default::default()
     };
@@ -666,7 +623,7 @@ fn own_quest_state_seed_admitted_in_its_reserved_domain() {
                 </quest>\n";
     let (folded, doc) = folded_and_doc(text, "local-quest-unreferenced", Path::new("."));
     let seed = |path: &str, lit: &str| MockSet {
-        state: vec![(path.to_string(), lit.to_string(), zero_span())],
+        state: vec![(path.to_string(), lit.to_string(), None)],
         ..Default::default()
     };
     assert!(validate(&seed("quest.q.state", "complete"), &folded, &doc).is_empty());
@@ -700,11 +657,7 @@ fn local_quest_state_mock_unset_admitted_when_document_references_it() {
                 </match>\n</on>\n</quest>\n";
     let (folded, doc) = folded_and_doc(text, "local-quest-referenced", Path::new("."));
     let mocks = MockSet {
-        state: vec![(
-            "quest.q.state".to_string(),
-            "unset".to_string(),
-            zero_span(),
-        )],
+        state: vec![("quest.q.state".to_string(), "unset".to_string(), None)],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);

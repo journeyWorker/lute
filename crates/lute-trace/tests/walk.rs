@@ -13,18 +13,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use lute_check::{CheckInput, Mode};
-use lute_core_span::Span;
 use lute_trace::{trace_document, MockSet, TraceExit};
-
-fn zero_span() -> Span {
-    Span {
-        byte_start: 0,
-        byte_end: 0,
-        line: 0,
-        column: 0,
-        utf16_range: (0, 0),
-    }
-}
 
 /// Assemble a [`CheckInput`] for `text` exactly as `lute check`/`lute
 /// compile`/`lute trace` do (no `--project`; `base` resolves any `uses:`/
@@ -479,11 +468,7 @@ fn hub_reevaluates_between_picks() {
 fn writes_are_sequential() {
     let input = load_input("../../docs/examples/choice-persist.lute");
     let mocks = MockSet {
-        state: vec![(
-            "run.metHelpfully".to_string(),
-            "true".to_string(),
-            zero_span(),
-        )],
+        state: vec![("run.metHelpfully".to_string(), "true".to_string(), None)],
         choose: BTreeMap::from([("sofaHelp".to_string(), vec!["tip".to_string()])]),
         ..Default::default()
     };
@@ -610,7 +595,7 @@ fn state_mocks(pairs: &[(&str, &str)]) -> MockSet {
     MockSet {
         state: pairs
             .iter()
-            .map(|(p, v)| (p.to_string(), v.to_string(), zero_span()))
+            .map(|(p, v)| (p.to_string(), v.to_string(), None))
             .collect(),
         ..Default::default()
     }

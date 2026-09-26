@@ -1167,3 +1167,105 @@ fn a_needle_attribute_no_line_can_carry_is_refused_with_a_did_you_mean() {
         assert!(t.contains(hint), "{t}");
     }
 }
+
+/// 0.27 prerelease OT N-2: a `transcriptLacks` needle whose speaker is no
+/// speaker of the project, and a `facts` / `notFacts` atom naming an unknown
+/// relation, the wrong arity or a non-member, used to hold vacuously (or
+/// only miss). They are refused like seed facts, with a did-you-mean,
+/// located at the entry: a usage error in play, an invalid test in test.
+#[test]
+fn a_misspelt_needle_speaker_or_expected_fact_is_refused_not_vacuous() {
+    let project = bridge_project(
+        "expect-vocab",
+        &[(
+            "scenes/probe/said.lute",
+            "---\nkind: scene\nid: probe.said\ntitle: Said\non: hubVisit\npriority: 99\n---\n\n\
+             ## Said\n\n@mara: The lamp is lit.\n::assert{knows(lamp)}\n",
+        )],
+    );
+    let schema = project.join("world.schema.yaml");
+    let with_cast = std::fs::read_to_string(&schema).unwrap()
+        + "cast:\n  mara: { name: Mara }\n  tomas: { name: Tomas }\n";
+    std::fs::write(&schema, with_cast).unwrap();
+
+    for (key, entry, hint) in [
+        (
+            "transcriptLacks",
+            "['@mra: The lamp is lit.']",
+            "`@mra` is not a speaker of this project — did you mean `mara`?",
+        ),
+        (
+            "notFacts",
+            "['knowz(lamp)']",
+            "undeclared relation `knowz` — did you mean `knows`?",
+        ),
+        (
+            "notFacts",
+            "['knows(lamp, mara)']",
+            "has 2 argument(s), and `knows` takes 1",
+        ),
+        (
+            "facts",
+            "['knows(lammp)']",
+            "`lammp`, which is not a member of `item` — did you mean `lamp`?",
+        ),
+    ] {
+        let out = play_in(
+            &project,
+            &format!("steps:\n  - occasion: hubVisit\nexpect:\n  {key}: {entry}\n"),
+        );
+        let t = text(&out);
+        assert_eq!(out.status.code(), Some(2), "{key}: {t}");
+        assert!(t.contains("probe.play.yaml:4:") && t.contains(hint), "{t}");
+    }
+    // A step's expectation is located at its own atom.
+    let out = play_in(
+        &project,
+        "steps:\n  - occasion: hubVisit\n    expect:\n      notFacts: [knows(lamp), knowz(lamp)]\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(
+        t.contains("probe.play.yaml:4:31: step 1: `expect.notFacts` entry `knowz(lamp)`"),
+        "{t}"
+    );
+    // The spelt-right forms play and judge as before.
+    let out = play_in(
+        &project,
+        "steps:\n  - occasion: hubVisit\nexpect:\n  facts: [knows(lamp)]\n  \
+         transcriptContains: ['@mara: The lamp is lit.']\n",
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+
+    for (key, entry, code, hint) in [
+        (
+            "transcriptLacks",
+            "'@mra: The lamp is lit.'",
+            "E-TEST-NEEDLE",
+            "did you mean `mara`?",
+        ),
+        (
+            "notFacts",
+            "'knowz(lamp)'",
+            "E-TRACE-MOCK-FACT",
+            "did you mean `knows`?",
+        ),
+        (
+            "notFacts",
+            "'knows(lammp)'",
+            "E-TRACE-MOCK-FACT",
+            "did you mean `lamp`?",
+        ),
+    ] {
+        let out = scenario_test(
+            &project,
+            &format!("file: ../scenes/probe/said.lute\nexpect:\n  {key}: [{entry}]\n"),
+        );
+        let t = text(&out);
+        assert_eq!(out.status.code(), Some(1), "{key}: {t}");
+        assert!(
+            t.contains("probe.test.yaml:3:") && t.contains(code) && t.contains(hint),
+            "{t}"
+        );
+    }
+}

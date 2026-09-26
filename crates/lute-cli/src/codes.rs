@@ -1213,7 +1213,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-TEST-NEEDLE",
-        summary: "A `*.test.yaml`'s `transcriptContains`/`transcriptLacks` needle names an attribute no transcript line shows, or a value outside its domain, so it could never match a presented line.",
+        summary: "A `*.test.yaml`'s `transcriptContains`/`transcriptLacks` needle names a speaker outside the project's cast, an attribute no transcript line shows, or a value outside its domain, so it could never match a presented line.",
         spec: &[],
     },
     Code {
@@ -1268,7 +1268,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-TRACE-MOCK-FACT",
-        summary: "A `--fact`/`facts:` entry does not parse as a ground fact pattern, or names an unknown relation, wrong arity, or a foreign argument.",
+        summary: "A `--fact`/`facts:` entry, or a test's `expect.facts`/`expect.notFacts` atom, does not parse as a ground fact pattern, or names an unknown relation, wrong arity, or a foreign argument.",
         spec: &["dsl 0.4.0 §4.3"],
     },
     Code {
@@ -1278,8 +1278,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-TRACE-MOCK-TYPE",
-        summary: "A `--state <path>=<literal>` seed's literal is not compatible with the path's reserved domain or declared type, or an answered bridge result lacks a field that content reads.",
-        spec: &["dsl 0.4.0 §4.3", "dsl 0.24.0 §5"],
+        summary: "A mock or test seed's literal (`--state <path>=<literal>`, `state:`, `quests:`) or a test's `expect.state` value is not compatible with the path's reserved domain or declared type — for a `{ domain: K }`, `{ entity: K }` or enum path, not one of its members — or an answered bridge result lacks a field that content reads.",
+        spec: &["dsl 0.4.0 §4.3", "dsl 0.24.0 §5", "dsl 0.27.0 §2"],
     },
     Code {
         code: "E-TRACE-MOCK-UNDECLARED",

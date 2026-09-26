@@ -543,7 +543,7 @@ impl TraceReport {
             out.push_str(&format!("note: {note}\n"));
         }
         for step in &self.steps {
-            render_step(step, &mut out, expand);
+            render_step(step, &mut out, expand, &self.premises);
         }
         let forced = self.forced_unknown.len();
         let forced_summary = if forced == 0 {
@@ -638,7 +638,11 @@ impl TraceReport {
     }
 }
 
-fn render_step(step: &Step, out: &mut String, expand: bool) {
+/// `premises` names why a presented entry / bundle beat is ineligible
+/// ([`TraceReport::premises`]) — its `when`, or the closed seam the engine
+/// would not raise its occasion through (a false `raisedWhen`, a holding
+/// `terminal:`, HW27-15).
+fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<String, String>) {
     match step {
         Step::Shot { number, heading } => {
             if heading.is_empty() {
@@ -743,7 +747,10 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
                     format!(", not eligible (`once=\"{once}\"` is already spent)")
                 }
                 (Some(true), _) => String::new(),
-                (Some(false), None) => ", not eligible (`when` is false)".to_string(),
+                (Some(false), None) => match premises.get(id) {
+                    Some(why) => format!(", not eligible: {why}"),
+                    None => ", not eligible (`when` is false)".to_string(),
+                },
                 (None, _) => ", eligibility unknown".to_string(),
             };
             out.push_str(&format!("  <entry {id}>   ({read}{gate})\n"));
@@ -754,12 +761,15 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
             after_unmet,
         } => {
             let gate = match eligible {
-                Some(true) => "",
+                Some(true) => String::new(),
                 Some(false) if *after_unmet => {
-                    "   (not eligible: `after` prerequisite not satisfied)"
+                    "   (not eligible: `after` prerequisite not satisfied)".to_string()
                 }
-                Some(false) => "   (not eligible: `when` is false)",
-                None => "   (eligibility unknown)",
+                Some(false) => match premises.get(id) {
+                    Some(why) => format!("   (not eligible: {why})"),
+                    None => "   (not eligible: `when` is false)".to_string(),
+                },
+                None => "   (eligibility unknown)".to_string(),
             };
             out.push_str(&format!("  <beat {id}>{gate}\n"));
         }

@@ -1444,11 +1444,11 @@ fn engine_writes_are_validated_before_anything_plays() {
         ),
         (
             "steps:\n  - engine: { facts: [slew(dragon)] }\n",
-            "`dragon` is not a member of `foe` (warden, hound)",
+            "`dragon`, which is not a member of `foe` (warden, hound)",
         ),
         (
             "steps:\n  - engine: { facts: [\"slew(warden, hound)\"] }\n",
-            "`slew` takes 1 argument(s)",
+            "has 2 argument(s), and `slew` takes 1",
         ),
         (
             "steps:\n  - engine: { facts: [slew(_)] }\n",
@@ -1468,7 +1468,7 @@ fn engine_writes_are_validated_before_anything_plays() {
             // dsl 0.27.0 §4: an `occasion:` step's `engine:` writes are
             // validated like any others before anything plays.
             "steps:\n  - engine: { facts: [slew(dragon)] }\n    occasion: hubVisit\n",
-            "`dragon` is not a member of `foe` (warden, hound)",
+            "`dragon`, which is not a member of `foe` (warden, hound)",
         ),
         (
             "steps:\n  - engine: { state: { run.floor: 1 } }\n    pick: memo\n",
