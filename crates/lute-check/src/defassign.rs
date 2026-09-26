@@ -362,22 +362,22 @@ fn walk_nodes(
                 }
                 None => check_interp_reads(&line.interps, cx, &flow.available, diags, reads),
             },
-            // dsl 0.12.0: `::next{when=}` is a one-arm, NON-DOMINATING
-            // construct — the SAME treatment a gated line's `when=` gets
-            // above: fork, prove THIS guard's own reads via
-            // `apply_condition`, then discard (a `::next` reads/writes no
-            // state of its own, so unlike a line there is no further body
-            // to check against the fork — no `interps` on a directive).
-            // `None` for every other directive tag (only `next` ever
-            // populates `.when`). A `::use` `@def` argument is spliced into
-            // the component body, so it is read here, at the call.
+            // dsl 0.12.0 / 0.26.0 §4: a directive `when=` (`::next`, `::use`,
+            // `::give`, …) is a one-arm, NON-DOMINATING construct — the SAME
+            // treatment a gated line's `when=` gets above: fork, prove THIS
+            // guard's own reads via `apply_condition`, check the directive's
+            // own reads against the fork, then discard it. A `::use` `@def`
+            // argument is spliced into the component body, so it is read
+            // here, at the call, under the call's guard.
             Node::Directive(d) => {
-                if let Some(when) = &d.when {
+                let guarded = d.when.as_ref().map(|when| {
                     let mut fork = flow.available.clone();
                     apply_condition(when, cx, &mut fork, diags, reads);
-                }
+                    fork
+                });
                 if d.tag == "use" {
-                    check_use_arg_reads(&d.attrs, cx, &flow.available, diags, reads);
+                    let available = guarded.as_ref().unwrap_or(&flow.available);
+                    check_use_arg_reads(&d.attrs, cx, available, diags, reads);
                 }
             }
             Node::On(on) => walk_on(on, cx, flow, diags, reads),
@@ -851,6 +851,14 @@ fn check_read(
     if has_default(path, cx.schema) || proven(path, assigned, &u.local, cx.schema) {
         return;
     }
+    // One report per path and place: a guarded `::use`'s guard rides every
+    // write it splices into the host (dsl 0.26.0 §4), so the same read is
+    // walked once per write.
+    if reads.iter().any(|(p, s)| {
+        p == path && s.byte_start == u.span.byte_start && s.byte_end == u.span.byte_end
+    }) {
+        return;
+    }
     let through = u
         .via
         .as_deref()
@@ -1086,6 +1094,8 @@ fn has_default(path: &str, schema: &StateSchema) -> bool {
         || crate::cel_paths::is_reserved_quest_failed_by(path)
         || crate::cel_paths::is_reserved_quest_objective_failed(path)
         || is_reserved_entry_read(path)
+        // dsl 0.26.0 §5: bound whenever a kind beat runs.
+        || path == crate::beats::OCCASION_TARGET
         || schema
             .decls
             .iter()

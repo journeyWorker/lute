@@ -281,6 +281,7 @@ pub(crate) fn check_attr_value(
         Type::Domain(name) => {
             check_domain_member(owner, name, attr, domains, snapshot, providers, diags);
         }
+        Type::Entity(kind) => check_entity_member(owner, kind, attr, domains, diags),
         Type::AssetKind(kind) => check_asset_id(kind, attr, snapshot, providers, diags),
         ty => {
             if let Some(lit) = literal_of(ty, &attr.value) {
@@ -462,6 +463,66 @@ pub(crate) fn check_domain_member(
             ),
             attr.value_span,
         ));
+    }
+}
+
+/// dsl 0.26.0 §2.5: a `{ entity: <kind> }`-typed attr value names a member of
+/// the project entity kind `kind` — resolved against the same merged
+/// vocabulary a `{ domain: … }` attr uses (entity kinds project into it,
+/// sub-kind members included, §2.3). A non-member is `E-BAD-ENUM` with a
+/// did-you-mean; an `open:` kind accepts any id (the engine mints them); a
+/// kind nobody declares is `E-DOMAIN-UNKNOWN`.
+fn check_entity_member(
+    owner: &str,
+    kind: &str,
+    attr: &Attr,
+    domains: &BTreeMap<String, Domain>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let id = match &attr.value {
+        AttrValue::Str(s) => s.as_str(),
+        AttrValue::BoolTrue => {
+            diags.push(diag(
+                "E-ATTR-TYPE",
+                Severity::Error,
+                format!(
+                    "attribute `{}` of `{owner}` expects a member of entity kind `{kind}`",
+                    attr.key
+                ),
+                attr.value_span,
+            ));
+            return;
+        }
+        AttrValue::Ref(_) => return,
+    };
+    match domains.get(kind) {
+        Some(dom) if dom.open => {}
+        Some(dom) if dom.members.iter().any(|m| m == id) => {}
+        Some(dom) => diags.push(diag(
+            "E-BAD-ENUM",
+            Severity::Error,
+            format!(
+                "`{id}` is not a member of entity kind `{kind}` (attribute `{}` of `{owner}`){}",
+                attr.key,
+                crate::rel_schema::member_hint(id, &dom.members)
+            ),
+            attr.value_span,
+        )),
+        None => {
+            let names: Vec<String> = domains.keys().cloned().collect();
+            diags.push(diag(
+                "E-DOMAIN-UNKNOWN",
+                Severity::Error,
+                format!(
+                    "attribute `{}` of `{owner}` is typed `{{ entity: {kind} }}`, but `{kind}` is \
+                     not a declared entity kind — declare it under `entities:` in a project \
+                     schema this document reaches through `uses:` (dsl 0.26.0 §2.5){}",
+                    attr.key,
+                    crate::rel_schema::member_hint(kind, &names)
+                ),
+                attr.value_span,
+            ));
+        }
     }
 }
 
@@ -663,6 +724,7 @@ fn describe(ty: &Type) -> &'static str {
         Type::Enum(_) | Type::EnumFromOption(_) => "an enum value",
         Type::ProviderRef(_) => "a provider id",
         Type::Domain(_) => "a domain id",
+        Type::Entity(_) => "an entity id",
         Type::AssetKind(_) => "an asset id",
         Type::NarrativeTime => "a narrative-time value",
     }

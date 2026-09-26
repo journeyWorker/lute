@@ -528,12 +528,12 @@ pub fn assemble_snapshot(
     // `E-REWARD-KIND` closure would otherwise silently accept any target
     // for it, defeating the point of pinning one.
     for (plugin, rk) in rk_pending {
-        if let Some(t) = &rk.target {
-            if !snap.providers.contains_key(&t.provider) {
+        if let Some(provider) = rk.target.as_ref().and_then(|t| t.provider.as_ref()) {
+            if !snap.providers.contains_key(provider) {
                 errs.push(AssembleError::UnknownRewardKindTarget {
                     plugin,
                     kind: rk.name.clone(),
-                    provider: t.provider.clone(),
+                    provider: provider.clone(),
                 });
                 continue;
             }

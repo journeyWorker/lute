@@ -30,7 +30,8 @@ use lute_syntax::ast::{AttrValue, CelKind, CelSlot, Document, Entry, Meta, Node,
 use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
 use crate::decide::{decide_slot, DecideCtx, Decided};
-use crate::lore::{is_entry_ident, is_entry_target};
+use crate::fact_env::{FactEnv, FactScope};
+use crate::lore::{is_beat_target, is_entry_ident, is_entry_target, kind_target};
 
 /// A beat attribute's shape (dsl 0.21.0 §5), anchored at the offending key
 /// or value.
@@ -177,13 +178,14 @@ pub(crate) fn lift_scene_beat(
         },
     };
 
-    let target = get("target").and_then(|v| match v.as_str().filter(|s| is_entry_target(s)) {
+    let target = get("target").and_then(|v| match v.as_str().filter(|s| is_beat_target(s)) {
         Some(t) => Some(t.to_string()),
         None => {
             push(
                 format!(
                     "`target:` must be a dotted id `Ident (\".\" Segment)*` with \
-                     `Segment ::= [A-Za-z0-9_-]+`, e.g. `npc.achilles`, got {} (dsl 0.21.0 §3.1)",
+                     `Segment ::= [A-Za-z0-9_-]+`, e.g. `npc.achilles`, or `kind:<entity kind>`, \
+                     got {} (dsl 0.21.0 §3.1, 0.26.0 §5)",
                     describe(v)
                 ),
                 top_value_span(meta, "target"),
@@ -698,12 +700,73 @@ pub fn occasion_target_ok(
     })
 }
 
+/// dsl 0.26.0 §5: the targets a `target="kind:<kind>"` beat on `decl`
+/// answers — the domain's prefix and the kind's members (a sub-kind's
+/// members are already its parent's). The one rule `lute check` (beat
+/// targets, [`E_BEAT_ATTR`]), the compiler (the beat's `targetKind`) and
+/// `lute play` (candidates) share. `Err` when the occasion draws no targets
+/// from an entity kind, the kind is unknown (with a did-you-mean) or `open:`,
+/// or a member lies outside the occasion's domain.
+pub fn kind_target_members(
+    decl: &OccasionDecl,
+    kind: &str,
+    kinds: &BTreeMap<String, EntityKindDecl>,
+) -> Result<(String, Vec<String>), String> {
+    let on = &decl.name;
+    let OccasionTarget::Domain { prefix, entity, .. } = &decl.target else {
+        return Err(format!(
+            "`target=\"kind:{kind}\"` answers occasion `{on}` for every member of a kind, but \
+             `{on}` does not draw its targets from an entity kind (declare its `target:` as \
+             `{{ prefix, entity }}`) (dsl 0.26.0 §5)"
+        ));
+    };
+    let Some(decl_kind) = kinds.get(kind) else {
+        let hint = lute_manifest::suggest::nearest(kind, kinds.keys().map(String::as_str), 2)
+            .map_or_else(String::new, |near| {
+                format!(" — did you mean `kind:{near}`?")
+            });
+        return Err(format!(
+            "`target=\"kind:{kind}\"`: `{kind}` is not a declared entity kind{hint} (dsl 0.26.0 §5)"
+        ));
+    };
+    let KindShape::Members(members) = &decl_kind.shape else {
+        return Err(format!(
+            "`target=\"kind:{kind}\"`: entity kind `{kind}` is `open:`, so its members are not \
+             known to check or play; target a kind that lists its `members:` (dsl 0.26.0 §5)"
+        ));
+    };
+    let entity_members = match kinds.get(entity).map(|k| &k.shape) {
+        Some(KindShape::Members(ms)) => Some(ms.as_slice()),
+        _ => None,
+    };
+    let legal = decl.target.domain_members(entity_members);
+    let outside: Vec<&str> = members
+        .iter()
+        .filter(|m| legal.is_none_or(|l| !l.contains(m)))
+        .map(String::as_str)
+        .collect();
+    if !outside.is_empty() {
+        return Err(format!(
+            "`target=\"kind:{kind}\"`: {} outside occasion `{on}`'s domain `{prefix}.<{entity}>`; \
+             a kind target names `{entity}` or one of its sub-kinds (dsl 0.26.0 §5)",
+            outside
+                .iter()
+                .map(|m| format!("`{m}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+                + if outside.len() == 1 { " is" } else { " are" }
+        ));
+    }
+    Ok((prefix.clone(), members.clone()))
+}
+
 /// dsl 0.22.0 §8: every beat target of one document — the scene's own
 /// `target:` and each `<entry on= target=>` — against its occasion's target
-/// domain ([`occasion_target_ok`]); outside it is [`E_BEAT_ATTR`] at the
-/// target value. Runs after the fold (the entity vocabulary comes from the
-/// imported schema). An unknown occasion, an untargeted one, or a malformed
-/// target is already someone else's diagnostic.
+/// domain ([`occasion_target_ok`], a `kind:` target [`kind_target_members`]);
+/// outside it is [`E_BEAT_ATTR`] at the target value. Runs after the fold
+/// (the entity vocabulary comes from the imported schema). An unknown
+/// occasion, an untargeted one, or a malformed target is already someone
+/// else's diagnostic.
 pub(crate) fn check_beat_target_domains(
     doc: &Document,
     beat: Option<&BeatMeta>,
@@ -711,11 +774,34 @@ pub(crate) fn check_beat_target_domains(
     kinds: &BTreeMap<String, EntityKindDecl>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    let mut judge = |on: &str, target: &str, span: Span, layer: Layer| {
+    // `restricts`: whether a target on an occasion raised for none is already
+    // reported (a scene's / bundle beat's, [`check_occasion`]); an entry's is
+    // metadata there, which a `kind:` target can never be.
+    let mut judge = |on: &str, target: &str, span: Span, layer: Layer, restricts: bool| {
         let Some(decl) = occasions.get(on) else {
+            // An unknown occasion is `E-OCCASION-UNKNOWN`'s; without any
+            // declared occasion a kind has no target prefix to answer.
+            if occasions.is_empty() && kind_target(target).is_some() {
+                diags.push(beat_diag(
+                    E_BEAT_ATTR,
+                    Severity::Error,
+                    format!(
+                        "`target=\"{target}\"` answers occasion `{on}` for every member of a \
+                         kind, which needs `{on}` declared by a plugin with a `target:` domain \
+                         (dsl 0.26.0 §5)"
+                    ),
+                    span,
+                    layer,
+                ));
+            }
             return;
         };
-        if let Err(why) = occasion_target_ok(decl, target, kinds) {
+        let verdict = match kind_target(target) {
+            Some(_) if restricts && !decl.target.takes_target() => return,
+            Some(kind) => kind_target_members(decl, kind, kinds).map(drop),
+            None => occasion_target_ok(decl, target, kinds),
+        };
+        if let Err(why) = verdict {
             diags.push(beat_diag(E_BEAT_ATTR, Severity::Error, why, span, layer));
         }
     };
@@ -730,14 +816,15 @@ pub(crate) fn check_beat_target_domains(
             target,
             top_value_span(&doc.meta, "target"),
             Layer::Content,
+            true,
         );
     }
     for entry in &doc.entries {
         let (Some((on, _)), Some((target, span))) = (&entry.on, &entry.target) else {
             continue;
         };
-        if is_entry_ident(on) && is_entry_target(target) {
-            judge(on, target, *span, Layer::Logic);
+        if is_entry_ident(on) && is_beat_target(target) {
+            judge(on, target, *span, Layer::Logic, false);
         }
     }
     // dsl 0.23.0 §4: a bundle beat's target, like an entry beat's.
@@ -745,8 +832,8 @@ pub(crate) fn check_beat_target_domains(
         let (Some((on, _)), Some((target, span))) = (&beat.on, &beat.target) else {
             continue;
         };
-        if is_entry_ident(on) && is_entry_target(target) {
-            judge(on, target, *span, Layer::Logic);
+        if is_entry_ident(on) && is_beat_target(target) {
+            judge(on, target, *span, Layer::Logic, true);
         }
     }
     // dsl 0.23.0 §2: an objective's target is checked like a beat's.
@@ -756,10 +843,139 @@ pub(crate) fn check_beat_target_domains(
             continue;
         };
         if is_entry_ident(on) && is_entry_target(target) {
-            judge(on, target, *span, Layer::Logic);
+            judge(on, target, *span, Layer::Logic, true);
         }
     }
     diags
+}
+
+/// dsl 0.26.0 §5: the member a `target="kind:<kind>"` beat was raised for —
+/// readable in its `when`, guards and text, typed by the kind.
+pub const OCCASION_TARGET: &str = "occasion.target";
+
+/// Why a read of [`OCCASION_TARGET`] outside a kind beat has no value.
+pub(crate) fn occasion_target_scope_message() -> String {
+    format!(
+        "`{OCCASION_TARGET}` is readable only in a beat or entry that targets a kind \
+         (`target=\"kind:<kind>\"`), where it is the member the occasion was raised for \
+         (dsl 0.26.0 §5)"
+    )
+}
+
+/// dsl 0.26.0 §5: the members the document's kind beats answer — the domain
+/// of [`OCCASION_TARGET`], sorted, empty without a (well-formed) kind beat.
+pub(crate) fn occasion_target_members(
+    doc: &Document,
+    beat: Option<&BeatMeta>,
+    occasions: &BTreeMap<String, OccasionDecl>,
+    kinds: &BTreeMap<String, EntityKindDecl>,
+) -> Vec<String> {
+    let scene = beat.and_then(|b| Some((b.on.as_str(), b.target.as_deref()?)));
+    let entries = doc
+        .entries
+        .iter()
+        .filter_map(|e| Some((e.on.as_ref()?.0.as_str(), e.target.as_ref()?.0.as_str())));
+    let bundles = doc
+        .beats
+        .iter()
+        .filter_map(|b| Some((b.on.as_ref()?.0.as_str(), b.target.as_ref()?.0.as_str())));
+    let mut out: Vec<String> = scene
+        .into_iter()
+        .chain(entries)
+        .chain(bundles)
+        .filter_map(|(on, target)| {
+            let kind = kind_target(target)?;
+            kind_target_members(occasions.get(on)?, kind, kinds).ok()
+        })
+        .flat_map(|(_, members)| members)
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// dsl 0.26.0 §5: in a lore document, a read of [`OCCASION_TARGET`] in an
+/// entry or bundle beat that does not target a kind is `E-UNDECLARED` (the
+/// document declares it for its kind beats; this one is never raised for a
+/// member). A scene has one beat, so its declaration is the whole scope.
+pub(crate) fn check_occasion_target_scope(doc: &Document) -> Vec<Diagnostic> {
+    let is_kind =
+        |t: &Option<(String, Span)>| t.as_ref().is_some_and(|(t, _)| kind_target(t).is_some());
+    let outside: Vec<Span> = doc
+        .entries
+        .iter()
+        .filter(|e| !is_kind(&e.target))
+        .map(|e| e.span)
+        .chain(
+            doc.beats
+                .iter()
+                .filter(|b| !is_kind(&b.target))
+                .map(|b| b.span),
+        )
+        .collect();
+    if outside.len() == doc.entries.len() + doc.beats.len() {
+        return Vec::new();
+    }
+    let within = |s: Span| {
+        outside
+            .iter()
+            .any(|o| o.byte_start <= s.byte_start && s.byte_end <= o.byte_end)
+    };
+    let mut spans: Vec<Span> = Vec::new();
+    lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
+        if slot.raw.contains(OCCASION_TARGET) && within(slot.span) {
+            spans.push(slot.span);
+        }
+    });
+    fn lines<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a lute_syntax::ast::Line)) {
+        for n in nodes {
+            match n {
+                Node::Line(l) => f(l),
+                Node::Branch(b) => b.choices.iter().for_each(|c| lines(&c.body, f)),
+                Node::Hub(h) => h.choices.iter().for_each(|c| lines(&c.body, f)),
+                Node::Match(m) => m.arms.iter().for_each(|arm| match arm {
+                    lute_syntax::ast::Arm::When { body, .. }
+                    | lute_syntax::ast::Arm::Otherwise { body, .. } => lines(body, f),
+                }),
+                Node::Objective(o) => lines(&o.body, f),
+                Node::On(o) => lines(&o.body, f),
+                _ => {}
+            }
+        }
+    }
+    let bodies = doc
+        .entries
+        .iter()
+        .filter(|e| !is_kind(&e.target))
+        .map(|e| &e.body)
+        .chain(
+            doc.beats
+                .iter()
+                .filter(|b| !is_kind(&b.target))
+                .map(|b| &b.body),
+        );
+    for body in bodies {
+        lines(body, &mut |l| {
+            spans.extend(
+                l.interps
+                    .iter()
+                    .filter(|i| i.raw == OCCASION_TARGET)
+                    .map(|i| i.span),
+            );
+        });
+    }
+    spans
+        .into_iter()
+        .map(|span| {
+            beat_diag(
+                "E-UNDECLARED",
+                Severity::Error,
+                occasion_target_scope_message(),
+                span,
+                Layer::Cel,
+            )
+        })
+        .collect()
 }
 
 /// A scene `when` reads the scene's own `scene.*` state (dsl 0.21.0 §3.1):
@@ -830,6 +1046,9 @@ pub struct ProjectBeat<'a> {
     pub id: String,
     pub on: &'a str,
     pub target: Option<&'a str>,
+    /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat's `<prefix>.<member>`
+    /// targets (`target` keeps the authored `kind:<kind>`).
+    pub kind_targets: Option<Vec<String>>,
     pub priority: i64,
     /// A scene's policy; an entry's authored `once` ([`BeatOnce::None`] when
     /// absent — an entry without `once` is repeatable).
@@ -851,6 +1070,10 @@ pub struct ProjectBeat<'a> {
     /// The `on` key / attribute — where a beat diagnostic anchors.
     pub anchor: Span,
     pub folded: &'a FoldedEnv,
+    /// The unit the beat presents, as [`crate::cast::FactProducers`] keys
+    /// its assert sites: `0` for a scene, else the entry's / bundle beat's
+    /// span start.
+    pub unit: usize,
 }
 
 impl ProjectBeat<'_> {
@@ -862,6 +1085,63 @@ impl ProjectBeat<'_> {
             ProjectBeatKind::Entry => format!("entry `{}`", self.id),
             ProjectBeatKind::Bundle => format!("beat `{}`", self.id),
         }
+    }
+
+    /// The targets the beat answers.
+    pub fn cells(&self) -> BeatCells<'_> {
+        BeatCells::of(self.target, self.kind_targets.as_deref())
+    }
+}
+
+/// dsl 0.26.0 §5: the targets one beat answers — every target (untargeted),
+/// one, or each member of a kind (`target="kind:<kind>"`).
+#[derive(Clone, Copy, Debug)]
+pub enum BeatCells<'a> {
+    Any,
+    One(&'a str),
+    Kind(&'a [String]),
+}
+
+impl<'a> BeatCells<'a> {
+    pub fn of(target: Option<&'a str>, kind_targets: Option<&'a [String]>) -> Self {
+        match (kind_targets, target) {
+            (Some(ts), _) => BeatCells::Kind(ts),
+            (None, Some(t)) => BeatCells::One(t),
+            (None, None) => BeatCells::Any,
+        }
+    }
+
+    /// Whether the beat is a candidate when the occasion is raised for `t`.
+    pub fn answers(self, t: &str) -> bool {
+        match self {
+            BeatCells::Any => true,
+            BeatCells::One(x) => x == t,
+            BeatCells::Kind(ts) => ts.iter().any(|x| x == t),
+        }
+    }
+
+    /// Whether every target `other` answers, this beat answers too.
+    pub fn covers(self, other: BeatCells<'_>) -> bool {
+        match other {
+            BeatCells::Any => matches!(self, BeatCells::Any),
+            BeatCells::One(t) => self.answers(t),
+            BeatCells::Kind(ts) => ts.iter().all(|t| self.answers(t)),
+        }
+    }
+
+    /// Whether some raise has both beats as candidates.
+    pub fn meets(self, other: BeatCells<'_>) -> bool {
+        match (self, other) {
+            (BeatCells::Any, _) | (_, BeatCells::Any) => true,
+            (BeatCells::One(t), o) | (o, BeatCells::One(t)) => o.answers(t),
+            (BeatCells::Kind(a), BeatCells::Kind(b)) => a.iter().any(|t| b.contains(t)),
+        }
+    }
+
+    /// dsl 0.26.0 §5: at equal priority a kind beat ranks after every other
+    /// candidate (the beat naming the member outranks it).
+    pub fn is_kind(self) -> bool {
+        matches!(self, BeatCells::Kind(_))
     }
 }
 
@@ -887,7 +1167,26 @@ pub fn project_beats<'a>(
                     .unwrap_or_else(|_| w.raw.clone())
             })
         };
-        if let Some(beat) = &folded.typed.beat {
+        // dsl 0.26.0 §5: `Some(None)` for a beat without a `kind:` target,
+        // `Some(Some(targets))` for one whose kind resolves, `None` for one
+        // `E-BEAT-ATTR` rejects (not listed).
+        let kind_cells = |on: &str, target: Option<&str>| -> Option<Option<Vec<String>>> {
+            let Some(kind) = target.and_then(kind_target) else {
+                return Some(None);
+            };
+            let decl = folded.occasions.get(on)?;
+            let (prefix, members) =
+                kind_target_members(decl, kind, &folded.env.rel_vocab.kinds).ok()?;
+            Some(Some(
+                members.iter().map(|m| format!("{prefix}.{m}")).collect(),
+            ))
+        };
+        if let Some((beat, kind_targets)) = folded
+            .typed
+            .beat
+            .as_ref()
+            .and_then(|b| Some((b, kind_cells(&b.on, b.target.as_deref())?)))
+        {
             let title = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml)
                 .ok()
                 .and_then(|m| {
@@ -901,6 +1200,7 @@ pub fn project_beats<'a>(
                 id: scene_beat_name(folded),
                 on: &beat.on,
                 target: beat.target.as_deref(),
+                kind_targets,
                 priority: beat.priority,
                 once: beat.once,
                 once_authored: beat.once_authored,
@@ -922,6 +1222,7 @@ pub fn project_beats<'a>(
                 title,
                 anchor: top_key_span(&doc.meta, "on"),
                 folded,
+                unit: 0,
             });
         }
         // A lore document's entry beats and bundle beats, by source position.
@@ -941,10 +1242,14 @@ pub fn project_beats<'a>(
             // entry's `target=` is metadata, not a candidate restriction.
             let target = match &entry.target {
                 None => None,
+                Some((t, _)) if kind_target(t).is_some() => Some(t.as_str()),
                 Some((t, _)) if is_entry_target(t) => {
                     beat_target_restricts(on, &folded.occasions).then_some(t.as_str())
                 }
                 Some(_) => continue,
+            };
+            let Some(kind_targets) = kind_cells(on, target) else {
+                continue;
             };
             let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
                 None => BeatOnce::None,
@@ -962,6 +1267,7 @@ pub fn project_beats<'a>(
                     id: entry.id.clone(),
                     on,
                     target,
+                    kind_targets,
                     priority,
                     once,
                     once_authored: entry.once.is_some(),
@@ -974,6 +1280,7 @@ pub fn project_beats<'a>(
                     title: entry.title.as_ref().map(|(t, _)| t.clone()),
                     anchor: *on_span,
                     folded,
+                    unit: entry.span.byte_start,
                 },
             ));
         }
@@ -990,7 +1297,7 @@ pub fn project_beats<'a>(
                     || beat
                         .target
                         .as_ref()
-                        .is_some_and(|(t, _)| !is_entry_target(t))
+                        .is_some_and(|(t, _)| !is_beat_target(t))
                     || beat
                         .priority
                         .as_ref()
@@ -1001,6 +1308,10 @@ pub fn project_beats<'a>(
                 {
                     continue;
                 }
+                let target = beat.target.as_ref().map(|(t, _)| t.as_str());
+                let Some(kind_targets) = kind_cells(on, target) else {
+                    continue;
+                };
                 lore.push((
                     beat.span.byte_start,
                     ProjectBeat {
@@ -1008,7 +1319,8 @@ pub fn project_beats<'a>(
                         kind: ProjectBeatKind::Bundle,
                         id: crate::bundles::bundle_beat_key(doc_id, &beat.id),
                         on,
-                        target: beat.target.as_ref().map(|(t, _)| t.as_str()),
+                        target,
+                        kind_targets,
                         priority: crate::bundles::bundle_beat_priority(beat),
                         once: crate::bundles::bundle_beat_once(beat),
                         once_authored: beat.once.is_some(),
@@ -1025,6 +1337,7 @@ pub fn project_beats<'a>(
                         title: beat.title.as_ref().map(|(t, _)| t.clone()),
                         anchor: *on_span,
                         folded,
+                        unit: beat.span.byte_start,
                     },
                 ));
             }
@@ -1099,7 +1412,10 @@ struct Beat<'a> {
     name: String,
     on: &'a str,
     target: Option<&'a str>,
+    /// dsl 0.26.0 §5: [`ProjectBeat::kind_targets`].
+    kind_targets: Option<Vec<String>>,
     priority: i64,
+    once: BeatOnce,
     /// dsl 0.23.0 §3: presented beside the winner, never instead of it.
     also: bool,
     /// Always eligible: no `after:`, and a `when` absent or deciding true.
@@ -1109,13 +1425,26 @@ struct Beat<'a> {
     /// The `when` after `@def` expansion in its own document (`None` when
     /// absent) — what messages quote.
     when: Option<String>,
+    /// The `when` slot's span — where the fact envelope's must set is read.
+    when_span: Option<Span>,
     /// dsl 0.24.0 (T3-3): the eligibility the tie check conjoins across
     /// documents — the expanded `when` AND what the beat's `once` requires
-    /// ([`once_guard`]); `None` when neither constrains.
+    /// ([`once_guard`]) AND (dsl 0.26.0 §8) `!holds(F)` for every fact `F`
+    /// only its own unplayed presentation can assert
+    /// ([`crate::cast::unit_facts`]); `None` when none constrains.
     eligible: Option<String>,
-    /// [`Self::eligible`]'s in-domain conjuncts, typed in its own document
-    /// (a pure-schedule `holds(A)` contributing its rules' `cel()` guards).
-    conjuncts: crate::reachability::Conjuncts,
+    /// [`Self::eligible`] in disjunctive normal form, typed in its own
+    /// document (a pure-schedule `holds(A)` contributing its rules' `cel()`
+    /// guards).
+    dnf: crate::reachability::Dnf,
+    /// The facts the beat asserts that may hold before it plays, as
+    /// `holds(rel(a,b))` pseudo-paths, each with why — what a tie message
+    /// says when another beat reads one.
+    persists: Vec<(String, String)>,
+    /// The flag that stays set across runs once the beat played:
+    /// `visited('<id>')` for a scene or bundle beat, `entry.<id>.everRead`
+    /// for an entry.
+    ever_flag: String,
     /// A defaulted `once: run` (a scene's or bundle beat's; never an
     /// entry's, whose `once` is always written) with a `when` that reads
     /// only user-tier state (dsl 0.23.1).
@@ -1123,6 +1452,12 @@ struct Beat<'a> {
     /// Where a warning anchors: the `on` key / attribute.
     anchor: Span,
     folded: &'a FoldedEnv,
+}
+
+impl Beat<'_> {
+    fn cells(&self) -> BeatCells<'_> {
+        BeatCells::of(self.target, self.kind_targets.as_deref())
+    }
 }
 
 /// `W-BEAT-PRIORITY-TIE` (dsl 0.22.0 §13): two beats on one `select: first`
@@ -1167,6 +1502,8 @@ pub const W_BEAT_ONCE_RUN_USER: &str = "W-BEAT-ONCE-RUN-USER";
 pub fn check_project_beats(
     docs: &[(PathBuf, Document)],
     foldeds: &[&FoldedEnv],
+    producers: &crate::cast::FactProducers,
+    env: Option<&FactEnv>,
 ) -> Vec<(PathBuf, Diagnostic)> {
     let params = BTreeMap::new();
     // dsl 0.23.0 §6: a quest's tier (`tier="run"`, else user) — project-wide,
@@ -1204,11 +1541,26 @@ pub fn check_project_beats(
             let holds = pb.when_slot.is_none_or(|w| {
                 matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true)))
             });
-            let eligible = match (pb.when.as_deref(), guard) {
-                (Some(w), Some(g)) => Some(format!("({w}) && {g}")),
-                (Some(w), None) => Some(w.to_string()),
-                (None, g) => g,
-            };
+            // dsl 0.26.0 §8: a fact only this beat's unplayed presentation
+            // asserts does not hold while it is eligible.
+            let mut absent = Vec::new();
+            let mut persists = Vec::new();
+            for f in
+                crate::cast::unit_facts(producers, &folded.env.rel_vocab, pb.path, pb.unit, pb.once)
+            {
+                match f.persists {
+                    None => absent.push(format!("!{}", f.query)),
+                    Some(why) => persists.push((f.query.replace(", ", ","), why)),
+                }
+            }
+            let eligible = pb
+                .when
+                .as_deref()
+                .map(|w| format!("({w})"))
+                .into_iter()
+                .chain(guard)
+                .chain(absent)
+                .reduce(|acc, c| format!("{acc} && {c}"));
             let user_tier = UserTier {
                 relations: &folded.env.rel_vocab.relations,
                 quests: &quest_tiers,
@@ -1218,7 +1570,9 @@ pub fn check_project_beats(
                 name: pb.name(),
                 on: pb.on,
                 target: pb.target,
+                kind_targets: pb.kind_targets,
                 priority: pb.priority,
+                once: pb.once,
                 also: pb.also,
                 always: pb.after.is_none() && holds,
                 unspent: pb.once == BeatOnce::None,
@@ -1228,8 +1582,8 @@ pub fn check_project_beats(
                         .when
                         .as_deref()
                         .is_some_and(|w| reads_only_user(w, &user_tier)),
-                conjuncts: eligible.as_deref().map_or_else(Default::default, |e| {
-                    crate::reachability::when_conjuncts(
+                dnf: eligible.as_deref().map_or_else(Default::default, |e| {
+                    crate::reachability::when_dnf(
                         e,
                         &defs,
                         &folded.env.state,
@@ -1237,14 +1591,27 @@ pub fn check_project_beats(
                     )
                 }),
                 eligible,
+                persists,
+                ever_flag: match pb.kind {
+                    ProjectBeatKind::Entry => format!("entry.{}.everRead", pb.id),
+                    ProjectBeatKind::Scene | ProjectBeatKind::Bundle => {
+                        format!("visited('{}')", pb.id)
+                    }
+                },
+                when_span: pb.when_slot.map(|w| w.span),
                 when: pb.when,
                 anchor: pb.anchor,
                 folded,
             }
         })
         .collect();
-    // Stable: equal priorities keep the tiebreak order.
-    beats.sort_by(|a, b| b.priority.cmp(&a.priority));
+    // Stable: equal priorities keep the tiebreak order, a kind beat after
+    // the others of its priority (dsl 0.26.0 §5).
+    beats.sort_by(|a, b| {
+        b.priority
+            .cmp(&a.priority)
+            .then(a.cells().is_kind().cmp(&b.cells().is_kind()))
+    });
 
     let mut out = share_diags;
     for b in beats.iter().filter(|b| b.run_once_user_when) {
@@ -1281,11 +1648,7 @@ pub fn check_project_beats(
         }
         let target = b.target.map_or_else(String::new, |t| format!(" for `{t}`"));
         if let Some(a) = beats[..j].iter().find(|a| {
-            !a.also
-                && a.on == b.on
-                && (a.target.is_none() || a.target == b.target)
-                && a.always
-                && a.unspent
+            !a.also && a.on == b.on && a.cells().covers(b.cells()) && a.always && a.unspent
         }) {
             let spent = if a.name.starts_with("entry") {
                 "an entry without `once`"
@@ -1313,8 +1676,9 @@ pub fn check_project_beats(
         // dsl 0.24.0 (T1-8): an untargeted `B` on an occasion with a closed
         // target domain is a candidate at every member — and shadowed when,
         // at EVERY member, an earlier always-eligible never-spent beat for
-        // that member wins (the per-target ladders of `lute beats`).
-        if b.target.is_none() {
+        // that member wins (the per-target ladders of `lute beats`). dsl
+        // 0.26.0 §5: so is a kind beat at every member of its kind.
+        if b.target.is_none() || b.cells().is_kind() {
             if let Some(shadowers) = shadowed_on_every_target(b, &beats[..j]) {
                 let listed: Vec<String> = shadowers
                     .iter()
@@ -1326,13 +1690,22 @@ pub fn check_project_beats(
                         W_BEAT_SHADOWED,
                         Severity::Warning,
                         format!(
-                            "{} can never win occasion `{}`: it answers every target, but on \
-                             every target of the occasion's domain an earlier beat for that \
+                            "{} can never win occasion `{}`: it answers every {}, but on \
+                             every {} an earlier beat for that \
                              target is always eligible (no `after:`, and its `when` is absent \
                              or always true) and never spent, so it wins every time — {} \
                              (dsl 0.21.0 §5)",
                             b.name,
                             b.on,
+                            b.target.filter(|_| b.cells().is_kind()).map_or_else(
+                                || "target".to_string(),
+                                |t| format!("member of `{t}`")
+                            ),
+                            if b.cells().is_kind() {
+                                "one of them"
+                            } else {
+                                "target of the occasion's domain"
+                            },
                             listed.join(", ")
                         ),
                         b.anchor,
@@ -1348,14 +1721,26 @@ pub fn check_project_beats(
                 !a.also
                     && a.on == b.on
                     && a.priority == b.priority
-                    && (a.target.is_none() || b.target.is_none() || a.target == b.target)
-                    && !provably_exclusive(a, b)
+                    && a.cells().meets(b.cells())
+                    // dsl 0.26.0 §5: at equal priority the beat naming the
+                    // member (or none) outranks a kind beat — no file order.
+                    && a.cells().is_kind() == b.cells().is_kind()
+                    && !provably_exclusive(a, b, env)
             })
             .collect();
         if partners.is_empty() {
             continue;
         }
         let names: Vec<&str> = partners.iter().map(|a| a.name.as_str()).collect();
+        // dsl 0.26.0 §8 (T3-2): say why each pair is not exclusive.
+        let why = match partners.as_slice() {
+            [a] => why_not_exclusive(a, b),
+            many => many
+                .iter()
+                .map(|a| format!("with {}: {}", a.name, why_not_exclusive(a, b)))
+                .collect::<Vec<_>>()
+                .join("; "),
+        };
         out.push((
             b.path.clone(),
             beat_diag(
@@ -1363,9 +1748,9 @@ pub fn check_project_beats(
                 Severity::Warning,
                 format!(
                     "{} ties {} on occasion `{}`{target} at priority {}, and their `when`s are \
-                     not provably exclusive — when both are eligible the winner is whichever \
-                     comes first in file order (today {}), so renaming or moving a file \
-                     changes it; give one a different `priority`, or make the conditions \
+                     not provably exclusive ({why}) — when both are eligible the winner is \
+                     whichever comes first in file order (today {}), so renaming or moving a \
+                     file changes it; give one a different `priority`, or make the conditions \
                      exclusive (dsl 0.22.0 §13)",
                     b.name,
                     names.join(", "),
@@ -1382,36 +1767,40 @@ pub fn check_project_beats(
 }
 
 /// dsl 0.24.0 (T1-8): for an untargeted `b` on an occasion whose target
-/// domain is closed (enumerable members), the shadowing beat per target —
-/// `Some` only when EVERY `<prefix>.<member>` has an earlier (in `earlier`,
-/// selection order) non-`also` beat on the occasion, targeted at that member
-/// or untargeted, that is always eligible and never spent.
+/// domain is closed (enumerable members) — or (dsl 0.26.0 §5) a kind beat,
+/// over its kind's members — the shadowing beat per target: `Some` only when
+/// EVERY target has an earlier (in `earlier`, selection order) non-`also`
+/// beat on the occasion answering it that is always eligible and never spent.
 fn shadowed_on_every_target<'b, 'a>(
     b: &Beat<'a>,
     earlier: &'b [Beat<'a>],
 ) -> Option<Vec<(String, &'b Beat<'a>)>> {
-    let decl = b.folded.occasions.get(b.on)?;
-    let OccasionTarget::Domain { prefix, entity, .. } = &decl.target else {
-        return None;
+    let targets: Vec<String> = match &b.kind_targets {
+        Some(ts) => ts.clone(),
+        None => {
+            let decl = b.folded.occasions.get(b.on)?;
+            let OccasionTarget::Domain { prefix, entity, .. } = &decl.target else {
+                return None;
+            };
+            let kind_members = match &b.folded.env.rel_vocab.kinds.get(entity)?.shape {
+                KindShape::Members(ms) => Some(ms.as_slice()),
+                KindShape::Open | KindShape::Invalid => None,
+            };
+            decl.target
+                .domain_members(kind_members)?
+                .iter()
+                .map(|m| format!("{prefix}.{m}"))
+                .collect()
+        }
     };
-    let kind_members = match &b.folded.env.rel_vocab.kinds.get(entity)?.shape {
-        KindShape::Members(ms) => Some(ms.as_slice()),
-        KindShape::Open | KindShape::Invalid => None,
-    };
-    let members = decl.target.domain_members(kind_members)?;
-    if members.is_empty() {
+    if targets.is_empty() {
         return None;
     }
-    members
-        .iter()
-        .map(|m| {
-            let t = format!("{prefix}.{m}");
+    targets
+        .into_iter()
+        .map(|t| {
             let a = earlier.iter().find(|a| {
-                !a.also
-                    && a.on == b.on
-                    && a.target.is_none_or(|at| at == t)
-                    && a.always
-                    && a.unspent
+                !a.also && a.on == b.on && a.cells().answers(&t) && a.always && a.unspent
             })?;
             Some((t, a))
         })
@@ -1528,8 +1917,13 @@ pub fn presence_ladder(
             (pb, always, spent)
         })
         .collect();
-    // Stable: equal priorities keep the tiebreak order.
-    beats.sort_by(|a, b| b.0.priority.cmp(&a.0.priority));
+    // Stable: equal priorities keep the tiebreak order, a kind beat after
+    // the others of its priority (dsl 0.26.0 §5).
+    beats.sort_by(|a, b| {
+        b.0.priority
+            .cmp(&a.0.priority)
+            .then(a.0.cells().is_kind().cmp(&b.0.cells().is_kind()))
+    });
     let mut out: BTreeMap<PathBuf, BTreeMap<usize, Vec<String>>> = BTreeMap::new();
     for (j, (b, _, _)) in beats.iter().enumerate() {
         let select = b
@@ -1543,7 +1937,7 @@ pub fn presence_ladder(
         let spent: Vec<String> = beats[..j]
             .iter()
             .filter(|(a, always, _)| {
-                *always && !a.also && a.on == b.on && (a.target.is_none() || a.target == b.target)
+                *always && !a.also && a.on == b.on && a.cells().covers(b.cells())
             })
             .filter_map(|(_, _, spent)| spent.clone())
             .collect();
@@ -1556,32 +1950,108 @@ pub fn presence_ladder(
     out
 }
 
-/// `a` and `b` can never be eligible together: the decider folds the
-/// conjunction of their eligibilities (`when` and `once`, [`once_guard`]) to
-/// `false` (in `b`'s document), or two of their conjuncts pin one path to
-/// disjoint values. An unconstrained eligibility never excludes anything.
-fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> bool {
+/// `a` and `b` can never be eligible together: two of the alternatives of
+/// their eligibilities (`when`, `once` and the facts only their own
+/// presentation asserts — [`Beat::eligible`]), negations normalized (dsl
+/// 0.26.0 §8), pin one path to disjoint values in every pairing; or the
+/// decider folds their conjunction to `false` — in either beat's document,
+/// under `env`'s must set at that beat's `when` slot when `check-project`
+/// has one (both are judged in the same state, so a fact guaranteed at
+/// either slot holds). An unconstrained eligibility never excludes
+/// anything.
+fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>, env: Option<&FactEnv>) -> bool {
     let (Some(wa), Some(wb)) = (&a.eligible, &b.eligible) else {
         return false;
     };
-    if crate::reachability::provably_exclusive(&a.conjuncts, &b.conjuncts) {
+    if crate::reachability::provably_exclusive(&a.dnf, &b.dnf) {
         return true;
     }
     let params = BTreeMap::new();
-    let defs = DefTable {
-        bodies: &b.folded.def_bodies,
-        params: &b.folded.env.def_params,
+    let both = format!("({wa}) && ({wb})");
+    [b, a].into_iter().any(|x| {
+        let defs = DefTable {
+            bodies: &x.folded.def_bodies,
+            params: &x.folded.env.def_params,
+        };
+        let ctx = DecideCtx {
+            schema: &x.folded.env.state,
+            dollar: None,
+            params: &params,
+            facts: env.zip(x.when_span).map(|(env, span)| FactScope {
+                env,
+                vocab: &x.folded.env.rel_vocab,
+                path: x.path.as_path(),
+                span,
+                wip: false,
+            }),
+        };
+        matches!(decide_slot(&both, &defs, &ctx), Some(Decided::Bool(false)))
+    })
+}
+
+/// dsl 0.26.0 §8 (T3-2): why `a` and `b` are not [`provably_exclusive`],
+/// as a clause: a beat that constrains nothing, a flag that outlives a
+/// `once: run` spend, a fact one asserts that may hold before it plays, or
+/// the paths the two alternatives that overlap constrain.
+fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> String {
+    let Some((da, db)) = crate::reachability::non_exclusive_witness(&a.dnf, &b.dnf) else {
+        return "their conjunction does not decide `false`".to_string();
     };
-    let ctx = DecideCtx {
-        schema: &b.folded.env.state,
-        dollar: None,
-        params: &params,
-        facts: None,
+    for (x, y, dy) in [(a, b, db), (b, a, da)] {
+        if x.once == BeatOnce::Run && dy.requires_true(&x.ever_flag) {
+            return format!(
+                "`{}` persists across runs; `once: run` does not, so in a later run both are \
+                 eligible",
+                x.ever_flag
+            );
+        }
+        if let Some((fact, why)) = x.persists.iter().find(|(f, _)| dy.requires_true(f)) {
+            return format!(
+                "{} reads `{fact}`, which {} asserts, but {why}",
+                y.name, x.name
+            );
+        }
+    }
+    for x in [a, b] {
+        if x.eligible.is_none() {
+            let spend = match (x.once, x.name.starts_with("entry")) {
+                (BeatOnce::Run, false) => ", and its `once: run` sets no flag a `when` can read",
+                _ => "",
+            };
+            return format!("{} has no `when`{spend}", x.name);
+        }
+    }
+    let list = |d: &crate::reachability::Disjunct| {
+        let paths: std::collections::BTreeSet<&str> = d.paths().collect();
+        paths
+            .into_iter()
+            .map(|p| format!("`{p}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
     };
-    matches!(
-        decide_slot(&format!("({wa}) && ({wb})"), &defs, &ctx),
-        Some(Decided::Bool(false))
-    )
+    let shared: std::collections::BTreeSet<&str> =
+        da.paths().filter(|p| db.paths().any(|q| q == *p)).collect();
+    if !shared.is_empty() {
+        let shared: Vec<String> = shared.into_iter().map(|p| format!("`{p}`")).collect();
+        return format!("both allow a common value of {}", shared.join(", "));
+    }
+    match (list(da), list(db)) {
+        (pa, pb) if pa.is_empty() && pb.is_empty() => {
+            "neither `when` compares a path the checker can read".to_string()
+        }
+        (pa, pb) if pa.is_empty() => format!(
+            "{}'s condition compares no path the checker can read; {} reads {pb}",
+            a.name, b.name
+        ),
+        (pa, pb) if pb.is_empty() => format!(
+            "{}'s condition compares no path the checker can read; {} reads {pa}",
+            b.name, a.name
+        ),
+        (pa, pb) => format!(
+            "{} reads {pa} and {} reads {pb}: no path both constrain",
+            a.name, b.name
+        ),
+    }
 }
 
 /// What [`reads_only_user`] needs to know about tiers: the relations the
@@ -1771,4 +2241,64 @@ pub(crate) fn share_without_once(key: &str) -> String {
          `once` period, so each one writes the same `once` (`run`, `user`, `day` or `slot`) — add \
          it, or remove `share` (dsl 0.25.0 §2)"
     )
+}
+
+/// dsl 0.26.0 §8 (T3-3, `lute beats`): per beat of `beats` — one root's
+/// [`project_beats`] in selection order (priority descending, then project
+/// order) — the index of the earlier beat that always wins where it is
+/// eligible: a non-`also` beat on the same `select: first` occasion, a
+/// candidate whenever it is (untargeted, or its target), never spent, with
+/// no `after:`, whose `when` the later beat's `when` implies (the same
+/// condition, or a stronger one on the paths it reads). A fallback so
+/// covered never plays while the beat above it stands; unlike
+/// [`W_BEAT_SHADOWED`] that is often the design (a lead's fallback for areas
+/// that do not answer), so it is a verdict, not a warning. A beat whose
+/// coverer has no `when` at all is shadowed instead, and not listed here.
+pub fn coverers(beats: &[ProjectBeat<'_>]) -> Vec<Option<usize>> {
+    let norm = |w: &str| w.split_whitespace().collect::<Vec<_>>().join(" ");
+    let dnfs: Vec<Option<crate::reachability::Dnf>> = beats
+        .iter()
+        .map(|pb| {
+            pb.when.as_deref().map(|w| {
+                let defs = DefTable {
+                    bodies: &pb.folded.def_bodies,
+                    params: &pb.folded.env.def_params,
+                };
+                crate::reachability::when_dnf(
+                    w,
+                    &defs,
+                    &pb.folded.env.state,
+                    Some(&pb.folded.env.rel_vocab),
+                )
+            })
+        })
+        .collect();
+    beats
+        .iter()
+        .enumerate()
+        .map(|(j, b)| {
+            let select = b
+                .folded
+                .occasions
+                .get(b.on)
+                .map_or(OccasionSelect::First, |o| o.select);
+            if select != OccasionSelect::First || b.also {
+                return None;
+            }
+            let bw = dnfs[j].as_ref()?;
+            (0..j).find(|&i| {
+                let a = &beats[i];
+                let Some(aw) = dnfs[i].as_ref() else {
+                    return false;
+                };
+                !a.also
+                    && a.on == b.on
+                    && a.cells().covers(b.cells())
+                    && a.once == BeatOnce::None
+                    && a.after.is_none()
+                    && (a.when.as_deref().map(norm) == b.when.as_deref().map(norm)
+                        || crate::reachability::implies(bw, aw))
+            })
+        })
+        .collect()
 }

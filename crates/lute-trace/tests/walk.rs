@@ -1111,3 +1111,41 @@ fn guarded_set_writes_only_when_its_guard_holds() {
     assert!(sets(&report).is_empty(), "{report:#?}");
     assert_eq!(outcomes(&report), ["otherwise", "otherwise"], "{report:#?}");
 }
+
+/// dsl 0.26.0 §7 (T1-4): a taken `::next` is followed to its label — the
+/// content after the label plays, the content it skips does not, as in play.
+#[test]
+fn a_taken_next_continues_at_its_label() {
+    let text = "---\nkind: scene\nid: jump\nstate:\n  run.gold: { type: number, default: 0 }\n---\n\n## Door\n\n\
+                ::next{to=\"hall\" when=\"run.gold == 0\"}\n@narrator: The guard blocks the door.\n\n\
+                ## Hall\n\n::mark{id=\"hall\"}\n@narrator: The treasure hall.\n::set{run.gold += 10}\n";
+    let input = input_for(text, "jump.lute", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert!(matches!(exit, TraceExit::Complete), "{exit:?}");
+    let said = report.said();
+    assert!(said.contains("The treasure hall."), "{said}");
+    assert!(!said.contains("blocks the door"), "{said}");
+    assert_eq!(
+        report.final_state.get("run.gold").map(String::as_str),
+        Some("10")
+    );
+}
+
+/// dsl 0.26.0 §7 (T1-5): an `::accept` in a quest `<on>` handler activates
+/// the accept-driven sibling it names, as play does.
+#[test]
+fn a_handler_accept_activates_its_quest() {
+    let text = "---\nkind: quest\nstate:\n  run.fish: { type: number, default: 1 }\n---\n\n\
+                <quest id=\"first\" start=\"true\">\n  <objective id=\"a\" done=\"run.fish >= 1\"/>\n\
+                  <on event=\"questComplete\">\n    ::accept{quest=\"second\"}\n  </on>\n</quest>\n\n\
+                <quest id=\"second\">\n  <objective id=\"b\" done=\"run.fish >= 2\"/>\n</quest>\n";
+    let input = input_for(text, "handler.lute", Path::new("."));
+    let (report, _) = trace_document(&input, MockSet::default());
+    let last = report
+        .decisions
+        .iter()
+        .filter(|d| d.construct == "quest" && d.id == "second")
+        .next_back()
+        .map(|d| d.outcome.as_str());
+    assert_eq!(last, Some("active"), "{:#?}", report.decisions);
+}

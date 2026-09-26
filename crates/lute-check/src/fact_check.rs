@@ -256,9 +256,9 @@ struct SlotVerdict {
     base: Option<Decided>,
     with: Option<Decided>,
     atoms: Vec<Atom>,
-    /// dsl 0.23.0 §10 (`--wip`): decided false under the envelope, but not
-    /// under its work-in-progress twin — only a relation nothing produces
-    /// yet makes the guard dead.
+    /// dsl 0.23.0 §10 (`--wip`): decided under the envelope, but not the
+    /// same way under its work-in-progress twin — only producers not written
+    /// yet decide the guard.
     wip: bool,
     /// dsl 0.25.0 §1: why pairs of the guard's required `holds` conjuncts
     /// can never hold together (each makes the guard false).
@@ -284,8 +284,10 @@ impl SlotVerdict {
         if self.wip {
             d.severity = Severity::Warning;
             d.message.push_str(
-                " — a warning under `--wip`: only relations that nothing produces yet (no seed, \
-                 assert, rule, or reserved declaration) make it so (dsl 0.23.0 §10)",
+                " — a warning under `--wip`: it is dead only for want of producers not written \
+                 yet (relations with no seed, assert, rule, or reserved declaration, or written \
+                 only by a component `::assert` with an unbound `@param`) (dsl 0.23.0 §10, \
+                 0.26.0 §2.6)",
             );
         }
         d
@@ -490,12 +492,12 @@ impl<'a> Guards<'a> {
             })
             .collect();
         let with = decide(expr, &with_ctx);
-        let wip = self.env.wip.is_some() && with == Some(Decided::Bool(false)) && {
+        let wip = self.env.wip.is_some() && matches!(with, Some(Decided::Bool(_))) && {
             let mut wip_ctx = self.ctx(dollar, slot.span, true);
             if let Some(scope) = &mut wip_ctx.facts {
                 scope.wip = true;
             }
-            decide(expr, &wip_ctx) != Some(Decided::Bool(false))
+            decide(expr, &wip_ctx) != with
         };
         Some(SlotVerdict {
             base: decide(expr, &self.ctx(dollar, slot.span, false)),
@@ -507,10 +509,12 @@ impl<'a> Guards<'a> {
         })
     }
 
-    /// `true` iff `slot` decides `value` with the fact envelope in scope.
+    /// `true` iff `slot` decides `value` with the fact envelope in scope —
+    /// and, under `--wip` (dsl 0.26.0 §2.6), not only for want of producers
+    /// not written yet.
     fn decides_to(&self, slot: &CelSlot, value: bool) -> bool {
         self.eval(slot, None)
-            .is_some_and(|v| v.with == Some(Decided::Bool(value)))
+            .is_some_and(|v| v.with == Some(Decided::Bool(value)) && !v.wip)
     }
 
     /// dsl 0.5.2 §2.3: a load-bearing `S == 'unset'` comparison already roots

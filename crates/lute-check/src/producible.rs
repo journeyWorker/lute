@@ -102,7 +102,10 @@ pub fn producible(
                         true
                     }
                 }
-                BodyLiteral::Neg(_) | BodyLiteral::Guard { .. } | BodyLiteral::Cmp { .. } => true,
+                BodyLiteral::Neg(_)
+                | BodyLiteral::Guard { .. }
+                | BodyLiteral::Cmp { .. }
+                | BodyLiteral::Count { .. } => true,
             });
             if clause_satisfiable {
                 result.insert(head.clone(), true);

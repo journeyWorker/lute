@@ -21,8 +21,10 @@ pub mod def_decl;
 pub mod def_inline;
 pub mod defassign;
 pub mod directives;
+pub mod display_names;
 pub mod envelope;
 pub mod fact_check;
+pub mod fact_edges;
 pub mod fact_env;
 pub mod fact_must;
 pub mod fact_write;
@@ -45,6 +47,7 @@ pub mod schema_import;
 pub mod set_op;
 pub mod set_type;
 pub(crate) mod solution;
+pub mod state_decls;
 pub mod tag;
 pub mod temporal;
 pub mod time;
@@ -113,9 +116,10 @@ pub use inject::{
     StageState,
 };
 pub use lore::{
-    check_entries, document_series, entry_read_decl, entry_read_path, is_entry_ident,
-    is_entry_target, parse_entry_order, resolve_entry_series, EntryRecord, EntrySeries,
-    E_ENTRY_ATTR, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER, W_ENTRY_REF_UNKNOWN,
+    check_entries, document_series, entry_read_decl, entry_read_path, is_beat_target,
+    is_entry_ident, is_entry_target, kind_target, parse_entry_order, resolve_entry_series,
+    EntryRecord, EntrySeries, E_ENTRY_ATTR, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER,
+    W_ENTRY_REF_UNKNOWN,
 };
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, check_quest_rewards,

@@ -334,6 +334,19 @@ fn ground_rule(rule: &Rule, at: &BTreeMap<&str, &str>) -> Rule {
                 negated: *negated,
                 span: *span,
             },
+            BodyLiteral::Count {
+                atom,
+                distinct,
+                op,
+                n,
+                span,
+            } => BodyLiteral::Count {
+                atom: ground_atom(atom, at),
+                distinct: distinct.clone(),
+                op: *op,
+                n: *n,
+                span: *span,
+            },
         })
         .collect();
     Rule {

@@ -59,9 +59,19 @@ as `false`. A run-tier quest's reset clears both.
 - **unknown** → the quest is unknown; its objectives are unknown.
 
 A quest with **no `start`** is *accept-driven*: an external accept (the CLI
-`--accept` in `lute trace`, an engine "accept quest" action in production, or
-an `accept` record in a scene) activates it. A quest that carries a `start`
-predicate needs no accept (`E-TRACE-ACCEPT` guards the mismatch).
+`--accept` in `lute trace`, an engine "accept quest" action in production —
+`engine: { accept: [<quest id>] }` in a `lute play` step, dsl 0.26.0 §7 — or
+an `accept` record in a scene or quest handler) activates it. A quest that
+carries a `start` predicate needs no accept (`E-TRACE-ACCEPT` guards the
+mismatch). `lute play` prints the engine's accept as `quest <id> accepted
+(engine)` and activates the quest at the settle that follows the step's
+writes; an id that is no accept-driven quest of the project is a usage error
+(exit 2). `lute trace` / `lute test` apply an `accept` record in a quest's
+`<on>` handler exactly as `lute play` does: the accepted quest of the same
+document activates at the next settle (dsl 0.26.0 §7). A test's `accepts:`
+mock may name a quest another document of the project declares, and a quest
+document's test may seed its own `quest.<id>.*` (`quests:`), starting the
+quest in the seeded state.
 
 ### Accepting from a scene — the `accept` record
 

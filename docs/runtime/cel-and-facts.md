@@ -169,7 +169,16 @@ debug assertion); it never retracts anything on its own.
   the def's parenthesized body, arguments substituted, exactly as any other
   condition's `raw`; an unexpandable one is `E-RULE-GUARD-DEF` at check;
 - `{"kind": "cmp", "lhs": …, "rhs": …, "negated": <bool>}` — a term
-  comparison.
+  comparison;
+- `{"kind": "count", "atom": …, "distinct": ["T", …], "op": ">=", "n": 5}`
+  (dsl 0.26.0 §6) — authored `count(hasBadge(_)) >= 5` or
+  `countDistinct(toured(P, T), T) >= 2`: the number of facts matching
+  `atom` (or, with `distinct`, of distinct values of those variables among
+  them) compared by `op` (`==`, `!=`, `<`, `<=`, `>`, `>=`) to the whole
+  number `n`. A variable of `atom` bound by another literal of the rule is
+  read (`P` above: the count is grouped per person); any other ranges over
+  the facts. A count binds nothing. `distinct` is omitted for a plain
+  `count`.
 
 The compiler's static analyses let the engine trust that this fixpoint is
 well-defined:
@@ -181,7 +190,11 @@ well-defined:
   positive cycle (e.g. `canReach`'s self-recursion) is allowed. The engine
   therefore evaluates **stratum by stratum**, with each negated body literal
   resolved against a strictly lower stratum's completed relation — standard
-  stratified-Datalog semantics.
+  stratified-Datalog semantics. A `count` literal is an **aggregate edge**:
+  its relation MUST sit in a strictly lower stratum than the rule's head, so
+  the count is final before the head is derived. A count whose relation
+  depends on the head — directly (`open(D) :- door(D), count(open(_)) >= 1`)
+  or through other rules — is `E-RULE-AGGREGATE-CYCLE`.
 - **Safety.** Every variable in a rule head or a negated body atom is bound by
   some positive body atom or equality chain — the checker's safety fixpoint
   over variable names guarantees it (`E-DATALOG-UNSAFE`, same file). No
@@ -191,7 +204,9 @@ well-defined:
   and is read nowhere else; in a **negated** atom it is the only variable left
   unbound, and it is **existential** — `not seen(W, _)` holds iff no
   `seen(W, …)` tuple exists at all. `_` never appears in a head or a
-  comparison.
+  comparison. A `countDistinct` variable MUST be an argument of the counted
+  atom and bound nowhere else in the rule (otherwise it has one value) —
+  `E-DATALOG-UNSAFE`.
 - **Guard purity.** A rule-body guard may read only scalar state, never
   `holds`/`count`/`countDistinct`/`validAt`/`now()` — threading a fact query
   through a guard would hide a non-monotonic dependency from the
@@ -240,3 +255,16 @@ conclude it with its failing premises.
 > proven", was removed with that release. The engine's fixpoint over the live
 > fact store remains the only real answer at run time; the compiler proves the
 > *shape* is well-formed and reports the gates it can prove dead or redundant.
+>
+> `check-project --wip` (dsl 0.23.0 §10, 0.26.0 §2.6) re-decides a dead
+> guard against a wider *may* set in which every relation content not yet
+> written may still produce is unbounded — one with no seed, assert, rule or
+> reserved declaration, or one only a component `::assert` with an unbound
+> `@param` writes (`hasBadge(@badge)` before any area `::use`s the
+> component). A guard dead only under the narrow set is reported as a
+> warning, as is a required `<objective quest=…>` whose child quest is dead
+> only for that reason. The engine's semantics are unchanged.
+>
+> A rule's `count(…)` / `countDistinct(…)` literal is read as satisfiable
+> in *may* (the head may hold whenever its other premises may) and never
+> guarantees a head in *must*: the compile-time sets over-approximate it.

@@ -1095,12 +1095,20 @@ fn columns(p: &Project, occasions: &[String], targets: &[String]) -> Result<Vec<
     for occ in listed {
         let select = p.select_of(occ);
         let decl = p.occasions.get(occ);
-        let beat_targets: BTreeSet<&str> = p
+        // dsl 0.26.0 §5: a kind beat stands for a column per member.
+        let beat_targets: BTreeSet<String> = p
             .index
             .beats
             .iter()
             .filter(|b| b.on == occ)
-            .filter_map(|b| b.target.as_deref())
+            .flat_map(|b| match (&b.target_kind, &b.target) {
+                (Some(k), _) => k
+                    .members
+                    .iter()
+                    .map(|m| format!("{}.{m}", k.prefix))
+                    .collect::<Vec<_>>(),
+                (None, t) => t.iter().cloned().collect(),
+            })
             .collect();
         let targeted = decl.map_or(!beat_targets.is_empty(), |d| d.target.takes_target());
         let column = |target: Option<String>| Column {
@@ -1128,7 +1136,7 @@ fn columns(p: &Project, occasions: &[String], targets: &[String]) -> Result<Vec<
         } else if beat_targets.is_empty() {
             out.push(column(None));
         } else {
-            out.extend(beat_targets.iter().map(|t| column(Some(t.to_string()))));
+            out.extend(beat_targets.iter().map(|t| column(Some(t.clone()))));
         }
     }
     if let Some(t) = targets.iter().find(|t| !used_targets.contains(t.as_str())) {

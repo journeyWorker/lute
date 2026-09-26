@@ -304,7 +304,7 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
         docs.push((PathBuf::from(format!("{i}.lute")), doc));
     }
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
-    check_project_beats(&docs, &refs)
+    check_project_beats(&docs, &refs, &lute_check::cast::fact_producers(&docs), None)
 }
 
 fn codes(out: &[(PathBuf, Diagnostic)], code: &str) -> usize {

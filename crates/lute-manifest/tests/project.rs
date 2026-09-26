@@ -758,3 +758,105 @@ fn malformed_unknown_and_null_project_permissions_fail_loading() {
     assert!(load_project(&profile_null).is_err());
     fs::remove_dir_all(profile_null).ok();
 }
+
+// ── 0.26.0 §2.4: `defaults.uses` globs and `defaults.questTier` ───────────
+
+fn uses_names(proj: &lute_manifest::project::ProjectConfig) -> Vec<String> {
+    proj.defaults
+        .get("uses")
+        .and_then(|v| v.as_sequence())
+        .expect("uses resolved to a sequence")
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect()
+}
+
+/// A glob expands in path order in its place; a file a later entry names
+/// again is imported once, at its first position.
+#[test]
+fn defaults_uses_globs_expand_in_path_order_once() {
+    let dir = write_manifest(
+        "glob",
+        "defaultProfile: core\ndefaults:\n  uses:\n    - schema/world.schema.yaml\n    - schema/areas/*.schema.yaml\n    - schema/areas/b.schema.yaml\n",
+    );
+    for f in ["world", "areas/b", "areas/a", "areas/notes"] {
+        let path = dir.join(format!("schema/{f}.schema.yaml"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "state: {}\n").unwrap();
+    }
+    std::fs::write(dir.join("schema/areas/readme.md"), "x").unwrap();
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
+    let uses = uses_names(&proj);
+    let tails: Vec<&str> = uses.iter().map(|u| u.rsplit('/').next().unwrap()).collect();
+    assert_eq!(
+        tails,
+        [
+            "world.schema.yaml",
+            "a.schema.yaml",
+            "b.schema.yaml",
+            "notes.schema.yaml"
+        ]
+    );
+}
+
+/// `**` crosses directories; a glob over an existing directory that matches
+/// nothing yet (an area not written) is no error.
+#[test]
+fn defaults_uses_double_star_and_empty_match() {
+    let dir = write_manifest(
+        "glob2",
+        "defaultProfile: core\ndefaults:\n  uses:\n    - schema/**/*.schema.yaml\n    - later/*.schema.yaml\n",
+    );
+    for f in ["schema/top.schema.yaml", "schema/deep/er/x.schema.yaml"] {
+        let path = dir.join(f);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "state: {}\n").unwrap();
+    }
+    std::fs::create_dir_all(dir.join("later")).unwrap();
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
+    let uses = uses_names(&proj);
+    assert_eq!(uses.len(), 2, "{uses:?}");
+    assert!(uses[0].ends_with("deep/er/x.schema.yaml"), "{uses:?}");
+    assert!(uses[1].ends_with("schema/top.schema.yaml"), "{uses:?}");
+}
+
+/// A glob whose fixed directory does not exist is a mistyped path.
+#[test]
+fn defaults_uses_glob_under_a_missing_directory_is_e_defaults_key() {
+    let dir = write_manifest(
+        "glob3",
+        "defaultProfile: core\ndefaults:\n  uses: [schema/aeras/*.schema.yaml]\n",
+    );
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
+    assert_eq!(proj.defaults_diags[0].code, "E-DEFAULTS-KEY");
+    assert!(
+        proj.defaults_diags[0].message.contains("schema/aeras"),
+        "{}",
+        proj.defaults_diags[0].message
+    );
+    assert!(
+        proj.defaults.get("uses").is_none(),
+        "a failed entry is not applied"
+    );
+}
+
+#[test]
+fn defaults_quest_tier_takes_run_or_user() {
+    let ok = write_manifest("qt", "defaultProfile: core\ndefaults:\n  questTier: run\n");
+    let proj = lute_manifest::project::load_project(&ok).unwrap().unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
+    assert_eq!(
+        proj.defaults.get("questTier").and_then(|v| v.as_str()),
+        Some("run")
+    );
+    let bad = write_manifest(
+        "qt-bad",
+        "defaultProfile: core\ndefaults:\n  questTier: app\n",
+    );
+    let proj = lute_manifest::project::load_project(&bad).unwrap().unwrap();
+    assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
+    assert!(proj.defaults_diags[0].message.contains("`run` or `user`"));
+}

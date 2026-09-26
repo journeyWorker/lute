@@ -115,6 +115,16 @@ pub enum Advance {
     Slots(u32),
     /// `advance: day` — the first slot of the next day.
     Day,
+    /// dsl 0.26.0 §7 (T2-5): `advance: { to: <slot> }` / `{ to: { weekday,
+    /// slot } }` — forward to the next position AFTER the current one on
+    /// that weekday (`clock.weekday`) and/or in that slot (its index in
+    /// `slots`). Never backward and never zero steps: like every advance it
+    /// moves the clock, so already there it goes to the next such position
+    /// (tomorrow's night, next week's Friday morning).
+    To {
+        weekday: Option<i64>,
+        slot: Option<usize>,
+    },
 }
 
 /// A value of one reserved `clock.*` path.
@@ -239,6 +249,23 @@ impl ClockDecl {
                     slot: (flat % len) as usize,
                 }
             }
+            Advance::To { weekday, slot } => {
+                // The next match strictly after `at`: at most one week of
+                // slots to search (the last candidate is `at` one week on).
+                // A target outside the clock (refused when the step is
+                // planned) stays put.
+                let week = self.week.as_ref().map_or(1, |w| i64::from(w.length.max(1)));
+                let mut pos = at;
+                for _ in 0..week * self.slot_count() as i64 {
+                    pos = self.advance(pos, Advance::Slots(1));
+                    if weekday.is_none_or(|wd| self.weekday(pos.day) == Some(wd))
+                        && slot.is_none_or(|s| s == pos.slot)
+                    {
+                        return pos;
+                    }
+                }
+                at
+            }
         }
     }
 
@@ -341,6 +368,45 @@ mod tests {
         );
         let noon = c.at(1.0, Some("afternoon")).unwrap();
         assert_eq!(c.advance(noon, Advance::Day), ClockAt { day: 2, slot: 0 });
+    }
+
+    /// dsl 0.26.0 §7 (T2-5): `to` moves forward to the next matching
+    /// position — never backward, and never zero steps.
+    #[test]
+    fn advance_to_moves_forward_to_the_next_matching_position() {
+        let c = clock();
+        let to = |weekday, slot| Advance::To { weekday, slot };
+        // Day 1 is Mon (weekday 1); night is slot 2.
+        let mon_noon = c.at(1.0, Some("afternoon")).unwrap();
+        assert_eq!(
+            c.advance(mon_noon, to(None, Some(2))),
+            ClockAt { day: 1, slot: 2 }
+        );
+        // A morning already past today is tomorrow's.
+        assert_eq!(
+            c.advance(mon_noon, to(None, Some(0))),
+            ClockAt { day: 2, slot: 0 }
+        );
+        // Fri (weekday 5) morning from Mon: day 5.
+        assert_eq!(
+            c.advance(mon_noon, to(Some(5), Some(0))),
+            ClockAt { day: 5, slot: 0 }
+        );
+        // Mon morning from Mon afternoon is next week's Mon.
+        assert_eq!(
+            c.advance(mon_noon, to(Some(1), Some(0))),
+            ClockAt { day: 8, slot: 0 }
+        );
+        // Already there: the next such position, one week on.
+        assert_eq!(
+            c.advance(mon_noon, to(Some(1), Some(1))),
+            ClockAt { day: 8, slot: 1 }
+        );
+        // A slot alone, already there: tomorrow's.
+        assert_eq!(
+            c.advance(mon_noon, to(None, Some(1))),
+            ClockAt { day: 2, slot: 1 }
+        );
     }
 
     #[test]

@@ -132,6 +132,32 @@ pub struct IndexBeat {
     /// spent when any of them is presented. Omitted when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub share: Option<String>,
+    /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat's members, as the
+    /// artifact's `targetKind`. Omitted for any other target.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_kind: Option<crate::ir::TargetKind>,
+}
+
+impl IndexBeat {
+    /// dsl 0.26.0 §5: whether the beat answers a raise of `occasion` for
+    /// `target` — untargeted, the same target, or a kind listing it — and
+    /// the member it binds to `occasion.target` (a kind beat's).
+    pub fn answers<'t>(&self, occasion: &str, target: Option<&'t str>) -> Option<Option<&'t str>> {
+        if self.on != occasion {
+            return None;
+        }
+        match (&self.target_kind, self.target.as_deref()) {
+            (Some(k), _) => target.and_then(|t| k.member_of(t)).map(Some),
+            (None, None) => Some(None),
+            (None, Some(t)) => (Some(t) == target).then_some(None),
+        }
+    }
+
+    /// dsl 0.26.0 §5: selection rank at one priority — a member-specific
+    /// (or untargeted) beat before a kind beat.
+    pub fn is_kind(&self) -> bool {
+        self.target_kind.is_some()
+    }
 }
 
 /// The `project.index.json` envelope. Field DECLARATION ORDER is the serialized
@@ -408,6 +434,7 @@ pub fn build_index(
                     when: b.when.as_ref().map(|w| w.raw.clone()),
                     title: m.title.clone(),
                     share: b.share.clone(),
+                    target_kind: b.target_kind.clone(),
                 }),
                 ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => None,
             };
@@ -423,6 +450,7 @@ pub fn build_index(
                     when: e.when.as_ref().map(|w| w.raw.clone()),
                     title: e.title.clone(),
                     share: e.share.clone(),
+                    target_kind: e.target_kind.clone(),
                 }),
                 Command::Beat(b) => Some(IndexBeat {
                     id: b.id.clone(),
@@ -435,6 +463,7 @@ pub fn build_index(
                     when: b.when.as_ref().map(|w| w.raw.clone()),
                     title: b.title.clone(),
                     share: b.share.clone(),
+                    target_kind: b.target_kind.clone(),
                 }),
                 _ => None,
             });
@@ -801,6 +830,7 @@ mod tests {
                     priority: None,
                     once: None,
                     share: None,
+                    target_kind: None,
                     stamp: Stamp::default(),
                 })
             })
@@ -897,6 +927,7 @@ mod tests {
             once,
             also: false,
             share: None,
+            target_kind: None,
         })
     }
 

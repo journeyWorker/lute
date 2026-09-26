@@ -36,6 +36,202 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Added
+
+- Kind targets at run time (dsl 0.26.0 §5): a `target="kind:<kind>"` beat
+  compiles with `targetKind: { kind, prefix, members }` on its scene
+  `meta.beat`, `entry` / `beat` record and `ProjectIndex.beats` row. `lute
+  play` and `lute calendar` offer it for every `<prefix>.<member>` raise,
+  rank it after the member-specific beats of its priority, and bind
+  `occasion.target` (the member id) in its `when`, guards and text; the
+  value never outlives the presentation. `lute beats` shows a `kind:<kind>`
+  ladder for the members no beat names on its own, and `--target` accepts
+  any member. `lute test` reads a kind beat's member from
+  `state: { occasion.target: … }`. A kind target counts as a read of the kind
+  (no `W-DOMAIN-UNREAD`), and `<match on="occasion.target">` needs no
+  `unset` arm.
+- Counts in rule bodies (dsl 0.26.0 §6): `count(R(…)) <op> n` and
+  `countDistinct(R(…), V…) <op> n` (`>=`, `>`, `<=`, `<`, `==`, `!=`) are
+  rule-body literals. A variable bound by another literal is read (the
+  count is per binding); any other ranges over the facts. The IR carries
+  them as `{ kind: "count", atom, distinct?, op, n }`; `lute trace`, `test`,
+  `play` and `run` evaluate them one stratum above the counted relation. A
+  count over a relation that depends on the rule's own head is the new
+  `E-RULE-AGGREGATE-CYCLE`.
+- `E-STATE-DECL-CONFLICT` (dsl 0.26.0 §2.1): `check-project` compares every
+  frontmatter `state:` declaration of one path (inline, or imported from a
+  schema) and names both files and lines when `type`, `default`, `per` or
+  `owner` disagree (`scene.*` paths are scene-local and exempt). `lute play`
+  refuses a project whose documents declare one path with two types.
+- `defaults.uses` entries may be globs (`schema/areas/*.schema.yaml`,
+  `**`), expanded in path order; `defaults.questTier: run | user` sets the
+  `tier=` of every `<quest>` that writes none (dsl 0.26.0 §2.4).
+
+- `lute play`: `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }`
+  moves the clock forward to the next such position after the current one
+  (never backward, never zero steps: already there, the next one); a step
+  `expect: { clock: { weekday, slot, day } }` judges where the clock stands
+  (dsl 0.26.0 §7, T2-5).
+- `lute play`: `engine: { accept: [quest ids] }` accepts an accept-driven
+  (e.g. `accept="external"`) quest mid-play, printed `quest <id> accepted
+  (engine)` (T2-9).
+- `lute play` / `lute test`: an entry may be named `<document id>.<entry id>`
+  in `pick:`, `entriesRead:`, step `winner` / `offered` / `notOffered` /
+  `presented`, a test's `entry:` / `entries:` and `expect.eligible` keys, and
+  `lute trace --entry` (dsl 0.26.0 §8, T3-10).
+- `W-ENTRY-WRITE-REREAD` (dsl 0.26.0 §8, T3-4): an entry beat (`on=`) without
+  `once` whose body has `::set` / `::retract` — re-presented by every raise,
+  but its writes apply on the first read in a run only. `::assert` is exempt:
+  the fact holds for the rest of the run either way.
+- `lute scenario --facts` (dsl 0.26.0 §8, T3-11) draws fact-producer edges
+  (`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`,
+  `…, via canPass(x)` through the rules) and layers the graph over them where
+  they close no cycle; `--format json` carries `factEdges`, `--format dot`
+  dotted edges.
+- `lute beats` shows `covered by <id>` for a fallback an earlier, never-spent
+  beat whose `when` it implies always beats (`--json`: `coveredBy`) (T3-3).
+- `lute doctor --strict` exits `1` when any check fails (`✗`) (T3-12).
+- `lute-lsp` notices when its own binary was replaced and publishes one
+  `lute-lsp-stale` "stale server, restart" diagnostic (naming its version)
+  instead of an older build's results; checker-backed requests answer nothing
+  (T3-12).
+- Component params take `default:` (`won: { type: bool, default: "@wonFight" }`,
+  a literal or a `@def` resolved in the host); an omitted argument takes it,
+  judged at the `::use` like the argument it stands for (dsl 0.26.0 §3.3).
+- A component body may read the result slots of its own plugin directives
+  (`<match on="scene.battle.fight.won">`, `{{scene.battle.fight.turns}}`);
+  they are not ambient state (dsl 0.26.0 §3.3).
+- `@@who:` in a component body speaks as the cast member the `speaker` param
+  `who` names at each `::use` (dsl 0.26.0 §3.2): the compiled line's
+  `speaker` is that member, and its emotions (`E-BAD-ENUM`), `present:`
+  (`W-CAST-ABSENT`, once per member and guard) and stage exits
+  (`W-STAGE-ABSENT`) are judged at the `::use`. `@@x` for a param that is no
+  `speaker` param, for no param, or outside a component is `E-COMPONENT-ARG`.
+- `when="<condition>"` on `::use`, `::accept`, `::assert`, `::retract` and
+  plugin passthrough (and bridge) directives, with the meaning of
+  `::set{… when=}` (dsl 0.26.0 §4): compiled to a one-arm match (a guarded
+  `::use` runs its whole expansion or none of it), never a definite write,
+  fact or accept for the checker, and a `::use`'s argument reads are judged
+  under its guard. A builtin-lowered directive (`::auto`, `::bg`, `::end`,
+  `::mark`, a plugin `lower:` record) refuses `when=` (`E-UNKNOWN-ATTR`), as
+  does a `<track>` clip (`E-TIMELINE-CONTENT`). `lute play` shows a skipped one
+  as `skip ::give{item="potion"} — when: false` (`skip assert …`,
+  `skip ::use{component="eff" n="5"} …`), like a skipped guarded `::set`;
+  trace and test apply the same writes, facts and accepts as play.
+- Entity kinds assembled across schema imports (dsl 0.26.0 §2.3):
+  `entities: { person: { add: [grannyWren, oldSalt] } }` adds members to the
+  kind exactly one import declares. An `add:` without that declaration (with
+  a did-you-mean), onto an `open:` kind, or beside `members:`/`open:`, and a
+  member listed by two files (or re-added over the declaration), are
+  `E-ENTITY-KIND-SHAPE` naming both files, reported once at the schema line.
+- `check`: a beat or entry may target a whole kind, `target="kind:bugMon"`
+  (a closed kind within the occasion's `{ prefix, entity }` domain, else
+  `E-BEAT-ATTR` with a did-you-mean); its `when`, guards and text read the
+  raised member as `occasion.target`, typed by the kind (engine-owned,
+  always assigned). A read of `occasion.target` in a beat that does not
+  target a kind is `E-UNDECLARED`. At equal priority a kind beat ranks after
+  the other candidates (the beat naming the member outranks it) — no
+  `W-BEAT-PRIORITY-TIE` between them; `W-BEAT-SHADOWED` judges it per member
+  (dsl 0.26.0 §5).
+- Directive attributes may be typed by a project entity kind (dsl 0.26.0
+  §2.5): `item: { type: { entity: bagItem } }`. A non-member is `E-BAD-ENUM`
+  with a did-you-mean; an undeclared kind is `E-DOMAIN-UNKNOWN`.
+- `E-REWARD-TARGET` (dsl 0.26.0 §2.5): a reward kind's `target:` contract is
+  checked. `{ entity: <kind> }` or `{ provider: <name> }` validates the
+  `target=` value (did-you-mean for entities; a stale provider snapshot only
+  warns); `required: true` rejects a reward with no `target=`. A contract
+  naming both `provider:` and `entity:` fails the plugin load.
+- `lute refs <dir> --attr <directive>.<attr>` / `--reward <KIND>` (text or
+  `--json`, dsl 0.26.0 §2.5): every value with the documents and lines using
+  it; a reward without a target is listed as `(no target)`.
+- `W-DISPLAY-NAME-DUP` (dsl 0.26.0 §2.8), advisory in `check-project` and
+  `lute lint`: two cast entries with the same `name:`, a cast name equal to a
+  `::use{… name="…"}` display string, or two such strings for different
+  speakers (`who=`). `lute lint --deny W-DISPLAY-NAME-DUP` accepts the code.
+
+### Changed
+
+- A `subsetOf:` sub-kind's members are members of its parent: a trainer
+  listed in `trainer` (⊂ `person`) no longer needs a second line in
+  `person` (restating it stays legal). The former "not a member of its
+  parent" `E-ENTITY-KIND-SHAPE` is gone (dsl 0.26.0 §2.3).
+- `E-ENTITY-KIND-SHAPE` also reports a member listed twice in one entity
+  kind or enum, at the second position with both lines (dsl 0.26.0 §2.2).
+- Sub-kind `E-ENTITY-KIND-SHAPE`, `E-USES-DUP-STATE`, `E-USES-DUP-DEF`,
+  `E-USES-DUP-RELATION` and peer `E-KIND-NAME-CLASH` are reported once at the
+  schema line and folded (`(+N more callers)`) instead of at every importing
+  document's `1:1` (dsl 0.26.0 §2.7).
+- `E-FACT-DOMAIN` for a non-member (including one reached through a `::use`
+  argument) carries a did-you-mean; the `E-ENTITY-KIND-CLASH` hint offers
+  renaming when the two kinds are different things (dsl 0.26.0 §8).
+- trace/test follow a taken `::next` to its label instead of ending the walk
+  there; the transcript shows `<next -> label>` (T1-4).
+- trace/test apply an `::accept` in a quest `<on>` handler to a quest of the
+  same document, as play does (T1-5).
+- `lute test`: a test that walks an entry, bundle beat or scene whose `when`
+  is false under its mocks fails unless it asserts `eligible:`; with
+  `eligible:` asserted the ineligible body is not walked; `eligible:` works on
+  scene beats (`on:`) (`when`, `after:`, spent `once: user`) (T1-7).
+- `lute test` / `lute trace --project`: `accepts:` resolves quests project-wide;
+  a quest document may seed its own `quest.<id>.*` (the walk starts the quest
+  there) (T3-5).
+- `transcriptContains` / `transcriptLacks` (test and play) drop line
+  attributes from the needle; a `transcriptContains` miss names the nearest
+  presented line (T3-6).
+- `W-BEAT-PRIORITY-TIE` normalizes negations (De Morgan, `!(x < 1)` as
+  `x >= 1`) and compares the conditions' alternatives, reads the fact
+  envelope's must set at either beat's `when` slot, treats a fact only a
+  beat's own unplayed `once: run`/`user` presentation asserts as absent while
+  it is eligible, and says why two `when`s are not exclusive (a flag that
+  outlives `once: run`, a fact asserted elsewhere or `tier: user`, the paths
+  each reads) (dsl 0.26.0 §8, T3-2).
+- `E-STATE-DECL-CONFLICT` does not report a declaration that refines one it
+  `extends:` (an overridden default).
+- `check-project --wip` checks a spine before the areas exist (dsl 0.26.0
+  §2.6, T2-7): a relation only a component `::assert` with an unbound
+  `@param` writes (`hasBadge(@badge)`, no `::use` yet) counts as unproduced
+  for specific arguments, so `E-OBJECTIVE-UNSATISFIABLE` / `E-BEAT-UNREACHABLE`
+  caused only by it are warnings, and a required `<objective quest=…>` whose
+  child is dead only for that reason is a warning too; each message says so.
+  A relation with no such component producer whose producers never match
+  stays an error.
+- `lute scenario knowledge` traces a rule's `count(…)` / `countDistinct(…)`
+  premise with the producers of the facts it counts beneath it (dsl 0.26.0
+  §6).
+
+### Fixed
+
+- A `::use` declares in its host the result slots of the plugin directives
+  its component body holds (bound to the use's arguments): the check, the
+  compiled `state` table, trace mocks and `lute play` see them. `lute play`
+  types a bridge answer by that slot, else by the capability's `result:`
+  shape, and refuses an untyped answer instead of storing `"true"` as a
+  string (dsl 0.26.0 §3.1, T1-2).
+- A `{{…}}` inside a string component argument keeps its placeholder record
+  after expansion; `as=@who` over a `speaker` param and `{{@p}}` inside a
+  line attribute string render as in the text (the cast display name)
+  (dsl 0.26.0 §3.1, T1-6).
+
+### Performance
+
+- The fact analysis no longer grows with the product of beats and static
+  facts (dsl 0.26.0 §1, T2-1). A seed's stability (`key:` displacement) is
+  a lookup instead of a scan of every produced fact — the scan made the must
+  walk quadratic in the seed count and was the bulk of the cost; must sets
+  share the root's seeds instead of copying them per slot; the derived
+  closure is prepared once per root (the seeds' closure included), extended
+  by semi-naive rounds for a slot whose facts differ, shared by every slot of
+  the same shape, and computed only for a slot something reads. Output is
+  unchanged. Monster League (818 beats, 211 static facts): `check-project`
+  6.1 s → ≈1.2 s, a play load ≈12 s → ≈1.5 s.
+- `lute test` collects each project's producer set / quest ids once and
+  compiles a play project once for all its plays, then runs the tests, and
+  then the plays, in parallel (`RAYON_NUM_THREADS` respected), reporting in
+  the existing order with each one's stderr replayed in that order. A play
+  project's compile diagnostics are printed once rather than once per play.
+
 ## [0.25.1] - 2026-09-26
 
 **Faster project commands.**

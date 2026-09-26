@@ -39,7 +39,9 @@ pub fn declared_cast(
 /// member, and (dsl 0.24.0 §4) for every `::auto{character}` /
 /// `::camera{focus}` literal naming such an id — timeline clips included.
 /// A def-valued attribute (`character=@who`) is not a literal id and is left
-/// to the def rules. Silent when `cast` is empty (shape-only).
+/// to the def rules. Silent when `cast` is empty (shape-only). A `@@p:`
+/// speaker param (dsl 0.26.0 §3.2) names no member here: each `::use` binds
+/// it, and its argument is held to the cast there.
 pub fn check_speakers(doc: &Document, cast: &BTreeMap<String, CastMember>) -> Vec<Diagnostic> {
     if cast.is_empty() {
         return Vec::new();
@@ -57,7 +59,7 @@ pub fn check_speakers(doc: &Document, cast: &BTreeMap<String, CastMember>) -> Ve
         crate::match_check::collect_lines(body, &mut lines);
         collect_staged(body, &mut staged);
     }
-    let known = |id: &str| id == "narrator" || cast.contains_key(id);
+    let known = |id: &str| id == "narrator" || id.starts_with('@') || cast.contains_key(id);
     let mut out: Vec<Diagnostic> = lines
         .into_iter()
         .filter(|l| !known(&l.speaker))
@@ -330,11 +332,14 @@ fn literal_attr<'a>(attrs: &'a [lute_syntax::ast::Attr], key: &str) -> Option<(&
 /// `emotions:` of the content line's speaker — or of the literal
 /// `character=` a directive (a timeline clip included) names. A value the
 /// closed `emotion` enum itself rejects is left to that check, so each bad
-/// value is one error.
+/// value is one error. dsl 0.26.0 §3.2: a component's `@@p:` lines are
+/// judged at each `::use` (`use_lines`, [`FoldedEnv::use_lines`]) against
+/// the member it binds.
 pub fn check_emotions(
     doc: &Document,
     cast: &BTreeMap<String, CastMember>,
     domains: &BTreeMap<String, Domain>,
+    use_lines: &BTreeMap<usize, Vec<Line>>,
 ) -> Vec<Diagnostic> {
     if !cast.values().any(|c| c.emotions.is_some()) {
         return Vec::new();
@@ -368,6 +373,17 @@ pub fn check_emotions(
     for body in doc_bodies(doc) {
         visit(body, &mut |node| match node {
             Node::Line(l) => check(&l.speaker, &l.attrs),
+            Node::Directive(d) if d.tag == "use" => {
+                // Every bound line is anchored at the `::use`: one report per
+                // member and value there.
+                let mut seen = std::collections::BTreeSet::new();
+                for l in use_lines.get(&d.span.byte_start).into_iter().flatten() {
+                    let emotion = literal_attr(&l.attrs, "emotion").map(|(e, _)| e);
+                    if seen.insert((l.speaker.as_str(), emotion)) {
+                        check(&l.speaker, &l.attrs);
+                    }
+                }
+            }
             Node::Directive(d) => {
                 if let Some((who, _)) = literal_attr(&d.attrs, "character") {
                     check(who, &d.attrs);
@@ -713,6 +729,16 @@ pub fn occasions_before(
 #[derive(Default)]
 pub struct FactProducers(BTreeMap<String, Vec<(std::path::PathBuf, usize, Vec<Option<String>>)>>);
 
+impl FactProducers {
+    /// Every assert site of `relation`: document, unit, arguments.
+    pub(crate) fn sites(
+        &self,
+        relation: &str,
+    ) -> impl Iterator<Item = &(std::path::PathBuf, usize, Vec<Option<String>>)> {
+        self.0.get(relation).into_iter().flatten()
+    }
+}
+
 /// The [`FactProducers`] of `docs` (one resolved root). A component
 /// document's own sites are not producers: its writes happen where a `::use`
 /// performs them, bound — the host documents carry them spliced
@@ -782,6 +808,91 @@ fn unifiable(a: &[Option<String>], b: &[Option<String>]) -> bool {
         && a.iter()
             .zip(b)
             .all(|(x, y)| x.is_none() || y.is_none() || x == y)
+}
+
+/// One ground fact a unit of the root asserts ([`unit_facts`]).
+pub(crate) struct UnitFact {
+    /// `holds(rel(a, b))`.
+    pub(crate) query: String,
+    /// `None` when the fact cannot hold before the unit is spent: no other
+    /// unit can assert it (no unifiable site elsewhere, a `::use` site's
+    /// bound component writes included), no seed names it, and it cannot
+    /// survive from an earlier presentation of the unit — a `tier: run`
+    /// relation in a unit presented at most once per run (`once: run` or
+    /// `user`), a `tier: user`/`app` one in a `once: user` unit; derived
+    /// and engine-`reserved` relations never qualify. Otherwise why it may.
+    pub(crate) persists: Option<String>,
+}
+
+/// Every ground fact unit `key` of document `path` asserts, with whether it
+/// can hold while the unit (spent by `once`) is still unplayed — what
+/// `W-CAST-ABSENT` assumes absent at the unit's start (dsl 0.24.0 §4) and
+/// `W-BEAT-PRIORITY-TIE` conjoins to the unit's eligibility (dsl 0.26.0 §8).
+pub(crate) fn unit_facts(
+    producers: &FactProducers,
+    vocab: &crate::rel_schema::RelVocab,
+    path: &Path,
+    key: usize,
+    once: BeatOnce,
+) -> Vec<UnitFact> {
+    let mut out = Vec::new();
+    let here = |p: &std::path::PathBuf, k: usize| p.as_path() == path && k == key;
+    for (rel, sites) in &producers.0 {
+        let Some(decl) = vocab.relations.get(rel) else {
+            continue;
+        };
+        let tier = decl.tier.as_deref().unwrap_or("run");
+        for (_, _, args) in sites.iter().filter(|(p, k, _)| here(p, *k)) {
+            let Some(ground) = args.iter().cloned().collect::<Option<Vec<String>>>() else {
+                continue;
+            };
+            let fact = format!("{rel}({})", ground.join(", "));
+            let spent_by_run = matches!(once, BeatOnce::Run | BeatOnce::User);
+            let persists = if decl.derive {
+                Some(format!("rules may derive `{fact}` too"))
+            } else if decl.reserved {
+                Some(format!(
+                    "the engine may assert `{fact}` (a reserved relation)"
+                ))
+            } else if !spent_by_run {
+                Some(match once {
+                    BeatOnce::None => {
+                        format!("it is never spent, so it may play again after asserting `{fact}`")
+                    }
+                    period => format!(
+                        "`once: {}` spends it for one period, not one run, so it may play again \
+                         after asserting `{fact}`",
+                        period.as_str()
+                    ),
+                })
+            } else if matches!(tier, "user" | "app") && once != BeatOnce::User {
+                Some(format!(
+                    "`{fact}` is `tier: {tier}`, which persists across runs; `once: run` does \
+                     not, so in a later run `{fact}` holds before it plays again"
+                ))
+            } else if !matches!(tier, "run" | "user" | "app") {
+                Some(format!("`{fact}` is `tier: {tier}`"))
+            } else if let Some((other, _, _)) = sites
+                .iter()
+                .find(|(p, k, a)| !here(p, *k) && unifiable(a, args))
+            {
+                Some(format!("`{fact}` is also asserted in {}", other.display()))
+            } else if vocab
+                .facts
+                .iter()
+                .any(|f| f.fact.relation == *rel && unifiable(&pattern_args(&f.fact), args))
+            {
+                Some(format!("`{fact}` is a `facts:` seed"))
+            } else {
+                None
+            };
+            out.push(UnitFact {
+                query: format!("holds({fact})"),
+                persists,
+            });
+        }
+    }
+    out
 }
 
 /// dsl 0.24.0 §4, `check-project`: re-decide one document's per-file
@@ -1193,7 +1304,9 @@ fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -> Option<De
         let mut has_vars = rule.head.terms.iter().any(is_var);
         for lit in &rule.body {
             let terms: Vec<&RuleTerm> = match lit {
-                BodyLiteral::Pos(a) | BodyLiteral::Neg(a) => a.terms.iter().collect(),
+                BodyLiteral::Pos(a) | BodyLiteral::Neg(a) | BodyLiteral::Count { atom: a, .. } => {
+                    a.terms.iter().collect()
+                }
                 BodyLiteral::Cmp { lhs, rhs, .. } => vec![lhs, rhs],
                 BodyLiteral::Guard { .. } => Vec::new(),
             };
@@ -1284,6 +1397,47 @@ fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -> Option<De
                     }
                     _ => def.exact = false,
                 },
+                // dsl 0.26.0 §6: the same count as a condition, when every
+                // argument is ground or the count's own (`_`, or the one
+                // counted variable).
+                BodyLiteral::Count {
+                    atom,
+                    distinct,
+                    op,
+                    n,
+                    ..
+                } => {
+                    let mut texts = Vec::with_capacity(atom.terms.len());
+                    let mut ground = distinct.len() <= 1;
+                    for t in &atom.terms {
+                        texts.push(match (value(t), t) {
+                            (Some(v), _) => v,
+                            (None, RuleTerm::Var(v)) if distinct.contains(v) => v.clone(),
+                            (None, RuleTerm::Var(v))
+                                if is_anonymous_var(v) || uses.get(v.as_str()) == Some(&1) =>
+                            {
+                                "_".to_string()
+                            }
+                            _ => {
+                                ground = false;
+                                "_".to_string()
+                            }
+                        });
+                    }
+                    if !ground {
+                        def.exact = false;
+                        continue;
+                    }
+                    let call = match distinct.first() {
+                        Some(v) => format!(
+                            "countDistinct({}({}), {v})",
+                            atom.relation,
+                            texts.join(", ")
+                        ),
+                        None => format!("count({}({}))", atom.relation, texts.join(", ")),
+                    };
+                    conj.push(format!("{call} {} {n}", op.as_str()));
+                }
             }
         }
         if !dead {
@@ -1774,51 +1928,17 @@ impl Presence<'_> {
     }
 
     /// `check-project`: the facts known absent when unit `key` of this
-    /// document starts, as `!holds(F)` — every ground `F` the unit itself
-    /// asserts that no other unit of the root can assert (no unifiable site
-    /// elsewhere, a `::use` site's bound component writes included), no seed names, and that
-    /// cannot survive from an earlier presentation of the unit: a `tier:
-    /// run` relation in a unit presented at most once per run (`once: run`
-    /// or `user`), a `tier: user`/`app` one in a `once: user` unit. Derived
-    /// and engine-`reserved` relations never qualify.
+    /// document starts, as `!holds(F)` ([`unit_facts`]).
     fn absent_facts(&self, key: usize, once: BeatOnce) -> Vec<String> {
         let Some(producers) = self.producers else {
             return Vec::new();
         };
         let vocab = &self.folded.env.rel_vocab;
-        let mut out = BTreeSet::new();
-        for (rel, sites) in &producers.0 {
-            let Some(decl) = vocab.relations.get(rel) else {
-                continue;
-            };
-            if decl.derive || decl.reserved {
-                continue;
-            }
-            let fresh = match decl.tier.as_deref().unwrap_or("run") {
-                "run" => matches!(once, BeatOnce::Run | BeatOnce::User),
-                "user" | "app" => once == BeatOnce::User,
-                _ => false,
-            };
-            if !fresh {
-                continue;
-            }
-            let here = |p: &std::path::PathBuf, k: usize| p.as_path() == self.path && k == key;
-            for (_, _, args) in sites.iter().filter(|(p, k, _)| here(p, *k)) {
-                let Some(ground) = args.iter().cloned().collect::<Option<Vec<String>>>() else {
-                    continue;
-                };
-                let elsewhere = sites
-                    .iter()
-                    .any(|(p, k, a)| !here(p, *k) && unifiable(a, args));
-                let seeded = vocab
-                    .facts
-                    .iter()
-                    .any(|f| f.fact.relation == *rel && unifiable(&pattern_args(&f.fact), args));
-                if !elsewhere && !seeded {
-                    out.insert(format!("!holds({rel}({}))", ground.join(", ")));
-                }
-            }
-        }
+        let out: BTreeSet<String> = unit_facts(producers, vocab, self.path, key, once)
+            .into_iter()
+            .filter(|f| f.persists.is_none())
+            .map(|f| format!("!{}", f.query))
+            .collect();
         out.into_iter().collect()
     }
 
@@ -1954,6 +2074,42 @@ impl Presence<'_> {
             }
         } else if let Some((quest, _)) = d.accept_quest() {
             self.kill_path(&format!("quest.{quest}"));
+        } else if d.tag == "use" {
+            self.use_lines(d);
+        }
+    }
+
+    /// dsl 0.26.0 §3.2: the `@@p:` lines a `::use` speaks, each by the
+    /// member it binds, under the `::use`'s guard and the line's own —
+    /// reported at the `::use`, once per member and guard.
+    fn use_lines(&mut self, d: &Directive) {
+        let folded = self.folded;
+        let Some(lines) = folded.use_lines.get(&d.span.byte_start) else {
+            return;
+        };
+        let component = literal_attr(&d.attrs, "component").map(|(c, _)| c);
+        let mut seen = std::collections::BTreeSet::new();
+        for l in lines {
+            if l.attrs.iter().any(|a| a.key == "vo") {
+                continue;
+            }
+            let raw = match (&d.when, &l.when) {
+                (Some(g), Some(a)) => Some(format!("({}) && ({})", g.raw, a.raw)),
+                (Some(g), None) => Some(g.raw.clone()),
+                (None, Some(a)) => Some(a.raw.clone()),
+                (None, None) => None,
+            };
+            if !seen.insert((l.speaker.as_str(), raw.clone())) {
+                continue;
+            }
+            let own = raw.and_then(|r| self.parse(&r, None));
+            let before = self.changed.clone();
+            if let Some((e, _)) = &own {
+                let required = self.required(e, EXPAND_DEPTH);
+                self.changed.extend(required);
+            }
+            self.decide_line(l, d.span, own, component);
+            self.changed = before;
         }
     }
 
@@ -2184,13 +2340,20 @@ impl Presence<'_> {
             let required = self.required(e, EXPAND_DEPTH);
             self.changed.extend(required);
         }
-        self.decide_line(l, span, own);
+        self.decide_line(l, span, own, None);
         self.changed = before;
     }
 
     /// [`Self::line`] once its own `when` is parsed (and [`Self::changed`]
-    /// includes what it requires).
-    fn decide_line(&mut self, l: &Line, span: Span, own: Option<(Expr, String)>) {
+    /// includes what it requires). `via`: the component whose `@@p:` line
+    /// this is, bound at a `::use` ([`Self::use_lines`]).
+    fn decide_line(
+        &mut self,
+        l: &Line,
+        span: Span,
+        own: Option<(Expr, String)>,
+        via: Option<&str>,
+    ) {
         let Some(present) = self.present_of(&l.speaker, span) else {
             return;
         };
@@ -2205,12 +2368,21 @@ impl Presence<'_> {
             .present
             .clone()
             .unwrap_or_default();
-        let mut message = format!(
-            "`{who}` may not be here: the cast declares `present: \"{raw}\"` for `{who}`, and the \
-             guards around this line do not imply it (dsl 0.24.0 §4). Guard the line — \
-             `@{who}{{when=\"{raw}\"}}` — or move it under a guard that implies it",
-            who = l.speaker
-        );
+        let mut message = match via {
+            None => format!(
+                "`{who}` may not be here: the cast declares `present: \"{raw}\"` for `{who}`, and \
+                 the guards around this line do not imply it (dsl 0.24.0 §4). Guard the line — \
+                 `@{who}{{when=\"{raw}\"}}` — or move it under a guard that implies it",
+                who = l.speaker
+            ),
+            Some(component) => format!(
+                "`{who}` may not be here: component `{component}` speaks as `{who}` at this \
+                 `::use`, the cast declares `present: \"{raw}\"` for `{who}`, and the guards \
+                 around the `::use` do not imply it (dsl 0.24.0 §4, 0.26.0 §3.2). Guard it — \
+                 `::use{{… when=\"{raw}\"}}` — or move it under a guard that implies it",
+                who = l.speaker
+            ),
+        };
         // dsl 0.25.0 §6: say so when only `changedOn` took `assume` away.
         if !self.changed.is_empty() && self.folded.cast[&l.speaker].assume == Some(true) {
             let changed = std::mem::take(&mut self.changed);

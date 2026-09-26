@@ -193,6 +193,11 @@ pub enum Step {
     Exclusive {
         text: String,
     },
+    /// dsl 0.26.0 §7 (T1-4): a taken `::next{to}` — the walk continues at
+    /// the label `to`, as play's does.
+    Jump {
+        to: String,
+    },
 }
 
 /// dsl 0.16.0 §3: the reward-declaration data carried by a fired [`Step::Grant`],
@@ -416,6 +421,13 @@ pub struct TraceReport {
     /// serialized.
     #[serde(skip)]
     pub foreign_quests: BTreeSet<String>,
+    /// dsl 0.26.0 §7 (T1-7): for a scene document, its canonical id and its
+    /// eligibility under the mocks before the walk — the beat `when`, the
+    /// scene's `after:`, a spent `once: user` — `Some(true)` / `Some(false)`
+    /// / `None` (undecided). `None` for every other document. What `lute
+    /// test`'s `expect.eligible` judges a scene by. Never serialized.
+    #[serde(skip)]
+    pub scene_eligible: Option<(String, Option<bool>)>,
 }
 
 /// Render a decided [`Value`] to display text; `Unknown` has no decided
@@ -702,6 +714,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
             out.push_str(&format!("    quest {quest} accepted{queued}\n"))
         }
         Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),
+        Step::Jump { to } => out.push_str(&format!("    <next -> {to}>\n")),
         Step::Grant {
             quest,
             objective,

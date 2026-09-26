@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
-use lute_syntax::ast::Document;
+use lute_syntax::ast::{AttrValue, Document};
 
 use crate::meta::{parse_meta_kind, MetaKind};
 
@@ -36,11 +36,14 @@ use crate::meta::{parse_meta_kind, MetaKind};
 /// file it was loaded from. dsl 0.24.0 §4: `speakers` names the params typed
 /// `speaker` (each also in `params`, typed `string` — the host's cast narrows
 /// it, [`crate::component_effects::host_param_types`]); `effects` is the
-/// file's `effects: true` (its body may write state).
+/// file's `effects: true` (its body may write state). dsl 0.26.0 §3.3:
+/// `defaults` is each param's `default:` — the argument an omitted param
+/// takes ([`crate::component_effects::use_args_for`]).
 #[derive(Clone, Debug)]
 pub struct ComponentDef {
     pub params: Vec<(String, Type)>,
     pub speakers: Vec<String>,
+    pub defaults: BTreeMap<String, AttrValue>,
     pub effects: bool,
     pub body: Document,
     pub src: PathBuf,
@@ -76,6 +79,7 @@ struct ParsedComponent {
     name: Option<String>,
     params: Vec<(String, Type)>,
     speakers: Vec<String>,
+    defaults: BTreeMap<String, AttrValue>,
     effects: bool,
     body: Document,
     src: PathBuf,
@@ -146,6 +150,7 @@ pub fn resolve_components(base_dir: &Path, components: &[String], at: Span) -> C
             ComponentDef {
                 params: pc.params.clone(),
                 speakers: pc.speakers.clone(),
+                defaults: pc.defaults.clone(),
                 effects: pc.effects,
                 body: pc.body.clone(),
                 src: pc.src.clone(),
@@ -322,6 +327,7 @@ fn read_and_parse(
                     name: None,
                     params: Vec::new(),
                     speakers: Vec::new(),
+                    defaults: BTreeMap::new(),
                     effects: false,
                     body: empty,
                     src: canon.to_path_buf(),
@@ -393,6 +399,7 @@ fn read_and_parse(
             name: tm.component.clone(),
             params,
             speakers: tm.speaker_params.clone(),
+            defaults: tm.param_defaults.clone(),
             effects: tm.effects,
             body: doc,
             src: canon.to_path_buf(),

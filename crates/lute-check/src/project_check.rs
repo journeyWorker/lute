@@ -1216,6 +1216,13 @@ pub fn domain_reading_set(snapshot: &CapabilitySnapshot) -> BTreeSet<String> {
             out.insert(entity.clone());
         }
     }
+    // dsl 0.26.0 §2.5: a reward kind's `target: { entity: K }` contract
+    // checks every `<reward target=…>` of that kind against `K`.
+    for kind in snapshot.reward_kinds.values() {
+        if let Some(entity) = kind.target.as_ref().and_then(|t| t.entity.as_ref()) {
+            out.insert(entity.clone());
+        }
+    }
     out
 }
 
@@ -1270,7 +1277,7 @@ pub fn domain_reads_from_kinds<'a>(
     for r in &vocab.rules {
         for lit in &r.rule.body {
             match lit {
-                BodyLiteral::Pos(a) | BodyLiteral::Neg(a) => {
+                BodyLiteral::Pos(a) | BodyLiteral::Neg(a) | BodyLiteral::Count { atom: a, .. } => {
                     queried.insert(a.relation.clone());
                 }
                 BodyLiteral::Guard { cel, .. } => {
@@ -1287,12 +1294,12 @@ pub fn domain_reads_from_kinds<'a>(
     out
 }
 
-/// Every `Type::Domain(name)` reachable from `ty`, including through the
-/// container types — a `{ list: { domain: X } }` slot reads `X` as surely as a
-/// bare one does.
+/// Every `Type::Domain(name)` / `Type::Entity(name)` reachable from `ty`,
+/// including through the container types — a `{ list: { domain: X } }` slot
+/// reads `X` as surely as a bare one does.
 fn collect_domain_names(ty: &Type, out: &mut BTreeSet<String>) {
     match ty {
-        Type::Domain(name) => {
+        Type::Domain(name) | Type::Entity(name) => {
             out.insert(name.clone());
         }
         Type::List(inner) => collect_domain_names(inner, out),

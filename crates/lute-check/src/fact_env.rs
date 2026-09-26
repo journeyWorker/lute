@@ -30,9 +30,11 @@
 //! under-approximating twin (a negated atom holds only outside `May`, a CEL
 //! guard only when it decides true).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use cel_parser::ast::CallExpr;
 use lute_core_span::Span;
@@ -809,7 +811,7 @@ fn guard_is_dead(cel: &str) -> bool {
 /// Where a guaranteed fact is established — what the `W-FACT-GUARANTEED`
 /// message names (§5: "asserted on every route to here
 /// (scenes/archive.lute:21)").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Provenance {
     /// An `::assert` site that every route to the slot passes.
     Assert { path: PathBuf, line: u32 },
@@ -842,26 +844,168 @@ impl fmt::Display for Provenance {
 /// predicate's members); a negated atom holds only when no `May` fact can
 /// match it; `=`/`!=` must be decided on bound values; a CEL guard must
 /// decide `true`. Anything else drops the clause. Returns only the facts not
-/// already in `base`.
+/// already in `base`, in derivation order (round, then rule, then binding),
+/// each carrying the provenance of the first fact supporting its first
+/// derivation (a seed when only domain predicates support it).
 pub fn derive_guaranteed(vocab: &RootVocab, may: &MaySet, base: &[MustFact]) -> Vec<MustFact> {
-    let mut known: BTreeMap<GroundFact, Provenance> = base
-        .iter()
-        .map(|m| (m.fact.clone(), m.provenance.clone()))
-        .collect();
-    let mut derived = Vec::new();
-    loop {
-        let mut new = Vec::new();
-        for rule in &vocab.rules {
+    Clauses::new(vocab).derive(may, base)
+}
+
+/// One derive rule as [`Clauses`] applies it: where each positive body atom
+/// binds from, fixed once per root.
+#[derive(Clone, Debug)]
+struct Clause {
+    rule: Rule,
+    /// Per positive body atom, in body order: `None` binds from the known
+    /// facts of its relation, `Some` from a closed domain predicate's
+    /// members.
+    sources: Vec<Option<Vec<String>>>,
+}
+
+/// The rules [`derive_guaranteed`] applies, prepared once: only clauses that
+/// can fire (a derived head, every positive atom bindable, every CEL guard
+/// deciding `true` — a guard reads no binding, so it is decided here once).
+#[derive(Clone, Debug, Default)]
+struct Clauses {
+    clauses: Vec<Clause>,
+    /// The relations a derivation reads: every positive atom's declared
+    /// relation and every head (a fact already known is not derived again).
+    /// Facts of any other relation never change the derived facts.
+    relevant: BTreeSet<String>,
+}
+
+/// One row a positive atom binds from: the arguments, the provenance of the
+/// fact (`None` for a domain member), and whether the fact is new since the
+/// previous round.
+type Row<'a> = (&'a [String], Option<&'a Provenance>, bool);
+
+impl Clauses {
+    fn new(vocab: &RootVocab) -> Self {
+        let mut out = Clauses::default();
+        'rules: for rule in &vocab.rules {
             let head = &rule.head.relation;
             if !vocab.relations.get(head).is_some_and(|d| d.derive) {
                 continue;
             }
-            for (args, provenance) in must_apply_rule(vocab, may, rule, &known) {
+            let mut sources = Vec::new();
+            for lit in &rule.body {
+                match lit {
+                    BodyLiteral::Pos(atom) => {
+                        if vocab.relations.contains_key(&atom.relation) {
+                            sources.push(None);
+                            continue;
+                        }
+                        match vocab.universe(&atom.relation) {
+                            Universe::Closed(members)
+                                if atom.terms.len() == 1 && vocab.is_predicate(&atom.relation) =>
+                            {
+                                sources
+                                    .push(Some(members.into_iter().map(str::to_string).collect()));
+                            }
+                            _ => continue 'rules,
+                        }
+                    }
+                    BodyLiteral::Guard { cel, .. } => {
+                        if !guard_decides(cel, true) {
+                            continue 'rules;
+                        }
+                    }
+                    BodyLiteral::Cmp { .. } | BodyLiteral::Neg(_) => {}
+                    // An aggregate is never proved over a must set here: the
+                    // clause proves nothing (the sound under-approximation).
+                    BodyLiteral::Count { .. } => continue 'rules,
+                }
+            }
+            out.relevant.insert(head.clone());
+            for (lit, source) in positive_atoms(rule).zip(&sources) {
+                if source.is_none() {
+                    out.relevant.insert(lit.relation.clone());
+                }
+            }
+            out.clauses.push(Clause {
+                rule: rule.clone(),
+                sources,
+            });
+        }
+        out
+    }
+
+    /// The derived facts over `base` ([`derive_guaranteed`]'s answer), by
+    /// rounds: round 1 applies every clause to `base`; a later round only
+    /// enumerates the bindings that use a fact the previous round added
+    /// (semi-naive) — every other binding proves a fact already known, so the
+    /// facts, their order and their provenance are the naive rounds' own.
+    fn derive(&self, may: &MaySet, base: &[MustFact]) -> Vec<MustFact> {
+        // The relevant part of `known`, fact-sorted (a repeated fact keeps
+        // its last provenance, as collecting into a map would).
+        let mut sorted: BTreeMap<&GroundFact, &Provenance> = BTreeMap::new();
+        for m in base {
+            if self.relevant.contains(&m.fact.relation) {
+                sorted.insert(&m.fact, &m.provenance);
+            }
+        }
+        let mut base_rows: BTreeMap<&str, Vec<(&[String], &Provenance)>> = BTreeMap::new();
+        for (f, p) in sorted {
+            base_rows
+                .entry(f.relation.as_str())
+                .or_default()
+                .push((f.args.as_slice(), p));
+        }
+        let mut derived: Vec<MustFact> = Vec::new();
+        let mut fresh = 0..0;
+        let mut first = true;
+        loop {
+            let new = self.round(may, &base_rows, &derived, &fresh, first);
+            if new.is_empty() {
+                return derived;
+            }
+            fresh = derived.len()..derived.len() + new.len();
+            derived.extend(new);
+            first = false;
+        }
+    }
+
+    /// One naive round over `base_rows` ∪ `derived` (`fresh`: the indices
+    /// the previous round added; `first`: nothing is pruned).
+    fn round(
+        &self,
+        may: &MaySet,
+        base_rows: &BTreeMap<&str, Vec<(&[String], &Provenance)>>,
+        derived: &[MustFact],
+        fresh: &std::ops::Range<usize>,
+        first: bool,
+    ) -> Vec<MustFact> {
+        let mut rows: BTreeMap<&str, Vec<Row<'_>>> = base_rows
+            .iter()
+            .map(|(rel, v)| (*rel, v.iter().map(|&(a, p)| (a, Some(p), first)).collect()))
+            .collect();
+        let mut grown: BTreeSet<&str> = BTreeSet::new();
+        for (i, m) in derived.iter().enumerate() {
+            rows.entry(m.fact.relation.as_str()).or_default().push((
+                m.fact.args.as_slice(),
+                Some(&m.provenance),
+                first || fresh.contains(&i),
+            ));
+            grown.insert(m.fact.relation.as_str());
+        }
+        for rel in grown {
+            if let Some(v) = rows.get_mut(rel) {
+                v.sort_by(|a, b| a.0.cmp(b.0));
+            }
+        }
+        let known = |fact: &GroundFact| {
+            rows.get(fact.relation.as_str())
+                .is_some_and(|v| v.binary_search_by(|r| r.0.cmp(&fact.args[..])).is_ok())
+        };
+        let mut new: Vec<MustFact> = Vec::new();
+        let mut new_set: HashSet<GroundFact> = HashSet::new();
+        for clause in &self.clauses {
+            for (args, provenance) in clause.apply(may, &rows, !first) {
                 let fact = GroundFact {
-                    relation: head.clone(),
+                    relation: clause.rule.head.relation.clone(),
                     args,
                 };
-                if !known.contains_key(&fact) && !new.iter().any(|m: &MustFact| m.fact == fact) {
+                if !known(&fact) && new_set.insert(fact.clone()) {
                     new.push(MustFact {
                         fact,
                         provenance: Provenance::Derived(Box::new(provenance)),
@@ -869,104 +1013,244 @@ pub fn derive_guaranteed(vocab: &RootVocab, may: &MaySet, base: &[MustFact]) -> 
                 }
             }
         }
-        if new.is_empty() {
-            return derived;
-        }
-        for m in new {
-            known.insert(m.fact.clone(), m.provenance.clone());
-            derived.push(m);
-        }
+        new
     }
 }
 
-/// One clause of [`derive_guaranteed`]: every head tuple it proves over
-/// `known`, each with the provenance of its first supporting fact (a seed
-/// when only domain predicates support it).
-fn must_apply_rule(
-    vocab: &RootVocab,
-    may: &MaySet,
-    rule: &Rule,
-    known: &BTreeMap<GroundFact, Provenance>,
-) -> Vec<(Vec<String>, Provenance)> {
-    let mut bindings: Vec<(BTreeMap<&str, &str>, Option<&Provenance>)> =
-        vec![(BTreeMap::new(), None)];
-    for lit in &rule.body {
-        let BodyLiteral::Pos(atom) = lit else {
-            continue;
-        };
-        let rows: Vec<(Vec<&str>, Option<&Provenance>)> =
-            if vocab.relations.contains_key(&atom.relation) {
-                known
-                    .iter()
-                    .filter(|(f, _)| f.relation == atom.relation)
-                    .map(|(f, p)| (f.args.iter().map(String::as_str).collect(), Some(p)))
-                    .collect()
-            } else {
-                match vocab.universe(&atom.relation) {
-                    Universe::Closed(members)
-                        if atom.terms.len() == 1 && vocab.is_predicate(&atom.relation) =>
-                    {
-                        members.into_iter().map(|m| (vec![m], None)).collect()
-                    }
-                    _ => return Vec::new(),
-                }
-            };
-        let mut next = Vec::new();
-        for (b, p) in &bindings {
-            for (row, rp) in &rows {
-                if let Some(extended) = unify(&atom.terms, row, b) {
-                    next.push((extended, p.or(*rp)));
-                }
-            }
-        }
-        bindings = next;
-        if bindings.is_empty() {
-            return Vec::new();
-        }
-    }
-    for lit in &rule.body {
-        match lit {
-            BodyLiteral::Pos(_) => {}
-            BodyLiteral::Guard { cel, .. } => {
-                if !guard_decides(cel, true) {
-                    return Vec::new();
-                }
-            }
-            BodyLiteral::Cmp {
-                lhs, rhs, negated, ..
-            } => bindings.retain(|(b, _)| match (term_value(lhs, b), term_value(rhs, b)) {
-                (Some(l), Some(r)) => (l == r) != *negated,
-                _ => false, // unbound: never a proof
-            }),
-            BodyLiteral::Neg(atom) => bindings.retain(|(b, _)| {
-                let q = QueryPattern {
-                    relation: atom.relation.clone(),
-                    args: atom
-                        .terms
+/// The positive atoms of `rule`'s body, in order.
+fn positive_atoms(rule: &Rule) -> impl Iterator<Item = &RuleAtom> {
+    rule.body.iter().filter_map(|lit| match lit {
+        BodyLiteral::Pos(atom) => Some(atom),
+        _ => None,
+    })
+}
+
+impl Clause {
+    /// Every head tuple this clause proves over `rows`, in binding order,
+    /// each with the provenance of its first supporting fact (a seed when
+    /// only domain predicates support it). `prune`: only bindings that use a
+    /// fresh row.
+    fn apply<'a>(
+        &'a self,
+        may: &MaySet,
+        rows: &'a BTreeMap<&'a str, Vec<Row<'a>>>,
+        prune: bool,
+    ) -> Vec<(Vec<String>, Provenance)> {
+        let atoms: Vec<&RuleAtom> = positive_atoms(&self.rule).collect();
+        let atom_rows: Vec<Cow<'a, [Row<'a>]>> = atoms
+            .iter()
+            .zip(&self.sources)
+            .map(|(atom, source)| match source {
+                None => rows
+                    .get(atom.relation.as_str())
+                    .map_or(Cow::Borrowed(&[][..]), |v| Cow::Borrowed(v.as_slice())),
+                Some(members) => Cow::Owned(
+                    members
                         .iter()
-                        .map(|t| term_value(t, b).map(str::to_string))
+                        .map(|m| (std::slice::from_ref(m), None, false))
                         .collect(),
-                };
-                may.decides(&q) && !may.any_match(&q)
-            }),
+                ),
+            })
+            .collect();
+        // `fresh_from[i]`: a fresh row remains at some atom `>= i`.
+        let mut fresh_from = vec![false; atoms.len() + 1];
+        for i in (0..atoms.len()).rev() {
+            fresh_from[i] = fresh_from[i + 1] || atom_rows[i].iter().any(|r| r.2);
+        }
+        let mut bindings: Vec<(BTreeMap<&str, &str>, Option<&Provenance>, bool)> =
+            vec![(BTreeMap::new(), None, false)];
+        for (i, atom) in atoms.iter().enumerate() {
+            let mut next = Vec::new();
+            for (b, p, used) in &bindings {
+                for &(args, rp, is_fresh) in atom_rows[i].iter() {
+                    if prune && !used && !is_fresh && !fresh_from[i + 1] {
+                        continue;
+                    }
+                    if let Some(extended) = unify_args(&atom.terms, args, b) {
+                        next.push((extended, p.or(rp), *used || is_fresh));
+                    }
+                }
+            }
+            bindings = next;
+            if bindings.is_empty() {
+                return Vec::new();
+            }
+        }
+        if prune {
+            bindings.retain(|(_, _, used)| *used);
+        }
+        for lit in &self.rule.body {
+            match lit {
+                BodyLiteral::Pos(_) | BodyLiteral::Guard { .. } => {}
+                // Never kept by `Clauses::new`; proves nothing.
+                BodyLiteral::Count { .. } => bindings.clear(),
+                BodyLiteral::Cmp {
+                    lhs, rhs, negated, ..
+                } => bindings.retain(|(b, _, _)| match (term_value(lhs, b), term_value(rhs, b)) {
+                    (Some(l), Some(r)) => (l == r) != *negated,
+                    _ => false, // unbound: never a proof
+                }),
+                BodyLiteral::Neg(atom) => bindings.retain(|(b, _, _)| {
+                    let q = QueryPattern {
+                        relation: atom.relation.clone(),
+                        args: atom
+                            .terms
+                            .iter()
+                            .map(|t| term_value(t, b).map(str::to_string))
+                            .collect(),
+                    };
+                    may.decides(&q) && !may.any_match(&q)
+                }),
+            }
+        }
+        bindings
+            .into_iter()
+            .filter_map(|(b, p, _)| {
+                let args = self
+                    .rule
+                    .head
+                    .terms
+                    .iter()
+                    .map(|t| term_value(t, &b).map(str::to_string))
+                    .collect::<Option<Vec<_>>>()?;
+                Some((args, p.cloned().unwrap_or(Provenance::Seed)))
+            })
+            .collect()
+    }
+}
+
+/// [`unify`] over a fact's owned arguments.
+fn unify_args<'a>(
+    terms: &'a [RuleTerm],
+    row: &'a [String],
+    b: &BTreeMap<&'a str, &'a str>,
+) -> Option<BTreeMap<&'a str, &'a str>> {
+    if terms.len() != row.len() {
+        return None;
+    }
+    let mut out = b.clone();
+    for (t, v) in terms.iter().zip(row) {
+        match t {
+            RuleTerm::Var(name) => match out.get(name.as_str()) {
+                Some(bound) if *bound != v.as_str() => return None,
+                Some(_) => {}
+                None => {
+                    out.insert(name.as_str(), v.as_str());
+                }
+            },
+            _ => {
+                if term_value(t, &out) != Some(v.as_str()) {
+                    return None;
+                }
+            }
         }
     }
-    bindings
-        .into_iter()
-        .filter_map(|(b, p)| {
-            let args = rule
-                .head
-                .terms
-                .iter()
-                .map(|t| term_value(t, &b).map(str::to_string))
-                .collect::<Option<Vec<_>>>()?;
-            Some((args, p.cloned().unwrap_or(Provenance::Seed)))
-        })
-        .collect()
+    Some(out)
+}
+
+/// The derived closure of one root's must sets (§4, T2-1), prepared once per
+/// root: the clauses, the may set negated atoms are decided against, and the
+/// closure of the seeds every must walk starts from. A slot's derived facts
+/// are computed only when the slot is read ([`MustMap::at`]): a slot whose
+/// facts of the relevant relations are exactly the seeds shares the seed
+/// closure, and every other such shape is derived once and shared by every
+/// slot of that shape.
+#[derive(Debug)]
+pub struct MustClosure {
+    clauses: Clauses,
+    may: MaySet,
+    /// The seeds of relevant relations, fact-sorted (provenance `Seed`).
+    seeds: Vec<GroundFact>,
+    seed_derived: Arc<Vec<MustFact>>,
+    memo: Mutex<HashMap<ClosureKey, Arc<Vec<MustFact>>>>,
+}
+
+/// A must set's relevant facts as they differ from the seeds: the facts
+/// that are not a `Seed`-provenance seed, and the seeds absent.
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct ClosureKey {
+    extra: Vec<MustFact>,
+    missing: Vec<usize>,
+}
+
+impl MustClosure {
+    /// Prepare the closure over `vocab`'s rules, deciding negated atoms
+    /// against `may`; `seeds` are the facts every walk starts from.
+    pub fn new(
+        vocab: &RootVocab,
+        may: &MaySet,
+        seeds: impl IntoIterator<Item = GroundFact>,
+    ) -> Self {
+        let clauses = Clauses::new(vocab);
+        let seeds: BTreeSet<GroundFact> = seeds
+            .into_iter()
+            .filter(|f| clauses.relevant.contains(&f.relation))
+            .collect();
+        let base: Vec<MustFact> = seeds
+            .iter()
+            .map(|fact| MustFact {
+                fact: fact.clone(),
+                provenance: Provenance::Seed,
+            })
+            .collect();
+        let seed_derived = Arc::new(clauses.derive(may, &base));
+        MustClosure {
+            clauses,
+            may: may.clone(),
+            seeds: seeds.into_iter().collect(),
+            seed_derived,
+            memo: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// The derived facts over `base` — a must set: fact-sorted, each fact
+    /// once ([`derive_guaranteed`]'s answer).
+    pub fn derived(&self, base: &[MustFact]) -> Arc<Vec<MustFact>> {
+        let mut extra = Vec::new();
+        let mut missing = Vec::new();
+        let mut s = 0;
+        for m in base
+            .iter()
+            .filter(|m| self.clauses.relevant.contains(&m.fact.relation))
+        {
+            while s < self.seeds.len() && self.seeds[s] < m.fact {
+                missing.push(s);
+                s += 1;
+            }
+            if s < self.seeds.len() && self.seeds[s] == m.fact {
+                s += 1;
+                if m.provenance == Provenance::Seed {
+                    continue;
+                }
+            }
+            extra.push(m.clone());
+        }
+        missing.extend(s..self.seeds.len());
+        if extra.is_empty() && missing.is_empty() {
+            return Arc::clone(&self.seed_derived);
+        }
+        let key = ClosureKey { extra, missing };
+        if let Some(hit) = self
+            .memo
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&key)
+        {
+            return Arc::clone(hit);
+        }
+        let derived = Arc::new(self.clauses.derive(&self.may, base));
+        Arc::clone(
+            self.memo
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .entry(key)
+                .or_insert(derived),
+        )
+    }
 }
 
 /// One fact of a slot's must set, with its provenance.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MustFact {
     pub fact: GroundFact,
     pub provenance: Provenance,
@@ -977,19 +1261,125 @@ pub struct MustFact {
 /// must set.
 #[derive(Clone, Debug, Default)]
 pub struct MustMap {
-    slots: BTreeMap<PathBuf, BTreeMap<(usize, usize), Vec<MustFact>>>,
+    slots: BTreeMap<PathBuf, BTreeMap<(usize, usize), Arc<SlotFacts>>>,
+}
+
+/// One slot's must set, assembled when first read: the facts it shares with
+/// other slots, its own, and their derived closure.
+#[derive(Debug)]
+struct SlotFacts {
+    /// Facts shared with other slots (fact-sorted); an `own` fact overrides
+    /// the shared one's provenance.
+    shared: Option<Arc<Vec<MustFact>>>,
+    /// The slot's own facts, fact-sorted.
+    own: Vec<MustFact>,
+    closure: Option<Arc<MustClosure>>,
+    /// The whole set, filled on the first read.
+    full: OnceLock<Vec<MustFact>>,
+}
+
+impl SlotFacts {
+    fn facts(&self) -> &[MustFact] {
+        if self.shared.is_none() && self.closure.is_none() {
+            return &self.own;
+        }
+        self.full.get_or_init(|| {
+            let mut all = match &self.shared {
+                Some(shared) => merge_facts(shared, &self.own),
+                None => self.own.clone(),
+            };
+            if let Some(closure) = &self.closure {
+                let derived = closure.derived(&all);
+                all.extend(derived.iter().cloned());
+            }
+            all
+        })
+    }
+}
+
+/// Two fact-sorted must sets as one; a fact in both keeps `over`'s entry.
+fn merge_facts(under: &[MustFact], over: &[MustFact]) -> Vec<MustFact> {
+    let mut out = Vec::with_capacity(under.len() + over.len());
+    let (mut u, mut o) = (under.iter().peekable(), over.iter().peekable());
+    loop {
+        let next = match (u.peek(), o.peek()) {
+            (None, None) => return out,
+            (Some(_), None) => u.next(),
+            (None, Some(_)) => o.next(),
+            (Some(a), Some(b)) => match a.fact.cmp(&b.fact) {
+                std::cmp::Ordering::Less => u.next(),
+                std::cmp::Ordering::Greater => o.next(),
+                std::cmp::Ordering::Equal => {
+                    u.next();
+                    o.next()
+                }
+            },
+        };
+        out.extend(next.cloned());
+    }
 }
 
 impl MustMap {
     /// Record the facts guaranteed at the slot `span` of document `path`
     /// (appending to anything already recorded there).
     pub fn insert(&mut self, path: &Path, span: Span, facts: impl IntoIterator<Item = MustFact>) {
-        self.slots
+        self.put(
+            path,
+            span,
+            SlotFacts {
+                shared: None,
+                own: facts.into_iter().collect(),
+                closure: None,
+                full: OnceLock::new(),
+            },
+        );
+    }
+
+    /// Record the must set `shared` ∪ `own` at the slot (both fact-sorted;
+    /// an `own` fact overrides a shared one's provenance). It is assembled,
+    /// with the facts `closure` derives over it, when the slot is first read
+    /// — a slot nothing reads never computes them (T2-1).
+    pub fn insert_closed(
+        &mut self,
+        path: &Path,
+        span: Span,
+        shared: &Arc<Vec<MustFact>>,
+        own: Vec<MustFact>,
+        closure: &Arc<MustClosure>,
+    ) {
+        self.put(
+            path,
+            span,
+            SlotFacts {
+                shared: Some(Arc::clone(shared)),
+                own,
+                closure: Some(Arc::clone(closure)),
+                full: OnceLock::new(),
+            },
+        );
+    }
+
+    fn put(&mut self, path: &Path, span: Span, new: SlotFacts) {
+        match self
+            .slots
             .entry(path.to_path_buf())
             .or_default()
             .entry((span.byte_start, span.byte_end))
-            .or_default()
-            .extend(facts);
+        {
+            std::collections::btree_map::Entry::Vacant(v) => {
+                v.insert(Arc::new(new));
+            }
+            std::collections::btree_map::Entry::Occupied(mut o) => {
+                let mut all = o.get().facts().to_vec();
+                all.extend_from_slice(new.facts());
+                o.insert(Arc::new(SlotFacts {
+                    shared: None,
+                    own: all,
+                    closure: None,
+                    full: OnceLock::new(),
+                }));
+            }
+        }
     }
 
     /// The facts guaranteed at the slot `span` of document `path`.
@@ -997,7 +1387,7 @@ impl MustMap {
         self.slots
             .get(path)
             .and_then(|slots| slots.get(&(span.byte_start, span.byte_end)))
-            .map_or(&[], Vec::as_slice)
+            .map_or(&[], |slot| slot.facts())
     }
 }
 

@@ -160,6 +160,10 @@ pub struct TypedMeta {
     /// `{{@p}}` renders the cast name). Each is ALSO in [`Self::params`],
     /// typed `string` there — the host's cast narrows it at a `::use`.
     pub speaker_params: Vec<String>,
+    /// dsl 0.26.0 §3.3: each param's `default:` (`{ type: X, default: V }`)
+    /// as the `::use` argument an omitted param takes — a literal (`Str`) or
+    /// a `@def` (`Ref`, resolved in the host at each `::use`).
+    pub param_defaults: BTreeMap<String, lute_syntax::ast::AttrValue>,
     /// Project-authored `entities:` entity-kind decls (0.3.0 draft §3.1, T4),
     /// parsed via `lute_manifest::relations::parse_entity_kinds`. Distinct
     /// from [`Self::domains`] (the 0.2.2 attr-layer projection): this is the
@@ -302,6 +306,21 @@ pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
     UNIVERSAL_KEYS.contains(&key)
         || (key == "kind" && kind.is_root())
         || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
+}
+
+/// dsl 0.26.0 §2.4: `defaults.questTier` is the `tier=` of every `<quest>`
+/// that writes none (anchored at its id). An authored `tier=` wins. Applied
+/// right after parsing, so every pass and the compiled artifact see one tier.
+pub fn apply_quest_tier_default(
+    doc: &mut lute_syntax::ast::Document,
+    defaults: &lute_manifest::project::MetaDefaults,
+) {
+    let Some(tier) = defaults.get("questTier").and_then(|v| v.as_str()) else {
+        return;
+    };
+    for q in doc.quests.iter_mut().filter(|q| q.tier.is_none()) {
+        q.tier = Some((tier.to_string(), q.id_span));
+    }
 }
 
 /// The advisory tail on `E-META-UNKNOWN-KEY` (dsl 0.5.0 §2.2's "did you mean",
@@ -1343,9 +1362,10 @@ pub fn parse_meta_kind_with_defaults(
     }
     typed.components = get_ref_list(map, "components");
     typed.component = get_str(map, "component");
-    let (params, speakers, params_malformed) = get_params(map, "params");
+    let (params, speakers, defaults, params_malformed) = get_params(map, "params");
     typed.params = params;
     typed.speaker_params = speakers;
+    typed.param_defaults = defaults;
     typed.params_malformed = params_malformed;
     match map.get(yaml_key("effects")) {
         None => {}
@@ -2124,29 +2144,37 @@ fn get_sub_map(map: &serde_yaml::Mapping, key: &str) -> BTreeMap<String, serde_y
 /// dsl 0.10.0 §12.4: the LONG form `{ type: X }` is accepted as a synonym for
 /// `X`, for every spelling `X` the shared deserializer admits — that is how
 /// `state:` and `defs:` entries are written, and `components-and-extends.md`
-/// says a component param is typed exactly like a def param. The wrapper takes
-/// no other key: `{ type: string, default: … }` stays malformed, because a
-/// param default would need a rule for how it interacts with
-/// `E-COMPONENT-ARG`, which the issue explicitly does not ask for.
+/// says a component param is typed exactly like a def param. dsl 0.26.0 §3.3:
+/// the long form MAY also carry `default:` — a scalar literal, or a string
+/// `"@def"` naming a def the host resolves — the argument an omitted param
+/// takes. Any other key stays malformed.
 ///
 /// dsl 0.24.0 §4: a component param MAY be typed `speaker` (a cast id). It is
 /// entered in the params list as `string` and ALSO named in the returned
 /// speaker list; `speaker` is a component-param spelling only, never a
 /// manifest [`Type`].
 ///
-/// Returns the valid `(name, type)` pairs, the `speaker` param names, and a
-/// `malformed` flag that is `true`
+/// Returns the valid `(name, type)` pairs, the `speaker` param names, the
+/// declared defaults, and a `malformed` flag that is `true`
 /// when `params:` is PRESENT but any part of it is invalid — not a mapping, a
-/// non-string key, or a value that fails `Type` deserialization. The caller
+/// non-string key, a value that fails `Type` deserialization, or a `default:`
+/// that is no scalar. The caller
 /// (component resolver) turns a set flag into `E-COMPONENT-PARSE` so a malformed
-/// signature is never silently shrunk. Absent `params:` ⇒ `(empty, empty, false)`.
+/// signature is never silently shrunk. Absent `params:` ⇒ `(empty, empty, empty, false)`.
 /// Never panics.
-fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, Vec<String>, bool) {
+type ParsedParams = (
+    Vec<DefParam>,
+    Vec<String>,
+    BTreeMap<String, lute_syntax::ast::AttrValue>,
+    bool,
+);
+fn get_params(map: &serde_yaml::Mapping, key: &str) -> ParsedParams {
+    let mut defaults = BTreeMap::new();
     let Some(raw) = map.get(yaml_key(key)) else {
-        return (Vec::new(), Vec::new(), false); // absent — fine (no params)
+        return (Vec::new(), Vec::new(), defaults, false); // absent — fine (no params)
     };
     let Some(pm) = raw.as_mapping() else {
-        return (Vec::new(), Vec::new(), true); // present but not a mapping — malformed
+        return (Vec::new(), Vec::new(), defaults, true); // present but not a mapping — malformed
     };
     let mut params = Vec::new();
     let mut speakers = Vec::new();
@@ -2156,7 +2184,18 @@ fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, Vec<Strin
             malformed = true; // non-string key
             continue;
         };
-        let tv = unwrap_long_form(tv).unwrap_or(tv);
+        let (tv, default) = match unwrap_long_form(tv) {
+            Some((ty, default)) => (ty, default),
+            None => (tv, None),
+        };
+        if let Some(default) = default {
+            match param_default(default) {
+                Some(v) => {
+                    defaults.insert(name.to_string(), v);
+                }
+                None => malformed = true,
+            }
+        }
         if tv.as_str() == Some("speaker") {
             speakers.push(name.to_string());
             params.push(DefParam {
@@ -2173,23 +2212,53 @@ fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, Vec<Strin
             Err(_) => malformed = true, // value is not a valid Type
         }
     }
-    (params, speakers, malformed)
+    (params, speakers, defaults, malformed)
 }
 
-/// dsl 0.10.0 §12.4: unwrap the long form `{ type: X }` to `X`. `None` for
-/// anything else, including a `type:` wrapper carrying a second key — the
-/// caller then hands the ORIGINAL value to the `Type` deserializer, which
-/// rejects it, so an unwrap miss is never a silent acceptance.
+/// dsl 0.26.0 §3.3: a param `default:` as the `::use` argument it stands for:
+/// `"@name"` is a def reference (resolved in the host, like `p=@name`), any
+/// other scalar the literal `p="…"` would give. `None` for a non-scalar.
+fn param_default(v: &serde_yaml::Value) -> Option<lute_syntax::ast::AttrValue> {
+    use lute_syntax::ast::{AttrValue, CelKind, CelSlot};
+    let text = match v {
+        serde_yaml::Value::String(s) => s.clone(),
+        serde_yaml::Value::Bool(b) => b.to_string(),
+        serde_yaml::Value::Number(n) => n.to_string(),
+        _ => return None,
+    };
+    // The span is the component file's, meaningless in a host: every binding
+    // site re-anchors the argument at its `::use`
+    // (`component_effects::use_args_for`).
+    let at = lute_core_span::Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 1,
+        column: 1,
+        utf16_range: (0, 0),
+    };
+    Some(if text.starts_with('@') {
+        AttrValue::Ref(CelSlot::raw(CelKind::AttrValue, text, at))
+    } else {
+        AttrValue::Str(text)
+    })
+}
+
+/// dsl 0.10.0 §12.4: unwrap the long form `{ type: X }` to `X` — with dsl
+/// 0.26.0 §3.3's optional `default:` beside it. `None` for anything else,
+/// including a `type:` wrapper carrying another key — the caller then hands
+/// the ORIGINAL value to the `Type` deserializer, which rejects it, so an
+/// unwrap miss is never a silent acceptance.
 ///
 /// There is no ambiguity to resolve: `Type` has no `type` variant
 /// (`lute-manifest/src/types.rs`), so `{ type: … }` is not already a legal
 /// spelling and this cannot shadow one.
-fn unwrap_long_form(tv: &serde_yaml::Value) -> Option<&serde_yaml::Value> {
+fn unwrap_long_form(
+    tv: &serde_yaml::Value,
+) -> Option<(&serde_yaml::Value, Option<&serde_yaml::Value>)> {
     let m = tv.as_mapping()?;
-    if m.len() != 1 {
-        return None;
-    }
-    m.get(yaml_key("type"))
+    let ty = m.get(yaml_key("type"))?;
+    let default = m.get(yaml_key("default"));
+    (m.len() == 1 + usize::from(default.is_some())).then_some((ty, default))
 }
 
 #[cfg(test)]
@@ -2402,19 +2471,37 @@ mod tests {
         assert_eq!(meta.params[3].ty, Type::Number);
     }
 
-    /// §12.4: the wrapper takes NO other key. A `default:` beside `type:` stays
-    /// malformed — param defaults are not added, because a default would need a
-    /// rule for how it interacts with `E-COMPONENT-ARG`, which is a separate
-    /// design the issue does not ask for.
+    /// dsl 0.26.0 §3.3: the long form takes `default:` — a literal, or a
+    /// `"@def"` the host resolves — and no other key.
     #[test]
-    fn component_params_reject_a_long_form_with_extra_keys() {
+    fn component_params_take_a_default_and_no_other_key() {
         let (meta, _d) = parse_meta_str(
-            "component: greet\nparams:\n  a: { type: string, default: \"steady\" }\n",
+            "component: greet\nparams:\n  a: { type: string, default: \"steady\" }\n  \
+             b: { type: bool, default: \"@wonFight\" }\n  c: { type: number, default: 3 }\n",
+        );
+        assert!(!meta.params_malformed);
+        assert!(matches!(
+            meta.param_defaults.get("a"),
+            Some(lute_syntax::ast::AttrValue::Str(s)) if s == "steady"
+        ));
+        assert!(matches!(
+            meta.param_defaults.get("b"),
+            Some(lute_syntax::ast::AttrValue::Ref(slot)) if slot.raw == "@wonFight"
+        ));
+        assert!(matches!(
+            meta.param_defaults.get("c"),
+            Some(lute_syntax::ast::AttrValue::Str(s)) if s == "3"
+        ));
+        let (meta, _d) = parse_meta_str(
+            "component: greet\nparams:\n  a: { type: string, default: x, extra: 1 }\n",
         );
         assert!(
             meta.params_malformed,
-            "`{{ type: X, default: … }}` is still E-COMPONENT-PARSE (§12.4)"
+            "a key beside type/default is malformed"
         );
+        let (meta, _d) =
+            parse_meta_str("component: greet\nparams:\n  a: { type: string, default: [x] }\n");
+        assert!(meta.params_malformed, "a non-scalar default is malformed");
     }
 
     /// §12.4 relaxes `type`, not "any wrapper".

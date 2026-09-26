@@ -33,16 +33,17 @@ use lute_manifest::resolve::resolve_activation;
 /// Lint diagnostic codes are dynamic (`L-*` derived from plugin/custom rule
 /// ids), so the static `DENIABLE_CODES` registry `check`/`check-project` use
 /// cannot enumerate them. Instead accept any code matching
-/// `^(L-[A-Z0-9-]+|E-LINT-(CONFIG|EXPR|RULE))$`. Anything else is a clap
-/// usage error (exit 2), matching the "a typo'd `--deny` MUST NOT silently
-/// protect nothing" contract (spec §5).
+/// `^(L-[A-Z0-9-]+|E-LINT-(CONFIG|EXPR|RULE))$`, plus the native
+/// `W-DISPLAY-NAME-DUP`. Anything else is a clap usage error (exit 2),
+/// matching the "a typo'd `--deny` MUST NOT silently protect nothing"
+/// contract (spec §5).
 pub fn parse_lint_deny_code(raw: &str) -> Result<String, String> {
     if is_lint_deniable(raw) {
         Ok(raw.to_string())
     } else {
         Err(format!(
             "unknown diagnostic code `{raw}` (expected `L-<CODE>` or \
-             `E-LINT-CONFIG`/`E-LINT-EXPR`/`E-LINT-RULE`); a typo'd `--deny` \
+             `E-LINT-CONFIG`/`E-LINT-EXPR`/`E-LINT-RULE`/`W-DISPLAY-NAME-DUP`); a typo'd `--deny` \
              must not silently protect nothing (spec §5)"
         ))
     }
@@ -51,6 +52,8 @@ pub fn parse_lint_deny_code(raw: &str) -> Result<String, String> {
 fn is_lint_deniable(code: &str) -> bool {
     match code {
         "E-LINT-CONFIG" | "E-LINT-EXPR" | "E-LINT-RULE" => true,
+        // dsl 0.26.0 §2.8: the one native project-level lint.
+        lute_check::display_names::W_DISPLAY_NAME_DUP => true,
         s if s.starts_with("L-") && s.len() > 2 => s[2..]
             .chars()
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-'),
@@ -339,6 +342,14 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
             outcome.config_diagnostics.push((anchor.clone(), d));
         }
 
+        // dsl 0.26.0 §2.8: `W-DISPLAY-NAME-DUP` over the root's documents,
+        // each against the cast its own profile and imports declare.
+        if project.is_some() {
+            outcome
+                .diagnostics
+                .extend(display_name_dups(&root, &files, &inputs));
+        }
+
         aggregated.diagnostics.extend(outcome.diagnostics);
         aggregated
             .config_diagnostics
@@ -357,6 +368,38 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
             .then_with(|| da.code.cmp(&db.code))
     });
     Ok(aggregated)
+}
+
+/// `W-DISPLAY-NAME-DUP` (dsl 0.26.0 §2.8) for one project root — the same
+/// pass `check-project` runs, each document's cast resolved the way `check`
+/// resolves it. `inputs` is index-aligned with `files`; paths are the
+/// root-relative display paths the other lint diagnostics carry.
+fn display_name_dups(
+    root: &Path,
+    files: &[PathBuf],
+    inputs: &[LintDocInput],
+) -> Vec<(PathBuf, Diagnostic)> {
+    use rayon::prelude::*;
+    let cache = crate::input_cache::InputCache::default();
+    let per_doc: Vec<_> = files
+        .par_iter()
+        .zip(inputs)
+        .map(|(file, input)| {
+            let (built, _) =
+                crate::assemble_input(&cache, file, input.text.clone(), None, Some(root), None);
+            (
+                lute_check::declared_cast(&built.input.snapshot, &built.input.imports, &[]),
+                lute_check::check::use_speaker_lines(&input.doc, &built.input.components),
+            )
+        })
+        .collect();
+    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = inputs
+        .iter()
+        .map(|i| (i.path.clone(), i.doc.clone()))
+        .collect();
+    let casts: Vec<_> = per_doc.iter().map(|(c, _)| c).collect();
+    let use_lines: Vec<_> = per_doc.iter().map(|(_, u)| u).collect();
+    lute_check::display_names::check_display_names(&docs, &casts, &use_lines)
 }
 
 fn severity_str(s: Severity) -> &'static str {

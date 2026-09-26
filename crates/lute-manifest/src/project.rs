@@ -150,7 +150,7 @@ pub const IDENTITY_TOKENS: [&str; 3] = ["prefix", "speaker", "code"];
 /// `facts`/`rules`/`defs` already have a composition mechanism — hoist them
 /// into a schema and default `uses:`. `profile`/`plugins` are already
 /// project-level. `component`/`params` are per-file identity.
-pub const DEFAULTABLE_KEYS: [&str; 11] = [
+pub const DEFAULTABLE_KEYS: [&str; 12] = [
     "character",
     "components",
     "contentLang",
@@ -160,6 +160,7 @@ pub const DEFAULTABLE_KEYS: [&str; 11] = [
     "kind",
     "luteVersion",
     "pov",
+    "questTier",
     "season",
     "uses",
 ];
@@ -395,6 +396,11 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
         "character" | "pov" | "luteVersion" | "contentLang" => {
             v.as_str().map(|_| ()).ok_or("a string")
         }
+        // dsl 0.26.0 §2.4: the `tier=` a `<quest>` without one takes.
+        "questTier" => match v.as_str() {
+            Some("run") | Some("user") => Ok(()),
+            _ => Err("`run` or `user`"),
+        },
         // `uses`/`extends`/`components` take one string or a sequence of
         // strings, exactly as authored frontmatter does. A null or empty
         // sequence is a PRESENT value meaning "none" (§6.2) and is legal.
@@ -447,31 +453,132 @@ fn canonical_default_path(manifest_dir: &Path, rel: &str) -> Result<String, Stri
 /// The FIRST failure is reported and the whole entry is dropped: a partly
 /// resolved import list is worse than none, because it silently changes what
 /// a document imports.
+///
+/// dsl 0.26.0 §2.4: with `globs`, an entry containing `*`, `?` or `**` is a
+/// glob, expanded in path order in its place (the value becomes a sequence);
+/// a file listed twice is imported once, at its first position.
 fn canonicalise_entry(
     manifest_dir: &Path,
     v: &serde_yaml::Value,
+    globs: bool,
 ) -> Result<serde_yaml::Value, String> {
-    match v {
-        serde_yaml::Value::Null => Ok(v.clone()),
-        serde_yaml::Value::String(s) => Ok(serde_yaml::Value::String(canonical_default_path(
-            manifest_dir,
-            s,
-        )?)),
-        serde_yaml::Value::Sequence(items) => {
-            let mut out = Vec::with_capacity(items.len());
-            for item in items {
-                let s = item
-                    .as_str()
-                    .expect("shape already checked by defaults_shape_ok");
-                out.push(serde_yaml::Value::String(canonical_default_path(
-                    manifest_dir,
-                    s,
-                )?));
-            }
-            Ok(serde_yaml::Value::Sequence(out))
+    let items: Vec<&str> = match v {
+        serde_yaml::Value::Null => return Ok(v.clone()),
+        serde_yaml::Value::String(s) if !(globs && is_glob(s)) => {
+            return Ok(serde_yaml::Value::String(canonical_default_path(
+                manifest_dir,
+                s,
+            )?))
         }
+        serde_yaml::Value::String(s) => vec![s.as_str()],
+        serde_yaml::Value::Sequence(items) => items
+            .iter()
+            .map(|i| {
+                i.as_str()
+                    .expect("shape already checked by defaults_shape_ok")
+            })
+            .collect(),
         _ => unreachable!("shape already checked by defaults_shape_ok"),
+    };
+    let mut out: Vec<serde_yaml::Value> = Vec::with_capacity(items.len());
+    let mut push = |p: String| {
+        let p = serde_yaml::Value::String(p);
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    };
+    for s in items {
+        if globs && is_glob(s) {
+            for rel in expand_glob(manifest_dir, s)? {
+                push(canonical_default_path(manifest_dir, &rel)?);
+            }
+        } else {
+            push(canonical_default_path(manifest_dir, s)?);
+        }
     }
+    Ok(serde_yaml::Value::Sequence(out))
+}
+
+fn is_glob(s: &str) -> bool {
+    s.contains(['*', '?'])
+}
+
+/// The files under `dir` matching `pattern` (`/`-separated; `*`/`?` within a
+/// segment, `**` for any number of directories), as `dir`-relative paths in
+/// path order. The directory before the first wildcard segment must exist —
+/// a mistyped prefix is an error; an existing directory with no match yet
+/// (an area not written) expands to nothing.
+fn expand_glob(dir: &Path, pattern: &str) -> Result<Vec<String>, String> {
+    let segments: Vec<&str> = pattern
+        .split('/')
+        .filter(|s| !s.is_empty() && *s != ".")
+        .collect();
+    let fixed = segments.iter().take_while(|s| !is_glob(s)).count();
+    let prefix: PathBuf = segments[..fixed].iter().collect();
+    if !dir.join(&prefix).is_dir() {
+        return Err(format!(
+            "glob `{pattern}`: `{}` is not a directory under {}",
+            prefix.display(),
+            dir.display()
+        ));
+    }
+    let mut out = Vec::new();
+    walk_glob(dir, &prefix, &segments[fixed..], &mut out);
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+fn walk_glob(root: &Path, at: &Path, rest: &[&str], out: &mut Vec<String>) {
+    let Some((seg, tail)) = rest.split_first() else {
+        if root.join(at).is_file() {
+            out.push(at.to_string_lossy().replace('\\', "/"));
+        }
+        return;
+    };
+    if *seg == "**" {
+        walk_glob(root, at, tail, out);
+    }
+    let Ok(entries) = std::fs::read_dir(root.join(at)) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let next = at.join(&name);
+        if *seg == "**" {
+            if root.join(&next).is_dir() {
+                walk_glob(root, &next, rest, out);
+            }
+        } else if segment_matches(seg, &name) {
+            walk_glob(root, &next, tail, out);
+        }
+    }
+}
+
+/// `*` (any run) and `?` (one char) within one path segment.
+fn segment_matches(pattern: &str, name: &str) -> bool {
+    let (p, n): (Vec<char>, Vec<char>) = (pattern.chars().collect(), name.chars().collect());
+    let (mut pi, mut ni, mut star, mut mark) = (0, 0, None, 0);
+    while ni < n.len() {
+        if pi < p.len() && (p[pi] == '?' || p[pi] == n[ni]) {
+            pi += 1;
+            ni += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            star = Some(pi);
+            mark = ni;
+            pi += 1;
+        } else if let Some(s) = star {
+            pi = s + 1;
+            mark += 1;
+            ni = mark;
+        } else {
+            return false;
+        }
+    }
+    p[pi..].iter().all(|c| *c == '*')
 }
 
 /// Resolve `defaults:` (0.10.0 §6.1): reject every key outside the closed
@@ -516,7 +623,7 @@ fn resolve_defaults(
             continue;
         }
         if DEFAULTABLE_PATH_KEYS.contains(&key) {
-            match canonicalise_entry(manifest_dir, &v) {
+            match canonicalise_entry(manifest_dir, &v, key == "uses") {
                 Ok(resolved) => {
                     out.entries.insert(key.to_string(), resolved);
                 }

@@ -26,7 +26,7 @@ use lute_core_span::Span;
 use lute_manifest::schema::CastMember;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
-use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, Directive, Document, Node};
+use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, Directive, Document, Line, Node};
 use lute_syntax::datalog::{FactPattern, FactTerm};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
@@ -77,6 +77,24 @@ pub fn use_args(d: &Directive) -> BTreeMap<String, AttrValue> {
         .filter(|a| a.key != "component")
         .map(|a| (a.key.clone(), a.value.clone()))
         .collect()
+}
+
+/// dsl 0.26.0 §3.3: the arguments a `::use` of `def` binds — [`use_args`]
+/// plus, for every param it omits, that param's `default:`, anchored at the
+/// `::use` (a `@def` default resolves in the host exactly like `p=@def`).
+pub fn use_args_for(d: &Directive, def: &ComponentDef) -> BTreeMap<String, AttrValue> {
+    let mut args = use_args(d);
+    for (p, v) in &def.defaults {
+        args.entry(p.clone()).or_insert_with(|| match v {
+            AttrValue::Ref(slot) => {
+                let mut slot = slot.clone();
+                slot.span = d.span;
+                AttrValue::Ref(slot)
+            }
+            v => v.clone(),
+        });
+    }
+    args
 }
 
 /// For text interpolation only: each `speaker` param bound to a literal cast
@@ -454,14 +472,52 @@ fn use_writes(
     for shot in &def.body.shots {
         write_skeleton(&shot.body, snapshot, &mut writes);
     }
-    let args = use_args(d);
+    let args = use_args_for(d, def);
     bind_writes(&mut writes, &args, &def.params);
     fold_component_matches(&mut writes, &StateSchema::default());
     stack.push(name.clone());
     expand_nested(&mut writes, components, snapshot, stack);
     stack.pop();
     respan(&mut writes, d.span);
+    // dsl 0.26.0 §4: a guarded `::use` performs its writes only when its
+    // guard holds — each write carries the guard, so every host pass treats
+    // it as a guarded write (possible, never definite).
+    if let Some(guard) = &d.when {
+        // A guard that does not parse is reported at the `::use`; conjoined
+        // with a write's own guard it would be reported again as other text.
+        let parses =
+            lute_cel::parse_slot(&mut lute_cel::CelArena::default(), &guard.raw, 0).is_ok();
+        guard_writes(&mut writes, guard, parses);
+    }
     writes
+}
+
+/// Put every write of `nodes` under `guard` (conjoined with its own guard
+/// when `conjoin`, else replacing it); a `<match>` holding writes keeps its
+/// subject and guards its arms' writes.
+fn guard_writes(nodes: &mut [Node], guard: &CelSlot, conjoin: bool) {
+    let conj = |own: &mut Option<CelSlot>| {
+        let raw = match own.take() {
+            Some(a) if conjoin => format!("({}) && ({})", guard.raw, a.raw),
+            _ => guard.raw.clone(),
+        };
+        *own = Some(CelSlot::raw(guard.kind, raw, guard.span));
+    };
+    for node in nodes {
+        match node {
+            Node::Set(s) => conj(&mut s.when),
+            Node::Assert(a) => conj(&mut a.when),
+            Node::Retract(r) => conj(&mut r.when),
+            Node::Directive(d) => conj(&mut d.when),
+            Node::Match(m) => {
+                for arm in &mut m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    guard_writes(body, guard, conjoin);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// The write-bearing part of a component body: `::set`/`::assert`/
@@ -499,6 +555,221 @@ fn write_skeleton(nodes: &[Node], snapshot: &CapabilitySnapshot, out: &mut Vec<N
             }
             _ => {}
         }
+    }
+}
+
+/// dsl 0.26.0 §3.2: bind every `@@p:` speaker of `nodes` (at any depth) to
+/// the member id its argument names, and every nested `::use`'s arguments
+/// and guard — so `who=@who` passes the id through. A speaker whose
+/// argument is no literal id stays `@p` (the `::use` check reports it).
+pub fn bind_speaker_params(
+    nodes: &mut [Node],
+    args: &BTreeMap<String, AttrValue>,
+    params: &[(String, Type)],
+) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => {
+                if let Some(AttrValue::Str(id)) =
+                    l.speaker.strip_prefix('@').and_then(|p| args.get(p))
+                {
+                    l.speaker = id.clone();
+                }
+            }
+            Node::Directive(d) if d.tag == "use" => {
+                if let Some(w) = &mut d.when {
+                    bind_slot_raw(w, args, params);
+                }
+                bind_attrs(&mut d.attrs, args, params);
+            }
+            Node::Match(m) => {
+                for arm in &mut m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    bind_speaker_params(body, args, params);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// dsl 0.26.0 §3.2: every `@@p:` line one `::use` speaks, bound — its
+/// speaker is the member the `speaker` argument names (through nested
+/// `::use`s too), its attributes and `when` take the arguments, every
+/// param-scoped `<match>` the arguments decide is folded (an undecided one
+/// keeps all its arms), a nested guarded `::use` adds its guard to the
+/// line's own, and every span is the `::use`'s. What the host judges each
+/// such line by: cast membership, emotions and presence. A line whose
+/// argument is no literal id is left out (the `::use` check reports it).
+pub fn use_speaker_lines(d: &Directive, components: &ComponentSet) -> Vec<Line> {
+    let mut out = Vec::new();
+    for node in speaker_nodes(d, components, &mut Vec::new()) {
+        collect_bound_lines(node, d.span, &mut out);
+    }
+    out
+}
+
+fn speaker_nodes(d: &Directive, components: &ComponentSet, stack: &mut Vec<String>) -> Vec<Node> {
+    let Some((name, def)) = d.attrs.iter().find_map(|a| match (&*a.key, &a.value) {
+        ("component", AttrValue::Str(s)) => components.table.get(s).map(|def| (s, def)),
+        _ => None,
+    }) else {
+        return Vec::new();
+    };
+    if stack.contains(name) {
+        return Vec::new();
+    }
+    let mut nodes = Vec::new();
+    for shot in &def.body.shots {
+        speaker_skeleton(&shot.body, &mut nodes);
+    }
+    if nodes.is_empty() {
+        return nodes;
+    }
+    let args = use_args_for(d, def);
+    for node in &mut nodes {
+        bind_skeleton(node, &args, &def.params);
+    }
+    fold_component_matches(&mut nodes, &StateSchema::default());
+    stack.push(name.clone());
+    let mut out = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        expand_nested_speakers(node, components, stack, &mut out);
+    }
+    stack.pop();
+    out
+}
+
+/// The `@@p:` lines of a component body, the nested `::use`s, and every
+/// `<match>` holding either (all arms kept, so arm selection is unchanged).
+fn speaker_skeleton(nodes: &[Node], out: &mut Vec<Node>) {
+    for node in nodes {
+        match node {
+            Node::Line(l) if l.speaker.starts_with('@') => out.push(node.clone()),
+            Node::Directive(d) if d.tag == "use" => out.push(node.clone()),
+            Node::Match(m) => {
+                let mut m = m.clone();
+                let mut any = false;
+                for arm in &mut m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    let mut kept = Vec::new();
+                    speaker_skeleton(body, &mut kept);
+                    any |= !kept.is_empty();
+                    *body = kept;
+                }
+                if any {
+                    out.push(Node::Match(m));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn bind_skeleton(node: &mut Node, args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
+    match node {
+        Node::Line(l) => {
+            bind_attrs(&mut l.attrs, args, params);
+            if let Some(w) = &mut l.when {
+                bind_slot_raw(w, args, params);
+            }
+        }
+        Node::Match(m) => {
+            bind_slot_raw(&mut m.subject, args, params);
+            for arm in &mut m.arms {
+                match arm {
+                    Arm::When { test, body, .. } => {
+                        bind_slot_raw(test, args, params);
+                        body.iter_mut().for_each(|n| bind_skeleton(n, args, params));
+                    }
+                    Arm::Otherwise { body, .. } => {
+                        body.iter_mut().for_each(|n| bind_skeleton(n, args, params))
+                    }
+                }
+            }
+            return;
+        }
+        _ => {}
+    }
+    bind_speaker_params(std::slice::from_mut(node), args, params);
+}
+
+/// Replace a nested `::use` with ITS bound speaker lines, each under the
+/// nested guard (when it has one).
+fn expand_nested_speakers(
+    node: Node,
+    components: &ComponentSet,
+    stack: &mut Vec<String>,
+    out: &mut Vec<Node>,
+) {
+    match node {
+        Node::Directive(d) if d.tag == "use" => {
+            for mut inner in speaker_nodes(&d, components, stack) {
+                if let Some(g) = &d.when {
+                    guard_lines(&mut inner, g);
+                }
+                out.push(inner);
+            }
+        }
+        Node::Match(mut m) => {
+            for arm in &mut m.arms {
+                let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                let mut kept = Vec::new();
+                for n in std::mem::take(body) {
+                    expand_nested_speakers(n, components, stack, &mut kept);
+                }
+                *body = kept;
+            }
+            out.push(Node::Match(m));
+        }
+        other => out.push(other),
+    }
+}
+
+fn guard_lines(node: &mut Node, guard: &CelSlot) {
+    match node {
+        Node::Line(l) => {
+            let raw = match l.when.take() {
+                Some(a) => format!("({}) && ({})", guard.raw, a.raw),
+                None => guard.raw.clone(),
+            };
+            l.when = Some(CelSlot::raw(guard.kind, raw, guard.span));
+        }
+        Node::Match(m) => {
+            for arm in &mut m.arms {
+                let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                body.iter_mut().for_each(|n| guard_lines(n, guard));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The bound lines of `node` (every arm of a residual `<match>`), spans at
+/// `at`; a speaker left unbound is dropped.
+fn collect_bound_lines(node: Node, at: Span, out: &mut Vec<Line>) {
+    match node {
+        Node::Line(mut l) if !l.speaker.starts_with('@') => {
+            l.span = at;
+            l.text_span = at;
+            for a in &mut l.attrs {
+                a.span = at;
+                a.value_span = at;
+            }
+            if let Some(w) = &mut l.when {
+                w.span = at;
+            }
+            out.push(l);
+        }
+        Node::Match(m) => {
+            for arm in m.arms {
+                let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                for n in body {
+                    collect_bound_lines(n, at, out);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -541,9 +812,17 @@ fn bind_writes(
             }
             bind_set_path(&mut s.path, args)
         }
-        Node::Assert(a) => bind_fact(&mut a.pattern, args),
-        Node::Retract(r) => bind_fact(&mut r.pattern, args),
+        Node::Assert(lute_syntax::ast::Assert { pattern, when, .. })
+        | Node::Retract(lute_syntax::ast::Retract { pattern, when, .. }) => {
+            if let Some(w) = when {
+                bind_slot_raw(w, args, params);
+            }
+            bind_fact(pattern, args)
+        }
         Node::Directive(d) => {
+            if let Some(w) = &mut d.when {
+                bind_slot_raw(w, args, params);
+            }
             bind_attrs(&mut d.attrs, args, params);
             true
         }
@@ -619,13 +898,23 @@ fn respan(nodes: &mut [Node], at: Span) {
                     slot(w);
                 }
             }
-            Node::Assert(a) => {
-                a.span = at;
-                a.pattern_base = at.byte_start;
-            }
-            Node::Retract(r) => {
-                r.span = at;
-                r.pattern_base = at.byte_start;
+            Node::Assert(lute_syntax::ast::Assert {
+                span,
+                pattern_base,
+                when,
+                ..
+            })
+            | Node::Retract(lute_syntax::ast::Retract {
+                span,
+                pattern_base,
+                when,
+                ..
+            }) => {
+                *span = at;
+                *pattern_base = at.byte_start;
+                if let Some(w) = when {
+                    slot(w);
+                }
             }
             Node::Directive(d) => {
                 d.span = at;

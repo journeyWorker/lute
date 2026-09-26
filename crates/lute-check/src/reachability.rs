@@ -719,51 +719,82 @@ fn walk_reach(
             // exactly like a gated line above — a decided-false guard makes
             // the jump provably dead. An UNGUARDED `::next` needs no guard
             // analysis here (that is `check_code_after_next`'s job, above).
+            // dsl 0.26.0 §4: any guarded directive likewise.
             Node::Directive(d) if d.when.is_some() => {
-                let when = d.when.as_ref().expect("guarded above");
-                if !when.raw.trim().is_empty() {
-                    let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
-                    push_unset_literal_diags(diags, &analysis.hits, when.span);
-                    let suppress_arm_dead =
-                        !analysis.hits.is_empty() && analysis.load_bearing_for_false;
-                    if !suppress_arm_dead {
-                        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
-                            diags.push(diag(
-                                E_ARM_DEAD,
-                                Severity::Error,
-                                "this `::next` never fires: its `when` guard is provably false (dsl 0.12.0)".to_string(),
-                                when.span,
-                            ));
-                        }
-                    }
-                }
+                let what = if d.tag == lute_manifest::core::NEXT_DIRECTIVE {
+                    "this `::next` never fires: its `when` guard is provably false (dsl 0.12.0)"
+                        .to_string()
+                } else {
+                    format!(
+                        "this `::{}` never runs: its `when` guard is provably false (dsl 0.26.0 §4)",
+                        d.tag
+                    )
+                };
+                guard_reach(d.when.as_ref(), what, defs, ctx, diags);
             }
             // dsl 0.24.0 §1: a guarded `::set{… when=}` is the same one-arm
             // construct — a decided-false guard makes the write provably dead.
-            Node::Set(s) if s.when.is_some() => {
-                let when = s.when.as_ref().expect("guarded above");
-                if !when.raw.trim().is_empty() {
-                    let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
-                    push_unset_literal_diags(diags, &analysis.hits, when.span);
-                    let suppress_arm_dead =
-                        !analysis.hits.is_empty() && analysis.load_bearing_for_false;
-                    if !suppress_arm_dead {
-                        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
-                            diags.push(diag(
-                                E_ARM_DEAD,
-                                Severity::Error,
-                                "this `::set` never writes: its `when` guard is provably false (dsl 0.24.0 §1)".to_string(),
-                                when.span,
-                            ));
-                        }
-                    }
-                }
-            }
+            Node::Set(s) if s.when.is_some() => guard_reach(
+                s.when.as_ref(),
+                "this `::set` never writes: its `when` guard is provably false (dsl 0.24.0 §1)"
+                    .to_string(),
+                defs,
+                ctx,
+                diags,
+            ),
+            // dsl 0.26.0 §4: so is a guarded `::assert` / `::retract`.
+            Node::Assert(a) if a.when.is_some() => guard_reach(
+                a.when.as_ref(),
+                "this `::assert` never writes: its `when` guard is provably false (dsl 0.26.0 §4)"
+                    .to_string(),
+                defs,
+                ctx,
+                diags,
+            ),
+            Node::Retract(r) if r.when.is_some() => guard_reach(
+                r.when.as_ref(),
+                "this `::retract` never writes: its `when` guard is provably false (dsl 0.26.0 §4)"
+                    .to_string(),
+                defs,
+                ctx,
+                diags,
+            ),
             Node::Directive(_)
             | Node::Set(_)
             | Node::Timeline(_)
             | Node::Assert(_)
             | Node::Retract(_) => {}
+        }
+    }
+}
+
+/// A one-arm guard's §5.2 cause-1 check (`E-ARM-DEAD` when it decides
+/// false, `what` the message) and its `unset`-literal lint. A diagnostic
+/// already raised at the same guard is not raised again: a guarded
+/// `::use`'s spliced writes carry its guard (dsl 0.26.0 §4), and the
+/// `::use` itself speaks for them.
+fn guard_reach(
+    when: Option<&CelSlot>,
+    what: String,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(when) = when.filter(|w| !w.raw.trim().is_empty()) else {
+        return;
+    };
+    let mut own = Vec::new();
+    let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
+    push_unset_literal_diags(&mut own, &analysis.hits, when.span);
+    let suppress_arm_dead = !analysis.hits.is_empty() && analysis.load_bearing_for_false;
+    if !suppress_arm_dead {
+        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
+            own.push(diag(E_ARM_DEAD, Severity::Error, what, when.span));
+        }
+    }
+    for d in own {
+        if !diags.iter().any(|x| x.code == d.code && x.span == d.span) {
+            diags.push(d);
         }
     }
 }
@@ -1502,6 +1533,16 @@ fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>>
 /// <literal>` (either operand order) with its solution set over the path's
 /// declared type; `None` for anything else.
 fn comparison_set(expr: &Expr, schema: &crate::meta::StateSchema) -> Option<(String, SolutionSet)> {
+    comparison_set_polar(expr, schema, false)
+}
+
+/// [`comparison_set`] of `expr`, or (`negated`) of `!expr` — the complementary
+/// operator (`!(x < 1)` is `x >= 1`, `!(x == c)` is `x != c`).
+fn comparison_set_polar(
+    expr: &Expr,
+    schema: &crate::meta::StateSchema,
+    negated: bool,
+) -> Option<(String, SolutionSet)> {
     let Expr::Call(c) = expr else {
         return None;
     };
@@ -1520,6 +1561,7 @@ fn comparison_set(expr: &Expr, schema: &crate::meta::StateSchema) -> Option<(Str
         (_, _, Some(p), Expr::Literal(v)) => (p, flip(&c.func_name)?, v),
         _ => return None,
     };
+    let opname = if negated { complement(opname)? } else { opname };
     let declared = crate::set_op::resolve_type(&path, schema)?;
     let set = solution_set(declared, opname, lit)?;
     Some((path, set))
@@ -1776,11 +1818,206 @@ fn join(a: &SolutionSet, b: &SolutionSet) -> Option<SolutionSet> {
     }
 }
 
-/// Two conditions that cannot both hold: some pair of their conjuncts
-/// constrains one path to disjoint solution sets. Sound, never complete.
-pub(crate) fn provably_exclusive(a: &Conjuncts, b: &Conjuncts) -> bool {
+/// dsl 0.26.0 §8 (T3-2): a condition in disjunctive normal form over the
+/// literals [`collect_conjuncts`] reads — every `!` pushed inward first (De
+/// Morgan: `!(a && b)` is `!a || !b`; `!!a` is `a`; `!(x < 1)` is `x >= 1`),
+/// so `!(A && B)` against `A && B` is a pair of literals on one path.
+/// Each [`Disjunct`] holds the in-domain conjuncts of one alternative. A
+/// condition too large to expand (more than [`DNF_LIMIT`] alternatives) is
+/// one unconstrained, inexact disjunct — which only makes exclusivity (and
+/// implication) harder to prove.
+#[derive(Clone, Debug)]
+pub(crate) struct Dnf(Vec<Disjunct>);
+
+/// One alternative of a [`Dnf`].
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Disjunct {
+    conjuncts: Vec<(String, SolutionSet)>,
+    /// Every literal of the alternative is among `conjuncts` (so they say
+    /// exactly when it holds, not merely something it implies).
+    exact: bool,
+}
+
+/// The alternatives a [`Dnf`] expands to at most.
+const DNF_LIMIT: usize = 64;
+
+impl Default for Dnf {
+    /// No condition: one alternative constraining nothing.
+    fn default() -> Self {
+        Dnf(vec![Disjunct::default()])
+    }
+}
+
+impl Disjunct {
+    /// The paths (and pseudo-paths: `holds(…)`, `visited('…')`) it constrains.
+    pub(crate) fn paths(&self) -> impl Iterator<Item = &str> {
+        self.conjuncts.iter().map(|(p, _)| p.as_str())
+    }
+
+    /// `path` is constrained to `true` (a `holds(F)`, a flag, a bool path).
+    pub(crate) fn requires_true(&self, path: &str) -> bool {
+        let yes = DomainValue::Bool(true);
+        self.conjuncts.iter().any(|(p, s)| {
+            p == path && matches!(s, SolutionSet::Values(v) if v.len() == 1 && v.contains(&yes))
+        })
+    }
+
+    /// No conjunct of `self` meets one of `other` on a path with a disjoint
+    /// solution set.
+    fn meets(&self, other: &Disjunct) -> bool {
+        !self.conjuncts.iter().any(|(pa, sa)| {
+            other
+                .conjuncts
+                .iter()
+                .any(|(pb, sb)| pa == pb && disjoint(sa, sb))
+        })
+    }
+}
+
+/// [`Dnf`] of `raw` after `@def` expansion, typed against `schema`; `vocab`
+/// lets a positive `holds(A)` contribute its schedule's state constraints
+/// ([`schedule_conjuncts`]).
+pub(crate) fn when_dnf(
+    raw: &str,
+    defs: &DefTable<'_>,
+    schema: &crate::meta::StateSchema,
+    vocab: Option<&crate::rel_schema::RelVocab>,
+) -> Dnf {
+    let Some(expr) = parse_expanded(raw, defs) else {
+        return Dnf::default();
+    };
+    let ctx = ConjunctCtx {
+        defs,
+        schema,
+        vocab,
+    };
+    Dnf(dnf_of(&expr, false, &ctx).unwrap_or_else(|| vec![Disjunct::default()]))
+}
+
+/// The alternatives of `expr` (of `!expr` when `negated`); `None` past
+/// [`DNF_LIMIT`]. An alternative whose own conjuncts are disjoint on a path
+/// can never hold and is dropped.
+fn dnf_of(expr: &Expr, negated: bool, ctx: &ConjunctCtx<'_>) -> Option<Vec<Disjunct>> {
+    if let Expr::Call(c) = expr {
+        if c.target.is_none() {
+            if c.func_name == op::LOGICAL_NOT && c.args.len() == 1 {
+                return dnf_of(&c.args[0].expr, !negated, ctx);
+            }
+            let and = c.func_name == op::LOGICAL_AND;
+            if (and || c.func_name == op::LOGICAL_OR) && c.args.len() == 2 {
+                let l = dnf_of(&c.args[0].expr, negated, ctx)?;
+                let r = dnf_of(&c.args[1].expr, negated, ctx)?;
+                // `!(a && b)` is `!a || !b`; `!(a || b)` is `!a && !b`.
+                if and != negated {
+                    if l.len() * r.len() > DNF_LIMIT {
+                        return None;
+                    }
+                    let mut out = Vec::new();
+                    for a in &l {
+                        for b in &r {
+                            if a.meets(b) {
+                                let mut conjuncts = a.conjuncts.clone();
+                                conjuncts.extend(b.conjuncts.iter().cloned());
+                                out.push(Disjunct {
+                                    conjuncts,
+                                    exact: a.exact && b.exact,
+                                });
+                            }
+                        }
+                    }
+                    return Some(out);
+                }
+                if l.len() + r.len() > DNF_LIMIT {
+                    return None;
+                }
+                return Some(l.into_iter().chain(r).collect());
+            }
+        }
+    }
+    if let Expr::Literal(Val::Boolean(b)) = expr {
+        return Some(if *b != negated {
+            vec![Disjunct {
+                conjuncts: Vec::new(),
+                exact: true,
+            }]
+        } else {
+            Vec::new()
+        });
+    }
+    let mut conjuncts = Vec::new();
+    let exact = literal_conjuncts(expr, negated, ctx, &mut conjuncts);
+    Some(vec![Disjunct { conjuncts, exact }])
+}
+
+/// One literal (`expr`, or `!expr` when `negated`) as [`collect_conjuncts`]
+/// reads it. `false` when it is not an in-domain comparison, flag or ground
+/// query (it then constrains nothing).
+fn literal_conjuncts(
+    expr: &Expr,
+    negated: bool,
+    ctx: &ConjunctCtx<'_>,
+    out: &mut Vec<(String, SolutionSet)>,
+) -> bool {
+    if let Some(hit) = comparison_set_polar(expr, ctx.schema, negated) {
+        out.push(hit);
+        return true;
+    }
+    let bool_path = crate::cel_paths::select_path(expr).filter(|path| {
+        crate::cel_paths::reserved_entry_id(path).is_some()
+            || matches!(
+                crate::set_op::resolve_type(path, ctx.schema),
+                Some(Type::Bool)
+            )
+    });
+    let Some(path) = bool_path.or_else(|| holds_key(expr)) else {
+        return false;
+    };
+    out.push((
+        path,
+        SolutionSet::Values(std::iter::once(DomainValue::Bool(!negated)).collect()),
+    ));
+    if !negated {
+        if let Some(vocab) = ctx.vocab {
+            out.extend(schedule_conjuncts(expr, vocab, ctx));
+        }
+    }
+    true
+}
+
+/// Two conditions that cannot both hold: every alternative of one meets
+/// every alternative of the other on a path they constrain to disjoint
+/// solution sets. Sound, never complete.
+pub(crate) fn provably_exclusive(a: &Dnf, b: &Dnf) -> bool {
+    non_exclusive_witness(a, b).is_none()
+}
+
+/// A pair of alternatives, one of each, that no path separates — why `a`
+/// and `b` are not [`provably_exclusive`].
+pub(crate) fn non_exclusive_witness<'d>(
+    a: &'d Dnf,
+    b: &'d Dnf,
+) -> Option<(&'d Disjunct, &'d Disjunct)> {
     a.0.iter()
-        .any(|(pa, sa)| b.0.iter().any(|(pb, sb)| pa == pb && disjoint(sa, sb)))
+        .flat_map(|da| b.0.iter().map(move |db| (da, db)))
+        .find(|(da, db)| da.meets(db))
+}
+
+/// dsl 0.26.0 §8 (T3-3): `b` holds only where `a` does — every alternative
+/// of `b` has an [exact](Disjunct::exact) alternative of `a` each of whose
+/// conjuncts `b`'s alternative constrains to a subset. Sound, never
+/// complete: an alternative of `a` the checker cannot read in full implies
+/// nothing.
+pub(crate) fn implies(b: &Dnf, a: &Dnf) -> bool {
+    b.0.iter().all(|db| {
+        a.0.iter().any(|da| {
+            da.exact
+                && da.conjuncts.iter().all(|(pa, sa)| {
+                    db.conjuncts
+                        .iter()
+                        .any(|(pb, sb)| pa == pb && crate::solution::subset(sb, sa))
+                })
+        })
+    })
 }
 
 /// The operator with its operands exchanged (`1 < x` is `x > 1`).
@@ -1792,6 +2029,19 @@ fn flip(func_name: &str) -> Option<&'static str> {
         op::LESS_EQUALS => op::GREATER_EQUALS,
         op::GREATER => op::LESS,
         op::GREATER_EQUALS => op::LESS_EQUALS,
+        _ => return None,
+    })
+}
+
+/// The operator of the negated comparison (`!(x < 1)` is `x >= 1`).
+fn complement(func_name: &str) -> Option<&'static str> {
+    Some(match func_name {
+        op::EQUALS => op::NOT_EQUALS,
+        op::NOT_EQUALS => op::EQUALS,
+        op::LESS => op::GREATER_EQUALS,
+        op::LESS_EQUALS => op::GREATER,
+        op::GREATER => op::LESS_EQUALS,
+        op::GREATER_EQUALS => op::LESS,
         _ => return None,
     })
 }

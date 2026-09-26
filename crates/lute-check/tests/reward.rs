@@ -181,3 +181,157 @@ fn foreign_kind_is_e_reward_kind_when_vocabulary_declared() {
         "a declared kind must not flag E-REWARD-KIND: {cs_ok:?}"
     );
 }
+
+/// dsl 0.26.0 §2.5 (T1-8): a snapshot whose `ITEM` kind carries `target`.
+fn snap_with_target(target: lute_manifest::schema::RewardTarget) -> CapabilitySnapshot {
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.reward_kinds.insert(
+        "ITEM".into(),
+        RewardKindDecl {
+            name: "ITEM".into(),
+            target: Some(target),
+            ..Default::default()
+        },
+    );
+    snap.version = lute_manifest::snapshot::capability_version(&snap);
+    snap
+}
+
+fn reward_target_diags(
+    rewards: &str,
+    target: lute_manifest::schema::RewardTarget,
+    providers: ProviderSet,
+) -> Vec<(String, String)> {
+    let text = format!(
+        "---\nkind: quest\nentities:\n  bagItem: {{ members: [goodRod, potion] }}\n  \
+         loot: {{ open: engine }}\n---\n<quest id=\"q\">\n{rewards}</quest>\n"
+    );
+    let input = CheckInput {
+        text,
+        uri: "reward".into(),
+        snapshot: snap_with_target(target),
+        providers,
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+        defaults: Default::default(),
+    };
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "E-REWARD-TARGET" || d.code == "W-CATALOG-STALE")
+        .map(|d| (d.code, d.message))
+        .collect()
+}
+
+fn entity_contract(kind: &str, required: bool) -> lute_manifest::schema::RewardTarget {
+    lute_manifest::schema::RewardTarget {
+        entity: Some(kind.into()),
+        required,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn entity_target_contract_checks_membership_with_a_did_you_mean() {
+    let ok = reward_target_diags(
+        "<reward kind=\"ITEM\" target=\"goodRod\"/>\n",
+        entity_contract("bagItem", false),
+        ProviderSet::default(),
+    );
+    assert!(ok.is_empty(), "a member target is clean: {ok:?}");
+
+    let bad = reward_target_diags(
+        "<reward kind=\"ITEM\" target=\"godRod\"/>\n",
+        entity_contract("bagItem", false),
+        ProviderSet::default(),
+    );
+    assert_eq!(bad.len(), 1, "{bad:?}");
+    assert_eq!(bad[0].0, "E-REWARD-TARGET");
+    assert!(bad[0].1.contains("did you mean `goodRod`"), "{bad:?}");
+}
+
+#[test]
+fn an_open_entity_kind_accepts_any_target() {
+    let d = reward_target_diags(
+        "<reward kind=\"ITEM\" target=\"anythingAtAll\"/>\n",
+        entity_contract("loot", false),
+        ProviderSet::default(),
+    );
+    assert!(d.is_empty(), "{d:?}");
+}
+
+#[test]
+fn a_contract_naming_an_undeclared_kind_is_e_reward_target() {
+    let d = reward_target_diags(
+        "<reward kind=\"ITEM\" target=\"goodRod\"/>\n",
+        entity_contract("bagItems", false),
+        ProviderSet::default(),
+    );
+    assert_eq!(d.len(), 1, "{d:?}");
+    assert!(d[0].1.contains("entity kind `bagItems`"), "{d:?}");
+}
+
+#[test]
+fn required_rejects_a_missing_target_and_only_then() {
+    let optional = reward_target_diags(
+        "<reward kind=\"ITEM\"/>\n",
+        entity_contract("bagItem", false),
+        ProviderSet::default(),
+    );
+    assert!(
+        optional.is_empty(),
+        "no `required:`, no target is fine: {optional:?}"
+    );
+
+    let required = reward_target_diags(
+        "<reward kind=\"ITEM\"/>\n<objective id=\"o\" title=\"O\" done=\"true\">\n\
+         <reward kind=\"ITEM\"/>\n</objective>\n",
+        entity_contract("bagItem", true),
+        ProviderSet::default(),
+    );
+    assert_eq!(
+        required
+            .iter()
+            .filter(|(c, _)| c == "E-REWARD-TARGET")
+            .count(),
+        2,
+        "quest- and objective-level rewards both need a target: {required:?}"
+    );
+}
+
+#[test]
+fn provider_target_contract_resolves_against_the_pinned_catalog() {
+    let providers = |stale: bool| {
+        ProviderSet::from_one(lute_manifest::provider::ProviderSnapshot {
+            manifest_version: "v".into(),
+            provider_version: "1".into(),
+            entries: [("items".to_string(), vec!["goodRod".to_string()])].into(),
+            stale,
+        })
+    };
+    let contract = || lute_manifest::schema::RewardTarget {
+        provider: Some("items".into()),
+        ..Default::default()
+    };
+    let ok = reward_target_diags(
+        "<reward kind=\"ITEM\" target=\"goodRod\"/>\n",
+        contract(),
+        providers(false),
+    );
+    assert!(ok.is_empty(), "{ok:?}");
+    let absent = reward_target_diags(
+        "<reward kind=\"ITEM\" target=\"superRod\"/>\n",
+        contract(),
+        providers(false),
+    );
+    assert_eq!(absent.len(), 1, "{absent:?}");
+    assert_eq!(absent[0].0, "E-REWARD-TARGET");
+    let stale = reward_target_diags(
+        "<reward kind=\"ITEM\" target=\"superRod\"/>\n",
+        contract(),
+        providers(true),
+    );
+    assert_eq!(stale.len(), 1, "{stale:?}");
+    assert_eq!(stale[0].0, "W-CATALOG-STALE", "a stale catalog only warns");
+}

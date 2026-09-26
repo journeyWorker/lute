@@ -12,6 +12,9 @@
 //! FactArg     ::= Ident | "true" | "false" | "_" | "@" Ident   (* "@" Ident: a component param *)
 //! Rule        ::= Atom ":-" Literal ("," Literal)*
 //! Literal     ::= "not" WS Atom | "cel(" CelString ")" | Term ("="|"!=") Term | Atom
+//!               | "count(" Atom ")" CountOp Nat
+//!               | "countDistinct(" Atom ("," Var)+ ")" CountOp Nat
+//! CountOp     ::= ">=" | ">" | "<=" | "<" | "==" | "=" | "!="
 //! Atom        ::= Ident "(" Term ("," Term)* ")"
 //! Term        ::= Ident | "true" | "false" | "_"
 //!                 (* "_" in a rule BODY atom is a fresh anonymous variable (dsl 0.24 T3-9);
@@ -98,6 +101,83 @@ pub enum BodyLiteral {
         negated: bool,
         span: (usize, usize),
     },
+    /// dsl 0.26.0 §6: `count(Atom) Op N` — the number of facts matching
+    /// `atom` — or `countDistinct(Atom, V…) Op N` — the number of distinct
+    /// values of the variables `distinct` among them — compared to `n`.
+    /// A variable of `atom` bound elsewhere in the body is read (the count
+    /// is per binding); any other ranges over the facts, like `_`. Binds
+    /// nothing; `atom`'s relation must not depend on the head (stratified).
+    Count {
+        atom: RuleAtom,
+        /// `countDistinct`'s counted variables; empty for `count`.
+        distinct: Vec<String>,
+        op: CountOp,
+        n: u64,
+        span: (usize, usize),
+    },
+}
+
+/// The comparison of a [`BodyLiteral::Count`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CountOp {
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+impl CountOp {
+    /// Whether `count <op> n` holds.
+    pub fn holds(self, count: u64, n: u64) -> bool {
+        match self {
+            CountOp::Eq => count == n,
+            CountOp::Ne => count != n,
+            CountOp::Lt => count < n,
+            CountOp::Le => count <= n,
+            CountOp::Gt => count > n,
+            CountOp::Ge => count >= n,
+        }
+    }
+
+    /// The canonical spelling (`=` is read as `==`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CountOp::Eq => "==",
+            CountOp::Ne => "!=",
+            CountOp::Lt => "<",
+            CountOp::Le => "<=",
+            CountOp::Gt => ">",
+            CountOp::Ge => ">=",
+        }
+    }
+
+    /// Parse a canonical spelling ([`CountOp::as_str`]).
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "==" | "=" => CountOp::Eq,
+            "!=" => CountOp::Ne,
+            "<" => CountOp::Lt,
+            "<=" => CountOp::Le,
+            ">" => CountOp::Gt,
+            ">=" => CountOp::Ge,
+            _ => return None,
+        })
+    }
+}
+
+impl BodyLiteral {
+    /// The atom a `Pos`/`Neg`/`Count` literal reads, with its polarity
+    /// class; `None` for a guard or a comparison.
+    pub fn atom(&self) -> Option<&RuleAtom> {
+        match self {
+            BodyLiteral::Pos(a) | BodyLiteral::Neg(a) | BodyLiteral::Count { atom: a, .. } => {
+                Some(a)
+            }
+            BodyLiteral::Guard { .. } | BodyLiteral::Cmp { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -444,7 +524,8 @@ fn parse_cel_guard(c: &mut Cur, lit_start: usize) -> Result<BodyLiteral, Datalog
     })
 }
 
-/// `Literal ::= "not" WS Atom | "cel(" CelString ")" | Term ("="|"!=") Term | Atom`.
+/// `Literal ::= "not" WS Atom | "cel(" CelString ")" | Term ("="|"!=") Term
+/// | Atom | "count(" … | "countDistinct(" …`.
 fn parse_body_literal(c: &mut Cur) -> Result<BodyLiteral, DatalogError> {
     c.ws();
     let lit_start = c.i;
@@ -472,6 +553,15 @@ fn parse_body_literal(c: &mut Cur) -> Result<BodyLiteral, DatalogError> {
         c.ws();
         if c.eat(b'(') {
             return parse_cel_guard(c, lit_start);
+        }
+        c.i = save;
+    }
+
+    if name == "count" || name == "countDistinct" {
+        let save = c.i;
+        c.ws();
+        if c.eat(b'(') {
+            return parse_count(c, name == "countDistinct", lit_start);
         }
         c.i = save;
     }
@@ -518,6 +608,80 @@ fn parse_body_literal(c: &mut Cur) -> Result<BodyLiteral, DatalogError> {
         lhs,
         rhs,
         negated,
+        span: (lit_start, c.i),
+    })
+}
+
+/// `count(` / `countDistinct(` already consumed through the `(`: the atom,
+/// `countDistinct`'s counted variables, `)`, the comparison and a natural
+/// number (dsl 0.26.0 §6).
+fn parse_count(c: &mut Cur, distinct: bool, lit_start: usize) -> Result<BodyLiteral, DatalogError> {
+    c.ws();
+    let atom = parse_rule_atom(c)?;
+    let mut vars = Vec::new();
+    c.ws();
+    while distinct && c.eat(b',') {
+        c.ws();
+        let at = c.i;
+        match c.ident() {
+            Some((v, _)) if v.as_bytes()[0].is_ascii_uppercase() => vars.push(v),
+            _ => {
+                return Err(DatalogError::Malformed {
+                    at,
+                    msg: "`countDistinct(<atom>, V…)` counts the distinct values of the atom's \
+                          variables `V` — expected a capitalised variable"
+                        .to_string(),
+                })
+            }
+        }
+        c.ws();
+    }
+    if distinct && vars.is_empty() {
+        return Err(DatalogError::Malformed {
+            at: c.i,
+            msg: "`countDistinct(<atom>, V…)` needs the variable(s) whose distinct values it \
+                  counts"
+                .to_string(),
+        });
+    }
+    if !c.eat(b')') {
+        return Err(DatalogError::Malformed {
+            at: c.i,
+            msg: format!(
+                "expected `)` to close `{}(…)`",
+                if distinct { "countDistinct" } else { "count" }
+            ),
+        });
+    }
+    c.ws();
+    let op_at = c.i;
+    let op = [">=", "<=", "==", "!=", ">", "<", "="]
+        .into_iter()
+        .find(|op| eat_str(c, op))
+        .and_then(CountOp::parse)
+        .ok_or_else(|| DatalogError::Malformed {
+            at: op_at,
+            msg: "a count compares with `>=`, `>`, `<=`, `<`, `==` or `!=` to a whole number \
+                  (dsl 0.26.0 §6)"
+                .to_string(),
+        })?;
+    c.ws();
+    let n_at = c.i;
+    while c.peek().is_some_and(|b| b.is_ascii_digit()) {
+        c.i += 1;
+    }
+    let n = std::str::from_utf8(&c.b[n_at..c.i])
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .ok_or_else(|| DatalogError::Malformed {
+            at: n_at,
+            msg: "a count compares to a whole number (dsl 0.26.0 §6)".to_string(),
+        })?;
+    Ok(BodyLiteral::Count {
+        atom,
+        distinct: vars,
+        op,
+        n,
         span: (lit_start, c.i),
     })
 }
@@ -649,5 +813,56 @@ mod tests {
             &r.body[1],
             BodyLiteral::Cmp { negated: false, .. }
         ));
+    }
+
+    /// dsl 0.26.0 §6: `count(Atom) Op N` and `countDistinct(Atom, V…) Op N`.
+    #[test]
+    fn parses_count_and_count_distinct_literals() {
+        let r = parse_rule("open(earth) :- count(hasBadge(_)) >= 5").unwrap();
+        let BodyLiteral::Count {
+            atom,
+            distinct,
+            op,
+            n,
+            ..
+        } = &r.body[0]
+        else {
+            panic!("{r:?}")
+        };
+        assert_eq!(atom.relation, "hasBadge");
+        assert!(distinct.is_empty());
+        assert_eq!((*op, *n), (CountOp::Ge, 5));
+        assert!(op.holds(5, 5) && !op.holds(4, 5));
+
+        let r = parse_rule("t(P) :- listed(P), countDistinct(toured(P, T, W), T, W) != 0").unwrap();
+        assert!(matches!(
+            &r.body[1],
+            BodyLiteral::Count { distinct, op: CountOp::Ne, n: 0, .. }
+                if distinct == &["T".to_string(), "W".to_string()]
+        ));
+        // `=` is `==`.
+        let r = parse_rule("z(a) :- count(b(_)) = 0").unwrap();
+        assert!(matches!(
+            &r.body[0],
+            BodyLiteral::Count {
+                op: CountOp::Eq,
+                ..
+            }
+        ));
+
+        for bad in [
+            "d(a) :- count(b(_))",
+            "d(a) :- count(b(_)) >= x",
+            "d(a) :- count(b(_)) >= -1",
+            "d(a) :- count(b(_)) >= 1.5",
+            "d(a) :- countDistinct(b(X)) >= 1",
+            "d(a) :- countDistinct(b(X), x) >= 1",
+            "d(a) :- count(b(_) >= 1",
+        ] {
+            assert!(
+                matches!(parse_rule(bad), Err(DatalogError::Malformed { .. })),
+                "{bad}"
+            );
+        }
     }
 }

@@ -676,6 +676,38 @@
             "rhs",
             "negated"
           ]
+        },
+        {
+          "type": "object",
+          "description": "dsl 0.26.0 §6: `count(atom) op n`, or with `distinct` `countDistinct(atom, V…) op n`. A variable of `atom` bound by another literal is read; any other ranges over the facts. `atom`'s relation sits in a strictly lower stratum than the head.",
+          "properties": {
+            "kind": {
+              "const": "count"
+            },
+            "atom": {
+              "$ref": "#/$defs/atomEntry"
+            },
+            "distinct": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "op": {
+              "enum": ["==", "!=", "<", "<=", ">", ">="]
+            },
+            "n": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "atom",
+            "op",
+            "n"
+          ]
         }
       ]
     },
@@ -787,6 +819,26 @@
       ],
       "description": "Scene-kind envelope meta (dsl 0.15.0 §2/§3). Present when `kind` == \"scene\". Since 0.15.0 only `id` is required — the four legacy identity keys demote to optional."
     },
+    "targetKind": {
+      "type": "object",
+      "description": "dsl 0.26.0 §5: a `target: \"kind:<kind>\"` beat, resolved. It answers a raise for `<prefix>.<member>` of every listed member; while it runs, `occasion.target` is the raised member id.",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": ["kind", "prefix", "members"]
+    },
     "sceneBeat": {
       "type": "object",
       "properties": {
@@ -794,6 +846,9 @@
           "type": "string",
           "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
           "description": "the occasion this scene answers — engine vocabulary, shape-only unless a resolved plugin declares `occasions:` (dsl 0.21.0 §2)."
+        },
+        "targetKind": {
+          "$ref": "#/$defs/targetKind"
         },
         "target": {
           "type": "string",
@@ -2304,6 +2359,9 @@
     "entryCmd": {
       "type": "object",
       "properties": {
+        "targetKind": {
+          "$ref": "#/$defs/targetKind"
+        },
         "kind": {
           "const": "entry"
         },
@@ -2449,6 +2507,9 @@
     "cmdBeat": {
       "type": "object",
       "properties": {
+        "targetKind": {
+          "$ref": "#/$defs/targetKind"
+        },
         "kind": {
           "const": "beat"
         },
@@ -2764,6 +2825,9 @@
     "indexBeat": {
       "type": "object",
       "properties": {
+        "targetKind": {
+          "$ref": "#/$defs/targetKind"
+        },
         "id": {
           "type": "string",
           "description": "the scene's canonical id (sceneMeta.id) for a scene beat, the entry id for an entry beat, the canonical `<document id>.<beat id>` for a bundle beat (dsl 0.23.0 §4)."

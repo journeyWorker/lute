@@ -133,6 +133,9 @@ struct RawWrites {
     state: Vec<(String, RawWrite)>,
     facts: Vec<String>,
     retract: Vec<String>,
+    /// dsl 0.26.0 §7 (T2-9): `engine: { accept: [quest ids] }` — the engine
+    /// accepts these quests (a quest board, a menu) at this step.
+    accept: Vec<String>,
 }
 
 /// What one `steps:` entry does.
@@ -158,7 +161,7 @@ enum StepAction {
     /// `occasion_expect` the first selection key the step's `expect:`
     /// judges it by (refused, like them, when the clock raises nothing).
     Advance {
-        by: lute_manifest::clock::Advance,
+        by: AdvanceBy,
         /// dsl 0.24.0 §1 (ER N16): the `engine:` writes of the same moment,
         /// applied before the clock moves; one settle follows both.
         writes: RawWrites,
@@ -169,6 +172,20 @@ enum StepAction {
     /// `end: true` (0.23.1): the playthrough is over — later steps are
     /// skipped. A `::end` in a presentation ends only that presentation.
     End,
+}
+
+/// How far an `advance:` step moves the clock, as written.
+#[derive(Clone)]
+enum AdvanceBy {
+    /// `slot`, `day` or a number of slots.
+    By(lute_manifest::clock::Advance),
+    /// dsl 0.26.0 §7 (T2-5): `{ to: <slot> }` / `{ to: { weekday, slot } }`
+    /// — resolved against the clock when the step is planned. `weekday` is
+    /// a `week.labels` label or a `clock.weekday` number.
+    To {
+        weekday: Option<String>,
+        slot: Option<String>,
+    },
 }
 
 /// One `steps:` entry.
@@ -442,7 +459,7 @@ fn expand_includes(
 }
 
 /// `engine:` / long-form `newRun:` writes. `retract` says whether
-/// `retract:` is legal (a new run's seed only adds).
+/// `retract:` and `accept:` are legal (a new run's seed only adds).
 fn parse_writes(
     n: usize,
     key: &str,
@@ -450,7 +467,7 @@ fn parse_writes(
     retract: bool,
 ) -> Result<RawWrites, String> {
     let legal = if retract {
-        "state, facts, retract"
+        "state, facts, retract, accept"
     } else {
         "state, facts"
     };
@@ -496,6 +513,9 @@ fn parse_writes(
             Some("retract") if retract => {
                 w.retract = string_list(v, &format!("step {n}: `{key}.retract`"))?
             }
+            Some("accept") if retract => {
+                w.accept = string_list(v, &format!("step {n}: `{key}.accept`"))?
+            }
             other => {
                 return Err(format!(
                     "step {n}: unknown `{key}:` key `{}` (legal: {legal})",
@@ -504,7 +524,7 @@ fn parse_writes(
             }
         }
     }
-    if w.state.is_empty() && w.facts.is_empty() && w.retract.is_empty() {
+    if w.state.is_empty() && w.facts.is_empty() && w.retract.is_empty() && w.accept.is_empty() {
         return Err(format!("step {n}: `{key}:` writes nothing ({legal})"));
     }
     Ok(w)
@@ -609,12 +629,18 @@ fn parse_step(
             "engine" => writes = Some(parse_writes(n, key, v, true)?),
             "advance" => {
                 use lute_manifest::clock::Advance;
+                let shape = "`advance` is `slot`, `day`, a number of slots, `{ to: <slot> }` \
+                             or `{ to: { weekday: <label or number>, slot: <slot> } }`";
                 advance = Some(match v {
-                    serde_yaml::Value::String(s) if s.trim() == "slot" => Advance::Slots(1),
-                    serde_yaml::Value::String(s) if s.trim() == "day" => Advance::Day,
+                    serde_yaml::Value::String(s) if s.trim() == "slot" => {
+                        AdvanceBy::By(Advance::Slots(1))
+                    }
+                    serde_yaml::Value::String(s) if s.trim() == "day" => {
+                        AdvanceBy::By(Advance::Day)
+                    }
                     serde_yaml::Value::Number(k) => {
                         match k.as_u64().and_then(|k| u32::try_from(k).ok()) {
-                            Some(k) if k >= 1 => Advance::Slots(k),
+                            Some(k) if k >= 1 => AdvanceBy::By(Advance::Slots(k)),
                             _ => {
                                 return Err(format!(
                                 "step {n}: `advance: {k}` — a slot count is a whole number ≥ 1 \
@@ -623,11 +649,33 @@ fn parse_step(
                             }
                         }
                     }
-                    _ => {
-                        return Err(format!(
-                            "step {n}: `advance` is `slot`, `day` or a number of slots"
-                        ))
+                    // dsl 0.26.0 §7 (T2-5): forward to the next such position.
+                    serde_yaml::Value::Mapping(m) if m.len() == 1 && m.contains_key("to") => {
+                        match m.get("to").unwrap_or(&serde_yaml::Value::Null) {
+                            serde_yaml::Value::String(slot) if !slot.trim().is_empty() => {
+                                AdvanceBy::To {
+                                    weekday: None,
+                                    slot: Some(slot.trim().to_string()),
+                                }
+                            }
+                            serde_yaml::Value::Mapping(to) => {
+                                let (mut weekday, mut slot) = (None, None);
+                                for (k, v) in to {
+                                    match (k.as_str(), scalar_text(v)) {
+                                        (Some("weekday"), Some(w)) => weekday = Some(w),
+                                        (Some("slot"), Some(s)) => slot = Some(s),
+                                        _ => return Err(format!("step {n}: {shape}")),
+                                    }
+                                }
+                                if weekday.is_none() && slot.is_none() {
+                                    return Err(format!("step {n}: {shape}"));
+                                }
+                                AdvanceBy::To { weekday, slot }
+                            }
+                            _ => return Err(format!("step {n}: {shape}")),
+                        }
                     }
+                    _ => return Err(format!("step {n}: {shape}")),
                 });
             }
             "end" => {
@@ -788,6 +836,9 @@ struct Project {
     /// Every `<entry>` id — what `entriesRead:` may name, and the
     /// `entry.<id>.everRead` paths the playthrough keeps (dsl 0.22.0 §7).
     entry_ids: BTreeSet<String>,
+    /// dsl 0.26.0 §7 (T3-10): `<document id>.<entry id>` -> the entry id —
+    /// the alias a script may name an entry by.
+    entry_aliases: BTreeMap<String, String>,
     /// `<quest tier="run">` quests (dsl 0.22.0 §7) -> their objective ids:
     /// reset to `unset` at every `newRun`.
     run_quests: BTreeMap<String, Vec<String>>,
@@ -821,6 +872,12 @@ impl Project {
         self.occasions
             .get(occasion)
             .is_some_and(|d| d.judge == lute_manifest::schema::OccasionJudge::Before)
+    }
+
+    /// dsl 0.26.0 §7 (T3-10): an entry named `<document id>.<entry id>`
+    /// resolves to its entry id; every other id is itself.
+    fn entry_id<'a>(&'a self, id: &'a str) -> &'a str {
+        self.entry_aliases.get(id).map_or(id, String::as_str)
     }
 }
 
@@ -857,6 +914,8 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
     let mut failures: BTreeMap<PathBuf, String> = BTreeMap::new();
     let policy = crate::DenyPolicy::default();
     let mut world_events: BTreeSet<String> = BTreeSet::new();
+    // dsl 0.26.0 §3.1: the bridge capabilities' `result:` types, per tag.
+    let mut bridge_types = crate::runner::BridgeReads::default();
     let cache = crate::InputCache::default();
 
     for (file, base) in &reconciled.per_doc {
@@ -885,6 +944,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
                 .or_insert_with(|| decl.clone());
         }
         world_events.extend(built.input.snapshot.events.keys().cloned());
+        bridge_types = bridge_types.with_result_types(&built.input.snapshot);
         let gate = crate::gate_for_doc(&reconciled, file, base);
         match lute_compile::compile_with_check(&built.input, gate, &identity) {
             Ok(artifact) => {
@@ -964,20 +1024,52 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         }
     }
 
+    // dsl 0.26.0 §2.1: a persistent path is one value of ONE declared type.
+    // Two documents declaring it with different types would read each
+    // other's value as their own (`check-project`'s E-STATE-DECL-CONFLICT);
+    // the play keys each path with its declared type and refuses the mix.
     let mut state_table: BTreeMap<String, Json> = BTreeMap::new();
-    for art in artifacts.values() {
+    let mut declared_in: BTreeMap<String, &str> = BTreeMap::new();
+    let mut conflicts = Vec::new();
+    for (rel, art) in &artifacts {
         for e in art
             .get("state")
             .and_then(Json::as_array)
             .into_iter()
             .flatten()
         {
-            if let Some(path) = e.get("path").and_then(Json::as_str) {
-                state_table
-                    .entry(path.to_string())
-                    .or_insert_with(|| e.clone());
+            let Some(path) = e.get("path").and_then(Json::as_str) else {
+                continue;
+            };
+            match state_table.get(path) {
+                None => {
+                    state_table.insert(path.to_string(), e.clone());
+                    declared_in.insert(path.to_string(), rel);
+                }
+                Some(first)
+                    if !path.starts_with("scene.") && first.get("type") != e.get("type") =>
+                {
+                    conflicts.push(format!(
+                        "lute play: state path `{path}` is declared as {} in {} and as {} in {rel} \
+                         (E-STATE-DECL-CONFLICT)",
+                        first.get("type").map(Json::to_string).unwrap_or_default(),
+                        declared_in[path],
+                        e.get("type").map(Json::to_string).unwrap_or_default(),
+                    ));
+                }
+                Some(_) => {}
             }
         }
+    }
+    if !conflicts.is_empty() {
+        for c in &conflicts {
+            eprintln!("{c}");
+        }
+        eprintln!(
+            "lute play: {} state type conflict(s); refusing to play",
+            conflicts.len()
+        );
+        return Err(ExitCode::from(1));
     }
     let rules = serde_json::to_value(&index.rules).unwrap_or_else(|_| json!([]));
     let seed_facts = index
@@ -1099,6 +1191,14 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         )
         .collect();
     let entry_ids = index.entries.iter().map(|e| e.id.clone()).collect();
+    let entry_aliases = index
+        .entries
+        .iter()
+        .filter_map(|e| {
+            let doc = index.documents.iter().find(|d| d.path == e.document)?;
+            Some((format!("{}.{}", doc.key, e.id), e.id.clone()))
+        })
+        .collect();
     let kinds = index
         .entities
         .iter()
@@ -1128,7 +1228,10 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         eval_json["clock"] = serde_json::to_value(clock).unwrap_or(Json::Null);
     }
 
-    let bridge_reads = std::sync::Arc::new(crate::runner::BridgeReads::of(artifacts.values()));
+    let bridge_reads = std::sync::Arc::new(crate::runner::BridgeReads {
+        result_types: bridge_types.result_types,
+        ..crate::runner::BridgeReads::of(artifacts.values())
+    });
     Ok(Project {
         artifacts,
         authored,
@@ -1145,6 +1248,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         world_events,
         scene_ids,
         entry_ids,
+        entry_aliases,
         run_quests,
         accept_driven,
         accept_children,
@@ -1183,6 +1287,8 @@ struct Writes {
     state: Vec<(String, Write)>,
     facts: Vec<Fact>,
     retract: Vec<Fact>,
+    /// dsl 0.26.0 §7 (T2-9): accept-driven quests the engine accepts.
+    accept: Vec<String>,
 }
 
 /// What a planned step does.
@@ -1511,6 +1617,16 @@ fn resolve_writes(p: &Project, n: usize, key: &str, raw: &RawWrites) -> Result<W
             );
         }
     }
+    // dsl 0.26.0 §7 (T2-9): the engine accepts an accept-driven quest.
+    for id in &raw.accept {
+        if !p.accept_driven.contains(id) {
+            return Err(format!(
+                "step {n}: `{key}.accept` names `{id}`, which is no accept-driven quest of this \
+                 project (a quest with no `start`, e.g. `accept=\"external\"`)"
+            ));
+        }
+        out.accept.push(id.clone());
+    }
     Ok(out)
 }
 
@@ -1563,11 +1679,12 @@ fn plan_steps(p: &Project, steps: &[ScriptStep]) -> Result<Vec<Step>, String> {
                 pick,
                 choose,
             } => {
+                let pick = entry_pick(p, pick);
                 plan_occasion(p, &answered, n, occasion, target.as_deref(), pick.as_ref())?;
                 Action::Occasion {
                     occasion: occasion.clone(),
                     target: target.clone(),
-                    pick: pick.clone(),
+                    pick,
                     choose: choose.clone(),
                 }
             }
@@ -1595,6 +1712,8 @@ fn plan_steps(p: &Project, steps: &[ScriptStep]) -> Result<Vec<Step>, String> {
                          moves — write the clock in a step of its own, or let `advance:` move it"
                     ));
                 }
+                let by = resolve_advance(clock, n, by)?;
+                let pick = &entry_pick(p, pick);
                 let raise = clock.raises();
                 if raise.slot.is_none() {
                     let key = if pick.is_some() {
@@ -1638,7 +1757,7 @@ fn plan_steps(p: &Project, steps: &[ScriptStep]) -> Result<Vec<Step>, String> {
                     }
                 }
                 Action::Advance {
-                    by: *by,
+                    by,
                     writes,
                     raise,
                     pick: pick.clone(),
@@ -1655,6 +1774,73 @@ fn plan_steps(p: &Project, steps: &[ScriptStep]) -> Result<Vec<Step>, String> {
         });
     }
     Ok(plan)
+}
+
+/// dsl 0.26.0 §7 (T3-10): a `pick:` naming an entry as `<document id>.<entry
+/// id>` picks the entry.
+fn entry_pick(p: &Project, pick: &Option<Pick>) -> Option<Pick> {
+    pick.as_ref().map(|pk| match pk {
+        Pick::Beat(id) => Pick::Beat(p.entry_id(id).to_string()),
+        Pick::Pass => Pick::Pass,
+    })
+}
+
+/// An `advance:` against the declared clock (dsl 0.26.0 §7, T2-5): a `to:`
+/// slot is one of `slots`, a `to:` weekday a `week.labels` label or a
+/// `clock.weekday` number of the declared `week:`.
+fn resolve_advance(
+    clock: &lute_manifest::clock::ClockDecl,
+    n: usize,
+    by: &AdvanceBy,
+) -> Result<lute_manifest::clock::Advance, String> {
+    let (weekday, slot) = match by {
+        AdvanceBy::By(by) => return Ok(*by),
+        AdvanceBy::To { weekday, slot } => (weekday, slot),
+    };
+    let slot = match slot {
+        None => None,
+        Some(s) if clock.slot.is_none() => {
+            return Err(format!(
+                "step {n}: `advance: {{ to: … slot: {s} }}` — the clock is day-granular (it \
+                 declares no `slots:`)"
+            ))
+        }
+        Some(s) => Some(clock.slot_index(s).ok_or_else(|| {
+            format!(
+                "step {n}: `advance:` to slot `{s}` — the clock's slots are: {}",
+                clock.slots.join(", ")
+            )
+        })?),
+    };
+    let weekday = match weekday {
+        None => None,
+        Some(wd) => {
+            let Some(week) = clock.week.as_ref() else {
+                return Err(format!(
+                    "step {n}: `advance:` to weekday `{wd}` — the clock declares no `week:`"
+                ));
+            };
+            let index = match week.labels.iter().position(|l| l == wd) {
+                Some(i) => Some(i as i64),
+                None => wd
+                    .parse::<i64>()
+                    .ok()
+                    .filter(|i| (0..i64::from(week.length)).contains(i)),
+            };
+            Some(index.ok_or_else(|| {
+                let labels = if week.labels.is_empty() {
+                    String::new()
+                } else {
+                    format!(" or one of: {}", week.labels.join(", "))
+                };
+                format!(
+                    "step {n}: `advance:` to weekday `{wd}` — a weekday is a number 0..{}{labels}",
+                    week.length.saturating_sub(1)
+                )
+            })?)
+        }
+    };
+    Ok(lute_manifest::clock::Advance::To { weekday, slot })
 }
 
 /// [`plan_steps`] for one occasion step.
@@ -1741,9 +1927,10 @@ fn plan_occasion(
 
 /// dsl 0.21.0 §4: a candidate answers `occasion` and its `target` is absent
 /// or equal to the raised one (a target on an untargeted occasion was
-/// cleared at load, dsl 0.24.0 §6).
+/// cleared at load, dsl 0.24.0 §6); dsl 0.26.0 §5: a kind target answers
+/// every member of the kind ([`IndexBeat::answers`]).
 fn is_candidate(b: &IndexBeat, occasion: &str, target: Option<&str>) -> bool {
-    b.on == occasion && b.target.as_deref().is_none_or(|t| Some(t) == target)
+    b.answers(occasion, target).is_some()
 }
 
 // ===========================================================================
@@ -2002,6 +2189,8 @@ fn seed_world(p: &Project, script: &PlayScript) -> Result<World, String> {
     }
     for (ids, tier) in [(&save.entries_run, "run"), (&save.entries_user, "user")] {
         for id in ids {
+            // dsl 0.26.0 §7 (T3-10): `<doc>.<entry>` names the entry too.
+            let id = &p.entry_id(id).to_string();
             if !p.entry_ids.contains(id) {
                 return Err(unknown_id(
                     &format!("`entriesRead.{tier}`"),
@@ -2169,6 +2358,13 @@ fn apply_writes(w: &mut World, writes: &Writes) -> Result<Vec<Json>, String> {
         let held = w.facts.remove(f);
         records.push(json!({ "kind": "retract", "pattern": render_fact(f), "held": held }));
     }
+    // dsl 0.26.0 §7 (T2-9): the next quest settle activates them.
+    for id in &writes.accept {
+        records.push(json!({ "kind": "accept", "quest": id, "by": "engine" }));
+        if !w.accepts.contains(id) {
+            w.accepts.push(id.clone());
+        }
+    }
     Ok(records)
 }
 
@@ -2183,7 +2379,8 @@ fn render_fact((rel, args): &Fact) -> String {
 /// the script's multi-decision `choose:` lists.
 fn absorb(w: &mut World, outcome: &RunnerOutcome) {
     for (k, v) in &outcome.state {
-        if !k.starts_with("scene.") {
+        // dsl 0.26.0 §5: `occasion.target` lives only while its beat runs.
+        if !k.starts_with("scene.") && k != lute_check::beats::OCCASION_TARGET {
             w.state.insert(k.clone(), v.clone());
         }
     }
@@ -2703,6 +2900,9 @@ struct Candidate {
     /// dsl 0.23.0 §3: a scene beat's `also: true` — presented after the
     /// `select: first` winner, never the winner itself.
     also: bool,
+    /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat — ranked after the
+    /// member-specific beats of its priority.
+    kind_target: bool,
 }
 
 fn kind_label(kind: BeatKind) -> &'static str {
@@ -2807,7 +3007,8 @@ fn record_kind(kind: BeatKind) -> &'static str {
 }
 
 /// Every candidate for `occasion`/`target` with its verdict, in selection
-/// order: priority descending, then `ProjectIndex.beats` order. Pure over
+/// order: priority descending, a kind beat after the other beats of its
+/// priority (dsl 0.26.0 §5), then `ProjectIndex.beats` order. Pure over
 /// the world — what a play step presents from and what `lute calendar`
 /// evaluates at every cell (dsl 0.23.0 §1).
 fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> Vec<Candidate> {
@@ -2827,9 +3028,11 @@ fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> 
         .and_then(|c| lute_trace::clock::position(c, &w.state));
     let mut out: Vec<(usize, Candidate)> = Vec::new();
     for (idx, beat) in p.index.beats.iter().enumerate() {
-        if !is_candidate(beat, occasion, target) {
+        let Some(member) = beat.answers(occasion, target) else {
             continue;
-        }
+        };
+        // dsl 0.26.0 §5: a kind beat's `when` reads the raised member.
+        eval.bind_occasion_target(member);
         // A scene's (or bundle beat's) `once` is spent by presenting it; an
         // entry's (dsl 0.22.0 §7) by its read flag — `entry.<id>.read` (run)
         // / `.everRead` (user). dsl 0.25.0 §2: a beat of a `share` key is
@@ -2927,10 +3130,11 @@ fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> 
                 verdict,
                 read: beat.kind == BeatKind::Entry && flag(format!("entry.{}.read", beat.id)),
                 also: beat_also(p, beat),
+                kind_target: beat.is_kind(),
             },
         ));
     }
-    out.sort_by_key(|(idx, c)| (std::cmp::Reverse(c.priority), *idx));
+    out.sort_by_key(|(idx, c)| (std::cmp::Reverse(c.priority), c.kind_target, *idx));
     out.into_iter().map(|(_, c)| c).collect()
 }
 
@@ -3051,16 +3255,19 @@ fn once_word(once: BeatOnce) -> &'static str {
 
 /// Present `beat`: a scene through the runner (`scene.*` fresh), an entry
 /// through the runner's entry path (first-read effects, `entry.<id>.read`),
-/// a bundle beat through its `beat` record's body (dsl 0.23.0 §4).
+/// a bundle beat through its `beat` record's body (dsl 0.23.0 §4). `member`
+/// is the raised member a kind beat reads as `occasion.target` (dsl 0.26.0
+/// §5).
 fn present(
     p: &Project,
     w: &mut World,
     beat: &IndexBeat,
+    member: Option<&str>,
     mock: &MockSet,
 ) -> (Presented, Option<PlayHalt>) {
     let doc_json = &p.artifacts[&beat.document];
     let state_before = w.state.clone();
-    let runner = Runner::with_carryover(
+    let mut runner = Runner::with_carryover(
         &play_artifact_json(doc_json, p),
         mock.clone(),
         scene_initial_state(doc_json, &w.state),
@@ -3070,6 +3277,7 @@ fn present(
     .with_visited(&w.visited)
     .with_choice_cursor(&w.choice_cursor)
     .with_bridges(&w.bridges);
+    runner.bind_occasion_target(member);
     let mut runner = match beat.kind {
         BeatKind::Entry => runner.with_entry(&beat.id),
         BeatKind::Scene => runner,
@@ -3587,6 +3795,20 @@ fn run_advance(
         Advance::Day => "day".to_string(),
         Advance::Slots(1) => "slot".to_string(),
         Advance::Slots(k) => k.to_string(),
+        Advance::To { weekday, slot } => {
+            let wd = weekday.map(|wd| {
+                clock
+                    .week
+                    .as_ref()
+                    .and_then(|w| w.labels.get(wd as usize).cloned())
+                    .unwrap_or_else(|| format!("weekday {wd}"))
+            });
+            let sl = slot.and_then(|s| clock.slot_name(s)).map(str::to_string);
+            format!(
+                "to {}",
+                wd.into_iter().chain(sl).collect::<Vec<_>>().join(" ")
+            )
+        }
     };
     let body = |from: String, to: String, writes, settled, days, raised| StepBody::Advance {
         by: by_text.clone(),
@@ -3852,7 +4074,8 @@ fn run_occasion(
         if stop.is_some() {
             break;
         }
-        let (pr, s) = present_with_choose(p, script, w, b, choose);
+        let member = b.answers(occasion, target.as_deref()).flatten();
+        let (pr, s) = present_with_choose(p, script, w, b, member, choose);
         presented_beats.push(pr);
         stop = s;
         if stop.is_none() {
@@ -3898,6 +4121,7 @@ fn present_with_choose(
     script: &PlayScript,
     w: &mut World,
     beat: &IndexBeat,
+    member: Option<&str>,
     step_choose: &BTreeMap<String, Vec<String>>,
 ) -> (Presented, Option<PlayHalt>) {
     let mut mock = w.mock();
@@ -3908,7 +4132,7 @@ fn present_with_choose(
         .keys()
         .map(|k| (k.clone(), w.choice_cursor.remove(k)))
         .collect();
-    let out = present(p, w, beat, &mock);
+    let out = present(p, w, beat, member, &mock);
     for (k, cursor) in saved {
         match cursor {
             Some(c) => w.choice_cursor.insert(k, c),
@@ -4066,12 +4290,20 @@ fn is_injected(cmd: &Json) -> bool {
         == Some(true)
 }
 
-/// The line or `::set` a `when=` guard wraps (dsl §7.2/§7.4 line desugar,
-/// dsl 0.24.0 §1 set desugar: a one-arm match whose `$` test is the guard
-/// itself, whose arm runs exactly that one record and whose `otherwise` is
-/// empty). The transcript shows such a match as the record or its skip —
-/// the synthetic match is compiler plumbing.
-fn guarded_leaf<'a>(m: &Json, cmds: &DocCmds<'a>) -> Option<&'a Json> {
+/// What a `when=` guard wraps: the one-arm match whose `$` test is the guard
+/// itself and whose `otherwise` is empty (dsl §7.2/§7.4 line desugar, dsl
+/// 0.24.0 §1 set desugar, dsl 0.26.0 §4 directive desugar). The transcript
+/// shows such a match as what it guards or its skip — the synthetic match
+/// is compiler plumbing.
+enum Guarded<'a> {
+    /// One record: a line, `::set`, `::assert`, `::retract`, `::accept` or
+    /// a plugin call.
+    Leaf(&'a Json),
+    /// A guarded `::use`'s expansion, by the use as authored.
+    Use(&'a str),
+}
+
+fn guarded<'a>(m: &Json, cmds: &DocCmds<'a>) -> Option<Guarded<'a>> {
     let [arm] = m.get("arms")?.as_array()?.as_slice() else {
         return None;
     };
@@ -4084,13 +4316,57 @@ fn guarded_leaf<'a>(m: &Json, cmds: &DocCmds<'a>) -> Option<&'a Json> {
     let jumps_to_converge = |c: Option<&Json>| {
         c.is_some_and(|c| str_of(c, "kind") == "jump" && str_of(c, "target") == converge)
     };
+    if !jumps_to_converge(cmds.authored_from(str_of(m, "otherwise")).next()) {
+        return None;
+    }
+    if let Some(text) = cmds.authored.and_then(|a| a.get(str_of(m, "addr"))) {
+        return Some(Guarded::Use(text));
+    }
     let mut body = cmds.authored_from(str_of(arm, "target"));
-    let leaf = body
-        .next()
-        .filter(|c| matches!(str_of(c, "kind"), "line" | "set"))?;
-    (jumps_to_converge(body.next())
-        && jumps_to_converge(cmds.authored_from(str_of(m, "otherwise")).next()))
-    .then_some(leaf)
+    let leaf = body.next().filter(|c| {
+        matches!(
+            str_of(c, "kind"),
+            "line" | "set" | "assert" | "retract" | "accept" | "plugin"
+        )
+    })?;
+    jumps_to_converge(body.next()).then_some(Guarded::Leaf(leaf))
+}
+
+/// A skipped guarded record or `::use`, as the transcript names it.
+fn skipped(g: Guarded<'_>, cmds: &DocCmds<'_>) -> String {
+    let leaf = match g {
+        Guarded::Use(text) => return text.to_string(),
+        Guarded::Leaf(leaf) => leaf,
+    };
+    match str_of(leaf, "kind") {
+        "set" => format!(
+            "set {} {} {}",
+            str_of(leaf, "path"),
+            str_of(leaf, "op"),
+            str_of(leaf, "value")
+        ),
+        "line" => format!(
+            "{} \"{}\"",
+            line_head(str_of(leaf, "speaker"), Some(leaf)),
+            str_of(leaf, "text")
+        ),
+        kind @ ("assert" | "retract") => {
+            let args: Vec<String> = leaf
+                .get("args")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .map(|a| a.as_str().map_or_else(|| a.to_string(), str::to_string))
+                .collect();
+            format!("{kind} {}({})", str_of(leaf, "relation"), args.join(", "))
+        }
+        "accept" => format!("::accept{{quest=\"{}\"}}", str_of(leaf, "quest")),
+        kind => cmds
+            .authored
+            .and_then(|a| a.get(str_of(leaf, "addr")))
+            .cloned()
+            .unwrap_or_else(|| lowered(kind, Some(leaf))),
+    }
 }
 
 /// A lowered record as `::<kind>{attrs}` — the `--ir` view (an injected one
@@ -4173,20 +4449,10 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 None => format!("▷ {label}: {rendered}        ← INCOMPLETE (no decision)"),
             }
         }
-        "match" => match orig.and_then(|m| guarded_leaf(m, cmds)) {
-            // The guard held: the line/set record that follows is the output.
+        "match" => match orig.and_then(|m| guarded(m, cmds)) {
+            // The guard held: what it guards follows as the output.
             Some(_) if str_of(rec, "result") == "arm 1" => return None,
-            Some(set) if str_of(set, "kind") == "set" => format!(
-                "  skip set {} {} {} — when: false",
-                str_of(set, "path"),
-                str_of(set, "op"),
-                str_of(set, "value")
-            ),
-            Some(line) => format!(
-                "  skip {} \"{}\" — when: false",
-                line_head(str_of(line, "speaker"), Some(line)),
-                str_of(line, "text")
-            ),
+            Some(g) => format!("  skip {} — when: false", skipped(g, cmds)),
             None => format!("  match -> {}", str_of(rec, "result")),
         },
         "barrier" => "  barrier (no real clock simulated)".to_string(),
@@ -4254,7 +4520,15 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
             } else {
                 ""
             };
-            format!("  quest {} accepted{ignored}{queued}", str_of(rec, "quest"))
+            let engine = if str_of(rec, "by") == "engine" {
+                " (engine)"
+            } else {
+                ""
+            };
+            format!(
+                "  quest {} accepted{engine}{ignored}{queued}",
+                str_of(rec, "quest")
+            )
         }
         // dsl 0.23.0 §2 / 0.24.0 §2.1: the objective's `by` (or `until`)
         // came true first.
@@ -4370,6 +4644,8 @@ fn render_write(rec: &Json) -> String {
             rec.get("value").map(Json::to_string).unwrap_or_default()
         ),
         "assert" => format!("  assert {}", str_of(rec, "fact")),
+        // dsl 0.26.0 §7 (T2-9).
+        "accept" => format!("  quest {} accepted (engine)", str_of(rec, "quest")),
         _ if rec.get("held").and_then(Json::as_bool) == Some(false) => {
             format!("  retract {} (did not hold)", str_of(rec, "pattern"))
         }
@@ -5027,6 +5303,19 @@ struct Loaded {
 /// compile gate's exit code (its diagnostics already printed, `message`
 /// empty).
 fn load(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Loaded, (ExitCode, String)> {
+    let script = load_script(script_path)?;
+    let project = compile_play_project(dir)?;
+    let (plan, world) = plan_script(&project, &script, script_path, no_derive)?;
+    Ok(Loaded {
+        script,
+        project,
+        plan,
+        world,
+    })
+}
+
+/// Read and parse a play script (exit 2 with the usage error).
+fn load_script(script_path: &Path) -> Result<PlayScript, (ExitCode, String)> {
     let usage = |e: String| (ExitCode::from(2), e);
     let text = std::fs::read_to_string(script_path).map_err(|e| {
         usage(format!(
@@ -5034,31 +5323,41 @@ fn load(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Loaded, (Exit
             script_path.display()
         ))
     })?;
-    let script = parse_script(&text, script_path).map_err(|e| {
+    parse_script(&text, script_path).map_err(|e| {
         usage(format!(
             "invalid play script {}: {e}",
             script_path.display()
         ))
-    })?;
+    })
+}
+
+/// Compile the project a play runs over ([`compile_project`]); `dir` must be
+/// a directory (exit 2 with the usage error).
+fn compile_play_project(dir: &Path) -> Result<Project, (ExitCode, String)> {
     if !dir.is_dir() {
-        return Err(usage(format!(
-            "{} is not a project directory",
-            dir.display()
-        )));
+        return Err((
+            ExitCode::from(2),
+            format!("{} is not a project directory", dir.display()),
+        ));
     }
-    let project = compile_project(dir).map_err(|code| (code, String::new()))?;
-    let at = |e: String| usage(format!("{}: {e}", script_path.display()));
-    let plan = plan_steps(&project, &script.steps).map_err(at)?;
-    let mut world = seed_world(&project, &script).map_err(at)?;
+    compile_project(dir).map_err(|code| (code, String::new()))
+}
+
+/// Plan `script`'s steps over `project` and seed its save (exit 2 with the
+/// usage error, prefixed with the script path).
+fn plan_script(
+    project: &Project,
+    script: &PlayScript,
+    script_path: &Path,
+    no_derive: bool,
+) -> Result<(Vec<Step>, World), (ExitCode, String)> {
+    let at = |e: String| (ExitCode::from(2), format!("{}: {e}", script_path.display()));
+    let plan = plan_steps(project, &script.steps).map_err(at)?;
+    let mut world = seed_world(project, script).map_err(at)?;
     if no_derive {
         world.derive = Some(false);
     }
-    Ok(Loaded {
-        script,
-        project,
-        plan,
-        world,
-    })
+    Ok((plan, world))
 }
 
 /// What a play's expectations are judged against (dsl 0.22.0 §4): one row
@@ -5144,6 +5443,7 @@ fn play_outcome(p: &Project, play: &Playthrough, said: String) -> PlayOutcome {
             Ok(_) => "complete",
             Err(h) => h.exit_label(),
         },
+        entry_aliases: p.entry_aliases.clone(),
     }
 }
 
@@ -5262,10 +5562,21 @@ fn world_view(p: &Project, w: &World, with_facts: bool) -> WorldView {
             }
         }
     }
+    // dsl 0.26.0 §7 (T2-5): where the clock stands, for step `expect.clock`.
+    let clock = p.index.clock.as_ref().and_then(|decl| {
+        let at = clock_at(p, w)?;
+        Some(crate::play_expect::ClockView {
+            day: at.day,
+            slot: decl.slot_name(at.slot).map(str::to_string),
+            weekday: decl.weekday(at.day),
+            weekday_label: decl.weekday_label(at.day).map(str::to_string),
+        })
+    });
     WorldView {
         state,
         facts,
         quests,
+        clock,
     }
 }
 
@@ -5391,25 +5702,35 @@ pub(crate) struct PlayTestRun {
     pub notes: Vec<String>,
 }
 
-/// Run `script` over `project` in process for `lute test`. `Err` is a usage
-/// or compile failure (the compile gate's diagnostics are already printed).
+/// A project compiled once for every play of one `lute test` run (T2-1):
+/// `Err` is why no play can run over it — the usage error, or that it does
+/// not compile (the compile gate's diagnostics are already printed).
+pub(crate) struct PlayProject(Result<Project, String>);
+
+impl PlayProject {
+    /// Compile the project at `dir` for play ([`compile_project`]).
+    pub(crate) fn compile(dir: &Path) -> Self {
+        PlayProject(compile_play_project(dir).map_err(|(_, msg)| {
+            if msg.is_empty() {
+                "the project does not compile (diagnostics above)".to_string()
+            } else {
+                msg
+            }
+        }))
+    }
+}
+
+/// Run `script` over the compiled `project` in process for `lute test`.
+/// `Err` is a usage or compile failure.
 pub(crate) fn run_play_for_test(
-    project: &Path,
+    project: &PlayProject,
     script: &Path,
     derive: bool,
 ) -> Result<PlayTestRun, String> {
-    let Loaded {
-        script,
-        project: p,
-        plan,
-        world,
-    } = load(project, script, !derive).map_err(|(_, msg)| {
-        if msg.is_empty() {
-            "the project does not compile (diagnostics above)".to_string()
-        } else {
-            msg
-        }
-    })?;
+    let script_path = script;
+    let script = load_script(script_path).map_err(|(_, msg)| msg)?;
+    let p = project.0.as_ref().map_err(String::clone)?;
+    let (plan, world) = plan_script(p, &script, script_path, !derive).map_err(|(_, msg)| msg)?;
     let play = execute(&p, &script, &plan, world);
     let outcome = play_outcome(&p, &play, said(&play));
     let misses = judge(&script, &outcome);

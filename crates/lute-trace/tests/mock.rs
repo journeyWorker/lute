@@ -655,28 +655,33 @@ fn reserved_quest_objective_done_mock_outside_domain_is_type_error() {
 // to the synthesized decl's ordinary schema-type check.
 // ---------------------------------------------------------------------
 
-/// A quest doc DEFINES `q` but references `quest.q.state` NOWHERE (no
-/// `<on>`/guard/interpolation reads it) — `--state quest.q.state=complete`
-/// must still be `E-TRACE-MOCK-UNDECLARED`, exactly as for a foreign
-/// quest the document never mentions at all. Before the fix this was
-/// wrongly admitted via the synthesized schema decl, bypassing §1.1's
-/// "document references it" gate entirely.
+/// dsl 0.26.0 §7 (T3-5): a quest doc DEFINES `q` and reads `quest.q.state`
+/// nowhere — a seed of its OWN quest is still admitted (the walk starts the
+/// quest there), but only inside the reserved domain; a foreign quest the
+/// document never reads stays `E-TRACE-MOCK-UNDECLARED`.
 #[test]
-fn local_quest_state_mock_rejected_when_document_does_not_reference_it() {
+fn own_quest_state_seed_admitted_in_its_reserved_domain() {
     let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\">\n\
                 <objective id=\"o\" done=\"true\"/>\n\
                 </quest>\n";
     let (folded, doc) = folded_and_doc(text, "local-quest-unreferenced", Path::new("."));
-    let mocks = MockSet {
-        state: vec![(
-            "quest.q.state".to_string(),
-            "complete".to_string(),
-            zero_span(),
-        )],
+    let seed = |path: &str, lit: &str| MockSet {
+        state: vec![(path.to_string(), lit.to_string(), zero_span())],
         ..Default::default()
     };
-    let diags = validate(&mocks, &folded, &doc);
-    assert_eq!(codes(&diags), vec![E_TRACE_MOCK_UNDECLARED], "{diags:?}");
+    assert!(validate(&seed("quest.q.state", "complete"), &folded, &doc).is_empty());
+    assert_eq!(
+        codes(&validate(&seed("quest.q.state", "done"), &folded, &doc)),
+        vec![E_TRACE_MOCK_TYPE]
+    );
+    assert_eq!(
+        codes(&validate(
+            &seed("quest.other.state", "complete"),
+            &folded,
+            &doc
+        )),
+        vec![E_TRACE_MOCK_UNDECLARED]
+    );
 }
 
 /// A quest doc DEFINES `q` and references `quest.q.state` (a `<match>`

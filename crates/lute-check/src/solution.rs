@@ -309,6 +309,30 @@ pub(crate) fn disjoint(a: &SolutionSet, b: &SolutionSet) -> bool {
     }
 }
 
+/// Is every value of `a` a value of `b`? Sound, never complete: a number
+/// span must lie inside ONE span of `b`.
+pub(crate) fn subset(a: &SolutionSet, b: &SolutionSet) -> bool {
+    use SolutionSet::*;
+    let within = |&(lo, lo_inc, hi, hi_inc): &Span, &(l2, li2, h2, hi2): &Span| {
+        (lo > l2 || (lo == l2 && (li2 || !lo_inc))) && (hi < h2 || (hi == h2 && (hi2 || !hi_inc)))
+    };
+    match (a, b) {
+        (Values(x), Values(y)) => x.is_subset(y),
+        (Values(x), Except(c)) => domain_value(c).is_none_or(|c| !x.contains(&c)),
+        (Values(x), Interval { .. } | Union(_)) => x.is_empty(),
+        (Except(c), Except(d)) => c == d,
+        (Except(_), _) => false,
+        (Interval { .. } | Union(_), Values(_)) => number_spans(Some(a)).is_empty(),
+        (Interval { .. } | Union(_), Except(c)) => !contains(a, c),
+        (Interval { .. } | Union(_), Interval { .. } | Union(_)) => {
+            let outer = number_spans(Some(b));
+            number_spans(Some(a))
+                .iter()
+                .all(|s| outer.iter().any(|o| within(s, o)))
+        }
+    }
+}
+
 /// The satisfying set of `path <opname> lit` over the declared type, or
 /// `None` when the pair is out of domain (an ordering on an unordered type,
 /// a literal of the wrong type, a non-scalar declaration).

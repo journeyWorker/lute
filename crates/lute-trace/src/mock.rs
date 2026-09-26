@@ -86,6 +86,16 @@ pub struct MockSet {
     /// Where each `bridges:` entry sits in the mock's own text — what a
     /// [`validate_bridges`] diagnostic about it is anchored at.
     pub bridge_spans: BridgeSpans,
+    /// dsl 0.26.0 §7 (T1-7): set by a harness (`lute test`), never parsed —
+    /// an entry, bundle beat or scene whose eligibility decides `false` is
+    /// shown on its head and its body is NOT walked, as the engine would
+    /// never present it. `false` (the default, `lute trace`) walks it anyway.
+    pub gate_eligibility: bool,
+    /// dsl 0.26.0 §7 (T3-5): set by a harness that resolved a project, never
+    /// parsed — every quest id a quest document of the project declares.
+    /// `accepts:` of a quest another document declares is then legal (the
+    /// walk records nothing for it: this document does not hold the quest).
+    pub project_quests: Option<BTreeSet<String>>,
 }
 
 /// One bridge answer (dsl 0.24.0 §5): `(bridgeResult field, literal TEXT)`,
@@ -1042,6 +1052,8 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
         derive: flags.derive.or(file.derive),
         bridges,
         bridge_spans,
+        gate_eligibility: file.gate_eligibility || flags.gate_eligibility,
+        project_quests: flags.project_quests.or(file.project_quests),
     }
 }
 
@@ -1130,7 +1142,13 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                 }
                 set
             });
-            if referenced.contains(path) {
+            // dsl 0.26.0 §7 (T3-5): a quest document may seed its OWN quests'
+            // reserved paths — the walk starts the quest there — read or not.
+            let own = {
+                let id = path.split('.').nth(1).unwrap_or_default();
+                doc.quests.iter().any(|q| q.id == id)
+            };
+            if own || referenced.contains(path) {
                 if !reserved_quest_literal_valid(path, literal) {
                     out.push(diag(
                         E_TRACE_MOCK_TYPE,
@@ -1447,9 +1465,27 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
     let referenced_children = referenced_child_ids(doc);
     for id in &mocks.accepts {
         let Some(quest) = doc.quests.iter().find(|q| &q.id == id) else {
+            // dsl 0.26.0 §7 (T3-5): a quest another document of the project
+            // declares — accepted by the player before this walk (a lore
+            // beat that reads it, a scene that follows it up).
+            if mocks
+                .project_quests
+                .as_ref()
+                .is_some_and(|p| p.contains(id))
+            {
+                continue;
+            }
+            let scope = if mocks.project_quests.is_some() {
+                "the project"
+            } else {
+                "this document (no project resolved)"
+            };
             out.push(diag(
                 E_TRACE_ACCEPT,
-                format!("`--accept {id}` names an unknown quest id `{id}` (dsl 0.4.0 §4.3/§4.4)"),
+                format!(
+                    "`--accept {id}` names an unknown quest id `{id}` — no quest of {scope} \
+                     declares it (dsl 0.4.0 §4.3/§4.4)"
+                ),
                 span,
             ));
             continue;
@@ -1498,6 +1534,21 @@ fn referenced_child_ids(doc: &Document) -> BTreeSet<&str> {
         }
     }
     out
+}
+
+/// dsl 0.26.0 §7 (T3-10): the local entry id `id` names in `doc` — `id`
+/// itself, or the entry an `<document id>.<entry id>` alias names. The
+/// document id is the key a project index gives a lore document (dsl
+/// 0.19.0 §2.1): its `id:` (`doc_id`), else its first entry's id. An id that
+/// names no entry comes back unchanged, for [`validate_entry`] to refuse.
+pub fn entry_local_id<'a>(doc: &'a Document, doc_id: Option<&str>, id: &'a str) -> &'a str {
+    if doc.entries.iter().any(|e| e.id == id) {
+        return id;
+    }
+    let key = doc_id.or_else(|| doc.entries.first().map(|e| e.id.as_str()));
+    key.and_then(|k| id.strip_prefix(k)?.strip_prefix('.'))
+        .and_then(|local| doc.entries.iter().find(|e| e.id == local))
+        .map_or(id, |e| e.id.as_str())
 }
 
 /// `--entry <id>` validation (dsl 0.19.0 §8): the traced document must be

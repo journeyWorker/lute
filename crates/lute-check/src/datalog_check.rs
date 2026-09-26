@@ -38,6 +38,9 @@ pub const E_DERIVE_UNDECLARED: &str = "E-DERIVE-UNDECLARED"; // §7.1
 pub const W_DERIVE_NO_RULES: &str = "W-DERIVE-NO-RULES"; // §7.1 — Severity::Warning
 pub const E_DATALOG_UNSAFE: &str = "E-DATALOG-UNSAFE"; // §7.2
 pub const E_DATALOG_UNSTRATIFIED: &str = "E-DATALOG-UNSTRATIFIED"; // §7.2
+/// dsl 0.26.0 §6: a rule's `count(…)` / `countDistinct(…)` reads a relation
+/// that depends on the rule's own head.
+pub const E_RULE_AGGREGATE_CYCLE: &str = "E-RULE-AGGREGATE-CYCLE";
 
 /// Per-rule + per-derived-relation checks (§7.1/§7.2, D1): head legality,
 /// body-atom closure, and safety for every rule in `vocab.rules`, plus
@@ -51,7 +54,7 @@ pub fn check_rules(vocab: &RelVocab, domains: &BTreeMap<String, Domain>) -> Vec<
         let mut here = Vec::new();
         check_head(vocab, domains, &rule.head, span, &mut here);
         for lit in &rule.body {
-            if let BodyLiteral::Pos(atom) | BodyLiteral::Neg(atom) = lit {
+            if let Some(atom) = lit.atom() {
                 check_body_atom(vocab, domains, atom, span, &mut here);
             }
         }
@@ -237,7 +240,8 @@ fn check_kind_predicate_arg(
                 out.push(diag(
                     E_FACT_DOMAIN,
                     format!(
-                        "`{id}` is not a declared member of entity kind `{kind_name}` (dsl 0.3.0 §3.1)"
+                        "`{id}` is not a declared member of entity kind `{kind_name}` (dsl 0.3.0 §3.1){}",
+                        crate::rel_schema::member_hint(id, members)
                     ),
                     span,
                 ));
@@ -390,6 +394,38 @@ fn check_rule_safety(rule: &Rule, span: Span, out: &mut Vec<Diagnostic>) {
                     }
                 }
             }
+            // dsl 0.26.0 §6: a count binds nothing; a variable bound
+            // elsewhere is read, any other ranges over the facts. The
+            // variables `countDistinct` counts must be the atom's own.
+            BodyLiteral::Count { atom, distinct, .. } => {
+                for v in distinct {
+                    let in_atom = atom
+                        .terms
+                        .iter()
+                        .any(|t| matches!(t, RuleTerm::Var(x) if x == v));
+                    if !in_atom {
+                        out.push(diag(
+                            E_DATALOG_UNSAFE,
+                            format!(
+                                "`countDistinct({}(…), {v})` counts the distinct values of `{v}`, \
+                                 but `{v}` is not an argument of `{}` (dsl 0.26.0 §6)",
+                                atom.relation, atom.relation
+                            ),
+                            span,
+                        ));
+                    } else if bound.contains(v.as_str()) {
+                        out.push(diag(
+                            E_DATALOG_UNSAFE,
+                            format!(
+                                "`countDistinct` counts the distinct values of `{v}`, but `{v}` is \
+                                 bound by another literal of the rule, so it has one value — \
+                                 count a variable only the counted atom names (dsl 0.26.0 §6)"
+                            ),
+                            span,
+                        ));
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -526,7 +562,7 @@ pub fn check_stratification(vocab: &mut RelVocab) -> Vec<Diagnostic> {
 
     let mut out = Vec::new();
     for edge in &edges {
-        if !edge.negated {
+        if edge.kind == EdgeKind::Pos {
             continue;
         }
         if scc_of[&edge.from] != scc_of[&edge.to] {
@@ -539,30 +575,55 @@ pub fn check_stratification(vocab: &mut RelVocab) -> Vec<Diagnostic> {
             .map(|(name, _)| name.as_str())
             .collect();
         members.sort_unstable();
-        out.push(diag(
-            E_DATALOG_UNSTRATIFIED,
-            format!(
-                "relation(s) `{}` form a negation cycle: a rule's negated body literal may never \
-                 depend on itself, even indirectly through other rules (dsl 0.3.0 §7.2) — \
-                 stratify the rules so recursion never crosses `not`",
-                members.join("`, `")
+        out.push(match edge.kind {
+            EdgeKind::Aggregate => diag(
+                E_RULE_AGGREGATE_CYCLE,
+                format!(
+                    "a rule deriving `{}` counts `{}`, which depends on `{}` itself (cycle: `{}`) — \
+                     a `count(…)` / `countDistinct(…)` may only read a relation its rule's head \
+                     does not feed, so the count is final before the head is derived \
+                     (dsl 0.26.0 §6)",
+                    edge.to,
+                    edge.from,
+                    edge.to,
+                    members.join("`, `")
+                ),
+                edge.span,
             ),
-            edge.span,
-        ));
+            _ => diag(
+                E_DATALOG_UNSTRATIFIED,
+                format!(
+                    "relation(s) `{}` form a negation cycle: a rule's negated body literal may never \
+                     depend on itself, even indirectly through other rules (dsl 0.3.0 §7.2) — \
+                     stratify the rules so recursion never crosses `not`",
+                    members.join("`, `")
+                ),
+                edge.span,
+            ),
+        });
     }
 
     vocab.guard_tainted = compute_guard_taint(vocab, &adjacency);
     out
 }
 
+/// How a body literal reads its relation: a stratification edge's class.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EdgeKind {
+    Pos,
+    Neg,
+    /// dsl 0.26.0 §6: `count(…)` / `countDistinct(…)`.
+    Aggregate,
+}
+
 /// One structural predicate-dependency edge (§7.2): `from` is a body atom's
 /// relation, `to` is the rule's head relation ("`to`'s rule reads `from`"),
-/// `negated` is true iff the body atom is `Neg`, and `span` is the owning
-/// rule's span (where a stratification diagnostic for this edge is anchored).
+/// `kind` how the body literal reads it, and `span` is the owning rule's
+/// span (where a stratification diagnostic for this edge is anchored).
 struct PredEdge {
     from: String,
     to: String,
-    negated: bool,
+    kind: EdgeKind,
     span: Span,
 }
 
@@ -584,9 +645,10 @@ fn predicate_edges(
             continue;
         }
         for lit in &rule_decl.rule.body {
-            let (atom, negated) = match lit {
-                BodyLiteral::Pos(a) => (a, false),
-                BodyLiteral::Neg(a) => (a, true),
+            let (atom, kind) = match lit {
+                BodyLiteral::Pos(a) => (a, EdgeKind::Pos),
+                BodyLiteral::Neg(a) => (a, EdgeKind::Neg),
+                BodyLiteral::Count { atom, .. } => (atom, EdgeKind::Aggregate),
                 BodyLiteral::Guard { .. } | BodyLiteral::Cmp { .. } => continue,
             };
             if !nodes.contains(&atom.relation) {
@@ -599,7 +661,7 @@ fn predicate_edges(
             edges.push(PredEdge {
                 from: atom.relation.clone(),
                 to: head.clone(),
-                negated,
+                kind,
                 span: rule_decl.span,
             });
         }

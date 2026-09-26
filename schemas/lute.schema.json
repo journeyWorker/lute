@@ -234,7 +234,7 @@
       ]
     },
     "entityDecl": {
-      "description": "entities.rs::parse_entities — `{ members: [...] }` (closed) or `{ open: <any> }` (engine-populated; the VALUE is never inspected, only key presence). Neither key present silently produces no domain in Rust — flagged here as a real shape mistake.",
+      "description": "relations.rs::parse_entity_kinds — `{ members: [...] }` (closed, optionally `subsetOf: <kind>`), `{ open: <any> }` (engine-populated; the VALUE is never inspected, only key presence), or dsl 0.26.0 §2.3 `{ add: [...] }` alone (members added to the kind one other schema import declares). Neither key present silently produces no domain in Rust — flagged here as a real shape mistake.",
       "type": "object",
       "anyOf": [
         {
@@ -254,6 +254,20 @@
           "required": [
             "open"
           ]
+        },
+        {
+          "required": [
+            "add"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         }
       ]
     },
@@ -493,6 +507,19 @@
           ],
           "properties": {
             "domain": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "dsl 0.26.0 §2.5: a member of a project entity kind (`entities:`); attribute types.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "entity"
+          ],
+          "properties": {
+            "entity": {
               "type": "string"
             }
           }
