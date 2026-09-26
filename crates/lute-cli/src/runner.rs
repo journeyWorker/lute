@@ -191,10 +191,10 @@ pub fn run_artifact(
                 // runs — the conformance `expected.json` contract.
                 println!(
                     "{}",
-                    serde_json::to_string_pretty(&output_value(&m)).unwrap_or_default()
+                    serde_json::to_string_pretty(&output_value(&m, &art)).unwrap_or_default()
                 );
             } else {
-                print_human(&m, artifact);
+                print_human(&m, &art, artifact);
             }
             ExitCode::from(if m.incomplete() { 3 } else { 0 })
         }
@@ -290,12 +290,30 @@ impl Driver for RunDriver {
     }
 }
 
+/// The state `lute run` reports: every path the Machine holds except an
+/// `entry.<id>.everRead` the artifact does not declare — the engine's
+/// user-tier read flag the walk now writes (D11), which is not part of the
+/// `lute run` transcript contract (conformance `expected.json`).
+fn reported_state<'m>(
+    m: &'m Machine<RunDriver>,
+    art: &Json,
+) -> impl Iterator<Item = (&'m String, &'m lute_trace::Value)> {
+    let declared: std::collections::BTreeSet<String> = art
+        .get("state")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|s| s.get("path").and_then(Json::as_str).map(str::to_string))
+        .collect();
+    m.state().iter().filter(move |(k, _)| {
+        !(k.starts_with("entry.") && k.ends_with(".everRead")) || declared.contains(k.as_str())
+    })
+}
+
 /// The `--json` transcript `{ kind, irVersion, exit, commands, state,
 /// facts, quests }`.
-fn output_value(m: &Machine<RunDriver>) -> Json {
-    let state: serde_json::Map<String, Json> = m
-        .state()
-        .iter()
+fn output_value(m: &Machine<RunDriver>, art: &Json) -> Json {
+    let state: serde_json::Map<String, Json> = reported_state(m, art)
         .map(|(k, v)| (k.clone(), value_to_json(v)))
         .collect();
     let facts: Vec<Json> = m
@@ -320,7 +338,7 @@ fn output_value(m: &Machine<RunDriver>) -> Json {
     })
 }
 
-fn print_human(m: &Machine<RunDriver>, artifact: &Path) {
+fn print_human(m: &Machine<RunDriver>, art: &Json, artifact: &Path) {
     println!("run {} artifact {}", m.kind(), artifact.display());
     for e in &m.driver().transcript {
         let k = e.get("kind").and_then(Json::as_str).unwrap_or("");
@@ -408,11 +426,15 @@ fn print_human(m: &Machine<RunDriver>, artifact: &Path) {
                 Some(r) => format!("  {a}  end    reason={r}"),
                 None => format!("  {a}  end"),
             },
-            "plugin" => format!(
-                "  {a}  plugin {} {}",
-                e.get("tag").and_then(Json::as_str).unwrap_or(""),
-                plugin_call_note(e)
-            ),
+            "plugin" => {
+                let note = plugin_call_note(e);
+                let tag = e.get("tag").and_then(Json::as_str).unwrap_or("");
+                if note.is_empty() {
+                    format!("  {a}  plugin {tag}")
+                } else {
+                    format!("  {a}  plugin {tag} {note}")
+                }
+            }
             "accept" => {
                 let ignored = e
                     .get("ignored")
@@ -494,7 +516,7 @@ fn print_human(m: &Machine<RunDriver>, artifact: &Path) {
         println!("{line}");
     }
     println!("-- final state --");
-    for (k, v) in m.state() {
+    for (k, v) in reported_state(m, art) {
         println!("  {k} = {}", value_to_string(v));
     }
     if !m.all_facts().is_empty() {
@@ -522,7 +544,9 @@ fn print_human(m: &Machine<RunDriver>, artifact: &Path) {
 /// The human annotation of a `plugin` transcript record (dsl 0.24.0 §5):
 /// `(bridge answered: passed=true, margin=3)` when a `bridges:` answer
 /// decided it, `(bridge unanswered: passed, margin)` when `lute play`
-/// halted at it, `(external call, not invoked)` otherwise.
+/// halted at it, `(external call, not invoked)` when its bridge results
+/// went unresolved, and nothing for a call with only declared effects
+/// (T1-3: each effect is its own `set` record, `effectOf` the tag).
 pub(crate) fn plugin_call_note(rec: &Json) -> String {
     if let Some(Json::Array(fields)) = rec.get("answered") {
         let parts: Vec<String> = fields
@@ -541,7 +565,10 @@ pub(crate) fn plugin_call_note(rec: &Json) -> String {
         let parts: Vec<&str> = fields.iter().filter_map(Json::as_str).collect();
         return format!("(bridge unanswered: {})", parts.join(", "));
     }
-    "(external call, not invoked)".to_string()
+    if rec.get("note").is_some() {
+        return "(external call, not invoked)".to_string();
+    }
+    String::new()
 }
 fn json_scalar_str(j: Option<&Json>) -> String {
     match j {

@@ -209,6 +209,14 @@ impl Program {
         self.rules.is_empty()
     }
 
+    /// `true` when some rule body reads state (a `cel(…)` guard): a state
+    /// write can then change the fixpoint.
+    pub fn reads_state(&self) -> bool {
+        self.rules
+            .iter()
+            .any(|r| r.body.iter().any(|l| matches!(l, Lit::Guard { .. })))
+    }
+
     /// `true` when some rule concludes `rel`.
     pub fn derives(&self, rel: &str) -> bool {
         self.strata.contains_key(rel)

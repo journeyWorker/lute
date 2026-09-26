@@ -5,7 +5,7 @@
 //! `steps`, `decisions`, `unresolved`, `coverage`. Never reorder these
 //! fields without re-reading §4.5 first.
 //!
-//! [`crate::walk`] builds one [`TraceReport`] per [`crate::walk::trace_document`]
+//! [`crate::trace`] builds one [`TraceReport`] per [`crate::trace::trace_document`]
 //! call; this module owns only the SHAPE and the two renderers — it holds no
 //! walk logic.
 
@@ -447,6 +447,11 @@ pub struct TraceReport {
     /// what to mock. Never serialized.
     #[serde(skip)]
     pub scene_ineligible: Option<String>,
+    /// Every content line the walk played, in order, in the one canonical
+    /// transcript form ([`crate::exec::said_line`]: `@speaker{delivery}:
+    /// text`) — what [`Self::said`] joins. Never serialized.
+    #[serde(skip)]
+    pub said: Vec<String>,
 }
 
 /// Render a decided [`Value`] to display text; `Unknown` has no decided
@@ -566,17 +571,18 @@ impl TraceReport {
         out
     }
 
-    /// The walk's presented content lines, one `@speaker: text` per content
-    /// line the walk played, in order — the canonical form `lute test`'s
-    /// `transcriptContains` / `transcriptLacks` match (dsl 0.24.0, T1-2),
-    /// identical to what `lute play` matches its own presentations against.
-    /// No header, notes, staging, writes or decisions.
+    /// The walk's presented content lines, one canonical
+    /// `@speaker{delivery}: text` per content line the walk played, in
+    /// order ([`crate::exec::said_line`]) — what `lute test`'s
+    /// `transcriptContains` / `transcriptLacks` match
+    /// ([`crate::exec::record::judge`]), the same form `lute play` matches
+    /// its own presentations against. No header, notes, staging, writes or
+    /// decisions.
     pub fn said(&self) -> String {
         let mut out = String::new();
-        for step in &self.steps {
-            if let Step::Line { speaker, text, .. } = step {
-                out.push_str(&format!("@{speaker}: {text}\n"));
-            }
+        for line in &self.said {
+            out.push_str(line);
+            out.push('\n');
         }
         out
     }
@@ -588,7 +594,7 @@ impl TraceReport {
     /// declared id when one is close.
     pub fn verify_quests(&mut self, declared: &BTreeSet<String>) {
         for id in std::mem::take(&mut self.foreign_quests) {
-            let head = crate::walk::unverified_quest_note_head(&id);
+            let head = crate::trace::unverified_quest_note_head(&id);
             let Some(at) = self.notes.iter().position(|n| n.starts_with(&head)) else {
                 continue;
             };

@@ -496,7 +496,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         // #3 / T6.10 fix (i): expand `::use` before extracting, so a
         // component's lines are exported once PER CALL SITE under the
         // caller's identity prefix — the id `compile --locales` actually
-        // merges on. This is `lute-trace`'s own pipeline (`walk.rs`'s
+        // merges on. This is `lute-trace`'s own pipeline (`trace.rs`'s
         // `trace_document`), in the same order, with the same three passes;
         // `expand_document` is deliberately NOT run, because `{{…}}`
         // interpolation is what a translator must see intact.

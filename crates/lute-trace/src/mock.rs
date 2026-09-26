@@ -1545,9 +1545,7 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
 
 /// Same-doc set of quest ids named by any `<objective quest=…>` — the
 /// mock validator's own view of the subquest child→parent edges (spec
-/// §2.4); mirrors `walk::build_child_parent_map` intentionally rather
-/// than sharing it (both are tiny AST scans; keeping them local keeps
-/// mock.rs free of a walk.rs dependency).
+/// §2.4): a tiny AST scan, kept local so mock.rs depends on no walker.
 fn referenced_child_ids(doc: &Document) -> BTreeSet<&str> {
     let mut out = BTreeSet::new();
     for q in &doc.quests {

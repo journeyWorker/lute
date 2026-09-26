@@ -46,7 +46,7 @@ pub enum Read {
 /// How a reserved quest path actually READ during the walk resolved (dsl
 /// 0.5.1 §1.3): admitted as an explicit `--state`/`--mock` mock (§1.1), or
 /// left un-mocked and resolved to its domain DEFAULT (§1.2). Drives the
-/// "existence unverified" note [`crate::walk`] attaches to every such read
+/// "existence unverified" note [`crate::trace`] attaches to every such read
 /// of a FOREIGN quest id (one not defined by an in-document `<quest>`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ReservedReadKind {
@@ -62,7 +62,7 @@ pub(crate) enum ReservedReadKind {
 /// is `Rc`-shared (not merely cloned) across every such snapshot: it is a
 /// walk-GLOBAL observation log (dsl 0.5.1 §1.3), not per-snapshot state, so
 /// a reserved-path read made only inside an `<on>` guard still surfaces on
-/// the live [`Walk`](crate::walk)'s state.
+/// the walk's live state.
 #[derive(Clone)]
 pub struct EffectiveState<'a> {
     schema: &'a StateSchema,
@@ -1403,7 +1403,7 @@ mod tests {
     #[test]
     fn reserved_quest_path_default_logs_a_defaulted_reserved_read() {
         // §1.3's note surface: an un-mocked reserved read must log itself
-        // as `Defaulted` (never silently untracked) so `crate::walk` can
+        // as `Defaulted` (never silently untracked) so `crate::trace` can
         // attach the "existence unverified" note.
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());

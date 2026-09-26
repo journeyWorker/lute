@@ -566,7 +566,10 @@ fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
         t.contains("skip @hypnos"),
         "the human transcript still shows the skip: {t}"
     );
-    assert!(t.contains("\"Never said.\" absent"), "{t}");
+    assert!(
+        t.contains("expected \"Never said.\" present, actual absent"),
+        "{t}"
+    );
     let out = run_play(
         "steps:\n  - occasion: hubVisit\nexpect:\n  transcriptLacks: ['Never said.', 'step 1', 'priority']\n  \
          transcriptContains: ['@hypnos: Oh, a new face.']\n",
@@ -989,11 +992,13 @@ fn an_engine_accept_of_an_active_quest_is_ignored_with_a_note() {
     );
 }
 
-/// dsl 0.26.0 §7 (T3-6): a `transcriptContains` needle copied from a line
-/// with attributes (`@narrator{emotion="…"}: …`) matches the presented line;
-/// a miss shows the nearest presented line — in play and test alike.
+/// dsl 0.26.0 §7 (T3-6), 0.27 (T1-11): a `transcriptContains` needle copied
+/// from a line with attributes (`@narrator{emotion="…"}: …`) matches the
+/// presented line; a needle naming OTHER attributes matches nothing, so the
+/// same needle holds under `transcriptLacks`; a miss quotes a real presented
+/// line (attributes included), never the needle — in play and test alike.
 #[test]
-fn a_transcript_needle_drops_line_attributes_and_a_miss_shows_the_nearest_line() {
+fn a_transcript_needle_matches_line_attributes_and_a_miss_quotes_a_real_line() {
     let project = bridge_project(
         "needle",
         &[(
@@ -1014,8 +1019,30 @@ fn a_transcript_needle_drops_line_attributes_and_a_miss_shows_the_nearest_line()
     );
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
+    let nearest = "nearest line: \"@narrator{emotion=\\\"delighted\\\"}: The lamp is lit.\"";
+    assert!(t.contains(nearest), "{t}");
+    for (key, code) in [("transcriptContains", 1), ("transcriptLacks", 0)] {
+        let out = scenario_test(
+            &project,
+            &format!(
+                "file: ../scenes/probe/said.lute\nexpect:\n  \
+                 {key}: ['@narrator{{emotion=\"shy\"}}: The lamp is lit.']\n"
+            ),
+        );
+        let t = text(&out);
+        assert_eq!(out.status.code(), Some(code), "{key}: {t}");
+        if code == 1 {
+            assert!(t.contains(nearest), "{t}");
+        }
+    }
+    let out = scenario_test(
+        &project,
+        "file: ../scenes/probe/said.lute\nexpect:\n  transcriptLacks: ['@narrator: The lamp']\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(
-        t.contains("nearest line: \"@narrator: The lamp is lit.\""),
+        t.contains("present (line: \"@narrator{emotion=\\\"delighted\\\"}: The lamp is lit.\")"),
         "{t}"
     );
 
@@ -1031,8 +1058,19 @@ fn a_transcript_needle_drops_line_attributes_and_a_miss_shows_the_nearest_line()
     );
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
-    assert!(
-        t.contains("nearest line: \"@narrator: The lamp is lit.\""),
-        "{t}"
-    );
+    assert!(t.contains(nearest), "{t}");
+    for (key, code) in [("transcriptContains", 1), ("transcriptLacks", 0)] {
+        let out = play_in(
+            &project,
+            &format!(
+                "steps:\n  - occasion: hubVisit\nexpect:\n  \
+                 {key}: ['@narrator{{emotion=\"shy\"}}: The lamp is lit.']\n"
+            ),
+        );
+        let t = text(&out);
+        assert_eq!(out.status.code(), Some(code), "{key}: {t}");
+        if code == 1 {
+            assert!(t.contains(nearest), "{t}");
+        }
+    }
 }

@@ -49,8 +49,8 @@ pub mod exec;
 pub mod mock;
 pub mod quest_refs;
 pub mod report;
+pub mod trace;
 pub mod value;
-pub mod walk;
 
 pub use eval::{eval, EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use mock::{
@@ -66,8 +66,8 @@ pub use report::{
     ComponentBoundary, Coverage, CoverageCount, Decision, GrantCredit, GrantReward, Seeds, Step,
     TraceExit, TraceReport, UnresolvedEntry,
 };
-pub use value::{UnresolvedAtom, Value};
-pub use walk::{
+pub use trace::{
     trace_beat, trace_beat_with_check, trace_document, trace_entries_with_check, trace_entry,
     trace_entry_with_check, trace_with_check, NOTE_ACCEPT_SPENT, NOTE_BEAT_WHEN,
 };
+pub use value::{UnresolvedAtom, Value};
