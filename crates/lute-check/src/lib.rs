@@ -52,6 +52,7 @@ pub mod sequence;
 pub mod set_op;
 pub mod set_type;
 pub(crate) mod solution;
+pub mod spent_by;
 pub mod state_decls;
 pub mod tag;
 pub mod templates;
@@ -80,8 +81,8 @@ pub fn desugar_document(
     input: &CheckInput,
 ) -> Vec<lute_core_span::Diagnostic> {
     meta::apply_quest_tier_default(doc, &input.defaults);
-    sequence::apply_sequence(doc, &input.defaults);
-    templates::expand_beat_templates(doc, &input.components)
+    sequence::apply_sequence(doc, &input.defaults, &input.snapshot.occasions);
+    templates::expand_beat_templates(doc, &input.components, &input.snapshot.occasions)
 }
 
 pub use accept::{

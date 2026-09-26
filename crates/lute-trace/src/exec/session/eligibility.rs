@@ -36,10 +36,12 @@ pub enum Premise {
         reason: String,
     },
     /// Its `after:` / `after=` does not hold: `raw` as authored, `unmet`
-    /// the atoms the world does not satisfy.
+    /// the atoms the world does not satisfy; `sequence` when the manifest's
+    /// `sequence:` wrote it (dsl 0.27.0 §8), not the scene.
     After {
         raw: String,
         unmet: Vec<lute_check::prereq::Atom>,
+        sequence: bool,
     },
     /// dsl 0.27.0 §5: its `spentBy` condition holds.
     SpentBy(String),
@@ -51,7 +53,13 @@ impl std::fmt::Display for Premise {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Premise::Spent { reason, .. } | Premise::SpentBy(reason) => f.write_str(reason),
-            Premise::After { .. } => f.write_str("after: prerequisite not satisfied"),
+            Premise::After { raw, sequence, .. } => {
+                write!(f, "after: {raw} is not satisfied")?;
+                if *sequence {
+                    f.write_str(" (written by `sequence:` in lute.project.yaml)")?;
+                }
+                Ok(())
+            }
             Premise::When { .. } => f.write_str("when: false"),
         }
     }
@@ -319,6 +327,7 @@ pub fn judge_beat<D: Driver>(
         Verdict::Ineligible(Premise::After {
             raw: raw.trim().to_string(),
             unmet: unmet_prereq(p, f, w),
+            sequence: p.sequence_after.get(&beat.id).map(String::as_str) == Some(raw.trim()),
         })
     } else if let Ok(Some(reason)) = &spent_by {
         Verdict::Ineligible(Premise::SpentBy(reason.clone()))

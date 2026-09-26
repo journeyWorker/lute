@@ -496,7 +496,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     walker.diags.extend(crate::gates::check_seam_texts(
         &doc,
         &folded,
-        &input.imports.terminal,
+        &input.imports,
         &base_ctx,
     ));
     // dsl 0.27.0 §5: every season's `live:`, judged in this document's
@@ -900,7 +900,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // (its guard rides every write it splices into the host).
     let diags = dedup_guarded_use_reports(&doc, diags);
     // Dedup overlapping `E-UNDECLARED` (carry-forward #4) BEFORE the sort.
-    let mut diags = dedup_undeclared(diags);
+    let mut diags = dedup_undeclared(dedup_rehomed(diags));
 
     // Normalize every span's line/column/utf16 from its bytes (some validators
     // leave them zeroed), then sort deterministically (carry-forward #3).

@@ -218,8 +218,8 @@ shapes. So does a `fromAttr` naming an attr the directive does not declare, with
 #### Facts a directive asserts or retracts
 
 Beside `writes:`, a directive's `effects:` may declare the facts it **asserts** and
-**retracts** (dsl 0.27.0 §4). Every list is optional. A pickup that puts an item in the player's
-hands:
+**retracts** (dsl 0.27.0 §4). Every list is optional. An inventory the player carries items in —
+`give` adds one item to the bag, `consume` takes that one item out:
 
 ```yaml
 # directives/ward.yaml
@@ -228,14 +228,20 @@ directives:
     attrs:
       - { name: item, required: true, type: { entity: item } }
     effects:
-      retracts: ["holding(_)"]
       asserts: ["holding(@item)"]
+  - name: consume
+    attrs:
+      - { name: item, required: true, type: { entity: item } }
+    effects:
+      retracts: ["holding(@item)"]
 ```
 
 Each entry is one fact pattern, `relation(arg, …)`. An argument is a member, `true` or `false`,
 or `@attr`: the value the call gives one of the directive's own attrs, or that attr's declared
-`default:`. In `retracts:` an argument may also be `_`, which matches any value, so `give` above
-drops whatever the player held before. A pattern that does not parse, an `@attr` the directive
+`default:`. In `retracts:` an argument may also be `_`, which matches any value. Use it only for a
+single slot: `retracts: ["holding(_)"]` beside `asserts: ["holding(@item)"]` makes `give` a pair
+of hands that drops whatever the player held before, so on a bag it would empty the inventory at
+every pickup. A pattern that does not parse, an `@attr` the directive
 does not declare (with a did-you-mean), and a `_` in `asserts:` each fail the plugin load with
 `E-PLUGIN-PARSE`. A call that leaves an `@attr` without a value, and with no default, writes
 nothing for that fact.

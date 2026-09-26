@@ -47,13 +47,19 @@ The referenced-node list is deliberately not a checklist: it reports each atom's
 $ lute scenario . reach --endings=termEnd
 project root: .
 endings (the beats answering `termEnd`):
+  end.other.keeper (beat, lore/endings/other.lute): reachable
+    after: Reachable — a satisfiable route exists under your declared routes.
+    when: `run.route == 'hotaru'` — check-project does not refute it; it needs:
+      run.route — written by scene `common.festival` (choice into)
+  …
   end.ren.lantern (beat, lore/endings/ren.lute): reachable
     after: Reachable — a satisfiable route exists under your declared routes.
     when: `run.route == 'ren' && @devoted(run.aff.ren)` — check-project does not refute it; it needs:
-      run.aff.ren — written by beat `hangouts.council` via component `hangout`, scene `common.arrival`, scene `ren.date`
+      run.aff.ren — written by beat `hangouts.council` via component `hangout`, scene `common.arrival`, scene `common.clash`, scene `common.injury`, scene `ren.confession`, scene `ren.date`
       run.route — written by scene `common.festival` (choice into)
   …
 10 ending(s): 10 reachable, 0 unreachable, 0 unknown
+reachable here means nothing static refutes it, not that a run reaches it: a play that presents the ending is the proof — `lute test --coverage` lists the beats no play presents.
 ```
 
 "Reachable" here means nothing static refutes the ending. Whether the writes can bring `run.aff.ren` to the value the `when` needs is not analysed; a play that presents the ending is the proof, and `lute test --coverage` lists the beats no play presents. A path nothing writes says `nothing writes it`, the sound case.

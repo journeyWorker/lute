@@ -155,8 +155,11 @@ impl Parser<'_> {
             let closer = (self.cursor < self.lines.len())
                 .then(|| close_tag_name(&self.trimmed(self.cursor)))
                 .flatten();
-            let message = match closer {
-                Some(other) => {
+            let sibling = (self.cursor < self.lines.len())
+                .then(|| open_tag_name(&self.trimmed(self.cursor)))
+                .flatten();
+            let message = match (closer, sibling) {
+                (Some(other), _) => {
                     let (s, _) = self.lines[self.cursor];
                     let at = self.span(s, s).line;
                     format!(
@@ -164,7 +167,15 @@ impl Parser<'_> {
                          closes the enclosing `<{other}>` — add `</{name}>` above it"
                     )
                 }
-                None => format!(
+                (None, Some(next)) => {
+                    let (s, _) = self.lines[self.cursor];
+                    let at = self.span(s, s).line;
+                    format!(
+                        "`<{name}>` from line {line} is never closed: the next `<{next}>` \
+                         opens on line {at} — add `</{name}>` above it"
+                    )
+                }
+                (None, None) => format!(
                     "`<{name}>` from line {line} is never closed — add `</{name}>` after its body"
                 ),
             };
@@ -436,6 +447,7 @@ impl Parser<'_> {
             name,
             span,
             expanded: false,
+            failed: false,
         });
         let outer = self.enter_top_block("beat", &id, &open);
         // dsl 0.27.0 §6: `<beat use="trainer" id="r3" who="joey"/>` is a
@@ -895,7 +907,7 @@ impl Parser<'_> {
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
-            if self.block_body_done(open) || self.at_close(name) {
+            if self.block_body_done(open) || self.at_close(name) || self.at_sibling_arm(name) {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
@@ -914,6 +926,26 @@ impl Parser<'_> {
         }
         let end_o = self.consume_close(name, open, last_end);
         (body, end_o)
+    }
+
+    /// At the opener of the next arm of the block enclosing `name` — a
+    /// `<choice>` inside a `<branch>`/`<hub>`, a `<when>`/`<otherwise>` inside
+    /// a `<match>` — while the arm `name` is still open: the author forgot
+    /// `</name>`, so the arm ends unclosed here (FS-F15) and the next arm is
+    /// its sibling, not a `<choice>` "outside a `<branch>`".
+    fn at_sibling_arm(&self, name: &str) -> bool {
+        let (arms, parents): (&[&str], &[&str]) = match name {
+            "choice" => (&["choice"], &["branch", "hub"]),
+            "when" | "otherwise" => (&["when", "otherwise"], &["match"]),
+            _ => return false,
+        };
+        let enclosing = self
+            .open_blocks
+            .len()
+            .checked_sub(2)
+            .map(|k| self.open_blocks[k].0.as_str());
+        enclosing.is_some_and(|p| parents.contains(&p))
+            && open_tag_name(&self.trimmed(self.cursor)).is_some_and(|t| arms.contains(&t.as_str()))
     }
 
     /// Parse an owner block body (`<quest>` / `<objective>`) intercepting
@@ -1152,6 +1184,35 @@ mod tests {
             panic!("{body:?}")
         };
         assert_eq!(b.choices.len(), 1);
+    }
+
+    /// FS-F15: an arm left open before its next sibling ends there — one
+    /// diagnostic naming both, and the sibling is the block's next arm, not
+    /// a `<choice>` "outside a `<branch>`".
+    #[test]
+    fn an_unclosed_arm_ends_at_its_next_sibling() {
+        let src = "## S\n<branch id=\"b\">\n<choice id=\"a\" label=\"A\">\n@narrator: A.\n\
+                   <choice id=\"c\" label=\"C\">\n@narrator: C.\n</choice>\n</branch>\n";
+        let (doc, diags) = parse(src);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(
+            diags[0].message,
+            "`<choice>` from line 3 is never closed: the next `<choice>` opens on line 5 — add \
+             `</choice>` above it"
+        );
+        let Node::Branch(b) = &doc.shots[0].body[0] else {
+            panic!("{:?}", doc.shots[0].body)
+        };
+        assert_eq!(b.choices.len(), 2);
+
+        let src = "## S\n<match on=\"run.x\">\n<when is=\"a\">\n@narrator: A.\n\
+                   <otherwise>\n@narrator: B.\n</otherwise>\n</match>\n";
+        let (doc, diags) = parse(src);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        let Node::Match(m) = &doc.shots[0].body[0] else {
+            panic!("{:?}", doc.shots[0].body)
+        };
+        assert_eq!(m.arms.len(), 2);
     }
 
     /// A close naming no open block is reported against the block that IS

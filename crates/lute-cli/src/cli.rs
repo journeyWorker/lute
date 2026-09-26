@@ -40,7 +40,8 @@ pub(crate) enum Command {
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose installed
         /// plugins resolve the document's activated capability snapshot (plugin
-        /// §4/§11). Omit for a core-only (`lute.core`) check.
+        /// §4/§11). Omit for the nearest `lute.project.yaml` above the file, or
+        /// a core-only (`lute.core`) check when there is none.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
         /// Trusted project profile whose permissions apply as an additional host
@@ -146,7 +147,9 @@ pub(crate) enum Command {
         #[arg(long, value_name = "DIR")]
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) resolving the
-        /// document's activated capability snapshot.
+        /// document's activated capability snapshot. Omit for the nearest
+        /// `lute.project.yaml` above the file (as `lute check`); only an
+        /// explicit `--project` gates on the reconciled project verdict.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
         /// Trusted project profile whose permissions apply as an additional host
@@ -193,6 +196,7 @@ pub(crate) enum Command {
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) resolving the
         /// prefix's capability snapshot, defaults, components, and identity.
+        /// Omit for the nearest `lute.project.yaml` above the file.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
         /// Trusted project profile whose permissions apply as one frozen host
@@ -243,7 +247,8 @@ pub(crate) enum Command {
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose installed
         /// plugins resolve the document's activated capability snapshot (plugin
-        /// §4/§11). Omit for a core-only (`lute.core`) surface.
+        /// §4/§11). Omit for the nearest `lute.project.yaml` above the file, or
+        /// a core-only (`lute.core`) surface when there is none.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
         /// Trusted project profile whose permissions restrict the reported
@@ -307,7 +312,10 @@ pub(crate) enum Command {
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose
         /// installed plugins resolve the document's activated capability
-        /// snapshot (plugin §4/§11). Omit for a core-only (`lute.core`) trace.
+        /// snapshot (plugin §4/§11). Omit for the nearest `lute.project.yaml`
+        /// above the file (as `lute check`), or a core-only (`lute.core`)
+        /// trace when there is none; only an explicit `--project` gates on
+        /// the reconciled project verdict.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
         /// Present ONE `<entry>` of a `kind: lore` document by id (dsl
@@ -490,11 +498,11 @@ pub(crate) enum Command {
     /// expectations (transcript, offered options, state, quest status); every
     /// `*.play.yaml` under `dir` that carries an `expect:` is played and
     /// judged as `lute play` does (dsl 0.22.0 §4). Resolves each traced
-    /// document identically to `lute trace` ([`build_input`]): with
-    /// `--project`, the document's `profile:`/`plugins:` frontmatter and the
-    /// manifest's `defaults: uses:` hoist are both applied before tracing;
-    /// without it, a core-only (`lute.core`) resolution, unchanged from
-    /// before. A play runs `--project`, else the nearest `lute.project.yaml`
+    /// document identically to `lute trace` ([`build_input`]): against
+    /// `--project`, else the nearest `lute.project.yaml` above the document
+    /// (as `lute check`), so the document's `profile:`/`plugins:` frontmatter
+    /// and the manifest's `defaults: uses:` hoist are both applied before
+    /// tracing. A play runs `--project`, else the nearest `lute.project.yaml`
     /// above it.
     ///
     /// [`build_input`]: crate::input::build_input
@@ -511,8 +519,8 @@ pub(crate) enum Command {
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose
         /// installed plugins resolve each traced document's activated
-        /// capability snapshot (plugin §4/§11). Omit for a core-only
-        /// (`lute.core`) test.
+        /// capability snapshot (plugin §4/§11). Omit for each document's
+        /// nearest `lute.project.yaml`, or a core-only (`lute.core`) test.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
         /// Also report branch/arm coverage across the tested documents, and

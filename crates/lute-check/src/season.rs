@@ -54,6 +54,7 @@ pub fn parse_seasons(value: &serde_yaml::Value, span: Span) -> (Seasons, Vec<Dia
         match serde_yaml::from_value::<SeasonDecl>(v.clone()) {
             Ok(decl) if !decl.live.trim().is_empty() => {
                 out.insert(name.to_string(), decl);
+                continue;
             }
             Ok(_) => diags.push(diag(
                 format!("season `{name}`: `live:` is empty — name the condition that holds while its window is open (dsl 0.27.0 §5)"),
@@ -61,35 +62,49 @@ pub fn parse_seasons(value: &serde_yaml::Value, span: Span) -> (Seasons, Vec<Dia
             )),
             Err(e) => diags.push(diag(format!("season `{name}`: {shape}: {e}"), span)),
         }
+        // The name is declared; only its body is at fault, and reported
+        // above. An empty `live` keeps every use of the season from
+        // repeating that one fault as "no schema declares it".
+        out.insert(
+            name.to_string(),
+            SeasonDecl {
+                live: String::new(),
+            },
+        );
     }
     (out, diags)
 }
 
 /// Fold the seasons a document sees (its imports', then its own) into one
-/// map; a name declared twice with different `live` is [`E_SEASON_DECL`].
+/// map; a name declared twice with different `live` is [`E_SEASON_DECL`],
+/// reported at the second declaration's `seasons:` line (`origin`, when it
+/// is an imported schema's; `span` for the document's own).
 pub fn fold_seasons<'a>(
-    sources: impl Iterator<Item = (&'a str, &'a Seasons)>,
+    sources: impl Iterator<Item = (&'a str, &'a Seasons, Option<crate::rel_schema::DeclOrigin>)>,
     span: Span,
 ) -> (Seasons, Vec<Diagnostic>) {
     let mut out = Seasons::new();
     let mut from: BTreeMap<String, &str> = BTreeMap::new();
     let mut diags = Vec::new();
-    for (origin, seasons) in sources {
+    for (file, seasons, origin) in sources {
         for (name, decl) in seasons {
             match out.get(name) {
-                Some(prev) if prev != decl => diags.push(diag(
-                    format!(
-                        "season `{name}` is declared twice with different `live:` conditions \
-                         (`{}` in {} and `{}` in {origin}) — one season has one window \
-                         (dsl 0.27.0 §5)",
-                        prev.live, from[name], decl.live
+                Some(prev) if prev != decl => diags.push(crate::rel_schema::at_origin(
+                    diag(
+                        format!(
+                            "season `{name}` is declared twice with different `live:` \
+                             conditions (`{}` in {} and `{}` in {file}) — one season has one \
+                             window (dsl 0.27.0 §5)",
+                            prev.live, from[name], decl.live
+                        ),
+                        span,
                     ),
-                    span,
+                    origin.as_ref(),
                 )),
                 Some(_) => {}
                 None => {
                     out.insert(name.clone(), decl.clone());
-                    from.insert(name.clone(), origin);
+                    from.insert(name.clone(), file);
                 }
             }
         }
@@ -121,10 +136,15 @@ pub fn undeclared(name: &str, what: &str, seasons: &Seasons) -> Option<String> {
 /// Every `season.<name>.*` state path naming an undeclared season, and the
 /// read-only `prev.season.<name>.*` mirrors of the declared ones (same
 /// type, no default: unset until the season has opened a second time).
+///
+/// A path an imported schema declares is reported at its line there
+/// (`origins`, [`crate::rel_schema::DeclOrigins::state`]), once for the
+/// project; the document's own at `span`.
 pub fn check_state(
     schema: &StateSchema,
     seasons: &Seasons,
     span: Span,
+    origins: &BTreeMap<String, crate::rel_schema::DeclOrigin>,
 ) -> (Vec<(String, StateDecl)>, Vec<Diagnostic>) {
     let mut mirrors = Vec::new();
     let mut diags = Vec::new();
@@ -133,7 +153,10 @@ pub fn check_state(
             continue;
         };
         match undeclared(name, &format!("state path `{path}`"), seasons) {
-            Some(msg) => diags.push(diag(msg, span)),
+            Some(msg) => diags.push(crate::rel_schema::at_origin(
+                diag(msg, span),
+                origins.get(path),
+            )),
             None => mirrors.push((
                 format!("prev.{path}"),
                 StateDecl {
@@ -230,6 +253,10 @@ fn check_live(
     ctx: &crate::ctx::Ctx<'_>,
     scope: &crate::defassign::Scope<'_>,
 ) -> Vec<Diagnostic> {
+    // A season whose body failed to parse (reported where it is declared).
+    if raw.trim().is_empty() {
+        return Vec::new();
+    }
     let mut diags = crate::gates::check_condition(raw, at, ctx);
     if diags.iter().all(|d| d.code != "E-CEL-PARSE") {
         let slot = lute_syntax::ast::CelSlot::raw(

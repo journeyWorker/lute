@@ -88,6 +88,75 @@ pub fn check_speakers(doc: &Document, cast: &BTreeMap<String, CastMember>) -> Ve
     out
 }
 
+/// A kind's `labels:` entry names a cast member whose `name:` is what text
+/// renders, so the label is never shown (dsl 0.27.0 §7).
+pub const W_LABEL_CAST_SHADOWED: &str = "W-LABEL-CAST-SHADOWED";
+
+/// [`W_LABEL_CAST_SHADOWED`] for every `labels:` entry the document sees —
+/// the imported kinds' (at the entry's schema line, folded across importers)
+/// and its own `entities:` (at the entry) — whose member is a cast member
+/// with a `name:` other than the label: a `{{…}}` of that member renders the
+/// cast name (dsl 0.27.0 §7), never the label.
+pub fn check_label_shadows(
+    imports: &crate::schema_import::RelImports,
+    own: &lute_manifest::relations::ParsedKinds,
+    meta: &lute_syntax::ast::Meta,
+    cast: &BTreeMap<String, CastMember>,
+) -> Vec<Diagnostic> {
+    use crate::rel_schema::{at_origin, kind_label_spans, member_origin_key};
+    let shadowed = |member: &str, label: &str| {
+        let name = cast.get(member)?.name.as_deref()?;
+        (name != label).then(|| {
+            format!(
+                "label `{label}` for `{member}` is never shown: `{member}` is a cast member, \
+                 whose `name:` (`{name}`) is what text renders — drop the label or change the \
+                 cast name (dsl 0.27.0 §7)"
+            )
+        })
+    };
+    let warning = |message: String, span: Span| Diagnostic {
+        code: W_LABEL_CAST_SHADOWED.to_string(),
+        severity: Severity::Warning,
+        message,
+        span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    };
+    let mut out = Vec::new();
+    for (kind, decl) in &imports.kinds {
+        if own.kinds.contains_key(kind) {
+            continue;
+        }
+        for (member, label) in &decl.labels {
+            if let Some(message) = shadowed(member, label) {
+                let origin = imports.origins.labels.get(&member_origin_key(kind, member));
+                out.push(at_origin(warning(message, meta.span), origin));
+            }
+        }
+    }
+    let own_labels = own
+        .kinds
+        .iter()
+        .map(|(kind, decl)| (kind, &decl.labels))
+        .chain(own.add_labels.iter());
+    for (kind, labels) in own_labels {
+        let spans = kind_label_spans(meta, kind);
+        for (member, label) in labels {
+            if let Some(message) = shadowed(member, label) {
+                let span = spans
+                    .iter()
+                    .find(|(m, _)| m == member)
+                    .map_or_else(|| crate::meta::meta_key_span(meta, kind), |(_, s)| *s);
+                out.push(warning(message, span));
+            }
+        }
+    }
+    out
+}
+
 /// The character-naming attribute of a staging directive (dsl 0.24.0 §4):
 /// `::auto{character}` and `::camera{focus}`.
 fn staged_attr(tag: &str) -> Option<&'static str> {

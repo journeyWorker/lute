@@ -1339,16 +1339,18 @@ fn state_entries(
                 domain,
                 default,
                 provenance,
-                // dsl 0.24.0 §1: a path typed against a named enum carries
-                // that enum's member labels, so an engine renders `{{path}}`
-                // from this one entry.
+                // dsl 0.24.0 §1: a path typed against a named enum or an
+                // entity kind (`{ domain: K }` and `{ entity: K }` are one
+                // type to the checker) carries that domain's member labels,
+                // so an engine renders `{{path}}` from this one entry.
                 labels: match &decl.ty {
-                    Type::Domain(name) => domains
+                    Type::Domain(name) | Type::Entity(name) => domains
                         .get(name)
                         .map(|d| d.labels.clone())
                         .unwrap_or_default(),
                     _ => BTreeMap::new(),
                 },
+                member_domain: schema.domain_members.get(path).cloned(),
             }
         })
         .collect()

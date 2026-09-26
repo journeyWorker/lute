@@ -46,7 +46,10 @@ pub(super) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<D
             }
             InterpKind::Path => {
                 let has_dollar = scan_refs(&interp.raw).iter().any(|r| r.is_dollar);
-                if !has_dollar && !is_bare_state_path(&interp.raw) {
+                // dsl 0.27.0 §3: `{{user.bond[occasion.target]}}` reads the
+                // raised member's family path, judged per member like a guard.
+                let indexed = crate::cel_paths::occasion_indexed_family(&interp.raw).is_some();
+                if !has_dollar && !indexed && !is_bare_state_path(&interp.raw) {
                     diags.push(interp_grammar_diag(&interp.raw, interp.span));
                     continue;
                 }
@@ -169,8 +172,9 @@ pub(super) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
         severity: Severity::Error,
         message: format!(
             "interpolation `{raw}` is not a valid `{{{{…}}}}` form — only a state path, a \
-             def `@ref` / `@ref(args)`, or `userName` are permitted; a bare CEL expression \
-             is not (name a computed value with a `@def`, dsl §7.6)"
+             family path indexed by the raised member (`user.bond[occasion.target]`), a def \
+             `@ref` / `@ref(args)`, or `userName` are permitted; a bare CEL expression is not \
+             (name a computed value with a `@def`, dsl §7.6)"
         ),
         span,
         layer: Layer::Cel,
@@ -234,7 +238,20 @@ pub(super) fn check_interp_format(
     } else {
         let ty = match interp.kind {
             InterpKind::Reserved => Some(Type::Str),
-            InterpKind::Path => crate::set_op::resolve_type(raw, &env.state).cloned(),
+            InterpKind::Path => match crate::cel_paths::occasion_indexed_family(raw) {
+                // Every member path of a family shares its declared type.
+                Some(family) => env
+                    .state
+                    .decls
+                    .iter()
+                    .find(|(k, _)| {
+                        k.strip_prefix(family)
+                            .and_then(|m| m.strip_prefix('.'))
+                            .is_some_and(|m| !m.contains('.'))
+                    })
+                    .map(|(_, d)| d.ty.clone()),
+                None => crate::set_op::resolve_type(raw, &env.state).cloned(),
+            },
             InterpKind::Ref => scan_refs(raw)
                 .into_iter()
                 .find(|r| !r.is_dollar)

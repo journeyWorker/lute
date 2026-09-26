@@ -61,6 +61,11 @@ pub struct RelVocab {
     /// as `::give{item="brassKey"}` to the facts it writes
     /// ([`crate::directive_facts`]). Folded from the snapshot in `fold_env`.
     pub effect_directives: BTreeMap<String, lute_manifest::schema::DirectiveDecl>,
+    /// dsl 0.27.0 §4: where each of those directives' fact effects is
+    /// written in its plugin file ([`PluginOrigins::effect_facts`]) — a
+    /// fault a call does not bind is reported there, once. Folded from the
+    /// imports in `fold_env`.
+    pub effect_origins: BTreeMap<String, DeclOrigin>,
 }
 
 /// One imported declaration's home (dsl 0.24 T3-6): the schema file and the
@@ -90,15 +95,49 @@ pub struct DeclOrigins {
     /// dsl 0.26.0 §2.8: each `cast:` entry, at its id key — where an
     /// advisory about a cast entry nobody speaks as is anchored.
     pub cast: BTreeMap<String, DeclOrigin>,
+    /// dsl 0.27.0 §7: each `labels:` entry of an entity kind (beside
+    /// `members:` or `add:`), keyed [`member_origin_key`], at its member key
+    /// — where `W-LABEL-CAST-SHADOWED` is anchored.
+    pub labels: BTreeMap<String, DeclOrigin>,
+}
+
+/// dsl 0.27.0 §4: plugin declarations a document's check judges, at their
+/// line in the plugin's export file (see [`SchemaImports::plugin_origins`]).
+///
+/// [`SchemaImports::plugin_origins`]: crate::SchemaImports::plugin_origins
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PluginOrigins {
+    /// Each gated occasion's `raisedWhen:` value.
+    pub gates: BTreeMap<String, DeclOrigin>,
+    /// Each directive fact effect, keyed [`effect_origin_key`]: the fact's
+    /// text in the directive's `effects.asserts` / `retracts`.
+    pub effect_facts: BTreeMap<String, DeclOrigin>,
+    /// G-6: each occasion payload field, keyed [`effect_origin_key`]`(occasion,
+    /// field)`: the field's key inside the occasion's `payload:`.
+    pub payloads: BTreeMap<String, DeclOrigin>,
+}
+
+/// The [`PluginOrigins::effect_facts`] key of `fact` (as displayed) in
+/// directive `directive`'s effects.
+pub fn effect_origin_key(directive: &str, fact: &str) -> String {
+    format!("{directive}\u{1f}{fact}")
 }
 
 /// Byte offset (in `yaml`) of the `<id>:` key of `id`'s entry under the
 /// top-level `cast:` map of a schema or a plugin cast export — a line scan,
 /// never a YAML re-parse; `None` when the shape is not recognized.
 pub fn cast_entry_offset(yaml: &str, id: &str) -> Option<usize> {
-    // `Some(indent of the entry keys)` inside `cast:`, once the first entry
-    // is seen; `Some(None)` right after the `cast:` line.
-    let mut in_cast: Option<Option<usize>> = None;
+    map_entry_offset(yaml, "cast", id)
+}
+
+/// Byte offset (in `yaml`) of the `<id>:` key of `id`'s entry under the
+/// top-level `<top>:` map (`cast`, `occasions`) — a line scan, never a
+/// YAML re-parse; `None` when the shape is not recognized.
+pub fn map_entry_offset(yaml: &str, top: &str, id: &str) -> Option<usize> {
+    let header = format!("{top}:");
+    // `Some(indent of the entry keys)` inside `<top>:`, once the first
+    // entry is seen; `Some(None)` right after the `<top>:` line.
+    let mut in_map: Option<Option<usize>> = None;
     let mut off = 0;
     for line in yaml.split_inclusive('\n') {
         let at = off;
@@ -109,17 +148,17 @@ pub fn cast_entry_offset(yaml: &str, id: &str) -> Option<usize> {
         }
         let indent = line.len() - trimmed.len();
         if indent == 0 {
-            in_cast = trimmed.starts_with("cast:").then_some(None);
+            in_map = trimmed.starts_with(&header).then_some(None);
             continue;
         }
-        let Some(entry_indent) = in_cast else {
+        let Some(entry_indent) = in_map else {
             continue;
         };
         let want = entry_indent.unwrap_or(indent);
         if want != indent {
             continue;
         }
-        in_cast = Some(Some(want));
+        in_map = Some(Some(want));
         let key = trimmed
             .strip_prefix(['"', '\''])
             .unwrap_or(trimmed)
@@ -160,6 +199,17 @@ pub fn member_origin_key(kind: &str, member: &str) -> String {
 /// roll-up then folds the identical copies every importer carries into one
 /// report. `None` (a local declaration) returns `d` unchanged.
 pub fn at_origin(d: Diagnostic, origin: Option<&DeclOrigin>) -> Diagnostic {
+    rehome(d, origin, "schema import")
+}
+
+/// dsl 0.27.0 §4: [`at_origin`] for a declaration an installed plugin makes
+/// (an occasion's gate, a directive's fact effect) — reported once, at the
+/// plugin file's line, instead of at every use.
+pub fn at_plugin_origin(d: Diagnostic, origin: Option<&DeclOrigin>) -> Diagnostic {
+    rehome(d, origin, "plugin file")
+}
+
+fn rehome(d: Diagnostic, origin: Option<&DeclOrigin>, what: &str) -> Diagnostic {
     let Some(origin) = origin else {
         return d;
     };
@@ -171,7 +221,7 @@ pub fn at_origin(d: Diagnostic, origin: Option<&DeclOrigin>) -> Diagnostic {
         // roll-up key, and importers in different directories must fold into
         // one report; the `related` entry carries the full location.
         message: format!(
-            "{} (declared in schema import `{}`)",
+            "{} (declared in {what} `{}`)",
             d.message,
             origin
                 .file
@@ -466,7 +516,7 @@ fn check_kind_labels(kinds: &ParsedKinds, span_of: &dyn Fn(&str) -> Span) -> Vec
         ));
     }
     let mut closed = kinds.kinds.clone();
-    lute_manifest::relations::imply_sub_kind_members(&mut closed);
+    lute_manifest::relations::imply_sub_kind_members(&mut closed, &kinds.order);
     let not_members = |name: &str, labels: &BTreeMap<String, String>, members: &[String]| {
         labels
             .keys()
@@ -818,8 +868,19 @@ pub fn build_rel_vocab(
         }
     }
     // dsl 0.26.0 §2.3: a sub-kind's members are members of its parent — after
-    // the one-kind check above, which reads the lists as authored.
-    lute_manifest::relations::imply_sub_kind_members(&mut kinds);
+    // the one-kind check above, which reads the lists as authored. Sub-kinds
+    // in declaration order: the imported ones as the imports declare them,
+    // then this document's own.
+    let mut order = imports.rel.kind_order.clone();
+    order.extend(
+        typed
+            .rel_kinds
+            .order
+            .iter()
+            .filter(|n| !imports.rel.kind_order.contains(n))
+            .cloned(),
+    );
+    lute_manifest::relations::imply_sub_kind_members(&mut kinds, &order);
     diags.extend(check_sub_kinds(&kinds, &span_of, &origins));
 
     // Facts/rules always UNION (spec §4.1) — imports first, then inline.
@@ -888,6 +949,7 @@ pub fn build_rel_vocab(
             .cloned()
             .collect(),
         effect_directives: BTreeMap::new(),
+        effect_origins: BTreeMap::new(),
     };
 
     // Merged check (d): every seed `facts:` entry is GROUND — checked as for
@@ -1238,18 +1300,26 @@ fn member_list_offsets(raw: &str, key_off: usize) -> Vec<(usize, String)> {
 /// inside the key at `key_off`; `direct` also reads a list written right
 /// under the key when `sub` is absent.
 fn list_offsets_under(raw: &str, key_off: usize, sub: &str, direct: bool) -> Vec<(usize, String)> {
-    let Some(line_start) = raw
-        .get(..key_off)
-        .map(|s| s.rfind('\n').map_or(0, |i| i + 1))
-    else {
+    let Some((colon, end)) = value_region(raw, key_off) else {
         return Vec::new();
     };
+    // Long form: the list is the value of the `sub` key inside it.
+    let start = match find_sub_key(&raw[colon..end], sub) {
+        Some(m) => colon + m,
+        None if direct => colon,
+        None => return Vec::new(),
+    };
+    list_items(raw, start, end)
+}
+
+/// The value of the YAML key starting at `key_off` in `raw`: from just past
+/// its `:` to the end of the last line indented deeper than the key (blank
+/// lines included). `None` when `key_off` is not inside `raw` or no `:`
+/// follows.
+fn value_region(raw: &str, key_off: usize) -> Option<(usize, usize)> {
+    let line_start = raw.get(..key_off)?.rfind('\n').map_or(0, |i| i + 1);
     let key_indent = key_off - line_start;
-    let Some(colon) = raw[key_off..].find(':').map(|c| key_off + c + 1) else {
-        return Vec::new();
-    };
-    // The value region: the rest of the key line, plus every following line
-    // indented deeper than the key (blank lines included).
+    let colon = key_off + raw[key_off..].find(':')? + 1;
     let mut end = raw[colon..].find('\n').map_or(raw.len(), |i| colon + i);
     while end < raw.len() {
         let next = end + 1;
@@ -1261,14 +1331,109 @@ fn list_offsets_under(raw: &str, key_off: usize, sub: &str, direct: bool) -> Vec
         }
         end = line_end;
     }
-    let region = &raw[colon..end];
-    // Long form: the list is the value of the `sub` key inside it.
-    let start = match find_sub_key(region, sub) {
-        Some(m) => colon + m,
-        None if direct => colon,
-        None => return Vec::new(),
+    Some((colon, end))
+}
+
+/// dsl 0.27.0 §7: each key of entity kind `kind`'s `labels:` map in `meta`
+/// (a flow `{ a: …, b: … }` or a block mapping), as written, with its span —
+/// `meta`-document offsets, line-less, like [`kind_list_spans`]'. Empty for
+/// a shape the line scan does not recognize.
+pub fn kind_label_spans(meta: &Meta, kind: &str) -> Vec<(String, Span)> {
+    let key = meta_key_span(meta, kind);
+    let (base, _) = frontmatter_base(meta);
+    let raw = meta.raw_yaml.as_str();
+    let Some((colon, end)) = value_region(raw, key.byte_start.saturating_sub(base)) else {
+        return Vec::new();
     };
-    list_items(raw, start, end)
+    let Some(start) = find_sub_key(&raw[colon..end], "labels:").map(|m| colon + m) else {
+        return Vec::new();
+    };
+    map_keys(raw, start, end)
+        .into_iter()
+        .map(|(o, k)| {
+            let span = Span {
+                byte_start: base + o,
+                byte_end: base + o + k.len(),
+                line: 0,
+                column: 0,
+                utf16_range: (0, 0),
+            };
+            (k, span)
+        })
+        .collect()
+}
+
+/// The keys of the flow or block mapping starting at `start` (just past its
+/// key's `:`), bounded by `end`, as `(offset, key)` in written order.
+fn map_keys(raw: &str, start: usize, end: usize) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let push = |out: &mut Vec<(usize, String)>, at: usize, entry: &str| {
+        let Some(colon) = entry.find(':') else { return };
+        let tok = &entry[..colon];
+        let lead = tok.len() - tok.trim_start().len();
+        let t = tok.trim();
+        let q = t.starts_with(['"', '\'']) as usize;
+        let bare = t.trim_matches(['"', '\'']);
+        if !bare.is_empty() {
+            out.push((at + lead + q, bare.to_string()));
+        }
+    };
+    let text = &raw[start..end];
+    let body = text.trim_start();
+    if body.starts_with('{') {
+        let bytes = raw.as_bytes();
+        let open = start + (text.len() - body.len()) + 1;
+        // `quote`: inside a quoted scalar; `lead`: the last byte outside one
+        // that is not a space — a quote opens a scalar only right after
+        // `{`, `,` or `:` (an apostrophe inside plain text does not).
+        let (mut i, mut tok_start, mut quote, mut lead) = (open, open, None, b'{');
+        while i < end {
+            let c = bytes[i];
+            match quote {
+                Some(q) if c == q => quote = None,
+                Some(_) => {}
+                None if matches!(c, b'"' | b'\'') && matches!(lead, b'{' | b',' | b':') => {
+                    quote = Some(c)
+                }
+                None if matches!(c, b',' | b'}') => {
+                    push(&mut out, tok_start, &raw[tok_start..i]);
+                    if c == b'}' {
+                        break;
+                    }
+                    tok_start = i + 1;
+                }
+                None => {}
+            }
+            if quote.is_none() && !c.is_ascii_whitespace() {
+                lead = c;
+            }
+            i += 1;
+        }
+        return out;
+    }
+    // Block mapping: the lines under the key at the first entry's indent.
+    let mut indent = None;
+    let mut off = start;
+    for line in text.split_inclusive('\n') {
+        let at = off;
+        off += line.len();
+        if at == start {
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let this = line.len() - trimmed.len();
+        match indent {
+            None => indent = Some(this),
+            Some(i) if this < i => break,
+            Some(i) if this > i => continue,
+            Some(_) => {}
+        }
+        push(&mut out, at + this, trimmed);
+    }
+    out
 }
 
 /// Offset (in `region`) just past a `sub` key (`members:`), outside comments.

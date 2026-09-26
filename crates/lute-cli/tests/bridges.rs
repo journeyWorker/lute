@@ -192,7 +192,7 @@ fn play_refuses_a_bad_field_or_a_misfit_value_at_load() {
     for (script, want) in [
         (
             "bridges:\n  check:\n    - { passed: true, margn: 3 }\nsteps:\n  - occasion: hubVisit\n",
-            "gives `margn`, which no effect of a `check` call reads",
+            "gives `margn`, which no effect of the `::check` calls reads",
         ),
         (
             "bridges:\n  check:\n    - { passed: maybe, margin: 3 }\nsteps:\n  - occasion: hubVisit\n",

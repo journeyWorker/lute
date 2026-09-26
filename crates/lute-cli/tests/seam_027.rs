@@ -158,6 +158,83 @@ fn an_occasion_step_while_its_gate_is_false_is_refused() {
     );
 }
 
+/// HW27-01: an `occasion:` step's `engine:` write is part of the step, not
+/// a step of its own — the step's `expect:` judges the raise (and the world
+/// after it), a `repeat:` counts its repetitions only, and the end counts
+/// the script's steps.
+#[test]
+fn an_occasion_steps_engine_write_is_judged_with_its_raise() {
+    let dir = open_ward("engine-expect");
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: enter\n    target: room.office\n    \
+         engine: { facts: [canEnter(office)] }\n    \
+         expect: { winner: office, facts: [canEnter(office)] }\n  \
+         - occasion: enter\n    target: room.lobby\n    engine: { state: { run.hp: 2 } }\n    \
+         repeat: 2\n    expect: { winner: lobby, state: { run.hp: 2 } }\n",
+        false,
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(t.contains("── expect: every expectation held"), "{t}");
+    assert!(t.contains("── end: complete (3 steps)"), "{t}");
+
+    // A miss names the raise, with no made-up repetition.
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: enter\n    target: room.office\n    \
+         engine: { facts: [canEnter(office)] }\n    expect: { winner: lobby }\n",
+        false,
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(
+        t.contains("✗ step 1 at enter room.office: expect winner: expected lobby, actual office"),
+        "{t}"
+    );
+
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: enter\n    target: room.office\n    \
+         engine: { facts: [canEnter(office)] }\n",
+        true,
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["steps"][0]["beforeRaise"], true, "{}", text(&out));
+    assert_eq!(v["steps"][1]["winner"], "office", "{}", text(&out));
+    assert!(v["steps"][1].get("beforeRaise").is_none(), "{}", text(&out));
+}
+
+/// OT-F-1 / FS-F9: a play's `choose:` naming no branch or hub is a located
+/// usage error before anything plays — top level and on a step.
+#[test]
+fn a_play_choose_naming_no_decision_is_a_located_usage_error() {
+    let dir = open_ward("choose");
+    let out = play(
+        &dir,
+        "choose: { clsh: [sideRen] }\nsteps:\n  - occasion: knock\n",
+        false,
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(
+        t.contains("s.play.yaml:1:11: `choose.clsh` names no branch or hub of the project"),
+        "{t}"
+    );
+    assert!(!t.contains("Something takes you."), "{t}");
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: knock\n    choose: { clsh: [sideRen] }\n",
+        false,
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(
+        t.contains("s.play.yaml:3:15: step 1: `choose.clsh` names no branch or hub"),
+        "{t}"
+    );
+}
+
 /// A clock raise whose gate is false is not made — no error — and the step
 /// says so; the clock still moves.
 #[test]
@@ -238,6 +315,11 @@ fn raising_after_the_game_is_over_is_refused_and_a_new_run_continues() {
         "{t}"
     );
     assert!(!t.contains("The clock strikes"), "{t}");
+    // HW27-08: the refused advance's header says where the clock stands.
+    assert!(
+        t.contains("── step 2 · advance slot: day 1 h23 → day 1 h23 ──"),
+        "{t}"
+    );
 
     let out = play(
         &dir,

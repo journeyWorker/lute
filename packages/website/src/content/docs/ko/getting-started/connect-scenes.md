@@ -119,8 +119,18 @@ priority: 20
 
 장면이 직접 쓴 키는 sequence보다 우선합니다: 한 장면에 자기 `priority:`나 다른 `after:`를 주면 그
 키만 바뀝니다. 어느 장면도 선언하지 않은 id를 목록에 적거나, 목록의 장면이 자기 `on:`으로 다른 계기에
-응답하면 `lute check-project`가 `E-SEQUENCE`를 보고합니다(비슷한 id 제안 포함). 아래 엔딩처럼 목록에
-없는 장면은 여전히 키를 직접 씁니다.
+응답하거나, 어떤 플러그인도 선언하지 않은 `occasion:`을 적으면 `lute check-project`가 `E-SEQUENCE`를
+보고합니다(비슷한 이름 제안 포함). 아래 엔딩처럼 목록에 없는 장면은 여전히 키를 직접 씁니다.
+
+자기 `when:`이 있어 재생되지 않을 수도 있는 장은 사슬을 멈춥니다: 목록의 다음 장면이 sequence가 쓴
+`after:`로 그 장을 기다리기 때문이며, `lute check-project`가 경고합니다(`W-SEQUENCE-STALL`). 선택적인
+장은 `scenes:`에서 빼고 자기 `on:`·`after:`·`priority:`를 직접 쓰거나, 그 뒤 장면에 선택적인 장 앞의
+장을 가리키는 자기 `after:`를 주세요. `lute play`는 파생된 `after:`를 이유에 밝힙니다: `after:
+visited("pryceWakes") is not satisfied (written by `sequence:` in lute.project.yaml)`.
+
+한 번의 발생에서 자격 있는 비트를 모두 보여 주는 `select: sequence` 계기에서는 sequence가 `on:`과
+`priority:`만 씁니다: 목록의 장면들이 그 한 번의 발생 안에서 목록 순서대로 이어서 재생됩니다. 그 밖의
+계기에서는 발생 한 번에 목록의 장면 하나가 재생됩니다.
 
 세 번째 장면은 플레이어에게 선택을 주고 그것을 기억합니다:
 
@@ -327,10 +337,11 @@ PASS  ./plays/caught.play.yaml  (play of .)
 
 ## 장면 추가하기
 
-`lute new scene <name> --on chapter`는 `chapter`에 응답하는 새 장면을 씁니다. `id:`는 이름에서
-가져오고, `priority:`는 이미 `chapter`에 있는 모든 장면보다 낮게 적으므로 맨 뒤에 옵니다. 따라오는
-장면을 가리키는 `after:`를 주고, 두 장 사이에 들어가야 한다면 `priority:`를 그 둘 사이 값으로
-정하세요. 그다음 플레이 스크립트에 스텝을 하나 더하세요.
+`lute new scene <name> --on chapter`는 이름에서 `id:`를 가져온 새 장면을 씁니다. `chapter`가
+`sequence:`의 계기이므로 `on:`·`after:`·`priority:`는 쓰지 않고, id를 `sequence.scenes`에 더하라고
+알려 줍니다: 목록의 알맞은 자리에 넣으면 sequence가 세 키를 모두 줍니다. 그다음 플레이 스크립트에
+스텝을 하나 더하세요. (어떤 sequence도 응답하지 않는 계기라면 `on:`과, 이미 그 계기에 있는 모든
+비트보다 낮은 `priority:`를 씁니다.)
 
 다음 장이 아니라 플레이어가 고르는 대화는 누군가를 *대상으로* 발생하는 두 번째 계기입니다. 장면은
 `target:`으로 그 사람을 가리킵니다:

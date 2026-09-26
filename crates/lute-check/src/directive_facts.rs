@@ -173,16 +173,27 @@ pub fn pattern_text(p: &FactPattern) -> String {
 /// `::assert` / `::retract` of the same fact gets. A `reserved: true`
 /// relation MAY be written this way (it is the engine's own write: the
 /// engine seam); a derived or `app`-tier one may not. A fact whose `@attr`
-/// the call leaves unbound is not written, and not judged.
+/// the call leaves unbound is not written, and not judged. A fault in a
+/// fact that reads no `@attr` is the declaration's, not the call's: it is
+/// reported at the plugin file's line when the CLI placed it
+/// ([`RelVocab::effect_origins`]; `check-project` folds the copies).
 pub fn check_call(
     dir: &Directive,
     decl: &DirectiveDecl,
     domains: &BTreeMap<String, Domain>,
     ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
-    let facts = call_facts(decl, dir);
+    let Some(effects) = &decl.effects else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
-    for (pattern, assert) in facts.writes() {
+    for (fact, assert) in effects
+        .retracts
+        .iter()
+        .map(|f| (f, false))
+        .chain(effects.asserts.iter().map(|f| (f, true)))
+    {
+        let pattern = bind(fact, decl, &dir.attrs);
         if pattern
             .args
             .iter()
@@ -190,16 +201,28 @@ pub fn check_call(
         {
             continue;
         }
+        let origin = if fact.attrs().next().is_none() {
+            ctx.env
+                .rel_vocab
+                .effect_origins
+                .get(&crate::rel_schema::effect_origin_key(
+                    &decl.name,
+                    &fact.to_string(),
+                ))
+        } else {
+            None
+        };
         let list = if assert { "asserts" } else { "retracts" };
-        for mut d in crate::fact_write::check_effect_write(pattern, dir.span, !assert, domains, ctx)
+        for mut d in
+            crate::fact_write::check_effect_write(&pattern, dir.span, !assert, domains, ctx)
         {
             d.message = format!(
                 "`::{}` {list} `{}` (its declared `effects.{list}`): {}",
                 dir.tag,
-                pattern_text(pattern),
+                pattern_text(&pattern),
                 d.message
             );
-            out.push(d);
+            out.push(crate::rel_schema::at_plugin_origin(d, origin));
         }
     }
     out
@@ -211,22 +234,40 @@ pub fn check_call(
 /// result slot, no staging layer and no declarative lowering. It is applied
 /// like the entry's own `::set` (first read only).
 pub fn is_effect_only(snapshot: &CapabilitySnapshot, tag: &str) -> bool {
+    effect_only_blocker(snapshot, tag).is_none()
+}
+
+/// Why `tag` is not [`is_effect_only`] — a clause completing "an entry may
+/// call a directive only when its whole behaviour is its declared `effects:`;
+/// `::tag` …" — or `None` when it is.
+pub fn effect_only_blocker(snapshot: &CapabilitySnapshot, tag: &str) -> Option<&'static str> {
     use lute_manifest::schema::{Lowering, WriteValue};
     if snapshot.directive_owner(tag) == Some("lute.core") {
-        return false;
+        return Some("is a `lute.core` directive, which stages or directs play");
     }
-    snapshot.directive(tag).is_some_and(|d| {
-        d.effects.as_ref().is_some_and(|e| {
-            !e.is_empty()
-                && !e
-                    .writes
-                    .iter()
-                    .any(|w| matches!(w.value, WriteValue::FromBridgeResult { .. }))
-        }) && d.bridge.is_none()
-            && d.layer.is_none()
-            && d.state.as_ref().is_none_or(|s| s.declares.is_empty())
-            && !d.semantics.iter().any(|s| s == "bridgeCall")
-            && matches!(d.lower, Lowering::Passthrough)
+    let Some(d) = snapshot.directive(tag) else {
+        return Some("is not a declared directive");
+    };
+    let effects = d.effects.as_ref().filter(|e| !e.is_empty());
+    Some(if effects.is_none() {
+        "declares no `effects:`"
+    } else if d.bridge.is_some()
+        || d.semantics.iter().any(|s| s == "bridgeCall")
+        || effects.is_some_and(|e| {
+            e.writes
+                .iter()
+                .any(|w| matches!(w.value, WriteValue::FromBridgeResult { .. }))
+        })
+    {
+        "calls a bridge"
+    } else if d.layer.is_some() {
+        "stages a layer"
+    } else if d.state.as_ref().is_some_and(|s| !s.declares.is_empty()) {
+        "declares result state"
+    } else if !matches!(d.lower, Lowering::Passthrough) {
+        "lowers to other content"
+    } else {
+        return None;
     })
 }
 

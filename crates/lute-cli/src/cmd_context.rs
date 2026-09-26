@@ -34,6 +34,9 @@ pub(crate) fn run_context(
     project: Option<&Path>,
     permission_profile: Option<&str>,
 ) -> ExitCode {
+    // FS-F2: the same project `lute check` resolves the file against.
+    let discovered = crate::project::discover_project(file, project);
+    let project = project.or(discovered.as_deref());
     let Some(built) = build_input(file, providers, project, permission_profile) else {
         return ExitCode::from(2);
     };
@@ -259,7 +262,7 @@ fn authoring_surface(
                 let header: Map<String, Value> = t
                     .keys
                     .iter()
-                    .map(|(k, v)| (k.clone(), v.clone().into()))
+                    .map(|k| (k.key.clone(), k.raw.clone().into()))
                     .collect();
                 o.insert("beat".into(), header.into());
             }

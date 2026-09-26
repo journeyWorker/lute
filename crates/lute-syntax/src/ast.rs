@@ -369,11 +369,16 @@ pub struct BundleBeat {
 /// dsl 0.27.0 §6: a `<beat use="…">` template use. `span` is the `use=`
 /// value; `expanded` is set once `lute_check::templates` has derived the
 /// header and body, so the expansion runs exactly once per document.
+/// `failed` marks a use whose template could not be applied whole (no such
+/// component, no `beat:` header, or a faulty header, reported once at the
+/// header): the checker then says nothing about what the template would
+/// have supplied (a missing `on=`).
 #[derive(Clone, Debug)]
 pub struct TemplateUse {
     pub name: String,
     pub span: Span,
     pub expanded: bool,
+    pub failed: bool,
 }
 
 /// `<objective id done …> Node* </objective>` or self-closing

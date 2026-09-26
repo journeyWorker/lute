@@ -25,10 +25,8 @@ Create an empty file, `my-scene.lute`, and run the checker on it — the checker
 ```
 $ lute check my-scene.lute
 my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore`
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity)
-failed: my-scene.lute (4 error(s), 0 warning(s))
+my-scene.lute:1:1: error [E-META-MISSING] a scene needs an `id:`, its key in the project — write `id: opening` in the frontmatter
+failed: my-scene.lute (2 error(s), 0 warning(s))
 ```
 
 That's the whole idea of `lute check`: it reads your file and tells you, line by line, exactly
@@ -53,9 +51,8 @@ pov: fixer
 - `title` — a human-readable title for tools and search.
 - `pov` — the id of the player character (the protagonist the player controls).
 
-The three `E-META-MISSING` errors above name `character`, `season` and `episode`: an older way to
-name a scene. As the message says in parentheses, an `id:` replaces all three, so you never need
-them.
+The `E-META-MISSING` error above is the `id:` line: its `opening` is only an example name, and
+`mira.s01ep01` is this scene's.
 
 Save that and re-check:
 
@@ -263,7 +260,21 @@ failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 **Reading a diagnostic:** `file:line:col: error [CODE] message`. It names the exact line, the exact
-problem, and exactly what to write instead. For this mechanical class of fix, run:
+problem, and exactly what to write instead. When a message is not enough, `lute --explain <CODE>`
+prints what the code means and links its entry in the [diagnostics reference](/reference/diagnostics/),
+which lists every code:
+
+```
+$ lute --explain E-LEGACY-CONTENT-SIGIL
+E-LEGACY-CONTENT-SIGIL (error)
+
+A content line uses the old `:` speaker sigil, which `@` replaced — write `@speaker{…}: text` instead.
+
+Spec: dsl §7.1
+More: https://lute-lang.vercel.app/reference/diagnostics/#e-legacy-content-sigil
+```
+
+For this mechanical class of fix, run:
 
 ```
 $ lute fix my-scene.lute
@@ -497,9 +508,9 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
     - run.metMira   written by: scene(mira.s01ep01)
   Possible (set on SOME but not every declared route reaching this node; the Guaranteed paths above are not repeated):
     (none)
-  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+  Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
     (none)
 ```
 
@@ -571,6 +582,7 @@ file you give it:
 
 ```
 $ lute context episodes/diner.lute
+lute: note: using project episodes (nearest lute.project.yaml); pass --project to choose another
 capabilityVersion: 0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3
 permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (12):
@@ -608,8 +620,29 @@ builtinDirectives (5):
   ::retract{ <relation>(<arg | _>, …) [when="<condition>"] } — retract the matching facts of a declared, non-derived, non-reserved relation
   ::accept{quest="<questId>" [when="<condition>"]} — accept a quest that has no `start` condition
   ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
-scenes (1; read as visited("<id>")):
-  mira.s01ep01
+beatKeys (11; scene frontmatter; <entry> / <beat> attributes):
+  on: <occasion> — the occasion the beat answers
+  target: <prefix>.<member> | kind:<kind> — the one target it answers, or every member of a kind (read as occasion.target)
+  for: kind:<kind> — on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, binding occasion.target
+  when: <condition> — eligible only while it holds
+  priority: <integer> — the higher eligible beat wins
+  once: run | user | false | day | slot | week | season:<name> — presented at most once per run, ever, without limit, per clock day / slot / week, or per window of a season
+  spentBy: <condition> — instead of `once`: repeatable until the condition holds
+  also: true — scene and bundle beats, on a `select: first` occasion: presented after the winner too
+  share: <key> — beats with one `share` key spend one `once` together
+  after: <prerequisite> — scene and bundle beats: eligible once it holds, e.g. visited("<id>")
+  use: <component> — bundle `<beat>`: its header from the component's `beat:` template, the component's params as attributes
+questKeys (8; <quest> attributes):
+  start: <condition> — activates the quest when it holds; without it the quest is accept-driven
+  fail: <condition> — fails the active quest when it holds
+  after: <prerequisite> — its place in the scene graph; does not gate activation
+  tier: user | run | season:<name> — when it returns to unset: never, at each new run, or each time the season opens
+  rearm: <condition> — returns the quest to unset (objectives cleared) each time the condition goes false→true
+  complete: all | any — completes when every / any one required objective is done
+  activate: accept — a child that waits for an ::accept instead of activating with its parent
+  accept: external — the engine accepts the quest outside any document
+scenes (2; read as visited("<id>")):
+  mira.s01ep01, mira.s01ep02
 ```
 
 `enums (0)` is not a bug: that line counts members supplied by the active *plugins*, and this file
@@ -622,7 +655,11 @@ behalf so a later construct can read which option the player took, and `prev.run
 read-only value `run.metMira` had when the previous run ended.
 
 `builtinDirectives` lists the directives the language itself provides — `::set` you have already
-used — and `scenes` lists the ids `visited("…")` can name. Pass `--project episodes` and that list
+used. `beatKeys` and `questKeys` list every key a beat's header (a scene's frontmatter, an
+`<entry>` or `<beat>`) and a `<quest>` element may carry, with one line on what each does — the
+place to look when you meet `on:` or `once:` in someone else's scene. `scenes` lists the ids
+`visited("…")` can name. `episodes/` holds a `lute.project.yaml`, so `context` resolves the file
+against that project, as `lute check` does, and says so in the `lute: note:` line; the list therefore
 covers every scene in the project, alongside its quests and lore entries.
 
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value

@@ -193,17 +193,28 @@ holds activates it in the same settle:
 
 ```lute
 <quest id="harvestMissions" title="Harvest missions" start="@harvestLive" rearm="@harvestLive">
-  <objective id="bring" title="Bring in the barley" done="run.barley >= 10"/>
+  <objective id="bring" title="Bring in this week's barley" done="run.weekBarley >= 10"/>
 </quest>
 ```
 
 Here `@harvestLive` is a def over the clock, say `clock.weekday == 5`. The quest starts the first
 Saturday, and each later Saturday it is rearmed and starts afresh, whether the player finished it
 the week before, failed it, or left it open. The engine watches the condition at every quest settle
-of a playthrough. The first time it sees it is only the baseline, so a condition already true when
-play begins does not rearm. `lute play` prints the reset with the status it ended,
+of a playthrough, including every clock position a long `advance:` passes on the way, so an advance
+from Friday to Monday rearms the quest on the Saturday it crosses. The first time it sees the
+condition is only the baseline, so a condition already true when play begins does not rearm.
+`lute play` prints the reset with the status it ended,
 `quest harvestMissions -> unset (rearmed; was complete)`; a season-tier quest's reset reads
 `quest missions -> unset (season:harvest opened; was complete)`. The condition compiles to `rearm: {raw, expr}` on the quest's `QuestCmd`.
+
+A rearm undoes the objectives, not the state they read. `run.weekBarley` is a counter the engine
+sets back to 0 when the week turns. Had the objective read a run-long total,
+`done="run.barley >= 10"`, it would still hold on the next Saturday, and the settle that rearmed the
+quest would start it and complete it again at once, rewards and all. Give a rearmed quest's
+objectives state that starts over with it: a counter the engine resets no later than the moment
+the condition turns true (in a play script, an `engine:` step before the `advance:` that reaches
+that moment; an advance's own `engine:` writes land where it stops), or a `season.<name>.*` path
+under `tier="season:<name>"`. The checker does not warn about this.
 
 ### `<objective>`
 

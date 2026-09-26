@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value as Json;
 
-use super::lifecycle::{settle_before, QuestAdvance};
+use super::lifecycle::{advance_quests, settle_before, QuestAdvance};
 use super::present::Presented;
 use super::project::ExecProject;
 use super::resolve::{Write, Writes};
@@ -57,6 +57,75 @@ pub fn move_clock(
     let writes = apply_writes(w, &moved).expect("literal writes never fail");
     refresh_clock(p, w);
     writes
+}
+
+/// dsl 0.27.0 §5 (G-3): move the clock from `*at` to `to` ([`move_clock`]),
+/// settling every quest ([`advance_quests`]) at each position strictly
+/// between — each day, and each slot on a slotted clock — as a stop of the
+/// clock would: seasons open and close, rearms fire, quests start, complete
+/// and fail (`by`) there, each judged in the world of that position (the
+/// same snapshot the cadence observation reads). A window that opens and
+/// closes inside one `advance:` behaves as it does when the clock raises
+/// `dayStart` / `dayEnd` at every midnight. `to` itself is settled by the
+/// caller's settle that follows.
+///
+/// A crossed position whose settle moved anything appends the clock's `set`
+/// records of the move up to it (document `""`), then that settle's records,
+/// to `settled`. The rest of the move's `set` records are returned — or,
+/// when `settled` already holds records (which the caller shows after its
+/// writes), appended to it too, so the transcript keeps the clock's order.
+/// On a halt `*at` is the position the clock stopped at.
+pub fn walk_clock(
+    p: &ExecProject,
+    w: &mut World,
+    clock: &lute_manifest::clock::ClockDecl,
+    at: &mut lute_manifest::clock::ClockAt,
+    to: lute_manifest::clock::ClockAt,
+    settled: &mut Vec<QuestAdvance>,
+) -> (Vec<Json>, Option<PlayHalt>) {
+    // Nothing to settle: one move.
+    if p.cadence.is_empty() && p.quest_docs.is_empty() {
+        let writes = move_clock(p, w, clock, *at, to);
+        *at = to;
+        return (writes, None);
+    }
+    // The last position whose move is already in the transcript.
+    let mut shown = *at;
+    while *at < to {
+        let next = clock
+            .advance(*at, lute_manifest::clock::Advance::Slots(1))
+            .min(to);
+        move_clock(p, w, clock, *at, next);
+        *at = next;
+        if *at == to {
+            break;
+        }
+        let (s, halt) = advance_quests(p, w);
+        if !s.is_empty() || halt.is_some() {
+            // Already there: the rewrite only yields the records.
+            let moved = move_clock(p, w, clock, shown, *at);
+            settled.push(QuestAdvance {
+                document: String::new(),
+                transcript: moved,
+            });
+            settled.extend(s);
+            shown = *at;
+        }
+        if halt.is_some() {
+            return (Vec::new(), halt);
+        }
+    }
+    let tail = move_clock(p, w, clock, shown, to);
+    if settled.is_empty() {
+        return (tail, None);
+    }
+    if !tail.is_empty() {
+        settled.push(QuestAdvance {
+            document: String::new(),
+            transcript: tail,
+        });
+    }
+    (Vec::new(), None)
 }
 
 /// dsl 0.24.0 §1: one `advance:` — write the clock's day/slot paths `by`
@@ -147,6 +216,26 @@ pub fn run_advance(
             Some(halt),
         );
     };
+    // dsl 0.27.0 §4: once the game is over the clock does not move on — the
+    // refused step still says where the clock stands (HW27-08).
+    if let Ok(true) = crate::exec::seam::terminal_holds(p, w) {
+        let t = p.index.terminal.as_ref().map_or("", |t| t.raw.as_str());
+        let at = clock.describe(from);
+        return (
+            body(
+                at.clone(),
+                at,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                None,
+                false,
+                Vec::new(),
+            ),
+            Vec::new(),
+            Some(crate::exec::seam::advance_after_terminal(n, t)),
+        );
+    }
     // dsl 0.27.0 §4 (T2-5): a finite clock stops at its last position. An
     // advance once it ended — or from past it (an `engine:` write moved the
     // day on) — is a usage error.
@@ -200,15 +289,12 @@ pub fn run_advance(
             } else {
                 clock.day_end(at)
             };
-            writes.extend(crate::exec::cadence::walk_clock(
-                p,
-                w,
-                clock,
-                at,
-                last,
-                &mut settled,
-            ));
-            at = last;
+            let (moved, halt) = walk_clock(p, w, clock, &mut at, last, &mut settled);
+            writes.extend(moved);
+            if halt.is_some() {
+                stop = halt;
+                break;
+            }
             let (s, halt) = settle_before(p, w, Some(end));
             settled.extend(s);
             if halt.is_some() {
@@ -241,12 +327,17 @@ pub fn run_advance(
         };
         // dsl 0.27.0 §5: an `advance: day` sleeps through the rest of the
         // day; any other advance crosses its slots.
-        writes.extend(if by == Advance::Day {
-            move_clock(p, w, clock, at, next)
+        if by == Advance::Day {
+            writes.extend(move_clock(p, w, clock, at, next));
+            at = next;
         } else {
-            crate::exec::cadence::walk_clock(p, w, clock, at, next, &mut settled)
-        });
-        at = next;
+            let (moved, halt) = walk_clock(p, w, clock, &mut at, next, &mut settled);
+            writes.extend(moved);
+            if halt.is_some() {
+                stop = halt;
+                break;
+            }
+        }
         let Some(start) = &raise.day_start else {
             continue;
         };
@@ -276,12 +367,14 @@ pub fn run_advance(
     let mut raised = None;
     let mut quests = Vec::new();
     if stop.is_none() {
-        writes.extend(if by == Advance::Day {
-            move_clock(p, w, clock, at, to)
+        if by == Advance::Day {
+            writes.extend(move_clock(p, w, clock, at, to));
+            at = to;
         } else {
-            crate::exec::cadence::walk_clock(p, w, clock, at, to, &mut settled)
-        });
-        at = to;
+            let (moved, halt) = walk_clock(p, w, clock, &mut at, to, &mut settled);
+            writes.extend(moved);
+            stop = halt;
+        }
     }
     // dsl 0.27.0 §4: at the end the clock raises the last day's `dayEnd`
     // (never its `raise.slot`) and stops; the step's `engine:` writes land

@@ -267,7 +267,7 @@ fn quest_gated_beats_become_eligible_once_the_quest_completes_during_play() {
     assert_eq!(winner(&v, 1), Some("achilles.greeting"));
     assert_eq!(
         candidate(&v, 2, "hub.trophy")["reason"],
-        "after: prerequisite not satisfied"
+        "after: completed(\"firstEscape\") is not satisfied"
     );
 
     // The second hub visit completes the quest: objective, transition,
@@ -523,7 +523,7 @@ fn the_human_transcript_names_each_step_its_verdicts_and_the_winner() {
         "  quest firstEscape -> active",
         "── step 1 · hubVisit ──────────────",
         "  ✓ hub.firstEver [scene, priority 20]",
-        "  ✗ hub.trophy [scene, priority 50] — after: prerequisite not satisfied",
+        "  ✗ hub.trophy [scene, priority 50] — after: completed(\"firstEscape\") is not satisfied",
         "  → hub.firstEver",
         "── step 4 · talk → npc.achilles ──────────────",
         "▷ choice gift: [accept] decline        ← chosen: accept",

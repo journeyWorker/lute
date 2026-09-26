@@ -442,49 +442,13 @@ pub(crate) fn cast_home(
 /// [`cast_home`] over every plugin package under `plugins_dir` (sorted, as
 /// the loader scans them): the first `cast` export file declaring `id`.
 fn plugin_cast_home(plugins_dir: &Path, id: &str) -> Option<(PathBuf, Span)> {
-    let yaml_files = |p: PathBuf| -> Vec<PathBuf> {
-        if !p.is_dir() {
-            return vec![p];
-        }
-        let mut fs: Vec<PathBuf> = std::fs::read_dir(&p)
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|f| matches!(f.extension().and_then(|e| e.to_str()), Some("yaml" | "yml")))
-            .collect();
-        fs.sort();
-        fs
-    };
-    let mut subs: Vec<PathBuf> = std::fs::read_dir(plugins_dir)
-        .ok()?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.join("plugin.yaml").is_file())
-        .collect();
-    subs.sort();
-    for sub in subs {
-        let Ok(text) = std::fs::read_to_string(sub.join("plugin.yaml")) else {
-            continue;
-        };
-        let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
-            continue;
-        };
-        let Some(rel) = manifest
-            .get("exports")
-            .and_then(|e| e.get("cast"))
-            .and_then(serde_yaml::Value::as_str)
-        else {
-            continue;
-        };
-        for file in yaml_files(sub.join(rel)) {
-            let Ok(t) = std::fs::read_to_string(&file) else {
-                continue;
-            };
-            if let Some(o) = lute_check::rel_schema::cast_entry_offset(&t, id) {
-                return Some((file, Span::from_bytes(&TextIndex::new(&t), o, o + id.len())));
-            }
-        }
-    }
-    None
+    crate::plugin_origins::export_files(plugins_dir, "cast")
+        .into_iter()
+        .find_map(|file| {
+            let t = std::fs::read_to_string(&file).ok()?;
+            let o = lute_check::rel_schema::cast_entry_offset(&t, id)?;
+            Some((file, Span::from_bytes(&TextIndex::new(&t), o, o + id.len())))
+        })
 }
 
 fn severity_str(s: Severity) -> &'static str {

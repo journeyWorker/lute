@@ -24,10 +24,8 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 ```
 $ lute check my-scene.lute
 my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore`
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity)
-failed: my-scene.lute (4 error(s), 0 warning(s))
+my-scene.lute:1:1: error [E-META-MISSING] a scene needs an `id:`, its key in the project — write `id: opening` in the frontmatter
+failed: my-scene.lute (2 error(s), 0 warning(s))
 ```
 
 이것이 `lute check`의 핵심 아이디어입니다: 파일을 읽고 무엇이 왜 잘못되었는지 한 줄씩 정확히
@@ -51,9 +49,8 @@ pov: fixer
 - `title` — 도구와 검색을 위한 사람이 읽는 제목입니다.
 - `pov` — 플레이어 캐릭터의 id(플레이어가 조종하는 주인공).
 
-위의 `E-META-MISSING` 오류 세 개는 `character`, `season`, `episode`를 말합니다: 장면에 이름을
-붙이던 예전 방식입니다. 메시지 괄호 안에 적힌 대로 `id:` 하나가 셋을 모두 대신하므로 그 키들은
-쓸 필요가 없습니다.
+위의 `E-META-MISSING` 오류가 요구하는 것이 바로 `id:` 줄입니다. 메시지의 `opening`은 예시 이름일
+뿐이고, 이 장면의 id는 `mira.s01ep01`입니다.
 
 저장하고 다시 검사하세요:
 
@@ -260,7 +257,20 @@ failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 **진단 읽기:** `file:line:col: error [CODE] message`. 정확한 줄, 정확한 문제, 그리고 대신 무엇을
-써야 하는지를 정확히 알려줍니다. 이런 기계적인 부류의 수정에는 다음을 실행하세요:
+써야 하는지를 정확히 알려줍니다. 메시지만으로 부족하면 `lute --explain <CODE>`가 그 코드의 뜻을
+보여 주고, 모든 코드를 모아 둔 [진단 레퍼런스](/reference/diagnostics/)의 항목을 링크합니다:
+
+```
+$ lute --explain E-LEGACY-CONTENT-SIGIL
+E-LEGACY-CONTENT-SIGIL (error)
+
+A content line uses the old `:` speaker sigil, which `@` replaced — write `@speaker{…}: text` instead.
+
+Spec: dsl §7.1
+More: https://lute-lang.vercel.app/reference/diagnostics/#e-legacy-content-sigil
+```
+
+이런 기계적인 부류의 수정에는 다음을 실행하세요:
 
 ```
 $ lute fix my-scene.lute
@@ -496,9 +506,9 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
     - run.metMira   written by: scene(mira.s01ep01)
   Possible (set on SOME but not every declared route reaching this node; the Guaranteed paths above are not repeated):
     (none)
-  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+  Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
     (none)
 ```
 
@@ -569,6 +579,7 @@ id — 당신이 지정한 특정 파일에 맞게 해석하여:
 
 ```
 $ lute context episodes/diner.lute
+lute: note: using project episodes (nearest lute.project.yaml); pass --project to choose another
 capabilityVersion: 0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3
 permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (12):
@@ -606,8 +617,29 @@ builtinDirectives (5):
   ::retract{ <relation>(<arg | _>, …) [when="<condition>"] } — retract the matching facts of a declared, non-derived, non-reserved relation
   ::accept{quest="<questId>" [when="<condition>"]} — accept a quest that has no `start` condition
   ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
-scenes (1; read as visited("<id>")):
-  mira.s01ep01
+beatKeys (11; scene frontmatter; <entry> / <beat> attributes):
+  on: <occasion> — the occasion the beat answers
+  target: <prefix>.<member> | kind:<kind> — the one target it answers, or every member of a kind (read as occasion.target)
+  for: kind:<kind> — on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, binding occasion.target
+  when: <condition> — eligible only while it holds
+  priority: <integer> — the higher eligible beat wins
+  once: run | user | false | day | slot | week | season:<name> — presented at most once per run, ever, without limit, per clock day / slot / week, or per window of a season
+  spentBy: <condition> — instead of `once`: repeatable until the condition holds
+  also: true — scene and bundle beats, on a `select: first` occasion: presented after the winner too
+  share: <key> — beats with one `share` key spend one `once` together
+  after: <prerequisite> — scene and bundle beats: eligible once it holds, e.g. visited("<id>")
+  use: <component> — bundle `<beat>`: its header from the component's `beat:` template, the component's params as attributes
+questKeys (8; <quest> attributes):
+  start: <condition> — activates the quest when it holds; without it the quest is accept-driven
+  fail: <condition> — fails the active quest when it holds
+  after: <prerequisite> — its place in the scene graph; does not gate activation
+  tier: user | run | season:<name> — when it returns to unset: never, at each new run, or each time the season opens
+  rearm: <condition> — returns the quest to unset (objectives cleared) each time the condition goes false→true
+  complete: all | any — completes when every / any one required objective is done
+  activate: accept — a child that waits for an ::accept instead of activating with its parent
+  accept: external — the engine accepts the quest outside any document
+scenes (2; read as visited("<id>")):
+  mira.s01ep01, mira.s01ep02
 ```
 
 `enums (0)`은 버그가 아닙니다: 그 줄은 활성화된 *플러그인*이 제공하는 멤버를 세는데, 이 파일은
@@ -620,8 +652,11 @@ Part 5의 `run.metMira`), 뒤따르는 구성이 플레이어가 어느 선택�
 `run.metMira`가 가졌던 값인 읽기 전용 `prev.run.metMira`입니다.
 
 `builtinDirectives`는 언어가 직접 제공하는 디렉티브 목록입니다 — 이미 써 본 `::set`도 여기
-있습니다. `scenes`는 `visited("…")`가 가리킬 수 있는 id 목록입니다. `--project episodes`를
-넘기면 이 목록이 프로젝트의 모든 장면을 담고, 퀘스트와 로어 엔트리 id도 함께 나옵니다.
+있습니다. `beatKeys`와 `questKeys`는 비트 머리(장면의 frontmatter, `<entry>`나 `<beat>`)와 `<quest>`
+요소가 가질 수 있는 키를 모두, 각각이 하는 일 한 줄과 함께 보여 줍니다 — 다른 사람의 장면에서 `on:`이나
+`once:`를 만났을 때 찾아볼 곳입니다. `scenes`는 `visited("…")`가 가리킬 수 있는 id 목록입니다. `episodes/`에 `lute.project.yaml`이 있으므로 `context`는 `lute check`처럼 그 프로젝트로
+파일을 해석하고 `lute: note:` 줄로 알려 줍니다. 그래서 이 목록에는 프로젝트의 모든 장면이 퀘스트와 로어
+엔트리 id와 함께 나옵니다.
 
 디렉티브 이름, 속성, 유효한 `emotion` 값을 추측하는 대신 다시 확인하고 싶을 때 언제든 실행하세요.
 여기서부터는 각 구성을 깊이 다루는 **Language** 섹션을 따라가거나, 쓰는 동안

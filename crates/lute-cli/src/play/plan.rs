@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use lute_manifest::schema::OccasionSelect;
 use lute_trace::exec::session::{
-    entry_flag, is_candidate, resolve_bridges, resolve_fact, resolve_state, seed_world,
-    ExecProject, Pick, World, WorldSeed, Write, Writes,
+    entry_flag, is_candidate, project_decisions, resolve_bridges, resolve_fact, resolve_state,
+    seed_world, ExecProject, Pick, World, WorldSeed, Write, Writes,
 };
 use serde_json::Value as Json;
 
@@ -552,6 +552,35 @@ fn check_expect_names(p: &ExecProject, script: &PlayScript) -> Result<(), String
                 if (key == "winner" && id == "none") || beat_ids.contains(&id.as_str()) {
                     continue;
                 }
+                // G-9: `<id> for <member>` names a `for` beat's presentation
+                // for one member of its kind (dsl 0.27.0 §3).
+                if let Some((beat, member)) = id.split_once(" for ") {
+                    let members = p
+                        .index
+                        .beats
+                        .iter()
+                        .filter(|b| b.id == beat)
+                        .find_map(|b| b.for_kind.as_ref())
+                        .map(|k| k.members.iter().map(String::as_str).collect::<Vec<_>>());
+                    match members {
+                        Some(ms) if ms.contains(&member) => continue,
+                        Some(ms) => {
+                            return Err(format!(
+                                "step {n}: `expect.{key}` names `{id}`, and `{member}` is no \
+                                 member `{beat}` is presented for{} (members: {})",
+                                near(member, &ms),
+                                ms.join(", ")
+                            ))
+                        }
+                        None if beat_ids.contains(&beat) => {
+                            return Err(format!(
+                                "step {n}: `expect.{key}` names `{id}`, and `{beat}` is no \
+                                 `for` beat — name it bare"
+                            ))
+                        }
+                        None => {}
+                    }
+                }
                 return Err(format!(
                     "step {n}: `expect.{key}` names `{id}`, which no beat of the project has{}",
                     near(&id, &beat_ids)
@@ -613,6 +642,87 @@ fn check_expect_names(p: &ExecProject, script: &PlayScript) -> Result<(), String
     Ok(())
 }
 
+/// OT-F-1 / FS-F9: every `choose:` of the script — the top level's, an
+/// `include:`'s, a step's — names a branch or hub of the project and only
+/// options it declares, and every `include:`'s `bridges:` resolves; checked
+/// before anything plays, with did-you-mean, located at the key. A typo is
+/// a usage error (exit 2), not a decision silently dropped.
+fn check_decisions(p: &ExecProject, script: &PlayScript) -> Result<(), String> {
+    let known = project_decisions(p);
+    for (id, picks) in &script.surfaces.choose {
+        choose_entry(&known, id, picks)
+            .map_err(|e| format!("{}: {e}", script.source.at(&["choose", id])))?;
+    }
+    let mut seen: Vec<&Arc<Segment>> = Vec::new();
+    for step in &script.steps {
+        let own = match &step.action {
+            StepAction::Occasion { choose, .. } | StepAction::Advance { choose, .. } => {
+                Some(choose)
+            }
+            _ => None,
+        };
+        for (id, picks) in own.into_iter().flatten() {
+            choose_entry(&known, id, picks).map_err(|e| {
+                step.at
+                    .locate_keys(&["choose", id], &format!("step {}: {e}", step.n))
+            })?;
+        }
+        for seg in &step.segments {
+            if seen.iter().any(|s| Arc::ptr_eq(s, seg)) {
+                continue;
+            }
+            seen.push(seg);
+            for (id, picks) in &seg.choose {
+                choose_entry(&known, id, picks)
+                    .map_err(|e| seg.at.locate_keys(&["choose", id], &e))?;
+            }
+            for (tag, answers) in &seg.bridges {
+                let one = BTreeMap::from([(tag.clone(), answers.clone())]);
+                resolve_bridges(p, "", &one).map_err(|e| {
+                    seg.at
+                        .locate_keys(&["bridges", tag], e.trim_start_matches(": "))
+                })?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// One `choose:` entry against the project's decisions: `id` a branch or
+/// hub, each pick one of its options.
+fn choose_entry(
+    known: &BTreeMap<String, Vec<String>>,
+    id: &str,
+    picks: &[String],
+) -> Result<(), String> {
+    let hint = |needle: &str, among: &[&str], what: &str| match lute_manifest::suggest::nearest(
+        needle,
+        among.iter().copied(),
+        2,
+    ) {
+        Some(near) => format!(" — did you mean `{near}`?"),
+        None if among.is_empty() => format!(" (the project declares no {what})"),
+        None => format!(" ({what}: {})", among.join(", ")),
+    };
+    let Some(options) = known.get(id) else {
+        let ids: Vec<&str> = known.keys().map(String::as_str).collect();
+        return Err(format!(
+            "`choose.{id}` names no branch or hub of the project{}",
+            hint(id, &ids, "branch or hub ids")
+        ));
+    };
+    let options: Vec<&str> = options.iter().map(String::as_str).collect();
+    for pick in picks {
+        if !options.contains(&pick.as_str()) {
+            return Err(format!(
+                "`choose.{id}` picks `{pick}`, which is no option of `{id}`{}",
+                hint(pick, &options, "its options")
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Plan `script`'s steps over `project` and seed its save (exit 2 with the
 /// usage error, prefixed with the script path).
 pub(super) fn plan_script(
@@ -623,9 +733,12 @@ pub(super) fn plan_script(
 ) -> Result<(Vec<Step>, World), (ExitCode, String)> {
     let at = |e: String| (ExitCode::from(2), format!("{}: {e}", script_path.display()));
     let usage = |e: String| (ExitCode::from(2), e);
+    check_decisions(project, script).map_err(usage)?;
     let plan = plan_located(project, &script.steps, script_path).map_err(usage)?;
     check_expect_names(project, script)
         .map_err(|e| usage(locate_step_error(&script.steps, &e).unwrap_or_else(|| at(e).1)))?;
+    check_needles(project, script).map_err(at)?;
+    check_expect_state_values(project, script).map_err(usage)?;
     let mut world = seed_world(
         project,
         &WorldSeed {
@@ -634,9 +747,95 @@ pub(super) fn plan_script(
             derive: script.derive,
         },
     )
-    .map_err(at)?;
+    .map_err(|e| usage(format!("{}: {e}", seed_at(script, &e))))?;
     if no_derive {
         world.derive = Some(false);
     }
     Ok((plan, world))
+}
+
+/// 0.27 prerelease OT-F-2: every top-level `transcriptContains` /
+/// `transcriptLacks` needle names only attributes a presented line can
+/// carry in this project ([`lute_trace::exec::record::needle_problem`]) —
+/// otherwise the needle can never match, and a `transcriptLacks` holds
+/// although the line was said. A usage error (exit 2) before anything plays.
+fn check_needles(p: &ExecProject, script: &PlayScript) -> Result<(), String> {
+    let Some(expect) = &script.expect else {
+        return Ok(());
+    };
+    for key in ["transcriptContains", "transcriptLacks"] {
+        let Some(serde_yaml::Value::Sequence(needles)) = expect.get(key) else {
+            continue;
+        };
+        for needle in needles.iter().filter_map(serde_yaml::Value::as_str) {
+            if let Some(why) = lute_trace::exec::record::needle_problem(needle, &p.needles) {
+                return Err(format!("`expect.{key}` {why}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Where a save-seed error was written: the top-level key its first
+/// backticked name spells (`` `state.run.route` `` is `state:` › `run.route`),
+/// else the script.
+fn seed_at(script: &PlayScript, e: &str) -> String {
+    let name = e.split('`').nth(1).unwrap_or("").trim_end_matches(':');
+    let keys: Vec<&str> = match name.split_once('.') {
+        Some((head, rest)) => vec![head, rest],
+        None => vec![name],
+    };
+    script.source.at(&keys)
+}
+
+/// 0.27 prerelease OT-F-3: a step or end-of-play `expect.state` value of a
+/// path typed over a closed domain — `{ domain: K }` / `{ entity: K }`, an
+/// enum — is one of its members ([`lute_trace::exec::session::member_of`]):
+/// a typo can never hold, so it is a usage error (exit 2) with the members
+/// and the nearest one, not a miss after the play ran.
+fn check_expect_state_values(p: &ExecProject, script: &PlayScript) -> Result<(), String> {
+    let domain_of = |path: &str| -> Option<(String, Vec<String>)> {
+        if let Some(d) = p.state_domains.get(path) {
+            return Some(d.clone());
+        }
+        let entry = p.state_table.get(path)?;
+        (entry.get("type").and_then(Json::as_str) == Some("enum")).then_some(())?;
+        let members = entry
+            .get("domain")?
+            .as_array()?
+            .iter()
+            .filter_map(|m| m.as_str().map(str::to_string))
+            .collect();
+        Some((path.to_string(), members))
+    };
+    let problem = |expect: &serde_yaml::Value| -> Option<(String, String)> {
+        let serde_yaml::Value::Mapping(state) = expect.get("state")? else {
+            return None;
+        };
+        state.iter().find_map(|(path, want)| {
+            let (path, want) = (path.as_str()?, want.as_str()?);
+            let (domain, members) = domain_of(path)?;
+            let why = lute_trace::exec::session::member_of(&domain, &members, want).err()?;
+            Some((
+                path.to_string(),
+                format!("`expect.state.{path}: {want}` can never hold: {why}"),
+            ))
+        })
+    };
+    for (n, _, expect) in &script.step_expects {
+        if let Some((path, why)) = problem(expect) {
+            let msg = format!("step {n}: {why}");
+            return Err(match script.steps.iter().find(|s| s.n == *n) {
+                Some(step) => step.at.locate_keys(&["expect", "state", &path], &msg),
+                None => msg,
+            });
+        }
+    }
+    if let Some((path, why)) = script.expect.as_ref().and_then(problem) {
+        return Err(format!(
+            "{}: end of play: {why}",
+            script.source.at(&["expect", "state", &path])
+        ));
+    }
+    Ok(())
 }

@@ -7,7 +7,8 @@
 //! the shapes `lute run --json` prints (`conformance/*/expected.json`):
 //! `line` (`addr`, `speaker`, `text`, plus [`LINE_DELIVERY_KEYS`] when the
 //! artifact carries them), the stage kinds (`addr`, `kind`), `set` (`path`,
-//! `value`, plus `effectOf: <tag>` for a directive's declared effect),
+//! `value`, plus `effectOf: <tag>` for a directive's declared effect and
+//! `bridgeResult: <field>` when that effect wrote an answered bridge result),
 //! `assert` (`fact`), `retract` (`pattern`), `skipped` (`effect`
 //! and `path` / `fact` / `pattern`), `choice` (`branch`, `chose`, plus
 //! `note` / `scripted` when undecided and [`MENU_MARK_KEYS`]), `hub` (`hub`,

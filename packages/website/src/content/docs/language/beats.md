@@ -297,7 +297,15 @@ A bundle beat names it with `use=` and passes the params as attributes:
   out, and an `after:` that comes out a bare id means `visited("<id>")`. The header keys are the
   `<beat>` attributes: `on`, `target`, `for`, `title`, `priority`, `once`, `share`, `after`, `when`,
   `spentBy`.
-- An attribute written on the `<beat>` wins: `<beat use="bondStory" … once="run">`.
+- An attribute written on the `<beat>` wins: `<beat use="bondStory" … once="run">`. It replaces
+  the template's key whole, so `when="@isNight"` on a use drops the template's own `when`. To let a
+  use add a condition, give the template a param for it and conjoin it in the header:
+  `only: { type: string, default: "" }` and `when: "!holds(defeated(@who)) && (@only)"`. A use
+  writes `only="@isNight"`; a use that leaves it empty (or `true`) derives just
+  `!holds(defeated(<who>))`, with no `&& (true)` left behind.
+- A header value with no `@param` in it is the same for every use, so a fault in it (an unknown
+  occasion, a bad `once:`) is reported once, at the header key in the component, and the uses
+  derive nothing for that key.
 - The template's own body plays first, then the beat's. A `::body` line at the top level of the
   template body places the beat's body there instead, so a template can frame it.
 - The other attributes are the template's params, checked like `::use` arguments
@@ -675,7 +683,7 @@ Each shape fault names what is wrong:
 ```
 ./lore/contest.lute:24:42: error [E-BEAT-ATTR] `target="kind:bugRar"`: `bugRar` is not a declared entity kind — did you mean `kind:bugRare`?
 ./lore/contest.lute:28:40: error [E-BEAT-ATTR] `target="kind:bugRare"`: `hornbeetle`, `bladebug` are outside occasion `talk`'s domain `npc.<person>`; a kind target names `person` or one of its sub-kinds
-./lore/contest.lute:33:23: error [E-UNDECLARED] `occasion.target` is readable only in a beat or entry that targets a kind (`target="kind:<kind>"`), where it is the member the occasion was raised for
+./lore/contest.lute:33:23: error [E-UNDECLARED] `occasion.target` is readable only in a beat or entry that targets a kind (`target="kind:<kind>"`) or runs once for each member of one (`for="kind:<kind>"`), where it is the member the beat answers
 ```
 
 `lute play` and `lute calendar` offer a kind beat for every member's raise. `lute beats` lists it
@@ -724,7 +732,8 @@ says it more plainly, and it outranks the kind beat at equal priority.
 Some occasions are raised for no one in particular: a morning, a daily reset. A beat on such an
 occasion may still be about each member of a kind in turn. With `for="kind:<kind>"` (dsl 0.27.0
 §3), a beat on an untargeted `select: sequence` occasion is presented **once per member** whose
-`when` holds, in the kind's member order, with `occasion.target` bound to that member:
+`when` holds, in the kind's [member order](/state/facts-and-datalog/#sub-kinds-subsetof) (its own
+members, then its sub-kinds' in declaration order), with `occasion.target` bound to that member:
 
 ```yaml
 occasions:

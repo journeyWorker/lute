@@ -123,8 +123,19 @@ priority: 20
 A key the scene writes itself wins over the sequence: give one scene its own `priority:` or a
 different `after:` and only that key changes. A listed id that no scene declares is `E-SEQUENCE`
 in `lute check-project`, with a did-you-mean, and so is a listed scene whose own `on:` answers a
-different occasion. Scenes you do not list, like the endings below, still write their keys by
-hand.
+different occasion, or an `occasion:` no plugin declares. Scenes you do not list, like the endings
+below, still write their keys by hand.
+
+A chapter that may not play, because it has a `when:` of its own, stalls the chain: the next listed
+scene waits on it through the `after:` the sequence wrote, and `lute check-project` warns
+(`W-SEQUENCE-STALL`). Either leave the optional chapter out of `scenes:` and give it its own `on:`,
+`after:` and `priority:`, or give the scene after it its own `after:` naming the chapter before
+the optional one. `lute play` names a derived `after:` in its reasons: `after:
+visited("pryceWakes") is not satisfied (written by `sequence:` in lute.project.yaml)`.
+
+On an occasion declared `select: sequence`, which presents every eligible beat in one raise, the
+sequence writes only `on:` and `priority:`: the listed scenes play one after another in that raise,
+in list order. On any other occasion one listed scene plays per raise.
 
 The third scene gives the player a choice and remembers it:
 
@@ -330,10 +341,11 @@ The test file format is in the [CLI reference](/tooling/cli/#test), and every pl
 
 ## Adding a scene
 
-`lute new scene <name> --on chapter` writes a new scene that answers `chapter`, with an `id:` taken
-from the name and a `priority:` below every scene already on `chapter`, so it comes last. Give it an
-`after:` naming the scene it follows; if it belongs between two chapters, set its `priority:`
-between theirs. Then add a step to your play script.
+`lute new scene <name> --on chapter` writes a new scene with an `id:` taken from the name. Because
+`chapter` is the occasion of your `sequence:`, it leaves `on:`, `after:` and `priority:` out and
+tells you to add the id to `sequence.scenes`: put it where it belongs in the list, and the sequence
+gives it all three. Then add a step to your play script. (On an occasion no sequence answers, the
+command writes `on:` and a `priority:` below every beat already there.)
 
 A conversation the player chooses, rather than the next chapter, is a second occasion raised
 *for* someone. The scene names the person with `target:`:

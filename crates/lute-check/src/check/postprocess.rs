@@ -145,6 +145,34 @@ pub(super) fn dedup_undeclared(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     out
 }
 
+/// dsl 0.27.0 §4: one of each identical diagnostic re-homed at another
+/// file's declaration ([`crate::rel_schema::at_origin`] /
+/// [`crate::rel_schema::at_plugin_origin`]) — every use of one faulty
+/// declaration in this document carries the same report, which is about
+/// the declaration, not the use.
+pub(super) fn dedup_rehomed(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    let mut out: Vec<Diagnostic> = Vec::with_capacity(diags.len());
+    for d in diags {
+        let rehomed = !d.related.is_empty() && d.span.byte_end == 0;
+        if rehomed
+            && out.iter().any(|k| {
+                k.code == d.code
+                    && k.message == d.message
+                    && k.span == d.span
+                    && k.related.len() == d.related.len()
+                    && k.related
+                        .iter()
+                        .zip(&d.related)
+                        .all(|(a, b)| a.file == b.file && a.diagnostic.span == b.diagnostic.span)
+            })
+        {
+            continue;
+        }
+        out.push(d);
+    }
+    out
+}
+
 /// Half-open byte-interval overlap.
 fn spans_overlap(a: Span, b: Span) -> bool {
     a.byte_start < b.byte_end && b.byte_start < a.byte_end

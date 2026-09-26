@@ -12,8 +12,8 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 
 use crate::input::{build_input, build_input_with, BuiltInput};
 use crate::input_cache::InputCache;
-use crate::output::{apply_deny_json, cwd_relative, print_human, DenyPolicy};
-use crate::project::{find_lute_files, nearest_manifest_dir};
+use crate::output::{apply_deny_json, print_human, DenyPolicy};
+use crate::project::{discover_project, find_lute_files, nearest_manifest_dir};
 
 /// Every document under `root` whose `::use` names component `name`
 /// (dsl 0.10.0 §9 rule 4).
@@ -454,17 +454,7 @@ pub(crate) fn run_check(
     // project. Without the manifest there is no `uses:` schema, no `defaults:`
     // and no profile, so the check reported `E-UNDECLARED`/`E-DOMAIN-UNKNOWN`
     // for paths the project declares, and advice that would have broken it.
-    let discovered = match project {
-        Some(_) => None,
-        None => nearest_manifest_dir(file),
-    };
-    if let Some(dir) = &discovered {
-        let shown = cwd_relative(&dir.display().to_string());
-        eprintln!(
-            "lute: note: using project {} (nearest lute.project.yaml); pass --project to choose another",
-            if shown.is_empty() { "." } else { shown.as_str() }
-        );
-    }
+    let discovered = discover_project(file, project);
     let project = project.or(discovered.as_deref());
     let Some(built) = build_input(file, providers, project, permission_profile) else {
         return ExitCode::from(2);

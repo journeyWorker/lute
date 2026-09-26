@@ -304,6 +304,16 @@ table.
   first-scene transcripts are regenerated from the tool, and
   `docs/examples/episodes` uses `id:`. Test-file examples in the CLI reference
   name their scene relative to `tests/` (`../scenes/…`).
+- Docs: the play, CLI and cheatsheet pages (and their Korean mirrors) state
+  the 0.27 transcript-needle rule — a needle's attribute block is judged, so a
+  `transcriptLacks` needle with a block holds when the words are said another
+  way — and the `include:` step's `repeat` / `choose` / `bridges` (which leave
+  the script's own `choose:` list where it was). The cheatsheet's manifest
+  block shows `sequence:` and tells it apart from `select: sequence`; the CLI
+  reference and `first-scene` document `lute --explain <CODE>`; the plugin
+  page's `give` example is an inventory bag (a `holding(_)` retract makes one
+  slot); the `reach --endings` example and the `first-scene` envelope and
+  `lute context` transcripts are regenerated from the tool.
 - Docs: **Build an investigation** needs only the `lute` command. It builds the
   project in the reader's own folder with `lute …` commands (no `cargo run`, no
   repository), shows every file whole (pinned to `docs/examples/investigation`),
@@ -366,6 +376,106 @@ table.
 
 ### Fixed
 
+- Beat templates and `sequence:` (0.27 prerelease). A fault in a template's `beat:` header value
+  that no `@param` changes (`once: sometimes`, an unknown `on:`) is reported once at the header key
+  in the component, not at every use; a use of a faulty or unknown template no longer adds "names
+  no occasion"; a header `@name` no param declares is not derived (no `E-CONN-PROFILE` per use);
+  one argument judged twice at a use is one report; a long target-domain list is capped; a bundle
+  beat's local id in `visited()`/`prev=` suggests its canonical `<document id>.<id>`; an optional
+  condition param left empty or `true` drops its conjunct (no `&& (true)`). `sequence:` on a
+  `select: sequence` occasion derives only `on:` and `priority:`, so the listed scenes play in one
+  raise; `E-SEQUENCE` shape errors are located, suggest the key, and no longer stop
+  `check-project` from checking the documents; an unknown `sequence.occasion` is `E-SEQUENCE`; a
+  bad listed id no longer cascades into `E-CONN-UNKNOWN-NODE` in the next scene; a listed scene
+  with its own `when:` that stalls the chain is `W-SEQUENCE-STALL`; `lute play`/`lute test` name a
+  derived `after:` and say `sequence:` wrote it; `lute new scene --on <sequence occasion>` writes
+  no `on:`/`priority:` and says to list the id.
+
+- `lute trace`, `lute compile`, `lute compile-stream` and `lute context` on a
+  single file resolve it against the nearest `lute.project.yaml`, as `lute
+  check` does (and say so on stderr); `--project` still wins. A scene that
+  inherits `defaults.uses` checked `ok` and then `trace` refused it with
+  `E-UNDECLARED` and "run `lute check` first". Only an explicit `--project`
+  gates on the reconciled project verdict.
+- A `transcriptContains` / `transcriptLacks` needle whose attribute block
+  names something no transcript line shows (`emotoin=`, `when=`, `code=`) or a
+  value outside its domain (`emotion="sadd"`) is refused with a did-you-mean
+  before anything plays: a usage error (exit 2) in `lute play`, a failing
+  `E-TEST-NEEDLE` test in `lute test`. It made `transcriptLacks` hold although
+  the line was said.
+- `lute play`: an `occasion:` step's `engine:` write is part of the step — its
+  `expect:` judges the raise and the world after it (it was judged against
+  the write, "step 1 at engine, repetition 1 … actual none"), and the end
+  counts the script's steps; `--json` marks the write's object
+  `"beforeRaise": true`. Every `choose:` of a play — top level, an
+  `include:`'s, a step's — is checked before the play runs: an unknown
+  branch/hub id or option is a usage error (exit 2) located at the key, with
+  did-you-mean; an `include:`'s `bridges:` error is located at its own
+  `bridges:` key. A halted play reports the step expectations it never
+  reached as one miss (`expected steps 24, 25, … to run (45 expectations),
+  actual not reached — the play halted with an error at step 23`). An
+  `advance:` refused after the game is over prints where the clock stands
+  in its header. `expect` `winner` / `offered` / `notOffered` / `presented`
+  accept `<id> for <member>` for a `for` beat (a bare id still names every
+  member). `--quiet` leaves out a directive effect's `set` that only
+  restates the bridge answer printed on its call's line.
+- A non-ASCII character outside a CEL string literal — `≥`, a curly quote
+  pasted from a word processor, Hangul, a full-width `＝`, an em dash — in a
+  `when`, a frontmatter `when:` or a `::set` crashed `lute check`,
+  `check-project` and `lute-lsp` (FS-F1, new in the 0.27 prerelease). It is
+  `E-CEL-PARSE` again, as in 0.26.
+- `E-SET-SHAPE` gives the right fix for more shapes (FS-F3): `run.x: 4` →
+  `run.x = 4` (no second `E-CEL-PARSE`), `run.x++` / `run.x--` →
+  `run.x += 1` / `-= 1`, `run.x =+ 1` → `+= 1`, `run.x-1` → `run.x -= 1`
+  (one error, not three), and a bare `run.x` says "found nothing — write
+  `run.x = <value>`". `run.x-=1` without spaces parses as `-=`. The message
+  lists `*=`.
+- An arm left open before its next sibling — `<choice>` with no
+  `</choice>` before the next `<choice>`, likewise `<when>`/`<otherwise>` —
+  is one `E-UNCLOSED-TAG` naming the next arm's line; the next arm no longer
+  reads as a `<choice>` "outside a `<branch>`" (FS-F15). A frontmatter
+  quote left open on its line and `key:value` with no space after the colon
+  are located at the slip (not the next line) and name the fix.
+- A kind whose members come from its `subsetOf:` sub-kinds lists them in
+  declaration order — its own members, then each sub-kind's in the order
+  the sub-kinds are declared (file by file across schemas) — not by sub-kind
+  name (G-8). `for="kind:…"` presentations, the artifact's `forKind.members`
+  and target domains, and `lute trace`'s mock hint all follow it.
+- A kind `labels:` entry for a cast member with a `name:` is now the warning
+  `W-LABEL-CAST-SHADOWED` at the label (G-16): text renders the cast name,
+  so the label was accepted and never shown.
+- A state path typed `{ entity: K }` renders the kind's `labels:` in
+  `{{…}}` like a `{ domain: K }` path (OT-F-4); both carry `state[].labels`.
+- `{{user.bond[occasion.target]}}` interpolates the raised member's family
+  path in a kind or `for` beat (G-9). It is checked per member like a guard
+  and compiles to a `ref` placeholder whose `expr` is the read.
+- One mistake that every member of a kind beat hits alike is reported once,
+  with `occasion.target` in the member's place and the members listed, not
+  once per member (G-12).
+- Message texts caught up with 0.27: the `occasion.target` scope error names
+  `for=`; an undeclared `occasion.payload.<field>` says payload fields come
+  from the answered occasion; a write to `prev.season.*` explains the season
+  mirror; a directive an entry cannot call says why (no `effects:`, a bridge,
+  a layer, …) instead of "entries admit no directives" (HW27-06);
+  `E-BEAT-ATTR` for a beat key without `on:` suggests `sequence:`; a scene
+  with no identity gets one `E-META-MISSING` asking for `id:` instead of three
+  naming `character`/`season`/`episode`; `lute init`/`lute new` comments no
+  longer cite spec sections (FS-F14).
+- `lute --explain` and `--deny` suggest the nearest code for a typo, and the
+  diagnostics reference links each `Spec:` citation to its proposal (FS-F11).
+- A long `advance:` settles the quests at every clock position it crosses
+  (G-3), not only where it stops: seasons open and close, rearms fire and
+  quests start, complete and fail (`by`) in the world of each crossed
+  position, raised there or not. On a clock that raises no `dayStart` /
+  `dayEnd`, a season window inside one advance used to open and close
+  without ever starting its quests or failing their deadlines, and a rearm
+  looked as if it fired at the arrival. `lute play` prints each crossed
+  position that moved a quest as the clock's `set` records of the move
+  there followed by that settle (`--json`: entries of `advance.quests`, the
+  `set` records under `document: ""`). `advance: day` still skips the rest
+  of the day. The docs now warn that a `rearm` with a `done` over state the
+  reset keeps (`run.barley >= 10`) completes again at once (G-14), and the
+  quests page's rearm example reads a weekly counter.
 - `W-BEAT-PRIORITY-TIE` no longer lists a beat that can never be presented —
   its `when` provably false (a finite clock's range included), or dead under
   its occasion's `raisedWhen` gate or the project's `terminal:` — as one that
@@ -429,7 +539,7 @@ table.
   `lute.project.yaml`; a document outside it keeps the standalone check.
 
 - `::set{ path … }` without an assignment operator is **`E-SET-SHAPE`**
-  naming `=` / `+=` / `-=` and the write you likely meant
+  naming `=` / `+=` / `-=` / `*=` and the write you likely meant
   (`::set{ run.clues - 1 }` → "did you mean `run.clues -= 1`?"). It used to
   check clean and compile to `run.clues = 1`, eating the operator. A param as a
   dotted segment (`run.aff.@who`) is the same error, pointing at
@@ -461,9 +571,8 @@ table.
   each `::use` that omits the argument (`E-MAYBE-UNSET … read through @def` on
   the `::use` line), like the argument it stands for.
 - An entity kind with a key other than `members:` / `open:` / `add:` /
-  `subsetOf:` is `E-ENTITY-KIND-SHAPE` with did-you-mean (`membrs:` →
-  `members`); it was silently ignored. Entity-kind `labels:` is refused as not
-  supported yet.
+  `subsetOf:` / `labels:` is `E-ENTITY-KIND-SHAPE` with did-you-mean
+  (`membrs:` → `members`); it was silently ignored.
 - `<match on="@def">` whose def expands to a fact query (`holds(…)`,
   `count(…)`, directly or through another def) is `E-MATCH-RELATION-SUBJECT`,
   as the inline `<match on="holds(…)">` is; it used to check clean and

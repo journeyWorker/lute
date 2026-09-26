@@ -370,3 +370,40 @@ fn check_on_a_file_applies_the_nearest_project_and_says_so() {
     assert_eq!(o.status.code(), Some(1), "{}", text(&o));
     assert!(!String::from_utf8_lossy(&o.stderr).contains("note: using project"));
 }
+
+/// 0.27 prerelease FS-F2: `trace`, `compile` and `context` resolve a file
+/// against the SAME nearest manifest `check` does. `trace`
+/// used to refuse a scene inheriting `defaults.uses` with `E-UNDECLARED` and
+/// "run `lute check` first" while `check` said ok.
+#[test]
+fn every_single_file_command_applies_the_nearest_project_like_check() {
+    let dir = temp_dir("discover-all");
+    write(
+        &dir,
+        "lute.project.yaml",
+        &format!("{MANIFEST}defaults:\n  uses: [world.schema.yaml]\n"),
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.mood: { type: string, default: neutral }\n",
+    );
+    write(
+        &dir,
+        "scenes/a.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         ::set{ run.mood = \"happy\" }\n@narrator: hi.\n",
+    );
+    let file = dir.join("scenes/a.lute");
+    for cmd in ["trace", "compile", "context"] {
+        let o = lute(&[cmd, p(&file)]);
+        assert_eq!(o.status.code(), Some(0), "{cmd}: {}", text(&o));
+        assert!(
+            String::from_utf8_lossy(&o.stderr).contains("note: using project"),
+            "{cmd}: {}",
+            text(&o)
+        );
+    }
+    let o = lute(&["trace", p(&file)]);
+    assert!(text(&o).contains("run.mood = happy"), "{}", text(&o));
+}

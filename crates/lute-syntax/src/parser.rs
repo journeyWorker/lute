@@ -637,7 +637,18 @@ impl Parser<'_> {
             j += 1;
         }
         let path_start = j;
-        while j < n && (is_ident_byte(ib[j]) || ib[j] == b'.') {
+        // A `-` joins the path only inside a (kebab, `E-PATH-IDENT`) segment
+        // — `run.clues-found`. Before a digit, `=`, a space or the end it is
+        // the author's operator: `run.clues-1` is `run.clues -= 1` meant
+        // (FS-F3), `run.clues-=1` is `run.clues -= 1`.
+        while j < n
+            && (ib[j] == b'.'
+                || (is_ident_byte(ib[j])
+                    && (ib[j] != b'-'
+                        || ib
+                            .get(j + 1)
+                            .is_some_and(|&c| c.is_ascii_alphabetic() || c == b'_'))))
+        {
             j += 1;
         }
         // dsl 0.24.0 §3/§4: `run.approval[@who]` — a `per:` family member
@@ -690,17 +701,29 @@ impl Parser<'_> {
             ("*=", 2, None)
         } else if rest.starts_with("==") {
             ("=", 2, Some(Some("=")))
+        } else if rest.starts_with("=+") {
+            // `=+ 1` (the operator's halves swapped); `=-1` is `= -1`.
+            ("+=", 2, Some(Some("+=")))
         } else if rest.starts_with('=') {
             ("=", 1, None)
+        } else if rest.starts_with("++") {
+            ("+=", 2, Some(Some("+=")))
+        } else if rest.starts_with("--") {
+            ("-=", 2, Some(Some("-=")))
         } else if rest.starts_with('+') {
             ("+=", 1, Some(Some("+=")))
         } else if rest.starts_with('-') {
             ("-=", 1, Some(Some("-=")))
         } else if rest.starts_with('*') {
             ("*=", 1, Some(Some("*=")))
+        } else if rest.starts_with(':') {
+            // `run.clues: 4` — the YAML habit.
+            ("=", 1, Some(Some("=")))
         } else {
             ("=", 0, Some(None))
         };
+        // `run.clues++` / `run.clues--` step by one.
+        let step = rest.starts_with("++") || rest.starts_with("--");
         j += skip;
         while j < n && (ib[j] == b' ' || ib[j] == b'\t') {
             j += 1;
@@ -729,9 +752,13 @@ impl Parser<'_> {
             self.span(inner_start + expr_start, inner_start + expr_end),
         );
         if let Some(guess) = shape_err {
-            let value = expr.raw.trim();
+            let value = match expr.raw.trim() {
+                "" if step => "1",
+                value => value,
+            };
             let hint = match (guess, value.is_empty()) {
-                (_, true) => " and a value".to_string(),
+                (Some(g), true) => format!(" with no value — write `{path} {g} <value>`"),
+                (None, true) => format!(" — write `{path} = <value>`"),
                 (Some(g), false) => format!(" — did you mean `{path} {g} {value}`?"),
                 (None, false) => format!(" — did you mean `{path} = {value}`?"),
             };
@@ -744,7 +771,7 @@ impl Parser<'_> {
             };
             let msg = format!(
                 "`::set` needs an assignment operator after `{path}` — `=` (replace), `+=` \
-                 (add) or `-=` (subtract) — but found {found}{hint}"
+                 (add), `-=` (subtract) or `*=` (multiply) — but found {found}{hint}"
             );
             let (a, b) = (
                 self.orig(inner_start + op_start),

@@ -112,6 +112,17 @@ pub struct Closure {
     pub undecided: BTreeMap<String, Vec<UnresolvedAtom>>,
 }
 
+impl Closure {
+    /// A closure known by its facts alone (no fixpoint ranks): enough for
+    /// [`Program::explain`] to say why an atom does NOT hold.
+    pub(crate) fn of_facts(facts: BTreeSet<Fact>) -> Self {
+        Closure {
+            facts,
+            ..Closure::default()
+        }
+    }
+}
+
 /// Why one ground atom holds: it is a base fact, or a rule instance whose
 /// premises hold.
 #[derive(Clone, Debug, PartialEq)]

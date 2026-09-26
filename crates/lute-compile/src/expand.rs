@@ -457,8 +457,11 @@ pub fn inline_ref_placeholders(
     let mut diags = Vec::new();
     let mut fill = |phs: &mut [Placeholder]| {
         for ph in phs {
+            // A member-indexed family read already carries its CEL.
             if let Placeholder::Ref {
-                reference, expr, ..
+                reference,
+                expr: expr @ None,
+                ..
             } = ph
             {
                 match lute_check::inline_interp_ref(reference, defs) {

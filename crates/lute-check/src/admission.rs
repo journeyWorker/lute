@@ -302,7 +302,8 @@ pub fn check_admission(
                     doc.span,
                 ));
             }
-            let effect_only = |tag: &str| crate::directive_facts::is_effect_only(snapshot, tag);
+            let effect_only =
+                |tag: &str| crate::directive_facts::effect_only_blocker(snapshot, tag);
             for entry in &doc.entries {
                 walk_in(
                     &entry.body,
@@ -466,30 +467,43 @@ pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
 /// one. `parent` is the construct whose body `nodes` is (T3-17: a handler
 /// nested in a handler is almost always a missing `</on>`, and says so).
 fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagnostic>) {
-    walk_in(nodes, doc, ctx, None, &|_| false, diags);
+    walk_in(nodes, doc, ctx, None, &|_| Some(""), diags);
 }
 
-/// `effect_only` says whether a directive tag is a plugin directive whose
-/// one behaviour is its declared effects (dsl 0.27.0 §4,
-/// [`crate::directive_facts::is_effect_only`]): an entry body admits it,
-/// like the entry's own `::set`.
+/// `effect_only` says why a directive tag is not a plugin directive whose
+/// one behaviour is its declared effects, or `None` when it is (dsl 0.27.0
+/// §4, [`crate::directive_facts::effect_only_blocker`]): an entry body
+/// admits such a call, like the entry's own `::set`.
 fn walk_in(
     nodes: &[Node],
     doc: DocKind,
     ctx: GrammarContext,
     parent: Option<NodeKind>,
-    effect_only: &dyn Fn(&str) -> bool,
+    effect_only: &dyn Fn(&str) -> Option<&'static str>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for node in nodes {
         let nk = node_kind(node);
-        let effect_call = ctx == GrammarContext::EntryBody
-            && matches!(node, Node::Directive(d) if effect_only(&d.tag));
+        let blocker = match node {
+            Node::Directive(d) if ctx == GrammarContext::EntryBody => {
+                effect_only(&d.tag).map(|why| (d, why))
+            }
+            _ => None,
+        };
+        let effect_call = matches!(node, Node::Directive(_))
+            && ctx == GrammarContext::EntryBody
+            && blocker.is_none();
         if !admits(doc, ctx, nk) && !effect_call {
-            diags.push(diag(
-                not_admitted_message(doc, ctx, nk, parent),
-                node_span(node),
-            ));
+            let message = match blocker {
+                Some((d, why)) => format!(
+                    "`::{}` is not admitted in an entry: an entry body is looked up, not \
+                     played, so it may call a directive only when the directive's whole \
+                     behaviour is its declared `effects:`, and `::{}` {why} (dsl 0.27.0 §4)",
+                    d.tag, d.tag
+                ),
+                None => not_admitted_message(doc, ctx, nk, parent),
+            };
+            diags.push(diag(message, node_span(node)));
         }
         match node {
             Node::Branch(b) => {
@@ -627,9 +641,10 @@ fn context_reason(doc: DocKind, ctx: GrammarContext) -> &'static str {
              admits no `<hub>`/`<timeline>`/`<on>`/`<objective>` (dsl 0.2.0 §6.7)"
         }
         (DocKind::Lore, _) => {
-            "entry bodies are looked up, not played — no choices, staging, directives, or \
-             handlers; an entry admits only content lines, `<match>`, `::set`, `::assert`, \
-             and `::retract` (dsl 0.19.0 §4)"
+            "entry bodies are looked up, not played — no choices, staging, or handlers; an \
+             entry admits content lines, `<match>`, `::set`, `::assert`, `::retract`, and a \
+             plugin directive whose whole behaviour is its declared `effects:` (dsl 0.19.0 \
+             §4, dsl 0.27.0 §4)"
         }
     }
 }

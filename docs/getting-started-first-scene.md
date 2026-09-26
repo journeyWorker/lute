@@ -34,10 +34,8 @@ tells you whether a `.lute` file is valid:
 ```
 $ ./target/debug/lute check my-scene.lute
 my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore`
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity)
-failed: my-scene.lute (4 error(s), 0 warning(s))
+my-scene.lute:1:1: error [E-META-MISSING] a scene needs an `id:`, its key in the project — write `id: opening` in the frontmatter
+failed: my-scene.lute (2 error(s), 0 warning(s))
 ```
 
 That's the whole idea of `lute check`: it reads your file and tells you, line by line, exactly
@@ -61,6 +59,10 @@ pov: fixer
 - `character` — whose episode this is (the point-of-view character's storyline).
 - `season` / `episode` — which episode this scene belongs to.
 - `pov` — the id of the player character (the protagonist the player controls).
+
+The `E-META-MISSING` error above asks for an `id:`. `character` / `season` / `episode` are the
+older way to name a scene and still satisfy it; Part 5 shows both, and `id:` is the one to reach
+for in new work.
 
 Save that and re-check:
 
@@ -263,8 +265,10 @@ failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 **Reading a diagnostic:** `file:line:col: error [CODE] message`. Here it names the exact line
-(20), the exact problem (an old sigil), and exactly what to write instead. For this specific,
-mechanical class of fix, you don't have to hand-edit it — run:
+(20), the exact problem (an old sigil), and exactly what to write instead. When the message is
+not enough, `./target/debug/lute --explain E-LEGACY-CONTENT-SIGIL` prints what the code means and
+the link to its entry in the diagnostics reference. For this specific, mechanical class of fix,
+you don't have to hand-edit it — run:
 
 ```
 $ ./target/debug/lute fix my-scene.lute
@@ -363,12 +367,12 @@ scene and prints exactly what would show on screen:
 ```
 $ ./target/debug/lute trace my-scene.lute --choose orderChoice=black
 trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
-  ## Shot 1.
+  ## The Counter
     @narrator  The diner is empty at this hour, and Mira likes it that way.
-    @mira  {{userName}}, you made it.
-    @mira  I should not be this pleased about a coffee order.
+    @mira{emotion="content" variant="0"}  {{userName}}, you made it.
+    @mira{mono}  I should not be this pleased about a coffee order.
   <branch orderChoice>   eligible: black   -> black
-    @mira  Good. No nonsense in a cup.
+    @mira{emotion="content" variant="0"}  Good. No nonsense in a cup.
 trace complete: 1 decision; choices 1/2 (orderChoice)
 ```
 
@@ -572,10 +576,12 @@ $ ./target/debug/lute scenario episodes envelope mira.s01ep02
 project root: episodes
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
-    - run.metMira
-  Possible (set on at least one declared route reaching this node):
-    - run.metMira
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+    - run.metMira   written by: scene(mira.s01ep01)
+  Possible (set on SOME but not every declared route reaching this node; the Guaranteed paths above are not repeated):
+    (none)
+  Guaranteed facts (hold on every declared route reaching this node):
+    (none)
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
     (none)
 ```
 
@@ -630,10 +636,11 @@ specific file you give it:
 $ ./target/debug/lute context my-scene.lute
 capabilityVersion: 0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3
 permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
-directives (11):
+directives (12):
   auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location, time, assetId   [mutatesScene]
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
+  clear:    [reads.onStage mayExitCharacter]
   cut: assetId, action, full
   end: reason   [terminatesWalk]
   mark: id
@@ -647,7 +654,8 @@ rewardKinds (0):
 occasions (0):
 questsAllowed: true
 enums (0):
-stateSchema (3):
+stateSchema (4):
+  prev.run.metMira: bool (owner: engine)
   run.metMira: bool
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
@@ -658,11 +666,32 @@ deliveryFlags (3):
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
 builtinDirectives (5):
-  ::set{ <path> = <expr> }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
-  ::assert{ <relation>(<arg>, …) } — assert a ground fact of a declared, non-derived, non-reserved relation
-  ::retract{ <relation>(<arg | _>, …) } — retract the matching facts of a declared, non-derived, non-reserved relation
-  ::accept{quest="<questId>"} — accept a quest that has no `start` condition
-  ::use{component="<name>" <param>=<value> …} — expand an imported component with named arguments
+  ::set{ <path> = <expr> [when="<condition>"] }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
+  ::assert{ <relation>(<arg>, …) [when="<condition>"] } — assert a ground fact of a declared, non-derived, non-reserved relation
+  ::retract{ <relation>(<arg | _>, …) [when="<condition>"] } — retract the matching facts of a declared, non-derived, non-reserved relation
+  ::accept{quest="<questId>" [when="<condition>"]} — accept a quest that has no `start` condition
+  ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
+beatKeys (11; scene frontmatter; <entry> / <beat> attributes):
+  on: <occasion> — the occasion the beat answers
+  target: <prefix>.<member> | kind:<kind> — the one target it answers, or every member of a kind (read as occasion.target)
+  for: kind:<kind> — on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, binding occasion.target
+  when: <condition> — eligible only while it holds
+  priority: <integer> — the higher eligible beat wins
+  once: run | user | false | day | slot | week | season:<name> — presented at most once per run, ever, without limit, per clock day / slot / week, or per window of a season
+  spentBy: <condition> — instead of `once`: repeatable until the condition holds
+  also: true — scene and bundle beats, on a `select: first` occasion: presented after the winner too
+  share: <key> — beats with one `share` key spend one `once` together
+  after: <prerequisite> — scene and bundle beats: eligible once it holds, e.g. visited("<id>")
+  use: <component> — bundle `<beat>`: its header from the component's `beat:` template, the component's params as attributes
+questKeys (8; <quest> attributes):
+  start: <condition> — activates the quest when it holds; without it the quest is accept-driven
+  fail: <condition> — fails the active quest when it holds
+  after: <prerequisite> — its place in the scene graph; does not gate activation
+  tier: user | run | season:<name> — when it returns to unset: never, at each new run, or each time the season opens
+  rearm: <condition> — returns the quest to unset (objectives cleared) each time the condition goes false→true
+  complete: all | any — completes when every / any one required objective is done
+  activate: accept — a child that waits for an ::accept instead of activating with its parent
+  accept: external — the engine accepts the quest outside any document
 scenes (1; read as visited("<id>")):
   mira.s01ep01
 ```
@@ -672,8 +701,9 @@ file activates none. Your own declarations show up under **`projectEnums`** — 
 that actually resolves `emotion="content"`.
 
 `stateSchema` is the same story for state: your own declarations (`scene.knowsMira` from Part 3,
-`run.metMira` from Part 5) plus `scene.choices.orderChoice`, which the `<branch>` declares on your
-behalf so a later construct can read which option the player took.
+`run.metMira` from Part 5), `scene.choices.orderChoice`, which the `<branch>` declares on your
+behalf so a later construct can read which option the player took, and `prev.run.metMira`, the
+read-only value `run.metMira` had when the previous run ended.
 
 `deliveryFlags` is always present — a fixed, project-independent list — so it's the one place you
 can always confirm what `{mono}`/`{os}`/`{vo}` mean without hunting through this tutorial. If
@@ -683,7 +713,9 @@ path, `context` also lists exactly those referenced paths under a `reservedQuest
 for quests).
 
 `builtinDirectives` lists the directives the language itself provides — `::set` from Part 5 is
-one — and `scenes` lists the ids `visited("…")` can name. Pass `--project episodes` and that
+one. `beatKeys` and `questKeys` list every key a beat's header (a scene's frontmatter, an
+`<entry>` or `<beat>`) and a `<quest>` element may carry, with one line on what each does.
+`scenes` lists the ids `visited("…")` can name. Pass `--project episodes` and that
 list covers every scene in the project, alongside its quests and lore entries.
 
 Run it any time you need to double check a directive name, an attribute, or a legal `emotion`

@@ -46,6 +46,18 @@ pub fn prev_run_path(run_path: &str) -> Option<String> {
         .map(|rest| format!("prev.run.{rest}"))
 }
 
+/// dsl 0.27.0 §3: the family a `{{<path>[occasion.target]}}` interpolation
+/// reads — `user.bond` for `user.bond[occasion.target]` — or `None` for any
+/// other text. The family is a bare dotted state path and the index is
+/// exactly the kind beat's member: the one computed read `{{…}}` admits.
+pub fn occasion_indexed_family(raw: &str) -> Option<&str> {
+    let family = raw
+        .strip_suffix(']')?
+        .strip_suffix(crate::beats::OCCASION_TARGET)?
+        .strip_suffix('[')?;
+    (is_state_path(family) && family.split('.').all(crate::check::is_cel_ident)).then_some(family)
+}
+
 /// How a state path appears in an expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PathRole {

@@ -139,8 +139,15 @@ fn a_malformed_seasons_block_is_a_season_decl_error() {
             "{seasons}: {}",
             season_diags[0].message
         );
-        // Nothing malformed is declared.
-        assert!(imps.seasons.is_empty(), "{seasons}: {:?}", imps.seasons);
+        // A malformed season declares nothing usable: it is either absent or
+        // registered with an empty `live` (so its state paths don't cascade).
+        assert!(
+            imps.seasons
+                .iter()
+                .all(|(_, s, _)| s.values().all(|d| d.live.is_empty())),
+            "{seasons}: {:?}",
+            imps.seasons
+        );
     }
 }
 

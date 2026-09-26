@@ -104,12 +104,22 @@ pub enum Verdict {
 pub enum GuardRead {
     Path(String, crate::Value),
     Fact(String),
+    /// HW27-10: a ground fact of a derived relation that does not hold,
+    /// with every rule that could conclude it (as written) and the
+    /// premises that rule misses (`` `holding(brassKey)` does not hold ``).
+    Derived {
+        fact: String,
+        rules: Vec<(String, Vec<String>)>,
+    },
     Visited(String),
 }
 
 impl GuardRead {
     /// What the guard found: "`run.x` is 3", "`found(receipt)` does not
-    /// hold", "scene `a` is not visited".
+    /// hold", "scene `a` is not visited"; a derived fact names the rules
+    /// that could conclude it and what each misses: "`canEnter(office)`
+    /// does not hold (`canEnter(office) :- holding(brassKey)`:
+    /// `holding(brassKey)` does not hold)".
     pub fn found(&self) -> String {
         match self {
             GuardRead::Path(p, v) => match crate::report::value_text(v) {
@@ -117,6 +127,17 @@ impl GuardRead {
                 None => format!("`{p}` is unset"),
             },
             GuardRead::Fact(f) => format!("`{f}` does not hold"),
+            GuardRead::Derived { fact, rules } if rules.is_empty() => {
+                format!("`{fact}` does not hold")
+            }
+            GuardRead::Derived { fact, rules } => format!(
+                "`{fact}` does not hold ({})",
+                rules
+                    .iter()
+                    .map(|(rule, missing)| format!("`{rule}`: {}", missing.join(", ")))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
             GuardRead::Visited(k) => format!("scene `{k}` is not visited"),
         }
     }
@@ -129,7 +150,7 @@ impl GuardRead {
                 Some(q) => format!("`quests: {{ {q}: <state> }}`"),
                 None => format!("`state: {{ {p}: <value> }}`"),
             },
-            GuardRead::Fact(f) => format!("`facts: [{f}]`"),
+            GuardRead::Fact(f) | GuardRead::Derived { fact: f, .. } => format!("`facts: [{f}]`"),
             GuardRead::Visited(k) => format!("`visited: [{k}]`"),
         }
     }

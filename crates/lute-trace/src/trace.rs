@@ -276,7 +276,12 @@ fn trace_pipeline(
     };
     let judging = judged_kind
         .then(|| judging_project(&input.uri, artifact))
-        .flatten();
+        .flatten()
+        .map(|mut p| {
+            p.sequence_after =
+                lute_check::sequence::derived_afters(&input.defaults, &input.snapshot.occasions);
+            p
+        });
 
     let names: BTreeMap<String, String> = cast
         .iter()
@@ -701,7 +706,11 @@ fn premise_text(prem: &Premise, kind: BeatKind, when: Option<&str>) -> String {
                 when.unwrap_or(raw.as_str()).trim()
             )
         }
-        Premise::After { raw, unmet } => {
+        Premise::After {
+            raw,
+            unmet,
+            sequence,
+        } => {
             let mocks: Vec<String> = unmet
                 .iter()
                 .map(|a| match a {
@@ -717,6 +726,10 @@ fn premise_text(prem: &Premise, kind: BeatKind, when: Option<&str>) -> String {
             };
             match kind {
                 BeatKind::Bundle => format!("its `after=\"{raw}\"` is false{hint}"),
+                BeatKind::Scene | BeatKind::Entry if *sequence => format!(
+                    "its `after: {raw}` (written by `sequence:` in lute.project.yaml) is \
+                     false{hint}"
+                ),
                 BeatKind::Scene | BeatKind::Entry => format!("its `after: {raw}` is false{hint}"),
             }
         }
@@ -1216,7 +1229,9 @@ impl<'a> TraceDriver<'a> {
             GuardRead::Path(p, _) => {
                 format!("`{}`", self.render_atom(&UnresolvedAtom::Path(p.clone())))
             }
-            GuardRead::Fact(f) => format!("`{}`", render_atom(&UnresolvedAtom::Fact(f.clone()))),
+            GuardRead::Fact(f) | GuardRead::Derived { fact: f, .. } => {
+                format!("`{}`", render_atom(&UnresolvedAtom::Fact(f.clone())))
+            }
             GuardRead::Visited(_) => format!("{} {EARLIER}", r.yaml_mock()),
         }
     }

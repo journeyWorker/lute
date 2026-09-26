@@ -85,6 +85,7 @@ mod mockcheck;
 mod output;
 mod play;
 mod play_expect;
+mod plugin_origins;
 mod project;
 mod refs;
 mod rewrite;

@@ -196,31 +196,6 @@ impl<'p> Session<'p> {
         pick: &Option<Pick>,
         choose: &BTreeMap<String, Vec<String>>,
     ) -> StepOutcome {
-        // dsl 0.27.0 §4: once the game is over the clock does not move on.
-        if let Ok(true) = super::seam::terminal_holds(self.project, &self.world) {
-            let t = self
-                .project
-                .index
-                .terminal
-                .as_ref()
-                .map_or_else(String::new, |t| t.raw.clone());
-            let body = StepBody::Advance {
-                by: String::new(),
-                from: String::new(),
-                to: String::new(),
-                writes: Vec::new(),
-                settled: Vec::new(),
-                days: Vec::new(),
-                raised: None,
-                ended: false,
-                closed: Vec::new(),
-            };
-            return (
-                body,
-                Vec::new(),
-                Some(super::seam::advance_after_terminal(n, &t)),
-            );
-        }
         run_advance(
             self.project,
             &mut self.world,

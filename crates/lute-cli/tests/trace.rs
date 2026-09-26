@@ -94,13 +94,23 @@ fn json_contract() {
 }
 
 // --- §4.3: "MUST refuse a document with check errors (exit 1; run check
-// first)". `arcia-project/date-minigame.lute` carries real check errors when
-// resolved core-only (no `--project`) — the SAME fixture `cli.rs`'s
-// `check_file_with_errors_exits_one` pins for `lute check`.
+// first)". `arcia-project/date-minigame.lute` copied OUT of its project
+// carries real check errors (resolved core-only, its plugin directive is
+// unknown) — the SAME loose copy `cli.rs`'s `check_file_with_errors_exits_one`
+// pins for `lute check`. In place, trace (like check) finds the project.
 
 #[test]
 fn refused_on_check_errors() {
-    let out = trace(&["../../docs/examples/arcia-project/date-minigame.lute"]);
+    let dir = std::env::temp_dir().join(format!("lute-trace-refused-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("date-minigame.lute");
+    std::fs::copy(
+        "../../docs/examples/arcia-project/date-minigame.lute",
+        &file,
+    )
+    .unwrap();
+    let out = trace(&[file.to_str().unwrap()]);
+    let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(
         out.status.code(),
         Some(1),

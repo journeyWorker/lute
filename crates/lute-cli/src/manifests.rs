@@ -119,7 +119,6 @@ pub fn validate_manifests_under(dir: &Path) -> std::io::Result<Vec<ManifestVerdi
                 c.identity_diags
                     .iter()
                     .chain(c.defaults_diags.iter())
-                    .chain(c.sequence_diags.iter())
                     .map(|d| as_diagnostic(&d.code, d.message.clone()))
                     .collect::<Vec<_>>()
             })
@@ -156,7 +155,10 @@ pub fn spanless_line(path: &Path, d: &Diagnostic, denied: bool) -> String {
 }
 
 /// Print every verdict's diagnostics and return `true` when the tree holds an
-/// invalid manifest (the caller's exit-1 signal).
+/// invalid manifest (the caller's exit-1 signal). A malformed `sequence:`
+/// (dsl 0.27.0 §8) is not among them: `check-project` reports it located,
+/// beside the documents it still checks; a command that builds the project
+/// gates on it with [`gate_sequences`].
 pub fn report_and_gate(verdicts: &[ManifestVerdict]) -> bool {
     let mut invalid = false;
     for v in verdicts {
@@ -167,6 +169,21 @@ pub fn report_and_gate(verdicts: &[ManifestVerdict]) -> bool {
             println!("{}", spanless_line(&v.path, d, false));
         }
         invalid |= v.is_invalid();
+    }
+    invalid
+}
+
+/// dsl 0.27.0 §8: for a command that builds the project (`compile --all`,
+/// `play`), a malformed `sequence:` is fatal — the chain would silently not
+/// apply. Prints each and returns `true` when there is one.
+pub fn gate_sequences(verdicts: &[ManifestVerdict]) -> bool {
+    let mut invalid = false;
+    for v in verdicts {
+        for d in v.config.iter().flat_map(|c| &c.sequence_diags) {
+            let d = as_diagnostic(lute_manifest::project::E_SEQUENCE, d.message.clone());
+            println!("{}", spanless_line(&v.path, &d, false));
+            invalid = true;
+        }
     }
     invalid
 }

@@ -67,8 +67,10 @@ pub struct ProjectConfig {
     pub defaults_diags: Vec<ResolveDiag>,
     /// dsl 0.27.0 §8: `E-SEQUENCE` diagnostics of a malformed `sequence:`
     /// (its shape; the ids are checked project-wide against the scenes).
-    /// Reported once per manifest, like [`Self::defaults_diags`].
-    pub sequence_diags: Vec<ResolveDiag>,
+    /// Reported once per manifest, located: by `lute check-project` beside
+    /// the documents (never fatal to their check), by the commands that
+    /// build a project (`compile --all`, `play`) as a gate.
+    pub sequence_diags: Vec<SequenceDiag>,
 }
 
 /// A resolution diagnostic surfaced to the caller (folded into the check
@@ -230,7 +232,10 @@ impl MetaDefaults {
 /// dsl 0.27.0 §8: `sequence: { occasion: chapter, scenes: [a, b, c] }` — a
 /// linear chain of scenes answering one occasion. Each listed scene without
 /// its own key gets `on: <occasion>`, `after: visited("<previous>")` (every
-/// scene but the first) and a descending `priority:` (`10 × (n − i)`).
+/// scene but the first) and a descending `priority:` (`10 × (n − i)`). On a
+/// `select: sequence` occasion, which presents every eligible beat in one
+/// raise, the chain is the priority order alone: no `after:` (it would be
+/// judged before the raise that plays the previous scene).
 /// `scenes` holds each id once, in order (a duplicate is [`E_SEQUENCE`] at
 /// load and dropped).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -241,12 +246,21 @@ pub struct Sequence {
 
 impl Sequence {
     /// The keys scene `id` derives, in `(key, YAML value)` form, or `None`
-    /// when `id` is not listed: `on`, then `after` (not for the first scene),
+    /// when `id` is not listed: `on`, then `after` (not for the first scene,
+    /// and only when `chained` — the occasion is not `select: sequence`),
     /// then `priority`.
-    pub fn derived(&self, id: &str) -> Option<Vec<(&'static str, serde_yaml::Value)>> {
+    pub fn derived(
+        &self,
+        id: &str,
+        chained: bool,
+    ) -> Option<Vec<(&'static str, serde_yaml::Value)>> {
         let i = self.scenes.iter().position(|s| s == id)?;
         let mut out = vec![("on", serde_yaml::Value::String(self.occasion.clone()))];
-        if let Some(prev) = i.checked_sub(1).map(|p| &self.scenes[p]) {
+        if let Some(prev) = i
+            .checked_sub(1)
+            .map(|p| &self.scenes[p])
+            .filter(|_| chained)
+        {
             out.push((
                 "after",
                 serde_yaml::Value::String(format!("visited(\"{prev}\")")),
@@ -258,6 +272,26 @@ impl Sequence {
     }
 }
 
+/// Where an `E-SEQUENCE` shape diagnostic points in the manifest (a
+/// [`ResolveDiag`] has no span; `lute_check::sequence` locates it in the
+/// text).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SequenceAnchor {
+    /// The `sequence:` key itself.
+    Block,
+    /// The `<key>:` line inside the block.
+    Key(String),
+    /// The `nth` (0-based) occurrence of a `scenes:` entry's text.
+    Entry(String, usize),
+}
+
+/// A malformed `sequence:` (dsl 0.27.0 §8), with where it points.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SequenceDiag {
+    pub message: String,
+    pub anchor: SequenceAnchor,
+}
+
 /// A malformed `sequence:` (dsl 0.27.0 §8): not a `{ occasion, scenes }`
 /// mapping, an occasion or scene id that is no identifier, a scene listed
 /// twice, or (project-wide, `lute check-project`) a listed id no scene
@@ -266,18 +300,17 @@ pub const E_SEQUENCE: &str = "E-SEQUENCE";
 
 /// Resolve the raw `sequence:` value. A malformed block is reported and NOT
 /// applied — a half-understood chain must not silently reorder scenes; a
-/// duplicate id alone is reported and its later occurrence dropped.
-fn resolve_sequence(raw: Option<serde_yaml::Value>) -> (Option<Sequence>, Vec<ResolveDiag>) {
+/// duplicate id alone is reported and its later occurrence dropped. Each
+/// diagnostic carries its [`SequenceAnchor`]; `lute check-project` reports
+/// them located, beside its checks of the documents.
+fn resolve_sequence(raw: Option<serde_yaml::Value>) -> (Option<Sequence>, Vec<SequenceDiag>) {
+    const KEYS: [&str; 2] = ["occasion", "scenes"];
     let Some(raw) = raw else {
         return (None, Vec::new());
     };
     let mut diags = Vec::new();
-    let mut err = |message: String| {
-        diags.push(ResolveDiag {
-            code: E_SEQUENCE.to_string(),
-            message,
-        })
-    };
+    let mut err =
+        |message: String, anchor: SequenceAnchor| diags.push(SequenceDiag { message, anchor });
     let is_ident = |s: &str| {
         s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
             && s.chars()
@@ -288,16 +321,27 @@ fn resolve_sequence(raw: Option<serde_yaml::Value>) -> (Option<Sequence>, Vec<Re
             "`sequence:` must be a mapping `{ occasion: <name>, scenes: [<scene id>, …] }` \
              (dsl 0.27.0 §8)"
                 .to_string(),
+            SequenceAnchor::Block,
         );
         return (None, diags);
     };
+    // A misspelt key stands for the key it is close to: that key's own
+    // "missing" error would only repeat it.
+    let mut meant: Vec<&str> = Vec::new();
     for key in map.keys() {
         let name = key.as_str().unwrap_or("");
-        if !matches!(name, "occasion" | "scenes") {
-            err(format!(
-                "`sequence.{name}` is not a sequence key — a sequence declares `occasion:` and \
-                 `scenes:` (dsl 0.27.0 §8)"
-            ));
+        if !KEYS.contains(&name) {
+            let near = crate::suggest::nearest(name, KEYS.iter().copied(), 2)
+                .filter(|n| !map.contains_key(*n));
+            meant.extend(near);
+            let why = near.map_or_else(
+                || " — a sequence declares `occasion:` and `scenes:`".to_string(),
+                |n| format!(" — did you mean `{n}`?"),
+            );
+            err(
+                format!("`sequence.{name}` is not a sequence key{why} (dsl 0.27.0 §8)"),
+                SequenceAnchor::Key(name.to_string()),
+            );
         }
     }
     let occasion = match map.get("occasion").map(|v| v.as_str()) {
@@ -307,15 +351,19 @@ fn resolve_sequence(raw: Option<serde_yaml::Value>) -> (Option<Sequence>, Vec<Re
                 "`sequence.occasion` must name an occasion, e.g. `occasion: chapter` \
                  (dsl 0.27.0 §8)"
                     .to_string(),
+                SequenceAnchor::Key("occasion".to_string()),
             );
             None
         }
         None => {
-            err(
-                "`sequence:` needs `occasion:` — the occasion every listed scene answers, \
-                 e.g. `occasion: chapter` (dsl 0.27.0 §8)"
-                    .to_string(),
-            );
+            if !meant.contains(&"occasion") {
+                err(
+                    "`sequence:` needs `occasion:` — the occasion every listed scene answers, \
+                     e.g. `occasion: chapter` (dsl 0.27.0 §8)"
+                        .to_string(),
+                    SequenceAnchor::Block,
+                );
+            }
             None
         }
     };
@@ -327,31 +375,45 @@ fn resolve_sequence(raw: Option<serde_yaml::Value>) -> (Option<Sequence>, Vec<Re
                 match item.as_str() {
                     Some(id) if is_ident(id) => {
                         if scenes.iter().any(|s| s == id) {
-                            err(format!(
-                                "`sequence.scenes` lists `{id}` twice — a scene has one place in \
-                                 the chain; the later entry is ignored (dsl 0.27.0 §8)"
-                            ));
+                            err(
+                                format!(
+                                    "`sequence.scenes` lists `{id}` twice — a scene has one place \
+                                     in the chain; the later entry is ignored, remove it \
+                                     (dsl 0.27.0 §8)"
+                                ),
+                                SequenceAnchor::Entry(id.to_string(), 1),
+                            );
                         } else {
                             scenes.push(id.to_string());
                         }
                     }
                     _ => {
                         ok = false;
-                        err(format!(
-                            "`sequence.scenes` entry `{}` is not a scene id — list each scene's \
-                             `id:` (dsl 0.27.0 §8)",
-                            serde_yaml::to_string(item).unwrap_or_default().trim()
-                        ));
+                        let text = serde_yaml::to_string(item).unwrap_or_default();
+                        let text = text.trim();
+                        err(
+                            format!(
+                                "`sequence.scenes` entry `{text}` is not a scene id — list each \
+                                 scene's `id:`, e.g. `prologue` (dsl 0.27.0 §8)"
+                            ),
+                            SequenceAnchor::Entry(item.as_str().unwrap_or(text).to_string(), 0),
+                        );
                     }
                 }
             }
         }
-        _ => {
+        None if meant.contains(&"scenes") => ok = false,
+        found => {
             ok = false;
             err(
                 "`sequence.scenes` must be a non-empty list of scene ids, in play order, e.g. \
                  `scenes: [prologue, counter, kitchen]` (dsl 0.27.0 §8)"
                     .to_string(),
+                if found.is_some() {
+                    SequenceAnchor::Key("scenes".to_string())
+                } else {
+                    SequenceAnchor::Block
+                },
             );
         }
     }

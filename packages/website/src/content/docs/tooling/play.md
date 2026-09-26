@@ -265,7 +265,7 @@ A play script is a YAML mapping. `steps` is required; every other top-level key 
 | `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--explain`](#derivation-and---explain). |
 | `bridges` | Answers for the plugin calls that read a bridge result, consumed in call order across the play (dsl 0.24.0 §5) — see [Answering bridge calls](#answering-bridge-calls). |
 
-Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, an [`expect:`](#expectations), and its own [`bridges:`](#answering-bridge-calls) answers; an `end` step takes only a `label`. The one pairing: an `advance` may carry the `engine:` writes of the same moment. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)); since dsl 0.27.0 it MAY carry `repeat: n` (the file is spliced n times) and its own `choose:` / `bridges:`, which script every step it splices in over the script's own — key by key, tag by tag, consumed from their start in each repetition and dropped when the segment ends — so each term of a multi-term play states its own choices; a `label` or `expect:` beside it is a usage error. A usage error in a step names the file, line and column of the key it is about — in the included file when the step came from one, followed by `(included from <play>:<line>:<col>)` — with a did-you-mean for occasion names and keys. A tour of every shape, against the tower:
+Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, an [`expect:`](#expectations), and its own [`bridges:`](#answering-bridge-calls) answers; an `end` step takes only a `label`. The one pairing: an `advance` may carry the `engine:` writes of the same moment. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)); since dsl 0.27.0 it MAY carry `repeat: n` (the file is spliced n times) and its own `choose:` / `bridges:`, which script every step it splices in over the script's own — key by key, tag by tag, consumed from their start in each repetition and dropped when the segment ends — so each term of a multi-term play states its own choices. A key the include overrides leaves the script's own list for that key where it was: with a top-level `choose: { firstLook: [soren, mika] }` and a first term that includes with `choose: { firstLook: ren }`, the second term still takes `soren`, the list's first entry, not `mika`. Convert a positional list to per-include `choose:` for every term at once, not one term at a time; a `label` or `expect:` beside it is a usage error. A usage error in a step names the file, line and column of the key it is about — in the included file when the step came from one, followed by `(included from <play>:<line>:<col>)` — with a did-you-mean for occasion names and keys. A tour of every shape, against the tower:
 
 ```yaml
 state: { user.runs: 2 }                   # path -> scalar literal, over the declared defaults
@@ -591,7 +591,7 @@ steps:
 - **Steps 3–6** — each advance prints the move first — `advance <slot | day | n>: <from> → <to>`, a position being `day <n> (<weekday label>) <slot>`, the label only when the clock's `week:` declares labels — with its writes and the settle beneath it; the raise follows under the same step number. Step 5 wraps the night into day 2's morning, and `once: slot` lets the morning routine play again.
 - **Step 6** — `advance: day` goes to the first slot of day 3, and the settle right after the move fails `fest`: its deadline is a moment, judged whether or not the player ever raises `visit` again (see [Deadlines](#deadlines-and-targeted-objectives)).
 
-In `--json` an advance step carries `advance: { by, from, to, writes, quests }` — `by` is `"slot"`, `"day"`, or the slot count as a string; `writes` the day and slot paths it moved; `quests` the settle right after the move — beside the raised occasion's own fields (`occasion`, `candidates`, `winner`, …), whose `quests` are the transitions after the raise. Step 6's move:
+In `--json` an advance step carries `advance: { by, from, to, writes, quests }` — `by` is `"slot"`, `"day"`, or the slot count as a string; `writes` the day and slot paths it moved; `quests` the settle right after the move — beside the raised occasion's own fields (`occasion`, `candidates`, `winner`, …), whose `quests` are the transitions after the raise. An advance that crosses positions settles the quests at each of them too (dsl 0.27.0 §5): a crossed position whose settle moved anything puts the clock's `set` records of the move there (an entry with `"document": ""`) and then that settle in `quests`, and the rest of the move follows there as well. Step 6's move:
 
 ```json
 {
@@ -818,10 +818,11 @@ steps:
   → routine.night
 @narrator: The lamps go out on day 2.
 ── step 4 · advance to Fri morning: day 2 (Tue) night → day 5 (Fri) morning ──────────────
-  set run.day = 5
+  set run.day = 3
   set run.slot = "morning"
   fest.go failed (by)
   quest fest -> failed (by)
+  set run.day = 5
 ── step 4 · slotStart (select: sequence) ──────────────
   ✓ routine.morning [scene, priority 5]
   ✗ routine.night [scene, priority 5] — when: false
@@ -831,7 +832,7 @@ steps:
 ── expect: every expectation held ──────────────
 ```
 
-Step 2 skips the afternoon: the afternoon's `slotStart` is never raised. Step 3 is already at night, so it goes to the next night. Step 4 crosses three midnights to Friday morning; this clock names no `dayEnd` / `dayStart`, so only the final `slotStart` is raised, and the move past day 3 fails `fest`'s deadline on the way. In `--json` the advance's `by` is `"to night"` or `"to Fri morning"`. A slot or weekday the clock does not declare is a usage error before anything plays (`` step 2: `advance:` to slot `dusk` — the clock's slots are: morning, afternoon, night ``; `` step 2: `advance:` to weekday `Fry` — a weekday is a number 0..6 or one of: Mon, Tue, Wed, Thu, Fri, Sat, Sun ``).
+Step 2 skips the afternoon: the afternoon's `slotStart` is never raised. Step 3 is already at night, so it goes to the next night. Step 4 crosses three midnights to Friday morning; this clock names no `dayEnd` / `dayStart`, so only the final `slotStart` is raised. The quests still settle at every position the advance passes, so `fest`'s deadline fails on Wednesday morning, where the clock first reaches day 3: the transcript prints the move there, that settle, then the rest of the move. A season that opens and closes on the way, or a `rearm=` that turns true there, acts at its own position the same way (see [Seasons and rearmed quests](#seasons-and-rearmed-quests)). In `--json` the advance's `by` is `"to night"` or `"to Fri morning"`. A slot or weekday the clock does not declare is a usage error before anything plays (`` step 2: `advance:` to slot `dusk` — the clock's slots are: morning, afternoon, night ``; `` step 2: `advance:` to weekday `Fry` — a weekday is a number 0..6 or one of: Mon, Tue, Wed, Thu, Fri, Sat, Sun ``).
 
 **When the clock ends** (dsl 0.27.0 §4). A clock that declares `last: { day: 1, slot: h05 }` (or `days: N`) stops there. An `advance:` that lands exactly on the last position is ordinary. One that would go past it moves only to the last position, raises the last day's `dayEnd` once and no `slot` occasion, and its header says `· the clock ends (its last position)` (`--json`: `advance.ended: true`); its `engine:` writes land after that `dayEnd`. Any later `advance:` — or one starting past the end because an `engine:` step moved the day on — halts the play with `E-CLOCK-END` (exit 1, in `lute test` too) until a `newRun` starts the clock over:
 
@@ -855,7 +856,7 @@ Step 2 skips the afternoon: the afternoon's `slotStart` is never raised. Step 3 
 
 After the [game is over](#the-game-is-over) no `advance:` runs at all.
 
-**Sharing a routine.** `include: <file>` (a step whose only key is `include`) splices another file's steps in its place: the file is a list of steps, or a mapping whose only key is `steps:`. The path resolves against the including file, and includes may nest. A day of routine lives in one file that several routes share:
+**Sharing a routine.** `include: <file>` (a step whose action is `include`; since 0.27.0 it may also carry `repeat`, `choose` and `bridges`) splices another file's steps in its place: the file is a list of steps, or a mapping whose only key is `steps:`. The path resolves against the including file, and includes may nest. A day of routine lives in one file that several routes share:
 
 ```yaml
 # plays/routes/day.yaml — one day of routine, shared by every route
@@ -1082,7 +1083,9 @@ makes the season's `once: season:harvest` beats and `tier="season:harvest"` ques
 quest with [`rearm=`](/language/quests-and-scenes/#quests-that-come-back-season-tiers-and-rearm)
 returns to `unset` each time its condition turns true after the first settle, printed as
 `quest festival -> unset (rearmed; was complete)`, and a `start` that holds activates it again in the same
-settle. A beat spent by its [`spentBy`](/language/beats/#until-it-is-solved-spentby) condition is
+settle. One `advance:` that crosses several days watches both at every position it passes: a window
+that opens and closes on the way starts and fails its quests there, and a rearm fires on the day its
+condition turns true, each printed after the clock's move to that position. A beat spent by its [`spentBy`](/language/beats/#until-it-is-solved-spentby) condition is
 listed with the reason ``spentBy: `run.solved` holds``, and a spent `once: week` beat with
 `once: week — already presented this week`.
 
@@ -1535,7 +1538,7 @@ A top-level `expect:` judges the end of the play:
 | `quests: { <id>: <status> }` | the quest ended in that status (`unset` for one nothing activated) |
 | `state: { <path>: <value> }` | the path's final **effective** value — the last write, else the seed, else the declared default — equals the value, compared typed (`1` is not `"1"`) |
 | `facts: [atoms]` / `notFacts: [atoms]` | each atom holds / does not hold at the end, **after derivation** |
-| `transcriptContains: [text]` / `transcriptLacks: [text]` | each text is / is not a substring of the content lines that played, each in one form, `@speaker: text` (dsl 0.24.0): a line's delivery attributes are left out, so `"@mara: Any luck with the lamp?"` matches the line printed `@mara{emotion="shy"}: Any luck with the lamp?`, and step headers, candidates, staging, notes and `skip` lines are never matched — a guarded line that did not play satisfies no `transcriptContains`. `lute test` matches the same form, whatever `--ir` prints |
+| `transcriptContains: [text]` / `transcriptLacks: [text]` | each text is / is not a substring of the content lines that played, each in one form, `@speaker: text` (dsl 0.24.0). A needle with no attribute block matches a line whatever its delivery attributes, so `"@mara: Any luck with the lamp?"` matches the line printed `@mara{emotion="shy"}: Any luck with the lamp?`; a needle line that carries a block matches only a line carrying those attributes (see below). Step headers, candidates, staging, notes and `skip` lines are never matched — a guarded line that did not play satisfies no `transcriptContains`. `lute test` matches the same form, whatever `--ir` prints |
 
 An expectation on a `repeat:` step is judged at every repetition; one on a step the walk never reached is itself a miss. Each `expect:` is validated before anything plays — an unknown key is a usage error (exit 2) listing the legal keys, with a did-you-mean, and saying when the key belongs at the other level (`` unknown top-level `expect:` key `winner` (`winner` belongs in a step `expect:`) ``).
 
@@ -1555,7 +1558,7 @@ A `presented:` miss prints both lists, so an order mistake is visible at a glanc
   ✗ step 1 at runStart: expect presented: expected [start.recap, start.gear], actual [start.gear, start.recap]
 ```
 
-Since dsl 0.26.0 a `transcriptContains` / `transcriptLacks` needle drops its own delivery attributes as well, so a line copied from the transcript — `"@mara{emotion=\"content\"}: You're new."` — matches, and a `transcriptContains` miss quotes the presented line nearest to the needle, as it was said:
+Since dsl 0.27.0 a needle's attribute block is judged, not dropped (0.26.0 dropped it): a needle line written `@speaker{…}: text` must start at a presented line whose attributes include every attribute the block names, with the same value (the line may carry more). A line copied from the transcript — `"@mara{emotion=\"content\"}: You're new."` — therefore matches the line it was copied from, but not the same words said with another emotion or with none. For `transcriptLacks` that makes the guard narrower: `'@ren{emotion="sad"}: X'` holds when X is never said *sadly*, even if it is said plainly; write `'@ren: X'` to mean "X is never said". A block is checked before anything plays, in `transcriptContains` and `transcriptLacks` alike: a key a transcript line never shows (`emotoin=`, `when=`, `code=`), a value outside its domain (`emotion="sadd"`), a `variant` that is not a whole number, or a value on a delivery flag is a usage error (exit 2) with a did-you-mean — `` `emotoin` is not an attribute a transcript line shows — did you mean `emotion`? (a line shows: mono, os, vo, emotion, variant, action, dialogMotion, as) `` — so a misspelt block can no longer make a `transcriptLacks` hold by matching nothing. A `transcriptContains` miss quotes the presented line nearest to the needle, as it was said:
 
 ```
 ── expect: 1 missed ──────────────

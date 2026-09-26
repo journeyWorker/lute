@@ -305,6 +305,29 @@ pub(crate) fn nearest_manifest_dir(file: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
+/// The manifest a single-file command (`check`, `trace`, `compile`,
+/// `compile-stream`, `context`) resolves `file` against when no `--project`
+/// was passed: [`nearest_manifest_dir`], announced once on stderr. `None`
+/// when `--project` was given (it wins) or no manifest sits above `file`.
+///
+/// One helper so the commands cannot disagree about which project a file
+/// belongs to: `lute check` found the nearest manifest since 0.21.1 while
+/// `trace` and `compile` did not, so a scene inheriting `defaults.uses`
+/// checked clean and then was refused by `trace` with `E-UNDECLARED` and
+/// advice to run `lute check` (0.27 prerelease FS-F2).
+pub(crate) fn discover_project(file: &Path, project: Option<&Path>) -> Option<PathBuf> {
+    if project.is_some() {
+        return None;
+    }
+    let dir = nearest_manifest_dir(file)?;
+    let shown = crate::output::cwd_relative(&dir.display().to_string());
+    eprintln!(
+        "lute: note: using project {} (nearest lute.project.yaml); pass --project to choose another",
+        if shown.is_empty() { "." } else { shown.as_str() }
+    );
+    Some(dir)
+}
+
 /// T1-14: the project's May producer set — `check-project`'s own
 /// reachability-gated [`lute_check::connectivity::live_assert_relations`] —
 /// for the root at `root`, the set `W-TRACE-MOCK-UNPRODUCIBLE` must judge a

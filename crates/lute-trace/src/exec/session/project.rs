@@ -31,6 +31,12 @@ pub struct ExecProject {
     /// State-TABLE union (`build_index` does not cover it): path -> its
     /// `StateEntry` JSON, first declaration in path order wins.
     pub state_table: BTreeMap<String, Json>,
+    /// dsl 0.27.0 §2 (T1-2): path -> (`K`, its members) for every state path
+    /// typed `{ domain: K }` / `{ entity: K }` over a closed `K` — the
+    /// checker's resolution, carried in memory by the compiled entry's
+    /// `member_domain` (the wire entry says `string`). A written value must
+    /// be a member.
+    pub state_domains: BTreeMap<String, (String, Vec<String>)>,
     /// `index.rules` as artifact JSON, handed to every runner.
     pub rules: Json,
     /// `index.seedFacts` as ground facts.
@@ -83,6 +89,15 @@ pub struct ExecProject {
     pub display_names: BTreeMap<String, String>,
     /// dsl 0.27.0 §5: the seasons and quest rearms the session observes.
     pub cadence: crate::exec::cadence::CadencePlan,
+    /// 0.27 prerelease OT-F-2: what a transcript needle's attribute block
+    /// may name — the union of every document's vocabulary. Empty (every
+    /// value legal, stamps unknown) unless the caller fills it.
+    pub needles: crate::exec::record::NeedleVocab,
+    /// dsl 0.27.0 §8: scene id -> the `after:` the manifest's `sequence:`
+    /// derives for it (`visited("<previous>")`), so a reason can say where
+    /// an `after:` the scene never wrote comes from. Empty unless the
+    /// caller fills it.
+    pub sequence_after: BTreeMap<String, String>,
 }
 
 impl ExecProject {
@@ -202,6 +217,17 @@ impl ExecProject {
                 "lute play: {n} state type conflict(s); refusing to play"
             ));
             return Err((1, conflicts));
+        }
+        // First declaration in path order wins, as for `state_table`.
+        let mut state_domains: BTreeMap<String, (String, Vec<String>)> = BTreeMap::new();
+        for art in compiled.values() {
+            for e in &art.state {
+                if let Some(d) = &e.member_domain {
+                    state_domains
+                        .entry(e.path.clone())
+                        .or_insert_with(|| d.clone());
+                }
+            }
         }
         let rules = serde_json::to_value(&index.rules).unwrap_or_else(|_| json!([]));
         let seed_facts = index
@@ -373,6 +399,7 @@ impl ExecProject {
             index,
             occasions,
             state_table,
+            state_domains,
             rules,
             seed_facts,
             run_relations,
@@ -391,6 +418,8 @@ impl ExecProject {
             bridge_reads,
             display_names,
             cadence,
+            needles: Default::default(),
+            sequence_after: BTreeMap::new(),
         })
     }
 
@@ -522,4 +551,39 @@ pub fn decision_options(doc_json: &Json, id: &str) -> Vec<String> {
         .flatten()
         .filter_map(|o| o.get("id").and_then(Json::as_str).map(str::to_string))
         .collect()
+}
+
+/// Every `choice` / `hub` id the project's documents declare -> its option
+/// ids (declared order, unioned across the documents that reuse the id) —
+/// what a play's `choose:` may name.
+pub fn project_decisions(p: &ExecProject) -> BTreeMap<String, Vec<String>> {
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let commands = p
+        .artifacts
+        .values()
+        .filter_map(|doc| doc.get("commands").and_then(Json::as_array))
+        .flatten();
+    for c in commands {
+        let key = match c.get("kind").and_then(Json::as_str) {
+            Some("choice") => "branchId",
+            Some("hub") => "id",
+            _ => continue,
+        };
+        let Some(id) = c.get(key).and_then(Json::as_str) else {
+            continue;
+        };
+        let options = out.entry(id.to_string()).or_default();
+        let ids = c
+            .get("options")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|o| o.get("id").and_then(Json::as_str));
+        for o in ids {
+            if !options.iter().any(|known| known == o) {
+                options.push(o.to_string());
+            }
+        }
+    }
+    out
 }

@@ -188,3 +188,57 @@ fn an_unknown_sequence_id_is_e_sequence_at_the_manifest() {
         "{out}"
     );
 }
+
+/// ML-F2: on a `select: sequence` occasion the chain is the priority order
+/// alone — both listed scenes play in the one raise.
+#[test]
+fn a_sequence_on_a_select_sequence_occasion_plays_in_one_raise() {
+    let dir = temp_dir("seqsel");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: core\nprofiles:\n  core:\n    plugins: { mini: true }\n\
+         sequence:\n  occasion: newGame\n  scenes: [one, two]\n",
+    );
+    write(
+        &dir,
+        "plugins/mini/plugin.yaml",
+        "id: mini\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n",
+    );
+    write(
+        &dir,
+        "plugins/mini/occasions/o.yaml",
+        "occasions:\n  newGame: { select: sequence, description: \"every eligible beat\" }\n",
+    );
+    for id in ["one", "two"] {
+        write(&dir, &format!("scenes/{id}.lute"), &scene(id));
+    }
+    write(
+        &dir,
+        "plays/new.play.yaml",
+        "steps:\n  - occasion: newGame\n    expect: { presented: [one, two] }\n",
+    );
+    let (code, play) = run(&dir, &["play", ".", "--script", "plays/new.play.yaml"]);
+    assert_eq!(code, Some(0), "{play}");
+}
+
+/// FS-F5: a malformed `sequence:` is located, suggests the key, and does
+/// not stop the documents from being checked.
+#[test]
+fn a_malformed_sequence_is_located_and_not_fatal() {
+    let dir = temp_dir("seqshape");
+    project(&dir, "sequence:\n  occasion: chapter\n  scene: [one]\n");
+    write(&dir, "scenes/one.lute", &scene("one"));
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(1), "{out}");
+    assert!(
+        out.contains("lute.project.yaml:9:3: error [E-SEQUENCE] `sequence.scene` is not a sequence key — did you mean `scenes`?"),
+        "{out}"
+    );
+    assert!(!out.contains("must be a non-empty list"), "{out}");
+    assert!(
+        out.contains("ok: ./scenes/one.lute"),
+        "the documents are checked: {out}"
+    );
+}

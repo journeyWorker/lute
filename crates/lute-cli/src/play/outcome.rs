@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_trace::exec::session::{world_view, ExecProject, Played, StepBody, Verdict};
+use lute_trace::exec::session::{world_view, Candidate, ExecProject, Played, StepBody, Verdict};
 use serde_json::Value as Json;
 
 use super::human::{said, str_of, DocCmds};
@@ -16,6 +16,9 @@ use crate::play_expect::{ExpectMiss, PlayOutcome, StepOutcome};
 /// per executed step (with the world after it, when its `expect:` judges
 /// it), and the world the play ended in.
 pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
+    // dsl 0.27.0 §4: the options an occasion step's `engine:` write offered
+    // (its settle's quest transcripts) belong to the step's own row.
+    let mut carried: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let steps = play
         .steps
         .iter()
@@ -24,6 +27,7 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
                 index: s.n,
                 label: s.label.clone(),
                 world: s.world.clone(),
+                options: std::mem::take(&mut carried),
                 ..StepOutcome::default()
             };
             // dsl 0.27.0 (T3-8): `winner`, `offered` and `notOffered` judge
@@ -47,13 +51,19 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
             {
                 row.occasion = occasion.clone();
                 row.target = target.clone();
-                row.winner = winner.clone();
+                row.winner = winner.as_ref().map(|w| {
+                    let member = presented.iter().find(|pr| &pr.id == w);
+                    presented_label(candidates, w, member.and_then(|pr| pr.member.as_deref()))
+                });
                 row.offered = candidates
                     .iter()
                     .filter(|c| matches!(c.verdict, Verdict::Eligible))
-                    .map(|c| c.id.clone())
+                    .map(candidate_label)
                     .collect();
-                row.presented = presented.iter().map(|pr| pr.id.clone()).collect();
+                row.presented = presented
+                    .iter()
+                    .map(|pr| presented_label(candidates, &pr.id, pr.member.as_deref()))
+                    .collect();
                 for pr in presented {
                     offered_options(p, &pr.document, &pr.transcript, &mut row.options);
                 }
@@ -78,11 +88,17 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
                     .flat_map(|(b, at)| match b {
                         StepBody::Occasion {
                             occasion,
+                            candidates,
                             presented,
                             ..
                         } => presented
                             .iter()
-                            .map(|pr| (pr.id.clone(), format!("{occasion} at {at}")))
+                            .map(|pr| {
+                                (
+                                    presented_label(candidates, &pr.id, pr.member.as_deref()),
+                                    format!("{occasion} at {at}"),
+                                )
+                            })
                             .collect::<Vec<_>>(),
                         _ => Vec::new(),
                     })
@@ -111,12 +127,17 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
             for q in s.body.settled().chain(&s.quests) {
                 offered_options(p, &q.document, &q.transcript, &mut row.options);
             }
+            if s.before_raise {
+                carried = row.options;
+                return None;
+            }
             Some(row)
         })
         .collect();
     let (said, said_steps) = said(p, play);
     PlayOutcome {
         steps,
+        last_step: play.steps.last().map(|s| s.n),
         end: world_view(p, &play.world, true),
         said,
         said_steps,
@@ -125,6 +146,27 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
             Err(h) => h.exit_label(),
         },
         entry_aliases: p.entry_aliases.clone(),
+    }
+}
+
+/// G-9: a candidate as expectations name it — `<id> for <member>` for a
+/// `for` beat's candidate (dsl 0.27.0 §3), the transcript's spelling.
+fn candidate_label(c: &Candidate) -> String {
+    match &c.for_member {
+        Some(m) => format!("{} for {m}", c.id),
+        None => c.id.clone(),
+    }
+}
+
+/// G-9: a presentation as expectations name it — `<id> for <member>` when
+/// a `for` beat presented it for that member.
+fn presented_label(candidates: &[Candidate], id: &str, member: Option<&str>) -> String {
+    let for_beat = candidates
+        .iter()
+        .any(|c| c.id == id && c.for_member.is_some());
+    match member.filter(|_| for_beat) {
+        Some(m) => format!("{id} for {m}"),
+        None => id.to_string(),
     }
 }
 

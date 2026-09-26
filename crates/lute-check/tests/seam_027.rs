@@ -206,6 +206,122 @@ fn gate_and_terminal_texts_are_checked_like_conditions() {
     );
 }
 
+/// HW27-02: a string outside its subject's domain in `terminal:` or a
+/// gate is named once, with a did-you-mean, like the same literal in a
+/// `when` — and no beat is reported dead under the faulty text.
+#[test]
+fn a_foreign_literal_in_the_seam_is_named_and_does_not_cascade() {
+    let text = lore(
+        "<beat id=\"a\" on=\"chime\" once=\"false\">\n  @narrator: x\n</beat>\n\
+         <beat id=\"b\" on=\"knock\" once=\"false\">\n  @narrator: y\n</beat>\n",
+    );
+    let errs = errors(&input(
+        &text,
+        &[("chime", false, ""), ("knock", false, "")],
+        Some("run.fate != 'alvie'"),
+    ));
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    let (code, message) = &errs[0];
+    assert_eq!(code, "E-WHEN-LITERAL-DOMAIN");
+    assert!(
+        message.contains("`terminal: run.fate != 'alvie'`") && message.contains("'alive'"),
+        "{message}"
+    );
+    let errs = errors(&input(
+        &text,
+        &[
+            ("chime", false, "run.fate == 'alvie'"),
+            ("knock", false, ""),
+        ],
+        None,
+    ));
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    assert_eq!(errs[0].0, "E-WHEN-LITERAL-DOMAIN", "{errs:?}");
+    assert!(
+        errs[0].1.contains("occasion `chime`'s `raisedWhen:"),
+        "{errs:?}"
+    );
+}
+
+/// HW27-07: with the plugin's `raisedWhen:` line known, a gate's fault is
+/// the declaration's: one report re-homed there, not one per beat.
+#[test]
+fn a_gate_fault_is_reported_once_at_the_plugin_line() {
+    let text = lore(
+        "<beat id=\"a\" on=\"chime\" once=\"false\">\n  @narrator: x\n</beat>\n\
+         <entry id=\"b\" on=\"chime\">\n  @narrator: y\n</entry>\n",
+    );
+    let mut inp = input(&text, &[("chime", false, "run.hpp > 0")], None);
+    let at = lute_core_span::Span {
+        byte_start: 40,
+        byte_end: 51,
+        line: 3,
+        column: 30,
+        utf16_range: (40, 51),
+    };
+    inp.imports.plugin_origins.gates.insert(
+        "chime".into(),
+        lute_check::rel_schema::DeclOrigin {
+            file: "/p/plugins/ward/occasions/ward.yaml".into(),
+            span: at,
+        },
+    );
+    let diags: Vec<_> = check(&inp)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "E-UNDECLARED")
+        .collect();
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    let d = &diags[0];
+    assert!(
+        d.message.contains("declared in plugin file `ward.yaml`"),
+        "{}",
+        d.message
+    );
+    assert_eq!(d.related.len(), 1);
+    assert_eq!(d.related[0].file, "/p/plugins/ward/occasions/ward.yaml");
+    assert_eq!(d.related[0].diagnostic.span, at);
+}
+
+/// HW27-03: a `spentBy` that always holds is `when: false`'s verdict; one
+/// that holds at the start of a run (the inverted migration of
+/// `when="!holds(X)"`) is a warning with the fix.
+#[test]
+fn a_spent_by_that_holds_from_the_start_is_reported() {
+    let beat = |spent: &str| {
+        lore(&format!(
+            "<beat id=\"bell\" on=\"chime\" spentBy=\"{spent}\">\n  @narrator: x\n</beat>\n"
+        ))
+    };
+    let found = |spent: &str| -> Vec<(String, String)> {
+        check(&input(&beat(spent), &[("chime", false, "")], None))
+            .diagnostics
+            .into_iter()
+            .map(|d| (d.code, d.message))
+            .collect()
+    };
+    let always = found("true");
+    assert!(
+        always
+            .iter()
+            .any(|(c, m)| c == "E-BEAT-UNREACHABLE" && m.contains("`spentBy: true` holds always")),
+        "{always:?}"
+    );
+    let inverted = found("!holds(canEnter(hall))");
+    assert!(
+        inverted.iter().any(|(c, m)| c == "W-BEAT-SPENT-AT-START"
+            && m.contains("did you mean `spentBy: \"holds(canEnter(hall))\"`")),
+        "{inverted:?}"
+    );
+    let fine = found("holds(canEnter(hall))");
+    assert!(
+        !fine
+            .iter()
+            .any(|(c, _)| c == "W-BEAT-SPENT-AT-START" || c == "E-BEAT-UNREACHABLE"),
+        "{fine:?}"
+    );
+}
+
 /// The `W-BEAT-PRIORITY-TIE` messages of `input`'s one document.
 fn ties(input: &CheckInput) -> Vec<String> {
     let (doc, _) = lute_syntax::parse(&input.text);

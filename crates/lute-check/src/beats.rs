@@ -207,8 +207,9 @@ pub(crate) fn lift_scene_beat(
                         format!(
                             "`{key}:` without `on:`; `{key}` belongs to a beat, and a scene \
                              becomes a beat by naming the occasion it answers — add \
-                             `on: <occasion>`, or remove `{key}:` for a scene reached by \
-                             explicit flow (dsl 0.21.0 §3.1)"
+                             `on: <occasion>` or list the scene in the project's `sequence:`, \
+                             or remove `{key}:` for a scene your engine starts itself \
+                             (dsl 0.21.0 §3.1)"
                         ),
                         top_key_span(meta, key),
                     );
@@ -399,14 +400,21 @@ pub(crate) fn lift_scene_beat(
     });
 
     let on = on?;
+    let mut occasion_diags = Vec::new();
     check_occasion(
         &on,
         top_value_span(meta, "on"),
         target.as_ref().map(|_| top_value_span(meta, "target")),
         occasions,
         Layer::Content,
-        diags,
+        &mut occasion_diags,
     );
+    // dsl 0.27.0 §8: an `on:` the manifest's `sequence:` derived is judged
+    // once, at `sequence.occasion` (`crate::sequence`), not in every scene.
+    if crate::sequence::derived(meta, "on") {
+        occasion_diags.retain(|d| d.code != E_OCCASION_UNKNOWN);
+    }
+    diags.extend(occasion_diags);
     // dsl 0.23.0 §3: a side remark rides along a single winner — on a
     // `select: all` / `sequence` occasion every eligible beat is already
     // offered or presented, so `also` means nothing there.
@@ -808,11 +816,18 @@ pub fn occasion_target_ok(
     let domain: Vec<String> = legal.iter().map(|m| format!("{prefix}.{m}")).collect();
     let hint = lute_manifest::suggest::nearest(target, domain.iter().map(String::as_str), 2)
         .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
-    let listed = domain
+    // A long domain is named by its first few members; the did-you-mean
+    // carries the one that matters.
+    const SHOWN: usize = 8;
+    let mut listed = domain
         .iter()
+        .take(SHOWN)
         .map(|t| format!("`{t}`"))
         .collect::<Vec<_>>()
         .join(", ");
+    if domain.len() > SHOWN {
+        listed.push_str(&format!(", … {} more", domain.len() - SHOWN));
+    }
     Err(if subset.is_some() {
         format!(
             "target `{target}` is outside occasion `{on}`'s member list ({listed}), a subset of \
@@ -983,8 +998,8 @@ pub const OCCASION_TARGET: &str = "occasion.target";
 pub(crate) fn occasion_target_scope_message() -> String {
     format!(
         "`{OCCASION_TARGET}` is readable only in a beat or entry that targets a kind \
-         (`target=\"kind:<kind>\"`), where it is the member the occasion was raised for \
-         (dsl 0.26.0 §5)"
+         (`target=\"kind:<kind>\"`) or runs once for each member of one \
+         (`for=\"kind:<kind>\"`), where it is the member the beat answers (dsl 0.27.0 §3)"
     )
 }
 
@@ -1065,7 +1080,7 @@ pub(crate) fn check_occasion_target_scope(doc: &Document) -> Vec<Diagnostic> {
             spans.extend(
                 l.interps
                     .iter()
-                    .filter(|i| i.raw == OCCASION_TARGET)
+                    .filter(|i| i.raw.contains(OCCASION_TARGET))
                     .map(|i| i.span),
             );
         });

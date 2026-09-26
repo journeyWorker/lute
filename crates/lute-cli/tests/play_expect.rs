@@ -793,8 +793,9 @@ fn play_harness_details() {
     assert!(t.contains("quote the atom"), "{t}");
 }
 
-/// 0.24.0 T3-15: `lute trace --project` settles the "existence is
-/// unverified" note of a foreign quest read against the project's quests.
+/// 0.24.0 T3-15: tracing against the project settles the "existence is
+/// unverified" note of a foreign quest read against the project's quests —
+/// with `--project`, and (0.27 FS-F2) against the nearest manifest as well.
 #[test]
 fn trace_with_project_verifies_quest_existence() {
     let project = temp_dir("trace-quests");
@@ -806,25 +807,20 @@ fn trace_with_project_verifies_quest_existence() {
          @hypnos{when=\"quest.firstEscape.state == 'active'\"}: Running.\n\
          @hypnos{when=\"quest.firstEscap.state == 'active'\"}: Typo.\n",
     );
-    let out = lute(&["trace", scene.to_str().unwrap()]);
-    let t = text(&out);
-    assert!(
-        t.contains("quest `firstEscape`'s existence is unverified"),
-        "{t}"
-    );
-    let out = lute(&[
-        "trace",
-        scene.to_str().unwrap(),
-        "--project",
-        project.to_str().unwrap(),
-    ]);
-    let t = text(&out);
-    assert_eq!(out.status.code(), Some(0), "{t}");
-    assert!(!t.contains("existence is unverified"), "{t}");
-    assert!(
-        t.contains("quest `firstEscap` is declared by no quest document of the project — did you mean `firstEscape`?"),
-        "{t}"
-    );
+    let scene = scene.to_str().unwrap();
+    for args in [
+        vec!["trace", scene],
+        vec!["trace", scene, "--project", project.to_str().unwrap()],
+    ] {
+        let out = lute(&args);
+        let t = text(&out);
+        assert_eq!(out.status.code(), Some(0), "{t}");
+        assert!(!t.contains("existence is unverified"), "{t}");
+        assert!(
+            t.contains("quest `firstEscap` is declared by no quest document of the project — did you mean `firstEscape`?"),
+            "{t}"
+        );
+    }
 }
 
 /// 0.24.0 T3-11: an `<on event>` handler of a quest an engine write already
@@ -1133,5 +1129,41 @@ fn a_transcript_needle_matches_line_attributes_and_a_miss_quotes_a_real_line() {
         if code == 1 {
             assert!(t.contains(nearest), "{t}");
         }
+    }
+}
+
+/// 0.27 prerelease OT-F-2: a needle whose attribute block names what no
+/// presented line can carry — a misspelt key, a value outside its domain —
+/// is refused with a did-you-mean before anything plays, in play and test
+/// alike. It used to make `transcriptLacks` hold although the line was said.
+#[test]
+fn a_needle_attribute_no_line_can_carry_is_refused_with_a_did_you_mean() {
+    let project = bridge_project(
+        "needle-vocab",
+        &[(
+            "scenes/probe/said.lute",
+            "---\nkind: scene\nid: probe.said\ntitle: Said\non: hubVisit\npriority: 99\n---\n\n\
+             ## Said\n\n@narrator{emotion=\"delighted\"}: The lamp is lit.\n",
+        )],
+    );
+    for (block, hint) in [
+        ("emotoin=\"delighted\"", "did you mean `emotion`?"),
+        ("emotion=\"delightd\"", "did you mean `delighted`?"),
+    ] {
+        let needle = format!("['@narrator{{{block}}}: The lamp is lit.']");
+        let out = scenario_test(
+            &project,
+            &format!("file: ../scenes/probe/said.lute\nexpect:\n  transcriptLacks: {needle}\n"),
+        );
+        let t = text(&out);
+        assert_eq!(out.status.code(), Some(1), "{t}");
+        assert!(t.contains("E-TEST-NEEDLE") && t.contains(hint), "{t}");
+        let out = play_in(
+            &project,
+            &format!("steps:\n  - occasion: hubVisit\nexpect:\n  transcriptLacks: {needle}\n"),
+        );
+        let t = text(&out);
+        assert_eq!(out.status.code(), Some(2), "{t}");
+        assert!(t.contains(hint), "{t}");
     }
 }

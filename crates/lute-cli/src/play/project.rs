@@ -7,6 +7,7 @@ use std::process::ExitCode;
 
 use lute_compile::Artifact;
 use lute_manifest::schema::OccasionDecl;
+use lute_trace::exec::record::NeedleVocab;
 use lute_trace::exec::session::ExecProject;
 use lute_trace::exec::BridgeReads;
 
@@ -32,7 +33,9 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
     match crate::manifests::validate_manifests_under(project_dir) {
         Ok(mut verdicts) => {
             crate::manifests::mark_inert_under(&mut verdicts, project_dir);
-            if crate::manifests::report_and_gate(&verdicts) {
+            if crate::manifests::report_and_gate(&verdicts)
+                | crate::manifests::gate_sequences(&verdicts)
+            {
                 return Err(ExitCode::from(1));
             }
         }
@@ -61,6 +64,7 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
     let mut bridge_types = BridgeReads::default();
     let cache = crate::InputCache::default();
     let mut display_names: BTreeMap<String, String> = BTreeMap::new();
+    let mut needles = NeedleVocab::default();
 
     for (file, base) in &reconciled.per_doc {
         if crate::compile_all::is_component_file(file) {
@@ -96,6 +100,7 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
             }
         }
         bridge_types = bridge_types.with_result_types(&built.input.snapshot);
+        needles.union(NeedleVocab::of(&built.input, &built.meta));
         let gate = crate::gate_for_doc(&reconciled, file, base);
         match lute_compile::compile_with_check(&built.input, gate, &identity) {
             Ok(artifact) => {
@@ -122,7 +127,7 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
         return Err(ExitCode::from(1));
     }
 
-    ExecProject::assemble(
+    let mut project = ExecProject::assemble(
         &compiled,
         occasions,
         world_events,
@@ -134,7 +139,14 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
             eprintln!("{line}");
         }
         ExitCode::from(code)
-    })
+    })?;
+    project.needles = needles;
+    project.sequence_after = lute_manifest::project::load_project(project_dir)
+        .ok()
+        .flatten()
+        .map(|c| lute_check::sequence::derived_afters(&c.defaults, &project.occasions))
+        .unwrap_or_default();
+    Ok(project)
 }
 
 /// Compile the project a play runs over ([`compile_project`]); `dir` must be

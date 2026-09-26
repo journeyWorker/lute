@@ -41,7 +41,7 @@ use lute_syntax::ast::{
 };
 
 use crate::component_import::{ComponentDef, ComponentSet};
-use lute_manifest::schema::DefParam;
+use lute_manifest::schema::{DefParam, OccasionDecl};
 
 /// Beat template misuse (dsl 0.27.0 §6).
 pub const E_TEMPLATE: &str = "E-TEMPLATE";
@@ -60,12 +60,69 @@ pub const TEMPLATE_KEYS: &[&str] = &[
 const CEL_KEYS: &[&str] = &["when", "spentBy"];
 
 /// A component's `beat:` header template (dsl 0.27.0 §6): each declared key
-/// with its raw text, in declaration order, and the `beat:` key's span in
-/// the component file.
+/// in declaration order, and the `beat:` key's span in the component file.
+/// `faulty` when the header drew an `E-TEMPLATE` (a key that is not a
+/// header key, a value that is not text, a `@name` no param declares): its
+/// uses then derive what is sound and stay silent about the rest — the
+/// fault is reported once, here.
 #[derive(Clone, Debug)]
 pub struct BeatTemplate {
-    pub keys: Vec<(String, String)>,
+    pub keys: Vec<TemplateKey>,
     pub span: Span,
+    pub faulty: bool,
+}
+
+/// One `beat:` header key: its name, raw text, and the key's span in the
+/// component file.
+#[derive(Clone, Debug)]
+pub struct TemplateKey {
+    pub key: String,
+    pub raw: String,
+    pub span: Span,
+}
+
+impl TemplateKey {
+    /// A value every use derives unchanged: no `@param` in it, and not a
+    /// condition (a condition's `@name` may be a def of the host).
+    fn fixed(&self) -> bool {
+        !CEL_KEYS.contains(&self.key.as_str()) && at_refs(&self.raw).is_empty()
+    }
+
+    /// What is wrong with a [`Self::fixed`] value on its own — its shape
+    /// (`crate::bundles::value_faults`) and, for `on`, the occasion
+    /// vocabulary — anchored at `span`. Empty for a value that depends on
+    /// the use.
+    fn faults(&self, occasions: &BTreeMap<String, OccasionDecl>, span: Span) -> Vec<Diagnostic> {
+        if !self.fixed() {
+            return Vec::new();
+        }
+        let mut out = crate::bundles::value_faults(&self.key, &self.raw, span);
+        if self.key == "on" && out.is_empty() {
+            crate::beats::check_occasion(&self.raw, span, None, occasions, Layer::Logic, &mut out);
+        }
+        out
+    }
+}
+
+/// dsl 0.27.0 §6: every header value the uses derive unchanged, judged once
+/// in the template component — at the header key, not at each use (a use
+/// drops a faulty value, see [`expand_beat_templates`]). A value with a
+/// `@param` depends on the argument and is judged at each use.
+pub fn check_template_header(
+    template: &BeatTemplate,
+    occasions: &BTreeMap<String, OccasionDecl>,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for k in &template.keys {
+        for mut d in k.faults(occasions, k.span) {
+            d.message = format!(
+                "template header `beat.{}` (every `<beat use=…>` derives it): {}",
+                k.key, d.message
+            );
+            out.push(d);
+        }
+    }
+    out
 }
 
 fn diag(message: String, span: Span) -> Diagnostic {
@@ -117,6 +174,95 @@ fn substitute(raw: &str, args: &BTreeMap<String, String>) -> String {
     out
 }
 
+/// A condition's text with every bound `@param` replaced, conjunct by
+/// top-level `&&` conjunct: a conjunct that held a `@param` and comes out
+/// empty or `true` (an optional extra condition left at its default) is
+/// dropped, so `!holds(defeated(@who)) && (@only)` with `only` empty reads
+/// `!holds(defeated(r3))`, never `… && (true)`. A condition whose every
+/// conjunct drops is empty — the key is then omitted.
+fn substitute_condition(raw: &str, args: &BTreeMap<String, String>) -> String {
+    let parts = top_level_and(raw);
+    let vacuous = |part: &str| {
+        !at_refs(part).is_empty() && matches!(unparen(&substitute(part, args)), "" | "true")
+    };
+    if !parts.iter().any(|p| vacuous(p)) {
+        return substitute(raw, args);
+    }
+    let kept: Vec<String> = parts
+        .into_iter()
+        .filter(|p| !vacuous(p))
+        .map(|p| substitute(p, args).trim().to_string())
+        .collect();
+    kept.join(" && ")
+}
+
+/// `s` split at its top-level `op` (`&&` / `||`, outside parentheses,
+/// brackets, braces and quotes).
+fn top_level_split<'s>(s: &'s str, op: &[u8; 2]) -> Vec<&'s str> {
+    let b = s.as_bytes();
+    let (mut depth, mut quote, mut start, mut i) = (0i32, None::<u8>, 0, 0);
+    let mut out = Vec::new();
+    while i < b.len() {
+        let c = b[i];
+        match quote {
+            Some(_) if c == b'\\' => i += 1,
+            Some(q) if c == q => quote = None,
+            Some(_) => {}
+            None => match c {
+                b'"' | b'\'' => quote = Some(c),
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => depth -= 1,
+                _ if depth == 0 && b[i..].starts_with(op) => {
+                    out.push(&s[start..i]);
+                    start = i + 2;
+                    i += 1;
+                }
+                _ => {}
+            },
+        }
+        i += 1;
+    }
+    out.push(&s[start..]);
+    out
+}
+
+/// The top-level `&&` conjuncts of `s` — `s` whole when a top-level `||`
+/// or `?` binds looser than `&&` and splitting would change its meaning.
+fn top_level_and(s: &str) -> Vec<&str> {
+    if top_level_split(s, b"||").len() > 1 || s.contains('?') {
+        return vec![s];
+    }
+    top_level_split(s, b"&&")
+}
+
+/// `s` trimmed, without the parentheses that wrap all of it.
+fn unparen(s: &str) -> &str {
+    let mut s = s.trim();
+    while let Some(inner) = s.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
+        if !balanced(inner) {
+            break;
+        }
+        s = inner.trim();
+    }
+    s
+}
+
+/// Every `(` in `s` closes before it ends, and no `)` closes early.
+fn balanced(s: &str) -> bool {
+    let mut depth = 0i32;
+    for c in s.bytes() {
+        match c {
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            _ => {}
+        }
+        if depth < 0 {
+            return false;
+        }
+    }
+    depth == 0
+}
+
 /// Lift a component's `beat:` value (dsl 0.27.0 §6). `params` are the
 /// component's declared params: a `@name` in a non-condition key must name
 /// one (in `when:`/`spentBy:` it may also be a `@def` of the host).
@@ -134,7 +280,16 @@ pub fn parse_beat_template(
                 .to_string(),
             span,
         ));
-        return (None, diags);
+        // Still a template: its uses are reported here, not each at its use.
+        let keys = Vec::new();
+        return (
+            Some(BeatTemplate {
+                keys,
+                span,
+                faulty: true,
+            }),
+            diags,
+        );
     };
     let mut keys = Vec::new();
     for (k, v) in map {
@@ -175,21 +330,40 @@ pub fn parse_beat_template(
             }
         };
         if !CEL_KEYS.contains(&key) {
-            for (_, _, name) in at_refs(&text) {
-                if !params.iter().any(|p| p.name == name) {
-                    diags.push(diag(
-                        format!(
-                            "`beat.{key}` names `@{name}`, but the component declares no param \
-                             `{name}` — declare it under `params:` (dsl 0.27.0 §6)"
-                        ),
-                        at,
-                    ));
-                }
+            let unknown: Vec<&str> = at_refs(&text)
+                .into_iter()
+                .map(|(_, _, name)| name)
+                .filter(|name| !params.iter().any(|p| p.name == *name))
+                .collect();
+            for name in &unknown {
+                let hint = lute_manifest::suggest::nearest(
+                    name,
+                    params.iter().map(|p| p.name.as_str()),
+                    2,
+                )
+                .map(|n| format!("did you mean `@{n}`? Or declare"))
+                .unwrap_or_else(|| "declare".to_string());
+                diags.push(diag(
+                    format!(
+                        "`beat.{key}` names `@{name}`, but the component declares no param \
+                         `{name}` — {hint} it under `params:` (dsl 0.27.0 §6)"
+                    ),
+                    at,
+                ));
+            }
+            // A value its uses cannot substitute derives nothing.
+            if !unknown.is_empty() {
+                continue;
             }
         }
-        keys.push((key.to_string(), text));
+        keys.push(TemplateKey {
+            key: key.to_string(),
+            raw: text,
+            span: at,
+        });
     }
-    (Some(BeatTemplate { keys, span }), diags)
+    let faulty = !diags.is_empty();
+    (Some(BeatTemplate { keys, span, faulty }), diags)
 }
 
 /// An argument's text in a header: a literal as written, a `@def` as its
@@ -272,14 +446,27 @@ fn component_attr(name: &str, at: Span) -> Attr {
 /// Desugar every `<beat use="…">` of `doc` (dsl 0.27.0 §6; see the module
 /// doc). Runs once per beat (`TemplateUse::expanded`), so every surface may
 /// call it on the document it parsed; the diagnostics come with the first
-/// expansion. `components` is the document's resolved `components:`.
-pub fn expand_beat_templates(doc: &mut Document, components: &ComponentSet) -> Vec<Diagnostic> {
+/// expansion. `components` is the document's resolved `components:`;
+/// `occasions` the resolved vocabulary a fixed `on:` is judged against.
+///
+/// A header value no use can change ([`TemplateKey::fixed`]) that is faulty
+/// is [`check_template_header`]'s, reported once in the component: the use
+/// derives nothing for that key. Such a use — and one of a faulty header,
+/// an unknown component or one with no `beat:` — is marked
+/// `TemplateUse::failed`, so the checks say nothing about what the template
+/// would have supplied.
+pub fn expand_beat_templates(
+    doc: &mut Document,
+    components: &ComponentSet,
+    occasions: &BTreeMap<String, OccasionDecl>,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for beat in &mut doc.beats {
         let Some(tu) = beat.template.as_mut().filter(|t| !t.expanded) else {
             continue;
         };
         tu.expanded = true;
+        tu.failed = true;
         let (name, at) = (tu.name.clone(), tu.span);
         let Some(def) = components.table.get(&name) else {
             let hint = lute_manifest::suggest::nearest(
@@ -312,6 +499,7 @@ pub fn expand_beat_templates(doc: &mut Document, components: &ComponentSet) -> V
             beat.attrs.clear();
             continue;
         };
+        let mut failed = template.faulty;
         let args = std::mem::take(&mut beat.attrs);
         // Each param's text: the use's argument, else its `default:`.
         let mut text: BTreeMap<String, String> = BTreeMap::new();
@@ -330,8 +518,13 @@ pub fn expand_beat_templates(doc: &mut Document, components: &ComponentSet) -> V
             }
             text.insert(p.clone(), t);
         }
-        for (key, raw) in &template.keys {
+        for k in &template.keys {
+            let (key, raw) = (&k.key, &k.raw);
             if written(beat, key) {
+                continue;
+            }
+            if !k.faults(occasions, at).is_empty() {
+                failed = true;
                 continue;
             }
             if !CEL_KEYS.contains(&key.as_str()) {
@@ -350,11 +543,18 @@ pub fn expand_beat_templates(doc: &mut Document, components: &ComponentSet) -> V
                     continue;
                 }
             }
-            let value = substitute(raw, &text);
+            let value = if CEL_KEYS.contains(&key.as_str()) {
+                substitute_condition(raw, &text)
+            } else {
+                substitute(raw, &text)
+            };
             if value.trim().is_empty() {
                 continue;
             }
             set_key(beat, key, value, at);
+        }
+        if let Some(tu) = beat.template.as_mut() {
+            tu.failed = failed;
         }
         let mut attrs = vec![component_attr(&name, at)];
         attrs.extend(args);

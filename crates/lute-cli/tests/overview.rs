@@ -205,7 +205,10 @@ fn calendar_evaluates_every_cell_with_winner_shadowed_and_holes() {
     let never = v["neverEligible"].as_array().unwrap();
     assert_eq!(never.len(), 1, "{never:?}");
     assert_eq!(never[0]["id"], "inn.again");
-    assert_eq!(never[0]["reasons"][0], "after: prerequisite not satisfied");
+    assert_eq!(
+        never[0]["reasons"][0],
+        "after: visited(\"inn.ada\") is not satisfied"
+    );
 }
 
 #[test]

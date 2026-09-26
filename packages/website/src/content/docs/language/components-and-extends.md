@@ -298,7 +298,7 @@ left the stage is `W-STAGE-ABSENT`.
 `@@x` for a param that is not a `speaker` param, for a name that is no param, or in a document that
 is no component is `E-COMPONENT-ARG`:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="copied verbatim from lute check output; since the 0.27 module split the message literals live in crates/lute-check/src/check/component_body.rs, which names the code through the E_COMPONENT_ARG constant rather than a string literal, so the scraper cannot pair quote and code" -->
 ```
 ./components/challenge.component.lute:11:1: error [E-COMPONENT-ARG] `@@taunt:` speaks as the cast member a `speaker` param names, and `taunt` is not a `speaker` param — declare `taunt: speaker`
 ./scenes/pier.lute:9:1: error [E-COMPONENT-ARG] `@@mira:` speaks as a component's `speaker` param `mira`, and this document is no component — write the cast id (`@mira:`)

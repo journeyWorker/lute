@@ -76,7 +76,10 @@ pub fn occurrences(cel: &str) -> Vec<Occurrence> {
             }
             _ => {}
         }
-        if cel[i..].starts_with(OCCASION_TARGET)
+        // Compare bytes, not a `str` slice: `i` walks bytes, and a
+        // multi-byte char outside a literal (`≥`, `‘`, Hangul) puts it
+        // inside a char (FS-F1).
+        if b[i..].starts_with(OCCASION_TARGET.as_bytes())
             && (i == 0 || !(ident(b[i - 1]) || b[i - 1] == b'.' || b[i - 1] == b'@'))
             && b.get(i + OCCASION_TARGET.len())
                 .is_none_or(|&c| !(ident(c) || c == b'.'))
@@ -407,6 +410,72 @@ pub fn payload_decls(
     (decls, diags)
 }
 
+/// 0.27 prerelease G-6: a `payload:` field typed `{ domain: K }` /
+/// `{ entity: K }` of an occasion this document's beats answer names a
+/// declared enum or entity kind — else `E-DOMAIN-UNKNOWN` with a
+/// did-you-mean, reported at the plugin's `payload:` line when the CLI
+/// placed it (`check-project` folds the importers' copies into one), else
+/// at the answering beat's `on`.
+pub(crate) fn check_payload_domains(
+    doc: &lute_syntax::ast::Document,
+    beat: Option<&crate::beats::BeatMeta>,
+    occasions: &Occasions,
+    domains: &std::collections::BTreeMap<String, lute_manifest::snapshot::Domain>,
+    origins: &crate::rel_schema::PluginOrigins,
+) -> Vec<lute_core_span::Diagnostic> {
+    use lute_manifest::types::Type;
+    let mut ons: Vec<(&str, lute_core_span::Span)> = Vec::new();
+    if let Some(b) = beat {
+        ons.push((b.on.as_str(), doc.meta.span));
+    }
+    let entries = doc.entries.iter().filter_map(|e| e.on.as_ref());
+    let beats = doc.beats.iter().filter_map(|b| b.on.as_ref());
+    ons.extend(entries.chain(beats).map(|(on, span)| (on.as_str(), *span)));
+    let names: Vec<String> = domains.keys().cloned().collect();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    for (on, span) in ons {
+        if !seen.insert(on) {
+            continue;
+        }
+        for (field, ty) in occasions.get(on).map(|d| &d.payload).into_iter().flatten() {
+            let (Type::Domain(k) | Type::Entity(k)) = ty else {
+                continue;
+            };
+            if domains.contains_key(k) {
+                continue;
+            }
+            let form = if matches!(ty, Type::Entity(_)) {
+                "entity"
+            } else {
+                "domain"
+            };
+            let d = lute_core_span::Diagnostic {
+                code: "E-DOMAIN-UNKNOWN".to_string(),
+                severity: lute_core_span::Severity::Error,
+                message: format!(
+                    "occasion `{on}`'s payload field `{field}` is typed `{{ {form}: {k} }}`, but \
+                     `{k}` is not a declared enum or entity kind{}",
+                    crate::rel_schema::member_hint(k, &names)
+                ),
+                span,
+                layer: lute_core_span::Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            };
+            out.push(crate::rel_schema::at_plugin_origin(
+                d,
+                origins
+                    .payloads
+                    .get(&crate::rel_schema::effect_origin_key(on, field)),
+            ));
+        }
+    }
+    out
+}
+
 /// The document's [`OccasionScopes`]: a scene whose own beat targets a kind
 /// covers the whole document; each entry / bundle beat targeting a kind, or
 /// presented once per member (`for="kind:<kind>"`), covers its element.
@@ -494,5 +563,17 @@ mod tests {
         assert_eq!(isset[0].position, Position::Value);
         assert!(!binds_target("occasion.target in ['a', 'b']"));
         assert!(binds_target("!holds(owned(occasion.target))"));
+    }
+
+    /// FS-F1: a multi-byte char outside a literal (`≥`, a curly quote,
+    /// Hangul) is walked past, not sliced into.
+    #[test]
+    fn multibyte_text_outside_literals() {
+        assert!(occurrences("run.clues ≥ 2 && run.who == ‘ruben’").is_empty());
+        assert!(occurrences("run.who == 루벤").is_empty());
+        assert_eq!(
+            instantiate("user.bond[occasion.target] ≥ 2 — ok", "aria"),
+            "user.bond.aria ≥ 2 — ok"
+        );
     }
 }

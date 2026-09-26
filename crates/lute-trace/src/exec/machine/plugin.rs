@@ -276,13 +276,17 @@ impl<D: Driver> Machine<D> {
                 // An unanswered result (D7), or a fold over no number.
                 self.write(path, Value::Unknown);
             } else {
-                let rec = json!({
+                let mut rec = json!({
                     "addr": addr(cmd),
                     "kind": "set",
                     "path": path,
                     "value": value_to_json(&value),
                     "effectOf": tag,
                 });
+                // ML-F8: the write restates the answered bridge result.
+                if let Some(field) = from.get("bridgeResult") {
+                    rec["bridgeResult"] = field.clone();
+                }
                 self.write_recorded(path, value, rec);
             }
             if self.stopped() {

@@ -106,6 +106,11 @@ pub struct SchemaImports {
     /// by file (canonical path order), with the positioned span of its
     /// `seasons:` key there — where a problem with a `live:` is reported.
     pub seasons: Vec<(PathBuf, crate::season::Seasons, Span)>,
+    /// dsl 0.27.0 §4: where the installed plugins declare what a document's
+    /// check judges but cannot place — filled by the CLI, which knows the
+    /// project's plugins directory; empty on every other surface (a fault
+    /// is then reported at its use, as before).
+    pub plugin_origins: crate::rel_schema::PluginOrigins,
     pub rel: RelImports,
 }
 
@@ -120,6 +125,10 @@ pub struct SchemaImports {
 #[derive(Clone, Debug, Default)]
 pub struct RelImports {
     pub kinds: BTreeMap<String, EntityKindDecl>,
+    /// The names of [`Self::kinds`] in declaration order: file by file
+    /// (shallowest import first, then path), each file's `entities:` top to
+    /// bottom — the order a union kind lists its sub-kinds' members in.
+    pub kind_order: Vec<String>,
     pub relations: BTreeMap<String, RelationDecl>,
     /// Project `enums:` per name (kept distinct from `domains` so relation-arg
     /// resolution can distinguish enum vs kind vs plugin domain).
@@ -691,9 +700,18 @@ pub fn resolve_imports(
         .collect();
     // dsl 0.26.0 §2.3: a parent's domain holds its sub-kinds' members too
     // (`rel.kinds` keeps the lists as declared; `build_rel_vocab` implies
-    // them once the document's own decls are overlaid).
+    // them once the document's own decls are overlaid), in declaration
+    // order: file by file, shallowest first, then by path.
+    let mut files: Vec<(&PathBuf, &ParsedDoc)> = parsed.iter().collect();
+    files.sort_by_key(|(p, _)| (dist.get(*p).copied().unwrap_or(0), *p));
+    let mut kind_order: Vec<String> = Vec::new();
+    for name in files.iter().flat_map(|(_, d)| &d.rel_kinds.order) {
+        if rel_kinds.contains_key(name) && !kind_order.contains(name) {
+            kind_order.push(name.clone());
+        }
+    }
     let mut implied_kinds = rel_kinds.clone();
-    lute_manifest::relations::imply_sub_kind_members(&mut implied_kinds);
+    lute_manifest::relations::imply_sub_kind_members(&mut implied_kinds, &kind_order);
     domains.extend(kinds_to_domains(&implied_kinds));
 
     fact_entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
@@ -814,6 +832,7 @@ pub fn resolve_imports(
             (&mut origins.state, &doc.origins.state),
             (&mut origins.members, &doc.origins.members),
             (&mut origins.cast, &doc.origins.cast),
+            (&mut origins.labels, &doc.origins.labels),
         ] {
             for (k, v) in src {
                 dst.entry(k.clone()).or_insert_with(|| v.clone());
@@ -835,8 +854,10 @@ pub fn resolve_imports(
         clock,
         terminal,
         seasons,
+        plugin_origins: Default::default(),
         rel: RelImports {
             kinds: rel_kinds,
+            kind_order,
             relations: rel_relations,
             enums: rel_enums
                 .iter()
@@ -1257,6 +1278,17 @@ fn read_and_parse(
             .filter_map(|c| {
                 let span = crate::rel_schema::cast_entry_span(&meta, &c.id)?;
                 Some((c.id.clone(), here(span)))
+            })
+            .collect(),
+        labels: tm
+            .rel_kinds
+            .kinds
+            .keys()
+            .chain(tm.rel_kinds.add_labels.keys())
+            .flat_map(|k| {
+                crate::rel_schema::kind_label_spans(&meta, k)
+                    .into_iter()
+                    .map(|(m, span)| (crate::rel_schema::member_origin_key(k, &m), here(span)))
             })
             .collect(),
     };

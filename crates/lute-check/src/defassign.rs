@@ -441,6 +441,16 @@ fn check_interp_reads(
 ) {
     for interp in interps {
         match interp.kind {
+            // `{{user.bond[occasion.target]}}` reads through its CEL, like a guard.
+            InterpKind::Path
+                if crate::cel_paths::occasion_indexed_family(&interp.raw).is_some() =>
+            {
+                for u in uses_of(&interp.raw, interp.span, cx) {
+                    if u.role == PathRole::Read {
+                        check_read(&u, cx, assigned, diags, reads);
+                    }
+                }
+            }
             InterpKind::Path => check_read(
                 &Use::plain(interp.raw.clone(), interp.span),
                 cx,
