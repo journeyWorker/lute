@@ -1,0 +1,8 @@
+An entity kind accepts unknown keys silently. world.schema.yaml declares
+  room: { members: [...], lables: { ... } }     # a typo, or `labels:`
+and check-project reports nothing (no E-ENTITY-KIND-SHAPE / unknown key), while
+enum declarations and plugin exports reject unknown keys. With `labels:`
+spelled right it is also silently ignored: `{{occasion.target}}` and
+`{{run.stalker}}` (typed { domain: room }) still render the raw ids.
+  lute check-project .                  -> ok, 0 warnings
+  lute play . --script plays.yaml       -> "You step into chapel." (no label)

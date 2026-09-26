@@ -1,0 +1,9 @@
+---
+component: hello
+params:
+  who: string
+---
+
+## Hello
+
+@narrator: Hello, {{@who}}.

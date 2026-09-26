@@ -1,0 +1,30 @@
+---
+kind: scene
+id: mira.s01ep01
+title: A Quiet Table
+pov: fixer
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+state:
+  scene.knowsMira: { type: bool, default: false }
+  run.metMira: { type: bool }
+---
+
+## The Counter
+
+@narrator: The diner is empty at this hour, and Mira likes it that way.
+
+@mira{emotion="content" variant="0"}: {{userName}}, you made it.
+
+@mira{mono}: I should not be this pleased about a coffee order.
+
+<branch id="orderChoice">
+  <choice id="black" label="Order it black">
+    @mira{emotion="content" variant="0"}: Good. No nonsense in a cup.
+  </choice>
+  <choice id="familiar" label="Say hi like an old friend" when="scene.knowsMira">
+    @mira{emotion="surprised" variant="0"}: You remembered. That's new.
+  </choice>
+</branch>
+
+::set{run.metMira = true}

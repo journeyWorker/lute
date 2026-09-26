@@ -1,0 +1,9 @@
+---
+kind: scene
+id: end
+on: hubVisit
+---
+
+## End
+
+::use{component="ending" kind="tragic"}

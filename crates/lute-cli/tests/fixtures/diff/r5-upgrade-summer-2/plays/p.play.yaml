@@ -1,0 +1,6 @@
+# Sol is happy on the roof; the script asserts the sad reading never plays.
+steps:
+  - occasion: visit
+expect:
+  transcriptLacks:
+    - '@sol{emotion="sad"}: Vega, Deneb, Altair.'

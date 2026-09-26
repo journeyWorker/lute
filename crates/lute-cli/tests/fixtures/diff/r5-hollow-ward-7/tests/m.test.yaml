@@ -1,0 +1,4 @@
+file: ../m.lute
+visited: [find]
+expect:
+  transcriptContains: ["@narrator: (match arm) He is here."]

@@ -1,0 +1,19 @@
+---
+kind: scene
+id: m
+on: poke
+defs:
+  d: "visited('find')"
+---
+
+## M
+
+@narrator{when="@d"}: (line guard) He is here.
+<match on="@d">
+  <when is="true">
+    @narrator: (match arm) He is here.
+  </when>
+  <otherwise>
+    @narrator: (match otherwise) Alone.
+  </otherwise>
+</match>

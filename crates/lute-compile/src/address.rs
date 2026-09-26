@@ -9,8 +9,9 @@ use std::collections::BTreeMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::project::IdentityTemplates;
 
-use crate::cfg::{Label, Rec};
+use crate::cfg::{Finished, Label, Rec};
 use crate::ir::Command;
+use crate::source_map::{SourceMap, SourceMarker};
 
 /// One addressing unit's emitted records + labels left trailing past its
 /// end, plus the lineId-identity PREFIX for this unit (§4/§5.6, D7): a scene
@@ -31,6 +32,23 @@ pub struct ShotRecords {
     /// NEXT shot's first record — exactly how a `::next` "joins a later
     /// shot" (0.12.0 spec) actually works at runtime, no special case.
     pub trailing_named: Vec<String>,
+    /// Source-only steps after the unit's last record (a mapping emitter's
+    /// [`Finished::trailing_markers`]); empty when not mapping.
+    pub trailing_markers: Vec<SourceMarker>,
+}
+
+impl ShotRecords {
+    /// One unit from what its emitter left.
+    pub fn new(shot: i64, prefix: String, finished: Finished) -> Self {
+        ShotRecords {
+            shot,
+            prefix,
+            recs: finished.recs,
+            trailing: finished.trailing,
+            trailing_named: finished.trailing_named,
+            trailing_markers: finished.trailing_markers,
+        }
+    }
 }
 
 /// Assign every `addr`, resolve every symbolic target, and stamp identity.
@@ -42,6 +60,16 @@ pub struct ShotRecords {
 pub fn assign_addresses(
     shots: Vec<ShotRecords>,
     identity: &IdentityTemplates,
+) -> (Vec<Command>, Vec<Diagnostic>) {
+    assign_addresses_into(shots, identity, None)
+}
+
+/// [`assign_addresses`], also filing every mapped record's origin under its
+/// final `addr` in `map` (`by_addr`, `trailing`) when one is given.
+pub(crate) fn assign_addresses_into(
+    shots: Vec<ShotRecords>,
+    identity: &IdentityTemplates,
+    mut map: Option<&mut SourceMap>,
 ) -> (Vec<Command>, Vec<Diagnostic>) {
     // Pass 0 (0.8.0, adoption G2): size BOTH addr segments for the WHOLE
     // artifact — a fold over every unit BEFORE any addr is assigned, so a
@@ -101,7 +129,11 @@ pub fn assign_addresses(
         }
         let count = shot.recs.len();
         for (i, mut rec) in shot.recs.into_iter().enumerate() {
-            *rec.cmd.addr_mut() = addr_of(shot.shot, i, shot_w, idx_w);
+            let addr = addr_of(shot.shot, i, shot_w, idx_w);
+            if let (Some(map), Some(origin)) = (map.as_deref_mut(), rec.origin.take()) {
+                map.by_addr.insert(addr.clone(), origin);
+            }
+            *rec.cmd.addr_mut() = addr;
             rec.cmd.for_each_target(&mut |t: &mut String| {
                 if let Some(n) = Label::parse_sym(t) {
                     match labels.get(&n) {
@@ -126,6 +158,11 @@ pub fn assign_addresses(
                 }
             });
             out.push(rec.cmd);
+        }
+        if let Some(map) = map.as_deref_mut() {
+            if !shot.trailing_markers.is_empty() {
+                map.trailing.insert(shot.shot, shot.trailing_markers);
+            }
         }
         segments.push((shot.prefix, count));
     }
@@ -385,6 +422,7 @@ mod tests {
                 labels: Vec::new(),
                 named: Vec::new(),
                 cmd: line("fixer", Some("0010")),
+                origin: None,
             })
             .collect();
         if converge {
@@ -401,6 +439,7 @@ mod tests {
             recs,
             trailing: if converge { vec![Label(0)] } else { Vec::new() },
             trailing_named: Vec::new(),
+            trailing_markers: Vec::new(),
         }
     }
 

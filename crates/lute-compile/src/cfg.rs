@@ -4,7 +4,10 @@
 //! addressing pass (Task 11) rewrites every `"@<n>"` to a concrete `addr` —
 //! labels are never serialized.
 
+use lute_core_span::Span;
+
 use crate::ir::Command;
+use crate::source_map::{SourceInfo, SourceMarker};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Label(pub u32);
@@ -35,6 +38,9 @@ pub struct Rec {
     /// target a label in a LATER shot — see that function's doc comment.
     pub named: Vec<String>,
     pub cmd: Command,
+    /// Where the record came from — `Some` only when the emitter maps
+    /// ([`Emitter::mapped`], `compile_mapped`); never serialized.
+    pub origin: Option<SourceInfo>,
 }
 
 /// Per-shot record emitter. Anonymous numeric [`Label`]s never cross shots
@@ -47,9 +53,30 @@ pub struct Emitter {
     pending: Vec<Label>,
     pending_named: Vec<String>,
     next: u32,
+    /// `Some` when this emitter records a [`SourceInfo`] per record.
+    map: Option<MapState>,
+}
+
+/// The source-map bookkeeping of a mapping [`Emitter`].
+#[derive(Default)]
+struct MapState {
+    /// Source-only steps waiting for the next record.
+    markers: Vec<SourceMarker>,
+    /// The `into=` attrs (`path`, span) of the choices being walked: the
+    /// `::set` normalize synthesized from one carries that exact span.
+    into: Vec<(String, Span)>,
 }
 
 impl Emitter {
+    /// An emitter that, when `mapped`, records where every record came from
+    /// (`compile_mapped`); otherwise [`Emitter::default`].
+    pub fn new(mapped: bool) -> Self {
+        Emitter {
+            map: mapped.then(MapState::default),
+            ..Emitter::default()
+        }
+    }
+
     pub fn fresh(&mut self) -> Label {
         let l = Label(self.next);
         self.next += 1;
@@ -68,16 +95,68 @@ impl Emitter {
         self.pending_named.push(id);
     }
 
-    pub fn push(&mut self, cmd: Command) {
+    /// Push `cmd`. `origin` runs only on a mapping emitter.
+    pub fn push(&mut self, cmd: Command, origin: impl FnOnce() -> SourceInfo) {
         let labels = std::mem::take(&mut self.pending);
         let named = std::mem::take(&mut self.pending_named);
-        self.recs.push(Rec { labels, named, cmd });
+        let origin = self.map.as_mut().map(|m| {
+            let mut info = origin();
+            info.before = std::mem::take(&mut m.markers);
+            info
+        });
+        self.recs.push(Rec {
+            labels,
+            named,
+            cmd,
+            origin,
+        });
+    }
+
+    /// Record a source-only step, attached to the next pushed record (or
+    /// trailing past the end). `marker` runs only on a mapping emitter.
+    pub fn marker(&mut self, marker: impl FnOnce() -> SourceMarker) {
+        if let Some(m) = self.map.as_mut() {
+            m.markers.push(marker());
+        }
+    }
+
+    /// Enter / leave a `<choice>` body whose `into=` synthesized a `::set`.
+    pub fn enter_into(&mut self, into: Option<(String, Span)>) {
+        if let (Some(m), Some(into)) = (self.map.as_mut(), into) {
+            m.into.push(into);
+        }
+    }
+
+    pub fn leave_into(&mut self, into: Option<&(String, Span)>) {
+        if let (Some(m), Some(_)) = (self.map.as_mut(), into) {
+            m.into.pop();
+        }
+    }
+
+    /// Whether the `::set` of `path` at `span` is a choice's `into=` sugar.
+    pub fn is_into_sugar(&self, path: &str, span: Span) -> bool {
+        self.map
+            .as_ref()
+            .is_some_and(|m| m.into.iter().any(|(p, s)| p == path && *s == span))
     }
 
     /// The records plus any labels still pending past the last record (an
     /// end-of-shot convergence, plan spec-gap note 2) — anonymous, then
-    /// named (dsl 0.12.0).
-    pub fn finish(self) -> (Vec<Rec>, Vec<Label>, Vec<String>) {
-        (self.recs, self.pending, self.pending_named)
+    /// named (dsl 0.12.0) — and the source-only steps after the last record.
+    pub fn finish(self) -> Finished {
+        Finished {
+            recs: self.recs,
+            trailing: self.pending,
+            trailing_named: self.pending_named,
+            trailing_markers: self.map.map(|m| m.markers).unwrap_or_default(),
+        }
     }
+}
+
+/// What an [`Emitter`] leaves for the addressing pass.
+pub struct Finished {
+    pub recs: Vec<Rec>,
+    pub trailing: Vec<Label>,
+    pub trailing_named: Vec<String>,
+    pub trailing_markers: Vec<SourceMarker>,
 }

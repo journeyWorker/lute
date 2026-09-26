@@ -138,12 +138,28 @@ fn doctor_counts_bundle_beats_answering_an_occasion() {
 /// — standing in for whatever build an editor would find on `PATH`.
 #[cfg(unix)]
 fn fake_lsp(tag: &str, stdout: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let dir = temp_dir(tag);
-    let exe = dir.join("lute-lsp");
-    std::fs::write(&exe, format!("#!/bin/sh\nprintf '{stdout}'\n")).unwrap();
-    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_exe(
+        &dir.join("lute-lsp"),
+        &format!("#!/bin/sh\nprintf '{stdout}'\n"),
+    );
     dir
+}
+
+/// Write an executable script and launch it once. macOS scans a new
+/// executable on its first launch, which under a loaded test run can outlast
+/// doctor's `--version` grace period and read as "no version"; paying that
+/// here keeps the checks below about what the script prints.
+#[cfg(unix)]
+fn write_exe(path: &Path, script: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(path, script).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    Command::new(path)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
 }
 
 #[cfg(unix)]
@@ -236,19 +252,16 @@ fn doctor_flags_a_running_lute_lsp_of_another_build() {
 #[cfg(unix)]
 #[test]
 fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
-    use std::os::unix::fs::PermissionsExt;
     let proj = occasions_project("sibling");
     let ours = env!("CARGO_PKG_VERSION");
     let bin = temp_dir("sibling-bin");
     let lute = bin.join("lute");
     std::fs::copy(BIN, &lute).unwrap();
     let sibling = bin.join("lute-lsp");
-    std::fs::write(
+    write_exe(
         &sibling,
-        format!("#!/bin/sh\n# prerelease build\nprintf 'lute-lsp {ours}\\n'\n"),
-    )
-    .unwrap();
-    std::fs::set_permissions(&sibling, std::fs::Permissions::from_mode(0o755)).unwrap();
+        &format!("#!/bin/sh\n# prerelease build\nprintf 'lute-lsp {ours}\\n'\n"),
+    );
     let global = fake_lsp("sibling-global", &format!("lute-lsp {ours}\\n"));
     let run = |path: &Path| {
         let out = Command::new(&lute)
@@ -282,30 +295,25 @@ fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
 #[cfg(unix)]
 #[test]
 fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
-    use std::os::unix::fs::PermissionsExt;
     let proj = occasions_project("launcher");
     let ours = env!("CARGO_PKG_VERSION");
     let native = temp_dir("launcher-native");
     let lute = native.join("lute");
     std::fs::copy(BIN, &lute).unwrap();
     let sibling = native.join("lute-lsp");
-    std::fs::write(
+    write_exe(
         &sibling,
-        format!("#!/bin/sh\nprintf 'lute-lsp {ours}\\n'\n"),
-    )
-    .unwrap();
-    std::fs::set_permissions(&sibling, std::fs::Permissions::from_mode(0o755)).unwrap();
+        &format!("#!/bin/sh\nprintf 'lute-lsp {ours}\\n'\n"),
+    );
     let launcher_at = |tag: &str, version: &str| {
         let root = temp_dir(tag);
         let pkg = root.join("node_modules/@lute-lang/lute");
         std::fs::create_dir_all(&pkg).unwrap();
         let script = pkg.join("lsp-bin.js");
-        std::fs::write(
+        write_exe(
             &script,
-            format!("#!/bin/sh\nprintf 'lute-lsp {version}\\n'\n"),
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            &format!("#!/bin/sh\nprintf 'lute-lsp {version}\\n'\n"),
+        );
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         std::os::unix::fs::symlink(&script, bin.join("lute-lsp")).unwrap();

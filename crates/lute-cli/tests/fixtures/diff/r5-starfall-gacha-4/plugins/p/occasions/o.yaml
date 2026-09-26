@@ -1,0 +1,2 @@
+occasions:
+  summon: { select: first, target: { prefix: hero, entity: hero } }

@@ -1,0 +1,10 @@
+Parity: a plugin directive's effects.writes ({ op: increment, by: -1 }) is
+applied by `lute play` but not by `lute test` / `lute trace`.
+  lute play . --script p.play.yaml             -> "Sanity 9.", expect holds
+  lute test tests/a.test.yaml --project .      -> FAIL run.sanity expected 9, got 10
+  lute trace scenes/a.lute --project .         -> prints "Sanity 10"
+
+F-06 (same repro): the human transcript prints `::fright (plugin call, not
+invoked)` and no `set run.sanity = 9` line although the write happened; with
+--json the stateDelta has run.sanity 9 but the command record's note says
+"external bridge call — not invoked; bridgeResult effects unresolved".

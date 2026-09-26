@@ -1,0 +1,8 @@
+# A capability plugin that only declares occasions. Add more files under
+# occasions/ as your engine raises more moments.
+id: game.occasions
+version: 0.1.0
+kind: capability
+depends: [ { id: lute.core, range: "^0.0.1" } ]
+exports:
+  occasions: occasions/

@@ -1,0 +1,20 @@
+---
+kind: lore
+id: s
+---
+
+<beat id="limitedGlow" on="summon" target="kind:limited" once="false" priority="2">
+  @narrator: Silver: {{occasion.target}}.
+</beat>
+
+<beat id="goldLight" on="summon" target="kind:ssr" once="false" priority="1">
+  @narrator: Gold: {{occasion.target}}.
+</beat>
+
+<beat id="cyraA" on="summon" target="hero.cyra" once="false" priority="-5">
+  @narrator: Cyra A.
+</beat>
+
+<beat id="cyraB" on="summon" target="hero.cyra" once="false" priority="-6">
+  @narrator: Cyra B.
+</beat>

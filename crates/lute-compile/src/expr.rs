@@ -230,6 +230,117 @@ fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
     IsSynth::Expr(Some(folded))
 }
 
+/// dsl 0.27.0 T1-5(b): the arm's raw CEL condition, for an `is` arm whose
+/// synthesized `expr` does not lower (the subject, or the `test` guard, is
+/// outside the portable profile — a `@def` that expands to `visited('…')`).
+/// The arm's `test` then carries the whole condition, so an engine that
+/// evaluates `test` when `expr` is absent takes the arm the author meant.
+/// Without it the arm shipped an empty `test` and no `expr`: every runtime
+/// read it unknown and fell to `<otherwise>`.
+///
+/// Each alternative becomes `(<subject>) == <literal>` (a range, its two
+/// inclusive bounds), alternatives joined with `||`; a non-empty `test` is
+/// `&&`-joined. `None` for a pattern no CEL text can express: a malformed
+/// alternative (`E-WHEN-RANGE`-gated) or `unset` on a subject that is not a
+/// bare path (`E-WHEN-UNSET-SUBJECT`, reported by the caller).
+pub(crate) fn raw_arm_test(is_raw: &str, test_raw: &str, subject_raw: &str) -> Option<String> {
+    let subject = grouped(subject_raw.trim());
+    let mut alts: Vec<String> = Vec::new();
+    for lit in is_alternatives(is_raw) {
+        let alt = match classify_is_literal(lit).ok()? {
+            IsLiteral::Bool(b) => format!("{subject} == {b}"),
+            IsLiteral::Num(n) => format!("{subject} == {n}"),
+            IsLiteral::Str(s) => format!("{subject} == {}", cel_string(&s)),
+            IsLiteral::Range(range) => match (range.lo, range.hi) {
+                (Some(lo), Some(hi)) => format!("({subject} >= {lo} && {subject} <= {hi})"),
+                (Some(lo), None) => format!("{subject} >= {lo}"),
+                (None, Some(hi)) => format!("{subject} <= {hi}"),
+                (None, None) => return None,
+            },
+            IsLiteral::Unset => match lower_expr(subject_raw) {
+                Some(ExprNode::Path { path }) if is_quest_state_path(&path) => {
+                    format!("{subject} == 'unset'")
+                }
+                Some(ExprNode::Path { path }) => format!("!isSet({path})"),
+                _ => return None,
+            },
+        };
+        alts.push(alt);
+    }
+    if alts.is_empty() {
+        return None;
+    }
+    let is_text = alts.join(" || ");
+    let test = test_raw.trim();
+    Some(match (test.is_empty(), alts.len()) {
+        (true, _) => is_text,
+        (false, 1) => format!("{is_text} && {}", grouped(test)),
+        (false, _) => format!("({is_text}) && {}", grouped(test)),
+    })
+}
+
+/// `text` as one operand: unchanged when a bare path or already one
+/// parenthesized group (a `@def` expands to `(<body>)`), else wrapped.
+fn grouped(text: &str) -> String {
+    let bare_path = !text.is_empty()
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    if bare_path || one_group(text) {
+        text.to_string()
+    } else {
+        format!("({text})")
+    }
+}
+
+/// Whether `text` is `( … )` with the opening parenthesis closed only by the
+/// last character (string literals skipped).
+fn one_group(text: &str) -> bool {
+    if !text.starts_with('(') || !text.ends_with(')') {
+        return false;
+    }
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (i, c) in text.char_indices() {
+        if let Some(q) = quote {
+            match c {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                _ if c == q => quote = None,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '\'' | '"' => quote = Some(c),
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 && i + 1 != text.len() {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    depth == 0
+}
+
+/// A CEL single-quoted string literal for an `is` member.
+fn cel_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' || ch == '\\' {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out.push('\'');
+    out
+}
+
 /// `quest.<id>.state` exactly (a non-empty id; `quest.<id>.objectives.…` and
 /// `activatedAt` are not the lifecycle enum).
 fn is_quest_state_path(path: &str) -> bool {
@@ -661,5 +772,42 @@ mod tests {
                 "{is}"
             );
         }
+    }
+
+    // dsl 0.27.0 T1-5(b): an `is` arm whose expr cannot lower carries its
+    // whole condition as raw CEL in `test`.
+    #[test]
+    fn raw_arm_test_compares_an_unportable_subject_per_alternative() {
+        assert_eq!(
+            raw_arm_test("calm | 2..4 | true", "", "(visited('x'))").as_deref(),
+            Some(
+                "(visited('x')) == 'calm' || ((visited('x')) >= 2 && (visited('x')) <= 4) \
+                 || (visited('x')) == true"
+            )
+        );
+    }
+
+    #[test]
+    fn raw_arm_test_groups_operands_only_when_needed() {
+        // `(a) || (b)` opens and closes with parentheses but is two groups.
+        assert_eq!(
+            raw_arm_test("true", "", "(visited('a')) || (visited('b'))").as_deref(),
+            Some("((visited('a')) || (visited('b'))) == true")
+        );
+        // Several alternatives are grouped before the `test` is conjoined.
+        assert_eq!(
+            raw_arm_test("a|b", "visited('x')", "run.m").as_deref(),
+            Some("(run.m == 'a' || run.m == 'b') && (visited('x'))")
+        );
+        assert_eq!(
+            raw_arm_test("unset", "visited('x')", "quest.q.state").as_deref(),
+            Some("quest.q.state == 'unset' && (visited('x'))")
+        );
+    }
+
+    #[test]
+    fn raw_arm_test_refuses_what_no_cel_can_express() {
+        assert_eq!(raw_arm_test("1..2..3", "", "(visited('x'))"), None);
+        assert_eq!(raw_arm_test("unset", "", "(visited('x'))"), None);
     }
 }

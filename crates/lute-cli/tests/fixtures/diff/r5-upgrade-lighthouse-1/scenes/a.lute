@@ -1,0 +1,10 @@
+---
+kind: scene
+id: a
+components: [../components/lamp.component.lute]
+---
+
+## A
+
+::use{component="lamp"}
+::use{component="lamp" glass="guttering" when="true"}

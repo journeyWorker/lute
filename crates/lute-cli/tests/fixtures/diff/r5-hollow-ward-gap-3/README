@@ -1,0 +1,10 @@
+(LANGUAGE-GAP evidence.) Engine state cannot meet the fact layer:
+  1. scenes/a.lute: holds(close(occasion.target)) in a kind-target beat ->
+     E-CEL-PROFILE "fact-query patterns take compile-time-ground literals or `_`",
+     although occasion.target is ground whenever the beat runs.
+  2. world.schema.yaml, swap in the rule
+       close(R) :- adjacent(R, S), cel("run.stalker == S")
+     -> E-CEL-PROFILE "`S` is not a state path".
+So "the Orderly is one room away" (run.stalker + an adjacency graph) cannot be
+derived in Lute; Hollow Ward has the engine raise `footsteps@room.X` instead.
+  lute check-project .

@@ -1,0 +1,11 @@
+---
+component: bump
+effects: true
+params:
+  who: speaker
+---
+
+## Bump
+
+@narrator: A line before.
+::set{run.aff.@who += 1}

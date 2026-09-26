@@ -92,6 +92,16 @@ fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
     }
 }
 
+/// A fact pattern as authored text: `rel(a, b)` (`lute trace`'s form).
+pub(crate) fn fact_text(pattern: &lute_syntax::datalog::FactPattern) -> String {
+    let args: Vec<String> = pattern
+        .args
+        .iter()
+        .map(|a| fact_term_string(&a.term))
+        .collect();
+    format!("{}({})", pattern.relation, args.join(", "))
+}
+
 /// Lower an `::assert{ GroundFact }` (dsl 0.3.0 §5) to its delta command
 /// record. Emitted as DATA only (D1) — no evaluation, no fact store; the
 /// engine applies the write. The D13 malformed-parse sentinel

@@ -1,0 +1,4 @@
+file: ../scenes/a.lute
+expect:
+  state: { run.sanity: 9 }
+  transcriptContains: ["Sanity 9."]

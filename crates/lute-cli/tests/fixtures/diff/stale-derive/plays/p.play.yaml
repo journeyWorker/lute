@@ -1,0 +1,4 @@
+steps:
+  - occasion: hubVisit
+expect:
+  transcriptContains: ["Derived after the set."]

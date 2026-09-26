@@ -78,6 +78,8 @@ macro_rules! outln {
 mod beats_cmd;
 mod compile_all;
 mod context;
+#[cfg(test)]
+mod differential;
 mod doctor;
 mod explain;
 mod input_cache;

@@ -1,0 +1,4 @@
+Nested double quotes in a frontmatter value (file line 6).
+lute check s.lute -> s.lute:1:1: error [E-META-PARSE] invalid meta frontmatter YAML: did not find expected key at line 5 column 26
+The diagnostic is anchored at 1:1 and the inner "line 5" is counted from the first line AFTER `---`,
+so it is off by one from the editor's line 6. Expected: s.lute:6:26.

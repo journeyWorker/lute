@@ -1,0 +1,12 @@
+---
+kind: scene
+id: s
+---
+
+## One
+
+<branch id="b">
+  <choice id="oven" label=“Open the bread oven”>
+    @narrator: Hot.
+  </choice>
+</branch>

@@ -1,0 +1,11 @@
+---
+component: ending
+effects: true
+params:
+  kind: { type: { entity: outcome } }
+---
+
+## Record
+
+::set{run.ending = @kind}
+@narrator: The end.

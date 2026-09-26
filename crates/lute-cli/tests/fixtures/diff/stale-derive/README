@@ -1,0 +1,7 @@
+Design runtime-unification §2.3 D4: stale derivation after `::set`. The rule
+`onRoute(ren) :- cel("run.route == 'ren'")` reads state; play and run derive
+only at construction and after assert/retract, so right after
+`::set{run.route = 'ren'}` the guard `holds(onRoute(ren))` still reads the
+old fixpoint and the line is skipped. Trace derives per query and plays it.
+  lute play . --script plays/p.play.yaml -> skip @narrator "Derived after the set." — when: false
+  lute trace scenes/route.lute --project . -> the line plays

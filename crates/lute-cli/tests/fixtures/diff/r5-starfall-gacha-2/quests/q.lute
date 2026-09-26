@@ -1,0 +1,9 @@
+---
+kind: quest
+id: evq
+---
+
+<quest id="harvestMissions" title="Harvest missions" start="@harvestLive">
+  <reward kind="TOKEN" amount="50"/>
+  <objective id="gather" title="Gather" done="user.bond.aria >= 10" by="!@harvestLive"/>
+</quest>

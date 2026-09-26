@@ -1,0 +1,7 @@
+steps:
+  - occasion: visit
+    target: place.radio
+    expect: { winner: talks.solWarm }
+  - occasion: visit
+    target: place.deck
+    expect: { winner: empty }

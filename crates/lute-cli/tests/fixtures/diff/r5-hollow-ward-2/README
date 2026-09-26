@@ -1,0 +1,9 @@
+Plugin directive effects.writes with a value the plugin schema does not
+support ({ fromAttr: amount }, or { op: increment, by: { fromAttr: amount } })
+loads clean (no E-PLUGIN-PARSE, despite 0.24.0's strict export parsing) and
+lute play silently applies NO write.
+  lute check-project .                 -> ok, 0 warnings
+  lute play . --script p.play.yaml     -> "Sanity 10." twice; expect run.sanity 8 misses
+Control: value { op: increment, by: -1 } works (Sanity 9, 8).
+Also note: a passthrough's effects.writes may target an `owner: engine` path
+(run.sanity) — accepted and applied by play (useful; undocumented).

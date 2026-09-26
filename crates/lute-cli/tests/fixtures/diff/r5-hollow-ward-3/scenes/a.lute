@@ -1,0 +1,11 @@
+---
+kind: scene
+id: a
+on: poke
+once: false
+---
+
+## A
+
+::fright
+@narrator: Sanity {{run.sanity}}.

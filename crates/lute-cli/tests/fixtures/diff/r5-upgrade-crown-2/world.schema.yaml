@@ -1,0 +1,9 @@
+state:
+  user.seen: { type: bool, default: false, per: npc }   # parent of bonded
+  user.bond: { type: number, default: 0, per: bonded }  # parent of confidant
+entities:
+  npc:       { members: [tavi] }
+  bonded:    { subsetOf: npc, members: [brann] }
+  confidant: { subsetOf: bonded, members: [sefa] }
+relations:
+  close: { args: [npc] }

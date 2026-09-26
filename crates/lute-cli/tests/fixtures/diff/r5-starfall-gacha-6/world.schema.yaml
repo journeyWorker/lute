@@ -1,0 +1,2 @@
+state:
+  user.n: { type: number, default: { a: 1 } }   # a map default without per: -> E-STATE-DECL

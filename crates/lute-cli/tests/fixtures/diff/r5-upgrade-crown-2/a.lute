@@ -1,0 +1,13 @@
+---
+kind: scene
+id: a
+---
+
+## A
+
+::assert{close(sefa)}
+::assert{close(brann)}
+::set{user.seen.tavi = true}
+::set{user.seen.brann = true}
+::set{user.bond.brann += 1}
+::set{user.bond.sefa += 1}

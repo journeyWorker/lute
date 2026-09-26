@@ -1,0 +1,9 @@
+---
+component: gauge
+params:
+  fathoms: { type: number, default: "@lastFathoms" }
+---
+
+## Gauge
+
+@narrator: The gauge shows {{@fathoms}} fathoms.

@@ -1,0 +1,2 @@
+rewardKinds:
+  TOKEN: { credits: user.tokens }

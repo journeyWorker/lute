@@ -1,0 +1,9 @@
+---
+kind: lore
+id: summon
+---
+
+<beat id="reset" on="dailyReset" once="day">
+  @narrator: Day {{user.day}}.
+  @narrator{when="@harvestLive"}: The harvest moon is up.
+</beat>

@@ -1,0 +1,9 @@
+state:
+  user.bond: { type: number, default: 0, per: hero }
+entities:
+  hero: { members: [aria] }
+  sr:   { subsetOf: hero, members: [ivo] }     # ivo is listed only in the sub-kind
+relations:
+  bonded: { args: [hero], derive: true }
+rules:
+  - "bonded(H) :- hero(H), cel(\"user.bond[H] >= 100\")"

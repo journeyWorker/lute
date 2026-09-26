@@ -1,0 +1,14 @@
+---
+kind: scene
+id: s
+state:
+  run.clues: { type: number, default: 5 }
+---
+
+## One
+
+// The author meant `-= 1`. Expected: an error. Actual: check ok, trace/compile set run.clues = 1.
+::set{ run.clues - 1 }
+// Expected: an error (no operator). Actual: check ok, trace shows `= unknown`.
+::set{ run.clues 2 }
+@narrator: Clues: {{run.clues}}

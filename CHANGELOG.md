@@ -210,6 +210,15 @@ table.
   `docs/examples/investigation` had been clean only through such a comment.
 - `lute play`'s note that a hand-raised clock occasion "runs twice" appears
   only when a later `advance:` in the script actually crosses that moment.
+- `lute play` / `lute run` take the `<match>` arm the author meant when an
+  `is` arm's subject or `test` has no portable `expr` — a `<match on="@def">`
+  whose def reads `visited('…')`, or `<when is="active"
+  test="count(carrying(_)) >= 3">`. The compiled arm's `test` now carries the
+  whole condition as CEL (`(visited('find')) == true`,
+  `quest.lantern.state == 'active' && (count(carrying(_)) >= 3)`); it used to
+  be empty (the match fell to `<otherwise>`) or the `test` alone (the `is`
+  pattern was ignored). An arm that would lower to neither is
+  `E-COMPILE-INTERNAL` instead of an arm no engine can take.
 
 ## [0.26.0] - 2026-09-26
 

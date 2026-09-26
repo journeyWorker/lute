@@ -1,0 +1,10 @@
+---
+kind: scene
+id: festival
+after: 'visited("clash")'
+---
+
+## Festival
+
+@narrator{when="!holds(locked(ren))"}: Direct negation.
+@narrator{when="holds(routeOpen(ren))"}: Ren's route is open.

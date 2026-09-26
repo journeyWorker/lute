@@ -1,0 +1,15 @@
+---
+kind: scene
+id: jump
+state:
+  run.bad: { type: bool, default: false }
+---
+
+## Tub
+
+::next{to="flooded" when="run.bad"}
+@narrator: You get out.
+::end{reason="safe"}
+::mark{id="flooded"}
+@narrator: You do not get out.
+::end{reason="drowned"}

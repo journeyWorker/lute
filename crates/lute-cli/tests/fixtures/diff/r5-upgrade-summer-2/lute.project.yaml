@@ -1,0 +1,8 @@
+pluginsDir: plugins/
+defaultProfile: game
+profiles:
+  game:
+    plugins: { game.occasions: true }
+defaults:
+  luteVersion: "0.26.0"
+  uses: [world.schema.yaml]

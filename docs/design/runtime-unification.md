@@ -149,7 +149,7 @@ code and not executed.
 | id | Divergence | Evidence | Fixed by |
 |---|---|---|---|
 | D1 = T1-3 | trace ignores literal and `op` directive writes; play applies them without recording them | `/tmp/r5t/r5-hollow-ward-3` | S4 |
-| D2 = T1-5(b) | a def subject that expands to `holds(…)`: play goes to `otherwise`, trace takes the true arm | `/tmp/r5t/r5-hollow-ward-7` | S3 (IR), S4 (one evaluator) |
+| D2 = T1-5(b) | a def subject that expands to `holds(…)`: play goes to `otherwise`, trace takes the true arm | `/tmp/r5t/r5-hollow-ward-7`; live shape after wave 1: `fixtures/diff/r5-hollow-ward-7` (`d: "visited('find')"`) | S3 (IR), S4 (one evaluator). **Fixed by S3** (§8 S1: its three allowlist lines never landed) |
 | D3 = T1-7 | a `::set` that makes a derived exclusive pair hold: play halts at step end, trace completes | `/tmp/r5t/r5-otome-2` | S4 |
 | D4 | **stale derivation after `::set`** in play and run: a rule reading state is not re-derived until the next assert/retract | reproduced with 0.26.0: rule `onRoute(ren) :- cel("run.route == 'ren'")`, scene `::set{run.route = 'ren'}` then `@narrator{when="holds(onRoute(ren))"}: Derived after the set.` → play prints `skip @narrator "Derived after the set." — when: false`, trace prints `-> arm 1` and the line | S4 |
 | D5 | compound `::set` on an absent or non-number value: run gives `0 op by`, trace gives `Unknown` | `R` 1568-1576 vs `W` 889-899. Unreachable in a check-clean document (`E-MAYBE-UNSET`) [INFERENCE] | S4 (tri-state wins) |
@@ -164,6 +164,7 @@ code and not executed.
 | D14 | `clock.*`: fixed per trace walk, refreshed after writes in play | `W` 3665-3684, `P` 3732 | S4 |
 | D15 = T1-9 | unmocked `occasion.target`: trace walks "no arm" and passes. Not a concrete-input diff; a trace unknown-policy bug | `/tmp/r5t/r5-upgrade-crown-3` | S4 |
 | D16 = T1-11 | an attribute needle matches a line with different attributes | `/tmp/r5t/r5-upgrade-summer-2` | S5 |
+| D17 | an unwritten `quest.<id>.state` (a quest the document does not declare, unmocked): trace reads its reserved default `unset` (`E` `EffectiveState::read`), run reads it as absent, so a guard on it is undecided and the line / arm is skipped | found by S1 on the opt-in corpus: `corpus:monster-league/lore/mid/ghosts.lute#empty/beat:oriel` (`when="quest.midGhostStories.state == 'unset'"`), `lantern-academy/lore/hangouts.lute` beat `library` | S4 (`Store`'s reserved default) |
 
 ## 3. Target architecture
 
@@ -759,3 +760,307 @@ report. Round 5 showed this baseline for round 3 (16 play transcripts and
 T1-1, T1-2, T1-4 (the manifest and IR half), T1-6, T1-8 and T1-10 are
 checker items owned by wave 1. S4 consumes T1-4's `fromAttr` lowering and
 adds nothing of its own for it.
+
+## 8. Implementation notes
+
+### S2: Machine and Driver
+
+**Where.** `crates/lute-trace/src/exec/{mod,machine,driver}.rs`, exported as
+`lute_trace::exec`. `runner.rs` keeps `run_artifact`, `run_machine`,
+`RunDriver`, `output_value` / `print_human` and `plugin_call_note`.
+`PlayDriver` and `Walked` (carry + what the driver collected) live in
+`play.rs`; `World::evaluator` builds the eval-only Machines (`eligible_at`,
+`exclusive_violations`, `world_view`, calendar's `holds_at` /
+`cell_facts`). `Fact` is `lute_trace::datalog::Fact` everywhere (the
+`crate::runner::Fact` alias is gone). The differential harness's run path
+(`observe_run` / `run_one`) uses `run_machine` and `Machine::resume` +
+`RunDriver::from_mock`.
+
+**API as built (deviations from §3.2/§3.3, each for a reason):**
+
+- `Machine::new(art, seed: Seed, driver)`; `Machine::resume(art, seed,
+  carry: Carry, driver)`. `resume` takes a `Seed` too: a quest advance
+  needs the seed's `accepts` / `events` / `occasions` / `derive` next to
+  the carried world. `resume` reads only `carry.state`, `base_facts` and
+  `quest_status`; `Carry::world(state, facts, quests)` builds that input.
+- `Seed { state: Vec<(path, literal)>, facts, visited, accepts, events,
+  occasions, derive: bool }`, `impl From<&MockSet>`. `choose:` and
+  `bridges:` are not in it (driver-owned).
+- `into_carry(self) -> (Carry, D)`: the driver comes back with it, since it
+  holds the transcript, the choice cursor and the unconsumed bridge answers.
+  `Carry` = the old `RunnerOutcome` minus `transcript`, `choice_cursor`,
+  `bridges`.
+- Builders kept: `with_entry`, `with_bundle_beat`, `with_display_names`,
+  `with_visited`, `with_failed_objectives`, `with_deferred_by`,
+  `with_deferred_handlers`, `bind_occasion_target`; new
+  `with_bridge_reads(Arc<BridgeReads>)` (the project's readers for play;
+  `new` computes the artifact's own). `with_choice_cursor` / `with_bridges`
+  are gone (driver state). Read accessors: `driver()`, `kind()`, `state()`,
+  `all_facts()`, `quest_status()`, `incomplete()`, `terminated()`,
+  `refused()`.
+- `Driver::forced(&mut self, menu, option, verdict: &Verdict)` takes the
+  verdict by reference (`Unknown` carries atoms).
+- `Pick::Unscripted { scripted: usize }`: the count of a scripted branch
+  list that ran out rides the `choice` record (`"scripted": n`, play's
+  "all n decisions … were used" halt), so the driver has to report it.
+- `BridgeQueues { step, top }` (+ `queue`, `next`) is today's
+  `BridgeAnswers` without `reads`; `BridgeReads` moved to `exec` unchanged
+  and is Machine configuration, not driver state (the Machine validates an
+  answer against it and decides whether content reads a result).
+- `ScriptedChoices { choose, cursor }::pick(menu)`: a branch uses the
+  cursor rule (single decision answers every presentation, a list is
+  consumed one per presentation); a hub takes decision
+  `menu.presentation` of its list (the old per-visit `forced_cursor`,
+  never carried across visits).
+- Record constants: `LINE_DELIVERY_KEYS` (`role`, `lineId`, `voiceKey`,
+  `as`, `emotion`), `MENU_MARK_KEYS` (`spent`, `ineligible`) — the Machine
+  always emits them, `RunDriver::emit` strips exactly these from `line` /
+  `choice` / `hub` records. `NOTE_NO_DECISION` is the note play's halt
+  matches. The quest record's `failedBy` is now built before `emit`
+  (it used to be patched onto the last transcript record).
+
+**Hook behaviour in S2.** `RunDriver`: `forced` Spent → Skip, Closed →
+Refuse, Unknown → Take; `unknown` → Continue. `PlayDriver`: Spent / Closed
+→ Refuse, Unknown → Take; `unknown` → **Halt for `SiteKind::BridgeResult`
+only** (today's halt at an unanswered plugin call whose result content
+reads), Continue elsewhere, the post-walk honesty gate unchanged. The
+Machine consults `unknown` only at `BridgeResult` so far; every other
+`SiteKind` is declared for S4, which wires them with the Store (and makes
+`PlayDriver::unknown` Halt everywhere, §6 R4). `forced` is consulted for a
+scripted pick that is not `Open` (branch: guard Closed/Unknown; hub: Spent,
+then guard Closed/Unknown); `Forced::Skip` on a branch halts incomplete
+with `NOTE_SKIPPED` (no S2 driver returns it).
+
+**For S4 (TraceDriver).** `Pick::AutoFirst` takes the first `Open` option;
+`Pick::HubAutoPass` walks the hub's non-exit options in menu order, one per
+presentation, each judged fresh at its turn, then the first `Open` exit;
+no open option → incomplete with `NOTE_NO_ELIGIBLE` (trace's pass reports
+"exit eligibility" unresolved). An auto pick is never passed to `forced`.
+Menu verdicts: `Unknown(atoms)` carries the atoms the guard evaluation
+recorded; a branch's menu evaluation is display-only (atoms dropped from
+`unresolved`), a hub's is not (as before). Hub `once` memory is still the
+per-visit set (D8 is S4's).
+
+**For S5.** `Walked::of(Machine<PlayDriver>)` + `absorb(w, &Walked)` is
+the fold a session will own; `World::carry()` / `World::evaluator(art)` are
+the two construction patterns; `PlayDriver::new(choose, &World)` resumes
+the world's cursor and bridge queues.
+
+**Evidence.** Scratch worktree = `f257c94` + S2 (+ S1's lute-cli files, no
+lute-compile changes): `cargo test -p lute-cli -p lute-trace -- --skip
+differential` 814 passed / 0 failed over 66 test binaries (one
+`doctor_flags_a_lute_lsp_whose_version_differs` failure in one run, green
+on three reruns: process-timing flake, unrelated); `cargo check -p
+lute-wasm` for host and `wasm32-unknown-unknown` clean. §6.3 byte check
+against a `f257c94` binary over the opt-in games (round 3 `drowned-crown`,
+`ember-road`, `lighthouse-keeper`, `summer-station`; round 5
+`first-story`, `hollow-ward`, `lantern-academy`, `starfall-gacha`): 35
+plays × (human, `--json`, `calendar --script`), `beats`, `test`,
+`calendar` per game, `lute run` human + `--json` on all 181 compiled
+artifacts, and `lute run` human + `--json` on the 10 conformance fixtures
+— 511 files, `diff -r` empty. S1's harness on the same worktree (run
+path = Machine + `RunDriver`): 210 compared, 7 skipped, 36 allowlisted,
+plus exactly the two `r5-hollow-ward-7` D2 cases S3 fixes (the base-API
+run allowlisted 38 = the same 36 + those 2), so the allowlist is unchanged
+by S2.
+
+### S3: source map and arm lowering
+
+**API.** `lute_compile::compile_mapped(input, result, identity) ->
+Result<(Artifact, SourceMap), Vec<Diagnostic>>`; `compile_with_check` runs the
+same pipeline without a map (`compile_inner(…, None)`), so no map is built
+unless asked for. `SourceMap` (`crates/lute-compile/src/source_map.rs`) is
+re-exported at the crate root. The emitter records an origin per record only
+when mapping (`cfg::Emitter::new(true)`; origins are closures, never run
+otherwise), `address::assign_addresses_into` files them under the final
+`addr`.
+
+**Shape (deviates from §3.5 where the sketch could not carry what trace
+reports):**
+
+- `by_addr[addr]: SourceInfo` for **every** record (the test asserts
+  `by_addr.len() == commands.len()`): `span`, `authored_id`, `arms`,
+  `directive`, `sugar`, `write_text`, `injected`, `authored_jump`, `before`.
+- `arms: Vec<ArmSource { span, guard, authored_guard }>` replaces
+  `authored_guard: Option<String>` + `guards: Vec<String>`: a branch / hub
+  `Decision.span` is the **chosen choice's** span, so each option needs its
+  own span. For a `match` record `arms` has one entry per authored arm,
+  `<otherwise>` included, in source order, so `Decision.outcome` `arm N` is
+  `arms[N-1]` and `CoverageCount.total == arms.len()`. For `choice` / `hub` one
+  per option, record order. `guard` is trace's rendered text
+  (`is="a|b" && <test>`, or the choice `when`); `authored_guard` is the
+  pre-expansion text when expansion rewrote it.
+- `span`: the construct's own span for `match` / `choice` / `hub` (the
+  coverage site: `report::site_key(&span)`), and also for the structural
+  `jump` that closes one of its arms; the node's span for every lowered
+  primitive; the timeline's span for `barrier`; the `<quest>` / `<on>` /
+  `<entry>` / `<beat>` span for their head records.
+- `component: Option<ComponentBoundary>` is replaced by **markers**: the
+  component sentinels, `::mark`, and any directive that lowers to no record
+  of its own (`::clear` — its exits are injected records — and `::use`)
+  emit no record, yet trace shows each as a `Step::Directive`. They are
+  `SourceMarker { tag, span, component: Option<ComponentBoundary> }` in the
+  `before` list of the next record pushed (in walk order), or in
+  `SourceMap.trailing[<unit number>]` when nothing follows in that unit.
+  `ComponentBoundary` is compile's own enum (the quarantine forbids naming
+  `lute_trace::ComponentBoundary`).
+- `injected: true` marks the stage reducer's records (anchor, preload,
+  posReset, hide); trace shows none of them. `directive` is the authored tag
+  of a record lowered from a `::directive` (a plugin record lowering changes
+  the record kind). `authored_jump` marks a `jump` lowered from `::next`.
+- `write_text` on `set` / `assert` / `retract` records is exactly
+  `Step::Skipped.text` (`run.x += 1`, `knows(a, b)`); `sugar` marks the `set`
+  normalize synthesized from a `<choice into=…>`.
+- `quests[id]: QuestSource { span, start, fail, objectives[id] { span, done,
+  by, until }, handlers[addr] -> span }` (texts are the expanded slot text,
+  trimmed); `entries[id]` and `beats[<doc id>.<beat id>]` hold spans.
+- Not in the map (S4/S5 own them): a line's `delivery` text (trace renders it
+  from the AST attrs *before* `expand::fold_attr_refs`, which compile runs and
+  trace does not), `Step::Shot` headings (artifact `shots`; a shot that emits
+  no record has no `addr` to hang a marker on).
+
+**Arm lowering (T1-5(b)).** `stage::walk_match`: when an arm has an `is`
+pattern and its `expr` does not lower (subject or `test` outside the portable
+profile), `MatchArm.test` is the whole raw CEL condition from
+`expr::raw_arm_test`: each alternative `(<subject>) == <literal>` (a range, its
+inclusive bounds; `unset`, `!isSet(path)` / `== 'unset'` on a quest state),
+joined `||`, the `test` guard `&&`-joined; an operand already one
+parenthesized group (a `@def` expands to `(<body>)`) or a bare path is not
+wrapped again. An arm left with neither `expr` nor `test` is
+`E-COMPILE-INTERNAL`. Two shapes change:
+
+1. `is` arm, subject has no `expr` (post-wave-1 the live repro is
+   `defs: { d: "visited('find')" }` + `<match on="@d"><when is="true">`; the
+   `holds(…)` def of `r5-hollow-ward-7` is now `E-MATCH-RELATION-SUBJECT` at
+   check): `test` was `""`, play fell to `<otherwise>`.
+2. `is` arm whose `test` has no `expr` (`<when is="active"
+   test="count(carrying(_)) >= 3">`): `test` was the `test` text **alone**, so
+   play ignored the `is` pattern. Round-3 summer-station `lore/talks.lute`
+   beat `wrenLantern` is the only corpus artifact that changes
+   (`quest.lantern.state == 'active' && (count(carrying(_)) >= 3)`), and
+   `plays/wren-thursday` now takes arm 3 (quest complete) where it took arm 1;
+   trace always took arm 3. This is the only play-output diff of S3.
+
+**For S4.** The map is proven against today's trace
+(`crates/lute-trace/tests/source_map.rs`: every `docs/examples` document,
+project-aware, and every single-literal inline document of the lute-trace
+tests; default mock, each branch / hub option forced once, each lore entry
+first-read and re-read, each bundle beat: 103 documents, 348 decisions, 176
+coverage sites, skipped writes and into-sugar sets). When trace moves onto
+the Machine, re-point that test at the new report builder or delete it with
+`walk.rs`. The `ArmSource.guard` text is the one to show for a match
+decision; the IR `test` of a fallback arm is engine-facing and differs from
+it. `lute_compile::compile` still re-derives the document; trace's pipeline
+does not call `apply_quest_tier_default` / `fold_attr_refs` today and will
+once it compiles. The IR oracle (§4.4) compares only arms that carry an
+`expr`; a fallback arm carries none.
+
+### S1: differential harness
+
+**Files.** `crates/lute-cli/src/differential.rs` (`#[cfg(test)] mod
+differential;` in `main.rs`), `crates/lute-cli/src/differential/allowlist.txt`
+(`include_str!`), `crates/lute-cli/tests/fixtures/diff/**`. In `play.rs`:
+`Presented` is `pub(crate)` and gains `member`, `facts_before`, `facts_after`,
+`visited_before`, `quests_before`, `bridges` (the answers the presentation
+consumed, `consumed_bridges`); a `#[cfg(test)]` block at the end of the file
+(`PlayedBeat`, `presentations_for_diff`) runs a play in process and returns
+every presentation with whether its step ended holding exclusive facts and
+whether the play halted there.
+
+**Running.** `cargo test -p lute-cli differential -- --nocapture` prints
+`differential: N case(s) compared (M in-repo), K skipped as not concrete, …
+document(s) and … play(s) refused by check, L divergence(s) allowlisted` and
+the skip reasons. `LUTE_DIFF_CORPUS=<dir>[:<dir>…]` adds every
+`lute.project.yaml` project found below each directory (documents outside a
+project are ignored there). `LUTE_DIFF_ONLY=<substring>` keeps only the cases
+whose id contains it and prints both observations of each (and the mock of a
+presentation): the tool for looking at one divergence. The floor
+(`COMPARED_FLOOR`) is 210 in-repo cases.
+
+**Case ids.** `<corpus doc>#<input>`. Corpus prefixes: `docs/examples/…`,
+`conformance/…`, `fixtures/…` (relative to `crates/lute-cli/tests/fixtures`),
+`corpus:<project dir name>/<path in project>` (stable wherever the games are
+copied). Inputs: `empty`, `test:<stem>`, `mock:<stem>` (`mocks/*.yaml`),
+`mock` (a conformance `mock.yaml`, whose subject is `source.lute`); a lore
+document without an explicit presentation is cased `<input>/entry:<id>` and
+`<input>/beat:<id>`; a presentation is `#play:<play stem>/<n>`, `n` the
+1-based presentation index in the play.
+
+**Allowlist format** (extends §4.5): `<case> <field> <class> <slice>
+<reason…>`. `<class>` / `<slice>` may be comma lists (`D7,D11  S4,S5`) when one
+field diverges for two reasons; the slice that fixes one class drops it from
+the line and deletes the line only when no class remains. Opt-in lines
+(`corpus:`) are judged only when their case was enumerated. A listed case that
+is no longer compared (renamed, skipped) fails too.
+
+**Deviations from §4.**
+
+1. `Observation.exit` is a `String` (`refused:<code>` carries the code).
+2. `said` is `@speaker: text` without attribute blocks: today trace's
+   `Step::Line.delivery` is the authored attribute text and `lute run`'s
+   record carries no attributes, so there is no common canonical form yet.
+   `said_line` is the one place to change when S5's `record.rs` lands.
+3. No `choices` field on `Presented`: the picks are read back from the
+   presentation's `choice` / `hub` records (S2 moved the cursor into the
+   driver). `member` and `facts_after` were added.
+4. Instead of making `compile_project`, `seed_world`, `plan_steps`, `execute`,
+   `Playthrough`, `StepBody` `pub(crate)`, one `#[cfg(test)]`
+   `play::presentations_for_diff` (their private types stay private).
+5. Not concrete (skipped, counted): trace incomplete; a mock trace refuses
+   (`E-TRACE-*`); a scripted pick trace refuses (`E-TRACE-CHOICE`): what a
+   runtime does with an option that is not offered is its driver's `forced`
+   policy, which differs by design (§3.3), e.g. `conformance/hub-once-exit`
+   `mock.yaml`; a pick forced past an unknown guard; a plugin call with no
+   answer at all. A partial answer (unread result fields omitted, dsl 0.25 §7)
+   is compared, and that is where D7 shows.
+6. Presentation replay: the trace mock is the document's declared
+   non-`scene.*` paths from `state_before`, the `prev.` copy of each, every
+   `entry.*` flag and `quest.<id>.state` the document's text names,
+   `occasion.target` = `member`, the base facts of base relations,
+   `visited_before`, the picks and the consumed bridge answers. It is judged
+   on the declared non-`scene.*` paths plus its own entries' `everRead` and on
+   base facts; quests are not compared (the advance is not the
+   presentation's). A world that retracted a project seed fact has no trace
+   mock (a mock's facts join the seeds) and is skipped. A step that ends
+   holding exclusive facts gives its last presentation the exit
+   `refused:E-FACT-EXCLUSIVE`.
+7. A state path one side does not report is filled from the artifact's
+   declared default; `entry.<id>.read` / `.everRead` from their reserved
+   `false`.
+8. Gate: every document gates on its project's reconciled verdict
+   (`gate_for_doc`, what play and `compile --project` use), else the
+   standalone check. The reconciliations are computed before the parallel
+   section (they run rayon; a lock held across one deadlocks a worker).
+
+**First run** (base `f257c94` + S1). In-repo: 210 compared, 7 skipped (6 trace
+incomplete, 1 scripted pick not offered), 14 documents and 2 plays refused by
+check (checker-only round-5 repros), 38 divergences: D1 ×12
+(`r5-hollow-ward-2` `fromAttr`, `r5-hollow-ward-3` `op`, document and play
+level), D2 ×2, D3 ×1 (`r5-otome-2` play), D4 ×7 (`stale-derive`, `r5-otome-2`
+facts), D11 ×16 (every lore entry case). Opt-in (`lute-dogfood` round3,
+round4, round5 copied to `/tmp`; 14 projects): 2937 compared, 421 skipped
+(412 trace incomplete, 4 rebuilt mock refused, 4 retracted seed, 1 pick),
+41 documents and 17 plays refused by check (wave 1's stricter checker refuses
+parts of monster-league, the ml-* splits and three round-5 games), 1109 more
+divergences: D11 ×994 (mostly the monster-league lore; some mixed with D7),
+D7 ×79 (`scene.battle.fight.*`, `scene.check.*`: trace `unknown`, run `0`),
+D1 ×22 (hollow-ward `run.sanity`), D4 ×6 (derived facts after a set), D17 ×5
+(new, §2.3), D2 ×1 (summer-station `wrenLantern`), D9 ×1 (hollow-ward
+`quest-left-him`: the `questFailed` handler reads `failedBy`), D12 ×1
+(starfall-gacha `gold-pity`: `Aria` vs `aria`). S3 had landed by the time the
+allowlist was ported to the shared tree, so the three D2 lines were dropped
+(they read "fixed"); the shared tree passes with 36 in-repo and 1108 opt-in
+lines, S2's Machine included, so S2 left the allowlist unchanged.
+Not seen on this corpus: D5, D6, D8, D10, D13, D14, D15, D16.
+
+**For S4.** Re-point `observe_trace` (and `trace`) at the Machine +
+TraceDriver; keep `trace_observation`'s mapping (`Step::Line`, `final_state`,
+`final_facts`, disposition). Delete every line of D1, D3, D4, D7, D9, D12,
+D17 and drop those classes from mixed lines (`D7,D11` → `D11`). The IR oracle
+(§4.4) goes into `differential.rs`. Run the opt-in corpus once; the case ids
+are stable across machines.
+
+**For S5.** The D11 lines are yours; `said_line` switches to `record.rs`'s
+canonical line (with attribute blocks) for both sides; then delete
+`ALLOWLIST`, `allowlist()`, `Allowed`, the listed / fixed checks and the
+allowlist file, so any divergence fails.

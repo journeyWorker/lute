@@ -1,0 +1,5 @@
+steps:
+  - occasion: poke
+  - occasion: poke
+expect:
+  state: { run.sanity: 8 }

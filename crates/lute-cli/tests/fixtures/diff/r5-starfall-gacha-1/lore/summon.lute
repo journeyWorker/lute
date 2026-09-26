@@ -1,0 +1,25 @@
+---
+kind: lore
+id: summon
+---
+
+<beat id="anyNew" on="summon" target="kind:hero" once="false" when="!holds(owned(occasion.target))">
+  @narrator: {{occasion.target}} steps out of the light.
+</beat>
+
+<beat id="anyDupe" on="summon" target="kind:hero" once="false" when="holds(owned(occasion.target))">
+  @narrator: {{occasion.target}} again. The star shard hums.
+</beat>
+
+<beat id="ssrFanfare" on="summon" target="kind:ssr" once="false" priority="5">
+  @narrator: Gold light! {{occasion.target}}!
+</beat>
+
+<beat id="bondAny" on="bondUp" target="kind:hero" once="false" when="holds(bond2(occasion.target))">
+  @narrator: {{occasion.target}} trusts you now.
+</beat>
+
+<beat id="reset" on="dailyReset" once="day">
+  @narrator: Day {{user.day}}. {{clock.weekdayLabel}}.
+  @narrator{when="@harvestLive"}: The harvest moon is up.
+</beat>

@@ -1,0 +1,7 @@
+steps:
+  - advance: 2
+  - engine: { state: { user.bond.aria: 10 } }
+    expect: { quests: { harvestMissions: complete } }
+  - advance: 5
+  - engine: { state: { user.bond.aria: 250 } }
+    expect: { quests: { harvestMissions: active } }

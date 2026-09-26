@@ -1,0 +1,15 @@
+---
+kind: scene
+id: clash
+---
+
+## Clash
+
+<branch id="side">
+  <choice id="ren" label="Side with Ren">
+    ::assert{locked(kai)}
+  </choice>
+  <choice id="kai" label="Side with Kai">
+    ::assert{locked(ren)}
+  </choice>
+</branch>

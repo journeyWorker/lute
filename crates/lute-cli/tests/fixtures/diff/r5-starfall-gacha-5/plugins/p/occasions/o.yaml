@@ -1,0 +1,3 @@
+occasions:
+  dailyReset: { select: sequence }
+  dayClose: { select: first }

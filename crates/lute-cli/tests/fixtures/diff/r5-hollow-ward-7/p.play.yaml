@@ -1,0 +1,5 @@
+steps:
+  - occasion: found
+  - occasion: poke
+expect:
+  transcriptContains: ["(match arm) He is here."]
