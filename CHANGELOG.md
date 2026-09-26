@@ -203,6 +203,23 @@ table.
 
 ### Fixed
 
+- 0.26 prerelease review (Monster League): a `{ entity: K }` / `{ domain: K }`
+  directive attribute reached through a component param (or a param typed
+  that way) is checked at the `::use` argument, with a did-you-mean (N1);
+  `lute refs --attr` lists values passed through components at the `::use`
+  line, `via component <name>` (N2); the T1-7 ineligible-presentation failure
+  names the false premise (`its \`after: visited("a")\` is false — mock
+  \`visited: [a]\``) and drops the stale "walk below" note (N3); a duplicate
+  `add:` member is anchored at the member's own line and names both files and
+  lines (N4); `E-DEF-DECL` for an imported def is reported once at the schema
+  line, folded, and `visited(…)` / `validAt(…)` infer `bool` (N5); cast
+  `sharedName: true` exempts an intended role name from `W-DISPLAY-NAME-DUP`
+  (N6); a `defaults.uses` glob over a missing directory matches nothing
+  instead of failing the project (N7); `{{occasion.target}}` compiles to
+  `{"kind": "occasionTarget", "entityKind": K}` and `lute play` renders the
+  cast display name (N8); a malformed component `params:` message shows the
+  `{ type, default }` long form, and `docs/runtime/state-lifecycle.md` says
+  which occasions `advance: { to }` raises (N9).
 - A `::use` declares in its host the result slots of the plugin directives
   its component body holds (bound to the use's arguments): the check, the
   compiled `state` table, trace mocks and `lute play` see them. `lute play`

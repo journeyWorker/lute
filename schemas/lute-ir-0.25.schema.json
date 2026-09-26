@@ -423,6 +423,24 @@
             "kind",
             "token"
           ]
+        },
+        {
+          "type": "object",
+          "description": "dsl 0.26.0 §5: {{occasion.target}} in a beat or entry targeting a kind — the member the occasion was raised for (the beat's `occasion.target`), a member of `entityKind`. Render the member's display name (its cast `name:` when the member is a cast id), else the id.",
+          "properties": {
+            "kind": {
+              "const": "occasionTarget"
+            },
+            "entityKind": {
+              "type": "string",
+              "description": "The beat's `target=\"kind:<kind>\"` kind (its `targetKind.kind`)."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "entityKind"
+          ]
         }
       ]
     },

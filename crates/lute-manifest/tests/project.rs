@@ -822,25 +822,33 @@ fn defaults_uses_double_star_and_empty_match() {
     assert!(uses[1].ends_with("schema/top.schema.yaml"), "{uses:?}");
 }
 
-/// A glob whose fixed directory does not exist is a mistyped path.
+/// Prerelease N7: a glob whose fixed directory does not exist yet (an area
+/// not written; git keeps no empty directory) matches nothing, exactly like
+/// a glob over an existing empty directory — no error, and the literal
+/// entries beside it still import. A literal path must still exist.
 #[test]
-fn defaults_uses_glob_under_a_missing_directory_is_e_defaults_key() {
+fn defaults_uses_glob_under_a_missing_directory_matches_nothing() {
     let dir = write_manifest(
         "glob3",
-        "defaultProfile: core\ndefaults:\n  uses: [schema/aeras/*.schema.yaml]\n",
+        "defaultProfile: core\ndefaults:\n  uses: [schema/world.schema.yaml, schema/areas/*.schema.yaml]\n",
     );
+    std::fs::create_dir_all(dir.join("schema")).unwrap();
+    std::fs::write(dir.join("schema/world.schema.yaml"), "state: {}\n").unwrap();
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
+    let uses = uses_names(&proj);
+    assert_eq!(uses.len(), 1, "{uses:?}");
+    assert!(uses[0].ends_with("schema/world.schema.yaml"), "{uses:?}");
+
+    let literal = write_manifest(
+        "glob3-literal",
+        "defaultProfile: core\ndefaults:\n  uses: [schema/aeras/world.schema.yaml]\n",
+    );
+    let proj = lute_manifest::project::load_project(&literal)
+        .unwrap()
+        .unwrap();
     assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
     assert_eq!(proj.defaults_diags[0].code, "E-DEFAULTS-KEY");
-    assert!(
-        proj.defaults_diags[0].message.contains("schema/aeras"),
-        "{}",
-        proj.defaults_diags[0].message
-    );
-    assert!(
-        proj.defaults.get("uses").is_none(),
-        "a failed entry is not applied"
-    );
 }
 
 #[test]

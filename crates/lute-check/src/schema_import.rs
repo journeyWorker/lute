@@ -587,8 +587,7 @@ pub fn resolve_imports(
                 .iter()
                 .filter(|(_, d)| d.rel_kinds.kinds.contains_key(kind))
                 .min_by_key(|(p, _)| (dist.get(*p).copied().unwrap_or(0), *p))
-                .and_then(|(p, _)| p.file_name())
-                .map(|n| n.to_string_lossy().into_owned())
+                .and_then(|(_, d)| crate::rel_schema::kind_home(&d.origins, kind))
         },
     ));
 
@@ -787,6 +786,7 @@ pub fn resolve_imports(
             (&mut origins.facts, &doc.origins.facts),
             (&mut origins.domains, &doc.origins.domains),
             (&mut origins.state, &doc.origins.state),
+            (&mut origins.members, &doc.origins.members),
         ] {
             for (k, v) in src {
                 dst.entry(k.clone()).or_insert_with(|| v.clone());
@@ -1207,6 +1207,19 @@ fn read_and_parse(
             .keys()
             .map(|p| (p.clone(), here(crate::rel_schema::state_key_span(&meta, p))))
             .collect(),
+        // Prerelease N4: each listed member's own line, the first place a
+        // duplicate `add:` of it names.
+        members: tm
+            .rel_kinds
+            .kinds
+            .keys()
+            .flat_map(|k| {
+                crate::rel_schema::kind_list_spans(&meta, k, "members:")
+                    .into_iter()
+                    .rev()
+                    .map(|(m, span)| (crate::rel_schema::member_origin_key(k, &m), here(span)))
+            })
+            .collect(),
     };
     // dsl 0.26.0 §2.2: a member listed twice in one of this file's kinds or
     // enums, reported at its own line (the importers' copies fold).
@@ -1228,6 +1241,10 @@ fn read_and_parse(
         .map(|(kind, members)| crate::rel_schema::KindAdd {
             kind: kind.clone(),
             members: members.clone(),
+            member_spans: crate::rel_schema::add_member_spans(&meta, kind, members)
+                .into_iter()
+                .map(|s| s.map(|s| here(s).span))
+                .collect(),
             origin: Some(key(kind)),
             span: at,
         })

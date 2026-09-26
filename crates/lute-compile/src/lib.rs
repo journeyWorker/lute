@@ -566,6 +566,16 @@ pub fn compile_with_check(
         &table,
         doc.meta.span,
     ));
+    // dsl 0.26.0 §5 (prerelease N8): `{{occasion.target}}` names its kind.
+    let scene_kind = match &meta {
+        ArtifactMeta::Scene(m) => m
+            .beat
+            .as_ref()
+            .and_then(|b| b.target_kind.as_ref())
+            .map(|k| k.kind.as_str()),
+        _ => None,
+    };
+    expand::type_occasion_target_placeholders(&mut commands, scene_kind);
     stamp_reward_credits(&mut commands, &input.snapshot);
 
     if diags.iter().any(|d| d.severity == Severity::Error) {

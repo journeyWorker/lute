@@ -3292,8 +3292,14 @@ fn beat_when_note(folded: &FoldedEnv, table: &DefTable<'_>, w: &Walk<'_>) -> Opt
 /// states, and a `once: user` beat the mocked `visited:` already spent.
 /// `Some(true)` when every part holds (or the scene declares none),
 /// `Some(false)` when one is false, `None` when one is undecided. Nothing is
-/// recorded unresolved — the verdict is the harness's to judge.
-fn scene_eligibility(folded: &FoldedEnv, table: &DefTable<'_>, w: &Walk<'_>) -> Option<bool> {
+/// recorded unresolved — the verdict is the harness's to judge. Prerelease
+/// N3: with `Some(false)`, the first false premise, named for the author
+/// (`its \`after: visited("a")\` is false — mock \`visited: [a]\``).
+fn scene_eligibility(
+    folded: &FoldedEnv,
+    table: &DefTable<'_>,
+    w: &Walk<'_>,
+) -> (Option<bool>, Option<String>) {
     let judge = |slot: &CelSlot| {
         let mut atoms = Vec::new();
         match eval_choice_guard(Some(slot), &w.env(), &mut atoms) {
@@ -3301,16 +3307,18 @@ fn scene_eligibility(folded: &FoldedEnv, table: &DefTable<'_>, w: &Walk<'_>) -> 
             _ => None,
         }
     };
-    let mut parts: Vec<Option<bool>> = Vec::new();
+    let mut parts: Vec<(Option<bool>, String)> = Vec::new();
     if let Some(beat) = &folded.typed.beat {
         if let Some(mut slot) = beat.when.clone() {
+            let raw = slot.raw.trim().to_string();
             let _ = lute_compile::expand::expand_beat_when(&mut slot, table);
-            parts.push(judge(&slot));
+            parts.push((judge(&slot), format!("its `when` ({raw}) is false")));
         }
         if beat.once == lute_check::beats::BeatOnce::User {
             let key = lute_check::meta::canonical_scene_key(&folded.typed);
-            parts.push(Some(
-                !key.is_some_and(|k| w.mocks.visited.iter().any(|v| *v == k)),
+            parts.push((
+                Some(!key.is_some_and(|k| w.mocks.visited.iter().any(|v| *v == k))),
+                "it is `once: user` and the mocked `visited:` already lists it".to_string(),
             ));
         }
     }
@@ -3321,21 +3329,56 @@ fn scene_eligibility(folded: &FoldedEnv, table: &DefTable<'_>, w: &Walk<'_>) -> 
         .filter(|a| !a.trim().is_empty())
     {
         let span = mock::synthetic_span();
-        parts.push(lute_check::parse_prereq(after, span).0.and_then(|f| {
+        let formula = lute_check::parse_prereq(after, span).0;
+        let verdict = formula.as_ref().and_then(|f| {
             judge(&CelSlot::raw(
                 lute_syntax::ast::CelKind::Condition,
-                prereq_condition(&f),
+                prereq_condition(f),
                 span,
             ))
-        }));
+        });
+        let mock_hint = formula
+            .as_ref()
+            .map(|f| unmet_prereq_mocks(f, w))
+            .filter(|m| !m.is_empty())
+            .map(|m| format!(" — mock {}", m.join(", ")))
+            .unwrap_or_default();
+        parts.push((
+            verdict,
+            format!("its `after: {}` is false{mock_hint}", after.trim()),
+        ));
     }
-    if parts.contains(&Some(false)) {
-        Some(false)
-    } else if parts.contains(&None) {
-        None
+    if let Some((_, why)) = parts.iter().find(|(v, _)| *v == Some(false)) {
+        (Some(false), Some(why.clone()))
+    } else if parts.iter().any(|(v, _)| v.is_none()) {
+        (None, None)
     } else {
-        Some(true)
+        (Some(true), None)
     }
+}
+
+/// The mock entries an `after:` prerequisite's unmet atoms need: `visited:
+/// [a]` for a scene not in the mocked `visited:`, `quests: { q: complete }`
+/// (or `active`) for a quest the walk does not hold in that state.
+fn unmet_prereq_mocks(f: &lute_check::PrereqFormula, w: &Walk<'_>) -> Vec<String> {
+    let mut out = Vec::new();
+    for atom in lute_check::prereq::atoms(f) {
+        let (quest, want) = match &atom {
+            lute_check::prereq::Atom::Visited(k) => {
+                if !w.mocks.visited.iter().any(|v| v == k) {
+                    out.push(format!("`visited: [{k}]`"));
+                }
+                continue;
+            }
+            lute_check::prereq::Atom::Completed(q) => (q, "complete"),
+            lute_check::prereq::Atom::Active(q) => (q, "active"),
+        };
+        let path = format!("quest.{quest}.state");
+        if !matches!(w.state.read(&path), Read::Value(Value::Str(s)) if s == want) {
+            out.push(format!("`quests: {{ {quest}: {want} }}`"));
+        }
+    }
+    out
 }
 
 fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
@@ -3355,6 +3398,7 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         final_undecided: BTreeSet::new(),
         foreign_quests: BTreeSet::new(),
         scene_eligible: None,
+        scene_ineligible: None,
     }
 }
 
@@ -3664,15 +3708,16 @@ fn trace_pipeline(
     // occasion, so a selector presents it), judged at the same moment; under
     // `gate_eligibility` an ineligible scene is not walked. A scene reached by
     // explicit flow has no presentation gate: its `after:` is structural.
-    let scene_eligible = match present {
+    let (scene_eligible, scene_ineligible) = match present {
         Presentation::Document
             if folded.doc_kind == lute_check::DocKind::Scene && folded.typed.beat.is_some() =>
         {
             let id = lute_check::meta::canonical_scene_key(&folded.typed)
                 .unwrap_or_else(|| input.uri.clone());
-            Some((id, scene_eligibility(&folded, &table, &w)))
+            let (eligible, why) = scene_eligibility(&folded, &table, &w);
+            (Some((id, eligible)), why)
         }
-        _ => None,
+        _ => (None, None),
     };
     let scene_gated = mocks.gate_eligibility
         && scene_eligible
@@ -3841,6 +3886,7 @@ fn trace_pipeline(
         final_undecided,
         foreign_quests,
         scene_eligible,
+        scene_ineligible,
     };
     (report, exit)
 }

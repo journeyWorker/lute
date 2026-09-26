@@ -156,8 +156,7 @@ fn cel_parse_diagnostics(doc: &Document, cel_errors: Vec<CelParseError>) -> Vec<
 /// the inline slot's profile gate and integer-`%` typing
 /// ([`crate::cel_resolve::check_def_body`]).
 /// An inline def anchors at its own key; an imported one at the frontmatter,
-/// naming its schema file (the `E-DEF-DECL` import convention in
-/// [`fold_env`]) — schema files are not checked on their own.
+/// naming its schema file — schema files are not checked on their own.
 fn def_body_diagnostics(
     doc: &Document,
     inline: &std::collections::BTreeMap<String, serde_yaml::Value>,
@@ -849,23 +848,22 @@ pub fn fold_env(
     let mut imported_defs = input.imports.defs.clone();
     for (name, def) in imported_defs.iter_mut() {
         if let Some(msg) = crate::def_decl::settle_def_type(name, def, &schema) {
-            let origin = input
-                .imports
-                .def_origins
-                .get(name)
-                .map(|p| p.display().to_string())
-                .unwrap_or_default();
-            fold_diags.push(Diagnostic {
-                code: crate::def_decl::E_DEF_DECL.to_string(),
-                severity: Severity::Error,
-                message: format!("schema import `{origin}`: {msg}"),
-                span: doc.meta.span,
-                layer: Layer::Content,
-                fixits: Vec::new(),
-                provenance: None,
-                covered: Vec::new(),
-                related: Vec::new(),
-            });
+            // Prerelease N5: reported at the def's schema line and folded
+            // across importers (dsl 0.26.0 §2.7), not at every importer's 1:1.
+            fold_diags.push(crate::rel_schema::at_origin(
+                Diagnostic {
+                    code: crate::def_decl::E_DEF_DECL.to_string(),
+                    severity: Severity::Error,
+                    message: msg,
+                    span: doc.meta.span,
+                    layer: Layer::Content,
+                    fixits: Vec::new(),
+                    provenance: None,
+                    covered: Vec::new(),
+                    related: Vec::new(),
+                },
+                input.imports.rel.origins.defs.get(name),
+            ));
         }
     }
     for (name, def) in typed.defs.iter_mut() {
@@ -1675,7 +1673,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
             code: "E-COMPONENT-PARSE".to_string(),
             severity: Severity::Error,
             message: "this component has a malformed `params:` — each entry must be \
-                      `name: <type>` (dsl §13)"
+                      `name: <type>` or the long form `name: { type: <type>, default: <value> }` \
+                      (dsl §13, 0.26.0 §3.3)"
                 .to_string(),
             span: doc.meta.span,
             layer: Layer::Content,
@@ -2019,6 +2018,14 @@ impl Walker<'_> {
                     // `E-UNKNOWN-DIRECTIVE`. It is a component invocation, not a
                     // snapshot directive.
                     check_use(d, self.components, ctx, &mut self.diags);
+                    check_use_typed_args(
+                        d,
+                        self.components,
+                        self.snapshot,
+                        self.providers,
+                        self.domains,
+                        &mut self.diags,
+                    );
                     check_use_interp_args(d, self.components, ctx, &mut self.diags);
                     // `@ref`-valued args still resolve in the current scope; there
                     // is no directive decl to type them against.
@@ -2210,6 +2217,14 @@ impl Walker<'_> {
                             match &clip.node {
                                 ClipNode::Directive(d) if d.tag == "use" => {
                                     check_use(d, self.components, ctx, &mut self.diags);
+                                    check_use_typed_args(
+                                        d,
+                                        self.components,
+                                        self.snapshot,
+                                        self.providers,
+                                        self.domains,
+                                        &mut self.diags,
+                                    );
                                     check_use_interp_args(d, self.components, ctx, &mut self.diags);
                                     self.check_attr_refs(&d.attrs, ctx, None);
                                 }
@@ -3212,6 +3227,191 @@ fn check_use_interp_args(
             ),
             attr.value_span,
         ));
+    }
+}
+
+/// dsl 0.26.0 §2.5 (prerelease N1): a literal `::use` argument whose param
+/// the component types `{ entity: K }` / `{ domain: K }`, or passes whole
+/// (`attr=@param`, at any depth, through nested `::use`s) to a directive
+/// attribute typed that way, is judged HERE — at the argument, with the
+/// did-you-mean — exactly as the attribute judges a literal written in place.
+/// Inside the body the value is a `@param` ref, which the attribute check
+/// cannot see through. The first failing judgement per argument is reported.
+fn check_use_typed_args(
+    dir: &Directive,
+    components: &ComponentSet,
+    snapshot: &CapabilitySnapshot,
+    providers: &ProviderSet,
+    domains: &std::collections::BTreeMap<String, Domain>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some((name, def)) = use_target(dir).and_then(|n| components.table.get(n).map(|d| (n, d)))
+    else {
+        return;
+    };
+    let args = crate::component_effects::use_args_for(dir, def);
+    for (param, pty) in &def.params {
+        if def.speakers.contains(param) {
+            continue; // judged against the cast (`check_speaker_args`)
+        }
+        let Some(value @ AttrValue::Str(_)) = args.get(param) else {
+            continue; // a `@ref` is judged where it is bound; `true` is `E-COMPONENT-ARG`'s
+        };
+        let value_span = dir
+            .attrs
+            .iter()
+            .find(|a| &a.key == param)
+            .map_or(dir.span, |a| a.value_span);
+        let mut sinks: Vec<(String, lute_manifest::schema::AttrDecl)> = Vec::new();
+        if is_member_typed(pty) {
+            sinks.push((
+                format!("::use{{component=\"{name}\"}}"),
+                lute_manifest::schema::AttrDecl {
+                    name: param.clone(),
+                    required: false,
+                    ty: pty.clone(),
+                    default: None,
+                },
+            ));
+        }
+        typed_param_sinks(
+            components,
+            snapshot,
+            name,
+            param,
+            param,
+            &mut Vec::new(),
+            &mut sinks,
+        );
+        let mut judged: Vec<Type> = Vec::new();
+        for (owner, decl) in sinks {
+            if judged.contains(&decl.ty) {
+                continue;
+            }
+            judged.push(decl.ty.clone());
+            let attr = Attr {
+                key: decl.name.clone(),
+                value: value.clone(),
+                value_span,
+                span: value_span,
+            };
+            let before = diags.len();
+            crate::directives::check_attr_value(
+                &owner, &decl, &attr, snapshot, providers, domains, diags,
+            );
+            if diags.len() > before {
+                break;
+            }
+        }
+    }
+}
+
+/// A type whose values are members of a named kind or domain (dsl 0.26.0
+/// §2.5) — what [`check_use_typed_args`] judges through a component.
+fn is_member_typed(ty: &Type) -> bool {
+    matches!(ty, Type::Entity(_) | Type::Domain(_))
+}
+
+/// Every member-typed directive attribute (and nested component param)
+/// component `comp`'s body passes its param `param` to whole, with the owner
+/// text [`crate::directives::check_attr_value`] names it by. `arg` is the
+/// argument of the outermost `::use` being judged. `seen` guards a `::use`
+/// cycle (reported elsewhere as `E-COMPONENT-CYCLE`).
+fn typed_param_sinks(
+    components: &ComponentSet,
+    snapshot: &CapabilitySnapshot,
+    comp: &str,
+    param: &str,
+    arg: &str,
+    seen: &mut Vec<(String, String)>,
+    out: &mut Vec<(String, lute_manifest::schema::AttrDecl)>,
+) {
+    if seen.iter().any(|(c, p)| c == comp && p == param) {
+        return;
+    }
+    seen.push((comp.to_string(), param.to_string()));
+    let Some(def) = components.table.get(comp) else {
+        return;
+    };
+    let owner = |tag: &str, key: &str| {
+        if key == arg {
+            format!("{tag}` in component `{comp}")
+        } else {
+            format!("{tag}` in component `{comp}`, passed as argument `{arg}")
+        }
+    };
+    let passes = |a: &Attr| matches!(&a.value, AttrValue::Ref(slot) if bare_param_ref(&slot.raw).as_deref() == Some(param));
+    let mut directive =
+        |d: &Directive, out: &mut Vec<(String, lute_manifest::schema::AttrDecl)>| {
+            if d.tag == "use" {
+                let Some((inner, inner_def)) =
+                    use_target(d).and_then(|n| components.table.get(n).map(|c| (n, c)))
+                else {
+                    return;
+                };
+                for a in d.attrs.iter().filter(|a| passes(a)) {
+                    if let Some((p, ty)) = inner_def.params.iter().find(|(p, _)| p == &a.key) {
+                        if is_member_typed(ty) {
+                            out.push((
+                                owner(&format!("::use{{component=\"{inner}\"}}"), p),
+                                lute_manifest::schema::AttrDecl {
+                                    name: p.clone(),
+                                    required: false,
+                                    ty: ty.clone(),
+                                    default: None,
+                                },
+                            ));
+                        }
+                    }
+                    typed_param_sinks(components, snapshot, inner, &a.key, arg, seen, out);
+                }
+                return;
+            }
+            let Some(decl) = snapshot.directive(&d.tag) else {
+                return;
+            };
+            for a in d.attrs.iter().filter(|a| passes(a)) {
+                let adecl = decl
+                    .attrs
+                    .iter()
+                    .find(|x| x.name == a.key)
+                    .or_else(|| snapshot.stamp_attrs.get(&a.key));
+                if let Some(adecl) = adecl.filter(|x| is_member_typed(&x.ty)) {
+                    out.push((owner(&format!("::{}", d.tag), &a.key), adecl.clone()));
+                }
+            }
+        };
+    fn walk(
+        nodes: &[Node],
+        f: &mut dyn FnMut(&Directive, &mut Vec<(String, lute_manifest::schema::AttrDecl)>),
+        out: &mut Vec<(String, lute_manifest::schema::AttrDecl)>,
+    ) {
+        for node in nodes {
+            match node {
+                Node::Directive(d) => f(d, out),
+                Node::Timeline(t) => {
+                    for clip in t.tracks.iter().flat_map(|tr| &tr.clips) {
+                        if let ClipNode::Directive(d) = &clip.node {
+                            f(d, out);
+                        }
+                    }
+                }
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                        walk(body, f, out);
+                    }
+                }
+                Node::Branch(b) => b.choices.iter().for_each(|c| walk(&c.body, f, out)),
+                Node::Hub(h) => h.choices.iter().for_each(|c| walk(&c.body, f, out)),
+                Node::On(o) => walk(&o.body, f, out),
+                Node::Objective(o) => walk(&o.body, f, out),
+                Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
+            }
+        }
+    }
+    for shot in &def.body.shots {
+        walk(&shot.body, &mut directive, out);
     }
 }
 
@@ -4362,6 +4562,7 @@ fn walk_component_body(
             }
             Node::Directive(d) if d.tag == "use" => {
                 check_use(d, components, ctx, diags);
+                check_use_typed_args(d, components, snapshot, providers, domains, diags);
                 check_speaker_args(d, components, scope.cast, scope.speakers, diags);
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, None, &scope.own, diags);
                 let writes = scope.effects

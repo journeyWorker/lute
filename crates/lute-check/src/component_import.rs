@@ -383,7 +383,7 @@ fn read_and_parse(
         diags.push(comp_diag(
             "E-COMPONENT-PARSE",
             format!(
-                "component file `{}` has a malformed `params:` — each entry must be `name: <type>` (dsl §13)",
+                "component file `{}` has a malformed `params:` — each entry must be `name: <type>` or the long form `name: {{ type: <type>, default: <value> }}` (dsl §13, 0.26.0 §3.3)",
                 canon.display()
             ),
             at,

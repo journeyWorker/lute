@@ -468,6 +468,43 @@ pub fn inline_ref_placeholders(
     diags
 }
 
+/// dsl 0.26.0 §5 (prerelease N8): a `{{occasion.target}}` placeholder in a
+/// kind beat carries the kind (`{"kind":"occasionTarget","entityKind":K}`),
+/// so an engine can render the member's display name rather than its raw
+/// id. `scene_kind` is a scene document's own kind beat; in a lore document
+/// each entry / bundle beat head sets the kind for the body records that
+/// follow it (the checker admits the read only inside a kind beat).
+pub fn type_occasion_target_placeholders(commands: &mut [Command], scene_kind: Option<&str>) {
+    let mut kind = scene_kind.map(str::to_string);
+    let fix = |phs: &mut [Placeholder], kind: &Option<String>| {
+        let Some(kind) = kind else { return };
+        for ph in phs {
+            if matches!(ph, Placeholder::Path { path, .. } if path == lute_check::beats::OCCASION_TARGET)
+            {
+                *ph = Placeholder::OccasionTarget {
+                    entity_kind: kind.clone(),
+                };
+            }
+        }
+    };
+    for cmd in commands {
+        match cmd {
+            Command::Entry(e) => kind = e.target_kind.as_ref().map(|k| k.kind.clone()),
+            Command::Beat(b) => kind = b.target_kind.as_ref().map(|k| k.kind.clone()),
+            Command::Line(l) => fix(&mut l.placeholders, &kind),
+            Command::Choice(c) => c
+                .options
+                .iter_mut()
+                .for_each(|o| fix(&mut o.placeholders, &kind)),
+            Command::Hub(h) => h
+                .options
+                .iter_mut()
+                .for_each(|o| fix(&mut o.placeholders, &kind)),
+            _ => {}
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;

@@ -594,8 +594,9 @@ pub enum Command {
 /// One `{{…}}` interpolation placeholder (IR A3): the runtime substitutes it
 /// against live state, while `text`/`label` keep the verbatim `{{…}}` marker.
 /// Kind-keyed referent — `{"kind":"path","path":…}`, `{"kind":"ref","ref":…}`,
-/// `{"kind":"reserved","token":…}` — matching the A3 example and the C1
-/// `ExprNode` kind-keyed convention. Entries appear in left-to-right order.
+/// `{"kind":"reserved","token":…}`, `{"kind":"occasionTarget","entityKind":…}`
+/// — matching the A3 example and the C1 `ExprNode` kind-keyed convention.
+/// Entries appear in left-to-right order.
 ///
 /// dsl 0.24.0 §4: a `path`/`ref` placeholder carries the interpolation's
 /// format hint as `format` (`{{user.deaths:ordinal}}` → `"format":"ordinal"`),
@@ -627,6 +628,13 @@ pub enum Placeholder {
     },
     /// A reserved token (only `userName` in 0.1).
     Reserved { token: String },
+    /// dsl 0.26.0 §5 (prerelease N8): `{{occasion.target}}` in a beat or
+    /// entry targeting a kind — the member the occasion was raised for, a
+    /// member of `entityKind` (the beat's `target="kind:<kind>"`, as its
+    /// `targetKind.kind`). The engine renders the member's display name —
+    /// its cast `name:` when the member is a cast id — else the id.
+    #[serde(rename = "occasionTarget", rename_all = "camelCase")]
+    OccasionTarget { entity_kind: String },
 }
 
 /// Map one syntactic [`Interp`](lute_syntax::ast::Interp) to its typed IR

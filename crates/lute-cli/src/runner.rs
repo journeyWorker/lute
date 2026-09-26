@@ -359,6 +359,10 @@ pub(crate) struct Runner {
     /// dsl 0.24.0 §1: per state path, the member → display-label map its
     /// artifact `state[].labels` declares; `{{path}}` renders through it.
     labels: BTreeMap<String, BTreeMap<String, String>>,
+    /// Prerelease N8: cast id -> display name, what an `occasionTarget`
+    /// placeholder renders a member by (`lute play` fills it; empty renders
+    /// the id).
+    display_names: BTreeMap<String, String>,
 
     // Evaluation environments — empty by construction: all live state lives in
     // `state`, so an empty `StateSchema` never shadows a read; an empty
@@ -843,6 +847,7 @@ impl Runner {
             addr_order,
             types,
             labels,
+            display_names: BTreeMap::new(),
             schema: StateSchema::default(),
             vocab,
             program,
@@ -928,6 +933,13 @@ impl Runner {
     /// (`lute play` for a `bundle` beat, `lute run --beat`).
     pub(crate) fn with_bundle_beat(mut self, id: &str) -> Self {
         self.bundle_beat = Some(id.to_string());
+        self
+    }
+
+    /// Prerelease N8: the cast display names `{{occasion.target}}` renders a
+    /// member by (`lute play`).
+    pub(crate) fn with_display_names(mut self, names: &BTreeMap<String, String>) -> Self {
+        self.display_names = names.clone();
         self
     }
 
@@ -1491,6 +1503,19 @@ impl Runner {
                     let path = ph.get("path").and_then(Json::as_str).unwrap_or("");
                     match self.state.get(path) {
                         Some(v) => formatted(ph, v).unwrap_or_else(|| self.path_text(path, v)),
+                        None => marker.to_string(),
+                    }
+                }
+                // Prerelease N8: the raised member of a kind beat, by its cast
+                // display name when it is a cast id, else the id.
+                Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("occasionTarget") => {
+                    match self.state.get(lute_check::beats::OCCASION_TARGET) {
+                        Some(Value::Str(m)) => self
+                            .display_names
+                            .get(m)
+                            .cloned()
+                            .unwrap_or_else(|| m.clone()),
+                        Some(v) => value_to_string(v),
                         None => marker.to_string(),
                     }
                 }

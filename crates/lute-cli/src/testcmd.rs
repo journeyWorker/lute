@@ -283,6 +283,10 @@ struct ExpectResult {
     /// a line that also prints the expected side.
     actual: Option<String>,
     passed: bool,
+    /// Prerelease N3: for the implicit `eligible` expectation, the premise
+    /// that makes the presentation ineligible (`its \`after: …\` is false
+    /// — mock …`). Human report only.
+    why: Option<String>,
 }
 
 /// One test file's — or expect-carrying play's — outcome.
@@ -1098,6 +1102,7 @@ fn run_one_test(
         // exit: complete | incomplete
         if let Some(want) = expect.get("exit").and_then(|v| v.as_str()) {
             expectations.push(ExpectResult {
+                why: None,
                 kind: "exit",
                 subject: String::new(),
                 expected: want.to_string(),
@@ -1133,6 +1138,7 @@ fn run_one_test(
                     _ => if present { "present" } else { "absent" }.to_string(),
                 };
                 expectations.push(ExpectResult {
+                    why: None,
                     kind,
                     subject: String::new(),
                     expected: sub.to_string(),
@@ -1167,6 +1173,7 @@ fn run_one_test(
                     format!("[{}]", s.iter().copied().collect::<Vec<_>>().join(", "))
                 };
                 expectations.push(ExpectResult {
+                    why: None,
                     kind: "offered",
                     subject: id.to_string(),
                     expected: match &want {
@@ -1191,6 +1198,7 @@ fn run_one_test(
                 let want = yaml_scalar_text(v).unwrap_or_default();
                 let actual = final_state.get(path).cloned();
                 expectations.push(ExpectResult {
+                    why: None,
                     kind: "state",
                     subject: path.to_string(),
                     expected: want.clone(),
@@ -1214,6 +1222,7 @@ fn run_one_test(
                 // is no lifecycle to observe (the T9.9 absent-value rule).
                 let actual = final_quests.get(id).cloned();
                 expectations.push(ExpectResult {
+                    why: None,
                     kind: "quests",
                     subject: id.to_string(),
                     passed: QUEST_STATES.contains(&want.as_str())
@@ -1235,6 +1244,7 @@ fn run_one_test(
             for atom in list.iter().filter_map(yaml_scalar_text) {
                 let Some((rel, _)) = crate::play_expect::parse_atom(&atom) else {
                     expectations.push(ExpectResult {
+                        why: None,
                         kind,
                         subject: atom.clone(),
                         expected: "a ground atom `rel(a, b)`".to_string(),
@@ -1253,6 +1263,7 @@ fn run_one_test(
                 };
                 let want = if want_held { "holds" } else { "does not hold" };
                 expectations.push(ExpectResult {
+                    why: None,
                     kind,
                     subject: atom.clone(),
                     expected: want.to_string(),
@@ -1304,6 +1315,7 @@ fn run_one_test(
                     None => "true or false".to_string(),
                 };
                 expectations.push(ExpectResult {
+                    why: None,
                     kind: "eligible",
                     subject: id.unwrap_or_default(),
                     passed: want.is_some()
@@ -1334,6 +1346,7 @@ fn run_one_test(
                 format!("[{}]", s.iter().copied().collect::<Vec<_>>().join(", "))
             };
             expectations.push(ExpectResult {
+                why: None,
                 kind: "accepts",
                 subject: String::new(),
                 expected: match &want {
@@ -1371,6 +1384,7 @@ fn run_one_test(
     let declares_exit = expect.is_some_and(|e| e.contains_key("exit"));
     if exit_str == "incomplete" && !declares_exit {
         expectations.push(ExpectResult {
+            why: None,
             kind: "exit",
             subject: IMPLICIT_EXIT.to_string(),
             expected: "complete".to_string(),
@@ -1387,6 +1401,7 @@ fn run_one_test(
     for (id, eligible) in presented_eligibility(&report) {
         if eligible == Some(false) && !eligibility_asserted(&id, asserted) {
             expectations.push(ExpectResult {
+                why: Some(ineligible_why(&report, &id)),
                 kind: "eligible",
                 subject: id,
                 expected: IMPLICIT_ELIGIBLE.to_string(),
@@ -1397,6 +1412,13 @@ fn run_one_test(
     }
 
     let passed = expectations.iter().all(|e| e.passed);
+    // Prerelease N3: a scene decided ineligible is judged by `eligible:` (or
+    // fails on it above) — the trace's "shows it as if it had been presented"
+    // note would contradict both.
+    let scene_ineligible = report
+        .scene_eligible
+        .as_ref()
+        .is_some_and(|(_, e)| *e == Some(false));
 
     Ok(TestResult {
         test_file: test_file.to_path_buf(),
@@ -1414,7 +1436,7 @@ fn run_one_test(
             .notes
             .iter()
             .filter(|n| {
-                n.starts_with(lute_trace::NOTE_BEAT_WHEN)
+                (n.starts_with(lute_trace::NOTE_BEAT_WHEN) && !scene_ineligible)
                     || n.starts_with(lute_trace::NOTE_ACCEPT_SPENT)
             })
             .cloned()
@@ -1574,6 +1596,28 @@ fn yaml_atom_hints(u: &UnresolvedEntry) -> String {
 /// implicitly for a presented entry / beat / scene whose `when` is false
 /// (dsl 0.26.0 §7, T1-7).
 const IMPLICIT_ELIGIBLE: &str = "an eligible presentation, or an `eligible:` assertion";
+
+/// Prerelease N3: the premise that makes presented `id` ineligible, named
+/// for the miss line — the traced scene's own verdict
+/// ([`TraceReport::scene_ineligible`]: its `when`, `after:` with the mocks
+/// it needs, or a spent `once: user`), a bundle beat's unmet `after=`, else
+/// the `when`.
+fn ineligible_why(report: &TraceReport, id: &str) -> String {
+    if report.scene_eligible.as_ref().is_some_and(|(s, _)| s == id) {
+        if let Some(why) = &report.scene_ineligible {
+            return why.clone();
+        }
+    }
+    let after_unmet = report
+        .steps
+        .iter()
+        .any(|s| matches!(s, lute_trace::Step::Beat { id: b, after_unmet: true, .. } if b == id));
+    if after_unmet {
+        "its `after=` is false — mock the `visited:` / quest states it names".to_string()
+    } else {
+        "its `when` is false".to_string()
+    }
+}
 
 /// Every presented lore entry / bundle beat — and the traced scene itself
 /// (dsl 0.26.0 §7, T1-7) — with its eligibility verdict, in presentation
@@ -2007,11 +2051,11 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
             let local = e.subject.rsplit('.').next().unwrap_or(&e.subject);
             outln!(
                 out,
-                "      eligible {}: not eligible under these mocks (its `when` is false) — the \
-                 engine would never present it, so the walk proves nothing about play; fix the \
-                 mocks, or assert `expect: {{ eligible: {{ {local}: false }} }}` (the body is \
-                 then not walked)",
-                e.subject
+                "      eligible {}: not eligible under these mocks ({}) — the engine would never \
+                 present it, so the walk proves nothing about play; fix the mocks, or assert \
+                 `expect: {{ eligible: {{ {local}: false }} }}` (the body is then not walked)",
+                e.subject,
+                e.why.as_deref().unwrap_or("its `when` is false")
             )
         }
         ("eligible", Some(actual)) => outln!(

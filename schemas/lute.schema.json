@@ -60,7 +60,7 @@
     },
     "cast": {
       "type": "object",
-      "description": "dsl 0.23.0 §7, 0.24.0 §4: speaker id -> `{ name?, present?, emotions?, assume? }`. Once any cast is declared (here or by a plugin's `cast` export), a content line whose speaker is outside it is `E-CAST-UNKNOWN`.",
+      "description": "dsl 0.23.0 §7, 0.24.0 §4, 0.26.0 §2.8: speaker id -> `{ name?, present?, emotions?, assume?, sharedName? }`. Once any cast is declared (here or by a plugin's `cast` export), a content line whose speaker is outside it is `E-CAST-UNKNOWN`.",
       "additionalProperties": {
         "type": "object",
         "properties": {
@@ -81,6 +81,10 @@
           "assume": {
             "type": "boolean",
             "description": "dsl 0.24.0 §4: `true` — presence reads every negated `holds` of an engine-`reserved` relation in `present` (directly or through a rule: `inParty(P) :- …, not fell(P)`) as holding, i.e. assumes the engine has not written it. Lines after the engine event then need their own guard."
+          },
+          "sharedName": {
+            "type": "boolean",
+            "description": "dsl 0.26.0 §2.8: `true` — this entry's `name` is an intended role name several speakers show (\"Eclipse Grunt\"); `W-DISPLAY-NAME-DUP` does not count this entry."
           }
         },
         "additionalProperties": false

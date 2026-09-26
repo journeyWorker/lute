@@ -880,7 +880,7 @@ fn walking_an_ineligible_unit_fails_unless_eligible_is_asserted() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(
-        t.contains("eligible probe.late: not eligible under these mocks (its `when` is false)"),
+        t.contains("eligible probe.late: not eligible under these mocks (its `when` (run.day > 3) is false)"),
         "{t}"
     );
     // `eligible: false` holds, and the body — with its bridge call — is not
