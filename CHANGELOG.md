@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.25.1`, the grammar and semantics the checker
+- **Language** — currently `0.26.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.25.1`) and gated on by consuming engines.
+  artifact (currently `0.26.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,7 +36,23 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.26.0] - 2026-09-26
+
+**Scale and many authors.**
+
+A minor release from a fourth dogfood round: a lead and four area writers
+building one monster-collecting RPG in parallel. The fact analysis and
+`lute test` load a project once and `lute test` runs in parallel; state, kinds,
+content ids, rewards and display names are held consistent across the files
+several authors write (`E-STATE-DECL-CONFLICT`, kinds assembled with `add:`,
+`defaults.uses` globs, entity-typed directive attributes, `E-REWARD-TARGET`,
+`W-DISPLAY-NAME-DUP`); components reach parity with direct text and gain
+`@@who:`, param defaults and their own result slots; directives take `when=`;
+one beat may answer a whole kind; a rule body may count; and `lute trace` /
+`lute test` agree with `lute play` on `::next`, handler accepts and ineligible
+beats. The language and the IR both earn the move (the IR additively); see
+[`docs/proposals/scenario-dsl/0.26.0.md`](docs/proposals/scenario-dsl/0.26.0.md)
+and [`docs/versioning.md`](docs/versioning.md).
 
 ### Added
 
@@ -279,6 +295,59 @@ table.
   then the plays, in parallel (`RAYON_NUM_THREADS` respected), reporting in
   the existing order with each one's stderr replayed in that order. A play
   project's compile diagnostics are printed once rather than once per play.
+
+### Compatibility
+
+- **A test that walks an ineligible beat now fails.** A `*.test.yaml` test
+  whose entry, bundle beat or scene has a `when` (or `after:`, or a spent
+  `once: user`) that is false under its mocks used to walk the body anyway;
+  it now fails and names the false premise. Assert `eligible: false` (the
+  body is then not walked) or fix the mocks so the premise holds (T1-7).
+- **`::next` is followed by trace and test.** A taken `::next` used to end
+  the `lute trace` / `lute test` walk (reported `complete`); the walk now
+  continues at the label, so expectations after a jump are judged and a test
+  that passed only because the walk stopped there may fail (T1-4). An
+  `::accept` in a quest `<on>` handler is applied, as play does (T1-5).
+- **`E-STATE-DECL-CONFLICT` can redden a project.** Two frontmatter `state:`
+  declarations of one path — inline or imported — that disagree on `type`,
+  `default`, `per` or `owner` are now an error naming both files and lines;
+  a project that declared a path twice with different shapes must pick one.
+- **Duplicate members are an error.** A member listed twice in one entity
+  kind or enum, or added to a kind by two files, is `E-ENTITY-KIND-SHAPE`.
+- **`E-WHEN-LITERAL-DOMAIN` covers `!=` and `in`.** A compared string outside
+  a closed domain (an enum path, `occasion.target`, a quest's `state` /
+  `failedBy`, `scene.choices.<id>`, an enum param, `$`) is now reported on
+  `!=` and as an `in [...]` element too, and replaces the `E-ARM-DEAD` a
+  non-member `==` literal used to cause. Tooling keyed on `E-ARM-DEAD` for
+  such a literal sees the new code.
+- **Untyped bridge answers are refused.** `lute play` types a bridge answer by
+  its result slot, else by the capability's `result:` shape, and refuses one
+  it cannot type instead of storing it as a string.
+- **`when` is reserved on directives.** `::use`, `::accept`, `::assert`,
+  `::retract` and plugin passthrough (and bridge) directives take
+  `when="…"`; a plugin manifest that declares a directive attribute named
+  `when` is rejected at load (`E-PLUGIN-PARSE`), and every core staging
+  directive (and a plugin `lower:` record) refuses `when=` (`E-UNKNOWN-ATTR`).
+- **New advisories.** `W-ENTRY-WRITE-REREAD` (a repeatable entry beat whose
+  body sets state or retracts a fact) and `W-DISPLAY-NAME-DUP` (two cast
+  entries or speaker display names exactly equal; `sharedName: true`
+  exempts a role name) can appear in a previously clean `check-project`; with
+  `--deny-warnings` they fail it.
+- **`defaults.uses` takes globs.** An entry containing `*`, `?` or `**` is
+  expanded in path order, and one that matches nothing — an empty or
+  missing directory — imports nothing; only a literal path must exist. A
+  literal file name containing those characters is now read as a glob.
+- **Schema file renamed; additive IR.** The version strings move to `0.26.0`
+  and `schemas/lute-ir-0.25.schema.json` is renamed to
+  [`schemas/lute-ir-0.26.schema.json`](schemas/lute-ir-0.26.schema.json)
+  (`$id` updated). Every new field is optional and appears only when the
+  source uses the feature: `targetKind` on `BeatIr` / `EntryCmd` / `BeatCmd` /
+  index beat rows, the placeholder kind `"occasionTarget"` (with its
+  `entityKind`), and the rule-body literal `"count"`. A directive's `when=`
+  lowers to a one-arm match and a component param's `default:` to its value,
+  so neither adds a field. `lute.core` does not move, so neither does
+  `capabilityVersion`. Engines gate on MAJOR, so nothing widens; the
+  tree-sitter grammar is unchanged.
 
 ## [0.25.1] - 2026-09-26
 

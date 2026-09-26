@@ -158,7 +158,7 @@ own, write a `custom:` rule that guards on `scene.kind == "beat"` (or
 
 ## Display names
 
-Since dsl 0.26.0 (draft) `lute lint` also reports `W-DISPLAY-NAME-DUP` (dsl
+Since dsl 0.26.0 `lute lint` also reports `W-DISPLAY-NAME-DUP` (dsl
 0.26.0 §2.8): two different speakers the dialogue box would show under the same
 name. Ids are unique across a project, but a player reads names, and two authors
 who each cast a "Hiker Gus" have written one person twice. It fires for two cast

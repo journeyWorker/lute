@@ -10,7 +10,7 @@ features that support them, and the commands a branch must pass before it merges
 
 Everything here comes from a real round of that work: a monster-collecting RPG written by one
 lead and four area writers at once (818 beats, 211 static facts, about 130 documents). Most of
-what the language gained in dsl 0.26.0 (draft) exists because of it: kinds assembled across
+what the language gained in dsl 0.26.0 exists because of it: kinds assembled across
 files with [`add:`](#kinds-assembled-across-files-add), glob imports and a default quest tier in
 [`defaults:`](#defaults-every-document-inherits), [`E-STATE-DECL-CONFLICT`](#state-declare-a-shared-path-once),
 [`@@who:`](#shared-components) in components, [`advance: { to }`](#clock-hand-offs), and
@@ -63,7 +63,7 @@ profiles:
   harbor:
     plugins: { harbor.engine: true }
 defaults:
-  luteVersion: "0.25.1"
+  luteVersion: "0.26.0"
   uses:
     - schema/world.schema.yaml
     - schema/roster.schema.yaml
