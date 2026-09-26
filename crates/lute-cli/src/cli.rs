@@ -583,10 +583,11 @@ pub(crate) enum Command {
         /// own `dir` semantics.
         dir: PathBuf,
         /// Directory of pinned provider snapshots to resolve ids against.
-        #[arg(long, value_name = "DIR")]
+        #[arg(long, value_name = "DIR", global = true)]
         providers: Option<PathBuf>,
         /// Output format: `text` (default), `json`, or `dot` (Graphviz).
-        #[arg(long, value_name = "FORMAT")]
+        /// Accepted before or after the sub-view (`reach … --format json`).
+        #[arg(long, value_name = "FORMAT", global = true)]
         format: Option<String>,
         /// Graph view: also draw fact-producer edges (dsl 0.26.0 §8) —
         /// `scene(A) -> scene(B) [hasItem(x)]` when B's gate (`when:` /

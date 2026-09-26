@@ -99,7 +99,8 @@ pub enum Verdict {
 
 /// One read of a guard that decided false, as the premise a refusal names
 /// (round-5 T3-12): a state path (with the value it held), a fact pattern
-/// that does not hold, a scene `visited(…)` has not seen.
+/// that does not hold, a scene `visited(…)` has not seen — or, under a
+/// negation (OT-F-10), a fact that holds, a scene that is visited.
 #[derive(Clone, Debug, PartialEq)]
 pub enum GuardRead {
     Path(String, crate::Value),
@@ -112,6 +113,10 @@ pub enum GuardRead {
         rules: Vec<(String, Vec<String>)>,
     },
     Visited(String),
+    /// OT-F-10: a ground fact that holds, read under a negation.
+    Holds(String),
+    /// OT-F-10: a scene `visited(…)` has seen, read under a negation.
+    Seen(String),
 }
 
 impl GuardRead {
@@ -139,6 +144,8 @@ impl GuardRead {
                     .join("; ")
             ),
             GuardRead::Visited(k) => format!("scene `{k}` is not visited"),
+            GuardRead::Holds(f) => format!("`{f}` holds"),
+            GuardRead::Seen(k) => format!("scene `{k}` is visited"),
         }
     }
 
@@ -152,6 +159,8 @@ impl GuardRead {
             },
             GuardRead::Fact(f) | GuardRead::Derived { fact: f, .. } => format!("`facts: [{f}]`"),
             GuardRead::Visited(k) => format!("`visited: [{k}]`"),
+            GuardRead::Holds(f) => format!("`facts:` without `{f}`"),
+            GuardRead::Seen(k) => format!("`visited:` without `{k}`"),
         }
     }
 }

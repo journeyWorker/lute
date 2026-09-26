@@ -1491,19 +1491,18 @@ fn check_objective_reach(
     // often a deadline past the end of a clock that ends.
     if let Some(by) = o.by.as_ref().filter(|b| !b.raw.trim().is_empty()) {
         if decide_slot(&by.raw, defs, ctx) == Some(Decided::Bool(false)) {
-            let why = crate::clock::end_reason(ctx.schema, &by.raw)
-                .map_or_else(String::new, |r| format!(" — {r}"));
-            diags.push(diag(
-                W_DEADLINE_NEVER,
-                Severity::Warning,
-                format!(
-                    "objective `{}`'s deadline `by: {}` can never hold{why}, so it never fails \
-                     the objective (dsl 0.24.0 §2.1)",
-                    o.id,
-                    by.raw.trim()
+            let (id, deadline) = (&o.id, by.raw.trim());
+            let message = match crate::clock::end_reason(ctx.schema, &by.raw) {
+                Some(why) => format!(
+                    "objective `{id}` never fails: its deadline `by: {deadline}` can never hold \
+                     ({why}) — write a deadline the clock can reach, or drop it (dsl 0.24.0 §2.1)"
                 ),
-                by.span,
-            ));
+                None => format!(
+                    "objective `{id}` never fails: its deadline `by: {deadline}` can never hold — \
+                     write a deadline the clock can reach, or drop it (dsl 0.24.0 §2.1)"
+                ),
+            };
+            diags.push(diag(W_DEADLINE_NEVER, Severity::Warning, message, by.span));
         }
     }
     // dsl 0.24.0 §2.1: `done ⇒ by` on an `on=` objective — proven as

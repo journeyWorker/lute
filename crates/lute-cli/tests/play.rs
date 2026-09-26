@@ -2676,3 +2676,37 @@ fn an_include_choose_is_local_to_each_repetition() {
         .collect();
     assert_eq!(chose, ["notYet", "notYet", "accept"], "{v}");
 }
+
+/// OT-F-1: an include's own `choose:` key that none of its steps presents —
+/// over every repetition — is a decision written on the wrong `include:`;
+/// the play says so once, naming the include, where it ends. A key some
+/// repetition used is no note.
+#[test]
+fn an_include_choose_its_steps_never_present_is_noted() {
+    let dir = stage_project("include-leftover");
+    let steps = write(
+        &temp_dir("include-leftover-steps"),
+        "v.steps.yaml",
+        "- occasion: visit\n",
+    );
+    let out = play_in(
+        &dir,
+        "include-leftover",
+        &format!(
+            "steps:\n  - include: {}\n    repeat: 2\n    choose: {{ look: [table, leave], ask: [accept] }}\n  \
+             - occasion: talk\nchoose:\n  ask: [notYet]\n",
+            steps.display()
+        ),
+        false,
+    );
+    let t = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}{}", stderr(&out));
+    assert_eq!(
+        t.matches("never used its own `choose: ask` (no step of the include presented `ask`)")
+            .count(),
+        1,
+        "{t}"
+    );
+    assert!(t.contains("note: `include: "), "{t}");
+    assert!(!t.contains("`choose: look`"), "{t}");
+}

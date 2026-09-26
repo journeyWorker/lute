@@ -3,11 +3,11 @@
 //! the `terminal:` and clock notes — and the world the playthrough ended
 //! in.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
 use lute_trace::exec::seam::Closed;
-use lute_trace::exec::session::{PlayHalt, QuestAdvance, Session, StepBody, World};
+use lute_trace::exec::session::{PlayHalt, Played, QuestAdvance, Session, StepBody, World};
 
 use super::plan::{Action, Scope, Step};
 use super::script::PlayScript;
@@ -72,12 +72,20 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
     }
     let (start, halt) = s.settle();
     let mut steps = Vec::new();
+    // HW27-10: a refused step (`E-OCCASION-GATE`, a `pick:` that is not
+    // eligible, …) is located at the step as written — its play, or the
+    // steps file an `include:` spliced it from — like a usage error.
     let finish = |start, steps, h: PlayHalt, world| Playthrough {
         start,
         steps,
         skipped: Vec::new(),
         terminal: false,
-        outcome: Err(h),
+        outcome: Err(match h {
+            PlayHalt::Error(m) => {
+                PlayHalt::Error(super::plan::locate_step_error(&script.steps, &m).unwrap_or(m))
+            }
+            h => h,
+        }),
         world,
     };
     if let Some(h) = halt {
@@ -85,9 +93,11 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
     }
     let mut open: Vec<OpenScope> = Vec::new();
     for (i, step) in plan.iter().enumerate() {
-        enter_scopes(&mut s.world, &mut open, &step.segments);
+        let closed = enter_scopes(&mut s.world, &mut open, &step.segments);
+        note_on_last(&mut steps, closed);
         if matches!(step.action, Action::End) {
-            enter_scopes(&mut s.world, &mut open, &[]);
+            let closed = enter_scopes(&mut s.world, &mut open, &[]);
+            note_on_last(&mut steps, closed);
             steps.push(StepRecord {
                 n: step.n,
                 label: step.label.clone(),
@@ -192,12 +202,16 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                 exclusive,
                 before_raise: false,
             });
+            for o in &mut open {
+                menus_presented(steps.last().expect("just pushed"), &mut o.used);
+            }
             if let Some(h) = halt {
                 return finish(start, steps, h, s.world);
             }
         }
     }
-    enter_scopes(&mut s.world, &mut open, &[]);
+    let closed = enter_scopes(&mut s.world, &mut open, &[]);
+    note_on_last(&mut steps, closed);
     // dsl 0.27.0 §4: a playthrough whose last step left the game over ends
     // in the terminal state (a later raising step was refused above).
     if s.terminal() {
@@ -253,7 +267,10 @@ fn closed_raise_notes(body: &StepBody) -> Vec<String> {
         .iter()
         .map(|c| {
             let why = match &c.why {
-                Closed::Gate(g) => format!("its `raisedWhen: {g}` is false there"),
+                Closed::Gate { raw, reads } => format!(
+                    "its `raisedWhen: {raw}` is false there{}",
+                    Closed::reads_text(reads)
+                ),
                 Closed::Terminal(t) => format!("the game is over (`terminal: {t}` holds)"),
                 Closed::Unknown(u) => format!("whether the engine may raise it is undecided: {u}"),
             };
@@ -267,11 +284,22 @@ fn closed_raise_notes(body: &StepBody) -> Vec<String> {
 
 /// dsl 0.27.0 (T3-22): a segment open around the running step, with what
 /// it replaced in the world — per `choose:` key the script's list and its
-/// consumption, per `bridges:` tag the queue — so leaving it restores them.
+/// consumption, per `bridges:` tag the queue — so leaving it restores them,
+/// and what its steps used of its own decisions and answers (OT-F-1).
 struct OpenScope {
     scope: Arc<Scope>,
     choose: Vec<(String, Option<Vec<String>>, Option<usize>)>,
     bridges: Vec<(String, Option<VecDeque<lute_trace::BridgeAnswer>>)>,
+    used: Used,
+}
+
+/// OT-F-1: what the steps of one `include:` item — every repetition of it
+/// — used of its own `choose:` / `bridges:`: the branches/hubs they
+/// presented, the tags a call took an answer of.
+#[derive(Default)]
+struct Used {
+    menus: BTreeSet<String>,
+    bridged: BTreeSet<String>,
 }
 
 /// Make `want` (outermost first) the open segments: leave every open one
@@ -279,15 +307,25 @@ struct OpenScope {
 /// segment's `choose:` lists replace the script's key by key and are
 /// consumed from their start; its `bridges:` queues replace the script's
 /// top-level ones tag by tag. Answers and decisions left over when it
-/// closes are dropped with it.
-fn enter_scopes(w: &mut World, open: &mut Vec<OpenScope>, want: &[Arc<Scope>]) {
+/// closes are dropped with it. OT-F-1: an `include:` item whose steps —
+/// over all its repetitions — never presented a `choose:` key of its own,
+/// or never took an answer of a `bridges:` tag of its own, says so as its
+/// last repetition closes (a decision written on the wrong `include:`);
+/// the notes are returned.
+fn enter_scopes(w: &mut World, open: &mut Vec<OpenScope>, want: &[Arc<Scope>]) -> Vec<String> {
     let keep = open
         .iter()
         .zip(want)
         .take_while(|(o, s)| Arc::ptr_eq(&o.scope, s))
         .count();
+    let mut closed: Vec<(usize, Arc<Scope>, Used)> = Vec::new();
     while open.len() > keep {
-        let Some(o) = open.pop() else { break };
+        let Some(mut o) = open.pop() else { break };
+        for (tag, answers) in &o.scope.bridges {
+            if w.bridges.top.get(tag).map_or(0, VecDeque::len) < answers.len() {
+                o.used.bridged.insert(tag.clone());
+            }
+        }
         for (k, list, cursor) in o.choose.into_iter().rev() {
             match list {
                 Some(list) => w.choose.insert(k.clone(), list),
@@ -304,8 +342,15 @@ fn enter_scopes(w: &mut World, open: &mut Vec<OpenScope>, want: &[Arc<Scope>]) {
                 None => w.bridges.top.remove(&tag),
             };
         }
+        closed.push((open.len(), o.scope, o.used));
     }
-    for scope in &want[keep..] {
+    for (depth, scope) in want.iter().enumerate().skip(keep) {
+        // The next repetition of the same `include:` item carries on.
+        let used = closed
+            .iter()
+            .position(|(d, s, _)| *d == depth && s.include == scope.include)
+            .map(|i| closed.remove(i).2)
+            .unwrap_or_default();
         let choose = scope
             .choose
             .iter()
@@ -323,7 +368,83 @@ fn enter_scopes(w: &mut World, open: &mut Vec<OpenScope>, want: &[Arc<Scope>]) {
             scope: scope.clone(),
             choose,
             bridges,
+            used,
         });
+    }
+    closed
+        .iter()
+        .rev()
+        .filter_map(|(_, scope, used)| leftover_note(scope, used))
+        .collect()
+}
+
+/// Notes a segment left as it closed ([`leftover_note`]), on the last step
+/// it ran — the record the reader sees them under.
+fn note_on_last(steps: &mut [StepRecord], notes: Vec<String>) {
+    if let Some(last) = steps.last_mut() {
+        last.notes.extend(notes);
+    }
+}
+
+/// OT-F-1: what an `include:` item's own `choose:` / `bridges:` left
+/// unused over all its repetitions — a `choose:` key none of its steps
+/// presented, a `bridges:` tag none of its calls took an answer of. `None`
+/// when it used every one.
+fn leftover_note(scope: &Scope, used: &Used) -> Option<String> {
+    let unused: Vec<String> = scope
+        .choose
+        .keys()
+        .filter(|k| !used.menus.contains(*k))
+        .map(|k| format!("`choose: {k}` (no step of the include presented `{k}`)"))
+        .chain(
+            scope
+                .bridges
+                .keys()
+                .filter(|t| !used.bridged.contains(*t))
+                .map(|t| format!("`bridges: {t}` (no call of the include took an answer)")),
+        )
+        .collect();
+    (!unused.is_empty()).then(|| {
+        format!(
+            "{} never used its own {} — a decision or answer for a step outside the include \
+             belongs on that step, or on the script",
+            scope.include,
+            unused.join(", ")
+        )
+    })
+}
+
+/// Every branch/hub id a step record's walks presented — its beats (an
+/// `advance:`'s midnight raises included) and its quest handlers.
+fn menus_presented(r: &StepRecord, into: &mut Used) {
+    let beats = r
+        .body
+        .occasion()
+        .into_iter()
+        .flat_map(|b| match b {
+            StepBody::Occasion { presented, .. } => presented.iter().collect(),
+            _ => Vec::new(),
+        })
+        .map(|pr| pr.transcript.as_slice());
+    let days = r.body.days_played();
+    let days = days.iter().map(|p| match p {
+        Played::Beat(pr) => pr.transcript.as_slice(),
+        Played::Quest(q) => q.transcript.as_slice(),
+    });
+    let quests = r
+        .body
+        .settled()
+        .chain(&r.quests)
+        .map(|q| q.transcript.as_slice());
+    for rec in beats.chain(days).chain(quests).flatten() {
+        let id = match rec.get("kind").and_then(|k| k.as_str()) {
+            Some("choice") => rec.get("branch"),
+            Some("hub") => rec.get("hub"),
+            _ => None,
+        };
+        if let Some(id) = id.and_then(|v| v.as_str()) {
+            into.menus.insert(id.to_string());
+        }
     }
 }
 

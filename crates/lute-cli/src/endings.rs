@@ -81,6 +81,9 @@ struct Row {
     when_token: &'static str,
     when_text: String,
     needs: Vec<Need>,
+    /// OT-F-13: the errors inside the `when` (the root cause of a
+    /// never-holds verdict), as `(code, line, column, message)`.
+    causes: Vec<(String, u32, u32, String)>,
     bucket: Bucket,
 }
 
@@ -107,6 +110,16 @@ fn rows(
         .iter()
         .flat_map(|(p, r)| r.diagnostics.iter().map(move |d| (p, d)))
         .chain(project_diags.iter().map(|(p, d)| (p, d)))
+        .collect();
+    // OT-F-13: the errors a verdict follows from — a typo in the `when`
+    // itself (`E-WHEN-LITERAL-DOMAIN`) — cited before the verdict.
+    let errors: Vec<(&PathBuf, &Diagnostic)> = verdicts
+        .iter()
+        .copied()
+        .filter(|(_, d)| {
+            d.severity == lute_core_span::Severity::Error
+                && !verdict_codes.contains(&d.code.as_str())
+        })
         .collect();
     verdicts.retain(|(_, d)| verdict_codes.contains(&d.code.as_str()));
 
@@ -142,7 +155,21 @@ fn rows(
                 .filter(|(p, d)| crate::beats_cmd::names_beat(p, d, b))
                 .map(|(_, d)| *d)
                 .collect();
-            rows.push(row(root, group, &scenario, &producers, b, &about));
+            let causes: Vec<&Diagnostic> = b
+                .when_slot
+                .map(|slot| {
+                    errors
+                        .iter()
+                        .filter(|(p, d)| {
+                            p.as_path() == b.path.as_path()
+                                && d.span.byte_start >= slot.span.byte_start
+                                && d.span.byte_start <= slot.span.byte_end
+                        })
+                        .map(|(_, d)| *d)
+                        .collect()
+                })
+                .unwrap_or_default();
+            rows.push(row(root, group, &scenario, &producers, b, &about, &causes));
         }
         out.push(RootRows {
             root: root.clone(),
@@ -190,6 +217,7 @@ fn row(
     producers: &Producers<'_>,
     b: &ProjectBeat<'_>,
     about: &[&Diagnostic],
+    causes: &[&Diagnostic],
 ) -> Row {
     let node = match b.kind {
         ProjectBeatKind::Scene => NodeId::Scene(b.id.clone()),
@@ -217,10 +245,27 @@ fn row(
         d.code == lute_check::E_BEAT_UNREACHABLE || d.code == lute_check::E_ENTRY_UNREACHABLE
     });
     let shadowed = about.iter().find(|d| d.code == lute_check::W_BEAT_SHADOWED);
+    let caused = if causes.is_empty() {
+        String::new()
+    } else {
+        let each: Vec<String> = causes
+            .iter()
+            .map(|d| {
+                format!(
+                    "{} at {}:{}: {}",
+                    d.code,
+                    d.span.line,
+                    d.span.column,
+                    d.text()
+                )
+            })
+            .collect();
+        format!(" — caused by {}", each.join("; "))
+    };
     let (when_token, when_text) = if let Some(d) = unreachable {
         (
             "never-holds",
-            format!("never holds ({}: {})", d.code, d.text()),
+            format!("never holds{caused} ({}: {})", d.code, d.text()),
         )
     } else if let Some(d) = shadowed {
         (
@@ -265,6 +310,17 @@ fn row(
         when_token,
         when_text,
         needs,
+        causes: causes
+            .iter()
+            .map(|d| {
+                (
+                    d.code.clone(),
+                    d.span.line,
+                    d.span.column,
+                    d.text().into_owned(),
+                )
+            })
+            .collect(),
         bucket,
     }
 }
@@ -797,7 +853,14 @@ pub(crate) fn run_text(
     for r in &roots {
         outln!(out, "project root: {}", r.root.display());
         outln!(out, "endings ({what}):");
-        if r.rows.is_empty() {
+        if r.rows.is_empty() && occasion.is_none() {
+            // OT-F-13: a game that ends by an occasion, not by `::end`.
+            outln!(
+                out,
+                "  (none) — no beat's content runs `::end`; if the game ends on an occasion, \
+                 name it: `--endings=<occasion>`"
+            );
+        } else if r.rows.is_empty() {
             outln!(out, "  (none)");
         }
         for row in &r.rows {
@@ -844,16 +907,32 @@ pub(crate) fn run_text(
          presents the ending is the proof — `lute test --coverage` lists the beats no play \
          presents."
     );
-    ExitCode::SUCCESS
+    unreachable_exit(&roots)
 }
 
-/// `lute scenario <dir> --format json reach --endings[=<occasion>]`.
+/// OT-F-13: exit 1 when a static verdict refutes an ending, so CI can fail
+/// on it; `unknown` is no failure.
+fn unreachable_exit(roots: &[RootRows]) -> ExitCode {
+    if roots
+        .iter()
+        .flat_map(|r| &r.rows)
+        .any(|row| row.bucket == Bucket::Unreachable)
+    {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// `lute scenario <dir> --format json reach --endings[=<occasion>]`, with
+/// its exit code ([`unreachable_exit`]).
 pub(crate) fn json(
     by_root: &ByRoot,
     file_results: &[(PathBuf, lute_check::CheckResult)],
     occasion: Option<&str>,
-) -> Result<Json, ExitCode> {
+) -> Result<(Json, ExitCode), ExitCode> {
     let roots = rows(by_root, file_results, occasion)?;
+    let exit = unreachable_exit(&roots);
     let roots: Vec<Json> = roots
         .iter()
         .map(|r| {
@@ -873,6 +952,12 @@ pub(crate) fn json(
                             "verdict": row.when_token,
                             "detail": row.when_text,
                         },
+                        "causes": row.causes.iter().map(|(code, line, column, message)| json!({
+                            "code": code,
+                            "line": line,
+                            "column": column,
+                            "message": message,
+                        })).collect::<Vec<_>>(),
                         "needs": row.needs.iter().map(|n| json!({
                             "what": n.what,
                             "writers": n.producers,
@@ -895,5 +980,5 @@ pub(crate) fn json(
             })
         })
         .collect();
-    Ok(json!({ "roots": roots }))
+    Ok((json!({ "roots": roots }), exit))
 }

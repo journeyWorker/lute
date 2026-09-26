@@ -425,6 +425,27 @@ fn impossible_reason(pattern: &QueryPattern) -> String {
     )
 }
 
+/// HW27-10: an impossible derived fact named by the rule premise nothing
+/// produces — `` `canEnter(office)` can only come from `canEnter(R) :-
+/// holding(R)`, which needs `holding(office)`, and no seed, … produces it
+/// `` — `None` when no rule concludes it.
+fn starved_reason(pattern: &QueryPattern, starved: &[(&str, String)]) -> Option<String> {
+    if starved.is_empty() {
+        return None;
+    }
+    let rules: Vec<String> = starved
+        .iter()
+        .map(|(rule, premise)| format!("`{}`, which needs `{premise}`", rule.trim()))
+        .collect();
+    let premises: Vec<String> = starved.iter().map(|(_, p)| format!("`{p}`")).collect();
+    Some(format!(
+        "`{pattern}` can only come from {}, and no seed, assert, rule, or engine relation \
+         produces {} under your declared routes",
+        rules.join(" or "),
+        premises.join(" or ")
+    ))
+}
+
 /// Why a guaranteed fact holds at the slot, naming where it is established.
 fn guaranteed_reason(m: &MustFact) -> String {
     let fact = &m.fact;
@@ -961,14 +982,19 @@ fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, negated: bool, out: &mut Vec<
                         if let Some(pattern) = QueryPattern::from_call(p) {
                             let verdict = match scope.holds(&pattern) {
                                 HoldsVerdict::Impossible => HoldsOutcome::Impossible(
-                                    scope.defeat(&pattern).map(|(head, denied)| {
-                                        format!(
-                                            "`{head}` can only come from a rule that needs \
+                                    scope
+                                        .defeat(&pattern)
+                                        .map(|(head, denied)| {
+                                            format!(
+                                                "`{head}` can only come from a rule that needs \
                                                  `not {denied}`, and `{denied}` holds throughout \
                                                  every run (a seed nothing removes, or derived \
                                                  from such seeds)"
-                                        )
-                                    }),
+                                            )
+                                        })
+                                        .or_else(|| {
+                                            starved_reason(&pattern, &scope.starved(&pattern))
+                                        }),
                                 ),
                                 HoldsVerdict::Guaranteed(m) => {
                                     HoldsOutcome::Guaranteed(guaranteed_reason(m))

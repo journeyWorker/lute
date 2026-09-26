@@ -125,6 +125,7 @@ impl<'p> Session<'p> {
             &mut eval,
             beat,
             member,
+            member,
         ))
     }
 

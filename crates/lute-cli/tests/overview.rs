@@ -831,21 +831,33 @@ fn calendar_family_axes_set_every_member_or_the_one_another_axis_names() {
     );
     let unbound = err(&["--axis", "run.aff[run.route]=6,7"]);
     assert!(
-        unbound.contains("`run.route` is no `--axis` of this calendar (axes: run.aff[run.route])"),
+        unbound.contains("`run.route` is no `--axis` of this calendar (other axes: none)"),
         "{unbound}"
     );
-    let outside = err(&[
+    let typo = err(&["--axis", "run.route=ada", "--axis", "run.aff[run.rout]=6"]);
+    assert!(
+        typo.contains("`run.rout` is no `--axis` of this calendar — did you mean `run.route`?"),
+        "{typo}"
+    );
+    let outside = err(&["--axis", "run.route=none", "--axis", "run.aff[run.route]=6"]);
+    assert!(
+        outside.contains("`--axis run.route` takes no member of `person` (ada, bo)"),
+        "{outside}"
+    );
+    // OT-F-12: a route outside the family sets no member — one cell for it,
+    // every member at its seed, instead of refusing the calendar.
+    let wider = json(&[
         "--axis",
         "run.route=ada,none",
         "--axis",
-        "run.aff[run.route]=6",
+        "run.aff[run.route]=6,7",
     ]);
-    assert!(
-        outside.contains(
-            "`--axis run.route` takes `none`, which is not a member of `person` (ada, bo)"
-        ),
-        "{outside}"
+    assert_eq!(wider["cells"].as_array().unwrap().len(), 3, "{wider}");
+    assert_eq!(
+        wider["cells"][2]["at"],
+        serde_json::json!({ "run.route": "none", "run.aff[run.route]": null })
     );
+    assert_eq!(winners(&wider), ["end.ada.ok", "end.ada.good", "-"]);
     let twice = err(&["--axis", "run.aff.*=6", "--axis", "run.aff.bo=7"]);
     assert!(
         twice.contains("`--axis run.aff.*` and `--axis run.aff.bo` both set `run.aff.bo`"),

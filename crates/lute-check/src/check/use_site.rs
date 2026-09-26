@@ -93,29 +93,65 @@ pub(super) fn check_use(
     };
     // Named-arg validation: each supplied arg binds to a param by name.
     // `at` is reserved (E-AT-CONTEXT above), never a component arg.
+    let supplied = |p: &str| dir.attrs.iter().any(|a| a.key == p);
+    // A missing param an unknown argument is the typo of: that one error
+    // explains both, so the missing param is not reported again (ML-F6).
+    let mut misspelt: Vec<&str> = Vec::new();
     for attr in dir
         .attrs
         .iter()
         .filter(|a| a.key != "component" && a.key != "at")
     {
         match def.params.iter().find(|(p, _)| p == &attr.key) {
-            None => diags.push(use_diag(
-                E_COMPONENT_ARG,
-                format!(
-                    "component `{name}` has no parameter `{}` (dsl §13)",
-                    attr.key
-                ),
-                attr.span,
-            )),
+            None => {
+                let near = lute_manifest::suggest::nearest(
+                    &attr.key,
+                    def.params
+                        .iter()
+                        .map(|(p, _)| p.as_str())
+                        .filter(|p| !supplied(p)),
+                    2,
+                );
+                misspelt.extend(near);
+                diags.push(use_diag(
+                    E_COMPONENT_ARG,
+                    format!(
+                        "component `{name}` has no parameter `{}`{} (dsl §13)",
+                        attr.key,
+                        near.map(|n| format!(" — did you mean `{n}`?"))
+                            .unwrap_or_default()
+                    ),
+                    attr.span,
+                ))
+            }
             // dsl 0.24.0 §4: a `speaker` arg is judged against the host's
             // cast by `check_speaker_args`, never as a plain string.
             Some((_, _)) if def.speakers.contains(&attr.key) => {}
             Some((_, pty)) => {
                 if !use_arg_ok(pty, &attr.value, ctx) {
+                    let shown = match &attr.value {
+                        AttrValue::Ref(slot) => format!("`{}={}`", attr.key, slot.raw.trim()),
+                        AttrValue::Str(s) => format!("`{}=\"{s}\"`", attr.key),
+                        AttrValue::BoolTrue => format!("a bare `{}`", attr.key),
+                    };
+                    let hint = match (pty, &attr.value) {
+                        (Type::Enum(members), AttrValue::Str(s)) => {
+                            lute_manifest::suggest::nearest(
+                                s,
+                                members.iter().map(String::as_str),
+                                2,
+                            )
+                            .map(|m| format!(" — did you mean `{m}`?"))
+                            .unwrap_or_default()
+                        }
+                        _ => String::new(),
+                    };
                     diags.push(use_diag(
                         E_COMPONENT_ARG,
                         format!(
-                            "argument `{}` to component `{name}` is not compatible with its declared type (dsl §13)",
+                            "argument {shown} to component `{name}` does not fit `{}`, the type \
+                             its param `{}` declares{hint} (dsl §13)",
+                            param_ty_label(pty),
                             attr.key
                         ),
                         attr.value_span,
@@ -132,7 +168,7 @@ pub(super) fn check_use(
     let mut args = crate::component_effects::use_args_for(dir, def);
     let mut defaulted: Vec<Attr> = Vec::new();
     for (p, pty) in &def.params {
-        if dir.attrs.iter().any(|a| &a.key == p) {
+        if dir.attrs.iter().any(|a| &a.key == p) || misspelt.contains(&p.as_str()) {
             continue;
         }
         let Some(value) = args.remove(p) else {

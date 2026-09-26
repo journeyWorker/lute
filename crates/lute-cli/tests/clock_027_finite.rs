@@ -268,6 +268,36 @@ fn a_when_past_the_last_position_is_unreachable() {
     assert!(out.status.success(), "{}", text(&out));
 }
 
+/// HW27-05: a `by=` deadline the finite clock can never reach never fails
+/// its objective — `W-DEADLINE-NEVER` at the `by`, naming the clock's end.
+/// A deadline inside the clock, and the same deadlines on a clock that
+/// never ends, stay clean.
+#[test]
+fn a_deadline_past_the_last_position_never_fails() {
+    let quest = "---\nkind: quest\nid: q\nuses: ../world.schema.yaml\n---\n\n\
+                 <quest id=\"night\" title=\"Night\" start=\"true\">\n  \
+                 <objective id=\"leave\" title=\"Leave\" done=\"clock.index >= 6\" by=\"run.night >= 2\"/>\n  \
+                 <objective id=\"hide\" title=\"Hide\" done=\"clock.index >= 6\" by=\"clock.index >= 9\"/>\n  \
+                 <objective id=\"wait\" title=\"Wait\" done=\"clock.index >= 6\" by=\"clock.index >= 6\"/>\n\
+                 </quest>\n";
+    let docs = [("quests/q.lute", quest)];
+    let t = text(&check_project(&ward("deadline", LAST, &docs)));
+    assert!(
+        t.contains("q.lute:8:") && t.contains(
+            "[W-DEADLINE-NEVER] objective `leave` never fails: its deadline `by: run.night >= 2` \
+             can never hold (the clock ends at its last position, so `run.night` only ranges over 1..1)"
+        ),
+        "{t}"
+    );
+    assert!(
+        t.contains("objective `hide` never fails: its deadline `by: clock.index >= 9`"),
+        "{t}"
+    );
+    assert_eq!(t.matches("[W-DEADLINE-NEVER]").count(), 2, "{t}");
+    let t = text(&check_project(&ward("deadline-open", "", &docs)));
+    assert!(!t.contains("W-DEADLINE-NEVER"), "{t}");
+}
+
 #[test]
 fn a_last_position_the_clock_does_not_have_is_a_clock_decl_error() {
     for (bound, needle) in [
@@ -281,6 +311,16 @@ fn a_last_position_the_clock_does_not_have_is_a_clock_decl_error() {
             "both `last:` and `days:`",
         ),
         ("  last: { day: 0 }\n", "`last.day` is 0"),
+        // HW27-13: an unknown key gets a did-you-mean, a non-number days
+        // no serde text.
+        (
+            "  lats: { day: 1 }\n",
+            "has no key `lats` — did you mean `last`?",
+        ),
+        (
+            "  days: one\n",
+            "`days: \"one\"` must be a whole number, e.g. `days: 1`",
+        ),
     ] {
         let dir = ward("decl", bound, &[]);
         let t = text(&check_project(&dir));

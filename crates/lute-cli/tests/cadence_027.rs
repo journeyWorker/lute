@@ -396,6 +396,52 @@ fn an_undeclared_season_is_a_season_decl_error() {
     );
 }
 
+/// G-4: a season fault in a schema is one error at the schema's own line,
+/// however many documents import it — never a copy at `1:1` of each
+/// document. G-5: a season `live:` that is a bare non-bool path is the same
+/// `E-REF-TYPE` a number-typed `@def` gets there.
+#[test]
+fn a_season_fault_in_a_schema_is_reported_once_at_the_schema() {
+    let docs = [
+        ("scenes/a.lute", scene("a.b", "", "Hi.")),
+        ("scenes/c.lute", scene("c.d", "", "Ho.")),
+        ("scenes/e.lute", scene("e.f", "", "Ha.")),
+    ];
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    let cases = [
+        (
+            "typo",
+            SEASON_SCHEMA.replace("{ live:", "{ lvie:"),
+            "[E-SEASON-DECL]",
+        ),
+        (
+            "undeclared",
+            SEASON_SCHEMA.replace("season.harvest.tokens", "season.winter.tokens"),
+            "[E-SEASON-DECL] state path `season.winter.tokens`",
+        ),
+        (
+            "live-number",
+            SEASON_SCHEMA.replace("\"@harvestLive\" }", "\"run.day\" }"),
+            "[E-REF-TYPE] season `harvest` `live: run.day`: `run.day` is a number but this \
+             position expects a bool — compare it (for example `run.day > 0`)",
+        ),
+    ];
+    for (tag, schema, want) in cases {
+        let dir = project(&format!("season-once-{tag}"), &schema, &docs);
+        let out = check_project(&dir);
+        let t = text(&out);
+        assert!(!out.status.success(), "{tag}: {t}");
+        let errors: Vec<&str> = t.lines().filter(|l| l.contains(": error [")).collect();
+        assert_eq!(errors.len(), 1, "{tag}: {t}");
+        assert!(
+            errors[0].contains("world.schema.yaml:")
+                && errors[0].contains(want)
+                && errors[0].ends_with("(imported by 3 documents)"),
+            "{tag}: {t}"
+        );
+    }
+}
+
 /// `lute beats` shows each cadence — `spentBy: <cond>` in text and a
 /// `spentBy` field in JSON, `once` `week` / `season:<name>` — and a
 /// `spentBy` beat shadows nothing: it drops out once its condition holds.

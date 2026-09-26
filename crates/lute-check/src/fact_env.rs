@@ -504,6 +504,68 @@ impl MaySet {
         self.defeats.iter().find(|(head, _)| q.matches(head))
     }
 
+    /// HW27-10: why no fact matching `q` can hold although `rule` concludes
+    /// its relation — the first positive premise of the rule (the head's
+    /// arguments substituted, `_` for a variable nothing binds) that no fact
+    /// of this set matches: what nothing produces (`canEnter(office) :-
+    /// holding(office)` → `holding(office)`). `None` when the rule's head
+    /// cannot match `q`, or no declared-relation premise starves it (a
+    /// predicate or an open relation is read as satisfiable).
+    pub fn starved(&self, rule: &Rule, q: &QueryPattern) -> Option<String> {
+        if rule.head.relation != q.relation || rule.head.terms.len() != q.args.len() {
+            return None;
+        }
+        let mut b: BTreeMap<&str, &str> = BTreeMap::new();
+        for (t, a) in rule.head.terms.iter().zip(&q.args) {
+            let Some(a) = a.as_deref() else { continue };
+            match t {
+                RuleTerm::Var(v) => match b.get(v.as_str()) {
+                    Some(bound) if *bound != a => return None,
+                    Some(_) => {}
+                    None => {
+                        b.insert(v.as_str(), a);
+                    }
+                },
+                _ if term_value(t, &b) != Some(a) => return None,
+                _ => {}
+            }
+        }
+        let mut bindings = vec![b];
+        for lit in &rule.body {
+            let BodyLiteral::Pos(atom) = lit else {
+                continue;
+            };
+            if !self.signature.contains_key(&atom.relation)
+                || self.unbounded.contains(&atom.relation)
+            {
+                continue;
+            }
+            let rows: Vec<Vec<&str>> = self
+                .facts
+                .get(&atom.relation)
+                .map(|set| {
+                    set.iter()
+                        .map(|row| row.iter().map(String::as_str).collect())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let next: Vec<BTreeMap<&str, &str>> = bindings
+                .iter()
+                .flat_map(|b| rows.iter().filter_map(|row| unify(&atom.terms, row, b)))
+                .collect();
+            if next.is_empty() {
+                let args: Vec<&str> = atom
+                    .terms
+                    .iter()
+                    .map(|t| term_value(t, &bindings[0]).unwrap_or("_"))
+                    .collect();
+                return Some(format!("{}({})", atom.relation, args.join(", ")));
+            }
+            bindings = next;
+        }
+        None
+    }
+
     /// The ground tuples of `relation` this set may hold — `None` for a
     /// relation it holds none of. Meaningless for an
     /// [unbounded](Self::is_unbounded) relation, which may hold anything.
@@ -1278,11 +1340,14 @@ pub struct MustFact {
 }
 
 /// The path-sensitive must sets (§4), keyed by slot identity: the document
-/// path and the guard slot's byte range. A slot with no entry has an empty
-/// must set.
+/// path and the guard slot's byte range. A slot with no entry — a beat's
+/// `on` with no `when`, a gate judged at a raise — has the baseline: the
+/// facts that hold at every point of every run (the root's stable seeds and
+/// their derived closure), or none before [`MustMap::set_baseline`].
 #[derive(Clone, Debug, Default)]
 pub struct MustMap {
     slots: BTreeMap<PathBuf, BTreeMap<(usize, usize), Arc<SlotFacts>>>,
+    baseline: Option<Arc<SlotFacts>>,
 }
 
 /// One slot's must set, assembled when first read: the facts it shares with
@@ -1341,6 +1406,18 @@ fn merge_facts(under: &[MustFact], over: &[MustFact]) -> Vec<MustFact> {
 }
 
 impl MustMap {
+    /// HW27-11: the must set of a slot with no entry — `seeds` (fact-sorted,
+    /// holding at every point of every run) and the facts `closure` derives
+    /// over them, assembled when first read.
+    pub fn set_baseline(&mut self, seeds: &Arc<Vec<MustFact>>, closure: &Arc<MustClosure>) {
+        self.baseline = Some(Arc::new(SlotFacts {
+            shared: Some(Arc::clone(seeds)),
+            own: Vec::new(),
+            closure: Some(Arc::clone(closure)),
+            full: OnceLock::new(),
+        }));
+    }
+
     /// Record the facts guaranteed at the slot `span` of document `path`
     /// (appending to anything already recorded there).
     pub fn insert(&mut self, path: &Path, span: Span, facts: impl IntoIterator<Item = MustFact>) {
@@ -1408,6 +1485,7 @@ impl MustMap {
         self.slots
             .get(path)
             .and_then(|slots| slots.get(&(span.byte_start, span.byte_end)))
+            .or(self.baseline.as_ref())
             .map_or(&[], |slot| slot.facts())
     }
 }
@@ -1575,6 +1653,17 @@ impl<'a> FactScope<'a> {
     /// [`MaySet::defeat`] over the may set this scope reads.
     pub fn defeat(&self, q: &QueryPattern) -> Option<(&'a GroundFact, &'a GroundFact)> {
         self.env.may_set(self.wip).defeat(q)
+    }
+
+    /// [`MaySet::starved`] for every rule of this document concluding `q`'s
+    /// relation: `(rule as written, the premise nothing produces)`.
+    pub fn starved(&self, q: &QueryPattern) -> Vec<(&'a str, String)> {
+        let may = self.env.may_set(self.wip);
+        self.vocab
+            .rules
+            .iter()
+            .filter_map(|r| Some((r.raw.as_str(), may.starved(&r.rule, q)?)))
+            .collect()
     }
 
     pub fn holds(&self, q: &QueryPattern) -> HoldsVerdict<'a> {

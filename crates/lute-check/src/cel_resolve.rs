@@ -93,9 +93,15 @@ pub fn check_cel_slot(
             }
         } else if !ctx.env.defs.contains(&r.name) {
             // `@name` must resolve to a declared `defs:` entry (dsl §8.1).
+            let hint = lute_manifest::suggest::nearest(
+                &r.name,
+                ctx.env.defs.iter().map(String::as_str),
+                2,
+            )
+            .map_or_else(String::new, |near| format!(" — did you mean `@{near}`?"));
             diags.push(diag(
                 "E-UNDECLARED-REF",
-                format!("`@{}` is not a declared def (dsl §8.1)", r.name),
+                format!("`@{}` is not a declared def{hint} (dsl §8.1)", r.name),
                 span,
             ));
         } else {
@@ -199,8 +205,12 @@ pub fn check_cel_slot(
             });
         if let Some(decl) = ctx.env.state.decls.get(path).filter(|_| bare) {
             if !compatible(&decl.ty, &ExpectedType::Bool) {
-                let example = match decl.ty {
+                let example = match &decl.ty {
                     Type::Number => format!("{path} > 0"),
+                    Type::Str => format!("{path} != ''"),
+                    Type::Enum(members) if !members.is_empty() => {
+                        format!("{path} == '{}'", members[0])
+                    }
                     _ => format!("{path} == '…'"),
                 };
                 diags.push(diag(
@@ -1107,18 +1117,65 @@ fn check_fact_queries(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Ve
     }
 }
 
-/// The `E-MATCH-RELATION-SUBJECT` message (dsl 0.3.0 §8), with the fix. `via`
-/// names the `@def` that smuggled the fact query in (dsl 0.27.0 §2, T1-5a).
-fn match_relation_subject_message(via: Option<&str>) -> String {
-    let lead = via.map_or(String::new(), |r| {
-        format!("`@{r}` expands to a fact query, and ")
+/// The `E-MATCH-RELATION-SUBJECT` message (dsl 0.3.0 §8), with the fix a
+/// writer can paste: a `<match>` with no `on` whose arms test the query
+/// (ML-F4). `subject` is the `on` text; `via` names the `@def` that smuggled
+/// the query in (dsl 0.27.0 §2, T1-5a); `query` is the text holding the query
+/// itself (the subject, or its expansion through `via`). A number-valued
+/// subject (`count(…)`, arithmetic) gets a comparison in its example arm.
+fn match_relation_subject_message(subject: &str, via: Option<&str>, query: &str) -> String {
+    use cel_parser::ast::operators as op;
+    let mut arena = CelArena::default();
+    let root = lute_cel::parse_slot_marked_refs(&mut arena, query).and_then(|h| arena.get(h));
+    let func = root
+        .as_ref()
+        .and_then(|r| first_relation_query(&r.expr))
+        .unwrap_or("holds");
+    let numeric = root.is_some_and(|r| {
+        matches!(&r.expr, Expr::Call(c) if [
+            "count", "countDistinct", op::ADD, op::SUBSTRACT, op::MULTIPLY, op::DIVIDE,
+            op::MODULO, op::NEGATE,
+        ]
+        .contains(&c.func_name.as_str()))
     });
+    let subject = subject.trim();
+    let lead = match via {
+        Some(r) => format!("`@{r}` expands to a `{func}(…)` fact query"),
+        None => format!("`{subject}` is a fact query"),
+    };
+    let test = if numeric {
+        format!("{subject} >= 1")
+    } else {
+        subject.to_string()
+    };
     format!(
-        "{lead}relations are guard-only; a `<match on>` subject must stay \
-         enum/bool/scalar so exhaustiveness stays decidable (dsl 0.3.0 §8) — \
-         put the query in a guard instead: `when=\"…\"` on the line, choice or \
-         `::set`, or an arm's `<when test=\"…\">`"
+        "{lead}, and a fact query is only ever a guard, never a `<match on>` subject \
+         (dsl 0.3.0 §8) — drop `on` and test the query in each arm: `<match>` with arms \
+         like `<when test=\"{test}\">` and an `<otherwise>`; a single line, choice or \
+         `::set` takes the same test as its `when=\"…\"`"
     )
+}
+
+/// The first relation query (`holds`/`count`/…, not `now`) in `expr`, in
+/// [`contains_relation_query`]'s walk order.
+fn first_relation_query(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Call(c) if is_profile_fact_query(c) && c.func_name != "now" => {
+            Some(c.func_name.as_str())
+        }
+        Expr::Call(c) => c
+            .target
+            .iter()
+            .map(|t| &**t)
+            .chain(c.args.iter())
+            .find_map(|a| first_relation_query(&a.expr)),
+        Expr::List(list) => list
+            .elements
+            .iter()
+            .find_map(|e| first_relation_query(&e.expr)),
+        Expr::Select(sel) => first_relation_query(&sel.operand.expr),
+        _ => None,
+    }
 }
 
 /// dsl 0.27.0 §2 (T1-5a): a `<match on>` subject whose `@def`s expand to a
@@ -1146,7 +1203,7 @@ pub(crate) fn check_match_subject_defs(
     has_query(&expanded).then(|| {
         diag(
             E_MATCH_RELATION_SUBJECT,
-            match_relation_subject_message(Some(&via.name)),
+            match_relation_subject_message(&slot.raw, Some(&via.name), &expanded),
             slot.span,
         )
     })
@@ -1155,21 +1212,7 @@ pub(crate) fn check_match_subject_defs(
 /// Whether `expr` contains a relation query (`holds`/`count`/`validAt`/…;
 /// not `now()`), walked in [`check_fact_queries`]' recursion shape.
 fn contains_relation_query(expr: &Expr) -> bool {
-    match expr {
-        Expr::Call(c) => {
-            (is_profile_fact_query(c) && c.func_name != "now")
-                || c.target
-                    .as_ref()
-                    .is_some_and(|t| contains_relation_query(&t.expr))
-                || c.args.iter().any(|a| contains_relation_query(&a.expr))
-        }
-        Expr::List(list) => list
-            .elements
-            .iter()
-            .any(|e| contains_relation_query(&e.expr)),
-        Expr::Select(sel) => contains_relation_query(&sel.operand.expr),
-        _ => false,
-    }
+    first_relation_query(expr).is_some()
 }
 
 /// Validate one admitted fact-query `Call` (dsl 0.3.0 §6/§8): `now()` has no
@@ -1193,7 +1236,7 @@ fn check_fact_query_call(
     if slot.kind == CelKind::MatchSubject {
         diags.push(diag(
             E_MATCH_RELATION_SUBJECT,
-            match_relation_subject_message(None),
+            match_relation_subject_message(&slot.raw, None, &slot.raw),
             slot.span,
         ));
         return;
@@ -1723,6 +1766,45 @@ mod tests {
             "compound expression must not flag E-REF-TYPE; got {:?}",
             d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
         );
+    }
+
+    /// G-5: a bool slot holding one bare state path of another type is
+    /// never true — `E-REF-TYPE` with a compare example for its type, the
+    /// same verdict a whole-slot `@def` of that type gets. A bool path, a
+    /// comparison and an unknown expected type stay clean.
+    #[test]
+    fn bare_non_bool_path_in_a_bool_slot_is_ref_type() {
+        let cases = [
+            (Type::Number, "`user.day > 0`"),
+            (Type::Str, "`user.day != ''`"),
+            (
+                Type::Enum(vec!["dawn".into(), "dusk".into()]),
+                "`user.day == 'dawn'`",
+            ),
+        ];
+        for (ty, example) in cases {
+            let env = env_with_state("user.day", ty);
+            let ctx = mk_ctx(&env);
+            let slot = cel_slot_condition("user.day");
+            let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
+            let hit = d
+                .iter()
+                .find(|x| x.code == "E-REF-TYPE")
+                .expect("E-REF-TYPE");
+            assert!(hit.message.contains(example), "{}", hit.message);
+            let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+            assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"), "{d:?}");
+        }
+        let env = env_with_state("user.open", Type::Bool);
+        let ctx = mk_ctx(&env);
+        let slot = cel_slot_condition("user.open");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
+        assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"), "{d:?}");
+        let env = env_with_state("user.day", Type::Number);
+        let ctx = mk_ctx(&env);
+        let slot = cel_slot_condition("user.day > 2");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
+        assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"), "{d:?}");
     }
 
     #[test]

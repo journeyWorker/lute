@@ -120,13 +120,17 @@ fn arguments_are_checked_like_use_args() {
         .iter()
         .filter(|d| d.code == "E-COMPONENT-ARG")
         .collect();
+    // The misspelt argument names the param it misses (ML-F6), which is then
+    // not reported again as required.
     assert!(
-        args.iter()
-            .any(|d| d.message.contains("no parameter `whom`")),
+        args.iter().any(|d| d
+            .message
+            .contains("no parameter `whom` — did you mean `who`?")),
         "{diags:#?}"
     );
     assert!(
-        args.iter()
+        !args
+            .iter()
             .any(|d| d.message.contains("requires argument `who`")),
         "{diags:#?}"
     );

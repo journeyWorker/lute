@@ -452,7 +452,7 @@ eligible but never presented in any cell: none
 A [`per:` family](/state/state-model/#one-path-per-entity-per) — `run.aff: { type: number, default: 0, per: suitor }` — is one path per member (`run.aff.ren`, `run.aff.kai`, …), and an axis per member multiplies the grid by every one of them. Since 0.27.0 one axis covers the family:
 
 - `--axis 'run.aff.*=6,7'` gives **every** member the cell's value.
-- `--axis 'run.aff[run.route]=6,7'` gives it only to the member the value of `--axis run.route` names in that cell; the other members keep their seed or default. The indexing axis must be an `--axis` of the same calendar, and each of its values a member of the family's kind (`` `--axis run.route` takes `none`, which is not a member of `suitor` (ren, mika, soren, kai) ``).
+- `--axis 'run.aff[run.route]=6,7'` gives it only to the member the value of `--axis run.route` names in that cell; the other members keep their seed or default. The indexing axis must be an `--axis` of the same calendar naming at least one member of the family's kind; at a value that names no member (a route outside the family, `hotaru`), the tied axis sets nothing: that one cell stands for all its values, its `run.aff[run.route]` column reads `(none)`, and a note says so.
 
 Tied to the route, an ending matrix is route × the route's own affection, with every other suitor left at its default:
 

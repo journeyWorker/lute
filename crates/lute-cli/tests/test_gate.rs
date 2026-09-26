@@ -303,7 +303,7 @@ fn a_false_beat_when_is_named_by_trace_and_by_test() {
     // walk below shows it as if it had been presented" note would
     // contradict it and is dropped.
     assert!(
-        text.contains("eligible town.wed: not eligible under these mocks (its `when` (run.day == 3) is false)"),
+        text.contains("eligible town.wed: not eligible under these mocks (its `when` (run.day == 3) is false (`run.day` is 4))"),
         "{text}"
     );
     assert!(!text.contains("as if it had been presented"), "{text}");

@@ -965,7 +965,8 @@ fn ineligible_scene_failure_names_the_false_premise() {
     );
     assert!(
         s.contains(
-            "eligible c: not eligible under these mocks (its `when` (run.fish == 1) is false)"
+            "eligible c: not eligible under these mocks (its `when` (run.fish == 1) is false \
+             (`run.fish` is 0))"
         ),
         "{s}"
     );
@@ -1009,7 +1010,77 @@ fn eligible_true_miss_names_the_false_premise() {
         "{s}"
     );
     assert!(
-        s.contains("eligible note: expected true, got false — its `when` (run.fish == 1) is false"),
+        s.contains(
+            "eligible note: expected true, got false — its `when` (run.fish == 1) is false \
+             (`run.fish` is 0)"
+        ),
+        "{s}"
+    );
+}
+
+/// OT-F-10: an `eligible: true` miss names the conjunct of the `when` that
+/// is false and what it read — a negated fact held from the test's own
+/// `facts:` said so — before the state misses it causes; a key naming
+/// nothing gets a did-you-mean.
+#[test]
+fn eligible_true_miss_names_the_false_conjunct_first() {
+    let dir = demo(
+        "ot-f-10",
+        &[
+            (
+                "world.schema.yaml",
+                "state:\n  run.fish: { type: number, default: 0 }\n  \
+                 run.day: { type: number, default: 1 }\n\
+                 entities:\n  person: { members: [ada, bo] }\n\
+                 relations:\n  locked: { args: [person] }\n",
+            ),
+            (
+                "talk.lute",
+                "---\nkind: lore\nid: talk\n---\n\n\
+                 <entry id=\"note\" when=\"run.day <= 5 && run.fish >= 7\">\n  \
+                 ::set{run.fish = 9}\n  @narrator: A note.\n</entry>\n\n\
+                 <entry id=\"gate\" when=\"run.day <= 5 && !holds(locked(ada))\">\n  \
+                 @narrator: A gate.\n</entry>\n",
+            ),
+            (
+                "tests/note.test.yaml",
+                "file: ../talk.lute\nentry: note\nstate: { run.fish: 6 }\nexpect:\n  \
+                 eligible: { note: true }\n  state: { run.fish: 9 }\n",
+            ),
+            (
+                "tests/gate.test.yaml",
+                "file: ../talk.lute\nentry: gate\nfacts: [\"locked(ada)\"]\nexpect:\n  \
+                 eligible: { gate: true }\n",
+            ),
+            (
+                "tests/typo.test.yaml",
+                "file: ../talk.lute\nentry: note\nstate: { run.fish: 7 }\nexpect:\n  \
+                 eligible: { nte: true }\n",
+            ),
+        ],
+        "world.schema.yaml",
+    );
+    let s = text(&run(&dir, &["test", ".", "--project", "."]));
+    let because = "eligible note: expected true, got false — its `when` is false because \
+                   `run.fish >= 7` is false (`run.fish` is 6) — the whole `when`: run.day <= 5 \
+                   && run.fish >= 7";
+    let cause = s.find(because).unwrap_or_else(|| panic!("{s}"));
+    let effect = s
+        .find("state run.fish: expected")
+        .unwrap_or_else(|| panic!("{s}"));
+    assert!(cause < effect, "the cause comes first: {s}");
+    assert!(
+        s.contains(
+            "eligible gate: expected true, got false — its `when` is false because \
+             `!holds(locked(ada))` is false (`locked(ada)` holds, seeded by `facts:`)"
+        ),
+        "{s}"
+    );
+    assert!(
+        s.contains(
+            "eligible nte: expected true, but the document declares no such entry or beat — \
+             did you mean `note`?"
+        ),
         "{s}"
     );
 }

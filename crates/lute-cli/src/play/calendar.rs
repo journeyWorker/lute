@@ -286,29 +286,38 @@ fn resolve_family_axis(
             members,
         });
     };
-    let names = || {
-        let paths: Vec<&str> = axes.iter().map(|(a, _)| a.as_str()).collect();
-        if paths.is_empty() {
-            "none".to_string()
-        } else {
-            paths.join(", ")
-        }
-    };
+    // Every other axis: the one a tie can name (never this axis itself).
+    let own = format!("{family}[{by}]");
+    let others: Vec<&str> = axes
+        .iter()
+        .map(|(a, _)| a.as_str())
+        .filter(|a| *a != own && *a != CLOCK_AXIS)
+        .collect();
     let index = axes
         .iter()
         .position(|(a, _)| a == by)
         .filter(|_| by != CLOCK_AXIS)
         .ok_or_else(|| {
+            let hint = lute_manifest::suggest::nearest(by, others.iter().copied(), 3)
+                .map(|k| format!(" — did you mean `{k}`?"))
+                .unwrap_or_default();
+            let names = if others.is_empty() {
+                "none".to_string()
+            } else {
+                others.join(", ")
+            };
             format!(
-                "`{by}` is no `--axis` of this calendar (axes: {}) — `{family}[<axis>]` sets, \
-                 at each cell, the member of `{kind}` that another axis's value names",
-                names()
+                "`{by}` is no `--axis` of this calendar{hint} (other axes: {names}) — \
+                 `{family}[<axis>]` sets, at each cell, the member of `{kind}` that another \
+                 axis's value names"
             )
         })?;
-    if let Some(v) = axes[index].1.iter().find(|v| !members.contains(v)) {
+    // OT-F-12: a value naming no member (a route outside the family) sets
+    // nothing at its cells; only an axis naming no member at all is no tie.
+    if !axes[index].1.iter().any(|v| members.contains(v)) {
         return Err(format!(
-            "`--axis {by}` takes `{v}`, which is not a member of `{kind}` ({}) — \
-             `{family}[{by}]` sets, at each cell, the member the value of `{by}` names",
+            "`--axis {by}` takes no member of `{kind}` ({}) — `{family}[{by}]` sets, at each \
+             cell, the member the value of `{by}` names",
             members.join(", ")
         ));
     }
@@ -521,19 +530,34 @@ fn clock_axis_at(
 
 /// The state paths a declared-path axis writes at the cell whose axis value
 /// indices are `picks`: its path, every member of a `<family>.*`, or the
-/// member a `<family>[<axis>]`'s indexing axis names there. Empty for the
-/// other kinds.
+/// member a `<family>[<axis>]`'s indexing axis names there (none when that
+/// value names no member, [`tied_outside`]). Empty for the other kinds.
 fn written_paths(axis: &Axis, axes: &[Axis], picks: &[usize]) -> Vec<String> {
     match &axis.apply {
         Apply::State => vec![axis.path.clone()],
         Apply::Family { family, members } => {
             members.iter().map(|m| format!("{family}.{m}")).collect()
         }
-        Apply::Tied { family, by, .. } => {
+        Apply::Tied { family, by, .. } if tied_outside(axis, axes, picks).is_none() => {
             vec![format!("{family}.{}", axes[*by].values[picks[*by]].0)]
         }
-        Apply::Quest(_) | Apply::Fact(_) | Apply::Visited(_) | Apply::Clock => Vec::new(),
+        Apply::Tied { .. }
+        | Apply::Quest(_)
+        | Apply::Fact(_)
+        | Apply::Visited(_)
+        | Apply::Clock => Vec::new(),
     }
+}
+
+/// OT-F-12: the value of a `<family>[<axis>]`'s indexing axis at `picks`
+/// when it names no member of the family (a route outside it) — the tied
+/// axis sets nothing at that cell.
+fn tied_outside<'a>(axis: &Axis, axes: &'a [Axis], picks: &[usize]) -> Option<&'a str> {
+    let Apply::Tied { members, by, .. } = &axis.apply else {
+        return None;
+    };
+    let v = &axes[*by].values[picks[*by]].0;
+    (!members.contains(v)).then_some(v.as_str())
 }
 
 /// Write one axis value into a cell's world; `paths` are the state paths
@@ -1180,8 +1204,18 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
             picks[i] = rest % axis.values.len();
             rest /= axis.values.len();
         }
+        // OT-F-12: at a value naming no member of its family a tied axis
+        // sets nothing, so its first value's cell stands for all of them.
+        if resolved
+            .iter()
+            .zip(&picks)
+            .any(|(a, &i)| i > 0 && tied_outside(a, &resolved, &picks).is_some())
+        {
+            continue;
+        }
         let mut w = base.clone();
         let mut at = Vec::with_capacity(resolved.len());
+        let mut notes = Vec::new();
         for (axis, &i) in resolved.iter().zip(&picks) {
             let (text, value) = &axis.values[i];
             apply_axis(
@@ -1192,9 +1226,17 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
                 value,
                 &written_paths(axis, &resolved, &picks),
             );
-            at.push((axis.path.clone(), text.clone(), value_to_json(value)));
+            match (tied_outside(axis, &resolved, &picks), axis.apply.family()) {
+                (Some(v), Some((family, _))) => {
+                    notes.push(format!(
+                        "`{v}` names no `{family}` member: `{}` sets nothing here",
+                        axis.path
+                    ));
+                    at.push((axis.path.clone(), "(none)".to_string(), Json::Null));
+                }
+                _ => at.push((axis.path.clone(), text.clone(), value_to_json(value))),
+            }
         }
-        let mut notes = Vec::new();
         if let Some(h) = advance_quests(&p, &mut w).1 {
             notes.push(format!("quest settle halted — {}", h.message()));
         }

@@ -169,8 +169,35 @@ defs:
 
 Both matches are exhaustive with no `<otherwise>`. Before 0.24.0 a def subject had no domain, so
 both were `E-NONEXHAUSTIVE`. An arm outside the domain, such as a typo `is="lat"`, is
-`E-WHEN-LITERAL-DOMAIN`. Since 0.26.0 so is a string a guard compares with an enum-typed subject,
-such as `test="$ == 'lat'"` on a match over a path, with a did-you-mean.
+`E-WHEN-LITERAL-DOMAIN`, with a did-you-mean. Since 0.26.0 so is a string a guard compares with an
+enum-typed subject, such as `test="$ == 'lat'"` on a match over a path.
+
+A def whose body queries facts — `count(…)`, `holds(…)`, directly or through another def — is no
+subject at all: `<match on="@badgeCount">` over `badgeCount: "count(hasBadge(_))"` is
+`E-MATCH-RELATION-SUBJECT`, although a count is a number. Test the query in the arms of a `<match>`
+with no `on` instead (below).
+
+### Matching on facts: `<match>` with no `on`
+
+A `<match>` without `on` has no subject: each arm's `test` is a plain condition, and there is no `$`.
+It is the form for a fact query, which may only ever be a guard:
+
+```lute
+<match>
+  <when test="@badgeCount >= 8">
+    @profAlder: Eight badges. The League is waiting for you.
+  </when>
+  <when test="holds(hasBadge(stone))">
+    @profAlder: The Stone Badge — a start.
+  </when>
+  <otherwise>
+    @profAlder: Come back with a badge.
+  </otherwise>
+</match>
+```
+
+Arms are tried top to bottom as usual. The checker cannot prove `test` guards cover every case, so
+the `<otherwise>` is required.
 
 ### Arms narrow their subject
 
@@ -323,12 +350,12 @@ line of its own, because there is no inline `<when>…</when>` form:
 
 *(That file keeps both forms, one shot each, so they stay visibly interchangeable.)*
 
-A **relational** guard is the exception. `@elena{when="holds(awake(toma))"}: …` checks clean on a
+A **fact query** is the exception. `@elena{when="holds(awake(toma))"}: …` checks clean on a
 content line; the same guard as a subject — `<match on="holds(awake(toma))">` — is
-`E-MATCH-RELATION-SUBJECT`, *"relations are guard-only; a `<match on>` subject must stay
-enum/bool/scalar so exhaustiveness stays decidable"* (§8). Where the guard queries facts, the line
-form is the only form, and the two are interchangeable only for the scalar and enum subjects a
-`<match>` can take — which is why the file above uses one.
+`E-MATCH-RELATION-SUBJECT`: a fact query is only ever a guard, and the message shows the fix, a
+`<match>` with no `on` whose arms test the query (see
+[Matching on facts](#matching-on-facts-match-with-no-on)). The one-arm twin above works for the
+scalar and enum subjects a `<match on>` can take — which is why the file above uses one.
 
 ### Guarded writes
 

@@ -295,8 +295,12 @@ pub fn fold_env(
     //      document's `series:` orders its entries by place in the file.
     let mut seen_entries: std::collections::BTreeSet<String> =
         input.imports.imported_entry_ids.keys().cloned().collect();
-    let entry_record =
-        crate::lore::check_entries(typed.series.as_deref(), &doc.entries, &mut seen_entries);
+    let entry_record = crate::lore::check_entries(
+        typed.series.as_deref(),
+        &doc.entries,
+        &mut seen_entries,
+        &input.snapshot,
+    );
     schema.decls.extend(entry_record.decls);
     fold_diags.extend(entry_record.diags);
     // 4a''. dsl 0.23.0 §6: `prev.run.<path>` is the reserved, read-only
@@ -489,7 +493,8 @@ pub fn fold_env(
         &vocab.kinds,
     );
     let occasion_members = occasion_scopes.members();
-    if !occasion_members.is_empty() {
+    let target_scoped = !occasion_members.is_empty();
+    if target_scoped {
         schema.decls.insert(
             crate::beats::OCCASION_TARGET.to_string(),
             crate::meta::StateDecl {
@@ -499,7 +504,6 @@ pub fn fold_env(
                 owner: Some(lute_manifest::types::Owner::Engine),
             },
         );
-        fold_diags.extend(crate::beats::check_occasion_target_scope(doc));
     }
     // dsl 0.24.0 §2: every `<on event target>`, checked like an objective's.
     fold_diags.extend(crate::on::check_on_targets(
@@ -701,6 +705,16 @@ pub fn fold_env(
         if let Some(c) = v.get("cel").and_then(|c| c.as_str()) {
             def_bodies.insert(name.clone(), c.to_string());
         }
+    }
+    // dsl 0.26.0 §5, G-7: a read of `occasion.target` — direct or through a
+    // def — outside the document's kind beats. A component without one is
+    // judged where a use expands its beats.
+    if target_scoped || meta_kind != crate::meta::MetaKind::Component {
+        fold_diags.extend(crate::beats::check_occasion_target_scope(
+            doc,
+            &def_bodies,
+            target_scoped,
+        ));
     }
     // dsl 0.24 T1-1: expand `@def`s in rule guards against the merged def
     // table while `vocab` is still a local, so the guard checks, the compiled

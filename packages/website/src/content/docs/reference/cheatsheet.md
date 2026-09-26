@@ -1492,7 +1492,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-QUEST-STATE-ISSET` | `isSet(quest.<id>.state)` is always true. Compare with `'unset'` instead. |
 | `W-TEXT-LOOKS-LIKE-REF` | A line's whole text is `@name` for a def or param; it ships as that literal. Write `{{@name}}`. |
 | `E-UNSET-UNCOVERED` / `E-NONEXHAUSTIVE` | A `<match>` misses `unset`, an enum member, or a numeric gap (the message names what is uncovered). Add arms or `<otherwise>`. Since 0.24.0 a beat's `when:` narrows the domain first, so an arm it rules out need not be written. |
-| `E-WHEN-LITERAL-DOMAIN` | A `<when is>` literal, or since 0.26.0 a string a guard compares with `==` / `!=` / `in [...]`, is not a member of the subject's domain (an enum, the kind `occasion.target` is typed by, a quest's `state` / `failedBy`). The message lists the members; for a comparison it names the nearest one. |
+| `E-WHEN-LITERAL-DOMAIN` | A `<when is>` literal, or since 0.26.0 a string a guard compares with `==` / `!=` / `in [...]`, is not a member of the subject's domain (an enum, the kind `occasion.target` is typed by, a quest's `state` / `failedBy`). The message lists the members and names the nearest one. |
 | `E-TAG-INLINE-BODY` / `E-TAG-NOT-ONE-LINE` | A tag shares its line with its body, or a tag is wrapped across lines. |
 | `E-BRANCH-ALL-GUARDED` / `E-HUB-NO-EXIT` | A menu could be empty, or a hub could never end. |
 | `E-SET-TYPE` / `E-REF-TYPE` / `E-ATTR-TYPE` | A value has the wrong type for its slot, often a quoted `"@def"` in a directive, or a `@def` bound to a component `string` param the component interpolates. |

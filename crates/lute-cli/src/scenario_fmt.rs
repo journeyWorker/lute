@@ -164,7 +164,14 @@ fn run_json(
             &file_results,
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ) {
-            Ok(v) => print_json(&v),
+            Ok((v, exit)) => {
+                let printed = print_json(&v);
+                if printed == ExitCode::SUCCESS {
+                    exit
+                } else {
+                    printed
+                }
+            }
             Err(code) => code,
         },
         Some(ScenarioCommand::Reach { node_id, .. }) => reach_json(

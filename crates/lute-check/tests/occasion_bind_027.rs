@@ -119,6 +119,45 @@ fn a_ground_read_outside_a_kind_beat_is_undeclared() {
     assert!(!errs.iter().any(|(c, _)| c == "E-CEL-PROFILE"), "{errs:?}");
 }
 
+/// G-7: a def whose body reads `occasion.target` (directly or through
+/// another def) is judged where it is used — clean in a kind beat,
+/// `E-UNDECLARED` naming the def in a beat raised for no member, whether or
+/// not the document has a kind beat.
+#[test]
+fn a_def_reading_the_target_outside_a_kind_beat_is_undeclared() {
+    let with_defs = |body: &str| {
+        lore(body).replace(
+            "---\n<",
+            "defs:\n  bondNow: { type: number, cel: \"user.bond[occasion.target]\" }\n  \
+             bondHigh: { type: bool, cel: \"@bondNow > 2\" }\n---\n<",
+        )
+    };
+    let kind = "<beat id=\"dupe\" on=\"summon\" target=\"kind:hero\" once=\"false\" when=\"@bondHigh\">\n  \
+                @narrator: Bond {{@bondNow}}.\n</beat>\n";
+    let plain = "<beat id=\"x\" on=\"morning\" once=\"false\" when=\"@bondHigh\">\n  \
+                 @narrator: Bond {{@bondNow}}.\n</beat>\n";
+    assert!(
+        errors(&with_defs(kind)).is_empty(),
+        "{:?}",
+        errors(&with_defs(kind))
+    );
+    for text in [with_defs(&format!("{kind}{plain}")), with_defs(plain)] {
+        let errs: Vec<String> = errors(&text)
+            .into_iter()
+            .filter(|(c, _)| c == "E-UNDECLARED")
+            .map(|(_, m)| m)
+            .collect();
+        assert_eq!(errs.len(), 2, "{errs:?}");
+        assert!(
+            errs[0].starts_with("`@bondHigh` reads `occasion.target` (`bondHigh: @bondNow > 2`)")
+                && errs[1].starts_with(
+                    "`@bondNow` reads `occasion.target` (`bondNow: user.bond[occasion.target]`)"
+                ),
+            "{errs:?}"
+        );
+    }
+}
+
 #[test]
 fn a_for_beat_binds_each_member_on_a_sequence_occasion() {
     let errs = errors(&lore(

@@ -281,10 +281,19 @@ pub(super) fn foreign_literal_message(
             "`{lit_display}` is a numeric range, which cannot match a non-numeric subject \
              (dsl 0.18.0 §2)"
         ),
-        (_, Domain::Finite(vals)) => format!(
-            "`{lit_display}` is not a member of the subject's domain [{}] (dsl 0.4 §5.2)",
-            domain_members_display(vals),
-        ),
+        (_, Domain::Finite(vals)) => {
+            let display = domain_members_display(vals);
+            let hint = lute_manifest::suggest::nearest(
+                lit_display,
+                display.split(", ").filter(|m| !m.is_empty()),
+                2,
+            )
+            .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+            format!(
+                "`{lit_display}` is not a member of the subject's domain [{display}]{hint} \
+                 (dsl 0.4 §5.2)"
+            )
+        }
         (_, Domain::Number | Domain::Infinite) => {
             unreachable!("rule 4: a non-finite domain only ever flags `unset` or a range")
         }

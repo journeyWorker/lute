@@ -275,7 +275,7 @@ fn trace_pipeline(
         Presentation::Entries(_) | Presentation::Beat(_) => true,
     };
     let judging = judged_kind
-        .then(|| judging_project(&input.uri, artifact))
+        .then(|| judging_project(&input.uri, artifact, &input.snapshot.occasions))
         .flatten()
         .map(|mut p| {
             p.sequence_after =
@@ -366,9 +366,10 @@ fn trace_pipeline(
                 .and_then(|b| b.when.as_ref())
                 .map(|w| w.raw.as_str());
             let why = match &verdict {
-                Some(SessionVerdict::Ineligible(prem)) => {
-                    Some(premise_text(prem, BeatKind::Scene, authored))
-                }
+                Some(SessionVerdict::Ineligible(prem)) => Some((
+                    premise_text(&mut m, &mocks, prem, BeatKind::Scene, authored),
+                    prem.clone(),
+                )),
                 _ => None,
             };
             (Some((id, verdict.as_ref().and_then(eligible_of))), why)
@@ -379,8 +380,8 @@ fn trace_pipeline(
         && scene_eligible
             .as_ref()
             .is_some_and(|(_, e)| *e == Some(false));
-    if let (Some((id, _)), Some(why)) = (&scene_eligible, scene_why) {
-        m.driver_mut().premises.insert(id.clone(), why);
+    if let (Some((id, _)), Some((why, prem))) = (&scene_eligible, scene_why) {
+        note_premise(&mut m, id, &prem, why);
     }
 
     // dsl 0.25.0 §1 (LH N16): the seeded world — the mock's `facts:` /
@@ -544,8 +545,9 @@ fn present_entry(
         _ => None,
     };
     if let Some(SessionVerdict::Ineligible(prem)) = &verdict {
-        let why = premise_text(prem, BeatKind::Entry, None);
-        m.driver_mut().premises.insert(entry.id.clone(), why);
+        let authored = entry.when.as_ref().map(authored_when);
+        let why = premise_text(m, mocks, prem, BeatKind::Entry, authored);
+        note_premise(m, &entry.id, prem, why);
     }
     if mocks.gate_eligibility && eligible == Some(false) {
         m.driver_mut().steps.push(Step::Entry {
@@ -604,8 +606,9 @@ fn present_beat(
         SessionVerdict::Ineligible(Premise::After { .. })
     );
     if let SessionVerdict::Ineligible(prem) = &cand.verdict {
-        let why = premise_text(prem, BeatKind::Bundle, None);
-        m.driver_mut().premises.insert(canonical.to_string(), why);
+        let authored = beat.when.as_ref().map(authored_when);
+        let why = premise_text(m, mocks, prem, BeatKind::Bundle, authored);
+        note_premise(m, canonical, prem, why);
     }
     if mocks.gate_eligibility && eligible == Some(false) {
         m.driver_mut().steps.push(Step::Beat {
@@ -626,11 +629,15 @@ fn present_beat(
 /// The traced document as a one-document [`ExecProject`] — what the
 /// session's eligibility rule judges a presented beat over. `None` only if
 /// the artifact does not assemble (it always does once compiled).
-fn judging_project(uri: &str, artifact: lute_compile::Artifact) -> Option<ExecProject> {
+fn judging_project(
+    uri: &str,
+    artifact: lute_compile::Artifact,
+    occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+) -> Option<ExecProject> {
     let docs = BTreeMap::from([(uri.to_string(), artifact)]);
     ExecProject::assemble(
         &docs,
-        BTreeMap::new(),
+        occasions.clone(),
         BTreeSet::new(),
         Default::default(),
         BTreeMap::new(),
@@ -680,7 +687,7 @@ fn judge(
         crate::eval::Read::Value(Value::Str(s)) => Some(s),
         _ => None,
     };
-    let cand = exec::session::judge_beat(p, &w, m, row, member.as_deref());
+    let cand = exec::session::judge_beat(p, &w, m, row, member.as_deref(), member.as_deref());
     (cand, w)
 }
 
@@ -696,16 +703,17 @@ fn eligible_of(v: &SessionVerdict) -> Option<bool> {
 /// Prerelease N3 / round-5 T3-12: the false premise, named for an author
 /// fixing a `*.test.yaml` — what [`TraceReport::premises`] carries. `when`
 /// is the authored `when` where the caller has it (a scene's, before `@def`
-/// expansion), else the compiled one.
-fn premise_text(prem: &Premise, kind: BeatKind, when: Option<&str>) -> String {
+/// expansion), else the compiled one. `m` is the walk at the judgement.
+fn premise_text(
+    m: &mut Machine<&mut TraceDriver<'_>>,
+    mocks: &MockSet,
+    prem: &Premise,
+    kind: BeatKind,
+    when: Option<&str>,
+) -> String {
     use lute_check::prereq::Atom;
     match prem {
-        Premise::When { raw } => {
-            format!(
-                "its `when` ({}) is false",
-                when.unwrap_or(raw.as_str()).trim()
-            )
-        }
+        Premise::When { raw } => when_text(m, mocks, raw, when.unwrap_or(raw.as_str())),
         Premise::After {
             raw,
             unmet,
@@ -741,7 +749,101 @@ fn premise_text(prem: &Premise, kind: BeatKind, when: Option<&str>) -> String {
         }
         Premise::Spent { reason, .. } => format!("it is spent ({reason})"),
         Premise::SpentBy(reason) => format!("its {reason}"),
+        // dsl 0.27.0 §4 (HW27-04): the engine would not raise its occasion
+        // — what `lute play` refuses with E-OCCASION-GATE.
+        Premise::Gate {
+            occasion,
+            raw,
+            reads,
+        } => format!(
+            "the engine does not raise `{occasion}`: its `raisedWhen: {raw}` is false{}",
+            exec::seam::Closed::reads_text(reads)
+        ),
+        Premise::Terminal { raw, .. } => {
+            format!("the game is over (`terminal: {raw}` holds), so the engine raises no occasion")
+        }
     }
+}
+
+/// A `when` slot as its author wrote it (before `@def` expansion).
+fn authored_when(slot: &lute_syntax::ast::CelSlot) -> &str {
+    slot.authored.as_deref().unwrap_or(&slot.raw)
+}
+
+/// OT-F-10: a false `when` (compiled `raw`, shown as `authored`) named by
+/// its false conjunct(s) first, each with what it read — a negated fact
+/// the mocks seeded said so — then the whole `when` when it has more than
+/// the one conjunct.
+fn when_text(
+    m: &mut Machine<&mut TraceDriver<'_>>,
+    mocks: &MockSet,
+    raw: &str,
+    authored: &str,
+) -> String {
+    let seeded = |f: &str| {
+        let bare = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+        mocks.facts.iter().any(|s| bare(s) == bare(f))
+    };
+    let conjuncts = m.false_conjuncts(raw);
+    let authored = authored.trim();
+    // What one false conjunct read, ` (…)`, or nothing.
+    let found = |reads: &[GuardRead]| {
+        if reads.is_empty() {
+            return String::new();
+        }
+        let found: Vec<String> = reads
+            .iter()
+            .map(|r| match r {
+                GuardRead::Holds(f) if seeded(f) => format!("{}, seeded by `facts:`", r.found()),
+                r => r.found(),
+            })
+            .collect();
+        format!(" ({})", found.join("; "))
+    };
+    match conjuncts.as_slice() {
+        [] => format!("its `when` ({authored}) is false"),
+        [(c, reads)] if c == lute_check::templates::unparen(raw) => {
+            format!("its `when` ({authored}) is false{}", found(reads))
+        }
+        _ => {
+            let parts: Vec<String> = conjuncts
+                .iter()
+                .map(|(c, reads)| format!("`{c}` is false{}", found(reads)))
+                .collect();
+            format!(
+                "its `when` is false because {} — the whole `when`: {authored}",
+                parts.join(" and ")
+            )
+        }
+    }
+}
+
+/// Record the false premise of presented `id` ([`TraceReport::premises`]),
+/// and when it is a closed seam — the engine would not raise the beat's
+/// occasion — its structured form ([`TraceReport::not_raised`], HW27-04).
+fn note_premise(m: &mut Machine<&mut TraceDriver<'_>>, id: &str, prem: &Premise, why: String) {
+    let d = m.driver_mut();
+    d.premises.insert(id.to_string(), why);
+    let nr = match prem {
+        Premise::Gate {
+            occasion,
+            raw,
+            reads,
+        } => crate::report::NotRaised {
+            occasion: occasion.clone(),
+            reason: "gate",
+            condition: raw.clone(),
+            false_reads: reads.iter().map(exec::GuardRead::found).collect(),
+        },
+        Premise::Terminal { occasion, raw } => crate::report::NotRaised {
+            occasion: occasion.clone(),
+            reason: "terminal",
+            condition: raw.clone(),
+            false_reads: Vec::new(),
+        },
+        _ => return,
+    };
+    d.not_raised.insert(id.to_string(), nr);
 }
 
 fn is_true(m: &Machine<&mut TraceDriver<'_>>, path: &str) -> bool {
@@ -894,6 +996,7 @@ fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
         foreign_quests,
         scene_eligible,
         premises: driver.premises,
+        not_raised: driver.not_raised,
         said: driver.said,
     };
     (report, exit)
@@ -1097,6 +1200,9 @@ pub(crate) struct TraceDriver<'a> {
     /// Round-5 T3-12: presented scene / entry / beat id → the false premise
     /// its eligibility verdict names ([`TraceReport::premises`]).
     premises: BTreeMap<String, String>,
+    /// HW27-04: the same ids whose premise is a closed seam
+    /// ([`TraceReport::not_raised`]).
+    not_raised: BTreeMap<String, crate::report::NotRaised>,
 }
 
 impl<'a> TraceDriver<'a> {
@@ -1150,6 +1256,7 @@ impl<'a> TraceDriver<'a> {
             said: Vec::new(),
             spent_accepts: Vec::new(),
             premises: BTreeMap::new(),
+            not_raised: BTreeMap::new(),
         }
     }
 
@@ -1232,7 +1339,8 @@ impl<'a> TraceDriver<'a> {
             GuardRead::Fact(f) | GuardRead::Derived { fact: f, .. } => {
                 format!("`{}`", render_atom(&UnresolvedAtom::Fact(f.clone())))
             }
-            GuardRead::Visited(_) => format!("{} {EARLIER}", r.yaml_mock()),
+            GuardRead::Visited(_) | GuardRead::Seen(_) => format!("{} {EARLIER}", r.yaml_mock()),
+            GuardRead::Holds(_) => r.yaml_mock(),
         }
     }
 
@@ -2671,6 +2779,7 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         foreign_quests: BTreeSet::new(),
         scene_eligible: None,
         premises: BTreeMap::new(),
+        not_raised: BTreeMap::new(),
         said: Vec::new(),
     }
 }

@@ -168,16 +168,38 @@ fn check_into_value(
             )),
             Some(v) if !accepted(v) => diags.push(into_diag(
                 E_INTO_VALUE,
-                format!(
-                    "`value` is not compatible with the declared type of `{into_path}` \
-                     (dsl 0.6.0 §2.2)"
-                ),
-                span,
+                into_value_mismatch(ty, v, into_path),
+                v.value_span,
                 Severity::Error,
             )),
             Some(_) => {}
         },
     }
+}
+
+/// The `E-INTO-VALUE` message for a `value` the declared type refuses
+/// (OT-F-11): it quotes the value and names what the path takes — an enum's
+/// members with a did-you-mean, or the scalar type.
+fn into_value_mismatch(ty: &Type, v: &Attr, into_path: &str) -> String {
+    let shown = match &v.value {
+        AttrValue::Str(s) => format!("`value=\"{s}\"`"),
+        AttrValue::BoolTrue => "a bare `value`".to_string(),
+        AttrValue::Ref(r) => format!("`value={}`", r.raw),
+    };
+    let takes = match ty {
+        Type::Enum(members) => {
+            let hint = str_attr(v)
+                .and_then(|s| {
+                    lute_manifest::suggest::nearest(s, members.iter().map(String::as_str), 2)
+                })
+                .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+            format!("one of its members ({}){hint}", members.join(", "))
+        }
+        Type::Number => "a number literal".to_string(),
+        Type::Str => "a string literal".to_string(),
+        _ => "a literal of its declared type".to_string(),
+    };
+    format!("{shown} cannot be recorded into `{into_path}`, which takes {takes} (dsl 0.6.0 §2.2)")
 }
 
 /// The string value of an attr, when it is a plain string literal (`key="s"`).

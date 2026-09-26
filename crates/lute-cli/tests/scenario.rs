@@ -1547,17 +1547,20 @@ fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
     write(
         &dir,
         "end.lute",
-        "---\nkind: lore\nid: end\nstate:\n  run.lost: { type: number, default: 0 }\n---\n\n\
+        "---\nkind: lore\nid: end\nstate:\n  run.lost: { type: number, default: 0 }\n  \
+         run.mood: { type: { enum: [calm, wild] }, default: calm }\n---\n\n\
          <beat id=\"good\" on=\"finale\" after=\"visited('a.s01ep01')\" when=\"run.a == 1\">\n  \
          @narrator: Good.\n  ::end{reason=\"good\"}\n</beat>\n\n\
          <beat id=\"never\" on=\"finale\" when=\"run.a == 1 && run.a == 2\">\n  @narrator: Never.\n</beat>\n\n\
          <beat id=\"late\" on=\"finale\" after=\"completed('deadStart')\">\n  @narrator: Late.\n</beat>\n\n\
-         <beat id=\"orphan\" on=\"finale\" when=\"run.lost == 3\">\n  @narrator: Orphan.\n</beat>\n",
+         <beat id=\"orphan\" on=\"finale\" when=\"run.lost == 3\">\n  @narrator: Orphan.\n</beat>\n\n\
+         <beat id=\"typo\" on=\"finale\" when=\"run.mood == 'clam'\">\n  @narrator: Typo.\n</beat>\n",
     );
     let d = dir.to_str().unwrap();
     let out = run(&["scenario", d, "reach", "--endings=finale"]);
     let text = stdout(&out);
-    assert!(out.status.success(), "{}{text}", stderr(&out));
+    // OT-F-13: an unreachable ending fails the command, so CI can gate on it.
+    assert_eq!(out.status.code(), Some(1), "{}{text}", stderr(&out));
     assert!(
         text.contains("  end.good (beat, end.lute): reachable\n"),
         "{text}"
@@ -1580,32 +1583,53 @@ fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
         text.contains("      run.lost — nothing writes it — it keeps its declared default\n"),
         "{text}"
     );
+    // OT-F-13: the row cites the typo the verdict follows from.
     assert!(
-        text.contains("4 ending(s): 2 reachable, 2 unreachable, 0 unknown"),
+        text.contains("  end.typo (beat, end.lute): unreachable\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("never holds — caused by E-WHEN-LITERAL-DOMAIN at "),
+        "{text}"
+    );
+    assert!(text.contains("did you mean `'calm'`?"), "{text}");
+    assert!(
+        text.contains("5 ending(s): 2 reachable, 3 unreachable, 0 unknown"),
         "{text}"
     );
     assert!(text.contains("lute test --coverage"), "{text}");
 
     // Bare: only the beat whose body runs `::end`.
-    let text = stdout(&run(&["scenario", d, "reach", "--endings"]));
+    let out = run(&["scenario", d, "reach", "--endings"]);
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{text}");
     assert!(text.contains("end.good"), "{text}");
     assert!(!text.contains("end.never"), "{text}");
     assert!(text.contains("1 ending(s): 1 reachable"), "{text}");
 
+    // OT-F-13: `--format` is accepted after the sub-view too.
     let out = run(&[
         "scenario",
         d,
-        "--format",
-        "json",
         "reach",
         "--endings=finale",
+        "--format",
+        "json",
     ]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
-    assert_eq!(v["roots"][0]["summary"]["unreachable"], 2, "{v}");
+    assert_eq!(v["roots"][0]["summary"]["unreachable"], 3, "{v}");
     assert_eq!(
         v["roots"][0]["endings"][1]["when"]["verdict"], "never-holds",
         "{v}"
     );
+    let typo = v["roots"][0]["endings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == "end.typo")
+        .unwrap_or_else(|| panic!("{v}"));
+    assert_eq!(typo["causes"][0]["code"], "E-WHEN-LITERAL-DOMAIN", "{v}");
 
     // A node and `--endings` together, or an occasion no beat answers: usage.
     assert_eq!(

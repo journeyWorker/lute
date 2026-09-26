@@ -228,7 +228,7 @@ fn top_level_split<'s>(s: &'s str, op: &[u8; 2]) -> Vec<&'s str> {
 
 /// The top-level `&&` conjuncts of `s` — `s` whole when a top-level `||`
 /// or `?` binds looser than `&&` and splitting would change its meaning.
-fn top_level_and(s: &str) -> Vec<&str> {
+pub fn top_level_and(s: &str) -> Vec<&str> {
     if top_level_split(s, b"||").len() > 1 || s.contains('?') {
         return vec![s];
     }
@@ -236,7 +236,7 @@ fn top_level_and(s: &str) -> Vec<&str> {
 }
 
 /// `s` trimmed, without the parentheses that wrap all of it.
-fn unparen(s: &str) -> &str {
+pub fn unparen(s: &str) -> &str {
     let mut s = s.trim();
     while let Some(inner) = s.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
         if !balanced(inner) {

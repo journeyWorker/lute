@@ -483,9 +483,13 @@ expect:                                   # assert the end of the play
   `engine: { facts: [canEnter(office)] }`를 가진 `- occasion: enter`는 한 스텝에 문을 열고 들어갑니다.
 - [`raisedWhen:` 관문](/plugins/manifests/)을 선언한 계기는 관문이 성립하는 동안에만 발생합니다(dsl 0.27.0 §4).
   관문이 거짓일 때 그 계기를 발생시키는 스텝은 플레이를 멈춥니다(종료 코드 1):
-  `` step 1: E-OCCASION-GATE: the engine raises `enter` for `room.office` only when `holds(canEnter(occasion.target))` (its `raisedWhen`), which is false here — make it hold first (an `engine:` write, an earlier step), or drop the step ``.
-  게임이 끝난 뒤(스키마의 [`terminal:`](#게임이-끝났을-때)이 성립)에는 모든 `occasion:` 스텝이 같은 식으로
-  거부됩니다.
+  `` step 1: E-OCCASION-GATE: the engine raises `enter` for `room.office` only when `holds(canEnter(occasion.target))` (its `raisedWhen`), which is false here since `canEnter(office)` does not hold — make it hold first (an `engine:` write, an earlier step), or drop the step ``.
+  멈춤은 적힌 스텝 자리(`plays/locked.play.yaml:2:5: step 1: …`)에 위치가 잡히고, 관문을 거짓으로 만든 읽기를
+  댑니다 — 유도 사실이면 그 규칙이 놓친 전제까지. `lute test`도 관문이 있는 계기의 비트를 같은 규칙으로
+  판정합니다: 그런 비트에 대한 `eligible: true`는 관문과 그 거짓 읽기(또는 성립한 `terminal:`)를 대며
+  불일치하고, `--json`에서 그 기대값은 `notRaised: { occasion, reason: "gate" | "terminal", condition, falseReads }`를
+  가집니다. 게임이 끝난 뒤(스키마의 [`terminal:`](#게임이-끝났을-때)이 성립)에는 모든 `occasion:` 스텝이 같은
+  식으로 거부됩니다.
 - `pick` — `select: first`와 `select: sequence`에는 거부됩니다(`` step 1: `pick: start.gear` applies only to a `select: all` occasion; `runStart` is `select: sequence` ``):
   그 계기에 응답하는 비트의 id(그 순간 자격이 없는 pick은 오류, 종료 코드 1) 또는 `pick: none`.
   `select: all` 스텝은 목록이 비어 있지 않으면 `pick`이 필요합니다 — 없으면 워크는 그 자리에서 제시된 목록을
@@ -1196,6 +1200,11 @@ steps:
 끼워 넣은 스텝의 번호를 댑니다. 읽을 수 없는 파일, 모양이 틀린 파일, `repeat`, `choose`, `bridges` 말고 다른
 키와 함께 쓴 `include:`, 그리고 이미 포함되는 중인 파일은 사용법 오류입니다:
 `` plays/routes/loop.yaml: `include: ../loop.play.yaml` is a cycle — plays/routes/../loop.play.yaml is already being included ``.
+
+`include:` 항목이 끝날 때 — `repeat:`의 모든 반복을 통틀어 — 그 항목 자신의 `choose:` 키를 어느 스텝도
+제시하지 않았거나 `bridges:` 태그의 답을 어느 호출도 가져가지 않았다면, 그 항목의 마지막 스텝 아래에 그
+`include:` 줄과 쓰이지 않은 키를 대는 노트가 붙습니다(잘못된 `include:`에 적은 결정). 결정과 답은 그 항목과
+함께 버려집니다.
 
 **인터페이스로서의 steps 파일.** 여러 작가가 한 플레이스루를 나눠 쓸 때 — 각 지역이 `include:`되는 steps
 파일을 소유하고, 리드의 스크립트가 그것들을 지도 순서대로 포함할 때 — steps 파일은 자신의 계약을 밝히므로,

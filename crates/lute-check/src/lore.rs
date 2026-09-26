@@ -205,6 +205,7 @@ pub fn check_entries(
     doc_series: Option<&str>,
     entries: &[Entry],
     seen_ids: &mut BTreeSet<String>,
+    snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
 ) -> EntryRecord {
     let mut record = EntryRecord::default();
     let resolved = resolve_entry_series(doc_series, entries);
@@ -212,7 +213,7 @@ pub fn check_entries(
     for (entry, resolved) in entries.iter().zip(&resolved) {
         check_entry_shape(entry, doc_series, &mut record.diags);
         if entry.on.is_some() && entry.once.is_none() {
-            if let Some((what, span)) = first_write(&entry.body) {
+            if let Some((what, span)) = first_write(&entry.body, snapshot) {
                 record.diags.push(diag(
                     W_ENTRY_WRITE_REREAD,
                     Severity::Warning,
@@ -268,20 +269,40 @@ pub(crate) fn series_order_message(series: &str, order: u32, first: &str, id: &s
     )
 }
 
-/// The first `::set` / `::retract` of an entry body, in document order,
-/// descending into `<match>` arms and `<branch>` / `<hub>` choices: the
-/// directive's name and span. `::assert` is idempotent within a run and is
-/// not a write that could be lost (see [`W_ENTRY_WRITE_REREAD`]).
-fn first_write(nodes: &[lute_syntax::ast::Node]) -> Option<(&'static str, Span)> {
+/// The first `::set` / `::retract` of an entry body — or (HW27-12) call of
+/// an effect-only directive declaring `writes` or `retracts`, applied the
+/// same way — in document order, descending into `<match>` arms and
+/// `<branch>` / `<hub>` choices: the directive's name and span. `::assert`
+/// (and an `asserts`-only effect) is idempotent within a run and is not a
+/// write that could be lost (see [`W_ENTRY_WRITE_REREAD`]).
+fn first_write(
+    nodes: &[lute_syntax::ast::Node],
+    snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
+) -> Option<(String, Span)> {
     use lute_syntax::ast::{Arm, Node};
     nodes.iter().find_map(|node| match node {
-        Node::Set(s) => Some(("::set", s.span)),
-        Node::Retract(r) => Some(("::retract", r.span)),
+        Node::Set(s) => Some(("::set".to_string(), s.span)),
+        Node::Retract(r) => Some(("::retract".to_string(), r.span)),
+        Node::Directive(d)
+            if crate::directive_facts::is_effect_only(snapshot, &d.tag)
+                && snapshot
+                    .directive(&d.tag)
+                    .and_then(|decl| decl.effects.as_ref())
+                    .is_some_and(|e| !e.writes.is_empty() || !e.retracts.is_empty()) =>
+        {
+            Some((format!("::{}", d.tag), d.span))
+        }
         Node::Match(m) => m.arms.iter().find_map(|arm| match arm {
-            Arm::When { body, .. } | Arm::Otherwise { body, .. } => first_write(body),
+            Arm::When { body, .. } | Arm::Otherwise { body, .. } => first_write(body, snapshot),
         }),
-        Node::Branch(b) => b.choices.iter().find_map(|c| first_write(&c.body)),
-        Node::Hub(h) => h.choices.iter().find_map(|c| first_write(&c.body)),
+        Node::Branch(b) => b
+            .choices
+            .iter()
+            .find_map(|c| first_write(&c.body, snapshot)),
+        Node::Hub(h) => h
+            .choices
+            .iter()
+            .find_map(|c| first_write(&c.body, snapshot)),
         _ => None,
     })
 }

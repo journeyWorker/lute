@@ -445,6 +445,20 @@ An entry's `when` gets `E-ENTRY-UNREACHABLE` and a line or arm guard `E-ARM-DEAD
 on either path is exhaustive once it covers every value in range. `lute calendar --axis clock`
 stops at the last position.
 
+A quest objective's `by=` deadline is judged over the same range. On the one-night clock a
+deadline for night 2 can never hold, so it never fails the objective, and the checker warns at the
+`by`:
+
+<!-- lute-diagnostics -->
+```
+quests/q.lute:5:59: warning [W-DEADLINE-NEVER] objective `leave` never fails: its deadline `by: run.night >= 2` can never hold (the clock ends at its last position, so `run.night` only ranges over 1..1) — write a deadline the clock can reach, or drop it
+```
+
+A deadline that falls when time runs out names the last position: `by="clock.index >= 6"` holds
+from `h05` on (`clock.index` counts the slots from `h23`), so the advance that reaches `h05`, or
+walks to it on its way past the end, fails the objective in its settle, before the last `dawn` is
+raised.
+
 ## Shipped alongside
 
 Three smaller pieces arrived with the clock (dsl 0.24.0 §1). None of them needs a clock.

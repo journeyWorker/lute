@@ -376,6 +376,54 @@ table.
 
 ### Fixed
 
+- The seam in every runtime (0.27 prerelease). `lute test` and `lute trace` judge a beat whose
+  occasion has a `raisedWhen` gate, or a project with `terminal:`, by the same rule `lute play`
+  refuses a raise by: `eligible: true` on a beat the engine would not raise under the mocks used
+  to pass and now misses, naming the gate and the reads it is false over (or the holding
+  `terminal:`); `lute test --json` adds `notRaised` to that expectation, and `lute calendar` shows
+  the same reason. `E-OCCASION-GATE` in `lute play` is located at the step as written and names the
+  false reads (a derived fact with the rule premise it misses); a skipped clock raise names them
+  too. A dead gate's `E-BEAT-UNREACHABLE` names the rule premise nothing produces
+  (`holding(office)`), not only the fact it would derive. An `include:` item whose own `choose:`
+  key none of its steps presented, or whose `bridges:` tag no call took, over all its
+  repetitions, gets a note naming them. Play and test values meet the member check: a play or
+  save seed, an `engine:` / `newRun` write, a play `expect.state`, a test `state:` seed and a test
+  `expect.state` value outside a `{ domain: K }` / enum path's members is refused with a
+  did-you-mean (`run.route: rne` → `ren`), and so is an occasion payload field typed
+  `{ domain: K }` naming an undeclared K (`E-DOMAIN-UNKNOWN`, at the plugin line) or a play payload
+  value outside it.
+
+- Seam and cadence checks close their silent holes (0.27 prerelease). A literal in `terminal:` or
+  `raisedWhen:` is member-checked like one in a `when` (`E-WHEN-LITERAL-DOMAIN` with a
+  did-you-mean, not 69 unreachable verdicts); a gate or effect fault is reported once, at the
+  plugin's declaration, and `E-PLUGIN-PARSE` names its file; a `spentBy` that already holds at the
+  start makes the beat unreachable like `when: false`; a `by=` deadline a finite clock never reaches
+  is `W-DEADLINE-NEVER` (documented in clock.md, with how to write a deadline at the last
+  position); a season fault in a schema is one error at the schema's line instead of a copy at
+  `1:1` of every document; a bool slot (`live:`, `rearm=`, `start=`, `when`, …) holding a bare
+  number/string/enum path is `E-REF-TYPE` with a compare example (`user.day > 0`,
+  `run.route == 'aria'`); a def reading `occasion.target` used outside a kind beat is
+  `E-UNDECLARED` naming the def, not a play that halts "incomplete".
+- `W-BEAT-PRIORITY-TIE` follows a chain of `after:`s (r3 after r2 after a `once: user` r1 never
+  ties r1); a negated gate over a fact that holds at every point (a seed nothing retracts) is
+  "gate never holds" in `check-project` and `lute beats`; `W-ENTRY-WRITE-REREAD` also fires for an
+  effect directive's `writes`/`retracts` in a repeatable entry; `lute scenario --facts` draws the
+  edge through an occasion's `raisedWhen` (`::give` → `holding(brassKey)` → `canEnter(office)` →
+  `room.office`); `E-CLOCK-DECL` sits at the offending clock key, gives a did-you-mean for an
+  unknown key (`lats` → `last`) and says "must be a whole number" instead of serde's `expected u32`.
+- Diagnostics name their fix (0.27 prerelease). `E-MATCH-RELATION-SUBJECT` shows the working form,
+  a `<match>` with no `on` whose arms test the query (`<when test="@badgeCount >= 1">`), now
+  documented in branch-match-when; `E-INTO-VALUE` quotes the value, names the path's members and
+  points at `value=`; a `<when is>` literal, an unknown `::use` argument (`intor` → `intro`, which is
+  then not also "required"), an argument of the wrong type (named with its value) and an undeclared
+  `@def` (`@isNigth` → `@isNight`) get a did-you-mean; once a `::use` argument is refused, the
+  writes of an `effects: true` component no longer repeat that fault at the use (one typo was three
+  errors). `W-QUEST-TIER-IMPLICIT` also flags a parent whose subquests are run-looking and names the
+  quests of the tree that must change together, so following it no longer produces
+  `E-QUEST-TIER-MIX`; `clock.*` over a `run.*` day counts as run state, `visited()` (kept by a new
+  run) does not. A refused `lute test` trace prints a warning as `warning`, not `error`, under the
+  document's folded path; coverage labels a match with no `on` "match with no subject".
+
 - Beat templates and `sequence:` (0.27 prerelease). A fault in a template's `beat:` header value
   that no `@param` changes (`once: sometimes`, an unknown `on:`) is reported once at the header key
   in the component, not at every use; a use of a faulty or unknown template no longer adds "names
@@ -630,6 +678,10 @@ table.
   pattern was ignored). An arm that would lower to neither is
   `E-COMPILE-INTERNAL` instead of an arm no engine can take.
 
+- `lute test`: an `eligible: true` miss names the conjunct of the `when` that is false and what it read (`its `when` is false because `run.aff.ren >= 7` is false (`run.aff.ren` is 6) — the whole `when`: …`; a negated fact that holds says `seeded by `facts:`` when the test seeded it), and it is printed before the state and fact misses it causes; an `eligible:` key naming nothing gets a did-you-mean (OT-F-10).
+- `lute calendar`: `run.aff[run.route]` no longer refuses a route axis with values outside the family (`hotaru`, `alone`): at such a value the tied axis sets nothing, one cell stands for all its values, and a note says so; only an axis naming no member at all is refused. A misspelt indexing axis gets a did-you-mean and the axis list no longer names the bad axis itself (OT-F-12).
+- `lute scenario reach --endings`: exits 1 when an ending is unreachable; a never-holds row cites the error inside its `when` (`caused by E-WHEN-LITERAL-DOMAIN at …`, JSON `causes`); bare `--endings` in a game with no `::end` points at `--endings=<occasion>`; `--format` is accepted after the sub-view (OT-F-13).
+- `lute test --coverage`: an untested beat is no longer listed a second time under "no play presents" (that list now holds only the beats a test traces but no play presents), and a file traced from `tests/` is spelled one way (`./scenes/a.lute`, not `./tests/../scenes/a.lute`) (OT-F-14).
 ## [0.26.0] - 2026-09-26
 
 **Scale and many authors.**
