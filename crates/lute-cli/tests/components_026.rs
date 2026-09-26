@@ -134,7 +134,7 @@ fn project(tag: &str, cast: &str, schema: &str, components: &[(&str, &str)]) -> 
         "lute.project.yaml",
         &format!(
             "pluginsDir: plugins/\ndefaultProfile: base\nprofiles:\n  base: {{ plugins: {{ p: true }} }}\n\
-             defaults:\n  luteVersion: \"0.25.1\"\n  uses: [world.schema.yaml]\n  components: [{}]\n",
+             defaults:\n  luteVersion: \"0.26.0\"\n  uses: [world.schema.yaml]\n  components: [{}]\n",
             paths.trim_end_matches(", ")
         ),
     );

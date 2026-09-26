@@ -4,7 +4,7 @@ character: actor_a
 season: 1
 episode: 2
 profile: game
-luteVersion: "0.25.1"
+luteVersion: "0.26.0"
 ---
 
 ## Missing asset

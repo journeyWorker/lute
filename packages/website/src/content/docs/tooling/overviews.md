@@ -1,6 +1,6 @@
 ---
 title: Story overviews
-description: "Three read-only views of a story chosen by occasions (dsl 0.23.0): `lute beats` prints each occasion's beat ladder with the checker's verdicts, `lute calendar` evaluates play's own eligibility over a grid of state values, and `lute scenario knowledge` traces every fact-guarded condition through the rules to whatever produces its facts. Since 0.24.0: clock and visited axes, per-occasion axes, `--facts` tables and the never-presented list in the calendar, and defs as written with `--expand`. Since 0.26.0 (draft): covered fallbacks and kind ladders in `lute beats`, fact-producer edges in `lute scenario --facts`, and counted rule premises in `knowledge`."
+description: "Three read-only views of a story chosen by occasions (dsl 0.23.0): `lute beats` prints each occasion's beat ladder with the checker's verdicts, `lute calendar` evaluates play's own eligibility over a grid of state values, and `lute scenario knowledge` traces every fact-guarded condition through the rules to whatever produces its facts. Since 0.24.0: clock and visited axes, per-occasion axes, `--facts` tables and the never-presented list in the calendar, and defs as written with `--expand`. Since 0.26.0: covered fallbacks and kind ladders in `lute beats`, fact-producer edges in `lute scenario --facts`, and counted rule premises in `knowledge`."
 ---
 
 Once a story is selected by [occasions](/tooling/play/) rather than read top to bottom, no single file answers "what plays at the inn on the evening of day two?". The answer is spread over every beat's `on`, `target`, `priority`, `once`, `after:` and `when`, over the project's rules, and over whatever the save already holds. Since dsl 0.23.0 three commands put it on one screen:
@@ -11,7 +11,7 @@ Once a story is selected by [occasions](/tooling/play/) rather than read top to 
 
 All three are read-only. The normative text is §1 of the [0.23.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md).
 
-Since dsl 0.26.0 (draft) the views follow a project several authors write at once: `lute beats` marks a fallback another beat always covers and lists a [kind beat](/tooling/play/#kind-targets) for every member it answers, [`lute scenario --facts`](#fact-edges-lute-scenario---facts) draws which scene's facts open which gate — progress an `after:` graph cannot see — and [`lute refs`](/tooling/cli/#refs) lists who gives what: every value of a directive attribute or reward target, with the documents that use it.
+Since dsl 0.26.0 the views follow a project several authors write at once: `lute beats` marks a fallback another beat always covers and lists a [kind beat](/tooling/play/#kind-targets) for every member it answers, [`lute scenario --facts`](#fact-edges-lute-scenario---facts) draws which scene's facts open which gate — progress an `after:` graph cannot see — and [`lute refs`](/tooling/cli/#refs) lists who gives what: every value of a directive attribute or reward target, with the documents that use it.
 
 ## The example project
 

@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.25.0.md`](proposals/scenario-dsl/0.25.0.md). The
+> [`proposals/scenario-dsl/0.26.0.md`](proposals/scenario-dsl/0.26.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -36,7 +36,10 @@ target is the flat command-record format the engine consumes.
 > 0.25.0 a relation may declare `excludes:` (checked statically and halting `lute play` /
 > `lute trace` on a violation), beats may `share` one spend, a bundle `<beat after=…>` and a
 > quest's subquests and `start` reads are scenario-graph edges, and a quest may be
-> `accept="external"`.
+> `accept="external"`. Since 0.26.0 a project scales to many authors: state declared in
+> several documents must agree, a schema may `add:` members to a kind another declares,
+> directives take `when=`, components gain `@@who:` and param `default:`s, a beat may target
+> a whole kind (`target="kind:<kind>"`), and a rule body may count a lower stratum.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -729,6 +732,20 @@ above, never a rule-body dependency):
   `once` per key, and `lute play` spends the key together; `connectivity.rs` draws the bundle
   beat `after=`, `[subquest]` and `[start]` edges (`quest_anchors` / `start_anchors`), and
   `cast.rs` reads a reserved relation's `changedOn:` to narrow `assume: true`.
+- **Scale and many authors (dsl 0.26.0).** `fact_env.rs` prepares one root's derived must
+  closure once and extends it semi-naively with a route's asserts (a slot that reads no fact
+  never computes it), and `lute test` (`testcmd.rs`) loads and checks a project once and runs
+  its tests in parallel. `state_decls.rs` compares every frontmatter `state:` declaration of
+  one path (`E-STATE-DECL-CONFLICT`); `rel_schema.rs` / `schema_import.rs` merge each
+  `add:` into the one declaration of its kind and fold a `subsetOf:` child's members into its
+  parent, and `lute_manifest::project` expands `defaults.uses` globs and `questTier`.
+  `match_check.rs` checks entity-typed directive attributes and a reward kind's `target:`
+  (`E-REWARD-TARGET`); `datalog_check.rs` stratifies rule-body `count(…)` aggregates
+  (`E-RULE-AGGREGATE-CYCLE`); `display_names.rs` owns `W-DISPLAY-NAME-DUP` and `lore.rs`
+  `W-ENTRY-WRITE-REREAD`. `beats.rs` resolves a `target="kind:<kind>"` beat to its members
+  (`occasion.target`) and ranks it after a member-specific beat at equal priority, which the
+  compiler carries as `targetKind`; a directive's `when=` lowers to a one-arm match in
+  `normalize` / `expand`, and the trace walk follows a taken `::next`.
 
 ### Narrative time (spec §6, D11)
 

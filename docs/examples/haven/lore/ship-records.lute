@@ -1,6 +1,6 @@
 ---
 kind: lore
-luteVersion: "0.25.1"
+luteVersion: "0.26.0"
 id: haven.shipRecords
 title: Haven's records
 uses: ../world.schema.yaml
