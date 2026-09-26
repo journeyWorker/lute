@@ -303,7 +303,8 @@ fn advance_needs_a_clock_and_moves_only_forward() {
     );
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     assert!(
-        text(&out).contains("the clock declares no `raise:` slot occasion"),
+        text(&out)
+            .contains("the clock declares no `raise:` occasion — the advance presents nothing"),
         "{}",
         text(&out)
     );
@@ -470,8 +471,63 @@ fn an_advance_judges_every_raise_and_writes_on_arrival() {
         "steps:\n  - advance: day\n    expect: { presented: [day.slot] }\n",
     );
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    // Round-5 T3-8: the miss places the step at the raise where the clock
+    // stops and tags each presented beat with the raise that presented it.
     assert!(
-        text(&out).contains("expected [day.slot], actual [day.close, day.slot]"),
+        text(&out).contains(
+            "step 1 at advance day → slotStart: expect presented: expected [day.slot], actual \
+             [day.close (dayEnd at day 1 (Mon) morning), day.slot (slotStart at day 2 (Tue) morning)]"
+        ),
+        "{}",
+        text(&out)
+    );
+}
+
+/// Round-5 T3-8 (SG-F8): a clock that raises only `dayStart` takes an
+/// `advance:` step's selection expectations and `choose:` — they judge the
+/// morning's raise — while `pick` still needs the slot raise it answers.
+#[test]
+fn a_day_start_only_clock_takes_selection_expectations() {
+    const DAWN_CLOCK: &str = "clock:\n  day: run.day\n  slot: run.slot\n  \
+                              slots: [morning, afternoon, night]\n  \
+                              week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }\n  \
+                              raise: { dayStart: dawn }\n";
+    const DAWN_SCENE: &str = "---\nkind: scene\nid: day.dawn\nuses: ../world.schema.yaml\non: dawn\n\
+                              once: false\n---\n\n## Dawn\n\n@narrator: Dawn on {{clock.weekdayLabel}}.\n\n\
+                              <branch id=\"wake\">\n<choice id=\"rise\" label=\"Rise\">\n@narrator: Up.\n</choice>\n\
+                              <choice id=\"doze\" label=\"Doze\">\n@narrator: Five more minutes.\n</choice>\n\
+                              </branch>\n";
+    let dir = project_with(
+        "dawn",
+        ", owner: engine",
+        DAWN_CLOCK,
+        &[("scenes/dawn.lute", DAWN_SCENE)],
+    );
+    let out = play(
+        &dir,
+        "steps:\n  - advance: day\n    choose: { wake: doze }\n    \
+         expect: { presented: [day.dawn], winner: day.dawn, offered: [day.dawn] }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(
+        t.contains("Dawn on Tue.") && t.contains("Five more minutes."),
+        "{t}"
+    );
+    let out = play(
+        &dir,
+        "steps:\n  - advance: day\n    choose: { wake: rise }\n    expect: { winner: none }\n",
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(
+        text(&out).contains("step 1 at advance day → dawn: expect winner: expected none"),
+        "{}",
+        text(&out)
+    );
+    let out = play(&dir, "steps:\n  - advance: day\n    pick: day.dawn\n");
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(
+        text(&out).contains("the clock declares no `raise.slot` occasion"),
         "{}",
         text(&out)
     );
@@ -987,7 +1043,7 @@ fn a_schema_checked_alone_reports_what_its_importers_would() {
         "{t}"
     );
     assert!(
-        t.contains("which is not one of its members (dsl 0.24.0 §1) (imported by 2 documents)"),
+        t.contains("which is not one of its members (imported by 2 documents)"),
         "{t}"
     );
 }

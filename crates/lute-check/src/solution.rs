@@ -129,6 +129,11 @@ pub(crate) enum Kind {
     Finite(Vec<DomainValue>),
     /// Every value is a number (`number`, `count(P)`).
     Number,
+    /// Every value is one of the whole numbers `lo..=hi` — a path whose
+    /// range the schema knows ([`crate::meta::StateSchema::int_ranges`]:
+    /// `clock.weekday`, and a finite clock's `clock.index` and day path,
+    /// dsl 0.24.0 §1 / 0.27.0 §4).
+    Ints(i64, i64),
     /// Anything — an undeclared path, a `string`, an opaque type. A value of
     /// any kind may turn up, so only equality reasoning applies.
     Open,
@@ -141,7 +146,8 @@ impl PathDomain {
         PathDomain {
             kind: match &info.domain {
                 Domain::Finite(values) => Kind::Finite(values.clone()),
-                Domain::Number | Domain::IntRange { .. } => Kind::Number,
+                Domain::Number => Kind::Number,
+                Domain::IntRange { lo, hi } => Kind::Ints(*lo, *hi),
                 Domain::Infinite => Kind::Open,
             },
             maybe_unset: info.maybe_unset || !info.resolved,
@@ -161,6 +167,8 @@ impl PathDomain {
         match &self.kind {
             Kind::Finite(members) => domain_value(value).is_some_and(|v| members.contains(&v)),
             Kind::Number => matches!(value, Decided::Num(_)),
+            Kind::Ints(lo, hi) => matches!(value, Decided::Num(n)
+                if n.fract() == 0.0 && (*lo as f64) <= *n && *n <= (*hi as f64)),
             Kind::Open => true,
         }
     }
@@ -231,6 +239,10 @@ pub(crate) fn covers(dom: &PathDomain, truths: &[Truth]) -> bool {
             .all(|m| sets.iter().any(|s| holds_member(s, m))),
         // Every `Except` returned above; a `Values` set holds no number.
         Kind::Number => intervals_cover_reals(sets.iter().flat_map(|s| number_spans(Some(s)))),
+        Kind::Ints(lo, hi) => {
+            let spans: Vec<Span> = sets.iter().flat_map(|s| number_spans(Some(s))).collect();
+            spans_cover_ints(&spans, *lo, *hi)
+        }
         Kind::Open => false,
     }
 }
@@ -258,6 +270,37 @@ fn intervals_cover_reals(intervals: impl Iterator<Item = Span>) -> bool {
         }
     }
     reach == f64::INFINITY
+}
+
+/// Whether every whole number in `lo..=hi` lies in one of `spans`: from the
+/// lowest uncovered number, jump past the furthest span holding it.
+fn spans_cover_ints(spans: &[Span], lo: i64, hi: i64) -> bool {
+    // The last whole number a span holds (`i64::MAX` for an open top).
+    let top = |&(_, _, h, h_inc): &Span| -> i64 {
+        if h == f64::INFINITY {
+            i64::MAX
+        } else {
+            let f = h.floor();
+            let f = if f == h && !h_inc { f - 1.0 } else { f };
+            f.clamp(i64::MIN as f64, i64::MAX as f64) as i64
+        }
+    };
+    let mut k = lo;
+    while k <= hi {
+        let Some(reach) = spans
+            .iter()
+            .filter(|s| span_contains(s, k as f64))
+            .map(top)
+            .max()
+        else {
+            return false;
+        };
+        if reach >= hi {
+            return true;
+        }
+        k = reach + 1;
+    }
+    true
 }
 
 /// Do the two solution sets fail to intersect? `Except` pairs always share
@@ -463,6 +506,42 @@ mod tests {
             &numbers(true),
             &[num(op::NOT_EQUALS, 5.0), num(op::EQUALS, 5.0)]
         ));
+    }
+
+    /// dsl 0.27.0 §4: over a known whole-number range, sets cover what the
+    /// reals would leave open — and a set outside the range covers nothing.
+    #[test]
+    fn a_whole_number_range_is_covered_by_its_integers() {
+        let night = PathDomain {
+            kind: Kind::Ints(1, 1),
+            maybe_unset: false,
+        };
+        // `run.night == 2`'s negation holds every value the path can take.
+        assert!(covers(&night, &[num(op::NOT_EQUALS, 2.0)]));
+        assert!(!covers(&night, &[num(op::NOT_EQUALS, 1.0)]));
+        assert!(covers(&night, &[num(op::LESS, 2.0)]));
+        let index = PathDomain {
+            kind: Kind::Ints(0, 6),
+            maybe_unset: false,
+        };
+        // `clock.index >= 9` is false throughout: `< 9` covers 0..6.
+        assert!(covers(&index, &[num(op::LESS, 9.0)]));
+        assert!(!covers(&index, &[num(op::LESS, 6.0)]));
+        // `x > 2 && x < 3` holds no whole number: its negations cover.
+        assert!(covers(
+            &index,
+            &[num(op::LESS_EQUALS, 2.0), num(op::GREATER_EQUALS, 3.0)]
+        ));
+        assert!(!covers(
+            &index,
+            &[num(op::LESS_EQUALS, 2.0), num(op::GREATER_EQUALS, 4.0)]
+        ));
+        // Maybe unset: an ordering is never true on unset.
+        let unset = PathDomain {
+            maybe_unset: true,
+            ..index
+        };
+        assert!(!covers(&unset, &[num(op::LESS, 9.0)]));
     }
 
     #[test]

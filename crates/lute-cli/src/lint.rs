@@ -31,8 +31,8 @@ use lute_manifest::resolve::resolve_activation;
 /// clap `value_parser` for `lute lint --deny <CODE>`.
 ///
 /// Lint diagnostic codes are dynamic (`L-*` derived from plugin/custom rule
-/// ids), so the static `DENIABLE_CODES` registry `check`/`check-project` use
-/// cannot enumerate them. Instead accept any code matching
+/// ids), so the code registry ([`crate::codes`]) `check`/`check-project`
+/// use cannot enumerate them. Instead accept any code matching
 /// `^(L-[A-Z0-9-]+|E-LINT-(CONFIG|EXPR|RULE))$`, plus the native
 /// `W-DISPLAY-NAME-DUP`. Anything else is a clap usage error (exit 2),
 /// matching the "a typo'd `--deny` MUST NOT silently protect nothing"
@@ -44,7 +44,7 @@ pub fn parse_lint_deny_code(raw: &str) -> Result<String, String> {
         Err(format!(
             "unknown diagnostic code `{raw}` (expected `L-<CODE>` or \
              `E-LINT-CONFIG`/`E-LINT-EXPR`/`E-LINT-RULE`/`W-DISPLAY-NAME-DUP`); a typo'd `--deny` \
-             must not silently protect nothing (spec §5)"
+             would silently protect nothing"
         ))
     }
 }
@@ -63,7 +63,7 @@ fn is_lint_deniable(code: &str) -> bool {
 
 /// Lint-scoped promotion policy — a private mirror of [`crate::DenyPolicy`]
 /// with the same semantics (spec §5) over the lint code universe. Kept
-/// separate so `lute check`'s own `DENIABLE_CODES` guard is not perturbed by
+/// separate so `lute check`'s registry-backed `--deny` is not perturbed by
 /// dynamic `L-*` ids.
 #[derive(Default, Clone)]
 pub struct LintDenyPolicy {
@@ -524,7 +524,7 @@ fn print_human_line(path: &Path, d: &Diagnostic, denied: bool) {
             "{}: {severity} [{}]{marker} {}",
             path.display(),
             d.code,
-            d.message
+            d.text()
         );
     } else {
         println!(
@@ -533,7 +533,7 @@ fn print_human_line(path: &Path, d: &Diagnostic, denied: bool) {
             d.span.line,
             d.span.column,
             d.code,
-            d.message,
+            d.text(),
         );
     }
 }

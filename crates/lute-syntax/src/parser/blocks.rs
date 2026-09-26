@@ -109,6 +109,11 @@ impl Parser<'_> {
                 Layer::Logic,
             );
         }
+        if !self_closing && !inline_closed {
+            let name = self.body[cstart + 1..j].to_string();
+            let line = self.span_o(start_o, end_o).line;
+            self.open_blocks.push((name, line));
+        }
         self.cursor += 1;
         OpenTag {
             attrs,
@@ -125,8 +130,10 @@ impl Parser<'_> {
             && close_tag_name(&self.trimmed(self.cursor)).as_deref() == Some(name)
     }
 
-    /// Consume the matching close if present; else emit `E_UNCLOSED_TAG`.
-    /// Returns the original-text end offset of the block.
+    /// Consume the matching close if present; else emit `E_UNCLOSED_TAG`,
+    /// naming the opener's line and — when a different `</tag>` ended the
+    /// body — the close that did. Returns the original-text end offset of
+    /// the block.
     fn consume_close(&mut self, name: &str, open: &OpenTag, last_end: usize) -> usize {
         if open.inline_closed {
             // dsl §2.3: the close WAS written — on the opener's own line, in
@@ -136,19 +143,102 @@ impl Parser<'_> {
             // remove; the author has one mistake, not two.
             return open.end_o;
         }
+        if !open.self_closing {
+            self.open_blocks.pop();
+        }
         if self.at_close(name) {
             let end = self.orig(self.line_content_end(self.cursor));
             self.cursor += 1;
             end
         } else {
+            let line = self.span_o(open.start_o, open.end_o).line;
+            let closer = (self.cursor < self.lines.len())
+                .then(|| close_tag_name(&self.trimmed(self.cursor)))
+                .flatten();
+            let message = match closer {
+                Some(other) => {
+                    let (s, _) = self.lines[self.cursor];
+                    let at = self.span(s, s).line;
+                    format!(
+                        "`<{name}>` from line {line} is never closed: `</{other}>` on line {at} \
+                         closes the enclosing `<{other}>` — add `</{name}>` above it"
+                    )
+                }
+                None => format!(
+                    "`<{name}>` from line {line} is never closed — add `</{name}>` after its body"
+                ),
+            };
             self.emit_o(
                 E_UNCLOSED_TAG,
-                format!("<{name}> is never closed"),
+                message,
                 open.start_o,
                 open.end_o,
                 Layer::Logic,
             );
             last_end
+        }
+    }
+
+    /// At a `</tag>` line that is not the current block's own close: `true`
+    /// when it closes an ENCLOSING block — the current one ends unclosed
+    /// here and [`Parser::consume_close`] names both. Otherwise it closes
+    /// nothing: it is reported against the block that is open and skipped,
+    /// so the body goes on and the real close still ends it.
+    fn at_foreign_close(&mut self) -> bool {
+        let name = close_tag_name(&self.trimmed(self.cursor));
+        if name
+            .as_ref()
+            .is_some_and(|n| self.open_blocks.iter().any(|(t, _)| t == n))
+        {
+            return true;
+        }
+        self.report_stray_close();
+        self.skip_stray();
+        false
+    }
+
+    /// Report the `</tag>` at `cursor` as closing no open block, naming the
+    /// block that is open there (if any).
+    pub(super) fn report_stray_close(&mut self) {
+        let close = match close_tag_name(&self.trimmed(self.cursor)) {
+            Some(n) => format!("`</{n}>`"),
+            None => "this closing tag".to_string(),
+        };
+        let message = match self.open_blocks.last() {
+            Some((open, line)) => format!(
+                "{close} closes no open block — the block open here is `<{open}>` from line \
+                 {line}, which `</{open}>` closes"
+            ),
+            None => format!("{close} closes no open block — nothing is open here"),
+        };
+        self.emit_line(E_UNCLOSED_TAG, &message, self.cursor, Layer::Logic);
+    }
+
+    /// A `<choice>`, `<when>`, `<otherwise>`, `<track>` or `<reward>` outside
+    /// the block it belongs in: reported once, then parsed whole — body and
+    /// close — and dropped, so none of its lines raises anything further.
+    pub(super) fn parse_misplaced_child(&mut self, tag: &str) {
+        let parents = match tag {
+            "choice" => "a `<branch>` or `<hub>`",
+            "when" | "otherwise" => "a `<match>`",
+            "track" => "a `<timeline>`",
+            _ => "a `<quest>` or `<objective>`",
+        };
+        self.emit_line(
+            E_LOGIC_CONTENT,
+            &format!(
+                "a `<{tag}>` belongs directly inside {parents}; outside one it does nothing, \
+                 so it is dropped"
+            ),
+            self.cursor,
+            Layer::Logic,
+        );
+        match tag {
+            "choice" => drop(self.parse_choice()),
+            "when" => drop(self.parse_when()),
+            "otherwise" => drop(self.parse_otherwise()),
+            "track" => drop(self.parse_track()),
+            _ => drop(self.parse_reward()),
         }
     }
 
@@ -165,6 +255,12 @@ impl Parser<'_> {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
+            if trimmed.starts_with("</") {
+                if self.at_foreign_close() {
+                    break;
+                }
+                continue;
+            }
             if open_tag_name(&trimmed).as_deref() == Some("choice") {
                 let c = self.parse_choice();
                 last_end = c.span.byte_end;
@@ -233,6 +329,7 @@ impl Parser<'_> {
         let activate = take_str_spanned(&mut attrs, "activate");
         let complete = take_str_spanned(&mut attrs, "complete");
         let accept = take_str_spanned(&mut attrs, "accept");
+        let rearm = take_cel(&mut attrs, "rearm", CelKind::Condition);
         let outer = self.enter_top_block("quest", &id, &open);
         let (body, rewards, end_o) = self.parse_owner_body("quest", &open);
         self.top_block = outer;
@@ -248,6 +345,7 @@ impl Parser<'_> {
             activate,
             complete,
             accept,
+            rearm,
             attrs,
             body,
             rewards,
@@ -267,6 +365,7 @@ impl Parser<'_> {
         let (id, id_span) = take_str_spanned(&mut attrs, "id")
             .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
         let target = take_str_spanned(&mut attrs, "target");
+        let for_kind = take_str_spanned(&mut attrs, "for");
         let category = take_str_spanned(&mut attrs, "category");
         let title = take_str_spanned(&mut attrs, "title");
         let series = take_str_spanned(&mut attrs, "series");
@@ -276,6 +375,7 @@ impl Parser<'_> {
         let once = take_str_spanned(&mut attrs, "once");
         let share = take_str_spanned(&mut attrs, "share");
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let spent_by = take_cel(&mut attrs, "spentBy", CelKind::Condition);
         let outer = self.enter_top_block("entry", &id, &open);
         let (body, end_o) = self.parse_block_body("entry", &open);
         self.top_block = outer;
@@ -283,6 +383,7 @@ impl Parser<'_> {
             id,
             id_span,
             target,
+            for_kind,
             category,
             title,
             series,
@@ -292,6 +393,7 @@ impl Parser<'_> {
             once,
             share,
             when,
+            spent_by,
             attrs,
             body,
             span: self.span_o(open.start_o, end_o),
@@ -310,6 +412,7 @@ impl Parser<'_> {
             .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
         let on = take_str_spanned(&mut attrs, "on");
         let target = take_str_spanned(&mut attrs, "target");
+        let for_kind = take_str_spanned(&mut attrs, "for");
         let title = take_str_spanned(&mut attrs, "title");
         let priority = take_str_spanned(&mut attrs, "priority");
         let once = take_str_spanned(&mut attrs, "once");
@@ -327,14 +430,28 @@ impl Parser<'_> {
             flag.map(|f| (f, attrs.remove(pos).span))
         });
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let spent_by = take_cel(&mut attrs, "spentBy", CelKind::Condition);
+        // dsl 0.27.0 §6: `use="<template>"`; its arguments stay in `attrs`.
+        let template = take_str_spanned(&mut attrs, "use").map(|(name, span)| TemplateUse {
+            name,
+            span,
+            expanded: false,
+        });
         let outer = self.enter_top_block("beat", &id, &open);
-        let (body, end_o) = self.parse_block_body("beat", &open);
+        // dsl 0.27.0 §6: `<beat use="trainer" id="r3" who="joey"/>` is a
+        // one-line beat with no body of its own.
+        let (body, end_o) = if open.self_closing {
+            (Vec::new(), open.end_o)
+        } else {
+            self.parse_block_body("beat", &open)
+        };
         self.top_block = outer;
         BundleBeat {
             id,
             id_span,
             on,
             target,
+            for_kind,
             title,
             priority,
             once,
@@ -342,7 +459,9 @@ impl Parser<'_> {
             after,
             also,
             when,
+            spent_by,
             attrs,
+            template,
             body,
             span: self.span_o(open.start_o, end_o),
         }
@@ -480,6 +599,12 @@ impl Parser<'_> {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
+            if trimmed.starts_with("</") {
+                if self.at_foreign_close() {
+                    break;
+                }
+                continue;
+            }
             if open_tag_name(&trimmed).as_deref() == Some("choice") {
                 let c = self.parse_choice();
                 last_end = c.span.byte_end;
@@ -542,6 +667,12 @@ impl Parser<'_> {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
+            if trimmed.starts_with("</") {
+                if self.at_foreign_close() {
+                    break;
+                }
+                continue;
+            }
             match open_tag_name(&trimmed).as_deref() {
                 Some("when") => {
                     let a = self.parse_when();
@@ -632,6 +763,12 @@ impl Parser<'_> {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
+            if trimmed.starts_with("</") {
+                if self.at_foreign_close() {
+                    break;
+                }
+                continue;
+            }
             if open_tag_name(&trimmed).as_deref() == Some("track") {
                 let t = self.parse_track();
                 last_end = t.span.byte_end;
@@ -680,6 +817,12 @@ impl Parser<'_> {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
+            if trimmed.starts_with("</") {
+                if self.at_foreign_close() {
+                    break;
+                }
+                continue;
+            }
             if trimmed.starts_with("::set{") {
                 let line = self.cursor;
                 if let Node::Set(mut set) = self.parse_set() {
@@ -757,8 +900,12 @@ impl Parser<'_> {
             }
             let trimmed = self.trimmed(self.cursor);
             if trimmed.starts_with("</") {
-                // A close for some other tag: our tag is unclosed — stop here.
-                break;
+                // A close for an enclosing tag leaves ours unclosed; one for
+                // no open tag is reported and skipped.
+                if self.at_foreign_close() {
+                    break;
+                }
+                continue;
             }
             if let Some(node) = self.next_node() {
                 last_end = super::node_end(&node);
@@ -790,8 +937,10 @@ impl Parser<'_> {
             }
             let trimmed = self.trimmed(self.cursor);
             if trimmed.starts_with("</") {
-                // A close for some other tag: our tag is unclosed — stop here.
-                break;
+                if self.at_foreign_close() {
+                    break;
+                }
+                continue;
             }
             if trimmed.starts_with('<')
                 && super::open_tag_name(&trimmed).as_deref() == Some("reward")
@@ -840,6 +989,7 @@ impl Parser<'_> {
                 }
                 self.cursor += 1;
             }
+            self.open_blocks.pop();
         }
         let mut attrs = open.attrs.clone();
         let (kind, kind_span) = take_str_spanned(&mut attrs, "kind")
@@ -977,6 +1127,88 @@ fn parse_reward_amount(raw: &str) -> Option<crate::ast::RewardAmount> {
 mod tests {
     use crate::ast::Node;
     use crate::parse;
+
+    /// A close for an ENCLOSING block ends the inner one unclosed: one
+    /// diagnostic names the open tag, its line, and the close that ended it,
+    /// and the enclosing block still closes normally.
+    #[test]
+    fn a_mismatched_close_names_the_open_tag() {
+        let src = "## S\n<branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n@narrator: hi.\n</branch>\n@narrator: after.\n";
+        let (doc, diags) = parse(src);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].code, "E-UNCLOSED-TAG");
+        assert_eq!(
+            diags[0].message,
+            "`<choice>` from line 3 is never closed: `</branch>` on line 5 closes the enclosing \
+             `<branch>` — add `</choice>` above it"
+        );
+        let body = &doc.shots[0].body;
+        assert_eq!(
+            body.len(),
+            2,
+            "the branch closes and the next line parses: {body:?}"
+        );
+        let Node::Branch(b) = &body[0] else {
+            panic!("{body:?}")
+        };
+        assert_eq!(b.choices.len(), 1);
+    }
+
+    /// A close naming no open block is reported against the block that IS
+    /// open and skipped; that block's real close still ends it.
+    #[test]
+    fn a_stray_close_inside_a_block_names_the_open_block_and_is_skipped() {
+        let src = "## S\n<match on=\"run.x\">\n<when is=\"1\">\n@narrator: one.\n</whem>\n</when>\n</match>\n";
+        let (doc, diags) = parse(src);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].code, "E-UNCLOSED-TAG");
+        assert_eq!(diags[0].span.line, 5);
+        assert_eq!(
+            diags[0].message,
+            "`</whem>` closes no open block — the block open here is `<when>` from line 3, \
+             which `</when>` closes"
+        );
+        let Node::Match(m) = &doc.shots[0].body[0] else {
+            panic!()
+        };
+        assert_eq!(m.arms.len(), 1);
+    }
+
+    /// `<choice>` / `<when>` / `<otherwise>` / `<track>` outside their parent:
+    /// one specific diagnostic each, the element parsed whole and dropped —
+    /// no stray-close cascade, and the next line is content again.
+    #[test]
+    fn a_child_outside_its_parent_is_named_and_dropped() {
+        for (open, close, parent) in [
+            (
+                "<choice id=\"c\" label=\"C\">",
+                "</choice>",
+                "`<branch>` or `<hub>`",
+            ),
+            ("<when is=\"1\">", "</when>", "`<match>`"),
+            ("<otherwise>", "</otherwise>", "`<match>`"),
+            ("<track channel=\"music\">", "</track>", "`<timeline>`"),
+        ] {
+            let body_line = if open.starts_with("<track") {
+                "::sfx{assetId=\"a\"}"
+            } else {
+                "@narrator: inside."
+            };
+            let src = format!("## S\n{open}\n{body_line}\n{close}\n@narrator: after.\n");
+            let (doc, diags) = parse(&src);
+            assert_eq!(diags.len(), 1, "{open}: {diags:?}");
+            assert_eq!(diags[0].code, "E-LOGIC-CONTENT", "{open}");
+            assert_eq!(diags[0].span.line, 2, "{open}");
+            assert!(
+                diags[0].message.contains(parent),
+                "{open}: {}",
+                diags[0].message
+            );
+            let body = &doc.shots[0].body;
+            assert_eq!(body.len(), 1, "{open}: only `after` remains: {body:?}");
+            assert!(matches!(&body[0], Node::Line(_)), "{open}: {body:?}");
+        }
+    }
 
     #[test]
     fn hub_parses_choices_with_flags() {
@@ -1129,13 +1361,18 @@ mod tests {
     }
 
     #[test]
-    fn reward_in_scene_body_hits_unknown_tag_diagnostic() {
-        // Outside an owner, `<reward/>` MUST fall through to the existing
-        // unknown-tag arm (today's `E-UNCLASSIFIED`).
+    fn reward_in_scene_body_is_a_misplaced_child() {
+        // Outside an owner, `<reward/>` belongs to no block: it is named as
+        // misplaced and dropped.
         let src = "## Shot 1.\n<reward kind=\"gold\" amount=\"1\"/>\n";
         let (doc, diags) = crate::parse(src);
         assert!(doc.shots[0].body.is_empty());
-        assert!(diags.iter().any(|d| d.code == "E-UNCLASSIFIED"));
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].code, "E-LOGIC-CONTENT");
+        assert!(
+            diags[0].message.contains("`<quest>` or `<objective>`"),
+            "{diags:?}"
+        );
     }
 
     #[test]

@@ -834,13 +834,16 @@ pub fn walk_quest(
             .iter()
             .map(|r| RewardEntry::from_ast(r, true))
             .collect(),
-        // dsl 0.22.0 §7: only `tier="run"` is serialized (`E-ATTR-TYPE`
-        // already gated any other value).
-        tier: quest
-            .tier
-            .as_ref()
-            .filter(|(t, _)| t == "run")
-            .map(|_| crate::ir::QuestTier::Run),
+        // dsl 0.22.0 §7, 0.27.0 §5: only `tier="run"` / `"season:<name>"`
+        // are serialized (`E-ATTR-TYPE` / `E-SEASON-DECL` gated the rest).
+        tier: quest.tier.as_ref().and_then(|(t, _)| {
+            if t == "run" {
+                Some(crate::ir::QuestTier::Run)
+            } else {
+                lute_manifest::season::season_ref(t)
+                    .map(|name| crate::ir::QuestTier::Season(name.to_string()))
+            }
+        }),
         // dsl 0.24.0 §2: only the non-default modes are serialized
         // (`E-ATTR-TYPE` already gated any other value).
         activate: quest
@@ -853,6 +856,8 @@ pub fn walk_quest(
         accept: quest
             .accepted_externally()
             .then_some(crate::ir::QuestAccept::External),
+        // dsl 0.27.0 §5: back to `unset` when the condition goes false→true.
+        rearm: quest.rearm.as_ref().map(|s| CelPair::from_raw(&s.raw)),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -995,15 +1000,13 @@ pub fn walk_entry(
             .priority
             .as_ref()
             .and_then(|(p, _)| lute_check::parse_beat_priority(p)),
-        // dsl 0.22.0 §7, 0.24.0 §1: `once="run"|"user"|"day"|"slot"`
-        // (`E-BEAT-ATTR` gated the rest).
-        once: entry.once.as_ref().and_then(|(o, _)| match o.as_str() {
-            "run" => Some(crate::ir::BeatOnce::Run),
-            "user" => Some(crate::ir::BeatOnce::User),
-            "day" => Some(crate::ir::BeatOnce::Day),
-            "slot" => Some(crate::ir::BeatOnce::Slot),
-            _ => None,
-        }),
+        // dsl 0.22.0 §7, 0.24.0 §1, 0.27.0 §5: `once="run"|"user"|"day"|
+        // "slot"|"week"|"season:<name>"` (`E-BEAT-ATTR` gated the rest).
+        once: entry
+            .once
+            .as_ref()
+            .and_then(|(o, _)| lute_check::BeatOnce::parse(o))
+            .map(Into::into),
         share: text(&entry.share),
         target_kind: entry.on.as_ref().and_then(|(on, _)| {
             crate::ir::TargetKind::resolve(
@@ -1013,6 +1016,17 @@ pub fn walk_entry(
                 &cx.env.rel_vocab.kinds,
             )
         }),
+        for_kind: entry.on.as_ref().and_then(|(on, _)| {
+            crate::ir::ForKind::resolve(
+                on,
+                entry.for_kind.as_ref().map(|(f, _)| f.as_str()),
+                entry.target.is_some(),
+                &cx.snapshot.occasions,
+                &cx.env.rel_vocab.kinds,
+            )
+        }),
+        // dsl 0.27.0 §5: already `@def`-expanded, like `when`.
+        spent_by: entry.spent_by.as_ref().map(|s| CelPair::from_raw(&s.raw)),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -1064,6 +1078,16 @@ pub fn walk_bundle_beat(
                 &cx.env.rel_vocab.kinds,
             )
         }),
+        for_kind: beat.on.as_ref().and_then(|(on, _)| {
+            crate::ir::ForKind::resolve(
+                on,
+                beat.for_kind.as_ref().map(|(f, _)| f.as_str()),
+                beat.target.is_some(),
+                &cx.snapshot.occasions,
+                &cx.env.rel_vocab.kinds,
+            )
+        }),
+        spent_by: beat.spent_by.as_ref().map(|s| CelPair::from_raw(&s.raw)),
         body: label.sym(),
         stamp: Stamp::default(),
     });

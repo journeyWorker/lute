@@ -1,10 +1,13 @@
-(LANGUAGE-GAP evidence.) Engine state cannot meet the fact layer:
-  1. scenes/a.lute: holds(close(occasion.target)) in a kind-target beat ->
-     E-CEL-PROFILE "fact-query patterns take compile-time-ground literals or `_`",
-     although occasion.target is ground whenever the beat runs.
-  2. world.schema.yaml, swap in the rule
+(Round-5 LANGUAGE-GAP evidence; closed by dsl 0.27.0 §3.) Engine state meets
+the fact layer:
+  1. scenes/a.lute: holds(close(occasion.target)) in a kind-target beat —
+     occasion.target is a ground fact argument, instantiated per member by the
+     checker and substituted by the runtime (0.26.0: E-CEL-PROFILE).
+  2. world.schema.yaml: the rule
        close(R) :- adjacent(R, S), cel("run.stalker == S")
-     -> E-CEL-PROFILE "`S` is not a state path".
-So "the Orderly is one room away" (run.stalker + an adjacency graph) cannot be
-derived in Lute; Hollow Ward has the engine raise `footsteps@room.X` instead.
-  lute check-project .
+     compares the rule variable S with a { domain: room } state path; it is
+     instantiated per member (0.26.0: E-CEL-PROFILE "`S` is not a state path").
+So "the Orderly is one room away" derives from run.stalker + the adjacency graph.
+  lute check-project .                  -> ok, 0 warnings
+  lute play . --script plays.yaml       -> chapel: "He is here." (not close);
+                                           lobby: "Wheels, close."

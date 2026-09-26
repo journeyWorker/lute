@@ -60,7 +60,9 @@ pub fn fact_edges(
     foldeds: &[&FoldedEnv],
     graph: &ConnGraph,
 ) -> Vec<FactEdge> {
-    let producers = crate::cast::fact_producers(docs);
+    // dsl 0.27.0 §4: a directive call's declared asserts produce too.
+    let effects = crate::directive_facts::root_table(foldeds.iter().copied());
+    let producers = crate::cast::fact_producers(docs, &effects);
     let units = unit_nodes(docs, foldeds, graph);
     let mut out = BTreeSet::new();
     for ((path, doc), folded) in docs.iter().zip(foldeds) {

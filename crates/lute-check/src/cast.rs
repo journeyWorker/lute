@@ -420,7 +420,9 @@ pub fn check_emotions(
 /// `<on>` handler assumes the quest's state at that event (`active` for a
 /// world event and `questActive`, `complete`/`failed` for
 /// `questComplete`/`questFailed`) and every conjunct of its `start` that
-/// stays true once it held (`entry.<id>.everRead`, `visited('…')`); and
+/// stays true once it held (`entry.<id>.everRead`, `visited('…')`); a
+/// `questComplete` handler also assumes the quest's completion — one
+/// required objective's `done` (dsl 0.27.0 §9); and
 /// `ladder` (keyed by the unit's `on` key/attribute offset,
 /// [`crate::beats::presence_ladder`]) adds what the beats above it on the
 /// same ladder must have spent. `@def`s are expanded first.
@@ -504,6 +506,8 @@ pub fn check_presence(
         guards: Vec::new(),
         base: 0,
         quest: None,
+        quest_body: &[],
+        completion: None,
         changed_on,
         changed: BTreeSet::new(),
         present: BTreeMap::new(),
@@ -539,7 +543,7 @@ pub fn check_presence(
             .typed
             .beat
             .as_ref()
-            .map_or(BeatOnce::None, |b| b.once),
+            .map_or(BeatOnce::None, |b| b.once.clone()),
     );
     let scene_after = after(0, folded.typed.beat.as_ref().map(|b| b.on.as_str()));
     w.unit(
@@ -560,6 +564,8 @@ pub fn check_presence(
             );
         }
         w.quest = (!quest.id.is_empty()).then(|| quest.id.clone());
+        w.quest_body = &quest.body;
+        w.completion = w.completion(quest);
         let quest_after = after(quest.span.byte_start, None);
         w.unit(
             conds,
@@ -569,6 +575,8 @@ pub fn check_presence(
             std::iter::once(&quest.body[..]),
         );
         w.quest = None;
+        w.quest_body = &[];
+        w.completion = None;
     }
     for entry in &doc.entries {
         let mut conds: Vec<(Expr, String)> = w.slot_cond(entry.when.as_ref()).into_iter().collect();
@@ -580,9 +588,8 @@ pub fn check_presence(
         }
         let ladder = entry.on.as_ref().map_or(&[][..], |(_, s)| ladder_at(*s));
         let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
-            Some("run") => BeatOnce::Run,
-            Some("user") => BeatOnce::User,
-            _ => BeatOnce::None,
+            Some(raw) => BeatOnce::parse(raw).unwrap_or(BeatOnce::None),
+            None => BeatOnce::None,
         };
         let absent = w.absent_facts(entry.span.byte_start, once);
         let entry_after = after(
@@ -722,7 +729,8 @@ pub fn occasions_before(
     out
 }
 
-/// Every `::assert` site of one project root, by relation: its document,
+/// Every `::assert` site of one project root, by relation — and (dsl 0.27.0
+/// §4) every directive call's declared `effects.asserts`: its document,
 /// its unit (`0` for a scene's shots, else the span start of the quest,
 /// entry or bundle beat) and its arguments (`None` for anything but a
 /// constant — a component param, `_`).
@@ -744,7 +752,10 @@ impl FactProducers {
 /// performs them, bound — the host documents carry them spliced
 /// ([`crate::component_effects::splice_component_effects`]) — so an unused
 /// component produces nothing and a used one only its bound arguments.
-pub fn fact_producers(docs: &[(std::path::PathBuf, Document)]) -> FactProducers {
+pub fn fact_producers(
+    docs: &[(std::path::PathBuf, Document)],
+    effects: &crate::directive_facts::EffectDirectives,
+) -> FactProducers {
     let mut out = FactProducers::default();
     for (path, doc) in docs {
         if crate::meta::infer_meta_kind_from_shape(&doc.meta, true)
@@ -770,16 +781,27 @@ pub fn fact_producers(docs: &[(std::path::PathBuf, Document)]) -> FactProducers 
             );
         for (key, bodies) in units {
             for body in bodies {
-                visit(body, &mut |node| {
-                    if let Node::Assert(a) = node {
-                        if !a.pattern.relation.is_empty() {
-                            out.0.entry(a.pattern.relation.clone()).or_default().push((
+                visit(body, &mut |node| match node {
+                    Node::Assert(a) if !a.pattern.relation.is_empty() => {
+                        out.0.entry(a.pattern.relation.clone()).or_default().push((
+                            path.clone(),
+                            key,
+                            pattern_args(&a.pattern),
+                        ));
+                    }
+                    Node::Directive(d) => {
+                        for p in crate::directive_facts::lookup(effects, d)
+                            .map(|f| f.asserts)
+                            .unwrap_or_default()
+                        {
+                            out.0.entry(p.relation.clone()).or_default().push((
                                 path.clone(),
                                 key,
-                                pattern_args(&a.pattern),
+                                pattern_args(&p),
                             ));
                         }
                     }
+                    _ => {}
                 });
             }
         }
@@ -833,7 +855,7 @@ pub(crate) fn unit_facts(
     vocab: &crate::rel_schema::RelVocab,
     path: &Path,
     key: usize,
-    once: BeatOnce,
+    once: &BeatOnce,
 ) -> Vec<UnitFact> {
     let mut out = Vec::new();
     let here = |p: &std::path::PathBuf, k: usize| p.as_path() == path && k == key;
@@ -865,7 +887,7 @@ pub(crate) fn unit_facts(
                         period.as_str()
                     ),
                 })
-            } else if matches!(tier, "user" | "app") && once != BeatOnce::User {
+            } else if matches!(tier, "user" | "app") && *once != BeatOnce::User {
                 Some(format!(
                     "`{fact}` is `tier: {tier}`, which persists across runs; `once: run` does \
                      not, so in a later run `{fact}` holds before it plays again"
@@ -1560,6 +1582,10 @@ struct Presence<'a> {
     base: usize,
     /// The quest whose body is being walked.
     quest: Option<String>,
+    /// dsl 0.27.0 §9 (T3-25): that quest's body and its completion
+    /// ([`Self::completion`]), for its `questComplete` handlers.
+    quest_body: &'a [Node],
+    completion: Option<(Expr, String)>,
     /// dsl 0.25.0 §6: occasion → the engine-`reserved` relations whose
     /// `changedOn:` names it.
     changed_on: BTreeMap<String, BTreeSet<String>>,
@@ -1806,6 +1832,56 @@ impl Presence<'_> {
         before
     }
 
+    /// dsl 0.27.0 §9 (T3-25): what `quest` assumes at its completion. It
+    /// completes the moment one of its required objectives does (`complete=
+    /// "all"`: the last one; `"any"`: the first), and that objective's `done`
+    /// held then — so the disjunction of the required objectives' `done`s.
+    /// `None` (nothing assumed) when no objective is required or one's `done`
+    /// is not written (a `quest=` objective's is synthesized).
+    fn completion(&self, quest: &lute_syntax::ast::Quest) -> Option<(Expr, String)> {
+        let mut alts = Vec::new();
+        for node in &quest.body {
+            if let Node::Objective(o) = node {
+                if !o.optional {
+                    alts.push(format!("({})", self.parse(&o.done.raw, None)?.1));
+                }
+            }
+        }
+        if alts.is_empty() {
+            return None;
+        }
+        self.parse(&alts.join(" || "), None)
+    }
+
+    /// A `questComplete` handler (at `at`) of the walked quest assumes its
+    /// [`Self::completion`] — pushed as a guard the caller truncates — as
+    /// far as what runs between that objective's completion and the handler
+    /// leaves it standing: every objective body of the quest (those completed
+    /// in the same settle play first) and the quest's earlier
+    /// `questComplete` handlers.
+    fn assume_completion(&mut self, at: usize) {
+        let Some(done) = self.completion.clone() else {
+            return;
+        };
+        let required = self.required(&done.0, EXPAND_DEPTH);
+        self.changed.extend(required);
+        let outer: Vec<bool> = self.guards.iter().map(|g| g.live).collect();
+        self.push(Some(done));
+        let body = self.quest_body;
+        for node in body {
+            match node {
+                Node::Objective(o) => self.kill_writes(&o.body),
+                Node::On(h) if h.event == "questComplete" && h.span.byte_start < at => {
+                    self.kill_writes(&h.body)
+                }
+                _ => {}
+            }
+        }
+        for (g, live) in self.guards.iter_mut().zip(outer) {
+            g.live = live;
+        }
+    }
+
     /// dsl 0.25.0 §6: the `changedOn` relations `e` cannot hold without a
     /// fact of — a positive `holds(R(…))`, a `count(R(…))` compared to be at
     /// least one, or a derived relation every rule of which needs one, joined
@@ -1934,7 +2010,7 @@ impl Presence<'_> {
             return Vec::new();
         };
         let vocab = &self.folded.env.rel_vocab;
-        let out: BTreeSet<String> = unit_facts(producers, vocab, self.path, key, once)
+        let out: BTreeSet<String> = unit_facts(producers, vocab, self.path, key, &once)
             .into_iter()
             .filter(|f| f.persists.is_none())
             .map(|f| format!("!{}", f.query))
@@ -2050,7 +2126,12 @@ impl Presence<'_> {
                     // Raising an occasion fires the same-named event: the
                     // handler runs on it (dsl 0.25.0 §6).
                     let before = self.follow(&o.event);
+                    let depth = self.guards.len();
+                    if o.event == "questComplete" {
+                        self.assume_completion(o.span.byte_start);
+                    }
                     self.region(conds, &o.body);
+                    self.guards.truncate(depth);
                     self.changed = before;
                 }
                 Node::Objective(o) => {
@@ -2076,6 +2157,11 @@ impl Presence<'_> {
             self.kill_path(&format!("quest.{quest}"));
         } else if d.tag == "use" {
             self.use_lines(d);
+        } else if let Some(facts) = self.folded.env.rel_vocab.call_facts(d) {
+            // dsl 0.27.0 §4: a call's declared fact effects.
+            for (pattern, up) in facts.writes() {
+                self.kill_fact(pattern, up);
+            }
         }
     }
 
@@ -2202,6 +2288,7 @@ impl Presence<'_> {
         let mut paths = Vec::new();
         let mut facts = Vec::new();
         let mut quests = Vec::new();
+        let mut calls = Vec::new();
         visit(nodes, &mut |node| match node {
             Node::Set(s) => paths.push(s.path.clone()),
             Node::Timeline(t) => {
@@ -2217,6 +2304,9 @@ impl Presence<'_> {
                 if let Some((q, _)) = d.accept_quest() {
                     quests.push(format!("quest.{q}"));
                 }
+                if let Some(facts) = self.folded.env.rel_vocab.call_facts(d) {
+                    calls.push(facts);
+                }
             }
             _ => {}
         });
@@ -2225,6 +2315,11 @@ impl Presence<'_> {
         }
         for (pattern, up) in facts {
             self.kill_fact(pattern, up);
+        }
+        for facts in &calls {
+            for (pattern, up) in facts.writes() {
+                self.kill_fact(pattern, up);
+            }
         }
     }
 

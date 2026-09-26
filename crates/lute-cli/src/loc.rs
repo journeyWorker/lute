@@ -535,6 +535,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
             &mut doc,
             &input.components,
             &cast,
+            &folded.env.domains,
             &folded.env.state,
         );
         let ident = templates_for(&root, &mut templates).clone();

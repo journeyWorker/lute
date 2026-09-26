@@ -78,6 +78,41 @@ pub struct Artifact {
     /// Omitted without a clock. APPENDED LAST — after `shots`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clock: Option<lute_manifest::clock::ClockDecl>,
+    /// dsl 0.27.0 §4 (T2-3): every occasion's declared `raisedWhen` gate,
+    /// occasion-sorted, after `@def` expansion — the engine raises the
+    /// occasion only while its gate holds (`occasion.target` reads the
+    /// member it is raised for). Omitted when no occasion declares one.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub gates: Vec<GateEntry>,
+    /// dsl 0.27.0 §4 (T2-4): the project's `terminal:` condition after
+    /// `@def` expansion (several declarations joined by `||`) — once it
+    /// holds the engine raises no occasion. Omitted without one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<CelPair>,
+    /// dsl 0.27.0 §5: the project's declared seasons, name-sorted — each
+    /// season's `live` condition after `@def` expansion. An engine opens a
+    /// season when `live` goes false→true: `season.<name>.*` back to the
+    /// declared defaults (the old values to `prev.season.<name>.*`), its
+    /// `once: season:<name>` beats and `tier="season:<name>"` quests reset.
+    /// Omitted without seasons. After `clock`, `gates`, `terminal`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub seasons: Vec<SeasonEntry>,
+}
+
+/// dsl 0.27.0 §4: one occasion's `raisedWhen` gate.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GateEntry {
+    pub occasion: String,
+    pub raised_when: CelPair,
+}
+
+/// dsl 0.27.0 §5: one declared season.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeasonEntry {
+    pub name: String,
+    pub live: CelPair,
 }
 
 /// One authored shot heading (dsl 0.8.0 §6): the 1-based document-position
@@ -112,6 +147,12 @@ pub struct EntityKindEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<String>>,
     pub open: bool,
+    /// dsl 0.27.0 §7: member → display text (`labels:`, sub-kind labels
+    /// implied), what a `{{…}}` of a value of this kind renders — an
+    /// `occasionTarget` placeholder of `entityKind` this kind renders
+    /// `labels[member]` (a cast member's `name:` wins). Omitted when empty.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
 }
 
 /// One merged `enums:` entry (dsl 0.3.0 §3).
@@ -314,6 +355,14 @@ pub struct BeatIr {
     /// answers. Omitted for any other target (byte-stability).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_kind: Option<TargetKind>,
+    /// dsl 0.27.0 §3 (T2-10): a scene's `for: "kind:<kind>"` — presented
+    /// once per member, as [`EntryCmd::for_kind`]. Omitted when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_kind: Option<ForKind>,
+    /// dsl 0.27.0 §5: `spentBy` — the beat (`once: "none"`) stays eligible
+    /// until this `@def`-expanded condition holds. Omitted when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spent_by: Option<CelPair>,
 }
 
 /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat, resolved against the
@@ -357,19 +406,84 @@ impl TargetKind {
     }
 }
 
-/// A scene beat's repetition policy (dsl 0.21.0 §3.1, 0.24.0 §1): `"run"`
-/// (once per run), `"user"` (once ever), `"none"` (repeatable; source
-/// `once: false`), `"day"` / `"slot"` (once per clock day / slot). A
-/// compile-local serde mirror of `lute_check::BeatOnce`, kept separate for
-/// the same reason as [`DocKind`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+/// dsl 0.27.0 §3 (T2-10): a `for="kind:<kind>"` beat on an untargeted
+/// `select: sequence` occasion. Each raise presents it once per listed
+/// member whose `when` holds, in member order; while one presentation
+/// runs, `occasion.target` is that member's id.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ForKind {
+    pub kind: String,
+    pub members: Vec<String>,
+}
+
+impl ForKind {
+    /// Resolve a beat's authored `for` on occasion `on`: `Some` only for a
+    /// value the checker accepted ([`lute_check::occasion_bind::for_kind_members`]).
+    pub fn resolve(
+        on: &str,
+        for_kind: Option<&str>,
+        has_target: bool,
+        occasions: &std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+        kinds: &std::collections::BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+    ) -> Option<Self> {
+        let (kind, members) = lute_check::occasion_bind::for_kind_members(
+            on, for_kind?, has_target, occasions, kinds,
+        )
+        .ok()?;
+        Some(ForKind { kind, members })
+    }
+}
+
+/// A scene beat's repetition policy (dsl 0.21.0 §3.1, 0.24.0 §1, 0.27.0
+/// §5): `"run"` (once per run), `"user"` (once ever), `"none"` (repeatable;
+/// source `once: false`, or a beat with `spentBy`), `"day"` / `"slot"` /
+/// `"week"` (once per clock day / slot / week), `"season:<name>"` (once per
+/// window of that season). A compile-local mirror of
+/// `lute_check::BeatOnce`, kept separate for the same reason as
+/// [`DocKind`]; it serializes as its spelling.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BeatOnce {
     Run,
     User,
     None,
     Day,
     Slot,
+    Week,
+    Season(String),
+}
+
+impl BeatOnce {
+    /// The IR spelling.
+    pub fn as_str(&self) -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed(match self {
+            BeatOnce::Run => "run",
+            BeatOnce::User => "user",
+            BeatOnce::None => "none",
+            BeatOnce::Day => "day",
+            BeatOnce::Slot => "slot",
+            BeatOnce::Week => "week",
+            BeatOnce::Season(name) => {
+                return std::borrow::Cow::Owned(format!(
+                    "{}{name}",
+                    lute_manifest::season::SEASON_PREFIX
+                ))
+            }
+        })
+    }
+
+    /// The season a `once: season:<name>` names.
+    pub fn season(&self) -> Option<&str> {
+        match self {
+            BeatOnce::Season(name) => Some(name),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for BeatOnce {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.as_str())
+    }
 }
 
 impl From<lute_check::BeatOnce> for BeatOnce {
@@ -380,6 +494,22 @@ impl From<lute_check::BeatOnce> for BeatOnce {
             lute_check::BeatOnce::None => BeatOnce::None,
             lute_check::BeatOnce::Day => BeatOnce::Day,
             lute_check::BeatOnce::Slot => BeatOnce::Slot,
+            lute_check::BeatOnce::Week => BeatOnce::Week,
+            lute_check::BeatOnce::Season(name) => BeatOnce::Season(name),
+        }
+    }
+}
+
+impl From<BeatOnce> for lute_check::BeatOnce {
+    fn from(o: BeatOnce) -> Self {
+        match o {
+            BeatOnce::Run => lute_check::BeatOnce::Run,
+            BeatOnce::User => lute_check::BeatOnce::User,
+            BeatOnce::None => lute_check::BeatOnce::None,
+            BeatOnce::Day => lute_check::BeatOnce::Day,
+            BeatOnce::Slot => lute_check::BeatOnce::Slot,
+            BeatOnce::Week => lute_check::BeatOnce::Week,
+            BeatOnce::Season(name) => lute_check::BeatOnce::Season(name),
         }
     }
 }
@@ -601,9 +731,12 @@ pub enum Command {
 /// dsl 0.24.0 §4: a `path`/`ref` placeholder carries the interpolation's
 /// format hint as `format` (`{{user.deaths:ordinal}}` → `"format":"ordinal"`),
 /// omitted when the author wrote none — the engine renders the value in that
-/// format (runtime/state-lifecycle.md). `ordinal` and (dsl 0.25.0 §8)
-/// `ordinalWord` are the hints; the checker rejects any other, and one on
-/// `userName` (a string).
+/// format (runtime/state-lifecycle.md). `ordinal`, (dsl 0.25.0 §8)
+/// `ordinalWord` and (dsl 0.27.0 §7) `plural` are the hints; the checker
+/// rejects any other, and one on `userName` (a string). A `plural`
+/// placeholder carries its `forms` (`["lantern", "lanterns"]`: the singular,
+/// then the plural; a `#` in a form stands for the number) so the engine can
+/// localize the count.
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Placeholder {
@@ -612,6 +745,8 @@ pub enum Placeholder {
         path: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        forms: Option<Vec<String>>,
     },
     /// A `@def` / `@fn(args)` reference; the referent includes the leading `@`.
     /// `expr` is the def body inlined at compile time (the artifact carries no
@@ -625,6 +760,8 @@ pub enum Placeholder {
         expr: Option<CelPair>,
         #[serde(skip_serializing_if = "Option::is_none")]
         format: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        forms: Option<Vec<String>>,
     },
     /// A reserved token (only `userName` in 0.1).
     Reserved { token: String },
@@ -648,11 +785,13 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
         InterpKind::Path => Placeholder::Path {
             path: i.raw.clone(),
             format: i.format.clone(),
+            forms: i.forms.clone(),
         },
         InterpKind::Ref => Placeholder::Ref {
             reference: i.raw.clone(),
             expr: None,
             format: i.format.clone(),
+            forms: i.forms.clone(),
         },
         InterpKind::Reserved => Placeholder::Reserved {
             token: i.raw.clone(),
@@ -1061,6 +1200,15 @@ pub enum EffectSource {
     Literal(serde_json::Value),
 }
 
+/// dsl 0.27.0 §4: one fact a plugin call's declared `effects.asserts` /
+/// `retracts` writes, `@attr`s already substituted — the `relation` + `args`
+/// shape of an [`AssertCmd`] / [`RetractCmd`] (`"_"` a retract wildcard).
+#[derive(Clone, Debug, Serialize)]
+pub struct FactRecord {
+    pub relation: String,
+    pub args: Vec<String>,
+}
+
 /// Plugin-directive passthrough (plan spec-gap note 1): `kind: "plugin"`,
 /// the authored tag, and its attrs typed via the manifest `AttrDecl`s.
 #[derive(Clone, Debug, Serialize)]
@@ -1077,6 +1225,13 @@ pub struct OtherCmd {
     /// `effects.writes`. Absent when the directive declares none (skip-if-empty).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<Effect>,
+    /// dsl 0.27.0 §4: the facts the call retracts, applied after `effects`
+    /// (skip-if-empty, appended: an artifact without them is byte-identical).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub retracts: Vec<FactRecord>,
+    /// dsl 0.27.0 §4: the facts the call asserts, applied after `retracts`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub asserts: Vec<FactRecord>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1130,16 +1285,33 @@ pub struct QuestCmd {
     /// (while its parent is active, for a child). Omitted by default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accept: Option<QuestAccept>,
+    /// dsl 0.27.0 §5: `rearm` — when this `@def`-expanded condition goes
+    /// false→true the quest returns to `unset` (objectives, `failedBy`
+    /// cleared) and can be taken again. Omitted when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rearm: Option<CelPair>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
 
-/// A quest's lifetime tier (dsl 0.22.0 §7) — only the non-default `run` is
-/// ever serialized.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+/// A quest's lifetime tier (dsl 0.22.0 §7, 0.27.0 §5) — only the
+/// non-default ones are ever serialized: `"run"` (reset at `newRun`) and
+/// `"season:<name>"` (reset when the season opens).
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum QuestTier {
     Run,
+    Season(String),
+}
+
+impl Serialize for QuestTier {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            QuestTier::Run => s.serialize_str("run"),
+            QuestTier::Season(name) => {
+                s.serialize_str(&format!("{}{name}", lute_manifest::season::SEASON_PREFIX))
+            }
+        }
+    }
 }
 
 /// A subquest child's activation mode (dsl 0.24.0 §2) — only the
@@ -1301,6 +1473,13 @@ pub struct EntryCmd {
     /// dsl 0.26.0 §5: as [`BeatIr::target_kind`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_kind: Option<TargetKind>,
+    /// dsl 0.27.0 §3 (T2-10): `for="kind:<kind>"` — presented once per
+    /// member. Omitted when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_kind: Option<ForKind>,
+    /// dsl 0.27.0 §5: as [`BeatIr::spent_by`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spent_by: Option<CelPair>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1345,6 +1524,12 @@ pub struct BeatCmd {
     /// dsl 0.26.0 §5: as [`BeatIr::target_kind`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_kind: Option<TargetKind>,
+    /// dsl 0.27.0 §3 (T2-10): as [`EntryCmd::for_kind`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_kind: Option<ForKind>,
+    /// dsl 0.27.0 §5: as [`BeatIr::spent_by`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spent_by: Option<CelPair>,
     pub body: String,
     #[serde(flatten)]
     pub stamp: Stamp,

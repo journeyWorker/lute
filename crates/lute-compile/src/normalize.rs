@@ -14,13 +14,14 @@
 use std::collections::BTreeMap;
 
 use lute_check::component_effects::{
-    bind_attrs, bind_slot_raw, cel_string_literal, fold_component_matches, speaker_display_args,
+    bind_attrs, bind_slot_raw, cel_string_literal, display_args, fold_component_matches,
     use_args_for,
 };
 use lute_check::meta::StateSchema;
 use lute_check::ComponentSet;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::CastMember;
+use lute_manifest::snapshot::Domain;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
     classify_interp, interp_from_inner, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode,
@@ -139,11 +140,13 @@ fn visit_lines(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
     }
 }
 
-/// What a `::use` expands against: the imported components and the host's
-/// declared cast (dsl 0.24.0 §4: a `speaker` param renders the member's name).
+/// What a `::use` expands against: the imported components, the host's
+/// declared cast (dsl 0.24.0 §4: a `speaker` param renders the member's name)
+/// and its domains (dsl 0.27.0 §7: a kind-typed param renders its label).
 struct Components<'a> {
     set: &'a ComponentSet,
     cast: &'a BTreeMap<String, CastMember>,
+    domains: &'a BTreeMap<String, Domain>,
 }
 
 /// Per-host `::use` ordinals, keyed by component name.
@@ -161,11 +164,13 @@ pub fn normalize_document(
     doc: &mut Document,
     components: &ComponentSet,
     cast: &BTreeMap<String, CastMember>,
+    domains: &BTreeMap<String, Domain>,
     schema: &StateSchema,
 ) -> Vec<Diagnostic> {
     let components = &Components {
         set: components,
         cast,
+        domains,
     };
     let mut diags = Vec::new();
     // One ordinal counter per identity scope (see `COMPONENT_SCOPE_ATTR`):
@@ -331,6 +336,9 @@ fn normalize_nodes(
     uses: &mut UseOrdinals,
     diags: &mut Vec<Diagnostic>,
 ) {
+    // dsl 0.27.0 §6: the tail (after `::body`) of a template expanded
+    // earlier in `nodes`, waiting for the host's `::body{component}` marker.
+    let mut pending: Vec<(String, Vec<Node>)> = Vec::new();
     let mut i = 0;
     while i < nodes.len() {
         let is_use = matches!(&nodes[i], Node::Directive(d) if d.tag == "use");
@@ -344,11 +352,44 @@ fn normalize_nodes(
                     continue;
                 }
             };
-            let spliced = expand_use(&d, components, schema, uses, diags);
+            let mut spliced = expand_use(&d, components, schema, uses, diags);
+            // dsl 0.27.0 §6: a template body's top-level `::body` splits the
+            // expansion. With the host's `::body{component}` marker later in
+            // `nodes` (a `<beat use>`), the tail waits there in its own
+            // begin/end pair of the same scope; otherwise (a plain `::use`)
+            // the marker places nothing.
+            if let Some(k) = spliced.iter().position(is_body_marker) {
+                let mut tail = spliced.split_off(k);
+                tail.remove(0);
+                let name = marker_component(&d).unwrap_or_default().to_string();
+                let hosted = nodes[i..]
+                    .iter()
+                    .any(|n| is_body_marker(n) && body_marker_for(n) == Some(name.as_str()));
+                match (hosted, spliced.first().cloned(), tail.last().cloned()) {
+                    (true, Some(begin), Some(end)) => {
+                        spliced.push(end);
+                        tail.insert(0, begin);
+                        pending.push((name, tail));
+                    }
+                    _ => spliced.append(&mut tail),
+                }
+            }
             let n = spliced.len();
             nodes.splice(i..i, spliced);
             i += n; // bodies were normalized recursively — skip past them
             continue;
+        }
+        if is_body_marker(&nodes[i]) {
+            let at = body_marker_for(&nodes[i])
+                .and_then(|name| pending.iter().position(|(n, _)| n == name));
+            if let Some(at) = at {
+                let (_, tail) = pending.remove(at);
+                nodes.remove(i);
+                let n = tail.len();
+                nodes.splice(i..i, tail);
+                i += n;
+                continue;
+            }
         }
         // §7.2/§7.4 (D8): a gated content line desugars to a one-arm
         // `<match>` BEFORE expand/stage/address — same identity-preserving
@@ -450,6 +491,28 @@ fn normalize_nodes(
         }
         i += 1;
     }
+}
+
+/// dsl 0.27.0 §6: a `::body` directive — a template body's split point, or
+/// the host marker a `<beat use>` desugars to.
+fn is_body_marker(n: &Node) -> bool {
+    matches!(n, Node::Directive(d) if d.tag == lute_check::templates::BODY_DIRECTIVE)
+}
+
+/// The template a host `::body{component="…"}` marker closes.
+fn body_marker_for(n: &Node) -> Option<&str> {
+    match n {
+        Node::Directive(d) => marker_component(d),
+        _ => None,
+    }
+}
+
+/// A directive's plain `component="…"` attribute.
+fn marker_component(d: &Directive) -> Option<&str> {
+    d.attrs.iter().find_map(|a| match (&*a.key, &a.value) {
+        ("component", AttrValue::Str(s)) => Some(s.as_str()),
+        _ => None,
+    })
 }
 
 /// §7.2/§7.4 (D8): `Node::Line{when: Some(g), ..}` → `Node::Match{ subject:
@@ -624,9 +687,9 @@ fn expand_use(
         .collect();
     backfill_component_codes(&mut body);
     // dsl 0.24.0 §4: `{{@p}}` over a `speaker` param renders the cast
-    // member's NAME; every other position (attrs, match subjects) binds the
-    // id below.
-    let names = speaker_display_args(def, &args, components.cast);
+    // member's NAME, and (dsl 0.27.0 §7) over a kind-typed param the kind's
+    // label; every other position (attrs, match subjects) binds the id below.
+    let names = display_args(def, &args, components.cast, components.domains);
     // dsl 0.26.0 §3.1/§3.2: a line speaking as a `speaker` param (`@@who:`)
     // speaks as the member its argument names, `as=@who` shows that member's
     // name as the text does, and a `{{@p}}` in a line attribute string is
@@ -855,9 +918,9 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                     out.push_str("{{");
                     out.push_str(&slot.raw);
                     // dsl 0.24.0 §4: the rebound marker keeps its hint.
-                    if let Some(format) = &interp.format {
+                    if let Some(hint) = interp.hint_text() {
                         out.push(':');
-                        out.push_str(format);
+                        out.push_str(&hint);
                     }
                     out.push_str("}}");
                     interp.kind = classify_interp(&slot.raw);
@@ -867,13 +930,17 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                 Some(AttrValue::Str(s)) => {
                     // dsl 0.24.0 §4: no placeholder survives a literal splice
                     // to carry the hint, so it applies here — `ordinal` /
-                    // `ordinalWord` on a number literal renders its ordinal.
-                    let ordinal = interp
+                    // `ordinalWord` on a number literal renders its ordinal,
+                    // `plural` (dsl 0.27.0 §7) its form.
+                    let shown = s.trim();
+                    let formatted = interp
                         .format
                         .as_deref()
-                        .zip(s.trim().parse::<f64>().ok())
-                        .and_then(|(f, n)| lute_syntax::ast::format_number(f, n));
-                    let lit = ordinal.as_deref().unwrap_or(&s);
+                        .zip(shown.parse::<f64>().ok())
+                        .and_then(|(f, n)| {
+                            lute_syntax::ast::format_number(f, interp.forms.as_deref(), n, shown)
+                        });
+                    let lit = formatted.as_deref().unwrap_or(&s);
                     out.push_str(lit);
                     // dsl 0.26.0 §3.1: a `{{…}}` inside a string argument is
                     // an interpolation exactly as in direct text — it keeps
@@ -1103,6 +1170,7 @@ mod tests {
             &mut doc,
             &comps,
             &Default::default(),
+            &Default::default(),
             &StateSchema::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
@@ -1167,6 +1235,7 @@ episode: 1
             &mut doc,
             &comps,
             &Default::default(),
+            &Default::default(),
             &StateSchema::default(),
         );
         assert!(
@@ -1202,6 +1271,7 @@ components: [greet.component.lute]
         let diags = normalize_document(
             &mut doc,
             &comps,
+            &Default::default(),
             &Default::default(),
             &StateSchema::default(),
         );
@@ -1282,7 +1352,13 @@ episode: 1
                 owner: None,
             },
         );
-        let diags = normalize_document(&mut doc, &Default::default(), &Default::default(), &schema);
+        let diags = normalize_document(
+            &mut doc,
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+            &schema,
+        );
         assert!(diags.is_empty(), "{diags:#?}");
 
         let Node::Branch(b) = &doc.shots[0].body[0] else {
@@ -1356,6 +1432,7 @@ components: [greet.component.lute]
             &mut doc,
             &comps,
             &Default::default(),
+            &Default::default(),
             &StateSchema::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
@@ -1421,6 +1498,7 @@ params:
                 speakers: Vec::new(),
                 defaults: BTreeMap::new(),
                 effects: false,
+                beat: None,
                 body: comp_doc,
                 src: std::path::PathBuf::from("test://reactor"),
             },
@@ -1444,6 +1522,7 @@ kind: quest
         let diags = normalize_document(
             &mut doc,
             &comps,
+            &Default::default(),
             &Default::default(),
             &StateSchema::default(),
         );
@@ -1486,6 +1565,7 @@ kind: quest
         let diags = normalize_document(
             &mut doc,
             &comps,
+            &Default::default(),
             &Default::default(),
             &StateSchema::default(),
         );

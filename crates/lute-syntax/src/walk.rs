@@ -147,6 +147,9 @@ fn quest<'a>(q: &'a Quest, f: &mut impl FnMut(&'a CelSlot)) {
     if let Some(fl) = &q.fail {
         f(fl);
     }
+    if let Some(r) = &q.rearm {
+        f(r);
+    }
     attrs(&q.attrs, f);
     body(&q.body, f);
     // dsl 0.16.0 §2: quest-level reward `when` slots come AFTER the body,
@@ -161,6 +164,9 @@ fn entry<'a>(e: &'a Entry, f: &mut impl FnMut(&'a CelSlot)) {
     if let Some(w) = &e.when {
         f(w);
     }
+    if let Some(s) = &e.spent_by {
+        f(s);
+    }
     attrs(&e.attrs, f);
     body(&e.body, f);
 }
@@ -168,6 +174,9 @@ fn entry<'a>(e: &'a Entry, f: &mut impl FnMut(&'a CelSlot)) {
 fn bundle_beat<'a>(b: &'a BundleBeat, f: &mut impl FnMut(&'a CelSlot)) {
     if let Some(w) = &b.when {
         f(w);
+    }
+    if let Some(s) = &b.spent_by {
+        f(s);
     }
     attrs(&b.attrs, f);
     body(&b.body, f);
@@ -341,6 +350,9 @@ fn quest_mut(q: &mut Quest, f: &mut impl FnMut(&mut CelSlot)) {
     if let Some(fl) = &mut q.fail {
         f(fl);
     }
+    if let Some(r) = &mut q.rearm {
+        f(r);
+    }
     attrs_mut(&mut q.attrs, f);
     body_mut(&mut q.body, f);
     for r in &mut q.rewards {
@@ -352,6 +364,9 @@ fn entry_mut(e: &mut Entry, f: &mut impl FnMut(&mut CelSlot)) {
     if let Some(w) = &mut e.when {
         f(w);
     }
+    if let Some(s) = &mut e.spent_by {
+        f(s);
+    }
     attrs_mut(&mut e.attrs, f);
     body_mut(&mut e.body, f);
 }
@@ -359,6 +374,9 @@ fn entry_mut(e: &mut Entry, f: &mut impl FnMut(&mut CelSlot)) {
 fn bundle_beat_mut(b: &mut BundleBeat, f: &mut impl FnMut(&mut CelSlot)) {
     if let Some(w) = &mut b.when {
         f(w);
+    }
+    if let Some(s) = &mut b.spent_by {
+        f(s);
     }
     attrs_mut(&mut b.attrs, f);
     body_mut(&mut b.body, f);

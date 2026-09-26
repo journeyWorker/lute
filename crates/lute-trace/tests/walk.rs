@@ -233,9 +233,19 @@ fn forcing_false_guard_is_refused() {
     let mocks = choose(&[("approach", &["soft"])]);
     let (_report, exit) = trace_document(&input, mocks);
     let diags = assert_refused(&exit);
+    let d = diags
+        .iter()
+        .find(|d| d.code == lute_trace::E_TRACE_CHOICE)
+        .unwrap_or_else(|| panic!("expected E-TRACE-CHOICE: {diags:?}"));
+    // Round-5 T3-12: the refusal names the false premise — the guard as
+    // authored, the fact that does not hold, and the mock that opens it.
     assert!(
-        diags.iter().any(|d| d.code == lute_trace::E_TRACE_CHOICE),
-        "expected E-TRACE-CHOICE: {diags:?}"
+        d.message
+            .contains("its guard `holds(claims(halsin))` decided false")
+            && d.message.contains("`claims(halsin)` does not hold")
+            && d.message.contains("(mock `--fact \"claims(halsin)\"`)"),
+        "{}",
+        d.message
     );
 }
 
@@ -435,9 +445,29 @@ fn hub_reevaluates_between_picks() {
     let mocks2 = choose(&[("h", &["c1", "c2", "c1"])]);
     let (_report2, exit2) = trace_document(&input2, mocks2);
     let diags = assert_refused(&exit2);
+    let d = diags
+        .iter()
+        .find(|d| d.code == lute_trace::E_TRACE_CHOICE)
+        .unwrap_or_else(|| panic!("re-forcing a visited `once` choice: {diags:?}"));
+    // Round-5 T3-12: named as the spent `once`, never as a false guard.
     assert!(
-        diags.iter().any(|d| d.code == lute_trace::E_TRACE_CHOICE),
-        "re-forcing a visited `once` choice must be E-TRACE-CHOICE: {diags:?}"
+        d.message
+            .contains("it is `once` and already taken in this visit of hub `h`")
+            && !d.message.contains("guard"),
+        "{}",
+        d.message
+    );
+
+    // `c2` before `c1` ran: its guard reads `run.flag`, still `false`.
+    let input3 = input_for(&text, "hub-reeval-3", Path::new("."));
+    let (_report3, exit3) = trace_document(&input3, choose(&[("h", &["c2"])]));
+    let diags = assert_refused(&exit3);
+    assert!(
+        diags.iter().any(|d| d.message.contains(
+            "its guard `run.flag` decided false: `run.flag` is false (mock `--state \
+             run.flag=<value>`)"
+        )),
+        "{diags:?}"
     );
 }
 

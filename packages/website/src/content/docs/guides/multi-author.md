@@ -136,7 +136,7 @@ schema; the importing documents themselves stay `ok`.
 
 <!-- lute-diagnostics -->
 ```
-schema/areas/south.schema.yaml:2:29: error [E-ENTITY-KIND-SHAPE] entity kind `person` lists `northGull` twice — in the `add:` of `schema/areas/north.schema.yaml` (line 5) and in the `add:` of `schema/areas/south.schema.yaml` (line 2); list each member once (dsl 0.26.0 §2.2)
+schema/areas/south.schema.yaml:2:29: error [E-ENTITY-KIND-SHAPE] entity kind `person` lists `northGull` twice — in the `add:` of `schema/areas/north.schema.yaml` (line 5) and in the `add:` of `schema/areas/south.schema.yaml` (line 2); list each member once
 ```
 
 Keep area-private declarations in the area schema, each name prefixed with the area
@@ -156,7 +156,7 @@ both files and lines, and `lute play` refuses a project that declares one path w
 
 <!-- lute-diagnostics -->
 ```
-./scenes/spine/dock.lute:6:3: error [E-STATE-DECL-CONFLICT] state path `run.tide` is declared as bool, default false at `./scenes/north/lighthouse.lute:6` but as number, default 0 at `./scenes/spine/dock.lute:6`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import) (dsl 0.26.0 §2.1)
+./scenes/spine/dock.lute:6:3: error [E-STATE-DECL-CONFLICT] state path `run.tide` is declared as bool, default false at `./scenes/north/lighthouse.lute:6` but as number, default 0 at `./scenes/spine/dock.lute:6`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import)
 ```
 
 ## Ids: prefix everything that is project-wide

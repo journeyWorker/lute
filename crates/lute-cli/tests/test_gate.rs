@@ -200,12 +200,12 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
     let out = lute(&["test", dir.join("tests").to_str().unwrap(), "--coverage"]);
     let text = stdout(&out);
     assert!(out.status.success(), "{text}");
-    assert!(text.contains("2 untested document"), "{text}");
+    assert!(text.contains("2 untested unit(s)"), "{text}");
     assert!(text.contains("untested.lute"), "{text}");
     assert!(!text.contains("every testable document"), "{text}");
     assert!(
-        text.contains("book.lute"),
-        "lore is testable, so untested: {text}"
+        text.contains("book.lute: page"),
+        "lore is testable, so its entry is untested: {text}"
     );
 
     // Naming its entry discharges it.
@@ -218,7 +218,7 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
     let text = stdout(&out);
     assert!(out.status.success(), "{text}");
     let (_, listed) = text
-        .split_once("1 untested document")
+        .split_once("1 untested unit(s)")
         .unwrap_or_else(|| panic!("{text}"));
     assert!(!listed.contains("book.lute"), "{text}");
 }

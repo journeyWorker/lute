@@ -56,6 +56,11 @@ pub struct RelVocab {
     /// they draw no `W-DERIVE-NO-RULES` and are unbounded in the fact
     /// envelope (no emptiness verdict cascades from the parse error).
     pub unparsed_heads: BTreeSet<String>,
+    /// dsl 0.27.0 §4: the plugin directives declaring fact effects
+    /// (`effects.asserts` / `retracts`), by tag — what resolves a call such
+    /// as `::give{item="brassKey"}` to the facts it writes
+    /// ([`crate::directive_facts`]). Folded from the snapshot in `fold_env`.
+    pub effect_directives: BTreeMap<String, lute_manifest::schema::DirectiveDecl>,
 }
 
 /// One imported declaration's home (dsl 0.24 T3-6): the schema file and the
@@ -317,33 +322,23 @@ pub fn validate_rel_decls(
         }
     }
     for (name, key) in &kinds.unknown_keys {
-        const NO_LABELS: &str = "entity-kind display labels are not supported yet; an enum's \
-                                 long form (`{ members: […], labels: {…} }`) carries labels";
-        let hint = if key == "labels" {
-            format!(" — {NO_LABELS}")
-        } else {
-            match lute_manifest::suggest::nearest(
-                key,
-                lute_manifest::relations::ENTITY_KIND_KEYS
-                    .iter()
-                    .copied()
-                    .chain(["labels"]),
-                2,
-            ) {
-                Some("labels") => format!(" — did you mean `labels`? ({NO_LABELS})"),
-                Some(s) => format!(" — did you mean `{s}`?"),
-                None => String::new(),
-            }
-        };
+        let hint = lute_manifest::suggest::nearest(
+            key,
+            lute_manifest::relations::ENTITY_KIND_KEYS.iter().copied(),
+            2,
+        )
+        .map(|s| format!(" — did you mean `{s}`?"))
+        .unwrap_or_default();
         out.push(diag(
             E_ENTITY_KIND_SHAPE,
             format!(
                 "entity kind `{name}` has an unknown key `{key}:` (an entity kind takes \
-                 `members:`, `open:`, `add:` and `subsetOf:`){hint} (dsl 0.27.0 §2)"
+                 `members:`, `open:`, `add:`, `subsetOf:` and `labels:`){hint} (dsl 0.27.0 §2)"
             ),
             span_of(name),
         ));
     }
+    out.extend(check_kind_labels(kinds, span_of));
     for name in &kinds.dups {
         out.push(diag(
             E_KIND_NAME_CLASH,
@@ -455,6 +450,69 @@ pub fn validate_rel_decls(
     out
 }
 
+/// dsl 0.27.0 §7: `labels:` of an `entities:` block — each shape mistake the
+/// parse kept ([`ParsedKinds::label_problems`]), a label on an `open:` kind
+/// (the engine mints its members, so none can be named here), and a label
+/// for an id the kind does not have (its own members and those of its
+/// sub-kinds in the same block; beside `add:`, the members that list adds) —
+/// each `E-ENTITY-KIND-SHAPE`, the last with a did-you-mean.
+fn check_kind_labels(kinds: &ParsedKinds, span_of: &dyn Fn(&str) -> Span) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for (name, problem) in &kinds.label_problems {
+        out.push(diag(
+            E_ENTITY_KIND_SHAPE,
+            format!("entity kind `{name}`: {problem}"),
+            span_of(name),
+        ));
+    }
+    let mut closed = kinds.kinds.clone();
+    lute_manifest::relations::imply_sub_kind_members(&mut closed);
+    let not_members = |name: &str, labels: &BTreeMap<String, String>, members: &[String]| {
+        labels
+            .keys()
+            .filter(|member| !members.contains(member))
+            .map(|member| {
+                let hint =
+                    lute_manifest::suggest::nearest(member, members.iter().map(String::as_str), 2)
+                        .map(|s| format!(" — did you mean `{s}`?"))
+                        .unwrap_or_default();
+                diag(
+                    E_ENTITY_KIND_SHAPE,
+                    format!(
+                        "entity kind `{name}` labels `{member}`, which is not one of its \
+                         members{hint}"
+                    ),
+                    span_of(name),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    for (name, decl) in &kinds.kinds {
+        match closed.get(name).map(|d| &d.shape) {
+            Some(KindShape::Members(members)) => {
+                out.extend(not_members(name, &decl.labels, members))
+            }
+            Some(KindShape::Open) if !decl.labels.is_empty() => out.push(diag(
+                E_ENTITY_KIND_SHAPE,
+                format!(
+                    "entity kind `{name}` is `open:` — the engine registers its members, so \
+                     `labels:` cannot name them; label a kind that lists its `members:`"
+                ),
+                span_of(name),
+            )),
+            _ => {}
+        }
+    }
+    for (name, labels) in &kinds.add_labels {
+        out.extend(not_members(
+            name,
+            labels,
+            kinds.adds.get(name).map_or(&[], Vec::as_slice),
+        ));
+    }
+    out
+}
+
 /// dsl 0.25.0 §6: `E-RELATION-DECL` for every `changedOn:` entry of the
 /// merged `vocab` that names no declared occasion (with a did-you-mean),
 /// reported where the relation is declared — an imported one at its schema
@@ -557,6 +615,12 @@ pub fn build_rel_vocab(
                 .collect(),
             origin: None,
             span: span_of(kind),
+            labels: typed
+                .rel_kinds
+                .add_labels
+                .get(kind)
+                .cloned()
+                .unwrap_or_default(),
         })
         .collect();
     diags.extend(apply_kind_adds(&mut kinds, &inline_adds, &|kind| {
@@ -823,6 +887,7 @@ pub fn build_rel_vocab(
             .chain(&typed.rel_rule_failed_heads)
             .cloned()
             .collect(),
+        effect_directives: BTreeMap::new(),
     };
 
     // Merged check (d): every seed `facts:` entry is GROUND — checked as for
@@ -879,6 +944,9 @@ pub struct KindAdd {
     pub origin: Option<DeclOrigin>,
     /// The problem anchor in the checked document.
     pub span: Span,
+    /// dsl 0.27.0 §7: the `labels:` beside the `add:` — display text for the
+    /// members it adds, merged into the kind's labels with them.
+    pub labels: BTreeMap<String, String>,
 }
 
 /// Where the one declaration of a kind lives (prerelease N4): its schema as
@@ -1002,6 +1070,11 @@ pub(crate) fn apply_kind_adds(
                     members.push(m.clone());
                 }
             }
+        }
+        for (m, label) in &add.labels {
+            decl.labels
+                .entry(m.clone())
+                .or_insert_with(|| label.clone());
         }
     }
     out

@@ -196,10 +196,162 @@ pub struct SlotDecl {
     pub shape: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// A directive's declared effects (plugin §7.4): the state it `writes`
+/// and — dsl 0.27.0 §4 — the facts it `asserts` / `retracts`. Every list is
+/// optional; the engine applies them after the call (writes, then retracts,
+/// then asserts).
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DirectiveEffects {
+    #[serde(default)]
     pub writes: Vec<WriteDecl>,
+    /// dsl 0.27.0 §4: facts the call asserts — `holding(@item)`, each
+    /// `@attr` the call's attribute (or its declared `default:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asserts: Vec<FactEffect>,
+    /// dsl 0.27.0 §4: fact patterns the call retracts (`_` = any).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retracts: Vec<FactEffect>,
+}
+
+impl DirectiveEffects {
+    /// `true` when the block declares nothing at all.
+    pub fn is_empty(&self) -> bool {
+        self.writes.is_empty() && self.asserts.is_empty() && self.retracts.is_empty()
+    }
+
+    /// `true` when the block declares a fact effect.
+    pub fn has_facts(&self) -> bool {
+        !self.asserts.is_empty() || !self.retracts.is_empty()
+    }
+}
+
+/// Hand-written so a block without `asserts`/`retracts` prints exactly as it
+/// did before they existed: `capabilityVersion` hashes this `Debug`.
+impl std::fmt::Debug for DirectiveEffects {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("DirectiveEffects");
+        s.field("writes", &self.writes);
+        if !self.asserts.is_empty() {
+            s.field("asserts", &self.asserts);
+        }
+        if !self.retracts.is_empty() {
+            s.field("retracts", &self.retracts);
+        }
+        s.finish()
+    }
+}
+
+/// One `effects.asserts` / `effects.retracts` entry (dsl 0.27.0 §4): a fact
+/// pattern `rel(arg, …)` whose arguments are members / `true` / `false`,
+/// `@attr` references to the directive's own attributes, or (a retract
+/// only) `_`. Written and serialized as that one string; any other shape is
+/// an `E-PLUGIN-PARSE`.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct FactEffect {
+    pub relation: String,
+    pub args: Vec<FactEffectArg>,
+}
+
+/// One argument of a [`FactEffect`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FactEffectArg {
+    /// A member, `true` or `false`, as written.
+    Const(String),
+    /// `@attr`: the call's value for the directive attribute `attr`.
+    Attr(String),
+    /// `_`: any value (a retract's bulk position).
+    Wildcard,
+}
+
+impl FactEffect {
+    /// The `@attr` names the pattern reads, in argument order.
+    pub fn attrs(&self) -> impl Iterator<Item = &str> {
+        self.args.iter().filter_map(|a| match a {
+            FactEffectArg::Attr(n) => Some(n.as_str()),
+            _ => None,
+        })
+    }
+}
+
+impl std::fmt::Display for FactEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}(", self.relation)?;
+        for (i, a) in self.args.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            match a {
+                FactEffectArg::Const(c) => f.write_str(c)?,
+                FactEffectArg::Attr(n) => write!(f, "@{n}")?,
+                FactEffectArg::Wildcard => f.write_str("_")?,
+            }
+        }
+        f.write_str(")")
+    }
+}
+
+impl std::fmt::Debug for FactEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.to_string())
+    }
+}
+
+impl From<FactEffect> for String {
+    fn from(e: FactEffect) -> String {
+        e.to_string()
+    }
+}
+
+impl TryFrom<String> for FactEffect {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, String> {
+        let bad = |why: &str| {
+            Err(format!(
+                "effects fact `{s}` {why}; a fact effect is `relation(arg, …)` whose args are \
+                 members, `true`/`false`, `@attr` (one of the directive's attrs) or `_`"
+            ))
+        };
+        let ident = |t: &str| {
+            t.starts_with(|c: char| c.is_ascii_alphabetic())
+                && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        };
+        let t = s.trim();
+        let Some((relation, rest)) = t.split_once('(') else {
+            return bad("has no `(`");
+        };
+        let relation = relation.trim();
+        if !ident(relation) {
+            return bad("does not start with a relation name");
+        }
+        let Some(inner) = rest.strip_suffix(')') else {
+            return bad("does not end with `)`");
+        };
+        let mut args = Vec::new();
+        if !inner.trim().is_empty() {
+            for raw in inner.split(',') {
+                let a = raw.trim();
+                args.push(if a == "_" {
+                    FactEffectArg::Wildcard
+                } else if let Some(n) = a.strip_prefix('@') {
+                    if !ident(n) {
+                        return bad(&format!("has `{a}`, which names no attr"));
+                    }
+                    FactEffectArg::Attr(n.to_string())
+                } else if ident(a) {
+                    FactEffectArg::Const(a.to_string())
+                } else {
+                    return bad(&format!("has the argument `{a}`"));
+                });
+            }
+        }
+        Ok(FactEffect {
+            relation: relation.to_string(),
+            args,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -834,6 +986,15 @@ pub struct OccasionBody {
     /// judged before its beats are presented (default `after`).
     #[serde(default)]
     pub judge: OccasionJudge,
+    /// dsl 0.27.0 §4 (T2-3): `raisedWhen: "<condition>"` — the engine raises
+    /// the occasion only while the condition holds (it may read
+    /// `occasion.target`). See [`OccasionDecl::raised_when`].
+    #[serde(default, rename = "raisedWhen")]
+    pub raised_when: Option<String>,
+    /// dsl 0.27.0 §3 (T2-1): `payload: { copies: number }` — typed values the
+    /// engine hands over with each raise. See [`OccasionDecl::payload`].
+    #[serde(default)]
+    pub payload: std::collections::BTreeMap<String, crate::types::Type>,
 }
 
 /// How the engine presents an occasion's eligible beats (dsl 0.21.0 §2):
@@ -901,6 +1062,21 @@ pub struct OccasionDecl {
     /// dsl 0.24.0 §2: see [`OccasionJudge`].
     #[serde(default, skip_serializing_if = "OccasionJudge::is_after")]
     pub judge: OccasionJudge,
+    /// dsl 0.27.0 §4 (T2-3): the occasion's gate, raw CEL as declared —
+    /// the engine raises the occasion only while it holds. The checker
+    /// conjoins it into every beat answering the occasion, and `lute play`
+    /// refuses a step raising it while it is false (`E-OCCASION-GATE`).
+    #[serde(
+        default,
+        rename = "raisedWhen",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub raised_when: Option<String>,
+    /// dsl 0.27.0 §3 (T2-1): the occasion's typed payload, field -> type.
+    /// Beats answering the occasion read a field as
+    /// `occasion.payload.<field>` (engine-owned, bound by each raise).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub payload: std::collections::BTreeMap<String, crate::types::Type>,
 }
 
 impl std::fmt::Debug for OccasionDecl {
@@ -912,6 +1088,15 @@ impl std::fmt::Debug for OccasionDecl {
             .field("description", &self.description);
         if !self.judge.is_after() {
             s.field("judge", &self.judge);
+        }
+        // dsl 0.27.0 §4: only when declared, so an ungated occasion keeps
+        // its `capabilityVersion`.
+        if let Some(gate) = &self.raised_when {
+            s.field("raised_when", gate);
+        }
+        // dsl 0.27.0 §3: only when declared (capabilityVersion stability).
+        if !self.payload.is_empty() {
+            s.field("payload", &self.payload);
         }
         s.finish()
     }
@@ -1176,6 +1361,56 @@ writes:
         ));
         assert!(matches!(e.writes[1].value, WriteValue::Op { .. }));
         assert!(matches!(e.writes[2].value, WriteValue::Literal(_)));
+    }
+
+    #[test]
+    fn fact_effects_parse_and_keep_the_debug_of_a_writes_only_block() {
+        // dsl 0.27.0 §4: `writes` is optional, facts are `rel(arg, …)`.
+        let e: DirectiveEffects =
+            serde_yaml::from_str("asserts: [\"holding(@item)\", \"seen(key, true)\"]").unwrap();
+        assert!(e.writes.is_empty());
+        assert_eq!(e.asserts[0].relation, "holding");
+        assert_eq!(e.asserts[0].args, vec![FactEffectArg::Attr("item".into())]);
+        assert_eq!(e.asserts[1].to_string(), "seen(key, true)");
+        // capabilityVersion hashes `Debug`: a block without facts prints as
+        // it did before `asserts`/`retracts` existed.
+        let w: DirectiveEffects = serde_yaml::from_str(
+            "writes: [ { scope: run, path: [sanity], value: { op: increment, by: -1 } } ]",
+        )
+        .unwrap();
+        let dbg = format!("{w:?}");
+        assert!(dbg.starts_with("DirectiveEffects { writes: ["), "{dbg}");
+        assert!(
+            !dbg.contains("asserts") && !dbg.contains("retracts"),
+            "{dbg}"
+        );
+        assert!(format!("{e:?}").contains("asserts: [\"holding(@item)\""));
+        // …and serializes without the empty lists.
+        let back = serde_yaml::to_string(&w).unwrap();
+        assert!(!back.contains("asserts"), "{back}");
+    }
+
+    #[test]
+    fn malformed_fact_effects_are_refused_naming_the_shape() {
+        for bad in [
+            "holding",
+            "holding(@)",
+            "holding(a b)",
+            "(item)",
+            "holding(\"x\")",
+        ] {
+            let err = serde_yaml::from_str::<DirectiveEffects>(&format!("asserts: ['{bad}']"))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains("a fact effect is `relation(arg, …)`"),
+                "{bad}: {err}"
+            );
+        }
+        let err = serde_yaml::from_str::<DirectiveEffects>("asserts: [ { holding: item } ]")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("expected a string"), "{err}");
     }
 
     #[test]

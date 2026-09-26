@@ -259,6 +259,8 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
         plugin: None,
         fields,
         effects: vec![],
+        retracts: vec![],
+        asserts: vec![],
         stamp: Stamp::default(),
     });
     assert_eq!(
@@ -456,6 +458,9 @@ fn envelope_serializes_with_state_entries() {
         prereq_edges: Vec::new(),
         shots: Vec::new(),
         clock: None,
+        gates: Vec::new(),
+        terminal: None,
+        seasons: Vec::new(),
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
@@ -498,6 +503,7 @@ fn quest_record_serializes_per_spec() {
         activate: None,
         complete: None,
         accept: None,
+        rearm: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
@@ -673,6 +679,7 @@ fn quest_structure_fields_serialize_when_authored() {
         activate: Some(lute_compile::ir::QuestActivate::Accept),
         complete: Some(lute_compile::ir::QuestComplete::Any),
         accept: Some(lute_compile::ir::QuestAccept::External),
+        rearm: None,
         stamp: Stamp::default(),
     });
     assert_eq!(

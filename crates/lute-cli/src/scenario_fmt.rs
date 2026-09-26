@@ -156,9 +156,23 @@ fn run_json(
             top.insert("roots".to_string(), Value::Array(roots));
             print_json(&Value::Object(top))
         }
-        Some(ScenarioCommand::Reach { node_id }) => {
-            reach_json(dir, &by_root, &file_results, &node_id)
-        }
+        Some(ScenarioCommand::Reach {
+            endings: Some(occasion),
+            ..
+        }) => match crate::endings::json(
+            &by_root,
+            &file_results,
+            (!occasion.is_empty()).then_some(occasion.as_str()),
+        ) {
+            Ok(v) => print_json(&v),
+            Err(code) => code,
+        },
+        Some(ScenarioCommand::Reach { node_id, .. }) => reach_json(
+            dir,
+            &by_root,
+            &file_results,
+            node_id.as_deref().unwrap_or_default(),
+        ),
         Some(ScenarioCommand::Envelope { node_id }) => {
             envelope_json(dir, &by_root, &file_results, &node_id)
         }

@@ -440,7 +440,7 @@ fn literal_truth(
     let (key, dom) = subject(expr, ctx)?;
     let boolean = match &dom.kind {
         Kind::Finite(members) => members.iter().all(|m| matches!(m, DomainValue::Bool(_))),
-        Kind::Number => false,
+        Kind::Number | Kind::Ints(..) => false,
         Kind::Open => true,
     };
     boolean.then(|| {
@@ -499,13 +499,15 @@ fn comparison_truth(
         Constant::Value(v) => {
             let set = match (&dom.kind, &v) {
                 (Kind::Finite(all), _) => finite_set(all, &domain_value(&v)?, op_name)?,
-                (Kind::Number | Kind::Open, Decided::Num(n)) => number_set(op_name, *n)?,
+                (Kind::Number | Kind::Ints(..) | Kind::Open, Decided::Num(n)) => {
+                    number_set(op_name, *n)?
+                }
                 (Kind::Open, _) => match op_name {
                     op::EQUALS => SolutionSet::Values(std::iter::once(domain_value(&v)?).collect()),
                     op::NOT_EQUALS => SolutionSet::Except(v),
                     _ => return None,
                 },
-                (Kind::Number, _) => return None,
+                (Kind::Number | Kind::Ints(..), _) => return None,
             };
             Truth {
                 set: Some(set),
@@ -595,7 +597,7 @@ fn nested_truth(
                     .collect(),
             )
         }
-        Kind::Number => SolutionSet::Union(if any {
+        Kind::Number | Kind::Ints(..) => SolutionSet::Union(if any {
             truths
                 .iter()
                 .flat_map(|t| number_spans(t.set.as_ref()))
@@ -767,6 +769,7 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         (n, [a, b]) if n == op::EQUALS || n == op::NOT_EQUALS => {
             decide_count_cmp(n, &a.expr, &b.expr, ctx)
                 .or_else(|| decide_domain_equality(n, &a.expr, &b.expr, ctx))
+                .or_else(|| decide_int_range_cmp(n, &a.expr, &b.expr, ctx))
                 .or_else(|| {
                     let da = decide(&a.expr, ctx)?;
                     let db = decide(&b.expr, ctx)?;
@@ -801,13 +804,13 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         (op::GREATER, [a, b])
         | (op::GREATER_EQUALS, [a, b])
         | (op::LESS, [a, b])
-        | (op::LESS_EQUALS, [a, b]) => {
-            decide_count_cmp(name, &a.expr, &b.expr, ctx).or_else(|| {
+        | (op::LESS_EQUALS, [a, b]) => decide_count_cmp(name, &a.expr, &b.expr, ctx)
+            .or_else(|| decide_int_range_cmp(name, &a.expr, &b.expr, ctx))
+            .or_else(|| {
                 let da = decide(&a.expr, ctx)?;
                 let db = decide(&b.expr, ctx)?;
                 apply_op(name, &[da, db])
-            })
-        }
+            }),
         _ => None, // R5: unrecognized shape (index, unknown fn, wrong arity, …)
     }
 }
@@ -860,6 +863,29 @@ fn decide_count_cmp(op_name: &str, lhs: &Expr, rhs: &Expr, ctx: &DecideCtx<'_>) 
         return None;
     };
     iv.compare(op_name, n).map(Decided::Bool)
+}
+
+/// dsl 0.27.0 §4: `S ⋈ n` (either operand order) over a subject whose
+/// whole-number range the schema knows (`clock.weekday`, a finite clock's
+/// `clock.index` and day path): **false** when no whole number in range
+/// satisfies it — its negation holds for every value, so `run.night == 2`
+/// past a one-night clock's end — and **true** when every one does and the
+/// subject is never unset.
+fn decide_int_range_cmp(
+    op_name: &str,
+    lhs: &Expr,
+    rhs: &Expr,
+    ctx: &DecideCtx<'_>,
+) -> Option<Decided> {
+    let (_, dom, truth) = comparison_truth(op_name, lhs, rhs, true, ctx)?;
+    if !matches!(dom.kind, Kind::Ints(..)) {
+        return None;
+    }
+    if covers(&dom, std::slice::from_ref(&truth)) {
+        return Some(Decided::Bool(true));
+    }
+    let (_, dom, negated) = comparison_truth(op_name, lhs, rhs, false, ctx)?;
+    covers(&dom, std::slice::from_ref(&negated)).then_some(Decided::Bool(false))
 }
 
 /// A comparison operator with its operands exchanged (`n < x` is `x > n`).

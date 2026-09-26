@@ -10,7 +10,9 @@
 //! (dsl 0.27.0 T3-9) `shadowed by <id>` per ladder cell: the beats that win
 //! every time on THAT ladder ([`lute_check::beats::shadowers_at`]), even
 //! where the beat wins another target's ladder. A kind beat's row names its
-//! `kind:<kind>` target.
+//! `kind:<kind>` target. dsl 0.27.0 §4: a ladder of a gated occasion says
+//! when its `raisedWhen` can never hold for the targets it is raised for
+//! (all of them, or which members), judged under the root's fact envelope.
 //!
 //! Nothing is re-derived. The rows are [`lute_check::project_beats`] — the
 //! beat list the project beat passes judge — and the verdicts are the
@@ -54,6 +56,68 @@ struct Ladder<'a> {
     select: OccasionSelect,
     /// Indices into the root's selection-ordered beat list.
     beats: Vec<usize>,
+    /// dsl 0.27.0 §4: the occasion's `raisedWhen` gate, with the ladder
+    /// targets it can never hold for ([`gate_marks`]).
+    gate: Option<GateMark>,
+}
+
+/// dsl 0.27.0 §4: an occasion's gate on one ladder.
+struct GateMark {
+    /// The `raisedWhen` condition as declared.
+    raised_when: String,
+    /// The gate never holds for any target the ladder is raised for.
+    never: bool,
+    /// Otherwise the ladder targets (a kind ladder's members) it never
+    /// holds for.
+    never_for: Vec<String>,
+}
+
+/// dsl 0.27.0 §4: each ladder's [`GateMark`] — the gate judged per target
+/// ([`lute_check::gates::gate_never_holds`]) in the ladder's first beat's
+/// document, under the root's fact envelope when there is one (a
+/// `raisedWhen: "holds(canEnter(occasion.target))"` whose fact nothing
+/// produces for a room never lets that room's beats play).
+fn gate_marks(
+    ladders: &mut [Ladder<'_>],
+    beats: &[ProjectBeat<'_>],
+    env: Option<&lute_check::FactEnv>,
+) {
+    for ladder in ladders {
+        let Some(first) = ladder.beats.first().map(|&i| &beats[i]) else {
+            continue;
+        };
+        let folded = first.folded;
+        let Some(gate) = lute_check::gates::gate_of(&folded.occasions, ladder.occasion) else {
+            continue;
+        };
+        let facts = env.map(|e| (e, first.path.as_path(), first.anchor));
+        let dead = |c: &str| lute_check::gates::provably_false(c, folded, facts);
+        let never_holds = |target: Option<&str>| {
+            lute_check::gates::gate_never_holds(
+                &folded.occasions,
+                &folded.env.rel_vocab.kinds,
+                ladder.occasion,
+                target,
+                dead,
+            )
+        };
+        let never_for: Vec<String> = ladder
+            .members
+            .iter()
+            .filter(|m| never_holds(Some(m.as_str())))
+            .cloned()
+            .collect();
+        let never = if ladder.members.is_empty() {
+            never_holds(None)
+        } else {
+            never_for.len() == ladder.members.len()
+        };
+        ladder.gate = Some(GateMark {
+            raised_when: gate.to_string(),
+            never,
+            never_for: if never { Vec::new() } else { never_for },
+        });
+    }
 }
 
 /// The first backticked name in a message: the beat a verdict names
@@ -67,7 +131,7 @@ fn named_beat(message: &str) -> Option<&str> {
 /// message names first, in `b`'s document — or (dsl 0.27.0 T3-11) any beat a
 /// `W-BEAT-PRIORITY-TIE` names before `share priority`, in any document
 /// (one warning per tied group, anchored at its first beat).
-fn names_beat(path: &Path, d: &Diagnostic, b: &ProjectBeat<'_>) -> bool {
+pub(crate) fn names_beat(path: &Path, d: &Diagnostic, b: &ProjectBeat<'_>) -> bool {
     if d.code == lute_check::W_BEAT_PRIORITY_TIE {
         return d
             .message
@@ -117,13 +181,10 @@ fn kind_label(kind: ProjectBeatKind) -> &'static str {
     }
 }
 
-fn once_label(once: BeatOnce) -> &'static str {
+fn once_label(once: &BeatOnce) -> std::borrow::Cow<'static, str> {
     match once {
-        BeatOnce::Run => "run",
-        BeatOnce::User => "user",
-        BeatOnce::None => "no",
-        BeatOnce::Day => "day",
-        BeatOnce::Slot => "slot",
+        BeatOnce::None => "no".into(),
+        other => other.as_str(),
     }
 }
 
@@ -154,7 +215,7 @@ pub(crate) fn run_beats(
         Ok(v) => v,
         Err(code) => return code,
     };
-    let (file_results, project_diags, _) =
+    let (file_results, project_diags, _, fact_envs) =
         crate::reconcile_collected(file_results, &by_root, false);
     let mut verdict_diags: Vec<(&PathBuf, &Diagnostic)> = Vec::new();
     for (path, result) in &file_results {
@@ -202,7 +263,8 @@ pub(crate) fn run_beats(
             .into_iter()
             .map(|c| c.map(|i| beats[i].id.as_str()))
             .collect();
-        let ladders = ladders(&beats, &decls, occasions, targets);
+        let mut ladders = ladders(&beats, &decls, occasions, targets);
+        gate_marks(&mut ladders, &beats, fact_envs.get(root));
         let cells = Cells {
             beats: &beats,
             verdicts: &verdicts,
@@ -296,6 +358,7 @@ fn ladders<'a>(
                 targeted,
                 select,
                 beats: rows,
+                gate: None,
             });
         };
         if !targets.is_empty() {
@@ -393,9 +456,19 @@ fn render_root(
             None if ladder.targeted => " (any target)".to_string(),
             None => String::new(),
         };
+        // dsl 0.27.0 §4: the targets the occasion's gate never lets play.
+        let gate = match &ladder.gate {
+            Some(g) if g.never => format!(" · gate never holds: `raisedWhen: {}`", g.raised_when),
+            Some(g) if !g.never_for.is_empty() => format!(
+                " · gate never holds for {}: `raisedWhen: {}`",
+                g.never_for.join(", "),
+                g.raised_when
+            ),
+            _ => String::new(),
+        };
         let _ = writeln!(
             out,
-            "\n  {}{target} — select: {}",
+            "\n  {}{target} — select: {}{gate}",
             ladder.occasion,
             ladder.select.as_str()
         );
@@ -411,7 +484,11 @@ fn render_root(
         ]];
         for (rank, &i) in ladder.beats.iter().enumerate() {
             let b = &beats[i];
-            let mut once = once_label(b.once).to_string();
+            // dsl 0.27.0 §5: a `spentBy` beat repeats until its condition holds.
+            let mut once = match &b.spent_by {
+                Some(by) => format!("spentBy: {}", one_line(by)),
+                None => once_label(&b.once).to_string(),
+            };
             if b.also {
                 once.push_str(", also");
             }
@@ -483,6 +560,9 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                     if let Some((key, _)) = b.share {
                         m.insert("share".into(), json!(key));
                     }
+                    if let Some(by) = &b.spent_by {
+                        m.insert("spentBy".into(), json!(by));
+                    }
                     if let Some(t) = b.target {
                         m.insert("target".into(), json!(t));
                     }
@@ -515,7 +595,7 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                                     json!({
                                         "code": d.code,
                                         "severity": crate::severity_str(d.severity),
-                                        "message": d.message,
+                                        "message": d.text(),
                                     })
                                 })
                                 .collect(),
@@ -536,6 +616,15 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                 None => {}
             }
             m.insert("select".into(), json!(l.select.as_str()));
+            // dsl 0.27.0 §4: the occasion's gate, and where it never holds.
+            if let Some(g) = &l.gate {
+                m.insert("raisedWhen".into(), json!(g.raised_when));
+                if g.never {
+                    m.insert("gateNeverHolds".into(), json!(true));
+                } else if !g.never_for.is_empty() {
+                    m.insert("gateNeverHoldsFor".into(), json!(g.never_for));
+                }
+            }
             m.insert("beats".into(), Json::Array(rows));
             Json::Object(m)
         })

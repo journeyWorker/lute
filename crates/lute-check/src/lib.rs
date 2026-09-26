@@ -20,6 +20,7 @@ pub mod decide;
 pub mod def_decl;
 pub mod def_inline;
 pub mod defassign;
+pub mod directive_facts;
 pub mod directives;
 pub mod display_names;
 pub mod envelope;
@@ -29,12 +30,14 @@ pub mod fact_env;
 pub mod fact_must;
 pub mod fact_write;
 pub mod fix;
+pub mod gates;
 pub mod inject;
 pub mod logic_attrs;
 pub mod lore;
 pub mod match_check;
 pub mod meta;
 pub mod next_labels;
+pub mod occasion_bind;
 pub mod on;
 pub mod permissions;
 pub mod prereq;
@@ -44,11 +47,14 @@ pub mod reachability;
 pub mod rel_schema;
 pub mod rule_index;
 pub mod schema_import;
+pub mod season;
+pub mod sequence;
 pub mod set_op;
 pub mod set_type;
 pub(crate) mod solution;
 pub mod state_decls;
 pub mod tag;
+pub mod templates;
 pub mod temporal;
 pub mod time;
 pub mod timeline;
@@ -63,6 +69,20 @@ pub mod when_test_literal;
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
 pub const LUTE_LANG_VERSION: &str = "0.26.0";
+
+/// The parse-time desugar every surface applies to a document it parsed
+/// from `input.text`, before reading it: the manifest's `questTier`
+/// default, its `sequence:`'s derived scene keys (dsl 0.27.0 §8), and every
+/// `<beat use="…">` template use (dsl 0.27.0 §6). Idempotent; returns the
+/// template diagnostics of the first expansion (`check` reports them).
+pub fn desugar_document(
+    doc: &mut lute_syntax::ast::Document,
+    input: &CheckInput,
+) -> Vec<lute_core_span::Diagnostic> {
+    meta::apply_quest_tier_default(doc, &input.defaults);
+    sequence::apply_sequence(doc, &input.defaults);
+    templates::expand_beat_templates(doc, &input.components)
+}
 
 pub use accept::{
     check_accept_directive, check_project_accepts, check_project_never_accepted, E_ACCEPT_TARGET,
@@ -91,7 +111,7 @@ pub use check::{
     check, check_parsed, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved,
     INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
 };
-pub use component_effects::{speaker_display_args, splice_component_effects};
+pub use component_effects::{display_args, splice_component_effects};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use datalog_check::{

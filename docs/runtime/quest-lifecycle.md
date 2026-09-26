@@ -193,6 +193,26 @@ The reset belongs to the run boundary (`state-lifecycle.md`), beside the
 and run-tier quests, applies the step's seed and the acceptances queued with
 `at="nextRun"`, then settles the lifecycle.
 
+### Season-tier and rearmed quests — `tier: "season:<name>"`, `rearm`
+
+Two more resets reuse the run-tier reset above verbatim (the quest returns to
+`unset`, its objectives to not done, `activatedAt` / `failedBy` / every
+`objectives.<oid>.failed` cleared, no handler fires), at a different moment
+(dsl 0.27.0 §5):
+
+- **`QuestCmd.tier: "season:<name>"`** — when the season `<name>` opens
+  (its `live` condition in the artifact's `seasons` goes false→true;
+  `state-lifecycle.md` §Seasons).
+- **`QuestCmd.rearm: {raw, expr}`** — the engine evaluates `rearm` at every
+  quest settle of a playthrough and remembers the last value. The first
+  observation is only the baseline. Each later false→true transition resets
+  the quest, whatever its status, and deadlines are forgotten with its
+  failure. The reset happens at the start of that settle, so a `start` that
+  holds activates the quest in the same settle; an accept-driven quest waits
+  for its next acceptance. `lute play` prints
+  `quest festival -> unset (rearmed; was complete)`, and a season-tier reset
+  `quest missions -> unset (season:harvest opened; was complete)`.
+
 ## Objectives
 
 Each `ObjectiveEntry` in `QuestCmd.objectives`:

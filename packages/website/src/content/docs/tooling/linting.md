@@ -173,7 +173,7 @@ first line when neither is spoken:
 <!-- lute-diagnostics -->
 ```console
 $ lute lint .
-lore/trainers.lute:12:3: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one (dsl 0.26.0 §2.8)
+lore/trainers.lute:12:3: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one
 ok: . (0 error(s), 1 warning(s))
 ```
 
@@ -194,7 +194,7 @@ W-DISPLAY-NAME-DUP`, or `--deny-warnings`, makes it an error and fails the run:
 <!-- lute-diagnostics -->
 ```console
 $ lute lint . --deny W-DISPLAY-NAME-DUP
-lore/trainers.lute:12:3: error [W-DISPLAY-NAME-DUP] [denied] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one (dsl 0.26.0 §2.8)
+lore/trainers.lute:12:3: error [W-DISPLAY-NAME-DUP] [denied] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one
 failed: . (1 error(s), 0 warning(s))
 ```
 

@@ -326,6 +326,7 @@ fn entry_asserts_are_live_producer_sites() {
         &Default::default(),
         &Default::default(),
         &Default::default(),
+        &Default::default(),
     );
     assert!(live.contains("knows"), "{live:?}");
 }

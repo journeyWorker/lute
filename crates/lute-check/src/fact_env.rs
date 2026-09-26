@@ -234,6 +234,9 @@ pub struct RootVocab {
     /// dsl 0.24 T3-6: relations heading a rule that failed to parse — their
     /// derivation is unknown, so they are unbounded (no verdict cascades).
     unparsed_heads: BTreeSet<String>,
+    /// dsl 0.27.0 §4: the directives declaring fact effects, by tag
+    /// ([`RelVocab::effect_directives`], unioned).
+    effect_directives: BTreeMap<String, lute_manifest::schema::DirectiveDecl>,
 }
 
 impl RootVocab {
@@ -294,6 +297,18 @@ impl RootVocab {
         }
         self.unparsed_heads
             .extend(vocab.unparsed_heads.iter().cloned());
+        for (tag, decl) in &vocab.effect_directives {
+            self.effect_directives
+                .entry(tag.clone())
+                .or_insert_with(|| decl.clone());
+        }
+    }
+
+    /// dsl 0.27.0 §4: the root's directives declaring fact effects — what
+    /// resolves a call to the facts it writes
+    /// ([`crate::directive_facts::lookup`]).
+    pub fn effect_directives(&self) -> &crate::directive_facts::EffectDirectives {
+        &self.effect_directives
     }
 
     /// seven F3 (dsl 0.23.1): mark the root incomplete when any of `docs`

@@ -1526,3 +1526,98 @@ fn scenario_reach_prints_a_bundle_beats_after() {
     assert!(!text.contains("declares no `after`"), "{text}");
     assert!(text.contains("  on: talk\n"), "{text}");
 }
+
+/// T3-20 (round-5 OT-F11): `reach --endings=<occasion>` gives one row per
+/// beat answering the occasion with the `after:` verdict, the `when`
+/// verdict `check-project` reaches, and who writes what a satisfiable `when`
+/// reads; bare `--endings` keeps the beats whose content can run `::end`.
+#[test]
+fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
+    let dir = temp_dir("reach-endings");
+    write(&dir, "lute.project.yaml", &core_only_project_yaml());
+    write(&dir, "a.lute", &scene_sets_run_a("a"));
+    write(
+        &dir,
+        "q.lute",
+        "---\nkind: quest\nentities:\n  crew: { members: [toma] }\nrelations:\n  \
+         sealed: { args: [crew], tier: run }\nstate:\n  run.n: { type: number, default: 0 }\n\
+         ---\n<quest id=\"deadStart\" start=\"holds(sealed(toma))\">\n\
+         <objective id=\"o\" done=\"run.n >= 1\"/>\n</quest>\n",
+    );
+    write(
+        &dir,
+        "end.lute",
+        "---\nkind: lore\nid: end\nstate:\n  run.lost: { type: number, default: 0 }\n---\n\n\
+         <beat id=\"good\" on=\"finale\" after=\"visited('a.s01ep01')\" when=\"run.a == 1\">\n  \
+         @narrator: Good.\n  ::end{reason=\"good\"}\n</beat>\n\n\
+         <beat id=\"never\" on=\"finale\" when=\"run.a == 1 && run.a == 2\">\n  @narrator: Never.\n</beat>\n\n\
+         <beat id=\"late\" on=\"finale\" after=\"completed('deadStart')\">\n  @narrator: Late.\n</beat>\n\n\
+         <beat id=\"orphan\" on=\"finale\" when=\"run.lost == 3\">\n  @narrator: Orphan.\n</beat>\n",
+    );
+    let d = dir.to_str().unwrap();
+    let out = run(&["scenario", d, "reach", "--endings=finale"]);
+    let text = stdout(&out);
+    assert!(out.status.success(), "{}{text}", stderr(&out));
+    assert!(
+        text.contains("  end.good (beat, end.lute): reachable\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("      run.a — written by scene `a.s01ep01`\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("  end.never (beat, end.lute): unreachable\n"),
+        "{text}"
+    );
+    assert!(text.contains("never holds (E-BEAT-UNREACHABLE"), "{text}");
+    assert!(
+        text.contains("  end.late (beat, end.lute): unreachable\n"),
+        "{text}"
+    );
+    assert!(text.contains("after: Unreachable"), "{text}");
+    assert!(
+        text.contains("      run.lost — nothing writes it — it keeps its declared default\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("4 ending(s): 2 reachable, 2 unreachable, 0 unknown"),
+        "{text}"
+    );
+    assert!(text.contains("lute test --coverage"), "{text}");
+
+    // Bare: only the beat whose body runs `::end`.
+    let text = stdout(&run(&["scenario", d, "reach", "--endings"]));
+    assert!(text.contains("end.good"), "{text}");
+    assert!(!text.contains("end.never"), "{text}");
+    assert!(text.contains("1 ending(s): 1 reachable"), "{text}");
+
+    let out = run(&[
+        "scenario",
+        d,
+        "--format",
+        "json",
+        "reach",
+        "--endings=finale",
+    ]);
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(v["roots"][0]["summary"]["unreachable"], 2, "{v}");
+    assert_eq!(
+        v["roots"][0]["endings"][1]["when"]["verdict"], "never-holds",
+        "{v}"
+    );
+
+    // A node and `--endings` together, or an occasion no beat answers: usage.
+    assert_eq!(
+        run(&["scenario", d, "reach", "a.s01ep01", "--endings"])
+            .status
+            .code(),
+        Some(2)
+    );
+    assert_eq!(
+        run(&["scenario", d, "reach", "--endings=nope"])
+            .status
+            .code(),
+        Some(2)
+    );
+}

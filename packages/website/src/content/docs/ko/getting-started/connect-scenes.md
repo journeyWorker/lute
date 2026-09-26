@@ -3,8 +3,6 @@ title: 장면을 이야기로 잇기
 description: 게임 엔진 없이 장면들을 하나의 이야기로 이어 플레이하고 테스트합니다 — 모든 장면이 응답하는 지어낸 계기 하나, 순서는 after, 진행 순서는 priority, 갈라지는 엔딩은 when, 그리고 lute play용 플레이 스크립트.
 ---
 
-<!-- TODO(0.27): once `sequence:` in lute.project.yaml ships (spec 0.27.0 §8), teach it first here and keep this on/after/priority form as what it expands to. -->
-
 [첫 장면 작성하기](/ko/getting-started/first-scene/)는 두 장면과 그 사이의 `after:` 한 줄로
 끝났습니다. `after:`는 어느 장면이 어느 장면 *뒤에* 오는지 말합니다. 플레이어를 옮기지는
 않습니다: 각 장면을 **시작**하는 무언가가 여전히 필요합니다. 출시된 게임에서는 엔진이 그 일을
@@ -50,7 +48,8 @@ a-story/
 있습니다.
 
 `lute.project.yaml`은 폴더를 프로젝트로 표시합니다. `defaults:` 블록은 모든 문서에 같은 `uses:`
-줄을 주므로 어느 장면도 그 줄을 반복할 필요가 없습니다([Project defaults](/language/imports/#project-defaults)):
+줄을 주므로 어느 장면도 그 줄을 반복할 필요가 없습니다([Project defaults](/language/imports/#project-defaults)).
+`sequence:` 블록은 장들을 순서대로 잇습니다:
 
 ```yaml
 defaultProfile: core
@@ -59,6 +58,9 @@ profiles:
     plugins: {}
 defaults:
   uses: [world.schema.yaml]
+sequence:
+  occasion: chapter
+  scenes: [prologue, counter, accusation]
 ```
 
 `world.schema.yaml`은 이야기가 기억하는 상태 하나를 선언합니다: 플레이어가 누구를 지목했는지.
@@ -68,17 +70,16 @@ state:
   run.accused: { type: { enum: [nobody, ruben, tilly] }, default: nobody }
 ```
 
-## 장(chapter)들: `on:`, `after:`, `priority:`
+## 장(chapter)들: `sequence:`
 
-첫 장면은 `chapter`에 응답합니다. `after:`가 없으므로 처음부터 자격이 있습니다:
+`sequence:`는 장면을 `id:`로 재생 순서대로 적고, 그 장면들이 응답할 계기를 이름 붙입니다. 장면
+자신은 자기가 누구인지만 말합니다:
 
 ```lute check="docs/examples/connect-scenes/scenes/prologue.lute"
 ---
 kind: scene
 id: prologue
 title: Closing Time
-on: chapter
-priority: 30
 ---
 
 ## Closing Time
@@ -87,16 +88,11 @@ priority: 30
 @wren: Mr. Pryce? We're closing.
 ```
 
-두 번째 장면도 `chapter`에 응답하며, 프롤로그가 재생된 뒤에만 자격이 생깁니다:
-
 ```lute check="docs/examples/connect-scenes/scenes/counter.lute"
 ---
 kind: scene
 id: counter
 title: The Counter
-on: chapter
-after: 'visited("prologue")'
-priority: 20
 ---
 
 ## The Counter
@@ -105,14 +101,26 @@ priority: 20
 @wren: Somebody here knows what happened.
 ```
 
+목록에 오른 장면마다 sequence가 직접 쓸 프런트매터 키 세 개를 대신 써 줍니다. `counter`는
+프런트매터에 다음이 적힌 것과 똑같이 동작합니다:
+
+```yaml
+on: chapter
+after: 'visited("prologue")'
+priority: 20
+```
+
 - `on: chapter`는 `chapter`가 발생할 때마다 이 장면을 후보로 만듭니다.
-- `after: 'visited("prologue")'`는 `id: prologue`인 장면이 재생될 때까지 이 장면을 기다리게 합니다.
-  `visited("…")`는 장면을 `id:`로 가리킵니다.
+- `after: 'visited("prologue")'`는 목록에서 바로 앞 장면이 재생될 때까지 이 장면을 기다리게 합니다.
+  `visited("…")`는 장면을 `id:`로 가리킵니다. 첫 장면에는 `after:`가 없으므로 처음부터 자격이 있습니다.
 - 장면은 런마다 최대 한 번 재생되므로, 프롤로그가 재생된 뒤에는 빠지고 카운터가 남습니다.
-- `priority:`는 진행 순서를 대놓고 적습니다: 높은 쪽이 먼저 재생되고, 각 장은 앞 장보다 낮은 숫자를
-  받습니다. 체커는 `after:`가 이미 두 장을 떼어 놓는다는 것을 알아보지 못하므로, 우선순위가 서로
-  다르지 않으면 같은 우선순위를 가진 장면들에 대해 `lute check-project`가 `W-BEAT-PRIORITY-TIE`를
-  경고할 수 있습니다. 나중에 추가할 장면이 두 장면 사이에 들어갈 수 있도록 간격을 두세요(30, 20, 10).
+- `priority:`는 진행 순서를 대놓고 적습니다: 높은 쪽이 먼저 재생됩니다. sequence는 첫 장면부터 10씩
+  내려가므로(장면 셋이면 30, 20, 10) 모든 장이 사슬 뒤에 오는 장면들보다 앞섭니다.
+
+장면이 직접 쓴 키는 sequence보다 우선합니다: 한 장면에 자기 `priority:`나 다른 `after:`를 주면 그
+키만 바뀝니다. 어느 장면도 선언하지 않은 id를 목록에 적거나, 목록의 장면이 자기 `on:`으로 다른 계기에
+응답하면 `lute check-project`가 `E-SEQUENCE`를 보고합니다(비슷한 id 제안 포함). 아래 엔딩처럼 목록에
+없는 장면은 여전히 키를 직접 씁니다.
 
 세 번째 장면은 플레이어에게 선택을 주고 그것을 기억합니다:
 
@@ -121,9 +129,6 @@ priority: 20
 kind: scene
 id: accusation
 title: The Accusation
-on: chapter
-after: 'visited("counter")'
-priority: 10
 ---
 
 ## The Accusation

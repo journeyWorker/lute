@@ -39,6 +39,25 @@ reach scene(narrator.s01ep02):
 
 The referenced-node list is deliberately not a checklist: it reports each atom's own verdict, and the `after:` line above it is the only place the `&&` / `||` structure lives. A node whose formula is a disjunction needs only one of them.
 
+## Endings
+
+`lute scenario <dir> reach --endings[=<occasion>]` (0.27.0) checks every ending at once: with `=<occasion>`, every beat answering that occasion; bare, every beat whose content can run `::end`. Each row puts the `after:` verdict above beside the `when` verdict `check-project` reaches — `E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE` (it never holds) or `W-BEAT-SHADOWED` (it never wins) — and, for a `when` nothing refutes, the state paths and facts it reads with who produces them:
+
+```console
+$ lute scenario . reach --endings=termEnd
+project root: .
+endings (the beats answering `termEnd`):
+  end.ren.lantern (beat, lore/endings/ren.lute): reachable
+    after: Reachable — a satisfiable route exists under your declared routes.
+    when: `run.route == 'ren' && @devoted(run.aff.ren)` — check-project does not refute it; it needs:
+      run.aff.ren — written by beat `hangouts.council` via component `hangout`, scene `common.arrival`, scene `ren.date`
+      run.route — written by scene `common.festival` (choice into)
+  …
+10 ending(s): 10 reachable, 0 unreachable, 0 unknown
+```
+
+"Reachable" here means nothing static refutes the ending. Whether the writes can bring `run.aff.ren` to the value the `when` needs is not analysed; a play that presents the ending is the proof, and `lute test --coverage` lists the beats no play presents. A path nothing writes says `nothing writes it`, the sound case.
+
 ## Cycle degradation is per-node
 
 `E-CONN-CYCLE` marks a malformed ordering but does **not** blank the whole project root. Reachability is computed over the graph's natural topological order: a node enters that order once every prerequisite edge resolves, which recursively fails only for cycle members and nodes structurally downstream of them. So a node topologically independent of a cycle still receives its full, sound verdict; only nodes on or downstream of a cycle degrade to `Unknown`.

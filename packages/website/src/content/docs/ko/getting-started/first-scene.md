@@ -23,10 +23,10 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore` (dsl 0.2.0 §3.1, dsl 0.19.0 §2)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
+my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore`
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity)
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity)
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity)
 failed: my-scene.lute (4 error(s), 0 warning(s))
 ```
 
@@ -103,7 +103,7 @@ ok: my-scene.lute (0 warning(s))
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
+my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -147,7 +147,7 @@ ok: my-scene.lute (0 warning(s))
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:12:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+my-scene.lute:12:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion`
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -255,7 +255,7 @@ state:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text`; `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -543,7 +543,7 @@ PASS  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
 $ lute test episodes --project episodes
 FAIL  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
       trace refused:
-        episodes/tests/../diner.lute:25:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard decided false at this presentation point (dsl 0.4.0 §4.4)
+        episodes/tests/../diner.lute:25:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard `scene.knowsMira` decided false: `scene.knowsMira` is false (mock `state: { scene.knowsMira: <value> }`)
 
 0 passed, 1 failed
 ```

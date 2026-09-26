@@ -73,7 +73,7 @@ use lute_core_span::Span;
 use lute_syntax::ast::{
     Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Document, Match, Node, Retract,
 };
-use lute_syntax::datalog::FactTerm;
+use lute_syntax::datalog::{FactPattern, FactTerm};
 
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
@@ -437,26 +437,40 @@ impl<'a> Root<'a> {
                 .chain(doc.entries.iter().map(|e| &e.body))
                 .chain(doc.beats.iter().map(|b| &b.body));
             for body in bodies {
-                scan(body, &mut |node| match node {
-                    Node::Assert(a) => {
-                        asserted.insert(a.pattern.relation.clone());
-                        if a.pattern
-                            .args
-                            .iter()
-                            .any(|x| matches!(x.term, FactTerm::Param(_)))
-                        {
-                            param_asserted.insert(a.pattern.relation.clone());
+                scan(body, &mut |node| {
+                    let mut asserts = |p: &FactPattern| {
+                        asserted.insert(p.relation.clone());
+                        if p.args.iter().any(|x| matches!(x.term, FactTerm::Param(_))) {
+                            param_asserted.insert(p.relation.clone());
                         }
-                        if let Some(f) = GroundFact::from_pattern(&a.pattern) {
+                        if let Some(f) = GroundFact::from_pattern(p) {
                             produced.entry(f.relation).or_default().insert(f.args);
                         }
-                    }
-                    Node::Retract(r) => {
-                        if let Some(q) = QueryPattern::from_fact_pattern(&r.pattern) {
-                            retracts.push(q);
+                    };
+                    match node {
+                        Node::Assert(a) => asserts(&a.pattern),
+                        Node::Retract(r) => {
+                            if let Some(q) = QueryPattern::from_fact_pattern(&r.pattern) {
+                                retracts.push(q);
+                            }
                         }
+                        // dsl 0.27.0 §4: a call's declared fact effects.
+                        Node::Directive(d) => {
+                            let Some(facts) =
+                                crate::directive_facts::lookup(vocab.effect_directives(), d)
+                            else {
+                                return;
+                            };
+                            facts.asserts.iter().for_each(&mut asserts);
+                            retracts.extend(
+                                facts
+                                    .retracts
+                                    .iter()
+                                    .filter_map(QueryPattern::from_fact_pattern),
+                            );
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 });
             }
         }
@@ -979,16 +993,53 @@ impl<'a> Walk<'a> {
                         None => self.record_span(d.span, flow),
                     }
                 }
+                // dsl 0.27.0 §4: a call's declared fact effects are its
+                // `::retract`s then `::assert`s; a guarded call may be
+                // skipped (the meet of both routes, as a guarded assert).
+                if let Some(facts) =
+                    crate::directive_facts::lookup(self.root.vocab.effect_directives(), d)
+                {
+                    let apply = |walk: &Self, flow: &mut Flow| {
+                        for p in &facts.retracts {
+                            walk.retract_pattern(p, flow);
+                        }
+                        for p in &facts.asserts {
+                            walk.assert_pattern(p, d.span.line, flow);
+                        }
+                    };
+                    // `E-FACT-EXCLUSIVE` reads the set the call meets.
+                    match &d.when {
+                        Some(when) => {
+                            let mut taken = flow.clone();
+                            self.assume(when, &mut taken);
+                            if d.tag != "use" {
+                                self.record_span(d.span, &taken);
+                            }
+                            apply(self, &mut taken);
+                            meet(flow, taken);
+                        }
+                        None => {
+                            self.record_span(d.span, flow);
+                            apply(self, flow);
+                        }
+                    }
+                }
             }
         }
     }
 
     fn assert(&self, a: &Assert, flow: &mut Flow) {
+        self.assert_pattern(&a.pattern, a.span.line, flow);
+    }
+
+    /// The Must transfer of asserting `pattern` (at `line` of this walk's
+    /// document) — an `::assert`'s, or a directive's declared one.
+    fn assert_pattern(&self, pattern: &FactPattern, line: u32, flow: &mut Flow) {
         let Some(facts) = flow else {
             return;
         };
         facts.retain(|g| !self.root.is_derived(&g.relation));
-        let Some(fact) = GroundFact::from_pattern(&a.pattern) else {
+        let Some(fact) = GroundFact::from_pattern(pattern) else {
             return;
         };
         if self.root.is_derived(&fact.relation) {
@@ -1000,18 +1051,23 @@ impl<'a> Walk<'a> {
                 fact,
                 Provenance::Assert {
                     path: self.path.to_path_buf(),
-                    line: a.span.line,
+                    line,
                 },
             );
         }
     }
 
     fn retract(&self, r: &Retract, flow: &mut Flow) {
+        self.retract_pattern(&r.pattern, flow);
+    }
+
+    /// The Must transfer of retracting `pattern` (`_` = any).
+    fn retract_pattern(&self, pattern: &FactPattern, flow: &mut Flow) {
         let Some(facts) = flow else {
             return;
         };
         facts.retain(|g| !self.root.is_derived(&g.relation));
-        if let Some(q) = QueryPattern::from_fact_pattern(&r.pattern) {
+        if let Some(q) = QueryPattern::from_fact_pattern(pattern) {
             facts.retain(|g| !q.matches(g));
         }
     }

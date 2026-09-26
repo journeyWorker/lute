@@ -1,6 +1,6 @@
 ---
 title: The clock
-description: "A declared day clock (dsl 0.24.0 §1) — the schema's clock: over engine-owned paths (day, optional slot and slots, raise as one occasion or a slot / dayStart / dayEnd map, week), day-granular clocks, what E-CLOCK-DECL rejects, the read-only clock.index / clock.weekday / clock.weekdayLabel, once: day and once: slot beats and entries, moving time with lute play's advance: and include: steps, the lute calendar clock axis — and the three pieces that shipped beside it: enum member display labels, integer %, and the guarded write ::set{… when=…}."
+description: "A declared day clock (dsl 0.24.0 §1) — the schema's clock: over engine-owned paths (day, optional slot and slots, raise as one occasion or a slot / dayStart / dayEnd map, week), day-granular clocks, what E-CLOCK-DECL rejects, the read-only clock.index / clock.weekday / clock.weekdayLabel, once: day, once: week (dsl 0.27.0) and once: slot beats and entries, moving time with lute play's advance: and include: steps, the lute calendar clock axis — and the three pieces that shipped beside it: enum member display labels, integer %, and the guarded write ::set{… when=…}."
 ---
 
 Plenty of games keep time as a day and a part of the day: morning, afternoon, night, then the next
@@ -43,6 +43,7 @@ clock:
 | `slots` | with `slot`; the slot enum's members, each exactly once, in the order a day runs through them. The enum's own member order does not matter; this list is the clock's order |
 | `raise` | optional; the occasion the engine raises after every advance of the clock, where it stops, so beats can answer "a new slot has started". Or a map naming an occasion for each moment, each key optional: `{ slot, dayStart, dayEnd }` (see [Moving time](#moving-time)) |
 | `week` | optional; `length` (required inside `week`, at least 1), `first` (the weekday index of day 1, 0-based, default `0`), and `labels` (one display text per weekday, in weekday order) |
+| `last` / `days` | optional (dsl 0.27.0); where the clock ends. `last: { day: 1, slot: h05 }` names the last position (`slot` omitted: that day's last slot; a clock without slots gives `day` alone), and `days: N` is short for `last: { day: N }`. Declare one of the two. See [A clock that ends](#a-clock-that-ends) |
 
 A clock without `slot` and `slots` counts whole days. Each day is its one slot, a position is just
 its day (`day 3`), `clock.index` is `day - 1`, and `once: slot` spends like `once: day`. A game that
@@ -75,6 +76,9 @@ Everything wrong with a clock is `E-CLOCK-DECL`:
 - `slots` that are not exactly the slot enum's members;
 - a `raise` occasion, or any occasion of a `raise` map, that no plugin declares (with a
   did-you-mean);
+- a `last` / `days` that names no position: both keys at once, `days: 0`, a `last.day` below 1, a
+  `last.slot` that is not one of `slots` (or any `last.slot` on a clock without slots), or a clock
+  whose `day` / `slot` defaults already stand past its last position (dsl 0.27.0 §4);
 - a second clock: two schemas of one project that both declare `clock:`.
 
 Apart from a second clock, which only the project can see, each is reported on the schema, at the line of its `clock:` key, and
@@ -85,9 +89,9 @@ the schema line under it. `check-project` instead reports it once, as a project-
 schema line ending `(imported by N documents)`, and leaves the importers `ok`. A clock over a `run.day`
 without `owner: engine`:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="verbatim lute check output, but composed at runtime: crates/lute-check/src/clock.rs wraps each clock problem as `clock:` {what}, a prefix literal below the admission floor, so no single format! literal spans it" -->
 ```
-world.schema.yaml:4:1: error [E-CLOCK-DECL] `clock:` `day: run.day` must be declared `owner: engine` — only the engine moves the clock (dsl 0.24.0 §1)
+world.schema.yaml:4:1: error [E-CLOCK-DECL] `clock:` `day: run.day` must be declared `owner: engine` — only the engine moves the clock
 ```
 
 ## Reading the clock
@@ -149,17 +153,18 @@ naming the nearest label (`` did you mean `'Sun'`? ``):
 </match>
 ```
 
-## Once a day, once a slot
+## Once a day, once a week, once a slot
 
-A beat's `once` (see [Beats](/language/beats/)) gains two values on a project with a clock:
+A beat's `once` (see [Beats](/language/beats/)) gains three values on a project with a clock:
 
 | `once` | Spent | Eligible again |
 |---|---|---|
 | `day` | from its presentation until the clock's day changes | on the next day |
+| `week` | from its presentation until the next clock week starts (dsl 0.27.0 §5); needs the clock's `week:` | when `clock.weekday` returns to `week.first` |
 | `slot` | from its presentation until the clock's slot changes (a new slot, or the same slot on another day) | in the next slot |
 
 Scene beats write it in frontmatter (`once: day`), bundle beats as an attribute
-(`<beat … once="day">`), and entries as `once="day"` or `once="slot"`. The engine keeps where in
+(`<beat … once="day">`), and entries as `once="day"`, `once="week"`, or `once="slot"`. The engine keeps where in
 time each beat was last presented. For an entry that is a presentation record too, not its read
 flags. The flags still decide whether the entry's effects apply (see
 [Lore entries](/language/lore-entries/)).
@@ -219,6 +224,30 @@ times on Monday morning, then once on Tuesday:
 @wren: Morning! It's Tue, so the rye is fresh.
 ```
 
+A week is counted from day 1, which is weekday `week.first`: week *n* holds the days whose
+`(day - 1) div week.length` is *n*. So a clock week always starts on the weekday of day 1, not on a
+fixed label. With the clock above (`first: 0`, Monday), a beat with `once: week` is spent from the
+day it is presented until the next Monday, and `lute play` passes it over meanwhile with
+`once: week — already presented this week`; a clock whose `first` is `5` starts every week on a
+Saturday. `once: week` in a project whose clock declares no `week:` is `E-BEAT-ATTR`, as `once: day`
+is without a clock. A weekly letter:
+
+```lute unverified="once: week needs the project's clock with its week: (world.schema.yaml above); checked by hand as scenes/letters.lute in a scratch project"
+---
+kind: scene
+id: hale.letter
+on: talk
+target: npc.hale
+once: week
+---
+
+# The post office
+
+## Shot 1.
+
+@hale: Your weekly letter. Same handwriting as last {{clock.weekdayLabel}}.
+```
+
 `day` and `slot` mean nothing without a clock, so a project that declares none rejects them:
 
 ```lute expect="E-BEAT-ATTR"
@@ -237,6 +266,7 @@ once: day
 ```
 
 The message says what to do: declare a `clock:` in a schema, or use `run`, `user`, or `false`.
+`once: week` likewise needs the clock's `week:`.
 
 ## Moving time
 
@@ -354,6 +384,62 @@ An occasion raised once a day should be read once a day, not in every slot row.
 (`@run.day,run.slot=night`, the clock's own paths, works too), and leaves the other rows blank.
 
 See [Overviews](/tooling/overviews/) for the rest of the calendar.
+
+## A clock that ends
+
+Some games have a fixed span of time: one night in a closed hospital, from eleven to dawn, and then
+the story is over. Since dsl 0.27.0 a clock may say where it ends:
+
+```yaml
+clock:
+  day: run.night
+  slot: run.hour
+  slots: [h23, h00, h01, h02, h03, h04, h05]
+  raise: { slot: hourStrikes, dayEnd: dawn }
+  last: { day: 1, slot: h05 }      # or: days: 1
+```
+
+`last:` names the last position. Leave out `slot` for the last slot of that day; a clock without
+slots gives `day` alone. `days: N` is short for `last: { day: N }`.
+
+An advance that lands exactly on the last position is an ordinary advance. An advance that would
+go past it moves only to the last position, raising `dayEnd` / `dayStart` at every midnight on the
+way as always. Then it raises the last day's `dayEnd` once, raises no `slot` occasion, and the clock
+has **ended**. Without `last:`, the advance from `h05` would roll into night 2 at `h23` and strike
+the hour again. With it:
+
+```
+── step 1 · advance 6: day 1 h23 → day 1 h05 ──────────────
+  set run.hour = "h05"
+── step 1 · hourStrikes ──────────────
+  ✓ ward.strike [scene, priority 0]
+  → ward.strike
+@narrator: The clock strikes at h05.
+── step 2 · advance slot: day 1 h05 → day 1 h05 · the clock ends (its last position) ──────────────
+── step 2 · day 1 h05 · dawn ──────────────
+  ✓ ward.dawn [scene, priority 0]
+  → ward.dawn
+@narrator: Dawn breaks on night 1.
+── step 3 · advance slot: day 1 h05 → day 1 h05 ──────────────
+── halted: step 3: `advance:` past the clock's last position (day 1 h05) — the clock ended; a `newRun` starts it over (E-CLOCK-END) ──────────────
+```
+
+Any `advance:` after the end is `E-CLOCK-END` (exit 1), and so is one that starts past the end
+because an `engine:` step moved the day on. A `newRun` resets the day and slot paths and starts the
+clock over.
+
+The checker knows the end too. `clock.index` ranges over the whole numbers from where the clock
+starts to its last position, and the day path from its default day to the last day. A `when` that
+needs a later position can never hold:
+
+<!-- lute-diagnostics -->
+```
+scenes/second.lute:6:8: error [E-BEAT-UNREACHABLE] beat `ward.second` is never eligible: its `when` `run.night == 2` is provably false — the clock ends at its last position, so `run.night` only ranges over 1..1
+```
+
+An entry's `when` gets `E-ENTRY-UNREACHABLE` and a line or arm guard `E-ARM-DEAD`, and a `<match>`
+on either path is exhaustive once it covers every value in range. `lute calendar --axis clock`
+stops at the last position.
 
 ## Shipped alongside
 
@@ -541,11 +627,13 @@ play` prints a skipped write as `skip set run.aff.wren += 1 — when: false`.
   `clock.*` path is `E-TRACE-MOCK-UNDECLARED` (`` `--state clock.index=…` seeds a path the clock
   derives from its day and slot, which no mock may set — seed `run.day` / `run.slot` instead ``).
 
-The engine contract (the reserved paths, `once: day` / `once: slot` spending, forward-only
-advances) is in
+The engine contract (the reserved paths, `once: day` / `once: week` / `once: slot` spending,
+forward-only advances) is in
 [`docs/runtime/state-lifecycle.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/state-lifecycle.md),
 and integer `%` in
 [`docs/runtime/cel-and-facts.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/cel-and-facts.md).
 The normative spec is
 [`0.24.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
-§1.
+§1, and the draft
+[`0.27.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+§5 for `once: week`.

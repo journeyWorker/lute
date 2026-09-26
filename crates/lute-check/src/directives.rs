@@ -69,14 +69,14 @@ pub fn at_context(dir: &Directive) -> Option<Diagnostic> {
 /// the caller and threaded by reference so `Type::Domain(name)` attrs resolve
 /// without recomputing the union per attribute.
 ///
-/// `_ctx` is threaded for parity with the other `check_*` entrypoints and for
-/// the match-scope hooks later tasks consume; T4.2 does not branch on it.
+/// `ctx` carries the document's relational vocabulary: a directive's declared
+/// fact effects (dsl 0.27.0 §4) are judged against it at each call.
 pub fn check_directive(
     dir: &Directive,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
     domains: &BTreeMap<String, Domain>,
-    _ctx: &Ctx<'_>,
+    ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
@@ -219,6 +219,11 @@ pub fn check_directive(
                 dir.span,
             ));
         }
+    }
+    // dsl 0.27.0 §4: the facts the call's declared `effects.asserts` /
+    // `retracts` write, judged like an `::assert` / `::retract` of them.
+    if decl.effects.as_ref().is_some_and(|e| e.has_facts()) {
+        diags.extend(crate::directive_facts::check_call(dir, decl, domains, ctx));
     }
 
     diags

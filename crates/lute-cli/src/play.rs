@@ -68,9 +68,11 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use lute_compile::Artifact;
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
+use lute_trace::exec::seam::Closed;
 use lute_trace::exec::session::{
     domain_members, entry_flag, is_candidate, kind_label, parse_ground_fact, resolve_bridges,
     resolve_fact, resolve_state, seed_world, value_to_json, world_view, Candidate, ExecProject,
@@ -110,7 +112,7 @@ const MOCK_SURFACES: &[&str] = &["bridges", "choose", "facts", "state"];
 /// The complete legal key set of one `steps:` entry.
 const STEP_KEYS: &[&str] = &[
     "advance", "bridges", "choose", "end", "engine", "event", "expect", "label", "newRun",
-    "occasion", "pick", "repeat", "target",
+    "occasion", "payload", "pick", "repeat", "target",
 ];
 /// The keys of a step that DO something — exactly one per step.
 const STEP_ACTIONS: &[&str] = &["occasion", "newRun", "engine", "event", "advance", "end"];
@@ -144,6 +146,11 @@ enum StepAction {
         target: Option<String>,
         pick: Option<Pick>,
         choose: BTreeMap<String, Vec<String>>,
+        /// dsl 0.27.0 §3: the raise's typed payload, `field -> literal`.
+        payload: Vec<(String, String)>,
+        /// dsl 0.27.0 §4: the step's `engine:` writes, applied before the
+        /// raise (as `advance:` applies its own before the clock moves).
+        writes: Option<RawWrites>,
     },
     /// Start a new run; the long form's writes seed it (dsl 0.22.0 §1.1).
     NewRun(RawWrites),
@@ -195,6 +202,102 @@ struct ScriptStep {
     action: StepAction,
     /// `bridges:` (dsl 0.24.0 §5): answers for the plugin calls this step
     /// makes, consumed before the top-level ones.
+    bridges: BTreeMap<String, Vec<lute_trace::BridgeAnswer>>,
+    /// Where the step was written (round-5 T3-13).
+    at: StepSource,
+    /// dsl 0.27.0 (T3-22): the `include:` segments the step was spliced in
+    /// by that carry `choose:` / `bridges:`, outermost first.
+    segments: Vec<Arc<Segment>>,
+}
+
+/// Where a step was written (round-5 T3-13): the file its text came from —
+/// the play, or an `include:`d steps file —, that text, the step's position
+/// in the file's step list, and the `include:` lines that spliced it in.
+/// A usage error about the step is located here, not at the play.
+#[derive(Clone)]
+struct StepSource {
+    file: PathBuf,
+    text: Arc<str>,
+    /// The list is under a `steps:` key (a play, or an included file
+    /// written as a mapping) rather than the document itself.
+    under_steps: bool,
+    index: usize,
+    /// `file:line:col` of every `include:` that spliced the step in,
+    /// innermost first.
+    via: Vec<String>,
+}
+
+impl StepSource {
+    /// `file:line:col` of the step, or of the node `keys` names inside it
+    /// when the text has one.
+    fn at(&self, keys: &[&str]) -> String {
+        let span = (0..=keys.len())
+            .rev()
+            .find_map(|end| self.span(&keys[..end]));
+        match span {
+            Some(s) => format!("{}:{}:{}", self.file.display(), s.line, s.column),
+            None => self.file.display().to_string(),
+        }
+    }
+
+    /// The span of the node `keys` names inside the step (the step itself
+    /// for none), when the text has it.
+    fn span(&self, keys: &[&str]) -> Option<lute_core_span::Span> {
+        use lute_trace::YamlStep::{Item, Key};
+        let mut path = Vec::with_capacity(keys.len() + 2);
+        if self.under_steps {
+            path.push(Key("steps"));
+        }
+        path.push(Item(self.index));
+        path.extend(keys.iter().map(|k| Key(k)));
+        lute_trace::yaml_span(&self.text, &path)
+    }
+
+    /// A usage error about the step (`step N: …`), located at the key it
+    /// names — its first backticked name (`` `pick: x` ``, `` `expect.winner`
+    /// ``, `` unknown key `foo` ``) or the word right before it (`` occasion
+    /// `chaptr` ``) — when the step has that key, else at the step, and
+    /// naming the `include:` lines that spliced it in.
+    fn locate(&self, msg: &str) -> String {
+        let rest = msg.split_once(": ").map_or(msg, |(_, r)| r);
+        let mut parts = rest.split('`');
+        let before = parts.next().unwrap_or("");
+        let quoted = parts.next().unwrap_or("");
+        let ident = |t: &str| {
+            let end = t
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
+                .unwrap_or(t.len());
+            t[..end].to_string()
+        };
+        let candidates = [
+            ident(quoted),
+            before
+                .split_whitespace()
+                .last()
+                .map(ident)
+                .unwrap_or_default(),
+        ];
+        let keys = candidates
+            .iter()
+            .map(|c| c.split('.').filter(|k| !k.is_empty()).collect::<Vec<_>>())
+            .find(|keys| !keys.is_empty() && self.span(keys).is_some())
+            .unwrap_or_default();
+        let mut out = format!("{}: {msg}", self.at(&keys));
+        for via in &self.via {
+            out.push_str(&format!(" (included from {via})"));
+        }
+        out
+    }
+}
+
+/// dsl 0.27.0 (T3-22): one splice of an `include:` that carries `choose:` /
+/// `bridges:` — every step spliced in reads them over the script's, and a
+/// `repeat:`ed include makes one segment per repetition (its decision lists
+/// consumed afresh).
+struct Segment {
+    /// `include: <file>` at `file:line:col`, for messages.
+    include: String,
+    choose: BTreeMap<String, Vec<String>>,
     bridges: BTreeMap<String, Vec<lute_trace::BridgeAnswer>>,
 }
 
@@ -270,17 +373,85 @@ fn tiered_lists(v: &serde_yaml::Value, key: &str) -> Result<(Vec<String>, Vec<St
 }
 
 /// Parse the play script at `path` (its text already read). Total: never
-/// panics; `Err` names what is wrong.
+/// panics; `Err` is the whole usage message: `invalid play script <path>:
+/// …`, or — for a step, or an `include:` — located at its file line
+/// (round-5 T3-13).
 fn parse_script(text: &str, path: &Path) -> Result<PlayScript, String> {
     parse_script_with(text, path, true)
+}
+
+/// The top-level keys of a play script other than `steps:`.
+struct ScriptTop<'v> {
+    surfaces: MockSet,
+    save: SaveSeed,
+    expect: Option<serde_yaml::Value>,
+    derive: Option<bool>,
+    steps: Option<&'v serde_yaml::Value>,
 }
 
 /// [`parse_script`]; `steps_required: false` also admits a script that is
 /// only a save (seeds and no `steps:`) — what `lute calendar --script`
 /// starts every cell from (dsl 0.23.0 §1).
 fn parse_script_with(text: &str, path: &Path, steps_required: bool) -> Result<PlayScript, String> {
+    let plain = |e: String| format!("invalid play script {}: {e}", path.display());
     let value: serde_yaml::Value =
-        serde_yaml::from_str(text).map_err(|e| format!("malformed YAML: {e}"))?;
+        serde_yaml::from_str(text).map_err(|e| plain(format!("malformed YAML: {e}")))?;
+    let ScriptTop {
+        surfaces,
+        save,
+        expect,
+        derive,
+        steps,
+    } = parse_top(&value).map_err(plain)?;
+    let items = match steps {
+        Some(serde_yaml::Value::Sequence(items)) => items.as_slice(),
+        Some(_) => return Err(plain("`steps:` must be a list".to_string())),
+        None if steps_required => {
+            return Err(plain(
+                "`steps:` is required — the occasions to raise, in order".to_string(),
+            ))
+        }
+        None => &[],
+    };
+    if items.is_empty() && steps_required {
+        return Err(plain(
+            "`steps:` is empty — there is nothing to play".to_string(),
+        ));
+    }
+    // dsl 0.24.0 §1: `- include: <file>` splices that file's steps in its
+    // place; steps are numbered after the splice.
+    let mut stack = vec![path.canonicalize().unwrap_or_else(|_| path.to_path_buf())];
+    let from = Included {
+        file: path.to_path_buf(),
+        text: Arc::from(text),
+        under_steps: true,
+        via: Vec::new(),
+        segments: Vec::new(),
+    };
+    let mut spliced = Vec::with_capacity(items.len());
+    expand_includes(items, &from, &mut stack, &mut spliced)?;
+    let mut parsed = Vec::with_capacity(spliced.len());
+    let mut step_expects = Vec::new();
+    for (i, (item, at, segments)) in spliced.into_iter().enumerate() {
+        let (mut step, expect) = parse_step(i + 1, &item, at.clone()).map_err(|e| at.locate(&e))?;
+        step.segments = segments;
+        if let Some(e) = expect {
+            step_expects.push((step.n, step.label.clone(), e));
+        }
+        parsed.push(step);
+    }
+    Ok(PlayScript {
+        surfaces,
+        save,
+        steps: parsed,
+        step_expects,
+        expect,
+        derive,
+    })
+}
+
+/// A play script's top level, `steps:` left as written.
+fn parse_top(value: &serde_yaml::Value) -> Result<ScriptTop<'_>, String> {
     let serde_yaml::Value::Mapping(top) = value else {
         return Err("a play script must be a YAML mapping with a `steps:` list".to_string());
     };
@@ -288,7 +459,7 @@ fn parse_script_with(text: &str, path: &Path, steps_required: bool) -> Result<Pl
     let mut steps = None;
     let mut save = SaveSeed::default();
     let (mut expect, mut derive) = (None, None);
-    for (k, v) in &top {
+    for (k, v) in top {
         let Some(key) = k.as_str() else {
             return Err("a play script's top-level keys must be strings".to_string());
         };
@@ -325,10 +496,13 @@ fn parse_script_with(text: &str, path: &Path, steps_required: bool) -> Result<Pl
                 derive = Some(b);
             }
             _ => {
+                let sugg = lute_manifest::suggest::nearest(key, SCRIPT_KEYS.iter().copied(), 2)
+                    .map(|k| format!(" — did you mean `{k}`?"))
+                    .unwrap_or_default();
                 return Err(format!(
-                    "unknown top-level key `{key}` (legal: {})",
+                    "unknown top-level key `{key}`{sugg} (legal: {})",
                     SCRIPT_KEYS.join(", ")
-                ))
+                ));
             }
         }
     }
@@ -337,98 +511,146 @@ fn parse_script_with(text: &str, path: &Path, steps_required: bool) -> Result<Pl
     } else {
         let text = serde_yaml::to_string(&serde_yaml::Value::Mapping(surfaces))
             .map_err(|e| format!("cannot re-read `state:`/`facts:`/`choose:`: {e}"))?;
-        lute_trace::parse_mock_yaml(&text).map_err(|d| d.message)?
+        lute_trace::parse_mock_yaml(&text).map_err(|d| d.text().into_owned())?
     };
-    let items = match steps {
-        Some(serde_yaml::Value::Sequence(items)) => items.as_slice(),
-        Some(_) => return Err("`steps:` must be a list".to_string()),
-        None if steps_required => {
-            return Err("`steps:` is required — the occasions to raise, in order".to_string())
-        }
-        None => &[],
-    };
-    if items.is_empty() && steps_required {
-        return Err("`steps:` is empty — there is nothing to play".to_string());
-    }
-    // dsl 0.24.0 §1: `- include: <file>` splices that file's steps in its
-    // place; steps are numbered after the splice.
-    let mut stack = vec![path.canonicalize().unwrap_or_else(|_| path.to_path_buf())];
-    let items = expand_includes(items, path, &mut stack)?;
-    let mut parsed = Vec::with_capacity(items.len());
-    let mut step_expects = Vec::new();
-    for (i, item) in items.iter().enumerate() {
-        let (step, expect) = parse_step(i + 1, item)?;
-        if let Some(e) = expect {
-            step_expects.push((step.n, step.label.clone(), e));
-        }
-        parsed.push(step);
-    }
-    Ok(PlayScript {
+    Ok(ScriptTop {
         surfaces,
         save,
-        steps: parsed,
-        step_expects,
         expect,
         derive,
+        steps,
     })
 }
 
+/// The file a list of steps is being spliced from: its text, whether the
+/// list sits under `steps:`, the `include:` lines that brought it in
+/// (innermost first) and the segments open around it.
+struct Included {
+    file: PathBuf,
+    text: Arc<str>,
+    under_steps: bool,
+    via: Vec<String>,
+    segments: Vec<Arc<Segment>>,
+}
+
+impl Included {
+    /// Where item `index` of this list was written.
+    fn source(&self, index: usize) -> StepSource {
+        StepSource {
+            file: self.file.clone(),
+            text: self.text.clone(),
+            under_steps: self.under_steps,
+            index,
+            via: self.via.clone(),
+        }
+    }
+}
+
+/// The keys an `include:` step may carry (dsl 0.24.0 §1, 0.27.0 T3-22).
+const INCLUDE_KEYS: &[&str] = &["bridges", "choose", "include", "repeat"];
+
 /// dsl 0.24.0 §1: `steps` with every `- include: <file>` entry replaced by
-/// that file's steps, recursively. `from` is the file `steps` came from (an
-/// include resolves against its directory); `stack` is the chain of files
-/// being expanded — naming one of them again is a cycle. An included file is
-/// a list of steps or a mapping whose only key is `steps:`.
+/// that file's steps, recursively, each pushed onto `out` with where it was
+/// written and the segments around it. `from` is the file `steps` came
+/// from (an include resolves against its directory); `stack` is the chain
+/// of files being expanded — naming one of them again is a cycle. An
+/// included file is a list of steps or a mapping whose only key is
+/// `steps:`. dsl 0.27.0 (T3-22): an include MAY carry `repeat: n` (the
+/// file is spliced n times) and `choose:` / `bridges:`, which script every
+/// step it splices in over the script's own — each repetition a segment of
+/// its own.
 fn expand_includes(
     steps: &[serde_yaml::Value],
-    from: &Path,
+    from: &Included,
     stack: &mut Vec<PathBuf>,
-) -> Result<Vec<serde_yaml::Value>, String> {
-    let mut out = Vec::with_capacity(steps.len());
-    for item in steps {
+    out: &mut Vec<(serde_yaml::Value, StepSource, Vec<Arc<Segment>>)>,
+) -> Result<(), String> {
+    for (index, item) in steps.iter().enumerate() {
         let Some(target) = item.get("include") else {
-            out.push(item.clone());
+            out.push((item.clone(), from.source(index), from.segments.clone()));
             continue;
         };
-        let shown = from.display();
+        let here = from.source(index);
+        let err = |key: &str, msg: String| {
+            let mut out = format!("{}: {msg}", here.at(&[key]));
+            for via in &here.via {
+                out.push_str(&format!(" (included from {via})"));
+            }
+            out
+        };
         let serde_yaml::Value::Mapping(m) = item else {
             unreachable!("`get` found a key")
         };
-        if m.len() != 1 {
-            return Err(format!(
-                "{shown}: an `include:` step names only the file whose steps it splices in"
-            ));
+        let (mut repeat, mut choose, mut bridges) = (1usize, BTreeMap::new(), BTreeMap::new());
+        for (k, v) in m {
+            let key = k.as_str().unwrap_or("?");
+            match key {
+                "include" => {}
+                "repeat" => {
+                    repeat = v
+                        .as_u64()
+                        .filter(|r| *r >= 1)
+                        .and_then(|r| usize::try_from(r).ok())
+                        .ok_or_else(|| {
+                            err(key, "`repeat` must be a whole number ≥ 1".to_string())
+                        })?;
+                }
+                "choose" => {
+                    choose = parse_choose(v).map_err(|e| err(key, e))?;
+                }
+                "bridges" => {
+                    bridges = lute_trace::parse_bridges(v).map_err(|e| err(key, e))?;
+                }
+                _ => {
+                    let sugg =
+                        lute_manifest::suggest::nearest(key, INCLUDE_KEYS.iter().copied(), 2)
+                            .map(|k| format!(" — did you mean `{k}`?"))
+                            .unwrap_or_default();
+                    return Err(err(
+                        key,
+                        format!(
+                            "`{key}` does not apply to an `include:` step{sugg} — it names the \
+                             file whose steps it splices in and MAY carry `repeat`, `choose`, \
+                             `bridges`; every other key belongs on the included steps"
+                        ),
+                    ));
+                }
+            }
         }
         let Some(rel) = target.as_str().map(str::trim).filter(|s| !s.is_empty()) else {
-            return Err(format!("{shown}: `include:` must name a file"));
+            return Err(err("include", "`include:` must name a file".to_string()));
         };
-        let file = from.parent().unwrap_or(Path::new(".")).join(rel);
+        let file = from.file.parent().unwrap_or(Path::new(".")).join(rel);
         let canonical = file.canonicalize().map_err(|e| {
-            format!(
-                "{shown}: cannot read `include: {rel}` ({}): {e}",
-                file.display()
+            err(
+                "include",
+                format!("cannot read `include: {rel}` ({}): {e}", file.display()),
             )
         })?;
         if stack.contains(&canonical) {
-            return Err(format!(
-                "{shown}: `include: {rel}` is a cycle — {} is already being included",
-                file.display()
+            return Err(err(
+                "include",
+                format!(
+                    "`include: {rel}` is a cycle — {} is already being included",
+                    file.display()
+                ),
             ));
         }
         let text = std::fs::read_to_string(&canonical).map_err(|e| {
-            format!(
-                "{shown}: cannot read `include: {rel}` ({}): {e}",
-                file.display()
+            err(
+                "include",
+                format!("cannot read `include: {rel}` ({}): {e}", file.display()),
             )
         })?;
         let value: serde_yaml::Value = serde_yaml::from_str(&text)
             .map_err(|e| format!("{}: malformed YAML: {e}", file.display()))?;
-        let included = match &value {
-            serde_yaml::Value::Sequence(items) => Some(items.as_slice()),
+        let (included, under_steps) = match &value {
+            serde_yaml::Value::Sequence(items) => (Some(items.as_slice()), false),
             serde_yaml::Value::Mapping(m) if m.len() == 1 => match m.get("steps") {
-                Some(serde_yaml::Value::Sequence(items)) => Some(items.as_slice()),
-                _ => None,
+                Some(serde_yaml::Value::Sequence(items)) => (Some(items.as_slice()), true),
+                _ => (None, false),
             },
-            _ => None,
+            _ => (None, false),
         };
         let Some(included) = included else {
             return Err(format!(
@@ -436,11 +658,43 @@ fn expand_includes(
                 file.display()
             ));
         };
+        let include_at = here.at(&["include"]);
+        let mut via = vec![include_at.clone()];
+        via.extend(from.via.iter().cloned());
+        let text: Arc<str> = Arc::from(text.as_str());
         stack.push(canonical);
-        out.extend(expand_includes(included, &file, stack)?);
+        for _ in 0..repeat {
+            let mut segments = from.segments.clone();
+            if !choose.is_empty() || !bridges.is_empty() {
+                segments.push(Arc::new(Segment {
+                    include: format!("`include: {rel}` at {include_at}"),
+                    choose: choose.clone(),
+                    bridges: bridges.clone(),
+                }));
+            }
+            let inner = Included {
+                file: file.clone(),
+                text: text.clone(),
+                under_steps,
+                via: via.clone(),
+                segments,
+            };
+            expand_includes(included, &inner, stack, out)?;
+        }
         stack.pop();
     }
-    Ok(out)
+    Ok(())
+}
+
+/// A step's (or an include's) `choose:`, parsed by the trace-mock grammar.
+fn parse_choose(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let mut doc = serde_yaml::Mapping::new();
+    doc.insert("choose".into(), v.clone());
+    let text = serde_yaml::to_string(&serde_yaml::Value::Mapping(doc))
+        .map_err(|e| format!("cannot re-read `choose:`: {e}"))?;
+    lute_trace::parse_mock_yaml(&text)
+        .map(|m| m.choose)
+        .map_err(|d| d.text().into_owned())
 }
 
 /// `engine:` / long-form `newRun:` writes. `retract` says whether
@@ -521,8 +775,10 @@ fn parse_writes(
 fn parse_step(
     n: usize,
     item: &serde_yaml::Value,
+    at: StepSource,
 ) -> Result<(ScriptStep, Option<serde_yaml::Value>), String> {
-    let shape = "one of `occasion` (with `target`, `pick`, `choose`), `newRun`, `engine`, \
+    let shape =
+        "one of `occasion` (with `target`, `payload`, `pick`, `choose`), `newRun`, `engine`, \
                  `event`, `advance` (with `pick`, `choose`, `engine`), `end` — plus \
                  `label`/`repeat`/`expect`";
     let serde_yaml::Value::Mapping(m) = item else {
@@ -546,13 +802,17 @@ fn parse_step(
     let mut advance = None;
     let mut bridges = BTreeMap::new();
     let mut occasion_only: Vec<&str> = Vec::new();
+    let mut payload: Vec<(String, String)> = Vec::new();
     for (k, v) in m {
         let Some(key) = k.as_str() else {
             return Err(format!("step {n}: keys must be strings"));
         };
         let Some(&key) = STEP_KEYS.iter().find(|&&s| s == key) else {
+            let sugg = lute_manifest::suggest::nearest(key, STEP_KEYS.iter().copied(), 2)
+                .map(|k| format!(" — did you mean `{k}`?"))
+                .unwrap_or_default();
             return Err(format!(
-                "step {n}: unknown key `{key}` (legal: {})",
+                "step {n}: unknown key `{key}`{sugg} (legal: {})",
                 STEP_KEYS.join(", ")
             ));
         };
@@ -567,6 +827,23 @@ fn parse_step(
                 occasion_only.push(key);
                 target = Some(non_empty(key, v)?);
             }
+            // dsl 0.27.0 §3: `payload: { copies: 2 }` — the raise's payload.
+            "payload" => {
+                occasion_only.push(key);
+                let serde_yaml::Value::Mapping(fields) = v else {
+                    return Err(format!(
+                        "step {n}: `payload` must be a mapping of field -> literal"
+                    ));
+                };
+                for (field, value) in fields {
+                    let (Some(field), Some(lit)) = (field.as_str(), scalar_text(value)) else {
+                        return Err(format!(
+                            "step {n}: `payload` must be a mapping of field -> literal"
+                        ));
+                    };
+                    payload.push((field.to_string(), lit));
+                }
+            }
             "pick" => {
                 occasion_only.push(key);
                 let s = non_empty(key, v)?;
@@ -578,13 +855,7 @@ fn parse_step(
             }
             "choose" => {
                 occasion_only.push(key);
-                let mut doc = serde_yaml::Mapping::new();
-                doc.insert("choose".into(), v.clone());
-                let text = serde_yaml::to_string(&serde_yaml::Value::Mapping(doc))
-                    .map_err(|e| format!("step {n}: cannot re-read `choose:`: {e}"))?;
-                choose = lute_trace::parse_mock_yaml(&text)
-                    .map_err(|d| format!("step {n}: {}", d.message))?
-                    .choose;
+                choose = parse_choose(v).map_err(|e| format!("step {n}: `choose`: {e}"))?;
             }
             "bridges" => {
                 bridges = lute_trace::parse_bridges(v).map_err(|e| format!("step {n}: {e}"))?
@@ -679,6 +950,10 @@ fn parse_step(
     if actions.contains(&"advance") && actions.contains(&"engine") {
         actions.retain(|a| *a != "engine");
     }
+    // dsl 0.27.0 §4: so may an `occasion:` (the writes land, then the raise).
+    if actions.contains(&"occasion") && actions.contains(&"engine") {
+        actions.retain(|a| *a != "engine");
+    }
     let action = match actions.as_slice() {
         [] => return Err(format!("step {n} names no action — {shape}")),
         [a, b, ..] => {
@@ -695,9 +970,11 @@ fn parse_step(
     // (the plan refuses them when the clock raises nothing).
     let raises = action == "occasion" || action == "advance";
     if action != "occasion" {
-        let misplaced = occasion_only.iter().find(|k| !raises || **k == "target");
+        let misplaced = occasion_only
+            .iter()
+            .find(|k| !raises || matches!(**k, "target" | "payload"));
         if let Some(key) = misplaced {
-            let only = if *key == "target" {
+            let only = if matches!(*key, "target" | "payload") {
                 "an `occasion` step"
             } else {
                 "an `occasion` or `advance` step"
@@ -734,6 +1011,8 @@ fn parse_step(
             target,
             pick,
             choose,
+            payload,
+            writes: writes.take(),
         },
         "event" => StepAction::Event(event.unwrap_or_default()),
         "advance" => StepAction::Advance {
@@ -754,6 +1033,8 @@ fn parse_step(
             repeat,
             action,
             bridges,
+            at,
+            segments: Vec::new(),
         },
         expect,
     ))
@@ -897,6 +1178,11 @@ enum Action {
         target: Option<String>,
         pick: Option<Pick>,
         choose: BTreeMap<String, Vec<String>>,
+        /// dsl 0.27.0 §3: the raise's payload, typed, by
+        /// `occasion.payload.<field>` path.
+        payload: BTreeMap<String, lute_trace::Value>,
+        /// dsl 0.27.0 §4: the step's `engine:` writes, applied first.
+        writes: Option<Writes>,
     },
     NewRun(Writes),
     Engine(Writes),
@@ -924,6 +1210,16 @@ struct Step {
     action: Action,
     /// The step's own `bridges:` (dsl 0.24.0 §5), resolved against the
     /// project's plugin calls — every run of the step gets them afresh.
+    bridges: BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
+    /// dsl 0.27.0 (T3-22): the `include:` segments around the step,
+    /// outermost first — one `Arc` per segment, shared by its steps.
+    segments: Vec<Arc<Scope>>,
+}
+
+/// A [`Segment`] resolved against the project: what its steps are scripted
+/// by over the script's own `choose:` / `bridges:`.
+struct Scope {
+    choose: BTreeMap<String, Vec<String>>,
     bridges: BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
 }
 
@@ -1000,6 +1296,8 @@ fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, String
     let mut answered: BTreeSet<&str> = p.index.beats.iter().map(|b| b.on.as_str()).collect();
     answered.extend(p.objective_occasions.iter().map(String::as_str));
     let mut plan = Vec::with_capacity(steps.len());
+    // One resolved scope per segment, shared by every step it spliced in.
+    let mut scopes: Vec<(Arc<Segment>, Arc<Scope>)> = Vec::new();
     for step in steps {
         let n = step.n;
         let action = match &step.action {
@@ -1035,14 +1333,24 @@ fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, String
                 target,
                 pick,
                 choose,
+                payload,
+                writes,
             } => {
                 let pick = entry_pick(p, pick);
                 plan_occasion(p, &answered, n, occasion, target.as_deref(), pick.as_ref())?;
+                let payload = lute_trace::exec::session::typed_payload(p, occasion, payload)
+                    .map_err(|e| format!("step {n}: {e}"))?;
+                let writes = match writes {
+                    Some(raw) => Some(resolve_writes(p, n, "engine", raw)?),
+                    None => None,
+                };
                 Action::Occasion {
                     occasion: occasion.clone(),
                     target: target.clone(),
                     pick,
                     choose: choose.clone(),
+                    payload,
+                    writes,
                 }
             }
             StepAction::Advance {
@@ -1055,7 +1363,7 @@ fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, String
                 let Some(clock) = &p.index.clock else {
                     return Err(format!(
                         "step {n}: `advance:` moves the declared clock, and no schema of this \
-                         project declares a `clock:` (dsl 0.24.0 §1)"
+                         project declares a `clock:`"
                     ));
                 };
                 let writes = resolve_writes(p, n, "engine", writes)?;
@@ -1072,21 +1380,28 @@ fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, String
                 let by = resolve_advance(clock, n, by)?;
                 let pick = &entry_pick(p, pick);
                 let raise = clock.raises();
-                if raise.slot.is_none() {
-                    let key = if pick.is_some() {
-                        Some("`pick`".to_string())
-                    } else if !choose.is_empty() {
-                        Some("`choose`".to_string())
-                    } else {
-                        occasion_expect.map(|k| format!("`expect.{k}`"))
-                    };
-                    if let Some(key) = key {
-                        return Err(format!(
-                            "step {n}: {key} judges the occasion an `advance:` raises where the \
-                             clock stops, and the clock declares no `raise:` slot occasion — \
-                             the advance presents nothing there"
-                        ));
-                    }
+                // dsl 0.27.0 (T3-8): `pick` answers the `select: all` slot
+                // raise where the clock stops; `choose` and the selection
+                // expectations judge whatever the step raises — its
+                // midnights' `dayEnd` / `dayStart` too.
+                if raise.slot.is_none() && pick.is_some() {
+                    return Err(format!(
+                        "step {n}: `pick` answers the slot occasion an `advance:` raises where \
+                         the clock stops, and the clock declares no `raise.slot` occasion"
+                    ));
+                }
+                let raises_any =
+                    raise.slot.is_some() || raise.day_start.is_some() || raise.day_end.is_some();
+                let key = if !choose.is_empty() {
+                    Some("`choose`".to_string())
+                } else {
+                    occasion_expect.map(|k| format!("`expect.{k}`"))
+                };
+                if let (Some(key), false) = (key, raises_any) {
+                    return Err(format!(
+                        "step {n}: {key} judges what an `advance:` raises, and the clock \
+                         declares no `raise:` occasion — the advance presents nothing"
+                    ));
                 }
                 let moments = [
                     (&raise.slot, pick.as_ref()),
@@ -1122,12 +1437,26 @@ fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, String
                 }
             }
         };
+        let mut segments = Vec::with_capacity(step.segments.len());
+        for seg in &step.segments {
+            if let Some((_, scope)) = scopes.iter().find(|(s, _)| Arc::ptr_eq(s, seg)) {
+                segments.push(scope.clone());
+                continue;
+            }
+            let scope = Arc::new(Scope {
+                choose: seg.choose.clone(),
+                bridges: resolve_bridges(p, &format!("step {n}: {}", seg.include), &seg.bridges)?,
+            });
+            scopes.push((seg.clone(), scope.clone()));
+            segments.push(scope);
+        }
         plan.push(Step {
             n,
             label: step.label.clone(),
             repeat: step.repeat,
             action,
             bridges: resolve_bridges(p, &format!("step {n}"), &step.bridges)?,
+            segments,
         });
     }
     Ok(plan)
@@ -1210,11 +1539,19 @@ fn plan_occasion(
     pick: Option<&Pick>,
 ) -> Result<(), String> {
     let decl = p.occasions.get(occasion);
+    // Round-5 T3-13: the nearest occasion name.
+    let near = |known: &mut dyn Iterator<Item = &str>| {
+        let known: Vec<&str> = known.collect();
+        lute_manifest::suggest::nearest(occasion, known, 2)
+            .map(|k| format!(" — did you mean `{k}`?"))
+            .unwrap_or_default()
+    };
     if p.occasions.is_empty() {
         if !answered.contains(occasion) {
+            let sugg = near(&mut answered.iter().copied());
             return Err(format!(
                 "step {n}: occasion `{occasion}` is answered by no beat and judges no \
-                 objective in this project (no plugin declares occasions, so the beats' and \
+                 objective in this project{sugg} (no plugin declares occasions, so the beats' and \
                  objectives' `on` values are the vocabulary)"
             ));
         }
@@ -1223,12 +1560,39 @@ fn plan_occasion(
         let hint = if p.world_events.contains(occasion) {
             format!(" — `{occasion}` is a world event; fire it with `event: {occasion}`")
         } else {
-            String::new()
+            near(&mut declared.iter().copied())
         };
         return Err(format!(
-            "step {n}: occasion `{occasion}` is declared by no resolved plugin (declared: {}){hint}",
+            "step {n}: occasion `{occasion}` is declared by no resolved plugin{hint} (declared: {})",
             declared.join(", ")
         ));
+    }
+    // Round-5 T3-13: under shape-only vocabulary nothing declares that the
+    // occasion takes a target — but when every beat answering it has one,
+    // a raise for no target presents none of them.
+    if target.is_none() && decl.is_none() && !p.objective_occasions.contains(occasion) {
+        let targets: BTreeSet<&str> = p
+            .index
+            .beats
+            .iter()
+            .filter(|b| b.on == occasion)
+            .map(|b| b.target.as_deref())
+            .collect::<Option<_>>()
+            .unwrap_or_default();
+        if !targets.is_empty() {
+            let shown: Vec<&str> = targets.iter().take(3).copied().collect();
+            let more = if targets.len() > shown.len() {
+                ", …"
+            } else {
+                ""
+            };
+            return Err(format!(
+                "step {n}: `target:` is missing — every beat on `{occasion}` has a target \
+                 (`{}`{more}), so raised for no target it presents none of them; did you forget \
+                 `target:`?",
+                shown.join("`, `")
+            ));
+        }
     }
     match (target, decl) {
         (Some(t), Some(d)) if !d.target.takes_target() => {
@@ -1309,6 +1673,9 @@ struct Playthrough {
     /// The steps an `end: true` step left unplayed: `(n, label)`.
     skipped: Vec<(usize, Option<String>)>,
     outcome: Result<String, PlayHalt>,
+    /// dsl 0.27.0 §4: the playthrough ended in the project's terminal state
+    /// (`end: terminal`) — every step played and `terminal:` holds.
+    terminal: bool,
     world: World,
 }
 
@@ -1322,9 +1689,10 @@ fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) -> Playthroug
             start: Vec::new(),
             steps: Vec::new(),
             skipped: Vec::new(),
+            terminal: false,
             outcome: Err(PlayHalt::Error(format!(
                 "the script's seeded world holds exclusive relations together before step 1 — \
-                 {} (dsl 0.25.0 §1); fix the script's `facts:` (or the `excludes:` declaration)",
+                 {}; fix the script's `facts:` (or the `excludes:` declaration)",
                 seeded.join("; ")
             ))),
             world: s.world,
@@ -1336,14 +1704,18 @@ fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) -> Playthroug
         start,
         steps,
         skipped: Vec::new(),
+        terminal: false,
         outcome: Err(h),
         world,
     };
     if let Some(h) = halt {
         return finish(start, steps, h, s.world);
     }
+    let mut open: Vec<OpenScope> = Vec::new();
     for (i, step) in plan.iter().enumerate() {
+        enter_scopes(&mut s.world, &mut open, &step.segments);
         if matches!(step.action, Action::End) {
+            enter_scopes(&mut s.world, &mut open, &[]);
             steps.push(StepRecord {
                 n: step.n,
                 label: step.label.clone(),
@@ -1370,6 +1742,7 @@ fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) -> Playthroug
                 start,
                 steps,
                 skipped,
+                terminal: false,
                 outcome: Ok(reason),
                 world: s.world,
             };
@@ -1383,6 +1756,30 @@ fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) -> Playthroug
             // dsl 0.24.0 §5: the step's own answers ride before the top
             // level's for exactly this run of the step.
             s.world.bridges.step = step.bridges.clone();
+            // dsl 0.27.0 §4: an `occasion:` step's `engine:` writes land
+            // first (their own record, then the settle), so the raise — its
+            // `raisedWhen` gate included — sees them.
+            if let Action::Occasion {
+                writes: Some(writes),
+                ..
+            } = &step.action
+            {
+                let (body, quests, halt) = s.engine(step.n, writes);
+                steps.push(StepRecord {
+                    n: step.n,
+                    label: step.label.clone(),
+                    iteration: (step.repeat > 1).then_some((k, step.repeat)),
+                    body,
+                    quests,
+                    world: None,
+                    notes: Vec::new(),
+                    exclusive: Vec::new(),
+                });
+                if let Some(h) = halt {
+                    return finish(start, steps, h, s.world);
+                }
+            }
+            let was_terminal = s.terminal();
             let (body, quests, halt) = run_step(&mut s, step);
             let leftover = std::mem::take(&mut s.world.bridges.step);
             let halt = halt.or_else(|| unconsumed_step_bridges(step.n, &leftover));
@@ -1396,12 +1793,20 @@ fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) -> Playthroug
             let halt = halt.or_else(|| {
                 (!exclusive.is_empty()).then(|| {
                     PlayHalt::Error(format!(
-                        "step {}: exclusive relations hold together — {} (dsl 0.25.0 §1)",
+                        "step {}: exclusive relations hold together — {}",
                         step.n,
                         exclusive.join("; ")
                     ))
                 })
             });
+            let mut notes: Vec<String> = clock_raised_note(&s, &step.action, &plan[i + 1..])
+                .into_iter()
+                .chain(closed_raise_notes(&body))
+                .collect();
+            // dsl 0.27.0 §4: the step that ended the game says so.
+            if halt.is_none() && !was_terminal && s.terminal() {
+                notes.push(terminal_note(&s));
+            }
             steps.push(StepRecord {
                 n: step.n,
                 label: step.label.clone(),
@@ -1409,15 +1814,27 @@ fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) -> Playthroug
                 body,
                 quests,
                 world: wants.map(|wants| s.view(wants.facts)),
-                notes: clock_raised_note(&s, &step.action, &plan[i + 1..])
-                    .into_iter()
-                    .collect(),
+                notes,
                 exclusive,
             });
             if let Some(h) = halt {
                 return finish(start, steps, h, s.world);
             }
         }
+    }
+    enter_scopes(&mut s.world, &mut open, &[]);
+    // dsl 0.27.0 §4: a playthrough whose last step left the game over ends
+    // in the terminal state (a later raising step was refused above).
+    if s.terminal() {
+        let reason = format!("terminal — `terminal: {}` holds", terminal_text(&s));
+        return Playthrough {
+            start,
+            steps,
+            skipped: Vec::new(),
+            outcome: Ok(reason),
+            terminal: true,
+            world: s.world,
+        };
     }
     let n = steps.len();
     Playthrough {
@@ -1428,7 +1845,110 @@ fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) -> Playthroug
             "complete ({n} step{})",
             if n == 1 { "" } else { "s" }
         )),
+        terminal: false,
         world: s.world,
+    }
+}
+
+/// The project's `terminal:` condition as written.
+fn terminal_text<'s>(s: &'s Session<'_>) -> &'s str {
+    s.project()
+        .index
+        .terminal
+        .as_ref()
+        .map_or("", |t| t.raw.as_str())
+}
+
+/// dsl 0.27.0 §4: the note on the step after which `terminal:` holds.
+fn terminal_note(s: &Session<'_>) -> String {
+    format!(
+        "the game is over — `terminal: {}` holds, so the engine raises no occasion from here \
+         (`occasion:` / `advance:` steps are refused; `newRun: true` starts a new run)",
+        terminal_text(s)
+    )
+}
+
+/// dsl 0.27.0 §4: one note per raise an `advance:` did not make because the
+/// seam was closed — the clock still moved and settled.
+fn closed_raise_notes(body: &StepBody) -> Vec<String> {
+    let StepBody::Advance { closed, .. } = body else {
+        return Vec::new();
+    };
+    closed
+        .iter()
+        .map(|c| {
+            let why = match &c.why {
+                Closed::Gate(g) => format!("its `raisedWhen: {g}` is false there"),
+                Closed::Terminal(t) => format!("the game is over (`terminal: {t}` holds)"),
+                Closed::Unknown(u) => format!("whether the engine may raise it is undecided: {u}"),
+            };
+            format!(
+                "`{}` was not raised at {} — {why}; the clock moved on without it",
+                c.occasion, c.at
+            )
+        })
+        .collect()
+}
+
+/// dsl 0.27.0 (T3-22): a segment open around the running step, with what
+/// it replaced in the world — per `choose:` key the script's list and its
+/// consumption, per `bridges:` tag the queue — so leaving it restores them.
+struct OpenScope {
+    scope: Arc<Scope>,
+    choose: Vec<(String, Option<Vec<String>>, Option<usize>)>,
+    bridges: Vec<(String, Option<VecDeque<lute_trace::BridgeAnswer>>)>,
+}
+
+/// Make `want` (outermost first) the open segments: leave every open one
+/// that is not a prefix of it, innermost first, then enter the rest. A
+/// segment's `choose:` lists replace the script's key by key and are
+/// consumed from their start; its `bridges:` queues replace the script's
+/// top-level ones tag by tag. Answers and decisions left over when it
+/// closes are dropped with it.
+fn enter_scopes(w: &mut World, open: &mut Vec<OpenScope>, want: &[Arc<Scope>]) {
+    let keep = open
+        .iter()
+        .zip(want)
+        .take_while(|(o, s)| Arc::ptr_eq(&o.scope, s))
+        .count();
+    while open.len() > keep {
+        let Some(o) = open.pop() else { break };
+        for (k, list, cursor) in o.choose.into_iter().rev() {
+            match list {
+                Some(list) => w.choose.insert(k.clone(), list),
+                None => w.choose.remove(&k),
+            };
+            match cursor {
+                Some(c) => w.choice_cursor.insert(k, c),
+                None => w.choice_cursor.remove(&k),
+            };
+        }
+        for (tag, queue) in o.bridges.into_iter().rev() {
+            match queue {
+                Some(q) => w.bridges.top.insert(tag, q),
+                None => w.bridges.top.remove(&tag),
+            };
+        }
+    }
+    for scope in &want[keep..] {
+        let choose = scope
+            .choose
+            .iter()
+            .map(|(k, list)| {
+                let prev = w.choose.insert(k.clone(), list.clone());
+                (k.clone(), prev, w.choice_cursor.remove(k))
+            })
+            .collect();
+        let bridges = scope
+            .bridges
+            .iter()
+            .map(|(tag, q)| (tag.clone(), w.bridges.top.insert(tag.clone(), q.clone())))
+            .collect();
+        open.push(OpenScope {
+            scope: scope.clone(),
+            choose,
+            bridges,
+        });
     }
 }
 
@@ -1456,6 +1976,10 @@ fn clock_raised_note(s: &Session<'_>, action: &Action, later: &[Step]) -> Option
         return None;
     };
     let mut at = s.clock_at()?;
+    // dsl 0.27.0 §4: a finite clock stops at its last position, raising
+    // its last `dayEnd` once; an advance after that moves nothing.
+    let last = clock.last_at();
+    let mut ended = s.world.clock_ended;
     let passed = later
         .iter()
         .take_while(|s| !matches!(s.action, Action::NewRun(_) | Action::End))
@@ -1468,9 +1992,17 @@ fn clock_raised_note(s: &Session<'_>, action: &Action, later: &[Step]) -> Option
                 _ => raise.day_start.as_ref(),
             } == Some(occasion);
             (0..s.repeat).any(|_| {
-                let to = clock.advance(at, *by);
-                let crossed = to.day > at.day;
+                if ended {
+                    return false;
+                }
+                let mut to = clock.advance(at, *by);
+                let ends = last.is_some_and(|end| to > end);
+                if let Some(end) = last.filter(|_| ends) {
+                    to = end;
+                }
+                let crossed = to.day > at.day || (ends && moment == "dayEnd");
                 at = to;
+                ended = ends;
                 raises && crossed
             })
         });
@@ -1478,8 +2010,7 @@ fn clock_raised_note(s: &Session<'_>, action: &Action, later: &[Step]) -> Option
         format!(
             "`{occasion}` is the clock's `raise: {{ {moment}: {occasion} }}` — an `advance:` \
              raises it {when}; this step raises it again, so the same day's `{occasion}` runs \
-             twice once an `advance:` passes it (drop the step and let `advance:` raise it; dsl \
-             0.24.0 §1)"
+             twice once an `advance:` passes it (drop the step and let `advance:` raise it)"
         )
     })
 }
@@ -1527,7 +2058,12 @@ fn run_step(s: &mut Session<'_>, step: &Step) -> lute_trace::exec::session::Step
             target,
             pick,
             choose,
-        } => s.occasion(n, occasion, target, pick, choose),
+            payload,
+            ..
+        } => {
+            s.bind_payload(payload);
+            s.occasion(n, occasion, target, pick, choose)
+        }
         Action::NewRun(seed) => s.new_run(n, seed),
         Action::Engine(writes) => s.engine(n, writes),
         Action::Event(event) => s.event(event),
@@ -1756,21 +2292,24 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
             }
             authored().unwrap_or_else(|| lowered(kind, orig))
         }
-        // T1-3: a directive's declared effect names the call it came from.
-        "set" => {
+        // T1-3 / dsl 0.27.0 §4: a directive's declared effect names the call
+        // it came from.
+        "set" | "assert" | "retract" => {
             let effect = rec
                 .get("effectOf")
                 .and_then(Json::as_str)
                 .map(|tag| format!("  (effect of ::{tag})"))
                 .unwrap_or_default();
-            format!(
-                "  set {} = {}{effect}",
-                str_of(rec, "path"),
-                rec.get("value").map(Json::to_string).unwrap_or_default()
-            )
+            match kind {
+                "set" => format!(
+                    "  set {} = {}{effect}",
+                    str_of(rec, "path"),
+                    rec.get("value").map(Json::to_string).unwrap_or_default()
+                ),
+                "assert" => format!("  assert {}{effect}", str_of(rec, "fact")),
+                _ => format!("  retract {}{effect}", str_of(rec, "pattern")),
+            }
         }
-        "assert" => format!("  assert {}", str_of(rec, "fact")),
-        "retract" => format!("  retract {}", str_of(rec, "pattern")),
         "choice" | "hub" => {
             let id = str_of(rec, if kind == "choice" { "branch" } else { "hub" });
             let chosen = rec.get("chose").and_then(Json::as_str);
@@ -1850,7 +2389,7 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
         // dsl 0.24.0 §2 (ER N15): an accept the child's inactive parent spent.
         "acceptSpent" => format!(
             "  note: accept of quest {} spent — its parent quest {} is {}; an \
-             `activate=\"accept\"` child activates only while its parent is active (dsl 0.24.0 §2)",
+             `activate=\"accept\"` child activates only while its parent is active",
             str_of(rec, "quest"),
             str_of(rec, "parent"),
             match str_of(rec, "parentStatus") {
@@ -1893,6 +2432,36 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 str_of(rec, "quest"),
                 str_of(rec, "objective")
             ),
+        },
+        // dsl 0.27.0 §5: a quest a rearm or a season opening returned to
+        // `unset`.
+        "quest" if rec.get("reset").is_some() => format!(
+            "  quest {} -> unset ({}; was {})",
+            str_of(rec, "quest"),
+            match str_of(rec, "reset") {
+                "rearm" => "rearmed".to_string(),
+                season => format!("{season} opened"),
+            },
+            str_of(rec, "was")
+        ),
+        // dsl 0.27.0 §5: a season's window opening / closing.
+        "season" => match str_of(rec, "state") {
+            "open" => format!(
+                "  season {} opens — season.{}.* reset to defaults{}",
+                str_of(rec, "season"),
+                str_of(rec, "season"),
+                match rec.get("prev").and_then(Json::as_object) {
+                    Some(prev) if !prev.is_empty() => format!(
+                        "; last window: {}",
+                        prev.iter()
+                            .map(|(k, v)| format!("{k} = {v}"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    _ => String::new(),
+                }
+            ),
+            _ => format!("  season {} closes", str_of(rec, "season")),
         },
         // dsl 0.24.0 §2: a failure names its reason (`failedBy`).
         "quest" => match rec.get("failedBy").and_then(Json::as_str) {
@@ -1961,11 +2530,23 @@ fn render_records(out: &mut String, p: &ExecProject, ir: bool, document: &str, r
 
 const RULE: &str = "──────────────";
 
+/// The verdict text of a candidate whose `when` decided false.
+const WHEN_FALSE: &str = "when: false";
+
+/// Round-5 T3-16: from this many `when: false` candidates at one raise (a
+/// roster), they print as one count line instead of one line each.
+const FOLD_WHEN_FALSE: usize = 5;
+
 fn render_candidate(c: &Candidate) -> String {
     let read = if c.read { ", read" } else { "" };
     let also = if c.also { ", also" } else { "" };
+    // dsl 0.27.0 §3: a `for` beat's candidate names the member it is for.
+    let member = c
+        .for_member
+        .as_ref()
+        .map_or_else(String::new, |m| format!(" for {m}"));
     let head = format!(
-        "{} [{}, priority {}{read}{also}]",
+        "{}{member} [{}, priority {}{read}{also}]",
         c.id,
         kind_label(c.kind),
         c.priority
@@ -2008,7 +2589,17 @@ fn render_write(rec: &Json) -> String {
     }
 }
 
-fn render_human(p: &ExecProject, play: &Playthrough, ir: bool) -> String {
+/// How the human transcript prints: `ir` shows staging as the lowered IR
+/// (`--ir`); `quiet` leaves out the candidates that were not eligible
+/// (`--quiet`, round-5 T3-16).
+#[derive(Clone, Copy, Default)]
+pub(crate) struct View {
+    pub ir: bool,
+    pub quiet: bool,
+}
+
+fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> String {
+    let ir = view.ir;
     let mut out = String::new();
     if !play.start.is_empty() {
         out.push_str(&format!("── start {RULE}\n"));
@@ -2052,7 +2643,7 @@ fn render_human(p: &ExecProject, play: &Playthrough, ir: bool) -> String {
                     out.push_str(&format!(
                         "  note: quest {id} was accepted this run and is still active with no \
                          objective done or failed — the reset discards it; a run-tier quest taken \
-                         between runs is `::accept{{quest=\"{id}\" at=\"nextRun\"}}` (dsl 0.24.0 §2)\n"
+                         between runs is `::accept{{quest=\"{id}\" at=\"nextRun\"}}`\n"
                     ));
                 }
                 for id in accepted {
@@ -2084,8 +2675,19 @@ fn render_human(p: &ExecProject, play: &Playthrough, ir: bool) -> String {
                 settled,
                 days,
                 raised,
+                ended,
+                closed: _,
             } => {
-                out.push_str(&format!("{head} · advance {by}: {from} → {to} {RULE}\n"));
+                // dsl 0.27.0 §4: an advance that reached a finite clock's
+                // end says so on its own line.
+                let ended = if *ended {
+                    " · the clock ends (its last position)"
+                } else {
+                    ""
+                };
+                out.push_str(&format!(
+                    "{head} · advance {by}: {from} → {to}{ended} {RULE}\n"
+                ));
                 for d in days {
                     for rec in &d.writes {
                         out.push_str(&render_write(rec));
@@ -2097,7 +2699,7 @@ fn render_human(p: &ExecProject, play: &Playthrough, ir: bool) -> String {
                     render_occasion_human(
                         &mut out,
                         p,
-                        ir,
+                        view,
                         &format!("{head} · {}", d.at),
                         &d.occasion,
                     );
@@ -2116,10 +2718,12 @@ fn render_human(p: &ExecProject, play: &Playthrough, ir: bool) -> String {
                     render_records(&mut out, p, ir, &q.document, &q.transcript);
                 }
                 if let Some(body) = raised {
-                    render_occasion_human(&mut out, p, ir, &head, body);
+                    render_occasion_human(&mut out, p, view, &head, body);
                 }
             }
-            body @ StepBody::Occasion { .. } => render_occasion_human(&mut out, p, ir, &head, body),
+            body @ StepBody::Occasion { .. } => {
+                render_occasion_human(&mut out, p, view, &head, body)
+            }
         }
         for note in &s.notes {
             out.push_str(&format!("  note: {note}\n"));
@@ -2151,7 +2755,14 @@ fn render_human(p: &ExecProject, play: &Playthrough, ir: bool) -> String {
 /// lines under `head`: the header, the quest advances a `judge: before`
 /// raise made, every candidate with its verdict, what was presented, then
 /// each presentation's transcript.
-fn render_occasion_human(out: &mut String, p: &ExecProject, ir: bool, head: &str, body: &StepBody) {
+fn render_occasion_human(
+    out: &mut String,
+    p: &ExecProject,
+    view: View,
+    head: &str,
+    body: &StepBody,
+) {
+    let ir = view.ir;
     let StepBody::Occasion {
         occasion,
         target,
@@ -2195,18 +2806,45 @@ fn render_occasion_human(out: &mut String, p: &ExecProject, ir: bool, head: &str
     {
         out.push_str(&render_candidate(c));
     }
-    for c in candidates
+    // Round-5 T3-16: a roster's `when: false` rows fold into one count
+    // line; `--quiet` leaves out every candidate that was not eligible (an
+    // undecided `?` one still prints — it is why a play halts).
+    let not_eligible: Vec<&Candidate> = candidates
         .iter()
         .filter(|c| !matches!(c.verdict, Verdict::Eligible))
-    {
+        .filter(|c| !(view.quiet && matches!(c.verdict, Verdict::Ineligible(_))))
+        .collect();
+    let when_false = |c: &Candidate| matches!(&c.verdict, Verdict::Ineligible(reason) if reason.to_string() == WHEN_FALSE);
+    let folded: Vec<&str> = not_eligible
+        .iter()
+        .filter(|c| when_false(c))
+        .map(|c| c.id.as_str())
+        .collect();
+    let fold = folded.len() >= FOLD_WHEN_FALSE;
+    for c in not_eligible.iter().filter(|c| !(fold && when_false(c))) {
         out.push_str(&render_candidate(c));
+    }
+    if fold {
+        let shown = &folded[..3];
+        out.push_str(&format!(
+            "  ✗ {} beats — {WHEN_FALSE}: {}, … (`lute play --json` lists every candidate)\n",
+            folded.len(),
+            shown.join(", ")
+        ));
     }
     let is_also = |id: &str| candidates.iter().any(|c| c.also && c.id == id);
     if *decided {
         match (select, winner, pick) {
             (OccasionSelect::Sequence, _, _) if !presented.is_empty() => {
                 for pr in presented {
-                    out.push_str(&format!("  → {}\n", pr.id));
+                    // dsl 0.27.0 §3: a `for` beat names the member it played for.
+                    let for_beat = candidates
+                        .iter()
+                        .any(|c| c.id == pr.id && c.for_member.is_some());
+                    match pr.member.as_deref().filter(|_| for_beat) {
+                        Some(m) => out.push_str(&format!("  → {} for {m}\n", pr.id)),
+                        None => out.push_str(&format!("  → {}\n", pr.id)),
+                    }
                 }
             }
             (_, Some(id), _) => out.push_str(&format!("  → {id}\n")),
@@ -2233,42 +2871,48 @@ fn render_occasion_human(out: &mut String, p: &ExecProject, ir: bool, head: &str
 /// `transcriptContains` / `transcriptLacks` match (dsl 0.24.0 T1-2, 0.27
 /// T1-11). The canonical form `lute test` matches a scene test's walk
 /// against too ([`lute_trace::TraceReport::said`]): no step headers,
-/// candidates, `skip … — when: false` lines, staging, or notes.
-fn said(p: &ExecProject, play: &Playthrough) -> String {
-    let mut out = String::new();
-    let mut push = |document: &str, records: &[Json]| {
+/// candidates, `skip … — when: false` lines, staging, or notes. Beside it,
+/// the index of each step's first line (a miss's nearest line prefers the
+/// step the needle's other lines were said in, round-5 T3-16).
+fn said(p: &ExecProject, play: &Playthrough) -> (String, Vec<usize>) {
+    // The transcript so far and its line count.
+    let mut acc = (String::new(), 0usize);
+    let push = |acc: &mut (String, usize), document: &str, records: &[Json]| {
         let cmds = DocCmds::new(p, document, false);
         for rec in records.iter().filter(|r| str_of(r, "kind") == "line") {
-            out.push_str(&lute_trace::exec::said_line(
+            acc.0.push_str(&lute_trace::exec::said_line(
                 rec,
                 cmds.get(str_of(rec, "addr")),
             ));
-            out.push('\n');
+            acc.0.push('\n');
+            acc.1 += 1;
         }
     };
     for q in &play.start {
-        push(&q.document, &q.transcript);
+        push(&mut acc, &q.document, &q.transcript);
     }
+    let mut steps = Vec::with_capacity(play.steps.len());
     for s in &play.steps {
+        steps.push(acc.1);
         for played in s.body.days_played() {
             match played {
-                Played::Quest(q) => push(&q.document, &q.transcript),
-                Played::Beat(pr) => push(&pr.document, &pr.transcript),
+                Played::Quest(q) => push(&mut acc, &q.document, &q.transcript),
+                Played::Beat(pr) => push(&mut acc, &pr.document, &pr.transcript),
             }
         }
         for q in s.body.settled() {
-            push(&q.document, &q.transcript);
+            push(&mut acc, &q.document, &q.transcript);
         }
         if let Some(StepBody::Occasion { presented, .. }) = s.body.occasion() {
             for pr in presented {
-                push(&pr.document, &pr.transcript);
+                push(&mut acc, &pr.document, &pr.transcript);
             }
         }
         for q in &s.quests {
-            push(&q.document, &q.transcript);
+            push(&mut acc, &q.document, &q.transcript);
         }
     }
-    out
+    (acc.0, steps)
 }
 
 fn state_delta(before: &BTreeMap<String, Value>, after: &BTreeMap<String, Value>) -> Json {
@@ -2323,6 +2967,15 @@ fn fact_origins(play: &Playthrough, initial: &BTreeSet<Fact>) -> BTreeMap<Fact, 
             Some((k, of)) => format!("step {} ({k}/{of})", s.n),
             None => format!("step {}", s.n),
         };
+        // dsl 0.27.0 §3: a kind / `for` beat names the member it ran for.
+        let beat = |p: &Presented| {
+            let member = p
+                .member
+                .as_deref()
+                .map(|m| format!(" for {m}"))
+                .unwrap_or_default();
+            format!("{} `{}`{member}, {step}", kind_label(p.kind), p.id)
+        };
         match &s.body {
             StepBody::Engine { writes } => take(writes, format!("engine {step}")),
             StepBody::NewRun { writes, .. } => take(writes, format!("newRun {step}")),
@@ -2334,10 +2987,7 @@ fn fact_origins(play: &Playthrough, initial: &BTreeSet<Fact>) -> BTreeMap<Fact, 
                     &q.transcript,
                     format!("a quest handler in {}, {step}", q.document),
                 ),
-                Played::Beat(p) => take(
-                    &p.transcript,
-                    format!("{} `{}`, {step}", kind_label(p.kind), p.id),
-                ),
+                Played::Beat(p) => take(&p.transcript, beat(p)),
             }
         }
         for q in s.body.settled() {
@@ -2348,10 +2998,7 @@ fn fact_origins(play: &Playthrough, initial: &BTreeSet<Fact>) -> BTreeMap<Fact, 
         }
         if let Some(StepBody::Occasion { presented, .. }) = s.body.occasion() {
             for p in presented {
-                take(
-                    &p.transcript,
-                    format!("{} `{}`, {step}", kind_label(p.kind), p.id),
-                );
+                take(&p.transcript, beat(p));
             }
         }
         for q in &s.quests {
@@ -2436,6 +3083,8 @@ fn render_json(play: &Playthrough) -> Json {
                     settled,
                     days,
                     raised,
+                    ended,
+                    closed: _,
                 } => {
                     let days: Vec<Json> = days
                         .iter()
@@ -2459,6 +3108,10 @@ fn render_json(play: &Playthrough) -> Json {
                     if !days.is_empty() {
                         advance["days"] = Json::Array(days);
                     }
+                    // dsl 0.27.0 §4: only when the clock ended here.
+                    if *ended {
+                        advance["ended"] = json!(true);
+                    }
                     o.insert("advance".into(), advance);
                     if let Some(body) = raised {
                         render_occasion_json(&mut o, body);
@@ -2475,6 +3128,10 @@ fn render_json(play: &Playthrough) -> Json {
         Ok(reason) => {
             root.insert("exit".into(), json!("complete"));
             root.insert("endReason".into(), json!(reason));
+            // dsl 0.27.0 §4: the game ended in the project's terminal state.
+            if play.terminal {
+                root.insert("end".into(), json!("terminal"));
+            }
         }
         Err(h) => {
             root.insert("exit".into(), json!(h.exit_label()));
@@ -2535,9 +3192,12 @@ fn render_occasion_json(o: &mut serde_json::Map<String, Json>, body: &StepBody) 
             m.insert("kind".into(), json!(kind_label(c.kind)));
             m.insert("document".into(), json!(c.document));
             m.insert("priority".into(), json!(c.priority));
+            if let Some(member) = &c.for_member {
+                m.insert("for".into(), json!(member));
+            }
             let (eligible, reason) = match &c.verdict {
                 Verdict::Eligible => (json!(true), None),
-                Verdict::Ineligible(r) => (json!(false), Some(r.clone())),
+                Verdict::Ineligible(r) => (json!(false), Some(r.to_string())),
                 Verdict::Unknown(d) => (Json::Null, Some(format!("when: unknown ({d})"))),
             };
             m.insert("eligible".into(), eligible);
@@ -2624,12 +3284,127 @@ fn load_script(script_path: &Path) -> Result<PlayScript, (ExitCode, String)> {
             script_path.display()
         ))
     })?;
-    parse_script(&text, script_path).map_err(|e| {
-        usage(format!(
-            "invalid play script {}: {e}",
-            script_path.display()
-        ))
+    parse_script(&text, script_path).map_err(usage)
+}
+
+/// Round-5 T3-13: a `step N: …` usage error located at step N's file line
+/// (its play, or the steps file an `include:` spliced it from); `None` when
+/// the error names no step.
+fn locate_step_error(steps: &[ScriptStep], e: &str) -> Option<String> {
+    let n: usize = e
+        .strip_prefix("step ")?
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()?;
+    let step = steps.iter().find(|s| s.n == n)?;
+    Some(step.at.locate(e))
+}
+
+/// [`plan_steps`] with its usage error located ([`locate_step_error`]),
+/// else prefixed with `script_path`.
+fn plan_located(
+    p: &ExecProject,
+    steps: &[ScriptStep],
+    script_path: &Path,
+) -> Result<Vec<Step>, String> {
+    plan_steps(p, steps).map_err(|e| {
+        locate_step_error(steps, &e).unwrap_or_else(|| format!("{}: {e}", script_path.display()))
     })
+}
+
+/// Round-5 T3-13: what a step `expect:` names that the project must have —
+/// a beat id (`winner`, `offered`, `notOffered`, `presented`; an entry by
+/// its `<document id>.<entry id>` alias too) and a clock position (`clock:
+/// slot` a declared slot, `weekday` a `week.labels` label or a weekday
+/// number) — checked before the play runs, with did-you-mean. A typo is a
+/// usage error (exit 2), not a miss.
+fn check_expect_names(p: &ExecProject, script: &PlayScript) -> Result<(), String> {
+    let near = |needle: &str, known: &[&str]| {
+        lute_manifest::suggest::nearest(needle, known.iter().copied(), 2)
+            .map(|k| format!(" — did you mean `{k}`?"))
+            .unwrap_or_default()
+    };
+    let beat_ids: Vec<&str> = p
+        .index
+        .beats
+        .iter()
+        .map(|b| b.id.as_str())
+        .chain(p.entry_aliases.keys().map(String::as_str))
+        .collect();
+    for (n, _, expect) in &script.step_expects {
+        let n = *n;
+        for key in ["winner", "offered", "notOffered", "presented"] {
+            let ids: Vec<String> = match expect.get(key) {
+                Some(serde_yaml::Value::Sequence(items)) => {
+                    items.iter().filter_map(scalar_text).collect()
+                }
+                Some(v) => scalar_text(v).into_iter().collect(),
+                None => continue,
+            };
+            for id in ids {
+                if (key == "winner" && id == "none") || beat_ids.contains(&id.as_str()) {
+                    continue;
+                }
+                return Err(format!(
+                    "step {n}: `expect.{key}` names `{id}`, which no beat of the project has{}",
+                    near(&id, &beat_ids)
+                ));
+            }
+        }
+        let Some(serde_yaml::Value::Mapping(clock_want)) = expect.get("clock") else {
+            continue;
+        };
+        let Some(clock) = &p.index.clock else {
+            return Err(format!(
+                "step {n}: `expect.clock` judges the declared clock, and no schema of this \
+                 project declares a `clock:`"
+            ));
+        };
+        if let Some(slot) = clock_want.get("slot").and_then(serde_yaml::Value::as_str) {
+            let slots: Vec<&str> = clock.slots.iter().map(String::as_str).collect();
+            if clock.slot.is_none() {
+                return Err(format!(
+                    "step {n}: `expect.clock.slot: {slot}` — the clock is day-granular (it \
+                     declares no `slots:`)"
+                ));
+            }
+            if !slots.contains(&slot) {
+                return Err(format!(
+                    "step {n}: `expect.clock.slot: {slot}` names no slot of the clock{} (slots: {})",
+                    near(slot, &slots),
+                    slots.join(", ")
+                ));
+            }
+        }
+        if let Some(want) = clock_want.get("weekday") {
+            let Some(week) = clock.week.as_ref() else {
+                return Err(format!(
+                    "step {n}: `expect.clock.weekday` — the clock declares no `week:`"
+                ));
+            };
+            let labels: Vec<&str> = week.labels.iter().map(String::as_str).collect();
+            let text = scalar_text(want).unwrap_or_default();
+            let ok = labels.contains(&text.as_str())
+                || text
+                    .parse::<i64>()
+                    .is_ok_and(|i| (0..i64::from(week.length)).contains(&i));
+            if !ok {
+                let named = if labels.is_empty() {
+                    String::new()
+                } else {
+                    format!(" or one of: {}", labels.join(", "))
+                };
+                return Err(format!(
+                    "step {n}: `expect.clock.weekday: {text}` names no weekday{} — a weekday is \
+                     a number 0..{}{named}",
+                    near(&text, &labels),
+                    week.length.saturating_sub(1)
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Compile the project a play runs over ([`compile_project`]); `dir` must be
@@ -2653,7 +3428,10 @@ fn plan_script(
     no_derive: bool,
 ) -> Result<(Vec<Step>, World), (ExitCode, String)> {
     let at = |e: String| (ExitCode::from(2), format!("{}: {e}", script_path.display()));
-    let plan = plan_steps(project, &script.steps).map_err(at)?;
+    let usage = |e: String| (ExitCode::from(2), e);
+    let plan = plan_located(project, &script.steps, script_path).map_err(usage)?;
+    check_expect_names(project, script)
+        .map_err(|e| usage(locate_step_error(&script.steps, &e).unwrap_or_else(|| at(e).1)))?;
     let mut world = seed_world(
         project,
         &WorldSeed {
@@ -2672,7 +3450,7 @@ fn plan_script(
 /// What a play's expectations are judged against (dsl 0.22.0 §4): one row
 /// per executed step (with the world after it, when its `expect:` judges
 /// it), and the world the play ended in.
-fn play_outcome(p: &ExecProject, play: &Playthrough, said: String) -> PlayOutcome {
+fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
     let steps = play
         .steps
         .iter()
@@ -2683,6 +3461,16 @@ fn play_outcome(p: &ExecProject, play: &Playthrough, said: String) -> PlayOutcom
                 world: s.world.clone(),
                 ..StepOutcome::default()
             };
+            // dsl 0.27.0 (T3-8): `winner`, `offered` and `notOffered` judge
+            // the step's last raise — an occasion step's own; an
+            // `advance:`'s raise where the clock stops: the clock's slot
+            // occasion, else the last midnight's `dayStart` / `dayEnd`.
+            let stop = match &s.body {
+                StepBody::Advance { days, raised, .. } => raised
+                    .as_deref()
+                    .or_else(|| days.last().map(|d| &*d.occasion)),
+                body => body.occasion(),
+            };
             if let Some(StepBody::Occasion {
                 occasion,
                 target,
@@ -2690,7 +3478,7 @@ fn play_outcome(p: &ExecProject, play: &Playthrough, said: String) -> PlayOutcom
                 winner,
                 presented,
                 ..
-            }) = s.body.occasion()
+            }) = stop
             {
                 row.occasion = occasion.clone();
                 row.target = target.clone();
@@ -2705,27 +3493,44 @@ fn play_outcome(p: &ExecProject, play: &Playthrough, said: String) -> PlayOutcom
                     offered_options(p, &pr.document, &pr.transcript, &mut row.options);
                 }
             }
-            // Summer R2 / lighthouse N15: an `advance:` step's `presented`
-            // spans every raise it made — each midnight's `dayEnd` /
-            // `dayStart`, then the slot raise — in order; `winner`, `offered`
-            // and `notOffered` stay the slot raise's (where the clock stops).
-            if let StepBody::Advance { days, raised, .. } = &s.body {
-                let beats = days
+            // Summer R2 / lighthouse N15, T3-8: an `advance:` step's
+            // `presented` spans every raise it made — each midnight's
+            // `dayEnd` / `dayStart`, then the slot raise — in order, each
+            // beat tagged with the raise that presented it.
+            if let StepBody::Advance {
+                by,
+                to,
+                days,
+                raised,
+                ..
+            } = &s.body
+            {
+                let raises = days
                     .iter()
-                    .map(|d| &*d.occasion)
-                    .chain(raised.as_deref())
-                    .flat_map(|b| match b {
-                        StepBody::Occasion { presented, .. } => presented.as_slice(),
-                        _ => &[],
-                    });
-                row.presented = beats.map(|pr| pr.id.clone()).collect();
+                    .map(|d| (&*d.occasion, d.at.as_str()))
+                    .chain(raised.as_deref().map(|b| (b, to.as_str())));
+                (row.presented, row.presented_from) = raises
+                    .flat_map(|(b, at)| match b {
+                        StepBody::Occasion {
+                            occasion,
+                            presented,
+                            ..
+                        } => presented
+                            .iter()
+                            .map(|pr| (pr.id.clone(), format!("{occasion} at {at}")))
+                            .collect::<Vec<_>>(),
+                        _ => Vec::new(),
+                    })
+                    .unzip();
+                row.occasion = match stop {
+                    Some(StepBody::Occasion { occasion, .. }) => {
+                        format!("advance {by} → {occasion}")
+                    }
+                    _ => format!("advance {by}"),
+                };
             }
             match &s.body {
-                StepBody::Occasion { .. } => {}
-                StepBody::Advance {
-                    by, raised: None, ..
-                } => row.occasion = format!("advance {by}"),
-                StepBody::Advance { .. } => {}
+                StepBody::Occasion { .. } | StepBody::Advance { .. } => {}
                 StepBody::NewRun { .. } => row.occasion = "newRun".to_string(),
                 StepBody::Engine { .. } => row.occasion = "engine".to_string(),
                 StepBody::Event { event } => row.occasion = format!("event {event}"),
@@ -2744,10 +3549,12 @@ fn play_outcome(p: &ExecProject, play: &Playthrough, said: String) -> PlayOutcom
             Some(row)
         })
         .collect();
+    let (said, said_steps) = said(p, play);
     PlayOutcome {
         steps,
         end: world_view(p, &play.world, true),
         said,
+        said_steps,
         exit: match &play.outcome {
             Ok(_) => "complete",
             Err(h) => h.exit_label(),
@@ -2791,6 +3598,55 @@ fn offered_options(
     }
 }
 
+/// One branch/hub a play answered (T3-20): the document, the branch/hub
+/// id, the option it chose, the options offered there (eligible and not
+/// spent) and how many the construct declares — what `lute test
+/// --coverage` folds into its chosen-vs-never-chosen table.
+pub(crate) struct PlayedChoice {
+    pub document: String,
+    pub id: String,
+    pub chose: Option<String>,
+    pub offered: BTreeSet<String>,
+    pub total: usize,
+}
+
+/// Every branch/hub record in `records` (one document's runner transcript)
+/// as a [`PlayedChoice`], read as [`offered_options`] reads it.
+fn played_choices(p: &ExecProject, document: &str, records: &[Json], into: &mut Vec<PlayedChoice>) {
+    let cmds = DocCmds::new(p, document, false);
+    for rec in records {
+        let id = match str_of(rec, "kind") {
+            "choice" => str_of(rec, "branch"),
+            "hub" => str_of(rec, "hub"),
+            _ => continue,
+        };
+        let listed = |key: &str, opt: &str| {
+            rec.get(key)
+                .and_then(Json::as_array)
+                .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(opt)))
+        };
+        let options: Vec<&str> = cmds
+            .get(str_of(rec, "addr"))
+            .and_then(|c| c.get("options"))
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|o| o.get("id").and_then(Json::as_str))
+            .collect();
+        into.push(PlayedChoice {
+            document: document.to_string(),
+            id: id.to_string(),
+            chose: rec.get("chose").and_then(Json::as_str).map(str::to_string),
+            offered: options
+                .iter()
+                .filter(|o| !listed("spent", o) && !listed("ineligible", o))
+                .map(|o| o.to_string())
+                .collect(),
+            total: options.len(),
+        });
+    }
+}
+
 /// Judge the script's expectations; empty when it carries none.
 fn judge(script: &PlayScript, outcome: &PlayOutcome) -> Vec<ExpectMiss> {
     if !script.has_expect() {
@@ -2807,6 +3663,7 @@ pub fn run_play(
     no_derive: bool,
     explain: &[String],
     ir: bool,
+    quiet: bool,
 ) -> ExitCode {
     let Loaded {
         script,
@@ -2852,7 +3709,7 @@ pub fn run_play(
             }
         }
     };
-    let outcome = play_outcome(&project, &play, said(&project, &play));
+    let outcome = play_outcome(&project, &play);
     let misses = judge(&script, &outcome);
     let text = if json {
         let mut v = render_json(&play);
@@ -2869,7 +3726,7 @@ pub fn run_play(
         }
         format!("{}\n", serde_json::to_string_pretty(&v).unwrap_or_default())
     } else {
-        let mut text = render_human(&project, &play, ir);
+        let mut text = render_human(&project, &play, View { ir, quiet });
         if let Some((h, _)) = &explained {
             text.push_str(h);
             if !h.ends_with('\n') {
@@ -2909,6 +3766,13 @@ pub(crate) struct PlayTestRun {
     /// Project-relative (forward-slash) source paths of every document a
     /// presentation came from — `--coverage`'s numerator.
     pub presented_docs: BTreeSet<String>,
+    /// T3-20: every beat the play presented, as `(document, id)` — the id
+    /// the project index gives it (a scene's key, an entry's id, a bundle
+    /// beat's `<document id>.<beat id>`): `--coverage`'s per-beat units.
+    pub presented: BTreeSet<(String, String)>,
+    /// T3-20: every branch/hub the play answered — `--coverage`'s choice
+    /// rows, fed the same table trace's paths feed.
+    pub choices: Vec<PlayedChoice>,
     /// Why the walk halted, when it did (empty when complete).
     pub notes: Vec<String>,
 }
@@ -2943,41 +3807,70 @@ pub(crate) fn run_play_for_test(
     let p = project.0.as_ref().map_err(String::clone)?;
     let (plan, world) = plan_script(p, &script, script_path, !derive).map_err(|(_, msg)| msg)?;
     let play = execute(&script, &plan, Session::resume(p, world));
-    let outcome = play_outcome(&p, &play, said(&p, &play));
+    let outcome = play_outcome(&p, &play);
     let misses = judge(&script, &outcome);
-    // A presented beat's document — an `occasion:` step's, or the occasion
-    // an `advance:` step's clock raised — and a quest document whose
-    // lifecycle transitioned or whose handlers played during the play.
-    let presented_docs = play
+    // A presented beat — an `occasion:` step's, or one the occasion an
+    // `advance:` step's clock raised — and a quest document whose lifecycle
+    // transitioned or whose handlers played during the play.
+    let beats: Vec<&Presented> = play
         .steps
         .iter()
         .flat_map(|s| match s.body.occasion() {
-            Some(StepBody::Occasion { presented, .. }) => {
-                presented.iter().map(|pr| pr.document.clone()).collect()
-            }
+            Some(StepBody::Occasion { presented, .. }) => presented.iter().collect(),
             _ => Vec::new(),
         })
         .chain(play.steps.iter().flat_map(|s| {
-            s.body.days_played().into_iter().map(|played| match played {
-                Played::Quest(q) => q.document.clone(),
-                Played::Beat(pr) => pr.document.clone(),
-            })
+            s.body
+                .days_played()
+                .into_iter()
+                .filter_map(|played| match played {
+                    Played::Beat(pr) => Some(pr),
+                    Played::Quest(_) => None,
+                })
         }))
-        .chain(
-            play.start
-                .iter()
-                .chain(
-                    play.steps
-                        .iter()
-                        .flat_map(|s| s.body.settled().chain(&s.quests)),
-                )
-                .map(|q| q.document.clone()),
-        )
         .collect();
+    let quests: Vec<(&str, &[Json])> = play
+        .start
+        .iter()
+        .chain(
+            play.steps
+                .iter()
+                .flat_map(|s| s.body.settled().chain(&s.quests)),
+        )
+        .map(|q| (q.document.as_str(), q.transcript.as_slice()))
+        .chain(play.steps.iter().flat_map(|s| {
+            s.body
+                .days_played()
+                .into_iter()
+                .filter_map(|played| match played {
+                    Played::Quest(q) => Some((q.document.as_str(), q.transcript.as_slice())),
+                    Played::Beat(_) => None,
+                })
+        }))
+        .collect();
+    let presented_docs = beats
+        .iter()
+        .map(|pr| pr.document.clone())
+        .chain(quests.iter().map(|(doc, _)| doc.to_string()))
+        .collect();
+    let presented = beats
+        .iter()
+        .map(|pr| (pr.document.clone(), pr.id.clone()))
+        .collect();
+    let mut choices = Vec::new();
+    for (document, transcript) in beats
+        .iter()
+        .map(|pr| (pr.document.as_str(), pr.transcript.as_slice()))
+        .chain(quests.iter().copied())
+    {
+        played_choices(p, document, transcript, &mut choices);
+    }
     Ok(PlayTestRun {
         misses,
         exit: outcome.exit,
         presented_docs,
+        presented,
+        choices,
         notes: play
             .outcome
             .as_ref()

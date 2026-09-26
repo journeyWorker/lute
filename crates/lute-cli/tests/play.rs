@@ -1465,8 +1465,10 @@ fn engine_writes_are_validated_before_anything_plays() {
         ),
         ("steps:\n  - newRun: false\n", "`newRun` must be `true` or"),
         (
-            "steps:\n  - engine: { state: { run.floor: 1 } }\n    occasion: hubVisit\n",
-            "not both",
+            // dsl 0.27.0 §4: an `occasion:` step's `engine:` writes are
+            // validated like any others before anything plays.
+            "steps:\n  - engine: { facts: [slew(dragon)] }\n    occasion: hubVisit\n",
+            "`dragon` is not a member of `foe` (warden, hound)",
         ),
         (
             "steps:\n  - engine: { state: { run.floor: 1 } }\n    pick: memo\n",
@@ -1515,6 +1517,25 @@ fn a_new_run_resets_run_tier_quests_then_applies_its_seed() {
         quest_records(&step(&v, 3)["quests"]),
         ["climb.high done", "climb -> complete"]
     );
+}
+
+/// dsl 0.27.0 §4 (T2-11): an `occasion:` step may carry `engine:` writes —
+/// they land (and the quests settle) before the raise, as their own record.
+#[test]
+fn an_occasion_step_applies_its_engine_writes_before_the_raise() {
+    let v = harness_json(
+        "occasion-engine",
+        "steps:\n  - engine: { state: { run.floor: 6 } }\n    occasion: hubVisit\n",
+        0,
+    );
+    let (writes, raise) = (step(&v, 1), step(&v, 2));
+    assert_eq!(writes["step"], raise["step"], "{v:#}");
+    assert_eq!(
+        quest_records(&writes["quests"]),
+        ["climb.high done", "climb -> complete"],
+        "{v:#}"
+    );
+    assert_eq!(raise["occasion"], "hubVisit", "{v:#}");
 }
 
 #[test]
@@ -2431,4 +2452,227 @@ fn an_unread_relation_is_reported_at_its_schema_line_walk_relative() {
         "{text}{}",
         stderr(&out)
     );
+}
+
+/// Round-5 T3-13: a typo in a step an `include:` spliced in is a usage error
+/// located in the included file (not the play), with did-you-mean and the
+/// include line that brought it in.
+#[test]
+fn a_typo_in_an_included_step_is_located_in_the_included_file() {
+    let dir = temp_dir("include-typo");
+    write(
+        &dir,
+        "steps/day.steps.yaml",
+        "- occasion: hubVisit\n- occasion: hubVist\n",
+    );
+    let out = play_in(
+        &fixture(),
+        "include-typo-play",
+        &format!(
+            "steps:\n  - include: {}\n",
+            dir.join("steps/day.steps.yaml").display()
+        ),
+        false,
+    );
+    let err = stderr(&out);
+    assert_eq!(out.status.code(), Some(2), "{err}");
+    assert!(err.contains("day.steps.yaml:2:3: step 2:"), "{err}");
+    assert!(err.contains("did you mean `hubVisit`"), "{err}");
+    assert!(
+        err.contains("(included from ") && err.contains("s.play.yaml:2:5)"),
+        "{err}"
+    );
+}
+
+/// Round-5 T3-13: an `expect.winner` no beat of the project has is a usage
+/// error at its line before the play runs, not a miss.
+#[test]
+fn an_expected_winner_no_beat_has_is_a_located_usage_error() {
+    let out = play_in(
+        &fixture(),
+        "winner-typo",
+        "steps:\n  - occasion: hubVisit\n    expect: { winner: hub.firstEvr }\n",
+        false,
+    );
+    let err = stderr(&out);
+    assert_eq!(out.status.code(), Some(2), "{err}");
+    assert!(err.contains("s.play.yaml:3:"), "{err}");
+    assert!(err.contains("did you mean `hub.firstEver`"), "{err}");
+}
+
+/// dsl 0.27.0 (T3-22): `repeat:` on an `include:` splices the file that many
+/// times; a key an include does not take names the ones it does.
+#[test]
+fn an_include_takes_repeat_and_names_its_keys() {
+    let dir = temp_dir("include-repeat");
+    let steps = write(&dir, "v.steps.yaml", "- occasion: hubVisit\n");
+    let v = play_json(
+        "include-repeat-play",
+        &format!("steps:\n  - include: {}\n    repeat: 3\n", steps.display()),
+        0,
+    );
+    assert!(v["steps"].as_array().is_some_and(|s| s.len() == 3), "{v}");
+    let out = play_in(
+        &fixture(),
+        "include-bad-key",
+        &format!("steps:\n  - include: {}\n    label: x\n", steps.display()),
+        false,
+    );
+    let err = stderr(&out);
+    assert_eq!(out.status.code(), Some(2), "{err}");
+    assert!(
+        err.contains("`label` does not apply to an `include:` step")
+            && err.contains("`repeat`, `choose`, `bridges`"),
+        "{err}"
+    );
+}
+
+/// A shape-only project for roster-scale output: `host` (priority 10, `once:
+/// run`) and `fallback` answer `visit` unconditionally; `roster` more
+/// scenes `r1`…`rN` answer it `when: run.flag`, which stays false.
+fn roster_project(tag: &str, roster: usize) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.flag: { type: bool, default: false }\n",
+    );
+    let scene = |id: &str, extra: &str, line: &str| {
+        format!(
+            "---\nkind: scene\nid: {id}\nuses: ../world.schema.yaml\non: visit\n{extra}---\n\n\
+             ## {id}\n\n@narrator: {line}\n"
+        )
+    };
+    write(
+        &dir,
+        "scenes/host.lute",
+        &scene("host", "priority: 10\nonce: run\n", "The host bows."),
+    );
+    write(
+        &dir,
+        "scenes/fallback.lute",
+        &scene("fallback", "once: false\n", "Nobody else is here."),
+    );
+    for i in 1..=roster {
+        write(
+            &dir,
+            &format!("scenes/r{i}.lute"),
+            &scene(
+                &format!("r{i}"),
+                "once: false\nwhen: run.flag\n",
+                "A guest.",
+            ),
+        );
+    }
+    dir
+}
+
+/// `lute play` over `project` with `args` after the script.
+fn play_with(project: &Path, tag: &str, script: &str, args: &[&str]) -> Output {
+    let script = write(&temp_dir(tag), "s.play.yaml", script);
+    Command::new(BIN)
+        .args(["play", &project.display().to_string(), "--script"])
+        .arg(&script)
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+/// Round-5 T3-16 (SG-F14): five or more `when: false` candidates at one raise
+/// print as one count line; fewer print one line each; any other reason a
+/// candidate is not eligible still prints; `--json` lists every candidate.
+#[test]
+fn a_roster_of_when_false_candidates_folds_into_a_count() {
+    let script = "steps:\n  - occasion: visit\n  - occasion: visit\n";
+    let dir = roster_project("roster-fold", 6);
+    let out = play_with(&dir, "roster-fold", script, &[]);
+    let t = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}{}", stderr(&out));
+    assert_eq!(
+        t.matches("  ✗ 6 beats — when: false: ").count(),
+        2,
+        "one count line per raise: {t}"
+    );
+    assert!(!t.contains("r1 [scene, priority 0] — when: false"), "{t}");
+    assert!(
+        t.contains("  ✗ host [scene, priority 10] — once: run"),
+        "{t}"
+    );
+    assert!(
+        t.contains("  → host\n") && t.contains("  → fallback\n"),
+        "{t}"
+    );
+
+    let v: Json =
+        serde_json::from_slice(&play_with(&dir, "roster-json", script, &["--json"]).stdout)
+            .expect("--json emits one JSON object");
+    assert_eq!(candidate_ids(&v, 1).len(), 8, "{v}");
+
+    let dir = roster_project("roster-few", 4);
+    let t = stdout(&play_with(&dir, "roster-few", script, &[]));
+    assert_eq!(t.matches("— when: false\n").count(), 8, "{t}");
+    assert!(!t.contains("beats — when: false"), "{t}");
+}
+
+/// Round-5 T3-16: `--quiet` leaves out every candidate that was not
+/// eligible; the winners, lines and quests still print.
+#[test]
+fn quiet_leaves_out_the_candidates_that_were_not_eligible() {
+    let dir = roster_project("roster-quiet", 6);
+    let out = play_with(
+        &dir,
+        "roster-quiet",
+        "steps:\n  - occasion: visit\n  - occasion: visit\n",
+        &["--quiet"],
+    );
+    let t = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}{}", stderr(&out));
+    assert!(!t.contains("✗"), "{t}");
+    assert!(t.contains("  ✓ host [scene, priority 10]"), "{t}");
+    assert!(
+        t.contains("  → host\n") && t.contains("The host bows."),
+        "{t}"
+    );
+    assert!(
+        t.contains("  → fallback\n") && t.contains("Nobody else is here."),
+        "{t}"
+    );
+}
+
+/// dsl 0.27.0 (T3-22): an include's `choose:` answers only the steps it
+/// splices in, restarts from its first entry each repetition, and is
+/// dropped when the include ends — its leftover `secret` (gated off) never
+/// reaches a later step, and the script's own list is not consumed inside.
+#[test]
+fn an_include_choose_is_local_to_each_repetition() {
+    let dir = stage_project("include-choose");
+    let steps = write(
+        &temp_dir("include-choose-steps"),
+        "t.steps.yaml",
+        "- occasion: talk\n",
+    );
+    let v = play_project_json(
+        &dir,
+        "include-choose",
+        &format!(
+            "steps:\n  - include: {}\n    repeat: 2\n    choose: {{ ask: [notYet, secret] }}\n  \
+             - occasion: talk\nchoose:\n  ask: [accept]\n",
+            steps.display()
+        ),
+    );
+    let chose: Vec<Json> = (1..=3)
+        .map(|n| {
+            presented(&v, n)
+                .iter()
+                .find(|r| r["kind"] == "choice")
+                .map(|r| r["chose"].clone())
+                .unwrap_or_default()
+        })
+        .collect();
+    assert_eq!(chose, ["notYet", "notYet", "accept"], "{v}");
 }

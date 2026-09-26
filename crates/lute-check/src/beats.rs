@@ -47,10 +47,12 @@ pub const W_BEAT_SHADOWED: &str = "W-BEAT-SHADOWED";
 
 /// The scene-frontmatter beat keys (dsl 0.21.0 §3.1). Scene-only, never
 /// defaultable: a beat is one scene's own declaration.
-pub const BEAT_KEYS: &[&str] = &["on", "target", "when", "priority", "once", "also", "share"];
+pub const BEAT_KEYS: &[&str] = &[
+    "on", "target", "when", "priority", "once", "also", "share", "spentBy", "for",
+];
 
 /// A scene beat's repetition policy (dsl 0.21.0 §3.1, D-F).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BeatOnce {
     /// `once: run` (the default) — presented at most once per run.
     Run,
@@ -63,26 +65,71 @@ pub enum BeatOnce {
     /// dsl 0.24.0 §1: `once: slot` — spent until the clock's slot (or day)
     /// changes.
     Slot,
+    /// dsl 0.27.0 §5: `once: week` — spent until `clock.weekday` returns to
+    /// `week.first` (the next clock week). Needs a clock with a `week:`.
+    Week,
+    /// dsl 0.27.0 §5: `once: season:<name>` — spent until the season opens
+    /// again. Needs a declared season (`E-SEASON-DECL`).
+    Season(String),
 }
 
 impl BeatOnce {
-    /// The IR spelling (dsl 0.21.0 §8, 0.24.0 §1): `"run"`, `"user"`,
-    /// `"none"`, `"day"`, or `"slot"`.
-    pub fn as_str(self) -> &'static str {
-        match self {
+    /// The IR spelling (dsl 0.21.0 §8, 0.24.0 §1, 0.27.0 §5): `"run"`,
+    /// `"user"`, `"none"`, `"day"`, `"slot"`, `"week"` or `"season:<name>"`.
+    pub fn as_str(&self) -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed(match self {
             BeatOnce::Run => "run",
             BeatOnce::User => "user",
             BeatOnce::None => "none",
             BeatOnce::Day => "day",
             BeatOnce::Slot => "slot",
-        }
+            BeatOnce::Week => "week",
+            BeatOnce::Season(name) => {
+                return std::borrow::Cow::Owned(format!(
+                    "{}{name}",
+                    lute_manifest::season::SEASON_PREFIX
+                ))
+            }
+        })
     }
 
-    /// Spent per clock period (`day` / `slot`) — needs a declared clock.
-    pub fn is_clock(self) -> bool {
-        matches!(self, BeatOnce::Day | BeatOnce::Slot)
+    /// An authored spending `once` value — `run`, `user`, `day`, `slot`,
+    /// `week` or `season:<name>` (a well-formed name; whether the season
+    /// is declared is `E-SEASON-DECL`'s). `false` / `none` is not one.
+    pub fn parse(raw: &str) -> Option<BeatOnce> {
+        Some(match raw {
+            "run" => BeatOnce::Run,
+            "user" => BeatOnce::User,
+            "day" => BeatOnce::Day,
+            "slot" => BeatOnce::Slot,
+            "week" => BeatOnce::Week,
+            _ => BeatOnce::Season(
+                lute_manifest::season::season_ref(raw)
+                    .filter(|n| lute_manifest::season::is_season_name(n))?
+                    .to_string(),
+            ),
+        })
+    }
+
+    /// Spent per clock period (`day` / `slot` / `week`) — needs a declared
+    /// clock.
+    pub fn is_clock(&self) -> bool {
+        matches!(self, BeatOnce::Day | BeatOnce::Slot | BeatOnce::Week)
+    }
+
+    /// The season a `once: season:<name>` names.
+    pub fn season(&self) -> Option<&str> {
+        match self {
+            BeatOnce::Season(name) => Some(name),
+            _ => None,
+        }
     }
 }
+
+/// The accepted `once` values, for messages.
+pub const ONCE_VALUES: &str = "`run` (once per run, the default), `user` (once ever), \
+     `day` / `slot` / `week` (once per clock day / slot / week), `season:<name>` (once per \
+     window of a declared season), or `false` (repeatable)";
 
 /// A scene's validated beat declaration (dsl 0.21.0 §3.1), lifted onto
 /// [`crate::meta::TypedMeta::beat`] only when `on:` is present and an
@@ -111,6 +158,13 @@ pub struct BeatMeta {
     /// dsl 0.25.0 §2: the shared-spend key — every beat of the key is spent
     /// when one is presented. Only with an authored, spending `once`.
     pub share: Option<String>,
+    /// dsl 0.27.0 §5: `spentBy:` — instead of `once`, eligible until this
+    /// condition holds (the beat is otherwise repeatable, `once: false`).
+    pub spent_by: Option<CelSlot>,
+    /// dsl 0.27.0 §3 (T2-10): `for: "kind:<kind>"` — as a `<beat for=…>`,
+    /// presented once per member; raw text + value span, validated with the
+    /// kinds in `check()` ([`crate::occasion_bind::for_kind_members`]).
+    pub for_kind: Option<(String, Span)>,
 }
 
 /// A beat `priority` (dsl 0.21.0 §3): an integer `-?[0-9]+` that fits `i64`.
@@ -240,17 +294,13 @@ pub(crate) fn lift_scene_beat(
     let once = match get("once") {
         None => BeatOnce::Run,
         Some(serde_yaml::Value::Bool(false)) => BeatOnce::None,
-        Some(v) => match v.as_str() {
-            Some("run") => BeatOnce::Run,
-            Some("user") => BeatOnce::User,
-            Some("day") => BeatOnce::Day,
-            Some("slot") => BeatOnce::Slot,
-            _ => {
+        Some(v) => match v.as_str().and_then(BeatOnce::parse) {
+            Some(once) => once,
+            None => {
                 push(
                     format!(
-                        "`once:` must be `run` (once per run, the default), `user` (once ever), \
-                         `day` / `slot` (once per clock day / slot), or `false` (repeatable), \
-                         got {} (dsl 0.21.0 §3.1, 0.24.0 §1)",
+                        "`once:` must be {ONCE_VALUES}, got {} (dsl 0.21.0 §3.1, 0.24.0 §1, \
+                         0.27.0 §5)",
                         describe(v)
                     ),
                     top_value_span(meta, "once"),
@@ -258,6 +308,42 @@ pub(crate) fn lift_scene_beat(
                 BeatOnce::Run
             }
         },
+    };
+
+    // dsl 0.27.0 §5: `spentBy:` replaces `once` — the beat repeats until
+    // the condition holds.
+    let spent_by = get("spentBy").and_then(|v| match v.as_str() {
+        Some(raw) if !raw.trim().is_empty() => {
+            if get("once").is_some() {
+                push(
+                    "`spentBy:` replaces `once:` — the beat stays eligible until its condition \
+                     holds; remove `once:` (dsl 0.27.0 §5)"
+                        .to_string(),
+                    top_key_span(meta, "spentBy"),
+                );
+            }
+            Some(CelSlot::raw(
+                CelKind::Condition,
+                raw.to_string(),
+                top_value_span(meta, "spentBy"),
+            ))
+        }
+        _ => {
+            push(
+                format!(
+                    "`spentBy:` must be a CEL condition string — the beat stays eligible until \
+                     it holds, e.g. `spentBy: \"holds(solved(valves))\"`, got {} (dsl 0.27.0 §5)",
+                    describe(v)
+                ),
+                top_value_span(meta, "spentBy"),
+            );
+            None
+        }
+    });
+    let once = if spent_by.is_some() {
+        BeatOnce::None
+    } else {
+        once
     };
 
     let also = match get("also") {
@@ -292,6 +378,24 @@ pub(crate) fn lift_scene_beat(
             push(share_without_once(key), top_key_span(meta, "share"));
         }
         Some(key.to_string())
+    });
+
+    // dsl 0.27.0 §3 (T2-10): `for: "kind:<kind>"` — its meaning is checked
+    // with the kinds (`crate::occasion_bind::check_for_kinds`); only its
+    // shape here.
+    let for_kind = get("for").and_then(|v| match v.as_str() {
+        Some(raw) => Some((raw.to_string(), top_value_span(meta, "for"))),
+        None => {
+            push(
+                format!(
+                    "`for:` must be a string naming a kind, `for: \"kind:<kind>\"`, got {} \
+                     (dsl 0.27.0 §3)",
+                    describe(v)
+                ),
+                top_value_span(meta, "for"),
+            );
+            None
+        }
     });
 
     let on = on?;
@@ -331,9 +435,12 @@ pub(crate) fn lift_scene_beat(
         when,
         priority,
         once,
-        once_authored: get("once").is_some(),
+        // An authored `spentBy` is an authored repetition policy.
+        once_authored: get("once").is_some() || spent_by.is_some(),
         also,
         share,
+        spent_by,
+        for_kind,
     })
 }
 
@@ -408,13 +515,14 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
         }
     }
     if let Some((raw, span)) = &entry.once {
-        if !matches!(raw.as_str(), "run" | "user" | "day" | "slot") {
+        if BeatOnce::parse(raw).is_none() {
             push(
                 format!(
                     "`<entry>` `once=\"{raw}\"` must be `run` (not eligible again this run once \
-                     read), `user` (never again once read), or `day` / `slot` (not again this \
-                     clock day / slot once read); omit it for a repeatable entry beat \
-                     (dsl 0.22.0 §7, 0.24.0 §1)"
+                     read), `user` (never again once read), `day` / `slot` / `week` (not again \
+                     this clock day / slot / week once read), or `season:<name>` (not again \
+                     this season window); omit it for a repeatable entry beat \
+                     (dsl 0.22.0 §7, 0.24.0 §1, 0.27.0 §5)"
                 ),
                 *span,
             );
@@ -433,6 +541,24 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
             push(share_malformed("`<entry>`", key), *span);
         } else if entry.once.is_none() && !residual_once {
             push(share_without_once(key), *span);
+        }
+    }
+    if let Some(spent_by) = &entry.spent_by {
+        if entry.once.is_some() || residual_once {
+            push(
+                "`<entry>` `spentBy` replaces `once` — the entry stays eligible until its \
+                 condition holds; remove `once` (dsl 0.27.0 §5)"
+                    .to_string(),
+                spent_by.span,
+            );
+        }
+        if entry.on.is_none() && !residual_on {
+            push(
+                "`<entry>` `spentBy` requires `on`; a repetition policy belongs to a beat \
+                 (dsl 0.27.0 §5)"
+                    .to_string(),
+                spent_by.span,
+            );
         }
     }
 }
@@ -863,35 +989,15 @@ pub(crate) fn occasion_target_scope_message() -> String {
 }
 
 /// dsl 0.26.0 §5: the members the document's kind beats answer — the domain
-/// of [`OCCASION_TARGET`], sorted, empty without a (well-formed) kind beat.
+/// of [`OCCASION_TARGET`], sorted, empty without a (well-formed) kind beat
+/// ([`crate::occasion_bind::occasion_scopes`], dsl 0.27.0 §3).
 pub fn occasion_target_members(
     doc: &Document,
     beat: Option<&BeatMeta>,
     occasions: &BTreeMap<String, OccasionDecl>,
     kinds: &BTreeMap<String, EntityKindDecl>,
 ) -> Vec<String> {
-    let scene = beat.and_then(|b| Some((b.on.as_str(), b.target.as_deref()?)));
-    let entries = doc
-        .entries
-        .iter()
-        .filter_map(|e| Some((e.on.as_ref()?.0.as_str(), e.target.as_ref()?.0.as_str())));
-    let bundles = doc
-        .beats
-        .iter()
-        .filter_map(|b| Some((b.on.as_ref()?.0.as_str(), b.target.as_ref()?.0.as_str())));
-    let mut out: Vec<String> = scene
-        .into_iter()
-        .chain(entries)
-        .chain(bundles)
-        .filter_map(|(on, target)| {
-            let kind = kind_target(target)?;
-            kind_target_members(occasions.get(on)?, kind, kinds).ok()
-        })
-        .flat_map(|(_, members)| members)
-        .collect();
-    out.sort();
-    out.dedup();
-    out
+    crate::occasion_bind::occasion_scopes(doc, beat, occasions, kinds).members()
 }
 
 /// dsl 0.26.0 §5: in a lore document, a read of [`OCCASION_TARGET`] in an
@@ -904,12 +1010,12 @@ pub(crate) fn check_occasion_target_scope(doc: &Document) -> Vec<Diagnostic> {
     let outside: Vec<Span> = doc
         .entries
         .iter()
-        .filter(|e| !is_kind(&e.target))
+        .filter(|e| !is_kind(&e.target) && !is_kind(&e.for_kind))
         .map(|e| e.span)
         .chain(
             doc.beats
                 .iter()
-                .filter(|b| !is_kind(&b.target))
+                .filter(|b| !is_kind(&b.target) && !is_kind(&b.for_kind))
                 .map(|b| b.span),
         )
         .collect();
@@ -946,12 +1052,12 @@ pub(crate) fn check_occasion_target_scope(doc: &Document) -> Vec<Diagnostic> {
     let bodies = doc
         .entries
         .iter()
-        .filter(|e| !is_kind(&e.target))
+        .filter(|e| !is_kind(&e.target) && !is_kind(&e.for_kind))
         .map(|e| &e.body)
         .chain(
             doc.beats
                 .iter()
-                .filter(|b| !is_kind(&b.target))
+                .filter(|b| !is_kind(&b.target) && !is_kind(&b.for_kind))
                 .map(|b| &b.body),
         );
     for body in bodies {
@@ -1065,6 +1171,9 @@ pub struct ProjectBeat<'a> {
     pub when_slot: Option<&'a CelSlot>,
     /// The `when` after `@def` expansion in its own document.
     pub when: Option<String>,
+    /// dsl 0.27.0 §5: the `spentBy` condition after `@def` expansion — the
+    /// beat is eligible only while it does not hold.
+    pub spent_by: Option<String>,
     /// The scene's frontmatter `title:` / the entry's `title=`.
     pub title: Option<String>,
     /// The `on` key / attribute — where a beat diagnostic anchors.
@@ -1264,7 +1373,7 @@ pub fn project_beats<'a>(
                 target: beat.target.as_deref(),
                 kind_targets,
                 priority: beat.priority,
-                once: beat.once,
+                once: beat.once.clone(),
                 once_authored: beat.once_authored,
                 also: beat.also,
                 after: folded
@@ -1281,6 +1390,7 @@ pub fn project_beats<'a>(
                     .map(|k| (k, top_value_span(&doc.meta, "share"))),
                 when_slot: beat.when.as_ref(),
                 when: expand(beat.when.as_ref()),
+                spent_by: expand(beat.spent_by.as_ref()),
                 title,
                 anchor: top_key_span(&doc.meta, "on"),
                 folded,
@@ -1315,11 +1425,10 @@ pub fn project_beats<'a>(
             };
             let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
                 None => BeatOnce::None,
-                Some("run") => BeatOnce::Run,
-                Some("user") => BeatOnce::User,
-                Some("day") => BeatOnce::Day,
-                Some("slot") => BeatOnce::Slot,
-                Some(_) => continue,
+                Some(raw) => match BeatOnce::parse(raw) {
+                    Some(once) => once,
+                    None => continue,
+                },
             };
             lore.push((
                 entry.span.byte_start,
@@ -1331,14 +1440,15 @@ pub fn project_beats<'a>(
                     target,
                     kind_targets,
                     priority,
-                    once,
-                    once_authored: entry.once.is_some(),
+                    once_authored: entry.once.is_some() || entry.spent_by.is_some(),
                     also: false,
                     after: None,
                     share: well_formed_share(entry.share.as_ref())
                         .filter(|_| once != BeatOnce::None),
+                    once,
                     when_slot: entry.when.as_ref(),
                     when: expand(entry.when.as_ref()),
+                    spent_by: expand(entry.spent_by.as_ref()),
                     title: entry.title.as_ref().map(|(t, _)| t.clone()),
                     anchor: *on_span,
                     folded,
@@ -1364,9 +1474,10 @@ pub fn project_beats<'a>(
                         .priority
                         .as_ref()
                         .is_some_and(|(p, _)| parse_beat_priority(p).is_none())
-                    || beat.once.as_ref().is_some_and(|(o, _)| {
-                        !matches!(o.as_str(), "run" | "user" | "false" | "day" | "slot")
-                    })
+                    || beat
+                        .once
+                        .as_ref()
+                        .is_some_and(|(o, _)| o != "false" && BeatOnce::parse(o).is_none())
                 {
                     continue;
                 }
@@ -1385,7 +1496,7 @@ pub fn project_beats<'a>(
                         kind_targets,
                         priority: crate::bundles::bundle_beat_priority(beat),
                         once: crate::bundles::bundle_beat_once(beat),
-                        once_authored: beat.once.is_some(),
+                        once_authored: beat.once.is_some() || beat.spent_by.is_some(),
                         also: crate::bundles::bundle_beat_also(beat),
                         after: beat
                             .after
@@ -1396,6 +1507,7 @@ pub fn project_beats<'a>(
                             .filter(|_| beat.once.as_ref().is_some_and(|(o, _)| o != "false")),
                         when_slot: beat.when.as_ref(),
                         when: expand(beat.when.as_ref()),
+                        spent_by: expand(beat.spent_by.as_ref()),
                         title: beat.title.as_ref().map(|(t, _)| t.clone()),
                         anchor: *on_span,
                         folded,
@@ -1513,6 +1625,10 @@ struct Beat<'a> {
     run_once_user_when: bool,
     /// Where a warning anchors: the `on` key / attribute.
     anchor: Span,
+    /// dsl 0.27.0 §4: provably never presented — its `when` alone, or under
+    /// its occasion's gate and `!terminal`, is false (a finite clock's range
+    /// included). Such a beat ties with nothing.
+    never: bool,
     folded: &'a FoldedEnv,
 }
 
@@ -1581,7 +1697,10 @@ pub fn check_project_beats(
         .map(|q| {
             (
                 q.id.as_str(),
-                !q.tier.as_ref().is_some_and(|(t, _)| t == "run"),
+                // dsl 0.27.0 §5: a `season:<name>` quest resets like a run one.
+                !q.tier
+                    .as_ref()
+                    .is_some_and(|(t, _)| t == "run" || t.starts_with("season:")),
             )
         })
         .collect();
@@ -1616,9 +1735,13 @@ pub fn check_project_beats(
             // asserts does not hold while it is eligible.
             let mut absent = Vec::new();
             let mut persists = Vec::new();
-            for f in
-                crate::cast::unit_facts(producers, &folded.env.rel_vocab, pb.path, pb.unit, pb.once)
-            {
+            for f in crate::cast::unit_facts(
+                producers,
+                &folded.env.rel_vocab,
+                pb.path,
+                pb.unit,
+                &pb.once,
+            ) {
                 match f.persists {
                     None => absent.push(format!("!{}", f.query)),
                     Some(why) => persists.push((f.query.replace(", ", ","), why)),
@@ -1634,6 +1757,8 @@ pub fn check_project_beats(
                 .map(|w| format!("({w})"))
                 .into_iter()
                 .chain(guard)
+                // dsl 0.27.0 §5: eligible only while `spentBy` does not hold.
+                .chain(pb.spent_by.as_deref().map(|s| format!("!({s})")))
                 .chain(after)
                 .chain(absent)
                 .reduce(|acc, c| format!("{acc} && {c}"));
@@ -1641,6 +1766,20 @@ pub fn check_project_beats(
                 relations: &folded.env.rel_vocab.relations,
                 quests: &quest_tiers,
             };
+            let never = crate::gates::beat_never_eligible(
+                folded,
+                pb.on,
+                pb.target,
+                pb.when_slot.map(|w| w.raw.as_str()),
+                |c| {
+                    let span = pb.when_slot.map_or(pb.anchor, |w| w.span);
+                    crate::gates::provably_false(
+                        c,
+                        folded,
+                        env.map(|e| (e, pb.path.as_path(), span)),
+                    )
+                },
+            );
             Beat {
                 path: pb.path,
                 name: pb.name(),
@@ -1648,10 +1787,10 @@ pub fn check_project_beats(
                 target: pb.target,
                 kind_targets: pb.kind_targets,
                 priority: pb.priority,
-                once: pb.once,
+                once: pb.once.clone(),
                 also: pb.also,
-                always: pb.after.is_none() && holds,
-                unspent: pb.once == BeatOnce::None,
+                always: pb.after.is_none() && holds && pb.spent_by.is_none(),
+                unspent: pb.once == BeatOnce::None && pb.spent_by.is_none(),
                 run_once_user_when: pb.once == BeatOnce::Run
                     && !pb.once_authored
                     && pb
@@ -1678,6 +1817,7 @@ pub fn check_project_beats(
                 when: pb.when,
                 anchor: pb.anchor,
                 folded,
+                never,
             }
         })
         .collect();
@@ -1798,6 +1938,10 @@ pub fn check_project_beats(
                 // T3-10) a sub-kind beat its parent's — no file order.
                 && a.cells().is_kind() == b.cells().is_kind()
                 && !a.cells().nested(b.cells())
+                // dsl 0.27.0 §4: a beat that is never presented ties with
+                // nothing (its unreachable verdict says why).
+                && !a.never
+                && !b.never
                 && !provably_exclusive(a, b, env)
             {
                 ties.push((i, j));
@@ -1984,7 +2128,7 @@ fn shadowed_on_every_target<'b, 'a>(
 /// `visited('<id>')` (the save-scoped visited set). A scene's `once: run`
 /// (or a clock period) has no readable flag, and a repeatable beat none.
 fn spend_flag(pb: &ProjectBeat<'_>) -> Option<String> {
-    match (pb.kind, pb.once) {
+    match (pb.kind, &pb.once) {
         (ProjectBeatKind::Entry, BeatOnce::User) => Some(format!("entry.{}.everRead", pb.id)),
         (ProjectBeatKind::Entry, BeatOnce::Run) => Some(format!("entry.{}.read", pb.id)),
         (ProjectBeatKind::Scene, BeatOnce::User)
@@ -2100,8 +2244,9 @@ pub fn presence_ladder(
     out
 }
 
-/// A beat that is always eligible: no `after:`, and a `when` absent or
-/// deciding true without facts.
+/// A beat that is always eligible: no `after:`, no `spentBy` (dsl 0.27.0 §5:
+/// it drops out once its condition holds), and a `when` absent or deciding
+/// true without facts.
 pub fn always_eligible(pb: &ProjectBeat<'_>) -> bool {
     let params = BTreeMap::new();
     let defs = DefTable {
@@ -2115,6 +2260,7 @@ pub fn always_eligible(pb: &ProjectBeat<'_>) -> bool {
         facts: None,
     };
     pb.after.is_none()
+        && pb.spent_by.is_none()
         && pb
             .when_slot
             .is_none_or(|w| matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true))))

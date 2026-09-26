@@ -203,7 +203,7 @@ own `isSet`. The third reads `prev.run.depth` through `@lastF` with nothing prov
 
 <!-- lute-diagnostics -->
 ```
-recap.lute:16:21: error [E-MAYBE-UNSET] state path `prev.run.depth` may be read before it is set, read through `@lastF` (no default, no dominating `::set`, no guard) (dsl §9.4)
+recap.lute:16:21: error [E-MAYBE-UNSET] state path `prev.run.depth` may be read before it is set, read through `@lastF` (no default, no dominating `::set`, no guard)
 ```
 
 The `min`/`max`/`values` def fields from earlier drafts are removed: a def is fully described by its

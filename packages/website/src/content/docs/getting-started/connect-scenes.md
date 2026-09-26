@@ -3,8 +3,6 @@ title: Connect scenes into a story
 description: Chain scenes into a whole story you can play and test without a game engine — one made-up occasion answered by every scene, after for the order, priority for the running order, when for branching endings, and a play script for lute play.
 ---
 
-<!-- TODO(0.27): once `sequence:` in lute.project.yaml ships (spec 0.27.0 §8), teach it first here and keep this on/after/priority form as what it expands to. -->
-
 [Write your first scene](/getting-started/first-scene/) ended with two scenes and an `after:` line
 between them. `after:` says which scene comes *after* which. It does not move the player: something
 still has to **start** each scene. In a shipped game that something is the engine. Before an engine
@@ -50,7 +48,8 @@ type the project from this page. The same files are in the repository at
 for reference.
 
 `lute.project.yaml` marks the folder as a project. Its `defaults:` block gives every document the
-same `uses:` line, so no scene has to repeat it ([Project defaults](/language/imports/#project-defaults)):
+same `uses:` line, so no scene has to repeat it ([Project defaults](/language/imports/#project-defaults)),
+and its `sequence:` block chains the chapters in order:
 
 ```yaml
 defaultProfile: core
@@ -59,6 +58,9 @@ profiles:
     plugins: {}
 defaults:
   uses: [world.schema.yaml]
+sequence:
+  occasion: chapter
+  scenes: [prologue, counter, accusation]
 ```
 
 `world.schema.yaml` declares the one piece of state the story remembers: whom the player accused.
@@ -68,17 +70,16 @@ state:
   run.accused: { type: { enum: [nobody, ruben, tilly] }, default: nobody }
 ```
 
-## The chapters: `on:`, `after:`, `priority:`
+## The chapters: `sequence:`
 
-The first scene answers `chapter`. It has no `after:`, so it is eligible from the start:
+`sequence:` lists scenes by their `id:`, in play order, and names the occasion they answer. The
+scenes themselves only say who they are:
 
 ```lute check="docs/examples/connect-scenes/scenes/prologue.lute"
 ---
 kind: scene
 id: prologue
 title: Closing Time
-on: chapter
-priority: 30
 ---
 
 ## Closing Time
@@ -87,16 +88,11 @@ priority: 30
 @wren: Mr. Pryce? We're closing.
 ```
 
-The second scene answers `chapter` too, and only after the prologue has played:
-
 ```lute check="docs/examples/connect-scenes/scenes/counter.lute"
 ---
 kind: scene
 id: counter
 title: The Counter
-on: chapter
-after: 'visited("prologue")'
-priority: 20
 ---
 
 ## The Counter
@@ -105,15 +101,30 @@ priority: 20
 @wren: Somebody here knows what happened.
 ```
 
+For every listed scene, the sequence writes three frontmatter keys you would otherwise write by
+hand. `counter` behaves exactly as if its frontmatter said:
+
+```yaml
+on: chapter
+after: 'visited("prologue")'
+priority: 20
+```
+
 - `on: chapter` makes the scene a candidate whenever `chapter` is raised.
-- `after: 'visited("prologue")'` keeps it waiting until the scene with `id: prologue` has played.
-  `visited("…")` names a scene by its `id:`.
+- `after: 'visited("prologue")'` keeps it waiting until the scene listed before it has played.
+  `visited("…")` names a scene by its `id:`. The first scene has no `after:`, so it is eligible
+  from the start.
 - A scene plays at most once per run, so after the prologue has played it drops out and the counter
   is the one left.
-- `priority:` states the running order outright: higher plays first, and each chapter gets a lower
-  number than the one before. The checker cannot see that `after:` already keeps two chapters apart,
-  so without distinct priorities `lute check-project` may warn `W-BEAT-PRIORITY-TIE` for scenes that
-  share one. Leave gaps (30, 20, 10) so a scene added later fits between two others.
+- `priority:` states the running order outright: higher plays first. The sequence counts down in
+  steps of ten from the first scene (30, 20, 10 for three scenes), so every chapter outranks the
+  scenes that come after the chain.
+
+A key the scene writes itself wins over the sequence: give one scene its own `priority:` or a
+different `after:` and only that key changes. A listed id that no scene declares is `E-SEQUENCE`
+in `lute check-project`, with a did-you-mean, and so is a listed scene whose own `on:` answers a
+different occasion. Scenes you do not list, like the endings below, still write their keys by
+hand.
 
 The third scene gives the player a choice and remembers it:
 
@@ -122,9 +133,6 @@ The third scene gives the player a choice and remembers it:
 kind: scene
 id: accusation
 title: The Accusation
-on: chapter
-after: 'visited("counter")'
-priority: 10
 ---
 
 ## The Accusation

@@ -96,6 +96,240 @@ fn rewrite(cel: &str, uses: &[IndexUse], member_of: &dyn Fn(&str) -> String) -> 
     out
 }
 
+/// dsl 0.27.0 §3 (T2-2): one bare rule variable in a guard's CEL text —
+/// `run.stalker == S` — with the state path it is compared with (`==` /
+/// `!=`, either side), `None` when it stands anywhere else. `range` spans
+/// the variable.
+#[derive(Clone, Debug, PartialEq)]
+struct VarUse {
+    range: (usize, usize),
+    var: String,
+    path: Option<String>,
+}
+
+/// Every bare `<Var>` (an identifier starting with an uppercase letter,
+/// outside string literals) in `cel` that is not a `F[<Var>]` index, a call,
+/// a field (`x.Y`) or a `@ref`.
+fn var_uses(cel: &str) -> Vec<VarUse> {
+    let mask = lute_cel::cel_string_mask(cel);
+    let b = cel.as_bytes();
+    let in_string = |i: usize| mask.get(i).copied().unwrap_or(false);
+    let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let path_byte = |c: u8| ident(c) || c == b'.';
+    let skip_ws_back = |mut i: usize| {
+        while i > 0 && b[i - 1].is_ascii_whitespace() {
+            i -= 1;
+        }
+        i
+    };
+    let skip_ws = |mut i: usize| {
+        while i < b.len() && b[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        i
+    };
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if in_string(i)
+            || !b[i].is_ascii_uppercase()
+            || (i > 0 && (path_byte(b[i - 1]) || matches!(b[i - 1], b'@' | b'$')))
+        {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < b.len() && ident(b[i]) {
+            i += 1;
+        }
+        let end = i;
+        let before = skip_ws_back(start);
+        let after = skip_ws(end);
+        let next = b.get(after).copied();
+        let prev = before.checked_sub(1).map(|k| b[k]);
+        if next == Some(b'(') || next == Some(b'.') || (prev == Some(b'[') && next == Some(b']')) {
+            continue;
+        }
+        // `path == V` / `path != V`, or `V == path` / `V != path`.
+        let op_before = before >= 2
+            && matches!(&cel[before - 2..before], "==" | "!=")
+            && before
+                .checked_sub(3)
+                .is_none_or(|k| !matches!(b[k], b'=' | b'!' | b'<' | b'>'));
+        let op_after = after + 2 <= b.len() && matches!(&cel[after..after + 2], "==" | "!=");
+        let path = if op_before {
+            let e = skip_ws_back(before - 2);
+            let mut s = e;
+            while s > 0 && path_byte(b[s - 1]) {
+                s -= 1;
+            }
+            Some(&cel[s..e])
+        } else if op_after {
+            let s = skip_ws(after + 2);
+            let mut e = s;
+            while e < b.len() && path_byte(b[e]) {
+                e += 1;
+            }
+            Some(&cel[s..e])
+        } else {
+            None
+        };
+        let path = path
+            .filter(|p| p.contains('.') && p.as_bytes()[0].is_ascii_lowercase())
+            .map(str::to_string);
+        out.push(VarUse {
+            range: (start, end),
+            var: cel[start..end].to_string(),
+            path,
+        });
+    }
+    out
+}
+
+/// `cel` with each bare variable use replaced by the string literal of its
+/// member (`run.stalker == S` under `S = morgue` reads
+/// `run.stalker == 'morgue'`); variables `member_of` leaves `None` stay.
+fn rewrite_vars(cel: &str, uses: &[VarUse], member_of: &dyn Fn(&str) -> Option<String>) -> String {
+    let mut out = String::with_capacity(cel.len());
+    let mut at = 0;
+    for u in uses {
+        let Some(m) = member_of(&u.var) else { continue };
+        out.push_str(&cel[at..u.range.0]);
+        out.push('\'');
+        out.push_str(&m);
+        out.push('\'');
+        at = u.range.1;
+    }
+    out.push_str(&cel[at..]);
+    out
+}
+
+/// The members a variable bound by several positive atoms can take: the
+/// members every closed binding kind shares (`None` when no binding kind is
+/// closed).
+fn bound_members(rule: &Rule, var: &str, vocab: &RelVocab) -> Option<Vec<String>> {
+    let mut out: Option<Vec<String>> = None;
+    for (_, kind) in binding_kinds(rule, var, vocab) {
+        let Some(ms) = closed_members(vocab, &kind) else {
+            continue;
+        };
+        match &mut out {
+            Some(have) => have.retain(|m| ms.contains(m)),
+            None => out = Some(ms.to_vec()),
+        }
+    }
+    out
+}
+
+/// Validate every bare rule variable in one guard of `rule` (dsl 0.27.0 §3,
+/// T2-2) and return the guard text the ordinary guard checks should see —
+/// each use replaced by `'<first member>'` of the variable's kind. `Err`
+/// carries the diagnostics when a use is illegal:
+///
+/// * the variable must be compared (`==` / `!=`) with a state path
+///   (`E-CEL-PROFILE`) typed `{ domain: K }` / `{ entity: K }`;
+/// * it must be bound by a positive body atom (`E-DATALOG-UNSAFE`) over a
+///   closed kind that shares members with `K` (`E-FACT-DOMAIN`).
+pub fn check_var_guard(
+    rule: &Rule,
+    cel: &str,
+    vocab: &RelVocab,
+    state: &crate::meta::StateSchema,
+    span: Span,
+) -> Result<String, Vec<Diagnostic>> {
+    let uses = var_uses(cel);
+    if uses.is_empty() {
+        return Ok(cel.to_string());
+    }
+    let mut diags = Vec::new();
+    let mut first_member: BTreeMap<&str, String> = BTreeMap::new();
+    for u in &uses {
+        let v = &u.var;
+        let Some(path) = &u.path else {
+            diags.push(diag(
+                "E-CEL-PROFILE",
+                format!(
+                    "rule guard reads rule variable `{v}` bare; a variable is read as `F[{v}]` \
+                     (entity-indexed state) or compared with a domain-typed state path, \
+                     `run.path == {v}` (dsl 0.24.0 §3, dsl 0.27.0 §3)"
+                ),
+                span,
+            ));
+            continue;
+        };
+        let kind = match state.decls.get(path).map(|d| &d.ty) {
+            Some(lute_manifest::types::Type::Domain(k) | lute_manifest::types::Type::Entity(k)) => {
+                k.clone()
+            }
+            Some(_) => {
+                diags.push(diag(
+                    "E-CEL-PROFILE",
+                    format!(
+                        "rule guard compares rule variable `{v}` with `{path}`, which is not typed \
+                         by a kind; declare it `{{ type: {{ domain: <kind> }} }}` so `{v}` is \
+                         instantiated per member (dsl 0.27.0 §3)"
+                    ),
+                    span,
+                ));
+                continue;
+            }
+            // An undeclared path is the ordinary guard check's `E-UNDECLARED`.
+            None => String::new(),
+        };
+        let bound = binding_kinds(rule, v, vocab);
+        if bound.is_empty() {
+            diags.push(diag(
+                "E-DATALOG-UNSAFE",
+                format!(
+                    "rule guard compares `{path}` with `{v}`, but `{v}` is not bound by a positive \
+                     body atom; bind it first (dsl 0.27.0 §3)"
+                ),
+                span,
+            ));
+            continue;
+        }
+        let Some(members) = bound_members(rule, v, vocab) else {
+            diags.push(diag(
+                "E-FACT-DOMAIN",
+                format!(
+                    "rule guard compares `{path}` with `{v}`, but `{v}` ranges over no closed \
+                     kind, so it cannot be instantiated per member; bind it with a kind that \
+                     lists its `members:` (dsl 0.27.0 §3)"
+                ),
+                span,
+            ));
+            continue;
+        };
+        if !kind.is_empty()
+            && !bound
+                .iter()
+                .any(|(_, k)| within(vocab, k, &kind) || within(vocab, &kind, k))
+        {
+            let by: Vec<String> = bound
+                .iter()
+                .map(|(a, k)| format!("`{a}` over `{k}`"))
+                .collect();
+            diags.push(diag(
+                "E-FACT-DOMAIN",
+                format!(
+                    "rule guard compares `{path}` (a `{kind}`) with `{v}`, but `{v}` ranges over {} \
+                     — the comparison can never hold (dsl 0.27.0 §3)",
+                    by.join(", ")
+                ),
+                span,
+            ));
+            continue;
+        }
+        if let Some(m) = members.first() {
+            first_member.insert(v, m.clone());
+        }
+    }
+    if !diags.is_empty() {
+        return Err(diags);
+    }
+    Ok(rewrite_vars(cel, &uses, &|v| first_member.get(v).cloned()))
+}
+
 /// The kind each positive body atom gives `var`: the atom's own name for an
 /// entity-kind predicate `K(var)`, else the relation's declared argument
 /// domain at `var`'s position. With the atom it came from, for messages.
@@ -257,10 +491,18 @@ pub fn check_indexed_guard(
 
 /// The members each indexed variable of `rule` is grounded over: for a
 /// variable reading several families, the members every index kind shares.
-/// Empty when the rule reads no indexed state. A family that is not
-/// entity-indexed (already an error at check) grounds nothing.
+/// dsl 0.27.0 §3 (T2-2): a variable compared bare with a domain-typed path
+/// is grounded over the members its closed binding kinds share. Empty when
+/// the rule reads no indexed state and compares no variable. A family that
+/// is not entity-indexed (already an error at check) grounds nothing.
 fn grounding(rule: &Rule, vocab: &RelVocab) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut constrain = |var: &str, members: &[String]| match out.get_mut(var) {
+        Some(have) => have.retain(|m| members.contains(m)),
+        None => {
+            out.insert(var.to_string(), members.to_vec());
+        }
+    };
     for lit in &rule.body {
         let BodyLiteral::Guard { cel, .. } = lit else {
             continue;
@@ -271,12 +513,11 @@ fn grounding(rule: &Rule, vocab: &RelVocab) -> BTreeMap<String, Vec<String>> {
                 .get(&u.family)
                 .and_then(|k| closed_members(vocab, k))
                 .unwrap_or_default();
-            match out.get_mut(&u.var) {
-                Some(have) => have.retain(|m| members.contains(m)),
-                None => {
-                    out.insert(u.var.clone(), members.to_vec());
-                }
-            }
+            constrain(&u.var, members);
+        }
+        for u in var_uses(cel) {
+            let members = bound_members(rule, &u.var, vocab).unwrap_or_default();
+            constrain(&u.var, &members);
         }
     }
     out
@@ -301,14 +542,19 @@ fn ground_atom(a: &RuleAtom, at: &BTreeMap<&str, &str>) -> RuleAtom {
 
 /// A rule guard's CEL with each indexed read `F[V]` whose variable `at`
 /// binds replaced by `F.<member>` (`run.aff[P]` under `P = sol` reads
-/// `run.aff.sol`); unbound variables are left as written.
+/// `run.aff.sol`) and each bare use by the member's string literal
+/// (`run.stalker == S` under `S = morgue` reads `run.stalker ==
+/// 'morgue'`, dsl 0.27.0 §3); unbound variables are left as written.
 pub fn ground_guard(cel: &str, at: &BTreeMap<&str, &str>) -> String {
     let uses: Vec<IndexUse> = index_uses(cel)
         .into_iter()
         .filter(|u| at.contains_key(u.var.as_str()))
         .collect();
-    rewrite(cel, &uses, &|v| {
+    let indexed = rewrite(cel, &uses, &|v| {
         at.get(v).map(|m| (*m).to_string()).unwrap_or_default()
+    });
+    rewrite_vars(&indexed, &var_uses(&indexed), &|v| {
+        at.get(v).map(|m| (*m).to_string())
     })
 }
 
@@ -367,7 +613,7 @@ pub fn evaluable_rules(vocab: &RelVocab) -> Cow<'_, [RuleDecl]> {
         r.rule
             .body
             .iter()
-            .any(|l| matches!(l, BodyLiteral::Guard { cel, .. } if !index_uses(cel).is_empty()))
+            .any(|l| matches!(l, BodyLiteral::Guard { cel, .. } if !index_uses(cel).is_empty() || !var_uses(cel).is_empty()))
     }) {
         return Cow::Borrowed(&vocab.rules);
     }

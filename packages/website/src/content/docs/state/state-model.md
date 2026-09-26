@@ -1,6 +1,6 @@
 ---
 title: The state model
-description: Lute's tiered scalar state — the run, user, and app lifetime namespaces (plus episode-local scene), how paths are declared (including enum-typed and per-entity paths), the path-sensitive definite-assignment rules that govern reads and writes, the paths only the engine writes, and prev.run, the previous run's final values.
+description: Lute's tiered scalar state — the run, user, and app lifetime namespaces (plus episode-local scene and schema-declared season tiers), how paths are declared (including enum-typed and per-entity paths), the path-sensitive definite-assignment rules that govern reads and writes, the paths only the engine writes, and prev.run / prev.season, the previous run's or season window's final values.
 ---
 
 Lute scalar state is a set of typed paths (`number`, `bool`, `string`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
@@ -13,6 +13,10 @@ Lute scalar state is a set of typed paths (`number`, `bool`, `string`, `enum`) g
 | `app.*` | app uninstall — identity-independent | language, age rating, settings |
 
 The engine **owns and fires every reset**; the language never triggers one. The three persistent tiers — `run` / `user` / `app` — are game/season-global, so they live in a single shared schema document that scenes import with `uses:` (see [State schemas](/state/schemas/)). Only genuinely episode-local `scene.*` declarations may appear inline in a scene, and a scene MUST NOT redeclare or override an imported tier.
+
+A schema may add one more tier per declared **season** (dsl 0.27.0 §5): `season.<name>.*` resets to
+its defaults each time the season opens, and `prev.season.<name>.*` keeps the values its previous
+window ended with. See [Seasons](/state/schemas/#seasons).
 
 ## Declaration
 
@@ -40,7 +44,7 @@ project that declares one path with two types.
 
 <!-- lute-diagnostics -->
 ```
-./scenes/b.lute:5:3: error [E-STATE-DECL-CONFLICT] state path `run.southFossil` is declared as bool, default false at `./scenes/a.lute:5` but as enum(none|dome|spiral), default "none" at `./scenes/b.lute:5`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import) (dsl 0.26.0 §2.1)
+./scenes/b.lute:5:3: error [E-STATE-DECL-CONFLICT] state path `run.southFossil` is declared as bool, default false at `./scenes/a.lute:5` but as enum(none|dome|spiral), default "none" at `./scenes/b.lute:5`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import)
 ```
 
 `scene.*` paths are scene-local and exempt, and a declaration that refines one it
@@ -136,6 +140,7 @@ Some paths belong to the engine. Content reads them anywhere it reads state — 
 | `entry.<id>.read` | the engine, on a lore entry's first presentation in a run — **run** tier | `E-QUEST-RESERVED-WRITE` |
 | `entry.<id>.everRead` | the engine, on a lore entry's first presentation ever — **user** tier | `E-QUEST-RESERVED-WRITE` |
 | `prev.run.<path>` | the engine, when a run ends: the value `run.<path>` had then (see [below](#the-previous-run)) | `E-QUEST-RESERVED-WRITE` |
+| `prev.season.<name>.<field>` | the engine, when a declared [season](/state/schemas/#seasons) opens again: the value `season.<name>.<field>` had then (0.27.0) | `E-QUEST-RESERVED-WRITE` |
 | `clock.index`, `clock.weekday`, `clock.weekdayLabel` | derived from the day and slot of the schema's declared [clock](/language/clock/) (0.24.0) | `E-QUEST-RESERVED-WRITE` |
 | a path your schema declares `owner: engine` | the engine | `E-ENGINE-OWNED-WRITE` |
 
@@ -160,7 +165,7 @@ Reads are unrestricted: `when="run.day > 1"` and `{{run.day}}` are ordinary read
 
 <!-- lute-diagnostics -->
 ```
-./scenes/hub/day-end.lute:12:8: error [E-ENGINE-OWNED-WRITE] `::set` cannot write `run.day`: it is declared `owner: engine` — the engine writes it and content may only read it; in `lute play` write it with an `engine:` step, in a trace/test with a mock (dsl 0.22.0 §1.2)
+./scenes/hub/day-end.lute:12:8: error [E-ENGINE-OWNED-WRITE] `::set` cannot write `run.day`: it is declared `owner: engine` — the engine writes it and content may only read it; in `lute play` write it with an `engine:` step, in a trace/test with a mock
 ```
 
 `engine` is the only owner a declaration can name: any other `owner:` value is `E-STATE-DECL`, and a path with no `owner:` stays content-written. The key changes who may write the path, not its type, tier, or default. It binds content, so the checker enforces it and it does not reach the compiled artifact: the path's state-table entry is the same with or without it. `lute context` marks such a path `(owner: engine)` in its state listing.

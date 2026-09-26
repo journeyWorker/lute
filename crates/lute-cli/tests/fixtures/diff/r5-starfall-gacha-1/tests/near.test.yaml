@@ -1,0 +1,5 @@
+file: ../lore/summon.lute
+beat: bondNear
+state: { occasion.target: aria, user.bond.aria: 120 }
+expect:
+  transcriptContains: ["aria almost smiles."]

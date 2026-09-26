@@ -78,6 +78,11 @@ export default defineConfig({
           translations: { ko: "치트시트" },
         },
         {
+          slug: "reference/diagnostics",
+          label: "Diagnostics",
+          translations: { ko: "진단 코드" },
+        },
+        {
           label: "Guides",
           translations: { ko: "가이드" },
           items: [{ slug: "guides/multi-author" }],

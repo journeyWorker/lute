@@ -256,3 +256,152 @@ fn context_lists_bundle_beat_canonical_ids() {
         );
     }
 }
+
+/// dsl 0.27.0: every new key shows where its siblings do — an occasion's
+/// `raisedWhen` and `payload` beside `select` / `target`, a kind's `labels`
+/// beside its members, a component's `beat:` header beside its params, and
+/// the project's clock (`days` / `last`), `terminal`, `seasons` and the
+/// manifest's `sequence`.
+#[test]
+fn context_shows_the_0_27_project_keys() {
+    let proj = project();
+    write_at(
+        &proj,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    plugins: { demo.occasions: true }\n\
+         defaults:\n  uses: [world.schema.yaml]\nsequence: { occasion: talk, scenes: [mara.first] }\n",
+    );
+    write_at(
+        &proj,
+        "plugins/demo.occasions/occasions/game.yaml",
+        "occasions:\n  talk: { select: first, target: { prefix: npc, entity: person }, raisedWhen: \"run.day <= 3\" }\n  \
+         summon: { select: sequence, payload: { copies: number } }\n",
+    );
+    write_at(
+        &proj,
+        "world.schema.yaml",
+        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  run.fate: { type: { enum: [alive, dead] }, default: alive }\n  \
+         season.harvest.tokens: { type: number, default: 0 }\n\
+         clock:\n  day: run.day\n  last: { day: 5 }\n\
+         terminal: \"run.fate == 'dead'\"\n\
+         seasons:\n  harvest: { live: \"run.day >= 2\" }\n\
+         entities:\n  person: { members: [mara, tomas], labels: { mara: \"Mara Voss\" } }\n",
+    );
+    write_at(
+        &proj,
+        "components/nod.component.lute",
+        "---\ncomponent: nod\nparams:\n  who: { entity: person }\nbeat:\n  on: talk\n  target: \"npc.@who\"\n  once: user\n---\n\n\
+         ## Nod\n\n@narrator: A nod.\n",
+    );
+    let v: serde_json::Value = serde_json::from_str(&context(&proj, true)).unwrap();
+    assert_eq!(v["occasions"]["talk"]["raisedWhen"], "run.day <= 3");
+    assert_eq!(
+        v["occasions"]["summon"]["payload"],
+        serde_json::json!({ "copies": "number" })
+    );
+    let person = v["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["name"] == "person")
+        .unwrap();
+    assert_eq!(person["labels"], serde_json::json!({ "mara": "Mara Voss" }));
+    let nod = v["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "nod")
+        .unwrap();
+    assert_eq!(
+        nod["beat"],
+        serde_json::json!({ "on": "talk", "target": "npc.@who", "once": "user" })
+    );
+    assert_eq!(
+        v["clock"],
+        serde_json::json!({ "day": "run.day", "last": { "day": 5 } })
+    );
+    assert_eq!(v["terminal"], "run.fate == 'dead'");
+    assert_eq!(
+        v["seasons"],
+        serde_json::json!([{ "name": "harvest", "live": "run.day >= 2" }])
+    );
+    assert_eq!(
+        v["sequence"],
+        serde_json::json!({ "occasion": "talk", "scenes": ["mara.first"] })
+    );
+
+    let text = context(&proj, false);
+    for expected in [
+        "  talk (select: first, target: npc.<person>, raisedWhen: run.day <= 3)",
+        "  summon (select: sequence, payload: { copies: number })",
+        "  person: mara (\"Mara Voss\"), tomas",
+        "  nod(who: entity:person)",
+        "clock: day run.day, last day 5",
+        "terminal: run.fate == 'dead' (no occasion is raised once it holds)",
+        "  harvest — live: run.day >= 2",
+        "sequence (occasion: talk): mara.first",
+        "  prev.season.harvest.tokens: number (owner: engine)",
+    ] {
+        assert!(
+            text.lines().any(|l| l == expected),
+            "missing line `{expected}`:\n{text}"
+        );
+    }
+    assert!(
+        text.lines()
+            .any(|l| l.starts_with("    beat: ") && l.contains("target: npc.@who")),
+        "{text}"
+    );
+}
+
+/// Every beat key and quest attribute the checker accepts is listed in
+/// `beatKeys` / `questKeys` — a key added to the language shows in the
+/// authoring surface (dsl 0.27.0: `spentBy`, `once: week | season:<name>`,
+/// `for`, `use`, `rearm`).
+#[test]
+fn context_lists_every_beat_key_and_quest_attribute() {
+    let proj = project();
+    let v: serde_json::Value = serde_json::from_str(&context(&proj, true)).unwrap();
+    let listed = |key: &str| -> Vec<(String, String)> {
+        v[key]
+            .as_array()
+            .unwrap_or_else(|| panic!("no {key}: {v}"))
+            .iter()
+            .map(|k| {
+                (
+                    k["key"].as_str().unwrap().to_string(),
+                    k["syntax"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    };
+    let beat_keys = listed("beatKeys");
+    // Identity and catalogue attributes are not beat keys.
+    let not_beat = ["id", "title", "category", "series", "order"];
+    for key in lute_check::beats::BEAT_KEYS
+        .iter()
+        .chain(lute_check::BUNDLE_BEAT_ATTRS)
+        .chain(lute_check::logic_attrs::ENTRY_ATTRS)
+        .filter(|k| !not_beat.contains(k))
+    {
+        assert!(
+            beat_keys.iter().any(|(k, _)| k == key),
+            "beatKeys lacks `{key}`: {beat_keys:?}"
+        );
+    }
+    let once = &beat_keys.iter().find(|(k, _)| k == "once").unwrap().1;
+    assert!(
+        once.contains("week") && once.contains("season:<name>"),
+        "{once}"
+    );
+    let quest_keys = listed("questKeys");
+    for key in lute_check::logic_attrs::QUEST_ATTRS
+        .iter()
+        .filter(|k| !["id", "title"].contains(k))
+    {
+        assert!(
+            quest_keys.iter().any(|(k, _)| k == key),
+            "questKeys lacks `{key}`: {quest_keys:?}"
+        );
+    }
+}

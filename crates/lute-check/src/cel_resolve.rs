@@ -187,66 +187,140 @@ pub fn check_cel_slot(
         }
     }
 
+    // dsl 0.27.0 §3: a slot reading `occasion.target` as a fact-query
+    // argument or family index is judged once per member of its kind beat
+    // (`holds(owned(aria))`, `user.bond.aria`, …). Outside any kind beat the
+    // read is `E-UNDECLARED` (a lore document's stray read is already
+    // `check_occasion_target_scope`'s).
+    if crate::occasion_bind::binds_target(&slot.raw) {
+        match ctx
+            .env
+            .occasion_scopes
+            .members_at(slot.span.byte_start, slot.span.byte_end)
+        {
+            Some(members) => diags.extend(check_per_member(slot, ctx, members)),
+            None if ctx
+                .env
+                .state
+                .decls
+                .contains_key(crate::beats::OCCASION_TARGET) => {}
+            None => diags.push(diag(
+                "E-UNDECLARED",
+                crate::beats::occasion_target_scope_message(),
+                slot.span,
+            )),
+        }
+        return diags;
+    }
+
     // Pass 2: state-path reads from the shared AST. Skip when the slot did not
     // parse (already reported in Phase 3) so no cascade/duplicate errors fire.
     if let Some(handle) = slot.ast.clone() {
         if let Some(root) = arena.get(handle) {
-            for use_ in collect_path_uses(&root.expr) {
-                check_state_path(&use_.path, slot, ctx, &mut diags);
-            }
-            // Pass 3: the Lute-CEL profile gate (dsl §8.4). A parameterized
-            // `@ref(args)` and a same-named runtime call both collapse to an
-            // identical `Call` under the shared AST's `@`->' ' substitution, so we
-            // re-parse with `@` rewritten to `REF_MARKER`: a ref then carries a
-            // marker-prefixed name and is distinguishable per site (structure-only
-            // re-parse — all diagnostics use the slot span). Gated on `slot.ast`
-            // so malformed CEL is not double-reported.
-            // A hand-written identifier beginning with the reserved `REF_MARKER`
-            // token would parse to a marker-named `Call` with no real `@` sigil and
-            // masquerade as an exempt `@ref`. The token is reserved-internal and
-            // must never appear in authored CEL, so its presence is itself out of
-            // profile — flag once here so the walk below only ever sees markers the
-            // re-parse injected at genuine `@` sites.
-            if raw_uses_reserved_marker(&slot.raw) {
-                diags.push(diag(
-                    E_CEL_PROFILE,
-                    format!(
-                        "`{}` is a reserved internal token and must not appear in CEL (dsl §8.4)",
-                        lute_cel::REF_MARKER
-                    ),
-                    slot.span,
-                ));
-            }
-            let mut marked = CelArena::default();
-            if let Some(mh) = lute_cel::parse_slot_marked_refs(&mut marked, &slot.raw) {
-                if let Some(mroot) = marked.get(mh) {
-                    check_cel_profile(&mroot.expr, slot, &[], &mut diags);
-                    // 0.21.1 T1-1: `isSet(quest.<id>.state)` is always true.
-                    check_quest_state_isset(&mroot.expr, slot.span, &mut diags);
-                    // Vocabulary-aware fact-query pass (dsl 0.3.0 §6/§8, T11):
-                    // `holds`/`count`/`validAt` patterns against `RelVocab`
-                    // (E-RELATION-UNKNOWN/-ARITY/E-FACT-DOMAIN), the
-                    // guard-tainted-derived `validAt` restriction
-                    // (E-VALIDAT-DERIVED), and the match-subject firewall
-                    // (E-MATCH-RELATION-SUBJECT). Runs on the SAME marker
-                    // re-parse as the profile gate above — gated on `slot.ast`
-                    // by the same outer `if`, so malformed CEL never cascades.
-                    check_fact_queries(&mroot.expr, slot, ctx, &mut diags);
-                    // Narrative-time ordering pass (dsl 0.3.0 §6, T12): a
-                    // third INDEPENDENT pass over the SAME marker re-parse —
-                    // `now()`/an engine-declared narrative-time anchor path
-                    // may appear only as one side of an admitted ordering
-                    // comparison against another narrative-time value, or as
-                    // `validAt`'s second argument (`E-TEMPORAL-ARG`).
-                    crate::temporal::check_temporal(&mroot.expr, slot, ctx, &mut diags);
-                    // dsl 0.24.0 §1: both operands of `%` are integers.
-                    check_modulo_operands(&mroot.expr, slot.span, &ctx.env.state, &mut diags);
-                }
-            }
+            check_parsed_slot(&root.expr, slot, ctx, &mut diags);
         }
     }
 
     diags
+}
+
+/// [`check_cel_slot`]'s passes over the parsed slot `expr`: state-path
+/// reads, the CEL profile, fact queries, narrative time, `%` operands.
+fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+    for use_ in collect_path_uses(expr) {
+        check_state_path(&use_.path, slot, ctx, diags);
+    }
+    // Pass 3: the Lute-CEL profile gate (dsl §8.4). A parameterized
+    // `@ref(args)` and a same-named runtime call both collapse to an
+    // identical `Call` under the shared AST's `@`->' ' substitution, so we
+    // re-parse with `@` rewritten to `REF_MARKER`: a ref then carries a
+    // marker-prefixed name and is distinguishable per site (structure-only
+    // re-parse — all diagnostics use the slot span). Gated on `slot.ast`
+    // so malformed CEL is not double-reported.
+    // A hand-written identifier beginning with the reserved `REF_MARKER`
+    // token would parse to a marker-named `Call` with no real `@` sigil and
+    // masquerade as an exempt `@ref`. The token is reserved-internal and
+    // must never appear in authored CEL, so its presence is itself out of
+    // profile — flag once here so the walk below only ever sees markers the
+    // re-parse injected at genuine `@` sites.
+    if raw_uses_reserved_marker(&slot.raw) {
+        diags.push(diag(
+            E_CEL_PROFILE,
+            format!(
+                "`{}` is a reserved internal token and must not appear in CEL (dsl §8.4)",
+                lute_cel::REF_MARKER
+            ),
+            slot.span,
+        ));
+    }
+    let mut marked = CelArena::default();
+    if let Some(mh) = lute_cel::parse_slot_marked_refs(&mut marked, &slot.raw) {
+        if let Some(mroot) = marked.get(mh) {
+            check_cel_profile(&mroot.expr, slot, &[], diags);
+            // 0.21.1 T1-1: `isSet(quest.<id>.state)` is always true.
+            check_quest_state_isset(&mroot.expr, slot.span, diags);
+            // Vocabulary-aware fact-query pass (dsl 0.3.0 §6/§8, T11):
+            // `holds`/`count`/`validAt` patterns against `RelVocab`
+            // (E-RELATION-UNKNOWN/-ARITY/E-FACT-DOMAIN), the
+            // guard-tainted-derived `validAt` restriction
+            // (E-VALIDAT-DERIVED), and the match-subject firewall
+            // (E-MATCH-RELATION-SUBJECT). Runs on the SAME marker
+            // re-parse as the profile gate above — gated on `slot.ast`
+            // by the same outer `if`, so malformed CEL never cascades.
+            check_fact_queries(&mroot.expr, slot, ctx, diags);
+            // Narrative-time ordering pass (dsl 0.3.0 §6, T12): a
+            // third INDEPENDENT pass over the SAME marker re-parse —
+            // `now()`/an engine-declared narrative-time anchor path
+            // may appear only as one side of an admitted ordering
+            // comparison against another narrative-time value, or as
+            // `validAt`'s second argument (`E-TEMPORAL-ARG`).
+            crate::temporal::check_temporal(&mroot.expr, slot, ctx, diags);
+            // dsl 0.24.0 §1: both operands of `%` are integers.
+            check_modulo_operands(&mroot.expr, slot.span, &ctx.env.state, diags);
+        }
+    }
+}
+
+/// dsl 0.27.0 §3: [`check_parsed_slot`] over `slot` instantiated for each
+/// member ([`crate::occasion_bind::instantiate_bound`]). A finding every
+/// member shares is reported once; one only some members hit names them
+/// (`… (for occasion.target = bram)`), since the beat is still raised for
+/// those.
+fn check_per_member(slot: &CelSlot, ctx: &Ctx<'_>, members: &[String]) -> Vec<Diagnostic> {
+    let mut per: Vec<(&str, Vec<Diagnostic>)> = Vec::new();
+    for m in members {
+        let raw = crate::occasion_bind::instantiate_bound(&slot.raw, m);
+        let inst = CelSlot::raw(slot.kind, raw, slot.span);
+        let mut arena = CelArena::default();
+        let mut ds = Vec::new();
+        if let Ok(h) = lute_cel::parse_slot(&mut arena, &inst.raw, 0) {
+            if let Some(root) = arena.get(h) {
+                check_parsed_slot(&root.expr, &inst, ctx, &mut ds);
+            }
+        }
+        per.push((m.as_str(), ds));
+    }
+    let mut out: Vec<Diagnostic> = Vec::new();
+    let key = |d: &Diagnostic| (d.code.clone(), d.message.clone());
+    for (i, (member, ds)) in per.iter().enumerate() {
+        for d in ds {
+            let shared = per.iter().all(|(_, o)| o.iter().any(|x| key(x) == key(d)));
+            if shared {
+                if i == 0 {
+                    out.push(d.clone());
+                }
+                continue;
+            }
+            let mut d = d.clone();
+            d.message = format!(
+                "{} (for `{}` = `{member}`, dsl 0.27.0 §3)",
+                d.message,
+                crate::beats::OCCASION_TARGET
+            );
+            out.push(d);
+        }
+    }
+    out
 }
 
 /// Validate every rule guard's CEL (dsl 0.3.0 §7.2/§7.3, 0.3.0 T8): the
@@ -282,6 +356,21 @@ pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
                         continue;
                     }
                 };
+            // dsl 0.27.0 §3 (T2-2): `run.stalker == S` compares a domain-typed
+            // path with the member bound to `S`.
+            let cel = &match crate::rule_index::check_var_guard(
+                &rule.rule,
+                cel,
+                vocab,
+                &ctx.env.state,
+                rule.span,
+            ) {
+                Ok(cel) => cel,
+                Err(ds) => {
+                    diags.extend(ds);
+                    continue;
+                }
+            };
             let mut arena = CelArena::default();
             let Some(handle) = lute_cel::parse_slot_marked_refs(&mut arena, cel) else {
                 continue;

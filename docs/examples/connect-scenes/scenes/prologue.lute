@@ -2,8 +2,6 @@
 kind: scene
 id: prologue
 title: Closing Time
-on: chapter
-priority: 30
 ---
 
 ## Closing Time

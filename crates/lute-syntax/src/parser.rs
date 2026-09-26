@@ -147,6 +147,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         doc_kind: frontmatter_kind(&raw_yaml),
         top_block: None,
         hoisted: Vec::new(),
+        open_blocks: Vec::new(),
     };
     let (title, shots, quests, entries, beats) = p.parse_document_inner();
 
@@ -203,6 +204,7 @@ pub(crate) fn parse_body_fragment(text: &str) -> (Vec<Node>, Vec<Diagnostic>) {
         doc_kind: None,
         top_block: None,
         hoisted: Vec::new(),
+        open_blocks: Vec::new(),
     };
     let nodes = parser.parse_shot_body();
     (nodes, parser.diags)
@@ -230,6 +232,11 @@ pub(crate) struct Parser<'a> {
     /// Top-level blocks opened inside another one by mistake, parsed as its
     /// siblings; `parse_document_inner` files them after the outer block.
     hoisted: Vec<Hoisted>,
+    /// Every block element whose body is being parsed, outermost first: its
+    /// tag name and the 1-based line of its opener. A `</tag>` either names
+    /// one of them — it ends every block opened inside that one — or none,
+    /// and then it is a stray close reported against the block that IS open.
+    open_blocks: Vec<(String, u32)>,
 }
 
 /// An open top-level block (see [`Parser::top_block`]).
@@ -396,12 +403,7 @@ impl Parser<'_> {
                 // never content — mirror `parse_shot_body`'s in-shot handling
                 // (an unmatched close is always `E-UNCLOSED-TAG`, not
                 // `E-CONTENT-OUTSIDE-SHOT`).
-                self.emit_line(
-                    E_UNCLOSED_TAG,
-                    "closing tag without a matching open",
-                    self.cursor,
-                    Layer::Logic,
-                );
+                self.report_stray_close();
                 self.cursor += 1;
             } else if is_content_shaped_line(&trimmed) {
                 // dsl 0.5.0 §2.1: a content-shaped line reached here only
@@ -490,12 +492,7 @@ impl Parser<'_> {
                 break; // next shot: leave for the document loop.
             }
             if trimmed.starts_with("</") {
-                self.emit_line(
-                    E_UNCLOSED_TAG,
-                    "closing tag without a matching open",
-                    self.cursor,
-                    Layer::Logic,
-                );
+                self.report_stray_close();
                 self.cursor += 1;
                 continue;
             }
@@ -546,13 +543,20 @@ impl Parser<'_> {
                     self.parse_nested_top_block(tag);
                     return None;
                 }
-                _ => {
-                    self.emit_line(
-                        E_UNCLASSIFIED,
-                        "unexpected block here",
-                        self.cursor,
-                        Layer::Logic,
-                    );
+                Some(tag @ ("choice" | "when" | "otherwise" | "track" | "reward")) => {
+                    self.parse_misplaced_child(tag);
+                    return None;
+                }
+                other => {
+                    let msg = match other {
+                        Some(tag @ ("entry" | "beat" | "quest")) => format!(
+                            "a `<{tag}>` block belongs at the top level of the document, not \
+                             inside a shot"
+                        ),
+                        Some(tag) => format!("unexpected `<{tag}>` block here"),
+                        None => "unexpected block here".to_string(),
+                    };
+                    self.emit_line(E_UNCLASSIFIED, &msg, self.cursor, Layer::Logic);
                     self.cursor += 1;
                     return None;
                 }
@@ -1533,7 +1537,9 @@ mod tests {
             "{diags:?}"
         );
         assert!(
-            diags.iter().any(|d| d.message == "<entry> is never closed"),
+            diags.iter().any(|d| d
+                .message
+                .starts_with("`<entry>` from line 5 is never closed")),
             "{diags:?}"
         );
         assert_eq!(doc.entries.len(), 3);

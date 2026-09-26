@@ -9,6 +9,7 @@
 //! two unrelated subprojects reusing the same `character`/`episodeId` is not
 //! a collision.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -17,6 +18,7 @@ use cel_parser::ast::{operators as op, Expr};
 use cel_parser::reference::Val;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Assert, CelKind, Document, Node, Quest};
+use lute_syntax::datalog::FactPattern;
 
 use crate::check::CheckResult;
 use crate::meta::{
@@ -2135,15 +2137,24 @@ pub fn live_assert_relations(
     reach: &BTreeMap<NodeId, Reachability>,
     ambiguous_quest_ids: &BTreeSet<String>,
     unreachable_quests: &BTreeSet<String>,
+    effects: &crate::directive_facts::EffectDirectives,
 ) -> BTreeSet<String> {
-    live_assert_sites(docs, reach, ambiguous_quest_ids, unreachable_quests)
-        .into_iter()
-        .filter(|(_, a)| !a.pattern.relation.is_empty())
-        .map(|(_, a)| a.pattern.relation.clone())
-        .collect()
+    live_assert_sites(
+        docs,
+        reach,
+        ambiguous_quest_ids,
+        unreachable_quests,
+        effects,
+    )
+    .into_iter()
+    .filter(|(_, p)| !p.relation.is_empty())
+    .map(|(_, p)| p.relation.clone())
+    .collect()
 }
 
-/// Every `::assert` site, with its document, inside a node this root's
+/// Every asserted fact pattern — each `::assert` site and (dsl 0.27.0 §4)
+/// each directive call's declared `effects.asserts`, resolved at the call
+/// ([`collect_asserted`]) — with its document, inside a node this root's
 /// [`check_reachability`] pass did NOT prove [`Reachability::Unreachable`] —
 /// the reachability gate both `producible()` (relation names,
 /// [`live_assert_relations`]) and the dsl 0.20.0 may set
@@ -2177,7 +2188,8 @@ pub fn live_assert_sites<'d>(
     reach: &BTreeMap<NodeId, Reachability>,
     ambiguous_quest_ids: &BTreeSet<String>,
     unreachable_quests: &BTreeSet<String>,
-) -> Vec<(&'d Path, &'d Assert)> {
+    effects: &crate::directive_facts::EffectDirectives,
+) -> Vec<(&'d Path, Cow<'d, FactPattern>)> {
     let mut out = Vec::new();
     for (path, doc) in docs {
         let mut sites = Vec::new();
@@ -2186,7 +2198,7 @@ pub fn live_assert_sites<'d>(
                 scene_identity(doc).and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
             if assert_site_is_live(node_reach) {
                 for shot in &doc.shots {
-                    collect_asserts(&shot.body, &mut sites);
+                    collect_asserted(&shot.body, effects, &mut sites);
                 }
             }
         }
@@ -2204,18 +2216,39 @@ pub fn live_assert_sites<'d>(
                 )
             };
             if assert_site_is_live(node_reach) {
-                collect_asserts(&quest.body, &mut sites);
+                collect_asserted(&quest.body, effects, &mut sites);
             }
         }
         for entry in &doc.entries {
-            collect_asserts(&entry.body, &mut sites);
+            collect_asserted(&entry.body, effects, &mut sites);
         }
         for beat in &doc.beats {
-            collect_asserts(&beat.body, &mut sites);
+            collect_asserted(&beat.body, effects, &mut sites);
         }
-        out.extend(sites.into_iter().map(|a| (path.as_path(), a)));
+        out.extend(sites.into_iter().map(|p| (path.as_path(), p)));
     }
     out
+}
+
+/// Every fact pattern a node stream asserts: each `::assert`'s, then —
+/// dsl 0.27.0 §4 — each directive call's declared `effects.asserts`,
+/// resolved at the call ([`crate::directive_facts::collect_call_facts`]).
+pub fn collect_asserted<'d>(
+    nodes: &'d [Node],
+    effects: &crate::directive_facts::EffectDirectives,
+    out: &mut Vec<Cow<'d, FactPattern>>,
+) {
+    let mut asserts = Vec::new();
+    collect_asserts(nodes, &mut asserts);
+    out.extend(asserts.into_iter().map(|a| Cow::Borrowed(&a.pattern)));
+    let mut calls = Vec::new();
+    crate::directive_facts::collect_call_facts(nodes, effects, &mut calls);
+    out.extend(
+        calls
+            .into_iter()
+            .flat_map(|(_, f)| f.asserts)
+            .map(Cow::Owned),
+    );
 }
 
 /// Every `::assert{R(…)}` relation name, per document — the producer half of
@@ -2229,26 +2262,27 @@ pub fn live_assert_sites<'d>(
 /// `docs` to one resolved root.
 pub fn assert_relations_per_doc(
     docs: &[(PathBuf, Document)],
+    effects: &crate::directive_facts::EffectDirectives,
 ) -> BTreeMap<PathBuf, BTreeSet<String>> {
     let mut out = BTreeMap::new();
     for (path, doc) in docs {
         let mut sites = Vec::new();
         for shot in &doc.shots {
-            collect_asserts(&shot.body, &mut sites);
+            collect_asserted(&shot.body, effects, &mut sites);
         }
         for quest in &doc.quests {
-            collect_asserts(&quest.body, &mut sites);
+            collect_asserted(&quest.body, effects, &mut sites);
         }
         for entry in &doc.entries {
-            collect_asserts(&entry.body, &mut sites);
+            collect_asserted(&entry.body, effects, &mut sites);
         }
         for beat in &doc.beats {
-            collect_asserts(&beat.body, &mut sites);
+            collect_asserted(&beat.body, effects, &mut sites);
         }
         let rels: BTreeSet<String> = sites
             .into_iter()
-            .filter(|a| !a.pattern.relation.is_empty())
-            .map(|a| a.pattern.relation.clone())
+            .filter(|p| !p.relation.is_empty())
+            .map(|p| p.relation.clone())
             .collect();
         if !rels.is_empty() {
             out.insert(path.clone(), rels);

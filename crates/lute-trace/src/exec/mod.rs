@@ -30,15 +30,17 @@
 //!
 //! wasm-clean: nothing here touches the filesystem, the process or threads.
 
+pub mod cadence;
 mod driver;
 mod machine;
 pub mod record;
+pub mod seam;
 pub mod session;
 mod store;
 
 pub use driver::{
-    BridgeCall, BridgeQueues, BridgeReply, Driver, Forced, Menu, MenuKind, MenuOption, OnUnknown,
-    Pick, ScriptedChoices, SiteKind, UnknownSite, Verdict,
+    guard_premise, BridgeCall, BridgeQueues, BridgeReply, Driver, Forced, GuardRead, Menu,
+    MenuKind, MenuOption, OnUnknown, Pick, ScriptedChoices, SiteKind, UnknownSite, Verdict,
 };
 pub use machine::{
     expr_to_cel, render_fact, value_to_json, value_to_string, BridgeReads, Carry, Machine, Seed,

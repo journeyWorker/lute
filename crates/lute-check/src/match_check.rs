@@ -519,7 +519,16 @@ pub(crate) fn check_match_with_domain(
                 })
                 .map(|k| k.to_string())
                 .collect();
-            (missing.is_empty(), not_covered(&missing))
+            // A finite clock's `clock.index` may span many values (dsl
+            // 0.27.0 §4): name the first few and count the rest.
+            let shown = if missing.len() > 8 {
+                let mut shown = missing[..6].to_vec();
+                shown.push(format!("… ({} more)", missing.len() - 6));
+                shown
+            } else {
+                missing.clone()
+            };
+            (missing.is_empty(), not_covered(&shown))
         }
         Domain::Number => (covered_num.covers_all(), covered_num.first_gap()),
         Domain::Infinite => (false, None),
@@ -3414,6 +3423,7 @@ mod tests {
             activate: None,
             complete: None,
             accept: None,
+            rearm: None,
             attrs: Vec::new(),
             body,
             rewards: Vec::new(),

@@ -58,8 +58,14 @@ pub fn to_lsp_diagnostic(
         range: to_lsp_range(&d.span, idx),
         severity: Some(to_lsp_severity(d.severity)),
         code: Some(lsp_types::NumberOrString::String(d.code.clone())),
+        // T3-17: an `E-`/`W-` code links its section of the website
+        // diagnostics reference; the message is the plain sentence, without
+        // spec citations.
+        code_description: lute_core_span::doc_url(&d.code)
+            .and_then(|url| url.parse().ok())
+            .map(|href| lsp_types::CodeDescription { href }),
         source: Some("lute".into()),
-        message: d.message.clone(),
+        message: d.text().into_owned(),
         related_information: covered_related_information(d, idx, uri),
         ..Default::default()
     }
@@ -198,7 +204,7 @@ mod tests {
     fn ascii_multiline_span_spans_two_lines() {
         let idx = TextIndex::new("abc\ndef\nghi");
         let d = diag(
-            "E-X",
+            "E-SET-SHAPE",
             Severity::Error,
             Span {
                 byte_start: 1,
@@ -222,7 +228,7 @@ mod tests {
         let idx = TextIndex::new(text);
         assert_eq!(text.find('x'), Some(4), "byte column of x is 4");
         let d = diag(
-            "E-X",
+            "E-SET-SHAPE",
             Severity::Warning,
             Span {
                 byte_start: 4,
@@ -260,7 +266,7 @@ mod tests {
             (Severity::Hint, lsp_types::DiagnosticSeverity::HINT),
         ];
         for (core, lsp) in cases {
-            let l = to_lsp_diagnostic(&diag("E-X", core, span), &idx, &test_uri());
+            let l = to_lsp_diagnostic(&diag("E-SET-SHAPE", core, span), &idx, &test_uri());
             assert_eq!(l.severity, Some(lsp), "{core:?} must map to {lsp:?}");
         }
     }
@@ -327,7 +333,7 @@ mod tests {
         assert_eq!(related[1].message, "also here");
 
         // Empty `covered` -> `None`, not `Some(vec![])`.
-        let no_covered = diag("E-X", Severity::Warning, d.span);
+        let no_covered = diag("E-SET-SHAPE", Severity::Warning, d.span);
         let l2 = to_lsp_diagnostic(&no_covered, &idx, &uri);
         assert!(l2.related_information.is_none());
     }

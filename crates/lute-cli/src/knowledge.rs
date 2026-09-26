@@ -487,19 +487,21 @@ fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<G
 }
 
 /// Every asserting site in one root: ``scene `key` (path)``, ``quest `id` ``,
-/// ``entry `id` ``, ``beat `doc.id` ``, with the pattern it asserts.
+/// ``entry `id` ``, ``beat `doc.id` ``, with the pattern it asserts — an
+/// `::assert`'s, or (dsl 0.27.0 §4) a directive call's declared one.
 fn asserters(root: &Path, group: &DocGroup) -> Asserters {
     let mut out = Asserters::new();
+    let effects = lute_check::directive_facts::root_table(group.iter().map(|(_, _, f)| f));
     let mut record = |nodes: &[Node], label: String| {
         let mut sites = Vec::new();
-        lute_check::connectivity::collect_asserts(nodes, &mut sites);
-        for a in sites {
-            if !a.pattern.relation.is_empty() {
-                let p = Pattern {
-                    rel: a.pattern.relation.clone(),
-                    args: fact_args(&a.pattern),
+        lute_check::connectivity::collect_asserted(nodes, &effects, &mut sites);
+        for p in sites {
+            if !p.relation.is_empty() {
+                let pattern = Pattern {
+                    rel: p.relation.clone(),
+                    args: fact_args(&p),
                 };
-                out.push((label.clone(), p));
+                out.push((label.clone(), pattern));
             }
         }
     };
@@ -619,6 +621,43 @@ pub(crate) fn relation_producers(rel: &str, vocab: &RelVocab, sites: &[&str]) ->
     }
 }
 
+/// T3-20 (`lute scenario reach --endings`): the fact atoms condition
+/// `expanded` (after `@def` expansion) queries, each as `(atom, negated,
+/// producers)` in this view's words. `extra` are asserting sites this view's
+/// own walk does not see — a `::use`d component's `::assert`, a plugin
+/// directive's declared `asserts` — as `(label, relation)`, matched at the
+/// relation (any arguments), so they can only widen the producer list.
+pub(crate) fn condition_atoms(
+    root: &Path,
+    group: &DocGroup,
+    expanded: &str,
+    extra: &[(String, String)],
+) -> Vec<(String, bool, String)> {
+    let reads = queried(expanded);
+    if reads.is_empty() {
+        return Vec::new();
+    }
+    let vocab = vocab(group);
+    let mut asserted = asserters(root, group);
+    for (label, rel) in extra {
+        let arity = vocab.relations.get(rel).map_or(0, |d| d.args.len());
+        asserted.push((
+            label.clone(),
+            Pattern {
+                rel: rel.clone(),
+                args: vec![None; arity],
+            },
+        ));
+    }
+    reads
+        .into_iter()
+        .map(|r| {
+            let line = producer_line(&r.pattern, &vocab, &asserted);
+            (r.pattern.text(), r.negated, line)
+        })
+        .collect()
+}
+
 /// A rule with this head can conclude `p`.
 fn concludes(p: &Pattern, head: &lute_syntax::datalog::RuleAtom) -> bool {
     p.unifies(&head.relation, &rule_args(&head.terms, &BTreeMap::new()))
@@ -650,9 +689,15 @@ fn may_set(group: &DocGroup, docs: &[(PathBuf, Document)]) -> (MaySet, lute_chec
     vocab.note_unreadable_documents(docs);
     let stable = lute_check::stable_seeds(docs, &vocab);
     let none = BTreeSet::new();
-    let facts = lute_check::connectivity::live_assert_sites(docs, &BTreeMap::new(), &none, &none)
-        .into_iter()
-        .filter_map(|(_, a)| GroundFact::from_pattern(&a.pattern));
+    let facts = lute_check::connectivity::live_assert_sites(
+        docs,
+        &BTreeMap::new(),
+        &none,
+        &none,
+        vocab.effect_directives(),
+    )
+    .into_iter()
+    .filter_map(|(_, p)| GroundFact::from_pattern(&p));
     (MaySet::build(&vocab, facts, &stable), vocab)
 }
 

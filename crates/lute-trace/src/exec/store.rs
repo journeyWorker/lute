@@ -34,6 +34,10 @@ pub(crate) struct Store {
     /// dsl 0.24.0 §1: per state path, the member → display-label map its
     /// artifact `state[].labels` declares.
     pub(crate) labels: BTreeMap<String, BTreeMap<String, String>>,
+    /// dsl 0.27.0 §7: per entity kind, the member → display-label map its
+    /// artifact `entities[].labels` declares — what an `occasionTarget`
+    /// placeholder of that kind renders.
+    pub(crate) kind_labels: BTreeMap<String, BTreeMap<String, String>>,
     /// Always empty: every declared default is already in `values`, so a
     /// schema tier would only shadow reserved defaults.
     schema: StateSchema,
@@ -165,6 +169,21 @@ impl Store {
             values,
             types,
             labels,
+            kind_labels: art
+                .get("entities")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|k| {
+                    let name = k.get("name")?.as_str()?;
+                    let map = k.get("labels")?.as_object()?;
+                    let map = map
+                        .iter()
+                        .filter_map(|(m, l)| Some((m.clone(), l.as_str()?.to_string())))
+                        .collect();
+                    Some((name.to_string(), map))
+                })
+                .collect(),
             schema: StateSchema::default(),
             vocab,
             rules_read_state: derive && program.reads_state(),

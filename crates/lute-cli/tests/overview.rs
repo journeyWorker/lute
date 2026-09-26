@@ -498,7 +498,9 @@ fn calendar_visited_axis_gates_after_and_bad_axes_name_the_kinds() {
     );
 
     // An axis of no supported kind lists the kinds.
-    let kinds = "an axis is one of: a declared state path (`run.day=1..7`), `quest.<id>.state=<status>,…`, \
+    let kinds = "an axis is one of: a declared state path (`run.day=1..7`), every member of a `per:` \
+                 family (`run.aff.*=6,7`) or the member another axis names (`run.aff[run.route]=6,7`), \
+                 `quest.<id>.state=<status>,…`, \
                  `quest.<id>.objectives.<oid>.done=true,false`, `holds(<fact>)=true,false`, \
                  `visited('<scene or bundle-beat id>')=true,false`, \
                  `clock[=<d1>..<d2>]` (every slot of those days, in order)";
@@ -684,6 +686,173 @@ fn calendar_facts_grid_and_never_presented_list() {
     let out = lute(&bad);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     assert!(stderr(&out).contains("`--facts` names `presnt`, which is no relation in this project — did you mean `present`?"), "{}", text(&out));
+}
+
+/// dsl 0.24.0 §3 over the calendar (lantern-academy F12): a `per:` family
+/// as one axis — every member (`run.aff.*`), or the member another axis
+/// names (`run.aff[run.route]`) — and the bare family refused with both.
+#[test]
+fn calendar_family_axes_set_every_member_or_the_one_another_axis_names() {
+    let dir = town("cal-family");
+    let d = dir.to_str().unwrap();
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.day: { type: number, default: 1 }\n  run.slot: { type: { enum: [morning, night] }, default: morning }\n\
+         \x20 run.aff: { type: number, default: 0, per: person }\n\
+         \x20 run.route: { type: { enum: [none, ada, bo] }, default: none }\n\
+         entities:\n  person: { members: [ada, bo] }\n  place: { members: [inn, dock] }\n\
+         relations:\n  present: { args: [person, place], derive: true }\n  met: { args: [person] }\n\
+         \x20 rumor: { args: [person] }\n  trusted: { args: [person], derive: true }\n\
+         rules:\n  - \"present(ada, inn) :- cel(\\\"run.slot == 'night'\\\")\"\n\
+         \x20 - \"present(bo, dock) :- cel(\\\"run.slot == 'morning' && run.day != 2\\\")\"\n\
+         \x20 - \"trusted(P) :- met(P), not rumor(P)\"\n",
+    );
+    write(
+        &dir,
+        "plugins/town.clock/occasions/clock.yaml",
+        "occasions:\n  dayStart: {}\n  placeVisit: { target: true }\n  board: { select: all, target: true }\n  \
+         termEnd: {}\n",
+    );
+    for (file, id, keys) in [
+        (
+            "both",
+            "end.both",
+            "on: termEnd\npriority: 20\nwhen: 'run.aff.ada >= 7 && run.aff.bo >= 7'\n",
+        ),
+        (
+            "ada-good",
+            "end.ada.good",
+            "on: termEnd\npriority: 10\nwhen: \"run.route == 'ada' && run.aff.ada >= 7\"\n",
+        ),
+        (
+            "ada-ok",
+            "end.ada.ok",
+            "on: termEnd\nwhen: \"run.route == 'ada'\"\n",
+        ),
+        (
+            "bo-good",
+            "end.bo.good",
+            "on: termEnd\npriority: 10\nwhen: \"run.route == 'bo' && run.aff.bo >= 7\"\n",
+        ),
+        (
+            "bo-ok",
+            "end.bo.ok",
+            "on: termEnd\nwhen: \"run.route == 'bo'\"\n",
+        ),
+    ] {
+        write(
+            &dir,
+            &format!("scenes/{file}.lute"),
+            &scene(id, keys, "@narrator: The term ends."),
+        );
+    }
+    let json = |axes: &[&str]| -> Json {
+        let mut args = vec!["calendar", d, "--occasion", "termEnd", "--json"];
+        args.extend_from_slice(axes);
+        let out = lute(&args);
+        assert_eq!(out.status.code(), Some(0), "{axes:?}: {}", text(&out));
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+    let winners = |v: &Json| -> Vec<String> {
+        (0..v["cells"].as_array().unwrap().len())
+            .map(|n| {
+                result(v, n, "termEnd", None)["winner"]
+                    .as_str()
+                    .unwrap_or("-")
+                    .to_string()
+            })
+            .collect()
+    };
+
+    // Every member at once: at 7 both are devoted.
+    let all = json(&["--axis", "run.route=ada", "--axis", "run.aff.*=6,7"]);
+    assert_eq!(
+        all["cells"][1]["at"],
+        serde_json::json!({ "run.route": "ada", "run.aff.*": 7 })
+    );
+    assert_eq!(winners(&all), ["end.ada.ok", "end.both"]);
+
+    // Tied: only the route's own member moves; the other stays at 0.
+    let tied = json(&[
+        "--axis",
+        "run.route=ada,bo",
+        "--axis",
+        "run.aff[run.route]=6,7",
+    ]);
+    assert_eq!(
+        tied["cells"][3]["at"],
+        serde_json::json!({ "run.route": "bo", "run.aff[run.route]": 7 })
+    );
+    assert_eq!(
+        winners(&tied),
+        ["end.ada.ok", "end.ada.good", "end.bo.ok", "end.bo.good"]
+    );
+    let never: Vec<&str> = tied["neverEligible"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(never, ["end.both"]);
+    let out = lute(&[
+        "calendar",
+        d,
+        "--occasion",
+        "termEnd",
+        "--axis",
+        "run.route=ada,bo",
+        "--axis",
+        "run.aff[run.route]=6,7",
+    ]);
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        s.contains("run.route=bo run.aff[run.route]=7  termEnd: end.bo.good over end.bo.ok"),
+        "{s}"
+    );
+
+    let err = |axes: &[&str]| {
+        let mut args = vec!["calendar", d, "--occasion", "termEnd"];
+        args.extend_from_slice(axes);
+        let out = lute(&args);
+        assert_eq!(out.status.code(), Some(2), "{axes:?}: {}", text(&out));
+        stderr(&out)
+    };
+    let bare = err(&["--axis", "run.route=ada,bo", "--axis", "run.aff=6,7"]);
+    assert!(
+        bare.contains(
+            "`--axis run.aff`: `run.aff` is a `per: person` family — name a member (`run.aff.ada`), \
+             all of them (`run.aff.*`), or tie it to an axis (`run.aff[run.route]`)"
+        ),
+        "{bare}"
+    );
+    let unbound = err(&["--axis", "run.aff[run.route]=6,7"]);
+    assert!(
+        unbound.contains("`run.route` is no `--axis` of this calendar (axes: run.aff[run.route])"),
+        "{unbound}"
+    );
+    let outside = err(&[
+        "--axis",
+        "run.route=ada,none",
+        "--axis",
+        "run.aff[run.route]=6",
+    ]);
+    assert!(
+        outside.contains(
+            "`--axis run.route` takes `none`, which is not a member of `person` (ada, bo)"
+        ),
+        "{outside}"
+    );
+    let twice = err(&["--axis", "run.aff.*=6", "--axis", "run.aff.bo=7"]);
+    assert!(
+        twice.contains("`--axis run.aff.*` and `--axis run.aff.bo` both set `run.aff.bo`"),
+        "{twice}"
+    );
+    let none = err(&["--axis", "run.day.*=1"]);
+    assert!(
+        none.contains("`run.day` is no `per:` state family of this project"),
+        "{none}"
+    );
 }
 
 #[test]

@@ -35,6 +35,10 @@ pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnosti
         if let Some(f) = &mut quest.fail {
             expand_slot(f, defs, None, &mut diags);
         }
+        // dsl 0.27.0 §5: `rearm` expands like `start`.
+        if let Some(r) = &mut quest.rearm {
+            expand_slot(r, defs, None, &mut diags);
+        }
         expand_attrs(&mut quest.attrs, defs, None, &mut diags);
         expand_nodes(&mut quest.body, defs, None, &mut diags);
     }
@@ -44,6 +48,10 @@ pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnosti
         if let Some(w) = &mut entry.when {
             expand_slot(w, defs, None, &mut diags);
         }
+        // dsl 0.27.0 §5: `spentBy` expands like `when`.
+        if let Some(s) = &mut entry.spent_by {
+            expand_slot(s, defs, None, &mut diags);
+        }
         expand_attrs(&mut entry.attrs, defs, None, &mut diags);
         expand_nodes(&mut entry.body, defs, None, &mut diags);
     }
@@ -51,6 +59,9 @@ pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnosti
     for beat in &mut doc.beats {
         if let Some(w) = &mut beat.when {
             expand_slot(w, defs, None, &mut diags);
+        }
+        if let Some(s) = &mut beat.spent_by {
+            expand_slot(s, defs, None, &mut diags);
         }
         expand_attrs(&mut beat.attrs, defs, None, &mut diags);
         expand_nodes(&mut beat.body, defs, None, &mut diags);
@@ -489,8 +500,20 @@ pub fn type_occasion_target_placeholders(commands: &mut [Command], scene_kind: O
     };
     for cmd in commands {
         match cmd {
-            Command::Entry(e) => kind = e.target_kind.as_ref().map(|k| k.kind.clone()),
-            Command::Beat(b) => kind = b.target_kind.as_ref().map(|k| k.kind.clone()),
+            Command::Entry(e) => {
+                kind = e
+                    .target_kind
+                    .as_ref()
+                    .map(|k| k.kind.clone())
+                    .or_else(|| e.for_kind.as_ref().map(|k| k.kind.clone()))
+            }
+            Command::Beat(b) => {
+                kind = b
+                    .target_kind
+                    .as_ref()
+                    .map(|k| k.kind.clone())
+                    .or_else(|| b.for_kind.as_ref().map(|k| k.kind.clone()))
+            }
             Command::Line(l) => fix(&mut l.placeholders, &kind),
             Command::Choice(c) => c
                 .options

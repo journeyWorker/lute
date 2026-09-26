@@ -65,6 +65,10 @@ pub struct ProjectConfig {
     /// `lute-cli`'s manifest pass (0.10.0 §7), never once per inheriting
     /// document (D-Z).
     pub defaults_diags: Vec<ResolveDiag>,
+    /// dsl 0.27.0 §8: `E-SEQUENCE` diagnostics of a malformed `sequence:`
+    /// (its shape; the ids are checked project-wide against the scenes).
+    /// Reported once per manifest, like [`Self::defaults_diags`].
+    pub sequence_diags: Vec<ResolveDiag>,
 }
 
 /// A resolution diagnostic surfaced to the caller (folded into the check
@@ -93,6 +97,8 @@ struct RawProject {
     identity: Option<RawIdentity>,
     #[serde(default)]
     defaults: Option<serde_yaml::Mapping>,
+    #[serde(default)]
+    sequence: Option<serde_yaml::Value>,
     #[serde(default)]
     permissions: PermissionSet,
 }
@@ -188,6 +194,11 @@ pub const E_DEFAULTS_KEY: &str = "E-DEFAULTS-KEY";
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MetaDefaults {
     entries: std::collections::BTreeMap<String, serde_yaml::Value>,
+    /// dsl 0.27.0 §8: the manifest's `sequence:` — carried with the
+    /// defaults because it is frontmatter the listed scenes did not have to
+    /// write (`on:` / `after:` / `priority:`), applied by the same parse-time
+    /// pass that applies `questTier` (`lute_check::sequence::apply_sequence`).
+    sequence: Option<Sequence>,
 }
 
 impl MetaDefaults {
@@ -204,6 +215,150 @@ impl MetaDefaults {
     pub fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(|k| k.as_str())
     }
+    /// The manifest's resolved `sequence:` (dsl 0.27.0 §8), if any.
+    pub fn sequence(&self) -> Option<&Sequence> {
+        self.sequence.as_ref()
+    }
+    /// These defaults with `sequence` attached — the manifest load's own
+    /// step, and a unit test's way to stage one without a file.
+    pub fn with_sequence(mut self, sequence: Option<Sequence>) -> Self {
+        self.sequence = sequence;
+        self
+    }
+}
+
+/// dsl 0.27.0 §8: `sequence: { occasion: chapter, scenes: [a, b, c] }` — a
+/// linear chain of scenes answering one occasion. Each listed scene without
+/// its own key gets `on: <occasion>`, `after: visited("<previous>")` (every
+/// scene but the first) and a descending `priority:` (`10 × (n − i)`).
+/// `scenes` holds each id once, in order (a duplicate is [`E_SEQUENCE`] at
+/// load and dropped).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Sequence {
+    pub occasion: String,
+    pub scenes: Vec<String>,
+}
+
+impl Sequence {
+    /// The keys scene `id` derives, in `(key, YAML value)` form, or `None`
+    /// when `id` is not listed: `on`, then `after` (not for the first scene),
+    /// then `priority`.
+    pub fn derived(&self, id: &str) -> Option<Vec<(&'static str, serde_yaml::Value)>> {
+        let i = self.scenes.iter().position(|s| s == id)?;
+        let mut out = vec![("on", serde_yaml::Value::String(self.occasion.clone()))];
+        if let Some(prev) = i.checked_sub(1).map(|p| &self.scenes[p]) {
+            out.push((
+                "after",
+                serde_yaml::Value::String(format!("visited(\"{prev}\")")),
+            ));
+        }
+        let priority = 10 * (self.scenes.len() - i) as i64;
+        out.push(("priority", serde_yaml::Value::Number(priority.into())));
+        Some(out)
+    }
+}
+
+/// A malformed `sequence:` (dsl 0.27.0 §8): not a `{ occasion, scenes }`
+/// mapping, an occasion or scene id that is no identifier, a scene listed
+/// twice, or (project-wide, `lute check-project`) a listed id no scene
+/// declares or a listed scene whose own `on:` names another occasion.
+pub const E_SEQUENCE: &str = "E-SEQUENCE";
+
+/// Resolve the raw `sequence:` value. A malformed block is reported and NOT
+/// applied — a half-understood chain must not silently reorder scenes; a
+/// duplicate id alone is reported and its later occurrence dropped.
+fn resolve_sequence(raw: Option<serde_yaml::Value>) -> (Option<Sequence>, Vec<ResolveDiag>) {
+    let Some(raw) = raw else {
+        return (None, Vec::new());
+    };
+    let mut diags = Vec::new();
+    let mut err = |message: String| {
+        diags.push(ResolveDiag {
+            code: E_SEQUENCE.to_string(),
+            message,
+        })
+    };
+    let is_ident = |s: &str| {
+        s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    };
+    let serde_yaml::Value::Mapping(map) = raw else {
+        err(
+            "`sequence:` must be a mapping `{ occasion: <name>, scenes: [<scene id>, …] }` \
+             (dsl 0.27.0 §8)"
+                .to_string(),
+        );
+        return (None, diags);
+    };
+    for key in map.keys() {
+        let name = key.as_str().unwrap_or("");
+        if !matches!(name, "occasion" | "scenes") {
+            err(format!(
+                "`sequence.{name}` is not a sequence key — a sequence declares `occasion:` and \
+                 `scenes:` (dsl 0.27.0 §8)"
+            ));
+        }
+    }
+    let occasion = match map.get("occasion").map(|v| v.as_str()) {
+        Some(Some(o)) if is_ident(o) && !o.contains(['.', '-']) => Some(o.to_string()),
+        Some(_) => {
+            err(
+                "`sequence.occasion` must name an occasion, e.g. `occasion: chapter` \
+                 (dsl 0.27.0 §8)"
+                    .to_string(),
+            );
+            None
+        }
+        None => {
+            err(
+                "`sequence:` needs `occasion:` — the occasion every listed scene answers, \
+                 e.g. `occasion: chapter` (dsl 0.27.0 §8)"
+                    .to_string(),
+            );
+            None
+        }
+    };
+    let mut scenes: Vec<String> = Vec::new();
+    let mut ok = true;
+    match map.get("scenes") {
+        Some(serde_yaml::Value::Sequence(items)) if !items.is_empty() => {
+            for item in items {
+                match item.as_str() {
+                    Some(id) if is_ident(id) => {
+                        if scenes.iter().any(|s| s == id) {
+                            err(format!(
+                                "`sequence.scenes` lists `{id}` twice — a scene has one place in \
+                                 the chain; the later entry is ignored (dsl 0.27.0 §8)"
+                            ));
+                        } else {
+                            scenes.push(id.to_string());
+                        }
+                    }
+                    _ => {
+                        ok = false;
+                        err(format!(
+                            "`sequence.scenes` entry `{}` is not a scene id — list each scene's \
+                             `id:` (dsl 0.27.0 §8)",
+                            serde_yaml::to_string(item).unwrap_or_default().trim()
+                        ));
+                    }
+                }
+            }
+        }
+        _ => {
+            ok = false;
+            err(
+                "`sequence.scenes` must be a non-empty list of scene ids, in play order, e.g. \
+                 `scenes: [prologue, counter, kitchen]` (dsl 0.27.0 §8)"
+                    .to_string(),
+            );
+        }
+    }
+    let sequence = occasion
+        .filter(|_| ok)
+        .map(|occasion| Sequence { occasion, scenes });
+    (sequence, diags)
 }
 
 /// Build a defaults set directly from `(key, YAML value)` pairs, without
@@ -214,6 +369,7 @@ impl FromIterator<(String, serde_yaml::Value)> for MetaDefaults {
     fn from_iter<I: IntoIterator<Item = (String, serde_yaml::Value)>>(iter: I) -> Self {
         Self {
             entries: iter.into_iter().collect(),
+            sequence: None,
         }
     }
 }
@@ -681,6 +837,8 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
     let catalog_dir = project_dir.join(raw.catalog_dir.as_deref().unwrap_or("catalog/"));
     let (identity, identity_diags) = resolve_identity(raw.identity);
     let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults);
+    let (sequence, sequence_diags) = resolve_sequence(raw.sequence);
+    let defaults = defaults.with_sequence(sequence);
 
     Ok(Some(ProjectConfig {
         graph,
@@ -692,6 +850,7 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
         identity_diags,
         defaults,
         defaults_diags,
+        sequence_diags,
     }))
 }
 

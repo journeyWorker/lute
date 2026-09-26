@@ -1,7 +1,9 @@
 //! `lute context` additions (dsl 0.22.0 §13): the surface an author (or an AI
 //! writing Lute) needs beyond the capability snapshot — the document's defs
 //! with their types, parameters and bodies, the language's built-in
-//! directives, and every scene / quest / entry id the project declares.
+//! directives, beat keys and quest attributes, the project's clock,
+//! `terminal:`, seasons and `sequence:` (dsl 0.27.0), and every scene /
+//! quest / entry id the project declares.
 //!
 //! The capability surface itself (directives, state schema, relations, …)
 //! is assembled by `authoring_surface` in `main.rs`; this module adds the
@@ -45,17 +47,113 @@ const BUILTIN_DIRECTIVES: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// The beat keys (dsl 0.21.0 §3, 0.27.0 §3/§5/§6): a scene's frontmatter
+/// (`key: value`), an `<entry on=…>`'s and a bundle `<beat>`'s attributes
+/// (`key="value"`). Language, not capability, like the built-in directives.
+/// `(key, value syntax, meaning)`.
+const BEAT_KEYS: &[(&str, &str, &str)] = &[
+    ("on", "<occasion>", "the occasion the beat answers"),
+    (
+        "target",
+        "<prefix>.<member> | kind:<kind>",
+        "the one target it answers, or every member of a kind (read as occasion.target)",
+    ),
+    (
+        "for",
+        "kind:<kind>",
+        "on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, binding occasion.target",
+    ),
+    ("when", "<condition>", "eligible only while it holds"),
+    ("priority", "<integer>", "the higher eligible beat wins"),
+    (
+        "once",
+        "run | user | false | day | slot | week | season:<name>",
+        "presented at most once per run, ever, without limit, per clock day / slot / week, or per window of a season",
+    ),
+    (
+        "spentBy",
+        "<condition>",
+        "instead of `once`: repeatable until the condition holds",
+    ),
+    (
+        "also",
+        "true",
+        "scene and bundle beats, on a `select: first` occasion: presented after the winner too",
+    ),
+    ("share", "<key>", "beats with one `share` key spend one `once` together"),
+    (
+        "after",
+        "<prerequisite>",
+        "scene and bundle beats: eligible once it holds, e.g. visited(\"<id>\")",
+    ),
+    (
+        "use",
+        "<component>",
+        "bundle `<beat>`: its header from the component's `beat:` template, the component's params as attributes",
+    ),
+];
+
+/// `<quest>`'s attributes (dsl 0.2.0 §6.3 … 0.27.0 §5), as [`BEAT_KEYS`].
+const QUEST_KEYS: &[(&str, &str, &str)] = &[
+    (
+        "start",
+        "<condition>",
+        "activates the quest when it holds; without it the quest is accept-driven",
+    ),
+    (
+        "fail",
+        "<condition>",
+        "fails the active quest when it holds",
+    ),
+    (
+        "after",
+        "<prerequisite>",
+        "its place in the scene graph; does not gate activation",
+    ),
+    (
+        "tier",
+        "user | run | season:<name>",
+        "when it returns to unset: never, at each new run, or each time the season opens",
+    ),
+    (
+        "rearm",
+        "<condition>",
+        "returns the quest to unset (objectives cleared) each time the condition goes false→true",
+    ),
+    (
+        "complete",
+        "all | any",
+        "completes when every / any one required objective is done",
+    ),
+    (
+        "activate",
+        "accept",
+        "a child that waits for an ::accept instead of activating with its parent",
+    ),
+    (
+        "accept",
+        "external",
+        "the engine accepts the quest outside any document",
+    ),
+];
+
 /// Add the non-snapshot keys to the authoring `surface`:
 ///
 /// - `defs`: every def the document can `@ref` (plugin < imported < inline,
 ///   the checker's own precedence), name-sorted, with its (declared or
 ///   inferred) result type, ordered params, and CEL body;
-/// - `builtinDirectives`: [`BUILTIN_DIRECTIVES`];
+/// - `builtinDirectives`: [`BUILTIN_DIRECTIVES`]; `beatKeys` / `questKeys`:
+///   [`BEAT_KEYS`] / [`QUEST_KEYS`];
+/// - dsl 0.27.0: the project's `clock` as declared (a finite one with its
+///   `last` / `days`), its `terminal` condition, its `seasons` (`name`,
+///   `live`) and the manifest's `sequence` (`occasion`, `scenes`) — each
+///   only when declared;
 /// - `ids`: the scene, quest and entry ids declared across the project
 ///   (`--project <dir>`), or in the document alone without one.
 pub(crate) fn extend_surface(
     surface: &mut Value,
     folded: &lute_check::FoldedEnv,
+    sequence: Option<&lute_manifest::project::Sequence>,
     file: &Path,
     project: Option<&Path>,
 ) {
@@ -95,6 +193,36 @@ pub(crate) fn extend_surface(
         )
         .collect();
     root.insert("builtinDirectives".into(), builtins.into());
+    let keys = |table: &[(&str, &str, &str)]| -> Value {
+        table
+            .iter()
+            .map(|(key, syntax, meaning)| json!({ "key": key, "syntax": syntax, "meaning": meaning }))
+            .collect::<Vec<_>>()
+            .into()
+    };
+    root.insert("beatKeys".into(), keys(BEAT_KEYS));
+    root.insert("questKeys".into(), keys(QUEST_KEYS));
+
+    if let Some(clock) = &env.clock {
+        root.insert("clock".into(), json!(clock));
+    }
+    if let Some(terminal) = &env.terminal {
+        root.insert("terminal".into(), terminal.clone().into());
+    }
+    if !env.seasons.is_empty() {
+        let seasons: Vec<Value> = env
+            .seasons
+            .iter()
+            .map(|(name, decl)| json!({ "name": name, "live": decl.live }))
+            .collect();
+        root.insert("seasons".into(), seasons.into());
+    }
+    if let Some(s) = sequence {
+        root.insert(
+            "sequence".into(),
+            json!({ "occasion": s.occasion, "scenes": s.scenes }),
+        );
+    }
 
     root.insert("ids".into(), project_ids(file, project));
 }
@@ -196,6 +324,48 @@ pub(crate) fn outline_extras(out: &mut String, surface: &Value) {
             );
         }
     }
+    for (key, note) in [
+        ("beatKeys", "scene frontmatter; <entry> / <beat> attributes"),
+        ("questKeys", "<quest> attributes"),
+    ] {
+        if let Some(rows) = surface[key].as_array() {
+            let _ = writeln!(out, "{key} ({}; {note}):", rows.len());
+            for k in rows {
+                let _ = writeln!(
+                    out,
+                    "  {}: {} — {}",
+                    k["key"].as_str().unwrap_or(""),
+                    k["syntax"].as_str().unwrap_or(""),
+                    k["meaning"].as_str().unwrap_or("")
+                );
+            }
+        }
+    }
+    if let Some(clock) = surface.get("clock") {
+        let _ = writeln!(out, "clock: {}", clock_line(clock));
+    }
+    if let Some(t) = surface["terminal"].as_str() {
+        let _ = writeln!(out, "terminal: {t} (no occasion is raised once it holds)");
+    }
+    if let Some(seasons) = surface["seasons"].as_array() {
+        let _ = writeln!(out, "seasons ({}):", seasons.len());
+        for s in seasons {
+            let _ = writeln!(
+                out,
+                "  {} — live: {}",
+                s["name"].as_str().unwrap_or(""),
+                s["live"].as_str().unwrap_or("")
+            );
+        }
+    }
+    if let Some(s) = surface.get("sequence") {
+        let _ = writeln!(
+            out,
+            "sequence (occasion: {}): {}",
+            s["occasion"].as_str().unwrap_or(""),
+            strs(&s["scenes"]).join(" → ")
+        );
+    }
     let ids = &surface["ids"];
     for (key, note) in [
         ("scenes", "read as visited(\"<id>\")"),
@@ -212,4 +382,47 @@ pub(crate) fn outline_extras(out: &mut String, surface: &Value) {
             let _ = writeln!(out, "  {}", list.join(", "));
         }
     }
+}
+
+/// A declared clock (its JSON form) on one line: `day run.day, slot
+/// run.slot [morning, night], week 7 [Mon, …], raise dayEnd: dayEnd, days 5`.
+fn clock_line(c: &Value) -> String {
+    let mut parts = vec![format!("day {}", c["day"].as_str().unwrap_or(""))];
+    if let Some(slot) = c["slot"].as_str() {
+        parts.push(format!("slot {slot} [{}]", strs(&c["slots"]).join(", ")));
+    }
+    if let Some(week) = c.get("week") {
+        let labels = strs(&week["labels"]);
+        let mut w = format!("week {}", week["length"]);
+        if week["first"].as_u64().unwrap_or(0) != 0 {
+            let _ = write!(w, " (first {})", week["first"]);
+        }
+        if !labels.is_empty() {
+            let _ = write!(w, " [{}]", labels.join(", "));
+        }
+        parts.push(w);
+    }
+    match &c["raise"] {
+        Value::String(o) => parts.push(format!("raise {o}")),
+        Value::Object(m) => parts.push(format!(
+            "raise {}",
+            m.iter()
+                .map(|(k, v)| format!("{k}: {}", v.as_str().unwrap_or("")))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+        _ => {}
+    }
+    // dsl 0.27.0 §4: a finite clock's end.
+    if let Some(last) = c.get("last") {
+        let slot = last["slot"]
+            .as_str()
+            .map(|s| format!(" {s}"))
+            .unwrap_or_default();
+        parts.push(format!("last day {}{slot}", last["day"]));
+    }
+    if let Some(days) = c.get("days") {
+        parts.push(format!("days {days}"));
+    }
+    parts.join(", ")
 }

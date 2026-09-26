@@ -126,7 +126,11 @@ pub struct TextEdit {
     pub new_text: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// One diagnostic. `message` is written by the producer and may cite the
+/// spec (`(dsl 0.24.0 §4)`); every output surface shows [`Self::text`], the
+/// plain sentence, and names the spec through `lute --explain <CODE>` and the
+/// JSON `spec` field instead (dsl 0.27.0 §9, T3-17).
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Diagnostic {
     pub code: String, // stable, e.g. "E-UNDECLARED"
     pub severity: Severity,
@@ -154,6 +158,231 @@ pub struct Diagnostic {
     /// without a separate re-`check` of it. Empty for every other diagnostic.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub related: Vec<RelatedDiagnostic>,
+}
+
+impl Diagnostic {
+    /// The message as an author reads it ([`plain_message`]).
+    pub fn text(&self) -> std::borrow::Cow<'_, str> {
+        plain_message(&self.message)
+    }
+}
+
+/// JSON as every surface prints it: `message` is the plain sentence
+/// ([`Diagnostic::text`]) and the spec sections it cited move to `spec`
+/// (omitted when none) — field order and every other field unchanged.
+impl Serialize for Diagnostic {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let spec = spec_citations(&self.message);
+        let mut st = s.serialize_struct("Diagnostic", 10)?;
+        st.serialize_field("code", &self.code)?;
+        st.serialize_field("severity", &self.severity)?;
+        st.serialize_field("message", &self.text())?;
+        st.serialize_field("span", &self.span)?;
+        st.serialize_field("layer", &self.layer)?;
+        if !self.fixits.is_empty() {
+            st.serialize_field("fixits", &self.fixits)?;
+        }
+        if let Some(p) = &self.provenance {
+            st.serialize_field("provenance", p)?;
+        }
+        if !self.covered.is_empty() {
+            st.serialize_field("covered", &self.covered)?;
+        }
+        if !self.related.is_empty() {
+            st.serialize_field("related", &self.related)?;
+        }
+        if !spec.is_empty() {
+            st.serialize_field("spec", &spec)?;
+        }
+        st.end()
+    }
+}
+
+/// The website's diagnostics reference: one `### <CODE>` section per code,
+/// rendered from the registry in `crates/lute-cli/src/codes.rs`.
+pub const DIAGNOSTICS_REFERENCE: &str = "https://lute-lang.vercel.app/reference/diagnostics/";
+
+/// The reference anchor of `code` (`…/reference/diagnostics/#e-set-shape`).
+/// Every `E-`/`W-` code has one — the registry's drift guard fails on an
+/// emitted code it lacks; a lint rule's `L-` code (named by its author) has
+/// none.
+pub fn doc_url(code: &str) -> Option<String> {
+    (code.starts_with("E-") || code.starts_with("W-"))
+        .then(|| format!("{DIAGNOSTICS_REFERENCE}#{}", code.to_ascii_lowercase()))
+}
+
+/// `message` without its spec citations (dsl 0.27.0 §9, T3-17): a
+/// parenthetical whose every comma/semicolon-separated part cites the spec —
+/// `(dsl 0.24.0 §4)`, `(dsl 0.3.0 §4, D4)`, `(dsl 0.24 T3-8)` — is removed
+/// with the space before it; in a mixed one (`(expected one of …, dsl 0.3.0
+/// §4)`) only the citing parts go. Parentheses inside backticks are code and
+/// never touched. Borrowed when there is nothing to remove.
+pub fn plain_message(message: &str) -> std::borrow::Cow<'_, str> {
+    let groups = citation_groups(message);
+    if groups.is_empty() {
+        return std::borrow::Cow::Borrowed(message);
+    }
+    let mut out = String::with_capacity(message.len());
+    let mut at = 0;
+    for g in &groups {
+        let mut start = g.open;
+        if g.kept.is_empty() && message[..start].ends_with(' ') {
+            start -= 1;
+        }
+        out.push_str(&message[at..start]);
+        if !g.kept.is_empty() {
+            out.push('(');
+            out.push_str(&g.kept.join(", "));
+            out.push(')');
+        }
+        at = g.close + 1;
+    }
+    out.push_str(&message[at..]);
+    std::borrow::Cow::Owned(out.trim_end().to_string())
+}
+
+/// The spec sections `message` cites, in order (`["dsl 0.24.0 §4"]`) — what
+/// [`plain_message`] removes.
+pub fn spec_citations(message: &str) -> Vec<String> {
+    citation_groups(message)
+        .into_iter()
+        .flat_map(|g| g.cited)
+        .collect()
+}
+
+/// One parenthetical of a message holding at least one citation: its byte
+/// range (`open` is the `(`, `close` the `)`), the parts it keeps and the
+/// parts that cite the spec.
+struct CitationGroup {
+    open: usize,
+    close: usize,
+    kept: Vec<String>,
+    cited: Vec<String>,
+}
+
+fn citation_groups(message: &str) -> Vec<CitationGroup> {
+    let mut out = Vec::new();
+    if !message.contains('§') && !message.contains("dsl ") {
+        return out;
+    }
+    let b = message.as_bytes();
+    let (mut i, mut code) = (0, false);
+    while i < b.len() {
+        match b[i] {
+            b'`' => code = !code,
+            b'(' if !code => {
+                // The matching `)`, skipping nested groups and code spans.
+                let (mut depth, mut j, mut inner_code) = (0usize, i, false);
+                let close = loop {
+                    if j >= b.len() {
+                        break None;
+                    }
+                    match b[j] {
+                        b'`' => inner_code = !inner_code,
+                        b'(' if !inner_code => depth += 1,
+                        b')' if !inner_code => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break Some(j);
+                            }
+                        }
+                        _ => {}
+                    }
+                    j += 1;
+                };
+                let Some(close) = close else {
+                    break;
+                };
+                let (kept, cited): (Vec<String>, Vec<String>) = split_parts(&message[i + 1..close])
+                    .into_iter()
+                    .partition(|p| !is_citation(p));
+                if !cited.is_empty() {
+                    out.push(CitationGroup {
+                        open: i,
+                        close,
+                        kept,
+                        cited,
+                    });
+                }
+                i = close;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    out
+}
+
+/// `inner` split at its top-level `,` / `;` (outside nested parentheses and
+/// code spans), each part trimmed.
+fn split_parts(inner: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let (mut depth, mut code, mut from) = (0usize, false, 0);
+    for (i, c) in inner.char_indices() {
+        match c {
+            '`' => code = !code,
+            '(' if !code => depth += 1,
+            ')' if !code => depth = depth.saturating_sub(1),
+            ',' | ';' if !code && depth == 0 => {
+                parts.push(inner[from..i].trim().to_string());
+                from = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(inner[from..].trim().to_string());
+    parts
+}
+
+/// Whether one parenthetical part cites the spec: `dsl 0.24.0 §4`,
+/// `0.26.0 §2.3`, `§7.6`, `dsl 0.24 T3-8`, `dsl 0.24.0`, a decision `D4` /
+/// `D-L` (bare or versioned, `dsl 0.9.0 D-C`), or a prerelease finding
+/// `prerelease N8`.
+fn is_citation(part: &str) -> bool {
+    let p = part.trim();
+    let p = p
+        .strip_prefix("dsl ")
+        .or_else(|| p.strip_prefix("spec "))
+        .map(|rest| (rest.trim_start(), true))
+        .unwrap_or((p, false));
+    let (rest, dsl) = p;
+    if rest.starts_with('§') || rest.starts_with("prerelease N") {
+        return true;
+    }
+    if is_decision(rest) {
+        return true;
+    }
+    let version_len = rest
+        .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .unwrap_or(rest.len());
+    let version = &rest[..version_len];
+    if version.is_empty()
+        || !version.contains('.')
+        || !version.starts_with(|c: char| c.is_ascii_digit())
+    {
+        return false;
+    }
+    let after = rest[version_len..].trim_start();
+    (dsl && after.is_empty())
+        || after.starts_with('§')
+        || is_decision(after)
+        || (after.starts_with('T')
+            && after[1..].starts_with(|c: char| c.is_ascii_digit())
+            && after.contains('-'))
+}
+
+/// A design-decision reference: `D4`, `D12`, `D-L`, `D-C`.
+fn is_decision(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix('D') else {
+        return false;
+    };
+    let rest = rest.strip_prefix('-').unwrap_or(rest);
+    !rest.is_empty()
+        && rest.len() <= 3
+        && rest
+            .chars()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase())
 }
 
 /// One diagnostic imported from another file (dsl 0.5.0 §2.2), attributed to
@@ -197,5 +426,76 @@ mod tests {
         assert_eq!(s.line, 1);
         assert_eq!(s.column, 2); // 1-based byte column
         assert_eq!(s.utf16_range, (1, 4));
+    }
+
+    /// T3-17: a spec citation leaves the sentence an author reads; the
+    /// sentence around it, code spans and ordinary parentheticals stay.
+    #[test]
+    fn plain_message_drops_spec_citations_only() {
+        let cases = [
+            (
+                "entity kind `x` must declare one of `members:`/`open:` (dsl 0.3.0 §3.1, 0.26.0 §2.3)",
+                "entity kind `x` must declare one of `members:`/`open:`",
+            ),
+            (
+                "a component body must be presentational (dsl 0.4 §6.2): `::use` of `x` writes state",
+                "a component body must be presentational: `::use` of `x` writes state",
+            ),
+            (
+                "relation `r` has unknown `tier: t` (expected one of scene/run/user, dsl 0.3.0 §4)",
+                "relation `r` has unknown `tier: t` (expected one of scene/run/user)",
+            ),
+            (
+                "`into=\"x\"` is not declared (dsl 0.6.0 §2.2); an undeclared `into` cannot create a field",
+                "`into=\"x\"` is not declared; an undeclared `into` cannot create a field",
+            ),
+            ("relation `r` field `k` is malformed (dsl 0.3.0 §4, D4)", "relation `r` field `k` is malformed"),
+            ("rename the relation (dsl 0.24 T3-8)", "rename the relation"),
+            ("before using `action` (dsl 0.9.0 D-C)", "before using `action`"),
+            (
+                "write `holds(owned(occasion.target))` (a fact) (dsl §7.6)",
+                "write `holds(owned(occasion.target))` (a fact)",
+            ),
+            ("the `(` is never closed (since 0.24.0)", "the `(` is never closed (since 0.24.0)"),
+        ];
+        for (message, plain) in cases {
+            assert_eq!(plain_message(message), plain, "{message}");
+        }
+        assert_eq!(
+            spec_citations("x (dsl 0.3.0 §3.1, 0.26.0 §2.3) y (dsl 0.24 T3-8)"),
+            ["dsl 0.3.0 §3.1", "0.26.0 §2.3", "dsl 0.24 T3-8"]
+        );
+        assert!(matches!(
+            plain_message("no citation"),
+            std::borrow::Cow::Borrowed(_)
+        ));
+    }
+
+    /// JSON carries the plain message and the citations as `spec`.
+    #[test]
+    fn serialized_diagnostic_moves_the_citation_to_spec() {
+        let d = Diagnostic {
+            code: "E-SET-SHAPE".into(),
+            severity: Severity::Error,
+            message: "bad (dsl 0.27.0 §7)".into(),
+            span: Span::from_bytes(&TextIndex::new("ab"), 0, 1),
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        };
+        let v = serde_json::to_value(&d).unwrap();
+        assert_eq!(v["message"], "bad");
+        assert_eq!(v["spec"], serde_json::json!(["dsl 0.27.0 §7"]));
+        assert_eq!(
+            doc_url("E-SET-SHAPE"),
+            Some(format!("{DIAGNOSTICS_REFERENCE}#e-set-shape"))
+        );
+        assert_eq!(
+            doc_url("L-SHORT-LINES"),
+            None,
+            "a lint rule's code has no section"
+        );
     }
 }

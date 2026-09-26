@@ -28,8 +28,9 @@ use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr};
 /// §6) is read-only too: `prev.run.<path>` mirrors each declared `run.<path>`.
 /// So is `clock` (dsl 0.24.0 §1): the declared clock's derived paths. And
 /// `occasion` (dsl 0.26.0 §5): a kind beat's `occasion.target`.
+/// `season` (dsl 0.27.0 §5): a declared season's tier `season.<name>.*`.
 pub(crate) const STATE_ROOTS: &[&str] = &[
-    "scene", "run", "user", "app", "quest", "entry", "prev", "clock", "occasion",
+    "scene", "run", "user", "app", "quest", "entry", "prev", "clock", "occasion", "season",
 ];
 
 /// `true` for any path rooted at the read-only `prev` mirror (dsl 0.23.0 §6).

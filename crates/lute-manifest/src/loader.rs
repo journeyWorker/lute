@@ -325,6 +325,8 @@ fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadErr
                         target: body.target,
                         description: body.description,
                         judge: body.judge,
+                        raised_when: body.raised_when,
+                        payload: body.payload,
                     })
                     .collect();
                 merge_named(&mut out.occasions, decls, "occasion", |o| o.name.clone(), e)

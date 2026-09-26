@@ -58,12 +58,12 @@ as redundant (it can never close) and the second as dead (it can never open):
 
 <!-- lute-diagnostics -->
 ```
-docs/examples/investigation/scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (docs/examples/investigation/scenes/crime-scene.lute:15) (dsl 0.20.0 §5)
+docs/examples/investigation/scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (docs/examples/investigation/scenes/crime-scene.lute:15)
 ```
 
 <!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
 ```
-docs/examples/investigation/scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes (dsl 0.20.0 §5)
+docs/examples/investigation/scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes
 ```
 
 That is why `pressLedger` / `pressLetter` carry no `when=`, and why the crime

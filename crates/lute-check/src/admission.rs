@@ -186,7 +186,14 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
 ///     `<entry>` belongs only in a lore document), and in a lore document a
 ///     `# ` title, a `## ` shot, a `<quest>`, or an EMPTY `doc.entries` (the
 ///     lore mirror of (b)–(d)).
-pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
+///
+/// `snapshot` decides which plugin directives an entry body admits (dsl
+/// 0.27.0 §4: one whose only behaviour is its declared effects).
+pub fn check_admission(
+    doc: &Document,
+    kind: DocKind,
+    snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
     match kind {
@@ -295,11 +302,14 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                     doc.span,
                 ));
             }
+            let effect_only = |tag: &str| crate::directive_facts::is_effect_only(snapshot, tag);
             for entry in &doc.entries {
-                walk(
+                walk_in(
                     &entry.body,
                     DocKind::Lore,
                     GrammarContext::EntryBody,
+                    None,
+                    &effect_only,
                     &mut diags,
                 );
             }
@@ -453,17 +463,31 @@ pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
 /// recursing into nested bodies with the context transition the construct
 /// implies (see the module docs). Always recurses (even into a node just
 /// flagged as not-admitted) so a deeper violation is never masked by an outer
-/// one.
+/// one. `parent` is the construct whose body `nodes` is (T3-17: a handler
+/// nested in a handler is almost always a missing `</on>`, and says so).
 fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagnostic>) {
+    walk_in(nodes, doc, ctx, None, &|_| false, diags);
+}
+
+/// `effect_only` says whether a directive tag is a plugin directive whose
+/// one behaviour is its declared effects (dsl 0.27.0 §4,
+/// [`crate::directive_facts::is_effect_only`]): an entry body admits it,
+/// like the entry's own `::set`.
+fn walk_in(
+    nodes: &[Node],
+    doc: DocKind,
+    ctx: GrammarContext,
+    parent: Option<NodeKind>,
+    effect_only: &dyn Fn(&str) -> bool,
+    diags: &mut Vec<Diagnostic>,
+) {
     for node in nodes {
         let nk = node_kind(node);
-        if !admits(doc, ctx, nk) {
+        let effect_call = ctx == GrammarContext::EntryBody
+            && matches!(node, Node::Directive(d) if effect_only(&d.tag));
+        if !admits(doc, ctx, nk) && !effect_call {
             diags.push(diag(
-                format!(
-                    "{} is not admitted here (dsl 0.2.0 §3.3, §6.7): {}",
-                    describe(nk),
-                    context_reason(doc, ctx)
-                ),
+                not_admitted_message(doc, ctx, nk, parent),
                 node_span(node),
             ));
         }
@@ -471,7 +495,7 @@ fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagn
             Node::Branch(b) => {
                 let child_ctx = nested_ctx(doc, ctx);
                 for choice in &b.choices {
-                    walk(&choice.body, doc, child_ctx, diags);
+                    walk_in(&choice.body, doc, child_ctx, Some(nk), effect_only, diags);
                 }
             }
             Node::Match(m) => {
@@ -479,7 +503,7 @@ fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagn
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            walk(body, doc, child_ctx, diags);
+                            walk_in(body, doc, child_ctx, Some(nk), effect_only, diags);
                         }
                     }
                 }
@@ -491,17 +515,67 @@ fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagn
                 // regardless of `doc` since it just re-threads the current
                 // (already doc-consistent) `ctx`.
                 for choice in &h.choices {
-                    walk(&choice.body, doc, ctx, diags);
+                    walk_in(&choice.body, doc, ctx, Some(nk), effect_only, diags);
                 }
             }
-            Node::On(o) => walk(&o.body, doc, nested_ctx(doc, ctx), diags),
-            Node::Objective(o) => walk(&o.body, doc, nested_ctx(doc, ctx), diags),
+            Node::On(o) => walk_in(
+                &o.body,
+                doc,
+                nested_ctx(doc, ctx),
+                Some(nk),
+                effect_only,
+                diags,
+            ),
+            Node::Objective(o) => walk_in(
+                &o.body,
+                doc,
+                nested_ctx(doc, ctx),
+                Some(nk),
+                effect_only,
+                diags,
+            ),
             // `Timeline`'s clips are `ClipNode` (`Directive`/`Set` only) — a
             // strictly narrower shape than `Node` that cannot carry an
             // inadmissible construct, so there is nothing further to walk.
             Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
             Node::Assert(_) | Node::Retract(_) => {}
         }
+    }
+}
+
+/// Why `nk` is not admitted at `ctx`: in plain words when a quest construct
+/// sits inside another one (T3-17 — `<on>` inside `<on>` is a missing `</on>`
+/// far more often than a design), else the grammar rule for the context.
+fn not_admitted_message(
+    doc: DocKind,
+    ctx: GrammarContext,
+    nk: NodeKind,
+    parent: Option<NodeKind>,
+) -> String {
+    match (doc, nk, parent) {
+        (DocKind::Quest, NodeKind::On | NodeKind::Objective, Some(p)) if p == nk => {
+            let tag = if nk == NodeKind::On {
+                "on"
+            } else {
+                "objective"
+            };
+            format!(
+                "an `<{tag}>` cannot sit inside another `<{tag}>` — close the first with \
+                 `</{tag}>` before this one opens (dsl 0.2.0 §6.7)"
+            )
+        }
+        (DocKind::Quest, NodeKind::On | NodeKind::Objective, Some(p)) => format!(
+            "{} cannot sit inside {} — `<on>` and `<objective>` belong at the top level of \
+             the `<quest>`; close {} first (dsl 0.2.0 §6.7)",
+            describe(nk),
+            describe(p),
+            describe(p)
+        ),
+        _ => format!(
+            "{} is not admitted here (dsl 0.2.0 §3.3, §6.7): {}",
+            describe(nk),
+            context_reason(doc, ctx)
+        ),
     }
 }
 
@@ -603,10 +677,11 @@ mod tests {
         let scene =
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## S.\n::assert{ a(b) }\n";
         let (doc, _) = lute_syntax::parse(scene);
-        assert!(check_admission(&doc, DocKind::Scene).is_empty());
+        let snap = lute_manifest::snapshot::CapabilitySnapshot::default();
+        assert!(check_admission(&doc, DocKind::Scene, &snap).is_empty());
         // quest body + <on> arm: admitted
         let quest = "---\nkind: quest\n---\n<quest id=\"q\" title=\"t\" start=\"true\">\n::retract{ a(b) }\n<on event=\"questComplete\">\n::assert{ a(b) }\n</on>\n</quest>\n";
         let (qdoc, _) = lute_syntax::parse(quest);
-        assert!(check_admission(&qdoc, DocKind::Quest).is_empty());
+        assert!(check_admission(&qdoc, DocKind::Quest, &snap).is_empty());
     }
 }

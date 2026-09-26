@@ -106,9 +106,9 @@ fn root(texts: &[(&str, &str)]) -> Root {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
     vocab.note_unreadable_documents(&docs);
-    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle)
+    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
-        .filter_map(|(_, a)| GroundFact::from_pattern(&a.pattern));
+        .filter_map(|(_, a)| GroundFact::from_pattern(&a));
     let may = MaySet::build(&vocab, facts, &stable_seeds(&docs, &vocab));
     let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);

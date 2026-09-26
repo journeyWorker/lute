@@ -62,7 +62,9 @@ heading, no `## ` shots, no `<quest>`.
 | `title` | display title, localized like a quest title |
 | `series` / `order` | multi-part text: `order` is the position within `series` (a document-level `series:` can supply both — see below) |
 | `when` | eligibility: the entry may be presented only while this holds |
-| `on` / `priority` / `once` | make the entry a [beat](/language/beats/) that answers an engine occasion; `once="run"` or `once="user"` stops it answering again after a read, and on a project with a [clock](/language/clock/), `once="day"` or `once="slot"` stops it until the clock's day or slot changes |
+| `on` / `priority` / `once` | make the entry a [beat](/language/beats/) that answers an engine occasion; `once="run"` or `once="user"` stops it answering again after a read, and on a project with a [clock](/language/clock/), `once="day"`, `once="week"` (with the clock's `week:`), or `once="slot"` stops it until the clock's day, week, or slot changes; `once="season:<name>"` stops it until a declared [season](/state/schemas/#seasons) opens again |
+| `spentBy` | on an entry beat, instead of `once` (dsl 0.27.0 §5): the entry keeps answering until this condition holds. See [Until it is solved](/language/beats/#until-it-is-solved-spentby) |
+| `for` | on an entry beat of an untargeted `select: sequence` occasion, `for="kind:<kind>"` (dsl 0.27.0 §3): the entry answers once per member whose `when` holds, reading it as `occasion.target`. See [Once per member](/language/beats/#once-per-member-for) |
 
 `target` and `category` are checked for shape only, so you can write lore before the engine's item
 catalog exists. Several entries may share a `target` — an NPC's barks, for example. The one
@@ -126,9 +128,25 @@ across the project in `lute check-project`.
 ## What an entry body may contain
 
 Content lines, `<match>`, `::set`, `::assert`, and `::retract`. No `<branch>` or `<hub>` (reading
-has no player choice), no `<timeline>` or `::` directives (the engine owns how an entry is shown),
-no `<on>` or `<objective>`. Anything else is `E-GRAMMAR-NOT-ADMITTED`. Story with a choice in it
-belongs in a scene, or in a [`<beat>`](#entries-and-beats-in-one-file) in the same file.
+has no player choice), no `<timeline>` or other `::` directives (the engine owns how an entry is
+shown), no `<on>` or `<objective>`. Anything else is `E-GRAMMAR-NOT-ADMITTED`. Story with a choice
+in it belongs in a scene, or in a [`<beat>`](#entries-and-beats-in-one-file) in the same file.
+
+One kind of plugin directive is the exception (dsl 0.27.0 §4): a directive whose only behaviour is
+its [declared effects](/plugins/manifests/#directive-effects), the state it `writes` and the facts
+it `asserts` or `retracts`, with no bridge call, result slot, staging layer or lowering. Reading a
+diary page may cost the player sanity:
+
+```lute
+<entry id="diary" target="item.diary" category="note">
+  ::fright{amount=3}
+  @narrator: The diary's last page is wet. Sanity {{run.sanity}}.
+</entry>
+```
+
+Such a call is applied like the entry's own `::set`: on the first read only (see
+[Reading twice](#reading-twice)). Any other directive in an entry is still
+`E-GRAMMAR-NOT-ADMITTED`.
 
 Lines are ordinary content lines. The speaker can be `@narrator` or an in-world author such as
 `@scientist`, and each entry gets its own lineId / voiceKey scope, as each quest does.
@@ -145,9 +163,11 @@ react with `holds(…)`:
 
 ## Reading twice
 
-The **first** time an entry is presented in a run, its `::set` / `::assert` / `::retract` apply.
+The **first** time an entry is presented in a run, its `::set` / `::assert` / `::retract` apply,
+and so do the effects of an effect-only directive it calls.
 Afterwards the engine sets **`entry.<id>.read`** to `true`, and later readings show the text only —
-a `<match>` may pick a different arm by then, but nothing else changes.
+a `<match>` may pick a different arm by then, but nothing else changes. On a re-read, `lute trace`
+and `lute play` list the effects they did not apply as `skipped`.
 
 So an entry that is read again in the same run, a repeatable [entry beat](/language/beats/#entry-beats)
 above all, changes state only the first time. `lute check` warns `W-ENTRY-WRITE-REREAD` (dsl
@@ -208,7 +228,7 @@ first document on this page as `lore/ship-records.lute` and give `scientistLog2`
 
 <!-- lute-diagnostics -->
 ```
-./lore/ship-records.lute:20:20: warning [W-FACT-GUARANTEED] guard `holds(knows(vesna, project_lumen))` is redundant: `knows(vesna, project_lumen)` is asserted on every route to here (./lore/ship-records.lute:15) (dsl 0.20.0 §5)
+./lore/ship-records.lute:20:20: warning [W-FACT-GUARANTEED] guard `holds(knows(vesna, project_lumen))` is redundant: `knows(vesna, project_lumen)` is asserted on every route to here (./lore/ship-records.lute:15)
 ```
 
 The entry's `when` already guarantees the log was read this run, so the line's guard is always
@@ -252,7 +272,7 @@ The two kinds of block share a file but keep their own rules:
 | | `<entry>` | `<beat>` |
 |---|---|---|
 | Id | its own `id`, unique across the project | `<document id>.<beat id>`: `shipRecords.tomaAtTheLog` |
-| Body | content lines, `<match>`, `::set` / `::assert` / `::retract` | a scene body: lines, branches, hubs, `<match>`, directives |
+| Body | content lines, `<match>`, `::set` / `::assert` / `::retract`, effect-only plugin directives | a scene body: lines, branches, hubs, `<match>`, directives |
 | Reached | looked up by the engine, or as an [entry beat](/language/beats/#entry-beats) | only as a beat answering its `on` occasion, once its `when` and (dsl 0.25.0) its `after=` hold |
 | Effects | on the first read in a run | on every presentation, as a scene's |
 | Spent | by `entry.<id>.read` / `everRead` when `once=` asks (by the clock for `once="day"` / `"slot"`) | by presentation; `once` defaults to `run` |

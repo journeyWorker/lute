@@ -35,10 +35,15 @@ pub enum KindShape {
 /// every member is also a member of the named parent kind, so a sub-kind is
 /// legal wherever a kind is and an argument of the sub-kind is also of the
 /// parent. Raw — the checker validates the parent (`E-ENTITY-KIND-SHAPE`).
+/// `labels` is dsl 0.27.0 §7's `labels: { <member>: <display text> }`: what
+/// a `{{…}}` of a value of this kind renders instead of the member id
+/// (partial — an unlabelled member renders its id). The string entries of a
+/// well-formed map; every shape mistake is in [`ParsedKinds::label_problems`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityKindDecl {
     pub shape: KindShape,
     pub subset_of: Option<String>,
+    pub labels: BTreeMap<String, String>,
 }
 
 /// A `relations:` entry (spec §4). Raw — nothing here is validated; the
@@ -83,6 +88,14 @@ pub struct ParsedKinds {
     /// Never in [`Self::kinds`]; the checker merges them into the one base
     /// declaration (`E-ENTITY-KIND-SHAPE` when there is none).
     pub adds: BTreeMap<String, Vec<String>>,
+    /// dsl 0.27.0 §7: the `labels:` written beside an `add:` list, by kind
+    /// name — display text for the members that `add:` brings (the checker
+    /// merges them with the members and reports a key the list does not add).
+    pub add_labels: BTreeMap<String, BTreeMap<String, String>>,
+    /// dsl 0.27.0 §7: `(kind, problem)` for every `labels:` shape mistake — a
+    /// value that is not a mapping, a label that is not a string (checker →
+    /// `E-ENTITY-KIND-SHAPE`). The mistaken entries are left out of `labels`.
+    pub label_problems: Vec<(String, String)>,
     /// dsl 0.27.0 §2 (T3-15): `(kind, key)` for every key of a kind's mapping
     /// outside [`ENTITY_KIND_KEYS`], in encounter order (checker →
     /// `E-ENTITY-KIND-SHAPE` with did-you-mean). A typo'd `lables:` was
@@ -99,8 +112,8 @@ pub struct ParsedRelations {
 }
 
 /// The keys an `entities:` entry may carry (spec §3.1, dsl 0.24.0 §3, 0.26.0
-/// §2.3). Every other key is reported, never ignored.
-pub const ENTITY_KIND_KEYS: &[&str] = &["members", "open", "add", "subsetOf"];
+/// §2.3, 0.27.0 §7). Every other key is reported, never ignored.
+pub const ENTITY_KIND_KEYS: &[&str] = &["members", "open", "add", "subsetOf", "labels"];
 
 /// Classify one `entities:` value: `{ members: […] }` (closed), `{ open: … }`
 /// (engine-populated — the value itself is not inspected, only key
@@ -129,15 +142,52 @@ fn kind_shape(v: &Value) -> KindShape {
     }
 }
 
+/// The `labels:` of one `entities:` entry: the string entries of its mapping,
+/// each shape mistake pushed to `problems` as `(kind, problem)` (dsl 0.27.0
+/// §7). Absent → empty.
+fn kind_labels(
+    kind: &str,
+    v: &Value,
+    problems: &mut Vec<(String, String)>,
+) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let Some(labels) = v.get("labels") else {
+        return out;
+    };
+    let Some(map) = labels.as_mapping() else {
+        problems.push((
+            kind.to_string(),
+            "`labels:` must map each member to its display text, as `labels: { chapel: \
+             \"the chapel\" }`"
+                .to_string(),
+        ));
+        return out;
+    };
+    for (member, label) in map {
+        let member = member.as_str().unwrap_or_default();
+        match label.as_str() {
+            Some(text) => {
+                out.insert(member.to_string(), text.to_string());
+            }
+            None => problems.push((
+                kind.to_string(),
+                format!("the label of `{member}` must be text, as `{member}: \"…\"`"),
+            )),
+        }
+    }
+    out
+}
+
 /// Parse a schema doc's `entities:` block: `{ <kind>: { members: [<id>…] } |
-/// { open: engine } | { add: [<id>…] } }` (spec §3.1, dsl 0.26.0 §2.3).
+/// { open: engine } | { add: [<id>…] } }` (spec §3.1, dsl 0.26.0 §2.3), each
+/// optionally with `labels:` (dsl 0.27.0 §7).
 /// `value` is the raw YAML node bound to the top-level `entities` key (pass
 /// `&Value::Null` when absent — yields an empty map). Total: a non-mapping
 /// top-level value yields no kinds; a non-string kind name is skipped (mirrors
-/// `entities.rs`'s key handling); an `add:` alone with a list lands in
-/// [`ParsedKinds::adds`]; every OTHER malformed shape (an `add:` beside another
-/// key, or not a list) is preserved as [`KindShape::Invalid`] rather than
-/// skipped (see module doc).
+/// `entities.rs`'s key handling); an `add:` alone (or with `labels:`) with a
+/// list lands in [`ParsedKinds::adds`]; every OTHER malformed shape (an `add:`
+/// beside another key, or not a list) is preserved as [`KindShape::Invalid`]
+/// rather than skipped (see module doc).
 pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
     let mut out = ParsedKinds::default();
     let Some(map) = value.as_mapping() else {
@@ -159,17 +209,25 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
             }
         }
         let add = v.get("add");
-        if let (Some(seq), Some(1)) = (
+        // dsl 0.27.0 §7: `labels:` may ride beside `add:` to label the
+        // members it brings.
+        let add_keys = if v.get("labels").is_some() { 2 } else { 1 };
+        if let (Some(seq), Some(true)) = (
             add.and_then(Value::as_sequence),
-            v.as_mapping().map(|m| m.len()),
+            v.as_mapping().map(|m| m.len() == add_keys),
         ) {
             let members = seq
                 .iter()
                 .filter_map(|m| m.as_str().map(str::to_string))
                 .collect();
             out.adds.insert(name.to_string(), members);
+            let labels = kind_labels(name, v, &mut out.label_problems);
+            if !labels.is_empty() {
+                out.add_labels.insert(name.to_string(), labels);
+            }
             continue;
         }
+        let labels = kind_labels(name, v, &mut out.label_problems);
         out.kinds.insert(
             name.to_string(),
             EntityKindDecl {
@@ -181,6 +239,7 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
                 subset_of: v
                     .get("subsetOf")
                     .map(|p| p.as_str().unwrap_or_default().to_string()),
+                labels,
             },
         );
     }
@@ -193,8 +252,14 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
 /// list, sub-kinds in name order, each member once). The walk stops at a
 /// missing or `open:` parent and skips a `subsetOf:` loop — the checker
 /// reports those (`E-ENTITY-KIND-SHAPE`).
+///
+/// dsl 0.27.0 §7: a label names a member, whichever kind wrote it — so an
+/// ancestor takes its sub-kinds' labels, and a sub-kind its ancestors' labels
+/// for its own members (nearest first). A kind's own label always wins.
 pub fn imply_sub_kind_members(kinds: &mut BTreeMap<String, EntityKindDecl>) {
     let mut implied: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut up: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let mut chains: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (name, decl) in kinds.iter() {
         let KindShape::Members(members) = &decl.shape else {
             continue;
@@ -214,11 +279,17 @@ pub fn imply_sub_kind_members(kinds: &mut BTreeMap<String, EntityKindDecl>) {
                 _ => break,
             }
         }
-        for parent in chain {
+        for parent in &chain {
             implied
                 .entry(parent.to_string())
                 .or_default()
                 .extend(members.iter().cloned());
+            up.entry(parent.to_string())
+                .or_default()
+                .extend(decl.labels.iter().map(|(m, l)| (m.clone(), l.clone())));
+        }
+        if !chain.is_empty() {
+            chains.insert(name.clone(), chain.iter().map(|p| p.to_string()).collect());
         }
     }
     for (parent, extra) in implied {
@@ -231,6 +302,32 @@ pub fn imply_sub_kind_members(kinds: &mut BTreeMap<String, EntityKindDecl>) {
             for m in extra {
                 if have.insert(m.clone()) {
                     ms.push(m);
+                }
+            }
+        }
+    }
+    for (parent, labels) in up {
+        if let Some(p) = kinds.get_mut(&parent) {
+            for (m, l) in labels {
+                p.labels.entry(m).or_insert(l);
+            }
+        }
+    }
+    for (name, chain) in chains {
+        let inherited: Vec<(String, String)> = chain
+            .iter()
+            .filter_map(|p| kinds.get(p))
+            .flat_map(|p| p.labels.iter().map(|(m, l)| (m.clone(), l.clone())))
+            .collect();
+        if let Some(EntityKindDecl {
+            shape: KindShape::Members(ms),
+            labels,
+            ..
+        }) = kinds.get_mut(&name)
+        {
+            for (m, l) in inherited {
+                if ms.contains(&m) {
+                    labels.entry(m).or_insert(l);
                 }
             }
         }
@@ -388,7 +485,8 @@ pub fn parse_relations(value: &Value) -> ParsedRelations {
 /// unchanged by 0.3.0): `Members` → closed `Domain`, `Open` → open `Domain`,
 /// `Invalid` → skipped (an entity kind that doesn't parse to either legal
 /// shape has no domain to project; the checker diagnoses the decl itself via
-/// `ParsedKinds`, not this projection).
+/// `ParsedKinds`, not this projection). A closed kind's `labels:` (dsl 0.27.0
+/// §7) become the domain's, so a `{ domain: K }` path renders them.
 pub fn kinds_to_domains(kinds: &BTreeMap<String, EntityKindDecl>) -> BTreeMap<String, Domain> {
     let mut out = BTreeMap::new();
     for (name, decl) in kinds {
@@ -398,6 +496,7 @@ pub fn kinds_to_domains(kinds: &BTreeMap<String, EntityKindDecl>) -> BTreeMap<St
                     name.clone(),
                     Domain {
                         members: members.clone(),
+                        labels: decl.labels.clone(),
                         ..Default::default()
                     },
                 );
@@ -498,5 +597,44 @@ mod tests {
             !kind_within(&p.kinds, "loop", "person"),
             "a loop terminates"
         );
+    }
+
+    /// dsl 0.27.0 §7: `labels:` is a kind key; string labels are kept, each
+    /// shape mistake is reported, and `labels:` may ride beside `add:`.
+    #[test]
+    fn parses_kind_labels_and_their_mistakes() {
+        let p = parse_entity_kinds(&yaml(
+            "room: { members: [chapel, ward], labels: { chapel: the chapel, ward: 7 } }\n\
+             cg: { members: [a], labels: [A] }\n\
+             item: { add: [lamp], labels: { lamp: the lamp } }",
+        ));
+        assert_eq!(
+            p.kinds["room"].labels.get("chapel").map(String::as_str),
+            Some("the chapel")
+        );
+        assert_eq!(p.kinds["room"].labels.get("ward"), None);
+        assert!(p.kinds["cg"].labels.is_empty());
+        assert_eq!(p.label_problems.len(), 2, "{:?}", p.label_problems);
+        assert!(p.unknown_keys.is_empty(), "{:?}", p.unknown_keys);
+        assert_eq!(p.adds["item"], vec!["lamp"]);
+        assert_eq!(p.add_labels["item"]["lamp"], "the lamp");
+        let d = kinds_to_domains(&p.kinds);
+        assert_eq!(d["room"].labels["chapel"], "the chapel");
+    }
+
+    /// A label names a member whichever kind wrote it: the parent takes its
+    /// sub-kind's labels and the sub-kind its parent's; own labels win.
+    #[test]
+    fn labels_follow_the_sub_kind_chain() {
+        let mut kinds = parse_entity_kinds(&yaml(
+            "room: { members: [hall], labels: { hall: the hall, ward: a room } }\n\
+             ward: { subsetOf: room, members: [ward, crypt], labels: { crypt: the crypt } }",
+        ))
+        .kinds;
+        imply_sub_kind_members(&mut kinds);
+        assert_eq!(kinds["room"].labels["crypt"], "the crypt");
+        assert_eq!(kinds["room"].labels["ward"], "a room", "own label wins");
+        assert_eq!(kinds["ward"].labels["ward"], "a room");
+        assert_eq!(kinds["ward"].labels.get("hall"), None, "not a ward member");
     }
 }

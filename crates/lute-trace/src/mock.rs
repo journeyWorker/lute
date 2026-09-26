@@ -86,6 +86,10 @@ pub struct MockSet {
     /// Where each `bridges:` entry sits in the mock's own text — what a
     /// [`validate_bridges`] diagnostic about it is anchored at.
     pub bridge_spans: BridgeSpans,
+    /// Where each `choose:` entry sits in the mock's own text (round-5
+    /// T3-13) — what a [`validate_choose`] diagnostic about it is anchored
+    /// at. Empty for `--choose` flags.
+    pub choose_spans: ChooseSpans,
     /// dsl 0.26.0 §7 (T1-7): set by a harness (`lute test`), never parsed —
     /// an entry, bundle beat or scene whose eligibility decides `false` is
     /// shown on its head and its body is NOT walked, as the engine would
@@ -150,8 +154,42 @@ impl BridgeSpans {
     }
 }
 
+/// Where each `choose:` entry of a mock document sits in its text: per
+/// branch/hub id, its key and, for a list, each choice id (round-5 T3-13).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChooseSpans(BTreeMap<String, (Span, Vec<Span>)>);
+
+impl ChooseSpans {
+    /// Locate every entry of `choose` (parsed from `text`) in `text`.
+    fn locate(text: &str, choose: &BTreeMap<String, Vec<String>>) -> Self {
+        use YamlStep::{Item, Key};
+        let mut out = BTreeMap::new();
+        for (id, choices) in choose {
+            let Some(at) = yaml_span(text, &[Key("choose"), Key(id)]) else {
+                continue;
+            };
+            let items = (0..choices.len())
+                .map_while(|i| yaml_span(text, &[Key("choose"), Key(id), Item(i)]))
+                .collect();
+            out.insert(id.clone(), (at, items));
+        }
+        ChooseSpans(out)
+    }
+
+    /// The `choose:` key `id`.
+    fn key(&self, id: &str) -> Option<Span> {
+        self.0.get(id).map(|(at, _)| *at)
+    }
+
+    /// The `i`-th choice id under `id` (its key when written as a scalar).
+    fn choice(&self, id: &str, i: usize) -> Option<Span> {
+        let (at, items) = self.0.get(id)?;
+        Some(items.get(i).copied().unwrap_or(*at))
+    }
+}
+
 /// One step of a path into a YAML document.
-enum YamlStep<'a> {
+pub enum YamlStep<'a> {
     Key(&'a str),
     Item(usize),
 }
@@ -163,7 +201,7 @@ enum YamlStep<'a> {
 /// a visitor raises with the start mark of the node being visited: this
 /// deserializes along `path` and raises one AT the target, so the position
 /// is libyaml's own (flow or block style, quoted keys and all).
-fn yaml_span(text: &str, path: &[YamlStep<'_>]) -> Option<Span> {
+pub fn yaml_span(text: &str, path: &[YamlStep<'_>]) -> Option<Span> {
     use serde::de::DeserializeSeed;
     let err = YamlSeek(path)
         .deserialize(serde_yaml::Deserializer::from_str(text))
@@ -760,6 +798,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             };
             mocks.choose.insert(id.to_string(), ids);
         }
+        mocks.choose_spans = ChooseSpans::locate(text, &mocks.choose);
     }
 
     if let Some(v) = top.get("events") {
@@ -1015,6 +1054,12 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
         .filter(|f| seen_facts.insert(f.clone()))
         .collect();
 
+    // A flag entry replaces the file's entry for its id, and has no text.
+    let mut choose_spans = file.choose_spans;
+    for id in flags.choose.keys() {
+        choose_spans.0.remove(id);
+    }
+    choose_spans.0.extend(flags.choose_spans.0);
     let mut choose = file.choose;
     choose.extend(flags.choose);
 
@@ -1055,6 +1100,7 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
         derive: flags.derive.or(file.derive),
         bridges,
         bridge_spans,
+        choose_spans,
         gate_eligibility: file.gate_eligibility || flags.gate_eligibility,
         project_quests: flags.project_quests.or(file.project_quests),
     }
@@ -1424,26 +1470,41 @@ fn collect_choice_ids_nodes(nodes: &[Node], out: &mut BTreeMap<String, Vec<Strin
 /// pass cannot see.
 fn validate_choose(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    let span = synthetic_span();
     let known = collect_choice_ids(doc);
+    // Round-5 T3-13: the nearest known id, else the ids there are.
+    let hint = |needle: &str, among: &[&str], what: &str| match lute_manifest::suggest::nearest(
+        needle,
+        among.iter().copied(),
+        2,
+    ) {
+        Some(near) => format!(" — did you mean `{near}`?"),
+        None if among.is_empty() => format!(" (the document declares no {what})"),
+        None => format!(" ({what}: {})", among.join(", ")),
+    };
     for (id, choice_ids) in &mocks.choose {
         let Some(valid_choices) = known.get(id) else {
-            out.push(diag(
+            let ids: Vec<&str> = known.keys().map(String::as_str).collect();
+            out.push(mock_diag(
                 E_TRACE_CHOICE,
-                format!("`--choose {id}=…` names an unknown branch/hub id `{id}` (dsl 0.4.0 §4.3)"),
-                span,
+                format!(
+                    "`--choose {id}=…` names an unknown branch/hub id `{id}`{} (dsl 0.4.0 §4.3)",
+                    hint(id, &ids, "branch/hub ids")
+                ),
+                mocks.choose_spans.key(id),
             ));
             continue;
         };
-        for cid in choice_ids {
+        let choices: Vec<&str> = valid_choices.iter().map(String::as_str).collect();
+        for (i, cid) in choice_ids.iter().enumerate() {
             if !valid_choices.iter().any(|c| c == cid) {
-                out.push(diag(
+                out.push(mock_diag(
                     E_TRACE_CHOICE,
                     format!(
                         "`--choose {id}={cid}` names an unknown choice id `{cid}` for \
-                         `<branch/hub id=\"{id}\">` (dsl 0.4.0 §4.3)"
+                         `<branch/hub id=\"{id}\">`{} (dsl 0.4.0 §4.3)",
+                        hint(cid, &choices, "its choices")
                     ),
-                    span,
+                    mocks.choose_spans.choice(id, i),
                 ));
             }
         }

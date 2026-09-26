@@ -972,6 +972,48 @@ fn ineligible_scene_failure_names_the_false_premise() {
     assert!(!s.contains("as if it had been presented"), "{s}");
 }
 
+/// Round-5 T3-12: an `expect.eligible: { id: true }` miss names the false
+/// premise the session's eligibility rule decided — a bundle beat's unmet
+/// `after=` with the mock it needs, an entry's false `when` — as the
+/// implicit miss does.
+#[test]
+fn eligible_true_miss_names_the_false_premise() {
+    let dir = demo(
+        "t3-12",
+        &[
+            ("world.schema.yaml", "state:\n  run.fish: { type: number, default: 0 }\n"),
+            ("a.lute", "---\nkind: scene\nid: a\n---\n## A\n\n@narrator: A.\n"),
+            (
+                "talk.lute",
+                "---\nkind: lore\nid: talk\n---\n\n\
+                 <beat id=\"porter\" on=\"talk\" after=\"visited('a')\">\n  @narrator: You again.\n</beat>\n\n\
+                 <entry id=\"note\" when=\"run.fish == 1\">\n  @narrator: A note.\n</entry>\n",
+            ),
+            (
+                "tests/porter.test.yaml",
+                "file: ../talk.lute\nbeat: porter\nexpect:\n  eligible: { porter: true }\n",
+            ),
+            (
+                "tests/note.test.yaml",
+                "file: ../talk.lute\nentry: note\nexpect:\n  eligible: { note: true }\n",
+            ),
+        ],
+        "world.schema.yaml",
+    );
+    let s = text(&run(&dir, &["test", ".", "--project", "."]));
+    assert!(
+        s.contains(
+            "eligible porter: expected true, got false — its `after=\"visited('a')\"` is false \
+             — mock `visited: [a]`"
+        ),
+        "{s}"
+    );
+    assert!(
+        s.contains("eligible note: expected true, got false — its `when` (run.fish == 1) is false"),
+        "{s}"
+    );
+}
+
 /// N4: a member two `add:` lists (or `members:` and an `add:`) name is
 /// anchored at the second member's own line, naming both lines.
 #[test]

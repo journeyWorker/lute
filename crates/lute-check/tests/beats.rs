@@ -484,9 +484,9 @@ fn project(texts: &[(&str, &str)], snapshot: CapabilitySnapshot) -> Project {
     for folded in &foldeds {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
-    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle)
+    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
-        .filter_map(|(_, a)| GroundFact::from_pattern(&a.pattern));
+        .filter_map(|(_, a)| GroundFact::from_pattern(&a));
     let may = MaySet::build(&vocab, facts, &lute_check::stable_seeds(&docs, &vocab));
     let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);
@@ -522,7 +522,7 @@ impl Project {
         check_project_beats(
             &self.docs,
             &refs,
-            &lute_check::cast::fact_producers(&self.docs),
+            &lute_check::cast::fact_producers(&self.docs, &Default::default()),
             None,
         )
         .into_iter()

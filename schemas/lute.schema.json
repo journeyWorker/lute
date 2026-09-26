@@ -169,8 +169,34 @@
               "description": "one display label per weekday (exactly `length`); read as `clock.weekdayLabel`."
             }
           }
+        },
+        "last": {
+          "type": "object",
+          "description": "dsl 0.27.0 §4: the clock's last position — it raises the last day's `dayEnd` there and stops; a later `advance:` is `E-CLOCK-END`. `slot` (one of `slots`) defaults to the day's last slot; a day-granular clock gives `day` alone.",
+          "required": [
+            "day"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "day": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "slot": {
+              "type": "string"
+            }
+          }
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "dsl 0.27.0 §4: short for `last: { day: N }` — the clock ends after its Nth day. Never together with `last`."
         }
       }
+    },
+    "terminal": {
+      "type": "string",
+      "description": "dsl 0.27.0 §4 (T2-4): a CEL condition naming when the game is over (`\"run.fate == 'taken'\"`). Once it holds the engine raises no occasion: the checker judges every beat under its negation, and `lute play` ends with `end: terminal` and refuses a later `occasion:` / `advance:` step (`E-OCCASION-GATE`). Several schemas' declarations are joined by `||`. A schema key only — not a manifest key."
     }
   },
   "definitions": {

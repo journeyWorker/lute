@@ -219,7 +219,7 @@ declares no `run.approval` gets:
 
 <!-- lute-diagnostics -->
 ```
-./scenes/market.lute:12:1: error [E-UNDECLARED] `::set` target `run.approval.isolde` is not declared in the `state:` schema (dsl §7.3.4)
+./scenes/market.lute:12:1: error [E-UNDECLARED] `::set` target `run.approval.isolde` is not declared in the `state:` schema
 ```
 
 The writes compile into the host's commands where the `::use` sits, and a `<match>` on a param keeps
@@ -300,8 +300,8 @@ is no component is `E-COMPONENT-ARG`:
 
 <!-- lute-diagnostics -->
 ```
-./components/challenge.component.lute:11:1: error [E-COMPONENT-ARG] `@@taunt:` speaks as the cast member a `speaker` param names, and `taunt` is not a `speaker` param — declare `taunt: speaker` (dsl 0.26.0 §3.2)
-./scenes/pier.lute:9:1: error [E-COMPONENT-ARG] `@@mira:` speaks as a component's `speaker` param `mira`, and this document is no component — write the cast id (`@mira:`) (dsl 0.26.0 §3.2)
+./components/challenge.component.lute:11:1: error [E-COMPONENT-ARG] `@@taunt:` speaks as the cast member a `speaker` param names, and `taunt` is not a `speaker` param — declare `taunt: speaker`
+./scenes/pier.lute:9:1: error [E-COMPONENT-ARG] `@@mira:` speaks as a component's `speaker` param `mira`, and this document is no component — write the cast id (`@mira:`)
 ```
 
 ### Param defaults
@@ -399,6 +399,19 @@ checked against the kind, with a did-you-mean:
 
 [`lute refs <dir> --attr give.item`](/tooling/cli/) lists such a value at the `::use` line that
 binds it, marked ``(via component `gift`)``.
+
+Such a param also renders as text (dsl 0.27.0 §7): `{{@hall}}` over `hall: { domain: room }` shows
+the kind's `labels:` entry for the argument (`the chapel` for `chapel`), a cast member's `name:`
+winning for a cast id, and the id itself when the kind has no label for it. The argument must be a
+literal, as for a `string` param.
+
+### A beat header: `beat:`
+
+A component whose frontmatter also declares a `beat:` header (`on`, `when`, `once`, `after`, …, its
+values free to use `@param`) is a **beat template** (dsl 0.27.0 §6): a bundle beat names it with
+`<beat use="<component>" id="…" …>`, passes the params as attributes, and gets the header with each
+`@param` replaced. See [Beat templates](/language/beats/#beat-templates-use) for the header rules,
+`::body`, and the `E-TEMPLATE` misuses.
 
 ### Line identity
 

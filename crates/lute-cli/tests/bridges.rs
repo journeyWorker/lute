@@ -150,6 +150,43 @@ fn play_fails_a_step_that_leaves_its_own_answers_unconsumed() {
     );
 }
 
+/// dsl 0.27.0 (T3-22): an include's `bridges:` answer only the steps it
+/// splices in, over the script's own, restarting from their first answer
+/// each repetition; its leftover answer is dropped when the include ends,
+/// and the script's own answers wait for the step after it.
+#[test]
+fn play_include_answers_are_local_to_each_repetition() {
+    // `probe.c` is `once: run`: each visit starts a new run.
+    let steps = write(
+        &temp_dir("include-steps"),
+        "v.steps.yaml",
+        "- newRun: true\n- occasion: hubVisit\n",
+    );
+    let o = play(
+        "include",
+        &format!(
+            "bridges:\n  check:\n    - {{ passed: false, margin: 0 }}\n    - {{ passed: true, margin: 2 }}\n\
+             steps:\n  - include: {}\n    repeat: 2\n    bridges:\n      check:\n        \
+             - {{ passed: true, margin: 1 }}\n        - {{ passed: false, margin: 0 }}\n        \
+             - {{ passed: false, margin: 7 }}\n  - newRun: true\n  - occasion: hubVisit\n",
+            steps.display()
+        ),
+    );
+    let text = out(&o);
+    assert_eq!(o.status.code(), Some(0), "{text}");
+    let said = |line: &str| text.matches(&format!("@narrator: {line}\n")).count();
+    assert_eq!(
+        [
+            said("Passed."),
+            said("Spotted."),
+            said("Failed."),
+            said("Sneaked.")
+        ],
+        [2, 2, 1, 1],
+        "{text}"
+    );
+}
+
 #[test]
 fn play_refuses_a_bad_field_or_a_misfit_value_at_load() {
     for (script, want) in [

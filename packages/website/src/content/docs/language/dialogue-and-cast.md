@@ -91,7 +91,7 @@ cast.
 
 <!-- lute-diagnostics -->
 ```
-./scenes/arrival.lute:12:2: error [E-CAST-UNKNOWN] speaker `fixer` is not in the declared cast (dsl 0.23.0 §7)
+./scenes/arrival.lute:12:2: error [E-CAST-UNKNOWN] speaker `fixer` is not in the declared cast
 ```
 
 Without a declared cast, speakers are checked for shape only, as before 0.23.0, so a project can
@@ -112,7 +112,7 @@ different speakers (`who=`):
 
 <!-- lute-diagnostics -->
 ```
-./scenes/a.lute:11:1: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (./scenes/a.lute:10), `gus2` (./scenes/a.lute:11) — the dialogue box cannot tell them apart; rename one (dsl 0.26.0 §2.8)
+./scenes/a.lute:11:1: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (./scenes/a.lute:10), `gus2` (./scenes/a.lute:11) — the dialogue box cannot tell them apart; rename one
 ```
 
 Some names are shared on purpose: a role several speakers play, such as a villain team's rank and
@@ -137,8 +137,8 @@ With a cast declared, the character a staging directive names must be in it, lik
 
 <!-- lute-diagnostics unverified="composed in crates/lute-check/src/cast.rs from a runtime-built directive prefix plus a pushed did-you-mean, so no single format! literal pins it; copied verbatim from check-project output" -->
 ```
-./scenes/ridge.lute:11:19: error [E-CAST-UNKNOWN] `::auto{character}` `corvn` is not in the declared cast (dsl 0.23.0 §7) — did you mean `corvin`?
-./scenes/ridge.lute:12:17: error [E-CAST-UNKNOWN] `::camera{focus}` `isold` is not in the declared cast (dsl 0.23.0 §7) — did you mean `isolde`?
+./scenes/ridge.lute:11:19: error [E-CAST-UNKNOWN] `::auto{character}` `corvn` is not in the declared cast — did you mean `corvin`?
+./scenes/ridge.lute:12:17: error [E-CAST-UNKNOWN] `::camera{focus}` `isold` is not in the declared cast — did you mean `isolde`?
 ```
 
 ### Per-speaker emotions
@@ -147,7 +147,7 @@ A cast entry may list the emotions a character shows, `emotions: [calm, fierce]`
 
 <!-- lute-diagnostics -->
 ```
-./scenes/ridge.lute:14:18: error [E-BAD-ENUM] `sad` is not one of `isolde`'s emotions (expected one of: calm, fierce) — the cast declares `emotions:` for `isolde` (dsl 0.24.0 §4)
+./scenes/ridge.lute:14:18: error [E-BAD-ENUM] `sad` is not one of `isolde`'s emotions (expected one of: calm, fierce) — the cast declares `emotions:` for `isolde`
 ```
 
 A value the `emotion` enum itself rejects keeps its one existing error. A speaker without `emotions:` may use any member of the enum.
@@ -193,13 +193,14 @@ The checker then asks, for every line by `isolde`, whether the guards around the
 
 <!-- lute-diagnostics -->
 ```
-./scenes/camp.lute:12:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde))"` for `isolde`, and the guards around this line do not imply it (dsl 0.24.0 §4). Guard the line — `@isolde{when="holds(inParty(isolde))"}` — or move it under a guard that implies it
+./scenes/camp.lute:12:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde))"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds(inParty(isolde))"}` — or move it under a guard that implies it
 ```
 
 The guards that count are the line's own `when=`, every enclosing `<choice when>` (in a branch or a hub), `<match>` arms (the arm's `is=` or `test`, and the fact that no earlier arm matched), `<on when>`, `<objective done>`, and the scene beat's `when:`, an entry's `when=` or a bundle beat's `when=`. `@def`s in them are expanded. Some guards are implied by where the line sits:
 
 - a lore entry's body assumes its own `entry.<id>.read` / `everRead`;
 - a quest `<on>` handler assumes the quest's state at that event, and the conjuncts of its `start` that stay true once true (`entry.<id>.everRead`, `visited(…)`);
+- a quest's `questComplete` handler also assumes the quest's completion (dsl 0.27.0): the quest completed when one of its required objectives did, so one required objective's `done` holds. A handler of a quest whose required objectives all need `@withToby` may give Tobias a line without repeating the guard. An `::assert`, `::retract` or `::set` in an objective body or an earlier `questComplete` handler of the quest can cancel this assumption, like any other guard;
 - under `check-project`, a beat assumes that every always-eligible `once` beat ranked above it for the same occasion has already been spent.
 
 A `holds(A)` guard over a derived relation also implies the bodies of A's rules: with `inParty(P) :- recruited(P), not departed(P)`, a line guarded by `holds(inParty(isolde))` satisfies `present: "!holds(departed(isolde))"`. A relation whose rules are ground once bound, such as a `cel()`-only schedule, reads as the disjunction of those rule bodies.
@@ -254,7 +255,7 @@ On the road, the first two lines warn again, each with a note saying why `assume
 
 <!-- lute-diagnostics unverified="verbatim lute check-project output; the W-CAST-ABSENT message is composed from a base literal plus the dsl 0.25.0 §6 changedOn suffix appended in crates/lute-check/src/cast.rs, so no single format! literal matches" -->
 ```
-./scenes/road.lute:11:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde)) && !holds(fell(isolde))"` for `isolde`, and the guards around this line do not imply it (dsl 0.24.0 §4). Guard the line — `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}` — or move it under a guard that implies it; `assume: true` does not cover `fell`: this line follows an occasion its `changedOn:` names (dsl 0.25.0 §6)
+./scenes/road.lute:11:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde)) && !holds(fell(isolde))"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}` — or move it under a guard that implies it; `assume: true` does not cover `fell`: this line follows an occasion its `changedOn:` names
 ```
 
 Guard those lines with the whole condition, `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}`, and the warnings go. Lines in the camp scene, which comes before the battle in the graph, stay covered by `assume: true`. Without `changedOn`, the 0.24 behaviour is unchanged: `assume: true` covers every line. `changedOn` on a relation that is not `reserved: true` is `E-RELATION-DECL`, and so is an occasion no plugin declares, with a did-you-mean (`` `changedOn: batleEnd` is not a declared occasion — did you mean `battleEnd`? ``). In a project whose plugins declare no occasions, the names are not checked.

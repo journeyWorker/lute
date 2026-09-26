@@ -1398,12 +1398,20 @@
     "named": true
   },
   {
+    "type": "rearm",
+    "named": false
+  },
+  {
     "type": "ref",
     "named": true
   },
   {
     "type": "reserved",
     "named": true
+  },
+  {
+    "type": "spentBy",
+    "named": false
   },
   {
     "type": "start",

@@ -54,11 +54,16 @@ fn ties(texts: &[&str]) -> Vec<Diagnostic> {
         docs.push((PathBuf::from(format!("{i}.lute")), doc));
     }
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
-    check_project_beats(&docs, &refs, &lute_check::cast::fact_producers(&docs), None)
-        .into_iter()
-        .map(|(_, d)| d)
-        .filter(|d| d.code == "W-BEAT-PRIORITY-TIE")
-        .collect()
+    check_project_beats(
+        &docs,
+        &refs,
+        &lute_check::cast::fact_producers(&docs, &Default::default()),
+        None,
+    )
+    .into_iter()
+    .map(|(_, d)| d)
+    .filter(|d| d.code == "W-BEAT-PRIORITY-TIE")
+    .collect()
 }
 
 const BOTH: &str = "holds(beaten(thief)) && holds(beaten(cook))";

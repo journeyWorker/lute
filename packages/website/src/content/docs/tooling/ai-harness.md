@@ -162,7 +162,7 @@ state:
 <!-- lute-diagnostics -->
 ```console
 $ lute check scene.lute
-scene.lute:7:3: error [E-STATE-COLLECTION] state path `run.inventory` cannot declare a collection type (`list`/`record`/`map`); author state is scalar (number|bool|string|enum) — model collections as `relations:` (dsl 0.3.0 §3) or a plugin `state_shapes` slot
+scene.lute:7:3: error [E-STATE-COLLECTION] state path `run.inventory` cannot declare a collection type (`list`/`record`/`map`); author state is scalar (number|bool|string|enum) — model collections as `relations:` or a plugin `state_shapes` slot
 failed: scene.lute (1 error(s), 0 warning(s))
 ```
 

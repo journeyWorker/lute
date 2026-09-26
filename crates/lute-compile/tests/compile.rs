@@ -1163,6 +1163,7 @@ fn hub_choice_use_expands_component_records_with_source_stamp() {
             speakers: Vec::new(),
             defaults: Default::default(),
             effects: false,
+            beat: None,
             body: comp_body,
             src: std::path::PathBuf::from("test://greet"),
         },

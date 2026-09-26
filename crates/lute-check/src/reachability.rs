@@ -337,7 +337,7 @@ pub(crate) fn check_reachability(
                 crate::beats::beat_unreachable_message(
                     &crate::beats::scene_beat_name(folded),
                     when.raw.trim(),
-                    None,
+                    crate::clock::end_reason(base_ctx.schema, &when.raw).as_deref(),
                 ),
                 when.span,
             ));
@@ -358,12 +358,16 @@ pub(crate) fn check_reachability(
                 crate::beats::beat_unreachable_message(
                     &crate::bundles::bundle_beat_key(doc_id, &beat.id),
                     when.raw.trim(),
-                    None,
+                    crate::clock::end_reason(base_ctx.schema, &when.raw).as_deref(),
                 ),
                 when.span,
             ));
         }
     }
+    // dsl 0.27.0 §4: beats judged under their occasion's gate and `!terminal`.
+    diags.extend(crate::gates::seam_reachability(
+        doc, folded, &defs, &base_ctx,
+    ));
     diags
 }
 
@@ -423,12 +427,20 @@ pub(crate) fn check_reachability_in(
                 diags.push(diag(
                     E_ENTRY_UNREACHABLE,
                     Severity::Error,
-                    format!(
-                        "entry `{}` is never eligible: its `when` guard `{}` is provably false \
-                         (dsl 0.20.0 §5)",
-                        entry.id,
-                        when.raw.trim()
-                    ),
+                    match crate::clock::end_reason(base_ctx.schema, &when.raw) {
+                        Some(why) => format!(
+                            "entry `{}` is never eligible: its `when` guard `{}` is provably \
+                             false — {why} (dsl 0.20.0 §5, 0.27.0 §4)",
+                            entry.id,
+                            when.raw.trim()
+                        ),
+                        None => format!(
+                            "entry `{}` is never eligible: its `when` guard `{}` is provably \
+                             false (dsl 0.20.0 §5)",
+                            entry.id,
+                            when.raw.trim()
+                        ),
+                    },
                     when.span,
                 ));
             }

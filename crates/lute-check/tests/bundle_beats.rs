@@ -153,7 +153,7 @@ fn an_always_eligible_repeatable_beat_shadows_a_later_one() {
     let out = check_project_beats(
         &docs,
         &[&folded],
-        &lute_check::cast::fact_producers(&docs),
+        &lute_check::cast::fact_producers(&docs, &Default::default()),
         None,
     );
     let shadowed: Vec<_> = out

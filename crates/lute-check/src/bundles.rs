@@ -24,7 +24,8 @@ use crate::lore::{is_beat_target, is_entry_ident};
 /// with a value of the wrong shape (a bare `on`, `also="maybe"`) — that is
 /// [`E_BEAT_ATTR`]; every OTHER key is `E-UNKNOWN-ATTR`.
 pub const BUNDLE_BEAT_ATTRS: &[&str] = &[
-    "id", "on", "target", "title", "when", "priority", "once", "also", "share", "after",
+    "id", "on", "target", "title", "when", "priority", "once", "also", "share", "after", "spentBy",
+    "use", "for",
 ];
 
 /// The canonical id of bundle beat `beat_id` in the lore document whose
@@ -34,16 +35,18 @@ pub fn bundle_beat_key(doc_id: &str, beat_id: &str) -> String {
 }
 
 /// A bundle beat's repetition policy, as a scene beat's (dsl 0.21.0 §3.1,
-/// 0.24.0 §1): `once="user"` / `"false"` / `"day"` / `"slot"`; anything
-/// else — absent, `run`, or a malformed value `E-BEAT-ATTR` already
-/// reports — is the default `run`.
+/// 0.24.0 §1, 0.27.0 §5): `once="user"` / `"false"` / `"day"` / `"slot"` /
+/// `"week"` / `"season:<name>"`; `spentBy=` makes it repeatable (`false`);
+/// anything else — absent, `run`, or a malformed value `E-BEAT-ATTR`
+/// already reports — is the default `run`.
 pub fn bundle_beat_once(beat: &BundleBeat) -> BeatOnce {
+    if beat.spent_by.is_some() {
+        return BeatOnce::None;
+    }
     match beat.once.as_ref().map(|(o, _)| o.as_str()) {
-        Some("user") => BeatOnce::User,
         Some("false") => BeatOnce::None,
-        Some("day") => BeatOnce::Day,
-        Some("slot") => BeatOnce::Slot,
-        _ => BeatOnce::Run,
+        Some(raw) => BeatOnce::parse(raw).unwrap_or(BeatOnce::Run),
+        None => BeatOnce::Run,
     }
 }
 
@@ -119,7 +122,7 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
     let mut residual: BTreeSet<&str> = BTreeSet::new();
     for attr in &beat.attrs {
         let key = attr.key.as_str();
-        if !BUNDLE_BEAT_ATTRS.contains(&key) || key == "when" {
+        if !BUNDLE_BEAT_ATTRS.contains(&key) || key == "when" || key == "spentBy" {
             continue;
         }
         residual.insert(key);
@@ -195,16 +198,27 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
         }
     }
     if let Some((raw, span)) = &beat.once {
-        if !matches!(raw.as_str(), "run" | "user" | "false" | "day" | "slot") {
+        if raw != "false" && BeatOnce::parse(raw).is_none() {
             diags.push(beat_attr(
                 format!(
-                    "`<beat>` `once=\"{raw}\"` must be `run` (once per run, the default), `user` \
-                     (once ever), `day` / `slot` (once per clock day / slot), or `false` \
-                     (repeatable) (dsl 0.23.0 §4, 0.24.0 §1)"
+                    "`<beat>` `once=\"{raw}\"` must be {} (dsl 0.23.0 §4, 0.24.0 §1, 0.27.0 §5)",
+                    crate::beats::ONCE_VALUES
                 ),
                 *span,
             ));
         }
+    }
+    // dsl 0.27.0 §5: `spentBy` replaces `once`.
+    if let (Some(spent_by), true) = (
+        &beat.spent_by,
+        beat.once.is_some() || residual.contains("once"),
+    ) {
+        diags.push(beat_attr(
+            "`<beat>` `spentBy` replaces `once` — the beat stays eligible until its condition \
+             holds; remove `once` (dsl 0.27.0 §5)"
+                .to_string(),
+            spent_by.span,
+        ));
     }
     // dsl 0.25.0 §2: a shared spend needs a spend to share.
     if let Some((key, span)) = &beat.share {
