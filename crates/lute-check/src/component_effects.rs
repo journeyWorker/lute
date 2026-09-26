@@ -15,10 +15,11 @@
 //!   definite assignment, fact Must/may) then judge each write where it
 //!   happens, against the host's schema. The `::use` itself stays; `lute
 //!   compile` expands the whole body through `normalize` as before.
-//! * **Speaker params**: a `speaker` param is an enum over the host's cast
+//! * **Display args**: a `speaker` param is an enum over the host's cast
 //!   ids (plus `narrator`) when a cast is declared, a string otherwise
-//!   ([`host_param_types`]); `{{@p}}` renders the cast member's name
-//!   ([`speaker_display_args`]).
+//!   ([`host_param_types`]); `{{@p}}` renders the cast member's name, and
+//!   (dsl 0.27.0 §7) a param typed by an entity kind or a named enum renders
+//!   the kind's label for its argument ([`display_args`]).
 
 use std::collections::BTreeMap;
 
@@ -97,26 +98,35 @@ pub fn use_args_for(d: &Directive, def: &ComponentDef) -> BTreeMap<String, AttrV
     args
 }
 
-/// For text interpolation only: each `speaker` param bound to a literal cast
-/// id, mapped to that member's display name (the id itself when the member
-/// has no `name`, or the id is not in the cast). Attribute positions keep the
-/// id; this map is only ever handed to the line-text binder.
-pub fn speaker_display_args(
+/// For text interpolation only: each param bound to a literal id, mapped to
+/// its display text — a `speaker` param to its cast member's `name` (the id
+/// when there is none); dsl 0.27.0 §7: a param typed `{ entity: K }` /
+/// `{ domain: K }` to `K`'s `labels:` entry (a cast `name:` wins for a cast
+/// id), absent without one, so its literal argument renders verbatim.
+/// Attribute positions keep the id; this map is only ever handed to the
+/// line-text binder.
+pub fn display_args(
     def: &ComponentDef,
     args: &BTreeMap<String, AttrValue>,
     cast: &BTreeMap<String, CastMember>,
+    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
 ) -> BTreeMap<String, AttrValue> {
-    def.speakers
+    let cast_name = |id: &str| cast.get(id).and_then(|c| c.name.clone());
+    def.params
         .iter()
-        .filter_map(|p| match args.get(p)? {
-            AttrValue::Str(id) => {
-                let name = cast
-                    .get(id)
-                    .and_then(|c| c.name.clone())
-                    .unwrap_or_else(|| id.clone());
-                Some((p.clone(), AttrValue::Str(name)))
-            }
-            _ => None,
+        .filter_map(|(p, ty)| {
+            let AttrValue::Str(id) = args.get(p)? else {
+                return None;
+            };
+            let shown = if def.speakers.contains(p) {
+                cast_name(id).unwrap_or_else(|| id.clone())
+            } else {
+                let (Type::Entity(kind) | Type::Domain(kind)) = ty else {
+                    return None;
+                };
+                cast_name(id).or_else(|| domains.get(kind)?.labels.get(id).cloned())?
+            };
+            Some((p.clone(), AttrValue::Str(shown)))
         })
         .collect()
 }

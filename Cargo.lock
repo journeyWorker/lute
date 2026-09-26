@@ -611,6 +611,7 @@ name = "lute-core-span"
 version = "0.26.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -119,6 +119,7 @@ pub fn validate_manifests_under(dir: &Path) -> std::io::Result<Vec<ManifestVerdi
                 c.identity_diags
                     .iter()
                     .chain(c.defaults_diags.iter())
+                    .chain(c.sequence_diags.iter())
                     .map(|d| as_diagnostic(&d.code, d.message.clone()))
                     .collect::<Vec<_>>()
             })
@@ -150,7 +151,7 @@ pub fn spanless_line(path: &Path, d: &Diagnostic, denied: bool) -> String {
         "{}: {severity} [{}]{marker} {}",
         path.display(),
         d.code,
-        d.message
+        d.text()
     )
 }
 

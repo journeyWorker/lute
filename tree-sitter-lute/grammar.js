@@ -287,14 +287,13 @@ module.exports = grammar({
     // exactly like `entry`. The body is the ordinary node stream; its scene
     // shot body admission is the checker's. Attributes (`id`/`on`/`target`/
     // `title`/`priority`/`once`, bare `also`, CEL `when`) ride the generic
-    // `_tag_attr` machinery.
+    // `_tag_attr` machinery. dsl 0.27.0 §6: a template use (`use="…"` plus
+    // its param attrs) may be self-closing — `<beat use="trainer" id="r3"/>`
+    // — tried first so `/>` vs `>` stays LR(1)-clean, like `objective`.
     beat: ($) =>
-      seq(
-        "<beat",
-        repeat($._tag_attr),
-        ">",
-        repeat($._node),
-        "</beat>",
+      choice(
+        seq("<beat", repeat($._tag_attr), "/>"),
+        seq("<beat", repeat($._tag_attr), ">", repeat($._node), "</beat>"),
       ),
 
     // On ::= "<on" Attrs ">" Node* "</on>" (§4.1). The Event-Condition-Action
@@ -363,10 +362,13 @@ module.exports = grammar({
     cel_attr: ($) => seq($.cel_key, "=", choice($.cel_string, $.ref)),
 
     // CelKey — the reserved attribute keys whose value is CEL (§7.3): `on` is a
-    // `<match>` subject, `test` a `<when>` guard, `when` a `<choice>` guard. A
-    // named node (lexes ahead of the generic `key` on a tie) so editors treat
-    // these keys distinctly and know their value is embedded CEL.
-    cel_key: ($) => choice("on", "test", "when", "done", "start", "fail"),
+    // `<match>` subject, `test` a `<when>` guard, `when` a `<choice>` guard,
+    // `rearm` a quest's re-arm condition and `spentBy` a beat's spend
+    // condition (dsl 0.27.0 §5). A named node (lexes ahead of the generic `key`
+    // on a tie) so editors treat these keys distinctly and know their value is
+    // embedded CEL.
+    cel_key: ($) =>
+      choice("on", "test", "when", "done", "start", "fail", "rearm", "spentBy"),
 
     // CelString (§4.4) — a double-quoted CEL expression used as an attribute
     // value. Unlike the opaque `string` token, its interior is *structured* so

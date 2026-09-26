@@ -166,7 +166,7 @@ pub fn run_artifact(
             Ok(t) => match lute_trace::parse_mock_yaml(&t) {
                 Ok(m) => m,
                 Err(d) => {
-                    eprintln!("lute run: invalid mock {}: {}", path.display(), d.message);
+                    eprintln!("lute run: invalid mock {}: {}", path.display(), d.text());
                     return ExitCode::from(2);
                 }
             },
@@ -259,7 +259,7 @@ impl Driver for RunDriver {
     fn forced(&mut self, _menu: &Menu<'_>, _option: &str, verdict: &Verdict) -> Forced {
         match verdict {
             Verdict::Spent => Forced::Skip,
-            Verdict::Closed => Forced::Refuse,
+            Verdict::Closed(_) => Forced::Refuse,
             Verdict::Open | Verdict::Unknown(_) => Forced::Take,
         }
     }

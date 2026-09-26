@@ -11,6 +11,7 @@ pub mod provider;
 pub mod relations;
 pub mod resolve;
 pub mod schema;
+pub mod season;
 pub mod snapshot;
 pub mod suggest;
 pub mod types;

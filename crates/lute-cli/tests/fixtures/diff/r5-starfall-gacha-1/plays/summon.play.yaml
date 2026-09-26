@@ -1,0 +1,14 @@
+steps:
+  - occasion: summon
+    target: hero.bram
+  - engine: { facts: [owned(bram)] }
+  - occasion: summon
+    target: hero.bram
+  - occasion: summon
+    target: hero.aria
+  - engine: { state: { user.bond.bram: 150 } }
+  - occasion: bondUp
+    target: hero.bram
+  - engine: { state: { user.bond.bram: 200 } }
+  - occasion: bondUp
+    target: hero.bram

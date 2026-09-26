@@ -90,7 +90,12 @@ fn parse_all(texts: &[&str]) -> (Vec<(PathBuf, Document)>, Vec<FoldedEnv>) {
 fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
     let (docs, foldeds) = parse_all(texts);
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
-    check_project_beats(&docs, &refs, &lute_check::cast::fact_producers(&docs), None)
+    check_project_beats(
+        &docs,
+        &refs,
+        &lute_check::cast::fact_producers(&docs, &Default::default()),
+        None,
+    )
 }
 
 fn with_code<'a>(out: &'a [(PathBuf, Diagnostic)], code: &str) -> Vec<&'a Diagnostic> {

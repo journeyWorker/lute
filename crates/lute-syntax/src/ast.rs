@@ -239,6 +239,10 @@ pub struct Quest {
     /// the script (a quest board, a menu, a UI). Raw text + value span; the
     /// checker validates the value (`E-ATTR-TYPE`).
     pub accept: Option<(String, Span)>,
+    /// dsl 0.27.0 §5: `rearm="<condition>"` — when the condition goes from
+    /// false to true the quest returns to `unset` (objectives and `failedBy`
+    /// cleared) and can be taken again.
+    pub rearm: Option<CelSlot>,
     /// Residual (post-extraction) attrs, mirroring [`Branch`]; normally empty.
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
@@ -282,6 +286,11 @@ pub struct Entry {
     pub id: String,
     pub id_span: Span,
     pub target: Option<(String, Span)>,
+    /// dsl 0.27.0 §3 (T2-10): `for="kind:<kind>"` — on an untargeted
+    /// `select: sequence` occasion, the beat is presented once per member of
+    /// the kind whose `when` holds, binding `occasion.target`. Raw text +
+    /// value span; the checker validates it (`E-BEAT-ATTR`).
+    pub for_kind: Option<(String, Span)>,
     pub category: Option<(String, Span)>,
     pub title: Option<(String, Span)>,
     pub series: Option<(String, Span)>,
@@ -302,6 +311,9 @@ pub struct Entry {
     pub share: Option<(String, Span)>,
     /// Optional eligibility guard (dsl 0.19.0 §3), like [`Quest::start`].
     pub when: Option<CelSlot>,
+    /// dsl 0.27.0 §5: `spentBy="<condition>"` — instead of `once`, the beat
+    /// stays eligible until the condition holds.
+    pub spent_by: Option<CelSlot>,
     /// Residual (post-extraction) attrs, mirroring [`Quest`]; normally empty.
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
@@ -325,6 +337,8 @@ pub struct BundleBeat {
     pub id_span: Span,
     pub on: Option<(String, Span)>,
     pub target: Option<(String, Span)>,
+    /// dsl 0.27.0 §3: `for="kind:<kind>"`, as [`Entry::for_kind`].
+    pub for_kind: Option<(String, Span)>,
     /// A localizable label (a `select: all` menu names the beat by it),
     /// captured raw like [`Entry::title`].
     pub title: Option<(String, Span)>,
@@ -340,10 +354,26 @@ pub struct BundleBeat {
     pub after: Option<(String, Span)>,
     pub also: Option<(bool, Span)>,
     pub when: Option<CelSlot>,
-    /// Residual (post-extraction) attrs; normally empty.
+    /// dsl 0.27.0 §5: `spentBy="<condition>"`, as [`Entry::spent_by`].
+    pub spent_by: Option<CelSlot>,
+    /// Residual (post-extraction) attrs; normally empty. On a template use
+    /// (`template` is `Some`), the template's arguments until expansion.
     pub attrs: Vec<Attr>,
+    /// dsl 0.27.0 §6: `use="<component>"` — the beat's header and body come
+    /// from that component's `beat:` template (`lute_check::templates`).
+    pub template: Option<TemplateUse>,
     pub body: Vec<Node>,
     pub span: Span,
+}
+
+/// dsl 0.27.0 §6: a `<beat use="…">` template use. `span` is the `use=`
+/// value; `expanded` is set once `lute_check::templates` has derived the
+/// header and body, so the expansion runs exactly once per document.
+#[derive(Clone, Debug)]
+pub struct TemplateUse {
+    pub name: String,
+    pub span: Span,
+    pub expanded: bool,
 }
 
 /// `<objective id done …> Node* </objective>` or self-closing
@@ -476,10 +506,29 @@ pub struct Interp {
     /// Span of the whole `{{…}}` in the original source.
     pub span: Span,
     /// dsl 0.24.0 §4: the format hint after the referent, trimmed —
-    /// `ordinal` in `{{user.deaths:ordinal}}`. The parser keeps any
+    /// `ordinal` in `{{user.deaths:ordinal}}`, `plural` in
+    /// `{{user.terms:plural(lantern|lanterns)}}`. The parser keeps any
     /// identifier here; the checker rejects one that is not a known hint
     /// ([`INTERP_FORMATS`]).
     pub format: Option<String>,
+    /// dsl 0.27.0 §7: the hint's `(…)` argument split on `|`, each form
+    /// trimmed — `["lantern", "lanterns"]` for `plural(lantern|lanterns)`;
+    /// `None` when the hint has no parentheses. The checker owns the shape
+    /// (`plural` takes exactly a singular and a plural form; no other hint
+    /// takes an argument).
+    pub forms: Option<Vec<String>>,
+}
+
+impl Interp {
+    /// The hint as it is written after the `:` — `ordinal`,
+    /// `plural(lantern|lanterns)` — or `None` without one.
+    pub fn hint_text(&self) -> Option<String> {
+        let format = self.format.as_deref()?;
+        Some(match &self.forms {
+            Some(forms) => format!("{format}({})", forms.join("|")),
+            None => format.to_string(),
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -516,43 +565,90 @@ pub const INTERP_FORMAT_ORDINAL: &str = "ordinal";
 /// English ordinal word ([`english_ordinal_word`]).
 pub const INTERP_FORMAT_ORDINAL_WORD: &str = "ordinalWord";
 
+/// dsl 0.27.0 §7: `{{user.terms:plural(lantern|lanterns)}}` renders the
+/// singular or the plural form by the number ([`english_plural`]); the IR
+/// placeholder carries the forms so an engine can localize.
+pub const INTERP_FORMAT_PLURAL: &str = "plural";
+
 /// Every interpolation format hint the language defines; the checker
 /// rejects any other. Each formats a number ([`format_number`]).
-pub const INTERP_FORMATS: [&str; 2] = [INTERP_FORMAT_ORDINAL, INTERP_FORMAT_ORDINAL_WORD];
+pub const INTERP_FORMATS: [&str; 3] = [
+    INTERP_FORMAT_ORDINAL,
+    INTERP_FORMAT_ORDINAL_WORD,
+    INTERP_FORMAT_PLURAL,
+];
 
-/// `n` rendered in format hint `format` ([`INTERP_FORMATS`]) — the one rule
-/// the reference runner, `lute trace` and a component's compile-time literal
-/// splice all render with. `None` for an unknown hint or a number the hint
-/// does not cover: the renderer then shows the number unchanged.
-pub fn format_number(format: &str, n: f64) -> Option<String> {
+/// `n` rendered in format hint `format` ([`INTERP_FORMATS`]) with the
+/// hint's `forms` — the one rule the reference runner, `lute trace` and a
+/// component's compile-time literal splice all render with. `shown` is the
+/// number as it renders unformatted (what a `#` in a plural form becomes).
+/// `None` for an unknown hint, malformed forms, or a number the hint does
+/// not cover: the renderer then shows the number unchanged.
+pub fn format_number(
+    format: &str,
+    forms: Option<&[String]>,
+    n: f64,
+    shown: &str,
+) -> Option<String> {
     match format {
         INTERP_FORMAT_ORDINAL => english_ordinal(n),
         INTERP_FORMAT_ORDINAL_WORD => english_ordinal_word(n),
+        INTERP_FORMAT_PLURAL => english_plural(forms?, n, shown),
         _ => None,
     }
 }
 
+/// dsl 0.27.0 §7: the English form of `forms` (`[singular, plural]`) for
+/// `n` — the singular exactly when `n` is 1 — with every `#` in it replaced
+/// by `shown` (`plural(# lantern|# lanterns)` → `3 lanterns`). `None` unless
+/// there are exactly two forms.
+pub fn english_plural(forms: &[String], n: f64, shown: &str) -> Option<String> {
+    let [one, other] = forms else {
+        return None;
+    };
+    let form = if n == 1.0 { one } else { other };
+    Some(form.replace('#', shown))
+}
+
 /// Build the [`Interp`] for one `{{…}}` interior (untrimmed `inner`),
 /// spanned at `span`: a trailing `:hint` is split off into
-/// [`Interp::format`] and the referent before it classified
-/// ([`classify_interp`]). The hint is the text after the LAST `:` that sits
-/// outside quotes and brackets, when that text is an identifier — so a
-/// `@fn(a ? b : c)` argument never splits. Anything else stays in `raw`,
-/// where the checker's grammar rule owns it. Shared by the content-line scan
-/// (parser) and [`scan_label_interps`].
+/// [`Interp::format`] (and a `hint(a|b)` argument into [`Interp::forms`])
+/// and the referent before it classified ([`classify_interp`]). The hint is
+/// the text after the LAST `:` that sits outside quotes and brackets, when
+/// that text is an identifier, optionally followed by a parenthesized
+/// argument — so a `@fn(a ? b : c)` argument never splits. Anything else
+/// stays in `raw`, where the checker's grammar rule owns it. Shared by the
+/// content-line scan (parser) and [`scan_label_interps`].
 pub fn interp_from_inner(inner: &str, span: Span) -> Interp {
-    let (referent, format) = match top_level_colon(inner) {
-        Some(at) if is_hint_ident(inner[at + 1..].trim()) => {
-            (inner[..at].trim(), Some(inner[at + 1..].trim().to_string()))
-        }
-        _ => (inner.trim(), None),
+    let (referent, format, forms) = match top_level_colon(inner)
+        .and_then(|at| Some((at, split_hint(inner[at + 1..].trim())?)))
+    {
+        Some((at, (name, forms))) => (inner[..at].trim(), Some(name.to_string()), forms),
+        None => (inner.trim(), None, None),
     };
     Interp {
         kind: classify_interp(referent),
         raw: referent.to_string(),
         span,
         format,
+        forms,
     }
+}
+
+/// A hint as written after the `:`: an identifier ([`is_hint_ident`]),
+/// optionally followed by `(…)` whose text splits on `|` into trimmed forms.
+fn split_hint(s: &str) -> Option<(&str, Option<Vec<String>>)> {
+    let Some(body) = s.strip_suffix(')') else {
+        return is_hint_ident(s).then_some((s, None));
+    };
+    let (name, args) = body.split_once('(')?;
+    let name = name.trim_end();
+    is_hint_ident(name).then(|| {
+        (
+            name,
+            Some(args.split('|').map(|f| f.trim().to_string()).collect()),
+        )
+    })
 }
 
 /// Byte offset of the last `:` in `s` outside quotes and `()`/`[]`/`{}`.

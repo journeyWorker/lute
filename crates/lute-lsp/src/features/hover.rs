@@ -277,12 +277,15 @@ fn construct_hover(construct: QuestConstruct) -> String {
              **attributes:**\n- `id` (required): string\n- `title`: string\n\
              - `start`: cel<bool>\n- `fail`: cel<bool>\n\
              - `after`: prereq — `completed(q)`/`active(q)`/`visited(k)` gate\n\
-             - `tier`: `\"user\"` (default, status persists across runs) or `\"run\"` \
-             (status and objectives reset when a run starts) (dsl 0.22.0 §7)\n\
+             - `tier`: `\"user\"` (default, status persists across runs), `\"run\"` \
+             (status and objectives reset when a run starts) (dsl 0.22.0 §7), or \
+             `\"season:<name>\"` (reset when that declared season opens again, dsl 0.27.0 §5)\n\
              - `activate`: `\"accept\"` — a subquest child waits for `::accept` instead of \
              activating with its parent (dsl 0.24.0 §2)\n\
              - `complete`: `\"all\"` (default) or `\"any\"` — `any` completes on the first \
-             required child done and fails the still-open rest as `superseded` (dsl 0.24.0 §2)"
+             required child done and fails the still-open rest as `superseded` (dsl 0.24.0 §2)\n\
+             - `rearm`: cel<bool> — each time it turns from false to true the quest \
+             returns to `unset` and can be taken up again (dsl 0.27.0 §5)"
                 .to_string()
         }
         QuestConstruct::On => {
@@ -322,10 +325,15 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `when`: cel<bool> — eligibility; presented only while it holds\n\
              - `on`: ident — the occasion this entry answers as a beat (dsl 0.21.0 §3.2)\n\
              - `priority`: integer — beat priority, higher wins (requires `on`)\n\
-             - `once`: `\"run\"`, `\"user\"`, `\"day\"`, or `\"slot\"` — not eligible once \
-             read this run / ever / this clock day / this clock slot (requires `on`; \
-             absent = repeatable; `day`/`slot` need a declared `clock:`) (dsl 0.22.0 §7, \
-             0.24.0 §1)"
+             - `once`: `\"run\"`, `\"user\"`, `\"day\"`, `\"week\"`, `\"slot\"`, or \
+             `\"season:<name>\"` — not eligible once read this run / ever / this clock day / \
+             this clock week / this clock slot / until the season opens again (requires `on`; \
+             absent = repeatable; `day`/`slot` need a declared `clock:`, `week` its `week:`) \
+             (dsl 0.22.0 §7, 0.24.0 §1, 0.27.0 §5)\n\
+             - `spentBy`: cel<bool> — instead of `once`: repeatable until the condition \
+             holds (dsl 0.27.0 §5)\n\
+             - `for`: `\"kind:<kind>\"` — on an untargeted `select: sequence` occasion, \
+             read once per member whose `when` holds, binding `occasion.target` (dsl 0.27.0 §3)"
                 .to_string()
         }
         QuestConstruct::Beat => {
@@ -340,11 +348,21 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `title`: string — menu label, localized\n\
              - `when`: cel<bool> — eligibility; may not read `scene.*`\n\
              - `priority`: integer — beat priority, higher wins (default 0)\n\
-             - `once`: `\"run\"` (default), `\"user\"`, `\"false\"`, `\"day\"`, or \
-             `\"slot\"` — spent once presented this run / ever / never / this clock day / \
-             this clock slot (`day`/`slot` need a declared `clock:`, dsl 0.24.0 §1)\n\
+             - `once`: `\"run\"` (default), `\"user\"`, `\"false\"`, `\"day\"`, `\"week\"`, \
+             `\"slot\"`, or `\"season:<name>\"` — spent once presented this run / ever / never / \
+             this clock day / this clock week / this clock slot / until the season opens again \
+             (`day`/`slot` need a declared `clock:`, `week` its `week:`, dsl 0.24.0 §1, \
+             0.27.0 §5)\n\
+             - `spentBy`: cel<bool> — instead of `once`: repeatable until the condition \
+             holds (dsl 0.27.0 §5)\n\
              - `also`: bool flag — on a `select: first` occasion, presented after \
-             the winner in addition to it"
+             the winner in addition to it\n\
+             - `use`: component — a beat template (dsl 0.27.0 §6): the component's \
+             `beat:` header supplies every attribute this `<beat>` does not write, its \
+             body runs first, and every other attribute is one of its params\n\
+             - `for`: `\"kind:<kind>\"` — on an untargeted `select: sequence` occasion, \
+             presented once per member whose `when` holds, in member order, binding \
+             `occasion.target` (dsl 0.27.0 §3)"
                 .to_string()
         }
         QuestConstruct::Hub => {

@@ -53,6 +53,15 @@ pub fn check_project_usage(
         .iter()
         .map(|d| document_read_view(d.text))
         .chain(extra_sources.iter().map(|t| yaml_read_view(t)))
+        // dsl 0.27.0 §4: the engine reads the occasions' `raisedWhen` gates
+        // and the `terminal:` condition — each a read of what it names.
+        .chain(docs.iter().flat_map(|d| {
+            d.folded
+                .occasions
+                .values()
+                .filter_map(|o| o.raised_when.clone())
+                .chain(d.folded.env.terminal.clone())
+        }))
         .collect();
     let texts: Vec<&str> = views.iter().map(String::as_str).collect();
     let mut out = Vec::new();
@@ -94,10 +103,17 @@ pub fn check_project_usage(
             .chain(d.doc.entries.iter().map(|e| &e.body))
             .chain(d.doc.beats.iter().map(|b| &b.body));
         for body in bodies {
-            scan(body, &mut |n| {
-                if let Node::Assert(a) = n {
+            scan(body, &mut |n| match n {
+                Node::Assert(a) => {
                     written.insert(a.pattern.relation.clone());
                 }
+                // dsl 0.27.0 §4: a call's declared `effects.asserts`.
+                Node::Directive(d) => {
+                    if let Some(facts) = vocab.call_facts(d) {
+                        written.extend(facts.asserts.into_iter().map(|p| p.relation));
+                    }
+                }
+                _ => {}
             });
         }
     }

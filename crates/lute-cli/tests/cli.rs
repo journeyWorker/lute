@@ -1764,8 +1764,48 @@ fn coverage_reports_documents_with_no_test_at_all() {
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(out.status.success(), "{text}");
-    assert!(text.contains("untested document"), "{text}");
+    assert!(text.contains("untested unit(s)"), "{text}");
     assert!(text.contains("untested.lute"), "{text}");
+}
+
+/// T3-20 (round-5 OT-F11): the coverage unit is the beat, not the file. One
+/// lore document holds two endings; a test presenting one of them left the
+/// file "named", so deleting every proof of the other went unseen.
+#[test]
+fn coverage_names_each_bundle_beat_as_its_own_unit() {
+    let dir = temp_dir("coverage-beat-units");
+    write_at(
+        &dir,
+        "ren.lute",
+        "---\nkind: lore\nid: end.ren\n---\n\n\
+         <beat id=\"lantern\" on=\"termEnd\" priority=\"10\">\n  @narrator: lit.\n</beat>\n\n\
+         <beat id=\"ember\" on=\"termEnd\">\n  @narrator: out.\n</beat>\n",
+    );
+    write_at(
+        &dir,
+        "t.test.yaml",
+        "file: ren.lute\nbeat: lantern\nexpect:\n  exit: complete\n",
+    );
+    let d = dir.to_str().unwrap();
+    let out = Command::new(BIN)
+        .args(["test", d, "--coverage"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "{text}");
+    assert!(text.contains("1 untested unit(s)"), "{text}");
+    assert!(text.contains("ren.lute: ember\n"), "{text}");
+    assert!(!text.contains("every testable document"), "{text}");
+
+    let out = Command::new(BIN)
+        .args(["test", d, "--coverage", "--json"])
+        .output()
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let untested = v["coverage"]["untested"].as_array().unwrap();
+    assert_eq!(untested.len(), 1, "{v:#}");
+    assert_eq!(untested[0]["id"], "end.ren.ember", "{v:#}");
+    assert_eq!(untested[0]["kind"], "beat", "{v:#}");
 }
 
 /// The denominator's other half, and the one that decides whether the list is
@@ -1817,7 +1857,7 @@ fn untested_denominator_excludes_component_documents() {
          surface. Got:\n{text}"
     );
     assert!(
-        text.contains("1 untested document"),
+        text.contains("1 untested unit(s)"),
         "exactly one, not two: {text}"
     );
 }

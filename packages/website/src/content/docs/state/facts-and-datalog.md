@@ -110,9 +110,9 @@ A storm scene asserts `at(elias, gallery)` and `damaged(gallery)`, and `panicked
 
 <!-- lute-diagnostics unverified="verbatim check-project output; the relational E-ARM-DEAD message names its code through the reachability::E_ARM_DEAD constant, so the scraper cannot pair quote and code" -->
 ```
-./scenes/dawn.lute:20:17: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(seenAfter(elias)) && holds(fell(elias))` is provably false — `seenAfter(elias)` and `fell(elias)` can never hold together (`seenAfter` excludes `fell`, dsl 0.25.0 §1) (dsl 0.20.0 §5)
-./scenes/dawn.lute:21:17: warning [W-FACT-GUARANTEED] guard `holds(seenAfter(elias)) && !holds(fell(elias))` is redundant: `!holds(fell(elias))` follows from this guard's `holds(seenAfter(elias))`: `seenAfter` excludes `fell` (dsl 0.25.0 §1) (dsl 0.20.0 §5)
-./scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] `::assert{calm(maren)}` would make `calm(maren)` and `panicked(maren)` both hold: `panicked(maren)` is asserted on every route to here (./scenes/storm.lute:14), and `calm` excludes `panicked` (dsl 0.25.0 §1) — retract `panicked(maren)` first, or assert only where it does not hold
+./scenes/dawn.lute:20:17: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(seenAfter(elias)) && holds(fell(elias))` is provably false — `seenAfter(elias)` and `fell(elias)` can never hold together (`seenAfter` excludes `fell`)
+./scenes/dawn.lute:21:17: warning [W-FACT-GUARANTEED] guard `holds(seenAfter(elias)) && !holds(fell(elias))` is redundant: `!holds(fell(elias))` follows from this guard's `holds(seenAfter(elias))`: `seenAfter` excludes `fell`
+./scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] `::assert{calm(maren)}` would make `calm(maren)` and `panicked(maren)` both hold: `panicked(maren)` is asserted on every route to here (./scenes/storm.lute:14), and `calm` excludes `panicked` — retract `panicked(maren)` first, or assert only where it does not hold
 ```
 
 When both facts are only *possible*, say `panicked(maren)` is asserted down one branch of the storm, there is no static verdict. The walk tools catch it instead, never silently: `lute play` prints `✗ exclusive: calm(maren) and panicked(maren) both hold` under the write that made both hold and halts there (exit 1), and `lute trace` / `lute test` print the same line at the write and refuse the walk with `E-FACT-EXCLUSIVE` (exit 1). Seeded facts that already break an exclusion are refused before anything is walked. A derived relation is covered through its derivations: the check runs after the rules, so a write that makes some rule conclude the excluded partner is caught at that write. See [Playing a story](/tooling/play/#exclusive-relations) and [Tracing](/tooling/tracing/#exclusive-relations).
@@ -238,7 +238,7 @@ facts:
 
 <!-- lute-diagnostics -->
 ```
-cr/cyc.lute:13:6: error [E-RULE-AGGREGATE-CYCLE] a rule deriving `popular` counts `known`, which depends on `popular` itself (cycle: `known`, `popular`) — a `count(…)` / `countDistinct(…)` may only read a relation its rule's head does not feed, so the count is final before the head is derived (dsl 0.26.0 §6)
+cr/cyc.lute:13:6: error [E-RULE-AGGREGATE-CYCLE] a rule deriving `popular` counts `known`, which depends on `popular` itself (cycle: `known`, `popular`) — a `count(…)` / `countDistinct(…)` may only read a relation its rule's head does not feed, so the count is final before the head is derived
 ```
 
 That rule was `popular(P) :- person(P), count(known(_, P)) >= 2` beside `known(A, B) :- popular(A), person(B)`. A gate that opens at seven badges is one rule, `canPass(earthGymDoor) :- count(hasBadge(_)) >= 7`, and `lute scenario knowledge` traces the count to the producers of the facts it counts.
@@ -314,6 +314,35 @@ Such a rule compiles **grounded**: one IR rule per member of the kind, each guar
 ```
 
 IR guards therefore stay CEL over ground terms, and an engine needs nothing new to evaluate them. `lute trace`, `play` and `run` evaluate the same instances.
+
+### A rule variable beside a domain-typed path
+
+A state path typed `{ domain: <kind> }` holds one member of a kind: where the stalker is, which
+companion leads. A rule `cel()` guard may compare such a path with a rule variable, `==` or `!=`
+(dsl 0.27.0 §3). That is how state meets the fact layer. Here the orderly walks the ward (the
+engine moves `run.stalker`), and a room is `close` when he is in a room next to it:
+
+```yaml
+state:
+  run.stalker: { type: { domain: room }, default: morgue, owner: engine }
+entities:
+  room: { members: [lobby, morgue, chapel] }
+relations:
+  adjacent: { args: [room, room] }
+  close:    { args: [room], derive: true }
+facts:
+  - "adjacent(lobby, chapel)"
+  - "adjacent(chapel, morgue)"
+rules:
+  - "close(R) :- adjacent(R, S), cel(\"run.stalker == S\")"
+```
+
+As with an indexed path, `S` must be bound by a positive body atom (`adjacent(R, S)` ranges it over
+`room`), and the rule compiles grounded: one IR rule per member, its guard a plain comparison,
+`run.stalker == 'chapel'` with `raw` suffixed `[S = chapel]`. A kind beat asks the question of its
+own member with `holds(close(occasion.target))`. Two shapes are `E-CEL-PROFILE`: comparing the
+variable in any other way (`run.hp > S`), and comparing it with a path that is not typed by a kind
+(`run.hp == S`).
 
 ## Derivation in trace, test, and play
 
@@ -399,7 +428,7 @@ The inner guard can only hold, so `check-project` reports it redundant and names
 
 <!-- lute-diagnostics -->
 ```
-./scenes/office.lute:13:21: warning [W-FACT-GUARANTEED] guard `holds(suspects(isolde))` is redundant: `suspects(isolde)` is asserted on every route to here (./lore/harbor.lute:9) (dsl 0.20.0 §5)
+./scenes/office.lute:13:21: warning [W-FACT-GUARANTEED] guard `holds(suspects(isolde))` is redundant: `suspects(isolde)` is asserted on every route to here (./lore/harbor.lute:9)
 ```
 
 Its negation, `!holds(suspects(isolde))`, would be a dead guard. An assert down only one arm of the entry's `<match>` guarantees nothing. `entry.X.everRead` only says the entry was read in some run, possibly an earlier one, so it adds only the entry's `tier: user` and `tier: app` facts, which a new run keeps. A run-tier fact like `suspects` is not added under `everRead`.
@@ -448,12 +477,12 @@ The bridge is sequenced `after: 'visited("demo.archive")'` and guards three line
 
 <!-- lute-diagnostics -->
 ```
-./scenes/bridge.lute:10:13: warning [W-FACT-GUARANTEED] guard `holds(knows(player, lumen))` is redundant: `knows(player, lumen)` is asserted on every route to here (./scenes/archive.lute:10) (dsl 0.20.0 §5)
+./scenes/bridge.lute:10:13: warning [W-FACT-GUARANTEED] guard `holds(knows(player, lumen))` is redundant: `knows(player, lumen)` is asserted on every route to here (./scenes/archive.lute:10)
 ```
 
 <!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
 ```
-./scenes/bridge.lute:12:13: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(knows(eris, heading))` is provably false — no seed, assert, rule, or engine relation produces `knows(eris, heading)` under your declared routes (dsl 0.20.0 §5)
+./scenes/bridge.lute:12:13: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(knows(eris, heading))` is provably false — no seed, assert, rule, or engine relation produces `knows(eris, heading)` under your declared routes
 ```
 
 The same two sets decide counts: after the archive, `count(knows(player, _))` lies between 1 and 2, so a guard `count(knows(player, _)) >= 3` is dead and `count(knows(player, _)) >= 1` is redundant.
@@ -466,7 +495,7 @@ The converse problem is a relation that is written but never read. `check-projec
 
 <!-- lute-diagnostics -->
 ```
-./world.schema.yaml:9:3: warning [W-RELATION-UNREAD] relation `rumor` is written (asserted, seeded, or derived) but never read: no condition queries it (`holds` / `count`), no rule body uses it, and no def reads it — the facts it records change nothing; read it where it matters, or drop it (dsl 0.24.0)
+./world.schema.yaml:9:3: warning [W-RELATION-UNREAD] relation `rumor` is written (asserted, seeded, or derived) but never read: no condition queries it (`holds` / `count`), no rule body uses it, and no def reads it — the facts it records change nothing; read it where it matters, or drop it
 ```
 
 It is reported once per project, at the declaration: the schema file's line, or the document's own `relations:` key. Play scripts and scenario tests are not reads, so a relation that only a test inspects still draws it. Its companion for defs is `W-DEF-UNUSED` (see [State schemas](/state/schemas/)).

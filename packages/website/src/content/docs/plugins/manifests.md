@@ -49,7 +49,7 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `stampattrs/*.yaml` — cross-cutting attributes admissible on every directive and content line (below).
 - `enums/*.yaml`, `frontmatter/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, and hover docs.
 - `events/*.yaml` — world events a quest's `<on event>` may name and `lute trace --event` fires.
-- `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0), each optionally raised for a target drawn from a project entity kind (dsl 0.22.0), and presented as one winner, an offered list, or a sequence (dsl 0.23.0).
+- `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0), each optionally raised for a target drawn from a project entity kind (dsl 0.22.0), presented as one winner, an offered list, or a sequence (dsl 0.23.0), and optionally gated by a [`raisedWhen`](#occasion-gates-raisedwhen) condition (dsl 0.27.0).
 - `rewardkinds/*.yaml` — the closed set of `<reward kind>` values, with an optional [target contract](#reward-target-contracts), extra attributes, and the state path a grant credits (dsl 0.23.0).
 - `cast/*.yaml` — the speakers content lines may use, with display names (dsl 0.23.0).
 - `lints/*.yaml` — advisory [lint rules](/tooling/linting/), namespaced `<plugin-id>/<rule-id>`; excluded from the capability snapshot.
@@ -94,6 +94,7 @@ occasions:
   inbox:    { select: all, description: Letters waiting at the fountain }
   evening:  { select: sequence }
   dayEnd:   { select: first, judge: before }
+  enter:    { select: first, target: { prefix: room, entity: room }, raisedWhen: "holds(canEnter(occasion.target))" }
 ```
 
 An occasion's `select:` says what the engine presents when it is raised. `first` (the default) presents the single winning beat, plus any eligible [`also`](/language/beats/#side-remarks-with-also) beat after it. `all` offers every eligible beat and the player picks one. `sequence` (dsl 0.23.0) presents every eligible beat in selection order, such as an evening routine followed by the day's event (see [Composing an occasion](/language/beats/#composing-an-occasion)). A beat's `also: true` on an `all` or `sequence` occasion is `E-BEAT-ATTR`. When a world event of the same name is also declared under `events:`, every raise of the occasion fires that event after the beats, before the occasion judges its `on=` objectives (see [Occasions](/language/beats/#occasions)).
@@ -107,7 +108,9 @@ A domain's optional **`members:`** list narrows it to a subset of the kind: `bos
 - an empty list: ``occasion `bossDefeated`'s `target.members` is empty; list at least one member of entity kind `foe`, or drop `members` to draw targets from the whole kind``
 - a member listed twice: ``occasion `bossDefeated`'s `target.members` lists `warden` more than once``
 
-Occasions are part of the capability snapshot, so they fold into `capabilityVersion`. Declaring a domain restamps, and so does adding or changing its `members:` list; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0. Likewise, `select: sequence` changes the stamp only for a snapshot that declares it.
+An occasion's **`raisedWhen:`** (dsl 0.27.0 §4) says when the engine may raise it at all: `enter` above is raised for a room only once the player may enter it. See [Occasion gates](#occasion-gates-raisedwhen) below.
+
+Occasions are part of the capability snapshot, so they fold into `capabilityVersion`. Declaring a domain restamps, and so does adding or changing its `members:` list; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0. Likewise, `select: sequence` and `raisedWhen` change the stamp only for a snapshot that declares them.
 
 ```yaml
 # rewardkinds/game.yaml
@@ -130,6 +133,35 @@ lints:
 
 `enums/` is the third route a project gets its [content vocabulary](/language/vocabulary/) from, and the only one that is *capability* rather than project data: `lute.core` declares the seven slots and exports an **empty** `enums`, so an engine or genre pack ships members to every project that activates it. Its entries take the same long form as an author's `enums:` block — a bare sequence is shorthand for `{ members: [...] }`, and `action` must carry `exits:` while `anchor` must carry `default:`.
 
+### Occasion gates: `raisedWhen`
+
+An occasion may declare **`raisedWhen:`** (dsl 0.27.0 §4), a CEL condition naming when the engine raises it. The engine raises the occasion only while the condition holds. `enter` above is the moment the player walks into a room, and the project's schema supplies the rooms and the relation the gate reads:
+
+```yaml
+# world.schema.yaml
+entities:
+  room: { members: [lobby, office] }
+relations:
+  canEnter: { args: [room], tier: run }
+```
+
+The gate may read **`occasion.target`**, the member the occasion is raised for. Raised for `room.office`, `occasion.target` is `office`, so the gate asks `holds(canEnter(office))`. An occasion raised for no target has no member to read: a gate that reads `occasion.target` on an untargeted occasion is `E-BEAT-ATTR`, reported at the `on` of a beat answering it. Declare the occasion's `target:` as `{ prefix, entity }`, or drop the read.
+
+A beat answering a gated occasion can only be presented while the gate holds, so the checker judges every beat and [entry beat](/language/beats/#entry-beats) that answers the occasion together with its gate, per member when the gate reads `occasion.target`:
+
+- The gate's text is checked like any condition slot. An error in it is reported at the beat's `on`, prefixed ``occasion `enter`'s `raisedWhen: …`:``.
+- A beat for which the gate is provably false is `E-BEAT-UNREACHABLE` (`E-ENTRY-UNREACHABLE` for an entry): the engine never raises the occasion for it. So is a beat whose `when` is provably false whenever the gate holds, since the engine raises no occasion otherwise. Under `lute check-project` the gate's `holds(…)` is decided from the project's [fact analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards): when nothing in the project can assert `canEnter(office)`, every `enter` beat for `room.office` is never eligible.
+- A beat that is never eligible this way takes no part in `W-BEAT-PRIORITY-TIE`.
+- The relations the gate reads count as read for `W-RELATION-UNREAD`.
+
+A project's [`terminal:`](/state/schemas/#the-end-of-the-game-terminal) condition closes every occasion the same way, once the game is over.
+
+[`lute beats`](/tooling/cli/#beats) marks a ladder whose gate never holds. Its header ends `` · gate never holds: `raisedWhen: …` ``, or, on a kind ladder, names the members the gate never holds for: `` · gate never holds for room.office: `raisedWhen: …` ``. Under `--json` the ladder carries `raisedWhen`, and `gateNeverHolds: true` or `gateNeverHoldsFor: [<targets>]`.
+
+[`lute play`](/tooling/play/) raises an occasion only as the engine would. An `occasion:` step that raises it while its gate is false halts the playthrough with `E-OCCASION-GATE` (exit 1): make the gate hold first, with an `engine:` write or an earlier step, or drop the step. A raise the clock makes (`raise.slot`, `dayStart`, `dayEnd`) while its gate is false is simply not made, and the step gets a note that the clock moved on without it.
+
+The compiled artifact and `project.index.json` carry the gates at the top level as `gates: [{ occasion, raisedWhen: { raw, expr } }]`, each condition after `@def` expansion, and omit the key when no occasion declares one.
+
 ### Rewards that credit state
 
 A reward is data: the engine grants it, and content never reads it. When a reward kind is a currency your own state tracks, `credits:` (dsl 0.23.0) names the state path a grant adds its amount to. The compiler stamps the path on every reward of that kind (`RewardEntry.credits` in the IR, omitted for a kind without one), and the engine owns that write, as it owns the grant itself. [`lute run`](/tooling/cli/#run) and [`lute play`](/tooling/play/) do the same for a **scalar** amount, and record the credit on the grant:
@@ -142,7 +174,7 @@ A range amount (`amount="10..20"`) is the engine's roll, so the toolchain grants
 
 <!-- lute-diagnostics -->
 ```
-./quests/climb.lute:11:11: warning [W-REWARD-DOUBLE-CREDIT] `::set` of `user.embers` in a handler of quest `climb`: its `<reward kind="EMBERS">` already credits `user.embers` when granted, so the player is paid twice — drop the `::set` or the reward (dsl 0.23.0 §8)
+./quests/climb.lute:11:11: warning [W-REWARD-DOUBLE-CREDIT] `::set` of `user.embers` in a handler of quest `climb`: its `<reward kind="EMBERS">` already credits `user.embers` when granted, so the player is paid twice — drop the `::set` or the reward
 ```
 
 A kind without `credits:` hashes exactly as it did before 0.23.0, so adding the key to one kind restamps only the snapshots that declare it.
@@ -183,6 +215,59 @@ directives:
 Any other value fails the plugin load with `E-PLUGIN-PARSE`, and the message lists the four
 shapes. So does a `fromAttr` naming an attr the directive does not declare, with a did-you-mean.
 
+#### Facts a directive asserts or retracts
+
+Beside `writes:`, a directive's `effects:` may declare the facts it **asserts** and
+**retracts** (dsl 0.27.0 §4). Every list is optional. A pickup that puts an item in the player's
+hands:
+
+```yaml
+# directives/ward.yaml
+directives:
+  - name: give
+    attrs:
+      - { name: item, required: true, type: { entity: item } }
+    effects:
+      retracts: ["holding(_)"]
+      asserts: ["holding(@item)"]
+```
+
+Each entry is one fact pattern, `relation(arg, …)`. An argument is a member, `true` or `false`,
+or `@attr`: the value the call gives one of the directive's own attrs, or that attr's declared
+`default:`. In `retracts:` an argument may also be `_`, which matches any value, so `give` above
+drops whatever the player held before. A pattern that does not parse, an `@attr` the directive
+does not declare (with a did-you-mean), and a `_` in `asserts:` each fail the plugin load with
+`E-PLUGIN-PARSE`. A call that leaves an `@attr` without a value, and with no default, writes
+nothing for that fact.
+
+The relation and its arguments are the project's, so the checker judges them at each call, as it
+judges an `::assert` or `::retract` of the same fact: the relation must be declared, and the arity
+and every argument's kind must fit it. `::give{item="brassKey"}` against a `holding(item)`
+relation asserts `holding(brassKey)`; an error there is prefixed with the call and the fact, such as
+`` `::give` asserts `holding(brassKey)` (its declared `effects.asserts`): ``. A derived or
+`app`-tier relation is refused as it is for `::assert`, but a `reserved: true` relation may be
+written this way: the engine applies a directive's effects itself, so this is the engine's own
+write.
+
+The compiled `plugin` record carries the resolved facts beside `effects`, as `retracts` and
+`asserts` lists of `{ relation, args }` with each `@attr` already substituted (`"_"` for a
+wildcard); both are omitted when empty, so an artifact without fact effects is unchanged.
+[`lute play`](/tooling/play/), `lute test`, `lute trace` and `lute run` apply them after the call's
+`writes`, first the retracts and then the asserts, through the same path as an `::assert` /
+`::retract`. Play names the call on the transcript line:
+
+```
+assert holding(brassKey)  (effect of ::give)
+```
+
+Every analysis that reads what content asserts reads these calls as `::assert`s and `::retract`s
+of their facts: the project's [fact analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards)
+(what may and what must hold), `W-RELATION-UNREAD`, `E-FACT-EXCLUSIVE` (which suggests declaring the
+`retracts:` the directive is missing), cast presence, `lute scenario --facts`,
+[`lute scenario knowledge`](/tooling/overviews/#lute-scenario-knowledge) and `lute lore`. A
+`holds(holding(brassKey))` guard is therefore satisfiable once some call of `::give` can assert it,
+with no `::assert` written anywhere.
+
 ### Engine ids typed by an entity kind
 
 An attribute that names something the engine owns, such as a bag item, a species, or a shop's stock list, may be typed by an **entity kind** the project declares (dsl 0.26.0 §2.5):
@@ -209,7 +294,7 @@ A value outside the kind is `E-BAD-ENUM`, with a did-you-mean. An attribute type
 <!-- lute-diagnostics unverified="verbatim lute check-project output; the E-DOMAIN-UNKNOWN message spells the type with escaped braces, which the scraper does not read back as a literal" -->
 ```
 ./scenes/mart.lute:9:14: error [E-BAD-ENUM] `potoin` is not a member of entity kind `bagItem` (attribute `item` of `::give`) — did you mean `potion`?
-./scenes/mart.lute:10:22: error [E-DOMAIN-UNKNOWN] attribute `species` of `::encounter` is typed `{ entity: monster }`, but `monster` is not a declared entity kind — declare it under `entities:` in a project schema this document reaches through `uses:` (dsl 0.26.0 §2.5)
+./scenes/mart.lute:10:22: error [E-DOMAIN-UNKNOWN] attribute `species` of `::encounter` is typed `{ entity: monster }`, but `monster` is not a declared entity kind — declare it under `entities:` in a project schema this document reaches through `uses:`
 ```
 
 A value that reaches the attribute through a component param is checked at the `::use` argument, or at the param's `default:` (see [Engine ids through a param](/language/components-and-extends/#engine-ids-through-a-param)). `lute refs <dir> --attr give.item` lists every value with the documents and lines that use it, so a lead sees who gives what before merging several authors' work.
@@ -236,8 +321,8 @@ A contract names `entity:` or `provider:`, not both: one with both fails the plu
 
 <!-- lute-diagnostics -->
 ```
-./quests/dex.lute:11:3: error [E-REWARD-TARGET] `<reward kind="ITEM">` needs a `target=`: the reward kind declares `target: { required: true }` (dsl 0.26.0 §2.5)
-./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets (dsl 0.26.0 §2.5) — did you mean `goodRod`?
+./quests/dex.lute:11:3: error [E-REWARD-TARGET] `<reward kind="ITEM">` needs a `target=`: the reward kind declares `target: { required: true }`
+./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets — did you mean `goodRod`?
 ```
 
 Which form to use for ids the engine owns: an **entity kind** when the ids can be listed in the repository and reviewed there (one lead-owned schema such as `schema/items.schema.yaml` above), a **provider** when the engine's catalog is the source of truth and the project checks against a pinned snapshot of it (see [Providers & catalog](/tooling/providers-and-catalog/)). Either way, type the directive attribute and the reward kind by the **same** kind or provider, so `::give{item}` and `<reward kind="ITEM" target>` share one id space, and `lute refs <dir> --attr give.item --reward ITEM` lists both (a reward without a target as `(no target)`).

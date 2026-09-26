@@ -84,6 +84,17 @@ pub struct Env {
     /// `clock.*` decls are already in [`Self::state`]; trace derives their
     /// values from the `day`/`slot` paths through it.
     pub clock: Option<lute_manifest::clock::ClockDecl>,
+    /// dsl 0.27.0 §4 (T2-4): the project's `terminal:` condition, raw CEL
+    /// (several declarations joined by `||`) — `None` without one. While it
+    /// holds the engine raises no occasion ([`crate::gates`]).
+    pub terminal: Option<String>,
+    /// dsl 0.27.0 §5: the project's declared seasons (imports', then a
+    /// schema document's own).
+    pub seasons: crate::season::Seasons,
+    /// dsl 0.27.0 §3: the members `occasion.target` ranges over in each kind
+    /// (or `for=`) beat of the document — a slot binding it as a fact-query
+    /// argument or a family index is judged once per member there.
+    pub occasion_scopes: crate::occasion_bind::OccasionScopes,
 }
 
 /// Checker context threaded through the directive/CEL/state validators.

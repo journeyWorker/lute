@@ -16,7 +16,6 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_syntax::ast::{Arm, AttrValue, ClipNode, Directive, Document, Node, Reward};
-use rayon::prelude::*;
 use serde::Serialize;
 
 /// One `--attr` / `--reward` query and what it found.
@@ -89,9 +88,10 @@ pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) ->
             return ExitCode::from(2);
         }
     };
-    let parsed: Vec<std::io::Result<Document>> = files
-        .par_iter()
-        .map(|path| std::fs::read_to_string(path).map(|text| lute_syntax::parse(&text).0))
+    // Desugared as every pass reads it (dsl 0.27.0 §6/§8).
+    let parsed: Vec<std::io::Result<Document>> = crate::parse_project_docs(dir, &files)
+        .into_iter()
+        .map(|r| r.map(|(doc, _)| doc))
         .collect();
     let mut docs = Vec::with_capacity(files.len());
     for (path, doc) in files.iter().zip(parsed) {

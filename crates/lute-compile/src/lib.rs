@@ -394,15 +394,20 @@ fn compile_inner(
     // streams are discarded here — the 3-tuple `fold_env` keeps them separate
     // only to preserve `check()`'s byte-order contract).
     let (mut doc, _) = lute_syntax::parse(&input.text);
-    lute_check::meta::apply_quest_tier_default(&mut doc, &input.defaults);
+    let _ = lute_check::desugar_document(&mut doc, input);
     let mut arena = CelArena::default();
     let _ = lute_cel::fill_document(&mut arena, &mut doc);
     let (folded, _, _) = fold_env(&doc, input);
 
     // §5 pass 2 — AST normalization (D8): components + persist.
     let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
-    let mut diags =
-        normalize::normalize_document(&mut doc, &input.components, &cast, &folded.env.state);
+    let mut diags = normalize::normalize_document(
+        &mut doc,
+        &input.components,
+        &cast,
+        &folded.env.domains,
+        &folded.env.state,
+    );
     // A plugin directive lowered by a core builtin hook runs as that core
     // directive (`lower: { kind: builtin, name: clearStage }` is `::clear`).
     lute_check::builtin_lowering::canonicalize_builtin_directives(&mut doc, &input.snapshot);
@@ -597,11 +602,12 @@ fn compile_inner(
     ));
     // dsl 0.26.0 §5 (prerelease N8): `{{occasion.target}}` names its kind.
     let scene_kind = match &meta {
-        ArtifactMeta::Scene(m) => m
-            .beat
-            .as_ref()
-            .and_then(|b| b.target_kind.as_ref())
-            .map(|k| k.kind.as_str()),
+        ArtifactMeta::Scene(m) => m.beat.as_ref().and_then(|b| {
+            b.target_kind
+                .as_ref()
+                .map(|k| k.kind.as_str())
+                .or_else(|| b.for_kind.as_ref().map(|k| k.kind.as_str()))
+        }),
         _ => None,
     };
     expand::type_occasion_target_placeholders(&mut commands, scene_kind);
@@ -633,7 +639,53 @@ fn compile_inner(
         prereq_edges: prereq_edge_entries(&doc, &folded),
         shots: shot_entries(&doc),
         clock: folded.env.clock.clone(),
+        gates: seam_gates(&folded, &table),
+        terminal: folded.env.terminal.as_deref().map(|t| seam_cel(t, &table)),
+        // dsl 0.27.0 §5: `live` expands like a beat `when`.
+        seasons: folded
+            .env
+            .seasons
+            .iter()
+            .map(|(name, decl)| ir::SeasonEntry {
+                name: name.clone(),
+                live: seam_cel(&decl.live, &table),
+            })
+            .collect(),
     })
+}
+
+/// dsl 0.27.0 §4: every declared occasion gate, occasion-sorted, `@def`s
+/// expanded exactly as a beat `when` is ([`expand::expand_beat_when`]);
+/// expansion problems are the checker's to report.
+fn seam_gates(folded: &FoldedEnv, defs: &DefTable<'_>) -> Vec<ir::GateEntry> {
+    folded
+        .occasions
+        .iter()
+        .filter_map(|(name, decl)| {
+            let gate = decl.raised_when.as_deref()?.trim();
+            (!gate.is_empty()).then(|| ir::GateEntry {
+                occasion: name.clone(),
+                raised_when: seam_cel(gate, defs),
+            })
+        })
+        .collect()
+}
+
+/// A seam condition (a gate, `terminal:`) as the IR's `{raw, expr}` pair.
+fn seam_cel(raw: &str, defs: &DefTable<'_>) -> ir::CelPair {
+    let mut slot = lute_syntax::ast::CelSlot::raw(
+        lute_syntax::ast::CelKind::Condition,
+        raw.to_string(),
+        lute_core_span::Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 0,
+            column: 0,
+            utf16_range: (0, 0),
+        },
+    );
+    let _ = expand::expand_beat_when(&mut slot, defs);
+    ir::CelPair::from_raw(&slot.raw)
 }
 
 /// The [`SourceMap`] tables keyed by construct id rather than `addr`: every
@@ -747,11 +799,13 @@ fn rel_entries(
                 name: name.clone(),
                 members: Some(members.clone()),
                 open: false,
+                labels: decl.labels.clone(),
             },
             KindShape::Open => EntityKindEntry {
                 name: name.clone(),
                 members: None,
                 open: true,
+                labels: BTreeMap::new(),
             },
             KindShape::Invalid => unreachable!(
                 "dsl 0.3.0 §3.1: an invalid entity-kind shape is E-ENTITY-KIND-SHAPE, an \
@@ -992,17 +1046,20 @@ fn scene_beat(
     diags: &mut Vec<Diagnostic>,
 ) -> Option<BeatIr> {
     let beat = folded.typed.beat.as_ref()?;
-    let when = beat.when.as_ref().map(|slot| {
+    let expand = |slot: &lute_syntax::ast::CelSlot, diags: &mut Vec<Diagnostic>| {
         let mut slot = slot.clone();
         diags.extend(expand::expand_beat_when(&mut slot, defs));
         CelPair::from_raw(&slot.raw)
-    });
+    };
+    let when = beat.when.as_ref().map(|slot| expand(slot, diags));
+    // dsl 0.27.0 §5: `spentBy` expands like `when`.
+    let spent_by = beat.spent_by.as_ref().map(|slot| expand(slot, diags));
     Some(BeatIr {
         on: beat.on.clone(),
         target: beat.target.clone(),
         when,
         priority: beat.priority,
-        once: beat.once.into(),
+        once: beat.once.clone().into(),
         also: beat.also,
         share: beat.share.clone(),
         target_kind: ir::TargetKind::resolve(
@@ -1011,6 +1068,14 @@ fn scene_beat(
             &folded.occasions,
             &folded.env.rel_vocab.kinds,
         ),
+        for_kind: ir::ForKind::resolve(
+            &beat.on,
+            beat.for_kind.as_ref().map(|(f, _)| f.as_str()),
+            beat.target.is_some(),
+            &folded.occasions,
+            &folded.env.rel_vocab.kinds,
+        ),
+        spent_by,
     })
 }
 

@@ -29,6 +29,7 @@ pub fn check_permissions(input: &CheckInput) -> Vec<Diagnostic> {
     }
 
     let (mut doc, _) = lute_syntax::parse(&input.text);
+    let _ = crate::desugar_document(&mut doc, input);
     crate::component_effects::splice_component_effects(
         &mut doc,
         &input.components,
@@ -299,6 +300,14 @@ impl PermissionChecker<'_> {
                     }
                     None => {}
                 }
+            }
+            // dsl 0.27.0 §4: a declared fact effect writes its relation.
+            for fact in effects.retracts.iter().chain(&effects.asserts) {
+                self.check_fact_write(
+                    &fact.relation,
+                    directive.span,
+                    &format!("plugin `::{}` fact effect", directive.tag),
+                );
             }
         }
         if let Some(state) = &decl.state {

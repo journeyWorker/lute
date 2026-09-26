@@ -69,6 +69,9 @@ Every artifact opens with a fixed envelope (the `Artifact` struct in
 | `commands` | the flat, ordered, addressed command stream. |
 | `prereqEdges` | advisory raw `after` prerequisite edges (omitted when empty). |
 | `shots` | authored `## ` shot headings, `{shot, heading}` (omitted when empty). |
+| `seasons` | the project's declared seasons, `{name, live: {raw, expr}}`, name-sorted (omitted without seasons; dsl 0.27.0). |
+| `gates` | every occasion's `raisedWhen` gate, `{occasion, raisedWhen: {raw, expr}}`, occasion-sorted (omitted when none; dsl 0.27.0). |
+| `terminal` | the project's `terminal:` condition, `{raw, expr}` (omitted without one; dsl 0.27.0). |
 
 One artifact is produced per document. A project's engine **unions** the
 `relations` / `rules` / `seedFacts` / `entities` / `enums` / `prereqEdges`
@@ -104,6 +107,91 @@ Gate on `irVersion` by **MAJOR only** (since `0.13.0`):
   older engine.
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
+
+### What IR 0.27.0 changed
+
+**Additive fields and new values of existing fields.** No field is renamed, retyped, or removed,
+and there is no new command `kind`, so under the MAJOR-only gate an engine that loads 0.26
+artifacts loads 0.27 ones. Cadence (dsl 0.27.0 §5):
+
+- **`once: "week"`** on `BeatIr` (a scene's `meta.beat`), `BeatCmd`, `EntryCmd` and
+  `project.index.json` beat rows: spent from its presentation until the next clock week starts.
+  Week *n* holds the days whose `(day - 1) div week.length` is *n*, so a week starts when
+  `clock.weekday` returns to `week.first`. Only emitted when the clock declares a `week:`.
+- **`once: "season:<name>"`** on the same records: spent from its presentation until the season
+  `<name>` opens again.
+- **`spentBy: {raw, expr}`** on `BeatIr`, `BeatCmd` and `EntryCmd` (its `raw` alone on the index
+  beat row): the beat carries `once: "none"` and is not eligible while this condition holds.
+  Omitted when unauthored.
+- **`QuestCmd.rearm: {raw, expr}`**: observe it at every quest settle of a playthrough, the first
+  observation being the baseline. Each time it goes false→true, return the quest to `unset`
+  (objectives not done, `failedBy` cleared, deadlines forgotten); a `start` that holds activates it
+  in the same settle. Omitted when unauthored.
+- **`QuestCmd.tier: "season:<name>"`**: return the quest to `unset` when the season opens again,
+  as a `"run"` quest at a new run.
+- **`seasons: [{ name, live: {raw, expr} }]`** on the artifact (after `clock`, `gates`,
+  `terminal`) and on `project.index.json`, with `live` after `@def` expansion. When a season's
+  `live` goes false→true, copy every `season.<name>.*` value into `prev.season.<name>.*`, reset
+  `season.<name>.*` to its declared defaults, clear the presentation record of its
+  `once: "season:<name>"` beats, and return its season-tier quests to `unset`. Seasons are
+  independent and may overlap. `prev.season.*` is a read-only mirror, like `prev.run.*`.
+
+Text (dsl 0.27.0 §7):
+
+- **`entities[].labels: { <member>: "<text>" }`**: display text for a kind's members, with a
+  sub-kind's and its ancestors' labels for shared members. Render an `occasionTarget`
+  placeholder of `entityKind` K as the cast `name:` when the member is a cast id, else
+  `labels[member]` of K, else the id. A `{ domain: K }` state path carries the same map as its
+  `state[].labels`, which `path` placeholders already render. Omitted when none.
+- **Placeholder `format: "plural"` with `forms: [one, other]`**: render `one` when the number is
+  1, `other` otherwise, each `#` in the form replaced by the number (`{{n:plural(# lamp|# lamps)}}`
+  → `3 lamps`). A localizing engine may choose its own plural categories from the two English
+  forms.
+
+The finite clock (dsl 0.27.0 §4):
+
+- **`clock.last: { day, slot? }`** or **`clock.days: N`**, verbatim as declared (`days: N` is
+  `last: { day: N }`; `slot` omitted means that day's last slot). The clock stops at that
+  position: an advance whose destination lies past it moves only to the last position (raising
+  `dayEnd` / `dayStart` at every midnight it crosses on the way), raises the last day's `dayEnd`
+  once and no `slot` occasion, and the clock is ended — advance no further until a new run resets
+  the day and slot paths. Both omitted on a clock that never ends.
+
+The engine seam (dsl 0.27.0 §4):
+
+- **`gates: [{ occasion, raisedWhen: { raw, expr } }]`** (top level, occasion-sorted, `@def`s
+  expanded): raise `occasion` only while its gate holds, reading `occasion.target` as the member
+  it is raised for (`room.office` → `office`). A raise your clock makes (`raise.slot`, `dayStart`,
+  `dayEnd`) whose gate is false is simply not made; the clock still moves. The checker has judged
+  every beat of the occasion under its gate, so a beat you would never present is reported to the
+  author. Omitted when no occasion declares a gate.
+- **`terminal: { raw, expr }`** (top level): the game is over once it holds — raise no occasion
+  and advance no clock until a new run. Several schemas' declarations arrive joined by `||`.
+  Omitted without one.
+- **Directive fact effects**: a `kind: "plugin"` record may carry **`retracts`** and
+  **`asserts`**, each `[{ relation, args }]` with the call's attributes already substituted
+  (`_` in a retract matches anything). Apply them after the record's own writes, retracts first,
+  through your ordinary assert/retract path (a `reserved` relation included: the write is the
+  engine's own). Omitted when empty. A lore entry's effect-only directive applies them on the
+  entry's first read only, like the entry's `set` records.
+
+Members bound by occasions (dsl 0.27.0 §3):
+
+- **`occasion.target` as a pattern argument and a family index**: in a kind beat's (and a
+  `forKind` beat's) CEL, a fact-query pattern may take `occasion.target` as an argument
+  (`holds(owned(occasion.target))`) and a `per:` family may be indexed by it
+  (`user.bond[occasion.target]`). Substitute the bound member: the pattern argument becomes that
+  member id, and `F[occasion.target]` reads `F.<member>`. The checker has proved every member's
+  instance well-typed.
+- **`forKind: { kind, members }`** on `BeatIr` (a scene's `meta.beat`), `BeatCmd`, `EntryCmd` and
+  `project.index.json` beat rows: the beat answers an untargeted `select: sequence` occasion once
+  per listed member, in list order. Judge each member's eligibility at the raise with
+  `occasion.target` bound to it, and present the beat once for each eligible member, binding
+  `occasion.target` while it runs. `once` spends the beat, not a member. Omitted when unauthored.
+- **Occasion payloads**: an occasion declared with `payload: { <field>: <type> }` hands typed
+  values to each raise. Bind `occasion.payload.<field>` to the raise's values before its beats are
+  judged, and unbind them once its beats have been presented: a payload lasts one raise. The
+  artifact's CEL and `path` placeholders read them like state (`occasion.payload.copies`).
 
 ### What IR 0.22.0 changed
 

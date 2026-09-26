@@ -12,6 +12,8 @@
 //! attributes (every one it names, the line may carry more); a needle line
 //! without one matches a line whatever its attributes (round-5 T1-11).
 
+use std::collections::BTreeSet;
+
 use serde_json::Value as Json;
 
 /// The command fields a line head never shows: identity, text and the
@@ -225,54 +227,84 @@ pub fn find<'a>(said: &'a str, needle: &str) -> Option<Vec<&'a str>> {
 }
 
 /// The transcript line nearest a needle that matched none — what a
-/// `transcriptContains` miss quotes. A line whose bare form contains the
-/// needle's (its attributes differ) wins; then lines of the needle's
-/// speaker; then any line. `None` when nothing was said.
-pub fn nearest<'a>(said: &'a str, needle: &str) -> Option<&'a str> {
-    let (bare_needle, _) = split(needle.trim().lines().next().unwrap_or(""));
-    let speaker_of = |bare: &str| -> Option<String> {
-        let r = bare.strip_prefix('@')?;
-        r.split_once(':').map(|(s, _)| s.to_string())
-    };
-    let want_speaker = speaker_of(&bare_needle);
-    let candidates: Vec<(&str, String)> = said
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| (l, split(l).0))
+/// `transcriptContains` miss quotes (round-5 T3-16). The miss is about the
+/// needle's first line that no transcript line contains; when every needle
+/// line is said somewhere (with other attributes, or not in this order) the
+/// line saying its first one is quoted. Otherwise lines rank by the missing
+/// needle line's speaker first, then the step where the needle's other lines
+/// were said, then how many edits the needle line needs to occur in the line
+/// (the rest of a long line is free; a short line is not). `steps` holds the
+/// index of each step's first transcript line, ascending (empty: one step).
+/// `None` when nothing was said.
+pub fn nearest<'a>(said: &'a str, steps: &[usize], needle: &str) -> Option<&'a str> {
+    let lines: Vec<(&str, String)> = said.lines().map(|l| (l, split(l).0)).collect();
+    let wanted: Vec<String> = needle
+        .trim()
+        .split('\n')
+        .map(|l| split(l).0)
+        .filter(|b| !b.trim().is_empty())
         .collect();
-    if let Some((l, _)) = candidates.iter().find(|(_, b)| b.contains(&bare_needle)) {
-        return Some(l);
+    let saying = |w: &str| -> Vec<usize> {
+        (0..lines.len())
+            .filter(|&i| lines[i].1.contains(w))
+            .collect()
+    };
+    let Some(k) = wanted.iter().position(|w| saying(w).is_empty()) else {
+        let first = saying(wanted.first()?).into_iter().next()?;
+        return Some(lines[first].0);
+    };
+    let step_of = |i: usize| steps.partition_point(|&s| s <= i);
+    let anchored: BTreeSet<usize> = wanted.iter().flat_map(|w| saying(w)).map(step_of).collect();
+    let missing = &wanted[k];
+    let speaker = speaker_of(missing);
+    (0..lines.len())
+        .filter(|&i| !lines[i].0.trim().is_empty())
+        .min_by_key(|&i| {
+            (
+                speaker.is_some() && speaker_of(&lines[i].1) != speaker,
+                !anchored.contains(&step_of(i)),
+                substring_distance(missing, &lines[i].1),
+            )
+        })
+        .map(|i| lines[i].0)
+}
+
+/// The speaker of a bare `@speaker: text` line.
+fn speaker_of(bare: &str) -> Option<&str> {
+    bare.strip_prefix('@')?.split_once(':').map(|(s, _)| s)
+}
+
+/// How many edits `needle` needs to occur somewhere in `line` (approximate
+/// substring matching): the text of `line` around the match is free, the
+/// part of the needle a short line lacks is not.
+fn substring_distance(needle: &str, line: &str) -> usize {
+    let hay: Vec<char> = line.chars().collect();
+    // Row `i` holds, per end position in `line`, the edits the needle's
+    // first `i` chars need to end there; row 0 is free anywhere.
+    let mut prev = vec![0usize; hay.len() + 1];
+    let mut cur = vec![0usize; hay.len() + 1];
+    for (i, n) in needle.chars().enumerate() {
+        cur[0] = i + 1;
+        for (j, h) in hay.iter().enumerate() {
+            cur[j + 1] = (prev[j] + usize::from(n != *h))
+                .min(prev[j + 1] + 1)
+                .min(cur[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut cur);
     }
-    let dist = |bare: &str| {
-        // A needle is a substring, so the length difference is free: a
-        // short needle is not penalized for the rest of a long line.
-        let d = lute_manifest::suggest::levenshtein(bare, &bare_needle);
-        let shorter = bare.chars().count().abs_diff(bare_needle.chars().count());
-        d.saturating_sub(shorter)
-    };
-    let same: Vec<&(&str, String)> = candidates
-        .iter()
-        .filter(|(_, b)| want_speaker.is_some() && speaker_of(b) == want_speaker)
-        .collect();
-    let pool: Vec<&(&str, String)> = if same.is_empty() {
-        candidates.iter().collect()
-    } else {
-        same
-    };
-    pool.into_iter()
-        .min_by_key(|(_, b)| dist(b))
-        .map(|(l, _)| *l)
+    prev.into_iter().min().unwrap_or(0)
 }
 
 /// Judge one `transcriptContains` (`want_present`) / `transcriptLacks`
 /// needle against `said`: `None` when it holds, else what the transcript
-/// shows — `absent (nearest line: "…")` quoting a real line, or `present
-/// (line: "…")` quoting the line(s) that matched, never the needle.
-pub fn judge(said: &str, needle: &str, want_present: bool) -> Option<String> {
+/// shows — `absent (nearest line: "…")` quoting a real line ([`nearest`],
+/// over `steps`), or `present (line: "…")` quoting the line(s) that
+/// matched, never the needle.
+pub fn judge(said: &str, steps: &[usize], needle: &str, want_present: bool) -> Option<String> {
     let hit = find(said, needle);
     match (hit, want_present) {
         (Some(_), true) | (None, false) => None,
-        (None, true) => Some(match nearest(said, needle) {
+        (None, true) => Some(match nearest(said, steps, needle) {
             Some(line) => format!("absent (nearest line: {line:?})"),
             None => "absent".to_string(),
         }),
@@ -321,18 +353,68 @@ mod tests {
     #[test]
     fn misses_quote_real_lines_never_the_needle() {
         assert_eq!(
-            judge(SAID, "@sol{emotion=\"sad\"}: Vega, Deneb, Altair.", true).as_deref(),
+            judge(
+                SAID,
+                &[],
+                "@sol{emotion=\"sad\"}: Vega, Deneb, Altair.",
+                true
+            )
+            .as_deref(),
             Some("absent (nearest line: \"@sol{emotion=\\\"happy\\\"}: Vega, Deneb, Altair.\")")
         );
         assert_eq!(
-            judge(SAID, "@sol{emotion=\"sad\"}: Vega, Deneb, Altair.", false),
+            judge(
+                SAID,
+                &[],
+                "@sol{emotion=\"sad\"}: Vega, Deneb, Altair.",
+                false
+            ),
             None
         );
         assert_eq!(
-            judge(SAID, "@sol: Vega", false).as_deref(),
+            judge(SAID, &[], "@sol: Vega", false).as_deref(),
             Some("present (line: \"@sol{emotion=\\\"happy\\\"}: Vega, Deneb, Altair.\")")
         );
         // Same speaker first.
-        assert_eq!(nearest(SAID, "@wren: Loud."), Some("@wren{mono}: Quiet."));
+        assert_eq!(
+            nearest(SAID, &[], "@wren: Loud."),
+            Some("@wren{mono}: Quiet.")
+        );
+    }
+
+    /// Round-5 T3-16 (SG-F15): a short line of the speaker is not "near" a
+    /// long needle just because it has little text to differ in.
+    #[test]
+    fn a_short_line_is_not_nearest_to_a_long_needle() {
+        let said = "@pim: Wish well!\n\
+                    @pim: Comets have all fallen, friend. Missions are closed.\n\
+                    @narrator: The moon's set on the missions.\n";
+        assert_eq!(
+            nearest(
+                said,
+                &[],
+                "@pim: The moon's set on those missions, friend. There's always the next festival."
+            ),
+            Some("@pim: Comets have all fallen, friend. Missions are closed.")
+        );
+    }
+
+    /// Round-5 T3-16: the speaker outranks the step, the step where the
+    /// needle's other lines were said outranks the text.
+    #[test]
+    fn nearest_prefers_the_speaker_then_the_step_then_the_text() {
+        let said = "@sol: Morning.\n@wren: The stars are out.\n\
+                    @sol: Evening.\n@narrator: The stars are cut.\n@wren: The stars are gone.\n";
+        let steps = [0, 2];
+        let needle = "@sol: Evening.\n@wren: The stars are cut.";
+        assert_eq!(
+            nearest(said, &steps, needle),
+            Some("@wren: The stars are gone.")
+        );
+        // As one step, the text decides among the speaker's lines.
+        assert_eq!(
+            nearest(said, &[], needle),
+            Some("@wren: The stars are out.")
+        );
     }
 }

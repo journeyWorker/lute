@@ -149,6 +149,62 @@ pub fn check_fact_guards(
         }
         g.walk(&beat.body, &mut out);
     }
+    // dsl 0.27.0 §4: each beat judged under its occasion's gate and the
+    // project's `!terminal`, with the fact envelope in scope.
+    for b in crate::gates::seam_beats(doc, folded) {
+        let Some(seam) = b.seam(folded) else {
+            continue;
+        };
+        if out.iter().any(|d| d.code == b.code && d.span == b.span) {
+            continue;
+        }
+        let judge = |conds: &[String]| -> Option<(Vec<SlotVerdict>, bool)> {
+            let vs: Vec<SlotVerdict> = conds
+                .iter()
+                .map(|c| {
+                    let slot =
+                        CelSlot::raw(lute_syntax::ast::CelKind::Condition, c.clone(), b.span);
+                    g.eval(&slot, None)
+                })
+                .collect::<Option<_>>()?;
+            let dead = !vs.is_empty() && vs.iter().all(|v| v.with == Some(Decided::Bool(false)));
+            Some((vs, dead))
+        };
+        let (verdict, vs) = match judge(&seam.gate_conds) {
+            Some((vs, true)) => (crate::gates::SeamVerdict::GateDead, vs),
+            _ => match judge(&seam.conds) {
+                Some((vs, true)) => (crate::gates::SeamVerdict::Dead, vs),
+                _ => continue,
+            },
+        };
+        // Already dead without the facts: the per-file pass's verdict.
+        if vs.iter().all(|v| v.base == Some(Decided::Bool(false))) {
+            continue;
+        }
+        let mut reasons: Vec<String> = Vec::new();
+        for v in &vs {
+            let r = v.dead_reasons();
+            if !r.is_empty() && !reasons.contains(&r) {
+                reasons.push(r);
+            }
+        }
+        let mut d = diag(
+            b.code,
+            Severity::Error,
+            seam.message(
+                &b.name,
+                &b.on,
+                b.when.map(|w| w.raw.as_str()),
+                verdict,
+                Some(&reasons.join("; ")),
+            ),
+            b.span,
+        );
+        if let Some(v) = vs.iter().find(|v| v.wip) {
+            d = v.grade(d);
+        }
+        out.push(d);
+    }
     out.retain(|d| {
         !reported
             .iter()
@@ -747,6 +803,7 @@ impl<'a> Guards<'a> {
                             out,
                         );
                     }
+                    self.exclusive_call(d, out);
                 }
                 Node::Assert(a) => self.exclusive_assert(a, out),
                 Node::Set(_) | Node::Timeline(_) | Node::Retract(_) => {}
@@ -785,6 +842,50 @@ impl<'a> Guards<'a> {
             ),
             a.span,
         ));
+    }
+
+    /// dsl 0.27.0 §4: the same judgment for the facts a directive call's
+    /// declared `effects.asserts` write, against what holds at the call
+    /// minus what its declared `retracts` drop first.
+    fn exclusive_call(&self, d: &lute_syntax::ast::Directive, out: &mut Vec<Diagnostic>) {
+        let Some(facts) = self.vocab.call_facts(d) else {
+            return;
+        };
+        let dropped: Vec<crate::fact_env::QueryPattern> = facts
+            .retracts
+            .iter()
+            .filter_map(crate::fact_env::QueryPattern::from_fact_pattern)
+            .collect();
+        let held = self.env.must.at(self.path, d.span);
+        for p in &facts.asserts {
+            let Some(fact) = GroundFact::from_pattern(p) else {
+                continue;
+            };
+            let Some(m) = held.iter().find(|m| {
+                !dropped.iter().any(|q| q.matches(&m.fact))
+                    && !exclusive_pairs(&[fact.clone(), m.fact.clone()], self.vocab).is_empty()
+            }) else {
+                continue;
+            };
+            out.push(diag(
+                E_FACT_EXCLUSIVE,
+                Severity::Error,
+                format!(
+                    "`::{}` asserts `{fact}` (its declared `effects.asserts`), which would make \
+                     `{fact}` and `{}` both hold: {}, and `{}` excludes `{}` (dsl 0.25.0 §1, \
+                     dsl 0.27.0 §4) — declare `retracts: [\"{}\"]` on the directive, or call it \
+                     only where `{}` does not hold",
+                    d.tag,
+                    m.fact,
+                    guaranteed_reason(m),
+                    fact.relation,
+                    m.fact.relation,
+                    m.fact,
+                    m.fact
+                ),
+                d.span,
+            ));
+        }
     }
 
     fn choices(&self, choices: &[lute_syntax::ast::Choice], out: &mut Vec<Diagnostic>) {

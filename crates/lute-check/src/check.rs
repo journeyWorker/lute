@@ -481,13 +481,16 @@ pub fn fold_env(
     // dsl 0.21.0 §3.1: a scene beat's `when` slot is lifted from the raw
     // frontmatter with a byte-only span; give it its line/column here, where
     // the document text is at hand, so a fact provenance citing the guard
-    // (`crate::fact_must`) names the right line.
-    if let Some(when) = typed.beat.as_mut().and_then(|b| b.when.as_mut()) {
+    // (`crate::fact_must`) names the right line. dsl 0.27.0 §5: `spentBy`
+    // likewise.
+    if let Some(b) = typed.beat.as_mut() {
         let idx = TextIndex::new(&input.text);
-        let end = when.span.byte_end.min(input.text.len());
-        let start = when.span.byte_start.min(end);
-        if input.text.is_char_boundary(start) && input.text.is_char_boundary(end) {
-            when.span = Span::from_bytes(&idx, start, end);
+        for slot in [b.when.as_mut(), b.spent_by.as_mut()].into_iter().flatten() {
+            let end = slot.span.byte_end.min(input.text.len());
+            let start = slot.span.byte_start.min(end);
+            if input.text.is_char_boundary(start) && input.text.is_char_boundary(end) {
+                slot.span = Span::from_bytes(&idx, start, end);
+            }
         }
     }
 
@@ -509,14 +512,21 @@ pub fn fold_env(
         merge_domains(&input.snapshot, &input.imports, &typed, doc.meta.span);
     let (mut vocab, rel_diags) =
         crate::rel_schema::build_rel_vocab(&input.imports, &typed, &domains, &doc.meta);
+    vocab.effect_directives = crate::directive_facts::effect_directives(&input.snapshot);
     // dsl 0.26.0 §2.3: a project kind's domain is the kind's final member
-    // list — this document's `add:`s and sub-kinds included.
+    // list — this document's `add:`s and sub-kinds included — and (dsl 0.27.0
+    // §7) its final labels, so a `{ domain: K }` path renders them.
     for (name, decl) in &vocab.kinds {
         if let (lute_manifest::relations::KindShape::Members(ms), Some(d)) =
             (&decl.shape, domains.get_mut(name))
         {
-            if !input.snapshot.domains.contains_key(name) && d.members.len() != ms.len() {
-                d.members = ms.clone();
+            if !input.snapshot.domains.contains_key(name) {
+                if d.members.len() != ms.len() {
+                    d.members = ms.clone();
+                }
+                if d.labels != decl.labels {
+                    d.labels = decl.labels.clone();
+                }
             }
         }
     }
@@ -743,16 +753,51 @@ pub fn fold_env(
         schema
             .decls
             .extend(crate::clock::reserved_decls(clock, &schema));
-        if let Some(range) = crate::clock::weekday_range(clock) {
-            schema
-                .int_ranges
-                .insert(lute_manifest::clock::CLOCK_WEEKDAY.to_string(), range);
-        }
+        // dsl 0.24.0 §1 / 0.27.0 §4: `clock.weekday`, and a finite clock's
+        // `clock.index` and day path, range over known whole numbers.
+        let ranges = crate::clock::int_ranges(clock, &schema);
+        schema.int_ranges.extend(ranges);
     }
     fold_diags.extend(crate::clock::check_once_needs_clock(
         doc,
         typed.beat.as_ref(),
-        clock.is_some(),
+        clock.as_ref(),
+    ));
+    // dsl 0.27.0 §5: the project's seasons — its imports' and, for a schema
+    // document, its own — and every use of one.
+    let season_span = if typed.seasons.is_empty() {
+        doc.meta.span
+    } else {
+        crate::meta::meta_key_span(&doc.meta, "seasons")
+    };
+    let season_names: Vec<String> = input
+        .imports
+        .seasons
+        .iter()
+        .map(|(path, _, _)| path.display().to_string())
+        .collect();
+    let (seasons, season_diags) = crate::season::fold_seasons(
+        input
+            .imports
+            .seasons
+            .iter()
+            .zip(&season_names)
+            .map(|((_, s, _), name)| (name.as_str(), s))
+            .chain(std::iter::once(("this schema", &typed.seasons))),
+        season_span,
+    );
+    fold_diags.extend(season_diags);
+    let (mirrors, season_diags) = crate::season::check_state(
+        &schema,
+        &seasons,
+        crate::meta::meta_key_span(&doc.meta, "state"),
+    );
+    schema.decls.extend(mirrors);
+    fold_diags.extend(season_diags);
+    fold_diags.extend(crate::season::check_uses(
+        doc,
+        typed.beat.as_ref(),
+        &seasons,
     ));
     // dsl 0.21.0 §2: every entry beat's occasion against the vocabulary.
     fold_diags.extend(crate::beats::check_entry_occasions(
@@ -778,15 +823,43 @@ pub fn fold_env(
         &input.snapshot.occasions,
         &vocab.kinds,
     ));
+    // dsl 0.27.0 §3 (T2-10): every `for="kind:<kind>"` beat (a scene's `for:`).
+    fold_diags.extend(crate::occasion_bind::check_for_kinds(
+        doc,
+        typed.beat.as_ref(),
+        &input.snapshot.occasions,
+        &vocab.kinds,
+    ));
+    // dsl 0.27.0 §3: a beat on an occasion declaring a typed `payload:`
+    // reads each field as `occasion.payload.<field>` (engine-owned, bound
+    // by the raise); a read in a beat of another occasion is `E-UNDECLARED`.
+    let (payload_decls, payload_diags) =
+        crate::occasion_bind::payload_decls(doc, typed.beat.as_ref(), &input.snapshot.occasions);
+    for (path, ty) in payload_decls {
+        schema.decls.insert(
+            path,
+            crate::meta::StateDecl {
+                ty,
+                default: None,
+                namespace: crate::meta::Namespace::Scene,
+                owner: Some(lute_manifest::types::Owner::Engine),
+            },
+        );
+    }
+    fold_diags.extend(payload_diags);
     // dsl 0.26.0 §5: a kind beat reads the member it was raised for as
     // `occasion.target`, typed by the kinds the document's kind beats answer
     // (engine-owned, always assigned while such a beat runs).
-    let occasion_members = crate::beats::occasion_target_members(
+    // dsl 0.27.0 §3: and each kind beat's own members, the scope a slot
+    // binding `occasion.target` as a fact argument / family index is judged
+    // over, once per member.
+    let occasion_scopes = crate::occasion_bind::occasion_scopes(
         doc,
         typed.beat.as_ref(),
         &input.snapshot.occasions,
         &vocab.kinds,
     );
+    let occasion_members = occasion_scopes.members();
     if !occasion_members.is_empty() {
         schema.decls.insert(
             crate::beats::OCCASION_TARGET.to_string(),
@@ -1003,6 +1076,16 @@ pub fn fold_env(
         },
     ));
 
+    // dsl 0.27.0 §4: the project's `terminal:` — its imports' and, for a
+    // schema document, its own; the game is over when any of them holds.
+    let terminal = crate::gates::combine_terminal(
+        input
+            .imports
+            .terminal
+            .iter()
+            .map(|(_, raw, _)| raw.as_str())
+            .chain(typed.terminal.as_ref().map(|t| t.raw.as_str())),
+    );
     let env = Env {
         mode: input.mode,
         state: schema,
@@ -1017,6 +1100,9 @@ pub fn fold_env(
         // `check_assert`/`check_retract`/`build_rel_vocab` already receive.
         domains: domains.clone(),
         clock,
+        terminal,
+        seasons,
+        occasion_scopes,
     };
     let declared_cast = crate::cast::declared_cast(&input.snapshot, &input.imports, &typed.cast);
     let use_lines = use_speaker_lines(doc, &input.components);
@@ -1050,8 +1136,10 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let idx = TextIndex::new(&input.text);
 
     // 1. Parse the DSL structure (done by the caller).
-    let (mut doc, parse_diags) = parsed;
-    crate::meta::apply_quest_tier_default(&mut doc, &input.defaults);
+    let (mut doc, mut parse_diags) = parsed;
+    // `questTier` default, `sequence:` keys (dsl 0.27.0 §8) and beat
+    // templates (dsl 0.27.0 §6): ordinary beats before any pass reads them.
+    parse_diags.extend(crate::desugar_document(&mut doc, input));
     // dsl 0.24.0 §4: each `::use` of an `effects: true` component performs
     // its body's writes HERE, in this document — splice them in (anchored at
     // the `::use`) so every pass below judges them against this document's
@@ -1074,6 +1162,10 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // 3–4b. Typed frontmatter + folded schema + merged def tables (one SoT:
     // the public fold_env accessor the compiler also consumes).
     let (folded, fold_diags, state_merge_diags) = fold_env(&doc, input);
+    parse_diags.extend(crate::templates::check_body_markers(
+        &doc,
+        folded.typed.beat_template.is_some(),
+    ));
     // 0.21.1 T3-8 (seven F3): a frontmatter that does not parse leaves the
     // document with NO environment — no `uses:`/`defaults:` vocabulary, no
     // `state:`, no `defs:`, no id — so every semantic pass below would judge
@@ -1107,33 +1199,32 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // dsl 0.21.0 §3.1: a scene beat's `when` is a frontmatter CEL slot, so
     // `fill_document` (which walks the node tree) never saw it — parse it into
     // the same arena here, reporting a failure as the ordinary `E-CEL-PARSE`.
+    // dsl 0.27.0 §5: `spentBy` is a frontmatter condition slot like `when`.
     let mut beat_when_parse_diags: Vec<Diagnostic> = Vec::new();
-    let beat_when: Option<CelSlot> =
-        folded
-            .typed
-            .beat
-            .as_ref()
-            .and_then(|b| b.when.clone())
-            .map(|mut slot| {
-                match parse_slot(&mut arena, &slot.raw, slot.span.byte_start) {
-                    Ok(handle) => slot.ast = Some(handle),
-                    Err(err) => {
-                        let t = translate_cel_parse(&slot.raw, slot.span, &err, slot.kind);
-                        beat_when_parse_diags.push(Diagnostic {
-                            code: E_CEL_PARSE.to_string(),
-                            severity: Severity::Error,
-                            message: t.message,
-                            span: t.span.unwrap_or(slot.span),
-                            layer: Layer::Cel,
-                            fixits: t.fixits,
-                            provenance: None,
-                            covered: Vec::new(),
-                            related: Vec::new(),
-                        });
-                    }
-                }
-                slot
-            });
+    let mut parse_beat_slot = |slot: Option<&CelSlot>| -> Option<CelSlot> {
+        let mut slot = slot?.clone();
+        match parse_slot(&mut arena, &slot.raw, slot.span.byte_start) {
+            Ok(handle) => slot.ast = Some(handle),
+            Err(err) => {
+                let t = translate_cel_parse(&slot.raw, slot.span, &err, slot.kind);
+                beat_when_parse_diags.push(Diagnostic {
+                    code: E_CEL_PARSE.to_string(),
+                    severity: Severity::Error,
+                    message: t.message,
+                    span: t.span.unwrap_or(slot.span),
+                    layer: Layer::Cel,
+                    fixits: t.fixits,
+                    provenance: None,
+                    covered: Vec::new(),
+                    related: Vec::new(),
+                });
+            }
+        }
+        Some(slot)
+    };
+    let scene_beat = folded.typed.beat.as_ref();
+    let beat_when = parse_beat_slot(scene_beat.and_then(|b| b.when.as_ref()));
+    let beat_spent_by = parse_beat_slot(scene_beat.and_then(|b| b.spent_by.as_ref()));
     let mut def_body_diags =
         def_body_diagnostics(&doc, &folded.typed.defs, &input.imports, &folded.env.state);
     check_use_def_enum_args(
@@ -1268,6 +1359,12 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     .diags
                     .extend(check_beat_when(when, &arena, &base_ctx, &scope));
             }
+            // dsl 0.27.0 §5: `spentBy` is judged at the same moment.
+            if let Some(spent_by) = &beat_spent_by {
+                walker
+                    .diags
+                    .extend(check_beat_when(spent_by, &arena, &base_ctx, &scope));
+            }
             let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
             walker.assume = walker.assumption(beat_when.as_ref(), &shots);
             for shot in &doc.shots {
@@ -1287,6 +1384,15 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                 if let Some(fail) = &quest.fail {
                     walker.diags.extend(check_cel_slot(
                         fail,
+                        &arena,
+                        &base_ctx,
+                        Some(&ExpectedType::Bool),
+                    ));
+                }
+                // dsl 0.27.0 §5: `rearm` is a condition like `start`.
+                if let Some(rearm) = &quest.rearm {
+                    walker.diags.extend(check_cel_slot(
+                        rearm,
                         &arena,
                         &base_ctx,
                         Some(&ExpectedType::Bool),
@@ -1325,6 +1431,15 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                         Some(&ExpectedType::Bool),
                     ));
                 }
+                // dsl 0.27.0 §5: `spentBy` is judged like `when`.
+                if let Some(spent_by) = &entry.spent_by {
+                    walker.diags.extend(check_cel_slot(
+                        spent_by,
+                        &arena,
+                        &base_ctx,
+                        Some(&ExpectedType::Bool),
+                    ));
+                }
                 walker.assume = walker.assumption(entry.when.as_ref(), &[&entry.body]);
                 walker.walk(&entry.body, &base_ctx);
             }
@@ -1338,11 +1453,34 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                         .diags
                         .extend(check_beat_when(when, &arena, &base_ctx, &scope));
                 }
+                if let Some(spent_by) = &beat.spent_by {
+                    walker
+                        .diags
+                        .extend(check_beat_when(spent_by, &arena, &base_ctx, &scope));
+                }
                 walker.assume = walker.assumption(beat.when.as_ref(), &[&beat.body]);
                 walker.walk(&beat.body, &base_ctx);
             }
         }
     }
+
+    // dsl 0.27.0 §4: the gates of the occasions this document's beats answer
+    // and the project's `terminal:`, checked as condition slots.
+    walker.diags.extend(crate::gates::check_seam_texts(
+        &doc,
+        &folded,
+        &input.imports.terminal,
+        &base_ctx,
+    ));
+    // dsl 0.27.0 §5: every season's `live:`, judged in this document's
+    // environment like the seam's conditions.
+    walker.diags.extend(crate::season::check_live_texts(
+        &doc,
+        &folded.typed.seasons,
+        &input.imports.seasons,
+        &base_ctx,
+        &scope,
+    ));
 
     // 6. Definite assignment, kind-dispatched (dsl 0.2.0 §4.4): scene runs
     //    ONCE over the whole concatenated shot stream (carry-forward #1 —
@@ -1397,6 +1535,10 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                 if let Some(fail) = &q.fail {
                     ds.extend(check_quest_guard_defassign(fail, &scope));
                 }
+                // dsl 0.27.0 §5: `rearm` is watched from outside the quest.
+                if let Some(rearm) = &q.rearm {
+                    ds.extend(check_quest_guard_defassign(rearm, &scope));
+                }
                 // dsl 0.16.0 §2: a quest-level `reward.when` is a
                 // quest-entry-shaped guard exactly like `start`/`fail` —
                 // gets its own fresh defassign check (`isSet(p) && …`
@@ -1432,6 +1574,10 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     let mut ds = Vec::new();
                     if let Some(when) = &e.when {
                         ds.extend(check_quest_guard_defassign(when, &scope));
+                    }
+                    // dsl 0.27.0 §5: judged beside `when`, before the body.
+                    if let Some(spent_by) = &e.spent_by {
+                        ds.extend(check_quest_guard_defassign(spent_by, &scope));
                     }
                     let (diags, _, _reads) =
                         check_definite_assignment(&e.body, &scope, e.when.as_ref());
@@ -1667,7 +1813,11 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // per-context construct legality. `E-GRAMMAR-NOT-ADMITTED` is semantic, NOT
     // a `STRUCTURAL_CODE` — the resolved view stays `Some` even when a document
     // uses a construct its kind forbids.
-    diags.extend(crate::admission::check_admission(&doc, folded.doc_kind));
+    diags.extend(crate::admission::check_admission(
+        &doc,
+        folded.doc_kind,
+        &input.snapshot,
+    ));
 
     // is_exhaustive suppression (carry-forward, T4.6 x T4.4): drop a maybe-unset
     // read whose span is a domain-exhaustive `<match>` subject.
@@ -2078,6 +2228,9 @@ impl Walker<'_> {
                     self.diags
                         .extend(check_directive_when(d, self.snapshot, self.arena, ctx));
                 }
+                // dsl 0.27.0 §6: `::body` is a template marker, judged by
+                // `templates::check_body_markers` — never a capability directive.
+                Node::Directive(d) if d.tag == crate::templates::BODY_DIRECTIVE => {}
                 Node::Directive(d) => {
                     self.diags.extend(check_directive(
                         d,
@@ -2572,7 +2725,8 @@ fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>)
 ///
 /// `component_body` (dsl 0.23.0 §5): in a component body every `@name` in
 /// scope is a param (`component_env`), and a bare `{{@p}}` of a `string`
-/// param renders — expansion splices the `::use` site's literal into the
+/// param — or (dsl 0.27.0 §7) an entity-kind / named-enum param, as its
+/// label — renders: expansion splices the `::use` site's literal into the
 /// text (`check_use_interp_args` holds the caller to a literal).
 fn check_interp_referent(
     referent: &str,
@@ -2613,8 +2767,10 @@ fn check_interp_referent(
             .map(|r| r.name)
         {
             if let Some(ty) = interp_ctx.env.def_types.get(&name) {
+                // dsl 0.27.0 §7: a `{ entity: K }` / `{ domain: K }` param
+                // splices the same way, as its kind's label for the id.
                 let string_param = component_body
-                    && *ty == Type::Str
+                    && matches!(ty, Type::Str | Type::Domain(_) | Type::Entity(_))
                     && bare_param_ref(referent).as_deref() == Some(name.as_str());
                 if !is_renderable(ty) && !string_param {
                     type_flagged = true;
@@ -2671,17 +2827,18 @@ fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
     }
 }
 
-/// dsl 0.24.0 §4 / 0.25.0 §8: validate an interpolation's format hint
-/// ([`Interp::format`], the `:ordinal` of `{{user.deaths:ordinal}}`).
-/// `ordinal` and `ordinalWord` are the hints
-/// ([`lute_syntax::ast::INTERP_FORMATS`]); any other is `E-CEL-PROFILE`, the
-/// §7.6 interpolation-grammar code ([`interp_grammar_diag`]) — the hint is
-/// part of the `{{…}}` form. Each formats a number, so a referent whose type
-/// is KNOWN and not a number — a declared state path, a def's produced type,
-/// the reserved `userName` string — is `E-REF-TYPE`, the interpolation
-/// rendering-type code. An unresolved referent (already `E-UNDECLARED` /
-/// `E-UNDECLARED-REF`) and one `type_flagged` as non-renderable already are
-/// not flagged again.
+/// dsl 0.24.0 §4 / 0.25.0 §8 / 0.27.0 §7: validate an interpolation's format
+/// hint ([`Interp::format`], the `:ordinal` of `{{user.deaths:ordinal}}`).
+/// `ordinal`, `ordinalWord` and `plural(one|other)` are the hints
+/// ([`lute_syntax::ast::INTERP_FORMATS`]); any other, a `plural` without
+/// exactly two non-empty forms, and an ordinal with a `(…)` are
+/// `E-CEL-PROFILE`, the §7.6 interpolation-grammar code
+/// ([`interp_grammar_diag`]) — the hint is part of the `{{…}}` form. Each
+/// formats a number, so a referent whose type is KNOWN and not a number — a
+/// declared state path, a def's produced type, the reserved `userName`
+/// string — is `E-REF-TYPE`, the interpolation rendering-type code. An
+/// unresolved referent (already `E-UNDECLARED` / `E-UNDECLARED-REF`) and one
+/// `type_flagged` as non-renderable already are not flagged again.
 fn check_interp_format(
     interp: &Interp,
     env: &crate::ctx::Env,
@@ -2692,13 +2849,33 @@ fn check_interp_format(
         return;
     };
     let raw = &interp.raw;
+    let hint = interp.hint_text().unwrap_or_default();
+    let plural = format == lute_syntax::ast::INTERP_FORMAT_PLURAL;
     let (code, message) = if !lute_syntax::ast::INTERP_FORMATS.contains(&format) {
         (
             crate::cel_resolve::E_CEL_PROFILE,
             format!(
-                "`{{{{{raw}:{format}}}}}` names an unknown format `{format}` — the \
-                 interpolation formats are `:ordinal` and `:ordinalWord` (dsl 0.25.0 §8)"
+                "`{{{{{raw}:{hint}}}}}` names an unknown format `{format}` — the \
+                 interpolation formats are `:ordinal`, `:ordinalWord` and \
+                 `:plural(one|other)` (dsl 0.27.0 §7)"
             ),
+        )
+    } else if plural
+        && !matches!(&interp.forms, Some(f) if f.len() == 2 && f.iter().all(|f| !f.is_empty()))
+    {
+        (
+            crate::cel_resolve::E_CEL_PROFILE,
+            format!(
+                "`{{{{{raw}:{hint}}}}}` needs a singular and a plural form, as \
+                 `{{{{{raw}:plural(lantern|lanterns)}}}}` — the first is shown when the \
+                 number is 1, the second otherwise, and `#` in a form is the number \
+                 (dsl 0.27.0 §7)"
+            ),
+        )
+    } else if !plural && interp.forms.is_some() {
+        (
+            crate::cel_resolve::E_CEL_PROFILE,
+            format!("`:{format}` takes no `(…)` — write `{{{{{raw}:{format}}}}}` (dsl 0.24.0 §4)"),
         )
     } else {
         let ty = match interp.kind {
@@ -4180,6 +4357,9 @@ fn component_env(params: &[(String, Type)]) -> Env {
         // only), so the merged domains view is moot; kept empty to match.
         domains: std::collections::BTreeMap::new(),
         clock: None,
+        terminal: None,
+        seasons: Default::default(),
+        occasion_scopes: Default::default(),
     }
 }
 
@@ -4412,7 +4592,7 @@ pub(crate) fn bare_param_ref(raw: &str) -> Option<String> {
 pub(crate) fn directive_writes_state(snapshot: &CapabilitySnapshot, tag: &str) -> bool {
     snapshot.directive(tag).is_some_and(|decl| {
         decl.state.as_ref().is_some_and(|s| !s.declares.is_empty())
-            || decl.effects.as_ref().is_some_and(|e| !e.writes.is_empty())
+            || decl.effects.as_ref().is_some_and(|e| !e.is_empty())
     })
 }
 
@@ -4716,6 +4896,8 @@ fn walk_component_body(
                     ));
                 }
             }
+            // dsl 0.27.0 §6: a template's `::body` marker (`templates::check_body_markers`).
+            Node::Directive(d) if d.tag == crate::templates::BODY_DIRECTIVE => {}
             Node::Directive(d) if scope.effects && directive_writes_state(snapshot, &d.tag) => {
                 // dsl 0.24.0 §4: an effects body's state-writing directive is
                 // judged at each `::use` against the host (spliced there);

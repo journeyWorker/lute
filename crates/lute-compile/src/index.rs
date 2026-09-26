@@ -136,6 +136,14 @@ pub struct IndexBeat {
     /// artifact's `targetKind`. Omitted for any other target.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_kind: Option<crate::ir::TargetKind>,
+    /// dsl 0.27.0 §3 (T2-10): a `for="kind:<kind>"` beat's members, as the
+    /// artifact's `forKind`. Omitted when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub for_kind: Option<crate::ir::ForKind>,
+    /// dsl 0.27.0 §5: the beat's `spentBy` condition (raw, `@def`-expanded)
+    /// — eligible only while it does not hold. Omitted when not authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spent_by: Option<String>,
 }
 
 impl IndexBeat {
@@ -191,6 +199,18 @@ pub struct ProjectIndex {
     /// without a clock stays byte-identical to 0.23.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clock: Option<lute_manifest::clock::ClockDecl>,
+    /// dsl 0.27.0 §4: every occasion's `raisedWhen` gate (the artifacts'
+    /// `gates`, one per occasion), occasion-sorted. OMITTED when none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub gates: Vec<crate::ir::GateEntry>,
+    /// dsl 0.27.0 §4: the project's `terminal:` condition (the artifacts'
+    /// `terminal`, one per project). OMITTED without one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<crate::ir::CelPair>,
+    /// dsl 0.27.0 §5: the project's declared seasons (the artifacts'
+    /// `seasons`, one declaration per name), name-sorted. OMITTED when none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub seasons: Vec<crate::ir::SeasonEntry>,
 }
 
 impl ProjectIndex {
@@ -338,6 +358,11 @@ pub fn build_index(
     // dsl 0.24.0 §1: one clock per project — two documents carrying
     // different ones is a conflict like any vocabulary's.
     let mut clocks = Axis::new("clock");
+    // dsl 0.27.0 §4: one gate per occasion, one terminal per project.
+    let mut gates = Axis::new("occasion gate");
+    let mut terminals = Axis::new("terminal");
+    // dsl 0.27.0 §5: one declaration per season name across the project.
+    let mut seasons = Axis::new("season");
     // Facts and rules always UNION (spec §4.1) — an identical tuple/rule from
     // two documents is ONE declaration, so these dedupe on the whole value and
     // can never conflict.
@@ -360,6 +385,15 @@ pub fn build_index(
         }
         if let Some(c) = &a.clock {
             clocks.push("clock", c, &d.path, &mut errors);
+        }
+        for g in &a.gates {
+            gates.push(&g.occasion, g, &d.path, &mut errors);
+        }
+        if let Some(t) = &a.terminal {
+            terminals.push("terminal", t, &d.path, &mut errors);
+        }
+        for s in &a.seasons {
+            seasons.push(&s.name, s, &d.path, &mut errors);
         }
         for f in &a.seed_facts {
             seed_facts
@@ -424,11 +458,13 @@ pub fn build_index(
                     on: b.on.clone(),
                     target: b.target.clone(),
                     priority: b.priority,
-                    once: Some(b.once),
+                    once: Some(b.once.clone()),
                     when: b.when.as_ref().map(|w| w.raw.clone()),
                     title: m.title.clone(),
                     share: b.share.clone(),
                     target_kind: b.target_kind.clone(),
+                    for_kind: b.for_kind.clone(),
+                    spent_by: b.spent_by.as_ref().map(|s| s.raw.clone()),
                 }),
                 ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => None,
             };
@@ -440,11 +476,13 @@ pub fn build_index(
                     on: on.clone(),
                     target: e.target.clone(),
                     priority: e.priority.unwrap_or(0),
-                    once: e.once,
+                    once: e.once.clone(),
                     when: e.when.as_ref().map(|w| w.raw.clone()),
                     title: e.title.clone(),
                     share: e.share.clone(),
                     target_kind: e.target_kind.clone(),
+                    for_kind: e.for_kind.clone(),
+                    spent_by: e.spent_by.as_ref().map(|s| s.raw.clone()),
                 }),
                 Command::Beat(b) => Some(IndexBeat {
                     id: b.id.clone(),
@@ -453,11 +491,13 @@ pub fn build_index(
                     on: b.on.clone(),
                     target: b.target.clone(),
                     priority: b.priority,
-                    once: Some(b.once),
+                    once: Some(b.once.clone()),
                     when: b.when.as_ref().map(|w| w.raw.clone()),
                     title: b.title.clone(),
                     share: b.share.clone(),
                     target_kind: b.target_kind.clone(),
+                    for_kind: b.for_kind.clone(),
+                    spent_by: b.spent_by.as_ref().map(|s| s.raw.clone()),
                 }),
                 _ => None,
             });
@@ -478,6 +518,9 @@ pub fn build_index(
         entries,
         beats,
         clock: clocks.finish().into_iter().next(),
+        gates: gates.finish(),
+        terminal: terminals.finish().into_iter().next(),
+        seasons: seasons.finish(),
     })
 }
 
@@ -637,6 +680,9 @@ mod tests {
             prereq_edges: Vec::new(),
             shots: Vec::new(),
             clock: None,
+            gates: Vec::new(),
+            terminal: None,
+            seasons: Vec::new(),
         }
     }
 
@@ -825,6 +871,8 @@ mod tests {
                     once: None,
                     share: None,
                     target_kind: None,
+                    for_kind: None,
+                    spent_by: None,
                     stamp: Stamp::default(),
                 })
             })
@@ -922,6 +970,8 @@ mod tests {
             also: false,
             share: None,
             target_kind: None,
+            for_kind: None,
+            spent_by: None,
         })
     }
 

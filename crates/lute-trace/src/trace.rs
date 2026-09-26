@@ -32,9 +32,12 @@ use lute_syntax::ast::{Arm, AttrValue, Document, Line, Node};
 use lute_syntax::datalog::FactTerm;
 use serde_json::Value as Json;
 
+use crate::exec::session::{
+    ExecProject, Premise, Verdict as SessionVerdict, World as SessionWorld,
+};
 use crate::exec::{
-    self, BridgeCall, BridgeReply, Driver, Forced, Machine, Menu, MenuKind, OnUnknown, Pick, Seed,
-    SiteKind, UnknownSite, Verdict,
+    self, guard_premise, BridgeCall, BridgeReply, Driver, Forced, GuardRead, Machine, Menu,
+    MenuKind, OnUnknown, Pick, Seed, SiteKind, UnknownSite, Verdict,
 };
 use crate::mock::{self, BridgeAnswer, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{
@@ -42,6 +45,7 @@ use crate::report::{
     Step, TraceExit, TraceReport, UnresolvedEntry,
 };
 use crate::value::{UnresolvedAtom, Value};
+use lute_compile::index::BeatKind;
 
 /// The §4.3/§4.4/§4.5 pipeline, end to end: check gate -> mock validation
 /// -> compile -> the walk -> the §4.5 report + exit code. Never panics —
@@ -184,6 +188,7 @@ fn trace_pipeline(
     //    (mirrors `lute_compile::compile`'s own re-derivation after ITS
     //    gate — check's own diagnostics were already reported above).
     let (mut doc, _parse_diags) = lute_syntax::parse(&input.text);
+    let _ = lute_check::desugar_document(&mut doc, input);
     let mut arena = lute_cel::CelArena::default();
     let _ = lute_cel::fill_document(&mut arena, &mut doc);
     let (folded, _fd1, _fd2) = lute_check::fold_env(&doc, input);
@@ -237,6 +242,7 @@ fn trace_pipeline(
         &mut doc,
         &input.components,
         &cast,
+        &folded.env.domains,
         &folded.env.state,
     );
     lute_check::builtin_lowering::canonicalize_builtin_directives(&mut doc, &input.snapshot);
@@ -258,17 +264,63 @@ fn trace_pipeline(
         Err(diags) => return (empty_report(&input.uri, &mocks), TraceExit::Refused(diags)),
     };
     let art = serde_json::to_value(&artifact).unwrap_or(Json::Null);
+    // Leftover (a): the traced document as a one-document project, so a
+    // presented scene beat, entry or bundle beat is judged by the session's
+    // ONE eligibility rule ([`exec::session::judge_beat`]) — `once`,
+    // `after`, `spentBy`, `when` — never a trace-side port of it.
+    let judged_kind = match present {
+        Presentation::Document => {
+            folded.doc_kind == lute_check::DocKind::Scene && folded.typed.beat.is_some()
+        }
+        Presentation::Entries(_) | Presentation::Beat(_) => true,
+    };
+    let judging = judged_kind
+        .then(|| judging_project(&input.uri, artifact))
+        .flatten();
 
     let names: BTreeMap<String, String> = cast
         .iter()
         .filter_map(|(id, c)| Some((id.clone(), c.name.clone()?)))
         .collect();
-    let members = lute_check::beats::occasion_target_members(
+    // The members an unbound `occasion.target` may take: the presented
+    // beat's / entries' own kind, else every kind beat's of the document.
+    let scopes = lute_check::occasion_bind::occasion_scopes(
         &doc,
         folded.typed.beat.as_ref(),
         &folded.occasions,
         &folded.env.rel_vocab.kinds,
     );
+    let named = |id: &str, local: &str| {
+        id == local || id.strip_suffix(local).is_some_and(|p| p.ends_with('.'))
+    };
+    let spans: Vec<Span> = match present {
+        Presentation::Document => Vec::new(),
+        Presentation::Beat(id) => doc
+            .beats
+            .iter()
+            .filter(|b| named(id, &b.id))
+            .map(|b| b.span)
+            .collect(),
+        Presentation::Entries(ids) => doc
+            .entries
+            .iter()
+            .filter(|e| ids.iter().any(|id| named(id, &e.id)))
+            .map(|e| e.span)
+            .collect(),
+    };
+    let mut members: Vec<String> = Vec::new();
+    for m in spans
+        .iter()
+        .filter_map(|s| scopes.members_at(s.byte_start, s.byte_end))
+        .flatten()
+    {
+        if !members.contains(m) {
+            members.push(m.clone());
+        }
+    }
+    if members.is_empty() {
+        members = scopes.members();
+    }
     let mut driver = TraceDriver::new(TraceContext {
         art: &art,
         map: &map,
@@ -296,14 +348,25 @@ fn trace_pipeline(
     // occasion, so a selector presents it), judged at the same moment; under
     // `gate_eligibility` an ineligible scene is not walked. A scene reached by
     // explicit flow has no presentation gate: its `after:` is structural.
-    let (scene_eligible, scene_ineligible) = match present {
-        Presentation::Document
-            if folded.doc_kind == lute_check::DocKind::Scene && folded.typed.beat.is_some() =>
-        {
+    let (scene_eligible, scene_why) = match (present, &judging) {
+        (Presentation::Document, Some(p)) if judged_kind => {
             let id = lute_check::meta::canonical_scene_key(&folded.typed)
                 .unwrap_or_else(|| input.uri.clone());
-            let (eligible, why) = scene_eligibility(&folded, &table, &mocks, &mut m);
-            (Some((id, eligible)), why)
+            let row = p.index.beats.iter().find(|b| b.kind == BeatKind::Scene);
+            let verdict = row.map(|b| judge(p, &mut m, &mocks, b).0.verdict);
+            let authored = folded
+                .typed
+                .beat
+                .as_ref()
+                .and_then(|b| b.when.as_ref())
+                .map(|w| w.raw.as_str());
+            let why = match &verdict {
+                Some(SessionVerdict::Ineligible(prem)) => {
+                    Some(premise_text(prem, BeatKind::Scene, authored))
+                }
+                _ => None,
+            };
+            (Some((id, verdict.as_ref().and_then(eligible_of))), why)
         }
         _ => (None, None),
     };
@@ -311,6 +374,9 @@ fn trace_pipeline(
         && scene_eligible
             .as_ref()
             .is_some_and(|(_, e)| *e == Some(false));
+    if let (Some((id, _)), Some(why)) = (&scene_eligible, scene_why) {
+        m.driver_mut().premises.insert(id.clone(), why);
+    }
 
     // dsl 0.25.0 §1 (LH N16): the seeded world — the mock's `facts:` /
     // `--fact`, the project's seeds, and what the rules derive over them —
@@ -368,7 +434,7 @@ fn trace_pipeline(
                         Some(c) => Machine::resume(&art, carried(&seed), c, &mut driver),
                     };
                     let mut em = em.with_display_names(&names).with_entry(id);
-                    walk = present_entry(&mut em, entry, mocks.gate_eligibility);
+                    walk = present_entry(&mut em, entry, judging.as_ref(), &mocks);
                     let now = World::of(&mut em);
                     world = Some(match world.take() {
                         None => now,
@@ -388,7 +454,7 @@ fn trace_pipeline(
                 if let Some((i, canonical)) = &beat_at {
                     let beat = &doc.beats[*i];
                     let mut bm = m.with_bundle_beat(canonical);
-                    walk = present_beat(&mut bm, beat, canonical, mocks.gate_eligibility);
+                    walk = present_beat(&mut bm, beat, canonical, judging.as_ref(), &mocks);
                     m = bm;
                 }
                 let world = World::of(&mut m);
@@ -407,7 +473,6 @@ fn trace_pipeline(
         walk,
         beat_note,
         scene_eligible,
-        scene_ineligible,
         world,
     })
 }
@@ -449,99 +514,221 @@ fn run_walk(m: &mut Machine<&mut TraceDriver<'_>>) -> Walked {
 /// Present ONE `<entry>` (dsl 0.19.0 §6, `docs/runtime/lore-entries.md`
 /// `present()`): `firstRead = !entry.<id>.read`; the body runs in document
 /// order with `::set`/`::assert`/`::retract` applied only on a first read
-/// and reported [`Step::Skipped`] otherwise (the Machine's rule). The `when`
-/// eligibility gate is evaluated and SHOWN on the [`Step::Entry`] head; it is
-/// enforced only under [`MockSet::gate_eligibility`] (dsl 0.26.0 §7, T1-7).
-/// dsl 0.26.0 §7: an entry's `once` is spent by its read flag —
-/// `entry.<id>.read` (`run`) / `.everRead` (`user`) — as `lute play` judges
-/// it; a spent entry is ineligible whatever its `when`.
+/// and reported [`Step::Skipped`] otherwise (the Machine's rule). Its
+/// eligibility — `once` spent by its read flag (`entry.<id>.read` /
+/// `.everRead`), then `when` — is the session's rule
+/// ([`exec::session::judge_beat`]) over the mocks, SHOWN on the
+/// [`Step::Entry`] head and enforced only under
+/// [`MockSet::gate_eligibility`] (dsl 0.26.0 §7, T1-7).
 fn present_entry(
     m: &mut Machine<&mut TraceDriver<'_>>,
     entry: &lute_syntax::ast::Entry,
-    gate: bool,
+    judging: Option<&ExecProject>,
+    mocks: &MockSet,
 ) -> Walked {
     let first_read = !is_true(m, &lute_check::entry_read_path(&entry.id));
-    let spent = match entry.once.as_ref().map(|(o, _)| o.trim()) {
-        Some("run") if !first_read => Some("run"),
-        Some("user") if is_true(m, &format!("entry.{}.everRead", entry.id)) => Some("user"),
+    let verdict = judging
+        .and_then(|p| Some((p, p.lore_beat(&entry.id)?)))
+        .map(|(p, row)| judge(p, m, mocks, &row).0.verdict);
+    let eligible = verdict.as_ref().and_then(eligible_of);
+    let spent = match &verdict {
+        Some(SessionVerdict::Ineligible(Premise::Spent { once, .. })) => Some(
+            once.as_ref()
+                .map_or_else(String::new, |o| o.as_str().into_owned()),
+        ),
         _ => None,
     };
-    let eligible = match (spent, &entry.when) {
-        (Some(_), _) => Some(false),
-        (None, None) => Some(true),
-        (None, Some(when)) => m.eval_guard(&when.raw).ok(),
-    };
-    if gate && eligible == Some(false) {
+    if let Some(SessionVerdict::Ineligible(prem)) = &verdict {
+        let why = premise_text(prem, BeatKind::Entry, None);
+        m.driver_mut().premises.insert(entry.id.clone(), why);
+    }
+    if mocks.gate_eligibility && eligible == Some(false) {
         m.driver_mut().steps.push(Step::Entry {
             id: entry.id.clone(),
             first_read,
             eligible,
-            spent: spent.map(str::to_string),
+            spent,
         });
         return Walked::Continue;
     }
-    if let Some(spent) = spent {
-        m.driver_mut().head = Some(Head::Spent(spent.to_string()));
+    if verdict.is_some() {
+        m.driver_mut().head = Some(Head::Judged {
+            eligible,
+            spent,
+            after_unmet: false,
+        });
     }
     run_walk(m)
 }
 
 /// Present ONE bundle `<beat>` (dsl 0.23.0 §4): a scene-like beat declared
 /// in a lore document, its body walked by the Machine with every effect
-/// applied. The `when` eligibility gate is evaluated and SHOWN on the
-/// [`Step::Beat`] head under the canonical id — enforced only under
-/// [`MockSet::gate_eligibility`], as on an entry — conjoined (dsl 0.25.0
-/// §3) with the beat's `after=` over the mocked `visited:` and quest states
-/// ([`prereq_condition`]).
+/// applied. Its eligibility — `after=` (dsl 0.25.0 §3) over the mocked
+/// `visited:` and quest states, `spentBy`, `when` — is the session's rule
+/// ([`exec::session::judge_beat`]), SHOWN on the [`Step::Beat`] head under
+/// the canonical id and enforced only under [`MockSet::gate_eligibility`],
+/// as on an entry. An `after=` the mocks leave undecided (a quest another
+/// document declares) is reported unresolved.
 fn present_beat(
     m: &mut Machine<&mut TraceDriver<'_>>,
     beat: &lute_syntax::ast::BundleBeat,
     canonical: &str,
-    gate: bool,
+    judging: Option<&ExecProject>,
+    mocks: &MockSet,
 ) -> Walked {
-    let after = beat
-        .after
-        .as_ref()
-        .filter(|(a, _)| !a.trim().is_empty())
-        .and_then(|(a, span)| {
-            let f = lute_check::parse_prereq(a, *span).0?;
-            Some((prereq_condition(&f), *span))
-        });
-    let after = match &after {
-        Some((cond, span)) => match m.eval_guard(cond) {
-            Ok(b) => Some(b),
-            Err(atoms) => {
-                m.driver_mut()
-                    .record_unresolved("beat", canonical, *span, cond.clone(), &atoms);
-                None
-            }
-        },
-        None => Some(true),
+    let Some((p, row)) = judging.and_then(|p| Some((p, p.lore_beat(canonical)?))) else {
+        return run_walk(m);
     };
-    if gate {
-        let when = match &beat.when {
-            None => Some(true),
-            Some(slot) => match m.eval_guard(&slot.raw) {
-                Ok(b) => Some(b),
-                Err(atoms) => {
-                    let (span, raw) = (slot.span, slot.raw.trim().to_string());
-                    m.driver_mut()
-                        .record_unresolved("beat", canonical, span, raw, &atoms);
-                    None
-                }
-            },
-        };
-        if after == Some(false) || when == Some(false) {
-            m.driver_mut().steps.push(Step::Beat {
-                id: canonical.to_string(),
-                eligible: Some(false),
-                after_unmet: after == Some(false),
-            });
-            return Walked::Continue;
+    let (cand, w) = judge(p, m, mocks, &row);
+    if let Some((after, span)) = beat.after.as_ref().filter(|(a, _)| !a.trim().is_empty()) {
+        if let Some(f) = lute_check::parse_prereq(after, *span).0 {
+            if let Err(atoms) = exec::session::eval_prereq(p, &f, &w) {
+                m.driver_mut().record_unresolved(
+                    "beat",
+                    canonical,
+                    *span,
+                    prereq_condition(&f),
+                    &atoms,
+                );
+            }
         }
     }
-    m.driver_mut().head = Some(Head::After(after));
+    let eligible = eligible_of(&cand.verdict);
+    let after_unmet = matches!(
+        cand.verdict,
+        SessionVerdict::Ineligible(Premise::After { .. })
+    );
+    if let SessionVerdict::Ineligible(prem) = &cand.verdict {
+        let why = premise_text(prem, BeatKind::Bundle, None);
+        m.driver_mut().premises.insert(canonical.to_string(), why);
+    }
+    if mocks.gate_eligibility && eligible == Some(false) {
+        m.driver_mut().steps.push(Step::Beat {
+            id: canonical.to_string(),
+            eligible,
+            after_unmet,
+        });
+        return Walked::Continue;
+    }
+    m.driver_mut().head = Some(Head::Judged {
+        eligible,
+        spent: None,
+        after_unmet,
+    });
     run_walk(m)
+}
+
+/// The traced document as a one-document [`ExecProject`] — what the
+/// session's eligibility rule judges a presented beat over. `None` only if
+/// the artifact does not assemble (it always does once compiled).
+fn judging_project(uri: &str, artifact: lute_compile::Artifact) -> Option<ExecProject> {
+    let docs = BTreeMap::from([(uri.to_string(), artifact)]);
+    ExecProject::assemble(
+        &docs,
+        BTreeMap::new(),
+        BTreeSet::new(),
+        Default::default(),
+        BTreeMap::new(),
+    )
+    .ok()
+}
+
+/// Judge `row` by the session's ONE eligibility rule
+/// ([`exec::session::judge_beat`]) at this point of the walk: the walk's
+/// own Machine evaluates (`when`, `spentBy` over the mocks, three-valued),
+/// over a world carrying what the mocks say about the rest of the project
+/// — the mocked `visited:` (which, for a scene, is also what spends its
+/// `once: user`), the quest states the walk holds, the entry's read flags.
+fn judge(
+    p: &ExecProject,
+    m: &mut Machine<&mut TraceDriver<'_>>,
+    mocks: &MockSet,
+    row: &lute_compile::index::IndexBeat,
+) -> (exec::session::Candidate, SessionWorld) {
+    let mut w = SessionWorld {
+        visited: mocks.visited.iter().cloned().collect(),
+        ..SessionWorld::default()
+    };
+    if row.kind == BeatKind::Scene {
+        w.spent_user = w.visited.clone();
+    }
+    for flag in [
+        lute_check::entry_read_path(&row.id),
+        format!("entry.{}.everRead", row.id),
+    ] {
+        if is_true(m, &flag) {
+            w.state.insert(flag, Value::Bool(true));
+        }
+    }
+    let prereq = p
+        .artifacts
+        .get(&row.document)
+        .and_then(|d| exec::session::beat_prereq(d, &row.id));
+    for atom in prereq.iter().flat_map(lute_check::prereq::atoms) {
+        if let lute_check::prereq::Atom::Completed(q) | lute_check::prereq::Atom::Active(q) = atom {
+            if let crate::eval::Read::Value(Value::Str(s)) = m.read(&format!("quest.{q}.state")) {
+                w.quests.insert(q, s);
+            }
+        }
+    }
+    let member = match m.read(lute_check::beats::OCCASION_TARGET) {
+        crate::eval::Read::Value(Value::Str(s)) => Some(s),
+        _ => None,
+    };
+    let cand = exec::session::judge_beat(p, &w, m, row, member.as_deref());
+    (cand, w)
+}
+
+/// A session verdict as the report's tri-state eligibility.
+fn eligible_of(v: &SessionVerdict) -> Option<bool> {
+    match v {
+        SessionVerdict::Eligible => Some(true),
+        SessionVerdict::Ineligible(_) => Some(false),
+        SessionVerdict::Unknown(_) => None,
+    }
+}
+
+/// Prerelease N3 / round-5 T3-12: the false premise, named for an author
+/// fixing a `*.test.yaml` — what [`TraceReport::premises`] carries. `when`
+/// is the authored `when` where the caller has it (a scene's, before `@def`
+/// expansion), else the compiled one.
+fn premise_text(prem: &Premise, kind: BeatKind, when: Option<&str>) -> String {
+    use lute_check::prereq::Atom;
+    match prem {
+        Premise::When { raw } => {
+            format!(
+                "its `when` ({}) is false",
+                when.unwrap_or(raw.as_str()).trim()
+            )
+        }
+        Premise::After { raw, unmet } => {
+            let mocks: Vec<String> = unmet
+                .iter()
+                .map(|a| match a {
+                    Atom::Visited(k) => format!("`visited: [{k}]`"),
+                    Atom::Completed(q) => format!("`quests: {{ {q}: complete }}`"),
+                    Atom::Active(q) => format!("`quests: {{ {q}: active }}`"),
+                })
+                .collect();
+            let hint = if mocks.is_empty() {
+                String::new()
+            } else {
+                format!(" — mock {}", mocks.join(", "))
+            };
+            match kind {
+                BeatKind::Bundle => format!("its `after=\"{raw}\"` is false{hint}"),
+                BeatKind::Scene | BeatKind::Entry => format!("its `after: {raw}` is false{hint}"),
+            }
+        }
+        Premise::Spent {
+            once: Some(lute_compile::BeatOnce::User),
+            ..
+        } if kind == BeatKind::Scene => {
+            "it is `once: user` and the mocked `visited:` already lists it".to_string()
+        }
+        Premise::Spent { reason, .. } => format!("it is spent ({reason})"),
+        Premise::SpentBy(reason) => format!("its {reason}"),
+    }
 }
 
 fn is_true(m: &Machine<&mut TraceDriver<'_>>, path: &str) -> bool {
@@ -600,7 +787,6 @@ struct Finish<'a, 'd> {
     walk: Walked,
     beat_note: Option<String>,
     scene_eligible: Option<(String, Option<bool>)>,
-    scene_ineligible: Option<String>,
     world: World,
 }
 
@@ -616,7 +802,6 @@ fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
         walk,
         beat_note,
         scene_eligible,
-        scene_ineligible,
         world,
     } = f;
     let World {
@@ -695,7 +880,7 @@ fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
         final_undecided: undecided,
         foreign_quests,
         scene_eligible,
-        scene_ineligible,
+        premises: driver.premises,
         said: driver.said,
     };
     (report, exit)
@@ -842,12 +1027,15 @@ struct MenuSeen {
     forced: Option<String>,
 }
 
-/// A presentation head the pipeline judged before the walk.
+/// A presentation head the pipeline judged before the walk, by the
+/// session's rule: its eligibility, the `once` an earlier read spent (an
+/// entry), and whether its `after=` is what is false (a bundle beat).
 enum Head {
-    /// An entry an earlier read spent (`once: run` / `user`).
-    Spent(String),
-    /// A bundle beat's `after` verdict.
-    After(Option<bool>),
+    Judged {
+        eligible: Option<bool>,
+        spent: Option<String>,
+        after_unmet: bool,
+    },
 }
 
 /// `lute trace`'s [`Driver`] (design §3.3) and report builder (§3.6).
@@ -893,6 +1081,9 @@ pub(crate) struct TraceDriver<'a> {
     coverage_arms: BTreeMap<String, CoverageCount>,
     said: Vec<String>,
     spent_accepts: Vec<String>,
+    /// Round-5 T3-12: presented scene / entry / beat id → the false premise
+    /// its eligibility verdict names ([`TraceReport::premises`]).
+    premises: BTreeMap<String, String>,
 }
 
 impl<'a> TraceDriver<'a> {
@@ -945,6 +1136,7 @@ impl<'a> TraceDriver<'a> {
             coverage_arms: BTreeMap::new(),
             said: Vec::new(),
             spent_accepts: Vec::new(),
+            premises: BTreeMap::new(),
         }
     }
 
@@ -1009,6 +1201,26 @@ impl<'a> TraceDriver<'a> {
         }
     }
 
+    /// The mock that changes one read of a guard that decided false
+    /// (round-5 T3-12), as a `lute trace` flag where one exists — the
+    /// unresolved-atom hint ([`Self::render_atom`]) — else the `--mock`
+    /// file key. A single-file trace knows no earlier scene: a
+    /// `visited(…)` or quest-state read is only what the mock says.
+    fn guard_hint(&self, r: &GuardRead) -> String {
+        const EARLIER: &str =
+            "in a `--mock` file; a single-file trace does not know what earlier scenes did";
+        match r {
+            GuardRead::Path(p, _) if exec::session::quest_state_id(p).is_some() => {
+                format!("{} {EARLIER}", r.yaml_mock())
+            }
+            GuardRead::Path(p, _) => {
+                format!("`{}`", self.render_atom(&UnresolvedAtom::Path(p.clone())))
+            }
+            GuardRead::Fact(f) => format!("`{}`", render_atom(&UnresolvedAtom::Fact(f.clone()))),
+            GuardRead::Visited(_) => format!("{} {EARLIER}", r.yaml_mock()),
+        }
+    }
+
     /// §3.2 de-duplication: the unresolved set reports a byte-identical
     /// entry (same construct, id, span, expression) once, not once per
     /// re-evaluation pass.
@@ -1026,7 +1238,15 @@ impl<'a> TraceDriver<'a> {
         if dup {
             return;
         }
-        let rendered = atoms.iter().map(|a| self.render_atom(a)).collect();
+        // One hint per mock: an expression reading `occasion.target` twice
+        // (`holds(owned(occasion.target)) && user.bond[occasion.target]`)
+        // records the atom twice.
+        let mut rendered: Vec<String> = Vec::new();
+        for hint in atoms.iter().map(|a| self.render_atom(a)) {
+            if !rendered.contains(&hint) {
+                rendered.push(hint);
+            }
+        }
         self.unresolved.push(UnresolvedEntry {
             construct: construct.to_string(),
             id: id.to_string(),
@@ -1285,8 +1505,10 @@ impl<'a> TraceDriver<'a> {
             }),
             "entry" => {
                 let (eligible, spent) = match self.head.take() {
-                    Some(Head::Spent(s)) => (Some(false), Some(s)),
-                    _ => (rec.get("eligible").and_then(Json::as_bool), None),
+                    Some(Head::Judged {
+                        eligible, spent, ..
+                    }) => (eligible, spent),
+                    None => (rec.get("eligible").and_then(Json::as_bool), None),
                 };
                 self.steps.push(Step::Entry {
                     id: str_of("id"),
@@ -1296,20 +1518,18 @@ impl<'a> TraceDriver<'a> {
                 });
             }
             "beat" => {
-                let when = rec.get("eligible").and_then(Json::as_bool);
-                let after = match self.head.take() {
-                    Some(Head::After(a)) => a,
-                    _ => Some(true),
-                };
-                let eligible = match (after, when) {
-                    (Some(false), _) | (_, Some(false)) => Some(false),
-                    (Some(true), Some(true)) => Some(true),
-                    _ => None,
+                let (eligible, after_unmet) = match self.head.take() {
+                    Some(Head::Judged {
+                        eligible,
+                        after_unmet,
+                        ..
+                    }) => (eligible, after_unmet),
+                    None => (rec.get("eligible").and_then(Json::as_bool), false),
                 };
                 self.steps.push(Step::Beat {
                     id: str_of("id"),
                     eligible,
-                    after_unmet: after == Some(false),
+                    after_unmet,
                 });
             }
             "barrier" | "occasion" => {}
@@ -1517,8 +1737,7 @@ impl<'a> TraceDriver<'a> {
             }
             Some("acceptSpent") => self.spent_accepts.push(format!(
                 "{NOTE_ACCEPT_SPENT} `{quest}` spent: its parent quest `{}` is {} — an \
-                 `activate=\"accept\"` child activates only while its parent is active \
-                 (dsl 0.24.0 §2)",
+                 `activate=\"accept\"` child activates only while its parent is active",
                 str_of("parent"),
                 str_of("why"),
             )),
@@ -1650,16 +1869,26 @@ impl Driver for TraceDriver<'_> {
                 }
                 Forced::Take
             }
-            Verdict::Closed | Verdict::Spent => {
-                let reason = match menu.construct {
-                    MenuKind::Branch => "its guard decided false at this presentation point",
-                    MenuKind::Hub => {
-                        "its guard decided false, or it is `once` and already visited, at this \
-                         presentation point"
-                    }
+            Verdict::Spent => {
+                let reason = format!(
+                    "it is `once` and already taken in this visit of hub `{}`",
+                    menu.id
+                );
+                let span = self.option_span(menu.addr, option);
+                self.refused = Some(choice_diag(span, menu.id, option, &reason));
+                Forced::Refuse
+            }
+            Verdict::Closed(reads) => {
+                let (guard, authored) = self.option_guard(menu.addr, option);
+                let guard = authored.or(guard).unwrap_or_default();
+                let premise = guard_premise(reads, |r| self.guard_hint(r));
+                let reason = if premise.is_empty() {
+                    format!("its guard `{}` decided false", guard.trim())
+                } else {
+                    format!("its guard `{}` decided false: {premise}", guard.trim())
                 };
                 let span = self.option_span(menu.addr, option);
-                self.refused = Some(choice_diag(span, menu.id, option, reason));
+                self.refused = Some(choice_diag(span, menu.id, option, &reason));
                 Forced::Refuse
             }
         }
@@ -1790,7 +2019,7 @@ impl Driver for TraceDriver<'_> {
             }
             SiteKind::Guard => OnUnknown::Halt,
             SiteKind::EntryWhen => {
-                if !matches!(self.head, Some(Head::Spent(_))) {
+                if !matches!(self.head, Some(Head::Judged { spent: Some(_), .. })) {
                     let span = self
                         .cx
                         .ast
@@ -1983,7 +2212,7 @@ fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::FactDecl]) -
     }
     vec![format!(
         "the schema declares seed facts (e.g. `{}`) but under `derive: false` trace does not \
-         auto-load them (§3.1, the explicit-world model) — supply seeded relations explicitly \
+         auto-load them (the explicit-world model) — supply seeded relations explicitly \
          via --fact",
         seed_facts[0].fact.relation
     )]
@@ -2063,7 +2292,7 @@ fn reserved_quest_notes(
         defaults.sort();
         let mut msg = format!(
             "{}(run `check-project`, or trace with `--project`, to confirm it is defined by a \
-             project quest, dsl 0.5.1 §1.3/§1.4)",
+             project quest)",
             unverified_quest_note_head(id)
         );
         if !defaults.is_empty() {
@@ -2268,7 +2497,7 @@ fn mock_unproducible_notes(
                 "{W_TRACE_MOCK_UNPRODUCIBLE} — mock fact over relation `{rel}` is not \
                  producible (no `facts:` seed, {scope}, not `reserved`) — the supplied answer \
                  can never arise from authored producers, so a complete walk seeded with it \
-                 proves nothing about reachable play (§4)"
+                 proves nothing about reachable play"
             )
         })
         .collect()
@@ -2409,95 +2638,6 @@ fn beat_when_note(
     }
 }
 
-/// dsl 0.26.0 §7 (T1-7): a scene document's eligibility under the mocks,
-/// judged before the walk writes anything, as the selector judges it at
-/// presentation: the beat's `when` (expanded as `lute compile` expands it),
-/// the scene's `after:` prerequisite over the mocked `visited:` / quest
-/// states, and a `once: user` beat the mocked `visited:` already spent.
-/// `Some(true)` when every part holds (or the scene declares none),
-/// `Some(false)` when one is false, `None` when one is undecided. Nothing is
-/// recorded unresolved — the verdict is the harness's to judge. Prerelease
-/// N3: with `Some(false)`, the first false premise, named for the author
-/// (`its \`after: visited("a")\` is false — mock \`visited: [a]\``).
-fn scene_eligibility(
-    folded: &FoldedEnv,
-    table: &DefTable<'_>,
-    mocks: &MockSet,
-    m: &mut Machine<&mut TraceDriver<'_>>,
-) -> (Option<bool>, Option<String>) {
-    let mut judge = |raw: &str| m.eval_guard(raw).ok();
-    let mut parts: Vec<(Option<bool>, String)> = Vec::new();
-    if let Some(beat) = &folded.typed.beat {
-        if let Some(mut slot) = beat.when.clone() {
-            let raw = slot.raw.trim().to_string();
-            let _ = lute_compile::expand::expand_beat_when(&mut slot, table);
-            parts.push((judge(&slot.raw), format!("its `when` ({raw}) is false")));
-        }
-        if beat.once == lute_check::beats::BeatOnce::User {
-            let key = lute_check::meta::canonical_scene_key(&folded.typed);
-            parts.push((
-                Some(!key.is_some_and(|k| mocks.visited.iter().any(|v| *v == k))),
-                "it is `once: user` and the mocked `visited:` already lists it".to_string(),
-            ));
-        }
-    }
-    if let Some(after) = folded
-        .typed
-        .after
-        .as_deref()
-        .filter(|a| !a.trim().is_empty())
-    {
-        let span = mock::synthetic_span();
-        let formula = lute_check::parse_prereq(after, span).0;
-        let verdict = formula.as_ref().and_then(|f| judge(&prereq_condition(f)));
-        let mock_hint = formula
-            .as_ref()
-            .map(|f| unmet_prereq_mocks(f, mocks, m))
-            .filter(|m| !m.is_empty())
-            .map(|m| format!(" — mock {}", m.join(", ")))
-            .unwrap_or_default();
-        parts.push((
-            verdict,
-            format!("its `after: {}` is false{mock_hint}", after.trim()),
-        ));
-    }
-    if let Some((_, why)) = parts.iter().find(|(v, _)| *v == Some(false)) {
-        (Some(false), Some(why.clone()))
-    } else if parts.iter().any(|(v, _)| v.is_none()) {
-        (None, None)
-    } else {
-        (Some(true), None)
-    }
-}
-
-/// The mock entries an `after:` prerequisite's unmet atoms need: `visited:
-/// [a]` for a scene not in the mocked `visited:`, `quests: { q: complete }`
-/// (or `active`) for a quest the walk does not hold in that state.
-fn unmet_prereq_mocks(
-    f: &lute_check::PrereqFormula,
-    mocks: &MockSet,
-    m: &Machine<&mut TraceDriver<'_>>,
-) -> Vec<String> {
-    let mut out = Vec::new();
-    for atom in lute_check::prereq::atoms(f) {
-        let (quest, want) = match &atom {
-            lute_check::prereq::Atom::Visited(k) => {
-                if !mocks.visited.iter().any(|v| v == k) {
-                    out.push(format!("`visited: [{k}]`"));
-                }
-                continue;
-            }
-            lute_check::prereq::Atom::Completed(q) => (q, "complete"),
-            lute_check::prereq::Atom::Active(q) => (q, "active"),
-        };
-        let path = format!("quest.{quest}.state");
-        if !matches!(m.read(&path), crate::eval::Read::Value(Value::Str(s)) if s == want) {
-            out.push(format!("`quests: {{ {quest}: {want} }}`"));
-        }
-    }
-    out
-}
-
 fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
     TraceReport {
         file: uri.to_string(),
@@ -2515,7 +2655,7 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         final_undecided: BTreeSet::new(),
         foreign_quests: BTreeSet::new(),
         scene_eligible: None,
-        scene_ineligible: None,
+        premises: BTreeMap::new(),
         said: Vec::new(),
     }
 }

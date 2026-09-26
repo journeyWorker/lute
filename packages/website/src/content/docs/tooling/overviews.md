@@ -212,7 +212,7 @@ lute beats: `--occasion daystart` is not an occasion of this project (known: boa
   "verdicts": [
     {
       "code": "W-BEAT-SHADOWED",
-      "message": "entry `dockEmpty` can never win occasion `placeVisit` for `place.dock`: entry `dockGulls` (priority 0) is ordered before it, is always eligible (no `after:`, and its `when` is absent or always true), and is never spent (an entry without `once`), so it wins every time (dsl 0.21.0 §5)",
+      "message": "entry `dockEmpty` can never win occasion `placeVisit` for `place.dock`: entry `dockGulls` (priority 0) is ordered before it, is always eligible (no `after:`, and its `when` is absent or always true), and is never spent (an entry without `once`), so it wins every time",
       "severity": "warning"
     }
   ]
@@ -390,12 +390,13 @@ An axis over a declared state path writes it as an `engine:` step would. Some th
 - `holds(<fact>)=true,false` asserts (`true`) or retracts (`false`) a base fact before the rules derive, so derived facts follow it. The fact must be ground, of a declared relation, with members of its domains; a derived relation is refused, since the rules decide it. Quote the axis in the shell: `--axis 'holds(rumor(ada))=false,true'`.
 - `visited('<id>')=true,false` (dsl 0.24.0) puts a scene or bundle beat in or out of the cell's visited set, so a beat behind `after: visited(…)` can be read both ways without a route.
 - `clock=<d1>..<d2>` (dsl 0.24.0 §1) walks a declared clock: every slot of each day, in clock order — `clock=1..2` over `slots: [morning, afternoon, night]` is six cells, `1 Mon morning` through `2 Tue night` (the weekday label when the clock's `week:` has labels). Each cell writes the clock's `day` and `slot` paths, so `clock.index` and `clock.weekday` read that position. Bare `--axis clock` is one week from day 1 (day 1 alone without a `week:`). The clock axis cannot sit beside an axis over its own `day` or `slot` path, and a project without a clock refuses it.
+- `<family>.*=<values>` and `<family>[<axis>]=<values>` (since 0.27.0) vary a whole [`per:` family](/state/state-model/#one-path-per-entity-per) — see [A `per:` family as one axis](#a-per-family-as-one-axis).
 
 Anything else is a usage error that lists the axis kinds (with a did-you-mean for a mistyped state path):
 
 ```console
 $ lute calendar . --axis run.dya=1..3
-lute calendar: `--axis run.dya`: `run.dya` is not a declared state path in this project — did you mean `run.day`?; an axis is one of: a declared state path (`run.day=1..7`), `quest.<id>.state=<status>,…`, `quest.<id>.objectives.<oid>.done=true,false`, `holds(<fact>)=true,false`, `visited('<scene or bundle-beat id>')=true,false`, `clock[=<d1>..<d2>]` (every slot of those days, in order)
+lute calendar: `--axis run.dya`: `run.dya` is not a declared state path in this project — did you mean `run.day`?; an axis is one of: a declared state path (`run.day=1..7`), every member of a `per:` family (`run.aff.*=6,7`) or the member another axis names (`run.aff[run.route]=6,7`), `quest.<id>.state=<status>,…`, `quest.<id>.objectives.<oid>.done=true,false`, `holds(<fact>)=true,false`, `visited('<scene or bundle-beat id>')=true,false`, `clock[=<d1>..<d2>]` (every slot of those days, in order)
 $ lute calendar . --axis 'holds(trusted(ada))=true,false'
 lute calendar: `--axis holds(trusted(ada))`: `trusted(ada)` is derived by rules and cannot be asserted
 ```
@@ -445,6 +446,34 @@ eligible but never presented in any cell: none
 ```
 
 `ferry` starts on `visited('inn.ada')`, which the save holds, so the settle activates it and the note says so.
+
+### A `per:` family as one axis
+
+A [`per:` family](/state/state-model/#one-path-per-entity-per) — `run.aff: { type: number, default: 0, per: suitor }` — is one path per member (`run.aff.ren`, `run.aff.kai`, …), and an axis per member multiplies the grid by every one of them. Since 0.27.0 one axis covers the family:
+
+- `--axis 'run.aff.*=6,7'` gives **every** member the cell's value.
+- `--axis 'run.aff[run.route]=6,7'` gives it only to the member the value of `--axis run.route` names in that cell; the other members keep their seed or default. The indexing axis must be an `--axis` of the same calendar, and each of its values a member of the family's kind (`` `--axis run.route` takes `none`, which is not a member of `suitor` (ren, mika, soren, kai) ``).
+
+Tied to the route, an ending matrix is route × the route's own affection, with every other suitor left at its default:
+
+```console
+$ lute calendar . --script plays/confessed.play.yaml --axis run.route=ren,kai \
+    --axis 'run.aff[run.route]=6,7' --occasion termEnd
+calendar: . — 4 cell(s) × 1 column(s), from the save in plays/confessed.play.yaml
+
+run.route  run.aff[run.route]  termEnd
+ren        6                   end.ren.ember +1
+ren        7                   end.ren.lantern +2
+kai        6                   end.kai.ember +1
+kai        7                   end.kai.lantern +2
+```
+
+The axis is named as written in the row labels, the `--json` `at` keys and the `--csv` header. The family itself is no value, so a bare `--axis run.aff=…` names the three forms instead of guessing; an axis over a member the family axis already sets (`--axis 'run.aff.*=6' --axis run.aff.ren=7`) is refused too:
+
+```console
+$ lute calendar . --axis run.route=ren,kai --axis run.aff=6,7 --occasion termEnd
+lute calendar: `--axis run.aff`: `run.aff` is a `per: suitor` family — name a member (`run.aff.ren`), all of them (`run.aff.*`), or tie it to an axis (`run.aff[run.route]`)
+```
 
 ### Per-occasion axes and who is where
 
@@ -608,7 +637,7 @@ The calendar compiles the whole project the way `lute play` does, so, unlike `lu
 <!-- lute-diagnostics -->
 ```console
 $ lute calendar . --axis run.day=1..3
-./scenes/dock/storm.lute:7:8: error [E-BEAT-UNREACHABLE] beat `dock.storm` is never eligible: its `when` `run.slot == 'morning' && run.slot == 'evening'` is provably false (dsl 0.21.0 §5)
+./scenes/dock/storm.lute:7:8: error [E-BEAT-UNREACHABLE] beat `dock.storm` is never eligible: its `when` `run.slot == 'morning' && run.slot == 'evening'` is provably false
 ```
 
 Standard error adds `lute play: 1 of 9 document(s) failed to compile; refusing to play`, and the exit is **1**.

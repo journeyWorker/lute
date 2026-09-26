@@ -150,7 +150,7 @@ the branch is not, because the `leave` path reaches it with her gone:
 
 <!-- lute-diagnostics -->
 ```
-platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)
+platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit
 ```
 
 An `::auto{character="marina" action="fade-in-up"}` before that line, or at the end of the `leave`
@@ -205,7 +205,7 @@ the warning names the `::clear`:
 
 <!-- lute-diagnostics -->
 ```
-platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` after the `::clear` (dsl 0.24.0 §4)
+platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` after the `::clear`
 ```
 
 [`lute play`](/tooling/play/) prints `::clear` where it ran, and `lute trace` records it as an
@@ -388,7 +388,7 @@ conditional clip is logic:
 
 <!-- lute-diagnostics unverified="verbatim lute check output; the message's source names E-UNKNOWN-ATTR through a constant rather than a string literal, so the scraper cannot pair quote and code" -->
 ```
-./scenes/dock.lute:14:28: error [E-UNKNOWN-ATTR] `::bg` cannot take `when=`: it lowers to a builtin record and runs where it stands — put it in a `<match>`; `when=` guards `::use`, `::accept`, `::assert`, `::retract`, `::set` and plugin passthrough directives (dsl 0.26.0 §4)
+./scenes/dock.lute:14:28: error [E-UNKNOWN-ATTR] `::bg` cannot take `when=`: it lowers to a builtin record and runs where it stands — put it in a `<match>`; `when=` guards `::use`, `::accept`, `::assert`, `::retract`, `::set` and plugin passthrough directives
 ```
 
 A plugin that declares an attribute named `when` collides with the guard, and a use of that

@@ -15,7 +15,11 @@
 //! nothing one cell does is seen by the next.
 //!
 //! Axis kinds ([`AXIS_KINDS`], one [`Apply`] arm each): a declared state
-//! path, written as an `engine:` step writes it; `quest.<id>.state`, the
+//! path, written as an `engine:` step writes it; a `per:` family (dsl
+//! 0.24.0 §3) as a whole — `run.aff.*`, every member at the cell's value,
+//! or `run.aff[run.route]`, only the member another axis's value names at
+//! the cell (the others keep what the world holds), where the bare family
+//! `run.aff` is a usage error naming those forms; `quest.<id>.state`, the
 //! quest's status seeded as a save's `quests:` does;
 //! `quest.<id>.objectives.<oid>.done`, objective progress as a save keeps
 //! it; `holds(<fact>)=true,false`, a base fact asserted or retracted;
@@ -46,6 +50,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use lute_compile::index::IndexBeat;
+use lute_manifest::relations::KindShape;
 use lute_manifest::schema::OccasionSelect;
 use lute_trace::datalog::Fact;
 use lute_trace::Value;
@@ -70,6 +75,8 @@ const MAX_CELLS: usize = 10_000;
 /// Every axis kind the calendar applies — the usage error for an axis it
 /// cannot apply lists them.
 pub(crate) const AXIS_KINDS: &str = "a declared state path (`run.day=1..7`), \
+     every member of a `per:` family (`run.aff.*=6,7`) or the member another axis names \
+     (`run.aff[run.route]=6,7`), \
      `quest.<id>.state=<status>,…`, `quest.<id>.objectives.<oid>.done=true,false`, \
      `holds(<fact>)=true,false`, `visited('<scene or bundle-beat id>')=true,false`, \
      `clock[=<d1>..<d2>]` (every slot of those days, in order)";
@@ -157,6 +164,33 @@ enum Apply {
     /// dsl 0.24.0 §1: `clock`: a position on the declared clock (the value
     /// is its `clock.index`), written to the clock's day and slot paths.
     Clock,
+    /// `<family>.*`: every member of a `per:` state family (dsl 0.24.0 §3),
+    /// each written as [`Apply::State`] writes one path.
+    Family {
+        family: String,
+        members: Vec<String>,
+    },
+    /// `<family>[<axis>]`: the one member of a `per:` family the value of
+    /// another axis (`by`, its index) names at the cell; the other members
+    /// keep what the cell's world holds.
+    Tied {
+        family: String,
+        members: Vec<String>,
+        by: usize,
+    },
+}
+
+impl Apply {
+    /// A family axis's family path and member names.
+    fn family(&self) -> Option<(&str, &[String])> {
+        match self {
+            Apply::Family { family, members }
+            | Apply::Tied {
+                family, members, ..
+            } => Some((family, members)),
+            _ => None,
+        }
+    }
 }
 
 /// The id of a `visited('<id>')` axis path (`'…'`, `"…"` or bare).
@@ -183,8 +217,116 @@ fn is_objective_done(path: &str) -> bool {
     matches!(parts.as_slice(), ["quest", id, "objectives", oid, "done"] if !id.is_empty() && !oid.is_empty())
 }
 
-/// Resolve one `--axis` against the project; `Err` is the usage error.
-fn resolve_axis(p: &ExecProject, path: &str, values: &[String]) -> Result<Axis, String> {
+/// The declared path a written one is typed by: a save made after a run
+/// ended carries `prev.run.*`, typed by the `run.*` path it mirrors (dsl
+/// 0.23.0 §6).
+fn declared_path(path: &str) -> &str {
+    match path.strip_prefix("prev.") {
+        Some(run) if run.starts_with("run.") => run,
+        _ => path,
+    }
+}
+
+/// dsl 0.24.0 §3: the `per:` state family `path` (a declared path) names —
+/// its kind and members. The compiled state table carries one path per
+/// member (`run.aff.ren`, …), so the family is the closed entity kind every
+/// member of which has a declared `<path>.<member>` — the largest such kind,
+/// since a kind's sub-kinds are covered with it.
+fn state_family<'a>(p: &'a ExecProject, path: &str) -> Option<(&'a str, &'a [String])> {
+    p.kinds
+        .iter()
+        .rev()
+        .filter_map(|(kind, decl)| match &decl.shape {
+            KindShape::Members(ms) if !ms.is_empty() => Some((kind.as_str(), ms.as_slice())),
+            _ => None,
+        })
+        .filter(|(_, ms)| {
+            ms.iter()
+                .all(|m| p.state_table.contains_key(&format!("{path}.{m}")))
+        })
+        .max_by_key(|(_, ms)| ms.len())
+}
+
+/// An axis over a `per:` family: `<family>.*` (`None`) or
+/// `<family>[<axis>]` (the indexing axis's path).
+fn family_form(path: &str) -> Option<(&str, Option<&str>)> {
+    if let Some(family) = path.strip_suffix(".*") {
+        return Some((family.trim(), None));
+    }
+    let (family, rest) = path.split_once('[')?;
+    Some((family.trim(), Some(rest.strip_suffix(']')?.trim())))
+}
+
+/// Resolve `--axis <family>.*` / `<family>[<by>]`; `axes` are every
+/// `--axis` as given, the one a tied axis names among them.
+fn resolve_family_axis(
+    p: &ExecProject,
+    family: &str,
+    by: Option<&str>,
+    axes: &[(String, Vec<String>)],
+) -> Result<Apply, String> {
+    let Some((kind, members)) = state_family(p, declared_path(family)) else {
+        let families: BTreeSet<&str> = p
+            .state_table
+            .keys()
+            .filter_map(|k| k.rsplit_once('.').map(|(f, _)| f))
+            .filter(|f| state_family(p, f).is_some())
+            .collect();
+        let hint = lute_manifest::suggest::nearest(family, families.iter().copied(), 3)
+            .map(|k| format!(" — did you mean `{k}`?"))
+            .unwrap_or_default();
+        return Err(format!(
+            "`{family}` is no `per:` state family of this project{hint}"
+        ));
+    };
+    let members = members.to_vec();
+    let Some(by) = by else {
+        return Ok(Apply::Family {
+            family: family.to_string(),
+            members,
+        });
+    };
+    let names = || {
+        let paths: Vec<&str> = axes.iter().map(|(a, _)| a.as_str()).collect();
+        if paths.is_empty() {
+            "none".to_string()
+        } else {
+            paths.join(", ")
+        }
+    };
+    let index = axes
+        .iter()
+        .position(|(a, _)| a == by)
+        .filter(|_| by != CLOCK_AXIS)
+        .ok_or_else(|| {
+            format!(
+                "`{by}` is no `--axis` of this calendar (axes: {}) — `{family}[<axis>]` sets, \
+                 at each cell, the member of `{kind}` that another axis's value names",
+                names()
+            )
+        })?;
+    if let Some(v) = axes[index].1.iter().find(|v| !members.contains(v)) {
+        return Err(format!(
+            "`--axis {by}` takes `{v}`, which is not a member of `{kind}` ({}) — \
+             `{family}[{by}]` sets, at each cell, the member the value of `{by}` names",
+            members.join(", ")
+        ));
+    }
+    Ok(Apply::Tied {
+        family: family.to_string(),
+        members,
+        by: index,
+    })
+}
+
+/// Resolve one `--axis` against the project; `axes` are every `--axis` as
+/// given (what a tied family axis names). `Err` is the usage error.
+fn resolve_axis(
+    p: &ExecProject,
+    path: &str,
+    values: &[String],
+    axes: &[(String, Vec<String>)],
+) -> Result<Axis, String> {
     let at = |e: String| format!("`--axis {path}`: {e}");
     if path == CLOCK_AXIS {
         return resolve_clock_axis(p, values).map_err(at);
@@ -221,19 +363,33 @@ fn resolve_axis(p: &ExecProject, path: &str, values: &[String]) -> Result<Axis, 
              an axis over a quest is `quest.<id>.state` (its status) or \
              `quest.<id>.objectives.<oid>.done`"
         )));
+    } else if let Some((family, by)) = family_form(path) {
+        resolve_family_axis(p, family, by, axes).map_err(at)?
     } else if path.contains('(') {
         return Err(unsupported(format!(
             "`{path}` is no axis the calendar can apply"
         )));
     } else {
-        let declared = match path.strip_prefix("prev.") {
-            Some(run) if run.starts_with("run.") => run,
-            _ => path,
-        };
+        let declared = declared_path(path);
         if !path.starts_with("scene.")
             && entry_flag(path).is_none()
             && !p.state_table.contains_key(declared)
         {
+            // dsl 0.24.0 §3: a family is no one value — name how the axis
+            // reaches its members.
+            if let Some((kind, members)) = state_family(p, declared) {
+                let tie = axes
+                    .iter()
+                    .find(|(a, vs)| {
+                        a != path && !vs.is_empty() && vs.iter().all(|v| members.contains(v))
+                    })
+                    .map_or("<axis>", |(a, _)| a.as_str());
+                return Err(at(format!(
+                    "`{path}` is a `per: {kind}` family — name a member (`{path}.{}`), all of \
+                     them (`{path}.*`), or tie it to an axis (`{path}[{tie}]`)",
+                    members[0]
+                )));
+            }
             let hint =
                 lute_manifest::suggest::nearest(path, p.state_table.keys().map(String::as_str), 3)
                     .map(|k| format!(" — did you mean `{k}`?"))
@@ -268,6 +424,11 @@ fn resolve_axis(p: &ExecProject, path: &str, values: &[String]) -> Result<Axis, 
                 )))
             }
             Apply::State => resolve_state(p, path, v).map_err(|e| at(format!("`{path}` {e}")))?,
+            Apply::Family { family, members }
+            | Apply::Tied {
+                family, members, ..
+            } => resolve_state(p, &format!("{family}.{}", members[0]), v)
+                .map_err(|e| at(format!("`{path}` {e}")))?,
             Apply::Clock => unreachable!("a clock axis is resolved by `resolve_clock_axis`"),
         };
         typed.push((v.clone(), value));
@@ -285,22 +446,32 @@ fn resolve_axis(p: &ExecProject, path: &str, values: &[String]) -> Result<Axis, 
 fn resolve_clock_axis(p: &ExecProject, days: &[String]) -> Result<Axis, String> {
     let Some(clock) = &p.index.clock else {
         return Err(format!(
-            "no schema of this project declares a `clock:` (dsl 0.24.0 §1); an axis is one of: \
+            "no schema of this project declares a `clock:`; an axis is one of: \
              {AXIS_KINDS}"
         ));
     };
+    // dsl 0.27.0 §4: a finite clock has no position past its last one.
+    let last = clock.last_at();
     let days: Vec<i64> = if days.is_empty() {
         let length = clock
             .week
             .as_ref()
             .map_or(1, |w| i64::from(w.length.max(1)));
-        (1..=length).collect()
+        (1..=last.map_or(length, |l| length.min(l.day))).collect()
     } else {
         days.iter()
             .map(|d| {
-                d.parse::<i64>().ok().filter(|d| *d >= 1).ok_or_else(|| {
+                let day = d.parse::<i64>().ok().filter(|d| *d >= 1).ok_or_else(|| {
                     format!("`{d}` is not a day — a clock axis takes days ≥ 1 (`clock=1..7`)")
-                })
+                })?;
+                match last.filter(|l| day > l.day) {
+                    Some(l) => Err(format!(
+                        "day {day} is past the clock's last position ({}) — the clock ends \
+                         there",
+                        clock.describe(l)
+                    )),
+                    None => Ok(day),
+                }
             })
             .collect::<Result<_, _>>()?
     };
@@ -308,6 +479,9 @@ fn resolve_clock_axis(p: &ExecProject, days: &[String]) -> Result<Axis, String> 
     for day in days {
         for slot in 0..clock.slot_count() {
             let at = lute_manifest::clock::ClockAt { day, slot };
+            if clock.is_past_end(at) {
+                break;
+            }
             let label = clock
                 .weekday_label(day)
                 .map(|l| format!(" {l}"))
@@ -345,11 +519,38 @@ fn clock_axis_at(
     }
 }
 
-/// Write one axis value into a cell's world.
-fn apply_axis(p: &ExecProject, w: &mut World, axis: &Axis, text: &str, value: &Value) {
+/// The state paths a declared-path axis writes at the cell whose axis value
+/// indices are `picks`: its path, every member of a `<family>.*`, or the
+/// member a `<family>[<axis>]`'s indexing axis names there. Empty for the
+/// other kinds.
+fn written_paths(axis: &Axis, axes: &[Axis], picks: &[usize]) -> Vec<String> {
     match &axis.apply {
-        Apply::State => {
-            w.state.insert(axis.path.clone(), value.clone());
+        Apply::State => vec![axis.path.clone()],
+        Apply::Family { family, members } => {
+            members.iter().map(|m| format!("{family}.{m}")).collect()
+        }
+        Apply::Tied { family, by, .. } => {
+            vec![format!("{family}.{}", axes[*by].values[picks[*by]].0)]
+        }
+        Apply::Quest(_) | Apply::Fact(_) | Apply::Visited(_) | Apply::Clock => Vec::new(),
+    }
+}
+
+/// Write one axis value into a cell's world; `paths` are the state paths
+/// it writes there ([`written_paths`]).
+fn apply_axis(
+    p: &ExecProject,
+    w: &mut World,
+    axis: &Axis,
+    text: &str,
+    value: &Value,
+    paths: &[String],
+) {
+    match &axis.apply {
+        Apply::State | Apply::Family { .. } | Apply::Tied { .. } => {
+            for path in paths {
+                w.state.insert(path.clone(), value.clone());
+            }
         }
         Apply::Quest(id) => {
             // An `unset`/`active` status keeps no progress a replayed route
@@ -406,11 +607,18 @@ fn settled_away(
     axis: &Axis,
     text: &str,
     value: &Value,
+    paths: &[String],
 ) -> Option<String> {
     match &axis.apply {
-        Apply::State => {
-            let now = w.state.get(&axis.path)?;
-            (now != value).then(|| format!("{} settled to {}", axis.path, value_to_json(now)))
+        Apply::State | Apply::Family { .. } | Apply::Tied { .. } => {
+            let moved: Vec<String> = paths
+                .iter()
+                .filter_map(|path| {
+                    let now = w.state.get(path)?;
+                    (now != value).then(|| format!("{path} settled to {}", value_to_json(now)))
+                })
+                .collect();
+            (!moved.is_empty()).then(|| moved.join("; "))
         }
         Apply::Quest(id) => {
             let now = w.quests.get(id).map_or("unset", String::as_str);
@@ -790,7 +998,8 @@ fn start_world(
     if stop == 0 {
         return Ok((w, origin));
     }
-    let plan = plan_steps(p, &save.steps[..stop]).map_err(at)?;
+    let plan = plan_steps(p, &save.steps[..stop])
+        .map_err(|e| super::locate_step_error(&save.steps, &e).unwrap_or_else(|| at(e)))?;
     let play = execute(save, &plan, Session::resume(p, w));
     match play.outcome {
         Ok(_) => Ok((play.world, origin)),
@@ -830,7 +1039,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
             };
             match parse_script_with(&text, path, false) {
                 Ok(s) => s,
-                Err(e) => return usage(format!("invalid play script {}: {e}", path.display())),
+                Err(e) => return usage(e),
             }
         }
     };
@@ -855,9 +1064,28 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     };
     let mut resolved = Vec::with_capacity(args.axes.len());
     for (path, values) in args.axes {
-        match resolve_axis(&p, path, values) {
+        match resolve_axis(&p, path, values, args.axes) {
             Ok(a) => resolved.push(a),
             Err(e) => return usage(e),
+        }
+    }
+    // dsl 0.24.0 §3: a family axis sets its members — no other axis may.
+    let may_write = |a: &Axis| -> Vec<String> {
+        match a.apply.family() {
+            Some((family, members)) => members.iter().map(|m| format!("{family}.{m}")).collect(),
+            None if matches!(a.apply, Apply::State) => vec![a.path.clone()],
+            None => Vec::new(),
+        }
+    };
+    for (i, a) in resolved.iter().enumerate() {
+        let writes = may_write(a);
+        for b in &resolved[i + 1..] {
+            if let Some(both) = may_write(b).iter().find(|s| writes.contains(s)) {
+                return usage(format!(
+                    "`--axis {}` and `--axis {}` both set `{both}` — give each state path one axis",
+                    a.path, b.path
+                ));
+            }
         }
     }
     // dsl 0.24.0 §1: the clock axis writes the day and slot paths itself.
@@ -955,7 +1183,14 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         let mut at = Vec::with_capacity(resolved.len());
         for (axis, &i) in resolved.iter().zip(&picks) {
             let (text, value) = &axis.values[i];
-            apply_axis(&p, &mut w, axis, text, value);
+            apply_axis(
+                &p,
+                &mut w,
+                axis,
+                text,
+                value,
+                &written_paths(axis, &resolved, &picks),
+            );
             at.push((axis.path.clone(), text.clone(), value_to_json(value)));
         }
         let mut notes = Vec::new();
@@ -964,7 +1199,8 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         }
         for (axis, &i) in resolved.iter().zip(&picks) {
             let (text, value) = &axis.values[i];
-            notes.extend(settled_away(&p, &w, axis, text, value));
+            let paths = written_paths(axis, &resolved, &picks);
+            notes.extend(settled_away(&p, &w, axis, text, value, &paths));
         }
         if let Some(cel) = args.where_ {
             match holds_at(&p, &w, cel) {
@@ -1179,7 +1415,7 @@ fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTreeMap<usize,
         match &c.verdict {
             Verdict::Eligible => s.eligible = true,
             Verdict::Ineligible(why) => {
-                s.reasons.insert(why.clone());
+                s.reasons.insert(why.to_string());
             }
             Verdict::Unknown(why) => {
                 s.reasons.insert(format!("when: unknown ({why})"));

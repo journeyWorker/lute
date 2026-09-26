@@ -2,9 +2,6 @@
 kind: scene
 id: counter
 title: The Counter
-on: chapter
-after: 'visited("prologue")'
-priority: 20
 ---
 
 ## The Counter

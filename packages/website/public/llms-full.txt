@@ -284,10 +284,10 @@ Create an empty file, `my-scene.lute`, and run the checker on it — the checker
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore` (dsl 0.2.0 §3.1, dsl 0.19.0 §2)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
+my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene`, `kind: quest`, or `kind: lore`
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity)
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity)
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity)
 failed: my-scene.lute (4 error(s), 0 warning(s))
 ```
 
@@ -366,7 +366,7 @@ Check again:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
+my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -409,7 +409,7 @@ Save and check. This one does **not** pass yet:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:12:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+my-scene.lute:12:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion`
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -518,7 +518,7 @@ Say you type an old-style sigil out of habit — a colon instead of `@` — on t
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text`; `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -805,7 +805,7 @@ A failing test says why. Change the choice to `familiar`, which is guarded by `s
 $ lute test episodes --project episodes
 FAIL  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
       trace refused:
-        episodes/tests/../diner.lute:25:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard decided false at this presentation point (dsl 0.4.0 §4.4)
+        episodes/tests/../diner.lute:25:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard decided false at this presentation point
 
 0 passed, 1 failed
 ```
@@ -1617,12 +1617,12 @@ these two project-wide diagnostics:
 
 {/* lute-diagnostics */}
 ```
-./scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (./scenes/crime-scene.lute:15) (dsl 0.20.0 §5)
+./scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (./scenes/crime-scene.lute:15)
 ```
 
 {/* lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" */}
 ```
-./scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes (dsl 0.20.0 §5)
+./scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes
 ```
 
 The first guard can never close — the crime scene asserts the fact on its only
@@ -3763,7 +3763,7 @@ schema; the importing documents themselves stay `ok`.
 
 <!-- lute-diagnostics -->
 ```
-schema/areas/south.schema.yaml:2:29: error [E-ENTITY-KIND-SHAPE] entity kind `person` lists `northGull` twice — in the `add:` of `schema/areas/north.schema.yaml` (line 5) and in the `add:` of `schema/areas/south.schema.yaml` (line 2); list each member once (dsl 0.26.0 §2.2)
+schema/areas/south.schema.yaml:2:29: error [E-ENTITY-KIND-SHAPE] entity kind `person` lists `northGull` twice — in the `add:` of `schema/areas/north.schema.yaml` (line 5) and in the `add:` of `schema/areas/south.schema.yaml` (line 2); list each member once
 ```
 
 Keep area-private declarations in the area schema, each name prefixed with the area
@@ -3783,7 +3783,7 @@ both files and lines, and `lute play` refuses a project that declares one path w
 
 <!-- lute-diagnostics -->
 ```
-./scenes/spine/dock.lute:6:3: error [E-STATE-DECL-CONFLICT] state path `run.tide` is declared as bool, default false at `./scenes/north/lighthouse.lute:6` but as number, default 0 at `./scenes/spine/dock.lute:6`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import) (dsl 0.26.0 §2.1)
+./scenes/spine/dock.lute:6:3: error [E-STATE-DECL-CONFLICT] state path `run.tide` is declared as bool, default false at `./scenes/north/lighthouse.lute:6` but as number, default 0 at `./scenes/spine/dock.lute:6`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import)
 ```
 
 ## Ids: prefix everything that is project-wide
@@ -4223,7 +4223,7 @@ is an error**:
 ```
 error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:`
 block in this document's own frontmatter, in a project schema reached through `uses:`, or in a
-plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+plugin's `enums` export before using `emotion`
 ```
 
 ## The seven slots
@@ -4424,7 +4424,7 @@ cast.
 
 <!-- lute-diagnostics -->
 ```
-./scenes/arrival.lute:12:2: error [E-CAST-UNKNOWN] speaker `fixer` is not in the declared cast (dsl 0.23.0 §7)
+./scenes/arrival.lute:12:2: error [E-CAST-UNKNOWN] speaker `fixer` is not in the declared cast
 ```
 
 Without a declared cast, speakers are checked for shape only, as before 0.23.0, so a project can
@@ -4445,7 +4445,7 @@ different speakers (`who=`):
 
 <!-- lute-diagnostics -->
 ```
-./scenes/a.lute:11:1: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (./scenes/a.lute:10), `gus2` (./scenes/a.lute:11) — the dialogue box cannot tell them apart; rename one (dsl 0.26.0 §2.8)
+./scenes/a.lute:11:1: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (./scenes/a.lute:10), `gus2` (./scenes/a.lute:11) — the dialogue box cannot tell them apart; rename one
 ```
 
 Some names are shared on purpose: a role several speakers play, such as a villain team's rank and
@@ -4470,8 +4470,8 @@ With a cast declared, the character a staging directive names must be in it, lik
 
 <!-- lute-diagnostics unverified="composed in crates/lute-check/src/cast.rs from a runtime-built directive prefix plus a pushed did-you-mean, so no single format! literal pins it; copied verbatim from check-project output" -->
 ```
-./scenes/ridge.lute:11:19: error [E-CAST-UNKNOWN] `::auto{character}` `corvn` is not in the declared cast (dsl 0.23.0 §7) — did you mean `corvin`?
-./scenes/ridge.lute:12:17: error [E-CAST-UNKNOWN] `::camera{focus}` `isold` is not in the declared cast (dsl 0.23.0 §7) — did you mean `isolde`?
+./scenes/ridge.lute:11:19: error [E-CAST-UNKNOWN] `::auto{character}` `corvn` is not in the declared cast — did you mean `corvin`?
+./scenes/ridge.lute:12:17: error [E-CAST-UNKNOWN] `::camera{focus}` `isold` is not in the declared cast — did you mean `isolde`?
 ```
 
 ### Per-speaker emotions
@@ -4480,7 +4480,7 @@ A cast entry may list the emotions a character shows, `emotions: [calm, fierce]`
 
 <!-- lute-diagnostics -->
 ```
-./scenes/ridge.lute:14:18: error [E-BAD-ENUM] `sad` is not one of `isolde`'s emotions (expected one of: calm, fierce) — the cast declares `emotions:` for `isolde` (dsl 0.24.0 §4)
+./scenes/ridge.lute:14:18: error [E-BAD-ENUM] `sad` is not one of `isolde`'s emotions (expected one of: calm, fierce) — the cast declares `emotions:` for `isolde`
 ```
 
 A value the `emotion` enum itself rejects keeps its one existing error. A speaker without `emotions:` may use any member of the enum.
@@ -4526,7 +4526,7 @@ The checker then asks, for every line by `isolde`, whether the guards around the
 
 <!-- lute-diagnostics -->
 ```
-./scenes/camp.lute:12:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde))"` for `isolde`, and the guards around this line do not imply it (dsl 0.24.0 §4). Guard the line — `@isolde{when="holds(inParty(isolde))"}` — or move it under a guard that implies it
+./scenes/camp.lute:12:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde))"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds(inParty(isolde))"}` — or move it under a guard that implies it
 ```
 
 The guards that count are the line's own `when=`, every enclosing `<choice when>` (in a branch or a hub), `<match>` arms (the arm's `is=` or `test`, and the fact that no earlier arm matched), `<on when>`, `<objective done>`, and the scene beat's `when:`, an entry's `when=` or a bundle beat's `when=`. `@def`s in them are expanded. Some guards are implied by where the line sits:
@@ -4587,7 +4587,7 @@ On the road, the first two lines warn again, each with a note saying why `assume
 
 <!-- lute-diagnostics unverified="verbatim lute check-project output; the W-CAST-ABSENT message is composed from a base literal plus the dsl 0.25.0 §6 changedOn suffix appended in crates/lute-check/src/cast.rs, so no single format! literal matches" -->
 ```
-./scenes/road.lute:11:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde)) && !holds(fell(isolde))"` for `isolde`, and the guards around this line do not imply it (dsl 0.24.0 §4). Guard the line — `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}` — or move it under a guard that implies it; `assume: true` does not cover `fell`: this line follows an occasion its `changedOn:` names (dsl 0.25.0 §6)
+./scenes/road.lute:11:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde)) && !holds(fell(isolde))"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}` — or move it under a guard that implies it; `assume: true` does not cover `fell`: this line follows an occasion its `changedOn:` names
 ```
 
 Guard those lines with the whole condition, `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}`, and the warnings go. Lines in the camp scene, which comes before the battle in the graph, stay covered by `assume: true`. Without `changedOn`, the 0.24 behaviour is unchanged: `assume: true` covers every line. `changedOn` on a relation that is not `reserved: true` is `E-RELATION-DECL`, and so is an occasion no plugin declares, with a did-you-mean (`` `changedOn: batleEnd` is not a declared occasion — did you mean `battleEnd`? ``). In a project whose plugins declare no occasions, the names are not checked.
@@ -4834,7 +4834,7 @@ the branch is not, because the `leave` path reaches it with her gone:
 
 <!-- lute-diagnostics -->
 ```
-platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)
+platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit
 ```
 
 An `::auto{character="marina" action="fade-in-up"}` before that line, or at the end of the `leave`
@@ -4889,7 +4889,7 @@ the warning names the `::clear`:
 
 <!-- lute-diagnostics -->
 ```
-platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` after the `::clear` (dsl 0.24.0 §4)
+platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` after the `::clear`
 ```
 
 [`lute play`](/tooling/play/) prints `::clear` where it ran, and `lute trace` records it as an
@@ -5072,7 +5072,7 @@ conditional clip is logic:
 
 <!-- lute-diagnostics unverified="verbatim lute check output; the message's source names E-UNKNOWN-ATTR through a constant rather than a string literal, so the scraper cannot pair quote and code" -->
 ```
-./scenes/dock.lute:14:28: error [E-UNKNOWN-ATTR] `::bg` cannot take `when=`: it lowers to a builtin record and runs where it stands — put it in a `<match>`; `when=` guards `::use`, `::accept`, `::assert`, `::retract`, `::set` and plugin passthrough directives (dsl 0.26.0 §4)
+./scenes/dock.lute:14:28: error [E-UNKNOWN-ATTR] `::bg` cannot take `when=`: it lowers to a builtin record and runs where it stands — put it in a `<match>`; `when=` guards `::use`, `::accept`, `::assert`, `::retract`, `::set` and plugin passthrough directives
 ```
 
 A plugin that declares an attribute named `when` collides with the guard, and a use of that
@@ -5324,7 +5324,7 @@ An arm whose every value the guard excludes can never fire, and is `E-ARM-DEAD`.
 
 <!-- lute-diagnostics -->
 ```
-dock.lute:22:3: error [E-ARM-DEAD] arm can never fire: its pattern `died` is ruled out by the body's `when` guard `isSet(run.outcome) && run.outcome != 'died'`, which holds whenever this body runs (dsl 0.24.0)
+dock.lute:22:3: error [E-ARM-DEAD] arm can never fire: its pattern `died` is ruled out by the body's `when` guard `isSet(run.outcome) && run.outcome != 'died'`, which holds whenever this body runs
 ```
 
 An `<otherwise>` after the two arms is `W-OTHERWISE-DEAD` for the same reason; the warning names
@@ -5872,7 +5872,7 @@ declares no `run.approval` gets:
 
 <!-- lute-diagnostics -->
 ```
-./scenes/market.lute:12:1: error [E-UNDECLARED] `::set` target `run.approval.isolde` is not declared in the `state:` schema (dsl §7.3.4)
+./scenes/market.lute:12:1: error [E-UNDECLARED] `::set` target `run.approval.isolde` is not declared in the `state:` schema
 ```
 
 The writes compile into the host's commands where the `::use` sits, and a `<match>` on a param keeps
@@ -5953,8 +5953,8 @@ is no component is `E-COMPONENT-ARG`:
 
 <!-- lute-diagnostics -->
 ```
-./components/challenge.component.lute:11:1: error [E-COMPONENT-ARG] `@@taunt:` speaks as the cast member a `speaker` param names, and `taunt` is not a `speaker` param — declare `taunt: speaker` (dsl 0.26.0 §3.2)
-./scenes/pier.lute:9:1: error [E-COMPONENT-ARG] `@@mira:` speaks as a component's `speaker` param `mira`, and this document is no component — write the cast id (`@mira:`) (dsl 0.26.0 §3.2)
+./components/challenge.component.lute:11:1: error [E-COMPONENT-ARG] `@@taunt:` speaks as the cast member a `speaker` param names, and `taunt` is not a `speaker` param — declare `taunt: speaker`
+./scenes/pier.lute:9:1: error [E-COMPONENT-ARG] `@@mira:` speaks as a component's `speaker` param `mira`, and this document is no component — write the cast id (`@mira:`)
 ```
 
 ### Param defaults
@@ -6345,7 +6345,7 @@ own `isSet`. The third reads `prev.run.depth` through `@lastF` with nothing prov
 
 <!-- lute-diagnostics -->
 ```
-recap.lute:16:21: error [E-MAYBE-UNSET] state path `prev.run.depth` may be read before it is set, read through `@lastF` (no default, no dominating `::set`, no guard) (dsl §9.4)
+recap.lute:16:21: error [E-MAYBE-UNSET] state path `prev.run.depth` may be read before it is set, read through `@lastF` (no default, no dominating `::set`, no guard)
 ```
 
 The `min`/`max`/`values` def fields from earlier drafts are removed: a def is fully described by its
@@ -6500,7 +6500,7 @@ nothing else (`E-CONN-PROFILE`). Writing `after:` in a quest's *frontmatter* is
 
 <!-- lute-diagnostics -->
 ```
-error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin) — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, not a frontmatter key (dsl §4.1)
+error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin) — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, not a frontmatter key
 ```
 
 A `visited()` in `after=` (or in a scene's `after:`) may name a [bundle beat](/language/beats/#beat-bundles)
@@ -6657,7 +6657,7 @@ instead. `--deny W-QUEST-NEVER-ACCEPTED` makes the warning an error.
 
 <!-- lute-diagnostics -->
 ```
-./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition (dsl 0.24.0 §2, 0.25.0 §5)
+./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition
 ```
 
 **Accepting for the next run.** A run-tier quest accepted between runs, at a hub or a bounty board
@@ -6753,7 +6753,7 @@ child as well, and it waits for the engine while its parent is active:
 
 <!-- lute-diagnostics -->
 ```
-./quests/board.lute:10:41: error [E-ACCEPT-TARGET] quest `child` declares `accept="external"`, but it activates with its parent `board`, so the engine's acceptance does nothing; declare `activate="accept"` on it too so it waits to be accepted (dsl 0.25.0 §5)
+./quests/board.lute:10:41: error [E-ACCEPT-TARGET] quest `child` declares `accept="external"`, but it activates with its parent `board`, so the engine's acceptance does nothing; declare `activate="accept"` on it too so it waits to be accepted
 ```
 
 ### Deadlines
@@ -6838,7 +6838,7 @@ state:
 
 <!-- lute-diagnostics -->
 ```
-hearing.lute:9:100: warning [W-DEADLINE-BEFORE-DONE] objective `verdict`'s `by="run.verdict != 'undecided'"` holds whenever its `done="run.verdict == 'guilty'"` does, and `by` is a moment judged at every settle (dsl 0.24.0 §2.1): it fails the objective at the settle it comes true, before occasion `hearing` ever judges `done` (unless both happen in the step that raises `hearing`) — write `until="run.verdict != 'undecided'"` to judge the deadline only when `hearing` is raised
+hearing.lute:9:100: warning [W-DEADLINE-BEFORE-DONE] objective `verdict`'s `by="run.verdict != 'undecided'"` holds whenever its `done="run.verdict == 'guilty'"` does, and `by` is a moment judged at every settle: it fails the objective at the settle it comes true, before occasion `hearing` ever judges `done` (unless both happen in the step that raises `hearing`) — write `until="run.verdict != 'undecided'"` to judge the deadline only when `hearing` is raised
 ```
 
 ### Subquests
@@ -7004,8 +7004,8 @@ state:
 
 <!-- lute-diagnostics unverified="verbatim check-project output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
 ```
-scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene (dsl 0.24.0 §2)
-quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing` (dsl 0.24.0 §2, 0.25.0 §5)
+scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene
+quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
 ```
 
 ### Lifecycle reactions with `<on>`
@@ -7056,7 +7056,7 @@ cascade-fails its still-active children). Add a `fail=` condition, or remove the
 
 <!-- lute-diagnostics -->
 ```
-./q.lute:10:14: warning [W-QUEST-HANDLER-DEAD] `<on event="questFailed">` never runs: quest `lampOut` cannot fail — it has no `fail` condition, no required objective with a `by=` deadline, no required subquest that can fail (a failing required child fails it), and no parent quest whose end would cascade to it; add a `fail=` condition or remove the handler (dsl 0.22.0 §7)
+./q.lute:10:14: warning [W-QUEST-HANDLER-DEAD] `<on event="questFailed">` never runs: quest `lampOut` cannot fail — it has no `fail` condition, no required objective with a `by=` deadline, no required subquest that can fail (a failing required child fails it), and no parent quest whose end would cascade to it; add a `fail=` condition or remove the handler
 ```
 
 The same code (dsl 0.24.0) names a world-event handler that can only fire on a completed quest:
@@ -7067,7 +7067,7 @@ only an active quest's handlers. `lute check` reports it too. Lifecycle events, 
 
 <!-- lute-diagnostics unverified="verbatim lute check-project output; the message is composed in crates/lute-check/src/reachability.rs, which names the code through the project_check::W_QUEST_HANDLER_DEAD constant rather than a string literal, so the scraper cannot pair quote and code" -->
 ```
-quests/road.lute:25:14: warning [W-QUEST-HANDLER-DEAD] `<on event="combatEnd">` never runs: its `when` implies every required objective of quest `brawl` is done, so the quest has already completed when it holds, and an event reaches only an active quest's handlers; move the body to `<on event="questComplete">` or the objective's own body (dsl 0.24.0)
+quests/road.lute:25:14: warning [W-QUEST-HANDLER-DEAD] `<on event="combatEnd">` never runs: its `when` implies every required objective of quest `brawl` is done, so the quest has already completed when it holds, and an event reaches only an active quest's handlers; move the body to `<on event="questComplete">` or the objective's own body
 ```
 
 Content elsewhere can also gate on quest lifecycle by reading the reserved `quest.<id>.state` path.
@@ -7379,7 +7379,7 @@ first document on this page as `lore/ship-records.lute` and give `scientistLog2`
 
 <!-- lute-diagnostics -->
 ```
-./lore/ship-records.lute:20:20: warning [W-FACT-GUARANTEED] guard `holds(knows(vesna, project_lumen))` is redundant: `knows(vesna, project_lumen)` is asserted on every route to here (./lore/ship-records.lute:15) (dsl 0.20.0 §5)
+./lore/ship-records.lute:20:20: warning [W-FACT-GUARANTEED] guard `holds(knows(vesna, project_lumen))` is redundant: `knows(vesna, project_lumen)` is asserted on every route to here (./lore/ship-records.lute:15)
 ```
 
 The entry's `when` already guarantees the log was read this run, so the line's guard is always
@@ -7637,7 +7637,7 @@ for the rest of the run either way. Put a write meant to repeat in a
 
 <!-- lute-diagnostics -->
 ```
-./lore/barks.lute:9:3: warning [W-ENTRY-WRITE-REREAD] `<entry id="achillesBark1">` has no `once`, so it can be presented again in a run, but its `::set` applies on the first read in a run only (dsl 0.19.0 §6); a write meant to repeat belongs in a `<beat once="false">`, and an entry read once per run says so with `once="run"`
+./lore/barks.lute:9:3: warning [W-ENTRY-WRITE-REREAD] `<entry id="achillesBark1">` has no `once`, so it can be presented again in a run, but its `::set` applies on the first read in a run only; a write meant to repeat belongs in a `<beat once="false">`, and an entry read once per run says so with `once="run"`
 ```
 
 `once` takes `run`, `user`, `day`, or `slot`; there is no `once="false"`, so omit the attribute
@@ -7824,7 +7824,7 @@ and `check-project` reports the mismatch on the radio and roof beats:
 
 <!-- lute-diagnostics -->
 ```
-./lore/talks.lute:7:66: error [E-BEAT-ATTR] beat `talks.solRadio` shares `solWarm` with beat `harbor.solDock`, but declares `once: day` where beat `harbor.solDock` declares `once: user`; the beats of one `share` key are spent together for one period, so every one of them declares the same `once` (dsl 0.25.0 §2)
+./lore/talks.lute:7:66: error [E-BEAT-ATTR] beat `talks.solRadio` shares `solWarm` with beat `harbor.solDock`, but declares `once: day` where beat `harbor.solDock` declares `once: user`; the beats of one `share` key are spent together for one period, so every one of them declares the same `once`
 ```
 
 The key replaces the old workaround of stamping the day into state and guarding every beat on it
@@ -7894,7 +7894,7 @@ occasion every eligible beat is already offered or presented, so `also: true` th
 
 <!-- lute-diagnostics -->
 ```
-./scenes/supper-aside.lute:6:7: error [E-BEAT-ATTR] `also: true` applies only to a `select: first` occasion; `evening` is `select: sequence`, which already presents or offers every eligible beat — remove `also:` (dsl 0.23.0 §3)
+./scenes/supper-aside.lute:6:7: error [E-BEAT-ATTR] `also: true` applies only to a `select: first` occasion; `evening` is `select: sequence`, which already presents or offers every eligible beat — remove `also:`
 ```
 
 So is an `also` value other than `true` or `false`. `W-BEAT-SHADOWED` and `W-BEAT-PRIORITY-TIE`
@@ -7970,7 +7970,7 @@ entities:
 
 <!-- lute-diagnostics -->
 ```
-./scenes/oskar.lute:5:9: error [E-BEAT-ATTR] target `npc.osker` is outside occasion `talk`'s domain `npc.<person>` (`npc.maud`, `npc.oskar`) — did you mean `npc.oskar`? (dsl 0.22.0 §8)
+./scenes/oskar.lute:5:9: error [E-BEAT-ATTR] target `npc.osker` is outside occasion `talk`'s domain `npc.<person>` (`npc.maud`, `npc.oskar`) — did you mean `npc.oskar`?
 ```
 
 So is `place.oskar`, which has the wrong prefix. For an `open:` kind, whose members the engine
@@ -7993,7 +7993,7 @@ although `cinderhound` is a `foe`, and the did-you-mean runs over the listed mem
 
 <!-- lute-diagnostics unverified="verbatim lute check output; the message ends in an optional did-you-mean slot that is empty here, and the matcher requires every interpolation to be non-empty" -->
 ```text
-./scenes/hound.lute:5:9: error [E-BEAT-ATTR] target `boss.cinderhound` is outside occasion `bossDefeated`'s member list (`boss.gatekeeper`, `boss.warden`), a subset of entity kind `foe` (dsl 0.22.0 §8)
+./scenes/hound.lute:5:9: error [E-BEAT-ATTR] target `boss.cinderhound` is outside occasion `bossDefeated`'s member list (`boss.gatekeeper`, `boss.warden`), a subset of entity kind `foe`
 ```
 
 Every listed member must belong to the kind. One the kind does not declare makes every target of
@@ -8079,9 +8079,9 @@ Each shape fault names what is wrong:
 
 <!-- lute-diagnostics -->
 ```
-./lore/contest.lute:24:42: error [E-BEAT-ATTR] `target="kind:bugRar"`: `bugRar` is not a declared entity kind — did you mean `kind:bugRare`? (dsl 0.26.0 §5)
-./lore/contest.lute:28:40: error [E-BEAT-ATTR] `target="kind:bugRare"`: `hornbeetle`, `bladebug` are outside occasion `talk`'s domain `npc.<person>`; a kind target names `person` or one of its sub-kinds (dsl 0.26.0 §5)
-./lore/contest.lute:33:23: error [E-UNDECLARED] `occasion.target` is readable only in a beat or entry that targets a kind (`target="kind:<kind>"`), where it is the member the occasion was raised for (dsl 0.26.0 §5)
+./lore/contest.lute:24:42: error [E-BEAT-ATTR] `target="kind:bugRar"`: `bugRar` is not a declared entity kind — did you mean `kind:bugRare`?
+./lore/contest.lute:28:40: error [E-BEAT-ATTR] `target="kind:bugRare"`: `hornbeetle`, `bladebug` are outside occasion `talk`'s domain `npc.<person>`; a kind target names `person` or one of its sub-kinds
+./lore/contest.lute:33:23: error [E-UNDECLARED] `occasion.target` is readable only in a beat or entry that targets a kind (`target="kind:<kind>"`), where it is the member the occasion was raised for
 ```
 
 `lute play` and `lute calendar` offer a kind beat for every member's raise. `lute beats` lists it
@@ -8347,9 +8347,9 @@ the schema line under it. `check-project` instead reports it once, as a project-
 schema line ending `(imported by N documents)`, and leaves the importers `ok`. A clock over a `run.day`
 without `owner: engine`:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="verbatim lute check output, but composed at runtime: crates/lute-check/src/clock.rs wraps each clock problem as `clock:` {what}, a prefix literal below the admission floor, so no single format! literal spans it" -->
 ```
-world.schema.yaml:4:1: error [E-CLOCK-DECL] `clock:` `day: run.day` must be declared `owner: engine` — only the engine moves the clock (dsl 0.24.0 §1)
+world.schema.yaml:4:1: error [E-CLOCK-DECL] `clock:` `day: run.day` must be declared `owner: engine` — only the engine moves the clock
 ```
 
 ## Reading the clock
@@ -8978,7 +8978,7 @@ project that declares one path with two types.
 
 <!-- lute-diagnostics -->
 ```
-./scenes/b.lute:5:3: error [E-STATE-DECL-CONFLICT] state path `run.southFossil` is declared as bool, default false at `./scenes/a.lute:5` but as enum(none|dome|spiral), default "none" at `./scenes/b.lute:5`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import) (dsl 0.26.0 §2.1)
+./scenes/b.lute:5:3: error [E-STATE-DECL-CONFLICT] state path `run.southFossil` is declared as bool, default false at `./scenes/a.lute:5` but as enum(none|dome|spiral), default "none" at `./scenes/b.lute:5`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import)
 ```
 
 `scene.*` paths are scene-local and exempt, and a declaration that refines one it
@@ -9098,7 +9098,7 @@ Reads are unrestricted: `when="run.day > 1"` and `{{run.day}}` are ordinary read
 
 <!-- lute-diagnostics -->
 ```
-./scenes/hub/day-end.lute:12:8: error [E-ENGINE-OWNED-WRITE] `::set` cannot write `run.day`: it is declared `owner: engine` — the engine writes it and content may only read it; in `lute play` write it with an `engine:` step, in a trace/test with a mock (dsl 0.22.0 §1.2)
+./scenes/hub/day-end.lute:12:8: error [E-ENGINE-OWNED-WRITE] `::set` cannot write `run.day`: it is declared `owner: engine` — the engine writes it and content may only read it; in `lute play` write it with an `engine:` step, in a trace/test with a mock
 ```
 
 `engine` is the only owner a declaration can name: any other `owner:` value is `E-STATE-DECL`, and a path with no `owner:` stays content-written. The key changes who may write the path, not its type, tier, or default. It binds content, so the checker enforces it and it does not reach the compiled artifact: the path's state-table entry is the same with or without it. `lute context` marks such a path `(owner: engine)` in its state listing.
@@ -9267,9 +9267,9 @@ A storm scene asserts `at(elias, gallery)` and `damaged(gallery)`, and `panicked
 
 <!-- lute-diagnostics unverified="verbatim check-project output; the relational E-ARM-DEAD message names its code through the reachability::E_ARM_DEAD constant, so the scraper cannot pair quote and code" -->
 ```
-./scenes/dawn.lute:20:17: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(seenAfter(elias)) && holds(fell(elias))` is provably false — `seenAfter(elias)` and `fell(elias)` can never hold together (`seenAfter` excludes `fell`, dsl 0.25.0 §1) (dsl 0.20.0 §5)
-./scenes/dawn.lute:21:17: warning [W-FACT-GUARANTEED] guard `holds(seenAfter(elias)) && !holds(fell(elias))` is redundant: `!holds(fell(elias))` follows from this guard's `holds(seenAfter(elias))`: `seenAfter` excludes `fell` (dsl 0.25.0 §1) (dsl 0.20.0 §5)
-./scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] `::assert{calm(maren)}` would make `calm(maren)` and `panicked(maren)` both hold: `panicked(maren)` is asserted on every route to here (./scenes/storm.lute:14), and `calm` excludes `panicked` (dsl 0.25.0 §1) — retract `panicked(maren)` first, or assert only where it does not hold
+./scenes/dawn.lute:20:17: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(seenAfter(elias)) && holds(fell(elias))` is provably false — `seenAfter(elias)` and `fell(elias)` can never hold together (`seenAfter` excludes `fell`)
+./scenes/dawn.lute:21:17: warning [W-FACT-GUARANTEED] guard `holds(seenAfter(elias)) && !holds(fell(elias))` is redundant: `!holds(fell(elias))` follows from this guard's `holds(seenAfter(elias))`: `seenAfter` excludes `fell`
+./scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] `::assert{calm(maren)}` would make `calm(maren)` and `panicked(maren)` both hold: `panicked(maren)` is asserted on every route to here (./scenes/storm.lute:14), and `calm` excludes `panicked` — retract `panicked(maren)` first, or assert only where it does not hold
 ```
 
 When both facts are only *possible*, say `panicked(maren)` is asserted down one branch of the storm, there is no static verdict. The walk tools catch it instead, never silently: `lute play` prints `✗ exclusive: calm(maren) and panicked(maren) both hold` under the write that made both hold and halts there (exit 1), and `lute trace` / `lute test` print the same line at the write and refuse the walk with `E-FACT-EXCLUSIVE` (exit 1). Seeded facts that already break an exclusion are refused before anything is walked. A derived relation is covered through its derivations: the check runs after the rules, so a write that makes some rule conclude the excluded partner is caught at that write. See [Playing a story](/tooling/play/#exclusive-relations) and [Tracing](/tooling/tracing/#exclusive-relations).
@@ -9395,7 +9395,7 @@ facts:
 
 <!-- lute-diagnostics -->
 ```
-cr/cyc.lute:13:6: error [E-RULE-AGGREGATE-CYCLE] a rule deriving `popular` counts `known`, which depends on `popular` itself (cycle: `known`, `popular`) — a `count(…)` / `countDistinct(…)` may only read a relation its rule's head does not feed, so the count is final before the head is derived (dsl 0.26.0 §6)
+cr/cyc.lute:13:6: error [E-RULE-AGGREGATE-CYCLE] a rule deriving `popular` counts `known`, which depends on `popular` itself (cycle: `known`, `popular`) — a `count(…)` / `countDistinct(…)` may only read a relation its rule's head does not feed, so the count is final before the head is derived
 ```
 
 That rule was `popular(P) :- person(P), count(known(_, P)) >= 2` beside `known(A, B) :- popular(A), person(B)`. A gate that opens at seven badges is one rule, `canPass(earthGymDoor) :- count(hasBadge(_)) >= 7`, and `lute scenario knowledge` traces the count to the producers of the facts it counts.
@@ -9556,7 +9556,7 @@ The inner guard can only hold, so `check-project` reports it redundant and names
 
 <!-- lute-diagnostics -->
 ```
-./scenes/office.lute:13:21: warning [W-FACT-GUARANTEED] guard `holds(suspects(isolde))` is redundant: `suspects(isolde)` is asserted on every route to here (./lore/harbor.lute:9) (dsl 0.20.0 §5)
+./scenes/office.lute:13:21: warning [W-FACT-GUARANTEED] guard `holds(suspects(isolde))` is redundant: `suspects(isolde)` is asserted on every route to here (./lore/harbor.lute:9)
 ```
 
 Its negation, `!holds(suspects(isolde))`, would be a dead guard. An assert down only one arm of the entry's `<match>` guarantees nothing. `entry.X.everRead` only says the entry was read in some run, possibly an earlier one, so it adds only the entry's `tier: user` and `tier: app` facts, which a new run keeps. A run-tier fact like `suspects` is not added under `everRead`.
@@ -9605,12 +9605,12 @@ The bridge is sequenced `after: 'visited("demo.archive")'` and guards three line
 
 <!-- lute-diagnostics -->
 ```
-./scenes/bridge.lute:10:13: warning [W-FACT-GUARANTEED] guard `holds(knows(player, lumen))` is redundant: `knows(player, lumen)` is asserted on every route to here (./scenes/archive.lute:10) (dsl 0.20.0 §5)
+./scenes/bridge.lute:10:13: warning [W-FACT-GUARANTEED] guard `holds(knows(player, lumen))` is redundant: `knows(player, lumen)` is asserted on every route to here (./scenes/archive.lute:10)
 ```
 
 <!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
 ```
-./scenes/bridge.lute:12:13: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(knows(eris, heading))` is provably false — no seed, assert, rule, or engine relation produces `knows(eris, heading)` under your declared routes (dsl 0.20.0 §5)
+./scenes/bridge.lute:12:13: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(knows(eris, heading))` is provably false — no seed, assert, rule, or engine relation produces `knows(eris, heading)` under your declared routes
 ```
 
 The same two sets decide counts: after the archive, `count(knows(player, _))` lies between 1 and 2, so a guard `count(knows(player, _)) >= 3` is dead and `count(knows(player, _)) >= 1` is redundant.
@@ -9623,7 +9623,7 @@ The converse problem is a relation that is written but never read. `check-projec
 
 <!-- lute-diagnostics -->
 ```
-./world.schema.yaml:9:3: warning [W-RELATION-UNREAD] relation `rumor` is written (asserted, seeded, or derived) but never read: no condition queries it (`holds` / `count`), no rule body uses it, and no def reads it — the facts it records change nothing; read it where it matters, or drop it (dsl 0.24.0)
+./world.schema.yaml:9:3: warning [W-RELATION-UNREAD] relation `rumor` is written (asserted, seeded, or derived) but never read: no condition queries it (`holds` / `count`), no rule body uses it, and no def reads it — the facts it records change nothing; read it where it matters, or drop it
 ```
 
 It is reported once per project, at the declaration: the schema file's line, or the document's own `relations:` key. Play scripts and scenario tests are not reads, so a relation that only a test inspects still draws it. Its companion for defs is `W-DEF-UNUSED` (see [State schemas](/state/schemas/)).
@@ -9773,7 +9773,7 @@ cast:
 
 <!-- lute-diagnostics -->
 ```
-./world.schema.yaml:5:3: warning [W-DEF-UNUSED] def `stale` is declared but no `@stale` reference uses it anywhere in the project (content, other defs, or rule guards); use it or drop it (dsl 0.24.0)
+./world.schema.yaml:5:3: warning [W-DEF-UNUSED] def `stale` is declared but no `@stale` reference uses it anywhere in the project (content, other defs, or rule guards); use it or drop it
 ```
 
 ## Composition: `uses` and `extends`
@@ -9829,7 +9829,7 @@ these is `E-ENTITY-KIND-SHAPE`, naming both files:
 
 <!-- lute-diagnostics -->
 ```
-schema/areas/south.schema.yaml:3:35: error [E-ENTITY-KIND-SHAPE] entity kind `trainer` lists `lassMina` twice — in the `add:` of `schema/areas/east.schema.yaml` (line 7) and in the `add:` of `schema/areas/south.schema.yaml` (line 3); list each member once (dsl 0.26.0 §2.2)
+schema/areas/south.schema.yaml:3:35: error [E-ENTITY-KIND-SHAPE] entity kind `trainer` lists `lassMina` twice — in the `add:` of `schema/areas/east.schema.yaml` (line 7) and in the `add:` of `schema/areas/south.schema.yaml` (line 3); list each member once
 ```
 
 ### Declarations across documents
@@ -10140,10 +10140,10 @@ Since dsl 0.26.0, for a project several authors write at once: `E-STATE-DECL-CON
 
 <!-- lute-diagnostics -->
 ```console
-./scenes/hub/welcome.lute:10:3: error [E-STATE-DECL-CONFLICT] state path `run.mood` is declared as number, default 0 at `./scenes/hub/morning.lute:10` but as enum(calm|tense), default "calm" at `./scenes/hub/welcome.lute:10`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import) (dsl 0.26.0 §2.1)
-./quests/fishing.lute:8:31: error [E-REWARD-TARGET] `goodRodd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets (dsl 0.26.0 §2.5) — did you mean `goodRod`?
-./quests/fishing.lute:9:3: error [E-REWARD-TARGET] `<reward kind="ITEM">` needs a `target=`: the reward kind declares `target: { required: true }` (dsl 0.26.0 §2.5)
-./lore/contest.lute:17:3: warning [W-ENTRY-WRITE-REREAD] `<entry id="deskNote">` has no `once`, so it can be presented again in a run, but its `::set` applies on the first read in a run only (dsl 0.19.0 §6); a write meant to repeat belongs in a `<beat once="false">`, and an entry read once per run says so with `once="run"`
+./scenes/hub/welcome.lute:10:3: error [E-STATE-DECL-CONFLICT] state path `run.mood` is declared as number, default 0 at `./scenes/hub/morning.lute:10` but as enum(calm|tense), default "calm" at `./scenes/hub/welcome.lute:10`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import)
+./quests/fishing.lute:8:31: error [E-REWARD-TARGET] `goodRodd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets — did you mean `goodRod`?
+./quests/fishing.lute:9:3: error [E-REWARD-TARGET] `<reward kind="ITEM">` needs a `target=`: the reward kind declares `target: { required: true }`
+./lore/contest.lute:17:3: warning [W-ENTRY-WRITE-REREAD] `<entry id="deskNote">` has no `once`, so it can be presented again in a run, but its `::set` applies on the first read in a run only; a write meant to repeat belongs in a `<beat once="false">`, and an entry read once per run says so with `once="run"`
 ```
 
 The same release makes the fact analysis behind these passes cost what the project reads, not beats × facts: the seeds' derived closure is prepared once per project root and extended per slot, so on Monster League (818 beats, 211 static facts) `check-project` fell from 6.1 s to about 1.2 s, with the same output.
@@ -10153,7 +10153,7 @@ The same release makes the fact analysis behind these passes cost what the proje
 <!-- lute-diagnostics unverified="verbatim lute check-project --wip output, but the message is composed at runtime: the E-ENTRY-UNREACHABLE literal plus the `--wip` downgrade suffix appended by lute-check, so no single format! literal spans it" -->
 ```console
 $ lute check-project . --wip
-./lore/tomas.lute:22:74: warning [E-ENTRY-UNREACHABLE] entry `noteWanted` is never eligible: its `when` guard `holds(rumor(mara))` is provably false — no seed, assert, rule, or engine relation produces `rumor(mara)` under your declared routes (dsl 0.20.0 §5) — a warning under `--wip`: it is dead only for want of producers not written yet (relations with no seed, assert, rule, or reserved declaration, or written only by a component `::assert` with an unbound `@param`) (dsl 0.23.0 §10, 0.26.0 §2.6)
+./lore/tomas.lute:22:74: warning [E-ENTRY-UNREACHABLE] entry `noteWanted` is never eligible: its `when` guard `holds(rumor(mara))` is provably false — no seed, assert, rule, or engine relation produces `rumor(mara)` under your declared routes — a warning under `--wip`: it is dead only for want of producers not written yet (relations with no seed, assert, rule, or reserved declaration, or written only by a component `::assert` with an unbound `@param`)
 ```
 
 Without `--wip` the same line is an `error` and the command exits **1**; with it the project passes. [`lute scenario knowledge`](/tooling/overviews/#lute-scenario-knowledge) lists every such relation as `NO PRODUCER`. Since 0.23.0 the decider behind these three codes, `E-ARM-DEAD`, and `W-BEAT-PRIORITY-TIE` also reasons per path across `&&`/`||`, so a contradiction such as `run.slot == 'morning' && run.slot == 'evening'` is now reported where 0.22 missed it — see [how a `when` is decided](/language/beats/#how-a-when-is-decided).
@@ -13141,7 +13141,7 @@ lute beats: `--occasion daystart` is not an occasion of this project (known: boa
   "verdicts": [
     {
       "code": "W-BEAT-SHADOWED",
-      "message": "entry `dockEmpty` can never win occasion `placeVisit` for `place.dock`: entry `dockGulls` (priority 0) is ordered before it, is always eligible (no `after:`, and its `when` is absent or always true), and is never spent (an entry without `once`), so it wins every time (dsl 0.21.0 §5)",
+      "message": "entry `dockEmpty` can never win occasion `placeVisit` for `place.dock`: entry `dockGulls` (priority 0) is ordered before it, is always eligible (no `after:`, and its `when` is absent or always true), and is never spent (an entry without `once`), so it wins every time",
       "severity": "warning"
     }
   ]
@@ -13537,7 +13537,7 @@ The calendar compiles the whole project the way `lute play` does, so, unlike `lu
 <!-- lute-diagnostics -->
 ```console
 $ lute calendar . --axis run.day=1..3
-./scenes/dock/storm.lute:7:8: error [E-BEAT-UNREACHABLE] beat `dock.storm` is never eligible: its `when` `run.slot == 'morning' && run.slot == 'evening'` is provably false (dsl 0.21.0 §5)
+./scenes/dock/storm.lute:7:8: error [E-BEAT-UNREACHABLE] beat `dock.storm` is never eligible: its `when` `run.slot == 'morning' && run.slot == 'evening'` is provably false
 ```
 
 Standard error adds `lute play: 1 of 9 document(s) failed to compile; refusing to play`, and the exit is **1**.
@@ -14635,7 +14635,7 @@ A lore document needs `--entry` or `--beat`, and without either the usage error 
 <!-- lute-diagnostics -->
 ```console
 $ lute trace lore/oskar.lute --project . --beat hnut
-lore/oskar.lute:0:0: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id `hnut`; this document declares: oskar.hunt, oskar.rumor (dsl 0.23.0 §4)
+lore/oskar.lute:0:0: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id `hnut`; this document declares: oskar.hunt, oskar.rumor
 ```
 
 `--beat` on a document with no `<beat>` — a scene, say — is `E-TRACE-BEAT` too. [`lute run --beat`](/tooling/cli/#run) presents the same beat from the compiled lore artifact.
@@ -14770,15 +14770,15 @@ A tag no plugin call of the document reads a bridge result through, or a field n
 <!-- lute-diagnostics -->
 ```console
 $ lute trace scenes/gate/guards.lute --project . --mock lack.yaml
-lack.yaml:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }` (dsl 0.25.0 §7)
+lack.yaml:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }`
 trace refused: scenes/gate/guards.lute — invalid mock input
 ```
 
 <!-- lute-diagnostics -->
 ```console
 $ lute trace scenes/gate/guards.lute --project . --mock bad.yaml
-bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` is not compatible with `scene.check.guards.passed`'s declared type (dsl 0.24.0 §5)
-bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` is not compatible with `scene.check.sneak.passed`'s declared type (dsl 0.24.0 §5)
+bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` is not compatible with `scene.check.guards.passed`'s declared type
+bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` is not compatible with `scene.check.sneak.passed`'s declared type
 trace refused: scenes/gate/guards.lute — invalid mock input
 ```
 
@@ -14950,8 +14950,8 @@ trace: scenes/dawn.lute  (seeds: 0 paths, 1 facts; 1 selection)
     ::assert  calm(maren)
     ✗ exclusive: calm(maren) and panicked(maren) both hold
 trace stopped at the `✗ exclusive` line above (exit 1); choices 1/2 (look), arms 1/2 (holds(seenAfter(elias)) && !holds(fell(elias)) @21:1)
-scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] this write makes exclusive relations hold together: calm(maren) and panicked(maren) both hold (dsl 0.25.0 §1)
-trace refused: scenes/dawn.lute — exclusive relations hold together (dsl 0.25.0 §1)
+scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] this write makes exclusive relations hold together: calm(maren) and panicked(maren) both hold
+trace refused: scenes/dawn.lute — exclusive relations hold together
 ```
 
 The exit is **1**, and nothing after the write is walked. A scenario test that reaches such a write fails the same way. When the seeded facts themselves — the mock's `facts:` or `--fact`, the project's `facts:` seeds, and what the rules derive from them — already break an exclusion, trace refuses before the walk starts, with an `E-FACT-EXCLUSIVE` that says so. `check-project` reports the same code statically when the other fact holds on every route to the `::assert`; trace catches the cases that are only possible, such as a fact asserted down one branch of an earlier scene, or supplied by a mock.
@@ -15138,7 +15138,7 @@ first line when neither is spoken:
 <!-- lute-diagnostics -->
 ```console
 $ lute lint .
-lore/trainers.lute:12:3: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one (dsl 0.26.0 §2.8)
+lore/trainers.lute:12:3: warning [W-DISPLAY-NAME-DUP] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one
 ok: . (0 error(s), 1 warning(s))
 ```
 
@@ -15159,7 +15159,7 @@ W-DISPLAY-NAME-DUP`, or `--deny-warnings`, makes it an error and fails the run:
 <!-- lute-diagnostics -->
 ```console
 $ lute lint . --deny W-DISPLAY-NAME-DUP
-lore/trainers.lute:12:3: error [W-DISPLAY-NAME-DUP] [denied] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one (dsl 0.26.0 §2.8)
+lore/trainers.lute:12:3: error [W-DISPLAY-NAME-DUP] [denied] display name `Hiker Gus` is shown for 2 different speakers: `gus` (lore/trainers.lute:12), `r16Gus` (the cast, never spoken) — the dialogue box cannot tell them apart; rename one
 failed: . (1 error(s), 0 warning(s))
 ```
 
@@ -15487,7 +15487,7 @@ state:
 <!-- lute-diagnostics -->
 ```console
 $ lute check scene.lute
-scene.lute:7:3: error [E-STATE-COLLECTION] state path `run.inventory` cannot declare a collection type (`list`/`record`/`map`); author state is scalar (number|bool|string|enum) — model collections as `relations:` (dsl 0.3.0 §3) or a plugin `state_shapes` slot
+scene.lute:7:3: error [E-STATE-COLLECTION] state path `run.inventory` cannot declare a collection type (`list`/`record`/`map`); author state is scalar (number|bool|string|enum) — model collections as `relations:` or a plugin `state_shapes` slot
 failed: scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -15712,7 +15712,7 @@ A range amount (`amount="10..20"`) is the engine's roll, so the toolchain grants
 
 <!-- lute-diagnostics -->
 ```
-./quests/climb.lute:11:11: warning [W-REWARD-DOUBLE-CREDIT] `::set` of `user.embers` in a handler of quest `climb`: its `<reward kind="EMBERS">` already credits `user.embers` when granted, so the player is paid twice — drop the `::set` or the reward (dsl 0.23.0 §8)
+./quests/climb.lute:11:11: warning [W-REWARD-DOUBLE-CREDIT] `::set` of `user.embers` in a handler of quest `climb`: its `<reward kind="EMBERS">` already credits `user.embers` when granted, so the player is paid twice — drop the `::set` or the reward
 ```
 
 A kind without `credits:` hashes exactly as it did before 0.23.0, so adding the key to one kind restamps only the snapshots that declare it.
@@ -15779,7 +15779,7 @@ A value outside the kind is `E-BAD-ENUM`, with a did-you-mean. An attribute type
 <!-- lute-diagnostics unverified="verbatim lute check-project output; the E-DOMAIN-UNKNOWN message spells the type with escaped braces, which the scraper does not read back as a literal" -->
 ```
 ./scenes/mart.lute:9:14: error [E-BAD-ENUM] `potoin` is not a member of entity kind `bagItem` (attribute `item` of `::give`) — did you mean `potion`?
-./scenes/mart.lute:10:22: error [E-DOMAIN-UNKNOWN] attribute `species` of `::encounter` is typed `{ entity: monster }`, but `monster` is not a declared entity kind — declare it under `entities:` in a project schema this document reaches through `uses:` (dsl 0.26.0 §2.5)
+./scenes/mart.lute:10:22: error [E-DOMAIN-UNKNOWN] attribute `species` of `::encounter` is typed `{ entity: monster }`, but `monster` is not a declared entity kind — declare it under `entities:` in a project schema this document reaches through `uses:`
 ```
 
 A value that reaches the attribute through a component param is checked at the `::use` argument, or at the param's `default:` (see [Engine ids through a param](/language/components-and-extends/#engine-ids-through-a-param)). `lute refs <dir> --attr give.item` lists every value with the documents and lines that use it, so a lead sees who gives what before merging several authors' work.
@@ -15806,8 +15806,8 @@ A contract names `entity:` or `provider:`, not both: one with both fails the plu
 
 <!-- lute-diagnostics -->
 ```
-./quests/dex.lute:11:3: error [E-REWARD-TARGET] `<reward kind="ITEM">` needs a `target=`: the reward kind declares `target: { required: true }` (dsl 0.26.0 §2.5)
-./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets (dsl 0.26.0 §2.5) — did you mean `goodRod`?
+./quests/dex.lute:11:3: error [E-REWARD-TARGET] `<reward kind="ITEM">` needs a `target=`: the reward kind declares `target: { required: true }`
+./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets — did you mean `goodRod`?
 ```
 
 Which form to use for ids the engine owns: an **entity kind** when the ids can be listed in the repository and reviewed there (one lead-owned schema such as `schema/items.schema.yaml` above), a **provider** when the engine's catalog is the source of truth and the project checks against a pinned snapshot of it (see [Providers & catalog](/tooling/providers-and-catalog/)). Either way, type the directive attribute and the reward kind by the **same** kind or provider, so `::give{item}` and `<reward kind="ITEM" target>` share one id space, and `lute refs <dir> --attr give.item --reward ITEM` lists both (a reward without a target as `(no target)`).

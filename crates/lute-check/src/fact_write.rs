@@ -55,7 +55,8 @@ pub fn check_assert(
     ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
     check_write(
-        &a.pattern, a.span, /* wildcard_ok = */ false, domains, ctx,
+        &a.pattern, a.span, /* wildcard_ok = */ false, /* reserved_ok = */ false,
+        domains, ctx,
     )
 }
 
@@ -68,7 +69,29 @@ pub fn check_retract(
     ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
     check_write(
-        &r.pattern, r.span, /* wildcard_ok = */ true, domains, ctx,
+        &r.pattern, r.span, /* wildcard_ok = */ true, /* reserved_ok = */ false, domains,
+        ctx,
+    )
+}
+
+/// dsl 0.27.0 §4: a fact a directive's declared `effects.asserts` /
+/// `retracts` writes at one call — the `::assert` / `::retract` checks,
+/// except that a `reserved: true` relation MAY be written: the engine
+/// applies a directive's declared effects itself (the engine seam).
+pub fn check_effect_write(
+    pattern: &FactPattern,
+    span: Span,
+    wildcard_ok: bool,
+    domains: &BTreeMap<String, Domain>,
+    ctx: &Ctx<'_>,
+) -> Vec<Diagnostic> {
+    check_write(
+        pattern,
+        span,
+        wildcard_ok,
+        /* reserved_ok = */ true,
+        domains,
+        ctx,
     )
 }
 
@@ -79,6 +102,7 @@ fn check_write(
     pattern: &FactPattern,
     span: Span,
     wildcard_ok: bool,
+    reserved_ok: bool,
     domains: &BTreeMap<String, Domain>,
     ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
@@ -117,7 +141,7 @@ fn check_write(
             span,
         )];
     }
-    if decl.reserved {
+    if decl.reserved && !reserved_ok {
         return vec![diag(
             E_RELATION_RESERVED_WRITE,
             format!(

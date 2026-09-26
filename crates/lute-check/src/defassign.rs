@@ -1154,6 +1154,8 @@ fn has_default(path: &str, schema: &StateSchema) -> bool {
         || is_reserved_entry_read(path)
         // dsl 0.26.0 §5: bound whenever a kind beat runs.
         || path == crate::beats::OCCASION_TARGET
+        // dsl 0.27.0 §3: bound by the raise its beat answers.
+        || path.starts_with(&format!("{}.", crate::occasion_bind::OCCASION_PAYLOAD))
         || schema
             .decls
             .iter()

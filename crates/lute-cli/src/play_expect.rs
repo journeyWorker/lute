@@ -3,9 +3,13 @@
 //! A play step MAY carry `expect: { winner, offered, notOffered, presented,
 //! quests, state, facts, notFacts }` and a script MAY carry a top-level
 //! `expect: { exit, quests, state, facts, notFacts, transcriptContains,
-//! transcriptLacks }`. The first four step keys judge an `occasion` step's
-//! selection; the world keys (`quests`, `state`, `facts`, `notFacts`, 0.23.1)
-//! judge the world right after the step settled, on any step kind.
+//! transcriptLacks }`. The first four step keys judge a step's selection:
+//! an `occasion` step's, or what an `advance:` step raised — `presented`
+//! every raise in order (each midnight's `dayEnd` / `dayStart`, then the
+//! slot occasion), `winner` / `offered` / `notOffered` its last raise, where
+//! the clock stops (dsl 0.27.0, T3-8). The world keys (`quests`, `state`,
+//! `facts`, `notFacts`, 0.23.1) judge the world right after the step
+//! settled, on any step kind.
 //! [`crate::play`] parses the script, calls [`validate`] on every `expect:`
 //! at parse time (an unknown key or a malformed value is a usage error, exit
 //! 2), walks the play, fills a [`PlayOutcome`] and hands both to [`check`].
@@ -39,7 +43,7 @@ pub(crate) const STEP_EXPECT_KEYS: &[&str] = &[
 ];
 
 /// The step keys that judge an occasion's selection — legal only on an
-/// `occasion` step.
+/// `occasion` or `advance` step.
 const OCCASION_STEP_KEYS: &[&str] = &["notOffered", "offered", "presented", "winner"];
 
 /// The keys that judge the world (state, facts, quest statuses, the clock)
@@ -117,8 +121,12 @@ pub(crate) struct StepOutcome {
     /// Every eligible beat id, in presentation order.
     pub offered: Vec<String>,
     /// Every presented beat id, in presentation order (dsl 0.23.0 §3: the
-    /// winner and its `also` riders, or a `select: sequence`'s beats).
+    /// winner and its `also` riders, or a `select: sequence`'s beats; an
+    /// `advance:`'s every raise, dsl 0.27.0 T3-8).
     pub presented: Vec<String>,
+    /// dsl 0.27.0 (T3-8): on an `advance:` step, per presented beat the
+    /// raise that presented it (`dayEnd at day 3 night`); empty otherwise.
+    pub presented_from: Vec<String>,
     /// The world right after the step settled — captured only when the
     /// step's `expect:` judges it ([`wants_world`]).
     pub world: Option<WorldView>,
@@ -141,6 +149,10 @@ pub(crate) struct PlayOutcome {
     /// or a note) — what `transcriptContains` / `transcriptLacks` match, the
     /// same canonical form `lute test` matches a scene walk against.
     pub said: String,
+    /// The index of each step's first line in `said` — a miss's nearest
+    /// line prefers the step the needle's other lines were said in (round-5
+    /// T3-16).
+    pub said_steps: Vec<usize>,
     /// `complete | incomplete | error`.
     pub exit: &'static str,
     /// dsl 0.26.0 §7 (T3-10): `<document id>.<entry id>` -> the entry id —
@@ -560,10 +572,22 @@ fn check_step(
             );
         }
     }
-    // dsl 0.23.0 §3: the exact presentation order.
+    // dsl 0.23.0 §3: the exact presentation order. On an `advance:` step
+    // every raise's presentations, each named by its raise (T3-8).
     if let Some(want) = ids("presented") {
         if want != row.presented {
-            miss("presented".into(), list(&want), list(&row.presented));
+            let actual = if row.presented_from.len() == row.presented.len() {
+                let tagged: Vec<String> = row
+                    .presented
+                    .iter()
+                    .zip(&row.presented_from)
+                    .map(|(id, from)| format!("{id} ({from})"))
+                    .collect();
+                list(&tagged)
+            } else {
+                list(&row.presented)
+            };
+            miss("presented".into(), list(&want), actual);
         }
     }
     // dsl 0.24.0 (T3-10): the options a branch/hub offered in this step, as
@@ -741,8 +765,12 @@ fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
             continue;
         };
         for sub in want {
-            if let Some(actual) = lute_trace::exec::record::judge(&outcome.said, &sub, want_present)
-            {
+            if let Some(actual) = lute_trace::exec::record::judge(
+                &outcome.said,
+                &outcome.said_steps,
+                &sub,
+                want_present,
+            ) {
                 miss(
                     key.to_string(),
                     format!(
@@ -805,6 +833,7 @@ mod tests {
             winner: winner.map(str::to_string),
             offered: offered.iter().map(|s| s.to_string()).collect(),
             presented: winner.into_iter().map(str::to_string).collect(),
+            presented_from: Vec::new(),
             world: None,
             options: BTreeMap::new(),
         }
@@ -831,6 +860,7 @@ mod tests {
                 clock: None,
             },
             said: "@oskar: Welcome back.\n".into(),
+            said_steps: vec![0, 1],
             exit: "complete",
             entry_aliases: BTreeMap::new(),
         }

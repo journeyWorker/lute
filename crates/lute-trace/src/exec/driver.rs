@@ -86,12 +86,64 @@ pub struct MenuOption {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Verdict {
     Open,
-    /// Its guard decided false.
-    Closed,
+    /// Its guard decided false. Where a scripted pick of it is ruled on
+    /// ([`Driver::forced`]) the reads the guard is false over are named
+    /// (round-5 T3-12): what a mock would have to change to open it. Empty
+    /// on a menu, where nothing needs them.
+    Closed(Vec<GuardRead>),
     /// Its guard is undecided; the atoms say why.
     Unknown(Vec<UnresolvedAtom>),
     /// A hub `once` option already taken in this visit of the hub.
     Spent,
+}
+
+/// One read of a guard that decided false, as the premise a refusal names
+/// (round-5 T3-12): a state path (with the value it held), a fact pattern
+/// that does not hold, a scene `visited(…)` has not seen.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GuardRead {
+    Path(String, crate::Value),
+    Fact(String),
+    Visited(String),
+}
+
+impl GuardRead {
+    /// What the guard found: "`run.x` is 3", "`found(receipt)` does not
+    /// hold", "scene `a` is not visited".
+    pub fn found(&self) -> String {
+        match self {
+            GuardRead::Path(p, v) => match crate::report::value_text(v) {
+                Some(t) => format!("`{p}` is {t}"),
+                None => format!("`{p}` is unset"),
+            },
+            GuardRead::Fact(f) => format!("`{f}` does not hold"),
+            GuardRead::Visited(k) => format!("scene `{k}` is not visited"),
+        }
+    }
+
+    /// The mock entry that changes it, in the YAML key spelling a play
+    /// script, a `*.test.yaml` and a `--mock` file share.
+    pub fn yaml_mock(&self) -> String {
+        match self {
+            GuardRead::Path(p, _) => match crate::exec::session::quest_state_id(p) {
+                Some(q) => format!("`quests: {{ {q}: <state> }}`"),
+                None => format!("`state: {{ {p}: <value> }}`"),
+            },
+            GuardRead::Fact(f) => format!("`facts: [{f}]`"),
+            GuardRead::Visited(k) => format!("`visited: [{k}]`"),
+        }
+    }
+}
+
+/// The premise a refused pick of a guard-closed option names: every read
+/// the guard is false over with the mock that changes it (`hint`), `; `-
+/// joined — empty when the guard reads nothing a mock can change.
+pub fn guard_premise(reads: &[GuardRead], hint: impl Fn(&GuardRead) -> String) -> String {
+    reads
+        .iter()
+        .map(|r| format!("{} (mock {})", r.found(), hint(r)))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// The driver's answer to a [`Menu`].

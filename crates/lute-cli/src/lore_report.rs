@@ -42,7 +42,6 @@ use std::process::ExitCode;
 use lute_core_span::Severity;
 use lute_syntax::ast::{Arm, Document, Node};
 use lute_syntax::datalog::{FactPattern, FactTerm};
-use rayon::prelude::*;
 use serde::Serialize;
 
 /// One lore entry, or one beat, as the report lists it.
@@ -143,11 +142,16 @@ enum Source<'a> {
     Document,
 }
 
-/// Every well-formed ground `::assert` pattern in `nodes`, recursing into
+/// Every well-formed ground `::assert` pattern in `nodes` — and (dsl 0.27.0
+/// §4) every directive call's declared `effects.asserts` — recursing into
 /// every body that can hold one (choice, hub choice, match arm, objective,
 /// `<on>`). Parse-failed sentinels (empty relation) and patterns with a `_`
 /// (a checker error in an assert) are skipped.
-fn collect_asserts(nodes: &[Node], out: &mut Vec<String>) {
+fn collect_asserts(
+    nodes: &[Node],
+    effects: &lute_check::directive_facts::EffectDirectives,
+    out: &mut Vec<String>,
+) {
     for node in nodes {
         match node {
             Node::Assert(a) => {
@@ -155,32 +159,37 @@ fn collect_asserts(nodes: &[Node], out: &mut Vec<String>) {
                     out.push(fact);
                 }
             }
+            Node::Directive(d) => {
+                let facts = lute_check::directive_facts::lookup(effects, d);
+                out.extend(
+                    facts
+                        .iter()
+                        .flat_map(|f| &f.asserts)
+                        .filter_map(ground_fact),
+                );
+            }
             Node::Branch(b) => {
                 for c in &b.choices {
-                    collect_asserts(&c.body, out);
+                    collect_asserts(&c.body, effects, out);
                 }
             }
             Node::Hub(h) => {
                 for c in &h.choices {
-                    collect_asserts(&c.body, out);
+                    collect_asserts(&c.body, effects, out);
                 }
             }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_asserts(body, out)
+                            collect_asserts(body, effects, out)
                         }
                     }
                 }
             }
-            Node::Objective(o) => collect_asserts(&o.body, out),
-            Node::On(o) => collect_asserts(&o.body, out),
-            Node::Line(_)
-            | Node::Directive(_)
-            | Node::Set(_)
-            | Node::Timeline(_)
-            | Node::Retract(_) => {}
+            Node::Objective(o) => collect_asserts(&o.body, effects, out),
+            Node::On(o) => collect_asserts(&o.body, effects, out),
+            Node::Line(_) | Node::Set(_) | Node::Timeline(_) | Node::Retract(_) => {}
         }
     }
 }
@@ -205,6 +214,7 @@ fn ground_fact(p: &FactPattern) -> Option<String> {
 fn fold_document(
     document: &str,
     doc: &Document,
+    effects: &lute_check::directive_facts::EffectDirectives,
     entries: &mut Vec<EntryRow>,
     facts: &mut BTreeMap<String, BTreeMap<String, Sources>>,
 ) {
@@ -219,10 +229,10 @@ fn fold_document(
     };
     let mut scene_facts = Vec::new();
     for shot in &doc.shots {
-        collect_asserts(&shot.body, &mut scene_facts);
+        collect_asserts(&shot.body, effects, &mut scene_facts);
     }
     for quest in &doc.quests {
-        collect_asserts(&quest.body, &mut scene_facts);
+        collect_asserts(&quest.body, effects, &mut scene_facts);
     }
     for fact in scene_facts {
         record(fact, Source::Document);
@@ -250,7 +260,7 @@ fn fold_document(
     let resolved = lute_check::resolve_entry_series(doc_series.as_deref(), &doc.entries);
     for (entry, position) in doc.entries.iter().zip(resolved) {
         let mut entry_facts = Vec::new();
-        collect_asserts(&entry.body, &mut entry_facts);
+        collect_asserts(&entry.body, effects, &mut entry_facts);
         for fact in entry_facts {
             record(fact, Source::Entry(&entry.id));
         }
@@ -282,7 +292,7 @@ fn fold_document(
             None => beat.id.clone(),
         };
         let mut beat_facts = Vec::new();
-        collect_asserts(&beat.body, &mut beat_facts);
+        collect_asserts(&beat.body, effects, &mut beat_facts);
         for fact in beat_facts {
             record(fact, Source::Beat(&id));
         }
@@ -528,20 +538,30 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    // Every file reads and parses independently: in parallel, then folded in
-    // walk order, so messages, early exits, and the report are the sequential ones.
-    let parsed: Vec<std::io::Result<(Document, usize)>> = files
-        .par_iter()
-        .map(|path| {
-            let text = std::fs::read_to_string(path)?;
-            let (doc, diags) = lute_syntax::parse(&text);
-            let errors = diags
-                .iter()
-                .filter(|d| d.severity == Severity::Error)
-                .count();
-            Ok((doc, errors))
+    // Every file reads and parses independently (desugared as every pass
+    // reads it, dsl 0.27.0 §6/§8), then folded in walk order, so messages,
+    // early exits, and the report are the sequential ones.
+    let parsed: Vec<std::io::Result<(Document, usize)>> = crate::parse_project_docs(dir, &files)
+        .into_iter()
+        .map(|r| {
+            r.map(|(doc, diags)| {
+                let errors = diags
+                    .iter()
+                    .filter(|d| d.severity == Severity::Error)
+                    .count();
+                (doc, errors)
+            })
         })
         .collect();
+    // dsl 0.24.0 T3-2: the conclusions the rules can reach, over the same
+    // per-root collection `lute scenario knowledge` reads — which also
+    // resolves each directive call's declared facts (dsl 0.27.0 §4).
+    let (_, by_root) = match crate::collect_project_docs(dir, None, false) {
+        Ok(c) => c,
+        Err(code) => return code,
+    };
+    let effects =
+        lute_check::directive_facts::root_table(by_root.values().flatten().map(|(_, _, f)| f));
     let mut entries = Vec::new();
     let mut facts = BTreeMap::new();
     for (path, parsed) in files.iter().zip(parsed) {
@@ -560,15 +580,9 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
             continue;
         }
         let document = path.strip_prefix(dir).unwrap_or(path).display().to_string();
-        fold_document(&document, &doc, &mut entries, &mut facts);
+        fold_document(&document, &doc, &effects, &mut entries, &mut facts);
     }
     let mut report = build_report(entries, facts);
-    // dsl 0.24.0 T3-2: the conclusions the rules can reach, over the same
-    // per-root collection `lute scenario knowledge` reads.
-    let (_, by_root) = match crate::collect_project_docs(dir, None, false) {
-        Ok(c) => c,
-        Err(code) => return code,
-    };
     for k in crate::knowledge::collect(&by_root) {
         report.derived.extend(
             crate::knowledge::derived(&k)

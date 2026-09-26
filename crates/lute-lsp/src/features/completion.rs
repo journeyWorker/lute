@@ -145,10 +145,11 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("start", "cel<bool>"),
             ("fail", "cel<bool>"),
             ("after", "prereq"),
-            ("tier", "\"user\" | \"run\""),
+            ("tier", "\"user\" | \"run\" | \"season:<name>\""),
             ("activate", "\"accept\""),
             ("complete", "\"all\" | \"any\""),
             ("accept", "\"external\""),
+            ("rearm", "cel<bool>"),
         ],
         QuestConstruct::On => &[
             ("event", "string"),
@@ -177,8 +178,13 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("when", "cel<bool>"),
             ("on", "string"),
             ("priority", "integer"),
-            ("once", "\"run\" | \"user\" | \"day\" | \"slot\""),
+            (
+                "once",
+                "\"run\" | \"user\" | \"day\" | \"week\" | \"slot\" | \"season:<name>\"",
+            ),
             ("share", "string"),
+            ("spentBy", "cel<bool>"),
+            ("for", "\"kind:<kind>\""),
         ],
         QuestConstruct::Beat => &[
             ("id", "string"),
@@ -189,11 +195,14 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("priority", "integer"),
             (
                 "once",
-                "\"run\" | \"user\" | \"false\" | \"day\" | \"slot\"",
+                "\"run\" | \"user\" | \"false\" | \"day\" | \"week\" | \"slot\" | \"season:<name>\"",
             ),
             ("also", "bool"),
             ("share", "string"),
+            ("spentBy", "cel<bool>"),
             ("after", "prereq"),
+            ("use", "component (beat template)"),
+            ("for", "\"kind:<kind>\""),
         ],
         QuestConstruct::Hub => &[("id", "string"), ("prompt", "string")],
     }
@@ -1575,7 +1584,7 @@ mod tests {
         let once = items.iter().find(|i| i.label == "once").unwrap();
         assert_eq!(
             once.detail.as_deref(),
-            Some("\"run\" | \"user\" | \"false\" | \"day\" | \"slot\"")
+            Some("\"run\" | \"user\" | \"false\" | \"day\" | \"week\" | \"slot\" | \"season:<name>\"")
         );
     }
 

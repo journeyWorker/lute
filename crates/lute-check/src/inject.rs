@@ -847,8 +847,8 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
 /// The code is reused, not minted: this IS "a domain slot is used but no source
 /// declares the domain", the whole meaning of `E-DOMAIN-UNKNOWN` — merely used
 /// implicitly rather than spelled out. A separate code would split one fact
-/// across two names and need registering in the CLI's `DENIABLE_CODES`, where
-/// `E-DOMAIN-UNKNOWN` already sits.
+/// across two names and need registering in the CLI's code registry
+/// (`crates/lute-cli/src/codes.rs`), where `E-DOMAIN-UNKNOWN` already sits.
 fn missing_anchor_domain_diag(character: &str, span: Span) -> Diagnostic {
     Diagnostic {
         code: "E-DOMAIN-UNKNOWN".to_string(),

@@ -111,6 +111,8 @@ pub struct ExecProject {
     /// Prerelease N8: cast id -> display name, unioned across the documents
     /// — how `{{occasion.target}}` renders a member that is a cast id.
     pub display_names: BTreeMap<String, String>,
+    /// dsl 0.27.0 §5: the seasons and quest rearms the session observes.
+    pub cadence: crate::exec::cadence::CadencePlan,
 }
 
 impl ExecProject {
@@ -372,6 +374,7 @@ impl ExecProject {
                     EntityKindDecl {
                         shape,
                         subset_of: None,
+                        labels: k.labels.clone(),
                     },
                 )
             })
@@ -392,6 +395,8 @@ impl ExecProject {
             result_types: bridge_types.result_types,
             ..BridgeReads::of(artifacts.values())
         });
+        let cadence =
+            crate::exec::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table);
         Ok(ExecProject {
             artifacts,
             authored,
@@ -415,6 +420,7 @@ impl ExecProject {
             kinds,
             bridge_reads,
             display_names,
+            cadence,
         })
     }
 
@@ -438,6 +444,47 @@ impl ExecProject {
     /// resolves to its entry id; every other id is itself.
     pub fn entry_id<'a>(&'a self, id: &'a str) -> &'a str {
         self.entry_aliases.get(id).map_or(id, String::as_str)
+    }
+
+    /// The beat row `id` is judged by ([`judge_beat`]): its
+    /// `ProjectIndex.beats` row, else — an `<entry>` that answers no
+    /// occasion, which `lute trace --entry` / `lute test` still present — a
+    /// row read off its `entry` record (its `once`, `share`, `spentBy`;
+    /// `when` is read off the record by [`beat_when`]).
+    pub fn lore_beat(&self, id: &str) -> Option<IndexBeat> {
+        if let Some(b) = self.index.beats.iter().find(|b| b.id == id) {
+            return Some(b.clone());
+        }
+        let (document, cmd) = self.artifacts.iter().find_map(|(rel, art)| {
+            let cmd = art.get("commands")?.as_array()?.iter().find(|c| {
+                c.get("kind").and_then(Json::as_str) == Some("entry")
+                    && c.get("id").and_then(Json::as_str) == Some(id)
+            })?;
+            Some((rel.clone(), cmd))
+        })?;
+        let text = |key: &str| cmd.get(key).and_then(Json::as_str).map(str::to_string);
+        Some(IndexBeat {
+            id: id.to_string(),
+            kind: BeatKind::Entry,
+            document,
+            on: String::new(),
+            target: None,
+            priority: 0,
+            once: cmd
+                .get("once")
+                .and_then(Json::as_str)
+                .and_then(lute_check::BeatOnce::parse)
+                .map(BeatOnce::from),
+            when: None,
+            title: None,
+            share: text("share"),
+            target_kind: None,
+            for_kind: None,
+            spent_by: cmd
+                .pointer("/spentBy/raw")
+                .and_then(Json::as_str)
+                .map(str::to_string),
+        })
     }
 }
 
@@ -505,6 +552,66 @@ pub fn typed_literal(entry: &Json, lit: &str) -> Result<Value, String> {
         }
         _ => Ok(Value::Str(lit.to_string())),
     }
+}
+
+/// dsl 0.27.0 §3: a payload literal against its declared type — the
+/// [`typed_literal`] rule over a manifest [`lute_manifest::types::Type`].
+pub fn payload_value(ty: &lute_manifest::types::Type, lit: &str) -> Result<Value, String> {
+    use lute_manifest::types::Type;
+    match ty {
+        Type::Bool => typed_literal(&serde_json::json!({ "type": "bool" }), lit),
+        Type::Number => typed_literal(&serde_json::json!({ "type": "number" }), lit),
+        Type::Enum(members) => typed_literal(
+            &serde_json::json!({ "type": "enum", "domain": members }),
+            lit,
+        ),
+        _ => Ok(Value::Str(lit.to_string())),
+    }
+}
+
+/// dsl 0.27.0 §3: a raise's payload as authored (`copies: 2`), each field
+/// typed by `occasion`'s `payload:` declaration — keyed by its
+/// `occasion.payload.<field>` path. `Err` names an occasion without a
+/// payload, an undeclared field, or a value its type refuses.
+pub fn typed_payload(
+    p: &ExecProject,
+    occasion: &str,
+    fields: &[(String, String)],
+) -> Result<BTreeMap<String, Value>, String> {
+    let mut out = BTreeMap::new();
+    if fields.is_empty() {
+        return Ok(out);
+    }
+    let declared = p
+        .occasions
+        .get(occasion)
+        .map(|d| &d.payload)
+        .filter(|p| !p.is_empty());
+    let Some(declared) = declared else {
+        return Err(format!(
+            "`payload` — occasion `{occasion}` declares no `payload:`"
+        ));
+    };
+    for (field, lit) in fields {
+        let Some(ty) = declared.get(field) else {
+            return Err(format!(
+                "`payload.{field}` — occasion `{occasion}` declares no payload field `{field}` \
+                 (declared: {})",
+                declared
+                    .keys()
+                    .map(|k| format!("`{k}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        };
+        let value =
+            payload_value(ty, lit).map_err(|why| format!("`payload.{field}: {lit}` — {why}"))?;
+        out.insert(
+            format!("{}.{field}", lute_check::occasion_bind::OCCASION_PAYLOAD),
+            value,
+        );
+    }
+    Ok(out)
 }
 
 /// The entry id and flag of a reserved `entry.<id>.read` /
@@ -650,8 +757,7 @@ pub fn resolve_bridges(
                 );
                 return Err(format!(
                     "{at}: `bridges.{tag}` answer {n} lacks `{missing}`, which content reads — an \
-                     answer gives every bridge result `::{tag}` content reads: `{shape}` (dsl \
-                     0.25.0 §7)"
+                     answer gives every bridge result `::{tag}` content reads: `{shape}`"
                 ));
             }
         }
@@ -730,7 +836,7 @@ pub fn is_candidate(b: &IndexBeat, occasion: &str, target: Option<&str>) -> bool
 // ===========================================================================
 
 /// Everything that carries from one step to the next.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct World {
     /// Persistent-tier state (`run.*`/`user.*`/`app.*`/`quest.*`/`entry.*`);
     /// `scene.*` never lives here — it resets at every scene boundary.
@@ -789,6 +895,13 @@ pub struct World {
     /// occasion's beats ([`run_deferred_handlers`]).
     pub defer_handlers: bool,
     pub deferred_handlers: Vec<(String, String)>,
+    /// dsl 0.27.0 §4 (T2-5): a finite clock raised its last `dayEnd` and
+    /// stopped — every later `advance:` is `E-CLOCK-END`. Cleared by a
+    /// `newRun`, which starts the clock over.
+    pub clock_ended: bool,
+    /// dsl 0.27.0 §5: the seasons' and rearms' last observed conditions and
+    /// the season-scoped spends.
+    pub cadence: crate::exec::cadence::Cadence,
 }
 
 impl World {
@@ -853,7 +966,7 @@ impl Driver for PlayDriver {
 
     fn forced(&mut self, _menu: &Menu<'_>, _option: &str, verdict: &OptionVerdict) -> Forced {
         match verdict {
-            OptionVerdict::Spent | OptionVerdict::Closed => Forced::Refuse,
+            OptionVerdict::Spent | OptionVerdict::Closed(_) => Forced::Refuse,
             OptionVerdict::Open | OptionVerdict::Unknown(_) => Forced::Take,
         }
     }
@@ -1043,6 +1156,8 @@ pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, String
         defer_by: None,
         defer_handlers: false,
         deferred_handlers: Vec::new(),
+        clock_ended: false,
+        cadence: Default::default(),
     };
     for (path, e) in &p.state_table {
         if path.starts_with("scene.") {
@@ -1216,29 +1331,14 @@ pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunRe
         .collect();
     let mut reset_quests = Vec::new();
     for (id, objectives) in &p.run_quests {
-        let was = w.quests.insert(id.clone(), "unset".to_string());
-        if let Some(status) = was.filter(|s| s != "unset") {
+        if let Some(status) = crate::exec::cadence::reset_quest(w, id, objectives) {
             reset_quests.push((id.clone(), status));
         }
-        w.state
-            .insert(format!("quest.{id}.state"), Value::Str("unset".to_string()));
-        w.state.remove(&format!("quest.{id}.activatedAt"));
-        // dsl 0.24.0 §2: the failure reasons reset with the quest.
-        w.state.remove(&format!("quest.{id}.failedBy"));
-        for oid in objectives {
-            w.state.insert(
-                format!("quest.{id}.objectives.{oid}.done"),
-                Value::Bool(false),
-            );
-            w.state
-                .remove(&format!("quest.{id}.objectives.{oid}.failed"));
-        }
-        // dsl 0.23.0 §2: a run-tier quest's missed deadlines reset with it.
-        let prefix = format!("{id}.");
-        w.failed_objectives.retain(|k| !k.starts_with(&prefix));
     }
     w.spent_run.clear();
     w.spent_at.clear();
+    // dsl 0.27.0 §4: a new run starts a finite clock over.
+    w.clock_ended = false;
     // dsl 0.24.0 §2: acceptances queued for the next run apply now, after
     // the reset, so a run-tier quest taken between runs survives it.
     let accepted = std::mem::take(&mut w.next_run_accepts);
@@ -1480,7 +1580,7 @@ pub fn outcome_halt(outcome: &Walked, what: &str, doc_json: &Json) -> Option<Pla
                     || c.get("failed").is_some_and(Json::is_null))
         }) {
             let slot = if rec.get("failed").is_some_and(Json::is_null) {
-                "`by` condition (dsl 0.23.0 §2)"
+                "`by` condition"
             } else {
                 "`done` condition"
             };
@@ -1564,7 +1664,9 @@ pub struct QuestAdvance {
 /// another's state. The pending accepts (§7a.3) ride every pass and are
 /// spent once the lifecycle settles.
 pub fn advance_quests(p: &ExecProject, w: &mut World) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
-    let mut out = Vec::new();
+    // dsl 0.27.0 §5: seasons opening and quests rearming since the last
+    // settle apply first, so the fixpoint below starts from them.
+    let mut out = crate::exec::cadence::observe(p, w);
     let passes = p.quest_docs.len() * 8 + 8;
     for _ in 0..passes {
         let (moved, stop) = advance_pass(p, w, None, &mut out);
@@ -1574,6 +1676,9 @@ pub fn advance_quests(p: &ExecProject, w: &mut World) -> (Vec<QuestAdvance>, Opt
         if !moved {
             break;
         }
+        // A pass that moved a quest may flip a `rearm` or a season's `live`
+        // reading it: observed before the next pass.
+        out.extend(crate::exec::cadence::observe(p, w));
     }
     // dsl 0.24.0 §2 (ER N15): an accept of an `activate="accept"` child
     // while its parent is not active is spent — the transcript says so.
@@ -1806,9 +1911,44 @@ pub fn walk_stop(
 /// A candidate's verdict (dsl 0.21.0 §4).
 pub enum Verdict {
     Eligible,
-    Ineligible(String),
-    /// `when` evaluated unknown — the detail names why.
+    /// A premise decided false — the first in judgment order.
+    Ineligible(Premise),
+    /// Nothing decided false, but a premise (`after`, `spentBy`, `when`) is
+    /// undecided — the detail names why.
     Unknown(String),
+}
+
+/// The premise that makes a beat ineligible (round-5 T3-12), structured
+/// so each tool names it in its own words. `Display` is `lute play`'s and
+/// `lute calendar`'s reason text.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Premise {
+    /// Its `once` is spent (by a presentation, a read, a clock period, a
+    /// season window or a `share` sibling); `reason` says which.
+    Spent {
+        once: Option<BeatOnce>,
+        reason: String,
+    },
+    /// Its `after:` / `after=` does not hold: `raw` as authored, `unmet`
+    /// the atoms the world does not satisfy.
+    After {
+        raw: String,
+        unmet: Vec<lute_check::prereq::Atom>,
+    },
+    /// dsl 0.27.0 §5: its `spentBy` condition holds.
+    SpentBy(String),
+    /// Its `when` decided false (`raw`: the compiled condition).
+    When { raw: String },
+}
+
+impl std::fmt::Display for Premise {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Premise::Spent { reason, .. } | Premise::SpentBy(reason) => f.write_str(reason),
+            Premise::After { .. } => f.write_str("after: prerequisite not satisfied"),
+            Premise::When { .. } => f.write_str("when: false"),
+        }
+    }
 }
 
 pub struct Candidate {
@@ -1823,6 +1963,9 @@ pub struct Candidate {
     /// dsl 0.23.0 §3: a scene beat's `also: true` — presented after the
     /// `select: first` winner, never the winner itself.
     pub also: bool,
+    /// dsl 0.27.0 §3 (T2-10): the member a `for="kind:<kind>"` beat's
+    /// candidate is judged (and presented) for; `None` for any other beat.
+    pub for_member: Option<String>,
 }
 
 pub fn kind_label(kind: BeatKind) -> &'static str {
@@ -1838,16 +1981,7 @@ pub fn kind_label(kind: BeatKind) -> &'static str {
 /// checker's restricted profile parser the compile gate already proved it
 /// well-formed under.
 pub fn beat_prereq(doc_json: &Json, id: &str) -> Option<PrereqFormula> {
-    let raw = doc_json
-        .get("prereqEdges")
-        .and_then(Json::as_array)?
-        .iter()
-        .find(|e| e.get("node").and_then(Json::as_str) == Some(id))?
-        .get("after")
-        .and_then(Json::as_str)?;
-    if raw.trim().is_empty() {
-        return None;
-    }
+    let raw = beat_prereq_raw(doc_json, id)?;
     let span = lute_core_span::Span {
         byte_start: 0,
         byte_end: 0,
@@ -1858,14 +1992,66 @@ pub fn beat_prereq(doc_json: &Json, id: &str) -> Option<PrereqFormula> {
     lute_check::parse_prereq(raw, span).0
 }
 
-pub fn eval_prereq(f: &PrereqFormula, w: &World) -> bool {
+/// The `after` text of the beat's `prereqEdges` row, blank → `None`.
+fn beat_prereq_raw<'a>(doc_json: &'a Json, id: &str) -> Option<&'a str> {
+    doc_json
+        .get("prereqEdges")
+        .and_then(Json::as_array)?
+        .iter()
+        .find(|e| e.get("node").and_then(Json::as_str) == Some(id))?
+        .get("after")
+        .and_then(Json::as_str)
+        .filter(|raw| !raw.trim().is_empty())
+}
+
+/// A prerequisite over the world, three-valued: `visited(K)` reads the
+/// presented set; `completed(Q)` / `active(Q)` the quest's state — `unset`
+/// for a quest the project declares that the world holds no state for, and
+/// undecided (`Err`, the `quest.<Q>.state` read) for one it does not
+/// declare (a single-document trace of a scene gated on another
+/// document's quest).
+pub fn eval_prereq(
+    p: &ExecProject,
+    f: &PrereqFormula,
+    w: &World,
+) -> Result<bool, Vec<UnresolvedAtom>> {
+    let quest = |q: &String, want: &str| match w.quests.get(q) {
+        Some(s) => Ok(s == want),
+        None if p.quest_objectives.contains_key(q) => Ok(want == "unset"),
+        None => Err(vec![UnresolvedAtom::Path(format!("quest.{q}.state"))]),
+    };
     match f {
-        PrereqFormula::Visited(k) => w.visited.contains(k),
-        PrereqFormula::Completed(q) => w.quests.get(q).map(String::as_str) == Some("complete"),
-        PrereqFormula::Active(q) => w.quests.get(q).map(String::as_str) == Some("active"),
-        PrereqFormula::And(a, b) => eval_prereq(a, w) && eval_prereq(b, w),
-        PrereqFormula::Or(a, b) => eval_prereq(a, w) || eval_prereq(b, w),
+        PrereqFormula::Visited(k) => Ok(w.visited.contains(k)),
+        PrereqFormula::Completed(q) => quest(q, "complete"),
+        PrereqFormula::Active(q) => quest(q, "active"),
+        PrereqFormula::And(a, b) => match (eval_prereq(p, a, w), eval_prereq(p, b, w)) {
+            (Ok(false), _) | (_, Ok(false)) => Ok(false),
+            (Ok(true), Ok(true)) => Ok(true),
+            (x, y) => Err(x.err().into_iter().chain(y.err()).flatten().collect()),
+        },
+        PrereqFormula::Or(a, b) => match (eval_prereq(p, a, w), eval_prereq(p, b, w)) {
+            (Ok(true), _) | (_, Ok(true)) => Ok(true),
+            (Ok(false), Ok(false)) => Ok(false),
+            (x, y) => Err(x.err().into_iter().chain(y.err()).flatten().collect()),
+        },
     }
+}
+
+/// The atoms of `f` the world does not satisfy — what a mock would have to
+/// add for the prerequisite to hold.
+fn unmet_prereq(p: &ExecProject, f: &PrereqFormula, w: &World) -> Vec<lute_check::prereq::Atom> {
+    use lute_check::prereq::Atom;
+    lute_check::prereq::atoms(f)
+        .into_iter()
+        .filter(|a| {
+            let holds = match a {
+                Atom::Visited(k) => PrereqFormula::Visited(k.clone()),
+                Atom::Completed(q) => PrereqFormula::Completed(q.clone()),
+                Atom::Active(q) => PrereqFormula::Active(q.clone()),
+            };
+            eval_prereq(p, &holds, w) != Ok(true)
+        })
+        .collect()
 }
 
 /// The beat's `when` raw CEL: a scene's `meta.beat.when`, an entry's own
@@ -1944,6 +2130,16 @@ pub fn eligible_at(
         let Some(member) = beat.answers(occasion, target) else {
             continue;
         };
+        // dsl 0.27.0 §3 (T2-10): a `for="kind:<kind>"` beat is a candidate
+        // once per member, in member order, each binding `occasion.target`.
+        if let Some(fk) = &beat.for_kind {
+            for m in &fk.members {
+                let mut c = judge_beat(p, w, &mut eval, beat, Some(m));
+                c.for_member = Some(m.clone());
+                out.push((idx, c));
+            }
+            continue;
+        }
         out.push((idx, judge_beat(p, w, &mut eval, beat, member)));
     }
     // dsl 0.26.0 §5, dsl 0.27.0 (T3-10): the checker's order — priority
@@ -1963,108 +2159,74 @@ pub fn eligible_at(
 }
 
 /// One beat's verdict in `w`, `member` bound as `occasion.target` (dsl
-/// 0.26.0 §5): `once` spending, `after:`, then `when` — the judgment
-/// [`eligible_at`] selects by and [`Session::eligibility`] reports.
-fn judge_beat(
+/// 0.26.0 §5): `once` spending, `after:`, `spentBy`, then `when` — THE
+/// eligibility rule: what [`eligible_at`] selects by, [`Session::eligibility`]
+/// reports, and `lute trace` / `lute test` judge a presented scene, entry
+/// or bundle beat by (their evaluator is the walk's own Machine, over the
+/// mocks; `w` then carries the mocked `visited:` / quest states / read
+/// flags).
+pub fn judge_beat<D: Driver>(
     p: &ExecProject,
     w: &World,
-    eval: &mut Machine<PlayDriver>,
+    eval: &mut Machine<D>,
     beat: &IndexBeat,
     member: Option<&str>,
 ) -> Candidate {
     let flag = |path: String| w.state.get(&path) == Some(&Value::Bool(true));
-    let clock_now = p
-        .index
-        .clock
-        .as_ref()
-        .and_then(|c| crate::clock::position(c, &w.state));
     // dsl 0.26.0 §5: a kind beat's `when` reads the raised member.
     eval.bind_occasion_target(member);
     // A scene's (or bundle beat's) `once` is spent by presenting it; an
-    // entry's (dsl 0.22.0 §7) by its read flag — `entry.<id>.read` (run)
-    // / `.everRead` (user). dsl 0.25.0 §2: a beat of a `share` key is
-    // also spent by presenting any other beat of the key (recorded in
-    // the spent sets under every member's id).
-    let spent = match (beat.kind, beat.once) {
-        (BeatKind::Scene | BeatKind::Bundle, Some(BeatOnce::Run))
-            if w.spent_run.contains(&beat.id) =>
-        {
-            Some("once: run — already presented this run")
-        }
-        (BeatKind::Scene | BeatKind::Bundle, Some(BeatOnce::User))
-            if w.spent_user.contains(&beat.id) =>
-        {
-            Some("once: user — already presented")
-        }
-        (BeatKind::Entry, Some(BeatOnce::Run))
-            if flag(format!("entry.{}.read", beat.id)) || w.spent_run.contains(&beat.id) =>
-        {
-            Some("once: run — already read this run")
-        }
-        (BeatKind::Entry, Some(BeatOnce::User))
-            if flag(ever_read_path(&beat.id)) || w.spent_user.contains(&beat.id) =>
-        {
-            Some("once: user — already read")
-        }
-        // dsl 0.24.0 §1: spent until the clock's day (slot) moves on.
-        (_, Some(BeatOnce::Day))
-            if clock_now.is_some_and(|now| {
-                w.spent_at.get(&beat.id).is_some_and(|at| at.day == now.day)
-            }) =>
-        {
-            Some("once: day — already presented today")
-        }
-        (_, Some(BeatOnce::Slot))
-            if clock_now.is_some_and(|now| w.spent_at.get(&beat.id) == Some(&now)) =>
-        {
-            Some("once: slot — already presented this slot")
-        }
-        _ => None,
-    };
-    // dsl 0.25.0 §2: spent by a sibling of its key — name the sibling.
-    let spent = spent.map(|reason| {
-        let by = beat
-            .share
-            .as_ref()
-            .and_then(|k| Some((k, w.share_spent_by.get(k)?)))
-            .filter(|(_, by)| **by != beat.id);
-        match (by, beat.once) {
-            (Some((key, by)), Some(once)) => {
-                let period = match once {
-                    BeatOnce::Run => " this run",
-                    BeatOnce::Day => " today",
-                    BeatOnce::Slot => " this slot",
-                    BeatOnce::User | BeatOnce::None => "",
-                };
-                format!(
-                    "once: {} — `share: {key}` already spent{period} by {by}",
-                    once_word(once)
-                )
-            }
-            _ => reason.to_string(),
-        }
-    });
+    // entry's (dsl 0.22.0 §7) by its read flag; a clock period or a season
+    // window (dsl 0.24.0 §1, 0.27.0 §5) until it moves on; a `share` key's
+    // sibling names itself (dsl 0.25.0 §2).
+    let spent = crate::exec::cadence::once_spent(p, w, beat);
+    // dsl 0.27.0 §5: `spentBy` — eligible until its condition holds.
+    let spent_by = crate::exec::cadence::spent_by(eval, beat);
     // A scene's `after:` / a bundle beat's `after=` (dsl 0.25.0 §3).
-    let after_unmet = matches!(beat.kind, BeatKind::Scene | BeatKind::Bundle)
-        && p.artifacts
-            .get(&beat.document)
-            .and_then(|doc| beat_prereq(doc, &beat.id))
-            .is_some_and(|f| !eval_prereq(&f, w));
+    let after = matches!(beat.kind, BeatKind::Scene | BeatKind::Bundle)
+        .then(|| p.artifacts.get(&beat.document))
+        .flatten()
+        .and_then(|doc| Some((beat_prereq_raw(doc, &beat.id)?, beat_prereq(doc, &beat.id)?)))
+        .map(|(raw, f)| (raw, eval_prereq(p, &f, w), f));
+    let when = |eval: &mut Machine<D>| {
+        beat_when(p, beat).map(|raw| {
+            let v = eval.eval_guard(&raw);
+            (raw, v)
+        })
+    };
     let verdict = if let Some(reason) = spent {
-        Verdict::Ineligible(reason.to_string())
-    } else if after_unmet {
-        Verdict::Ineligible("after: prerequisite not satisfied".to_string())
+        Verdict::Ineligible(Premise::Spent {
+            once: beat.once.clone(),
+            reason,
+        })
+    } else if let Some((raw, Ok(false), f)) = &after {
+        Verdict::Ineligible(Premise::After {
+            raw: raw.trim().to_string(),
+            unmet: unmet_prereq(p, f, w),
+        })
+    } else if let Ok(Some(reason)) = &spent_by {
+        Verdict::Ineligible(Premise::SpentBy(reason.clone()))
+    } else if let Err(atoms) = &spent_by {
+        Verdict::Unknown(format!(
+            "`{}` (spentBy) evaluates unknown: {}",
+            beat.spent_by.as_deref().unwrap_or_default(),
+            describe_atoms(atoms)
+        ))
     } else {
-        match beat_when(p, beat) {
-            None => Verdict::Eligible,
-            Some(raw) => match eval.eval_guard(&raw) {
-                Ok(true) => Verdict::Eligible,
-                Ok(false) => Verdict::Ineligible("when: false".to_string()),
-                Err(atoms) => Verdict::Unknown(format!(
-                    "`{raw}` evaluates unknown: {}",
-                    describe_atoms(&atoms)
-                )),
-            },
+        match (when(eval), &after) {
+            (Some((raw, Ok(false))), _) => Verdict::Ineligible(Premise::When { raw }),
+            // An undecided `after` (a quest this project does not declare):
+            // eligible only if it holds, so unknown unless `when` is false.
+            (_, Some((raw, Err(atoms), _))) => Verdict::Unknown(format!(
+                "`after: {}` evaluates unknown: {}",
+                raw.trim(),
+                describe_atoms(atoms)
+            )),
+            (None | Some((_, Ok(true))), _) => Verdict::Eligible,
+            (Some((raw, Err(atoms))), _) => Verdict::Unknown(format!(
+                "`{raw}` evaluates unknown: {}",
+                describe_atoms(&atoms)
+            )),
         }
     };
     Candidate {
@@ -2075,6 +2237,7 @@ fn judge_beat(
         verdict,
         read: beat.kind == BeatKind::Entry && flag(format!("entry.{}.read", beat.id)),
         also: beat_also(p, beat),
+        for_member: None,
     }
 }
 
@@ -2197,17 +2360,6 @@ pub fn spend_shared(p: &ExecProject, w: &mut World, id: &str, run: bool) {
     }
 }
 
-/// The authored spelling of a `once` policy, for a reason.
-pub fn once_word(once: BeatOnce) -> &'static str {
-    match once {
-        BeatOnce::Run => "run",
-        BeatOnce::User => "user",
-        BeatOnce::None => "false",
-        BeatOnce::Day => "day",
-        BeatOnce::Slot => "slot",
-    }
-}
-
 /// A presentation or quest walk of `doc_json` — widened by
 /// [`play_artifact_json`] — resumed from `carry`, scripted by `choose`
 /// over `w`'s choice cursor and bridge answers, reading `w`'s presented
@@ -2270,6 +2422,7 @@ pub fn present(
             w.visited.insert(beat.id.clone());
             spend_shared(p, w, &beat.id, true);
             spend_at_clock(p, w, &beat.id);
+            crate::exec::cadence::spend_season(p, w, &beat.id);
         }
         // dsl 0.22.0 §7: a completed first read sets the user-tier
         // `everRead` beside the runner's run-tier `read`; never reset. dsl
@@ -2281,6 +2434,7 @@ pub fn present(
                     spend_shared(p, w, &beat.id, true);
                 }
                 spend_at_clock(p, w, &beat.id);
+                crate::exec::cadence::spend_season(p, w, &beat.id);
             }
         }
     }
@@ -2372,6 +2526,11 @@ pub enum StepBody {
     /// then the `set` records of the last move and the step's `engine:`
     /// writes (applied where the clock arrives), the quest settle right
     /// after, then the clock's `raise.slot` occasion as an `Occasion` body.
+    /// `ended` (dsl 0.27.0 §4): the advance reached a finite clock's end —
+    /// it stopped at the last position, raised the last `dayEnd` (in
+    /// `days`) and no `raise.slot`. `closed` (dsl 0.27.0 §4): the raises it
+    /// did not make because the seam was closed (a false `raisedWhen`, the
+    /// terminal state).
     Advance {
         by: String,
         from: String,
@@ -2380,6 +2539,8 @@ pub enum StepBody {
         settled: Vec<QuestAdvance>,
         days: Vec<DayRaise>,
         raised: Option<Box<StepBody>>,
+        ended: bool,
+        closed: Vec<super::seam::ClosedRaise>,
     },
     /// `end: true` — the playthrough ends here.
     End,
@@ -2560,14 +2721,18 @@ pub fn run_advance(
             )
         }
     };
-    let body = |from: String, to: String, writes, settled, days, raised| StepBody::Advance {
-        by: by_text.clone(),
-        from,
-        to,
-        writes,
-        settled,
-        days,
-        raised,
+    let body = |from: String, to: String, writes, settled, days, raised, ended, closed| {
+        StepBody::Advance {
+            by: by_text.clone(),
+            from,
+            to,
+            writes,
+            settled,
+            days,
+            raised,
+            ended,
+            closed,
+        }
     };
     let Some(from) = clock_at(p, w) else {
         let names = match &clock.slot {
@@ -2589,17 +2754,58 @@ pub fn run_advance(
                 Vec::new(),
                 Vec::new(),
                 None,
+                false,
+                Vec::new(),
             ),
             Vec::new(),
             Some(halt),
         );
     };
+    // dsl 0.27.0 §4 (T2-5): a finite clock stops at its last position. An
+    // advance once it ended — or from past it (an `engine:` write moved the
+    // day on) — is a usage error.
+    let last = clock.last_at();
+    if let Some(end) = last.filter(|end| w.clock_ended || from > *end) {
+        let why = if w.clock_ended {
+            "the clock ended".to_string()
+        } else {
+            format!("the clock stands at {}", clock.describe(from))
+        };
+        let halt = PlayHalt::Error(format!(
+            "step {n}: `advance:` past the clock's last position ({}) — {why}; a `newRun` \
+             starts it over ({})",
+            clock.describe(end),
+            lute_manifest::clock::E_CLOCK_END
+        ));
+        let at = clock.describe(from);
+        return (
+            body(
+                at.clone(),
+                at,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                None,
+                false,
+                Vec::new(),
+            ),
+            Vec::new(),
+            Some(halt),
+        );
+    }
     let mut writes = Vec::new();
-    let to = clock.advance(from, by);
+    let mut to = clock.advance(from, by);
+    // An advance whose destination lies past the end walks to the last
+    // position, raising what it crosses on the way, then ends the clock.
+    let ends = last.is_some_and(|end| to > end);
+    if let Some(end) = last.filter(|_| ends) {
+        to = end;
+    }
     let mut at = from;
     let mut settled = Vec::new();
     let mut days = Vec::new();
     let mut stop = None;
+    let mut closed = Vec::new();
     // Each midnight crossed, while the clock raises something there.
     while at.day < to.day && (raise.day_end.is_some() || raise.day_start.is_some()) {
         if let Some(end) = &raise.day_end {
@@ -2608,7 +2814,14 @@ pub fn run_advance(
             } else {
                 clock.day_end(at)
             };
-            writes.extend(move_clock(p, w, clock, at, last));
+            writes.extend(crate::exec::cadence::walk_clock(
+                p,
+                w,
+                clock,
+                at,
+                last,
+                &mut settled,
+            ));
             at = last;
             let (s, halt) = settle_before(p, w, Some(end));
             settled.extend(s);
@@ -2616,24 +2829,37 @@ pub fn run_advance(
                 stop = halt;
                 break;
             }
-            let (occasion, quests, halt) = run_occasion(p, w, n, end, &None, &None, choose);
-            days.push(DayRaise {
-                at: clock.describe(at),
-                writes: std::mem::take(&mut writes),
-                settled: std::mem::take(&mut settled),
-                occasion: Box::new(occasion),
-                quests,
-            });
-            if halt.is_some() {
-                stop = halt;
-                break;
+            // dsl 0.27.0 §4: a closed seam (terminal, a false gate) raises
+            // nothing; the clock still moves and settles.
+            if super::seam::clock_raise_open(p, w, end, || clock.describe(at), &mut closed) {
+                let (occasion, quests, halt) = run_occasion(p, w, n, end, &None, &None, choose);
+                days.push(DayRaise {
+                    at: clock.describe(at),
+                    writes: std::mem::take(&mut writes),
+                    settled: std::mem::take(&mut settled),
+                    occasion: Box::new(occasion),
+                    quests,
+                });
+                if halt.is_some() {
+                    stop = halt;
+                    break;
+                }
+            } else {
+                // The settle deferred the `by`s this raise would judge.
+                w.defer_by = None;
             }
         }
         let next = ClockAt {
             day: at.day + 1,
             slot: 0,
         };
-        writes.extend(move_clock(p, w, clock, at, next));
+        // dsl 0.27.0 §5: an `advance: day` sleeps through the rest of the
+        // day; any other advance crosses its slots.
+        writes.extend(if by == Advance::Day {
+            move_clock(p, w, clock, at, next)
+        } else {
+            crate::exec::cadence::walk_clock(p, w, clock, at, next, &mut settled)
+        });
         at = next;
         let Some(start) = &raise.day_start else {
             continue;
@@ -2643,6 +2869,10 @@ pub fn run_advance(
         if halt.is_some() {
             stop = halt;
             break;
+        }
+        if !super::seam::clock_raise_open(p, w, start, || clock.describe(at), &mut closed) {
+            w.defer_by = None;
+            continue;
         }
         let (occasion, quests, halt) = run_occasion(p, w, n, start, &None, &None, choose);
         days.push(DayRaise {
@@ -2660,18 +2890,58 @@ pub fn run_advance(
     let mut raised = None;
     let mut quests = Vec::new();
     if stop.is_none() {
-        writes.extend(move_clock(p, w, clock, at, to));
+        writes.extend(if by == Advance::Day {
+            move_clock(p, w, clock, at, to)
+        } else {
+            crate::exec::cadence::walk_clock(p, w, clock, at, to, &mut settled)
+        });
         at = to;
+    }
+    // dsl 0.27.0 §4: at the end the clock raises the last day's `dayEnd`
+    // (never its `raise.slot`) and stops; the step's `engine:` writes land
+    // after it, where the clock stays.
+    if ends && stop.is_none() {
+        w.clock_ended = true;
+        if let Some(end) = &raise.day_end {
+            let (s, halt) = settle_before(p, w, Some(end));
+            settled.extend(s);
+            stop = halt;
+            if stop.is_none()
+                && super::seam::clock_raise_open(p, w, end, || clock.describe(at), &mut closed)
+            {
+                let (occasion, q, halt) = run_occasion(p, w, n, end, &None, &None, choose);
+                days.push(DayRaise {
+                    at: clock.describe(at),
+                    writes: std::mem::take(&mut writes),
+                    settled: std::mem::take(&mut settled),
+                    occasion: Box::new(occasion),
+                    quests: q,
+                });
+                stop = halt;
+            } else {
+                w.defer_by = None;
+            }
+        }
+    }
+    if stop.is_none() {
         match apply_writes(w, engine) {
             Ok(engine) => writes.extend(engine),
             Err(e) => stop = Some(PlayHalt::Error(format!("step {n}: {e}"))),
         }
     }
     if stop.is_none() {
-        let (s, halt) = settle_before(p, w, raise.slot.as_ref());
+        let next = if ends { None } else { raise.slot.as_ref() };
+        let (s, halt) = settle_before(p, w, next);
         settled.extend(s);
         stop = halt;
-        if let (Some(occasion), None) = (&raise.slot, &stop) {
+        let open = next.filter(|o| {
+            stop.is_none()
+                && super::seam::clock_raise_open(p, w, o, || clock.describe(at), &mut closed)
+        });
+        if open.is_none() {
+            w.defer_by = None;
+        }
+        if let (Some(occasion), None) = (open, &stop) {
             let (b, q, halt) = run_occasion(p, w, n, occasion, &None, pick, choose);
             raised = Some(Box::new(b));
             quests = q;
@@ -2686,6 +2956,8 @@ pub fn run_advance(
             settled,
             days,
             raised,
+            ends,
+            closed,
         ),
         quests,
         stop,
@@ -2802,13 +3074,20 @@ pub fn run_occasion(
     };
     // The winner is the main beat: never an `also` rider.
     let winner = order.iter().find(|c| !c.also).map(|c| c.id.clone());
-    let beats: Vec<&IndexBeat> = order
+    let beats: Vec<(&IndexBeat, Option<&str>)> = order
         .iter()
         .filter_map(|c| {
-            p.index
+            let b = p
+                .index
                 .beats
                 .iter()
-                .find(|b| b.id == c.id && b.document == c.document && b.kind == c.kind)
+                .find(|b| b.id == c.id && b.document == c.document && b.kind == c.kind)?;
+            // dsl 0.27.0 §3: a `for` beat presents for its candidate's member.
+            let member = match &c.for_member {
+                Some(m) => Some(m.as_str()),
+                None => b.answers(occasion, target.as_deref()).flatten(),
+            };
+            Some((b, member))
         })
         .collect();
     // Each presentation that plays through settles every quest before the
@@ -2819,11 +3098,10 @@ pub fn run_occasion(
     // still judges, and the playthrough goes on with the next step.
     let mut presented_beats = Vec::new();
     let mut stop = halt;
-    for b in beats {
+    for (b, member) in beats {
         if stop.is_some() {
             break;
         }
-        let member = b.answers(occasion, target.as_deref()).flatten();
         let (pr, s) = present_with_choose(p, w, b, member, choose);
         presented_beats.push(pr);
         stop = s;
@@ -3099,7 +3377,28 @@ impl<'p> Session<'p> {
         pick: &Option<Pick>,
         choose: &BTreeMap<String, Vec<String>>,
     ) -> StepOutcome {
-        run_occasion(
+        // dsl 0.27.0 §4: a raise the engine would not make (its gate is
+        // false, or the game is over) is refused.
+        if let Some(why) =
+            super::seam::closed(self.project, &self.world, occasion, target.as_deref())
+        {
+            let prefix = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
+            self.world.state.retain(|k, _| !k.starts_with(&prefix));
+            let body = StepBody::Occasion {
+                occasion: occasion.clone(),
+                target: target.clone(),
+                select: self.project.select_of(occasion),
+                pick: pick.clone(),
+                candidates: Vec::new(),
+                winner: None,
+                decided: false,
+                presented: Vec::new(),
+                judged: Vec::new(),
+            };
+            let halt = super::seam::refusal(n, occasion, target.as_deref(), &why);
+            return (body, Vec::new(), Some(halt));
+        }
+        let out = run_occasion(
             self.project,
             &mut self.world,
             n,
@@ -3107,7 +3406,20 @@ impl<'p> Session<'p> {
             target,
             pick,
             choose,
-        )
+        );
+        // dsl 0.27.0 §3: a payload lives only for the raise it came with.
+        let prefix = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
+        self.world.state.retain(|k, _| !k.starts_with(&prefix));
+        out
+    }
+
+    /// dsl 0.27.0 §3: bind the payload the next [`Session::occasion`] raise
+    /// carries ([`typed_payload`]) — `occasion.payload.<field>` for that
+    /// raise only.
+    pub fn bind_payload(&mut self, payload: &BTreeMap<String, Value>) {
+        for (path, value) in payload {
+            self.world.state.insert(path.clone(), value.clone());
+        }
     }
 
     /// dsl 0.24.0 §1: one `advance:` of the declared clock ([`run_advance`]).
@@ -3121,6 +3433,31 @@ impl<'p> Session<'p> {
         pick: &Option<Pick>,
         choose: &BTreeMap<String, Vec<String>>,
     ) -> StepOutcome {
+        // dsl 0.27.0 §4: once the game is over the clock does not move on.
+        if let Ok(true) = super::seam::terminal_holds(self.project, &self.world) {
+            let t = self
+                .project
+                .index
+                .terminal
+                .as_ref()
+                .map_or_else(String::new, |t| t.raw.clone());
+            let body = StepBody::Advance {
+                by: String::new(),
+                from: String::new(),
+                to: String::new(),
+                writes: Vec::new(),
+                settled: Vec::new(),
+                days: Vec::new(),
+                raised: None,
+                ended: false,
+                closed: Vec::new(),
+            };
+            return (
+                body,
+                Vec::new(),
+                Some(super::seam::advance_after_terminal(n, &t)),
+            );
+        }
         run_advance(
             self.project,
             &mut self.world,
@@ -3130,6 +3467,16 @@ impl<'p> Session<'p> {
             raise,
             pick,
             choose,
+        )
+    }
+
+    /// dsl 0.27.0 §4: whether the project's `terminal:` holds — the game is
+    /// over and the engine raises no occasion (an undecided condition does
+    /// not end the game).
+    pub fn terminal(&self) -> bool {
+        matches!(
+            super::seam::terminal_holds(self.project, &self.world),
+            Ok(true)
         )
     }
 
@@ -3184,8 +3531,8 @@ impl<'p> Session<'p> {
                     if to < from {
                         let halt = PlayHalt::Fatal(format!(
                             "step {n}: `engine:` moves the clock backward, from {} to {} \
-                             (clock.index {} → {}) — the clock only moves forward (dsl \
-                             0.24.0 §1); `advance:` moves it, a `newRun` starts it over",
+                             (clock.index {} → {}) — the clock only moves forward; \
+                             `advance:` moves it, a `newRun` starts it over",
                             clock.describe(from),
                             clock.describe(to),
                             clock.index(from),

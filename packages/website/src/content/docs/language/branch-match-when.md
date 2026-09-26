@@ -244,7 +244,7 @@ An arm whose every value the guard excludes can never fire, and is `E-ARM-DEAD`.
 
 <!-- lute-diagnostics -->
 ```
-dock.lute:22:3: error [E-ARM-DEAD] arm can never fire: its pattern `died` is ruled out by the body's `when` guard `isSet(run.outcome) && run.outcome != 'died'`, which holds whenever this body runs (dsl 0.24.0)
+dock.lute:22:3: error [E-ARM-DEAD] arm can never fire: its pattern `died` is ruled out by the body's `when` guard `isSet(run.outcome) && run.outcome != 'died'`, which holds whenever this body runs
 ```
 
 An `<otherwise>` after the two arms is `W-OTHERWISE-DEAD` for the same reason; the warning names

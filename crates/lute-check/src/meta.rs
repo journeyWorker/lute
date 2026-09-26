@@ -19,6 +19,9 @@ pub enum Namespace {
     /// instance, MAY carry engine-reserved implicit sub-namespaces
     /// (`quest.<id>.state`, `quest.<id>.objectives.<oid>.done`, §5.2).
     Quest,
+    /// dsl 0.27.0 §5: `season.<name>.*` — a declared season's tier, reset
+    /// to its defaults each time the season opens.
+    Season,
 }
 
 /// A single `state:` declaration (dsl §9.3): `type` + optional `default`, plus
@@ -191,6 +194,9 @@ pub struct TypedMeta {
     /// `::set`/`::assert`/`::retract`, each write checked at every `::use`
     /// site against the host's schema. `false` when absent.
     pub effects: bool,
+    /// dsl 0.27.0 §6: a component file's `beat:` header template — the
+    /// component is then a beat template (`<beat use="name">`).
+    pub beat_template: Option<crate::templates::BeatTemplate>,
     /// dsl 0.24.0 §4: the component params declared `speaker` (a cast id;
     /// `{{@p}}` renders the cast name). Each is ALSO in [`Self::params`],
     /// typed `string` there — the host's cast narrows it at a `::use`.
@@ -233,6 +239,13 @@ pub struct TypedMeta {
     /// only on `MetaKind::Schema`; its paths are checked against the folded
     /// schema by [`crate::clock::check_clock`].
     pub clock: Option<lute_manifest::clock::ClockDecl>,
+    /// dsl 0.27.0 §4 (T2-4): a schema document's `terminal:` — the
+    /// condition under which the game is over and the engine raises no
+    /// occasion. Legal only on `MetaKind::Schema`; a `Condition` slot whose
+    /// span is the frontmatter value (see [`crate::gates`]).
+    pub terminal: Option<lute_syntax::ast::CelSlot>,
+    /// dsl 0.27.0 §5: a schema document's `seasons:` (name -> `{ live }`).
+    pub seasons: crate::season::Seasons,
 }
 
 /// Frontmatter keys valid in EVERY root document kind (dsl 0.2.0 §6.1): the
@@ -281,6 +294,8 @@ const SCENE_KEYS: &[&str] = &[
     "once",
     "also",
     "share",
+    "spentBy",
+    "for",
 ];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Quest` document: the optional
@@ -293,7 +308,7 @@ const LORE_KEYS: &[&str] = &["id", "series"];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Schema` document: the
 /// declared cast (dsl 0.23.0 §7).
-const SCHEMA_KEYS: &[&str] = &["cast", "clock"];
+const SCHEMA_KEYS: &[&str] = &["cast", "clock", "terminal", "seasons"];
 
 /// The kind-specific core keys of `kind` beyond [`UNIVERSAL_KEYS`] and the
 /// root-wide `kind:`/`extra:` — empty for the import-role kinds.
@@ -311,7 +326,7 @@ fn kind_keys(kind: MetaKind) -> &'static [&'static str] {
 /// component's own name (`component:`), its parameter signature (`params:`),
 /// and (dsl 0.24.0 §4) whether its body writes state (`effects:`).
 /// In a scene or schema doc these are unknown top-level keys.
-const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params", "effects"];
+const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params", "effects", "beat"];
 
 /// 0.10.0 §6.3: is a `defaults:` key legal on `kind`? A default whose key is
 /// not legal on a document's resolved kind is NOT applied to that document,
@@ -1165,6 +1180,38 @@ pub fn parse_meta_kind_with_defaults(
             typed.clock = clock;
             diags.extend(clock_diags);
         }
+        // dsl 0.27.0 §4: `terminal: "<condition>"`.
+        if let Some(v) = map.get(yaml_key("terminal")) {
+            match v.as_str().filter(|s| !s.trim().is_empty()) {
+                Some(raw) => {
+                    typed.terminal = Some(lute_syntax::ast::CelSlot::raw(
+                        lute_syntax::ast::CelKind::Condition,
+                        raw.to_string(),
+                        crate::beats::top_value_span(meta, "terminal"),
+                    ))
+                }
+                None => diags.push(Diagnostic {
+                    code: "E-META-VALUE".to_string(),
+                    severity: Severity::Error,
+                    message: "`terminal:` must be a CEL condition string naming when the game \
+                              is over, e.g. `terminal: \"@dead\"` (dsl 0.27.0 §4)"
+                        .to_string(),
+                    span: meta_key_span(meta, "terminal"),
+                    layer: Layer::Content,
+                    fixits: Vec::new(),
+                    provenance: None,
+                    covered: Vec::new(),
+                    related: Vec::new(),
+                }),
+            }
+        }
+        // dsl 0.27.0 §5: `seasons: { <name>: { live: "<condition>" } }`.
+        if let Some(v) = map.get(yaml_key("seasons")) {
+            let (seasons, season_diags) =
+                crate::season::parse_seasons(v, meta_key_span(meta, "seasons"));
+            typed.seasons = seasons;
+            diags.extend(season_diags);
+        }
     }
     // Domain projection for the 0.2.2 attr layer (entities win over enums, as before).
     typed
@@ -1412,6 +1459,14 @@ pub fn parse_meta_kind_with_defaults(
             meta_key_span(meta, "effects"),
         )),
     }
+    // dsl 0.27.0 §6: a component's `beat:` header template.
+    if kind == MetaKind::Component {
+        if let Some(v) = map.get(yaml_key("beat")) {
+            let (template, tdiags) = crate::templates::parse_beat_template(meta, v, &typed.params);
+            typed.beat_template = template;
+            diags.extend(tdiags);
+        }
+    }
 
     // Parse the inline `state:` schema (dsl §9.3).
     if let Some(state_val) = map.get(yaml_key("state")) {
@@ -1429,7 +1484,7 @@ pub fn parse_meta_kind_with_defaults(
                     let Some(namespace) = namespace_of(path) else {
                         diags.push(err(
                             "E-STATE-NAMESPACE",
-                            format!("state path `{path}` must begin with scene./run./user./app."),
+                            format!("state path `{path}` must begin with scene./run./user./app./season."),
                         ));
                         continue;
                     };
@@ -1817,7 +1872,10 @@ pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {
     // T10.2). The two cases are told apart exactly: a real frontmatter span
     // covers at least `"---\n"` + `"---"` more bytes than its interior.
     const OPENER_LEN: usize = 4; // "---\n"
-    let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != meta.raw_yaml.len();
+                                 // dsl 0.27.0 §8: keys a project `sequence:` derived sit below the marker
+                                 // and have no text in the file; they are anchored at the scene's `id:`.
+    let authored = crate::sequence::authored_yaml(&meta.raw_yaml);
+    let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != authored.len();
     let base = meta.span.byte_start + if enveloped { OPENER_LEN } else { 0 };
     let at = |start: usize| Span {
         byte_start: start,
@@ -1828,7 +1886,7 @@ pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {
     };
     // Key-aware scan: the needle at a line start (after indent), then `:`.
     let mut line_start = 0usize;
-    for line in meta.raw_yaml.split_inclusive('\n') {
+    for line in authored.split_inclusive('\n') {
         let indent = line.len() - line.trim_start().len();
         if let Some(rest) = line.trim_start().strip_prefix(needle) {
             if rest.trim_start().starts_with(':') {
@@ -1837,9 +1895,11 @@ pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {
         }
         line_start += line.len();
     }
-    // Fallbacks: naive first occurrence, then the whole frontmatter block.
-    match meta.raw_yaml.find(needle) {
+    // Fallbacks: naive first occurrence, the scene's `id:` for a derived
+    // key, then the whole frontmatter block.
+    match authored.find(needle) {
         Some(idx) => at(base + idx),
+        None if needle != "id" && meta.raw_yaml.len() > authored.len() => meta_key_span(meta, "id"),
         None => meta.span,
     }
 }
@@ -2255,6 +2315,7 @@ pub(crate) fn namespace_of(path: &str) -> Option<Namespace> {
         "user" => Some(Namespace::User),
         "app" => Some(Namespace::App),
         "quest" => Some(Namespace::Quest),
+        "season" => Some(Namespace::Season),
         _ => None,
     }
 }

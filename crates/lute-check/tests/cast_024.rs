@@ -290,15 +290,15 @@ fn project_in(
     for folded in &foldeds {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
-    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle)
+    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
-        .filter_map(|(_, a)| GroundFact::from_pattern(&a.pattern));
+        .filter_map(|(_, a)| GroundFact::from_pattern(&a));
     let may = MaySet::build(&vocab, facts, &stable_seeds(&docs, &vocab));
     let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);
     let env = FactEnv::new(may, must.slots);
     let ladder = lute_check::beats::presence_ladder(&docs, &folded_refs);
-    let producers = lute_check::cast::fact_producers(&docs);
+    let producers = lute_check::cast::fact_producers(&docs, &Default::default());
     let after = lute_check::cast::occasions_before(&docs, &folded_refs, &graph);
     let no_ladder = std::collections::BTreeMap::new();
     let no_after = std::collections::BTreeMap::new();

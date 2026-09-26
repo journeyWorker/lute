@@ -743,6 +743,8 @@ mod tests {
                 state: None,
                 effects: Some(DirectiveEffects {
                     writes: vec![write("a"), write("b")],
+                    asserts: Vec::new(),
+                    retracts: Vec::new(),
                 }),
                 bridge: None,
                 lower: Lowering::Builtin {

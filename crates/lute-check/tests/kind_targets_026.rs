@@ -128,7 +128,7 @@ fn project_codes(kinds: &str, body: &str) -> Vec<(String, String)> {
     lute_check::check_project_beats(
         &docs,
         &[&folded],
-        &lute_check::cast::fact_producers(&docs),
+        &lute_check::cast::fact_producers(&docs, &Default::default()),
         None,
     )
     .into_iter()

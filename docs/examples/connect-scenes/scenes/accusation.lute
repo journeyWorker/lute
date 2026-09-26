@@ -2,9 +2,6 @@
 kind: scene
 id: accusation
 title: The Accusation
-on: chapter
-after: 'visited("counter")'
-priority: 10
 ---
 
 ## The Accusation

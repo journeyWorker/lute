@@ -172,6 +172,7 @@ clock:
   slots: [morning, afternoon, night]   # with `slot`: the order; the slot enum's members
   raise: { slot: slotStart, dayStart: dayStart, dayEnd: dayEnd }  # optional; each key optional
   week: { length: 7, first: 1, labels: [Sun, Mon, Tue, Wed, Thu, Fri, Sat] }  # optional
+  last: { day: 3, slot: night }   # optional (0.27.0): the last position; or `days: 3`
 ```
 
 The declaration is carried verbatim as `clock` on the artifact and on
@@ -205,11 +206,15 @@ whole number or `slot` not one of `slots`:
 | `clock.weekday` | `(week.first + day - 1) mod week.length` (only with `week:`) |
 | `clock.weekdayLabel` | `week.labels[clock.weekday]`, renderable (only with `week.labels`) |
 
-**`once: day` / `once: slot`.** A scene beat (`meta.beat.once`) or entry
-(`EntryCmd.once`) with `day` / `slot` is spent from its presentation until
-the clock's day (for `slot`: day and slot) changes; the engine keeps the
-position of the last presentation per beat. A project without a clock may
-not use them (`E-BEAT-ATTR`).
+**`once: day` / `once: slot` / `once: week`.** A scene beat
+(`meta.beat.once`), bundle beat (`BeatCmd.once`) or entry (`EntryCmd.once`)
+with `day` / `slot` is spent from its presentation until the clock's day
+(for `slot`: day and slot) changes; the engine keeps the position of the last
+presentation per beat. A project without a clock may not use them
+(`E-BEAT-ATTR`). `week` (dsl 0.27.0 §5) is spent until the next clock week
+starts: week *n* holds the days whose `(day - 1) div week.length` is *n*, so
+a new week begins when `clock.weekday` returns to `week.first`. It needs the
+clock's `week:` (else `E-BEAT-ATTR`).
 
 **The engine moves the clock forward only.** `clock.index` never
 decreases within a run; a run start resets `day` / `slot` to their
@@ -265,6 +270,29 @@ slot` steps raise two; a `to` two days ahead raises two `dayEnd` /
 `dayStart` pairs and one `slotStart`. Write separate `advance: slot` steps
 when content answers the intermediate slot.
 
+**A finite clock** (dsl 0.27.0 §4) declares its last position: `last: {
+day: N, slot: S }` (`slot` omitted: the day's last slot; a day-granular
+clock gives `day` alone) or `days: N`, short for `last: { day: N }`. Both
+keys, `days: 0`, a `last.day` below 1, a `last.slot` outside `slots` or a
+clock whose defaults start past its end is `E-CLOCK-DECL`. The IR carries
+`last` / `days` verbatim inside `clock` (absent when not declared, so an
+unbounded clock's artifact is unchanged). The clock stops at its last
+position: an advance landing exactly there is an ordinary advance; one
+whose destination lies past it walks to the last position — raising
+`dayEnd` / `dayStart` at every midnight it crosses on the way, as always —
+then raises the last day's `dayEnd` (never `raise.slot`) and **ends** the
+clock; the step's `engine:` writes land after that `dayEnd`. Every later
+advance — or one starting past the last position, because an `engine:`
+write moved the day on — is a usage error, `E-CLOCK-END` (`lute play` /
+`lute test` exit 1). A run start (`newRun`) resets the day / slot paths
+and starts the clock over. The checker ranges `clock.index` over the whole
+numbers from the start position to the last one and the day path over
+its default day (1 when undeclared) to the last day, so a `when` needing
+a later position (`run.night == 2` on a one-night clock) is unreachable
+(`E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE` / `E-ARM-DEAD`), and a
+`<match>` over either path is exhaustive once every value in range is
+covered. `lute calendar --axis clock` stops at the last position.
+
 ## Previous run (`prev.run.*`)
 
 `prev.run.<path>` (dsl 0.23.0 §6) is a reserved, read-only mirror of every
@@ -285,6 +313,32 @@ path with a `default` always holds a value at run end. The checker relies on
 this (dsl 0.24.0): once any `prev.run.<p>` is known present (`isSet`, an arm
 narrowing it, a beat `when:`), every `prev.run.<q>` whose `run.<q>` has a
 `default` is treated as present too.
+
+## Seasons (`season.<name>.*`, `prev.season.<name>.*`)
+
+A schema may declare named seasons (dsl 0.27.0 §5), each a state tier with
+a `live` condition. The artifact and `ProjectIndex` carry them as
+`seasons: [{ name, live: {raw, expr} }]`, name-sorted, `live` after `@def`
+expansion (absent without seasons). Their state paths `season.<name>.<field>`
+are declared under `state:` with defaults, like any tier.
+
+The engine evaluates every season's `live` and opens a season when it goes
+false→true. Opening, in this order:
+
+1. copy every `season.<name>.*` value to `prev.season.<name>.*` (a
+   read-only mirror, like `prev.run.*`; content writing it is
+   `E-QUEST-RESERVED-WRITE`);
+2. reset `season.<name>.*` to the declared defaults;
+3. clear the presentation record of every beat with
+   `once: "season:<name>"`;
+4. return every quest with `tier: "season:<name>"` to `unset`
+   (`quest-lifecycle.md` §Season-tier and rearmed quests).
+
+Closing (`live` true→false) resets nothing. Seasons are independent: several
+may be live at once, and each opens and closes on its own condition.
+`lute play` prints each flip: `season harvest opens — season.harvest.* reset
+to defaults; last window: prev.season.harvest.tokens = 2` and
+`season harvest closes`.
 
 ## Rewards that credit state
 

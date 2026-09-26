@@ -98,6 +98,14 @@ pub struct SchemaImports {
     /// `clock:` key there — where a problem with it is reported. A project
     /// declares at most one.
     pub clock: Vec<(PathBuf, lute_manifest::clock::ClockDecl, Span)>,
+    /// dsl 0.27.0 §4: every `terminal:` an import-reachable schema declares,
+    /// by file (canonical path order): the raw condition and the positioned
+    /// span of its value there. The game is over when any of them holds.
+    pub terminal: Vec<(PathBuf, String, Span)>,
+    /// dsl 0.27.0 §5: every `seasons:` an import-reachable schema declares,
+    /// by file (canonical path order), with the positioned span of its
+    /// `seasons:` key there — where a problem with a `live:` is reported.
+    pub seasons: Vec<(PathBuf, crate::season::Seasons, Span)>,
     pub rel: RelImports,
 }
 
@@ -183,6 +191,12 @@ struct ParsedDoc {
     /// dsl 0.24.0 §1: this schema's `clock:`.
     /// The `clock:` and its key's positioned span in this file.
     clock: Option<(lute_manifest::clock::ClockDecl, Span)>,
+    /// dsl 0.27.0 §4: this schema's `terminal:` raw condition and its
+    /// value's positioned span in this file.
+    terminal: Option<(String, Span)>,
+    /// dsl 0.27.0 §5: this schema's `seasons:` (when it declares any) and
+    /// its key's positioned span in this file.
+    seasons: Option<(crate::season::Seasons, Span)>,
     /// dsl 0.24 T3-6: this doc's declarations' spans, positioned in its text.
     origins: crate::rel_schema::DeclOrigins,
     /// dsl 0.24 T3-6: heads of this doc's `rules:` entries that failed to parse.
@@ -766,6 +780,18 @@ pub fn resolve_imports(
         .iter()
         .filter_map(|(path, doc)| doc.clock.clone().map(|(c, at)| (path.clone(), c, at)))
         .collect();
+    let terminal: Vec<(PathBuf, String, Span)> = parsed
+        .iter()
+        .filter_map(|(path, doc)| {
+            doc.terminal
+                .clone()
+                .map(|(raw, at)| (path.clone(), raw, at))
+        })
+        .collect();
+    let seasons: Vec<(PathBuf, crate::season::Seasons, Span)> = parsed
+        .iter()
+        .filter_map(|(path, doc)| doc.seasons.clone().map(|(s, at)| (path.clone(), s, at)))
+        .collect();
 
     // dsl 0.24 T3-6: each resolved name's home — the shallowest declaring
     // file, byte-least on a tie (`pick_winner`'s own rule); rules and facts
@@ -807,6 +833,8 @@ pub fn resolve_imports(
         imported_entry_ids,
         cast,
         clock,
+        terminal,
+        seasons,
         rel: RelImports {
             kinds: rel_kinds,
             relations: rel_relations,
@@ -1072,6 +1100,8 @@ fn read_and_parse(
         entry_ids: BTreeSet::new(),
         cast: Vec::new(),
         clock: None,
+        terminal: None,
+        seasons: None,
         rel_kinds: ParsedKinds::default(),
         rel_relations: ParsedRelations::default(),
         facts: Vec::new(),
@@ -1256,6 +1286,12 @@ fn read_and_parse(
                 .collect(),
             origin: Some(key(kind)),
             span: at,
+            labels: tm
+                .rel_kinds
+                .add_labels
+                .get(kind)
+                .cloned()
+                .unwrap_or_default(),
         })
         .collect();
     let state = tm.state.decls;
@@ -1268,6 +1304,8 @@ fn read_and_parse(
     let state_index = tm.state_index;
     let cast = tm.cast;
     let clock = tm.clock.map(|c| (c, key("clock").span));
+    let terminal = tm.terminal.map(|t| (t.raw, here(t.span).span));
+    let seasons = (!tm.seasons.is_empty()).then(|| (tm.seasons, key("seasons").span));
     let uses = tm.uses;
     let extends = tm.extends;
     (
@@ -1284,6 +1322,8 @@ fn read_and_parse(
             state_index,
             cast,
             clock,
+            terminal,
+            seasons,
             origins,
             failed_heads,
             kind_adds,

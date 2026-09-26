@@ -201,6 +201,8 @@ episode: 1
                         by: lute_manifest::schema::OpBy::Num(1.0),
                     },
                 }],
+                asserts: Vec::new(),
+                retracts: Vec::new(),
             }),
             bridge: Some(BridgeRef {
                 service: "remote".into(),
@@ -288,6 +290,7 @@ params: {}
                 speakers: Vec::new(),
                 defaults: BTreeMap::new(),
                 effects: false,
+                beat: None,
                 body: component,
                 src: PathBuf::from("sound.component.lute"),
             },

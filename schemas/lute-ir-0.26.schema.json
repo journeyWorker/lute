@@ -104,6 +104,36 @@
     "clock": {
       "$ref": "#/$defs/clockDecl",
       "description": "dsl 0.24.0 §1: the declared clock the document was compiled against. Omitted when the project declares none. Serialized last, after `shots`."
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "occasion": { "type": "string" },
+          "raisedWhen": { "$ref": "#/$defs/celPair" }
+        },
+        "additionalProperties": false,
+        "required": ["occasion", "raisedWhen"]
+      },
+      "description": "dsl 0.27.0 §4 (T2-3): every occasion's declared `raisedWhen` gate, occasion-sorted, `@def`-expanded. The engine raises the occasion only while its gate holds; `occasion.target` in it reads the member the occasion is raised for (`room.office` → `office`). A clock raise (`raise.slot` / `dayStart` / `dayEnd`) whose gate is false is not made. Omitted when no occasion declares one; serialized after `clock`."
+    },
+    "terminal": {
+      "$ref": "#/$defs/celPair",
+      "description": "dsl 0.27.0 §4 (T2-4): the project's `terminal:` condition (declared by a schema; several joined by `||`), `@def`-expanded. Once it holds the game is over: the engine raises no occasion and the clock does not advance until a new run. Omitted without one; serialized after `gates`."
+    },
+    "seasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+          "live": { "$ref": "#/$defs/celPair" }
+        },
+        "additionalProperties": false,
+        "required": ["name", "live"]
+      },
+      "description": "dsl 0.27.0 §5: the declared seasons, name-sorted, each with its `@def`-expanded `live` condition. When `live` goes false→true the engine opens the season: `season.<name>.*` back to the declared defaults (the old values to `prev.season.<name>.*`), its `once: season:<name>` beats and `tier: season:<name>` quests reset. Omitted when none; serialized after `clock`, `gates` and `terminal`."
     }
   },
   "allOf": [
@@ -375,6 +405,9 @@
             },
             "format": {
               "$ref": "#/$defs/placeholderFormat"
+            },
+            "forms": {
+              "$ref": "#/$defs/placeholderForms"
             }
           },
           "additionalProperties": true,
@@ -399,6 +432,9 @@
             },
             "format": {
               "$ref": "#/$defs/placeholderFormat"
+            },
+            "forms": {
+              "$ref": "#/$defs/placeholderForms"
             }
           },
           "additionalProperties": true,
@@ -426,14 +462,14 @@
         },
         {
           "type": "object",
-          "description": "dsl 0.26.0 §5: {{occasion.target}} in a beat or entry targeting a kind — the member the occasion was raised for (the beat's `occasion.target`), a member of `entityKind`. Render the member's display name (its cast `name:` when the member is a cast id), else the id.",
+          "description": "dsl 0.26.0 §5: {{occasion.target}} in a beat or entry targeting a kind (or, dsl 0.27.0 §3, presented once per member with `forKind`) — the member the beat runs for (the beat's `occasion.target`), a member of `entityKind`. Render the member's display name: its cast `name:` when the member is a cast id, else (dsl 0.27.0 §7) the `labels[member]` of the `entities[]` entry named `entityKind`, else the id.",
           "properties": {
             "kind": {
               "const": "occasionTarget"
             },
             "entityKind": {
               "type": "string",
-              "description": "The beat's `target=\"kind:<kind>\"` kind (its `targetKind.kind`)."
+              "description": "The beat's `target=\"kind:<kind>\"` kind (its `targetKind.kind`), or its `forKind.kind`."
             }
           },
           "additionalProperties": true,
@@ -445,11 +481,21 @@
       ]
     },
     "placeholderFormat": {
-      "description": "dsl 0.24.0 §4 / 0.25.0 §8: the interpolation's format hint ({{user.deaths:ordinal}}), omitted when none was written. The engine renders the value in that format (a locale-aware engine localizes it). `ordinal`: a non-negative integer as an English ordinal (1st 2nd 3rd 4th … 11th 12th 13th … 21st 22nd … 101st 111th). `ordinalWord`: an ordinal word (first second … twentieth for 1–20, the `ordinal` digits above). Any other value renders unchanged.",
+      "description": "dsl 0.24.0 §4 / 0.25.0 §8 / 0.27.0 §7: the interpolation's format hint ({{user.deaths:ordinal}}), omitted when none was written. The engine renders the value in that format (a locale-aware engine localizes it). `ordinal`: a non-negative integer as an English ordinal (1st 2nd 3rd 4th … 11th 12th 13th … 21st 22nd … 101st 111th). `ordinalWord`: an ordinal word (first second … twentieth for 1–20, the `ordinal` digits above). `plural`: the placeholder's `forms` — the first when the number is 1, the second otherwise, each `#` replaced by the number. Any other value renders unchanged.",
       "enum": [
         "ordinal",
-        "ordinalWord"
+        "ordinalWord",
+        "plural"
       ]
+    },
+    "placeholderForms": {
+      "description": "dsl 0.27.0 §7: a `plural` placeholder's forms as written in {{n:plural(lantern|lanterns)}} — the English singular, then the plural; a `#` in a form stands for the number. Present exactly when `format` is `plural`; an engine may localize the count from them.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 2,
+      "maxItems": 2
     },
     "role": {
       "enum": [
@@ -476,6 +522,13 @@
         },
         "open": {
           "type": "boolean"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "dsl 0.27.0 §7: member → display text (the kind's `labels:`, with its sub-kinds' and ancestors' labels for shared members). What a {{…}} of a value of this kind renders — an `occasionTarget` placeholder of this `entityKind` (a cast `name:` wins); a `{ domain: <kind> }` state path carries the same map as `state[].labels`. Omitted when none; an unlabelled member renders its id."
         }
       },
       "additionalProperties": true,
@@ -857,6 +910,23 @@
       "additionalProperties": false,
       "required": ["kind", "prefix", "members"]
     },
+    "forKind": {
+      "type": "object",
+      "description": "dsl 0.27.0 §3 (T2-10): a `for: \"kind:<kind>\"` beat on an untargeted `select: sequence` occasion, resolved. Each raise presents the beat once per listed member whose `when` holds (judged at the raise with `occasion.target` bound to that member), in list order; while one presentation runs, `occasion.target` is that member id. `once` spends the beat, not a member.",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": ["kind", "members"]
+    },
     "sceneBeat": {
       "type": "object",
       "properties": {
@@ -867,6 +937,9 @@
         },
         "targetKind": {
           "$ref": "#/$defs/targetKind"
+        },
+        "forKind": {
+          "$ref": "#/$defs/forKind"
         },
         "target": {
           "type": "string",
@@ -881,18 +954,19 @@
           "description": "the RESOLVED priority (unauthored → 0); higher wins."
         },
         "once": {
-          "enum": [
-            "run",
-            "user",
-            "none",
-            "day",
-            "slot"
+          "anyOf": [
+            { "enum": ["run", "user", "none", "day", "slot", "week"] },
+            { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }
           ],
-          "description": "repetition policy: `run` (default — presented at most once per run), `user` (at most once ever), `none` (repeatable; source `once: false`), `day` / `slot` (dsl 0.24.0 §1: spent until the declared clock's day / slot changes — the artifact's `clock` names the paths)."
+          "description": "repetition policy: `run` (default — presented at most once per run), `user` (at most once ever), `none` (repeatable; source `once: false`), `day` / `slot` (dsl 0.24.0 §1: spent until the declared clock's day / slot changes — the artifact's `clock` names the paths), `week` (dsl 0.27.0 §5: spent until `clock.weekday` returns to `week.first`), `season:<name>` (dsl 0.27.0 §5: spent until the season opens again). A beat with `spentBy` is `none`."
         },
         "also": {
           "const": true,
           "description": "dsl 0.23.0 §3: on a `select: first` occasion, an eligible `also` beat is presented in addition to the winner, after it; it never wins. Absent when not authored."
+        },
+        "spentBy": {
+          "$ref": "#/$defs/celPair",
+          "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
         },
         "share": {
           "type": "string",
@@ -2270,9 +2344,13 @@
           },
           "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this quest in declaration order. Quest grants fire at fresh `complete`/`failed` transitions (spec §3 D-D). A `<reward on=\"failed\"/>` entry fires ONLY on `failed` (authored fail OR §2.3 downward cascade); a default (no `on=`) entry fires ONLY on `complete`. Runs BEFORE the corresponding `questComplete`/`questFailed` handler bodies. Omitted when the quest authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
         },
+        "rearm": {
+          "$ref": "#/$defs/celPair",
+          "description": "dsl 0.27.0 §5: when this `@def`-expanded condition goes from false to true the quest returns to `unset` (objectives undone, `failedBy` cleared) and can be activated again. Omitted when not authored."
+        },
         "tier": {
-          "enum": ["run"],
-          "description": "dsl 0.22.0 §7: `run` for a `<quest tier=\"run\">` — its status and objectives reset to `unset` when a run starts (`newRun`). Omitted for the default `user` tier (status persists across runs)."
+          "anyOf": [{ "enum": ["run"] }, { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }],
+          "description": "dsl 0.27.0 §5: `season:<name>` resets the quest to `unset` when that season opens. dsl 0.22.0 §7: `run` for a `<quest tier=\"run\">` — its status and objectives reset to `unset` when a run starts (`newRun`). Omitted for the default `user` tier (status persists across runs)."
         },
         "activate": {
           "enum": ["accept"],
@@ -2380,6 +2458,9 @@
         "targetKind": {
           "$ref": "#/$defs/targetKind"
         },
+        "forKind": {
+          "$ref": "#/$defs/forKind"
+        },
         "kind": {
           "const": "entry"
         },
@@ -2429,8 +2510,15 @@
           "description": "dsl 0.21.0 §3.2: the entry beat's authored priority (higher wins). Absent when not authored; the engine reads an absent priority as 0."
         },
         "once": {
-          "enum": ["run", "user", "day", "slot"],
+          "anyOf": [
+            { "enum": ["run", "user", "day", "slot", "week"] },
+            { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }
+          ],
           "description": "dsl 0.22.0 §7, 0.24.0 §1: the entry beat's repetition policy — `run`: not eligible while `entry.<id>.read` is true; `user`: not eligible once `entry.<id>.everRead` is true; `day` / `slot`: not eligible again until the declared clock's day / slot changes after it was read. Absent when not authored: repeatable, as in 0.21."
+        },
+        "spentBy": {
+          "$ref": "#/$defs/celPair",
+          "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
         },
         "share": {
           "type": "string",
@@ -2528,6 +2616,9 @@
         "targetKind": {
           "$ref": "#/$defs/targetKind"
         },
+        "forKind": {
+          "$ref": "#/$defs/forKind"
+        },
         "kind": {
           "const": "beat"
         },
@@ -2565,18 +2656,19 @@
           "description": "the RESOLVED priority (unauthored → 0); higher wins."
         },
         "once": {
-          "enum": [
-            "run",
-            "user",
-            "none",
-            "day",
-            "slot"
+          "anyOf": [
+            { "enum": ["run", "user", "none", "day", "slot", "week"] },
+            { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }
           ],
           "description": "repetition policy, as sceneBeat.once: `run` (default), `user`, `none` (source `once=false`), `day` / `slot` (dsl 0.24.0 §1). Spent when the beat is presented."
         },
         "also": {
           "const": true,
           "description": "as sceneBeat.also (dsl 0.23.0 §3). Absent when not authored."
+        },
+        "spentBy": {
+          "$ref": "#/$defs/celPair",
+          "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
         },
         "share": {
           "type": "string",
@@ -2654,6 +2746,32 @@
             "$ref": "#/$defs/effect"
           },
           "description": "resolved plugin state-write bindings (IR A12); absent when the directive declares none."
+        },
+        "retracts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "relation": { "type": "string" },
+              "args": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["relation", "args"],
+            "additionalProperties": false
+          },
+          "description": "dsl 0.27.0 §4: the facts the call retracts (its directive's declared effects.retracts, @attr substituted; \"_\" a wildcard), applied after `effects`; absent when none."
+        },
+        "asserts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "relation": { "type": "string" },
+              "args": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["relation", "args"],
+            "additionalProperties": false
+          },
+          "description": "dsl 0.27.0 §4: the ground facts the call asserts (its directive's declared effects.asserts, @attr substituted), applied after `retracts`; absent when none."
         },
         "wait": {
           "type": "boolean"
@@ -2846,6 +2964,9 @@
         "targetKind": {
           "$ref": "#/$defs/targetKind"
         },
+        "forKind": {
+          "$ref": "#/$defs/forKind"
+        },
         "id": {
           "type": "string",
           "description": "the scene's canonical id (sceneMeta.id) for a scene beat, the entry id for an entry beat, the canonical `<document id>.<beat id>` for a bundle beat (dsl 0.23.0 §4)."
@@ -2873,14 +2994,15 @@
           "description": "the RESOLVED priority (unauthored → 0)."
         },
         "once": {
-          "enum": [
-            "run",
-            "user",
-            "none",
-            "day",
-            "slot"
+          "anyOf": [
+            { "enum": ["run", "user", "none", "day", "slot", "week"] },
+            { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }
           ],
           "description": "the beat's repetition policy: always present on a scene or bundle row; on an entry row the authored `once` (`run`/`user`, dsl 0.22.0 §7; `day`/`slot`, dsl 0.24.0 §1), absent = repeatable."
+        },
+        "spentBy": {
+          "type": "string",
+          "description": "dsl 0.27.0 §5: the beat's `spentBy` condition after `@def` expansion (raw CEL). Absent when not authored."
         },
         "when": {
           "type": "string",
@@ -3003,6 +3125,30 @@
             "first"
           ],
           "description": "the optional week. Absent when not declared."
+        },
+        "last": {
+          "type": "object",
+          "properties": {
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "the last day."
+            },
+            "slot": {
+              "type": "string",
+              "description": "the last slot — one of `slots`; omitted means the day's last slot (always omitted on a day-granular clock)."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "day"
+          ],
+          "description": "dsl 0.27.0 §4 (T2-5): a finite clock's last position, verbatim as declared. Absent when not declared (the clock never ends)."
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "dsl 0.27.0 §4: `days: N`, verbatim — short for `last: { day: N }` (the last slot of day N). Never together with `last`; absent when not declared."
         }
       },
       "additionalProperties": false,
@@ -3017,7 +3163,7 @@
           "slot"
         ]
       },
-      "description": "dsl 0.24.0 §1: the project's declared clock, verbatim from the schema's `clock:` block. Carried on the artifact root and on `project.index.json` (`lute compile --all`) as `clock`. The engine derives the reserved read-only paths from it — `clock.index` = `(day - 1) * len(slots) + slotIndex` (`day - 1` without slots; monotone), `clock.weekday` = `(week.first + day - 1) mod week.length`, `clock.weekdayLabel` = `week.labels[clock.weekday]` — none of which is a `state` row, and spends `once: day|slot` beats by it. An advance moves the clock forward only (the last slot wraps to the first slot of the next day), settles quests and raises `raise` (`dayEnd` / `dayStart` at each midnight it crosses, `slot` where it stops) when declared."
+      "description": "dsl 0.24.0 §1: the project's declared clock, verbatim from the schema's `clock:` block. Carried on the artifact root and on `project.index.json` (`lute compile --all`) as `clock`. The engine derives the reserved read-only paths from it — `clock.index` = `(day - 1) * len(slots) + slotIndex` (`day - 1` without slots; monotone), `clock.weekday` = `(week.first + day - 1) mod week.length`, `clock.weekdayLabel` = `week.labels[clock.weekday]` — none of which is a `state` row, and spends `once: day|slot` beats by it. An advance moves the clock forward only (the last slot wraps to the first slot of the next day), settles quests and raises `raise` (`dayEnd` / `dayStart` at each midnight it crosses, `slot` where it stops) when declared. dsl 0.27.0 §4: a finite clock (`last` / `days`) stops at its last position — an advance whose destination lies past it walks there (raising `dayEnd` / `dayStart` at each midnight it crosses on the way), raises the last day's `dayEnd` (never `slot`) and ends the clock; any later advance is the usage error `E-CLOCK-END` until a new run starts the clock over."
     }
   }
 }

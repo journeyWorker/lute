@@ -1328,9 +1328,10 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         &reach,
         &ambiguous_quests,
         &unreachable_quests,
+        &Default::default(),
     )
     .into_iter()
-    .filter_map(|(_, a)| lute_check::GroundFact::from_pattern(&a.pattern));
+    .filter_map(|(_, a)| lute_check::GroundFact::from_pattern(&a));
     let may = lute_check::MaySet::build(
         &root_vocab,
         live_facts,
@@ -1538,6 +1539,7 @@ fn assert_in_provably_unreachable_node_does_not_seed_producibility() {
         &reach,
         &BTreeSet::new(),
         &BTreeSet::new(),
+        &Default::default(),
     );
     assert!(
         !live.contains("seen"),
@@ -1564,6 +1566,7 @@ fn assert_in_unknown_node_still_seeds_producibility() {
         &reach,
         &BTreeSet::new(),
         &BTreeSet::new(),
+        &Default::default(),
     );
     assert!(
         live.contains("seen"),
@@ -1586,6 +1589,7 @@ fn assert_in_lifecycle_unreachable_quest_does_not_seed_producibility() {
         &BTreeMap::new(),
         &BTreeSet::new(),
         &unreachable,
+        &Default::default(),
     );
     assert!(
         !live.contains("seen"),

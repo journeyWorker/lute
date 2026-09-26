@@ -14,7 +14,7 @@ The consequence is the other half of the trade: **using a slot nothing declares 
 ```
 error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:`
 block in this document's own frontmatter, in a project schema reached through `uses:`, or in a
-plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+plugin's `enums` export before using `emotion`
 ```
 
 Before `0.9.0` six of these slots carried closed members no route could extend, and `action` — the
@@ -125,7 +125,7 @@ and the inline list then governs. Dropping a member the base declared is
 <!-- lute-diagnostics -->
 ```
 error [E-EXTENDS-RELATION-SIG] enum `emotion` is missing base member(s) ["delighted"]; an inline
-re-declaration must re-declare a superset of the imported base's members (dsl 0.3.0 §4.1)
+re-declaration must re-declare a superset of the imported base's members
 ```
 
 This is deliberately **not** `E-DOMAIN-DUP`. That code is reserved for clashes involving a plugin.

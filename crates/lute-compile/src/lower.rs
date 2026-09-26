@@ -359,6 +359,26 @@ pub fn lower_directive(
                         .collect()
                 })
                 .unwrap_or_default();
+            // dsl 0.27.0 §4: the declared `effects.retracts` / `asserts`,
+            // each `@attr` bound to the call's value or its declared default
+            // (the checker's own resolution). A fact whose attr stays unbound
+            // is not written.
+            let facts = decl
+                .map(|d| lute_check::directive_facts::call_facts(d, dir))
+                .unwrap_or_default();
+            let records = |ps: &[lute_syntax::datalog::FactPattern]| -> Vec<FactRecord> {
+                ps.iter()
+                    .filter(|p| {
+                        !p.args
+                            .iter()
+                            .any(|a| matches!(a.term, lute_syntax::datalog::FactTerm::Param(_)))
+                    })
+                    .map(|p| FactRecord {
+                        relation: p.relation.clone(),
+                        args: p.args.iter().map(|a| fact_term_string(&a.term)).collect(),
+                    })
+                    .collect()
+            };
             Command::Other(OtherCmd {
                 addr: String::new(),
                 tag: dir.tag.clone(),
@@ -368,6 +388,8 @@ pub fn lower_directive(
                     .map(str::to_owned),
                 fields,
                 effects,
+                retracts: records(&facts.retracts),
+                asserts: records(&facts.asserts),
                 stamp,
             })
         }

@@ -45,6 +45,9 @@ pub struct ComponentDef {
     pub speakers: Vec<String>,
     pub defaults: BTreeMap<String, AttrValue>,
     pub effects: bool,
+    /// dsl 0.27.0 §6: the file's `beat:` header template, when it is a
+    /// beat template (`<beat use="name">`, [`crate::templates`]).
+    pub beat: Option<crate::templates::BeatTemplate>,
     pub body: Document,
     pub src: PathBuf,
 }
@@ -81,6 +84,7 @@ struct ParsedComponent {
     speakers: Vec<String>,
     defaults: BTreeMap<String, AttrValue>,
     effects: bool,
+    beat: Option<crate::templates::BeatTemplate>,
     body: Document,
     src: PathBuf,
 }
@@ -152,6 +156,7 @@ pub fn resolve_components(base_dir: &Path, components: &[String], at: Span) -> C
                 speakers: pc.speakers.clone(),
                 defaults: pc.defaults.clone(),
                 effects: pc.effects,
+                beat: pc.beat.clone(),
                 body: pc.body.clone(),
                 src: pc.src.clone(),
             },
@@ -329,6 +334,7 @@ fn read_and_parse(
                     speakers: Vec::new(),
                     defaults: BTreeMap::new(),
                     effects: false,
+                    beat: None,
                     body: empty,
                     src: canon.to_path_buf(),
                 },
@@ -401,6 +407,7 @@ fn read_and_parse(
             speakers: tm.speaker_params.clone(),
             defaults: tm.param_defaults.clone(),
             effects: tm.effects,
+            beat: tm.beat_template.clone(),
             body: doc,
             src: canon.to_path_buf(),
         },

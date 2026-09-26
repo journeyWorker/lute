@@ -238,11 +238,12 @@ fn coverage_counts_the_documents_a_play_presented() {
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let v: Json = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["coverage"]["plays"], 1, "{v:#}");
+    // T3-20: each untested unit is `{file, id, kind}`.
     let untested: Vec<&str> = v["coverage"]["untested"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|p| p.as_str().unwrap())
+        .map(|u| u["file"].as_str().unwrap())
         .collect();
     let listed = |f: &str| untested.iter().any(|p| p.ends_with(f));
     assert!(
@@ -301,17 +302,77 @@ fn coverage_counts_the_documents_an_advance_step_presented() {
     assert_eq!(out.status.code(), Some(0), "{t}");
     assert!(
         t.contains(
-            "coverage over 0 traced path(s) and 1 play(s) (plays count toward documents \
-             presented only, not branches or arms):"
+            "coverage over 0 traced path(s) and 1 play(s) (plays count toward what they \
+             presented and the choices they picked, not match arms):"
         ),
         "{t}"
     );
-    assert!(t.contains("1 untested document"), "{t}");
+    assert!(t.contains("1 untested unit(s)"), "{t}");
     assert!(t.contains("scenes/unseen.lute"), "{t}");
     assert!(
         !t.contains("scenes/dawn.lute"),
         "presented by the advance's raise: {t}"
     );
+}
+
+/// T3-20 (round-5 OT-F11): a play's branch picks fold into the same
+/// chosen-vs-never-chosen row a traced path's do, and the coverage report
+/// lists the beats no play presented — the ending-proof view — even when a
+/// scene test traces them.
+#[test]
+fn coverage_counts_play_picks_and_lists_beats_no_play_presented() {
+    let dir = temp_dir("play-picks");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(
+        &dir,
+        "scenes/ask.lute",
+        "---\nkind: scene\nid: ask\non: ask\nonce: false\n---\n\n## Ask\n\n@narrator: Well?\n\
+         <branch id=\"fate\" prompt=\"?\">\n  <choice id=\"drowned\" label=\"D\">\n    \
+         @narrator: d.\n  </choice>\n  <choice id=\"murdered\" label=\"M\">\n    \
+         @narrator: m.\n  </choice>\n</branch>\n",
+    );
+    write(
+        &dir,
+        "scenes/ending.lute",
+        "---\nkind: scene\nid: ending\non: finale\n---\n\n## End\n\n@narrator: fin.\n",
+    );
+    for (name, pick) in [("a", "drowned"), ("b", "murdered")] {
+        write(
+            &dir,
+            &format!("plays/{name}.play.yaml"),
+            &format!(
+                "steps:\n  - occasion: ask\n    choose: {{ fate: {pick} }}\nexpect:\n  exit: complete\n"
+            ),
+        );
+    }
+    // A scene test traces the ending; it is still no play's proof.
+    write(
+        &dir,
+        "tests/ending.test.yaml",
+        "file: ../scenes/ending.lute\nexpect:\n  exit: complete\n",
+    );
+    let d = dir.to_str().unwrap();
+    let out = lute(&["test", d, "--project", d, "--coverage"]);
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{t}");
+    assert!(t.contains("branch/hub fate ("), "{t}");
+    assert!(t.contains(": 2/2 chosen [drowned, murdered]"), "{t}");
+    assert!(t.contains("every testable document, beat and entry"), "{t}");
+    let (_, unplayed) = t
+        .split_once("1 beat(s) no play presents")
+        .unwrap_or_else(|| panic!("{t}"));
+    assert!(unplayed.contains("scenes/ending.lute"), "{t}");
+    assert!(!unplayed.contains("scenes/ask.lute"), "{t}");
+
+    let out = lute(&["test", d, "--project", d, "--coverage", "--json"]);
+    let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+    let unplayed = v["coverage"]["notPresentedByPlay"].as_array().unwrap();
+    assert_eq!(unplayed.len(), 1, "{v:#}");
+    assert_eq!(unplayed[0]["id"], "ending", "{v:#}");
 }
 
 // ---------------------------------------------------------------------------

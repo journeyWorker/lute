@@ -76,11 +76,13 @@ macro_rules! outln {
 }
 
 mod beats_cmd;
+mod codes;
 mod compile_all;
 mod context;
 #[cfg(test)]
 mod differential;
 mod doctor;
+mod endings;
 mod explain;
 mod input_cache;
 mod knowledge;
@@ -105,11 +107,17 @@ use input_cache::InputCache;
 #[command(
     name = "lute",
     version,
-    about = "Checker, compiler, and toolchain for .lute branching game narratives"
+    about = "Checker, compiler, and toolchain for .lute branching game narratives",
+    args_conflicts_with_subcommands = true,
+    arg_required_else_help = true
 )]
 struct Cli {
+    /// Explain a diagnostic code (`E-SET-SHAPE`, any letter case): what
+    /// raises it, the spec sections behind it, and its reference page.
+    #[arg(long, value_name = "CODE", value_parser = codes::parse_explain_code)]
+    explain: Option<&'static codes::Code>,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -137,7 +145,7 @@ enum Command {
         /// verdict and exit code (repeatable) — rustc/clippy `-D` precedent
         /// (spec §5). An unknown code is a usage error (exit 2). Errors are
         /// never demotable (spec §6).
-        #[arg(long = "deny", value_name = "CODE", value_parser = parse_deny_code)]
+        #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
         deny: Vec<String>,
         /// Promote EVERY warning to an error for the verdict and exit code
         /// (spec §5).
@@ -165,7 +173,7 @@ enum Command {
         /// verdict and exit code (repeatable) — applies to per-file AND
         /// project-wide diagnostics (spec §5). An unknown code is a usage error
         /// (exit 2). Errors are never demotable (spec §6).
-        #[arg(long = "deny", value_name = "CODE", value_parser = parse_deny_code)]
+        #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
         deny: Vec<String>,
         /// Promote EVERY warning to an error for the verdict and exit code
         /// (spec §5).
@@ -262,7 +270,7 @@ enum Command {
         /// Promote every diagnostic with EXACTLY this code to an error for the
         /// verdict and exit code (repeatable) — the same §5 policy `check`
         /// applies, over the warnings compile itself emits (`W-L10N-MISSING`).
-        #[arg(long = "deny", value_name = "CODE", value_parser = parse_deny_code)]
+        #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
         deny: Vec<String>,
         /// Promote EVERY warning to an error for the verdict and exit code
         /// (spec §5).
@@ -563,6 +571,12 @@ enum Command {
         /// authored directives (`::bg`, `::auto`, …).
         #[arg(long)]
         ir: bool,
+        /// Leave out the candidates that were not eligible at each raise:
+        /// the transcript keeps the winners, the lines, the quests and the
+        /// expectations (round-5 T3-16). Without it, five or more `when:
+        /// false` candidates at one raise fold into one count line.
+        #[arg(long)]
+        quiet: bool,
     },
     /// Run the project's scenario tests: every `*.test.yaml` under `dir`
     /// traces its scene (or, with `entry:`/`entries:`, presents its lore
@@ -709,7 +723,10 @@ enum Command {
         dir: PathBuf,
         /// One grid axis and its values, an inclusive integer range
         /// `run.day=1..7` or a list `run.slot=morning,afternoon,night`. The
-        /// axis is a declared state path; `quest.<id>.state=…` seeds the
+        /// axis is a declared state path; `run.aff.*=6,7` sets every member
+        /// of a `per:` family, `run.aff[run.route]=6,7` only the member the
+        /// `--axis run.route` value names at each cell (the others keep
+        /// their seed/default); `quest.<id>.state=…` seeds the
         /// quest's status; `quest.<id>.objectives.<oid>.done=true,false`
         /// sets objective progress; `holds(<fact>)=true,false` asserts or
         /// retracts a base fact; `visited('<id>')=true,false` puts a scene
@@ -776,13 +793,23 @@ enum Command {
 #[derive(Subcommand)]
 enum ScenarioCommand {
     /// Report a node's reachability verdict (Reachable/Unreachable/Unknown,
-    /// T6) plus its declared `after` prerequisite structure (dsl §5:575).
+    /// T6) plus its declared `after` prerequisite structure (dsl §5:575) —
+    /// or, with `--endings`, one row per ending (T3-20).
     Reach {
         /// A scene's canonical key (e.g. `marina.s01ep02`), a bundle beat's
         /// `<document id>.<beat id>`, or `quest:<id>` for a quest (dsl
         /// §4.4's `envelope quest:<id>` syntax); `scene:`/`beat:` prefixes
         /// disambiguate.
-        node_id: String,
+        #[arg(required_unless_present = "endings", conflicts_with = "endings")]
+        node_id: Option<String>,
+        /// Every ending instead of one node: with `=<occasion>`, every beat
+        /// answering that occasion; bare, every beat whose content can run
+        /// `::end` (its own body or a `::use`d component). Each row has the
+        /// `after:` verdict, the `when` verdict `check-project` reaches
+        /// (never holds / never wins), and what a satisfiable `when` reads
+        /// with who produces it.
+        #[arg(long, value_name = "OCCASION", num_args = 0..=1, default_missing_value = "", require_equals = true)]
+        endings: Option<String>,
     },
     /// Report the Guaranteed/Possible envelope tables for a node (T10) —
     /// full tables for a scene or an `after`-opted-in quest; defaults-only
@@ -895,319 +922,6 @@ fn parse_choose_flag(raw: &str) -> Result<(String, Vec<String>), String> {
     Ok((id.to_string(), choices))
 }
 
-/// The universe of diagnostic codes `--deny <CODE>` may name (spec §5). A
-/// promotion targeting a code OUTSIDE this set is a clap usage error (exit 2) —
-/// "a typo'd promotion MUST NOT silently protect nothing". No canonical runtime
-/// registry of codes exists (they are `pub const`s and inline literals
-/// scattered across the checker crates), so this curated list IS that registry,
-/// kept in ONE place. Assembled by grepping every `"[EW]-…"` code literal in the
-/// crates whose diagnostics `check`/`check-project` surface (`lute-check`,
-/// `lute-syntax`, `lute-cel`, `lute-manifest`, `lute-core-span`; since
-/// 0.10.0 §8 put the mock pass under `check-project`, `lute-trace`; and since
-/// §9:962 put the compile gate under `lute check`, `lute-compile`); the
-/// `every_check_emitted_code_is_deniable` test, a `#[cfg(test)]` unit test at
-/// the bottom of THIS file, rescans those crates and fails if any emitted
-/// code is missing here, so a newly-added code cannot silently fall outside
-/// the deny universe. A SUPERSET is harmless
-/// (denying a code `check` never emits merely protects nothing); a MISSING code
-/// is the only defect, and that test guards exactly it. Sorted for readability.
-const DENIABLE_CODES: &[&str] = &[
-    "E-ACCEPT-TARGET",
-    "E-AGE-GATE",
-    "E-APP-READONLY",
-    "E-ARM-DEAD",
-    "E-AS-REMOVED",
-    "E-ASSET-DECOMPOSE",
-    "E-ASSET-SEGMENT",
-    "E-ASSET-UNKNOWN-ID",
-    "E-AT-CONTEXT",
-    "E-ATTR-DEF-DYNAMIC",
-    "E-ATTR-QUOTE",
-    "E-ATTR-TYPE",
-    "E-BAD-ENUM",
-    "E-BEAT-ATTR",
-    "E-BEAT-UNREACHABLE",
-    "E-BRANCH-ALL-GUARDED",
-    "E-BRANCH-EMPTY",
-    "E-BRANCH-PROMPT",
-    "E-BRANCH-TIMEOUT",
-    "E-CAPABILITY-MISMATCH",
-    "E-CAST-UNKNOWN",
-    "E-CEL-PARSE",
-    "E-CEL-PROFILE",
-    "E-CEL-TYPE",
-    "E-CHOICE-DUP",
-    "E-CHOICE-ID-RESERVED",
-    "E-CHOICELOG-READ",
-    "E-CLIP-OVERLAP",
-    "E-CLIP-TIMING",
-    "E-CLOCK-DECL",
-    "E-COMMENT-UNTERMINATED",
-    "E-COMPILE-COMPONENT",
-    "E-COMPILE-EXPAND",
-    "E-COMPILE-INTERNAL",
-    "E-COMPONENT-ARG",
-    "E-COMPONENT-BODY",
-    "E-COMPONENT-CYCLE",
-    "E-COMPONENT-DUP",
-    "E-COMPONENT-PARSE",
-    "E-COMPONENT-STATE",
-    "E-COMPONENT-UNDECLARED",
-    "E-CONN-CYCLE",
-    "E-CONN-EPISODE-ID-DUP",
-    "E-CONN-FORMULA-TOO-COMPLEX",
-    "E-CONN-PROFILE",
-    "E-CONN-UNKNOWN-NODE",
-    "E-CONN-UNREACHABLE",
-    "E-CONTENT-LINE-BRACKET",
-    "E-CONTENT-OUTSIDE-SHOT",
-    "E-DATALOG-FUNCTION",
-    "E-DATALOG-GUARD-FACT",
-    "E-DATALOG-PARSE",
-    "E-DATALOG-UNSAFE",
-    "E-DATALOG-UNSTRATIFIED",
-    "E-DEF-DECL",
-    "E-DEFAULTS-KEY",
-    "E-DELIVERY-CONFLICT",
-    "E-DELIVERY-FLAG-VALUE",
-    "E-DELIVERY-NARRATOR",
-    "E-DEPENDS-CYCLE",
-    "E-DEPENDS-UNRESOLVED",
-    "E-DEPENDS-VERSION",
-    "E-DERIVE-TIER",
-    "E-DERIVE-UNDECLARED",
-    "E-DERIVED-WRITE",
-    "E-DOLLAR-OUTSIDE-MATCH",
-    "E-DOMAIN-DUP",
-    "E-DOMAIN-UNKNOWN",
-    "E-DUP-BRANCH",
-    "E-DUP-LINE-CODE",
-    "E-DUP-TRACK",
-    "E-DUP-VOICEKEY",
-    "E-ENGINE-OWNED-WRITE",
-    "E-ENTITY-KIND-CLASH",
-    "E-ENTITY-KIND-SHAPE",
-    "E-ENTRY-ATTR",
-    "E-ENTRY-ID-DUP",
-    "E-ENTRY-SERIES-ORDER",
-    "E-ENTRY-UNREACHABLE",
-    "E-ENUM-DEFAULT-NOT-MEMBER",
-    "E-ENUM-EXITS-NOT-MEMBER",
-    "E-ENUM-LABEL-NOT-MEMBER",
-    "E-ENUM-MISSING-SEMANTICS",
-    "E-ENUM-UNEXPECTED-SEMANTICS",
-    "E-EXTENDS-RELATION-SIG",
-    "E-EXTENDS-STATE-TYPE",
-    "E-FACT-DOMAIN",
-    "E-FACT-EXCLUSIVE",
-    "E-FACT-TIER-WRITE",
-    "E-FRONTMATTER-SCHEMA",
-    "E-GRAMMAR-NOT-ADMITTED",
-    "E-HUB-NO-EXIT",
-    "E-IDENTITY-TEMPLATE",
-    "E-INTERP-DEF",
-    "E-INTERP-UNTERMINATED",
-    "E-INTO-TARGET",
-    "E-INTO-UNDECLARED",
-    "E-INTO-VALUE",
-    "E-KIND-MISSING",
-    "E-KIND-NAME-CLASH",
-    "E-LEGACY-CONTENT-SIGIL",
-    "E-LOCALE-BUNDLE",
-    "E-LOGIC-CONTENT",
-    "E-LOWER-RECORD-FIELD",
-    "E-LOWER-RECORD-UNKNOWN",
-    "E-MARK-DUP",
-    "E-MATCH-DUP-OTHERWISE",
-    "E-MATCH-RELATION-SUBJECT",
-    "E-MAYBE-UNSET",
-    "E-META-ID",
-    "E-META-MISSING",
-    "E-META-PARSE",
-    "E-META-UNKNOWN-KEY",
-    "E-META-VALUE",
-    "E-MISSING-ATTR",
-    "E-MOCK-SUBJECT",
-    "E-NEXT-BACKWARD",
-    "E-NEXT-UNDEFINED",
-    "E-NONEXHAUSTIVE",
-    "E-OBJECTIVE-CONTRADICTION",
-    "E-OBJECTIVE-ID-DUP",
-    "E-OBJECTIVE-ID-MISSING",
-    "E-OBJECTIVE-MISSING-DONE",
-    "E-OBJECTIVE-QUEST-DONE",
-    "E-OBJECTIVE-UNSATISFIABLE",
-    "E-OCCASION-UNKNOWN",
-    "E-ON-NO-EVENT",
-    "E-PATH-IDENT",
-    "E-PERMISSION-BRIDGE",
-    "E-PERMISSION-DIRECTIVE",
-    "E-PERMISSION-FACT",
-    "E-PERMISSION-QUEST",
-    "E-PERMISSION-REWARD",
-    "E-PERMISSION-STATE",
-    "E-PERSIST-REMOVED",
-    "E-PLUGIN-ASSET-SEGMENT-TYPE",
-    "E-PLUGIN-DUP-ACROSS",
-    "E-PLUGIN-DUP-ID",
-    "E-PLUGIN-INVALID-DIRECTIVE",
-    "E-PLUGIN-IO",
-    "E-PLUGIN-MANIFEST",
-    "E-PLUGIN-MISSING-ACTIVE",
-    "E-PLUGIN-MISSING-EXPORT",
-    "E-PLUGIN-OPTION-TYPE",
-    "E-PLUGIN-OPTION-UNKNOWN",
-    "E-PLUGIN-PARSE",
-    "E-PLUGIN-RESERVED-NAME",
-    "E-PLUGIN-RESERVED-STAMP-ATTR",
-    "E-PLUGIN-UNKNOWN-ASSETKIND",
-    "E-PLUGIN-UNKNOWN-EXPORT",
-    "E-PLUGIN-UNKNOWN-REWARD-TARGET",
-    "E-PROFILE-EXTENDS-CYCLE",
-    "E-PROFILE-UNKNOWN",
-    "E-QUEST-ID-DUP",
-    "E-QUEST-ID-MISSING",
-    "E-QUEST-MULTI-PARENT",
-    "E-QUEST-REF-UNKNOWN",
-    "E-QUEST-RESERVED-DECL",
-    "E-QUEST-RESERVED-WRITE",
-    "E-QUEST-TIER-MIX",
-    "E-QUEST-TREE-CYCLE",
-    "E-QUEST-UNREACHABLE",
-    "E-REF-ARG-TYPE",
-    "E-REF-ARITY",
-    "E-REF-TYPE",
-    "E-RELATION-ARITY",
-    "E-RELATION-DECL",
-    "E-RELATION-DOMAIN",
-    "E-RELATION-DUP",
-    "E-RELATION-EMPTY",
-    "E-RELATION-RESERVED-NAME",
-    "E-RELATION-RESERVED-WRITE",
-    "E-RELATION-UNKNOWN",
-    "E-RETRACT-WILDCARD-ASSERT",
-    "E-REWARD-ATTR",
-    "E-REWARD-KIND",
-    "E-REWARD-TARGET",
-    "E-RULE-AGGREGATE-CYCLE",
-    "E-RULE-EXCLUSIVE",
-    "E-RULE-GUARD-DEF",
-    "E-SET-OP-TYPE",
-    "E-SET-SHAPE",
-    "E-SET-TYPE",
-    "E-STATE-COLLECTION",
-    "E-STATE-DECL",
-    "E-STATE-DECL-CONFLICT",
-    "E-STATE-MAYBE-UNAVAILABLE",
-    "E-STATE-NAMESPACE",
-    "E-STATE-REDECLARE",
-    "E-STATE-SHAPE-CYCLE",
-    "E-STREAM-BODY",
-    "E-STREAM-CLOSED",
-    "E-STREAM-PREFIX-CHANGED",
-    "E-STREAM-TEMPLATE",
-    "E-STRING-ESCAPE",
-    "E-TAG-INLINE-BODY",
-    "E-TAG-NOT-ONE-LINE",
-    "E-TEMPORAL-ARG",
-    "E-TEST-FILE",
-    "E-TEST-KEY",
-    "E-TEST-LORE",
-    "E-TEST-NO-EXPECT",
-    "E-TIME-RESOLUTION",
-    "E-TIMELINE-CONTENT",
-    "E-TIMELINE-DURATION",
-    "E-TITLE-PLACEMENT",
-    "E-TRACE-ACCEPT",
-    "E-TRACE-BEAT",
-    "E-TRACE-CHOICE",
-    "E-TRACE-ENTRY",
-    "E-TRACE-EVENT",
-    "E-TRACE-MOCK-FACT",
-    "E-TRACE-MOCK-PARSE",
-    "E-TRACE-MOCK-TYPE",
-    "E-TRACE-MOCK-UNDECLARED",
-    "E-TRACK-KEY",
-    "E-UNCLASSIFIED",
-    "E-UNCLOSED-TAG",
-    "E-UNDECLARED",
-    "E-UNDECLARED-REF",
-    "E-UNKNOWN-ATTR",
-    "E-UNKNOWN-DIRECTIVE",
-    "E-UNKNOWN-EVENT",
-    "E-UNKNOWN-ID",
-    "E-UNKNOWN-KIND",
-    "E-UNSET-LITERAL",
-    "E-UNSET-UNCOVERED",
-    "E-USES-CYCLE",
-    "E-USES-DUP-DEF",
-    "E-USES-DUP-RELATION",
-    "E-USES-DUP-STATE",
-    "E-USES-NOT-FOUND",
-    "E-USES-PARSE",
-    "E-VALIDAT-DERIVED",
-    "E-WHEN-LITERAL-DOMAIN",
-    "E-WHEN-PATTERN",
-    "E-WHEN-RANGE",
-    "E-WHEN-UNSET-SUBJECT",
-    "E-WRITE-CONFLICT",
-    "W-ASSET-PLACEHOLDER",
-    "W-BEAT-ONCE-RUN-USER",
-    "W-BEAT-PRIORITY-TIE",
-    "W-BEAT-SHADOWED",
-    "W-CAST-ABSENT",
-    "W-CATALOG-STALE",
-    "W-CODE-AFTER-END",
-    "W-CODE-AFTER-NEXT",
-    "W-COMPONENT-UNVERIFIED",
-    "W-DEADLINE-BEFORE-DONE",
-    "W-DEF-UNUSED",
-    "W-DERIVE-NO-RULES",
-    "W-DISPLAY-NAME-DUP",
-    "W-DOMAIN-UNREAD",
-    "W-ENTRY-REF-UNKNOWN",
-    "W-ENTRY-WRITE-REREAD",
-    "W-EXIT-INERT",
-    "W-FACT-GUARANTEED",
-    "W-INTO-SET-DUP",
-    "W-L10N-MISSING",
-    "W-LUTE-VERSION-STALE",
-    "W-META-LEGACY",
-    "W-OBJECTIVE-HIDDEN",
-    "W-OTHERWISE-DEAD",
-    "W-OVERLAP-ARMS",
-    "W-PROJECT-INERT",
-    "W-QUEST-HANDLER-DEAD",
-    "W-QUEST-NEVER-ACCEPTED",
-    "W-QUEST-REF-UNKNOWN",
-    "W-QUEST-STATE-ISSET",
-    "W-QUEST-TIER-IMPLICIT",
-    "W-RELATION-UNREAD",
-    "W-REWARD-DOUBLE-CREDIT",
-    "W-STAGE-ABSENT",
-    "W-TEXT-LOOKS-LIKE-REF",
-    "W-TIMELINE-CLIPS",
-    "W-TIMELINE-TOTAL",
-    "W-TIMELINE-TRACKS",
-    "W-TRACE-MOCK-UNPRODUCIBLE",
-    "W-WHEN-TEST-LITERAL",
-];
-
-/// clap `value_parser` for `--deny <CODE>`: accept only a code in the known
-/// universe ([`DENIABLE_CODES`]); a typo, a compile/trace-only code, or a
-/// made-up string is a clap usage error (exit 2), never a silent no-op
-/// (spec §5). Returning `Err` here is how clap produces the exit-2 usage error.
-fn parse_deny_code(raw: &str) -> Result<String, String> {
-    if DENIABLE_CODES.contains(&raw) {
-        Ok(raw.to_string())
-    } else {
-        Err(format!(
-            "unknown diagnostic code `{raw}` (not a known `lute check` code); a typo'd \
-             `--deny` must not silently protect nothing (spec §5)"
-        ))
-    }
-}
-
 /// The `--deny <CODE>` / `--deny-warnings` promotion policy (spec §5). Errors are
 /// never demotable (spec §6), so promotion only ever turns a NON-error into an
 /// error for the verdict, exit code, and reported severity.
@@ -1259,7 +973,16 @@ fn apply_deny_json(d: &Diagnostic, policy: &DenyPolicy, value: &mut serde_json::
 }
 
 fn main() -> ExitCode {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    if let Some(code) = cli.explain {
+        return codes::explain(code);
+    }
+    let Some(command) = cli.command else {
+        // `arg_required_else_help` already answers a bare `lute`.
+        let _ = <Cli as clap::CommandFactory>::command().print_help();
+        return ExitCode::from(2);
+    };
+    match command {
         Command::Check {
             file,
             json,
@@ -1427,7 +1150,8 @@ fn main() -> ExitCode {
             no_derive,
             explain,
             ir,
-        } => play::run_play(&dir, &script, json, no_derive, &explain, ir),
+            quiet,
+        } => play::run_play(&dir, &script, json, no_derive, &explain, ir, quiet),
         Command::Test {
             dir,
             json,
@@ -1671,6 +1395,7 @@ fn assemble_input(
     // default snapshot suffices to type them (they are not capability-gated).
     let mut parsed = lute_syntax::parse(&text);
     lute_check::meta::apply_quest_tier_default(&mut parsed.0, &defaults);
+    lute_check::sequence::apply_sequence(&mut parsed.0, &defaults);
     let doc = &parsed.0;
     let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
         &doc.meta,
@@ -1700,7 +1425,11 @@ fn assemble_input(
     }
     let mut resolve_error = !project_diags.is_empty();
     for d in &rdiags {
-        project_diags.push(format!("{}: {}", d.code, d.message));
+        project_diags.push(format!(
+            "{}: {}",
+            d.code,
+            lute_core_span::plain_message(&d.message)
+        ));
         // An `E-` resolve diagnostic is a build-failing error like any other
         // (dsl 0.1.0 Appendix E: severity is binary, `E-` gates). It travels
         // the `lute:` channel instead of the per-document diagnostic list
@@ -1882,6 +1611,7 @@ fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
         &mut doc,
         &input.components,
         &cast,
+        &folded.env.domains,
         &folded.env.state,
     );
     let bodies = if folded.typed.component.is_some() {
@@ -2505,6 +2235,8 @@ fn collect_project_inputs(
             let analysis = (!built.resolve_error || single_root).then(|| {
                 let input = &built.input;
                 let mut doc = parsed.0.clone();
+                // dsl 0.27.0 §6: template beats are ordinary beats to every pass.
+                let _ = lute_check::desugar_document(&mut doc, input);
                 // dsl 0.24.0 §4: the project passes (fact Must/may, connectivity)
                 // see an effects component's writes where its `::use` performs them.
                 lute_check::splice_component_effects(&mut doc, &input.components, &input.snapshot);
@@ -2561,6 +2293,30 @@ fn collect_project_inputs(
     }
 
     Ok((file_results, by_root, inputs))
+}
+
+/// Read and parse each of `files` (under the walk root `dir`) as every
+/// pass reads it: desugared against its own project's input (dsl 0.27.0
+/// §6/§8 — template beats, `sequence:` keys, the `questTier` default), for
+/// the report surfaces that read documents without checking them (`lute
+/// refs`, `lute lore`). In `files` order, each with its parse diagnostics.
+#[allow(clippy::type_complexity)]
+pub(crate) fn parse_project_docs(
+    dir: &Path,
+    files: &[PathBuf],
+) -> Vec<std::io::Result<(lute_syntax::ast::Document, Vec<Diagnostic>)>> {
+    let cache = InputCache::default();
+    files
+        .par_iter()
+        .map(|file| {
+            let text = std::fs::read_to_string(file)?;
+            let root = project_root_for(file, dir);
+            let (built, (mut doc, diags)) =
+                assemble_input(&cache, file, text, None, Some(&root), None);
+            let _ = lute_check::desugar_document(&mut doc, &built.input);
+            Ok((doc, diags))
+        })
+        .collect()
 }
 
 /// Re-derive `span`'s `line`/`column`/`utf16_range` from its byte offsets
@@ -2698,9 +2454,10 @@ fn compute_conn_fixpoint(
             &reach,
             ambiguous_quests,
             &lifecycle_unreachable_quests,
+            root_vocab.effect_directives(),
         )
         .into_iter()
-        .filter_map(|(_path, a)| lute_check::GroundFact::from_pattern(&a.pattern));
+        .filter_map(|(_path, p)| lute_check::GroundFact::from_pattern(&p));
         let may = lute_check::MaySet::build(&root_vocab, live_facts, &stable);
         let must = must.get_or_insert_with(|| {
             lute_check::compute_must(group, &foldeds, conn_graph, &root_vocab, &may)
@@ -2786,7 +2543,9 @@ fn compute_conn_fixpoint(
 /// human/JSON output) and [`reconciled_project_results`] (the compile/trace
 /// project-aware §5 gate).
 /// `wip` grades the fact-envelope dead-guard verdicts for `check-project
-/// --wip` (dsl 0.23.0 §10).
+/// --wip` (dsl 0.23.0 §10). The last element is each root's converged fact
+/// envelope, for the reports that judge a condition under it (`lute beats`'
+/// gate marks, dsl 0.27.0 §4).
 #[allow(clippy::type_complexity)]
 fn reconcile_collected(
     mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
@@ -2796,6 +2555,7 @@ fn reconcile_collected(
     Vec<(PathBuf, lute_check::CheckResult)>,
     Vec<(PathBuf, Diagnostic)>,
     BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
+    BTreeMap<PathBuf, lute_check::FactEnv>,
 ) {
     let mut project_diags = Vec::new();
     // T11: every ENTRY-DEPENDENT, RUN/USER-TIER read at a NON-TAINTED scene
@@ -2839,6 +2599,7 @@ fn reconcile_collected(
     // by topological-order exclusion in `reconciled_project_results`.
     let mut nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>> =
         BTreeMap::new();
+    let mut fact_envs: BTreeMap<PathBuf, lute_check::FactEnv> = BTreeMap::new();
     // First result index per path — the answer `iter().find(p == path)`
     // gave, without an O(files) scan per document.
     let mut result_ix: std::collections::HashMap<PathBuf, usize> =
@@ -2888,6 +2649,8 @@ fn reconcile_collected(
             // fail (project-wide: a parent in another file can cascade-fail it).
             Box::new(|| lute_check::check_project_quest_handlers(group)),
             Box::new(|| lute_check::connectivity::check_conn_episode_dup(group)),
+            // dsl 0.27.0 §8: the manifest's `sequence:` names this root's scenes.
+            Box::new(|| lute_check::sequence::check_project_sequence(root, group)),
             // dsl 0.26.0 §2.1: every declaration of one state path agrees.
             Box::new(|| lute_check::state_decls::check_project_state_decls(group, &beat_foldeds)),
             // dsl 0.26.0 §2.8: advisory — two speakers sharing a display name.
@@ -2944,7 +2707,12 @@ fn reconcile_collected(
                     || {
                         (
                             lute_check::beats::presence_ladder(group, &beat_foldeds),
-                            lute_check::cast::fact_producers(group),
+                            lute_check::cast::fact_producers(
+                                group,
+                                &lute_check::directive_facts::root_table(
+                                    group_full.iter().map(|(_, _, f)| f),
+                                ),
+                            ),
                         )
                     },
                 )
@@ -3107,6 +2875,7 @@ fn reconcile_collected(
             }
         }
         project_diags.extend(beat_diags);
+        fact_envs.insert(root.clone(), fp.fact_env);
         // T10/T11: connectivity envelope (dsl §4.3). `PerDocEffects`
         // populated from T8 (per-scene `guaranteed`/`possible_writes`,
         // recomputed here from this root's own docs+resolved schema, keyed
@@ -3293,7 +3062,7 @@ fn reconcile_collected(
             .or_insert_with(|| std::fs::read_to_string(path.as_path()).unwrap_or_default());
         d.span = normalize_span_from_text(text, d.span);
     }
-    (file_results, project_diags, nodes_by_path)
+    (file_results, project_diags, nodes_by_path, fact_envs)
 }
 
 /// Round-5 T3-4: a diagnostic a document carries only because it imports a
@@ -3533,7 +3302,7 @@ fn run_check_project(
         .map(|(p, _)| p.clone())
         .zip(inputs)
         .collect();
-    let (mut file_results, mut project_diags, _nodes_by_path) =
+    let (mut file_results, mut project_diags, _nodes_by_path, _) =
         reconcile_collected(file_results, &by_root, wip);
 
     project_compile_pass(&mut file_results, &mut project_diags, &inputs);
@@ -3707,7 +3476,7 @@ fn run_check_project(
                         severity_str(d.severity)
                     },
                     d.code,
-                    d.message,
+                    d.text(),
                 );
             }
         }
@@ -3986,7 +3755,7 @@ fn reconciled_project_results(
             }
         }
     }
-    let (file_results, project_diagnostics, nodes_by_path) =
+    let (file_results, project_diagnostics, nodes_by_path, _) =
         reconcile_collected(file_results, &by_root, false);
     Ok(ReconciledProject {
         per_doc: file_results.into_iter().collect(),
@@ -4415,7 +4184,7 @@ fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::
                 "Reachable — a satisfiable route exists under your declared routes.".to_string()
             }
             Reachability::Unreachable => "Unreachable — no satisfiable route exists under your \
-                 declared routes (E-CONN-UNREACHABLE, dsl §4.1)."
+                 declared routes (E-CONN-UNREACHABLE)."
                 .to_string(),
             Reachability::Unknown => "Unknown — this analysis cannot prove reachability either \
                  way under your declared routes."
@@ -4430,7 +4199,7 @@ fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::
         }
         NodeId::Quest(id) if scenario.dead_required_objective_quests.contains(id) => {
             "Unreachable — this quest has a provably dead REQUIRED objective, so it can never \
-             complete (E-OBJECTIVE-UNSATISFIABLE, dsl 0.4 §5.3/§8.2 rule C4), under your \
+             complete (E-OBJECTIVE-UNSATISFIABLE), under your \
              declared routes."
                 .to_string()
         }
@@ -4545,7 +4314,7 @@ fn print_prereq_structure(
         Some(prereq @ PrereqState::Anchored(anchors)) => {
             outln!(
                 out,
-                "  after: (none declared) — anchored (dsl 0.24.0 §2, 0.25.0 §4); each anchor \
+                "  after: (none declared) — anchored; each anchor \
                  holds before it activates, through any one of its sources:"
             );
             for a in anchors {
@@ -4675,7 +4444,7 @@ fn pick_unique_root<'a>(
             eprintln!(
                 "lute: node `{node_id_raw}` is declared in {n} different project roots under \
                  {} -- ambiguous (a scene/quest id is only unique WITHIN one resolved project \
-                 root, dsl §2.3/§6.3); narrow the directory argument to a single project root: \
+                 root); narrow the directory argument to a single project root: \
                  {}",
                 dir.display(),
                 roots.join(", ")
@@ -5005,9 +4774,13 @@ fn print_facts_section(out: &mut String, scenario: &RootScenario, root: &Path) {
         &scenario.reach,
         &scenario.ambiguous_quests,
         &scenario.unreachable_quests,
+        &vocab.effect_directives,
     );
     let producible = lute_check::producible::producible(vocab, &live);
-    let per_doc = lute_check::connectivity::assert_relations_per_doc(&scenario.docs);
+    let per_doc = lute_check::connectivity::assert_relations_per_doc(
+        &scenario.docs,
+        &vocab.effect_directives,
+    );
 
     outln!(
         out,
@@ -5134,7 +4907,7 @@ fn print_scene_envelope(
     print_path_set_with_writers(out, &possible_only, &writers);
     outln!(
         out,
-        "  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):"
+        "  Guaranteed facts (hold on every declared route reaching this node):"
     );
     print_must_facts(out, scenario.scene_must.get(key).map_or(&[], Vec::as_slice));
 
@@ -5147,7 +4920,7 @@ fn print_scene_envelope(
     outln!(
         out,
         "  Possible \\ Guaranteed -- warning-grade reads (set on SOME but not every declared \
-         route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):"
+         route; suppressed by default in `check-project`, surfaced here):"
     );
     let mut any = false;
     for (path, d) in &diags {
@@ -5161,7 +4934,7 @@ fn print_scene_envelope(
             path.display(),
             d.span.line,
             d.span.column,
-            d.message
+            d.text()
         );
     }
     if !any {
@@ -5227,7 +5000,7 @@ fn print_quest_envelope(
     // wrongly addressed to.
     outln!(
         out,
-        "  Possible (set on SOME but not every declared route reaching this quest, dsl §4.4; \
+        "  Possible (set on SOME but not every declared route reaching this quest; \
          the Guaranteed paths above are not repeated) -- inventory only: unlike a scene's, this \
          list is not a set of warned read sites; a quest's guard reads are checked where they \
          are written, not against this table:"
@@ -5237,7 +5010,7 @@ fn print_quest_envelope(
         outln!(
             out,
             "  note: this quest declares no `after` attribute, so this is the defaults-only \
-             `D` table (dsl §4.4); declaring `after` on quest:{id} would enrich this table \
+             `D` table; declaring `after` on quest:{id} would enrich this table \
              with the full project-resolved envelope."
         );
     }
@@ -5464,8 +5237,7 @@ pub(crate) fn when_visited_hint(node: &lute_check::connectivity::NodeId, ids: &[
         _ => format!("`after=\"{formula}\"`"),
     };
     format!(
-        "its `when` reads {}, which gates it but draws no edge; write {write} to anchor it \
-         (dsl 0.25.0 §3)",
+        "its `when` reads {}, which gates it but draws no edge; write {write} to anchor it",
         reads.join(", ")
     )
 }
@@ -5624,9 +5396,22 @@ fn run_scenario(
     let mut out = String::new();
     let code = match command {
         None => run_scenario_graph(&mut out, &by_root, facts),
-        Some(ScenarioCommand::Reach { node_id }) => {
-            run_scenario_reach(&mut out, dir, &by_root, &file_results, &node_id)
-        }
+        Some(ScenarioCommand::Reach {
+            endings: Some(occasion),
+            ..
+        }) => endings::run_text(
+            &mut out,
+            &by_root,
+            &file_results,
+            (!occasion.is_empty()).then_some(occasion.as_str()),
+        ),
+        Some(ScenarioCommand::Reach { node_id, .. }) => run_scenario_reach(
+            &mut out,
+            dir,
+            &by_root,
+            &file_results,
+            node_id.as_deref().unwrap_or_default(),
+        ),
         Some(ScenarioCommand::Envelope { node_id }) => {
             run_scenario_envelope(&mut out, dir, &by_root, &file_results, &node_id)
         }
@@ -5698,8 +5483,15 @@ fn run_context(
         &branch_paths,
         &reserved_quest_paths,
     );
-    // dsl 0.22.0 §13: defs, built-in directives, project ids.
-    context::extend_surface(&mut surface, &folded, file, project);
+    // dsl 0.22.0 §13: defs, built-in directives, project ids; dsl 0.27.0:
+    // beat / quest keys, clock, terminal, seasons, the manifest's sequence.
+    context::extend_surface(
+        &mut surface,
+        &folded,
+        input.defaults.sequence(),
+        file,
+        project,
+    );
 
     if json {
         match serde_json::to_string_pretty(&surface) {
@@ -5873,6 +5665,15 @@ fn authoring_surface(
             let mut o = Map::new();
             o.insert("name".into(), name.clone().into());
             o.insert("params".into(), params.into());
+            // dsl 0.27.0 §6: a beat template's header (`<beat use="name">`).
+            if let Some(t) = &def.beat {
+                let header: Map<String, Value> = t
+                    .keys
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone().into()))
+                    .collect();
+                o.insert("beat".into(), header.into());
+            }
             Value::Object(o)
         })
         .collect();
@@ -5898,6 +5699,13 @@ fn authoring_surface(
                 KindShape::Invalid => {
                     o.insert("shape".into(), "invalid".into());
                 }
+            }
+            // dsl 0.27.0 §7: the display text `{{…}}` renders per member.
+            if !decl.labels.is_empty() {
+                o.insert(
+                    "labels".into(),
+                    serde_json::to_value(&decl.labels).unwrap_or(Value::Null),
+                );
             }
             Value::Object(o)
         })
@@ -6155,6 +5963,7 @@ fn namespace_str(ns: Namespace) -> &'static str {
         Namespace::User => "user",
         Namespace::App => "app",
         Namespace::Quest => "quest",
+        Namespace::Season => "season",
     }
 }
 
@@ -6268,11 +6077,29 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 ),
                 _ => String::new(),
             };
+            // dsl 0.27.0 §3/§4: the typed payload and the gate.
+            let mut extra = String::new();
+            if let Some(payload) = o["payload"].as_object() {
+                let fields: Vec<String> = payload
+                    .iter()
+                    .map(|(f, ty)| match ty.as_str() {
+                        Some(t) => format!("{f}: {t}"),
+                        None => format!("{f}: {ty}"),
+                    })
+                    .collect();
+                let _ = write!(extra, ", payload: {{ {} }}", fields.join(", "));
+            }
+            if let Some(gate) = o["raisedWhen"].as_str() {
+                let _ = write!(extra, ", raisedWhen: {gate}");
+            }
             let description = o["description"]
                 .as_str()
                 .map(|d| format!(" — {d}"))
                 .unwrap_or_default();
-            let _ = writeln!(out, "  {name} (select: {select}{target}){description}");
+            let _ = writeln!(
+                out,
+                "  {name} (select: {select}{target}{extra}){description}"
+            );
         }
     }
     let _ = writeln!(
@@ -6354,9 +6181,18 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 let name = e["name"].as_str().unwrap_or("");
                 let shape = e["shape"].as_str().unwrap_or("");
                 if shape == "members" {
-                    let members: Vec<&str> = e["members"]
+                    // dsl 0.27.0 §7: a labelled member shows its display text.
+                    let members: Vec<String> = e["members"]
                         .as_array()
-                        .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|x| x.as_str())
+                                .map(|m| match e["labels"][m].as_str() {
+                                    Some(label) => format!("{m} ({label:?})"),
+                                    None => m.to_string(),
+                                })
+                                .collect()
+                        })
                         .unwrap_or_default();
                     let _ = writeln!(out, "  {name}: {}", members.join(", "));
                 } else {
@@ -6461,6 +6297,14 @@ fn context_outline(surface: &serde_json::Value) -> String {
                     c["name"].as_str().unwrap_or(""),
                     params.join(", ")
                 );
+                // dsl 0.27.0 §6: a beat template's header, for `<beat use>`.
+                if let Some(header) = c["beat"].as_object() {
+                    let keys: Vec<String> = header
+                        .iter()
+                        .map(|(k, v)| format!("{k}: {}", v.as_str().unwrap_or("")))
+                        .collect();
+                    let _ = writeln!(out, "    beat: {}", keys.join(", "));
+                }
             }
         }
     }
@@ -6678,7 +6522,7 @@ fn run_compile(
                         d.span.column,
                         severity_str(d.severity),
                         d.code,
-                        d.message
+                        d.text()
                     );
                 }
                 let errors = diags
@@ -6762,6 +6606,7 @@ pub(crate) fn project_assert_relations(
         &scenario.reach,
         &scenario.ambiguous_quests,
         &scenario.unreachable_quests,
+        &scenario.rel_vocab.effect_directives,
     ))
 }
 
@@ -6862,7 +6707,7 @@ fn run_trace(
                 ));
             }
             eprintln!(
-                "lute trace: {} is a lore document — pass {} (dsl 0.19.0 §8, 0.23.0 §4)",
+                "lute trace: {} is a lore document — pass {}",
                 file.display(),
                 ways.join(" or ")
             );
@@ -6890,8 +6735,8 @@ fn run_trace(
                     if named.is_none() || named != target {
                         eprintln!(
                             "lute: {}: [{}] `file: {rel}` names a different document than the one \
-                             traced ({}) — the mock's subject and the command line must agree \
-                             (0.10.0 §8)",
+                             traced ({}) — the mock's subject and the command line must \
+                             agree",
                             path.display(),
                             lute_trace::E_MOCK_SUBJECT,
                             file.display()
@@ -6901,7 +6746,7 @@ fn run_trace(
                 }
                 Ok(None) => {}
                 Err(d) => {
-                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.message);
+                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.text());
                     return ExitCode::from(2);
                 }
             }
@@ -6952,6 +6797,7 @@ fn run_trace(
         derive: no_derive.then_some(false),
         bridges: Default::default(),
         bridge_spans: Default::default(),
+        choose_spans: Default::default(),
         gate_eligibility: false,
         project_quests: None,
     };
@@ -7068,7 +6914,7 @@ fn run_trace(
                 // first").
                 if exclusive {
                     println!(
-                        "trace refused: {} — exclusive relations hold together (dsl 0.25.0 §1)",
+                        "trace refused: {} — exclusive relations hold together",
                         file.display()
                     );
                 } else if diags.iter().any(|d| !d.code.starts_with("E-TRACE-")) {
@@ -7149,7 +6995,7 @@ fn render_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPoli
                 severity_str(d.severity)
             },
             d.code,
-            d.message,
+            d.text(),
         );
         // dsl 0.5.0 §2.2: an `E-COMPONENT-PARSE` (or any diagnostic) carrying
         // `related` sub-diagnostics from ANOTHER file (e.g. a failed
@@ -7166,7 +7012,7 @@ fn render_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPoli
                 r.diagnostic.span.column,
                 severity_str(r.diagnostic.severity),
                 r.diagnostic.code,
-                r.diagnostic.message,
+                r.diagnostic.text(),
             );
         }
     }
@@ -7325,126 +7171,4 @@ fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
         dir.display()
     );
     ExitCode::SUCCESS
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// [`DENIABLE_CODES`] is the sole `--deny` universe: it MUST be sorted +
-    /// deduped (so `contains` is meaningful and the list is auditable) and every
-    /// entry MUST match the diagnostic-code shape (spec §5).
-    #[test]
-    fn deniable_codes_wellformed() {
-        let re_ok = |c: &str| {
-            let mut parts = c.splitn(2, '-');
-            let head = parts.next().unwrap_or("");
-            let rest = parts.next().unwrap_or("");
-            matches!(head, "E" | "W")
-                && !rest.is_empty()
-                && rest
-                    .chars()
-                    .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '-')
-        };
-        for c in DENIABLE_CODES {
-            assert!(re_ok(c), "malformed code in DENIABLE_CODES: {c}");
-        }
-        let mut sorted = DENIABLE_CODES.to_vec();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(
-            sorted.as_slice(),
-            DENIABLE_CODES,
-            "DENIABLE_CODES must be sorted and deduped"
-        );
-    }
-
-    /// The drift guard below scans the five CHECK crates; `lute-cli/src` is
-    /// deliberately not among them (`testcmd.rs` holds the literal
-    /// `"E-TRACE-"` — a prefix, not a code — which the shape test would
-    /// accept). So the two codes `lute test` emits from
-    /// [`crate::testcmd`] are registered by hand, and a hand registration
-    /// needs a hand guard: dropping either one is otherwise silent, since
-    /// sortedness still holds without it.
-    #[test]
-    fn the_harness_own_codes_are_deniable() {
-        for code in [
-            "E-TEST-FILE",
-            "E-TEST-KEY",
-            "E-TEST-LORE",
-            "E-TEST-NO-EXPECT",
-        ] {
-            assert!(
-                DENIABLE_CODES.contains(&code),
-                "{code} is emitted by crates/lute-cli/src/testcmd.rs and MUST be deniable; \
-                 the drift guard does not scan this crate"
-            );
-        }
-    }
-
-    /// Drift guard (spec §5): every `"[EW]-…"` diagnostic-code literal in the
-    /// crates whose diagnostics `check`/`check-project` surface MUST be in
-    /// [`DENIABLE_CODES`], so a newly-added code cannot silently fall outside the
-    /// deny universe. A code in the list but not emitted is harmless (protects
-    /// nothing); a code emitted but NOT listed is the defect this catches. Paths
-    /// are relative to this crate's dir (the house `../<crate>` idiom).
-    #[test]
-    fn every_check_emitted_code_is_deniable() {
-        use std::collections::BTreeSet;
-        let known: BTreeSet<&str> = DENIABLE_CODES.iter().copied().collect();
-        let crates = [
-            "../lute-check/src",
-            "../lute-syntax/src",
-            "../lute-cel/src",
-            "../lute-manifest/src",
-            "../lute-core-span/src",
-            // 0.10.0 §8: `check-project` now emits `lute-trace`'s mock codes,
-            // so they are inside the deny universe and inside this guard.
-            "../lute-trace/src",
-            // dsl 0.10.0 §9:962: `lute check` now runs the compile gate
-            // (`normalize` + `expand`) that `trace`/`compile` run, so
-            // `lute-compile`'s codes are ones `check` surfaces.
-            "../lute-compile/src",
-        ];
-        let is_code = |c: &str| {
-            let mut parts = c.splitn(2, '-');
-            matches!(parts.next(), Some("E") | Some("W"))
-                && parts.next().is_some_and(|rest| {
-                    !rest.is_empty()
-                        && rest
-                            .chars()
-                            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '-')
-                })
-        };
-        let mut missing: BTreeSet<String> = BTreeSet::new();
-        for dir in crates {
-            let mut stack = vec![PathBuf::from(dir)];
-            while let Some(p) = stack.pop() {
-                let Ok(rd) = std::fs::read_dir(&p) else {
-                    continue;
-                };
-                for entry in rd.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        stack.push(path);
-                    } else if path.extension().and_then(|x| x.to_str()) == Some("rs") {
-                        let Ok(text) = std::fs::read_to_string(&path) else {
-                            continue;
-                        };
-                        // Scan every double-quoted literal for a diagnostic code.
-                        for chunk in text.split('"').skip(1).step_by(2) {
-                            if is_code(chunk) && !known.contains(chunk) {
-                                missing.insert(chunk.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        assert!(
-            missing.is_empty(),
-            "diagnostic code(s) emitted by check crates but absent from DENIABLE_CODES \
-             (add them so `--deny <code>` accepts them): {missing:?}"
-        );
-    }
 }

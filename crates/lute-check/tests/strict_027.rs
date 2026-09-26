@@ -63,17 +63,41 @@ fn an_entity_kind_with_a_misspelt_key_is_a_shape_error_with_a_suggestion() {
     );
 }
 
+/// dsl 0.27.0 §7: `labels:` is an entity-kind key; a typo of it is still an
+/// unknown key with a suggestion, and a label must name a member.
 #[test]
-fn entity_kind_labels_are_refused_until_supported() {
-    for key in ["labels", "lables"] {
-        let imp = imports(&[(
-            "w.yaml",
-            &format!("entities:\n  room: {{ members: [lobby], {key}: {{ lobby: the lobby }} }}\n"),
-        )]);
-        let errs = messages(&imp.diags, "E-ENTITY-KIND-SHAPE");
-        assert_eq!(errs.len(), 1, "{key}: {:?}", imp.diags);
-        assert!(errs[0].contains("labels are not supported"), "{}", errs[0]);
-    }
+fn entity_kind_labels_are_a_key_and_must_name_members() {
+    let imp = imports(&[(
+        "w.yaml",
+        "entities:\n  room: { members: [lobby], labels: { lobby: the lobby } }\n",
+    )]);
+    assert!(
+        messages(&imp.diags, "E-ENTITY-KIND-SHAPE").is_empty(),
+        "{:?}",
+        imp.diags
+    );
+    let imp = imports(&[(
+        "w.yaml",
+        "entities:\n  room: { members: [lobby], lables: { lobby: the lobby } }\n",
+    )]);
+    let errs = messages(&imp.diags, "E-ENTITY-KIND-SHAPE");
+    assert!(
+        errs.len() == 1 && errs[0].contains("did you mean `labels`?"),
+        "{:?}",
+        imp.diags
+    );
+    let imp = imports(&[(
+        "w.yaml",
+        "entities:\n  room: { members: [lobby], labels: { loby: the lobby } }\n  \
+         guest: { open: engine, labels: { ada: Ada } }\n",
+    )]);
+    let errs = messages(&imp.diags, "E-ENTITY-KIND-SHAPE");
+    assert_eq!(errs.len(), 2, "{:?}", imp.diags);
+    assert!(
+        errs.iter().any(|m| m.contains("did you mean `lobby`?")),
+        "{errs:?}"
+    );
+    assert!(errs.iter().any(|m| m.contains("`open:`")), "{errs:?}");
 }
 
 #[test]

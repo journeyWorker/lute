@@ -526,17 +526,29 @@ pub(crate) fn expr_path(expr: &Expr) -> Option<String> {
 /// (`pattern_terms`, private to that crate) shape; `None` means a
 /// non-ground arg slipped through — defensive, unreachable against a
 /// document `trace` actually accepted (§4.3: trace refuses documents with
-/// check errors).
-fn pattern_args(c: &CallExpr) -> Option<Vec<Pat>> {
-    c.args
-        .iter()
-        .map(|a| match &a.expr {
-            Expr::Ident(name) if name == "_" => Some(Pat::Wildcard),
-            Expr::Ident(name) => Some(Pat::Ground(name.clone())),
-            Expr::Literal(Val::Boolean(b)) => Some(Pat::Ground(b.to_string())),
-            _ => None,
-        })
-        .collect()
+/// check errors). dsl 0.27.0 §3: `occasion.target` is the member the beat
+/// runs for — `Err` records it unresolved while unbound.
+fn pattern_args(
+    c: &CallExpr,
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Option<Result<Vec<Pat>, ()>> {
+    let mut out = Vec::with_capacity(c.args.len());
+    for a in &c.args {
+        out.push(match &a.expr {
+            Expr::Ident(name) if name == "_" => Pat::Wildcard,
+            Expr::Ident(name) => Pat::Ground(name.clone()),
+            Expr::Literal(Val::Boolean(b)) => Pat::Ground(b.to_string()),
+            e if expr_path(e).as_deref() == Some(lute_check::beats::OCCASION_TARGET) => {
+                match eval_path_read(lute_check::beats::OCCASION_TARGET, env, unresolved) {
+                    Value::Str(member) => Pat::Ground(member),
+                    _ => return Some(Err(())),
+                }
+            }
+            _ => return None,
+        });
+    }
+    Some(Ok(out))
 }
 
 pub(crate) fn eval_path_read(
@@ -667,13 +679,23 @@ fn eval_in(
 /// `cel_resolve.rs::is_profile_operator`). The index is evaluated first (so
 /// an unknown index still records its atom); a non-list target, a
 /// non-decided/non-numeric/non-integer index, or an out-of-range index is
-/// `Unknown` — never a panic, never a guess.
+/// `Unknown` — never a panic, never a guess. dsl 0.27.0 §3: a family read
+/// by the bound member, `user.bond[occasion.target]`, reads
+/// `user.bond.<member>`.
 fn eval_index(
     target: &IdedExpr,
     index: &IdedExpr,
     env: &EvalEnv<'_>,
     unresolved: &mut Vec<UnresolvedAtom>,
 ) -> Value {
+    if let (Some(family), Some(lute_check::beats::OCCASION_TARGET)) =
+        (expr_path(&target.expr), expr_path(&index.expr).as_deref())
+    {
+        return match eval(&index.expr, env, unresolved) {
+            Value::Str(member) => eval_path_read(&format!("{family}.{member}"), env, unresolved),
+            _ => Value::Unknown,
+        };
+    }
     let Expr::List(elements) = &target.expr else {
         return Value::Unknown;
     };
@@ -705,8 +727,10 @@ fn eval_fact_query(
         return Value::Unknown; // caller guarantees this; defensive fallback
     };
     let relation = pat_call.func_name.as_str();
-    let Some(mut pats) = pattern_args(pat_call) else {
-        return Value::Unknown; // non-ground pattern; defensive, unreachable post-check
+    let mut pats = match pattern_args(pat_call, env, unresolved) {
+        Some(Ok(pats)) => pats,
+        Some(Err(())) => return Value::Unknown, // unbound `occasion.target`
+        None => return Value::Unknown, // non-ground pattern; defensive, unreachable post-check
     };
     if let Some(slot) = column.and_then(|i| pats.get_mut(i)) {
         *slot = Pat::Wildcard;
@@ -790,6 +814,77 @@ fn eval_call(c: &CallExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAto
         // Out of the closed profile (dsl §8.4) — never reached by a document
         // that passed `check` (trace refuses documents with check errors).
         _ => Value::Unknown,
+    }
+}
+
+/// One read of a guard (round-5 T3-12): a dotted state path, a fact pattern
+/// `holds`/`count`/`countDistinct` queries (rendered `rel(a, _)`), a scene
+/// id `visited(…)` asks about.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum GuardAtom {
+    Path(String),
+    Fact(String),
+    Visited(String),
+}
+
+/// Every read of `expr`, in document order, once each — the premises a
+/// guard that decided false is false over. A fact pattern's own arguments
+/// are part of the pattern, never reads of their own.
+pub(crate) fn guard_atoms(expr: &Expr, out: &mut Vec<GuardAtom>) {
+    fn push(out: &mut Vec<GuardAtom>, a: GuardAtom) {
+        if !out.contains(&a) {
+            out.push(a);
+        }
+    }
+    match expr {
+        Expr::Ident(_) | Expr::Select(_) => {
+            if let Some(path) = expr_path(expr).filter(|p| p.contains('.')) {
+                push(out, GuardAtom::Path(path));
+            } else if let Expr::Select(sel) = expr {
+                guard_atoms(&sel.operand.expr, out);
+            }
+        }
+        Expr::Call(c) => match (c.func_name.as_str(), c.args.as_slice()) {
+            ("holds" | "count" | "countDistinct", [pattern, rest @ ..]) => {
+                if let Expr::Call(p) = &pattern.expr {
+                    // `countDistinct`'s column variable matches anything.
+                    let var = rest.first().and_then(|v| expr_path(&v.expr));
+                    let args: Vec<String> = p
+                        .args
+                        .iter()
+                        .map(|a| match &a.expr {
+                            Expr::Literal(Val::Boolean(b)) => b.to_string(),
+                            e => expr_path(e)
+                                .filter(|n| Some(n) != var.as_ref())
+                                .unwrap_or_else(|| "_".to_string()),
+                        })
+                        .collect();
+                    push(
+                        out,
+                        GuardAtom::Fact(format!("{}({})", p.func_name, args.join(", "))),
+                    );
+                }
+            }
+            ("visited", [arg]) => {
+                if let Expr::Literal(Val::String(id)) = &arg.expr {
+                    push(out, GuardAtom::Visited(id.to_string()));
+                }
+            }
+            _ => {
+                if let Some(t) = &c.target {
+                    guard_atoms(&t.expr, out);
+                }
+                for a in &c.args {
+                    guard_atoms(&a.expr, out);
+                }
+            }
+        },
+        Expr::List(l) => {
+            for e in &l.elements {
+                guard_atoms(&e.expr, out);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -1235,6 +1330,101 @@ mod tests {
         let (v, unresolved) = eval_str("count(inParty(_, _))", &env);
         assert_eq!(v, Value::Num(1.0));
         assert!(unresolved.is_empty());
+    }
+
+    // -- dsl 0.27.0 §3: the bound member as a pattern arg / family index ----
+
+    fn with_target(member: Option<&str>, extra: &[(&str, Value)]) -> BTreeMap<String, Value> {
+        let mut seed: BTreeMap<String, Value> = extra
+            .iter()
+            .map(|(p, v)| (p.to_string(), v.clone()))
+            .collect();
+        if let Some(m) = member {
+            seed.insert(
+                lute_check::beats::OCCASION_TARGET.to_string(),
+                Value::Str(m.to_string()),
+            );
+        }
+        seed
+    }
+
+    #[test]
+    fn holds_substitutes_the_bound_occasion_target_as_a_ground_arg() {
+        let vocab = rel_vocab_with(&[("owned", false)]);
+        let mut facts = FactStore::new(&vocab);
+        facts.assert("owned", &["bram".to_string()]);
+        let schema = schema_with(&[]);
+        for (member, want) in [("bram", true), ("aria", false)] {
+            let state = EffectiveState::new(&schema, with_target(Some(member), &[]));
+            let env = EvalEnv {
+                state: &state,
+                facts: &facts,
+            };
+            let (v, unresolved) = eval_str("holds(owned(occasion.target))", &env);
+            assert_eq!(v, Value::Bool(want), "{member}");
+            assert!(unresolved.is_empty(), "{member}: {unresolved:?}");
+        }
+        // Unbound: unknown, and the missing binding is what would decide it —
+        // never a lookup of the literal id `occasion.target`.
+        let state = EffectiveState::new(&schema, with_target(None, &[]));
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
+        let (v, unresolved) = eval_str("holds(owned(occasion.target))", &env);
+        assert_eq!(v, Value::Unknown);
+        assert_eq!(
+            unresolved,
+            vec![UnresolvedAtom::Path("occasion.target".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_family_indexed_by_occasion_target_reads_the_members_path() {
+        let schema = schema_with(&[]);
+        let vocab = RelVocab::default();
+        let facts = FactStore::new(&vocab);
+        let seed = with_target(
+            Some("bram"),
+            &[
+                ("user.bond.bram", Value::Num(3.0)),
+                ("user.bond.aria", Value::Num(0.0)),
+            ],
+        );
+        let state = EffectiveState::new(&schema, seed);
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
+        let (v, unresolved) = eval_str("user.bond[occasion.target] >= 2", &env);
+        assert_eq!(v, Value::Bool(true));
+        assert!(unresolved.is_empty(), "{unresolved:?}");
+
+        // Bound to a member whose slot has no value: that slot is the atom.
+        let state = EffectiveState::new(&schema, with_target(Some("cyra"), &[]));
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
+        let (v, unresolved) = eval_str("user.bond[occasion.target]", &env);
+        assert_eq!(v, Value::Unknown);
+        assert_eq!(
+            unresolved,
+            vec![UnresolvedAtom::Path("user.bond.cyra".to_string())]
+        );
+
+        // Unbound: the binding is the atom, not a guessed member.
+        let state = EffectiveState::new(&schema, with_target(None, &[]));
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
+        let (v, unresolved) = eval_str("user.bond[occasion.target]", &env);
+        assert_eq!(v, Value::Unknown);
+        assert_eq!(
+            unresolved,
+            vec![UnresolvedAtom::Path("occasion.target".to_string())]
+        );
     }
 
     // -- derived-unless-supplied -------------------------------------------

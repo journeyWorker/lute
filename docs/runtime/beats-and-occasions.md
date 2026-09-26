@@ -94,9 +94,11 @@ type BeatIr = {
   target?: string;        // candidate only when the occasion is raised for this target
   when?: CelPair;         // eligibility, `@def`-expanded
   priority: number;       // resolved; unauthored → 0; higher wins
-  once: "run" | "user" | "none"; // unauthored → "run"; "none" is source `once: false`
+  once: "run" | "user" | "none" | "day" | "slot" | "week" | `season:${string}`;
+                          // unauthored → "run"; "none" is source `once: false` or a `spentBy` beat
   also?: true;            // dsl 0.23.0 §3; present only when authored true
   share?: string;         // dsl 0.25.0 §2; the shared-spend key, present only when authored
+  spentBy?: CelPair;      // dsl 0.27.0 §5; spent while it holds, present only when authored
 };
 ```
 
@@ -107,8 +109,9 @@ type EntryCmd = {
   // … id, target, category, title, series, order, when, body …
   on?: string;            // the occasion this entry answers
   priority?: number;      // absent → 0
-  once?: "run" | "user";  // dsl 0.22.0 §7; absent: repeatable
+  once?: "run" | "user" | "day" | "slot" | "week" | `season:${string}`; // dsl 0.22.0 §7; absent: repeatable
   share?: string;         // dsl 0.25.0 §2; only beside `once`
+  spentBy?: CelPair;      // dsl 0.27.0 §5; never beside `once`
 };
 ```
 
@@ -124,6 +127,9 @@ With `once` (dsl 0.22.0 §7) it is spent by its own read flags
   run; a run start resets it);
 - `once: "user"` — not eligible once `entry.<id>.everRead` is true (read in
   any run; never reset).
+- `once: "day"` / `"slot"` / `"week"` / `"season:<name>"` — spent by the
+  engine's presentation position instead, as for a scene beat (below).
+- `spentBy` (dsl 0.27.0 §5) — not eligible while the condition holds.
 
 The flags are set by any first read, so an entry the engine presented by
 looking it up (its `target`, `category`) spends its `once` too.
@@ -144,9 +150,10 @@ type BeatCmd = {
   titleLineId?: string;   // `<id>.title`
   when?: CelPair;         // eligibility, `@def`-expanded
   priority: number;       // resolved; unauthored → 0
-  once: "run" | "user" | "none"; // unauthored → "run"
+  once: "run" | "user" | "none" | "day" | "slot" | "week" | `season:${string}`; // unauthored → "run"
   also?: true;
   share?: string;         // dsl 0.25.0 §2
+  spentBy?: CelPair;      // dsl 0.27.0 §5
   after?: string;         // dsl 0.25.0 §3: raw `after=`, a scene `after:`'s grammar
   body: Addr;             // first record of the body segment
 };
@@ -173,10 +180,11 @@ type IndexBeat = {
   on: string;
   target?: string;
   priority: number;       // resolved (unauthored → 0)
-  once?: "run" | "user" | "none"; // scene rows: always; entry rows: the authored `once`, absent = repeatable
+  once?: "run" | "user" | "none" | "day" | "slot" | "week" | `season:${string}`; // scene rows: always; entry rows: the authored `once`, absent = repeatable
   when?: string;          // dsl 0.23.0 §1: the beat's condition, `@def`-expanded
   title?: string;         // dsl 0.23.0 §11: scene `title:`, entry or bundle beat `title=`
   share?: string;         // dsl 0.25.0 §2: the shared-spend key
+  spentBy?: string;       // dsl 0.27.0 §5: the spend condition, `@def`-expanded
 };
 ```
 
@@ -212,8 +220,13 @@ When the engine raises occasion `O`, optionally for target `T`:
    - a beat's `once` is not spent. A scene beat: `run` — not yet presented
      this run; `user` — never presented; `none` — never spent. An entry beat:
      `run` — `entry.<id>.read` is false; `user` — `entry.<id>.everRead` is
-     false; absent — never spent. A beat with a `share` key (below) is also
-     spent while its key is.
+     false; absent — never spent. For either kind, `day` / `slot` / `week`
+     (`state-lifecycle.md` §clock) — not presented since the current clock
+     day / slot / week began; `season:<name>` — not presented since the season
+     last opened (`state-lifecycle.md` §seasons). A beat with a `share` key
+     (below) is also spent while its key is;
+   - its `spentBy` (dsl 0.27.0 §5), when present, is false. A `spentBy` beat
+     carries `once: "none"`, so this is its only spend.
 3. Eligible beats are **ordered by `priority` descending, then
    `ProjectIndex.beats` order**. Scene and entry beats on the same occasion
    compete in one list.
@@ -291,13 +304,15 @@ function isEligible(beat: IndexBeat, state, facts, presented: Presented) {
   if (beat.kind === "entry") {
     if (beat.once === "run" && (state.get(`entry.${beat.id}.read`) || presented.run.has(beat.id))) return false;
     if (beat.once === "user" && (state.get(`entry.${beat.id}.everRead`) || presented.user.has(beat.id))) return false;
-    const when = entryRecord(beat.id).when;
+    const { when, spentBy } = entryRecord(beat.id);
+    if (spentBy && truthy(evalSlot(spentBy.raw, spentBy.expr, state, facts))) return false; // dsl 0.27.0 §5
     return !when || truthy(evalSlot(when.raw, when.expr, state, facts));
   }
   const artifact = beatArtifact(beat);  // the scene's, or the lore artifact holding the `beat` record
-  const { when, once } = beatDecl(beat); // meta.beat, or the `beat` record
+  const { when, once, spentBy } = beatDecl(beat); // meta.beat, or the `beat` record
   if (!afterHolds(artifact, beat.id, state, facts)) return false; // prereqEdges row for beat.id
   if (when && !truthy(evalSlot(when.raw, when.expr, state, facts))) return false;
+  if (spentBy && truthy(evalSlot(spentBy.raw, spentBy.expr, state, facts))) return false; // dsl 0.27.0 §5
   if (once === "run" && presented.run.has(beat.id)) return false;
   if (once === "user" && presented.user.has(beat.id)) return false;
   return true;

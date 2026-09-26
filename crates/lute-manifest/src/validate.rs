@@ -190,6 +190,13 @@ pub enum ManifestError {
         directive: String,
         detail: String,
     },
+    /// dsl 0.27.0 §4: an `effects.asserts` / `effects.retracts` entry reads
+    /// `@a` but the directive declares no attr `a`, or an assert has `_`.
+    EffectFact {
+        directive: String,
+        list: &'static str,
+        detail: String,
+    },
 }
 
 impl ManifestError {
@@ -203,7 +210,9 @@ impl ManifestError {
             }
             ManifestError::UnknownLowerRecord { .. } => "E-LOWER-RECORD-UNKNOWN",
             ManifestError::LowerRecordField { .. } => "E-LOWER-RECORD-FIELD",
-            ManifestError::EffectWrite { .. } => "E-PLUGIN-PARSE",
+            ManifestError::EffectWrite { .. } | ManifestError::EffectFact { .. } => {
+                "E-PLUGIN-PARSE"
+            }
         }
     }
 
@@ -229,6 +238,11 @@ impl ManifestError {
             ManifestError::EffectWrite { directive, detail } => {
                 format!("directive `::{directive}` effects.writes: {detail}")
             }
+            ManifestError::EffectFact {
+                directive,
+                list,
+                detail,
+            } => format!("directive `::{directive}` effects.{list}: {detail}"),
         }
     }
 }
@@ -256,6 +270,7 @@ pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
         validate_record_lowering(d, record, fields, &mut errs);
     }
     validate_effect_writes(d, &mut errs);
+    validate_effect_facts(d, &mut errs);
     errs
 }
 
@@ -294,6 +309,58 @@ fn validate_effect_writes(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
             directive: d.name.clone(),
             detail,
         });
+    }
+}
+
+/// dsl 0.27.0 §4: every `@attr` a declared fact effect reads names one of the
+/// directive's own attrs, and an assert is ground once bound (no `_`). The
+/// pattern's SHAPE was already checked when the file parsed
+/// ([`crate::schema::FactEffect`]); the relation and its argument kinds are
+/// the project's, so the checker judges them at each call.
+fn validate_effect_facts(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
+    let Some(effects) = &d.effects else {
+        return;
+    };
+    for (list, facts) in [
+        ("asserts", &effects.asserts),
+        ("retracts", &effects.retracts),
+    ] {
+        for fact in facts {
+            if list == "asserts"
+                && fact
+                    .args
+                    .iter()
+                    .any(|a| matches!(a, crate::schema::FactEffectArg::Wildcard))
+            {
+                errs.push(ManifestError::EffectFact {
+                    directive: d.name.clone(),
+                    list,
+                    detail: format!(
+                        "`{fact}` asserts `_`; an asserted fact is ground — name a member or an \
+                         `@attr` (only a retract takes `_`)"
+                    ),
+                });
+            }
+            for attr in fact.attrs() {
+                if d.attrs.iter().any(|a| a.name == attr) {
+                    continue;
+                }
+                let hint =
+                    crate::suggest::nearest(attr, d.attrs.iter().map(|a| a.name.as_str()), 2)
+                        .map(|s| format!("; did you mean `@{s}`?"))
+                        .unwrap_or_default();
+                let declared: Vec<&str> = d.attrs.iter().map(|a| a.name.as_str()).collect();
+                errs.push(ManifestError::EffectFact {
+                    directive: d.name.clone(),
+                    list,
+                    detail: format!(
+                        "`{fact}` reads `@{attr}`, but the directive declares no such attr \
+                         (declared: {}){hint}",
+                        declared.join(", ")
+                    ),
+                });
+            }
+        }
     }
 }
 
@@ -692,6 +759,45 @@ mod tests {
         assert!(errs
             .iter()
             .any(|e| matches!(e, ManifestError::DuplicateAttr { .. })));
+    }
+
+    /// dsl 0.27.0 §4: an `effects:` block parsed from `yaml` on a directive
+    /// with one `item` attr.
+    fn fact_dir(yaml: &str) -> DirectiveDecl {
+        let mut d = dir("give", &[]);
+        d.attrs[0].name = "item".into();
+        d.effects = Some(serde_yaml::from_str(yaml).expect("fixture yaml"));
+        d
+    }
+
+    #[test]
+    fn fact_effects_reading_declared_attrs_pass() {
+        let errs = validate_directive(&fact_dir(
+            "{ asserts: [\"holding(@item)\"], retracts: [\"holding(_)\", \"seen(key, true)\"] }",
+        ));
+        assert!(errs.is_empty(), "{errs:?}");
+    }
+
+    #[test]
+    fn fact_effect_reading_an_undeclared_attr_is_a_parse_error() {
+        let errs = validate_directive(&fact_dir("{ asserts: [\"holding(@iten)\"] }"));
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert_eq!(errs[0].code(), "E-PLUGIN-PARSE");
+        let msg = errs[0].message();
+        assert!(msg.contains("effects.asserts"), "{msg}");
+        assert!(msg.contains("did you mean `@item`?"), "{msg}");
+    }
+
+    #[test]
+    fn asserted_wildcard_is_a_parse_error_but_a_retracted_one_is_not() {
+        let errs = validate_directive(&fact_dir("{ asserts: [\"holding(_)\"] }"));
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert!(
+            errs[0].message().contains("asserts `_`"),
+            "{}",
+            errs[0].message()
+        );
+        assert!(validate_directive(&fact_dir("{ retracts: [\"holding(_)\"] }")).is_empty());
     }
 
     /// A directive named `backdrop` declaring one `img` attr and a declarative

@@ -441,12 +441,14 @@ pub struct TraceReport {
     /// test`'s `expect.eligible` judges a scene by. Never serialized.
     #[serde(skip)]
     pub scene_eligible: Option<(String, Option<bool>)>,
-    /// Prerelease N3: when [`Self::scene_eligible`] is `Some(false)`, the
-    /// premise that fails — `its \`when\` (…) is false`, `its \`after: …\`
-    /// is false — …`, or the spent `once: user` — so a failing test names
-    /// what to mock. Never serialized.
+    /// Prerelease N3, round-5 T3-12: every presented scene / entry / bundle
+    /// beat judged ineligible → the premise that fails, as the session's
+    /// rule decided it — `its \`when\` (…) is false`, `its \`after: …\` is
+    /// false — mock …` (a bundle beat's `after="…"`), the spent `once`, a
+    /// holding `spentBy` — so a failing test names what to mock. Never
+    /// serialized.
     #[serde(skip)]
-    pub scene_ineligible: Option<String>,
+    pub premises: BTreeMap<String, String>,
     /// Every content line the walk played, in order, in the one canonical
     /// transcript form ([`crate::exec::said_line`]: `@speaker{delivery}:
     /// text`) — what [`Self::said`] joins. Never serialized.

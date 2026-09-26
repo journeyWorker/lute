@@ -58,8 +58,9 @@ pub fn parse_clock(value: &serde_yaml::Value, span: Span) -> (Option<ClockDecl>,
                 format!(
                     "`clock:` must be `{{ day: <number path>, slot: <enum path>, slots: [..], \
                      raise: <occasion> | {{ slot, dayStart, dayEnd }}, week: {{ length, first, \
-                     labels }} }}` — `slot`/`slots` (together), `raise` and `week` optional \
-                     (dsl 0.24.0 §1): {e}"
+                     labels }}, last: {{ day, slot }} | days: <n> }}` — `slot`/`slots` \
+                     (together), `raise`, `week` and `last`/`days` optional (dsl 0.24.0 §1, \
+                     0.27.0 §4): {e}"
                 ),
                 span,
             )],
@@ -218,6 +219,23 @@ pub fn clock_problems(
             out.push(format!("`{key}: {raise}` is not a declared occasion{hint}"));
         }
     }
+    // dsl 0.27.0 §4: a finite clock starts where the day/slot defaults put
+    // it — never past its last position.
+    if let Some(last) = clock.last_at() {
+        let default = |path: &str| schema.decls.get(path).and_then(|d| d.default.as_ref());
+        let start = match (default(&clock.day), clock.slot.as_deref().map(default)) {
+            (Some(Literal::Num(d)), None) => clock.at(*d, None),
+            (Some(Literal::Num(d)), Some(Some(Literal::Str(s)))) => clock.at(*d, Some(s)),
+            _ => None,
+        };
+        if let Some(start) = start.filter(|s| *s > last) {
+            out.push(format!(
+                "starts at {} (its paths' defaults), past its last position {}",
+                clock.describe(start),
+                clock.describe(last)
+            ));
+        }
+    }
     out
 }
 
@@ -282,24 +300,105 @@ pub fn weekday_range(clock: &ClockDecl) -> Option<(i64, i64)> {
     Some((0, i64::from(week.length) - 1))
 }
 
-/// `once: day` / `once: slot` (a scene's frontmatter, an entry's or a bundle
-/// beat's `once=`) spends a beat per clock period, so it needs a declared
-/// clock: without one each is [`crate::beats::E_BEAT_ATTR`] (dsl 0.24.0 §1).
+/// The whole-number ranges a clock gives its paths
+/// ([`StateSchema::int_ranges`]): `clock.weekday` with a `week:` and — on a
+/// finite clock (dsl 0.27.0 §4) — `clock.index` from where the clock starts
+/// to its last position, and the day path from its declared default (day 1
+/// when unknown) to the last day. The clock only moves forward, and a
+/// `newRun` starts it at the defaults, so a `when` needing a later position
+/// can never hold.
+pub fn int_ranges(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, (i64, i64))> {
+    let mut out = Vec::new();
+    if let Some(range) = weekday_range(clock) {
+        out.push((lute_manifest::clock::CLOCK_WEEKDAY.to_string(), range));
+    }
+    let Some(last) = clock.last_at() else {
+        return out;
+    };
+    let default = |path: &str| schema.decls.get(path).and_then(|d| d.default.as_ref());
+    let first_day = match default(&clock.day) {
+        Some(Literal::Num(d)) if d.fract() == 0.0 => *d as i64,
+        _ => 1,
+    };
+    let first_slot = match clock.slot.as_deref().map(default) {
+        Some(Some(Literal::Str(s))) => clock.slot_index(s).unwrap_or(0),
+        _ => 0,
+    };
+    let first = lute_manifest::clock::ClockAt {
+        day: first_day,
+        slot: first_slot,
+    };
+    if first > last {
+        return out;
+    }
+    out.push((
+        lute_manifest::clock::CLOCK_INDEX.to_string(),
+        (clock.index(first).max(0), clock.index(last)),
+    ));
+    out.push((clock.day.clone(), (first_day, last.day)));
+    out
+}
+
+/// dsl 0.27.0 §4: why a guard reading a finite clock's paths can be
+/// provably false — the reason an unreachable `when` gives. `None` when the
+/// clock never ends or `raw` names none of its bounded paths (a best-effort
+/// text match: a path read through a `@def` goes unnamed).
+pub fn end_reason(schema: &StateSchema, raw: &str) -> Option<String> {
+    schema.int_ranges.get(lute_manifest::clock::CLOCK_INDEX)?;
+    let names = |path: &str| {
+        raw.match_indices(path).any(|(i, _)| {
+            let ident = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '.';
+            !raw[..i].ends_with(ident) && !raw[i + path.len()..].starts_with(ident)
+        })
+    };
+    let reads: Vec<String> = schema
+        .int_ranges
+        .iter()
+        .filter(|(path, _)| path.as_str() != lute_manifest::clock::CLOCK_WEEKDAY && names(path))
+        .map(|(path, (a, b))| format!("`{path}` only ranges over {a}..{b}"))
+        .collect();
+    (!reads.is_empty()).then(|| {
+        format!(
+            "the clock ends at its last position, so {}",
+            reads.join(" and ")
+        )
+    })
+}
+
+/// `once: day` / `once: slot` / `once: week` (a scene's frontmatter, an
+/// entry's or a bundle beat's `once=`) spends a beat per clock period, so it
+/// needs a declared clock — and `week` a clock with a `week:`: without one
+/// each is [`crate::beats::E_BEAT_ATTR`] (dsl 0.24.0 §1, 0.27.0 §5).
 pub fn check_once_needs_clock(
     doc: &lute_syntax::ast::Document,
     beat: Option<&crate::beats::BeatMeta>,
-    has_clock: bool,
+    clock: Option<&ClockDecl>,
 ) -> Vec<Diagnostic> {
-    if has_clock {
+    let has_week = clock.is_some_and(|c| c.week.is_some());
+    if has_week {
         return Vec::new();
     }
     // `instead`: what the construct accepts without a clock — an entry has
     // no `once="false"` (omitting `once` is its never-spent form).
     let needs = |written: String, once: &str, instead: &str| {
-        format!(
-            "`{written}` spends a beat once per clock {once}, but the project declares no \
-             `clock:` — declare one in a schema, or {instead} (dsl 0.24.0 §1)"
-        )
+        if clock.is_some() {
+            format!(
+                "`{written}` spends a beat once per clock week, but the project's `clock:` \
+                 declares no `week:` — add `week: {{ length: 7 }}` to the clock, or {instead} \
+                 (dsl 0.27.0 §5)"
+            )
+        } else {
+            format!(
+                "`{written}` spends a beat once per clock {once}, but the project declares no \
+                 `clock:` — declare one in a schema, or {instead} (dsl 0.24.0 §1)"
+            )
+        }
+    };
+    // With a clock only `week` still needs something; without one every
+    // clock period does.
+    let lacks = |once: &str| match clock {
+        Some(_) => once == "week",
+        None => matches!(once, "day" | "slot" | "week"),
     };
     let scene_or_beat = "use `run` / `user` / `false`";
     let attr = |message: String, span: Span| Diagnostic {
@@ -314,11 +413,11 @@ pub fn check_once_needs_clock(
         related: Vec::new(),
     };
     let mut out = Vec::new();
-    if let Some(b) = beat.filter(|b| b.once.is_clock()) {
+    if let Some(b) = beat.filter(|b| b.once.is_clock() && lacks(&b.once.as_str())) {
         out.push(attr(
             needs(
                 format!("once: {}", b.once.as_str()),
-                b.once.as_str(),
+                &b.once.as_str(),
                 scene_or_beat,
             ),
             crate::meta::meta_key_span(&doc.meta, "once"),
@@ -335,7 +434,7 @@ pub fn check_once_needs_clock(
                 .filter_map(|b| b.once.as_ref().map(|o| (o, scene_or_beat))),
         );
     for ((raw, span), instead) in authored {
-        if matches!(raw.as_str(), "day" | "slot") {
+        if lacks(raw) {
             out.push(attr(needs(format!("once=\"{raw}\""), raw, instead), *span));
         }
     }

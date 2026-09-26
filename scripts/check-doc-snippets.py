@@ -985,10 +985,97 @@ class MessagePattern:
     codes: frozenset[str]
 
 
+def _is_citation(part: str) -> bool:
+    """Mirror of `lute_core_span::is_citation`: a spec citation part."""
+    p = part.strip()
+    dsl = False
+    for prefix in ("dsl ", "spec "):
+        if p.startswith(prefix):
+            p, dsl = p[len(prefix):].lstrip(), True
+            break
+    if p.startswith("§") or p.startswith("prerelease N"):
+        return True
+    if re.fullmatch(r"D-?[0-9A-Z]{1,3}", p):
+        return True
+    m = re.match(r"[0-9][0-9.]*", p)
+    if not m or "." not in m.group(0):
+        return False
+    after = p[m.end():].lstrip()
+    return (
+        (dsl and not after)
+        or after.startswith("§")
+        or bool(re.fullmatch(r"D-?[0-9A-Z]{1,3}", after))
+        or bool(re.match(r"T[0-9].*-", after))
+    )
+
+
+def _split_parts(inner: str) -> list[str]:
+    parts, depth, code, start = [], 0, False, 0
+    for i, c in enumerate(inner):
+        if c == "`":
+            code = not code
+        elif c == "(" and not code:
+            depth += 1
+        elif c == ")" and not code:
+            depth = max(depth - 1, 0)
+        elif c in ",;" and not code and depth == 0:
+            parts.append(inner[start:i].strip())
+            start = i + 1
+    parts.append(inner[start:].strip())
+    return parts
+
+
+def plain_message(message: str) -> str:
+    """Mirror of `lute_core_span::plain_message` (T3-17): the binary prints
+    every diagnostic without its spec citations — `(dsl 0.24.0 §4)` goes with
+    the space before it, and only the citing parts of a mixed parenthetical
+    go — so a scraped literal is compared the way it prints."""
+    if "§" not in message and "dsl " not in message:
+        return message
+    out, at, i, code = [], 0, 0, False
+    while i < len(message):
+        c = message[i]
+        if c == "`":
+            code = not code
+        elif c == "(" and not code:
+            depth, j, inner_code, close = 0, i, False, None
+            while j < len(message):
+                d = message[j]
+                if d == "`":
+                    inner_code = not inner_code
+                elif d == "(" and not inner_code:
+                    depth += 1
+                elif d == ")" and not inner_code:
+                    depth -= 1
+                    if depth == 0:
+                        close = j
+                        break
+                j += 1
+            if close is None:
+                break
+            parts = _split_parts(message[i + 1 : close])
+            kept = [p for p in parts if not _is_citation(p)]
+            if len(kept) != len(parts):
+                start = i
+                if not kept and message[:start].endswith(" "):
+                    start -= 1
+                out.append(message[at:start])
+                if kept:
+                    out.append("(" + ", ".join(kept) + ")")
+                at = close + 1
+            i = close
+        i += 1
+    out.append(message[at:])
+    return "".join(out).rstrip()
+
+
 def compile_message_pattern(literal: str) -> re.Pattern[str] | None:
-    """Compile `literal` if it clears the admission floor, else None."""
+    """Compile `literal` if it clears the admission floor, else None. The
+    literal is compared as the binary prints it: without spec citations
+    ([`plain_message`])."""
     if "\n" in literal:
         return None
+    literal = plain_message(literal)
     parts: list[str] = []
     runs: list[str] = []
     i = 0
@@ -1116,6 +1203,24 @@ def pin_message(
                 f"text matches a literal, but no source declaring `{code}` — "
                 f"the quote and the code do not belong together"
             )
+    if len({mp.literal for mp, _ in hits}) > 1:
+        # A composed message (`… and {why}`) is matched both by its outer
+        # literal and — through a greedy leading placeholder — by the inner
+        # literal that fills `{why}`. The inner one is the outer's
+        # interpolation, not a rival: drop a hit whose literal pins a group
+        # of another hit. Spec citations used to tell the two apart (T3-17
+        # removed them from the printed text).
+        outer = [
+            (mp, m)
+            for mp, m in hits
+            if not any(
+                other.literal != mp.literal
+                and any(g and mp.regex.match(g) for g in om.groups())
+                for other, om in hits
+            )
+        ]
+        if outer:
+            hits = outer
     if len({mp.literal for mp, _ in hits}) > 1:
         return None, f"ambiguous: {len(hits)} distinct literals match this text"
     mp, m = hits[0]
@@ -1341,19 +1446,19 @@ def self_test() -> None:
 
     # Wildcards: never empty, never past their following anchor, never an
     # elision, and the whole text must be consumed.
-    if pin_message(corp, "E-BOUNDARY", "slot `x` needs a declaration before use (dsl 0.9.0 D-C)")[1]:
+    if pin_message(corp, "E-BOUNDARY", "slot `x` needs a declaration before use")[1]:
         bad("a legitimate interpolation must pin")
-    if pin("slot `` needs a declaration before use (dsl 0.9.0 D-C)") is None:
+    if pin("slot `` needs a declaration before use") is None:
         bad("an empty interpolation must NOT pin")
-    if pin("slot `x` needs a declaration before use (dsl 0.9.0 D-C) and more") is None:
+    if pin("slot `x` needs a declaration before use and more") is None:
         bad("trailing text outside the literal must NOT pin")
-    if pin("slot `…` needs a declaration before use (dsl 0.9.0 D-C)") is None:
+    if pin("slot `…` needs a declaration before use") is None:
         bad("an elision inside an interpolated span must NOT pin")
     # Two literals one word apart stay distinguishable, and neither is claimed
     # by the other.
-    if pin("slot `x` needs a declaration before reuse (dsl 0.9.0 D-C)") is not None:
+    if pin("slot `x` needs a declaration before reuse") is not None:
         bad("the near-twin literal must pin to itself")
-    if pin("slot `x` needs a declaration before misuse (dsl 0.9.0 D-C)") is None:
+    if pin("slot `x` needs a declaration before misuse") is None:
         bad("a reworded message must NOT pin to either near-twin")
     # A quote may not borrow a literal from a file that never declares its code.
     if pin_message(corp, "E-ELSEWHERE", "the quick brown fox jumps over it")[1] is None:

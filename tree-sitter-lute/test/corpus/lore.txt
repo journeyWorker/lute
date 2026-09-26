@@ -94,3 +94,32 @@ kind: lore
         (attr (key) (string))
         (line (speaker) (text))))
     (set (path) (assign_op) (cel_expr))))
+
+================================================================================
+beat template uses (dsl 0.27.0 §6)
+================================================================================
+---
+kind: lore
+id: bonds
+components: [bond.lute]
+---
+
+<beat use="bondStory" id="ariaR2" hero="aria" rank="r2">
+  @aria: Thank you.
+</beat>
+
+<beat use="trainer" id="r3Joey" who="joey"/>
+--------------------------------------------------------------------------------
+
+(source_file
+  (frontmatter)
+  (beat
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))
+    (line (speaker) (text)))
+  (beat
+    (attr (key) (string))
+    (attr (key) (string))
+    (attr (key) (string))))

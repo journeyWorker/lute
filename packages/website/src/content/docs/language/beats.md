@@ -1,6 +1,6 @@
 ---
 title: Beats
-description: "Scenes, lore entries, and bundled <beat> blocks that answer engine occasions — the scene frontmatter keys on, target, when, priority, once, and also, the entry attributes on=, priority=, and once=, beat bundles in a lore document, occasion target domains and kind targets, select: first / all / sequence, how eligible beats are ordered and presented, and what the checker proves about them (E-BEAT-ATTR, E-OCCASION-UNKNOWN, E-BEAT-UNREACHABLE, W-BEAT-SHADOWED, W-BEAT-PRIORITY-TIE, W-BEAT-ONCE-RUN-USER, W-ENTRY-WRITE-REREAD)."
+description: "Scenes, lore entries, and bundled <beat> blocks that answer engine occasions — the scene frontmatter keys on, target, when, priority, once, also, spentBy, and for, the entry attributes on=, priority=, once=, spentBy=, and for=, beat bundles in a lore document, occasion target domains and kind targets, once-per-member beats (for=), occasion payloads, select: first / all / sequence, how eligible beats are ordered and presented, and what the checker proves about them (E-BEAT-ATTR, E-OCCASION-UNKNOWN, E-BEAT-UNREACHABLE, W-BEAT-SHADOWED, W-BEAT-PRIORITY-TIE, W-BEAT-ONCE-RUN-USER, W-ENTRY-WRITE-REREAD)."
 ---
 
 A lot of games do not advance on a clock. The story moves when something happens: a hub visit,
@@ -48,9 +48,11 @@ before, because `once: user` spends it for good the first time it plays.
 | `target` | optional; the scene is a candidate only when the occasion is raised for this target, a dotted id in the `<entry target>` shape (`npc.achilles`, `place.lab_b2`). When the occasion declares a [target domain](#target-domains), it must be `<prefix>.<member>` of that domain, and one of its listed `members:` when it lists them. `kind:<kind>` (dsl 0.26.0 §5) answers every member of a kind instead: see [Kind targets](#kind-targets) |
 | `when` | optional CEL condition over `run` / `user` / `app` state, `quest.*`, `entry.<id>.read` / `entry.<id>.everRead`, and fact queries (`holds(…)`, `count(…)`) |
 | `priority` | optional integer, default `0`; higher wins |
-| `once` | `run` (the default: at most once per run), `user` (at most once ever), or `false` (repeatable). On a project with a [clock](/language/clock/), also `day` (at most once per clock day) or `slot` (at most once per clock slot) |
+| `once` | `run` (the default: at most once per run), `user` (at most once ever), or `false` (repeatable). On a project with a [clock](/language/clock/), also `day` (at most once per clock day) or `slot` (at most once per clock slot), and `week` (at most once per clock week, dsl 0.27.0 §5) when the clock declares a `week:`. On a project with a declared [season](/state/schemas/#seasons), `season:<name>` (at most once per window of that season) |
 | `also` | optional `true` / `false`, default `false` (dsl 0.23.0). On a `select: first` occasion, an `also` beat is a side remark: it is presented after the winner instead of competing with it. See [Side remarks with `also`](#side-remarks-with-also) |
 | `share` | optional; a project-wide key, written beside a spending `once` (dsl 0.25.0 §2). Every beat with the same key is spent together: see [One event, several places](#one-event-several-places-share) |
+| `spentBy` | optional CEL condition, written instead of `once` (dsl 0.27.0 §5). The beat is repeatable until the condition holds: see [Until it is solved: `spentBy`](#until-it-is-solved-spentby) |
+| `for` | optional `"kind:<kind>"`, on an untargeted `select: sequence` occasion, instead of `target` (dsl 0.27.0 §3). The scene is presented once per member whose `when` holds, reading the member as `occasion.target`: see [Once per member](#once-per-member-for) |
 
 The beat keys are scene-only and never come from project `defaults:`. A beat belongs to one scene.
 
@@ -66,7 +68,7 @@ A scene without `on:` answers no occasion, so no occasion presents it: your engi
 itself, by its scene id, the way it started every scene before occasions existed. `lute trace` and
 `lute run` walk such a scene on its own, and `lute play` never presents it. To chain scenes into a
 story you can play with `lute play`, see [Connect scenes into a story](/getting-started/connect-scenes/).
-`when`, `target`, `priority`, `once`, `also`, or `share` without `on` is an error:
+`when`, `target`, `priority`, `once`, `also`, `share`, `spentBy`, or `for` without `on` is an error:
 
 ```lute expect="E-BEAT-ATTR"
 ---
@@ -122,7 +124,9 @@ spend an entry by its own read flags rather than by a presentation record:
 | `run` | `entry.<id>.read` is set: it was read this run | at the next run, which resets `read` |
 | `user` | `entry.<id>.everRead` is set: it was read in any run | never |
 | `day` | it was presented earlier this clock day | on the next day |
+| `week` | it was presented earlier this clock week | when the next clock week starts |
 | `slot` | it was presented earlier in this clock slot | in the next slot |
+| `season:<name>` | it was presented since the season last opened | when the season opens again |
 
 The engine sets both flags after an entry's first read in a run, however it was presented, so an
 entry the engine looked up by its `target` spends a `run` or `user` `once` too. See
@@ -142,14 +146,18 @@ for the rest of the run either way. Put a write meant to repeat in a
 
 <!-- lute-diagnostics -->
 ```
-./lore/barks.lute:9:3: warning [W-ENTRY-WRITE-REREAD] `<entry id="achillesBark1">` has no `once`, so it can be presented again in a run, but its `::set` applies on the first read in a run only (dsl 0.19.0 §6); a write meant to repeat belongs in a `<beat once="false">`, and an entry read once per run says so with `once="run"`
+./lore/barks.lute:9:3: warning [W-ENTRY-WRITE-REREAD] `<entry id="achillesBark1">` has no `once`, so it can be presented again in a run, but its `::set` applies on the first read in a run only; a write meant to repeat belongs in a `<beat once="false">`, and an entry read once per run says so with `once="run"`
 ```
 
-`once` takes `run`, `user`, `day`, or `slot`; there is no `once="false"`, so omit the attribute
-for a repeatable entry. Any other value is `E-BEAT-ATTR`, and so are `day` and `slot` in a project
-without a clock, and `once=` or `priority=` without `on=`: a repetition policy belongs to a beat.
-Before 0.22.0 the same effects were spelled as conditions, `when="!entry.<id>.read"` for once per
-run and a `user.*` flag the entry set for once ever. Those still work, but `once` says it directly.
+`once` takes `run`, `user`, `day`, `week`, `slot`, or `season:<name>`; there is no `once="false"`, so
+omit the attribute for a repeatable entry. Any other value is `E-BEAT-ATTR`, and so are `day`,
+`week`, and `slot` in a project without a clock (`week` also needs the clock's `week:`), and `once=`
+or `priority=` without `on=`: a repetition policy belongs to a beat. A season that no schema
+declares is `E-SEASON-DECL`. Before 0.22.0 the same effects were spelled as conditions,
+`when="!entry.<id>.read"` for once per run and a `user.*` flag the entry set for once ever. Those
+still work, but `once` says it directly. An entry that should answer until something is done
+takes [`spentBy=`](#until-it-is-solved-spentby) instead of `once=` (dsl 0.27.0 §5), and an entry
+on a `select: sequence` occasion may be read [once per member](#once-per-member-for) with `for=`.
 An entry never rides along another beat, so [`also`](#side-remarks-with-also) on an `<entry>` is
 `E-BEAT-ATTR` too. An entry beat takes [`share=`](#one-event-several-places-share) beside its
 `once=` (dsl 0.25.0 §2): reading it spends every beat of its key.
@@ -218,7 +226,7 @@ A `<beat>` takes the scene beat keys as attributes:
 |---|---|
 | `id` | required; an identifier without `-` (`[A-Za-z][A-Za-z0-9_]*`), unique in the document |
 | `on` | required; the occasion the beat answers |
-| `target`, `when`, `priority`, `once`, `also`, `share` | as on a [scene beat](#scene-beat-keys). `once="false"` makes the beat repeatable, and `also` may be written bare |
+| `target`, `when`, `priority`, `once`, `also`, `share`, `spentBy`, `for` | as on a [scene beat](#scene-beat-keys). `once="false"` makes the beat repeatable, and `also` may be written bare |
 | `after` | optional (dsl 0.25.0 §3); a scene `after:` formula, with the same meaning: an eligibility conjunct and an edge of the [scenario graph](/connectivity/scene-graph/) |
 | `title` | optional; the label an engine shows for the beat in a `select: all` menu, localized like an entry title |
 
@@ -229,8 +237,9 @@ A bundle beat is a scene beat that lives in a different file:
   presentation record. It shares the project-wide namespace of document ids, so a scene whose `id:`
   is also `interviews.porter` is `E-CONN-EPISODE-ID-DUP`.
 - `once` defaults to `run` and is spent by **presentation**, as a scene's is. Read flags do not
-  spend it, because it is not an entry. With a [clock](/language/clock/), `once="day"` and
-  `once="slot"` work as on a scene.
+  spend it, because it is not an entry. With a [clock](/language/clock/), `once="day"`,
+  `once="week"`, and `once="slot"` work as on a scene, and so does `once="season:<name>"` with a
+  declared [season](/state/schemas/#seasons).
 - Presenting it marks the canonical id visited, so `visited('interviews.porter')` reads it in any
   condition. Since dsl 0.24.0 §2 it is a legal `after:` predecessor: a scene's
   `after: "visited('interviews.porter')"`, or a quest's, names it, and connectivity routes through
@@ -255,6 +264,52 @@ attribute is `E-UNKNOWN-ATTR`, and a `<beat>` in a scene document is not admitte
 and beats may interleave in any order. [Lore entries](/language/lore-entries/#entries-and-beats-in-one-file)
 covers the entry side of the file.
 
+### Beat templates: `use=`
+
+A roster of heroes, each with three bond stories, repeats one header shape dozens of times. A
+**beat template** writes it once (dsl 0.27.0 §6). It is a [component](/language/components-and-extends/)
+whose frontmatter also declares a `beat:` header:
+
+```yaml
+component: bondStory
+params: { who: { type: string }, need: { type: number, default: 0 }, prev: { type: string, default: "" } }
+beat:
+  on: bond
+  once: user
+  when: "user.bond >= @need"
+  after: "@prev"        # left out when empty
+```
+
+A bundle beat names it with `use=` and passes the params as attributes:
+
+```
+<beat use="bondStory" id="first" who="aria">
+  @aria: Thank you for staying.
+</beat>
+
+<beat use="bondStory" id="second" who="aria" need="2" prev="bonds.first">
+  @aria: You came back.
+</beat>
+```
+
+- Every header key the `<beat>` does not write itself comes from the template, with each `@param`
+  replaced by the argument's text (or the param's `default:`). A key that comes out empty is left
+  out, and an `after:` that comes out a bare id means `visited("<id>")`. The header keys are the
+  `<beat>` attributes: `on`, `target`, `for`, `title`, `priority`, `once`, `share`, `after`, `when`,
+  `spentBy`.
+- An attribute written on the `<beat>` wins: `<beat use="bondStory" … once="run">`.
+- The template's own body plays first, then the beat's. A `::body` line at the top level of the
+  template body places the beat's body there instead, so a template can frame it.
+- The other attributes are the template's params, checked like `::use` arguments
+  (`E-COMPONENT-ARG`).
+- A template with no body and a self-closing use make a one-line beat:
+  `<beat use="trainer" id="r3Joey" who="joey"/>`.
+
+A template use is an ordinary beat to every tool: `lute beats` lists the derived header, and play,
+trace and the compiled artifact present it as written out. Misuse is `E-TEMPLATE`: a `use=` that
+names no imported component (with a did-you-mean), a component without `beat:`, a malformed header,
+or `::body` anywhere but the top level of a template.
+
 ## Which beat wins
 
 When the engine raises occasion `O`, optionally for target `T`:
@@ -264,8 +319,9 @@ When the engine raises occasion `O`, optionally for target `T`:
    bundle beats on the same occasion compete in one list.
 2. A candidate is **eligible** when its `after:` (a bundle beat's `after=`) and `when` hold and its
    `once` is not spent: a scene's or bundle beat's by its presentation record, an entry's by its
-   read flags (or, for `once="day"` / `"slot"`, by when it was last presented). A beat with a
-   [`share`](#one-event-several-places-share) key is spent when any beat of its key is.
+   read flags (or, for `once="day"` / `"week"` / `"slot"` / `"season:<name>"`, by when it was last
+   presented). A beat with a [`share`](#one-event-several-places-share) key is spent when any beat
+   of its key is, and a beat with [`spentBy`](#until-it-is-solved-spentby) once its condition holds.
 3. Eligible beats are ordered by **priority, descending, then project order**: document path,
    then declaration order within the document. `project.index.json` lists every beat in that
    order under `beats`. At equal priority a kind beat comes after the other candidates, so the
@@ -329,7 +385,7 @@ and `check-project` reports the mismatch on the radio and roof beats:
 
 <!-- lute-diagnostics -->
 ```
-./lore/talks.lute:7:66: error [E-BEAT-ATTR] beat `talks.solRadio` shares `solWarm` with beat `harbor.solDock`, but declares `once: day` where beat `harbor.solDock` declares `once: user`; the beats of one `share` key are spent together for one period, so every one of them declares the same `once` (dsl 0.25.0 §2)
+./lore/talks.lute:7:66: error [E-BEAT-ATTR] beat `talks.solRadio` shares `solWarm` with beat `harbor.solDock`, but declares `once: day` where beat `harbor.solDock` declares `once: user`; the beats of one `share` key are spent together for one period, so every one of them declares the same `once`
 ```
 
 The key replaces the old workaround of stamping the day into state and guarding every beat on it
@@ -338,6 +394,38 @@ key in its `once` column (`day, share solWarm`), [`lute calendar`](/tooling/over
 spends the key together, and `W-BEAT-PRIORITY-TIE` and cast presence read the whole key's spent
 flags. The key reaches the IR as `share` on the beat's record and on its `project.index.json` row,
 absent when unauthored.
+
+## Until it is solved: `spentBy`
+
+A puzzle the player may fail and retry is not spent when it is shown. It is spent when it is
+solved. Before 0.27.0 that took a repeatable beat and a guard on the result:
+
+```lute
+<beat id="valves" on="hubVisit" once="false" when="!holds(solved(valves))">
+  @narrator: Three valves, one pressure gauge. The needle waits.
+</beat>
+```
+
+`spentBy` (dsl 0.27.0 §5) says it directly. It is a CEL condition, checked like `when`, and it
+replaces `once`: the beat stays eligible, presentation after presentation, until the condition
+holds, and from then on it is spent:
+
+```lute
+<beat id="valves" on="hubVisit" spentBy="holds(solved(valves))">
+  @narrator: Three valves, one pressure gauge. The needle waits.
+</beat>
+```
+
+A scene writes it in frontmatter (`spentBy: "holds(solved(valves))"`), an entry and a bundle beat
+as an attribute (`spentBy="…"`). Writing both `once` and `spentBy` is `E-BEAT-ATTR`: the beat is
+repeatable by definition (its IR `once` is `none`), so the two would contradict. The condition may
+read anything a `when` may, and it is read when the beat is judged, so a condition that turns false
+again makes the beat eligible again.
+
+`lute play`, `lute calendar`, and `lute test`'s `eligible:` report a spent beat as ineligible with
+the reason ``spentBy: `run.solved` holds``, naming the condition. The condition reaches the IR as `spentBy: {raw, expr}` on
+the scene `meta.beat`, the `beat` record, or the `entry` record, and as its raw text on the beat's
+`project.index.json` row.
 
 ## Composing an occasion
 
@@ -399,7 +487,7 @@ occasion every eligible beat is already offered or presented, so `also: true` th
 
 <!-- lute-diagnostics -->
 ```
-./scenes/supper-aside.lute:6:7: error [E-BEAT-ATTR] `also: true` applies only to a `select: first` occasion; `evening` is `select: sequence`, which already presents or offers every eligible beat — remove `also:` (dsl 0.23.0 §3)
+./scenes/supper-aside.lute:6:7: error [E-BEAT-ATTR] `also: true` applies only to a `select: first` occasion; `evening` is `select: sequence`, which already presents or offers every eligible beat — remove `also:`
 ```
 
 So is an `also` value other than `true` or `false`. `W-BEAT-SHADOWED` and `W-BEAT-PRIORITY-TIE`
@@ -475,7 +563,7 @@ entities:
 
 <!-- lute-diagnostics -->
 ```
-./scenes/oskar.lute:5:9: error [E-BEAT-ATTR] target `npc.osker` is outside occasion `talk`'s domain `npc.<person>` (`npc.maud`, `npc.oskar`) — did you mean `npc.oskar`? (dsl 0.22.0 §8)
+./scenes/oskar.lute:5:9: error [E-BEAT-ATTR] target `npc.osker` is outside occasion `talk`'s domain `npc.<person>` (`npc.maud`, `npc.oskar`) — did you mean `npc.oskar`?
 ```
 
 So is `place.oskar`, which has the wrong prefix. For an `open:` kind, whose members the engine
@@ -498,7 +586,7 @@ although `cinderhound` is a `foe`, and the did-you-mean runs over the listed mem
 
 <!-- lute-diagnostics unverified="verbatim lute check output; the message ends in an optional did-you-mean slot that is empty here, and the matcher requires every interpolation to be non-empty" -->
 ```text
-./scenes/hound.lute:5:9: error [E-BEAT-ATTR] target `boss.cinderhound` is outside occasion `bossDefeated`'s member list (`boss.gatekeeper`, `boss.warden`), a subset of entity kind `foe` (dsl 0.22.0 §8)
+./scenes/hound.lute:5:9: error [E-BEAT-ATTR] target `boss.cinderhound` is outside occasion `bossDefeated`'s member list (`boss.gatekeeper`, `boss.warden`), a subset of entity kind `foe`
 ```
 
 Every listed member must belong to the kind. One the kind does not declare makes every target of
@@ -553,10 +641,11 @@ and writes one beat per tier, in a lore document `contest`:
   member the occasion was raised for (`inchlet` for `mon.inchlet`), typed by the kind. It is a
   value you compare (`occasion.target == 'inchlet'`) or match on: a
   `<match on="occasion.target">` checks its arms against the kind's members, and needs no `unset`
-  arm, because the engine always assigns it. It cannot yet stand in for a member name, so a fact
-  query or a `per:` family does not take it: see [Asking about the member](#asking-about-the-member).
+  arm, because the engine always assigns it. Since dsl 0.27.0 it also stands in for a member name
+  in a fact query and a `per:` family: see [Asking about the member](#asking-about-the-member).
   The value lasts for that presentation only. Reading `occasion.target` in a beat or entry that
-  does not target a kind is `E-UNDECLARED`.
+  neither targets a kind nor is presented [once per member](#once-per-member-for) is
+  `E-UNDECLARED`.
 - **Display.** `{{occasion.target}}` compiles to the placeholder
   `{"kind": "occasionTarget", "entityKind": "bugCommon"}`, so an engine can show the member's
   display name. [`lute play`](/tooling/play/) renders the member's cast `name:` when the member is a
@@ -584,9 +673,9 @@ Each shape fault names what is wrong:
 
 <!-- lute-diagnostics -->
 ```
-./lore/contest.lute:24:42: error [E-BEAT-ATTR] `target="kind:bugRar"`: `bugRar` is not a declared entity kind — did you mean `kind:bugRare`? (dsl 0.26.0 §5)
-./lore/contest.lute:28:40: error [E-BEAT-ATTR] `target="kind:bugRare"`: `hornbeetle`, `bladebug` are outside occasion `talk`'s domain `npc.<person>`; a kind target names `person` or one of its sub-kinds (dsl 0.26.0 §5)
-./lore/contest.lute:33:23: error [E-UNDECLARED] `occasion.target` is readable only in a beat or entry that targets a kind (`target="kind:<kind>"`), where it is the member the occasion was raised for (dsl 0.26.0 §5)
+./lore/contest.lute:24:42: error [E-BEAT-ATTR] `target="kind:bugRar"`: `bugRar` is not a declared entity kind — did you mean `kind:bugRare`?
+./lore/contest.lute:28:40: error [E-BEAT-ATTR] `target="kind:bugRare"`: `hornbeetle`, `bladebug` are outside occasion `talk`'s domain `npc.<person>`; a kind target names `person` or one of its sub-kinds
+./lore/contest.lute:33:23: error [E-UNDECLARED] `occasion.target` is readable only in a beat or entry that targets a kind (`target="kind:<kind>"`), where it is the member the occasion was raised for
 ```
 
 `lute play` and `lute calendar` offer a kind beat for every member's raise. `lute beats` lists it
@@ -598,42 +687,108 @@ its `project.index.json` row.
 
 #### Asking about the member
 
-A fact query's argument is a member name, `_`, or a boolean, and `occasion.target` is none of
-them, so `holds(logged(occasion.target))` is `E-CEL-PROFILE`. A `per:` family is read one member
-by name, so `run.caught[occasion.target]` is `E-UNDECLARED`. To ask a question about the member,
-name each member where you ask it. Compare `occasion.target` beside a query that names the member:
+`occasion.target` stands in for a member name where a member is expected (dsl 0.27.0 §3): as a
+fact query's argument, `holds(logged(occasion.target))`, and as a `per:` family's index,
+`run.caught[occasion.target]`. The checker instantiates the condition for every member of the kind,
+and the engine substitutes the member it raised:
 
 ```lute
-<beat id="rareAgain" on="caught" target="kind:bugRare" once="false" priority="5" when="(occasion.target == 'hornbeetle' && holds(logged(hornbeetle))) || (occasion.target == 'bladebug' && holds(logged(bladebug)))">
-  @narrator: That one is in the book already.
+<beat id="rareAgain" on="caught" target="kind:bugRare" once="false" priority="5" when="holds(logged(occasion.target)) && run.caught[occasion.target] >= 2">
+  @narrator: Another {{occasion.target}} for the book.
 </beat>
 ```
 
-or match on the member and ask inside each arm:
+Because each member is checked, a fault names the member it is about: a member outside the
+relation's argument kind is `E-FACT-DOMAIN`, and a family declared `per:` a kind the member is not
+in is `E-UNDECLARED` for that member's path.
 
-```lute
-<beat id="catchRare" on="caught" target="kind:bugRare" once="false">
-  <match on="occasion.target">
-    <when is="hornbeetle">
-      @narrator{when="holds(logged(hornbeetle))"}: Another hornbeetle for the book.
-    </when>
-    <when is="bladebug">
-      @narrator{when="holds(logged(bladebug))"}: Another bladebug for the book.
-    </when>
-  </match>
-  @narrator: A {{occasion.target}}! The nets all around you go still.
-</beat>
+A [`lute test`](/tooling/cli/) names the member and mocks what is asked about it:
+
+```yaml
+file: ../lore/contest.lute
+beat: rareAgain
+state: { occasion.target: hornbeetle, run.caught.hornbeetle: 2 }
+facts: [logged(hornbeetle)]
+expect:
+  transcriptContains: ["Another hornbeetle for the book."]
 ```
 
-A state question reads the member the same way, `run.caught.hornbeetle` in the `hornbeetle` arm.
+Without the member, [`lute trace`](/tooling/tracing/) stops and says which mock decides it:
+`supply --state occasion.target=<hornbeetle|bladebug> as a mock`.
+
 When each member needs its own conditions throughout, a beat per member (`target="mon.hornbeetle"`)
 says it more plainly, and it outranks the kind beat at equal priority.
+
+### Once per member: `for=`
+
+Some occasions are raised for no one in particular: a morning, a daily reset. A beat on such an
+occasion may still be about each member of a kind in turn. With `for="kind:<kind>"` (dsl 0.27.0
+§3), a beat on an untargeted `select: sequence` occasion is presented **once per member** whose
+`when` holds, in the kind's member order, with `occasion.target` bound to that member:
+
+```yaml
+occasions:
+  morning: { select: sequence }
+```
+
+```lute
+<beat id="birthday" on="morning" for="kind:person" once="false" when="holds(birthdayToday(occasion.target))">
+  @narrator: It is {{occasion.target}}'s birthday.
+</beat>
+```
+
+On a morning where `birthdayToday(maud)` and `birthdayToday(oskar)` hold, the beat is presented
+twice, for `maud` and then for `oskar`, among the occasion's other eligible beats in the usual
+order. Everything [Kind targets](#kind-targets) says about `occasion.target` holds here too: a
+fact query and a `per:` family take it, and `{{occasion.target}}` names the kind.
+
+- Eligibility is decided when the occasion is raised, per member. `once` spends the **beat**, not
+  one member: a `once: run` beat is presented for every member eligible at its first raise, then
+  for no one again that run.
+- A scene writes the same key in its frontmatter, `for: "kind:person"`.
+- `for` needs an occasion declared `select: sequence` and raised without a target, and a closed
+  kind (one with `members:`). It is not written beside `target`; an occasion raised for a member
+  takes [`target="kind:<kind>"`](#kind-targets) instead. Each of these is `E-BEAT-ATTR`, with a
+  did-you-mean for a misspelled kind.
+
+[`lute play`](/tooling/play/) lists one candidate per member (`✓ lore.birthday for maud`), and its
+`--json` candidates carry the member as `for`. A `lute test` of the beat names one member in
+`state: { occasion.target: maud }`. The compiled beat carries `forKind: { kind, members }` on its
+scene `meta.beat`, its `entry` or `beat` record, and its `project.index.json` row.
+
+### Occasion payloads
+
+An occasion may hand typed values to the beats that answer it (dsl 0.27.0 §3). A gacha pull is
+raised for the hero drawn, and says how many copies came with it:
+
+```yaml
+occasions:
+  summon: { select: first, target: { prefix: hero, entity: hero }, payload: { copies: number } }
+```
+
+A beat on `summon` reads each field as `occasion.payload.<field>`, typed as declared, in its `when`,
+its guards, its `::set` values, and its text:
+
+```lute
+<beat id="pull" on="summon" target="kind:hero" once="false" when="occasion.payload.copies >= 1">
+  @narrator: {{occasion.payload.copies}} copies of {{occasion.target}}.
+  ::set{run.shards += occasion.payload.copies}
+</beat>
+```
+
+The engine binds the payload for one raise; it is gone once that raise's beats have been
+presented. Reading a field in a beat of an occasion that does not declare it is `E-UNDECLARED`,
+and so is a read outside any beat. A [`lute play`](/tooling/play/) step gives the payload beside
+the occasion (`payload: { copies: 2 }`), and a field the occasion does not declare is a usage
+error. A raise without it leaves the fields unset, so a `when` that reads one cannot be decided and
+the play stops there. `lute trace` and `lute test` mock it like any state:
+`state: { occasion.payload.copies: 2 }`.
 
 ## What the checker proves
 
 | Code | When |
 |---|---|
-| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not an identifier, `target` not a dotted id or outside its occasion's [target domain](#target-domains), a [`kind:` target](#kind-targets) that names no closed kind within the occasion's domain, `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/)), `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, a `share` that is not an identifier or has no spending `once` beside it, beats of one `share` key with different `once`s (`check-project`), beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
+| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not an identifier, `target` not a dotted id or outside its occasion's [target domain](#target-domains), a [`kind:` target](#kind-targets) that names no closed kind within the occasion's domain, a [`for`](#once-per-member-for) that is not `kind:<kind>` of a closed kind, sits beside `target`, or is on an occasion raised for a target or not `select: sequence`, `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/), and `week` only with its `week:`; dsl 0.27.0 §5), `once` written beside `spentBy`, `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, a `share` that is not an identifier or has no spending `once` beside it, beats of one `share` key with different `once`s (`check-project`), beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
 | `E-OCCASION-UNKNOWN` | `on` names an occasion no resolved plugin declares (only once some plugin declares occasions) |
 | `E-BEAT-UNREACHABLE` | a scene or bundle beat's `when` provably never holds; see [How a `when` is decided](#how-a-when-is-decided). `lute check` decides what one file settles, and `lute check-project` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
 | `W-BEAT-SHADOWED` | `check-project` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry without `once`, or a scene or bundle beat with `once: false`). On an occasion whose target domain is closed, an untargeted beat is also reported when, at every `<prefix>.<member>`, such a beat for that member wins; the message names the shadower per target. A [kind beat](#kind-targets) is judged member by member the same way. `also` beats neither shadow nor are shadowed. |
@@ -762,6 +917,9 @@ for `select: sequence`, `also`, beat bundles, the sharper decider, and `--wip`,
 for `once: day` / `once: slot`, entry targets as metadata, and bundle beats as `after:`
 predecessors,
 [`0.25.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
-for `share` and bundle beat `after=`, and the draft
+for `share` and bundle beat `after=`,
 [`0.26.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)
-for kind targets, `W-ENTRY-WRITE-REREAD`, the sharper `W-BEAT-PRIORITY-TIE`, and `covered by`.
+for kind targets, `W-ENTRY-WRITE-REREAD`, the sharper `W-BEAT-PRIORITY-TIE`, and `covered by`, and
+the draft
+[`0.27.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+for `once: week`, `once: season:<name>`, and `spentBy`.

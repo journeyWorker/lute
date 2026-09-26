@@ -1,0 +1,6 @@
+file: ../lore/summon.lute
+beat: anyDupe
+state: { occasion.target: cyra }
+facts: [owned(cyra)]
+expect:
+  transcriptContains: ["cyra again. The star shard hums."]

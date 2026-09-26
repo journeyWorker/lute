@@ -289,6 +289,7 @@ fn occasion_target_ok_is_shared_with_play() {
         lute_manifest::relations::EntityKindDecl {
             shape: lute_manifest::relations::KindShape::Members(vec!["maud".into()]),
             subset_of: None,
+            labels: Default::default(),
         },
     );
     let talk = &snap.occasions["talk"];
@@ -419,7 +420,12 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
         docs.push((PathBuf::from(format!("{i}.lute")), doc));
     }
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
-    check_project_beats(&docs, &refs, &lute_check::cast::fact_producers(&docs), None)
+    check_project_beats(
+        &docs,
+        &refs,
+        &lute_check::cast::fact_producers(&docs, &Default::default()),
+        None,
+    )
 }
 
 const STATE: &str = "state:\n  run.day: { type: number, default: 1 }\n  \

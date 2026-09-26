@@ -19,6 +19,10 @@ id: summon
   @narrator: {{occasion.target}} trusts you now.
 </beat>
 
+<beat id="bondNear" on="bondUp" target="kind:hero" once="false" priority="-1" when="user.bond[occasion.target] >= 100">
+  @narrator: {{occasion.target}} almost smiles.
+</beat>
+
 <beat id="reset" on="dailyReset" once="day">
   @narrator: Day {{user.day}}. {{clock.weekdayLabel}}.
   @narrator{when="@harvestLive"}: The harvest moon is up.

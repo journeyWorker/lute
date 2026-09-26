@@ -1,6 +1,6 @@
 ---
 title: Quests & scenes
-description: The time-axis document kinds — scenes sequenced with after:, and quests with objectives, derived completion, run or user tiers, and lifecycle-event reactions — beside the lore kind for looked-up content.
+description: The time-axis document kinds — scenes sequenced with after:, and quests with objectives, derived completion, run, user, or season tiers, rearm conditions that run a quest again, and lifecycle-event reactions — beside the lore kind for looked-up content.
 ---
 
 Every `.lute` document declares a **`kind`**: `scene`, `quest`, or `lore`. The kind selects the
@@ -115,7 +115,8 @@ state:
 After the reset the lifecycle settles as usual: `climb`'s `start` holds again, so it re-activates
 at the start of every run, while an accept-driven run-tier quest stays `unset` until it is accepted
 again. `legend` keeps its status across runs. The tier belongs to each `<quest>`, not to the
-document, so one quest document can mix both. Any value but `run` or `user` is `E-ATTR-TYPE`.
+document, so one quest document can mix both. Any value but `run`, `user`, or `season:<name>` (see
+[below](#quests-that-come-back-season-tiers-and-rearm)) is `E-ATTR-TYPE`.
 A [subquest](#subquests) is the exception: it must share its parent's tier (`E-QUEST-TIER-MIX`).
 [`lute play`](/tooling/play/) performs the reset at every `newRun` step, so a play script can walk
 several runs and assert each one.
@@ -148,7 +149,7 @@ nothing else (`E-CONN-PROFILE`). Writing `after:` in a quest's *frontmatter* is
 
 <!-- lute-diagnostics -->
 ```
-error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin) — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, not a frontmatter key (dsl §4.1)
+error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin) — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, not a frontmatter key
 ```
 
 A `visited()` in `after=` (or in a scene's `after:`) may name a [bundle beat](/language/beats/#beat-bundles)
@@ -175,6 +176,34 @@ Two more kinds of anchor need no `after=` either (dsl 0.25.0 §4):
 Anchors never prove a quest unreachable, and an anchor that would close a cycle is not drawn. An
 explicit `after=` keeps only the edges it declares, in place of the `start` and `accept` anchors;
 the subquest edge stays.
+
+#### Quests that come back: season tiers and `rearm`
+
+Some quests return on a schedule rather than with a run: a harvest errand board that opens every
+autumn, a festival that comes back each year. Two attributes cover them (dsl 0.27.0 §5).
+
+**`tier="season:<name>"`** makes a quest belong to a [season](/state/schemas/#seasons) a schema
+declares. When that season opens again, the quest returns to `unset` and its objectives to not
+done, as a run-tier quest does at a new run. A season no schema declares is `E-SEASON-DECL`.
+
+**`rearm="<condition>"`** reruns one quest without a season. Each time the condition turns from
+false to true, the quest returns to `unset`: its objectives are undone, its `failedBy` is cleared,
+and its deadlines are forgotten. It can then be accepted or started again, and a `start` that
+holds activates it in the same settle:
+
+```lute
+<quest id="harvestMissions" title="Harvest missions" start="@harvestLive" rearm="@harvestLive">
+  <objective id="bring" title="Bring in the barley" done="run.barley >= 10"/>
+</quest>
+```
+
+Here `@harvestLive` is a def over the clock, say `clock.weekday == 5`. The quest starts the first
+Saturday, and each later Saturday it is rearmed and starts afresh, whether the player finished it
+the week before, failed it, or left it open. The engine watches the condition at every quest settle
+of a playthrough. The first time it sees it is only the baseline, so a condition already true when
+play begins does not rearm. `lute play` prints the reset with the status it ended,
+`quest harvestMissions -> unset (rearmed; was complete)`; a season-tier quest's reset reads
+`quest missions -> unset (season:harvest opened; was complete)`. The condition compiles to `rearm: {raw, expr}` on the quest's `QuestCmd`.
 
 ### `<objective>`
 
@@ -305,7 +334,7 @@ instead. `--deny W-QUEST-NEVER-ACCEPTED` makes the warning an error.
 
 <!-- lute-diagnostics -->
 ```
-./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition (dsl 0.24.0 §2, 0.25.0 §5)
+./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition
 ```
 
 **Accepting for the next run.** A run-tier quest accepted between runs, at a hub or a bounty board
@@ -401,7 +430,7 @@ child as well, and it waits for the engine while its parent is active:
 
 <!-- lute-diagnostics -->
 ```
-./quests/board.lute:10:41: error [E-ACCEPT-TARGET] quest `child` declares `accept="external"`, but it activates with its parent `board`, so the engine's acceptance does nothing; declare `activate="accept"` on it too so it waits to be accepted (dsl 0.25.0 §5)
+./quests/board.lute:10:41: error [E-ACCEPT-TARGET] quest `child` declares `accept="external"`, but it activates with its parent `board`, so the engine's acceptance does nothing; declare `activate="accept"` on it too so it waits to be accepted
 ```
 
 ### Deadlines
@@ -486,7 +515,7 @@ state:
 
 <!-- lute-diagnostics -->
 ```
-hearing.lute:9:100: warning [W-DEADLINE-BEFORE-DONE] objective `verdict`'s `by="run.verdict != 'undecided'"` holds whenever its `done="run.verdict == 'guilty'"` does, and `by` is a moment judged at every settle (dsl 0.24.0 §2.1): it fails the objective at the settle it comes true, before occasion `hearing` ever judges `done` (unless both happen in the step that raises `hearing`) — write `until="run.verdict != 'undecided'"` to judge the deadline only when `hearing` is raised
+hearing.lute:9:100: warning [W-DEADLINE-BEFORE-DONE] objective `verdict`'s `by="run.verdict != 'undecided'"` holds whenever its `done="run.verdict == 'guilty'"` does, and `by` is a moment judged at every settle: it fails the objective at the settle it comes true, before occasion `hearing` ever judges `done` (unless both happen in the step that raises `hearing`) — write `until="run.verdict != 'undecided'"` to judge the deadline only when `hearing` is raised
 ```
 
 ### Subquests
@@ -652,8 +681,8 @@ state:
 
 <!-- lute-diagnostics unverified="verbatim check-project output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
 ```
-scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene (dsl 0.24.0 §2)
-quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing` (dsl 0.24.0 §2, 0.25.0 §5)
+scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene
+quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
 ```
 
 ### Lifecycle reactions with `<on>`
@@ -704,7 +733,7 @@ cascade-fails its still-active children). Add a `fail=` condition, or remove the
 
 <!-- lute-diagnostics -->
 ```
-./q.lute:10:14: warning [W-QUEST-HANDLER-DEAD] `<on event="questFailed">` never runs: quest `lampOut` cannot fail — it has no `fail` condition, no required objective with a `by=` deadline, no required subquest that can fail (a failing required child fails it), and no parent quest whose end would cascade to it; add a `fail=` condition or remove the handler (dsl 0.22.0 §7)
+./q.lute:10:14: warning [W-QUEST-HANDLER-DEAD] `<on event="questFailed">` never runs: quest `lampOut` cannot fail — it has no `fail` condition, no required objective with a `by=` deadline, no required subquest that can fail (a failing required child fails it), and no parent quest whose end would cascade to it; add a `fail=` condition or remove the handler
 ```
 
 The same code (dsl 0.24.0) names a world-event handler that can only fire on a completed quest:
@@ -715,7 +744,7 @@ only an active quest's handlers. `lute check` reports it too. Lifecycle events, 
 
 <!-- lute-diagnostics unverified="verbatim lute check-project output; the message is composed in crates/lute-check/src/reachability.rs, which names the code through the project_check::W_QUEST_HANDLER_DEAD constant rather than a string literal, so the scraper cannot pair quote and code" -->
 ```
-quests/road.lute:25:14: warning [W-QUEST-HANDLER-DEAD] `<on event="combatEnd">` never runs: its `when` implies every required objective of quest `brawl` is done, so the quest has already completed when it holds, and an event reaches only an active quest's handlers; move the body to `<on event="questComplete">` or the objective's own body (dsl 0.24.0)
+quests/road.lute:25:14: warning [W-QUEST-HANDLER-DEAD] `<on event="combatEnd">` never runs: its `when` implies every required objective of quest `brawl` is done, so the quest has already completed when it holds, and an event reaches only an active quest's handlers; move the body to `<on event="questComplete">` or the objective's own body
 ```
 
 Content elsewhere can also gate on quest lifecycle by reading the reserved `quest.<id>.state` path.

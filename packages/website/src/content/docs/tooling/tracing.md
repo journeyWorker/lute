@@ -171,7 +171,7 @@ A lore document needs `--entry` or `--beat`, and without either the usage error 
 <!-- lute-diagnostics -->
 ```console
 $ lute trace lore/oskar.lute --project . --beat hnut
-lore/oskar.lute:0:0: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id `hnut`; this document declares: oskar.hunt, oskar.rumor (dsl 0.23.0 §4)
+lore/oskar.lute:0:0: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id `hnut`; this document declares: oskar.hunt, oskar.rumor
 ```
 
 `--beat` on a document with no `<beat>` — a scene, say — is `E-TRACE-BEAT` too. [`lute run --beat`](/tooling/cli/#run) presents the same beat from the compiled lore artifact.
@@ -306,15 +306,15 @@ A tag no plugin call of the document reads a bridge result through, or a field n
 <!-- lute-diagnostics -->
 ```console
 $ lute trace scenes/gate/guards.lute --project . --mock lack.yaml
-lack.yaml:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }` (dsl 0.25.0 §7)
+lack.yaml:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }`
 trace refused: scenes/gate/guards.lute — invalid mock input
 ```
 
 <!-- lute-diagnostics -->
 ```console
 $ lute trace scenes/gate/guards.lute --project . --mock bad.yaml
-bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` is not compatible with `scene.check.guards.passed`'s declared type (dsl 0.24.0 §5)
-bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` is not compatible with `scene.check.sneak.passed`'s declared type (dsl 0.24.0 §5)
+bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` is not compatible with `scene.check.guards.passed`'s declared type
+bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` is not compatible with `scene.check.sneak.passed`'s declared type
 trace refused: scenes/gate/guards.lute — invalid mock input
 ```
 
@@ -396,6 +396,8 @@ trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
     @inspector  Then we start again.
 trace complete: 2 decisions; choices 1/2 (ask), choices 1/2 (verdict)
 ```
+
+The refusal names the premise that is false (round-5 T3-12): the guard as authored, every read it is false over, and the mock that would change it — ``its guard `holds(found(receipt))` decided false: `found(receipt)` does not hold (mock `--fact "found(receipt)"`)``, or ``… `run.x` is 2 (mock `--state run.x=<value>`)``. A `visited(…)` or quest-state read is named with its `--mock` file key (`visited: [a]`, `quests: { q: <state> }`) and the note that a single-file trace does not know what earlier scenes did. A spent hub option says ``it is `once` and already taken in this visit of hub `h` ``. In a `*.test.yaml` the hints are spelled as test keys (`facts: ["found(receipt)"]`, `state: { run.x: <value> }`), and `lute play` appends the same premise to its own `E-TRACE-CHOICE`.
 
 A mocked derived atom is still accepted: it is a seed like any other, so `--fact "culprit(ann)"` holds whatever the rules conclude. [`lute test`](/tooling/cli/#test) walks the same way, and a test whose walk halts fails unless it declares `expect: { exit: incomplete }`. A test asserts what the rules conclude with `expect.facts` and `expect.notFacts` — atoms that must hold, or must not, after derivation when the walk ends:
 
@@ -486,8 +488,8 @@ trace: scenes/dawn.lute  (seeds: 0 paths, 1 facts; 1 selection)
     ::assert  calm(maren)
     ✗ exclusive: calm(maren) and panicked(maren) both hold
 trace stopped at the `✗ exclusive` line above (exit 1); choices 1/2 (look), arms 1/2 (holds(seenAfter(elias)) && !holds(fell(elias)) @21:1)
-scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] this write makes exclusive relations hold together: calm(maren) and panicked(maren) both hold (dsl 0.25.0 §1)
-trace refused: scenes/dawn.lute — exclusive relations hold together (dsl 0.25.0 §1)
+scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] this write makes exclusive relations hold together: calm(maren) and panicked(maren) both hold
+trace refused: scenes/dawn.lute — exclusive relations hold together
 ```
 
 The exit is **1**, and nothing after the write is walked. A scenario test that reaches such a write fails the same way. When the seeded facts themselves — the mock's `facts:` or `--fact`, the project's `facts:` seeds, and what the rules derive from them — already break an exclusion, trace refuses before the walk starts, with an `E-FACT-EXCLUSIVE` that says so. `check-project` reports the same code statically when the other fact holds on every route to the `::assert`; trace catches the cases that are only possible, such as a fact asserted down one branch of an earlier scene, or supplied by a mock.

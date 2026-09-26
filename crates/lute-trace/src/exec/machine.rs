@@ -65,14 +65,38 @@ use std::sync::Arc;
 use serde_json::{json, Value as Json};
 
 use super::driver::{
-    BridgeCall, BridgeReply, Driver, Forced, Menu, MenuKind, MenuOption, OnUnknown, Pick, SiteKind,
-    UnknownSite, Verdict,
+    guard_premise, BridgeCall, BridgeReply, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption,
+    OnUnknown, Pick, SiteKind, UnknownSite, Verdict,
 };
 pub use super::store::render_fact;
 use super::store::{json_arg_to_string, json_to_value, Store};
 use crate::datalog::Fact;
 use crate::eval::Read;
 use crate::{MockSet, UnresolvedAtom, Value};
+
+/// dsl 0.27.0 §4: whether a `plugin` record carries declared fact effects.
+fn has_fact_effects(cmd: &Json) -> bool {
+    ["asserts", "retracts"].iter().any(|k| {
+        cmd.get(k)
+            .and_then(Json::as_array)
+            .is_some_and(|a| !a.is_empty())
+    })
+}
+
+/// One `plugin` record fact (`{ relation, args }`, dsl 0.27.0 §4).
+fn fact_record(f: &Json) -> (String, Vec<String>) {
+    let rel = f
+        .get("relation")
+        .and_then(Json::as_str)
+        .unwrap_or("")
+        .to_string();
+    let args = f
+        .get("args")
+        .and_then(Json::as_array)
+        .map(|a| a.iter().map(json_arg_to_string).collect())
+        .unwrap_or_default();
+    (rel, args)
+}
 
 /// A parsed quest declaration head (quest-lifecycle.md).
 struct QuestDecl {
@@ -989,6 +1013,10 @@ impl<D: Driver> Machine<D> {
                 self.rec_stage(&cmd, kind);
                 Step::Next(pc + 1)
             }
+            "plugin" if !self.apply_effects => {
+                self.rec_skipped_plugin(&cmd);
+                Step::Next(pc + 1)
+            }
             "set" | "assert" | "retract" if !self.apply_effects => {
                 self.rec_skipped(&cmd, kind);
                 Step::Next(pc + 1)
@@ -1156,13 +1184,18 @@ impl<D: Driver> Machine<D> {
                         v => formatted(ph, &v).unwrap_or_else(|| self.path_text(path, &v)),
                     }
                 }
-                // Prerelease N8: the raised member of a kind beat, by its cast
-                // display name when it is a cast id, else the id.
+                // Prerelease N8 / dsl 0.27.0 §7: the raised member of a kind
+                // beat, by its cast display name when it is a cast id, else
+                // by its kind's label, else the id.
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("occasionTarget") => {
                     match self.store.values.get(lute_check::beats::OCCASION_TARGET) {
                         Some(Value::Str(m)) => self
                             .display_names
                             .get(m)
+                            .or_else(|| {
+                                let kind = ph.get("entityKind").and_then(Json::as_str)?;
+                                self.store.kind_labels.get(kind)?.get(m)
+                            })
                             .cloned()
                             .unwrap_or_else(|| m.clone()),
                         Some(Value::Unknown) | None => marker.to_string(),
@@ -1317,7 +1350,7 @@ impl<D: Driver> Machine<D> {
             self.driver.emit(json!({ "kind": "exclusive", "text": v }));
         }
         self.refuse(format!(
-            "exclusive relations hold together — {} (dsl 0.25.0 §1)",
+            "exclusive relations hold together — {}",
             new.join("; ")
         ));
     }
@@ -1365,9 +1398,43 @@ impl<D: Driver> Machine<D> {
     fn option_verdict(&mut self, when: &str) -> Verdict {
         match self.eval_atoms(when) {
             (Value::Bool(true), _) => Verdict::Open,
-            (Value::Bool(false), _) => Verdict::Closed,
+            (Value::Bool(false), _) => Verdict::Closed(Vec::new()),
             (_, atoms) => Verdict::Unknown(atoms),
         }
+    }
+
+    /// [`Machine::option_verdict`] for a scripted pick the driver rules on:
+    /// a guard that decided false names the reads it is false over
+    /// (round-5 T3-12) — every state path with its value, every fact
+    /// pattern that does not hold, every scene `visited(…)` has not seen.
+    fn picked_verdict(&mut self, when: &str) -> Verdict {
+        let verdict = self.option_verdict(when);
+        if !matches!(verdict, Verdict::Closed(_)) {
+            return verdict;
+        }
+        let mut atoms = Vec::new();
+        if let Some(expr) = super::store::parse(when) {
+            crate::eval::guard_atoms(&expr, &mut atoms);
+        }
+        let reads = atoms
+            .into_iter()
+            .filter_map(|a| match a {
+                crate::eval::GuardAtom::Path(p) => {
+                    let v = match self.store.read(&p) {
+                        Read::Value(v) => v,
+                        Read::Unset => Value::Unknown,
+                    };
+                    Some(GuardRead::Path(p, v))
+                }
+                crate::eval::GuardAtom::Fact(f) => (self.store.eval(&format!("holds({f})")).0
+                    == Value::Bool(false))
+                .then_some(GuardRead::Fact(f)),
+                crate::eval::GuardAtom::Visited(k) => {
+                    (!self.store.visited.contains(&k)).then_some(GuardRead::Visited(k))
+                }
+            })
+            .collect();
+        Verdict::Closed(reads)
     }
 
     /// A branch's options judged right now — what its menu shows. Display
@@ -1401,16 +1468,24 @@ impl<D: Driver> Machine<D> {
         match verdict {
             Verdict::Spent => format!(
                 "[E-TRACE-CHOICE] `choose: {id}: {option}` names a `once` option already \
-                 taken at this {construct}, so it is no longer offered (dsl 0.4.0 §4.4)"
+                 taken at this {construct}, so it is no longer offered"
             ),
             Verdict::Unknown(_) => format!(
                 "[E-TRACE-CHOICE] `choose: {id}: {option}` names an option whose guard \
-                 `{when}` is undecided at this presentation point (dsl 0.4.0 §4.4)"
+                 `{when}` is undecided at this presentation point"
             ),
-            Verdict::Open | Verdict::Closed => format!(
-                "[E-TRACE-CHOICE] `choose: {id}: {option}` names an option whose guard \
-                 `{when}` decided false at this presentation point (dsl 0.4.0 §4.4)"
-            ),
+            Verdict::Open | Verdict::Closed(_) => {
+                let premise = match verdict {
+                    Verdict::Closed(reads) if !reads.is_empty() => {
+                        format!(": {}", guard_premise(reads, GuardRead::yaml_mock))
+                    }
+                    _ => String::new(),
+                };
+                format!(
+                    "[E-TRACE-CHOICE] `choose: {id}: {option}` names an option whose guard \
+                     `{when}` decided false at this presentation point{premise}"
+                )
+            }
         }
     }
 
@@ -1435,7 +1510,7 @@ impl<D: Driver> Machine<D> {
         // A menu marks what was not offered.
         let closed: Vec<&str> = judged
             .iter()
-            .filter(|o| o.verdict == Verdict::Closed)
+            .filter(|o| matches!(o.verdict, Verdict::Closed(_)))
             .map(|o| o.id.as_str())
             .collect();
         let menu = Menu {
@@ -1511,7 +1586,7 @@ impl<D: Driver> Machine<D> {
         // refusing on that would refuse a legal replay.
         if !auto {
             if let Some(when) = opt.get("when").and_then(Json::as_str) {
-                let verdict = self.option_verdict(when);
+                let verdict = self.picked_verdict(when);
                 if verdict != Verdict::Open {
                     match self.driver.forced(&menu, &forced, &verdict) {
                         Forced::Take => {}
@@ -1623,10 +1698,10 @@ impl<D: Driver> Machine<D> {
                     .collect()
             };
             let spent = with(|v| *v == Verdict::Spent);
-            let closed = with(|v| *v == Verdict::Closed);
+            let closed = with(|v| matches!(v, Verdict::Closed(_)));
             let any_eligible = judged
                 .iter()
-                .any(|o| !matches!(o.verdict, Verdict::Spent | Verdict::Closed));
+                .any(|o| !matches!(o.verdict, Verdict::Spent | Verdict::Closed(_)));
             let marks = |rec: &mut serde_json::Map<String, Json>| {
                 if !spent.is_empty() {
                     rec.insert("spent".into(), json!(spent));
@@ -1739,7 +1814,7 @@ impl<D: Driver> Machine<D> {
                 // against live state — a guard false on the first pass may
                 // be true on the third, which is precisely what a hub is for.
                 if let Some(when) = opt.get("when").and_then(Json::as_str) {
-                    let verdict = self.option_verdict(when);
+                    let verdict = self.picked_verdict(when);
                     if verdict != Verdict::Open {
                         match self.driver.forced(&menu, &choice_id, &verdict) {
                             Forced::Take => {}
@@ -2027,13 +2102,17 @@ impl<D: Driver> Machine<D> {
                     json!("external bridge call — answered from `bridges:`"),
                 );
             }
-            None if !reads.is_empty() => {
+            // A call the walk cannot make: its bridge results stay unresolved,
+            // or it declares no effect at all (a fire-and-forget engine
+            // action — nothing in the transcript stands in for it).
+            None if !reads.is_empty() || (effects.is_empty() && !has_fact_effects(cmd)) => {
                 rec.insert(
                     "note".into(),
                     json!("external bridge call — not invoked; bridgeResult effects unresolved"),
                 );
             }
-            // Only declared effects: nothing about the call is external.
+            // Only declared effects: each is its own `set` record naming the
+            // call, so nothing about it is external.
             None => {}
         }
         self.driver.emit(Json::Object(rec));
@@ -2082,7 +2161,64 @@ impl<D: Driver> Machine<D> {
                 return false;
             }
         }
+        // dsl 0.27.0 §4: the declared fact effects, after the writes —
+        // retracts, then asserts — through the one assert/retract path
+        // (`::retract` / `::assert`'s), each recorded with `effectOf`.
+        for (key, assert) in [("retracts", false), ("asserts", true)] {
+            for f in cmd.get(key).and_then(Json::as_array).into_iter().flatten() {
+                let (rel, args) = fact_record(f);
+                let before = self.store.exclusive_now();
+                let rec = if assert {
+                    self.store.assert((rel.clone(), args.clone()));
+                    json!({ "addr": addr(cmd), "kind": "assert",
+                            "fact": render_fact(&rel, &args), "effectOf": tag })
+                } else {
+                    self.store.retract(&rel, &args);
+                    json!({ "addr": addr(cmd), "kind": "retract",
+                            "pattern": render_fact(&rel, &args), "effectOf": tag })
+                };
+                self.driver.emit(rec);
+                self.exclusive_check(&before);
+                if self.stopped() {
+                    return false;
+                }
+            }
+        }
         true
+    }
+
+    /// dsl 0.27.0 §4 + 0.19.0 §6: a plugin call in a lore entry re-read.
+    /// Only a directive whose one behaviour is its declared effects is
+    /// admitted there, and those effects apply on a first read only (as the
+    /// entry's own `::set`): each is recorded `skipped`, naming the call.
+    fn rec_skipped_plugin(&mut self, cmd: &Json) {
+        let tag = cmd.get("tag").and_then(Json::as_str).unwrap_or("");
+        for e in cmd
+            .get("effects")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let path = e.get("path").and_then(Json::as_str).unwrap_or("");
+            self.driver
+                .emit(json!({ "addr": addr(cmd), "kind": "skipped",
+                "effect": "set", "path": path, "effectOf": tag }));
+        }
+        for (key, effect, field) in [
+            ("retracts", "retract", "pattern"),
+            ("asserts", "assert", "fact"),
+        ] {
+            for f in cmd.get(key).and_then(Json::as_array).into_iter().flatten() {
+                let (rel, args) = fact_record(f);
+                let mut rec = serde_json::Map::new();
+                rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+                rec.insert("kind".into(), json!("skipped"));
+                rec.insert("effect".into(), json!(effect));
+                rec.insert(field.into(), json!(render_fact(&rel, &args)));
+                rec.insert("effectOf".into(), json!(tag));
+                self.driver.emit(Json::Object(rec));
+            }
+        }
     }
 
     /// One `bridges:` answer against the call it answers (dsl 0.24.0 §5):
@@ -2137,7 +2273,7 @@ impl<D: Driver> Machine<D> {
                 return Err(format!(
                     "{at}: `{field}` lands on `{path}`, which no state slot of this artifact \
                      declares, and no bridge capability declares a `result:` type for it — \
-                     an untyped answer is refused (dsl 0.26.0 §3.1)"
+                     an untyped answer is refused"
                 ));
             };
             let v = match ty {
@@ -3563,15 +3699,24 @@ pub fn value_to_json(v: &Value) -> Json {
     }
 }
 
-/// dsl 0.24.0 §4 / 0.25.0 §8: a placeholder's `format` applied to its value
-/// ([`lute_syntax::ast::format_number`]) — `ordinal` renders a number as an
-/// English ordinal (`3rd`, `11th`), `ordinalWord` as a word (`third`) up to
-/// `twentieth`. `None` when the placeholder carries no format or the value
-/// has no ordinal (a fraction, a negative number): the value then renders
+/// dsl 0.24.0 §4 / 0.25.0 §8 / 0.27.0 §7: a placeholder's `format` applied
+/// to its value ([`lute_syntax::ast::format_number`]) — `ordinal` renders a
+/// number as an English ordinal (`3rd`, `11th`), `ordinalWord` as a word
+/// (`third`) up to `twentieth`, `plural` as the placeholder's singular form
+/// when the number is 1 and its plural form otherwise (`#` in a form is the
+/// number). `None` when the placeholder carries no format or the value has
+/// no such rendering (a fraction's ordinal): the value then renders
 /// unchanged.
 fn formatted(ph: &Json, v: &Value) -> Option<String> {
     match (ph.get("format").and_then(Json::as_str), v) {
-        (Some(format), Value::Num(n)) => lute_syntax::ast::format_number(format, *n),
+        (Some(format), Value::Num(n)) => {
+            let forms: Option<Vec<String>> = ph.get("forms").and_then(Json::as_array).map(|a| {
+                a.iter()
+                    .filter_map(|f| f.as_str().map(str::to_string))
+                    .collect()
+            });
+            lute_syntax::ast::format_number(format, forms.as_deref(), *n, &value_to_string(v))
+        }
         _ => None,
     }
 }

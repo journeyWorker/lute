@@ -1507,6 +1507,7 @@ mod tests {
             activate: None,
             complete: None,
             accept: None,
+            rearm: None,
             attrs: Vec::new(),
             body: Vec::new(),
             rewards: Vec::new(),

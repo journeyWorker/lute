@@ -19,6 +19,9 @@ pub const CLOCK_INDEX: &str = "clock.index";
 pub const CLOCK_WEEKDAY: &str = "clock.weekday";
 /// `clock.weekdayLabel`: `week.labels[clock.weekday]`.
 pub const CLOCK_WEEKDAY_LABEL: &str = "clock.weekdayLabel";
+/// dsl 0.27.0 §4 (T2-5): an `advance:` step after a finite clock ended (or
+/// from past its last position) — a `lute play` / `lute test` usage error.
+pub const E_CLOCK_END: &str = "E-CLOCK-END";
 
 /// `true` for any path rooted at the read-only `clock` root.
 pub fn is_clock_path(path: &str) -> bool {
@@ -45,6 +48,24 @@ pub struct ClockDecl {
     pub raise: Option<ClockRaise>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub week: Option<WeekDecl>,
+    /// dsl 0.27.0 §4 (T2-5): the clock's last position — a finite clock
+    /// raises its last `dayEnd` there and stops. Absent: the clock never ends.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last: Option<ClockLast>,
+    /// dsl 0.27.0 §4: `days: N` — shorthand for `last: { day: N, slot: <the
+    /// last slot> }`. Never both with `last:`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub days: Option<u32>,
+}
+
+/// A finite clock's `last:` — the day and (on a clock with slots) the slot
+/// of its last position. `slot` omitted means the day's last slot.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClockLast {
+    pub day: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot: Option<String>,
 }
 
 /// A clock's `raise:` — one occasion (raised after every advance, the map
@@ -180,7 +201,63 @@ impl ClockDecl {
                 ));
             }
         }
+        match (&self.last, self.days) {
+            (Some(_), Some(_)) => out.push(
+                "declares both `last:` and `days:` — `days: N` is short for `last: { day: N }`; \
+                 keep one"
+                    .to_string(),
+            ),
+            (_, Some(0)) => out.push("`days:` must be at least 1".to_string()),
+            (Some(last), None) => {
+                if last.day < 1 {
+                    out.push(format!(
+                        "`last.day` is {} — day 1 is the first day",
+                        last.day
+                    ));
+                }
+                match (&last.slot, &self.slot) {
+                    (Some(s), None) => out.push(format!(
+                        "`last.slot: {s}` — the clock counts whole days (it declares no `slot:`)"
+                    )),
+                    (Some(s), Some(_))
+                        if !self.slots.is_empty() && self.slot_index(s).is_none() =>
+                    {
+                        out.push(format!(
+                            "`last.slot: {s}` is not one of `slots:` ({})",
+                            self.slots.join(", ")
+                        ))
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
         out
+    }
+
+    /// dsl 0.27.0 §4: the clock's last position — `None` for a clock that
+    /// never ends (or whose `last:` names no position, a shape problem).
+    pub fn last_at(&self) -> Option<ClockAt> {
+        if let Some(days) = self.days.filter(|d| *d > 0) {
+            return Some(ClockAt {
+                day: i64::from(days),
+                slot: self.slot_count() - 1,
+            });
+        }
+        let last = self.last.as_ref()?;
+        let slot = match &last.slot {
+            None => self.slot_count() - 1,
+            Some(s) => self.slot_index(s)?,
+        };
+        (last.day >= 1).then_some(ClockAt {
+            day: last.day,
+            slot,
+        })
+    }
+
+    /// dsl 0.27.0 §4: `true` when `at` lies past the clock's last position.
+    pub fn is_past_end(&self, at: ClockAt) -> bool {
+        self.last_at().is_some_and(|last| at > last)
     }
 
     /// The reserved paths this clock declares, with their types: `true` for
@@ -289,6 +366,15 @@ impl ClockDecl {
     pub fn weekday(&self, day: i64) -> Option<i64> {
         let week = self.week.as_ref().filter(|w| w.length > 0)?;
         Some((i64::from(week.first) + day - 1).rem_euclid(i64::from(week.length)))
+    }
+
+    /// dsl 0.27.0 §5: the clock week `day` falls in (`None` without a
+    /// `week:`) — week 0 holds day 1, whose weekday is `week.first`, so a
+    /// new week starts each time `clock.weekday` returns to `week.first`.
+    /// What spends `once: week`.
+    pub fn week_of(&self, day: i64) -> Option<i64> {
+        let week = self.week.as_ref().filter(|w| w.length > 0)?;
+        Some((day - 1).div_euclid(i64::from(week.length)))
     }
 
     /// `clock.weekdayLabel` of `day` (`None` without week labels).
@@ -466,6 +552,75 @@ mod tests {
         assert!(
             serde_yaml::from_str::<ClockDecl>("day: d\nraise: { dusk: x }\n").is_err(),
             "an unknown moment is refused"
+        );
+    }
+
+    /// dsl 0.27.0 §4 (T2-5): `last:` / `days:` bound the clock.
+    #[test]
+    fn a_finite_clock_knows_its_last_position() {
+        let base = "day: run.night\nslot: run.hour\nslots: [h23, h00, h05]\n";
+        let parse =
+            |extra: &str| -> ClockDecl { serde_yaml::from_str(&format!("{base}{extra}")).unwrap() };
+        let last = parse("last: { day: 1, slot: h05 }\n");
+        assert!(last.shape_problems().is_empty());
+        assert_eq!(last.last_at(), Some(ClockAt { day: 1, slot: 2 }));
+        let days = parse("days: 1\n");
+        assert!(days.shape_problems().is_empty());
+        assert_eq!(
+            days.last_at(),
+            last.last_at(),
+            "`days: 1` ≡ the last slot of day 1"
+        );
+        // `last.slot` omitted: the day's last slot.
+        assert_eq!(
+            parse("last: { day: 2 }\n").last_at(),
+            Some(ClockAt { day: 2, slot: 2 })
+        );
+        let early = parse("last: { day: 1, slot: h00 }\n");
+        assert!(!early.is_past_end(ClockAt { day: 1, slot: 1 }));
+        assert!(early.is_past_end(ClockAt { day: 1, slot: 2 }));
+        assert!(
+            parse("").last_at().is_none(),
+            "a clock without `last:` never ends"
+        );
+        assert!(!parse("").is_past_end(ClockAt { day: 99, slot: 0 }));
+        let day_clock: ClockDecl = serde_yaml::from_str("day: run.day\ndays: 3\n").unwrap();
+        assert_eq!(day_clock.last_at(), Some(ClockAt { day: 3, slot: 0 }));
+        // The IR form is unchanged for a clock that declares neither.
+        assert!(!serde_json::to_string(&parse("")).unwrap().contains("last"));
+    }
+
+    #[test]
+    fn finite_clock_shape_problems_name_each_defect() {
+        let problems = |yaml: &str| {
+            serde_yaml::from_str::<ClockDecl>(yaml)
+                .unwrap()
+                .shape_problems()
+        };
+        let slotted = "day: d\nslot: s\nslots: [a, b]\n";
+        let p = problems(&format!("{slotted}last: {{ day: 1, slot: c }}\n"));
+        assert!(
+            p.len() == 1 && p[0].contains("`last.slot: c` is not one of `slots:` (a, b)"),
+            "{p:?}"
+        );
+        let p = problems(&format!("{slotted}last: {{ day: 1, slot: b }}\ndays: 1\n"));
+        assert!(
+            p.len() == 1 && p[0].contains("both `last:` and `days:`"),
+            "{p:?}"
+        );
+        let p = problems(&format!("{slotted}days: 0\n"));
+        assert!(
+            p.len() == 1 && p[0].contains("`days:` must be at least 1"),
+            "{p:?}"
+        );
+        let p = problems(&format!("{slotted}last: {{ day: 0 }}\n"));
+        assert!(p.len() == 1 && p[0].contains("`last.day` is 0"), "{p:?}");
+        let p = problems("day: d\nlast: { day: 2, slot: a }\n");
+        assert!(p.len() == 1 && p[0].contains("counts whole days"), "{p:?}");
+        assert!(
+            serde_yaml::from_str::<ClockDecl>(&format!("{slotted}last: {{ day: 1, hour: a }}\n"))
+                .is_err(),
+            "an unknown `last:` key is refused"
         );
     }
 }

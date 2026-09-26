@@ -39,6 +39,16 @@
     },
     "defaults": {
       "type": "object"
+    },
+    "sequence": {
+      "description": "dsl 0.27.0 §8: a linear chain of scenes. Each listed scene (by id) gets on: <occasion>, after: visited(\"<previous>\") and a descending priority unless it writes the key itself.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["occasion", "scenes"],
+      "properties": {
+        "occasion": { "type": "string" },
+        "scenes": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
     }
   },
   "definitions": {

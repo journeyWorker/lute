@@ -78,7 +78,7 @@ pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "
 /// it to `crate::beats`, which reports it on an entry as `E-BEAT-ATTR`.
 pub const ENTRY_ATTRS: &[&str] = &[
     "id", "target", "category", "title", "series", "order", "when", "on", "priority", "once",
-    "share",
+    "share", "spentBy", "for",
 ];
 /// dsl 0.2.0 §6.3 (+ `after`, connectivity T2; `tier`, dsl 0.22.0 §7;
 /// `activate` / `complete`, dsl 0.24.0 §2; `accept`, dsl 0.25.0 §5):
@@ -87,7 +87,7 @@ pub const ENTRY_ATTRS: &[&str] = &[
 /// a `fial=` typo — used to be accepted and dropped from the IR without a
 /// word (0.21.1 T1-7).
 pub const QUEST_ATTRS: &[&str] = &[
-    "id", "title", "start", "fail", "after", "tier", "activate", "complete", "accept",
+    "id", "title", "start", "fail", "after", "tier", "activate", "complete", "accept", "rearm",
 ];
 /// dsl 0.2.0 §6.4 (+ subquest `quest`, dsl 0.21.0 §7a.2 `on`, dsl 0.23.0 §2
 /// `by` / `target`, dsl 0.24.0 §2.1 `until`): `<objective>`'s keys. A
@@ -241,8 +241,9 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
             "tier",
             &q.tier,
             &["run", "user"],
-            "\"run\" (status and objectives reset at a new run) or \"user\" (persists across \
-             runs, the default) (dsl 0.22.0 §7)",
+            "\"run\" (status and objectives reset at a new run), \"user\" (persists across \
+             runs, the default) or \"season:<name>\" (reset when that declared season opens) \
+             (dsl 0.22.0 §7, 0.27.0 §5)",
         ),
         (
             "activate",
@@ -269,7 +270,13 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
     for (key, value, legal, expects) in enumerated {
         let bad = value
             .as_ref()
-            .filter(|(v, _)| !legal.contains(&v.as_str()))
+            .filter(|(v, _)| {
+                !legal.contains(&v.as_str())
+                    // dsl 0.27.0 §5: `season:<name>` (declared: `E-SEASON-DECL`).
+                    && !(key == "tier"
+                        && lute_manifest::season::season_ref(v)
+                            .is_some_and(lute_manifest::season::is_season_name))
+            })
             .map(|(_, span)| *span)
             .into_iter()
             .chain(q.attrs.iter().filter(|a| a.key == key).map(|a| a.span));

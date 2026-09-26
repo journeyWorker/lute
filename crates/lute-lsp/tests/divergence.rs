@@ -122,14 +122,16 @@ fn lsp_severity(sev: ls_types::DiagnosticSeverity) -> u8 {
 /// Normalize a headless (core) diagnostic. Positions come from the diagnostic's
 /// own `span` bytes through `idx` — de-1-indexing the line and using the 0-based
 /// UTF-16 column, exactly as the LSP conversion does, so the two surfaces are
-/// compared on equal footing.
+/// compared on equal footing. The message is what every headless surface
+/// prints ([`Diagnostic::text`], the human line and the JSON `message`), not
+/// the producer's raw `message` with its spec citations.
 fn normalize_headless(d: &Diagnostic, idx: &TextIndex) -> Norm {
     let start = idx.position(d.span.byte_start);
     let end = idx.position(d.span.byte_end);
     (
         d.code.clone(),
         headless_severity(d.severity),
-        d.message.clone(),
+        d.text().into_owned(),
         (start.line - 1, start.utf16_col),
         (end.line - 1, end.utf16_col),
     )
