@@ -256,6 +256,15 @@ slot, day } }` (any of the three) judges where the clock stands after the
 step, so an `include:`d steps file states the time it expects and fails at
 its first step when an earlier file moved the clock elsewhere.
 
+An `advance: { to: … }` is ONE advance, raised like `advance: <n>`: the
+`slot` occasion (`slotStart`) is raised once, where the clock stops — the
+slots it passes on the way are not raised — while every midnight it crosses
+raises its `dayEnd` and `dayStart`. So `advance: { to: night }` from morning
+raises one `slotStart` (at night, the day slot skipped), where two `advance:
+slot` steps raise two; a `to` two days ahead raises two `dayEnd` /
+`dayStart` pairs and one `slotStart`. Write separate `advance: slot` steps
+when content answers the intermediate slot.
+
 ## Previous run (`prev.run.*`)
 
 `prev.run.<path>` (dsl 0.23.0 §6) is a reserved, read-only mirror of every

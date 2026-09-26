@@ -428,6 +428,12 @@ pub struct TraceReport {
     /// test`'s `expect.eligible` judges a scene by. Never serialized.
     #[serde(skip)]
     pub scene_eligible: Option<(String, Option<bool>)>,
+    /// Prerelease N3: when [`Self::scene_eligible`] is `Some(false)`, the
+    /// premise that fails — `its \`when\` (…) is false`, `its \`after: …\`
+    /// is false — …`, or the spent `once: user` — so a failing test names
+    /// what to mock. Never serialized.
+    #[serde(skip)]
+    pub scene_ineligible: Option<String>,
 }
 
 /// Render a decided [`Value`] to display text; `Unknown` has no decided

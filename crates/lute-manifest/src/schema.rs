@@ -588,6 +588,11 @@ pub struct CastBody {
     /// (`!holds(fell(isolde))`, directly or through a rule).
     #[serde(default)]
     pub assume: Option<bool>,
+    /// Prerelease N6 (dsl 0.26.0 §2.8): `sharedName: true` — this entry's
+    /// display name is a role name meant for many speakers ("Eclipse
+    /// Grunt"); `W-DISPLAY-NAME-DUP` does not count it.
+    #[serde(default, rename = "sharedName")]
+    pub shared_name: Option<bool>,
 }
 
 impl CastBody {
@@ -599,6 +604,7 @@ impl CastBody {
             present: self.present,
             emotions: self.emotions,
             assume: self.assume,
+            shared_name: self.shared_name,
         }
     }
 }
@@ -608,7 +614,9 @@ impl CastBody {
 /// dsl 0.24.0 §4: `present` — a line by this speaker whose enclosing guards
 /// do not imply it is `W-CAST-ABSENT`; `emotions` — the `emotion=` values the
 /// speaker takes (`E-BAD-ENUM` outside it); `assume` — presence treats a
-/// negated engine-`reserved` relation in `present` as holding.
+/// negated engine-`reserved` relation in `present` as holding;
+/// `shared_name` — the display name is an intended role name, exempt from
+/// `W-DISPLAY-NAME-DUP` (dsl 0.26.0 §2.8).
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CastMember {
     pub id: String,
@@ -620,6 +628,12 @@ pub struct CastMember {
     pub emotions: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assume: Option<bool>,
+    #[serde(
+        default,
+        rename = "sharedName",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub shared_name: Option<bool>,
 }
 
 /// Hand-written so a member without `present`/`emotions` prints exactly as
@@ -637,6 +651,9 @@ impl std::fmt::Debug for CastMember {
         }
         if let Some(assume) = &self.assume {
             s.field("assume", assume);
+        }
+        if let Some(shared) = &self.shared_name {
+            s.field("shared_name", shared);
         }
         s.finish()
     }

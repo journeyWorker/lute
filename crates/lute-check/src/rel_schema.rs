@@ -79,6 +79,14 @@ pub struct DeclOrigins {
     pub domains: BTreeMap<String, DeclOrigin>,
     /// dsl 0.26 §2.1/§2.7: every declared `state:` path.
     pub state: BTreeMap<String, DeclOrigin>,
+    /// Prerelease N4: each member an entity kind's `members:` lists, keyed
+    /// [`member_origin_key`] — where a duplicate `add:` names its first line.
+    pub members: BTreeMap<String, DeclOrigin>,
+}
+
+/// The [`DeclOrigins::members`] key of `member` of entity kind `kind`.
+pub fn member_origin_key(kind: &str, member: &str) -> String {
+    format!("{kind}\u{1f}{member}")
 }
 
 /// dsl 0.24 T3-6: re-home a diagnostic about an IMPORTED declaration. The
@@ -456,12 +464,16 @@ pub fn build_rel_vocab(
         .map(|(kind, members)| KindAdd {
             kind: kind.clone(),
             members: members.clone(),
+            member_spans: add_member_spans(meta, kind, members)
+                .into_iter()
+                .map(|s| s.map(|s| meta_position(meta, s)))
+                .collect(),
             origin: None,
             span: span_of(kind),
         })
         .collect();
     diags.extend(apply_kind_adds(&mut kinds, &inline_adds, &|kind| {
-        imports.rel.origins.kinds.get(kind).map(origin_file_name)
+        kind_home(&imports.rel.origins, kind)
     }));
 
     let mut enums = imports.rel.enums.clone();
@@ -771,6 +783,10 @@ fn root_kind<'a>(kinds: &'a BTreeMap<String, EntityKindDecl>, kind: &'a str) -> 
 pub struct KindAdd {
     pub kind: String,
     pub members: Vec<String>,
+    /// Prerelease N4: where each of `members` is written, index-aligned —
+    /// positioned in the `origin` file for an imported `add:`, in the checked
+    /// document for its own; `None` where the line scan did not find it.
+    pub member_spans: Vec<Option<Span>>,
     /// The imported schema writing it (a problem is reported there, once,
     /// via [`at_origin`]); `None` when this document writes it.
     pub origin: Option<DeclOrigin>,
@@ -778,24 +794,47 @@ pub struct KindAdd {
     pub span: Span,
 }
 
-/// The file name a diagnostic names for `origin` (the roll-up key, like
-/// [`at_origin`]'s).
-pub(crate) fn origin_file_name(origin: &DeclOrigin) -> String {
-    origin.file.file_name().map_or_else(
-        || origin.file.display().to_string(),
-        |n| n.to_string_lossy().into_owned(),
-    )
+/// Where the one declaration of a kind lives (prerelease N4): its schema as
+/// a message names it ([`origin_display`]) and the line of each member its
+/// `members:` lists there.
+pub(crate) struct KindHome {
+    pub shown: String,
+    pub member_lines: BTreeMap<String, u32>,
+}
+
+/// `file` as a message names it (prerelease N4): relative to the nearest
+/// ancestor holding a `lute.project.yaml` — the same text from every
+/// importer, so the roll-up still folds — else its file name.
+pub(crate) fn origin_display(file: &std::path::Path) -> String {
+    file.ancestors()
+        .skip(1)
+        .find(|dir| dir.join("lute.project.yaml").is_file())
+        .and_then(|root| file.strip_prefix(root).ok())
+        .map(|rel| {
+            rel.components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .unwrap_or_else(|| {
+            file.file_name().map_or_else(
+                || file.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            )
+        })
 }
 
 /// dsl 0.26.0 §2.3: merge each `add:` into the one declaration of its kind,
 /// in `adds` order. An `add:` whose kind no declaration names, or names an
 /// `open:` kind, is `E-ENTITY-KIND-SHAPE`; so is a member the kind already
 /// has — from its declaration or an earlier `add:` (§2.2), naming both
-/// places. `base_home` names the file declaring a kind, when known.
+/// places with their lines and anchored at the second member's own line
+/// (prerelease N4). `base_home` locates the declaration of a kind, when
+/// known.
 pub(crate) fn apply_kind_adds(
     kinds: &mut BTreeMap<String, EntityKindDecl>,
     adds: &[KindAdd],
-    base_home: &dyn Fn(&str) -> Option<String>,
+    base_home: &dyn Fn(&str) -> Option<KindHome>,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     // (kind, member) -> where it was first listed.
@@ -803,15 +842,26 @@ pub(crate) fn apply_kind_adds(
     let here = |add: &KindAdd| {
         add.origin.as_ref().map_or_else(
             || "this document".to_string(),
-            |o| format!("`{}`", origin_file_name(o)),
+            |o| format!("`{}`", origin_display(&o.file)),
         )
     };
+    let at_line = |line: Option<u32>| {
+        line.filter(|l| *l > 0)
+            .map_or(String::new(), |l| format!(" (line {l})"))
+    };
     for add in adds {
-        let report = |message: String| {
-            at_origin(
+        let report = |message: String, at: Option<Span>| match (&add.origin, at) {
+            (Some(origin), Some(span)) => at_origin(
                 diag(E_ENTITY_KIND_SHAPE, message, add.span),
-                add.origin.as_ref(),
-            )
+                Some(&DeclOrigin {
+                    file: origin.file.clone(),
+                    span,
+                }),
+            ),
+            (Some(origin), None) => {
+                at_origin(diag(E_ENTITY_KIND_SHAPE, message, add.span), Some(origin))
+            }
+            (None, at) => diag(E_ENTITY_KIND_SHAPE, message, at.unwrap_or(add.span)),
         };
         let kind = add.kind.as_str();
         let Some(decl) = kinds.get_mut(kind) else {
@@ -820,36 +870,48 @@ pub(crate) fn apply_kind_adds(
                 .unwrap_or_default();
             out.push(report(format!(
                 "entity kind `{kind}` has an `add:` list, but no schema import declares `{kind}`{hint}; exactly one schema declares a kind with `members:`, and others `add:` to it (dsl 0.26.0 §2.3)"
-            )));
+            ), None));
             continue;
         };
         let members = match &mut decl.shape {
             KindShape::Open => {
                 out.push(report(format!(
                     "entity kind `{kind}` is `open:` (the engine registers its members); `add:` extends a kind that lists its `members:` (dsl 0.26.0 §2.3)"
-                )));
+                ), None));
                 continue;
             }
             KindShape::Invalid => continue,
             KindShape::Members(ms) => ms,
         };
-        let base = base_home(kind).map_or_else(
-            || format!("`{kind}`'s declaration"),
-            |f| format!("`{kind}`'s declaration in `{f}`"),
-        );
+        let home = base_home(kind);
         for m in members.iter() {
             listed
                 .entry((kind, m.clone()))
-                .or_insert_with(|| base.clone());
+                .or_insert_with(|| match &home {
+                    Some(h) => format!(
+                        "`{kind}`'s declaration in `{}`{}",
+                        h.shown,
+                        at_line(h.member_lines.get(m).copied())
+                    ),
+                    None => format!("`{kind}`'s declaration"),
+                });
         }
-        for m in &add.members {
+        for (i, m) in add.members.iter().enumerate() {
+            let span = add.member_spans.get(i).copied().flatten();
+            let this = format!(
+                "the `add:` of {}{}",
+                here(add),
+                at_line(span.map(|s| s.line))
+            );
             match listed.get(&(kind, m.clone())) {
-                Some(first) => out.push(report(format!(
-                    "entity kind `{kind}` lists `{m}` twice — in {first} and in the `add:` of {}; list each member once (dsl 0.26.0 §2.2)",
-                    here(add)
-                ))),
+                Some(first) => out.push(report(
+                    format!(
+                        "entity kind `{kind}` lists `{m}` twice — in {first} and in {this}; list each member once (dsl 0.26.0 §2.2)"
+                    ),
+                    span,
+                )),
                 None => {
-                    listed.insert((kind, m.clone()), format!("the `add:` of {}", here(add)));
+                    listed.insert((kind, m.clone()), this);
                     members.push(m.clone());
                 }
             }
@@ -1009,6 +1071,13 @@ fn frontmatter_base(meta: &Meta) -> (usize, usize) {
 /// `members:` list of a `{ members: … }` / block-mapping long form. A line
 /// scan, never a YAML re-parse; an unrecognized shape yields nothing.
 fn member_list_offsets(raw: &str, key_off: usize) -> Vec<(usize, String)> {
+    list_offsets_under(raw, key_off, "members:", true)
+}
+
+/// [`member_list_offsets`] for the list under `sub` (`members:` / `add:`)
+/// inside the key at `key_off`; `direct` also reads a list written right
+/// under the key when `sub` is absent.
+fn list_offsets_under(raw: &str, key_off: usize, sub: &str, direct: bool) -> Vec<(usize, String)> {
     let Some(line_start) = raw
         .get(..key_off)
         .map(|s| s.rfind('\n').map_or(0, |i| i + 1))
@@ -1033,27 +1102,92 @@ fn member_list_offsets(raw: &str, key_off: usize) -> Vec<(usize, String)> {
         end = line_end;
     }
     let region = &raw[colon..end];
-    // Long form: the list is the value of the `members:` key inside it.
-    let start = match find_members_key(region) {
+    // Long form: the list is the value of the `sub` key inside it.
+    let start = match find_sub_key(region, sub) {
         Some(m) => colon + m,
-        None => colon,
+        None if direct => colon,
+        None => return Vec::new(),
     };
     list_items(raw, start, end)
 }
 
-/// Offset (in `region`) just past a `members:` key, outside comments.
-fn find_members_key(region: &str) -> Option<usize> {
+/// Offset (in `region`) just past a `sub` key (`members:`), outside comments.
+fn find_sub_key(region: &str, sub: &str) -> Option<usize> {
     let mut from = 0;
-    while let Some(i) = region[from..].find("members:") {
+    while let Some(i) = region[from..].find(sub) {
         let at = from + i;
         let before = region[..at].chars().next_back();
         let line = &region[region[..at].rfind('\n').map_or(0, |n| n + 1)..at];
         if !line.contains('#') && before.is_none_or(|c| !c.is_alphanumeric() && c != '_') {
-            return Some(at + "members:".len());
+            return Some(at + sub.len());
         }
         from = at + 1;
     }
     None
+}
+
+/// dsl 0.26.0 §2.2 (prerelease N4): each item of entity kind `kind`'s
+/// `members:` (`sub = "members:"`) or `add:` (`sub = "add:"`) list in `meta`,
+/// as it is written, with its span — `meta`-document offsets, line-less,
+/// like [`check_member_dups`]'s. Empty for a shape the line scan does not
+/// recognize.
+pub fn kind_list_spans(meta: &Meta, kind: &str, sub: &str) -> Vec<(String, Span)> {
+    let key = meta_key_span(meta, kind);
+    let (base, _) = frontmatter_base(meta);
+    list_offsets_under(
+        &meta.raw_yaml,
+        key.byte_start.saturating_sub(base),
+        sub,
+        sub == "members:",
+    )
+    .into_iter()
+    .map(|(o, m)| {
+        let span = Span {
+            byte_start: base + o,
+            byte_end: base + o + m.len(),
+            line: 0,
+            column: 0,
+            utf16_range: (0, 0),
+        };
+        (m, span)
+    })
+    .collect()
+}
+
+/// Where each of `members` (kind `kind`'s `add:` list as parsed) is written
+/// in `meta`, index-aligned: the k-th listing of an id takes the k-th place
+/// the line scan found it ([`kind_list_spans`]); `None` when it found fewer.
+pub(crate) fn add_member_spans(meta: &Meta, kind: &str, members: &[String]) -> Vec<Option<Span>> {
+    let written = kind_list_spans(meta, kind, "add:");
+    let mut taken = vec![false; written.len()];
+    members
+        .iter()
+        .map(|m| {
+            let i = written
+                .iter()
+                .enumerate()
+                .position(|(i, (w, _))| !taken[i] && w == m)?;
+            taken[i] = true;
+            Some(written[i].1)
+        })
+        .collect()
+}
+
+/// Where imported kind `kind` is declared, with its members' lines
+/// (prerelease N4), from the resolved imports' `origins`.
+pub(crate) fn kind_home(origins: &DeclOrigins, kind: &str) -> Option<KindHome> {
+    let origin = origins.kinds.get(kind)?;
+    let prefix = member_origin_key(kind, "");
+    Some(KindHome {
+        shown: origin_display(&origin.file),
+        member_lines: origins
+            .members
+            .range(prefix.clone()..)
+            .take_while(|(k, _)| k.starts_with(&prefix))
+            .filter(|(_, o)| o.file == origin.file)
+            .map(|(k, o)| (k[prefix.len()..].to_string(), o.span.line))
+            .collect(),
+    })
 }
 
 /// The items of the flow or block list starting at `start` (just past its

@@ -779,3 +779,273 @@ fn wip_keeps_a_ground_producer_that_never_matches_an_error() {
         "{s}"
     );
 }
+
+// ── 0.26 prerelease review (Monster League N1–N8) ──────────────────────────
+
+/// A demo project: plugin `demo` exporting `directives`/`occasions`/`cast`
+/// files as given, `uses` as `defaults.uses`.
+fn demo(tag: &str, files: &[(&str, &str)], uses: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "plugins/demo/plugin.yaml",
+        "id: demo\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports:\n  occasions: occasions/\n  directives: directives/\n",
+    );
+    write(
+        &dir,
+        "plugins/demo/occasions/o.yaml",
+        "occasions:\n  talk: { select: first }\n",
+    );
+    write(
+        &dir,
+        "plugins/demo/directives/give.yaml",
+        "directives:\n  - name: give\n    attrs:\n      - { name: item, required: true, type: { entity: bagItem } }\n",
+    );
+    write(
+        &dir,
+        "lute.project.yaml",
+        &format!(
+            "pluginsDir: plugins/\ndefaultProfile: base\nprofiles:\n  base: {{ plugins: {{ demo: true }} }}\ndefaults:\n  luteVersion: \"0.25.1\"\n  uses: [{uses}]\n"
+        ),
+    );
+    for (rel, body) in files {
+        write(&dir, rel, body);
+    }
+    dir
+}
+
+fn gift_project(tag: &str) -> PathBuf {
+    demo(
+        tag,
+        &[
+            (
+                "world.schema.yaml",
+                "state:\n  run.fish: { type: number, default: 0 }\nentities:\n  bagItem: { members: [potion, nugget] }\n",
+            ),
+            (
+                "components/gift.component.lute",
+                "---\ncomponent: gift\nparams:\n  item: string\n---\n\n## Gift\n\n@narrator: Here.\n::give{item=@item}\n",
+            ),
+            (
+                "components/relay.component.lute",
+                "---\ncomponent: relay\nparams:\n  thing: string\n---\n\n## Relay\n\n::use{component=\"gift\" item=@thing}\n",
+            ),
+            (
+                "components/typed.component.lute",
+                "---\ncomponent: typed\nparams:\n  item: { entity: bagItem }\n---\n\n## Typed\n\n@narrator: Here.\n",
+            ),
+            (
+                "a.lute",
+                "---\nkind: scene\nid: a\ncomponents: [components/gift.component.lute, components/relay.component.lute, components/typed.component.lute]\n---\n## A\n\n::give{item=\"potion\"}\n::use{component=\"gift\" item=\"potoin\"}\n::use{component=\"relay\" thing=\"nuget\"}\n::use{component=\"typed\" item=\"potoin\"}\n::use{component=\"gift\" item=\"nugget\"}\n",
+            ),
+        ],
+        "world.schema.yaml",
+    )
+}
+
+/// N1: an entity-typed attribute is judged through a component argument —
+/// passed whole to the attribute, through a nested `::use`, or bound to a
+/// param typed by the kind — at the argument, with a did-you-mean.
+#[test]
+fn entity_typed_attribute_is_checked_through_component_arguments() {
+    let dir = gift_project("n1");
+    let out = run(&dir, &["check-project", "."]);
+    let s = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{s}");
+    let bad = top_lines(&s, "E-BAD-ENUM");
+    assert_eq!(bad.len(), 3, "{s}");
+    assert!(
+        bad.iter()
+            .any(|l| l.contains("a.lute:9:") && l.contains("did you mean `potion`?")),
+        "{s}"
+    );
+    assert!(
+        bad.iter().any(|l| l.contains("a.lute:10:")
+            && l.contains("`nuget`")
+            && l.contains("did you mean `nugget`?")),
+        "{s}"
+    );
+    assert!(
+        bad.iter()
+            .any(|l| l.contains("a.lute:11:") && l.contains("`potoin`")),
+        "{s}"
+    );
+}
+
+/// N2: `lute refs --attr` lists a value passed through a component at the
+/// `::use` binding it, naming the component.
+#[test]
+fn refs_lists_values_passed_through_components() {
+    let dir = gift_project("n2");
+    let out = run(&dir, &["refs", ".", "--attr", "give.item"]);
+    let s = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{s}");
+    assert!(s.contains("a.lute:8\n"), "direct: {s}");
+    assert!(s.contains("a.lute:9 (via component `gift`)"), "{s}");
+    assert!(
+        s.contains("a.lute:10 (via component `relay`)"),
+        "nested: {s}"
+    );
+    assert!(s.contains("a.lute:12 (via component `gift`)"), "{s}");
+    assert!(
+        !s.contains("a.lute:11"),
+        "`typed` passes nothing to `::give`: {s}"
+    );
+}
+
+/// N3: a scene ineligible only by its `after:` names that premise and the
+/// mock it needs, not the (true) `when`; the stale "walk below" note is gone.
+#[test]
+fn ineligible_scene_failure_names_the_false_premise() {
+    let dir = demo(
+        "n3",
+        &[
+            ("world.schema.yaml", "state:\n  run.fish: { type: number, default: 0 }\n"),
+            ("a.lute", "---\nkind: scene\nid: a\n---\n## A\n\n@narrator: A.\n"),
+            (
+                "b.lute",
+                "---\nkind: scene\nid: b\non: talk\nafter: 'visited(\"a\")'\nwhen: \"run.fish == 0\"\n---\n## B\n\n@narrator: B.\n",
+            ),
+            (
+                "c.lute",
+                "---\nkind: scene\nid: c\non: talk\nwhen: \"run.fish == 1\"\n---\n## C\n\n@narrator: C.\n",
+            ),
+            ("tests/b.test.yaml", "file: ../b.lute\nexpect:\n  exit: complete\n"),
+            ("tests/c.test.yaml", "file: ../c.lute\nexpect:\n  exit: complete\n"),
+        ],
+        "world.schema.yaml",
+    );
+    let s = text(&run(&dir, &["test", ".", "--project", "."]));
+    assert!(
+        s.contains("eligible b: not eligible under these mocks (its `after: visited(\"a\")` is false — mock `visited: [a]`)"),
+        "{s}"
+    );
+    assert!(
+        s.contains(
+            "eligible c: not eligible under these mocks (its `when` (run.fish == 1) is false)"
+        ),
+        "{s}"
+    );
+    assert!(!s.contains("as if it had been presented"), "{s}");
+}
+
+/// N4: a member two `add:` lists (or `members:` and an `add:`) name is
+/// anchored at the second member's own line, naming both lines.
+#[test]
+fn duplicate_add_member_is_anchored_at_both_member_lines() {
+    let dir = demo(
+        "n4",
+        &[
+            (
+                "world.schema.yaml",
+                "state:\n  run.fish: { type: number, default: 0 }\n",
+            ),
+            (
+                "schema/a.schema.yaml",
+                "entities:\n  person:\n    members:\n      - ada\n      - bo\n",
+            ),
+            (
+                "schema/b.schema.yaml",
+                "entities:\n  person:\n    add:\n      - cy\n      - bo\n",
+            ),
+            (
+                "one.lute",
+                "---\nkind: scene\nid: one\n---\n## S\n\n@narrator: x.\n",
+            ),
+        ],
+        "world.schema.yaml, schema/a.schema.yaml, schema/b.schema.yaml",
+    );
+    let s = text(&run(&dir, &["check-project", "."]));
+    assert!(
+        s.contains("in `person`'s declaration in `schema/a.schema.yaml` (line 5) and in the `add:` of `schema/b.schema.yaml` (line 5)"),
+        "{s}"
+    );
+    assert!(
+        s.contains("b.schema.yaml:5:9: error [E-ENTITY-KIND-SHAPE]"),
+        "anchored at the member: {s}"
+    );
+}
+
+/// N5: an imported def whose type is not inferred is `E-DEF-DECL` once, at
+/// the schema line; `visited(…)` infers `bool`.
+#[test]
+fn imported_def_decl_is_folded_at_the_schema_and_visited_is_bool() {
+    let scenes: Vec<(String, String)> = ["a", "b", "c"]
+        .iter()
+        .map(|id| {
+            (
+                format!("{id}.lute"),
+                format!("---\nkind: scene\nid: {id}\n---\n## S\n\n@narrator: x.\n"),
+            )
+        })
+        .collect();
+    let mut files: Vec<(&str, &str)> = scenes
+        .iter()
+        .map(|(p, b)| (p.as_str(), b.as_str()))
+        .collect();
+    files.push((
+        "world.schema.yaml",
+        "state:\n  run.fish: { type: number, default: 0 }\ndefs:\n  metA: \"visited('a')\"\n  metB: \"run.fish + run.gone\"\n",
+    ));
+    let dir = demo("n5", &files, "world.schema.yaml");
+    let s = text(&run(&dir, &["check-project", "."]));
+    let lines = top_lines(&s, "E-DEF-DECL");
+    assert_eq!(lines.len(), 1, "folded: {s}");
+    assert!(
+        lines[0].contains("`metB`") && lines[0].contains("(+2 more callers)"),
+        "{s}"
+    );
+    assert!(
+        s.contains("world.schema.yaml:5:3: error [E-DEF-DECL]"),
+        "at the def line: {s}"
+    );
+    assert!(
+        !s.contains("`metA` has no `type:`"),
+        "visited() is bool: {s}"
+    );
+}
+
+/// N6: a cast entry marked `sharedName: true` is not counted by
+/// `W-DISPLAY-NAME-DUP`; two unmarked entries still are.
+#[test]
+fn shared_name_cast_entries_are_not_display_name_dups() {
+    let dir = demo(
+        "n6",
+        &[
+            (
+                "world.schema.yaml",
+                "state:\n  run.fish: { type: number, default: 0 }\ncast:\n  g1: { name: Eclipse Grunt, sharedName: true }\n  g2: { name: Eclipse Grunt, sharedName: true }\n  gus: { name: Hiker Gus }\n  gus2: { name: Hiker Gus }\n",
+            ),
+            ("one.lute", "---\nkind: scene\nid: one\n---\n## S\n\n@g1: a.\n@g2: b.\n@gus: c.\n@gus2: d.\n"),
+        ],
+        "world.schema.yaml",
+    );
+    let s = text(&run(&dir, &["check-project", "."]));
+    let lines = top_lines(&s, "W-DISPLAY-NAME-DUP");
+    assert_eq!(lines.len(), 1, "{s}");
+    assert!(lines[0].contains("`Hiker Gus`"), "{s}");
+}
+
+/// N7: a `defaults.uses` glob over a directory that does not exist yet
+/// matches nothing; the project checks.
+#[test]
+fn defaults_uses_glob_over_a_missing_directory_is_no_error() {
+    let dir = demo(
+        "n7",
+        &[
+            (
+                "world.schema.yaml",
+                "state:\n  run.fish: { type: number, default: 0 }\n",
+            ),
+            (
+                "one.lute",
+                "---\nkind: scene\nid: one\n---\n## S\n\n@narrator: x.\n",
+            ),
+        ],
+        "world.schema.yaml, schema/areas/*.schema.yaml",
+    );
+    let out = run(&dir, &["check-project", "."]);
+    let s = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{s}");
+    assert!(!s.contains("E-DEFAULTS-KEY"), "{s}");
+}

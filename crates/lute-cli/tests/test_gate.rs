@@ -298,10 +298,15 @@ fn a_false_beat_when_is_named_by_trace_and_by_test() {
     );
     let out = lute(&["test", dir.to_str().unwrap()]);
     let text = stdout(&out);
+    // dsl 0.26.0 §7 (T1-7): the test fails on the ineligible scene, and
+    // the failure names the false premise (prerelease N3) — the trace's "the
+    // walk below shows it as if it had been presented" note would
+    // contradict it and is dropped.
     assert!(
-        text.contains("note: beat `when` (run.day == 3) is false"),
-        "a passing test must still show it: {text}"
+        text.contains("eligible town.wed: not eligible under these mocks (its `when` (run.day == 3) is false)"),
+        "{text}"
     );
+    assert!(!text.contains("as if it had been presented"), "{text}");
 }
 
 /// T1-13: a `choose:` forced past an unknown guard was reported only as

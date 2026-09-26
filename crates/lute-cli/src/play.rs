@@ -856,6 +856,9 @@ struct Project {
     /// dsl 0.25.0 §7: what the project's content reads of its plugin calls'
     /// bridge results — the fields a `bridges:` answer must give.
     bridge_reads: std::sync::Arc<crate::runner::BridgeReads>,
+    /// Prerelease N8: cast id -> display name, unioned across the documents
+    /// — how `{{occasion.target}}` renders a member that is a cast id.
+    display_names: BTreeMap<String, String>,
 }
 
 impl Project {
@@ -917,6 +920,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
     // dsl 0.26.0 §3.1: the bridge capabilities' `result:` types, per tag.
     let mut bridge_types = crate::runner::BridgeReads::default();
     let cache = crate::InputCache::default();
+    let mut display_names: BTreeMap<String, String> = BTreeMap::new();
 
     for (file, base) in &reconciled.per_doc {
         if crate::compile_all::is_component_file(file) {
@@ -944,6 +948,13 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
                 .or_insert_with(|| decl.clone());
         }
         world_events.extend(built.input.snapshot.events.keys().cloned());
+        for (id, m) in
+            lute_check::cast::declared_cast(&built.input.snapshot, &built.input.imports, &[])
+        {
+            if let Some(name) = m.name {
+                display_names.entry(id).or_insert(name);
+            }
+        }
         bridge_types = bridge_types.with_result_types(&built.input.snapshot);
         let gate = crate::gate_for_doc(&reconciled, file, base);
         match lute_compile::compile_with_check(&built.input, gate, &identity) {
@@ -1254,6 +1265,7 @@ fn compile_project(project_dir: &Path) -> Result<Project, ExitCode> {
         accept_children,
         kinds,
         bridge_reads,
+        display_names,
     })
 }
 
@@ -3276,7 +3288,8 @@ fn present(
     )
     .with_visited(&w.visited)
     .with_choice_cursor(&w.choice_cursor)
-    .with_bridges(&w.bridges);
+    .with_bridges(&w.bridges)
+    .with_display_names(&p.display_names);
     runner.bind_occasion_target(member);
     let mut runner = match beat.kind {
         BeatKind::Entry => runner.with_entry(&beat.id),

@@ -4,12 +4,18 @@
 //! "who gives what" before a merge. Read-only; documents need not check
 //! clean (a file that fails to parse is skipped with a note). Exit `0` on
 //! success, `2` on an I/O or usage failure.
+//!
+//! A value passed through a component (prerelease N2) is listed at the
+//! `::use` binding it: `::use{component="shop" stock="ashgrove"}` over a body
+//! `::shop{stock=@stock}` is a use of `ashgrove` for `shop.stock`, at the
+//! `::use` line, `via` the component. An omitted argument's literal
+//! `default:` is bound there too.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_syntax::ast::{Arm, AttrValue, ClipNode, Document, Node, Reward};
+use lute_syntax::ast::{Arm, AttrValue, ClipNode, Directive, Document, Node, Reward};
 use rayon::prelude::*;
 use serde::Serialize;
 
@@ -35,6 +41,9 @@ struct ValueUses {
 struct Use {
     document: String,
     line: u32,
+    /// The component a `::use` passes the value through (prerelease N2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    via: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -84,30 +93,38 @@ pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) ->
         .par_iter()
         .map(|path| std::fs::read_to_string(path).map(|text| lute_syntax::parse(&text).0))
         .collect();
-    // query index -> value -> uses
-    let mut found: Vec<BTreeMap<Option<String>, Vec<Use>>> =
-        targets.iter().map(|_| BTreeMap::new()).collect();
+    let mut docs = Vec::with_capacity(files.len());
     for (path, doc) in files.iter().zip(parsed) {
-        let doc = match doc {
-            Ok(d) => d,
+        match doc {
+            Ok(d) => docs.push((path, d)),
             Err(e) => {
                 eprintln!("lute refs: cannot read {}: {e}", path.display());
                 return ExitCode::from(2);
             }
-        };
+        }
+    }
+    let comps = components(&docs);
+    // query index -> value -> uses
+    let mut found: Vec<BTreeMap<Option<String>, Vec<Use>>> =
+        targets.iter().map(|_| BTreeMap::new()).collect();
+    for (path, doc) in &docs {
         let document = path.strip_prefix(dir).unwrap_or(path).display().to_string();
         for ((_, target), out) in targets.iter().zip(found.iter_mut()) {
-            let mut record = |value: Option<String>, line: u32| {
+            let mut record = |value: Option<String>, line: u32, via: Option<&str>| {
                 out.entry(value).or_default().push(Use {
                     document: document.clone(),
                     line,
+                    via: via.map(str::to_string),
                 });
             };
             match target {
                 Target::Attr { directive, attr } => {
-                    for_each_body(&doc, &mut |nodes| {
-                        attr_values(nodes, directive, attr, &mut record)
-                    });
+                    let sink = Sink {
+                        directive,
+                        attr,
+                        comps: &comps,
+                    };
+                    for_each_body(doc, &mut |nodes| attr_values(nodes, &sink, &mut record));
                 }
                 Target::Reward { kind } => {
                     for quest in &doc.quests {
@@ -117,7 +134,7 @@ pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) ->
                         });
                         for r in quest.rewards.iter().chain(objective_rewards) {
                             if r.kind.trim() == *kind {
-                                record(r.target.clone(), reward_line(r));
+                                record(r.target.clone(), reward_line(r), None);
                             }
                         }
                     }
@@ -194,7 +211,13 @@ fn render_text(r: &Report) -> String {
                 v.uses.len()
             ));
             for u in &v.uses {
-                out.push_str(&format!("    {}:{}\n", u.document, u.line));
+                match &u.via {
+                    Some(c) => out.push_str(&format!(
+                        "    {}:{} (via component `{c}`)\n",
+                        u.document, u.line
+                    )),
+                    None => out.push_str(&format!("    {}:{}\n", u.document, u.line)),
+                }
             }
         }
     }
@@ -217,47 +240,181 @@ fn for_each_body(doc: &Document, f: &mut dyn FnMut(&[Node])) {
     }
 }
 
-/// Every literal `attr=` value of a `::directive` in `nodes`, descending into
-/// choice, arm, handler and objective bodies and timeline clips. A CEL
-/// (`@…`) value names no literal id and is not listed.
-fn attr_values(
-    nodes: &[Node],
-    directive: &str,
-    attr: &str,
-    record: &mut dyn FnMut(Option<String>, u32),
-) {
-    let mut directive_value = |d: &lute_syntax::ast::Directive| {
-        if d.tag != directive {
-            return;
+/// One component the project declares: its params in order, each literal
+/// `default:`, and its body.
+struct Component<'d> {
+    params: Vec<String>,
+    defaults: BTreeMap<String, String>,
+    body: &'d Document,
+}
+
+/// Every document declaring `component:`, by name (the first file in path
+/// order wins a duplicate name, as `E-COMPONENT-DUP` reports).
+fn components<'d>(docs: &'d [(&PathBuf, Document)]) -> BTreeMap<String, Component<'d>> {
+    let mut out = BTreeMap::new();
+    for (_, doc) in docs {
+        if !doc
+            .meta
+            .raw_yaml
+            .lines()
+            .any(|l| l.trim_end().starts_with("component:"))
+        {
+            continue;
         }
-        for a in d.attrs.iter().filter(|a| a.key == attr) {
-            if let AttrValue::Str(s) = &a.value {
-                record(Some(s.clone()), a.value_span.line);
-            }
+        let (tm, _) = lute_check::parse_meta_kind(
+            &doc.meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+            lute_check::MetaKind::Component,
+        );
+        let Some(name) = tm.component else {
+            continue;
+        };
+        out.entry(name).or_insert_with(|| Component {
+            params: tm.params.iter().map(|p| p.name.clone()).collect(),
+            defaults: tm
+                .param_defaults
+                .iter()
+                .filter_map(|(p, v)| match v {
+                    AttrValue::Str(s) => Some((p.clone(), s.clone())),
+                    _ => None,
+                })
+                .collect(),
+            body: doc,
+        });
+    }
+    out
+}
+
+/// What an `--attr <directive>.<attr>` query lists, with the project's
+/// components to see through.
+struct Sink<'q> {
+    directive: &'q str,
+    attr: &'q str,
+    comps: &'q BTreeMap<String, Component<'q>>,
+}
+
+impl Sink<'_> {
+    /// Does component `comp` pass its param `param` whole to the queried
+    /// attribute — directly, or through a nested `::use`? `seen` guards a
+    /// cycle.
+    fn reached(&self, comp: &str, param: &str, seen: &mut Vec<(String, String)>) -> bool {
+        if seen.iter().any(|(c, p)| c == comp && p == param) {
+            return false;
         }
-    };
-    let mut nested: Vec<&[Node]> = Vec::new();
+        seen.push((comp.to_string(), param.to_string()));
+        let Some(c) = self.comps.get(comp) else {
+            return false;
+        };
+        let mut hit = false;
+        for_each_body(c.body, &mut |nodes| {
+            for_each_directive(nodes, &mut |d| {
+                if hit {
+                    return;
+                }
+                let passed = |key: &str| {
+                    d.attrs.iter().any(|a| {
+                        a.key == key
+                            && matches!(&a.value, AttrValue::Ref(s) if s.raw.trim().strip_prefix('@') == Some(param))
+                    })
+                };
+                if d.tag == self.directive && passed(self.attr) {
+                    hit = true;
+                } else if let Some(inner) = use_component(d) {
+                    let keys: Vec<String> = d
+                        .attrs
+                        .iter()
+                        .filter(|a| a.key != "component" && passed(&a.key))
+                        .map(|a| a.key.clone())
+                        .collect();
+                    hit = keys.iter().any(|k| self.reached(inner, k, seen));
+                }
+            })
+        });
+        hit
+    }
+}
+
+/// The component a `::use` names, as written.
+fn use_component(d: &Directive) -> Option<&str> {
+    (d.tag == "use")
+        .then(|| {
+            d.attrs.iter().find_map(|a| match &a.value {
+                AttrValue::Str(s) if a.key == "component" => Some(s.as_str()),
+                _ => None,
+            })
+        })
+        .flatten()
+}
+
+/// Every `::directive` in `nodes`, descending into choice, arm, handler and
+/// objective bodies and timeline clips.
+fn for_each_directive<'n>(nodes: &'n [Node], f: &mut dyn FnMut(&'n Directive)) {
     for node in nodes {
         match node {
-            Node::Directive(d) => directive_value(d),
+            Node::Directive(d) => f(d),
             Node::Timeline(t) => {
                 for clip in t.tracks.iter().flat_map(|tr| &tr.clips) {
                     if let ClipNode::Directive(d) = &clip.node {
-                        directive_value(d);
+                        f(d);
                     }
                 }
             }
-            Node::Match(m) => nested.extend(m.arms.iter().map(|arm| match arm {
-                Arm::When { body, .. } | Arm::Otherwise { body, .. } => body.as_slice(),
-            })),
-            Node::Branch(b) => nested.extend(b.choices.iter().map(|c| c.body.as_slice())),
-            Node::Hub(h) => nested.extend(h.choices.iter().map(|c| c.body.as_slice())),
-            Node::On(o) => nested.push(&o.body),
-            Node::Objective(o) => nested.push(&o.body),
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    for_each_directive(body, f);
+                }
+            }
+            Node::Branch(b) => b
+                .choices
+                .iter()
+                .for_each(|c| for_each_directive(&c.body, f)),
+            Node::Hub(h) => h
+                .choices
+                .iter()
+                .for_each(|c| for_each_directive(&c.body, f)),
+            Node::On(o) => for_each_directive(&o.body, f),
+            Node::Objective(o) => for_each_directive(&o.body, f),
             Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
         }
     }
-    for body in nested {
-        attr_values(body, directive, attr, record);
-    }
+}
+
+/// Every literal value of the queried attribute in `nodes`: a
+/// `::directive{attr="…"}` written in place, and a `::use` argument (or
+/// literal param `default:`) its component passes whole to that attribute,
+/// recorded at the `::use` with the component. A CEL (`@…`) value names no
+/// literal id and is not listed.
+fn attr_values(
+    nodes: &[Node],
+    sink: &Sink<'_>,
+    record: &mut dyn FnMut(Option<String>, u32, Option<&str>),
+) {
+    for_each_directive(nodes, &mut |d| {
+        if d.tag == sink.directive {
+            for a in d.attrs.iter().filter(|a| a.key == sink.attr) {
+                if let AttrValue::Str(s) = &a.value {
+                    record(Some(s.clone()), a.value_span.line, None);
+                }
+            }
+        }
+        let Some((name, comp)) = use_component(d).and_then(|n| sink.comps.get(n).map(|c| (n, c)))
+        else {
+            return;
+        };
+        for param in &comp.params {
+            let bound = match d.attrs.iter().find(|a| &a.key == param) {
+                Some(a) => match &a.value {
+                    AttrValue::Str(s) => Some((s.as_str(), a.value_span.line)),
+                    _ => None,
+                },
+                None => comp.defaults.get(param).map(|s| (s.as_str(), d.span.line)),
+            };
+            if let Some((value, line)) = bound {
+                if sink.reached(name, param, &mut Vec::new()) {
+                    record(Some(value.to_string()), line, Some(name));
+                }
+            }
+        }
+    });
 }

@@ -9,7 +9,8 @@
 //! speaker-param convention, §3.2), so a trainer's battle and rematch are one
 //! speaker; a `::use` without `who=` is its own speaker. A `::use` whose
 //! component speaks as a `speaker` param (`@@who:`) is where the member it
-//! binds speaks.
+//! binds speaks. A cast entry marked `sharedName: true` shows an intended
+//! role name and is never counted (prerelease N6).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -43,10 +44,16 @@ pub fn check_display_names(
     // display name -> speakers showing it, in first-seen order
     let mut shown: BTreeMap<&str, Vec<Speaker>> = BTreeMap::new();
     let mut cast_names: BTreeMap<&str, &str> = BTreeMap::new();
+    // Prerelease N6: entries marked `sharedName: true` show an intended role
+    // name ("Eclipse Grunt") and are never counted.
+    let mut shared: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for cast in casts {
         for (id, member) in cast.iter() {
             if let Some(name) = member.name.as_deref().filter(|n| !n.trim().is_empty()) {
                 cast_names.entry(id.as_str()).or_insert(name);
+            }
+            if member.shared_name == Some(true) {
+                shared.insert(id.as_str());
             }
         }
     }
@@ -97,6 +104,7 @@ pub fn check_display_names(
 
     let mut out = Vec::new();
     for (name, mut speakers) in shown {
+        speakers.retain(|s| !s.id.as_deref().is_some_and(|id| shared.contains(id)));
         if speakers.len() < 2 {
             continue;
         }

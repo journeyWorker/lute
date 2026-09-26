@@ -198,6 +198,36 @@ fn the_artifact_and_the_index_carry_the_resolved_kind() {
         .unwrap();
     assert_eq!(head["target"], "kind:bug");
     assert_eq!(head["targetKind"], kind);
+    // Prerelease N8: `{{occasion.target}}` carries the kind it ranges over.
+    let line = art["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "line" && c["text"] == "A {{occasion.target}}.")
+        .unwrap();
+    assert_eq!(
+        line["placeholders"],
+        json!([{ "kind": "occasionTarget", "entityKind": "bug" }]),
+        "{line}"
+    );
+}
+
+/// Prerelease N8: play renders the raised member by its cast display name
+/// when the member is a cast id, else by the id.
+#[test]
+fn play_renders_the_occasion_target_by_its_cast_name() {
+    let dir = project("cast-name");
+    let world = std::fs::read_to_string(dir.join("world.schema.yaml")).unwrap();
+    write(
+        &dir,
+        "world.schema.yaml",
+        &format!("{world}cast:\n  ant: {{ name: Inchlet }}\n"),
+    );
+    let v = play(
+        &dir,
+        "steps:\n  - occasion: caught\n    target: mon.ant\n  - occasion: caught\n    target: mon.bee\n",
+    );
+    assert_eq!(lines(&v["steps"][0]), ["A Inchlet."], "{}", v["steps"][0]);
 }
 
 #[test]

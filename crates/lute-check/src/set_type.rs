@@ -220,7 +220,10 @@ fn decide_call(c: &CallExpr, schema: &StateSchema) -> Decision {
         // right-hand side is `E-SET-TYPE` against every legal target — that is
         // how §3.2's `narrativeTime` clause is DERIVED from this closed rule
         // set rather than asserted beside it.
-        "holds" => Decision::Ty(Type::Bool),
+        // Prerelease N5: `visited('<scene>')` (dsl 0.21.0 §7a.1) and
+        // `validAt(…)` are presentation-history / fact queries producing
+        // `bool`, like `holds`.
+        "holds" | "validAt" | crate::cel_resolve::VISITED_FN => Decision::Ty(Type::Bool),
         "count" | "countDistinct" => Decision::Ty(Type::Number),
         "now" => Decision::Ty(Type::NarrativeTime),
         // Rule 5: `-` (binary and unary), `*` and `/` produce `number`, and

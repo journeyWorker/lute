@@ -489,7 +489,7 @@ fn canonicalise_entry(
     };
     for s in items {
         if globs && is_glob(s) {
-            for rel in expand_glob(manifest_dir, s)? {
+            for rel in expand_glob(manifest_dir, s) {
                 push(canonical_default_path(manifest_dir, &rel)?);
             }
         } else {
@@ -505,28 +505,22 @@ fn is_glob(s: &str) -> bool {
 
 /// The files under `dir` matching `pattern` (`/`-separated; `*`/`?` within a
 /// segment, `**` for any number of directories), as `dir`-relative paths in
-/// path order. The directory before the first wildcard segment must exist —
-/// a mistyped prefix is an error; an existing directory with no match yet
-/// (an area not written) expands to nothing.
-fn expand_glob(dir: &Path, pattern: &str) -> Result<Vec<String>, String> {
+/// path order. A glob matching nothing — an existing directory with no match
+/// yet, or a directory not created yet (an area not written; git keeps no
+/// empty directory) — expands to nothing (dsl 0.26.0 §2.4, prerelease N7).
+/// Only a literal (glob-free) entry must exist.
+fn expand_glob(dir: &Path, pattern: &str) -> Vec<String> {
     let segments: Vec<&str> = pattern
         .split('/')
         .filter(|s| !s.is_empty() && *s != ".")
         .collect();
     let fixed = segments.iter().take_while(|s| !is_glob(s)).count();
     let prefix: PathBuf = segments[..fixed].iter().collect();
-    if !dir.join(&prefix).is_dir() {
-        return Err(format!(
-            "glob `{pattern}`: `{}` is not a directory under {}",
-            prefix.display(),
-            dir.display()
-        ));
-    }
     let mut out = Vec::new();
     walk_glob(dir, &prefix, &segments[fixed..], &mut out);
     out.sort();
     out.dedup();
-    Ok(out)
+    out
 }
 
 fn walk_glob(root: &Path, at: &Path, rest: &[&str], out: &mut Vec<String>) {
