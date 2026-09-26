@@ -1,9 +1,7 @@
 ---
 kind: scene
+id: mira.s01ep02
 title: The Usual Booth
-character: mira
-season: 1
-episode: 2
 pov: fixer
 after: 'visited("mira.s01ep01")'
 enums:

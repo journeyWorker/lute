@@ -1,0 +1,21 @@
+---
+kind: scene
+id: accusation
+title: The Accusation
+on: chapter
+after: 'visited("counter")'
+priority: 10
+---
+
+## The Accusation
+
+@wren: One of you did this.
+
+<branch id="accuse">
+  <choice id="ruben" label="Ruben, the baker">
+    ::set{ run.accused = "ruben" }
+  </choice>
+  <choice id="tilly" label="Tilly, the waitress">
+    ::set{ run.accused = "tilly" }
+  </choice>
+</branch>

@@ -1,4 +1,5 @@
-use crate::schema::{DirectiveDecl, Lowering};
+use crate::schema::{DirectiveDecl, Lowering, OpBy, WriteValue};
+use crate::types::Type;
 
 /// plugin §8.1 closed vocabulary — owned by the core; a plugin MUST NOT invent flags.
 pub const SEMANTICS_VOCAB: &[&str] = &[
@@ -182,6 +183,13 @@ pub enum ManifestError {
         record: String,
         detail: String,
     },
+    /// dsl 0.27.0 §2 (T1-4): an `effects.writes` value reads `fromAttr: <a>`
+    /// but the directive declares no attr `a`, or a `by: { fromAttr: a }`
+    /// names an attr that is not `type: number`.
+    EffectWrite {
+        directive: String,
+        detail: String,
+    },
 }
 
 impl ManifestError {
@@ -195,6 +203,7 @@ impl ManifestError {
             }
             ManifestError::UnknownLowerRecord { .. } => "E-LOWER-RECORD-UNKNOWN",
             ManifestError::LowerRecordField { .. } => "E-LOWER-RECORD-FIELD",
+            ManifestError::EffectWrite { .. } => "E-PLUGIN-PARSE",
         }
     }
 
@@ -217,6 +226,9 @@ impl ManifestError {
                 record,
                 detail,
             } => format!("directive `::{directive}` lowers to record `{record}`: {detail}"),
+            ManifestError::EffectWrite { directive, detail } => {
+                format!("directive `::{directive}` effects.writes: {detail}")
+            }
         }
     }
 }
@@ -243,7 +255,46 @@ pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
     if let Lowering::Record { record, fields } = &d.lower {
         validate_record_lowering(d, record, fields, &mut errs);
     }
+    validate_effect_writes(d, &mut errs);
     errs
+}
+
+/// dsl 0.27.0 §2 (T1-4): every `fromAttr` a write's value reads names one of
+/// the directive's own attrs, and a `by:` one is `type: number`. The value's
+/// SHAPE was already checked when the file parsed ([`WriteValue`]).
+fn validate_effect_writes(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
+    for w in d.effects.iter().flat_map(|e| &e.writes) {
+        let (attr, in_by) = match &w.value {
+            WriteValue::FromAttr { from_attr } => (from_attr, false),
+            WriteValue::Op {
+                by: OpBy::FromAttr { from_attr },
+                ..
+            } => (from_attr, true),
+            _ => continue,
+        };
+        let detail = match d.attrs.iter().find(|a| &a.name == attr) {
+            None => {
+                let hint =
+                    crate::suggest::nearest(attr, d.attrs.iter().map(|a| a.name.as_str()), 2)
+                        .map(|s| format!("; did you mean `{s}`?"))
+                        .unwrap_or_default();
+                let declared: Vec<&str> = d.attrs.iter().map(|a| a.name.as_str()).collect();
+                format!(
+                    "a write reads `fromAttr: {attr}`, but the directive declares no such attr \
+                     (declared: {}){hint}",
+                    declared.join(", ")
+                )
+            }
+            Some(a) if in_by && a.ty != Type::Number => format!(
+                "`by: {{ fromAttr: {attr} }}` needs a `type: number` attr, but `{attr}` is not a number"
+            ),
+            Some(_) => continue,
+        };
+        errs.push(ManifestError::EffectWrite {
+            directive: d.name.clone(),
+            detail,
+        });
+    }
 }
 
 /// Validate a declarative `lower: { record, fields }` against `LOWER_RECORDS`

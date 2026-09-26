@@ -198,7 +198,7 @@ episode: 1
                     path: vec![PathSegment::Literal("remoteCalls".into())],
                     value: WriteValue::Op {
                         op: "increment".into(),
-                        by: 1.0,
+                        by: lute_manifest::schema::OpBy::Num(1.0),
                     },
                 }],
             }),

@@ -1,17 +1,6 @@
-# docs/examples/investigation/lute.project.yaml
-# A small investigation-RPG worked example: a three-scene case (crime scene ->
-# interview -> confrontation) gated by one quest, over a relational fact world.
-# Core-only capabilities — no plugins — so every document resolves against the
-# built-in `lute.core` snapshot. Its OWN manifest shadows the parent
-# docs/examples/lute.project.yaml, so `check-project` resolves each file here.
+# The project root. Core-only: no plugins, so every document resolves
+# against Lute's built-in `lute.core` capabilities.
 defaultProfile: core
 profiles:
   core:
     plugins: {}
-
-# Identity templates (dsl §10). `{prefix}.{speaker}-{code}` is the default
-# voiceKey since dsl 0.22.0 (pinned here for older toolchains): without the scene
-# prefix, two documents' lines with the same speaker and code would share one
-# voice asset (E-DUP-VOICEKEY).
-identity:
-  voiceKey: "{prefix}.{speaker}-{code}"

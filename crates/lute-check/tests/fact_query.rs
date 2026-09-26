@@ -114,6 +114,36 @@ fn match_subject_may_not_be_a_relation_query() {
     assert!(c.contains(&"E-MATCH-RELATION-SUBJECT".to_string()), "{c:?}");
 }
 
+/// dsl 0.27.0 §2 (T1-5a): a def does not launder a fact query into a
+/// `<match on>` subject — directly, through a nested def, or inside an
+/// operator — while a def over a state path stays a legal subject.
+#[test]
+fn match_subject_def_expanding_to_a_relation_query_is_flagged() {
+    let doc = |on: &str| {
+        format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}defs:\n  withAna: \"holds(inParty(ana))\"\n  viaDef: \"@withAna\"\n  crowd: \"count(inParty(_)) > 1\"\n  act: \"run.act\"\n---\n## Shot 1.\n<match on=\"{on}\">\n<when is=\"true\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
+        )
+    };
+    for on in [
+        "@withAna",
+        "@viaDef",
+        "@crowd",
+        "holds(inParty(ana)) && @crowd",
+    ] {
+        let c = codes(&doc(on));
+        let n = c
+            .iter()
+            .filter(|k| *k == "E-MATCH-RELATION-SUBJECT")
+            .count();
+        assert_eq!(n, 1, "{on}: {c:?}");
+    }
+    let c = codes(&doc("@act"));
+    assert!(
+        !c.contains(&"E-MATCH-RELATION-SUBJECT".to_string()),
+        "{c:?}"
+    );
+}
+
 #[test]
 fn quest_lifecycle_guards_admit_fact_queries() {
     let quest = format!(

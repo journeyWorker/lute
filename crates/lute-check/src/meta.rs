@@ -41,6 +41,41 @@ pub struct StateSchema {
     /// reserved `clock.weekday` (`0..length-1`, dsl 0.24.0 §1). A `<match>`
     /// over one is exhaustive once every whole number in range is covered.
     pub int_ranges: BTreeMap<String, (i64, i64)>,
+    /// dsl 0.27.0 §2 (T1-2): the members of every path typed `{ domain: K }`
+    /// or `{ entity: K }` whose `K` (an enum or a closed entity kind) is
+    /// known, in declaration order — so a literal meeting the path (`::set`,
+    /// `==`/`!=`/`in`, `<when is>`, `into=`) is member-checked and a
+    /// `<match>` over it is exhaustive over `K`, exactly like an inline
+    /// `{ enum: […] }` path. Filled by [`StateSchema::resolve_domains`].
+    pub domain_members: BTreeMap<String, (String, Vec<String>)>,
+}
+
+impl StateSchema {
+    /// The finite string domain of a declared path: an inline enum's members,
+    /// or a `{ domain: K }` / `{ entity: K }` path's `K` members.
+    pub fn string_members(&self, path: &str) -> Option<&[String]> {
+        if let Some((_, ms)) = self.domain_members.get(path) {
+            return Some(ms);
+        }
+        match &self.decls.get(path)?.ty {
+            Type::Enum(ms) => Some(ms),
+            _ => None,
+        }
+    }
+
+    /// Fill [`Self::domain_members`] from the merged domains (enums and entity
+    /// kinds). An open kind, or a name no domain declares, stays unresolved.
+    pub fn resolve_domains(&mut self, domains: &BTreeMap<String, lute_manifest::snapshot::Domain>) {
+        for (path, decl) in &self.decls {
+            let (Type::Domain(name) | Type::Entity(name)) = &decl.ty else {
+                continue;
+            };
+            if let Some(d) = domains.get(name).filter(|d| !d.open) {
+                self.domain_members
+                    .insert(path.clone(), (name.clone(), d.members.clone()));
+            }
+        }
+    }
 }
 
 /// A parsed seed fact from a `facts:` list (spec §4). Seeds are ground
@@ -813,10 +848,8 @@ pub fn parse_meta_kind_with_defaults(
             match serde_yaml::from_str(&sanitize_dup_block_keys(&meta.raw_yaml)) {
                 Ok(v) => v,
                 Err(_) => {
-                    diags.push(err(
-                        "E-META-PARSE",
-                        format!("invalid meta frontmatter YAML: {e}"),
-                    ));
+                    let (message, at) = yaml_parse_error(meta, &e);
+                    diags.push(err_at("E-META-PARSE", message, at));
                     return (TypedMeta::default(), diags);
                 }
             }
@@ -1523,7 +1556,7 @@ pub fn parse_meta_kind_with_defaults(
                                         let defaults = per_member_defaults(
                                             path,
                                             &kind,
-                                            members,
+                                            &members,
                                             &decl.ty,
                                             raw.default,
                                             &mut diags,
@@ -1811,6 +1844,119 @@ pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {
     }
 }
 
+/// `E-META-PARSE` for a frontmatter serde_yaml rejects: the message and the
+/// span of the offending character in the FILE (round-5 T3-2). serde_yaml
+/// counts lines from the first line after the `---` opener, so its own
+/// `at line N column M` was one line short and the diagnostic sat at `1:1`.
+/// The anchor now carries the position, so the problem mark is dropped from
+/// the message and any other mark (a context's) is renumbered to file lines.
+/// The two common causes get a fix first: a `"` nested inside a
+/// double-quoted value, and a tab in the indentation.
+fn yaml_parse_error(meta: &Meta, e: &serde_yaml::Error) -> (String, Span) {
+    // [`meta_key_span`]'s envelope rule: a `.lute` frontmatter's interior
+    // starts after the 4-byte `"---\n"` opener; a bare `.yaml` has none.
+    let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != meta.raw_yaml.len();
+    let base = meta.span.byte_start + if enveloped { 4 } else { 0 };
+    let line_offset = meta.span.line.max(1) as usize - usize::from(!enveloped);
+    let loc = e.location();
+    let mut problem = String::new();
+    let mut rest = e.to_string();
+    while let Some(i) = rest.find(" at line ") {
+        problem.push_str(&rest[..i]);
+        let tail = &rest[i + " at line ".len()..];
+        let digits = |s: &str| s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+        let ln = digits(tail);
+        let Some(after_col) = tail[ln..].strip_prefix(" column ") else {
+            problem.push_str(" at line ");
+            rest = tail.to_string();
+            continue;
+        };
+        let cn = digits(after_col);
+        let (line, col) = (tail[..ln].parse().ok(), after_col[..cn].parse().ok());
+        let is_problem = loc
+            .as_ref()
+            .is_some_and(|l| Some(l.line()) == line && Some(l.column()) == col);
+        if !is_problem {
+            if let (Some(line), Some(col)) = (line, col) {
+                problem.push_str(&format!(" at line {} column {col}", line + line_offset));
+            }
+        }
+        rest = after_col[cn..].to_string();
+    }
+    problem.push_str(&rest);
+
+    let Some(loc) = loc else {
+        return (
+            format!("invalid meta frontmatter YAML: {problem}"),
+            meta.span,
+        );
+    };
+    let bad_line = meta
+        .raw_yaml
+        .lines()
+        .nth(loc.line().saturating_sub(1))
+        .unwrap_or("");
+    let indent = &bad_line[..bad_line.len() - bad_line.trim_start().len()];
+    let hint = if indent.contains('\t') {
+        Some(
+            "YAML indents with spaces, not tabs: replace the tab at the start of the line with \
+             spaces"
+                .to_string(),
+        )
+    } else {
+        nested_quote_hint(bad_line)
+    };
+    let message = match hint {
+        Some(hint) => format!("invalid meta frontmatter YAML — {hint} (YAML: {problem})"),
+        None => format!("invalid meta frontmatter YAML: {problem}"),
+    };
+    let mut start = loc.index().min(meta.raw_yaml.len());
+    while !meta.raw_yaml.is_char_boundary(start) {
+        start -= 1;
+    }
+    let len = meta.raw_yaml[start..]
+        .chars()
+        .next()
+        .map_or(0, char::len_utf8);
+    let at = Span {
+        byte_start: base + start,
+        byte_end: base + start + len,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    };
+    (message, at)
+}
+
+/// The fix for a quoted value that holds its own quote character, which YAML
+/// reads as the end of the value. `key: "a "b" c"` → use single quotes
+/// inside (`key: "a 'b' c"`); `key: 'a 'b' c'` → quote the value with `"`
+/// instead (`key: "a 'b' c"`). `None` when the line's value is not such a
+/// quoted scalar.
+fn nested_quote_hint(line: &str) -> Option<String> {
+    let colon = line.find(": ")?;
+    let key = line[..colon].trim();
+    let value = line[colon + 1..].trim();
+    if let Some(inner) = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
+        let b = inner.as_bytes();
+        let nested = (0..b.len()).any(|i| b[i] == b'"' && (i == 0 || b[i - 1] != b'\\'));
+        return nested.then(|| {
+            format!(
+                "a `\"` inside a double-quoted value ends the value early: use single quotes \
+                 inside a double-quoted value — `{key}: \"{}\"`",
+                inner.replace('"', "'")
+            )
+        });
+    }
+    let inner = value.strip_prefix('\'')?.strip_suffix('\'')?;
+    (inner.contains('\'') && !inner.contains('"')).then(|| {
+        format!(
+            "a `'` inside a single-quoted value ends the value early: quote the value with \
+             double quotes instead — `{key}: \"{inner}\"`"
+        )
+    })
+}
+
 /// Authoritative same-block duplicate-key scan for `relations:`/`entities:`
 /// (dsl 0.3.0 T5): `serde_yaml::Mapping` silently collapses a repeated
 /// mapping key before [`lute_manifest::relations::parse_relations`]/
@@ -1951,15 +2097,25 @@ struct StateDeclRaw {
 }
 
 /// The members a `per: <kind>` state family is declared over (dsl 0.24.0
-/// §3), or why it cannot be: the kind is not declared in `kinds` (this
-/// document's own `entities:`), is `open:`, or is malformed.
-fn per_members<'a>(
-    kinds: &'a lute_manifest::relations::ParsedKinds,
+/// §3) — including the members its `subsetOf:` sub-kinds add (dsl 0.26.0
+/// §2.3, closed by the one [`lute_manifest::relations::imply_sub_kind_members`]
+/// every other kind consumer uses; dsl 0.27.0 §2) — or why it cannot be: the
+/// kind is not declared in `kinds` (this document's own `entities:`), is
+/// `open:`, or is malformed.
+fn per_members(
+    kinds: &lute_manifest::relations::ParsedKinds,
     kind: &str,
-) -> Result<&'a [String], &'static str> {
+) -> Result<Vec<String>, &'static str> {
     use lute_manifest::relations::KindShape;
     match kinds.kinds.get(kind).map(|k| &k.shape) {
-        Some(KindShape::Members(ms)) => Ok(ms),
+        Some(KindShape::Members(_)) => {
+            let mut closed = kinds.kinds.clone();
+            lute_manifest::relations::imply_sub_kind_members(&mut closed);
+            match closed.remove(kind).map(|k| k.shape) {
+                Some(KindShape::Members(ms)) => Ok(ms),
+                _ => Err("names a malformed entity kind"),
+            }
+        }
         Some(KindShape::Open) => {
             Err("names an `open:` entity kind, whose members the engine registers at runtime")
         }

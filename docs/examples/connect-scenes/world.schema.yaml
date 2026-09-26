@@ -1,0 +1,2 @@
+state:
+  run.accused: { type: { enum: [nobody, ruben, tilly] }, default: nobody }

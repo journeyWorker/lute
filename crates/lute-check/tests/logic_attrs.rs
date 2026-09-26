@@ -61,6 +61,28 @@ fn span_is_the_attribute_key() {
     assert_eq!(&t[d.span.byte_start..d.span.byte_end], "goto=\"ep08\"");
 }
 
+/// Round-5 T3-1: word-processor curly quotes around a value split it into one
+/// `E-UNKNOWN-ATTR` per word, each with an unrelated did-you-mean (`the` →
+/// `when`). Now one `E-ATTR-QUOTE` anchored at the curly quote, and nothing
+/// else.
+#[test]
+fn curly_quoted_value_is_one_attr_quote_error() {
+    let t = format!(
+        "{HDR}<branch id=\"b\">\n<choice id=\"oven\" label=“Open the bread oven”>\n\
+         @narrator: Hot.\n</choice>\n</branch>\n"
+    );
+    let ds = run(&t).diagnostics;
+    let codes: Vec<&str> = ds.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["E-ATTR-QUOTE"], "{ds:?}");
+    let d = &ds[0];
+    assert!(t[d.span.byte_start..].starts_with('“'), "{d:?}");
+    assert!(
+        d.message.contains("straight quotes `\"` — found `“`"),
+        "{}",
+        d.message
+    );
+}
+
 /// D-L: the two `<choice>` positions have DIFFERENT permitted sets. `once` and
 /// `exit` are hub-choice flags; the hub reducer is their only reader. Enforcing
 /// one merged set would leave a branch choice carrying `exit` silent, which is

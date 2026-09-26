@@ -922,3 +922,44 @@ fn trace_prints_authored_def_refs_and_expands_on_request() {
     // An unchanged construct carries no authored key.
     assert!(v["decisions"][1].get("authoredId").is_none(), "{json}");
 }
+
+/// Round-5 FS-F12: a line's delivery flag and attrs are part of how it is
+/// said — `{mono}` is a thought, not speech — so the trace head shows them
+/// as authored (`@wren{mono}`), like `lute play`, and `--json` carries them
+/// as `delivery` (absent on a plain line).
+#[test]
+fn trace_shows_a_line_delivery_as_authored() {
+    let dir = temp_dir("line-delivery");
+    let scene = dir.join("s.lute");
+    std::fs::write(
+        &scene,
+        "---\nkind: scene\nid: s\nenums:\n  emotion: [sad]\n---\n\n## S\n\n\
+         @wren{mono}: I think.\n@wren{vo emotion=\"sad\"}: Over.\n@wren: I speak.\n",
+    )
+    .unwrap();
+    let out = trace(&[scene.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let text = String::from_utf8_lossy(&out.stdout);
+    for expected in [
+        "    @wren{mono}  I think.",
+        "    @wren{vo emotion=\"sad\"}  Over.",
+        "    @wren  I speak.",
+    ] {
+        assert!(
+            text.lines().any(|l| l == expected),
+            "missing `{expected}`:\n{text}"
+        );
+    }
+
+    let out = trace(&[scene.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let lines: Vec<&serde_json::Value> = v["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| s["kind"] == "line")
+        .collect();
+    assert_eq!(lines[0]["delivery"], "mono", "{v}");
+    assert_eq!(lines[1]["delivery"], "vo emotion=\"sad\"", "{v}");
+    assert!(lines[2].get("delivery").is_none(), "{v}");
+}

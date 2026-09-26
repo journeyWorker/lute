@@ -210,18 +210,163 @@ pub struct WriteDecl {
     pub value: WriteValue,
 }
 
+/// One `effects.writes[].value` (plugin §7.4, dsl 0.27.0 §2): the write's
+/// source. Parsed through [`WriteValue::try_from`] so every shape outside the
+/// legal four is an `E-PLUGIN-PARSE` naming them — `#[serde(untagged)]` over
+/// [`Literal`] used to take ANY mapping as a literal record, so a
+/// `{ fromAttr: amount }` loaded clean and wrote nothing.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, try_from = "serde_yaml::Value")]
 pub enum WriteValue {
+    /// `{ fromBridgeResult: <field> }` — the bridge answer's field.
     FromBridgeResult {
         #[serde(rename = "fromBridgeResult")]
         from_bridge_result: String,
     },
-    Op {
-        op: String,
-        by: f64,
+    /// `{ op: increment | decrement, by: <number> | { fromAttr: <attr> } }`.
+    Op { op: String, by: OpBy },
+    /// `{ fromAttr: <attr> }` — the call's attribute value (its declared
+    /// `default:` when the call omits it).
+    FromAttr {
+        #[serde(rename = "fromAttr")]
+        from_attr: String,
     },
+    /// A scalar literal: a bool, number or string.
     Literal(Literal),
+}
+
+/// The `by:` of an `op` write: a number, or `{ fromAttr: <attr> }` naming a
+/// `type: number` attribute of the directive.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum OpBy {
+    Num(f64),
+    FromAttr {
+        #[serde(rename = "fromAttr")]
+        from_attr: String,
+    },
+}
+
+/// `capabilityVersion` hashes a directive's `Debug`: a numeric `by` renders
+/// as the bare number it was before `OpBy` existed, so an unchanged manifest
+/// keeps its version.
+impl std::fmt::Debug for OpBy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpBy::Num(n) => write!(f, "{n:?}"),
+            OpBy::FromAttr { from_attr } => f
+                .debug_struct("FromAttr")
+                .field("from_attr", from_attr)
+                .finish(),
+        }
+    }
+}
+
+/// The ops an `op` write may name (the play runner and the engine apply
+/// exactly these).
+pub const WRITE_OPS: &[&str] = &["increment", "decrement"];
+
+const WRITE_VALUE_SHAPES: &str = "a bool/number/string literal, `{ fromAttr: <attr> }`, \
+     `{ fromBridgeResult: <field> }`, or `{ op: increment|decrement, by: <number> | \
+     { fromAttr: <attr> } }`";
+
+impl TryFrom<serde_yaml::Value> for WriteValue {
+    type Error = String;
+
+    fn try_from(v: serde_yaml::Value) -> Result<Self, String> {
+        use serde_yaml::Value;
+        let bad = |what: String| {
+            Err(format!(
+                "effects.writes value {what}; a write's value is {WRITE_VALUE_SHAPES}"
+            ))
+        };
+        let attr_name = |v: &Value, key: &str| -> Result<String, String> {
+            match v.get("fromAttr") {
+                Some(Value::String(a)) if v.as_mapping().is_some_and(|m| m.len() == 1) => {
+                    Ok(a.clone())
+                }
+                _ => Err(format!(
+                    "effects.writes value: `{key}` must be `{{ fromAttr: <attr name> }}`"
+                )),
+            }
+        };
+        match &v {
+            Value::Bool(b) => Ok(WriteValue::Literal(Literal::Bool(*b))),
+            Value::Number(n) => match n.as_f64() {
+                Some(f) => Ok(WriteValue::Literal(Literal::Num(f))),
+                None => bad(format!("`{n}` is not a representable number")),
+            },
+            Value::String(s) => Ok(WriteValue::Literal(Literal::Str(s.clone()))),
+            Value::Mapping(m) => {
+                let keys: Vec<&str> = m.keys().filter_map(Value::as_str).collect();
+                let mut sorted = keys.clone();
+                sorted.sort_unstable();
+                match sorted.as_slice() {
+                    ["fromBridgeResult"] => match v.get("fromBridgeResult") {
+                        Some(Value::String(f)) => Ok(WriteValue::FromBridgeResult {
+                            from_bridge_result: f.clone(),
+                        }),
+                        _ => bad("`fromBridgeResult:` must name a result field".into()),
+                    },
+                    ["fromAttr"] => Ok(WriteValue::FromAttr {
+                        from_attr: attr_name(&v, "value")?,
+                    }),
+                    ["by", "op"] => {
+                        let op = match v.get("op") {
+                            Some(Value::String(op)) if WRITE_OPS.contains(&op.as_str()) => {
+                                op.clone()
+                            }
+                            other => {
+                                let shown = other
+                                    .and_then(Value::as_str)
+                                    .map(|s| format!("`op: {s}`"))
+                                    .unwrap_or_else(|| "`op:`".into());
+                                return bad(format!(
+                                    "{shown} is not an op (ops: {})",
+                                    WRITE_OPS.join(", ")
+                                ));
+                            }
+                        };
+                        let by = match v.get("by") {
+                            Some(Value::Number(n)) if n.as_f64().is_some() => {
+                                OpBy::Num(n.as_f64().unwrap_or_default())
+                            }
+                            Some(by @ Value::Mapping(_)) => OpBy::FromAttr {
+                                from_attr: attr_name(by, "by")?,
+                            },
+                            _ => {
+                                return bad(
+                                    "`by:` must be a number or `{ fromAttr: <attr> }`".into()
+                                )
+                            }
+                        };
+                        Ok(WriteValue::Op { op, by })
+                    }
+                    _ => {
+                        let known = ["fromBridgeResult", "fromAttr", "op", "by"];
+                        let hint = keys
+                            .iter()
+                            .filter(|k| !known.contains(k))
+                            .find_map(|k| {
+                                crate::suggest::nearest(k, known, 2)
+                                    .map(|s| format!(" (did you mean `{s}`?)"))
+                            })
+                            .unwrap_or_default();
+                        bad(format!(
+                            "`{{ {} }}` is not a write source{hint}",
+                            keys.iter()
+                                .map(|k| format!("{k}: …"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ))
+                    }
+                }
+            }
+            Value::Sequence(_) => bad("is a list".into()),
+            Value::Null => bad("is empty".into()),
+            Value::Tagged(_) => bad("is a tagged value".into()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -511,3 +511,178 @@ fn a_scene_with_no_project_never_reports_component_unverified() {
     assert!(!text.contains("W-COMPONENT-UNVERIFIED"), "got:\n{text}");
     assert_eq!(out.status.code(), Some(0), "got:\n{text}");
 }
+
+// --- round-5 T3-4: a folded fault is headed where it is --------------------
+
+/// Every document gets both components through `defaults: components:`; only
+/// the scene `::use`s `bump`, whose line 10 guard reads `run.aff.@who`.
+fn write_defaults_components(tag: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    std::fs::create_dir_all(dir.join("components")).unwrap();
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: game\nprofiles:\n  game:\n    plugins: {}\ndefaults:\n  \
+         uses: [world.schema.yaml]\n  components:\n    - components/aaa.component.lute\n    \
+         - components/bump.component.lute\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.aff: { type: number, default: 0, per: suitor }\n\
+         entities:\n  suitor: { members: [ren, kai] }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("components/aaa.component.lute"),
+        "---\ncomponent: aaa\n---\n\n## A\n\n@narrator: Unrelated.\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("components/bump.component.lute"),
+        "---\ncomponent: bump\nparams:\n  who: speaker\n---\n\n## Bump\n\n@narrator: Before.\n\
+         @narrator{when=\"run.aff.@who > 1\"}: High.\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scenes/one.lute"),
+        "---\nkind: scene\nid: one\n---\n\n## One\n\n::use{component=\"bump\" who=\"ren\"}\n",
+    )
+    .unwrap();
+    dir
+}
+
+/// `(path suffix, ok, [(code, line, message)])` per file of a `check-project
+/// --json` run, plus the project-wide `(path suffix, code, line, message)`.
+#[allow(clippy::type_complexity)]
+fn project_report(
+    dir: &Path,
+) -> (
+    Vec<(String, bool, Vec<(String, u64, String)>)>,
+    Vec<(String, String, u64, String)>,
+) {
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
+    let tail = |p: &serde_json::Value| {
+        let p = p.as_str().unwrap_or_default();
+        p.rsplit_once(dir.file_name().unwrap().to_str().unwrap())
+            .map_or(p, |(_, t)| t)
+            .trim_start_matches('/')
+            .to_string()
+    };
+    let diag = |d: &serde_json::Value| {
+        (
+            d["code"].as_str().unwrap_or_default().to_string(),
+            d["span"]["line"].as_u64().unwrap_or_default(),
+            d["message"].as_str().unwrap_or_default().to_string(),
+        )
+    };
+    let files = v["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| {
+            (
+                tail(&f["path"]),
+                f["ok"].as_bool().unwrap(),
+                f["diagnostics"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(diag)
+                    .collect(),
+            )
+        })
+        .collect();
+    let project = v["project_diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| {
+            let (code, line, message) = diag(d);
+            (tail(&d["path"]), code, line, message)
+        })
+        .collect();
+    (files, project)
+}
+
+/// OT-F4: the body fault is reported once, in the component, at its real
+/// line; the component nobody `::use`s from and the `::use`ing scene both
+/// stay clean — neither carries a copy headed at its `1:1`. The message
+/// names the real cause and its fix.
+#[test]
+fn a_component_body_fault_is_headed_in_the_component() {
+    let dir = write_defaults_components("t3-4-body");
+    let (files, project) = project_report(&dir);
+    assert!(project.is_empty(), "{project:#?}");
+    for (path, ok, diags) in &files {
+        if path.ends_with("bump.component.lute") {
+            assert!(!ok, "{files:#?}");
+            assert_eq!(diags.len(), 1, "one fault, reported once: {files:#?}");
+            let (code, line, message) = &diags[0];
+            assert_eq!((code.as_str(), *line), ("E-CEL-PARSE", 10), "{files:#?}");
+            assert!(
+                message.contains(
+                    "a path segment cannot be a param — index the family: `run.aff[@who]`"
+                ),
+                "{message}"
+            );
+        } else {
+            assert!(
+                *ok && diags.is_empty(),
+                "{path} carries no copy: {files:#?}"
+            );
+        }
+    }
+    assert_eq!(files.len(), 3, "{files:#?}");
+
+    // The component's own check reports it once, at the same line.
+    let component = dir.join("components/bump.component.lute");
+    let out = run(&["check", component.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let lines: Vec<_> = v["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["severity"] == "error")
+        .map(|d| (d["code"].clone(), d["span"]["line"].clone()))
+        .collect();
+    assert_eq!(
+        lines,
+        vec![(serde_json::json!("E-CEL-PARSE"), serde_json::json!(10))],
+        "{v:#}"
+    );
+}
+
+/// SG-F16: a broken schema every document imports is reported once, at the
+/// schema's own line, and no importer is `failed` while another is `ok`.
+#[test]
+fn a_schema_fault_is_headed_at_the_schema_line() {
+    let dir = write_defaults_components("t3-4-schema");
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  user.n: { type: number, default: { a: 1 } }\n  \
+         run.aff: { type: number, default: 0, per: suitor }\n\
+         entities:\n  suitor: { members: [ren, kai] }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("components/bump.component.lute"),
+        "---\ncomponent: bump\nparams:\n  who: speaker\n---\n\n## Bump\n\n@narrator: Fine.\n",
+    )
+    .unwrap();
+    let (files, project) = project_report(&dir);
+    assert!(
+        files.iter().all(|(_, ok, diags)| *ok && diags.is_empty()),
+        "every importer is judged on its own content: {files:#?}"
+    );
+    assert_eq!(project.len(), 1, "{project:#?}");
+    let (path, code, line, message) = &project[0];
+    assert_eq!(
+        (path.as_str(), code.as_str(), *line),
+        ("world.schema.yaml", "E-STATE-DECL", 2),
+        "{project:#?}"
+    );
+    assert!(message.ends_with("(imported by 3 documents)"), "{message}");
+}

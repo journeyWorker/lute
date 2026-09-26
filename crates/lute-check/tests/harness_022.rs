@@ -445,8 +445,14 @@ fn equal_priority_beats_whose_whens_can_overlap_tie() {
         .iter()
         .find(|(_, d)| d.code == "W-BEAT-PRIORITY-TIE")
         .unwrap();
-    assert_eq!(d.0, PathBuf::from("1.lute"), "anchored at the later beat");
-    assert!(d.1.message.contains("scene `a.one`"), "{}", d.1.message);
+    // dsl 0.27.0 (T3-11): one warning per tied group, at its first beat.
+    assert_eq!(d.0, PathBuf::from("0.lute"), "anchored at the first beat");
+    assert!(
+        d.1.message
+            .starts_with("scene `a.one` and scene `a.two` share priority 0"),
+        "{}",
+        d.1.message
+    );
 }
 
 #[test]

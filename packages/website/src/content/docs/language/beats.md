@@ -62,8 +62,11 @@ may not read the scene's own `scene.*` state. That state does not exist until th
 `active` that [connectivity](/connectivity/scene-graph/) analyzes. A beat is eligible only when
 **both** `after:` and `when` hold, so put route order in `after:` and state conditions in `when`.
 
-A scene without `on:` is reached by explicit flow, as before. `when`, `target`, `priority`, `once`,
-`also`, or `share` without `on` is an error:
+A scene without `on:` answers no occasion, so no occasion presents it: your engine starts it
+itself, by its scene id, the way it started every scene before occasions existed. `lute trace` and
+`lute run` walk such a scene on its own, and `lute play` never presents it. To chain scenes into a
+story you can play with `lute play`, see [Connect scenes into a story](/getting-started/connect-scenes/).
+`when`, `target`, `priority`, `once`, `also`, or `share` without `on` is an error:
 
 ```lute expect="E-BEAT-ATTR"
 ---
@@ -547,10 +550,13 @@ and writes one beat per tier, in a lore document `contest`:
   take a kind target alike, and it counts as a read of the kind, so the kind draws no
   `W-DOMAIN-UNREAD`.
 - **`occasion.target`.** In the beat's `when`, its guards, and its text, `occasion.target` is the
-  member the occasion was raised for (`inchlet` for `mon.inchlet`), typed by the kind. A
+  member the occasion was raised for (`inchlet` for `mon.inchlet`), typed by the kind. It is a
+  value you compare (`occasion.target == 'inchlet'`) or match on: a
   `<match on="occasion.target">` checks its arms against the kind's members, and needs no `unset`
-  arm, because the engine always assigns it. The value lasts for that presentation only. Reading
-  `occasion.target` in a beat or entry that does not target a kind is `E-UNDECLARED`.
+  arm, because the engine always assigns it. It cannot yet stand in for a member name, so a fact
+  query or a `per:` family does not take it: see [Asking about the member](#asking-about-the-member).
+  The value lasts for that presentation only. Reading `occasion.target` in a beat or entry that
+  does not target a kind is `E-UNDECLARED`.
 - **Display.** `{{occasion.target}}` compiles to the placeholder
   `{"kind": "occasionTarget", "entityKind": "bugCommon"}`, so an engine can show the member's
   display name. [`lute play`](/tooling/play/) renders the member's cast `name:` when the member is a
@@ -589,6 +595,39 @@ in each member's ladder that names a beat of its own, and in a `kind:<kind>` lad
 kind beat names the member in `state: { occasion.target: inchlet }`. The compiled beat carries
 `targetKind: { kind, prefix, members }` on its scene `meta.beat`, its `entry` or `beat` record, and
 its `project.index.json` row.
+
+#### Asking about the member
+
+A fact query's argument is a member name, `_`, or a boolean, and `occasion.target` is none of
+them, so `holds(logged(occasion.target))` is `E-CEL-PROFILE`. A `per:` family is read one member
+by name, so `run.caught[occasion.target]` is `E-UNDECLARED`. To ask a question about the member,
+name each member where you ask it. Compare `occasion.target` beside a query that names the member:
+
+```lute
+<beat id="rareAgain" on="caught" target="kind:bugRare" once="false" priority="5" when="(occasion.target == 'hornbeetle' && holds(logged(hornbeetle))) || (occasion.target == 'bladebug' && holds(logged(bladebug)))">
+  @narrator: That one is in the book already.
+</beat>
+```
+
+or match on the member and ask inside each arm:
+
+```lute
+<beat id="catchRare" on="caught" target="kind:bugRare" once="false">
+  <match on="occasion.target">
+    <when is="hornbeetle">
+      @narrator{when="holds(logged(hornbeetle))"}: Another hornbeetle for the book.
+    </when>
+    <when is="bladebug">
+      @narrator{when="holds(logged(bladebug))"}: Another bladebug for the book.
+    </when>
+  </match>
+  @narrator: A {{occasion.target}}! The nets all around you go still.
+</beat>
+```
+
+A state question reads the member the same way, `run.caught.hornbeetle` in the `hornbeetle` arm.
+When each member needs its own conditions throughout, a beat per member (`target="mon.hornbeetle"`)
+says it more plainly, and it outranks the kind beat at equal priority.
 
 ## What the checker proves
 

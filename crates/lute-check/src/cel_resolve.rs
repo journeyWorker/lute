@@ -923,6 +923,71 @@ fn check_fact_queries(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Ve
     }
 }
 
+/// The `E-MATCH-RELATION-SUBJECT` message (dsl 0.3.0 §8), with the fix. `via`
+/// names the `@def` that smuggled the fact query in (dsl 0.27.0 §2, T1-5a).
+fn match_relation_subject_message(via: Option<&str>) -> String {
+    let lead = via.map_or(String::new(), |r| {
+        format!("`@{r}` expands to a fact query, and ")
+    });
+    format!(
+        "{lead}relations are guard-only; a `<match on>` subject must stay \
+         enum/bool/scalar so exhaustiveness stays decidable (dsl 0.3.0 §8) — \
+         put the query in a guard instead: `when=\"…\"` on the line, choice or \
+         `::set`, or an arm's `<when test=\"…\">`"
+    )
+}
+
+/// dsl 0.27.0 §2 (T1-5a): a `<match on>` subject whose `@def`s expand to a
+/// fact query is [`E_MATCH_RELATION_SUBJECT`], exactly as the inline form is
+/// — [`check_cel_slot`] sees only the unexpanded text. `None` when the subject
+/// names no def, does not expand (another pass reports it), or already holds
+/// a query inline (the inline firewall owns that one).
+pub(crate) fn check_match_subject_defs(
+    slot: &CelSlot,
+    defs: &crate::cel_expand::DefTable<'_>,
+) -> Option<Diagnostic> {
+    let via = lute_cel::scan_refs(&slot.raw)
+        .into_iter()
+        .find(|r| !r.is_dollar && defs.bodies.contains_key(&r.name))?;
+    let has_query = |text: &str| {
+        let mut arena = CelArena::default();
+        lute_cel::parse_slot_marked_refs(&mut arena, text)
+            .and_then(|h| arena.get(h))
+            .is_some_and(|root| contains_relation_query(&root.expr))
+    };
+    if has_query(&slot.raw) {
+        return None;
+    }
+    let expanded = crate::cel_expand::expand_cel(&slot.raw, defs, None, &mut Vec::new()).ok()?;
+    has_query(&expanded).then(|| {
+        diag(
+            E_MATCH_RELATION_SUBJECT,
+            match_relation_subject_message(Some(&via.name)),
+            slot.span,
+        )
+    })
+}
+
+/// Whether `expr` contains a relation query (`holds`/`count`/`validAt`/…;
+/// not `now()`), walked in [`check_fact_queries`]' recursion shape.
+fn contains_relation_query(expr: &Expr) -> bool {
+    match expr {
+        Expr::Call(c) => {
+            (is_profile_fact_query(c) && c.func_name != "now")
+                || c.target
+                    .as_ref()
+                    .is_some_and(|t| contains_relation_query(&t.expr))
+                || c.args.iter().any(|a| contains_relation_query(&a.expr))
+        }
+        Expr::List(list) => list
+            .elements
+            .iter()
+            .any(|e| contains_relation_query(&e.expr)),
+        Expr::Select(sel) => contains_relation_query(&sel.operand.expr),
+        _ => false,
+    }
+}
+
 /// Validate one admitted fact-query `Call` (dsl 0.3.0 §6/§8): `now()` has no
 /// pattern (admitted here, TYPED as narrative-time in Task 12 — nothing to
 /// check yet); `holds`/`count`/`validAt` carry a relation pattern in
@@ -944,9 +1009,7 @@ fn check_fact_query_call(
     if slot.kind == CelKind::MatchSubject {
         diags.push(diag(
             E_MATCH_RELATION_SUBJECT,
-            "relations are guard-only; a `<match on>` subject must stay \
-             enum/bool/scalar so exhaustiveness stays decidable (dsl 0.3.0 §8)"
-                .to_string(),
+            match_relation_subject_message(None),
             slot.span,
         ));
         return;

@@ -1,0 +1,12 @@
+---
+kind: scene
+id: ending.caught
+title: Caught
+on: chapter
+after: 'visited("accusation")'
+when: "run.accused == 'ruben'"
+---
+
+## Caught
+
+@ruben: The sugar tin. Of course you noticed the sugar tin.

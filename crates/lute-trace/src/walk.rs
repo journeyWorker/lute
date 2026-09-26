@@ -704,7 +704,25 @@ fn walk_line(l: &Line, w: &mut Walk<'_>) {
     w.steps.push(Step::Line {
         speaker: l.speaker.clone(),
         text,
+        delivery: line_delivery(l),
     });
+}
+
+/// A line's `{…}` attrs as authored (`mono`, `as="x"`, `emotion=@e`), in
+/// source order — `when=` is already extracted, and `__`-prefixed compiler
+/// bookkeeping is not source. `None` when nothing remains.
+fn line_delivery(l: &Line) -> Option<String> {
+    let attrs: Vec<String> = l
+        .attrs
+        .iter()
+        .filter(|a| !a.key.starts_with("__"))
+        .map(|a| match &a.value {
+            AttrValue::Str(s) => format!("{}=\"{}\"", a.key, s.replace('"', "\\\"")),
+            AttrValue::Ref(slot) => format!("{}={}", a.key, slot.raw),
+            AttrValue::BoolTrue => a.key.clone(),
+        })
+        .collect();
+    (!attrs.is_empty()).then(|| attrs.join(" "))
 }
 
 /// A leaf `::directive`: recorded as a [`Step::Directive`], then `Continue` —
@@ -830,7 +848,7 @@ fn walk_bridge_call(d: &Directive, w: &mut Walk<'_>) {
     }
     let resolved: Vec<(&str, String)> = reads
         .iter()
-        .map(|(field, write)| (*field, lute_compile::lower::resolve_effect(write, d).path))
+        .map(|(field, write)| (*field, lute_compile::lower::effect_path(write, d)))
         .collect();
     // A read the textual scan cannot see (a component body) still halts on
     // UNKNOWN; its hint then names every field, all of which an answer may give.

@@ -730,7 +730,9 @@ fn beats_ladder_lists_selection_order_and_check_verdicts() {
     assert_eq!(codes("town.bad"), ["E-BEAT-UNREACHABLE"]);
     assert_eq!(codes("town.memo"), ["W-BEAT-PRIORITY-TIE"]);
     assert_eq!(codes("town.never"), ["W-BEAT-SHADOWED"]);
-    assert!(codes("town.dawn").is_empty() && codes("town.idle").is_empty());
+    // dsl 0.27.0 (T3-11): one warning per tied group marks each beat of it.
+    assert_eq!(codes("town.dawn"), ["W-BEAT-PRIORITY-TIE"]);
+    assert!(codes("town.idle").is_empty());
     let dawn = &rows[2];
     assert_eq!(dawn["when"], "run.slot == 'morning'");
     assert_eq!(dawn["title"], "Dawn");

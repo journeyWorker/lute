@@ -147,6 +147,42 @@ A range amount (`amount="10..20"`) is the engine's roll, so the toolchain grants
 
 A kind without `credits:` hashes exactly as it did before 0.23.0, so adding the key to one kind restamps only the snapshots that declare it.
 
+### Directive effects
+
+A directive may declare the state it writes when it runs: `effects.writes`, a list of
+`{ scope, path, value }`. [Typed bridge directives](/plugins/bridge/#the-directive-that-invokes-it)
+shows a bridge directive writing its result slot. A passthrough directive may write too, such as a
+scare that costs the player sanity:
+
+```yaml
+# directives/ward.yaml
+directives:
+  - name: fright
+    attrs:
+      - { name: amount, type: number }
+    effects:
+      writes:
+        - { scope: run, path: [sanity], value: { op: decrement, by: { fromAttr: amount } } }
+```
+
+`scope` and `path` name the state path, `run.sanity` here. It may be an
+[`owner: engine`](/state/state-model/#owner-engine) path: content cannot `::set` it
+(`E-ENGINE-OWNED-WRITE`), but a directive's effect is a write the engine makes, and
+[`lute play`](/tooling/play/) applies it where the directive runs. With `run.sanity` at 10,
+`::fright{amount=2}` leaves it at 8.
+
+`value` takes one of four shapes (dsl 0.27.0 §2):
+
+| `value` | Writes |
+|---|---|
+| a bool, number, or string literal | that value |
+| `{ fromAttr: <attr> }` | the value the call gives one of the directive's own attrs, or that attr's declared `default:`. A call that omits an attr with no default writes nothing. |
+| `{ fromBridgeResult: <field> }` | a field of the bridge's answer; see [Typed bridge directives](/plugins/bridge/) |
+| `{ op: increment \| decrement, by: <number> \| { fromAttr: <attr> } }` | adds `by` to the path, or subtracts it. An attr named in `by:` must be `type: number`. |
+
+Any other value fails the plugin load with `E-PLUGIN-PARSE`, and the message lists the four
+shapes. So does a `fromAttr` naming an attr the directive does not declare, with a did-you-mean.
+
 ### Engine ids typed by an entity kind
 
 An attribute that names something the engine owns, such as a bag item, a species, or a shop's stock list, may be typed by an **entity kind** the project declares (dsl 0.26.0 §2.5):

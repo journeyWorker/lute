@@ -451,3 +451,37 @@ fn a_def_no_reference_uses_warns_once_at_its_declaration() {
         );
     }
 }
+
+/// A use written only in a comment — a body `/* … */` or line-leading `//`,
+/// or a frontmatter `#` — is not a read: the relation and the def still
+/// warn. (The 0.26 investigation example stayed clean only through a
+/// comment naming `holds(points(blake))`.)
+#[test]
+fn a_use_written_only_in_a_comment_is_not_a_read() {
+    for (front, body) in [
+        ("", "/* holds(met(maud)) and @quiet */\n"),
+        ("", "// holds(met(maud)) and @quiet\n"),
+        ("# holds(met(maud)) and @quiet\n", ""),
+    ] {
+        let decls = format!("{MET}defs:\n  quiet: \"user.bond == 0\"\n{front}");
+        let out = usage(&[&usage_scene(&decls, "user.bond >= 0", body)]);
+        for code in ["W-RELATION-UNREAD", "W-DEF-UNUSED"] {
+            assert!(
+                out.iter().any(|(_, d)| d.code == code),
+                "{code} / {front}{body}: {out:?}"
+            );
+        }
+    }
+    // A comment beside a real read changes nothing: the condition reads both.
+    let decls = format!("{MET}defs:\n  quiet: \"user.bond == 0\"\n");
+    let out = usage(&[&usage_scene(
+        &decls,
+        "@quiet && holds(met(maud))",
+        "/* a note */\n",
+    )]);
+    assert!(
+        !out.iter()
+            .any(|(_, d)| d.code == "W-RELATION-UNREAD" || d.code == "W-DEF-UNUSED"),
+        "{out:?}"
+    );
+}

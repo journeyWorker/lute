@@ -66,6 +66,7 @@ export default defineConfig({
           items: [
             { slug: "getting-started/installation" },
             { slug: "getting-started/first-scene" },
+            { slug: "getting-started/connect-scenes" },
             { slug: "getting-started/learning-paths" },
             { slug: "getting-started/build-an-investigation" },
             { slug: "getting-started/when-to-use" },

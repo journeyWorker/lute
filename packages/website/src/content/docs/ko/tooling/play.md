@@ -77,7 +77,9 @@ occasions:
   기본값 `after`는 제시가 끝난 뒤에 판정합니다. [퀘스트 구조](#퀘스트-구조)를 보세요.
 
 해석된 플러그인 중 계기를 선언한 것이 없으면 계기 이름은 **모양만(shape-only)** 검사됩니다: 어떤
-식별자든 받아들이므로, 엔진 플러그인이 생기기 전에도 비트를 쓸 수 있습니다. 어느 플러그인이든 계기를
+식별자든 받아들이므로, 엔진 플러그인이 생기기 전에도 비트를 쓸 수 있습니다. 엔진 플러그인이 전혀 없는
+이야기도 이렇게 플레이합니다: [씬을 이야기로 잇기](/getting-started/connect-scenes/)는 모든 씬이 모양만
+검사되는 계기 하나에 응답하게 하고 `lute play`로 플레이합니다. 어느 플러그인이든 계기를
 선언하는 순간, 선언되지 않은 계기를 가리키는 비트는 `E-OCCASION-UNKNOWN`이 되고, 대상 없이 선언된
 계기에 `target`을 붙이면 `E-BEAT-ATTR`입니다. 대상 도메인이 있는 계기에서 그 밖의 비트 대상 —
 `npc.achilles` 대신 쓴 `npc.achiles` — 은 did-you-mean과 함께 `E-BEAT-ATTR`이며, 프로젝트가 선언하지 않은 엔티티
@@ -119,10 +121,12 @@ once: user
 
 `after:`는 의미가 그대로입니다 — [연결성](/connectivity/scene-graph/) 분석이 다루는 `visited` /
 `completed` / `active`에 대한 구조적 전제조건 — 그리고 비트는 `after:`와 `when`이 모두 성립할 때만
-자격이 있습니다. `on` 없이 `when`, `target`, `priority`, `once`, `also`를 쓰면 `E-BEAT-ATTR`입니다: 어떤
-계기에도 응답하지 않는 씬은 이전처럼 명시적인 흐름으로 도달합니다. bool이 아닌 `also`, 그리고 자격 있는
-비트가 이미 모두 제시되거나 제시 목록에 오르는 `select: all` / `select: sequence` 계기의 `also: true`도
-`E-BEAT-ATTR`입니다.
+자격이 있습니다. `on` 없이 `when`, `target`, `priority`, `once`, `also`를 쓰면 `E-BEAT-ATTR`입니다. 어떤
+계기에도 응답하지 않는 씬은 계기가 제시하지 않습니다: 엔진이 씬 id로 직접 시작하고, `lute trace`와
+`lute run`은 그 씬 하나를 따로 걸으며, `lute play`는 그 씬을 제시하지 않습니다. 씬들을 이어 `lute play`로
+플레이할 수 있는 이야기로 만들려면 [씬을 이야기로 잇기](/getting-started/connect-scenes/)를 보세요.
+bool이 아닌 `also`, 그리고 자격 있는 비트가 이미 모두 제시되거나 제시 목록에 오르는 `select: all` /
+`select: sequence` 계기의 `also: true`도 `E-BEAT-ATTR`입니다.
 
 ### 엔트리 비트
 
@@ -384,7 +388,7 @@ rules:
 [`bridges:`](#브리지-호출에-답하기) 응답을 가질 수 있습니다. 단, `end` 스텝은 `label`만 받습니다. 예외인
 조합은 하나: `advance`는 같은 순간의 `engine:` 쓰기를 함께 가질 수 있습니다. 스텝은
 `include: <file>`일 수도 있는데, 그 파일의 스텝을 그 자리에 끼워 넣습니다([시계 앞으로 돌리기](#시계-앞으로-돌리기)
-참고). 탑에 대해 모든 모양을 한 번씩 둘러보면:
+참고). 이 스텝은 파일 이름만 적으므로, 옆에 `label`, `repeat`, `expect:`를 쓰면 사용법 오류입니다. 탑에 대해 모든 모양을 한 번씩 둘러보면:
 
 ```yaml
 state: { user.runs: 2 }                   # path -> scalar literal, over the declared defaults
@@ -1852,7 +1856,9 @@ steps:
 ### 기대값
 
 스텝은 `expect:`를 가질 수 있고, 그 스텝이 한 일에 대해 판정됩니다. 네 키는 계기의 선택을 판정하므로
-`occasion` 스텝에만 쓸 수 있습니다:
+계기를 발생시키는 스텝에만 쓸 수 있습니다: `occasion` 스텝, 그리고 [`advance`](#시계-앞으로-돌리기) 스텝입니다.
+`advance` 스텝에서 `winner`, `offered`, `notOffered`는 시계가 멈춘 자리의 발생을 판정하고, `presented`는 그
+스텝이 제시한 비트를 모두 순서대로 나열합니다:
 
 | 키 | 성립 조건 |
 |---|---|
@@ -1874,8 +1880,8 @@ steps:
 
 그래서 `engine:` 스텝은 자신의 쓰기가 한 일을 단언할 수 있고 — [기한 예제](#기한과-대상-지정-목표)의
 `expect: { quests: { houndHunt: failed } }` — 계기 스텝은 끝까지 기다리지 않고 퀘스트 진행을 확인할 수
-있습니다. `occasion`이 아닌 스텝의 `winner`, `offered`, `notOffered`, `presented`는 사용법 오류(종료
-코드 2)입니다: `` step 2: `expect.winner` applies only to an `occasion` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
+있습니다. 그 밖의 스텝의 `winner`, `offered`, `notOffered`, `presented`는 사용법 오류(종료
+코드 2)입니다: `` step 2: `expect.winner` applies only to an `occasion` or `advance` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
 
 `clock:` 불일치는 키를 대고, 요일 레이블 옆에 그 숫자를 출력합니다(`expect clock weekday: expected Wed, actual Tue (1)`).
 시계를 선언하지 않은 프로젝트에서는 모든 `clock:` 키가 불일치입니다(`actual no clock position …`).

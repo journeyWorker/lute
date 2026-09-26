@@ -635,10 +635,14 @@ pub(crate) struct RootKnowledge {
     /// `check-project` builds it, with every assert site counted live (this
     /// view does not run reachability).
     may: MaySet,
+    /// The root vocabulary `may` was built over: what a rule's positive
+    /// premises range over ([`MaySet::atom_rows`], entity kinds included).
+    root_vocab: lute_check::RootVocab,
 }
 
-/// The root's may set (`compute_conn_fixpoint`'s construction).
-fn may_set(group: &DocGroup, docs: &[(PathBuf, Document)]) -> MaySet {
+/// The root's may set (`compute_conn_fixpoint`'s construction) and the
+/// root vocabulary it was built over.
+fn may_set(group: &DocGroup, docs: &[(PathBuf, Document)]) -> (MaySet, lute_check::RootVocab) {
     let mut vocab = lute_check::RootVocab::default();
     for (_, _, folded) in group {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
@@ -649,7 +653,7 @@ fn may_set(group: &DocGroup, docs: &[(PathBuf, Document)]) -> MaySet {
     let facts = lute_check::connectivity::live_assert_sites(docs, &BTreeMap::new(), &none, &none)
         .into_iter()
         .filter_map(|(_, a)| GroundFact::from_pattern(&a.pattern));
-    MaySet::build(&vocab, facts, &stable)
+    (MaySet::build(&vocab, facts, &stable), vocab)
 }
 
 /// A clause variable binding.
@@ -669,22 +673,22 @@ fn term_value(t: &RuleTerm, s: &Subst) -> Option<String> {
     }
 }
 
-/// Every binding of `rule`'s positive premises to facts `may` holds,
-/// extending `seed`, kept when each `=`/`!=` decided on bound values holds.
-/// `None`: not enumerable — a positive premise over an unbounded relation,
-/// or more than [`JOIN_CAP`] bindings.
-fn joins(rule: &Rule, seed: Subst, may: &MaySet) -> Option<Vec<Subst>> {
+/// Every binding of `rule`'s positive premises to the rows the checker's
+/// rule evaluation joins them over ([`MaySet::atom_rows`]: `may`'s facts,
+/// an entity kind's members), extending `seed`, kept when each `=`/`!=`
+/// decided on bound values holds. `None`: not enumerable — a positive
+/// premise over an unbounded relation or open kind, or more than
+/// [`JOIN_CAP`] bindings.
+fn joins(rule: &Rule, seed: Subst, k: &RootKnowledge) -> Option<Vec<Subst>> {
     let mut out = vec![seed];
     for lit in &rule.body {
         let BodyLiteral::Pos(atom) = lit else {
             continue;
         };
-        if may.is_unbounded(&atom.relation) {
-            return None;
-        }
+        let rows = k.may.atom_rows(&k.root_vocab, atom)?;
         let mut next = Vec::new();
         for s in &out {
-            for tuple in may.instances(&atom.relation).into_iter().flatten() {
+            for tuple in &rows {
                 if let Some(s) = bind(&atom.terms, tuple, s) {
                     next.push(s);
                     if next.len() > JOIN_CAP {
@@ -710,22 +714,22 @@ fn joins(rule: &Rule, seed: Subst, may: &MaySet) -> Option<Vec<Subst>> {
 }
 
 /// `s` extended so `terms` match `tuple`; `None` when they cannot.
-fn bind(terms: &[RuleTerm], tuple: &[String], s: &Subst) -> Option<Subst> {
+fn bind(terms: &[RuleTerm], tuple: &[impl AsRef<str>], s: &Subst) -> Option<Subst> {
     if terms.len() != tuple.len() {
         return None;
     }
     let mut s = s.clone();
-    for (term, v) in terms.iter().zip(tuple) {
+    for (term, v) in terms.iter().zip(tuple.iter().map(AsRef::as_ref)) {
         match term {
             RuleTerm::Var(name) => match s.get(name) {
-                Some(b) if b != v => return None,
+                Some(b) if b.as_str() != v => return None,
                 Some(_) => {}
                 None => {
-                    s.insert(name.clone(), v.clone());
+                    s.insert(name.clone(), v.to_string());
                 }
             },
-            RuleTerm::Const(c) if c != v => return None,
-            RuleTerm::Bool(b) if b.to_string() != *v => return None,
+            RuleTerm::Const(c) if c.as_str() != v => return None,
+            RuleTerm::Bool(b) if b.to_string() != v => return None,
             _ => {}
         }
     }
@@ -762,13 +766,14 @@ fn matching(may: &MaySet, rel: &str, instances: &[Pattern]) -> Defeat {
 /// every binding of the positive premises binds `W` to `hollis`), and the
 /// facts that defeat it: each binding instantiates the premise, and every
 /// held fact matching an instance defeats it.
-fn negated(rule: &Rule, atom: &RuleAtom, bound: &Subst, may: &MaySet) -> (Pattern, Defeat) {
+fn negated(rule: &Rule, atom: &RuleAtom, bound: &Subst, k: &RootKnowledge) -> (Pattern, Defeat) {
+    let may = &k.may;
     let under = |s: &Subst| Pattern {
         rel: atom.relation.clone(),
         args: atom.terms.iter().map(|t| term_value(t, s)).collect(),
     };
     let head = under(bound);
-    match joins(rule, bound.clone(), may) {
+    match joins(rule, bound.clone(), k) {
         Some(substs) if !substs.is_empty() => {
             let instances: Vec<Pattern> = substs.iter().map(under).collect();
             let args = (0..head.args.len())
@@ -1150,7 +1155,7 @@ impl Tracer<'_> {
                         );
                     }
                     BodyLiteral::Neg(a) => {
-                        let (premise, defeat) = negated(&r.rule, a, &subst, &k.may);
+                        let (premise, defeat) = negated(&r.rule, a, &subst, k);
                         self.trace(out, &premise, Some(defeat), depth + 2, here);
                     }
                     BodyLiteral::Guard { cel, .. } => {
@@ -1234,12 +1239,14 @@ pub(crate) fn collect(by_root: &ByRoot) -> Vec<RootKnowledge> {
                 .iter()
                 .map(|(p, d, _)| (p.clone(), d.clone()))
                 .collect();
+            let (may, root_vocab) = may_set(group, &docs);
             RootKnowledge {
                 root: root.clone(),
                 elements: guarded(root, group, &docs),
                 vocab: vocab(group),
                 asserted: asserters(root, group),
-                may: may_set(group, &docs),
+                may,
+                root_vocab,
             }
         })
         .collect()
@@ -1337,12 +1344,18 @@ fn derivations(g: &GroundFact, k: &RootKnowledge) -> Vec<Derivation> {
         let Some(seed) = bind(&r.rule.head.terms, &g.args, &Subst::new()) else {
             continue;
         };
-        for s in joins(&r.rule, seed, &k.may).unwrap_or_default() {
+        for s in joins(&r.rule, seed, k).unwrap_or_default() {
             let value = |t: &RuleTerm| term_value(t, &s).unwrap_or_else(|| "_".to_string());
             let mut pos = Vec::new();
             let mut other = Vec::new();
             for lit in &r.rule.body {
                 match lit {
+                    // A domain predicate (`suitor(S)`) is membership, not a
+                    // fact: written under the binding, with no source.
+                    BodyLiteral::Pos(a) if !k.vocab.relations.contains_key(&a.relation) => {
+                        let args: Vec<String> = a.terms.iter().map(value).collect();
+                        other.push(format!("{}({})", a.relation, args.join(", ")));
+                    }
                     BodyLiteral::Pos(a) => {
                         if let Some(args) = a.terms.iter().map(|t| term_value(t, &s)).collect() {
                             pos.push(GroundFact {

@@ -6,6 +6,95 @@ description: "Lute 0.26.0(시계, 퀘스트 구조, 파티, 브리지 응답, �
 모든 구문을 한 페이지에 복사해 쓸 수 있는 스니펫으로 모았습니다. 아래의 `lute` 블록은 모두 CI에서 실제
 툴체인으로 컴파일 검사를 거치며, 각 절 끝의 링크는 전체 설명 페이지로 이어집니다.
 
+## 작가 카드
+
+이야기를 쓰고 플레이하는 데 필요한 것을 한 화면에 모았습니다. 나머지 내용은
+[프로젝트 구성](#프로젝트-구성)부터 모든 구문을 자세히 다룹니다.
+
+```lute check
+---
+kind: scene
+id: cafe.counter
+on: chapter
+after: 'visited("cafe.arrival")'
+priority: 10
+when: "run.tips == 0"
+state:
+  run.tips: { type: number, default: 0 }
+  run.mood: { type: { enum: [calm, tense] }, default: calm }
+---
+
+## Counter
+
+@narrator: The espresso machine hisses.
+@mira: The usual?
+@fixer{mono}: She remembered.
+@mira{os}: One moment!
+
+<branch id="order" prompt="What will you have?">
+  <choice id="tea" label="Tea, and a tip">
+    ::set{run.tips += 5}
+    @mira: Thank you!
+  </choice>
+  <choice id="nothing" label="Nothing tonight">
+    ::set{run.mood = 'tense'}
+    @mira: Suit yourself.
+  </choice>
+</branch>
+
+<match on="run.mood">
+  <when is="calm">
+    @mira: Stay as long as you like.
+  </when>
+  <when is="tense">
+    @mira: We close at ten.
+  </when>
+</match>
+```
+
+- `@speaker: text`는 대사 한 줄이고, `@narrator`는 내레이션입니다. `{mono}`는 속마음, `{os}`는 화면 밖,
+  `{vo}`는 보이스오버입니다. 콘텐츠는 `## Heading` 아래에 둡니다. → [대사, 캐스트, 연출](#대사-캐스트-연출)
+- `<branch>`는 `<choice>`로 이루어진 선택 메뉴입니다. → [선택지, 허브, 점프, 엔딩](#선택지-허브-점프-엔딩)
+- `<match on>`은 들어맞는 첫 `<when is>` 갈래를 고릅니다. → [match와 when](#match와-when)
+- `::set{…}`은 `state:`에 선언한 상태를 씁니다. → [상태 쓰기와 팩트](#상태-쓰기와-팩트)
+- `on:`은 씬이 계기에 응답하게 합니다. 여기서는 `chapter`이며, 플러그인이 계기를 선언하기 전까지는 어떤
+  이름이든 됩니다. `after:`는 다른 씬 뒤로 순서를 정하고, `priority:`는 같은 자리에서 이기며, `when:`은
+  상태로 자격을 거릅니다. → [비트](#비트-계기에-응답하는-씬과-엔트리) ·
+  [씬을 이야기로 잇기](/getting-started/connect-scenes/)
+
+테스트는 씬 하나를 걷고, 플레이는 스텝마다 계기를 한 번씩 발생시키며 프로젝트 전체를 진행합니다:
+
+```yaml
+# tests/counter.test.yaml
+file: ../scenes/counter.lute        # relative to this test file
+visited: [cafe.arrival]             # the after: route this walk assumes
+choose: { order: tea }
+expect:
+  state: { run.tips: 5 }
+  transcriptContains: ["@mira: Stay as long as you like."]
+  exit: complete
+```
+
+```yaml
+# plays/story.play.yaml: cafe.arrival answers `chapter` first, then cafe.counter
+choose: { order: nothing }
+steps:
+  - occasion: chapter
+    expect: { winner: cafe.arrival }
+  - occasion: chapter
+    expect: { winner: cafe.counter }
+expect:
+  transcriptContains: ["@mira: We close at ten."]
+```
+
+```console
+$ lute check-project .                              # every document, and the project as a whole
+$ lute test .                                       # every *.test.yaml, and every play with an expect:
+$ lute play . --script plays/story.play.yaml        # the transcript of one playthrough
+```
+
+→ [테스트와 플레이](#cli) · [스토리 플레이](/tooling/play/)
+
 ## 프로젝트 구성
 
 ```
@@ -428,9 +517,11 @@ rules:
 @hollis{when="holds(witness(hollis))"}: I was there.
 ```
 
-- `per: companion`은 멤버마다 `run.approval.<member>`를 선언합니다. 콘텐츠는 멤버 이름으로 쓰고, 규칙의
-  `cel()` 가드만 양의 원자가 묶은 변수로 이 묶음을 색인합니다(`run.approval[P]`). 그런 규칙은 멤버마다
-  인스턴스 하나로 컴파일됩니다.
+- `per: companion`은 멤버마다 `run.approval.<member>`를 선언합니다. 콘텐츠는 멤버 이름으로 씁니다. 이
+  묶음을 이름 대신 색인하는 곳은 두 군데입니다: 규칙의 `cel()` 가드는 양의 원자가 묶은 변수로
+  색인하고(`run.approval[P]`, 그런 규칙은 멤버마다 인스턴스 하나로 컴파일됩니다), 컴포넌트의 `::set`은
+  파라미터로 색인합니다(`run.approval[@who]`, `::use`마다 검사됩니다.
+  [컴포넌트](#컴포넌트-extends-파라미터) 참고).
 - 규칙 본문의 `_`는 새 익명 변수입니다(`not` 아래에서는 "그런 튜플이 아예 없음"). 규칙 머리
   (`E-DATALOG-PARSE`)와 비교식에서는 여전히 오류입니다.
 - `countDistinct(sawAt(W, _), W)`는 한 위치의 서로 다른 값 개수를 세고, `count(…)`는 튜플 개수를 셉니다.
@@ -999,7 +1090,9 @@ components: [greet.component.lute]
 `effects: true`(0.24.0)를 선언한 컴포넌트는 `::set`, `::assert`, `::retract`를 쓸 수 있고, 팩트 원자에
 파라미터를 쓸 수 있습니다(`::assert{gifted(@who, @item)}`. `::use`마다 인자로 묶이며, 상수가 아닌 인자는
 `E-COMPONENT-ARG`, 컴포넌트 밖 팩트의 `@param`은 `E-FACT-DOMAIN`). 쓰기는
-`::use`마다 호스트의 스키마로 검사되고 `::use`가 놓인 자리에 컴파일됩니다. `speaker` 파라미터는 캐스트
+`::use`마다 호스트의 스키마로 검사되고 `::use`가 놓인 자리에 컴파일됩니다. 파라미터는
+[`per:`](#상태-쓰기와-팩트) 묶음의 멤버를 고를 수도 있습니다(`run.approval[@who]`): `::use`마다 인자가 가리키는
+멤버에 쓰고, 묶음의 종류에 속하지 않는 인자는 `E-COMPONENT-ARG`입니다. `speaker` 파라미터는 캐스트
 id를 받으며(선언된 캐스트 밖이면 `E-CAST-UNKNOWN`), `{{@who}}`는 캐스트의 `name`을 렌더링하고
 `<match on="@who">`와 디렉티브 속성(`::battle{foe=@who}`)은 id를 봅니다. 0.26.0부터 줄의 `as=@who`
 라벨도 `{{@who}}`처럼 캐스트 이름을 보여 줍니다.
@@ -1020,14 +1113,7 @@ state:
 ## Praise
 
 @narrator: {{@who}} approves.
-<match on="@who">
-  <when is="isolde">
-    ::set{run.approval.isolde += @delta}
-  </when>
-  <otherwise>
-    ::set{run.approval.corvin += @delta}
-  </otherwise>
-</match>
+::set{run.approval[@who] += @delta}
 ```
 
 본문의 가드와 match 대상은 여전히 상태를 읽을 수 없고(`E-COMPONENT-STATE`), `effects: true` 없이 쓰기를
@@ -1120,7 +1206,7 @@ id: storm.beat
 | `lute scenario <dir> [reach <node> \| envelope <node> \| knowledge [--for <node>]] [--facts] [--format text\|json\|dot]` | `after:` 그래프, 도달 가능성, 보장되는 상태와 팩트. 노드는 씬 id, `quest:<id>`, 또는 번들 비트의 정식 id입니다(그대로 또는 `beat:<doc>.<beat>`, 간선 없는 진입 노드로 그려짐). `knowledge`(0.23.0)는 팩트 가드가 있는 비트, 엔트리, 목표마다 질의하는 관계를 찾고, 각 관계를 규칙을 거슬러 그것을 만드는 쪽까지 추적합니다: assert하는 문서, 시드 팩트, 엔진(`reserved`), 또는 만드는 쪽 없음. 부정 전제를 깨뜨릴 수 있는 팩트도 알려 줍니다. `--for`에는 엔트리 id나 `<quest>.<objective>`도 줄 수 있습니다. 0.24.0부터 모든 가드 자리를 다루고, 종류 원자를 멤버십으로 읽으며(``suitor(sol) — entity kind `suitor`; sol is a member``), 규칙의 `cel()` 전제가 읽는 것을 밝힙니다. 0.26.0: `knowledge`는 규칙의 `count(…)` 전제를 그것이 세는 팩트의 생산자까지 추적하고, `--facts`는 팩트 생산 간선(`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`, `--format json`: `factEdges`, `dot`: 점선)을 그립니다. |
 | `lute beats <dir> [--occasion o] [--target t] [--json] [--expand]` | 0.23.0. 계기별(대상별) 비트 사다리를 선택 순서대로 보여 줍니다: priority, `once`(번들 비트의 `day` / `slot` 포함), `also`, `after:`, `when`(`@def`는 쓴 그대로, `--expand`면 펼침), 제목, 그리고 `check-project`의 판정(도달 불가, 가려짐, 동점, once-run-user). 프로젝트가 깨끗하게 검사되지 않아도 됩니다. 0.26.0부터 앞선, 결코 소진되지 않는 비트가 그 `when`을 함의해 늘 이기는 폴백은 `covered by <id>`로(`--json`: `coveredBy`) 표시되고, 종류 대상 비트에는 `kind:<kind>` 사다리가 생기며, `--target`은 아무 멤버나 받습니다. |
 | `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. 디렉티브 속성(`give.item`)의 모든 값, 또는 한 보상 종류의 모든 대상을 그것을 쓰는 문서와 줄과 함께 나열합니다. 컴포넌트를 거쳐 전달된 값은 그 `::use`에서(`via component <name>`), 대상 없는 보상은 `(no target)`으로 나옵니다. 병합 전에 누가 무엇을 주는지 봅니다. |
-| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds(awake(toma))=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis clock=1..3] [--occasion o[@target \| @clock.day[,clock.slot=night]]] [--target t] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. 축들의 곱의 모든 칸(첫 축이 가장 느리게 바뀜)에서 계기별로 play와 같은 자격 판정을 보여 줍니다: 승자나 제시 목록, 가려진 자격 있는 비트 `+N`, 판정할 수 없는 칸 `?`, 마지막으로 어느 칸에서도 자격이 없는 비트와 (0.24.0) 어딘가에서 자격은 있었지만 한 번도 제시되지 않은 비트. 스크립트의 세이브에서 그 스텝을 재생한 상태(`--until`까지)나 선언된 기본값에서 시작합니다. `--where`는 조건이 성립하지 않는 칸을 뺍니다. 대상 있는 계기는 비트가 이름을 붙인 대상마다 열 하나를 받습니다. 0.24.0: `clock[=d1..d2]`는 날 × 슬롯을 시계 순서로 펼치고, `visited()` 축은 id를 세이브에 넣거나 뺍니다. `--occasion dusk@clock.day`(또는 `@run.day,run.slot=night`, 바뀌는 어느 경로든)는 그 계기를 그 축의 값마다 한 번 평가하고 나머지 칸은 비웁니다. `--facts at`은 칸마다 누가 어디 있는지 보여 줍니다. |
+| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds(awake(toma))=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis clock=1..3] [--occasion o[@axis[=value],…]] [--target t] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. 축들의 곱의 모든 칸(첫 축이 가장 느리게 바뀜)에서 계기별로 play와 같은 자격 판정을 보여 줍니다: 승자나 제시 목록, 가려진 자격 있는 비트 `+N`, 판정할 수 없는 칸 `?`, 마지막으로 어느 칸에서도 자격이 없는 비트와 (0.24.0) 어딘가에서 자격은 있었지만 한 번도 제시되지 않은 비트. 스크립트의 세이브에서 그 스텝을 재생한 상태(`--until`까지)나 선언된 기본값에서 시작합니다. `--where`는 조건이 성립하지 않는 칸을 뺍니다. 대상 있는 계기는 비트가 이름을 붙인 대상마다 열 하나를 받으며, `--target mon.inchlet`은 대상을 직접 고릅니다(`--occasion`의 `@` 뒤에는 대상이 아니라 축을 씁니다). 0.24.0: `clock[=d1..d2]`는 날 × 슬롯을 시계 순서로 펼치고, `visited()` 축은 id를 세이브에 넣거나 뺍니다. `--occasion dusk@clock.day`(또는 `@run.day,run.slot=night`, 바뀌는 어느 경로든)는 그 계기를 그 축의 값마다 한 번 평가하고 나머지 칸은 비웁니다. `--facts at`은 칸마다 누가 어디 있는지 보여 줍니다. |
 | `lute lore <dir>` | 대상별·시리즈별 엔트리와 비트, 그리고 그것이 드러내는 팩트. |
 | `lute context <file> [--project <dir>]` | 여기서 쓸 수 있는 모든 것: 디렉티브(내장 포함), 어휘, 상태(`owner: engine` 표시), def, 등급과 `reserved` 여부를 담은 관계, 대상 도메인을 담은 계기, 캐스트, 컴포넌트 시그니처, 모든 씬·퀘스트·엔트리 id. |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | 프로젝트별로 설정하는 권고성 편집 린트(`L-*`). 선형 VN 지표는 비트, 컴포넌트, 퀘스트, 로어를 건너뜁니다. 0.26.0부터 `W-DISPLAY-NAME-DUP`도 보고합니다(`--deny W-DISPLAY-NAME-DUP`로 오류로 올림). |
@@ -1268,10 +1354,13 @@ expect:                                 # judged at the end; a miss exits 1
   퀘스트 수명 주기를 정산하므로 쓰기 한 번으로 그 자리에서 퀘스트가 완료될 수 있습니다. `quest.*`는
   거부합니다: 퀘스트 상태는 수명 주기의 몫이며 `quests:`로 시드합니다. `newRun`은 같은 `state:`와
   `facts:`를 새 런의 시드로 받습니다.
-- `target`, `pick`, `choose`는 `occasion` 스텝에만 씁니다. `label`은 어느 스텝에나, `repeat`은 `end`를 뺀
-  어느 스텝에나 쓸 수 있습니다. 스텝의 `expect:`는 `occasion` 스텝에서 `winner`(계기가 지나가면 `none`),
-  `offered`(자격 있는 비트의 부분집합), `notOffered`, `presented`(0.23.0: 제시된 id 전체를 순서대로)를,
-  `end`를 뺀 모든 스텝에서 `quests`, `state`, `facts`, `notFacts`(0.23.1)와 `clock`(0.26.0:
+- `target`은 `occasion` 스텝에만, `pick`과 `choose`는 `occasion`이나 `advance` 스텝에 씁니다. `label`은 어느
+  스텝에나, `repeat`은 `end`를 뺀 어느 스텝에나 쓸 수 있습니다. 예외는 `include:` 스텝으로, 파일 이름만
+  적고 `label`, `repeat`, `expect`는 받지 않습니다. 스텝의 `expect:`는 `occasion` 스텝과 `advance` 스텝에서
+  `winner`(계기가 지나가면 `none`), `offered`(자격 있는 비트의 부분집합), `notOffered`,
+  `presented`(0.23.0: 제시된 id 전체를 순서대로)를 받습니다. `advance` 스텝에서 `winner`, `offered`,
+  `notOffered`는 시계가 멈춘 자리의 발생을 판정하고, `presented`는 그 스텝이 제시한 비트를 모두,
+  `dayStart` / `dayEnd` 발생의 것부터 나열합니다. `end`를 뺀 모든 스텝에서 `quests`, `state`, `facts`, `notFacts`(0.23.1)와 `clock`(0.26.0:
   `{ weekday, slot, day }` 중 아무것이나)을 받습니다. 어긋나면 그 스텝과 양쪽 값을 알려 줍니다. `target:`이
   있는 스텝은 그 대상의 `<objective on target>`도 판정합니다. 승자나 `pick:`은 엔트리를 id나 (0.26.0)
   `<doc>.<entry>`로 부릅니다.
@@ -1329,7 +1418,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-SET-TYPE` / `E-REF-TYPE` / `E-ATTR-TYPE` | 값의 타입이 자리에 맞지 않습니다. 디렉티브 안의 따옴표 친 `"@def"`나, 컴포넌트가 텍스트에 끼워 넣는 `string` 파라미터에 넘긴 `@def`가 흔한 원인입니다. |
 | `E-ATTR-DEF-DYNAMIC` | 디렉티브 속성에 상태를 읽는 `@def`를 넣었습니다. 속성 값은 상수여야 하니 `<match>`로 나누세요. |
 | `E-INTERP-DEF` | `{{@def}}`의 본문을 식 하나로 펼칠 수 없습니다(펼침 순환, 또는 `$`를 읽는 본문). |
-| `E-ATTR-QUOTE` | 속성 값을 작은따옴표로 감쌌습니다. `"…"`를 쓰고, 값 안의 `"`는 `\"`로 쓰세요. |
+| `E-ATTR-QUOTE` | 속성 값을 작은따옴표로 감쌌거나, 워드 프로세서가 넣은 둥근 따옴표(`“…”`, `‘…’`)로 감쌌습니다. 곧은 `"…"`를 쓰고, 값 안의 `"`는 `\"`로 쓰세요. |
 | `E-DEF-DECL` | def 형식이 잘못되었습니다: 타입을 추론할 수 없거나, `type:` 없이 `params:`를 썼거나, 모르는 키가 있습니다. |
 | `E-OBJECTIVE-MISSING-DONE` / `E-OBJECTIVE-QUEST-DONE` | 목표에 `done`이 없거나, `quest=`와 `done=`을 함께 썼습니다. |
 | `E-QUEST-TIER-MIX` | 하위 퀘스트의 `tier`가 부모와 다릅니다. 둘의 등급을 맞추세요: 섞인 트리는 새 런이 한쪽만 초기화하면 영영 잠깁니다. |
@@ -1516,7 +1605,8 @@ unknown입니다.
 `E-ATTR-DEF-DYNAMIC`입니다.
 
 **속성 값은 큰따옴표로 감쌉니다.** `label='"Hi."'`는 `E-ATTR-QUOTE`입니다. `label="\"Hi.\""`로 쓰면
-레이블은 `"Hi."`가 됩니다.
+레이블은 `"Hi."`가 됩니다. 워드 프로세서에서 붙여 넣은 둥근 따옴표(`label=“Hi”`)도 `E-ATTR-QUOTE`이니
+곧은 `"`로 다시 치세요.
 
 **`<match>`에서 숫자는 실수입니다.** `is="1..9"` 다음에 `is="10.."`를 써도 `9.5`는 다뤄지지 않습니다.
 `<otherwise>`를 두거나, 끝이 맞닿는 열린 범위를 쓰세요.

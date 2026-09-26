@@ -522,3 +522,53 @@ fn an_unread_bridge_result_field_may_be_left_out() {
         .unwrap();
     assert!(!out(&o).contains("E-TRACE-MOCK"), "{}", out(&o));
 }
+
+/// A field read only inside a comment is not read: commenting the gated
+/// line out (`//` line-leading, or `/* … */`) lets an answer leave `margin`
+/// out, and the unmocked hint no longer asks for it.
+#[test]
+fn a_bridge_field_read_only_in_a_comment_may_be_left_out() {
+    for (tag, open, close) in [("line", "// ", ""), ("block", "/* ", " */")] {
+        let dir = temp_dir(&format!("comment-{tag}"));
+        copy_dir(&fixture(), &dir);
+        let c = dir.join("scenes/probe/c.lute");
+        let text = std::fs::read_to_string(&c).unwrap();
+        let commented: Vec<String> = text
+            .lines()
+            .map(|l| {
+                if l.contains("guards.margin") {
+                    format!("    {open}{}{close}", l.trim_start())
+                } else {
+                    l.to_string()
+                }
+            })
+            .collect();
+        std::fs::write(&c, commented.join("\n") + "\n").unwrap();
+        let trace = |mock: Option<&Path>| {
+            let mut cmd = Command::new(BIN);
+            cmd.args([
+                "trace",
+                c.to_str().unwrap(),
+                "--project",
+                dir.to_str().unwrap(),
+            ]);
+            if let Some(m) = mock {
+                cmd.args(["--mock", m.to_str().unwrap()]);
+            }
+            cmd.output().unwrap()
+        };
+        let mock = write(
+            &dir,
+            "m.yaml",
+            "bridges:\n  check:\n    - { passed: true }\n    - { passed: false }\n",
+        );
+        let o = trace(Some(&mock));
+        assert_eq!(o.status.code(), Some(0), "{tag}: {}", out(&o));
+        let o = trace(None);
+        assert!(
+            out(&o).contains("bridges: { check: [ { passed: <bool> } ] }"),
+            "{tag}: {}",
+            out(&o)
+        );
+    }
+}

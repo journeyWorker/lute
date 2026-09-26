@@ -99,6 +99,52 @@ fn end_as_the_last_node_is_clean() {
     assert_eq!(count(&text, W), 0, "{:?}", codes(&text));
 }
 
+// --- dsl 0.27.0 (round-5 T3-7): a `::next` target is an entry point ------------
+
+/// Spans of every `W-CODE-AFTER-END` in `text`, as the source they cover.
+fn dead_starts(text: &str) -> Vec<String> {
+    run(text)
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == W)
+        .map(|d| text[d.span.byte_start..d.span.byte_end].to_string())
+        .collect()
+}
+
+#[test]
+fn a_jump_target_after_end_is_live_and_what_precedes_it_is_not() {
+    // `::next` jumps past the `::end` into `flooded`: from the mark on the
+    // body is live again. The line between `::end` and the mark stays dead,
+    // and so does the stretch after the second `::end` — an untargeted mark
+    // opens nothing.
+    let text = format!(
+        "{HDR}::next{{to=\"flooded\" when=\"true\"}}\n@narrator: out\n::end\n\
+         @narrator: dead one\n::mark{{id=\"flooded\"}}\n@narrator: in\n::end\n\
+         ::mark{{id=\"orphan\"}}\n@narrator: dead two\n"
+    );
+    assert_eq!(
+        dead_starts(&text),
+        ["@narrator: dead one", "::mark{id=\"orphan\"}"],
+        "{:?}",
+        codes(&text)
+    );
+}
+
+#[test]
+fn a_targeted_line_id_or_nested_mark_is_an_entry_point() {
+    // A line's `id=` is a label like `::mark` (dsl 0.12.0).
+    let line =
+        format!("{HDR}::next{{to=\"l\" when=\"true\"}}\n::end\n@narrator{{id=\"l\"}}: jumped in\n");
+    assert!(dead_starts(&line).is_empty(), "{:?}", codes(&line));
+    // A mark inside a later choice body: the jump lands inside that node.
+    let nested = format!(
+        "{HDR}::next{{to=\"m\" when=\"true\"}}\n::end\n<branch id=\"b\">\n\
+         <choice id=\"go\" label=\"Go\">\n::mark{{id=\"m\"}}\n@narrator: jumped in\n</choice>\n\
+         </branch>\n"
+    );
+    assert!(dead_starts(&nested).is_empty(), "{:?}", codes(&nested));
+}
+
 // --- scoping: only the IMMEDIATELY enclosing body -------------------------
 
 #[test]

@@ -276,7 +276,8 @@ expression: json
           "optional": false,
           "body": null
         }
-      ]
+      ],
+      "tier": "run"
     },
     {
       "kind": "quest",
@@ -304,7 +305,8 @@ expression: json
           "kind": "XP",
           "amount": 120
         }
-      ]
+      ],
+      "tier": "run"
     },
     {
       "kind": "quest",
@@ -326,7 +328,8 @@ expression: json
           "optional": false,
           "body": null
         }
-      ]
+      ],
+      "tier": "run"
     },
     {
       "kind": "quest",
@@ -348,7 +351,8 @@ expression: json
           "optional": false,
           "body": null
         }
-      ]
+      ],
+      "tier": "run"
     }
   ]
 }

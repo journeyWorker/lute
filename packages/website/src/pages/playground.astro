@@ -249,7 +249,7 @@ state:
 
 /* A self-contained quest: objectives are done-guards over declared state;
    the quest starts, completes, or fails as its guards flip. */
-<quest id="rescueHalsin" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
+<quest id="rescueHalsin" tier="run" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
 <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
 <objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed"/>
 

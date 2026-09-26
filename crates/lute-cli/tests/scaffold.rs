@@ -123,6 +123,48 @@ fn investigation_template_is_current_and_checks_tests_and_plays_clean() {
     assert_checks_tests_and_plays_clean(&proj);
 }
 
+/// Round-5 D-2/D-4: the `minimal` starter scene uses `id:` identity (as `lute
+/// new scene` does, so a fresh project never mixes the two conventions), and
+/// the template ships a `tests/` test that passes — the first thing a writer
+/// runs after `check-project`. The test names its scene `../scenes/…`, the
+/// path a test in `tests/` needs.
+#[test]
+fn minimal_template_uses_id_identity_and_ships_a_passing_test() {
+    let proj = init_template("minimal", "minimal");
+    let p = proj.to_str().unwrap();
+    let opening = std::fs::read_to_string(proj.join("scenes/opening.lute")).unwrap();
+    assert!(opening.contains("\nid: opening\n"), "{opening}");
+    for legacy in ["character:", "season:", "episode:"] {
+        assert!(!opening.contains(legacy), "legacy `{legacy}`: {opening}");
+    }
+    let test_file = std::fs::read_to_string(proj.join("tests/opening.test.yaml")).unwrap();
+    assert!(
+        test_file.contains("file: ../scenes/opening.lute"),
+        "{test_file}"
+    );
+
+    let check = lute(&["check-project", p]);
+    assert_eq!(check.status.code(), Some(0), "{}", text(&check));
+    assert!(!text(&check).contains("warning ["), "{}", text(&check));
+
+    let test = lute(&["test", p, "--project", p]);
+    assert_eq!(test.status.code(), Some(0), "{}", text(&test));
+    assert!(
+        text(&test).contains("1 passed, 0 failed"),
+        "{}",
+        text(&test)
+    );
+
+    // A test that asserts something false fails, so the passing one is real.
+    std::fs::write(
+        proj.join("tests/opening.test.yaml"),
+        test_file.replace("run.greeted: true", "run.greeted: false"),
+    )
+    .unwrap();
+    let test = lute(&["test", p, "--project", p]);
+    assert_eq!(test.status.code(), Some(1), "{}", text(&test));
+}
+
 fn scene(proj: &Path, rel: &str) -> String {
     std::fs::read_to_string(proj.join("scenes").join(rel)).unwrap()
 }
@@ -159,6 +201,36 @@ fn new_scene_on_writes_a_beat_that_respects_defaults() {
 
     let check = lute(&["check-project", proj.to_str().unwrap()]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
+}
+
+/// dsl 0.27.0 (T3-11): `lute new scene --on` writes a `priority:` below every
+/// beat already on the occasion, so stubs scaffolded one after another rank
+/// in creation order and never tie.
+#[test]
+fn new_scene_on_ranks_below_every_existing_beat_of_the_occasion() {
+    let proj = init_beats("new-on-priority");
+    let d = proj.to_str().unwrap();
+    let priority = |rel: &str| -> i64 {
+        let s = scene(&proj, rel);
+        let line = s
+            .lines()
+            .find_map(|l| l.strip_prefix("priority: "))
+            .unwrap_or_else(|| panic!("no priority: {s}"));
+        line.split_whitespace().next().unwrap().parse().unwrap()
+    };
+    for name in ["stub-a", "stub-b", "stub-c"] {
+        let out = lute(&["new", "scene", name, "--on", "talk", "--dir", d]);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    }
+    let (a, b, c) = (
+        priority("stub-a.lute"),
+        priority("stub-b.lute"),
+        priority("stub-c.lute"),
+    );
+    assert!(a > b && b > c, "{a} {b} {c}");
+    let check = lute(&["check-project", d]);
+    let t = text(&check);
+    assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
 }
 
 /// T3-14: `--dir` names the PROJECT. A directory inside a project that is not
@@ -275,7 +347,7 @@ fn new_quest_is_accept_driven_unless_start() {
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let stub = std::fs::read_to_string(proj.join("quests/oil-run.lute")).unwrap();
     assert!(
-        stub.contains("<quest id=\"oilRun\" title=\"oil-run\">"),
+        stub.contains("<quest id=\"oilRun\" title=\"Oil Run\">"),
         "{stub}"
     );
     assert!(!stub.contains("start="), "{stub}");
@@ -290,7 +362,7 @@ fn new_quest_is_accept_driven_unless_start() {
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let auto = std::fs::read_to_string(proj.join("quests/always-on.lute")).unwrap();
     assert!(
-        auto.contains("<quest id=\"alwaysOn\" title=\"always-on\" start=\"true\">"),
+        auto.contains("<quest id=\"alwaysOn\" title=\"Always On\" start=\"true\">"),
         "{auto}"
     );
 
@@ -306,6 +378,52 @@ fn new_quest_is_accept_driven_unless_start() {
     // `--start` belongs to quests only.
     let out = lute(&["new", "scene", "x", "--start", "--dir", d]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+}
+
+/// Round-5 FS-F11: in a `lute init` project (no manifest `defaults:`),
+/// `lute new quest` and `lute new lore` head their documents exactly like
+/// `lute new scene` — the same `uses:` of the project schemas — invent no
+/// document-local state, and title the document in Title Case. The quest's
+/// objective reads the project (a scene it can see), and the project checks
+/// without error.
+#[test]
+fn new_quest_and_lore_share_the_scene_head_and_invent_no_state() {
+    let proj = temp_dir("new-agree").join("proj");
+    let out = lute(&["init", proj.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", text(&out));
+    let d = proj.to_str().unwrap();
+    for (kind, name) in [
+        ("scene", "the-cellar"),
+        ("quest", "the-cellar"),
+        ("lore", "old-map"),
+    ] {
+        let out = lute(&["new", kind, name, "--dir", d]);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    }
+    let read = |rel: &str| std::fs::read_to_string(proj.join(rel)).unwrap();
+    let uses = |doc: &str| {
+        doc.lines()
+            .skip_while(|l| !l.starts_with("uses:"))
+            .take_while(|l| *l != "---")
+            .filter(|l| !l.starts_with('#'))
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    let scene = read("scenes/the-cellar.lute");
+    let quest = read("quests/the-cellar.lute");
+    let lore = read("lore/old-map.lute");
+    assert!(!uses(&scene).is_empty(), "{scene}");
+    assert_eq!(uses(&quest), uses(&scene), "{quest}");
+    assert_eq!(uses(&lore), uses(&scene), "{lore}");
+    assert!(!quest.contains("state:"), "no invented counter: {quest}");
+    assert!(scene.contains("\ntitle: The Cellar\n"), "{scene}");
+    assert!(quest.contains("\ntitle: The Cellar\n"), "{quest}");
+    assert!(quest.contains("title=\"The Cellar\""), "{quest}");
+    assert!(lore.contains("\ntitle: Old Map\n"), "{lore}");
+
+    let check = lute(&["check-project", d]);
+    assert_eq!(check.status.code(), Some(0), "{}", text(&check));
+    assert!(!text(&check).contains("error ["), "{}", text(&check));
 }
 
 /// An undeclared occasion or an out-of-domain target is refused (exit 2)

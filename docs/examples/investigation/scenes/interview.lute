@@ -1,27 +1,12 @@
 ---
 kind: scene
 luteVersion: "0.26.0"
-character: detective
-season: 1
-episode: 2
+id: detective.s01ep02
 title: The Interview Room
-# Sequenced AFTER the crime scene (0.2.0 §2.2): the checker/`lute scenario`
-# assume the only declared route here runs through `detective.s01ep01`.
+# Comes after the crime scene.
 after: 'visited("detective.s01ep01")'
 uses: ../world.schema.yaml
 ---
-
-/*
-  The interrogation. A revisit `<hub>` (§7.3.2): `pressLedger`/`pressLetter`
-  press the two clues the crime scene logged. They carry no
-  `when="holds(foundClue(...))"` guard because both clues are asserted on the
-  only route here — the scene is sequenced `after:` the crime scene — so such
-  a guard is always true; `check-project` reports it as `W-FACT-GUARANTEED`
-  (dsl 0.20.0 §5). `askAlibi` is `once`; `leave` is the unguarded `exit` that
-  satisfies the no-dead-end obligation. After the hub, a
-  `<match on="run.suspectFocus">` reads the run-tier enum the choices wrote —
-  exhaustive over the enum domain, so no `<otherwise>` is needed.
-*/
 
 ## The Interview Room
 

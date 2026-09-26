@@ -164,11 +164,65 @@ fn context_outline_shows_the_new_sections() {
         "  nod(who: string, mood: enum[warm, cold])",
         "  @atLeast(n: number): bool = user.bond >= 1",
         "  @trusted: bool = user.bond >= 2",
-        "  ::accept{quest=\"<questId>\"} — accept a quest that has no `start` condition",
+        "  ::accept{quest=\"<questId>\" [when=\"<condition>\"]} — accept a quest that has no `start` condition",
         "scenes (1; read as visited(\"<id>\")):",
         "  mara.first",
         "  helpMara",
         "  lampNote",
+    ] {
+        assert!(
+            text.lines().any(|l| l == expected),
+            "missing line `{expected}`:\n{text}"
+        );
+    }
+}
+
+/// Round-5 UP lighthouse-1: a component param's declared `default:` (dsl
+/// 0.26.0 §3) is part of its signature — a model writing `::use` against it
+/// must know which params it may omit, and a `@def` default by name so it is
+/// not overridden by a guessed literal. Every built-in directive shows its
+/// optional `when=` guard (dsl 0.26.0 §4).
+#[test]
+fn context_shows_component_param_defaults_and_directive_guards() {
+    let proj = project();
+    write_at(
+        &proj,
+        "components/nod.component.lute",
+        "---\ncomponent: nod\nparams:\n  who: { type: string, default: \"The inspector\" }\n  \
+         mood: { type: { enum: [warm, cold] }, default: warm }\n  trust: { type: bool, default: \"@trusted\" }\n  \
+         depth: number\n---\n\n## Nod\n\n@narrator: A nod.\n",
+    );
+    let v: serde_json::Value = serde_json::from_str(&context(&proj, true)).unwrap();
+    let nod = v["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "nod")
+        .unwrap_or_else(|| panic!("no nod: {}", v["components"]));
+    let defaults: Vec<(&str, Option<&str>)> = nod["params"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| (p["name"].as_str().unwrap(), p["default"].as_str()))
+        .collect();
+    assert_eq!(
+        defaults,
+        [
+            ("who", Some("The inspector")),
+            ("mood", Some("warm")),
+            ("trust", Some("@trusted")),
+            ("depth", None),
+        ],
+        "{nod}"
+    );
+
+    let text = context(&proj, false);
+    for expected in [
+        "  nod(who: string = \"The inspector\", mood: enum[warm, cold] = warm, trust: bool = @trusted, depth: number)",
+        "  ::set{ <path> = <expr> [when=\"<condition>\"] }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)",
+        "  ::assert{ <relation>(<arg>, …) [when=\"<condition>\"] } — assert a ground fact of a declared, non-derived, non-reserved relation",
+        "  ::retract{ <relation>(<arg | _>, …) [when=\"<condition>\"] } — retract the matching facts of a declared, non-derived, non-reserved relation",
+        "  ::use{component=\"<name>\" <param>=<value> … [when=\"<condition>\"]} — expand an imported component with named arguments; a param with a default may be omitted",
     ] {
         assert!(
             text.lines().any(|l| l == expected),

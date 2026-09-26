@@ -6,6 +6,95 @@ description: "One page to keep open while writing Lute 0.26.0 (with its clock, q
 Every construct on one page, as snippets you can copy. Each `lute` block below is compile-checked in CI
 against the real toolchain, and a link after each section goes to the full page.
 
+## Writer's card
+
+What you need to write a story and play it, on one screen. The rest of the page starts at
+[Project layout](#project-layout) and covers every construct in full.
+
+```lute check
+---
+kind: scene
+id: cafe.counter
+on: chapter
+after: 'visited("cafe.arrival")'
+priority: 10
+when: "run.tips == 0"
+state:
+  run.tips: { type: number, default: 0 }
+  run.mood: { type: { enum: [calm, tense] }, default: calm }
+---
+
+## Counter
+
+@narrator: The espresso machine hisses.
+@mira: The usual?
+@fixer{mono}: She remembered.
+@mira{os}: One moment!
+
+<branch id="order" prompt="What will you have?">
+  <choice id="tea" label="Tea, and a tip">
+    ::set{run.tips += 5}
+    @mira: Thank you!
+  </choice>
+  <choice id="nothing" label="Nothing tonight">
+    ::set{run.mood = 'tense'}
+    @mira: Suit yourself.
+  </choice>
+</branch>
+
+<match on="run.mood">
+  <when is="calm">
+    @mira: Stay as long as you like.
+  </when>
+  <when is="tense">
+    @mira: We close at ten.
+  </when>
+</match>
+```
+
+- `@speaker: text` is a line, and `@narrator` narrates. `{mono}` is a thought, `{os}` off-screen,
+  `{vo}` voiceover. Content sits under a `## Heading`. → [Lines, cast & staging](#lines-cast--staging)
+- `<branch>` is a menu of `<choice>`s. → [Choices, hubs, jumps & endings](#choices-hubs-jumps--endings)
+- `<match on>` picks the first `<when is>` arm that fits. → [Match & when](#match--when)
+- `::set{…}` writes state declared under `state:`. → [State writes & facts](#state-writes--facts)
+- `on:` makes the scene answer an occasion, here `chapter`: any name works until a plugin declares
+  occasions. `after:` orders it after another scene, `priority:` wins a tie, and `when:` gates it on
+  state. → [Beats](#beats-scenes-and-entries-that-answer-occasions) ·
+  [Connect scenes into a story](/getting-started/connect-scenes/)
+
+A test walks one scene; a play raises the occasion through the whole project, once per step:
+
+```yaml
+# tests/counter.test.yaml
+file: ../scenes/counter.lute        # relative to this test file
+visited: [cafe.arrival]             # the after: route this walk assumes
+choose: { order: tea }
+expect:
+  state: { run.tips: 5 }
+  transcriptContains: ["@mira: Stay as long as you like."]
+  exit: complete
+```
+
+```yaml
+# plays/story.play.yaml: cafe.arrival answers `chapter` first, then cafe.counter
+choose: { order: nothing }
+steps:
+  - occasion: chapter
+    expect: { winner: cafe.arrival }
+  - occasion: chapter
+    expect: { winner: cafe.counter }
+expect:
+  transcriptContains: ["@mira: We close at ten."]
+```
+
+```console
+$ lute check-project .                              # every document, and the project as a whole
+$ lute test .                                       # every *.test.yaml, and every play with an expect:
+$ lute play . --script plays/story.play.yaml        # the transcript of one playthrough
+```
+
+→ [Tests and plays](#cli) · [Playing a story](/tooling/play/)
+
 ## Project layout
 
 ```
@@ -434,9 +523,11 @@ rules:
 @hollis{when="holds(witness(hollis))"}: I was there.
 ```
 
-- `per: companion` declares `run.approval.<member>` for each member. Content names a member;
-  only a rule `cel()` guard indexes the family with a variable a positive atom binds
-  (`run.approval[P]`), and such a rule compiles to one instance per member.
+- `per: companion` declares `run.approval.<member>` for each member. Content names a member.
+  Two places index the family instead: a rule `cel()` guard, with a variable a positive atom binds
+  (`run.approval[P]`; such a rule compiles to one instance per member), and a component's
+  `::set`, with a param (`run.approval[@who]`, checked at each `::use`: see
+  [Components](#components-extends--params)).
 - `_` in a rule body is a fresh anonymous variable (under `not`, "no such tuple at all"). It is
   still an error in a rule head (`E-DATALOG-PARSE`) and in a comparison.
 - `countDistinct(sawAt(W, _), W)` counts distinct values of one position, where `count(…)`
@@ -1022,8 +1113,10 @@ A component that declares `effects: true` (0.24.0) may `::set`, `::assert`, and 
 params in fact atoms (`::assert{gifted(@who, @item)}`; each `::use` binds them, and a non-constant
 argument is `E-COMPONENT-ARG`; a `@param` in a fact outside a component is `E-FACT-DOMAIN`). Each
 write is checked at every `::use` against the host's schema and compiles where the `::use` sits. A
-`speaker` param takes a cast id (`E-CAST-UNKNOWN` outside a declared cast): `{{@who}}` renders the
-cast `name`, while `<match on="@who">` and directive attributes (`::battle{foe=@who}`) see the id.
+param also picks the member of a [`per:`](#state-writes--facts) family, `run.approval[@who]`: each
+`::use` writes the member its argument names, and an argument that is not a member of the family's
+kind is `E-COMPONENT-ARG`. A `speaker` param takes a cast id (`E-CAST-UNKNOWN` outside a declared
+cast): `{{@who}}` renders the cast `name`, while `<match on="@who">` and directive attributes (`::battle{foe=@who}`) see the id.
 Since 0.26.0 a line's `as=@who` label shows the cast name too, as `{{@who}}` does.
 
 ```lute check
@@ -1042,14 +1135,7 @@ state:
 ## Praise
 
 @narrator: {{@who}} approves.
-<match on="@who">
-  <when is="isolde">
-    ::set{run.approval.isolde += @delta}
-  </when>
-  <otherwise>
-    ::set{run.approval.corvin += @delta}
-  </otherwise>
-</match>
+::set{run.approval[@who] += @delta}
 ```
 
 Guards and match subjects in the body still cannot read state (`E-COMPONENT-STATE`), and without
@@ -1143,7 +1229,7 @@ timed pause.
 | `lute scenario <dir> [reach <node> \| envelope <node> \| knowledge [--for <node>]] [--facts] [--format text\|json\|dot]` | The `after:` graph, reachability, and guaranteed state and facts. A node is a scene id, `quest:<id>`, or a bundle beat's canonical id (bare or `beat:<doc>.<beat>`; drawn as an edgeless entry node). `knowledge` (0.23.0) traces every fact-guarded beat, entry, and objective to the relations it queries and each relation to its producers through the rules: asserting documents, seed facts, the engine (`reserved`), or no producer, and names what can defeat a negated premise. Its `--for` also takes an entry id or `<quest>.<objective>`. Since 0.24.0 it covers every guard slot, reads a kind atom as membership (``suitor(sol) — entity kind `suitor`; sol is a member``), and names what a rule's `cel()` premise reads; since 0.26.0 it traces a rule's `count(…)` premise to the producers of the facts it counts. `--facts` (0.26.0) also draws fact-producer edges (`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`; `--format json`: `factEdges`, `dot`: dotted). |
 | `lute beats <dir> [--occasion o] [--target t] [--json] [--expand]` | 0.23.0. Each occasion's (and target's) beat ladder in selection order, with priority, `once` (including bundle beats' `day` / `slot`), `also`, `after:`, `when` (a `@def` as written; `--expand` expands it), title, and the `check-project` verdicts (unreachable, shadowed, tied, once-run-user). The project need not check clean. Since 0.26.0 a fallback that an earlier, never-spent beat whose `when` it implies always beats shows `covered by <id>` (`--json`: `coveredBy`), a kind-target beat gets a `kind:<kind>` ladder, and `--target` takes any member. |
 | `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. Every value of a directive attribute (`give.item`) or every reward target of a kind, with the documents and lines using it; a value passed through a component is listed at its `::use` (`via component <name>`), a reward without a target as `(no target)`. Who gives what, before a merge. |
-| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds(awake(toma))=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis clock=1..3] [--occasion o[@target \| @clock.day[,clock.slot=night]]] [--target t] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name. 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion dusk@clock.day` (or `@run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--facts at` prints who is where per cell. |
+| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds(awake(toma))=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis clock=1..3] [--occasion o[@axis[=value],…]] [--target t] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name; `--target mon.inchlet` names one instead (the `@` of `--occasion` takes axes, not targets). 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion dusk@clock.day` (or `@run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--facts at` prints who is where per cell. |
 | `lute lore <dir>` | Entries and beats by target and series, and which facts they reveal. |
 | `lute context <file> [--project <dir>]` | Everything legal to write here: directives (built-ins included), vocabulary, state (marking `owner: engine`), defs, relations with their tier and `reserved`, occasions with target domains, the cast, component signatures, and every scene, quest, and entry id. |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | Advisory editorial lints (`L-*`), configured per project. The linear-VN metrics skip beats, components, quests, and lore. Since 0.26.0 it also reports `W-DISPLAY-NAME-DUP` (`--deny W-DISPLAY-NAME-DUP` accepts the code). |
@@ -1291,10 +1377,14 @@ expect:                                 # judged at the end; a miss exits 1
   anything plays, then settles the quest lifecycle, so a write can complete a quest on the spot. It
   refuses `quest.*`: a quest's status is the lifecycle's, seeded with `quests:`. `newRun` takes the
   same `state:` and `facts:` as the new run's seed.
-- `target`, `pick`, and `choose` belong to an `occasion` step; `label` goes on any step, and `repeat`
-  on any but `end`. A step `expect:` takes `winner` (`none` when the occasion passes), `offered` (a subset
-  of the eligible beats), `notOffered`, and `presented` (0.23.0: the exact ids presented, in order)
-  on an `occasion` step, and `quests`, `state`, `facts`, `notFacts` (0.23.1) and `clock` (0.26.0:
+- `target` belongs to an `occasion` step, and `pick` and `choose` to an `occasion` or `advance`
+  step; `label` goes on any step, and `repeat` on any but `end`. An `include:` step is the
+  exception: it names only its file, with no `label`, `repeat`, or `expect`. A step `expect:` takes
+  `winner` (`none` when the occasion passes), `offered` (a subset of the eligible beats),
+  `notOffered`, and `presented` (0.23.0: the exact ids presented, in order) on an `occasion` step,
+  and on an `advance` step, where `winner`, `offered`, and `notOffered` judge the raise where the
+  clock stops and `presented` lists every beat the step presented, `dayStart` / `dayEnd` raises
+  first; it takes `quests`, `state`, `facts`, `notFacts` (0.23.1) and `clock` (0.26.0:
   `{ weekday, slot, day }`, any of them) on any step but `end`. A miss names the step and both
   values. A step with `target:` also judges that target's `<objective on target>`. A winner or
   `pick:` names an entry by its id or (0.26.0) `<doc>.<entry>`.
@@ -1353,7 +1443,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-SET-TYPE` / `E-REF-TYPE` / `E-ATTR-TYPE` | A value has the wrong type for its slot, often a quoted `"@def"` in a directive, or a `@def` bound to a component `string` param the component interpolates. |
 | `E-ATTR-DEF-DYNAMIC` | A directive attribute takes a `@def` that reads state. An attribute value must be a constant; branch with `<match>`. |
 | `E-INTERP-DEF` | A `{{@def}}` whose body cannot be inlined into one expression (an expansion cycle, or a body that reads `$`). |
-| `E-ATTR-QUOTE` | An attribute value in single quotes. Use `"…"`, and write a `"` inside it as `\"`. |
+| `E-ATTR-QUOTE` | An attribute value in single quotes, or in curly quotes (`“…”`, `‘…’`) a word processor typed. Use straight `"…"`, and write a `"` inside it as `\"`. |
 | `E-DEF-DECL` | A def is malformed: its type cannot be inferred, it has `params:` without `type:`, or it has an unknown key. |
 | `E-OBJECTIVE-MISSING-DONE` / `E-OBJECTIVE-QUEST-DONE` | An objective has no `done`, or has both `quest=` and `done=`. |
 | `E-QUEST-TIER-MIX` | A subquest's `tier` differs from its parent's. Give both the same tier: a mixed tree locks for good once a new run resets only one side. |
@@ -1543,7 +1633,8 @@ quoted `zoom="@closeUp"` is the literal string `@closeUp` (`E-ATTR-TYPE` on a nu
 def that reads state is `E-ATTR-DEF-DYNAMIC`.
 
 **Attribute values use double quotes.** `label='"Hi."'` is `E-ATTR-QUOTE`. Write
-`label="\"Hi.\""`; the label is `"Hi."`.
+`label="\"Hi.\""`; the label is `"Hi."`. Curly quotes pasted from a word processor
+(`label=“Hi”`) are `E-ATTR-QUOTE` too: retype them as straight `"`.
 
 **Numbers are real numbers in `<match>`.** `is="1..9"` followed by `is="10.."` does not cover
 `9.5`. Add an `<otherwise>`, or use open ranges that meet.

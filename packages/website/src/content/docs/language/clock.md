@@ -80,8 +80,9 @@ Everything wrong with a clock is `E-CLOCK-DECL`:
 Apart from a second clock, which only the project can see, each is reported on the schema, at the line of its `clock:` key, and
 `lute check world.schema.yaml` finds them on its own (the `raise` occasions against the plugins of
 the project the schema sits in; outside a project, any occasion name passes). A document that uses
-the schema carries the same error at its line 1, naming the schema, and `check-project` folds those
-copies into one record (`+N more caller`) with the schema line under it. A clock over a `run.day`
+the schema carries the same error at its line 1 in a single-file `lute check`, naming the schema, with
+the schema line under it. `check-project` instead reports it once, as a project-wide line at the
+schema line ending `(imported by N documents)`, and leaves the importers `ok`. A clock over a `run.day`
 without `owner: engine`:
 
 <!-- lute-diagnostics -->

@@ -1,0 +1,13 @@
+---
+kind: scene
+id: talk.tilly
+title: Tilly
+on: talk
+target: npc.tilly
+after: 'visited("counter")'
+when: "!visited('accusation')"
+---
+
+## Tilly
+
+@tilly: I was in the back. Ask Ruben about the sugar.

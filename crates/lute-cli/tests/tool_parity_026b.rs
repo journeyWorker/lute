@@ -140,8 +140,8 @@ fn a_spent_once_user_entry_is_mocked_by_entries_read() {
     assert_eq!(run(&dir, &["test", "."]).0, Some(0));
 }
 
-/// An imported rule's aggregate cycle: once at the schema line, folded
-/// across importers, and in a standalone `lute check <schema>.yaml`.
+/// An imported rule's aggregate cycle: once at the schema line, counting
+/// its importers (round-5 T3-4), and in a standalone `lute check <schema>.yaml`.
 #[test]
 fn an_imported_aggregate_cycle_is_reported_once_at_the_schema() {
     let dir = temp_dir("agg");
@@ -170,8 +170,11 @@ fn an_imported_aggregate_cycle_is_reported_once_at_the_schema() {
         .filter(|l| !l.starts_with(' ') && l.contains("E-RULE-AGGREGATE-CYCLE"))
         .collect();
     assert_eq!(tops.len(), 1, "{t}");
-    assert!(tops[0].contains("(+2 more callers)"), "{t}");
-    assert!(t.contains("    world.schema.yaml:7:"), "{t}");
+    assert!(
+        tops[0].starts_with("./world.schema.yaml:7:6:")
+            && tops[0].contains("(imported by 3 documents)"),
+        "{t}"
+    );
     let (code, t) = run(&dir, &["check", "world.schema.yaml"]);
     assert_eq!(code, Some(1), "{t}");
     assert!(

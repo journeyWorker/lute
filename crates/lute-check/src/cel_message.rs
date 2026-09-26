@@ -21,7 +21,8 @@
 //! Detection order (each rule scans over `cel_string_mask(raw)`-masked bytes so
 //! a `&`/`|`/`=`/`and`/`or`/`not` INSIDE a CEL string literal is inert; first
 //! rule to match wins):
-//! 1. the raw slot is whitespace-only.
+//! 1. the raw slot is whitespace-only; then a `.@param` path segment
+//!    (`run.aff.@who`, round-5 T3-4), with its `[@param]` index rewrite.
 //! 2. an unbalanced (never-closed) quote.
 //! 3. `=<` / `=>` (a reversed comparison operator).
 //! 4. a bare `=` (assignment syntax where CEL wants `==`). Inside a
@@ -82,6 +83,38 @@ pub fn translate_cel_parse(
             message: "the condition is empty (dsl 0.4 §8.1)".to_string(),
             fixits: Vec::new(),
             span: None,
+        };
+    }
+
+    // Round-5 T3-4: `run.aff.@who` — a param used as a path segment, which
+    // `lute_cel::parse_slot` refuses before the backend ever sees it.
+    if let Some(dot) = lute_cel::param_segment_at(raw) {
+        let b = raw.as_bytes();
+        let is_path = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'.';
+        let start = (0..dot)
+            .rev()
+            .take_while(|&i| is_path(b[i]))
+            .last()
+            .unwrap_or(dot);
+        let name_end = (dot + 2..b.len())
+            .find(|&i| !(b[i].is_ascii_alphanumeric() || b[i] == b'_'))
+            .unwrap_or(b.len());
+        let base = &raw[start..dot];
+        let param = &raw[dot + 2..name_end];
+        let indexed = format!("[@{param}]");
+        return Translation {
+            message: format!(
+                "`{base}.@{param}`: a path segment cannot be a param — index the family: \
+                 `{base}{indexed}`"
+            ),
+            fixits: vec![splice_fixit(
+                format!("index with `{indexed}`"),
+                slot_span,
+                dot,
+                name_end,
+                &indexed,
+            )],
+            span: Some(rebase(slot_span, start, name_end)),
         };
     }
 

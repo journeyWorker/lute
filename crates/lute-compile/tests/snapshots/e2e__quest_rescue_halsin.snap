@@ -343,7 +343,8 @@ expression: json
           "optional": false,
           "body": null
         }
-      ]
+      ],
+      "tier": "run"
     },
     {
       "kind": "on",

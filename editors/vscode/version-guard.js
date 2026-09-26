@@ -11,7 +11,11 @@
 // its OWN `LUTE_LANG_VERSION`, so a stale server would even tell an author to
 // DOWNGRADE a valid stamp. The only reliable signal is comparing the running
 // server's advertised version (LSP `serverInfo.version`) against the version
-// the author declares in frontmatter.
+// the author declares in frontmatter — or, when the document carries no stamp
+// (a writer's documents often do not), the project manifest's
+// `defaults: luteVersion`, and failing that the `lute` CLI on PATH: an editor
+// server that disagrees with the terminal is the round-5 failure (every new
+// writer met a 0.17 server and found it only through `lute doctor`).
 
 /**
  * Parse a `.lute` document's frontmatter `luteVersion:` stamp (dsl §6.1).
@@ -63,39 +67,103 @@ function compareVersions(a, b) {
 }
 
 /**
- * True when `serverVersion` is strictly OLDER than `declaredVersion` — the
- * running server predates the language the document targets, so its diagnostics
- * are untrustworthy for newer grammar. Newer-or-equal is fine (the reverse — a
- * stale stamp — is the checker's own `W-LUTE-VERSION-STALE` job). An
- * unparseable version on either side yields `false`: never warn on a verdict we
- * cannot compute.
- * @param {string} serverVersion
- * @param {string} declaredVersion
- * @returns {boolean}
+ * Parse `lute.project.yaml`'s `defaults: luteVersion` (the project stamp
+ * every document inherits, 0.10.0 §6). Handles the block form
+ * (`defaults:` then an indented `luteVersion:` line) and the flow form
+ * (`defaults: { luteVersion: "x" }`); `null` when absent.
+ * @param {string} text
+ * @returns {string | null}
  */
-function serverIsStale(serverVersion, declaredVersion) {
-  return compareVersions(serverVersion, declaredVersion) === -1;
+function parseProjectLuteVersion(text) {
+  if (typeof text !== "string") return null;
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const head = /^defaults[ \t]*:(.*)$/.exec(lines[i]);
+    if (!head) continue;
+    const flow = /luteVersion[ \t]*:[ \t]*["']?([^"',}\s]+)/.exec(head[1]);
+    if (flow) return flow[1];
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j];
+      if (/^\S/.test(line)) break; // back at top level
+      const m = /^[ \t]+luteVersion[ \t]*:[ \t]*(.+?)[ \t]*$/.exec(line);
+      if (m) {
+        const value = m[1].replace(/[ \t]+#.*$/, "").replace(/^["']|["']$/g, "").trim();
+        return value || null;
+      }
+    }
+    return null;
+  }
+  return null;
 }
 
 /**
- * The user-facing warning shown once when a stale server is detected.
+ * Parse `lute --version` output (`lute 0.26.0`) into its version, or `null`.
+ * @param {string} out
+ * @returns {string | null}
+ */
+function parseCliVersion(out) {
+  if (typeof out !== "string") return null;
+  const m = /^lute[ \t]+(\S+)/m.exec(out);
+  return m ? m[1] : null;
+}
+
+/**
+ * What the running server is judged against, in order: the document's own
+ * stamp, the project manifest's `defaults: luteVersion`, the `lute` CLI on
+ * PATH. `null` when none is known.
+ * @param {{ doc?: string | null, project?: string | null, cli?: string | null }} known
+ * @returns {{ version: string, source: "document" | "project" | "cli" } | null}
+ */
+function versionTarget(known) {
+  if (known.doc) return { version: known.doc, source: "document" };
+  if (known.project) return { version: known.project, source: "project" };
+  if (known.cli) return { version: known.cli, source: "cli" };
+  return null;
+}
+
+/**
+ * True when the server should be flagged against `target`: older than a
+ * document or project stamp (newer is fine — a stale stamp is the checker's
+ * `W-LUTE-VERSION-STALE`), or any different version from the `lute` CLI (the
+ * editor and the terminal disagree). An uncomputable verdict never warns.
  * @param {string} serverVersion
- * @param {string} declaredVersion
+ * @param {{ version: string, source: string } | null} target
+ * @returns {boolean}
+ */
+function serverDisagrees(serverVersion, target) {
+  if (!target) return false;
+  const cmp = compareVersions(serverVersion, target.version);
+  return target.source === "cli" ? cmp === -1 || cmp === 1 : cmp === -1;
+}
+
+/**
+ * The user-facing warning shown once when a stale server is detected. Says
+ * what disagrees, then the fix: `lute doctor` names the stale install.
+ * @param {string} serverVersion
+ * @param {{ version: string, source: "document" | "project" | "cli" }} target
  * @returns {string}
  */
-function staleServerMessage(serverVersion, declaredVersion) {
+function staleServerMessage(serverVersion, target) {
+  const against = {
+    document: `the document targets (luteVersion "${target.version}")`,
+    project: `the project targets (lute.project.yaml defaults: luteVersion "${target.version}")`,
+    cli: `the \`lute\` on PATH (${target.version})`,
+  }[target.source];
+  const relation = target.source === "cli" ? "differs from" : "is older than";
   return (
-    `Lute: the language server (v${serverVersion}) is older than a document ` +
-    `targets (luteVersion "${declaredVersion}"). Its diagnostics may be wrong ` +
-    `for newer grammar. Rebuild it (\`cargo install --path crates/lute-lsp\`) ` +
-    "or point `lute.lsp.path` at a current binary."
+    `Lute: the editor's language server (lute-lsp ${serverVersion}) ${relation} ${against}, ` +
+    "so its diagnostics may be wrong. Run `lute doctor` in a terminal to find the " +
+    "stale install, then restart the editor (or point `lute.lsp.path` at a current binary)."
   );
 }
 
 module.exports = {
   parseFrontmatterLuteVersion,
+  parseProjectLuteVersion,
+  parseCliVersion,
   parseTriple,
   compareVersions,
-  serverIsStale,
+  versionTarget,
+  serverDisagrees,
   staleServerMessage,
 };

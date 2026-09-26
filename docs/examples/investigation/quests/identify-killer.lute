@@ -5,27 +5,10 @@ uses: ../world.schema.yaml
 title: Identify the Killer
 ---
 
-/*
-  The goal machine gating the case. `start="true"` activates it immediately;
-  completion is DERIVED — the quest completes once every non-`optional`
-  objective is `done`.
-
-  - `gatherEvidence` / `nameSuspect` gate on scalar run state the scenes write
-    (`run.cluesLogged`, `run.accused`), so both are statically satisfiable.
-  - `clinchMotive` is `optional` and gates on a relational fact QUERY,
-    `holds(implicates(ledger, blake))`. `check-project` decides relational
-    queries (dsl 0.20.0 fact envelopes): the fact is seeded in the schema and
-    nothing retracts it, so it is GUARANTEED and the objective is satisfiable.
-    Had no seed, assert, or rule produced it, the objective would be
-    `E-OBJECTIVE-UNSATISFIABLE`. A `done` is a predicate rather than a guard,
-    so an always-true one is not reported as redundant (`W-FACT-GUARANTEED`
-    covers `when=` / `<when test>` guards only).
-*/
-
-<quest id="identifyKiller" title="Identify the Killer" start="true">
+<quest id="identifyKiller" tier="run" title="Identify the Killer" start="true">
   <objective id="gatherEvidence" title="Log at least two clues" done="run.cluesLogged >= 2"/>
   <objective id="nameSuspect" title="Name a suspect at the confrontation" done="run.accused != 'none'"/>
-  <objective id="clinchMotive" title="Tie a clue to the accused" done="holds(implicates(ledger, blake))" optional/>
+  <objective id="followClues" title="Let the clues point at a suspect" done="holds(points(blake))" optional/>
 
   <on event="questComplete">
     ::set{ user.solved += 1 }

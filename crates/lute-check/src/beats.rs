@@ -1143,6 +1143,68 @@ impl<'a> BeatCells<'a> {
     pub fn is_kind(self) -> bool {
         matches!(self, BeatCells::Kind(_))
     }
+
+    /// dsl 0.27.0 (T3-10): both are kind beats and one's members are a
+    /// strict subset of the other's — a sub-kind and its parent, which
+    /// [`selection_order`] ranks by specificity, never by file order.
+    pub fn nested(self, other: BeatCells<'_>) -> bool {
+        match (self, other) {
+            (BeatCells::Kind(a), BeatCells::Kind(b)) => strict_subset(a, b) || strict_subset(b, a),
+            _ => false,
+        }
+    }
+}
+
+fn strict_subset(a: &[String], b: &[String]) -> bool {
+    a.len() < b.len() && a.iter().all(|m| b.contains(m))
+}
+
+/// dsl 0.26.0 §5, dsl 0.27.0 (T3-10): the selection order of beats given in
+/// project order as `(on, priority, kind members)` — the indices, priority
+/// descending; at equal priority a beat naming its target (or none) before
+/// a kind beat, and a kind beat before every kind beat on its occasion whose
+/// members strictly include its own (a sub-kind before its parent: member >
+/// sub-kind > kind); otherwise project order. Each beat in turn is placed
+/// just before the first placed beat of its occasion, priority and rank that
+/// strictly includes it, else last — so the order restricted to one raise's
+/// candidates (which hold every beat including a candidate kind beat) is the
+/// order of those candidates alone. The one rule `check-project`,
+/// `lute beats` and `lute play` rank by.
+pub fn selection_order(keys: &[(&str, i64, Option<&[String]>)]) -> Vec<usize> {
+    let mut sorted: Vec<usize> = (0..keys.len()).collect();
+    sorted.sort_by_key(|&i| (std::cmp::Reverse(keys[i].1), keys[i].2.is_some()));
+    let mut out: Vec<usize> = Vec::with_capacity(sorted.len());
+    for i in sorted {
+        let (on, priority, members) = keys[i];
+        let at = members.and_then(|ms| {
+            out.iter().position(|&o| {
+                let (on2, p2, ms2) = keys[o];
+                on2 == on && p2 == priority && ms2.is_some_and(|ms2| strict_subset(ms, ms2))
+            })
+        });
+        match at {
+            Some(k) => out.insert(k, i),
+            None => out.push(i),
+        }
+    }
+    out
+}
+
+/// `items` permuted into `order` (a permutation of its indices).
+pub fn reorder<T>(items: Vec<T>, order: &[usize]) -> Vec<T> {
+    let mut slots: Vec<Option<T>> = items.into_iter().map(Some).collect();
+    order.iter().filter_map(|&i| slots[i].take()).collect()
+}
+
+/// [`project_beats`] (project order) in [`selection_order`].
+pub fn in_selection_order(beats: Vec<ProjectBeat<'_>>) -> Vec<ProjectBeat<'_>> {
+    let order = selection_order(
+        &beats
+            .iter()
+            .map(|b| (b.on, b.priority, b.kind_targets.as_deref()))
+            .collect::<Vec<_>>(),
+    );
+    reorder(beats, &order)
 }
 
 /// Every well-formed beat of one project root, in `ProjectIndex.beats`
@@ -1471,8 +1533,9 @@ pub const W_BEAT_ONCE_RUN_USER: &str = "W-BEAT-ONCE-RUN-USER";
 /// The project beat passes over one resolved project root (dsl 0.21.0 §4,
 /// §5; dsl 0.22.0 §13). `docs` and `foldeds` are parallel and in
 /// `check-project` order, which is the `ProjectIndex.beats` tiebreak order
-/// (documents in order, declaration order within). Beats are ordered by
-/// priority descending, then that order.
+/// (documents in order, declaration order within). Beats are in
+/// [`selection_order`]: priority descending, member > sub-kind > kind, then
+/// that order.
 ///
 /// - [`W_BEAT_SHADOWED`]: a beat `B` on a `select: first` occasion (an
 ///   undeclared occasion counts as `first`) is shadowed by the first earlier
@@ -1490,9 +1553,12 @@ pub const W_BEAT_ONCE_RUN_USER: &str = "W-BEAT-ONCE-RUN-USER";
 ///   eligibilities are not provably exclusive — neither the decider folds
 ///   their conjunction to `false` nor two of their conjuncts pin one path to
 ///   disjoint values. dsl 0.24.0 (T3-3): the eligibility is the `when` AND
-///   what the `once` requires ([`once_guard`]), and a `holds(A)` conjunct of
-///   a pure-schedule derived atom contributes its rules' `cel()` guards. File
-///   order then picks the winner. One warning per `B`, naming every partner.
+///   what the `once` requires ([`once_guard`]) AND (dsl 0.27.0, T3-11) the
+///   `visited(…)` its `after:` requires ([`after_premise`]), and a
+///   `holds(A)` conjunct of a pure-schedule derived atom contributes its
+///   rules' `cel()` guards. File order then picks the winner. dsl 0.27.0
+///   (T3-11): one warning per group of beats tying one another
+///   ([`tie_warnings`]), naming each and each distinct reason once.
 /// - [`W_BEAT_ONCE_RUN_USER`]: a beat whose `once: run` is DEFAULTED (not
 ///   written — dsl 0.23.1) and whose `when` reads state, all of it user-tier
 ///   ([`reads_only_user`]: `user.*`, `entry.<id>.everRead`, a user-tier
@@ -1523,7 +1589,12 @@ pub fn check_project_beats(
     let groups = share_groups(&pbs);
     let share_diags = check_share_once(&pbs);
     let guards: Vec<Option<String>> = pbs.iter().map(|pb| once_guard(pb, &pbs, &groups)).collect();
-    let mut beats: Vec<Beat<'_>> = pbs
+    let order = selection_order(
+        &pbs.iter()
+            .map(|b| (b.on, b.priority, b.kind_targets.as_deref()))
+            .collect::<Vec<_>>(),
+    );
+    let beats: Vec<Beat<'_>> = pbs
         .into_iter()
         .zip(guards)
         .map(|(pb, guard)| {
@@ -1553,12 +1624,17 @@ pub fn check_project_beats(
                     Some(why) => persists.push((f.query.replace(", ", ","), why)),
                 }
             }
+            // dsl 0.27.0 (T3-11): what the beat's `after:` requires — a
+            // `once: user` beat `X` and one waiting on `visited('X')` are
+            // never eligible together.
+            let after = pb.after.and_then(after_premise);
             let eligible = pb
                 .when
                 .as_deref()
                 .map(|w| format!("({w})"))
                 .into_iter()
                 .chain(guard)
+                .chain(after)
                 .chain(absent)
                 .reduce(|acc, c| format!("{acc} && {c}"));
             let user_tier = UserTier {
@@ -1605,13 +1681,9 @@ pub fn check_project_beats(
             }
         })
         .collect();
-    // Stable: equal priorities keep the tiebreak order, a kind beat after
-    // the others of its priority (dsl 0.26.0 §5).
-    beats.sort_by(|a, b| {
-        b.priority
-            .cmp(&a.priority)
-            .then(a.cells().is_kind().cmp(&b.cells().is_kind()))
-    });
+    // dsl 0.26.0 §5, dsl 0.27.0 (T3-10): member > sub-kind > kind at equal
+    // priority, then the tiebreak order.
+    let beats = reorder(beats, &order);
 
     let mut out = share_diags;
     for b in beats.iter().filter(|b| b.run_once_user_when) {
@@ -1634,6 +1706,7 @@ pub fn check_project_beats(
             ),
         ));
     }
+    let mut ties: Vec<(usize, usize)> = Vec::new();
     for (j, b) in beats.iter().enumerate() {
         let select = b
             .folded
@@ -1715,55 +1788,153 @@ pub fn check_project_beats(
                 continue;
             }
         }
-        let partners: Vec<&Beat<'_>> = beats[..j]
-            .iter()
-            .filter(|a| {
-                !a.also
-                    && a.on == b.on
-                    && a.priority == b.priority
-                    && a.cells().meets(b.cells())
-                    // dsl 0.26.0 §5: at equal priority the beat naming the
-                    // member (or none) outranks a kind beat — no file order.
-                    && a.cells().is_kind() == b.cells().is_kind()
-                    && !provably_exclusive(a, b, env)
-            })
-            .collect();
-        if partners.is_empty() {
-            continue;
+        for (i, a) in beats[..j].iter().enumerate() {
+            if !a.also
+                && a.on == b.on
+                && a.priority == b.priority
+                && a.cells().meets(b.cells())
+                // dsl 0.26.0 §5: at equal priority the beat naming the
+                // member (or none) outranks a kind beat, and (dsl 0.27.0,
+                // T3-10) a sub-kind beat its parent's — no file order.
+                && a.cells().is_kind() == b.cells().is_kind()
+                && !a.cells().nested(b.cells())
+                && !provably_exclusive(a, b, env)
+            {
+                ties.push((i, j));
+            }
         }
-        let names: Vec<&str> = partners.iter().map(|a| a.name.as_str()).collect();
-        // dsl 0.26.0 §8 (T3-2): say why each pair is not exclusive.
-        let why = match partners.as_slice() {
-            [a] => why_not_exclusive(a, b),
-            many => many
+    }
+    out.extend(tie_warnings(&beats, &ties));
+    out
+}
+
+/// dsl 0.27.0 (T3-11): one [`W_BEAT_PRIORITY_TIE`] per group of beats that
+/// tie with one another (`ties`, index pairs into `beats`, joined
+/// transitively), anchored at the group's first beat in selection order:
+/// every beat of the group named once, and each distinct reason two of them
+/// are not exclusive said once.
+fn tie_warnings(beats: &[Beat<'_>], ties: &[(usize, usize)]) -> Vec<(PathBuf, Diagnostic)> {
+    let mut root: Vec<usize> = (0..beats.len()).collect();
+    fn find(root: &mut [usize], mut x: usize) -> usize {
+        while root[x] != x {
+            root[x] = root[root[x]];
+            x = root[x];
+        }
+        x
+    }
+    for &(a, b) in ties {
+        let (ra, rb) = (find(&mut root, a), find(&mut root, b));
+        root[ra.max(rb)] = ra.min(rb);
+    }
+    let mut groups: BTreeMap<usize, (Vec<usize>, Vec<(usize, usize)>)> = BTreeMap::new();
+    for &(a, b) in ties {
+        let g = groups.entry(find(&mut root, a)).or_default();
+        for x in [a, b] {
+            if !g.0.contains(&x) {
+                g.0.push(x);
+            }
+        }
+        g.1.push((a, b));
+    }
+    let mut out = Vec::new();
+    for (_, (mut members, pairs)) in groups {
+        members.sort_unstable();
+        let first = &beats[members[0]];
+        let names: Vec<&str> = members.iter().map(|&m| beats[m].name.as_str()).collect();
+        let target = match first.target {
+            Some(t) if members.iter().all(|&m| beats[m].target == Some(t)) => {
+                format!(" for `{t}`")
+            }
+            _ => String::new(),
+        };
+        // Each distinct reason once; the beats with no condition at all
+        // said together.
+        let mut reasons: Vec<String> = Vec::new();
+        let mut no_when = false;
+        for &(a, b) in &pairs {
+            match why_not_exclusive(&beats[a], &beats[b]) {
+                Why::NoWhen => no_when = true,
+                Why::Other(r) => {
+                    if !reasons.contains(&r) {
+                        reasons.push(r);
+                    }
+                }
+            }
+        }
+        if no_when {
+            let unconstrained: Vec<&Beat<'_>> = members
                 .iter()
-                .map(|a| format!("with {}: {}", a.name, why_not_exclusive(a, b)))
-                .collect::<Vec<_>>()
-                .join("; "),
+                .map(|&m| &beats[m])
+                .filter(|x| x.eligible.is_none())
+                .collect();
+            // A scene's or bundle beat's `once: run` sets no flag a `when`
+            // can read.
+            let run = unconstrained
+                .iter()
+                .any(|x| x.once == BeatOnce::Run && !x.name.starts_with("entry"));
+            let reason = match unconstrained.as_slice() {
+                [x] => format!(
+                    "{} has no `when`{}",
+                    x.name,
+                    if run {
+                        ", and its `once: run` sets no flag a `when` can read"
+                    } else {
+                        ""
+                    }
+                ),
+                xs => format!(
+                    "{}{}",
+                    if xs.len() == members.len() {
+                        "none of them has a `when`".to_string()
+                    } else {
+                        let ns: Vec<&str> = xs.iter().map(|x| x.name.as_str()).collect();
+                        format!("{} have no `when`", and_list(&ns))
+                    },
+                    if run {
+                        ", and `once: run` sets no flag a `when` can read"
+                    } else {
+                        ""
+                    }
+                ),
+            };
+            reasons.insert(0, reason);
+        }
+        let fix = if members.len() == 2 {
+            "give one a different `priority`"
+        } else {
+            "give them different priorities"
         };
         out.push((
-            b.path.clone(),
+            first.path.clone(),
             beat_diag(
                 W_BEAT_PRIORITY_TIE,
                 Severity::Warning,
                 format!(
-                    "{} ties {} on occasion `{}`{target} at priority {}, and their `when`s are \
-                     not provably exclusive ({why}) — when both are eligible the winner is \
-                     whichever comes first in file order (today {}), so renaming or moving a \
-                     file changes it; give one a different `priority`, or make the conditions \
-                     exclusive (dsl 0.22.0 §13)",
-                    b.name,
-                    names.join(", "),
-                    b.on,
-                    b.priority,
-                    partners[0].name,
+                    "{} share priority {} on occasion `{}`{target} and can be eligible at once, \
+                     so file order picks the winner (today {}, and renaming or moving a file \
+                     changes it) — {fix}, or make their `when`s exclusive; they are not \
+                     provably exclusive because {} (dsl 0.22.0 §13)",
+                    and_list(&names),
+                    first.priority,
+                    first.on,
+                    first.name,
+                    reasons.join("; "),
                 ),
-                b.anchor,
+                first.anchor,
                 Layer::Logic,
             ),
         ));
     }
     out
+}
+
+/// `a`, `b` and `c`.
+fn and_list(items: &[&str]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.to_string(),
+        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
 }
 
 /// dsl 0.24.0 (T1-8): for an untargeted `b` on an occasion whose target
@@ -1889,41 +2060,20 @@ pub fn presence_ladder(
     docs: &[(PathBuf, Document)],
     foldeds: &[&FoldedEnv],
 ) -> BTreeMap<PathBuf, BTreeMap<usize, Vec<String>>> {
-    let params = BTreeMap::new();
-    let pbs = project_beats(docs, foldeds);
+    let pbs = in_selection_order(project_beats(docs, foldeds));
     let groups = share_groups(&pbs);
     let spent_conds: Vec<Option<String>> = pbs
         .iter()
         .map(|pb| spent_condition(pb, &pbs, &groups))
         .collect();
-    let mut beats: Vec<(ProjectBeat<'_>, bool, Option<String>)> = pbs
+    let beats: Vec<(ProjectBeat<'_>, bool, Option<String>)> = pbs
         .into_iter()
         .zip(spent_conds)
         .map(|(pb, spent)| {
-            let defs = DefTable {
-                bodies: &pb.folded.def_bodies,
-                params: &pb.folded.env.def_params,
-            };
-            let ctx = DecideCtx {
-                schema: &pb.folded.env.state,
-                dollar: None,
-                params: &params,
-                facts: None,
-            };
-            let always = pb.after.is_none()
-                && pb.when_slot.is_none_or(|w| {
-                    matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true)))
-                });
+            let always = always_eligible(&pb);
             (pb, always, spent)
         })
         .collect();
-    // Stable: equal priorities keep the tiebreak order, a kind beat after
-    // the others of its priority (dsl 0.26.0 §5).
-    beats.sort_by(|a, b| {
-        b.0.priority
-            .cmp(&a.0.priority)
-            .then(a.0.cells().is_kind().cmp(&b.0.cells().is_kind()))
-    });
     let mut out: BTreeMap<PathBuf, BTreeMap<usize, Vec<String>>> = BTreeMap::new();
     for (j, (b, _, _)) in beats.iter().enumerate() {
         let select = b
@@ -1948,6 +2098,98 @@ pub fn presence_ladder(
         }
     }
     out
+}
+
+/// A beat that is always eligible: no `after:`, and a `when` absent or
+/// deciding true without facts.
+pub fn always_eligible(pb: &ProjectBeat<'_>) -> bool {
+    let params = BTreeMap::new();
+    let defs = DefTable {
+        bodies: &pb.folded.def_bodies,
+        params: &pb.folded.env.def_params,
+    };
+    let ctx = DecideCtx {
+        schema: &pb.folded.env.state,
+        dollar: None,
+        params: &params,
+        facts: None,
+    };
+    pb.after.is_none()
+        && pb
+            .when_slot
+            .is_none_or(|w| matches!(decide_slot(&w.raw, &defs, &ctx), Some(Decided::Bool(true))))
+}
+
+/// dsl 0.27.0 (T3-9, `lute beats`): the verdict of one ladder cell — the
+/// earlier beats (indices into `beats`, one root's beats in
+/// [`selection_order`]) that win every time `beats[j]` could on the
+/// occasion raised for each of `targets` (empty: raised without a target):
+/// for every target, the first earlier non-`also` beat answering it that is
+/// [`always_eligible`] (`always`, parallel to `beats`) and never spent.
+/// `None` unless every target has one, or on a non-`select: first`
+/// occasion, or for an `also` beat. Where [`W_BEAT_SHADOWED`] is
+/// project-wide (every target), this is per ladder.
+pub fn shadowers_at(
+    beats: &[ProjectBeat<'_>],
+    always: &[bool],
+    j: usize,
+    targets: &[&str],
+) -> Option<Vec<usize>> {
+    let b = &beats[j];
+    let select = b
+        .folded
+        .occasions
+        .get(b.on)
+        .map_or(OccasionSelect::First, |o| o.select);
+    if select != OccasionSelect::First || b.also {
+        return None;
+    }
+    let wins = |i: usize, answers: &dyn Fn(BeatCells<'_>) -> bool| {
+        let a = &beats[i];
+        !a.also && a.on == b.on && always[i] && a.once == BeatOnce::None && answers(a.cells())
+    };
+    let mut out: Vec<usize> = Vec::new();
+    let firsts: Vec<Option<usize>> = if targets.is_empty() {
+        vec![(0..j).find(|&i| wins(i, &|c| matches!(c, BeatCells::Any)))]
+    } else {
+        targets
+            .iter()
+            .map(|t| (0..j).find(|&i| wins(i, &|c| c.answers(t))))
+            .collect()
+    };
+    for i in firsts {
+        let i = i?;
+        if !out.contains(&i) {
+            out.push(i);
+        }
+    }
+    Some(out)
+}
+
+/// dsl 0.27.0 (T3-11): what an `after:` requires, as a condition the tie
+/// check conjoins — each `visited('<id>')` it needs (a `once: user` beat's
+/// own guard is `!visited('<id>')`). `completed` / `active` read no flag the
+/// eligibility has, so they drop out (weakening, never strengthening: an `||`
+/// with a dropped side drops whole). `None` when nothing remains or the
+/// value is out of profile.
+fn after_premise(raw: &str) -> Option<String> {
+    use crate::prereq::PrereqFormula as F;
+    fn cel(f: &F) -> Option<String> {
+        match f {
+            F::Visited(k) => Some(format!("visited('{k}')")),
+            F::Completed(_) | F::Active(_) => None,
+            F::And(a, b) => match (cel(a), cel(b)) {
+                (Some(a), Some(b)) => Some(format!("{a} && {b}")),
+                (a, b) => a.or(b),
+            },
+            F::Or(a, b) => Some(format!("({} || {})", cel(a)?, cel(b)?)),
+        }
+    }
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let span = bare_span(0, 0);
+    cel(&crate::prereq::parse_prereq(raw, span).0?)
 }
 
 /// `a` and `b` can never be eligible together: two of the alternatives of
@@ -1989,37 +2231,39 @@ fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>, env: Option<&FactEnv>) -> bool
     })
 }
 
-/// dsl 0.26.0 §8 (T3-2): why `a` and `b` are not [`provably_exclusive`],
-/// as a clause: a beat that constrains nothing, a flag that outlives a
-/// `once: run` spend, a fact one asserts that may hold before it plays, or
-/// the paths the two alternatives that overlap constrain.
-fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> String {
+/// Why two beats are not [`provably_exclusive`] ([`why_not_exclusive`]).
+enum Why {
+    /// One of the two constrains nothing (its eligibility is unconditional).
+    NoWhen,
+    /// Any other reason, as a clause.
+    Other(String),
+}
+
+/// dsl 0.26.0 §8 (T3-2): why `a` and `b` are not [`provably_exclusive`]:
+/// a beat that constrains nothing, a flag that outlives a `once: run`
+/// spend, a fact one asserts that may hold before it plays, or the paths
+/// the two alternatives that overlap constrain.
+fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> Why {
     let Some((da, db)) = crate::reachability::non_exclusive_witness(&a.dnf, &b.dnf) else {
-        return "their conjunction does not decide `false`".to_string();
+        return Why::Other("their conjunction does not decide `false`".to_string());
     };
     for (x, y, dy) in [(a, b, db), (b, a, da)] {
         if x.once == BeatOnce::Run && dy.requires_true(&x.ever_flag) {
-            return format!(
+            return Why::Other(format!(
                 "`{}` persists across runs; `once: run` does not, so in a later run both are \
                  eligible",
                 x.ever_flag
-            );
+            ));
         }
         if let Some((fact, why)) = x.persists.iter().find(|(f, _)| dy.requires_true(f)) {
-            return format!(
+            return Why::Other(format!(
                 "{} reads `{fact}`, which {} asserts, but {why}",
                 y.name, x.name
-            );
+            ));
         }
     }
-    for x in [a, b] {
-        if x.eligible.is_none() {
-            let spend = match (x.once, x.name.starts_with("entry")) {
-                (BeatOnce::Run, false) => ", and its `once: run` sets no flag a `when` can read",
-                _ => "",
-            };
-            return format!("{} has no `when`{spend}", x.name);
-        }
+    if a.eligible.is_none() || b.eligible.is_none() {
+        return Why::NoWhen;
     }
     let list = |d: &crate::reachability::Disjunct| {
         let paths: std::collections::BTreeSet<&str> = d.paths().collect();
@@ -2033,9 +2277,12 @@ fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> String {
         da.paths().filter(|p| db.paths().any(|q| q == *p)).collect();
     if !shared.is_empty() {
         let shared: Vec<String> = shared.into_iter().map(|p| format!("`{p}`")).collect();
-        return format!("both allow a common value of {}", shared.join(", "));
+        return Why::Other(format!(
+            "both allow a common value of {}",
+            shared.join(", ")
+        ));
     }
-    match (list(da), list(db)) {
+    Why::Other(match (list(da), list(db)) {
         (pa, pb) if pa.is_empty() && pb.is_empty() => {
             "neither `when` compares a path the checker can read".to_string()
         }
@@ -2051,50 +2298,151 @@ fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> String {
             "{} reads {pa} and {} reads {pb}: no path both constrain",
             a.name, b.name
         ),
+    })
+}
+
+/// What [`read_tier`] needs to know about tiers: the relations the reading
+/// document sees, and the quests whose tier is known (`true` = user, `false`
+/// = run; an absent quest's tier is unknown).
+pub(crate) struct UserTier<'a> {
+    pub(crate) relations: &'a BTreeMap<String, lute_manifest::relations::RelationDecl>,
+    pub(crate) quests: &'a BTreeMap<&'a str, bool>,
+}
+
+/// The lifetime tier of one state read (dsl 0.23.0 §6, dsl 0.24.0 T3-4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReadTier {
+    /// Reset by every new run: `run.*`, a `tier="run"` quest's
+    /// `quest.<id>.*`, a query of a relation without `tier:` or `tier: run`.
+    Run,
+    /// Kept across runs: `user.*`, `entry.<id>.everRead`, a user-tier
+    /// quest's `quest.<id>.*`, a query of a `tier: user` relation.
+    User,
+    /// Kept across users: `app.*`, a query of a `tier: app` relation.
+    App,
+    /// Anything else — `scene.*`, `prev.run.*` (run history, replaced every
+    /// run: dsl 0.23.1), a quest of unknown tier, a local variable.
+    Other,
+}
+
+/// The tier `expr` reads when it is a read leaf — a state path, or a
+/// `holds` / `count` / `countDistinct` query — else `None`.
+pub(crate) fn read_tier(expr: &cel_parser::ast::Expr, tiers: &UserTier<'_>) -> Option<ReadTier> {
+    use cel_parser::ast::Expr;
+    match expr {
+        Expr::Ident(_) | Expr::Select(_) => {
+            let Some(p) = crate::cel_paths::select_path(expr) else {
+                return Some(ReadTier::Other);
+            };
+            Some(
+                if p.starts_with("user.") || crate::cel_paths::is_entry_ever_read(&p) {
+                    ReadTier::User
+                } else if p.starts_with("app.") {
+                    ReadTier::App
+                } else if p.starts_with("run.") {
+                    ReadTier::Run
+                } else {
+                    match p
+                        .strip_prefix("quest.")
+                        .and_then(|rest| rest.split('.').next())
+                        .and_then(|id| tiers.quests.get(id))
+                    {
+                        Some(true) => ReadTier::User,
+                        Some(false) => ReadTier::Run,
+                        None => ReadTier::Other,
+                    }
+                },
+            )
+        }
+        Expr::Call(c) if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct") => {
+            let relation = match c.args.first().map(|a| &a.expr) {
+                Some(Expr::Call(atom)) if c.target.is_none() => {
+                    tiers.relations.get(&atom.func_name)
+                }
+                _ => None,
+            };
+            Some(match relation.map(|r| r.tier.as_deref()) {
+                Some(None | Some("run")) => ReadTier::Run,
+                Some(Some("user")) => ReadTier::User,
+                Some(Some("app")) => ReadTier::App,
+                _ => ReadTier::Other,
+            })
+        }
+        _ => None,
     }
 }
 
-/// What [`reads_only_user`] needs to know about tiers: the relations the
-/// beat's document sees, and every project quest's tier (`true` = user).
-struct UserTier<'a> {
-    relations: &'a BTreeMap<String, lute_manifest::relations::RelationDecl>,
-    quests: &'a BTreeMap<&'a str, bool>,
+/// Every read tier `expr` touches, in walk order ([`read_tier`] at each
+/// leaf, recursing through every other sub-expression).
+pub(crate) fn read_tiers(
+    expr: &cel_parser::ast::Expr,
+    tiers: &UserTier<'_>,
+    out: &mut Vec<ReadTier>,
+) {
+    use cel_parser::ast::{EntryExpr, Expr};
+    if let Some(t) = read_tier(expr, tiers) {
+        out.push(t);
+        return;
+    }
+    match expr {
+        Expr::Call(c) => {
+            for e in c
+                .target
+                .iter()
+                .map(|t| &t.expr)
+                .chain(c.args.iter().map(|a| &a.expr))
+            {
+                read_tiers(e, tiers, out);
+            }
+        }
+        Expr::List(l) => l
+            .elements
+            .iter()
+            .for_each(|e| read_tiers(&e.expr, tiers, out)),
+        Expr::Map(m) => m.entries.iter().for_each(|e| match &e.expr {
+            EntryExpr::MapEntry(m) => {
+                read_tiers(&m.key.expr, tiers, out);
+                read_tiers(&m.value.expr, tiers, out);
+            }
+            EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
+        }),
+        Expr::Struct(s) => s.entries.iter().for_each(|e| match &e.expr {
+            EntryExpr::MapEntry(m) => {
+                read_tiers(&m.key.expr, tiers, out);
+                read_tiers(&m.value.expr, tiers, out);
+            }
+            EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
+        }),
+        Expr::Comprehension(c) => {
+            for e in [
+                &c.iter_range,
+                &c.accu_init,
+                &c.loop_cond,
+                &c.loop_step,
+                &c.result,
+            ] {
+                read_tiers(&e.expr, tiers, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// `when` (already `@def`-expanded) reads at least one piece of state, every
-/// one of them user-tier, and calls no function but the CEL operators,
-/// `isSet`/`has`, and a query of a user-tier relation. User-tier reads
-/// (dsl 0.24.0, T3-4): `user.*`, `entry.<id>.everRead`, `quest.<id>.*` of a
-/// quest without `tier="run"`, and `holds` / `count` / `countDistinct` of a
-/// relation declared `tier: user`. A run-tier relation or quest, `visited()`,
-/// or `now()` may change within a run. `prev.run.*` is the previous run's
-/// snapshot, which every run replaces: run history, not user-tier (dsl
-/// 0.23.1).
+/// one of them user-tier ([`ReadTier::User`]), and calls no function but the
+/// CEL operators, `isSet`/`has`, and a query of a user-tier relation. A
+/// run-tier relation or quest, `visited()`, or `now()` may change within a
+/// run. `prev.run.*` is the previous run's snapshot, which every run
+/// replaces: run history, not user-tier (dsl 0.23.1).
 fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
     use cel_parser::ast::Expr;
     fn walk(expr: &Expr, tiers: &UserTier<'_>, reads: &mut usize) -> bool {
+        if let Some(tier) = read_tier(expr, tiers) {
+            let user = tier == ReadTier::User;
+            *reads += usize::from(user);
+            return user;
+        }
         match expr {
-            Expr::Ident(_) | Expr::Select(_) => {
-                let user = crate::cel_paths::select_path(expr).is_some_and(|p| {
-                    p.starts_with("user.")
-                        || crate::cel_paths::is_entry_ever_read(&p)
-                        || p.strip_prefix("quest.")
-                            .and_then(|rest| rest.split('.').next())
-                            .is_some_and(|id| tiers.quests.get(id) == Some(&true))
-                });
-                *reads += usize::from(user);
-                user
-            }
-            Expr::Call(c)
-                if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct") =>
-            {
-                let user = c.target.is_none()
-                    && matches!(c.args.first().map(|a| &a.expr), Some(Expr::Call(atom))
-                        if tiers.relations.get(&atom.func_name)
-                            .is_some_and(|r| r.tier.as_deref() == Some("user")));
-                *reads += usize::from(user);
-                user
-            }
             Expr::Call(c) => {
                 let operator = !c.func_name.starts_with(|ch: char| ch.is_ascii_alphabetic())
                     || matches!(c.func_name.as_str(), "isSet" | "has");

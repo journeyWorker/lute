@@ -1,7 +1,4 @@
-# Scenario test (`lute test`) — accuse the WRONG suspect.
-# Same truth (`run.trueKiller: blake`) but a different forced `accuse` choice,
-# so `run.accused` diverges and the FAILURE ending fires. Contrast with
-# accuse-correctly.test.yaml — same document, two forced choices.
+# Accuse the WRONG suspect: the failure ending plays.
 file: ../scenes/confrontation.lute
 state:
   run.trueKiller: blake

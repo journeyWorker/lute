@@ -124,10 +124,17 @@ fn json_output_carries_structured_component_sub_diagnostics() {
 const COMPONENT_WITH_TWO_ISSUES: &str = "---\ncomponent: greet\n---\n\
      garbage line before any heading\n## Shot 2.\n@x{when=\"run.flag\"}: hi\n";
 
+/// The importer `::use`s the component: a body diagnostic belongs to the
+/// documents that bring the body in, not to every importer (round-5 T3-4).
 fn write_two_issue_fixture(dir: &Path) -> PathBuf {
     std::fs::write(dir.join("component.lute"), COMPONENT_WITH_TWO_ISSUES).unwrap();
     let scene = dir.join("scene.lute");
-    std::fs::write(&scene, scene_importing_broken_component()).unwrap();
+    std::fs::write(
+        &scene,
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [component.lute]\n\
+         ---\n## Shot 1.\n::use{component=\"greet\"}\n",
+    )
+    .unwrap();
     scene
 }
 

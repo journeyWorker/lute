@@ -44,6 +44,13 @@ use crate::set_op::resolve_type;
 
 pub const E_SET_TYPE: &str = "E-SET-TYPE";
 
+/// Def name -> produced type, for a `@name` / `@name(args)` reference inside
+/// a def body (round-5 T3-14). Only [`decide_raw`] parses with the ref marker
+/// that makes such a reference visible; a document slot's AST never carries
+/// it, so every other entry point passes [`NO_DEFS`].
+pub(crate) type DefTypes = std::collections::BTreeMap<String, Type>;
+static NO_DEFS: DefTypes = DefTypes::new();
+
 /// The outcome of deciding ONE expression's produced type (§3.3). Also the
 /// produced-type inference for a `defs:` entry without a `type:` (dsl 0.21.0
 /// §7b, [`decide_raw`]) — one closed procedure, so a def and a `::set` can
@@ -79,6 +86,20 @@ pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) 
     let Some(declared) = resolve_type(&set.path, schema) else {
         return Vec::new();
     };
+    // dsl 0.27.0 §2 (T1-2): a `{ domain: K }` / `{ entity: K }` target whose
+    // `K` is known is checked as `{ enum: [K's members] }`.
+    let (declared_as, resolved) = match (declared, schema.domain_members.get(&set.path)) {
+        (Type::Domain(_) | Type::Entity(_), Some((name, ms))) => {
+            let word = if matches!(declared, Type::Entity(_)) {
+                "entity"
+            } else {
+                "domain"
+            };
+            (format!("{word}: {name}"), Some(Type::Enum(ms.clone())))
+        }
+        _ => (String::new(), None),
+    };
+    let declared = resolved.as_ref().unwrap_or(declared);
     // §3.2: only the four author-declarable SCALAR types have a required type
     // under §3. `domain`/`providerRef`/`slotId`/`assetKind`/`enumFromOption`
     // are the five the author-`state:` guard falls THROUGH for (§14) and have
@@ -104,7 +125,7 @@ pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) 
     let Some(root) = set.expr.ast.clone().and_then(|h| arena.get(h)) else {
         return Vec::new();
     };
-    match decide(&root.expr, schema) {
+    match decide(&root.expr, schema, &NO_DEFS) {
         Decision::Undecidable => Vec::new(),
         Decision::Ill(what) => vec![diag(
             format!(
@@ -125,11 +146,15 @@ pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) 
                 if members.iter().any(|m| m == s.as_str()) {
                     return Vec::new();
                 }
+                let what = if declared_as.is_empty() {
+                    format!("`enum: [{}]`", members.join(", "))
+                } else {
+                    format!("`{declared_as}` ({})", members.join(", "))
+                };
                 let mut msg = format!(
                     "`::set` writes `\"{s}\"` into `{}`, which is not a member of its declared \
-                     `enum: [{}]`",
+                     {what}",
                     set.path,
-                    members.join(", ")
                 );
                 if let Some(sugg) = nearest_member(s, members) {
                     msg.push_str(&format!(" — did you mean `{sugg}`?"));
@@ -155,7 +180,7 @@ pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) 
 
 /// §3.3 rules 1–8 over one expression node. Total: every shape the rules do
 /// not name is [`Decision::Undecidable`].
-fn decide(expr: &Expr, schema: &StateSchema) -> Decision {
+fn decide(expr: &Expr, schema: &StateSchema, defs: &DefTypes) -> Decision {
     match expr {
         // Rule 1: a literal.
         Expr::Literal(v) => match v {
@@ -169,6 +194,11 @@ fn decide(expr: &Expr, schema: &StateSchema) -> Decision {
         // Rule 4's `has(p)`: a `Select` with `test: true`, NOT a path read.
         // Checked BEFORE rule 2, or `select_path` would swallow it.
         Expr::Select(SelectExpr { test: true, .. }) => Decision::Ty(Type::Bool),
+        // A bare `@name` def reference takes the def's declared (or already
+        // settled) type; an unknown or untyped one is undecidable.
+        Expr::Ident(n) if n.starts_with(lute_cel::REF_MARKER) => {
+            ref_type(&n[lute_cel::REF_MARKER.len()..], defs)
+        }
         // Rule 2: a read of a declared state path. The substituted `$`
         // (`Ident("_")`) and any other bare ident resolve to nothing and fall
         // through to `Undecidable`.
@@ -181,7 +211,7 @@ fn decide(expr: &Expr, schema: &StateSchema) -> Decision {
                 None => Decision::Undecidable,
             }
         }
-        Expr::Call(c) => decide_call(c, schema),
+        Expr::Call(c) => decide_call(c, schema, defs),
         // A list literal, a map/struct literal, a comprehension, an unset
         // node: §3.3's closing paragraph — undecidable, and it passes.
         _ => Decision::Undecidable,
@@ -191,17 +221,24 @@ fn decide(expr: &Expr, schema: &StateSchema) -> Decision {
 /// dsl 0.21.0 §7b: [`decide`] over a raw CEL string — a def body, which is
 /// not a document slot and so has no pre-filled `CelSlot.ast`. `None` when
 /// the body does not parse: malformed CEL is `E-CEL-PARSE`'s, never a type
-/// question.
-pub(crate) fn decide_raw(raw: &str, schema: &StateSchema) -> Option<Decision> {
+/// question. Parsed with each `@` kept as the ref marker, so a `@name` or
+/// `@name(args)` reference takes its type from `defs`.
+pub(crate) fn decide_raw(raw: &str, schema: &StateSchema, defs: &DefTypes) -> Option<Decision> {
     let mut arena = CelArena::default();
-    let handle = lute_cel::parse_slot(&mut arena, raw, 0).ok()?;
+    let handle = lute_cel::parse_slot_marked_refs(&mut arena, raw)?;
     let root = arena.get(handle)?;
-    Some(decide(&root.expr, schema))
+    Some(decide(&root.expr, schema, defs))
+}
+
+/// The type a referenced def produces, when known.
+fn ref_type(name: &str, defs: &DefTypes) -> Decision {
+    defs.get(name)
+        .map_or(Decision::Undecidable, |t| Decision::Ty(t.clone()))
 }
 
 /// Rules 3–7. Operators are synthetic `Call`s in this AST, so they and the
 /// profile functions dispatch through one `func_name` match.
-fn decide_call(c: &CallExpr, schema: &StateSchema) -> Decision {
+fn decide_call(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision {
     match c.func_name.as_str() {
         // Rule 3: comparisons and logical operators produce `bool`.
         op::EQUALS
@@ -231,7 +268,7 @@ fn decide_call(c: &CallExpr, schema: &StateSchema) -> Decision {
         // whole expression ill-typed, naming that operand.
         op::SUBSTRACT | op::MULTIPLY | op::DIVIDE | op::NEGATE => {
             for a in &c.args {
-                match decide(&a.expr, schema) {
+                match decide(&a.expr, schema, defs) {
                     Decision::Ill(w) => return Decision::Ill(w),
                     Decision::Ty(t) if arith_rejects(&t) => {
                         return Decision::Ill(operand_desc(&a.expr, &t))
@@ -247,7 +284,7 @@ fn decide_call(c: &CallExpr, schema: &StateSchema) -> Decision {
         // a second diagnostic (`E-SET-TYPE`) for the same fault.
         op::MODULO => {
             for a in &c.args {
-                let d = decide(&a.expr, schema);
+                let d = decide(&a.expr, schema, defs);
                 if let Decision::Ill(w) = d {
                     return Decision::Ill(w);
                 }
@@ -258,14 +295,14 @@ fn decide_call(c: &CallExpr, schema: &StateSchema) -> Decision {
             Decision::Ty(Type::Number)
         }
         // Rule 6.
-        op::ADD => decide_add(c, schema),
+        op::ADD => decide_add(c, schema, defs),
         // Rule 7: a conditional is the common type of its two branches when
         // both are decidable and equal; undecidable otherwise.
         op::CONDITIONAL => {
             let (Some(a), Some(b)) = (c.args.get(1), c.args.get(2)) else {
                 return Decision::Undecidable;
             };
-            match (decide(&a.expr, schema), decide(&b.expr, schema)) {
+            match (decide(&a.expr, schema, defs), decide(&b.expr, schema, defs)) {
                 (Decision::Ill(w), _) | (_, Decision::Ill(w)) => Decision::Ill(w),
                 (Decision::Ty(x), Decision::Ty(y)) if x == y => Decision::Ty(x),
                 _ => Decision::Undecidable,
@@ -275,17 +312,21 @@ fn decide_call(c: &CallExpr, schema: &StateSchema) -> Decision {
         // `cel_resolve::is_profile_isset_call` matches it, so the two passes
         // can never disagree about which calls are `isSet`.
         name if name.eq_ignore_ascii_case("isSet") => Decision::Ty(Type::Bool),
+        // A `@name(args)` call of a def takes the def's type.
+        name if name.starts_with(lute_cel::REF_MARKER) => {
+            ref_type(&name[lute_cel::REF_MARKER.len()..], defs)
+        }
         _ => Decision::Undecidable,
     }
 }
 
 /// Rule 6: `+` is `number + number` or `string + string`. Two DECIDED sides
 /// that disagree are ill-typed; anything else is undecidable.
-fn decide_add(c: &CallExpr, schema: &StateSchema) -> Decision {
+fn decide_add(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision {
     let (Some(l), Some(r)) = (c.args.first(), c.args.get(1)) else {
         return Decision::Undecidable;
     };
-    match (decide(&l.expr, schema), decide(&r.expr, schema)) {
+    match (decide(&l.expr, schema, defs), decide(&r.expr, schema, defs)) {
         (Decision::Ill(w), _) | (_, Decision::Ill(w)) => Decision::Ill(w),
         (Decision::Ty(a), Decision::Ty(b)) => {
             if is_id_family(&a) || is_id_family(&b) {
@@ -349,10 +390,13 @@ fn operand_subject(expr: &Expr) -> String {
     match expr {
         Expr::Call(c) => match op_spelling(&c.func_name) {
             Some(sym) => format!("the `{sym}` comparison"),
-            None => format!("the `{}(…)` call", c.func_name),
+            None => format!(
+                "the `{}(…)` call",
+                c.func_name.replace(lute_cel::REF_MARKER, "@")
+            ),
         },
         _ => match select_path(expr) {
-            Some(p) => format!("`{p}`"),
+            Some(p) => format!("`{}`", p.replace(lute_cel::REF_MARKER, "@")),
             None => "an operand".to_string(),
         },
     }
@@ -365,7 +409,7 @@ fn operand_subject(expr: &Expr) -> String {
 /// fractional value makes `%` unknown there (docs/runtime/cel-and-facts.md).
 /// The namespaced id family stays undecidable, as in rule 5.
 pub(crate) fn modulo_operand_fault(expr: &Expr, schema: &StateSchema) -> Option<String> {
-    integer_fault(expr, &decide(expr, schema))
+    integer_fault(expr, &decide(expr, schema, &NO_DEFS))
 }
 
 /// [`modulo_operand_fault`] over an already-decided operand.

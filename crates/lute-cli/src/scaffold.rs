@@ -84,7 +84,9 @@ enums:
     .to_string()
 }
 
-/// The `minimal` template: one entry scene over a tiny scalar schema.
+/// The `minimal` template: one entry scene over a tiny scalar schema, with
+/// `id:` identity (the shape `lute new scene` writes, so a fresh project never
+/// mixes identity conventions) and one passing scenario test in `tests/`.
 fn minimal_files() -> Vec<File> {
     vec![
         File {
@@ -112,9 +114,7 @@ state:
 ---
 kind: scene
 luteVersion: \"{lang}\"
-character: narrator
-season: 1
-episode: 1
+id: opening
 title: Opening
 uses:
   - ../world.schema.yaml
@@ -140,6 +140,21 @@ state:
   run.greeted: false
 "
             .replace("{lang}", lute_check::LUTE_LANG_VERSION),
+        },
+        File {
+            rel: "tests/opening.test.yaml",
+            content: "\
+# Scenario test. Run every test in the project with:
+#   lute test . --project .
+# `file:` is resolved against THIS file, so a test in tests/ names its scene
+# as ../scenes/<name>.lute.
+file: ../scenes/opening.lute
+expect:
+  transcriptContains: [\"@narrator: Welcome to your new Lute project.\"]
+  state: { run.greeted: true }
+  exit: complete
+"
+            .to_string(),
         },
         File {
             rel: "README.md",
@@ -377,7 +392,8 @@ title: Who killed Lord Ashby?
 ---
 
 // No `start`: the quest begins when a scene runs ::accept{quest=\"solveCase\"}.
-<quest id=\"solveCase\" title=\"Who killed Lord Ashby?\">
+// `tier=\"run\"`: one case per playthrough — a new run starts it over.
+<quest id=\"solveCase\" title=\"Who killed Lord Ashby?\" tier=\"run\">
   <objective id=\"evidence\" title=\"Examine the evidence\" done=\"count(suspected(_)) >= 2\"/>
   <objective id=\"statements\" title=\"Hear both suspects\" done=\"holds(alibi(blake)) && holds(alibi(cass))\"/>
   // `by=` fails the quest once a wrong name is on record.
@@ -693,7 +709,8 @@ title: The lamp by the door
 ---
 
 // No `start`: the quest begins when a scene runs ::accept{quest=\"lampOut\"}.
-<quest id=\"lampOut\" title=\"The lamp by the door\">
+// `tier=\"run\"`: it belongs to this run — a new run starts it over.
+<quest id=\"lampOut\" title=\"The lamp by the door\" tier=\"run\">
   <objective id=\"ask\" title=\"Ask Tomas about the oil\" done=\"holds(knows(lamp))\"/>
   // Judged when the engine raises `dayEnd` (dsl 0.21.0 §7a).
   <objective id=\"wait\" title=\"Wait for the day to end\" on=\"dayEnd\" done=\"run.day >= 2\"/>
@@ -836,6 +853,10 @@ lute new lore <name>
 # Validate the whole project (recursively):
 lute check-project .
 
+# Run every scenario test under tests/ (a test's `file:` is relative to the
+# test file, so tests/ names scenes as ../scenes/<name>.lute):
+lute test . --project .
+
 # Check one document:
 lute check scenes/<your-scene>.lute
 
@@ -846,6 +867,13 @@ lute trace scenes/<your-scene>.lute --mock mocks/<your-mock>.yaml
 
 # Report the scene graph / reachability:
 lute scenario .
+
+# If your editor and the terminal disagree, the terminal is right; this names
+# a stale editor server or a mismatched toolchain:
+lute doctor .
+
+# Chain scenes into a story you can play with `lute play`:
+#   https://lute-lang.vercel.app/getting-started/connect-scenes/
 
 # Add more documents:
 lute new scene <name>
@@ -925,9 +953,11 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
     println!();
     println!("Next steps:");
     println!("  lute check-project {d}");
+    if files.iter().any(|f| f.rel.starts_with("tests/")) {
+        println!("  lute test {d} --project {d}");
+    }
     let play = files.iter().find(|f| f.rel.starts_with("plays/"));
     if let Some(play) = play {
-        println!("  lute test {d} --project {d}");
         println!("  lute play {d} --script {}", dir.join(play.rel).display());
         println!("  lute new scene <name> --on <occasion> --dir {d}");
     } else {
@@ -978,6 +1008,40 @@ fn to_id(name: &str, fallback: &str) -> String {
         .map(|seg| to_ident(seg, fallback))
         .collect();
     segs.join(".")
+}
+
+/// A `lute new` document's `title:` from its name: the last `/` segment,
+/// split at `-`, `_`, `.`, spaces and lower→upper camel boundaries, each word
+/// capitalized (`the-cellar` → `The Cellar`, `talk/maraFirst` → `Mara
+/// First`) — a title reads as prose, not as a file stem (round-5 FS-F11).
+fn title_case(name: &str) -> String {
+    let stem = name.rsplit('/').next().unwrap_or(name);
+    let mut words: Vec<String> = Vec::new();
+    let mut word = String::new();
+    let mut prev_lower = false;
+    for ch in stem.chars() {
+        if matches!(ch, '-' | '_' | '.' | ' ') || (ch.is_uppercase() && prev_lower) {
+            if !word.is_empty() {
+                words.push(std::mem::take(&mut word));
+            }
+        }
+        if !matches!(ch, '-' | '_' | '.' | ' ') {
+            if word.is_empty() {
+                word.extend(ch.to_uppercase());
+            } else {
+                word.push(ch);
+            }
+        }
+        prev_lower = ch.is_lowercase() || ch.is_ascii_digit();
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    if words.is_empty() {
+        stem.to_string()
+    } else {
+        words.join(" ")
+    }
 }
 
 /// `path` made absolute against the current directory, with `.`/`..`
@@ -1150,6 +1214,43 @@ fn validate_beat(path: &Path, root: &Path, on: &str, target: Option<&str>) -> Re
     }
 }
 
+/// dsl 0.27.0 (T3-11): the lowest `priority` of the beats already on `on`
+/// under `root` — scenes' frontmatter, lore `<entry on=…>` and bundle
+/// `<beat on=…>` (an absent priority is `0`) — or `None` when there is none
+/// (or the walk fails: the scaffold then writes no priority, as before).
+fn lowest_beat_priority(root: &Path, on: &str) -> Option<i64> {
+    let attr = |p: &Option<(String, lute_core_span::Span)>| {
+        p.as_ref().map_or(Some(0), |(raw, _)| {
+            lute_check::beats::parse_beat_priority(raw)
+        })
+    };
+    let mut lowest: Option<i64> = None;
+    for file in crate::find_lute_files(root).ok()? {
+        let Ok(text) = fs::read_to_string(&file) else {
+            continue;
+        };
+        let (doc, _) = lute_syntax::parse(&text);
+        let scene = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml)
+            .ok()
+            .filter(|m| m.get("on").and_then(serde_yaml::Value::as_str) == Some(on))
+            .map(|m| m.get("priority").map_or(Some(0), serde_yaml::Value::as_i64));
+        let entries = doc
+            .entries
+            .iter()
+            .filter(|e| e.on.as_ref().is_some_and(|(o, _)| o == on))
+            .map(|e| attr(&e.priority));
+        let beats = doc
+            .beats
+            .iter()
+            .filter(|b| b.on.as_ref().is_some_and(|(o, _)| o == on))
+            .map(|b| attr(&b.priority));
+        for p in scene.into_iter().chain(entries).chain(beats).flatten() {
+            lowest = Some(lowest.map_or(p, |l| l.min(p)));
+        }
+    }
+    lowest
+}
+
 /// `lute new scene <name> [--on <occasion> [--target <target>]]`.
 ///
 /// The scene lands at `<root>/scenes/<name>.lute` (`/` in the name nests it)
@@ -1162,8 +1263,8 @@ fn validate_beat(path: &Path, root: &Path, on: &str, target: Option<&str>) -> Re
 fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&str>) -> ExitCode {
     let path = dest.root.join("scenes").join(format!("{name}.lute"));
     let id = to_id(name, "scene");
-    let title = name.rsplit('/').next().unwrap_or(name);
-    let mut content = dest.head("scene", &id, title);
+    let title = title_case(name);
+    let mut content = dest.head("scene", &id, &title);
     let body = match on {
         Some(on) => {
             content.push_str(&format!(
@@ -1178,6 +1279,14 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
                 }
                 None => String::new(),
             };
+            // dsl 0.27.0 (T3-11): below every beat already on `on`, so a
+            // fresh stub never ties one.
+            if let Some(lowest) = lowest_beat_priority(&dest.root, on) {
+                content.push_str(&format!(
+                    "priority: {}   # below every other `{on}` beat\n",
+                    lowest.saturating_sub(10)
+                ));
+            }
             format!(
                 "## {title}\n\n@narrator: What happens when `{on}` is raised{raised_for}. Replace this with your own lines.\n"
             )
@@ -1207,21 +1316,24 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
 
 /// `lute new quest <name> [--start]`.
 ///
-/// Self-contained: declares its own `run.<ident>Progress` scalar (with a
-/// `default:`, so the objective's `done` read is definitely assigned) and one
-/// objective gated on it. Accept-driven by default — no `start`, so the
-/// quest stays inactive until content runs `::accept{quest="<ident>"}`, the
-/// shape quest-heavy games start from; `--start` scaffolds the auto-starting
-/// `start="true"` form instead. The quest id / state segment is
-/// [`to_ident`] of the name (a single lower-camel identifier, as
-/// `quest.<id>.state` needs), while the file stem keeps the raw name. The
+/// Heads like `lute new scene` — the same `uses:` of the project's shared
+/// schemas (round-5 FS-F11), no state of its own. Its one objective is done
+/// once the player has seen the project's first scene (`visited(…)`), a
+/// placeholder the comment tells the author to replace; only where the
+/// project has no scene yet does it fall back to a self-contained progress
+/// counter, since nothing else is there to read. Accept-driven by default —
+/// no `start`, so the quest stays inactive until content runs
+/// `::accept{quest="<ident>"}`, the shape quest-heavy games start from;
+/// `--start` scaffolds the auto-starting `start="true"` form instead. The
+/// quest id is [`to_ident`] of the name (a single lower-camel identifier,
+/// as `quest.<id>.state` needs), while the file stem keeps the raw name. The
 /// document id (dsl 0.19.0 §2.1) is `quest.` + [`to_id`] of the name —
 /// namespaced so it cannot collide with a scene id or a same-named `lute new
 /// lore` bundle.
 fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
     let path = dest.root.join("quests").join(format!("{name}.lute"));
     let ident = to_ident(name, "quest");
-    let progress = format!("run.{ident}Progress");
+    let title = title_case(name);
     let (lifecycle, start_attr) = if start {
         (
             "// `start=\"true\"`: active from the first moment of play.\n",
@@ -1235,20 +1347,34 @@ fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
         )
     };
     let lifecycle = lifecycle.replace("IDENT", &ident);
-    let content = format!(
-        "{}\
-# Self-contained progress counter — a scene can bump it with
-# `::set{{ {progress} += 1 }}` to satisfy the objective below.
-state:
-  {progress}: {{ type: number, default: 0 }}
----
-
-{lifecycle}<quest id=\"{ident}\" title=\"{name}\"{start_attr}>
-  <objective id=\"begin\" title=\"Make progress\" done=\"{progress} >= 1\"/>
-</quest>
-",
-        dest.head("quest", &format!("quest.{}", to_id(name, "quest")), name)
-    );
+    let mut content = dest.head("quest", &format!("quest.{}", to_id(name, "quest")), &title);
+    content.push_str(&dest.uses(1 + name.matches('/').count()));
+    // The counter fallback reads only run state, so the quest says it is
+    // run-tier (`W-QUEST-TIER-IMPLICIT`); a `visited(…)` objective is no
+    // tier evidence either way and keeps the project's default.
+    let (note, done, tier_attr) = match first_scene_id(dest) {
+        Some(scene) => (
+            "  // Replace `done` with what finishes this step: a path from the shared\n  \
+             // schema, a fact (`holds(…)`), or the scene that ends it (`visited(…)`).\n"
+                .to_string(),
+            format!("visited('{scene}')"),
+            "",
+        ),
+        None => {
+            let progress = format!("run.{ident}Progress");
+            content.push_str(&format!(
+                "# No scene to read yet: a progress counter a scene bumps with\n\
+                 # `::set{{ {progress} += 1 }}`. Move it into the shared schema\n\
+                 # once the project has one.\n\
+                 state:\n  {progress}: {{ type: number, default: 0 }}\n"
+            ));
+            (String::new(), format!("{progress} >= 1"), " tier=\"run\"")
+        }
+    };
+    content.push_str(&format!(
+        "---\n\n{lifecycle}<quest id=\"{ident}\" title=\"{title}\"{tier_attr}{start_attr}>\n\
+         {note}  <objective id=\"begin\" title=\"Make progress\" done=\"{done}\"/>\n</quest>\n"
+    ));
     if let Err(code) = create(&path, &content) {
         return code;
     }
@@ -1258,30 +1384,53 @@ state:
     )
 }
 
+/// The alphabetically first scene id in the project `dest` (a parse-only
+/// walk, like `lute context`'s ids), `None` outside a project or before
+/// its first scene.
+fn first_scene_id(dest: &Destination) -> Option<String> {
+    if !dest.in_project {
+        return None;
+    }
+    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = crate::find_lute_files(&dest.root)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|path| {
+            let text = fs::read_to_string(&path).ok()?;
+            Some((path, lute_syntax::parse(&text).0))
+        })
+        .collect();
+    lute_check::connectivity::scene_key_set(&docs)
+        .into_keys()
+        .next()
+}
+
 /// `lute new lore <name>` (dsl 0.19.0 §2).
 ///
-/// Self-contained: one `<entry>` whose id is [`to_ident`] of the name, attached
-/// to `item.<ident>` as a `note`, with one content line. Entries live under
-/// `lore/`, mirroring `quests/`; the file stem keeps the raw name. The
-/// document id (§2.1) is `lore.` + [`to_id`] of the name, namespaced like
-/// `lute new quest`'s.
+/// One `<entry>` whose id is [`to_ident`] of the name, attached to
+/// `item.<ident>` as a `note`, with one content line; headed like `lute new
+/// scene` (the same `uses:`, round-5 FS-F11). Entries live under `lore/`,
+/// mirroring `quests/`; the file stem keeps the raw name. The document id
+/// (§2.1) is `lore.` + [`to_id`] of the name, namespaced like `lute new
+/// quest`'s.
 fn new_lore(name: &str, dest: &Destination) -> ExitCode {
     let path = dest.root.join("lore").join(format!("{name}.lute"));
     let ident = to_ident(name, "entry");
-    let content = format!(
-        "{}\
+    let title = title_case(name);
+    let mut content = dest.head("lore", &format!("lore.{}", to_id(name, "entry")), &title);
+    content.push_str(&format!(
+        "\
 # Each <entry> is text the engine looks up (an item description, a found
 # note, a codex page). `target` names the engine-owned thing it belongs to;
 # `::set`/`::assert` in a body apply on the first read only, after which
 # `entry.<id>.read` is true.
----
+{}---
 
-<entry id=\"{ident}\" target=\"item.{ident}\" category=\"note\" title=\"{name}\">
-  @narrator: A note about {name}. Replace this with your own text.
+<entry id=\"{ident}\" target=\"item.{ident}\" category=\"note\" title=\"{title}\">
+  @narrator: A note about {title}. Replace this with your own text.
 </entry>
 ",
-        dest.head("lore", &format!("lore.{}", to_id(name, "entry")), name)
-    );
+        dest.uses(1 + name.matches('/').count())
+    ));
     if let Err(code) = create(&path, &content) {
         return code;
     }

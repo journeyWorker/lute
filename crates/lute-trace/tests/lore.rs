@@ -115,6 +115,7 @@ fn first_read_applies_assert_and_set() {
             Step::Line {
                 speaker: "scientist".into(),
                 text: "Day three. Subject E does not respond to light.".into(),
+                delivery: None,
             },
             Step::Assert {
                 text: "knows(vesna, project_lumen)".into(),
@@ -148,6 +149,7 @@ fn re_read_shows_the_text_and_skips_every_effect() {
             Step::Line {
                 speaker: "scientist".into(),
                 text: "Day three. Subject E does not respond to light.".into(),
+                delivery: None,
             },
             Step::Skipped {
                 effect: "assert".into(),

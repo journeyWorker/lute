@@ -24,7 +24,7 @@ use serde_yaml::Value;
 use crate::cel_resolve::{compatible, ty_desc};
 use crate::ctx::ExpectedType;
 use crate::meta::{yaml_shape, StateSchema};
-use crate::set_type::{decide_raw, Decision};
+use crate::set_type::{decide_raw, Decision, DefTypes};
 
 pub const E_DEF_DECL: &str = "E-DEF-DECL";
 
@@ -111,13 +111,18 @@ pub(crate) fn lift_def(name: &str, v: &Value) -> Result<Value, String> {
 /// consistent. Returns `None` — and changes nothing — for a def [`lift_def`]
 /// already rejected, and for a body that does not parse (malformed CEL is
 /// `E-CEL-PARSE`'s, never a type question).
-pub(crate) fn settle_def_type(name: &str, def: &mut Value, schema: &StateSchema) -> Option<String> {
+pub(crate) fn settle_def_type(
+    name: &str,
+    def: &mut Value,
+    schema: &StateSchema,
+    defs: &DefTypes,
+) -> Option<String> {
     let cel = def.get("cel")?.as_str()?.to_string();
     let declared = match def.get("type") {
         Some(t) => Some(serde_yaml::from_value::<Type>(t.clone()).ok()?),
         None => None,
     };
-    let decision = decide_raw(&cel, schema)?;
+    let decision = decide_raw(&cel, schema, defs)?;
     match (declared, decision) {
         (Some(declared), Decision::Ty(produced)) => {
             if compatible(&produced, &ExpectedType::Ty(declared.clone())) {
@@ -153,4 +158,62 @@ pub(crate) fn settle_def_type(name: &str, def: &mut Value, schema: &StateSchema)
              naming the type it produces (dsl 0.21.0 §7b)"
         )),
     }
+}
+
+/// The settled `type:` of a lifted def, when it has one.
+fn def_type(def: &Value) -> Option<Type> {
+    serde_yaml::from_value(def.get("type")?.clone()).ok()
+}
+
+/// Round-5 T3-14: settle every imported and inline def ([`settle_def_type`])
+/// in dependency order, so a def whose body only calls another def
+/// (`harvest: "@onDays(8, 14)"`) takes that def's declared or inferred type.
+///
+/// `plugin` seeds the table; an inline def overrides an imported one of the
+/// same name, as in the checker's `def_types` table. Untyped defs are
+/// inferred round by round until a round settles nothing new; what is left
+/// (a reference cycle, or a body that is undecidable on its own) keeps the
+/// ordinary `E-DEF-DECL` message. Returns each def's message, imported
+/// first, in name order.
+pub(crate) fn settle_defs(
+    imported: &mut std::collections::BTreeMap<String, Value>,
+    inline: &mut std::collections::BTreeMap<String, Value>,
+    plugin: impl Iterator<Item = (String, Type)>,
+    schema: &StateSchema,
+) -> (Vec<(String, String)>, Vec<(String, String)>) {
+    let seed: DefTypes = plugin.collect();
+    let known = |imported: &std::collections::BTreeMap<String, Value>,
+                 inline: &std::collections::BTreeMap<String, Value>| {
+        let mut t = seed.clone();
+        for (name, def) in imported.iter().chain(inline.iter()) {
+            if let Some(ty) = def_type(def) {
+                t.insert(name.clone(), ty);
+            }
+        }
+        t
+    };
+    loop {
+        let table = known(imported, inline);
+        let mut progress = false;
+        for (name, def) in imported.iter_mut().chain(inline.iter_mut()) {
+            if def.get("type").is_none() {
+                settle_def_type(name, def, schema, &table);
+                progress |= def.get("type").is_some();
+            }
+        }
+        if !progress {
+            break;
+        }
+    }
+    let table = known(imported, inline);
+    let report = |defs: &mut std::collections::BTreeMap<String, Value>| {
+        defs.iter_mut()
+            .filter_map(|(name, def)| {
+                settle_def_type(name, def, schema, &table).map(|m| (name.clone(), m))
+            })
+            .collect::<Vec<_>>()
+    };
+    let imported_msgs = report(imported);
+    let inline_msgs = report(inline);
+    (imported_msgs, inline_msgs)
 }

@@ -1,24 +1,12 @@
 ---
 kind: scene
 luteVersion: "0.26.0"
-character: detective
-season: 1
-episode: 3
+id: detective.s01ep03
 title: The Confrontation
-# Sequenced AFTER the interview — closing the reachability chain
-# crime-scene -> interview -> confrontation.
+# Comes after the interview.
 after: 'visited("detective.s01ep02")'
 uses: ../world.schema.yaml
 ---
-
-/*
-  The accusation. A `<branch>` offers one exclusive accusation; each choice
-  records the pick into the run-tier enum `run.accused` via the `into=`/`value=`
-  record sugar. The verdict lines then branch on whether the accusation matched
-  `run.trueKiller` — a pair of complementary `when=` guards, so exactly one of
-  success/failure emits. This is the document both trace mocks drive: seeding
-  `run.trueKiller` and forcing `accuse` reaches two different endings.
-*/
 
 ## The Confrontation
 

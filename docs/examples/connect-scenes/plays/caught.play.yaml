@@ -1,0 +1,12 @@
+choose: { accuse: ruben }
+steps:
+  - occasion: chapter
+    expect: { winner: prologue }
+  - occasion: chapter
+    expect: { winner: counter }
+  - occasion: chapter
+    expect: { winner: accusation }
+  - occasion: chapter
+    expect: { winner: ending.caught }
+expect:
+  state: { run.accused: ruben }

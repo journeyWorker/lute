@@ -290,7 +290,7 @@ $ lute init <dir> [--template minimal|investigation|beats]
 
 Scaffold a new Lute project directory, ready for `lute check-project`. `<dir>` must not already contain a `lute.project.yaml`. `--template` selects the starter content:
 
-- `minimal` (default) — a core-only `lute.project.yaml`, a state schema, a vocabulary schema, a starter scene, and a trace mock.
+- `minimal` (default) — a core-only `lute.project.yaml`, a state schema, a vocabulary schema, a starter scene with an `id:`, a trace mock, and a passing scenario test in `tests/`.
 - `investigation` — the worked whodunit.
   Since dsl 0.24.0 it is a small whodunit built on the `beats` skeleton: a `case.occasions` plugin raising `arrive`, the targeted `examine` (`item.<evidence>`) and `interview` (`npc.<suspect>`), and `accuse`; evidence lore that `::assert`s what is on record; derived rules with stratified negation (a suspect is `cleared` by an alibi unless evidence contradicts it; the `culprit` is implicated and not cleared); an accept-driven quest; an accusation whose choices are guarded by `holds(culprit(…))`; `plays/the-case.play.yaml` with `expect:`, and a scenario test. `check-project`, `test` and `play` pass as scaffolded, and its README shares the `beats` commands.
 - `beats` (dsl 0.22.0) — a game driven by [beats and occasions](/tooling/play/): a project-local occasions plugin (one occasion with a `{ prefix, entity }` target domain), a manifest whose `defaults:` supply `luteVersion` and `uses`, a `world.schema.yaml` with an `owner: engine` clock and shorthand `defs`, scene beats with `id:`, a quest, lore entry beats, a play script with an `engine:` step and `expect:`s, and scenario tests. `check-project`, `test`, and `play` all pass as scaffolded.
@@ -495,7 +495,7 @@ coverage over 2 traced path(s) and 1 play(s) (plays count toward documents prese
 A `*.test.yaml` file declares:
 
 ```yaml
-file: scenes/confrontation.lute   # path to the .lute under test, relative to this file
+file: ../scenes/confrontation.lute   # the .lute under test, relative to THIS file (tests/ → ../scenes/…)
 # optional mock surfaces — identical to `lute trace --mock`:
 state:   { run.trueKiller: blake }
 facts:   ["implicates(ledger, blake)"]
@@ -556,7 +556,7 @@ The failure names the premise that is false and, where one exists, the mock that
 `expect.quests` (dsl 0.21.0 §7a.4) asserts a quest document's lifecycle outcome directly — the state each quest ended the trace in, one of `unset`, `active`, `complete`, `failed`:
 
 ```yaml
-file: quests/hold.lute
+file: ../quests/hold.lute
 visited: [haven.shed]
 occasions: [runEnd]
 expect:

@@ -12,12 +12,14 @@ page: [Lore entries](/language/lore-entries/).
 
 ## Scenes and `after:`
 
-A scene is one episode — the frontmatter identity triple (`character`/`season`/`episode`) plus its
-shots. Scenes are *sequenced* with the frontmatter key **`after:`**, which declares the routes the
-checker and `lute scenario` assume reach this scene. It is advisory ordering metadata, not a jump.
+A scene is one episode — a frontmatter `id:` that names it project-wide, plus its shots. (Older
+scenes name themselves with `character`/`season`/`episode` instead, and the name is built as
+`{character}.{episodeId}`; that still works, but new scenes use `id:`.) Scenes are *sequenced* with the frontmatter key **`after:`**, which declares the routes the
+checker and `lute scenario` assume reach this scene. It is advisory ordering metadata, not a jump:
+to have scenes actually play one after another, see [Connect scenes into a story](/getting-started/connect-scenes/).
 Its vocabulary is exactly three predicates combined with `&&` / `||`:
 
-- `visited("<sceneKey>")` — true once the player has seen that scene (key = `{character}.{episodeId}`);
+- `visited("<id>")` — true once the player has seen the scene with that `id:`;
 - `completed("<questId>")` — true once that quest is finished;
 - `active("<questId>")` — true once that quest has been taken up and not yet resolved.
 
@@ -44,7 +46,7 @@ A quest document declares `kind: quest` and carries `uses:` for the schema it ga
 one or more `<quest>` declarations — quests forbid `<hub>`, `<timeline>`, and `#`/`##` headings.
 
 ```lute
-<quest id="rescueHalsinGrove" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
+<quest id="rescueHalsinGrove" tier="run" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
   <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
   <objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed"/>
 
@@ -134,7 +136,7 @@ a frontmatter key — the one place this page's opening heading, "Scenes and
 `after:`", does not apply:
 
 ```lute
-<quest id="manifestGap" title="The Manifest Gap" start="true" after="visited('haven.s01ep06') && completed('whoWakes')">
+<quest id="manifestGap" tier="run" title="The Manifest Gap" start="true" after="visited('haven.s01ep06') && completed('whoWakes')">
   <objective id="reconcile" title="Reconcile the count" done="true"/>
 </quest>
 ```
@@ -501,7 +503,7 @@ are unchanged, and authored `done=` and subquest `quest=` objectives mix
 freely in one parent.
 
 ```lute
-<quest id="saveTheGrove" title="Save the Grove" start="run.act == 1">
+<quest id="saveTheGrove" tier="run" title="Save the Grove" start="run.act == 1">
 <objective id="halsin" title="Find Halsin" quest="findHalsin"/>
 <objective id="ritual" title="Stop the ritual" quest="stopRitual"/>
 <objective id="scout" title="Scout the perimeter" quest="scoutPerimeter" optional/>

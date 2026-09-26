@@ -1,0 +1,11 @@
+choose: { accuse: ruben }
+steps:
+  - occasion: chapter
+  - occasion: chapter
+  - occasion: talk
+    target: npc.tilly
+    expect: { winner: talk.tilly }
+  - occasion: chapter
+  - occasion: talk
+    target: npc.tilly
+    expect: { winner: none }

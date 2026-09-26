@@ -21,7 +21,7 @@ state:
   each with a default, so the checker's definite-assignment gate is clean.
 */
 
-<quest id="rescueHalsinGrove" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
+<quest id="rescueHalsinGrove" tier="run" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
 <reward kind="XP" amount="300"/>
 <reward kind="REPUTATION" target="grove" amount="1" on="failed"/>
 <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
@@ -41,7 +41,7 @@ state:
 </on>
 </quest>
 
-<quest id="findMissingScouts" title="The Missing Scouts" start="run.metHalsin">
+<quest id="findMissingScouts" tier="run" title="The Missing Scouts" start="run.metHalsin">
 <objective id="findScouts" title="Find the missing scouts" done="run.scouts.found >= 3"/>
 
 <on event="questComplete">

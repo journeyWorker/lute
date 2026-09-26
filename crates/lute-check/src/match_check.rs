@@ -1634,17 +1634,20 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
     }
     match schema.decls.get(path) {
         Some(decl) => {
-            let domain = match &decl.ty {
-                Type::Bool => {
-                    Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)])
-                }
-                Type::Enum(members) => Domain::Finite(
+            // dsl 0.27.0 §2: a `{ domain: K }` / `{ entity: K }` path is as
+            // finite as an inline enum (`StateSchema::string_members`).
+            let members = schema.string_members(path);
+            let domain = match (&decl.ty, members) {
+                (_, Some(members)) => Domain::Finite(
                     members
                         .iter()
                         .map(|m| DomainValue::Str(m.clone()))
                         .collect(),
                 ),
-                Type::Number => match schema.int_ranges.get(path) {
+                (Type::Bool, _) => {
+                    Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)])
+                }
+                (Type::Number, _) => match schema.int_ranges.get(path) {
                     Some(&(lo, hi)) => Domain::IntRange { lo, hi },
                     None => Domain::Number,
                 },

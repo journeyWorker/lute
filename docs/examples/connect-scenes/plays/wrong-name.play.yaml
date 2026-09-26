@@ -1,0 +1,7 @@
+choose: { accuse: tilly }
+steps:
+  - occasion: chapter
+  - occasion: chapter
+  - occasion: chapter
+  - occasion: chapter
+    expect: { winner: ending.wrong }
