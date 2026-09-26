@@ -215,6 +215,39 @@ fn scenario_facts_draws_the_directive_to_the_gated_scene() {
     assert!(t.contains("canEnter(office)"), "{t}");
 }
 
+/// HW27-09: a gate reads too — `::give{item="brassKey"}` → `holding(brassKey)`
+/// → `canEnter(office)` (a rule) → the `enter` occasion's `raisedWhen` for
+/// `room.office`: the edge runs to the scene answering it, which has no
+/// `when` of its own.
+#[test]
+fn scenario_facts_draws_the_directive_through_an_occasion_gate() {
+    let dir = project("scenario-gate");
+    write(
+        &dir,
+        "plugins/ward/occasions/enter.yaml",
+        "occasions:\n  enter: { select: first, target: { prefix: room, entity: room }, \
+         raisedWhen: \"holds(canEnter(occasion.target))\" }\n",
+    );
+    write(
+        &dir,
+        "scenes/study.lute",
+        "---\nkind: scene\nid: study\non: enter\ntarget: room.office\n---\n\n## Study\n\n\
+         @narrator: Papers everywhere.\n",
+    );
+    let (code, t) = run(&dir, &["scenario", ".", "--facts"]);
+    assert_eq!(code, Some(0), "{t}");
+    let edge = t
+        .lines()
+        .find(|l| l.contains("-> scene(study)"))
+        .unwrap_or_default();
+    assert!(
+        edge.contains("scene(tub)")
+            && edge.contains("holding(brassKey)")
+            && edge.contains("canEnter(office)"),
+        "{t}"
+    );
+}
+
 #[test]
 fn an_entry_applies_its_effect_directive_on_the_first_read_only() {
     let dir = project("entry");
@@ -225,6 +258,35 @@ fn an_entry_applies_its_effect_directive_on_the_first_read_only() {
     );
     let (code, t) = run(&dir, &["test", "tests/diary.test.yaml", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
+}
+
+/// HW27-12: an entry beat without `once` applies an effect directive's
+/// `writes` on the first read in a run only, like its own `::set` — the
+/// same `W-ENTRY-WRITE-REREAD`. An `asserts`-only effect (idempotent) is not
+/// a write that could be lost.
+#[test]
+fn an_entry_beats_effect_write_warns_it_applies_on_the_first_read_only() {
+    let dir = project("reread");
+    write(
+        &dir,
+        "lore/tape.lute",
+        "---\nkind: lore\nid: tape\n---\n\n<entry id=\"tape\" on=\"search\" category=\"note\">\n\
+         ::fright{amount=2}\n@narrator: The tape hisses.\n</entry>\n\n\
+         <entry id=\"key\" on=\"door\" category=\"note\">\n::give{item=\"lantern\"}\n\
+         @narrator: A lantern on the hook.\n</entry>\n",
+    );
+    let (_, t) = run(&dir, &["check-project", "."]);
+    let hits: Vec<&str> = t
+        .lines()
+        .filter(|l| l.contains("[W-ENTRY-WRITE-REREAD]"))
+        .collect();
+    assert_eq!(hits.len(), 1, "{t}");
+    assert!(
+        hits[0].contains("tape.lute:7:")
+            && hits[0].contains("`<entry id=\"tape\">` has no `once`")
+            && hits[0].contains("its `::fright` applies on the first read in a run only"),
+        "{t}"
+    );
 }
 
 #[test]

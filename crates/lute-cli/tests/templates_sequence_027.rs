@@ -162,7 +162,13 @@ fn coverage_counts_sequence_derived_beats() {
     let (code, cov) = run(&dir, &["test", ".", "--coverage"]);
     assert_eq!(code, Some(0), "{cov}");
     assert!(
-        cov.contains("1 beat(s) no play presents (a test may trace them; only a play proves they are reached in play):\n    ./scenes/three.lute"),
+        cov.contains("1 untested unit(s) under . — no *.test.yaml presents them and no play presents them:\n    ./scenes/three.lute"),
+        "{cov}"
+    );
+    // OT-F-14: an untested beat is unplayed too, listed once.
+    assert_eq!(cov.matches("./scenes/three.lute").count(), 1, "{cov}");
+    assert!(
+        cov.contains("every other beat under . is presented by a play"),
         "{cov}"
     );
 }

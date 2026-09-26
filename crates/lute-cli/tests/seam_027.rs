@@ -158,6 +158,103 @@ fn an_occasion_step_while_its_gate_is_false_is_refused() {
     );
 }
 
+/// HW27-10: the refusal is located at the step as written and names the
+/// read the gate is false over.
+#[test]
+fn a_gate_refusal_is_located_and_names_its_false_read() {
+    let dir = open_ward("gate-located");
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: enter\n    target: room.office\n",
+        false,
+    );
+    let t = text(&out);
+    assert!(
+        t.contains("s.play.yaml:2:5: step 1: E-OCCASION-GATE"),
+        "{t}"
+    );
+    assert!(
+        t.contains("which is false here since `canEnter(office)` does not hold"),
+        "{t}"
+    );
+}
+
+/// `lute test` in `dir` (JSON when `json`).
+fn test_in(dir: &Path, json: bool) -> Output {
+    let mut cmd = Command::new(BIN);
+    cmd.arg("test").arg(dir.join("tests"));
+    if json {
+        cmd.arg("--json");
+    }
+    cmd.output().unwrap()
+}
+
+/// HW27-04: `lute test` judges a beat's eligibility by the same seam `lute
+/// play` refuses a raise by — `eligible: true` on a beat whose occasion's
+/// gate is false under the mocks, or after the game is over, misses naming
+/// that premise (`--json`: `notRaised`); a mock that opens the gate passes.
+#[test]
+fn a_test_judges_the_gate_and_terminal_like_play() {
+    let dir = open_ward("test-gate");
+    write(
+        &dir,
+        "tests/gate.test.yaml",
+        "file: ../scenes/office.lute\nexpect:\n  eligible: true\n",
+    );
+    write(
+        &dir,
+        "tests/over.test.yaml",
+        "file: ../scenes/lobby.lute\nstate: { run.fate: taken }\nexpect:\n  eligible: true\n",
+    );
+    write(
+        &dir,
+        "tests/open.test.yaml",
+        "file: ../scenes/office.lute\nfacts: [canEnter(office)]\nexpect:\n  eligible: true\n",
+    );
+    let out = test_in(&dir, false);
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(
+        t.contains(
+            "eligible: expected true, got false — the engine does not raise `enter`: its \
+             `raisedWhen: holds(canEnter(occasion.target))` is false since `canEnter(office)` \
+             does not hold"
+        ),
+        "{t}"
+    );
+    assert!(
+        t.contains(
+            "eligible: expected true, got false — the game is over (`terminal: run.fate == \
+             'taken'` holds), so the engine raises no occasion"
+        ),
+        "{t}"
+    );
+    assert!(t.contains("PASS  ") && t.contains("open.test.yaml"), "{t}");
+
+    let v: serde_json::Value = serde_json::from_slice(&test_in(&dir, true).stdout).unwrap();
+    let not_raised = |test: &str| {
+        v["tests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["test"].as_str().is_some_and(|p| p.ends_with(test)))
+            .map(|r| r["expectations"][0]["notRaised"].clone())
+            .unwrap()
+    };
+    assert_eq!(
+        not_raised("gate.test.yaml"),
+        serde_json::json!({
+            "occasion": "enter",
+            "reason": "gate",
+            "condition": "holds(canEnter(occasion.target))",
+            "falseReads": ["`canEnter(office)` does not hold"],
+        }),
+        "{v}"
+    );
+    assert_eq!(not_raised("over.test.yaml")["reason"], "terminal", "{v}");
+    assert!(not_raised("open.test.yaml").is_null(), "{v}");
+}
+
 /// HW27-01: an `occasion:` step's `engine:` write is part of the step, not
 /// a step of its own — the step's `expect:` judges the raise (and the world
 /// after it), a `repeat:` counts its repetitions only, and the end counts
@@ -256,7 +353,7 @@ fn a_gated_clock_raise_is_skipped_with_a_note() {
     assert_eq!(
         step3["notes"][0],
         "`hourStrikes` was not raised at day 1 h01 — its `raisedWhen: run.hp > 1` is false \
-         there; the clock moved on without it",
+         there since `run.hp` is 1; the clock moved on without it",
         "{t}"
     );
 }
@@ -403,4 +500,58 @@ fn lute_beats_marks_a_target_whose_gate_never_holds() {
     let dir = open_ward("beats-open");
     let out = Command::new(BIN).arg("beats").arg(&dir).output().unwrap();
     assert!(!text(&out).contains("gate never holds"), "{}", text(&out));
+}
+
+/// HW27-11: the other side — a negated gate over a fact that holds at
+/// every point of every run (a seed nothing retracts) never holds either:
+/// `check-project` reports the beat unreachable and `lute beats` marks it.
+/// The office door, whose `canEnter` nothing produces, stays live.
+#[test]
+fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
+    let dir = ward("locked", "{ args: [room] }");
+    write(
+        &dir,
+        "plugins/ward/occasions/locked.yaml",
+        "occasions:\n  lockedDoor: { select: first, target: { prefix: room, entity: room }, \
+         raisedWhen: \"!holds(canEnter(occasion.target))\" }\n",
+    );
+    for room in ["lobby", "office"] {
+        write(
+            &dir,
+            &format!("scenes/door-{room}.lute"),
+            &format!(
+                "---\nkind: scene\nid: door.{room}\non: lockedDoor\ntarget: room.{room}\nonce: false\n---\n\n\
+                 ## Door\n\n@narrator: The {room} door is shut.\n"
+            ),
+        );
+    }
+    let out = Command::new(BIN)
+        .arg("check-project")
+        .arg(&dir)
+        .output()
+        .unwrap();
+    let t = text(&out);
+    assert!(
+        t.contains("door-lobby.lute:")
+            && t.contains("[E-BEAT-UNREACHABLE] beat `door.lobby` is never eligible")
+            && t.contains("`canEnter(lobby)`"),
+        "{t}"
+    );
+    assert!(!t.contains("door-office.lute:"), "{t}");
+    let t = text(&Command::new(BIN).arg("beats").arg(&dir).output().unwrap());
+    assert!(
+        t.contains(
+            "lockedDoor @ room.lobby — select: first · gate never holds: \
+             `raisedWhen: !holds(canEnter(occasion.target))`"
+        ),
+        "{t}"
+    );
+    let office = t
+        .lines()
+        .find(|l| l.contains("lockedDoor @ room.office"))
+        .unwrap_or_default();
+    assert!(
+        !office.is_empty() && !office.contains("gate never holds"),
+        "{t}"
+    );
 }

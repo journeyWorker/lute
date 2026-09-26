@@ -1003,6 +1003,46 @@ pub(crate) fn occasion_target_scope_message() -> String {
     )
 }
 
+/// G-7: [`occasion_target_scope_message`] for a use of `@def`, whose body
+/// (`body`, as declared) reads [`OCCASION_TARGET`].
+fn occasion_target_def_scope_message(def: &str, body: &str) -> String {
+    format!(
+        "`@{def}` reads `{OCCASION_TARGET}` (`{def}: {}`), which has a value only in a beat or \
+         entry that targets a kind (`target=\"kind:<kind>\"`) or runs once for each member of \
+         one (`for=\"kind:<kind>\"`) — use `@{def}` there, or read something this beat has \
+         (dsl 0.27.0 §3)",
+        body.trim()
+    )
+}
+
+/// G-7: the defs of `bodies` whose body reads [`OCCASION_TARGET`], directly
+/// or through another def.
+pub(crate) fn defs_reading_target(
+    bodies: &BTreeMap<String, String>,
+) -> std::collections::BTreeSet<String> {
+    let mut out: std::collections::BTreeSet<String> = bodies
+        .iter()
+        .filter(|(_, body)| crate::occasion_bind::mentions_target(body))
+        .map(|(name, _)| name.clone())
+        .collect();
+    loop {
+        let more: Vec<String> = bodies
+            .iter()
+            .filter(|(name, body)| {
+                !out.contains(*name)
+                    && lute_cel::scan_refs(body)
+                        .iter()
+                        .any(|r| !r.is_dollar && out.contains(&r.name))
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        if more.is_empty() {
+            return out;
+        }
+        out.extend(more);
+    }
+}
+
 /// dsl 0.26.0 §5: the members the document's kind beats answer — the domain
 /// of [`OCCASION_TARGET`], sorted, empty without a (well-formed) kind beat
 /// ([`crate::occasion_bind::occasion_scopes`], dsl 0.27.0 §3).
@@ -1019,7 +1059,19 @@ pub fn occasion_target_members(
 /// entry or bundle beat that does not target a kind is `E-UNDECLARED` (the
 /// document declares it for its kind beats; this one is never raised for a
 /// member). A scene has one beat, so its declaration is the whole scope.
-pub(crate) fn check_occasion_target_scope(doc: &Document) -> Vec<Diagnostic> {
+/// `scoped`: the document has a kind beat — without one, every direct read
+/// is already [`crate::cel_resolve::check_cel_slot`]'s (nothing declares
+/// the path), so only a def's read is judged here. G-7: a use of a def of
+/// `def_bodies` reading it ([`defs_reading_target`]) is judged the same.
+pub(crate) fn check_occasion_target_scope(
+    doc: &Document,
+    def_bodies: &BTreeMap<String, String>,
+    scoped: bool,
+) -> Vec<Diagnostic> {
+    let target_defs = defs_reading_target(def_bodies);
+    if !scoped && target_defs.is_empty() {
+        return Vec::new();
+    }
     let is_kind =
         |t: &Option<(String, Span)>| t.as_ref().is_some_and(|(t, _)| kind_target(t).is_some());
     let outside: Vec<Span> = doc
@@ -1034,18 +1086,30 @@ pub(crate) fn check_occasion_target_scope(doc: &Document) -> Vec<Diagnostic> {
                 .map(|b| b.span),
         )
         .collect();
-    if outside.len() == doc.entries.len() + doc.beats.len() {
+    if scoped && outside.len() == doc.entries.len() + doc.beats.len() {
         return Vec::new();
     }
     let within = |s: Span| {
-        outside
-            .iter()
-            .any(|o| o.byte_start <= s.byte_start && s.byte_end <= o.byte_end)
+        !scoped
+            || outside
+                .iter()
+                .any(|o| o.byte_start <= s.byte_start && s.byte_end <= o.byte_end)
     };
-    let mut spans: Vec<Span> = Vec::new();
+    // What `raw` reads that has no value here: `occasion.target` itself, or
+    // the first def reading it.
+    let fault = |raw: &str| -> Option<String> {
+        if raw.contains(OCCASION_TARGET) {
+            return scoped.then(occasion_target_scope_message);
+        }
+        lute_cel::scan_refs(raw)
+            .into_iter()
+            .find(|r| !r.is_dollar && target_defs.contains(&r.name))
+            .map(|r| occasion_target_def_scope_message(&r.name, &def_bodies[&r.name]))
+    };
+    let mut faults: Vec<(Span, String)> = Vec::new();
     lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
-        if slot.raw.contains(OCCASION_TARGET) && within(slot.span) {
-            spans.push(slot.span);
+        if within(slot.span) {
+            faults.extend(fault(&slot.raw).map(|m| (slot.span, m)));
         }
     });
     fn lines<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a lute_syntax::ast::Line)) {
@@ -1067,34 +1131,28 @@ pub(crate) fn check_occasion_target_scope(doc: &Document) -> Vec<Diagnostic> {
     let bodies = doc
         .entries
         .iter()
-        .filter(|e| !is_kind(&e.target) && !is_kind(&e.for_kind))
+        .filter(|e| !scoped || (!is_kind(&e.target) && !is_kind(&e.for_kind)))
         .map(|e| &e.body)
         .chain(
             doc.beats
                 .iter()
-                .filter(|b| !is_kind(&b.target) && !is_kind(&b.for_kind))
+                .filter(|b| !scoped || (!is_kind(&b.target) && !is_kind(&b.for_kind)))
                 .map(|b| &b.body),
-        );
+        )
+        .chain(doc.shots.iter().filter(|_| !scoped).map(|s| &s.body));
     for body in bodies {
         lines(body, &mut |l| {
-            spans.extend(
+            faults.extend(
                 l.interps
                     .iter()
-                    .filter(|i| i.raw.contains(OCCASION_TARGET))
-                    .map(|i| i.span),
+                    .filter_map(|i| fault(&i.raw).map(|m| (i.span, m))),
             );
         });
     }
-    spans
+    faults
         .into_iter()
-        .map(|span| {
-            beat_diag(
-                "E-UNDECLARED",
-                Severity::Error,
-                occasion_target_scope_message(),
-                span,
-                Layer::Cel,
-            )
+        .map(|(span, message)| {
+            beat_diag("E-UNDECLARED", Severity::Error, message, span, Layer::Cel)
         })
         .collect()
 }
@@ -1723,6 +1781,19 @@ pub fn check_project_beats(
     let groups = share_groups(&pbs);
     let share_diags = check_share_once(&pbs);
     let guards: Vec<Option<String>> = pbs.iter().map(|pb| once_guard(pb, &pbs, &groups)).collect();
+    // Visited key → `after:` text, for the tie check's after-closure (G-1);
+    // a key two beats share is ambiguous and left out.
+    let mut afters: BTreeMap<String, Option<&str>> = BTreeMap::new();
+    for pb in pbs.iter().filter(|pb| pb.kind != ProjectBeatKind::Entry) {
+        afters
+            .entry(pb.id.clone())
+            .and_modify(|a| *a = None)
+            .or_insert(pb.after);
+    }
+    let afters: BTreeMap<String, &str> = afters
+        .into_iter()
+        .filter_map(|(k, a)| Some((k, a?)))
+        .collect();
     let order = selection_order(
         &pbs.iter()
             .map(|b| (b.on, b.priority, b.kind_targets.as_deref()))
@@ -1765,7 +1836,7 @@ pub fn check_project_beats(
             // dsl 0.27.0 (T3-11): what the beat's `after:` requires — a
             // `once: user` beat `X` and one waiting on `visited('X')` are
             // never eligible together.
-            let after = pb.after.and_then(after_premise);
+            let after = pb.after.and_then(|a| after_premise(a, &afters));
             let eligible = pb
                 .when
                 .as_deref()
@@ -2329,28 +2400,54 @@ pub fn shadowers_at(
 
 /// dsl 0.27.0 (T3-11): what an `after:` requires, as a condition the tie
 /// check conjoins — each `visited('<id>')` it needs (a `once: user` beat's
-/// own guard is `!visited('<id>')`). `completed` / `active` read no flag the
-/// eligibility has, so they drop out (weakening, never strengthening: an `||`
-/// with a dropped side drops whole). `None` when nothing remains or the
-/// value is out of profile.
-fn after_premise(raw: &str) -> Option<String> {
+/// own guard is `!visited('<id>')`), and, since a beat is visited only once
+/// its own `after:` held, what that beat's `after:` required in turn (G-1:
+/// `r3` after `visited(r2)`, `r2` after `visited(r1)` ⇒ `visited(r1)`),
+/// through `afters` (visited key → `after:` text). `completed` / `active`
+/// read no flag the eligibility has, so they drop out (weakening, never
+/// strengthening: an `||` with a dropped side drops whole). `None` when
+/// nothing remains or the value is out of profile.
+fn after_premise(raw: &str, afters: &BTreeMap<String, &str>) -> Option<String> {
     use crate::prereq::PrereqFormula as F;
-    fn cel(f: &F) -> Option<String> {
+    fn cel(f: &F, afters: &BTreeMap<String, &str>, seen: &mut Vec<String>) -> Option<String> {
         match f {
-            F::Visited(k) => Some(format!("visited('{k}')")),
+            F::Visited(k) => {
+                let own = format!("visited('{k}')");
+                if seen.contains(k) {
+                    return Some(own);
+                }
+                seen.push(k.clone());
+                let before = afters
+                    .get(k.as_str())
+                    .and_then(|raw| crate::prereq::parse_prereq(raw, bare_span(0, 0)).0)
+                    .and_then(|f| cel(&f, afters, seen));
+                seen.pop();
+                Some(match before {
+                    Some(b) => format!("{own} && {b}"),
+                    None => own,
+                })
+            }
             F::Completed(_) | F::Active(_) => None,
-            F::And(a, b) => match (cel(a), cel(b)) {
+            F::And(a, b) => match (cel(a, afters, seen), cel(b, afters, seen)) {
                 (Some(a), Some(b)) => Some(format!("{a} && {b}")),
                 (a, b) => a.or(b),
             },
-            F::Or(a, b) => Some(format!("({} || {})", cel(a)?, cel(b)?)),
+            F::Or(a, b) => Some(format!(
+                "(({}) || ({}))",
+                cel(a, afters, seen)?,
+                cel(b, afters, seen)?
+            )),
         }
     }
     if raw.trim().is_empty() {
         return None;
     }
     let span = bare_span(0, 0);
-    cel(&crate::prereq::parse_prereq(raw, span).0?)
+    cel(
+        &crate::prereq::parse_prereq(raw, span).0?,
+        afters,
+        &mut Vec::new(),
+    )
 }
 
 /// `a` and `b` can never be eligible together: two of the alternatives of

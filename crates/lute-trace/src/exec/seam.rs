@@ -11,25 +11,37 @@
 //! `occasion:` step is a usage error.
 
 use super::session::{ExecProject, PlayHalt, World};
+use crate::exec::{Driver, GuardRead, Machine};
 
 use lute_check::gates::E_OCCASION_GATE;
 
 /// Why the engine would not raise an occasion now.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Closed {
     /// The project's `terminal:` holds (its raw condition).
     Terminal(String),
-    /// The occasion's `raisedWhen` gate is false (its raw condition).
-    Gate(String),
+    /// The occasion's `raisedWhen` gate is false: its raw condition and
+    /// the reads it is false over ([`Machine::false_reads`], HW27-10).
+    Gate { raw: String, reads: Vec<GuardRead> },
     /// The gate or the terminal condition could not be decided: what was
     /// unknown.
     Unknown(String),
 }
 
-/// Evaluate `raw` in `w`, `member` bound as `occasion.target`.
-fn holds(p: &ExecProject, w: &World, raw: &str, member: Option<&str>) -> Result<bool, String> {
-    let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
-    eval.bind_occasion_target(member);
+impl Closed {
+    /// The false reads of a closed gate, `; `-joined after " since " — ``
+    /// since `run.stalker` is morgue`` — empty when there are none.
+    pub fn reads_text(reads: &[GuardRead]) -> String {
+        if reads.is_empty() {
+            return String::new();
+        }
+        let found: Vec<String> = reads.iter().map(GuardRead::found).collect();
+        format!(" since {}", found.join("; "))
+    }
+}
+
+/// Decide `raw` in `eval`; `Err` names what was unknown.
+fn decide<D: Driver>(eval: &mut Machine<D>, raw: &str) -> Result<bool, String> {
     eval.eval_guard(raw).map_err(|atoms| {
         format!(
             "`{raw}` evaluates unknown: {}",
@@ -43,7 +55,10 @@ fn holds(p: &ExecProject, w: &World, raw: &str, member: Option<&str>) -> Result<
 pub fn terminal_holds(p: &ExecProject, w: &World) -> Result<bool, String> {
     match &p.index.terminal {
         None => Ok(false),
-        Some(t) => holds(p, w, &t.raw, None),
+        Some(t) => decide(
+            &mut w.evaluator(&p.eval_json).with_visited(&w.visited),
+            &t.raw,
+        ),
     }
 }
 
@@ -61,23 +76,41 @@ fn member<'t>(p: &ExecProject, occasion: &str, target: &'t str) -> std::borrow::
 /// terminal condition holds, or the occasion's gate is false — or `None`
 /// when it would.
 pub fn closed(p: &ExecProject, w: &World, occasion: &str, target: Option<&str>) -> Option<Closed> {
-    match terminal_holds(p, w) {
-        Ok(true) => {
-            let raw = p
-                .index
-                .terminal
-                .as_ref()
-                .map_or_else(String::new, |t| t.raw.clone());
-            return Some(Closed::Terminal(raw));
-        }
-        Ok(false) => {}
-        Err(unknown) => return Some(Closed::Unknown(unknown)),
+    let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
+    closed_in(p, &mut eval, occasion, target)
+}
+
+/// [`closed`] decided by `eval` — the world's evaluator in `lute play`, the
+/// walk's own Machine over the mocks in `lute trace` / `lute test` — so
+/// every tool judges the seam by one rule (HW27-04). `target` is the raise
+/// target (`room.office`, or a bare member); `occasion.target` is left
+/// bound to its member.
+pub fn closed_in<D: Driver>(
+    p: &ExecProject,
+    eval: &mut Machine<D>,
+    occasion: &str,
+    target: Option<&str>,
+) -> Option<Closed> {
+    let gate = p.index.gates.iter().find(|g| g.occasion == occasion);
+    if p.index.terminal.is_none() && gate.is_none() {
+        return None;
     }
-    let gate = p.index.gates.iter().find(|g| g.occasion == occasion)?;
     let member = target.map(|t| member(p, occasion, t));
-    match holds(p, w, &gate.raised_when.raw, member.as_deref()) {
+    eval.bind_occasion_target(member.as_deref());
+    if let Some(t) = &p.index.terminal {
+        match decide(eval, &t.raw) {
+            Ok(true) => return Some(Closed::Terminal(t.raw.clone())),
+            Ok(false) => {}
+            Err(unknown) => return Some(Closed::Unknown(unknown)),
+        }
+    }
+    let raw = &gate?.raised_when.raw;
+    match decide(eval, raw) {
         Ok(true) => None,
-        Ok(false) => Some(Closed::Gate(gate.raised_when.raw.clone())),
+        Ok(false) => Some(Closed::Gate {
+            raw: raw.clone(),
+            reads: eval.false_reads(raw),
+        }),
         Err(unknown) => Some(Closed::Unknown(unknown)),
     }
 }
@@ -94,10 +127,11 @@ pub fn refusal(n: usize, occasion: &str, target: Option<&str>, why: &Closed) -> 
             "step {n}: {E_OCCASION_GATE}: the game is over — `terminal: {t}` holds, so the engine \
              raises no occasion ({raised} included); start a new run (`newRun: true`) to play on"
         )),
-        Closed::Gate(g) => PlayHalt::Error(format!(
-            "step {n}: {E_OCCASION_GATE}: the engine raises {raised} only when `{g}` (its \
-             `raisedWhen`), which is false here — make it hold first (an `engine:` write, an \
-             earlier step), or drop the step"
+        Closed::Gate { raw, reads } => PlayHalt::Error(format!(
+            "step {n}: {E_OCCASION_GATE}: the engine raises {raised} only when `{raw}` (its \
+             `raisedWhen`), which is false here{} — make it hold first (an `engine:` write, an \
+             earlier step), or drop the step",
+            Closed::reads_text(reads)
         )),
         Closed::Unknown(u) => PlayHalt::Incomplete(format!(
             "step {n}: whether the engine may raise {raised} is undecided: {u}"
@@ -116,7 +150,7 @@ pub fn advance_after_terminal(n: usize, terminal: &str) -> PlayHalt {
 
 /// A raise the clock did not make during an `advance:` because the seam
 /// was closed: where the clock stood, the occasion, and why.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ClosedRaise {
     pub at: String,
     pub occasion: String,

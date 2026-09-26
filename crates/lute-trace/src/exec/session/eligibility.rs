@@ -47,6 +47,17 @@ pub enum Premise {
     SpentBy(String),
     /// Its `when` decided false (`raw`: the compiled condition).
     When { raw: String },
+    /// dsl 0.27.0 §4 (HW27-04): the engine would not raise the beat's
+    /// occasion — its `raisedWhen` gate (`raw`) is false over `reads`.
+    Gate {
+        occasion: String,
+        raw: String,
+        reads: Vec<crate::exec::GuardRead>,
+    },
+    /// dsl 0.27.0 §4 (HW27-04): the project's `terminal:` (`raw`) holds —
+    /// the game is over and the engine raises no occasion (`occasion`, the
+    /// beat's, included).
+    Terminal { occasion: String, raw: String },
 }
 
 impl std::fmt::Display for Premise {
@@ -61,6 +72,18 @@ impl std::fmt::Display for Premise {
                 Ok(())
             }
             Premise::When { .. } => f.write_str("when: false"),
+            Premise::Gate {
+                occasion,
+                raw,
+                reads,
+            } => write!(
+                f,
+                "`{occasion}` is not raised: its `raisedWhen: {raw}` is false{}",
+                crate::exec::seam::Closed::reads_text(reads)
+            ),
+            Premise::Terminal { raw, .. } => {
+                write!(f, "the game is over: `terminal: {raw}` holds")
+            }
         }
     }
 }
@@ -256,13 +279,13 @@ pub fn eligible_at(
         // once per member, in member order, each binding `occasion.target`.
         if let Some(fk) = &beat.for_kind {
             for m in &fk.members {
-                let mut c = judge_beat(p, w, &mut eval, beat, Some(m));
+                let mut c = judge_beat(p, w, &mut eval, beat, Some(m), target);
                 c.for_member = Some(m.clone());
                 out.push((idx, c));
             }
             continue;
         }
-        out.push((idx, judge_beat(p, w, &mut eval, beat, member)));
+        out.push((idx, judge_beat(p, w, &mut eval, beat, member, target)));
     }
     // dsl 0.26.0 §5, dsl 0.27.0 (T3-10): the checker's order — priority
     // descending, member > sub-kind > kind, then index order.
@@ -281,12 +304,14 @@ pub fn eligible_at(
 }
 
 /// One beat's verdict in `w`, `member` bound as `occasion.target` (dsl
-/// 0.26.0 §5): `once` spending, `after:`, `spentBy`, then `when` — THE
-/// eligibility rule: what [`eligible_at`] selects by, [`Session::eligibility`]
-/// reports, and `lute trace` / `lute test` judge a presented scene, entry
-/// or bundle beat by (their evaluator is the walk's own Machine, over the
-/// mocks; `w` then carries the mocked `visited:` / quest states / read
-/// flags).
+/// 0.26.0 §5): the seam (dsl 0.27.0 §4 — the project's `terminal:`, then
+/// the occasion's `raisedWhen` gate for the beat's member, its own target,
+/// else `raised`, the target the occasion is raised for), `once` spending,
+/// `after:`, `spentBy`, then `when` — THE eligibility rule: what
+/// [`eligible_at`] selects by, [`Session::eligibility`] reports, and `lute
+/// trace` / `lute test` judge a presented scene, entry or bundle beat by
+/// (their evaluator is the walk's own Machine, over the mocks; `w` then
+/// carries the mocked `visited:` / quest states / read flags).
 ///
 /// [`Session::eligibility`]: super::Session::eligibility
 pub fn judge_beat<D: Driver>(
@@ -295,8 +320,18 @@ pub fn judge_beat<D: Driver>(
     eval: &mut Machine<D>,
     beat: &IndexBeat,
     member: Option<&str>,
+    raised: Option<&str>,
 ) -> Candidate {
     let flag = |path: String| w.state.get(&path) == Some(&Value::Bool(true));
+    // dsl 0.27.0 §4 (HW27-04): a beat of an occasion the engine would not
+    // raise now is not eligible — the same seam `lute play` refuses a raise
+    // by, decided by this evaluator.
+    let seam = crate::exec::seam::closed_in(
+        p,
+        eval,
+        &beat.on,
+        member.or(beat.target.as_deref()).or(raised),
+    );
     // dsl 0.26.0 §5: a kind beat's `when` reads the raised member.
     eval.bind_occasion_target(member);
     // A scene's (or bundle beat's) `once` is spent by presenting it; an
@@ -318,7 +353,21 @@ pub fn judge_beat<D: Driver>(
             (raw, v)
         })
     };
-    let verdict = if let Some(reason) = spent {
+    let verdict = if let Some(closed) = seam {
+        use crate::exec::seam::Closed;
+        match closed {
+            Closed::Terminal(raw) => Verdict::Ineligible(Premise::Terminal {
+                occasion: beat.on.clone(),
+                raw,
+            }),
+            Closed::Gate { raw, reads } => Verdict::Ineligible(Premise::Gate {
+                occasion: beat.on.clone(),
+                raw,
+                reads,
+            }),
+            Closed::Unknown(why) => Verdict::Unknown(why),
+        }
+    } else if let Some(reason) = spent {
         Verdict::Ineligible(Premise::Spent {
             once: beat.once.clone(),
             reason,

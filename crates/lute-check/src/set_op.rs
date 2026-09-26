@@ -184,19 +184,22 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnos
             return diags;
         }
         WriteOwner::PrevReserved => {
-            let why = if set.path.starts_with("prev.season.") {
-                "`prev.season.<name>.*` is the read-only mirror of the values the season's \
-                 previous window ended with, copied by the engine when the season opens \
-                 (dsl 0.27.0 §5)"
+            let message = if set.path.starts_with("prev.season.") {
+                format!(
+                    "`::set` cannot write `{}`: `prev.season.<name>.*` is the read-only mirror \
+                     of the values the season's previous window ended with, copied by the \
+                     engine when the season opens (dsl 0.27.0 §5)",
+                    set.path
+                )
             } else {
-                "`prev.run.*` is the read-only mirror of the value `run.*` had when the \
-                 previous run ended, snapshotted by the engine (dsl 0.23.0 §6)"
+                format!(
+                    "`::set` cannot write `{}`: `prev.run.*` is the read-only mirror of the \
+                     value `run.*` had when the previous run ended, snapshotted by the engine \
+                     (dsl 0.23.0 §6)",
+                    set.path
+                )
             };
-            diags.push(diag(
-                "E-QUEST-RESERVED-WRITE",
-                format!("`::set` cannot write `{}`: {why}", set.path),
-                set.path_span,
-            ));
+            diags.push(diag("E-QUEST-RESERVED-WRITE", message, set.path_span));
             return diags;
         }
         WriteOwner::ClockReserved => {

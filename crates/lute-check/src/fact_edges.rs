@@ -9,7 +9,9 @@
 //! then names the derived fact it serves (`via`).
 //!
 //! Gates read: a scene beat's frontmatter `when:`, a bundle beat's or lore
-//! entry's `when=`, a quest's `start=`. Readers are graph nodes; producers
+//! entry's `when=`, a quest's `start=` — and (HW27-09) the `raisedWhen` of
+//! the occasion a beat answers, ground with its member target
+//! (`holds(canEnter(occasion.target))` for `room.office`). Readers are graph nodes; producers
 //! are any unit that asserts (a scene, a quest, a lore entry or a bundle
 //! beat — `::use` sites included, the host carrying the component's bound
 //! writes). A producer is necessary for no reader: a reader with several
@@ -20,7 +22,7 @@ use std::path::{Path, PathBuf};
 
 use cel_parser::ast::{operators as op, Expr};
 use cel_parser::reference::Val;
-use lute_syntax::ast::{CelSlot, Document};
+use lute_syntax::ast::Document;
 use lute_syntax::datalog::{BodyLiteral, RuleTerm};
 
 use crate::cast::FactProducers;
@@ -66,12 +68,12 @@ pub fn fact_edges(
     let units = unit_nodes(docs, foldeds, graph);
     let mut out = BTreeSet::new();
     for ((path, doc), folded) in docs.iter().zip(foldeds) {
-        for (reader, slot) in gates(path, doc, folded, graph) {
+        for (reader, raw) in gates(path, doc, folded, graph) {
             let defs = DefTable {
                 bodies: &folded.def_bodies,
                 params: &folded.env.def_params,
             };
-            for (rel, args) in required_holds(&slot.raw, &defs) {
+            for (rel, args) in required_holds(&raw, &defs) {
                 let mut found = Vec::new();
                 let read = show(&rel, &args);
                 let ask = Ask {
@@ -139,43 +141,67 @@ fn unit_nodes(
     out
 }
 
-/// The gate slots of `doc`'s graph nodes.
-fn gates<'d>(
+/// The gate conditions of `doc`'s graph nodes: each one's own `when` /
+/// `start`, and the gate of the occasion it answers ([`occasion_gate`]).
+fn gates(
     path: &Path,
-    doc: &'d Document,
-    folded: &'d FoldedEnv,
+    doc: &Document,
+    folded: &FoldedEnv,
     graph: &ConnGraph,
-) -> Vec<(NodeId, &'d CelSlot)> {
+) -> Vec<(NodeId, String)> {
     let node = |id: NodeId| graph.nodes.get(&id).filter(|i| i.path == path).map(|_| id);
+    let on = |on: &Option<(String, lute_core_span::Span)>,
+              target: &Option<(String, lute_core_span::Span)>| {
+        on.as_ref()
+            .and_then(|(on, _)| occasion_gate(folded, on, target.as_ref().map(|(t, _)| t.as_str())))
+    };
     let mut out = Vec::new();
     for (id, info) in &graph.nodes {
         if let NodeId::Scene(_) = id {
             if info.path == path {
-                if let Some(w) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
-                    out.push((id.clone(), w));
+                if let Some(b) = folded.typed.beat.as_ref() {
+                    out.extend(b.when.as_ref().map(|w| (id.clone(), w.raw.clone())));
+                    out.extend(
+                        occasion_gate(folded, &b.on, b.target.as_deref()).map(|g| (id.clone(), g)),
+                    );
                 }
             }
         }
     }
     for q in &doc.quests {
         if let (Some(id), Some(start)) = (node(NodeId::Quest(q.id.clone())), q.start.as_ref()) {
-            out.push((id, start));
+            out.push((id, start.raw.clone()));
         }
     }
     for e in &doc.entries {
-        if let (Some(id), Some(when)) = (node(NodeId::Entry(e.id.clone())), e.when.as_ref()) {
-            out.push((id, when));
+        if let Some(id) = node(NodeId::Entry(e.id.clone())) {
+            out.extend(e.when.as_ref().map(|w| (id.clone(), w.raw.clone())));
+            out.extend(on(&e.on, &e.target).map(|g| (id, g)));
         }
     }
     if let Some(doc_id) = folded.typed.id.as_deref() {
         for b in &doc.beats {
             let key = crate::bundles::bundle_beat_key(doc_id, &b.id);
-            if let (Some(id), Some(when)) = (node(NodeId::Beat(key)), b.when.as_ref()) {
-                out.push((id, when));
+            if let Some(id) = node(NodeId::Beat(key)) {
+                out.extend(b.when.as_ref().map(|w| (id.clone(), w.raw.clone())));
+                out.extend(on(&b.on, &b.target).map(|g| (id, g)));
             }
         }
     }
     out
+}
+
+/// The `raisedWhen` of occasion `on` as a beat answering it for `target`
+/// reads it: ground with the member a concrete target names. `None` without
+/// a gate, or for a gate reading `occasion.target` when the beat names no
+/// single member (untargeted, or a whole kind).
+fn occasion_gate(folded: &FoldedEnv, on: &str, target: Option<&str>) -> Option<String> {
+    let gate = crate::gates::gate_of(&folded.occasions, on)?;
+    if !crate::occasion_bind::mentions_target(gate) {
+        return Some(gate.to_string());
+    }
+    let member = crate::gates::target_member(folded.occasions.get(on)?, target?)?;
+    Some(crate::occasion_bind::instantiate(gate, &member))
 }
 
 /// Every positive top-level conjunct `holds(rel(args…))` of `raw` (after

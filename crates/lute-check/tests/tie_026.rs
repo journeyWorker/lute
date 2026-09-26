@@ -212,6 +212,29 @@ fn a_beat_after_a_once_user_beat_never_ties_it() {
     );
 }
 
+/// G-1: the same along a chain — `encore` after `visited('mid')`, `mid`
+/// after `visited('h3')`: `mid` is visited only once `h3` was, so `encore`
+/// needs `h3` spent and never ties it. A cycle of `after:`s stays finite.
+#[test]
+fn a_beat_after_a_chain_of_afters_never_ties_its_once_user_root() {
+    let beat = |id: &str, after: &str| {
+        scene(
+            "run",
+            id,
+            &format!("on: talk\npriority: 10\nonce: user\n{after}when: 'run.day >= 1'\n"),
+            "",
+        )
+    };
+    let h3 = beat("h3", "");
+    let mid = beat("mid", "after: visited('h3')\n");
+    let encore = beat("encore", "after: visited('mid')\n");
+    let out = ties(&[&h3, &mid, &encore]);
+    assert!(out.is_empty(), "{out:?}");
+    // A cycle (`h3` waits on `encore` too): the closure terminates.
+    let h3 = beat("h3", "after: visited('encore')\n");
+    let _ = ties(&[&h3, &mid, &encore]);
+}
+
 /// dsl 0.27.0 (T3-11): beats that tie one another draw ONE warning naming
 /// each once, at the first — not one per beat repeating every earlier pair.
 #[test]

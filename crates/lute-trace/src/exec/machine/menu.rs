@@ -100,15 +100,81 @@ impl<D: Driver> Machine<D> {
             .collect()
     }
 
-    /// A fact pattern `rel(a, b)` that does not hold, its path arguments
-    /// read (an unset one kept as written); a ground fact of a derived
-    /// relation carries why no rule concludes it.
-    fn fact_read(&mut self, pattern: &str) -> GuardRead {
+    /// OT-F-10: the conjuncts of a guard `raw` that decided false which are
+    /// false themselves, in document order — every top-level `&&`, a
+    /// parenthesized conjunction split again — each with the reads it is
+    /// false over ([`Machine::conjunct_reads`]). `raw` is the one conjunct
+    /// when its top level is no conjunction; empty unless `raw` is false.
+    pub fn false_conjuncts(&mut self, raw: &str) -> Vec<(String, Vec<GuardRead>)> {
+        let mut out = Vec::new();
+        if self.store.eval(raw).0 == Value::Bool(false) {
+            self.push_false_conjuncts(raw, &mut out);
+        }
+        out
+    }
+
+    /// [`Machine::false_conjuncts`] of a `raw` known false.
+    fn push_false_conjuncts(&mut self, raw: &str, out: &mut Vec<(String, Vec<GuardRead>)>) {
+        use lute_check::templates::{top_level_and, unparen};
+        let c = unparen(raw);
+        let parts = top_level_and(c);
+        if parts.len() < 2 {
+            out.push((c.to_string(), self.conjunct_reads(c)));
+            return;
+        }
+        for part in parts {
+            if self.store.eval(part).0 == Value::Bool(false) {
+                self.push_false_conjuncts(part, out);
+            }
+        }
+    }
+
+    /// Every read of one false conjunct `raw`, in document order: each state
+    /// path with its value, each fact pattern with whether it holds (one
+    /// that does not with [`Machine::fact_read`]'s why), each scene
+    /// `visited(…)` asks about with whether it is visited. Undecided facts
+    /// are left out.
+    fn conjunct_reads(&mut self, raw: &str) -> Vec<GuardRead> {
+        let mut atoms = Vec::new();
+        if let Some(expr) = crate::exec::store::parse(raw) {
+            crate::eval::guard_atoms(&expr, &mut atoms);
+        }
+        atoms
+            .into_iter()
+            .filter_map(|a| match a {
+                crate::eval::GuardAtom::Path(p) => {
+                    let v = match self.store.read(&p) {
+                        Read::Value(v) => v,
+                        Read::Unset => Value::Unknown,
+                    };
+                    Some(GuardRead::Path(p, v))
+                }
+                crate::eval::GuardAtom::Fact(f) => {
+                    match self.store.eval(&format!("holds({f})")).0 {
+                        Value::Bool(true) => {
+                            let (rel, args) = self.fact_args(&f);
+                            Some(GuardRead::Holds(format!("{rel}({})", args.join(", "))))
+                        }
+                        Value::Bool(false) => Some(self.fact_read(&f)),
+                        _ => None,
+                    }
+                }
+                crate::eval::GuardAtom::Visited(k) if self.store.visited.contains(&k) => {
+                    Some(GuardRead::Seen(k))
+                }
+                crate::eval::GuardAtom::Visited(k) => Some(GuardRead::Visited(k)),
+            })
+            .collect()
+    }
+
+    /// A fact pattern `rel(a, b)` as its relation and arguments, its path
+    /// arguments read (an unset one kept as written).
+    fn fact_args<'p>(&mut self, pattern: &'p str) -> (&'p str, Vec<String>) {
         let (rel, args) = pattern
             .strip_suffix(')')
             .and_then(|p| p.split_once('('))
             .unwrap_or((pattern, ""));
-        let args: Vec<String> = args
+        let args = args
             .split(", ")
             .filter(|a| !a.is_empty())
             .map(|a| match self.store.read(a) {
@@ -118,6 +184,14 @@ impl<D: Driver> Machine<D> {
                 _ => a.to_string(),
             })
             .collect();
+        (rel, args)
+    }
+
+    /// A fact pattern `rel(a, b)` that does not hold, its path arguments
+    /// read ([`Machine::fact_args`]); a ground fact of a derived relation
+    /// carries why no rule concludes it.
+    fn fact_read(&mut self, pattern: &str) -> GuardRead {
+        let (rel, args) = self.fact_args(pattern);
         let fact = format!("{rel}({})", args.join(", "));
         let ground = !args.iter().any(|a| a == "_" || a.contains('.'));
         match ground

@@ -66,6 +66,8 @@ pub(super) struct Step {
 /// A [`Segment`] resolved against the project: what its steps are scripted
 /// by over the script's own `choose:` / `bridges:`.
 pub(super) struct Scope {
+    /// `include: <file>` at `file:line:col`, for messages.
+    pub(super) include: String,
     pub(super) choose: BTreeMap<String, Vec<String>>,
     pub(super) bridges: BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
 }
@@ -291,6 +293,7 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                 continue;
             }
             let scope = Arc::new(Scope {
+                include: seg.include.clone(),
                 choose: seg.choose.clone(),
                 bridges: resolve_bridges(p, &format!("step {n}: {}", seg.include), &seg.bridges)?,
             });

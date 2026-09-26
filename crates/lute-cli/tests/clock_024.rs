@@ -154,7 +154,7 @@ fn an_undeclared_match_subject_is_no_nonexhaustive_match() {
     let t = text(&check_project(&dir));
     assert!(
         t.contains("world.schema.yaml:4:1: error [E-CLOCK-DECL]")
-            && t.contains("unknown field `run.route`"),
+            && t.contains("`clock:` has no key `run.route`"),
         "{t}"
     );
     assert!(!t.contains("E-NONEXHAUSTIVE"), "{t}");

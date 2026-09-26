@@ -186,6 +186,9 @@ pub fn compute_must(
     // closure included) and applied to a slot only when the slot is read.
     let closure = Arc::new(MustClosure::new(vocab, may, root.seeds.keys().cloned()));
     let mut out = FactMust::default();
+    // HW27-11: a slot the walks record nothing for (a beat without a
+    // `when`, a gate judged at a raise) still has the stable seeds.
+    out.slots.set_baseline(&root.seed_facts(), &closure);
     let mut must_out: BTreeMap<String, FactMap> = BTreeMap::new();
     let mut walked = vec![false; docs.len()];
     // First index per path — `position`'s answer, without a scan per node.

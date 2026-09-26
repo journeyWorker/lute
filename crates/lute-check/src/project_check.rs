@@ -982,8 +982,18 @@ pub const W_QUEST_TIER_IMPLICIT: &str = "W-QUEST-TIER-IMPLICIT";
 /// means neither the quest nor the project wrote one) and whose `start`,
 /// `fail`, and objectives' `done` / `by` / `until` (`@def`s expanded) read
 /// at least one run-tier piece of state and no user- or app-tier one
-/// ([`crate::beats::read_tier`]). A quest of this document with an explicit
-/// tier classifies its `quest.<id>.*`; any other quest's is unknown.
+/// ([`crate::beats::read_tier`]). `clock.*` is derived from the clock's
+/// `day` path and reads its tier; `visited()` is save state (a new run does
+/// not clear it, dsl 0.21.0 §7a.1), so it reads as neither.
+///
+/// A `<objective quest="c">` reads `c`'s tier (ML-F3): an explicit one, or
+/// run when `c` is itself flagged here — so a parent of run-looking
+/// subquests is flagged with them, and each warning names the quests of its
+/// tree that must change together (a subquest's tier must equal its
+/// parent's, [`E_QUEST_TIER_MIX`]). A run-looking subquest whose parent stays
+/// user-tier is not flagged: alone it cannot change. A quest of this
+/// document with an explicit tier classifies its `quest.<id>.*`; any other
+/// quest's is unknown.
 pub fn check_quest_tier_implicit(
     doc: &Document,
     folded: &crate::check::FoldedEnv,
@@ -1002,12 +1012,23 @@ pub fn check_quest_tier_implicit(
         bodies: &folded.def_bodies,
         params: &folded.env.def_params,
     };
-    let mut out = Vec::new();
+    let clock_tier = folded.env.clock.as_ref().map(|c| {
+        let head = c.day.split('.').next().unwrap_or("");
+        match head {
+            "run" => ReadTier::Run,
+            "user" => ReadTier::User,
+            "app" => ReadTier::App,
+            _ => ReadTier::Other,
+        }
+    });
+    // Each implicit quest's own reads and its `quest=` children.
+    let mut own: BTreeMap<&str, (Vec<ReadTier>, Vec<&str>)> = BTreeMap::new();
     for q in doc
         .quests
         .iter()
         .filter(|q| q.tier.is_none() && !q.id.is_empty())
     {
+        let mut children = Vec::new();
         let slots = q
             .start
             .iter()
@@ -1016,13 +1037,15 @@ pub fn check_quest_tier_implicit(
                 let Node::Objective(o) = n else {
                     return Vec::new();
                 };
+                children.extend(o.quest.as_deref().filter(|c| !c.is_empty()));
                 std::iter::once(&o.done)
                     .chain(&o.by)
                     .chain(&o.until)
                     .collect()
-            }));
+            }))
+            .collect::<Vec<_>>();
         let mut read = Vec::new();
-        for slot in slots.filter(|s| !s.raw.trim().is_empty()) {
+        for slot in slots.into_iter().filter(|s| !s.raw.trim().is_empty()) {
             let raw = crate::cel_expand::expand_cel(&slot.raw, &defs, None, &mut Vec::new())
                 .unwrap_or_else(|_| slot.raw.clone());
             let mut arena = CelArena::default();
@@ -1030,22 +1053,112 @@ pub fn check_quest_tier_implicit(
                 lute_cel::parse_slot_marked_refs(&mut arena, &raw).and_then(|h| arena.get(h))
             {
                 read_tiers(&ided.expr, &tiers, &mut read);
+                if let Some(t) = clock_tier.filter(|_| reads_clock(&ided.expr)) {
+                    read.push(t);
+                }
             }
         }
-        if !read.contains(&ReadTier::Run)
-            || read
+        own.insert(q.id.as_str(), (read, children));
+    }
+    let run_looking = |reads: &[ReadTier]| {
+        reads.contains(&ReadTier::Run)
+            && !reads
                 .iter()
                 .any(|t| matches!(t, ReadTier::User | ReadTier::App))
-        {
-            continue;
+    };
+    // Grows monotonically: a child found run-looking turns its parent's
+    // read of it from user to run.
+    let mut flagged: BTreeSet<&str> = BTreeSet::new();
+    loop {
+        let before = flagged.len();
+        for (id, (reads, children)) in &own {
+            let mut all = reads.clone();
+            for c in children {
+                all.push(match quests.get(c) {
+                    Some(true) => ReadTier::User,
+                    Some(false) => ReadTier::Run,
+                    None if flagged.contains(c) => ReadTier::Run,
+                    None if own.contains_key(c) => ReadTier::User,
+                    None => ReadTier::Other,
+                });
+            }
+            if run_looking(&all) {
+                flagged.insert(id);
+            }
         }
+        if flagged.len() == before {
+            break;
+        }
+    }
+    let parents_of = |id: &str| -> Vec<&str> {
+        own.iter()
+            .filter(|(_, (_, cs))| cs.contains(&id))
+            .map(|(p, _)| *p)
+            .chain(
+                doc.quests
+                    .iter()
+                    .filter(|p| p.tier.is_some())
+                    .filter(|p| {
+                        p.body.iter().any(
+                            |n| matches!(n, Node::Objective(o) if o.quest.as_deref() == Some(id)),
+                        )
+                    })
+                    .map(|p| p.id.as_str()),
+            )
+            .collect()
+    };
+    // A subquest whose parent stays user-tier keeps it: not flagged.
+    let stays_user =
+        |p: &str| quests.get(p) == Some(&true) || (own.contains_key(p) && !flagged.contains(p));
+    let reported: BTreeSet<&str> = flagged
+        .iter()
+        .copied()
+        .filter(|id| !parents_of(id).into_iter().any(stays_user))
+        .collect();
+    let mut out = Vec::new();
+    for q in doc
+        .quests
+        .iter()
+        .filter(|q| reported.contains(q.id.as_str()))
+    {
+        // The implicit quests of `q`'s tree that must change with it.
+        let mut tree: BTreeSet<&str> = BTreeSet::new();
+        let mut stack = vec![q.id.as_str()];
+        while let Some(id) = stack.pop() {
+            let near = own
+                .get(id)
+                .map(|(_, cs)| cs.clone())
+                .unwrap_or_default()
+                .into_iter()
+                .chain(parents_of(id));
+            for n in near {
+                if reported.contains(n) && n != q.id && tree.insert(n) {
+                    stack.push(n);
+                }
+            }
+        }
+        let fix = if tree.is_empty() {
+            "write `tier=\"run\"` (or `tier=\"user\"` if it should persist), or set \
+             `defaults.questTier` in lute.project.yaml"
+                .to_string()
+        } else {
+            let names = tree
+                .iter()
+                .map(|t| format!("`{t}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "its quest tree must share one tier, so write `tier=\"run\"` on it and on \
+                 {names} together (or `tier=\"user\"` on all of them if they should persist), \
+                 or set `defaults.questTier` in lute.project.yaml"
+            )
+        };
         out.push(Diagnostic {
             code: W_QUEST_TIER_IMPLICIT.to_string(),
             severity: Severity::Warning,
             message: format!(
                 "quest `{id}` has no `tier=`, so it is user-tier (it persists across runs), but \
-                 its conditions read only run state — write `tier=\"run\"` (or `tier=\"user\"` \
-                 if it should persist), or set `defaults.questTier` in lute.project.yaml",
+                 its conditions read only run state — {fix}",
                 id = q.id
             ),
             span: q.id_span,
@@ -1057,6 +1170,24 @@ pub fn check_quest_tier_implicit(
         });
     }
     out
+}
+
+/// Whether `expr` reads a `clock.*` path.
+fn reads_clock(expr: &cel_parser::ast::Expr) -> bool {
+    use cel_parser::ast::Expr;
+    match expr {
+        Expr::Select(_) | Expr::Ident(_) => {
+            crate::cel_paths::select_path(expr).is_some_and(|p| p.starts_with("clock."))
+        }
+        Expr::Call(c) => c
+            .target
+            .iter()
+            .map(|t| &t.expr)
+            .chain(c.args.iter().map(|a| &a.expr))
+            .any(reads_clock),
+        Expr::List(l) => l.elements.iter().any(|e| reads_clock(&e.expr)),
+        _ => false,
+    }
 }
 
 /// dsl 2026-08-31 §4 (extension): propagate `E-QUEST-UNREACHABLE` one edge

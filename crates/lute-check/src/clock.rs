@@ -39,16 +39,39 @@ fn at_schema(what: &str) -> String {
 }
 
 /// Lift a schema document's `clock:` value. Shape problems (an unknown key,
-/// a missing field, repeated slots, a week that does not add up) are
-/// [`E_CLOCK_DECL`] at `span`; the paths are checked later, against the
-/// folded schema ([`check_clock`]).
-pub fn parse_clock(value: &serde_yaml::Value, span: Span) -> (Option<ClockDecl>, Vec<Diagnostic>) {
+/// a value of the wrong kind, a missing field, repeated slots, a week that
+/// does not add up) are [`E_CLOCK_DECL`] at the key they name inside the
+/// clock (HW27-13), else at the `clock:` key; the paths are checked later,
+/// against the folded schema ([`check_clock`]).
+pub fn parse_clock(
+    value: &serde_yaml::Value,
+    meta: &lute_syntax::ast::Meta,
+) -> (Option<ClockDecl>, Vec<Diagnostic>) {
+    let clock_span = crate::meta::meta_key_span(meta, "clock");
+    let at = |key: &str| clock_key_span(meta, clock_span, key);
+    let keys = key_problems(value);
+    if !keys.is_empty() {
+        let diags = keys
+            .into_iter()
+            .map(|(key, p)| clock_diag(at_schema(&p), at(&key)))
+            .collect();
+        return (None, diags);
+    }
     match serde_yaml::from_value::<ClockDecl>(value.clone()) {
         Ok(clock) => {
             let diags = clock
                 .shape_problems()
                 .into_iter()
-                .map(|p| clock_diag(at_schema(&p), span))
+                .map(|p| {
+                    // Each problem opens with the key it is about: `` `days:` ``,
+                    // `` `week.first` ``, `` `last.slot: h06` ``.
+                    let key = p
+                        .split('`')
+                        .nth(1)
+                        .map(|k| k.split([':', ' ']).next().unwrap_or(k).to_string());
+                    let span = key.map_or(clock_span, |k| at(&k));
+                    clock_diag(at_schema(&p), span)
+                })
                 .collect();
             (Some(clock), diags)
         }
@@ -62,9 +85,150 @@ pub fn parse_clock(value: &serde_yaml::Value, span: Span) -> (Option<ClockDecl>,
                      (together), `raise`, `week` and `last`/`days` optional (dsl 0.24.0 §1, \
                      0.27.0 §4): {e}"
                 ),
-                span,
+                clock_span,
             )],
         ),
+    }
+}
+
+/// The keys a clock and its sub-maps admit, by dotted parent (`""` the
+/// clock itself).
+const CLOCK_KEYS: [(&str, &[&str]); 4] = [
+    (
+        "",
+        &["day", "slot", "slots", "raise", "week", "last", "days"],
+    ),
+    ("last", &["day", "slot"]),
+    ("week", &["length", "first", "labels"]),
+    ("raise", &["slot", "dayStart", "dayEnd"]),
+];
+
+/// HW27-13: the problems with a clock mapping's keys and whole-number
+/// fields, as `(dotted key, problem)` — an unknown key (with a did-you-mean)
+/// and a number field holding anything but a whole number, named in the
+/// writer's terms rather than the YAML library's. Empty for a value that is
+/// not a mapping (the shape message covers it).
+fn key_problems(value: &serde_yaml::Value) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let Some(clock) = value.as_mapping() else {
+        return out;
+    };
+    for (parent, known) in CLOCK_KEYS {
+        let map = if parent.is_empty() {
+            Some(clock)
+        } else {
+            clock.get(parent).and_then(|v| v.as_mapping())
+        };
+        for key in map.into_iter().flat_map(|m| m.keys()) {
+            let name = match key.as_str() {
+                Some(k) if known.contains(&k) => continue,
+                Some(k) => k.to_string(),
+                None => format!("{key:?}"),
+            };
+            let dotted = if parent.is_empty() {
+                name.clone()
+            } else {
+                format!("{parent}.{name}")
+            };
+            let hint = lute_manifest::suggest::nearest(&name, known.iter().copied(), 2)
+                .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+            out.push((
+                dotted.clone(),
+                format!(
+                    "has no key `{dotted}`{hint} (a {} admits {})",
+                    if parent.is_empty() {
+                        "clock".to_string()
+                    } else {
+                        format!("`{parent}:`")
+                    },
+                    known
+                        .iter()
+                        .map(|k| format!("`{k}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            ));
+        }
+    }
+    let whole = |v: &serde_yaml::Value, min: u64| {
+        v.as_u64().is_some_and(|n| n >= min && n <= u32::MAX as u64)
+    };
+    for (dotted, min, example) in [
+        ("days", 0, "`days: 1`"),
+        ("last.day", 0, "`last: { day: 1 }`"),
+        ("week.length", 0, "`week: { length: 7 }`"),
+        ("week.first", 0, "`week: { length: 7, first: 0 }`"),
+    ] {
+        let v = match dotted.split_once('.') {
+            None => clock.get(dotted),
+            Some((parent, key)) => clock
+                .get(parent)
+                .and_then(|p| p.as_mapping())
+                .and_then(|p| p.get(key)),
+        };
+        if let Some(v) = v.filter(|v| !whole(v, min)) {
+            let shown = match v {
+                serde_yaml::Value::String(s) => format!("\"{s}\""),
+                other => serde_yaml::to_string(other)
+                    .map_or_else(|_| "?".into(), |s| s.trim().to_string()),
+            };
+            out.push((
+                dotted.to_string(),
+                format!("`{dotted}: {shown}` must be a whole number, e.g. {example}"),
+            ));
+        }
+    }
+    out
+}
+
+/// Where `dotted` (`days`, `last.slot`) is written inside the clock whose
+/// key is at `clock_span`: the key's own span, else `clock_span`. A text
+/// scan of the clock's block (flow or block style), each segment searched
+/// after the previous one.
+fn clock_key_span(meta: &lute_syntax::ast::Meta, clock_span: Span, dotted: &str) -> Span {
+    let authored = crate::sequence::authored_yaml(&meta.raw_yaml);
+    if clock_span == meta.span {
+        return clock_span;
+    }
+    // Offsets map raw → document the way `meta_key_span` does.
+    let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != authored.len();
+    let base = meta.span.byte_start + if enveloped { 4 } else { 0 };
+    let Some(key_off) = clock_span
+        .byte_start
+        .checked_sub(base)
+        .filter(|&o| o < authored.len())
+    else {
+        return clock_span;
+    };
+    // The clock's block: its line, then every more-indented or blank line.
+    let end = authored[key_off..]
+        .split_inclusive('\n')
+        .enumerate()
+        .take_while(|(i, line)| *i == 0 || line.trim().is_empty() || line.starts_with([' ', '\t']))
+        .map(|(_, line)| line.len())
+        .sum::<usize>();
+    let block = &authored[key_off + "clock".len()..key_off + end];
+    let mut from = 0;
+    for seg in dotted.split('.') {
+        let found = block[from..]
+            .match_indices(seg)
+            .map(|(i, _)| from + i)
+            .find(|&i| {
+                let before = block[..i].chars().next_back();
+                let after = block[i + seg.len()..].trim_start_matches([' ', '"', '\'']);
+                !before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+                    && after.starts_with(':')
+            });
+        match found {
+            Some(i) => from = i,
+            None => return clock_span,
+        }
+    }
+    let start = base + key_off + "clock".len() + from;
+    Span {
+        byte_start: start,
+        byte_end: start + dotted.rsplit('.').next().unwrap_or(dotted).len(),
+        ..clock_span
     }
 }
 

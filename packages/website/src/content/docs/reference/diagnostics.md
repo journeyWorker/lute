@@ -1580,7 +1580,7 @@ An `isSet(quest.<id>.state)` guard is always true, since a quest's state is alwa
 
 ### W-QUEST-TIER-IMPLICIT
 
-A quest with no `tier=` (so it defaults to user-tier, persisting across runs) has every one of its `start`/`fail`/objective condition reading only run-tier state, suggesting it was meant to reset each run.
+A quest with no `tier=` (so it defaults to user-tier, persisting across runs) reads only run-tier state in its conditions — `run.*`, `clock.*` over a `run.*` day, run-tier facts, or subquests that are run-tier or flagged too, but not `visited()`, which a new run keeps — suggesting it (and its quest tree) was meant to reset each run.
 
 ### W-RELATION-UNREAD
 

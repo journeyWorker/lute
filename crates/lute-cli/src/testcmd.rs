@@ -287,6 +287,10 @@ struct ExpectResult {
     /// that makes the presentation ineligible (`its \`after: …\` is false
     /// — mock …`). Human report only.
     why: Option<String>,
+    /// dsl 0.27.0 §4 (HW27-04): for an `eligible` miss, why the engine would
+    /// not raise the beat's occasion under the mocks — `--json`'s
+    /// `notRaised`, only when that is the cause.
+    not_raised: Option<lute_trace::NotRaised>,
 }
 
 /// One test file's — or expect-carrying play's — outcome.
@@ -1048,7 +1052,9 @@ fn run_one_test(
 
     let base = test_file.parent().unwrap_or_else(|| Path::new("."));
     let lute_path = base.join(&rel);
-    let lute_display = lute_path.display().to_string();
+    // Shown folded (`tests/spine/../../lore/a.lute` → `lore/a.lute`), so a
+    // report names one document one way wherever the test sits (ML-F9).
+    let lute_display = fold_parent_dirs(&lute_path).display().to_string();
 
     // One test naming a document that no longer exists is that test's
     // failure, never the whole suite's abort.
@@ -1335,8 +1341,9 @@ fn run_one_test(
                 } else {
                     &lute_display
                 };
+                let severity = crate::output::severity_str(d.severity);
                 format!(
-                    "{}:{}:{}: error [{}] {}",
+                    "{}:{}:{}: {severity} [{}] {}",
                     at,
                     d.span.line,
                     d.span.column,
@@ -1380,6 +1387,7 @@ fn run_one_test(
         // exit: complete | incomplete
         if let Some(want) = expect.get("exit").and_then(|v| v.as_str()) {
             expectations.push(ExpectResult {
+                not_raised: None,
                 why: None,
                 kind: "exit",
                 subject: String::new(),
@@ -1410,6 +1418,7 @@ fn run_one_test(
                 // A scene walk is one step.
                 let miss = lute_trace::exec::record::judge(&transcript, &[], sub, want_present);
                 expectations.push(ExpectResult {
+                    not_raised: None,
                     why: None,
                     kind,
                     subject: String::new(),
@@ -1447,6 +1456,7 @@ fn run_one_test(
                     format!("[{}]", s.iter().copied().collect::<Vec<_>>().join(", "))
                 };
                 expectations.push(ExpectResult {
+                    not_raised: None,
                     why: None,
                     kind: "offered",
                     subject: id.to_string(),
@@ -1472,6 +1482,7 @@ fn run_one_test(
                 let want = yaml_scalar_text(v).unwrap_or_default();
                 let actual = final_state.get(path).cloned();
                 expectations.push(ExpectResult {
+                    not_raised: None,
                     why: None,
                     kind: "state",
                     subject: path.to_string(),
@@ -1499,6 +1510,7 @@ fn run_one_test(
                     None => foreign_start.judge(&report, id, &final_quests),
                 };
                 expectations.push(ExpectResult {
+                    not_raised: None,
                     why,
                     kind: "quests",
                     subject: id.to_string(),
@@ -1521,6 +1533,7 @@ fn run_one_test(
             for atom in list.iter().filter_map(yaml_scalar_text) {
                 let Some((rel, _)) = crate::play_expect::parse_atom(&atom) else {
                     expectations.push(ExpectResult {
+                        not_raised: None,
                         why: None,
                         kind,
                         subject: atom.clone(),
@@ -1540,6 +1553,7 @@ fn run_one_test(
                 };
                 let want = if want_held { "holds" } else { "does not hold" };
                 expectations.push(ExpectResult {
+                    not_raised: None,
                     why: None,
                     kind,
                     subject: atom.clone(),
@@ -1584,11 +1598,25 @@ fn run_one_test(
                     }
                 }
                 // Round-5 T3-12: an `eligible: true` miss names the false
-                // premise, as the implicit miss does.
-                let why = (want == Some(true))
-                    .then(|| matched.iter().find(|(_, e)| *e == Some(false)))
-                    .flatten()
-                    .map(|(p, _)| ineligible_why(alone.as_ref().unwrap_or(&report), p));
+                // premise, as the implicit miss does. OT-F-10: a key naming
+                // nothing the document declares gets a did-you-mean.
+                let why = if matched.is_empty() {
+                    id.as_deref().and_then(|id| {
+                        let doc = desugared(&input);
+                        let names = doc
+                            .entries
+                            .iter()
+                            .map(|e| e.id.as_str())
+                            .chain(doc.beats.iter().map(|b| b.id.as_str()));
+                        lute_manifest::suggest::nearest(id, names, 3)
+                            .map(|k| format!("did you mean `{k}`?"))
+                    })
+                } else {
+                    (want == Some(true))
+                        .then(|| matched.iter().find(|(_, e)| *e == Some(false)))
+                        .flatten()
+                        .map(|(p, _)| ineligible_why(alone.as_ref().unwrap_or(&report), p))
+                };
                 let actual = (!matched.is_empty()).then(|| {
                     matched
                         .iter()
@@ -1605,6 +1633,12 @@ fn run_one_test(
                     None => "true or false".to_string(),
                 };
                 expectations.push(ExpectResult {
+                    not_raised: (want == Some(true))
+                        .then(|| matched.iter().find(|(_, e)| *e == Some(false)))
+                        .flatten()
+                        .and_then(|(p, _)| {
+                            alone.as_ref().unwrap_or(&report).not_raised.get(p).cloned()
+                        }),
                     why,
                     kind: "eligible",
                     subject: id.unwrap_or_default(),
@@ -1636,6 +1670,7 @@ fn run_one_test(
                 format!("[{}]", s.iter().copied().collect::<Vec<_>>().join(", "))
             };
             expectations.push(ExpectResult {
+                not_raised: None,
                 why: None,
                 kind: "accepts",
                 subject: String::new(),
@@ -1674,6 +1709,7 @@ fn run_one_test(
     let declares_exit = expect.is_some_and(|e| e.contains_key("exit"));
     if exit_str == "incomplete" && !declares_exit {
         expectations.push(ExpectResult {
+            not_raised: None,
             why: None,
             kind: "exit",
             subject: IMPLICIT_EXIT.to_string(),
@@ -1691,6 +1727,7 @@ fn run_one_test(
     for (id, eligible) in presented_eligibility(&report) {
         if eligible == Some(false) && !eligibility_asserted(&id, asserted) {
             expectations.push(ExpectResult {
+                not_raised: report.not_raised.get(&id).cloned(),
                 why: Some(ineligible_why(&report, &id)),
                 kind: "eligible",
                 subject: id,
@@ -2179,6 +2216,10 @@ fn yaml_key_spelling(message: &str) -> String {
 fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
     cov.paths += 1;
     let canonical = canonical_key(std::path::Path::new(&report.file));
+    // OT-F-14: one spelling per file, whichever test directory traced it.
+    let file = fold_parent_dirs(Path::new(&report.file))
+        .display()
+        .to_string();
     cov.traced_files.insert(canonical.clone());
     for s in &report.steps {
         if let lute_trace::Step::Entry { id, .. } | lute_trace::Step::Beat { id, .. } = s {
@@ -2188,12 +2229,12 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
     for d in &report.decisions {
         match d.construct.as_str() {
             "branch" | "hub" => {
-                let row = cov.choice_row(&canonical, &report.file, &d.id);
+                let row = cov.choice_row(&canonical, &file, &d.id);
                 row.chosen.insert(d.outcome.clone());
                 row.eligible.extend(d.eligible.iter().cloned());
             }
             "match" => {
-                let key = format!("{}:{}:{}", report.file, d.span.line, d.span.column);
+                let key = format!("{file}:{}:{}", d.span.line, d.span.column);
                 let entry = cov
                     .arms
                     .entry(key)
@@ -2212,11 +2253,11 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
         }
     }
     for c in report.coverage.choices.values() {
-        let row = cov.choice_row(&canonical, &report.file, &c.label);
+        let row = cov.choice_row(&canonical, &file, &c.label);
         row.total = row.total.max(c.total);
     }
     for (site, c) in &report.coverage.arms {
-        let key = format!("{}:{site}", report.file);
+        let key = format!("{file}:{site}");
         let entry = cov
             .arms
             .entry(key)
@@ -2242,6 +2283,26 @@ fn yaml_scalar_text(v: &serde_yaml::Value) -> Option<String> {
         serde_yaml::Value::String(s) => Some(s.clone()),
         _ => None,
     }
+}
+
+/// `path` with each `dir/..` pair dropped lexically, for display only
+/// (`./tests/../scenes/a.lute` → `./scenes/a.lute`). A leading `..` stays.
+fn fold_parent_dirs(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            std::path::Component::ParentDir
+                if matches!(
+                    out.components().next_back(),
+                    Some(std::path::Component::Normal(_))
+                ) =>
+            {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Recursively collect every file under `dir` whose name ends in `suffix`
@@ -2315,7 +2376,14 @@ fn render_human(
             continue;
         }
         if !r.passed {
-            for e in r.expectations.iter().filter(|e| !e.passed) {
+            // OT-F-10: a false eligibility is the cause of the state and
+            // fact misses its unwalked body leaves, so it comes first.
+            let (causes, rest): (Vec<&ExpectResult>, Vec<&ExpectResult>) = r
+                .expectations
+                .iter()
+                .filter(|e| !e.passed)
+                .partition(|e| e.kind == "eligible");
+            for e in causes.into_iter().chain(rest) {
                 render_miss(out, e);
             }
             for m in &r.misses {
@@ -2503,9 +2571,13 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
         ),
         ("eligible", None) => outln!(
             out,
-            "      eligible {}: expected {}, but the document declares no such entry or beat",
+            "      eligible {}: expected {}, but the document declares no such entry or beat{}",
             e.subject,
-            e.expected
+            e.expected,
+            e.why
+                .as_deref()
+                .map(|hint| format!(" — {hint}"))
+                .unwrap_or_default()
         ),
         ("accepts", Some(actual)) => {
             outln!(out, "      accepts: expected {}, got {actual}", e.expected)
@@ -2582,8 +2654,14 @@ fn render_coverage_human(
     }
     for (key, (label, chosen, total)) in &cov.arms {
         let unexecuted = total.saturating_sub(chosen.len());
+        // A `<match>` with no `on` has no subject to quote (ML-F4).
+        let what = if label.trim().is_empty() {
+            "match with no subject".to_string()
+        } else {
+            format!("match `{label}`")
+        };
         let mut line = format!(
-            "  match `{label}` ({key}): {}/{} arm(s) executed",
+            "  {what} ({key}): {}/{} arm(s) executed",
             chosen.len().min(*total),
             total
         );
@@ -2641,9 +2719,15 @@ fn render_coverage_human(
         );
         return;
     }
+    // OT-F-14: an untested beat is unplayed too; it is listed once, above.
     let unplayed: Vec<&CoverageUnit> = beats
         .into_iter()
         .filter(|u| !u.presented_by_play(cov))
+        .collect();
+    let traced_only: Vec<&CoverageUnit> = unplayed
+        .iter()
+        .copied()
+        .filter(|u| u.covered(cov))
         .collect();
     if unplayed.is_empty() {
         outln!(
@@ -2651,14 +2735,25 @@ fn render_coverage_human(
             "  every beat under {} is presented by a play",
             root.display()
         );
+    } else if traced_only.is_empty() {
+        outln!(
+            out,
+            "  every other beat under {} is presented by a play",
+            root.display()
+        );
     } else {
         outln!(
             out,
-            "  {} beat(s) no play presents (a test may trace them; only a play proves they are \
+            "  {} {}beat(s) no play presents (a test traces them; only a play proves they are \
              reached in play):",
-            unplayed.len()
+            traced_only.len(),
+            if traced_only.len() < unplayed.len() {
+                "more "
+            } else {
+                ""
+            }
         );
-        for line in grouped(&unplayed) {
+        for line in grouped(&traced_only) {
             outln!(out, "    {line}");
         }
     }
@@ -2728,13 +2823,19 @@ fn render_json(
                 .expectations
                 .iter()
                 .map(|e| {
-                    json!({
+                    let mut v = json!({
                         "kind": e.kind,
                         "subject": e.subject,
                         "expected": e.expected,
                         "actual": e.actual,
                         "passed": e.passed,
-                    })
+                    });
+                    // dsl 0.27.0 §4 (HW27-04): an `eligible` miss because
+                    // the engine would not raise the beat's occasion.
+                    if let Some(nr) = e.not_raised.as_ref().filter(|_| !e.passed) {
+                        v["notRaised"] = json!(nr);
+                    }
+                    v
                 })
                 .collect();
             json!({

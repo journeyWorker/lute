@@ -60,7 +60,18 @@ impl Walker<'_> {
     }
 
     pub(super) fn walk(&mut self, nodes: &[Node], ctx: &Ctx<'_>) {
+        // OT-F-11: an `effects: true` component's writes are spliced right
+        // after its `::use`, each at the use's span, with the use's arguments
+        // bound. Once an argument is refused at the argument itself, those
+        // writes only repeat that fault at the `::use` — skip them.
+        let mut refused_use: Option<Span> = None;
         for node in nodes {
+            if let Some(at) = refused_use {
+                if spliced_span(node) == Some(at) {
+                    continue;
+                }
+                refused_use = None;
+            }
             match node {
                 Node::Line(l) => {
                     self.check_attr_refs(&l.attrs, ctx, None);
@@ -110,6 +121,7 @@ impl Walker<'_> {
                     // the unknown-directive check, so it is never
                     // `E-UNKNOWN-DIRECTIVE`. It is a component invocation, not a
                     // snapshot directive.
+                    let before = self.diags.len();
                     check_use(d, self.components, ctx, &mut self.diags);
                     check_use_typed_args(
                         d,
@@ -119,6 +131,9 @@ impl Walker<'_> {
                         self.domains,
                         &mut self.diags,
                     );
+                    if self.diags.len() > before {
+                        refused_use = Some(d.span);
+                    }
                     check_use_interp_args(d, self.components, ctx, &mut self.diags);
                     // `@ref`-valued args still resolve in the current scope; there
                     // is no directive decl to type them against.
@@ -553,6 +568,19 @@ impl Walker<'_> {
                     .extend(check_cel_slot(slot, self.arena, ctx, expected.as_ref()));
             }
         }
+    }
+}
+
+/// The span a write spliced after a `::use` carries (the use's own span) —
+/// see `component_effects::respan`.
+fn spliced_span(node: &Node) -> Option<Span> {
+    match node {
+        Node::Set(s) => Some(s.span),
+        Node::Assert(a) => Some(a.span),
+        Node::Retract(r) => Some(r.span),
+        Node::Directive(d) => Some(d.span),
+        Node::Match(m) => Some(m.span),
+        _ => None,
     }
 }
 

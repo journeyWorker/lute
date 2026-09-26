@@ -449,11 +449,34 @@ pub struct TraceReport {
     /// serialized.
     #[serde(skip)]
     pub premises: BTreeMap<String, String>,
+    /// dsl 0.27.0 §4 (HW27-04): every presented scene / entry / bundle beat
+    /// judged ineligible because the engine would not raise its occasion
+    /// under the mocks (its `raisedWhen` gate is false, or the project's
+    /// `terminal:` holds) → why, structured for `lute test --json`. Never
+    /// serialized here.
+    #[serde(skip)]
+    pub not_raised: BTreeMap<String, NotRaised>,
     /// Every content line the walk played, in order, in the one canonical
     /// transcript form ([`crate::exec::said_line`]: `@speaker{delivery}:
     /// text`) — what [`Self::said`] joins. Never serialized.
     #[serde(skip)]
     pub said: Vec<String>,
+}
+
+/// dsl 0.27.0 §4 (HW27-04): why the engine would not raise a presented
+/// beat's occasion under the mocks — `lute test --json`'s `notRaised`.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotRaised {
+    pub occasion: String,
+    /// `"gate"` (its `raisedWhen` is false) or `"terminal"` (the project's
+    /// `terminal:` holds).
+    pub reason: &'static str,
+    /// The condition as compiled: the gate, or `terminal:`.
+    pub condition: String,
+    /// A false gate's reads, as the premise names them (`` `run.stalker`
+    /// is morgue ``); empty for `terminal`.
+    pub false_reads: Vec<String>,
 }
 
 /// Render a decided [`Value`] to display text; `Unknown` has no decided

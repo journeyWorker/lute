@@ -1189,7 +1189,7 @@ pub fn parse_meta_kind_with_defaults(
     // dsl 0.24.0 §1: `clock:` (schema documents only, like `cast:`).
     if kind == MetaKind::Schema {
         if let Some(v) = map.get(yaml_key("clock")) {
-            let (clock, clock_diags) = crate::clock::parse_clock(v, meta_key_span(meta, "clock"));
+            let (clock, clock_diags) = crate::clock::parse_clock(v, meta);
             typed.clock = clock;
             diags.extend(clock_diags);
         }
