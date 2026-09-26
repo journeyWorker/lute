@@ -1,0 +1,6 @@
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+defaults:
+  uses: [world.schema.yaml]

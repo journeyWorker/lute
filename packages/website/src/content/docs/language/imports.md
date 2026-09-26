@@ -53,8 +53,8 @@ A def is its CEL body as a string — `helped: "run.choseHelp"` — and its type
 body. Since dsl 0.26.0 §2.7 a body that is a `visited('…')` or `validAt(…)` call infers `bool`, so
 `pierSeen: "visited('south.pier')"` needs no long form. A def with `params:`, or one whose type the
 checker cannot infer, takes the long form `{ type: bool, cel: "…" }`; any other shape is
-`E-DEF-DECL`. For a def in an imported schema, `E-DEF-DECL` is reported once, at the schema line,
-with the other importers folded into `(+N more callers)`, rather than at every importing document.
+`E-DEF-DECL`. For a def in an imported schema, `check-project` reports `E-DEF-DECL` once, at the
+schema line, ending `(imported by N documents)`, rather than at every importing document.
 
 Import paths are resolved **relative to the importing scene file**, so a scene and its schema must
 travel together (copying a scene to `/tmp` without its schema reports `E-USES-NOT-FOUND`).

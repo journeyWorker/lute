@@ -663,8 +663,14 @@ impl MaySet {
     /// The rows a positive body atom ranges over: a declared relation's `May`
     /// tuples, or a one-place domain predicate's members (`K(X)` over an
     /// entity kind / enum / domain). `None` = unbounded (an unbounded
-    /// relation, an open predicate, or a name nothing declares).
-    fn atom_rows<'s>(&'s self, vocab: &'s RootVocab, atom: &RuleAtom) -> Option<Vec<Vec<&'s str>>> {
+    /// relation, an open predicate, or a name nothing declares). The one
+    /// join source rule instantiation reads — `apply_rule` here and `lute
+    /// scenario knowledge` (dsl 0.27.0 §2, T1-8).
+    pub fn atom_rows<'s>(
+        &'s self,
+        vocab: &'s RootVocab,
+        atom: &RuleAtom,
+    ) -> Option<Vec<Vec<&'s str>>> {
         if self.signature.contains_key(&atom.relation) {
             if self.unbounded.contains(&atom.relation) {
                 return None;

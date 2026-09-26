@@ -203,16 +203,17 @@ fn a_member_listed_twice_is_e_entity_kind_shape_at_the_schema_line() {
     assert_eq!(
         lines.len(),
         2,
-        "one per duplicate, folded across importers: {s}"
+        "one per duplicate, once for every importer: {s}"
     );
     let trainer = lines.iter().find(|l| l.contains("`trainer`")).expect(&s);
     assert!(
         trainer.contains("`ada` more than once (lines 4 and 6)"),
         "{s}"
     );
-    assert!(trainer.contains("(+1 more caller)"), "{s}");
+    // Round-5 T3-4: headed at the schema line itself, counting importers.
     assert!(
-        s.contains("    world.schema.yaml:6:"),
+        trainer.starts_with("./world.schema.yaml:6:")
+            && trainer.contains("(imported by 2 documents)"),
         "anchored at the second `ada`: {s}"
     );
     assert!(lines.iter().any(|l| l.contains("enum `mood`")), "{s}");
@@ -246,13 +247,13 @@ fn schema_errors_are_reported_once_at_the_schema_line() {
     let out = run(&dir, &["check-project", "."]);
     let s = text(&out);
     for (code, at) in [
-        ("E-ENTITY-KIND-SHAPE", "    world.schema.yaml:3:3:"),
-        ("E-USES-DUP-STATE", "    b.schema.yaml:2:3:"),
+        ("E-ENTITY-KIND-SHAPE", "./world.schema.yaml:3:3:"),
+        ("E-USES-DUP-STATE", "./b.schema.yaml:2:3:"),
     ] {
         let lines = top_lines(&s, code);
         assert_eq!(lines.len(), 1, "{code} once, not per document: {s}");
-        assert!(lines[0].contains("(+2 more callers)"), "{s}");
-        assert!(s.contains(at), "{code} anchored at {at}: {s}");
+        assert!(lines[0].contains("(imported by 3 documents)"), "{s}");
+        assert!(lines[0].starts_with(at), "{code} anchored at {at}: {s}");
     }
 }
 
@@ -365,6 +366,48 @@ fn defaults_quest_tier_applies_to_quests_without_one() {
     let mut tiers = Vec::new();
     collect_quest_tiers(&ir, &mut tiers);
     assert_eq!(tiers, [("plain".to_string(), "run".to_string())], "{ir:#}");
+}
+
+/// Round-5 T3-24 (ember F4): a quest with no `tier=` (and no
+/// `defaults.questTier`) is user-tier; when every condition it has reads run
+/// state — `@def`s expanded — `W-QUEST-TIER-IMPLICIT` names it at its id. A
+/// written tier, a condition reading user state, or the project default
+/// silences it.
+#[test]
+fn a_quest_reading_only_run_state_without_a_tier_is_w_quest_tier_implicit() {
+    const QUESTS: &str = "---\nkind: quest\nid: q.doc\nstate:\n  \
+        run.clues: { type: number, default: 0 }\n  run.accused: { type: bool, default: false }\n  \
+        user.runs: { type: number, default: 0 }\n\
+        defs:\n  enough: { type: bool, cel: \"run.clues >= 2\" }\n---\n\n\
+        <quest id=\"caseRun\" title=\"C\" start=\"true\" fail=\"run.accused\">\n  \
+        <objective id=\"o\" title=\"O\" done=\"@enough\"/>\n</quest>\n\n\
+        <quest id=\"pinnedRun\" title=\"P\" start=\"true\" tier=\"run\">\n  \
+        <objective id=\"o\" title=\"O\" done=\"run.clues >= 1\"/>\n</quest>\n\n\
+        <quest id=\"pinnedUser\" title=\"U\" start=\"true\" tier=\"user\">\n  \
+        <objective id=\"o\" title=\"O\" done=\"run.clues >= 1\"/>\n</quest>\n\n\
+        <quest id=\"veteran\" title=\"V\" start=\"user.runs >= 1\">\n  \
+        <objective id=\"o\" title=\"O\" done=\"run.clues >= 3\"/>\n</quest>\n\n\
+        <quest id=\"stateless\" title=\"S\" start=\"true\">\n  \
+        <objective id=\"o\" title=\"O\" done=\"true\"/>\n</quest>\n";
+    let dir = project("tier-implicit", &[], "");
+    write(&dir, "quests/q.lute", QUESTS);
+    let out = run(&dir, &["check-project", "."]);
+    let s = text(&out);
+    assert_eq!(out.status.code(), Some(0), "an advisory: {s}");
+    let lines = top_lines(&s, "W-QUEST-TIER-IMPLICIT");
+    assert_eq!(lines.len(), 1, "only `caseRun`: {s}");
+    assert!(
+        lines[0].contains("q.lute:12:12") && lines[0].contains("quest `caseRun` has no `tier=`"),
+        "anchored at the id, named: {s}"
+    );
+    assert!(lines[0].contains("defaults.questTier"), "{s}");
+
+    // The project default is a tier: nothing is implicit.
+    let dir = project("tier-implicit-default", &[], "  questTier: run\n");
+    write(&dir, "quests/q.lute", QUESTS);
+    let out = run(&dir, &["check-project", "."]);
+    let s = text(&out);
+    assert!(top_lines(&s, "W-QUEST-TIER-IMPLICIT").is_empty(), "{s}");
 }
 
 /// Every `{ "id": …, "tier": … }` object in the artifact whose id names a quest.
@@ -990,13 +1033,11 @@ fn imported_def_decl_is_folded_at_the_schema_and_visited_is_bool() {
     let dir = demo("n5", &files, "world.schema.yaml");
     let s = text(&run(&dir, &["check-project", "."]));
     let lines = top_lines(&s, "E-DEF-DECL");
-    assert_eq!(lines.len(), 1, "folded: {s}");
+    assert_eq!(lines.len(), 1, "once: {s}");
     assert!(
-        lines[0].contains("`metB`") && lines[0].contains("(+2 more callers)"),
-        "{s}"
-    );
-    assert!(
-        s.contains("world.schema.yaml:5:3: error [E-DEF-DECL]"),
+        lines[0].starts_with("./world.schema.yaml:5:3: error [E-DEF-DECL]")
+            && lines[0].contains("`metB`")
+            && lines[0].contains("(imported by 3 documents)"),
         "at the def line: {s}"
     );
     assert!(

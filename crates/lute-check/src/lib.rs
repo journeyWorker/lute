@@ -143,6 +143,7 @@ pub use project_check::{
     colliding_occurrences, component_unverified_diag, domain_reading_set, ComponentScope,
     E_QUEST_MULTI_PARENT, E_QUEST_REF_UNKNOWN, E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE,
     W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN,
+    W_QUEST_TIER_IMPLICIT,
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;
@@ -155,5 +156,8 @@ pub use timeline::{
     resolve_timeline, time_resolution_diag, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING,
     E_TIMELINE_DURATION, E_TIME_RESOLUTION,
 };
-pub use usage::{check_project_usage, schema_sources, UsageDoc, W_DEF_UNUSED, W_RELATION_UNREAD};
+pub use usage::{
+    check_project_usage, document_read_view, schema_sources, yaml_read_view, UsageDoc,
+    W_DEF_UNUSED, W_RELATION_UNREAD,
+};
 pub use when_test_literal::{check_when_test_literals, test_as_is_pattern, W_WHEN_TEST_LITERAL};

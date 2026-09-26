@@ -270,3 +270,124 @@ fn lute_beats_lists_the_kind_ladder_and_each_named_member() {
         "{v}"
     );
 }
+
+/// `summon` is raised for `hero.<member>`; `ssr` is a sub-kind of `hero`,
+/// `limited` of `ssr`. `beats` is the lore body.
+fn gacha(tag: &str, beats: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: g\nprofiles:\n  g:\n    plugins: { g.gacha: true }\n",
+    );
+    write(
+        &dir,
+        "plugins/g.gacha/plugin.yaml",
+        "id: g.gacha\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n",
+    );
+    write(
+        &dir,
+        "plugins/g.gacha/occasions/o.yaml",
+        "occasions:\n  summon: { target: { prefix: hero, entity: hero } }\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  hero: { members: [aria, bram, cyra] }\n  \
+         ssr: { subsetOf: hero, members: [aria, cyra] }\n  \
+         limited: { subsetOf: ssr, members: [cyra] }\n",
+    );
+    write(
+        &dir,
+        "lore/summons.lute",
+        &format!("---\nkind: lore\nid: s\nuses: ../world.schema.yaml\n---\n\n{beats}"),
+    );
+    dir
+}
+
+fn summon_beat(id: &str, target: &str, priority: i64) -> String {
+    format!(
+        "<beat id=\"{id}\" on=\"summon\" target=\"{target}\" once=\"false\" priority=\"{priority}\">\n\
+         \x20 @narrator: {id}.\n</beat>\n\n"
+    )
+}
+
+/// dsl 0.27.0 (T3-10): member > sub-kind > kind. The parent kind's beat is
+/// first in the file, yet each member hears its most specific kind's beat,
+/// and the checker calls none of them shadowed.
+#[test]
+fn play_picks_the_sub_kind_beat_over_the_parent_kind_beat() {
+    let dir = gacha(
+        "subkind",
+        &[
+            summon_beat("blue", "kind:hero", 0),
+            summon_beat("gold", "kind:ssr", 0),
+            summon_beat("silver", "kind:limited", 0),
+        ]
+        .concat(),
+    );
+    let v = play(
+        &dir,
+        "steps:\n  - occasion: summon\n    target: hero.aria\n  - occasion: summon\n    target: hero.cyra\n  \
+         - occasion: summon\n    target: hero.bram\n",
+    );
+    let winners: Vec<&str> = v["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["winner"].as_str().unwrap())
+        .collect();
+    assert_eq!(winners, ["s.gold", "s.silver", "s.blue"], "{v}");
+    assert_eq!(
+        candidates(&v["steps"][1]),
+        [("s.silver", true), ("s.gold", true), ("s.blue", true)]
+    );
+    let t = text(&run(&["check-project", dir.to_str().unwrap()]));
+    assert!(!t.contains("W-BEAT-SHADOWED"), "{t}");
+    assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
+}
+
+/// dsl 0.27.0 (T3-9): a kind beat that wins for one member but never for
+/// another is shadowed on that member's ladder only — no project-wide
+/// warning — and its row names the kind it answers through.
+#[test]
+fn lute_beats_gives_each_ladder_cell_its_own_verdict() {
+    let dir = gacha(
+        "cells",
+        &[
+            summon_beat("limitedGlow", "kind:limited", 2),
+            summon_beat("goldLight", "kind:ssr", 1),
+            summon_beat("cyraA", "hero.cyra", -5),
+        ]
+        .concat(),
+    );
+    let d = dir.to_str().unwrap();
+    let t = text(&run(&["check-project", d]));
+    assert!(!t.contains("`s.goldLight` can never win"), "{t}");
+    let out = run(&["beats", d, "--target", "hero.cyra"]);
+    let t = text(&out);
+    let row = |id: &str| t.lines().find(|l| l.contains(id)).unwrap().to_string();
+    assert!(row("s.goldLight").contains("s.goldLight (kind:ssr)"), "{t}");
+    assert!(
+        row("s.goldLight").contains("shadowed by s.limitedGlow"),
+        "{t}"
+    );
+    assert!(row("s.cyraA").contains("shadowed by s.limitedGlow"), "{t}");
+    assert!(!row("s.limitedGlow").contains("shadowed"), "{t}");
+    let shadowed_by = |target: &str| -> Json {
+        let out = run(&["beats", d, "--target", target, "--json"]);
+        let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+        v["roots"][0]["ladders"][0]["beats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["id"] == "s.goldLight")
+            .unwrap()
+            .get("shadowedBy")
+            .cloned()
+            .unwrap_or(Json::Null)
+    };
+    assert_eq!(shadowed_by("hero.cyra"), json!(["s.limitedGlow"]));
+    assert_eq!(shadowed_by("hero.aria"), Json::Null);
+}

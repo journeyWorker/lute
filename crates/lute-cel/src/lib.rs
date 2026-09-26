@@ -116,6 +116,19 @@ pub fn cel_string_mask(raw: &str) -> Vec<bool> {
     mask
 }
 
+/// Round-5 T3-4: the byte offset of the `.` in the first `.@name` outside a
+/// string literal — a DSL param used as a member segment (`run.aff.@who`).
+/// No expression means that: `@` is not an identifier character, so the
+/// ordinary `@`->' ' substitution would silently read `run.aff.who`. A
+/// family member is selected by indexing, `run.aff[@who]`.
+pub fn param_segment_at(raw: &str) -> Option<usize> {
+    let mask = cel_string_mask(raw);
+    let b = raw.as_bytes();
+    (1..b.len())
+        .find(|&i| !mask[i] && b[i] == b'@' && b[i - 1] == b'.')
+        .map(|i| i - 1)
+}
+
 /// Scan raw CEL source for DSL-level `@ref` / `$` tokens.
 ///
 /// Runs on the ORIGINAL `raw` (never the substituted string) so names and spans
@@ -272,6 +285,18 @@ pub fn parse_slot(
     raw: &str,
     base_byte: usize,
 ) -> Result<CelAstHandle, CelParseError> {
+    if let Some(dot) = param_segment_at(raw) {
+        return Err(CelParseError {
+            message: "a path segment cannot be a param".to_string(),
+            span: Span {
+                byte_start: base_byte + dot,
+                byte_end: base_byte + raw.len(),
+                line: 0,
+                column: 0,
+                utf16_range: (0, 0),
+            },
+        });
+    }
     // Length-preserving substitution (`@`->' ', `$`->'_') so byte offsets in the
     // prepared string line up 1:1 with `raw`.
     let prepared = substitute_dsl_tokens(raw);

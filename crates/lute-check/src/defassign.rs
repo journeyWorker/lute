@@ -86,7 +86,7 @@ use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, Branch, CelSlot, Choice, ClipNode, Hub, Interp, InterpKind, Match, Node,
+    Arm, AttrValue, Branch, CelSlot, Choice, ClipNode, Hub, Interp, InterpKind, Match, Node,
     Objective, On, Set, Timeline,
 };
 
@@ -108,6 +108,15 @@ pub struct Scope<'a> {
     pub schema: &'a StateSchema,
     pub defs: DefTable<'a>,
     pub def_types: &'a BTreeMap<String, Type>,
+    /// dsl 0.27.0 (round-5 T3-21): the document is a scene another scene
+    /// may run before — it declares `after:` or a beat `on:` — so a read of
+    /// a `run.*`/`user.*` path it never writes may be settled by that other
+    /// scene, which only `check-project` can see.
+    pub preceded: bool,
+    /// The components a `::use` names — an omitted param's `default: "@def"`
+    /// is read at the call like the argument it stands for (dsl 0.27.0 §2,
+    /// T1-10). `None` outside a full document check.
+    pub components: Option<&'a crate::component_import::ComponentSet>,
 }
 
 static NO_BODIES: BTreeMap<String, String> = BTreeMap::new();
@@ -124,6 +133,8 @@ impl<'a> Scope<'a> {
                 params: &folded.env.def_params,
             },
             def_types: &folded.env.def_types,
+            preceded: folded.typed.after.is_some() || folded.typed.beat.is_some(),
+            components: None,
         }
     }
 
@@ -136,6 +147,8 @@ impl<'a> Scope<'a> {
                 params: &NO_PARAMS,
             },
             def_types: &NO_TYPES,
+            preceded: false,
+            components: None,
         }
     }
 }
@@ -194,7 +207,33 @@ pub fn check_definite_assignment(
         writes: Assigned::new(),
     };
     walk_nodes(nodes, cx, &mut flow, &mut diags, &mut reads);
+    if cx.preceded {
+        hint_other_scenes(nodes, &reads, &mut diags);
+    }
     (diags, flow.writes, reads)
+}
+
+/// dsl 0.27.0 (round-5 T3-21): an `E-MAYBE-UNSET` on a `run.*`/`user.*`
+/// path `nodes` never writes, in a scene another scene may precede, says
+/// that a single file cannot see those scenes and `lute check-project`
+/// decides it. `reads[i]` is the path of the i-th `E-MAYBE-UNSET` in
+/// `diags` ([`check_read`] pushes both together). The hint is part of the
+/// message both `check()` and `check-project`'s envelope pass derive, so
+/// the project pass still recognises the per-file diagnostic it replaces.
+fn hint_other_scenes(nodes: &[Node], reads: &[(String, Span)], diags: &mut [Diagnostic]) {
+    let written = crate::envelope::possible_writes(nodes);
+    let overlaps = |p: &str, w: &str| {
+        p == w || p.starts_with(&format!("{w}.")) || w.starts_with(&format!("{p}."))
+    };
+    let maybe_unset = diags.iter_mut().filter(|d| d.code == "E-MAYBE-UNSET");
+    for (d, (path, _)) in maybe_unset.zip(reads) {
+        if crate::envelope::in_envelope_scope(path) && !written.iter().any(|w| overlaps(path, w)) {
+            d.message.push_str(
+                "; this file never sets it, and a single file cannot see the scenes that \
+                 run before it — run `lute check-project`, which decides reads ordered by `after:`",
+            );
+        }
+    }
 }
 
 /// The state paths `assume` proves present for the body it guards (its
@@ -377,7 +416,7 @@ fn walk_nodes(
                 });
                 if d.tag == "use" {
                     let available = guarded.as_ref().unwrap_or(&flow.available);
-                    check_use_arg_reads(&d.attrs, cx, available, diags, reads);
+                    check_use_arg_reads(d, cx, available, diags, reads);
                 }
             }
             Node::On(on) => walk_on(on, cx, flow, diags, reads),
@@ -421,17 +460,36 @@ fn check_interp_reads(
     }
 }
 
-/// The reads of a `::use`'s `@def` arguments (dsl 0.24.0).
+/// The reads of a `::use`'s `@def` arguments (dsl 0.24.0) — and of the
+/// `default: "@def"` of every param it omits, which is spliced in at the call
+/// exactly like a written argument (dsl 0.27.0 §2, T1-10).
 fn check_use_arg_reads(
-    attrs: &[Attr],
+    d: &lute_syntax::ast::Directive,
     cx: &Scope<'_>,
     assigned: &Assigned,
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
-    for attr in attrs {
+    for attr in &d.attrs {
         if let AttrValue::Ref(slot) = &attr.value {
             check_reads(slot, cx, assigned, diags, reads);
+        }
+    }
+    let def = cx.components.and_then(|set| {
+        d.attrs.iter().find_map(|a| match &a.value {
+            AttrValue::Str(name) if a.key == "component" => set.table.get(name),
+            _ => None,
+        })
+    });
+    let Some(def) = def else { return };
+    for (param, value) in &def.defaults {
+        if d.attrs.iter().any(|a| &a.key == param) {
+            continue;
+        }
+        if let AttrValue::Ref(slot) = value {
+            let mut slot = slot.clone();
+            slot.span = d.span;
+            check_reads(&slot, cx, assigned, diags, reads);
         }
     }
 }
@@ -766,7 +824,7 @@ fn walk_timeline(
             match &clip.node {
                 ClipNode::Set(set) => walk_set(set, cx, flow, diags, reads),
                 ClipNode::Directive(d) if d.tag == "use" => {
-                    check_use_arg_reads(&d.attrs, cx, &flow.available, diags, reads);
+                    check_use_arg_reads(d, cx, &flow.available, diags, reads);
                 }
                 ClipNode::Directive(_) => {}
             }

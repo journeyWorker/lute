@@ -134,9 +134,10 @@ fn once_day_needs_a_clock() {
 }
 
 /// dsl 0.25.0 §9 (SU N8): a state entry swallowed by a malformed `clock:`
-/// leaves the `<match>` over it undeclared — the import error is the report,
-/// not a follow-on `E-NONEXHAUSTIVE` at the match; with the import intact the
-/// undeclared subject is its own `E-UNDECLARED`, again without one.
+/// leaves the `<match>` over it undeclared — the import error is the report
+/// (at the schema's own line since round-5 T3-4), not a follow-on
+/// `E-NONEXHAUSTIVE` at the match; with the import intact the undeclared
+/// subject is its own `E-UNDECLARED`, again without one.
 #[test]
 fn an_undeclared_match_subject_is_no_nonexhaustive_match() {
     let scene = "---\nkind: scene\nid: a\nuses: ../world.schema.yaml\n---\n\n## A\n\n\
@@ -152,7 +153,8 @@ fn an_undeclared_match_subject_is_no_nonexhaustive_match() {
     );
     let t = text(&check_project(&dir));
     assert!(
-        t.contains("E-USES-PARSE") && t.contains("unknown field `run.route`"),
+        t.contains("world.schema.yaml:4:1: error [E-CLOCK-DECL]")
+            && t.contains("unknown field `run.route`"),
         "{t}"
     );
     assert!(!t.contains("E-NONEXHAUSTIVE"), "{t}");
@@ -496,6 +498,30 @@ fn a_manual_raise_of_the_clocks_day_end_is_noted() {
     assert_eq!(t.matches("note: `dayEnd`").count(), 1, "{t}");
 }
 
+/// Ember F7 (round-5 T3-24): with no later `advance:` passing that midnight
+/// the day closes once, so the step says nothing.
+#[test]
+fn a_manual_day_end_no_advance_passes_is_not_noted() {
+    let out = map_play(
+        "map-manual-last",
+        "steps:\n  - occasion: dayEnd\nexpect: { transcriptContains: [\"Leg 1 ends.\"] }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert_eq!(t.matches("Leg 1 ends.").count(), 1, "{t}");
+    assert!(!t.contains("note: `dayEnd`"), "{t}");
+
+    // A `newRun` between them starts the clock over: that advance closes
+    // another run's day.
+    let out = map_play(
+        "map-manual-newrun",
+        "steps:\n  - occasion: dayEnd\n  - newRun: true\n  - advance: day\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(!t.contains("note: `dayEnd`"), "{t}");
+}
+
 /// dsl 0.24.0 §1: an `engine:` step moving `clock.index` backward is a
 /// usage error; forward is legal, and a `newRun` starts the clock over.
 #[test]
@@ -833,8 +859,8 @@ fn beats_lists_a_once_day_bundle_beat() {
 
 /// Round-3 (cheatsheet p2): a clock over a path that is not `owner: engine`,
 /// or naming an undeclared `raise` occasion, is reported by `lute check` on
-/// the schema itself (it said `ok`), and by `check-project` once — folded
-/// across importers — attributed to the schema's `clock:` line.
+/// the schema itself (it said `ok`), and by `check-project` once — at the
+/// schema's `clock:` line, counting its importers (round-5 T3-4).
 #[test]
 fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
     let scene = |id: &str| {
@@ -860,10 +886,11 @@ fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
     let t = text(&check_project(&dir));
     assert_eq!(
         t.matches("must be declared `owner: engine`").count(),
-        4,
-        "day and slot, each once plus its schema line: {t}"
+        2,
+        "day and slot, each once at the schema line: {t}"
     );
-    assert!(t.contains("(+1 more caller)"), "{t}");
+    assert!(t.contains("(imported by 2 documents)"), "{t}");
+    assert!(!t.contains("more caller"), "{t}");
     assert!(
         t.contains("world.schema.yaml:4:1: error [E-CLOCK-DECL] `clock:` `slot: run.slot`"),
         "{t}"
@@ -901,15 +928,19 @@ fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
     assert_eq!(
         t.matches("`raise: nope` is not a declared occasion")
             .count(),
-        2,
+        1,
+        "{t}"
+    );
+    assert!(
+        t.contains("world.schema.yaml:4:1: error [E-CLOCK-DECL] `clock:` `raise: nope`"),
         "{t}"
     );
 }
 
 /// Round-3 docs pass (a): `lute check` on a schema alone runs what an
 /// importer's check would report about it — enum labels, entity kinds,
-/// seed facts — at the schema's own lines; `check-project` folds the
-/// importers' copies into one attributed to the schema.
+/// seed facts — at the schema's own lines; `check-project` reports each
+/// once, at the schema, counting the importers (round-5 T3-4).
 #[test]
 fn a_schema_checked_alone_reports_what_its_importers_would() {
     let dir = temp_dir("schema-alone");
@@ -948,14 +979,17 @@ fn a_schema_checked_alone_reports_what_its_importers_would() {
     let t = text(&check_project(&dir));
     assert_eq!(
         t.matches("[E-ENUM-LABEL-NOT-MEMBER]").count(),
-        2,
-        "once, plus its schema line: {t}"
+        1,
+        "once, at its schema line: {t}"
     );
     assert!(
         t.contains("w.schema.yaml:2:3: error [E-ENUM-LABEL-NOT-MEMBER]"),
         "{t}"
     );
-    assert!(t.contains("which is not one of its members (dsl 0.24.0 §1) (declared in schema import `w.schema.yaml`) (+1 more caller)"), "{t}");
+    assert!(
+        t.contains("which is not one of its members (dsl 0.24.0 §1) (imported by 2 documents)"),
+        "{t}"
+    );
 }
 
 /// Round-3 docs pass (b): a frontmatter rule whose `cel("…")` guard names

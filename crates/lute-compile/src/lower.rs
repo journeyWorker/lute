@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use lute_manifest::schema::{DirectiveDecl, Lowering, WriteDecl, WriteValue};
+use lute_manifest::schema::{DirectiveDecl, Lowering, OpBy, WriteDecl, WriteValue};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::{Literal, PathSegment, Type};
 use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, Line, Retract, Set};
@@ -341,8 +341,13 @@ pub fn lower_directive(
             // IR A12: resolve the manifest directive's declared `effects.writes`
             // into artifact-local bindings (fromAttr templates substituted).
             let effects = decl
-                .and_then(|d| d.effects.as_ref())
-                .map(|eff| eff.writes.iter().map(|w| resolve_effect(w, dir)).collect())
+                .and_then(|d| d.effects.as_ref().map(|eff| (d, eff)))
+                .map(|(d, eff)| {
+                    eff.writes
+                        .iter()
+                        .filter_map(|w| resolve_effect(w, dir, d))
+                        .collect()
+                })
                 .unwrap_or_default();
             Command::Other(OtherCmd {
                 addr: String::new(),
@@ -684,12 +689,10 @@ fn attr_json_typed(attr: &Attr, ty: Option<&Type>) -> serde_json::Value {
     }
 }
 
-/// Resolve one manifest `WriteDecl` into an artifact-local [`Effect`] (IR A12).
-/// The path is `scope` + each segment joined by `.`, with `fromAttr` segments
-/// replaced by the record's attr value (e.g. `resultKey="debut"` → `debut`).
-/// The source is the bridge-result key, the `op`/`by` increment (integral `by`),
-/// or a literal — all integral-collapsed via `literal_json` (no duplication).
-pub fn resolve_effect(w: &WriteDecl, dir: &Directive) -> Effect {
+/// The state path one manifest `WriteDecl` writes at this call: `scope` + each
+/// segment joined by `.`, with `fromAttr` segments replaced by the record's
+/// attr value (e.g. `resultKey="debut"` → `debut`).
+pub fn effect_path(w: &WriteDecl, dir: &Directive) -> String {
     let mut segments = vec![w.scope.clone()];
     for seg in &w.path {
         match seg {
@@ -699,20 +702,45 @@ pub fn resolve_effect(w: &WriteDecl, dir: &Directive) -> Effect {
             }
         }
     }
+    segments.join(".")
+}
+
+/// Resolve one manifest `WriteDecl` into an artifact-local [`Effect`] (IR A12)
+/// at [`effect_path`]. The source is the bridge-result key, the `op`/`by`
+/// increment (integral `by`), or a literal — all integral-collapsed via
+/// `literal_json` (no duplication). A `fromAttr` value or `by` (dsl 0.27.0
+/// §2) reads the call's attr, typed by its declaration, or the declared
+/// `default:` when the call omits it; with neither the call writes nothing
+/// (`None`).
+pub fn resolve_effect(w: &WriteDecl, dir: &Directive, decl: &DirectiveDecl) -> Option<Effect> {
+    let attr_value = |name: &str| -> Option<serde_json::Value> {
+        let ty = decl.attrs.iter().find(|a| a.name == name);
+        match dir.attrs.iter().find(|a| a.key == name) {
+            Some(a) => Some(attr_json_typed(a, ty.map(|t| &t.ty))),
+            None => ty.and_then(|t| t.default.as_ref()).map(crate::literal_json),
+        }
+    };
     let from = match &w.value {
         WriteValue::FromBridgeResult { from_bridge_result } => EffectSource::BridgeResult {
             bridge_result: from_bridge_result.clone(),
         },
         WriteValue::Op { op, by } => EffectSource::Op {
             op: op.clone(),
-            by: crate::literal_json(&Literal::Num(*by)),
+            by: match by {
+                OpBy::Num(n) => crate::literal_json(&Literal::Num(*n)),
+                OpBy::FromAttr { from_attr } => {
+                    let n = attr_value(from_attr)?.as_f64()?;
+                    crate::literal_json(&Literal::Num(n))
+                }
+            },
         },
+        WriteValue::FromAttr { from_attr } => EffectSource::Literal(attr_value(from_attr)?),
         WriteValue::Literal(lit) => EffectSource::Literal(crate::literal_json(lit)),
     };
-    Effect {
-        path: segments.join("."),
+    Some(Effect {
+        path: effect_path(w, dir),
         from,
-    }
+    })
 }
 
 #[cfg(test)]

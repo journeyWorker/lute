@@ -1,24 +1,11 @@
 ---
 kind: scene
 luteVersion: "0.26.0"
-character: detective
-season: 1
-episode: 1
+id: detective.s01ep01
 title: The Study
-# Graph ROOT: no `after:`, so `lute scenario` treats this scene as an
-# unconditional entry point the rest of the case is reachable from.
+# No `after:`, so this scene is where the case starts.
 uses: ../world.schema.yaml
 ---
-
-/*
-  The opening scene. The detective walks the crime scene and LOGS evidence:
-  each `::assert{ foundClue(...) }` writes a relational-fact delta (0.3.0 §5),
-  and each `::set{ run.cluesLogged += 1 }` bumps the scalar counter the quest's
-  `gatherEvidence` objective gates on. Both asserts run on the only route
-  through the scene, so `check-project` knows `foundClue(ledger)`,
-  `foundClue(letter)`, and the derived `points(blake)` hold in every scene
-  sequenced `after:` this one (dsl 0.20.0 fact envelopes).
-*/
 
 ## The Study
 
@@ -33,12 +20,6 @@ uses: ../world.schema.yaml
 ::set{ run.cluesLogged += 1 }
 @detective: And a letter, signed once and then unsigned.
 
-/*
-  No `when=` here. A guard `holds(points(blake))` over the DERIVED relation
-  `points` (0.3.0 §7) would be redundant: both clues above are asserted on the
-  only route through this shot, and `implicates(ledger, blake)` is seeded, so
-  the rule derives `points(blake)` before this line on every playthrough.
-  `check-project` proves that and reports such a guard as `W-FACT-GUARANTEED`
-  (dsl 0.20.0 §5).
-*/
+// No `when=`: both clues above are logged on every playthrough, so the
+// derived fact `points(blake)` always holds here.
 @detective{mono}: Both threads pull toward one name.

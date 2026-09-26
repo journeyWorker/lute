@@ -96,3 +96,86 @@ fn a_replaced_binary_publishes_one_stale_diagnostic() {
     assert!(message.contains(env!("CARGO_PKG_VERSION")), "{message}");
     assert!(message.contains("restart the language server"), "{message}");
 }
+
+/// Round-5 T3-19: a project whose manifest stamps `defaults: luteVersion`
+/// newer than this server means the editor runs an older `lute-lsp` than
+/// the project targets. The server says so once, in the client's UI, naming
+/// `lute doctor`, and marks the inherited stamp with the checker's
+/// `W-LUTE-VERSION-STALE` (which names `lute doctor` too); a second document
+/// does not repeat the message.
+#[test]
+fn a_project_stamp_newer_than_the_server_names_lute_doctor_once() {
+    let dir = std::env::temp_dir().join(format!("lute-lsp-newer-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  luteVersion: \"999.0.0\"\n",
+    )
+    .unwrap();
+    let text = "---\nkind: scene\nid: a\n---\n## A\n@narrator: Hi.\n";
+    std::fs::write(dir.join("scenes/a.lute"), text).unwrap();
+    std::fs::write(dir.join("scenes/b.lute"), text.replace("id: a", "id: b")).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_lute-lsp"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut out = BufReader::new(child.stdout.take().unwrap());
+    send(
+        &mut child,
+        &serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"capabilities": {}}}),
+    );
+    let _ = recv(&mut out);
+    send(
+        &mut child,
+        &serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+    );
+    // Every `window/showMessage` before the next `publishDiagnostics`, and
+    // that publish's diagnostics.
+    let mut open = |name: &str, text: &str| {
+        let uri = format!("file://{}", dir.join("scenes").join(name).display());
+        send(
+            &mut child,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {
+                "textDocument": {"uri": uri, "languageId": "lute", "version": 1, "text": text}}}),
+        );
+        let mut shown = Vec::new();
+        loop {
+            let m = recv(&mut out);
+            if m["method"] == "window/showMessage" {
+                shown.push(m["params"]["message"].as_str().unwrap().to_string());
+            } else if m["method"] == "textDocument/publishDiagnostics" {
+                return (
+                    shown,
+                    m["params"]["diagnostics"].as_array().unwrap().clone(),
+                );
+            }
+        }
+    };
+    let (shown, diags) = open("a.lute", text);
+    let (shown_again, _) = open("b.lute", &text.replace("id: a", "id: b"));
+    let _ = child.kill();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(shown.len(), 1, "{shown:?}");
+    assert!(
+        shown[0].contains("older than the project targets (luteVersion 999.0.0)")
+            && shown[0].contains("run `lute doctor`"),
+        "{shown:?}"
+    );
+    assert!(
+        shown_again.is_empty(),
+        "shown once per session: {shown_again:?}"
+    );
+    let stamp = diags
+        .iter()
+        .find(|d| d["code"] == "W-LUTE-VERSION-STALE")
+        .unwrap_or_else(|| panic!("the inherited stamp is marked: {diags:?}"));
+    let message = stamp["message"].as_str().unwrap();
+    assert!(
+        message.contains("999.0.0") && message.contains("run `lute doctor`"),
+        "{message}"
+    );
+}

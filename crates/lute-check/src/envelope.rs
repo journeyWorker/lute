@@ -571,7 +571,9 @@ fn maybe_unavailable_error(path: &str, span: Span) -> Diagnostic {
         severity: Severity::Error,
         message: format!(
             "state path `{path}` may be unavailable under your declared routes — no \
-             declared `after` route sets it before this read (dsl §4.3)"
+             declared `after` route sets it before this read; add an `after:` naming a \
+             scene that sets it (e.g. `after: visited('<scene>')`), or guard the read \
+             with `isSet({path})` (dsl §4.3)"
         ),
         span,
         layer: Layer::Logic,
@@ -588,7 +590,9 @@ fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
         severity: Severity::Warning,
         message: format!(
             "state path `{path}` is set under your declared routes on SOME routes \
-             reaching this node, but not every one — not yet guaranteed (dsl §4.3)"
+             reaching this node, but not every one — not yet guaranteed; order this scene \
+             `after:` a scene every route passes that sets it, or guard the read with \
+             `isSet({path})` (dsl §4.3)"
         ),
         span,
         layer: Layer::Logic,

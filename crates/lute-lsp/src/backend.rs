@@ -26,6 +26,7 @@ use lute_check::{
     MetaKind, Mode,
 };
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
+use lute_manifest::project::MetaDefaults;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CodeActionOrCommand, CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
@@ -72,6 +73,9 @@ pub struct Backend {
     diagnostics: DashMap<Uri, Vec<Diagnostic>>,
     /// dsl 0.26.0 §8: the binary this server runs, as it was at start.
     binary: Option<(PathBuf, BinaryId)>,
+    /// Round-5 T3-19: whether [`Self::warn_if_older_than_stamp`] has shown
+    /// its one `window/showMessage` this session.
+    warned_older: std::sync::atomic::AtomicBool,
 }
 
 /// What identifies one build of a binary file: its length, mtime and (on
@@ -96,6 +100,19 @@ fn binary_id(path: &Path) -> Option<BinaryId> {
     })
 }
 
+/// A `luteVersion:` YAML value as its string (a stamp is a quoted or plain
+/// `x.y.z` string).
+fn yaml_version(v: &serde_yaml::Value) -> Option<String> {
+    v.as_str().map(|s| s.trim().to_string())
+}
+
+/// `MAJOR.MINOR.PATCH` as a comparable triple; `None` for anything else.
+fn version_triple(v: &str) -> Option<(u64, u64, u64)> {
+    let mut it = v.trim().split('.').map(|p| p.parse::<u64>().ok());
+    let t = (it.next()??, it.next()??, it.next()??);
+    it.next().is_none().then_some(t)
+}
+
 impl Backend {
     /// Build a backend bound to `client` with empty document/diagnostic maps.
     pub fn new(client: Client) -> Self {
@@ -106,6 +123,7 @@ impl Backend {
             binary: std::env::current_exe()
                 .ok()
                 .and_then(|p| binary_id(&p).map(|id| (p, id))),
+            warned_older: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -145,6 +163,45 @@ impl Backend {
             .publish_diagnostics(uri.clone(), vec![diag], Some(version))
             .await;
         true
+    }
+
+    /// Round-5 T3-19: a document (or the project manifest's `defaults:`)
+    /// stamped with a `luteVersion` NEWER than this server's language means
+    /// the editor runs an older `lute-lsp` than the project targets — every
+    /// writer in round 5 met a 0.17 server that way and found it only through
+    /// `lute doctor`. The checker's `W-LUTE-VERSION-STALE` marks the stamp;
+    /// this also tells the user once per session, in the client's own UI, so
+    /// a wall of bogus diagnostics is not trusted over the terminal.
+    async fn warn_if_older_than_stamp(&self, text: &str, defaults: &MetaDefaults) {
+        use std::sync::atomic::Ordering;
+        if self.warned_older.load(Ordering::Relaxed) {
+            return;
+        }
+        let (doc, _) = lute_syntax::parse(text);
+        let own = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+            .ok()
+            .and_then(|m| m.get("luteVersion").and_then(yaml_version));
+        let Some(stamp) = own.or_else(|| defaults.get("luteVersion").and_then(yaml_version)) else {
+            return;
+        };
+        let ours = lute_check::LUTE_LANG_VERSION;
+        let newer = matches!(
+            (version_triple(&stamp), version_triple(ours)),
+            (Some(s), Some(o)) if s > o
+        );
+        if !newer || self.warned_older.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        self.client
+            .show_message(
+                MessageType::WARNING,
+                format!(
+                    "Lute: this editor's lute-lsp ({ours}) is older than the project targets \
+                     (luteVersion {stamp}), so its diagnostics may be wrong — run `lute doctor` \
+                     in a terminal to find the stale install, then restart the language server."
+                ),
+            )
+            .await;
     }
 
     /// Run `check()` over `snapshot`'s text and publish the converted diagnostics
@@ -194,6 +251,8 @@ impl Backend {
             defaults: self.defaults_for(&uri),
         };
         let result = check(&input);
+        self.warn_if_older_than_stamp(&snapshot.text, &input.defaults)
+            .await;
         // Opt-in lint (design §2, §3): publish alongside check diagnostics
         // when `<project root>/lute.lint.yaml` exists AND sets `lsp: true`.
         // Silent no-op on absent/malformed config or `lsp: false` — the CLI

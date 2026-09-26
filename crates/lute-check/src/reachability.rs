@@ -184,31 +184,62 @@ fn push_literal_cmp_diags(diags: &mut Vec<Diagnostic>, hits: &[LiteralCmpHit], s
 /// `<otherwise>`.
 pub(crate) const W_CODE_AFTER_END: &str = "W-CODE-AFTER-END";
 
-/// One `W-CODE-AFTER-END` for `nodes` (a single straight-line body) when a
-/// `::end` is followed by anything, anchored at the FIRST such node — the
-/// place an author would cut from. Exactly one per body: everything past
-/// the first unreachable node is unreachable for the SAME reason, and N
-/// warnings for one mistake is noise.
+/// A `W-CODE-AFTER-END` for each dead stretch of `nodes` (a single
+/// straight-line body): what follows a `::end` up to the next node a
+/// `::next` can jump into, anchored at the stretch's FIRST node — the place
+/// an author would cut from. One per stretch: everything past its first
+/// node is unreachable for the SAME reason, and N warnings for one mistake
+/// is noise.
+///
+/// dsl 0.27.0 (round-5 T3-7): a `::mark` / `id=` line some `::next{to}` in
+/// the document names (`targets`, [`crate::next_labels::next_targets`]) —
+/// or a node holding one at any depth — is an entry point: the walk
+/// resumes there, so it and what follows are live until the next `::end`.
+/// A mark nothing targets stays dead.
 ///
 /// Dispatch is by TAG ([`lute_manifest::core::END_DIRECTIVE`]), the same
 /// key `lower_directive` lowers on — see the `terminatesWalk` note in
 /// `lute_manifest::validate::SEMANTICS_VOCAB` for why the flag declares
 /// the semantics but never drives the dispatch.
-fn check_code_after_end(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
+fn check_code_after_end(nodes: &[Node], targets: &BTreeSet<String>, diags: &mut Vec<Diagnostic>) {
     let is_end =
         |n: &Node| matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::END_DIRECTIVE);
-    let Some(end_at) = nodes.iter().position(is_end) else {
-        return;
-    };
-    let Some(dead) = nodes.get(end_at + 1) else {
-        return;
-    };
-    diags.push(diag(
-        W_CODE_AFTER_END,
-        Severity::Warning,
-        "unreachable content after `::end` (the walk terminates here)".to_string(),
-        crate::admission::node_span(dead),
-    ));
+    for dead in dead_stretches(nodes, is_end, targets) {
+        diags.push(diag(
+            W_CODE_AFTER_END,
+            Severity::Warning,
+            "unreachable content after `::end` (the walk terminates here)".to_string(),
+            crate::admission::node_span(dead),
+        ));
+    }
+}
+
+/// The first node of each stretch of `nodes` that follows a terminator
+/// (`ends`) and precedes the next jump entry point — a node that is or holds
+/// a label in `targets` ([`crate::next_labels::holds_label`]).
+fn dead_stretches<'n>(
+    nodes: &'n [Node],
+    ends: impl Fn(&Node) -> bool,
+    targets: &BTreeSet<String>,
+) -> Vec<&'n Node> {
+    let mut out = Vec::new();
+    // `dead`: a terminator ran and no entry point followed yet;
+    // `reported`: this stretch already has its warning.
+    let (mut dead, mut reported) = (false, false);
+    for node in nodes {
+        if dead && crate::next_labels::holds_label(node, targets) {
+            dead = false;
+        }
+        if dead {
+            if !reported {
+                out.push(node);
+                reported = true;
+            }
+        } else if ends(node) {
+            (dead, reported) = (true, false);
+        }
+    }
+    out
 }
 
 /// `W-CODE-AFTER-NEXT` (dsl 0.12.0): a record following an UNGUARDED
@@ -219,23 +250,19 @@ fn check_code_after_end(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
 /// `Node::Directive` arm in [`walk_reach`]).
 pub(crate) const W_CODE_AFTER_NEXT: &str = "W-CODE-AFTER-NEXT";
 
-/// One `W-CODE-AFTER-NEXT` for `nodes`, mirroring [`check_code_after_end`]
+/// `W-CODE-AFTER-NEXT` for `nodes`, mirroring [`check_code_after_end`]
 /// verbatim except the terminator predicate (unguarded `::next` — dispatch
 /// by TAG, [`lute_manifest::core::NEXT_DIRECTIVE`], AND `d.when.is_none()`).
-fn check_code_after_next(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
+fn check_code_after_next(nodes: &[Node], targets: &BTreeSet<String>, diags: &mut Vec<Diagnostic>) {
     let is_unguarded_next = |n: &Node| matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::NEXT_DIRECTIVE && d.when.is_none());
-    let Some(next_at) = nodes.iter().position(is_unguarded_next) else {
-        return;
-    };
-    let Some(dead) = nodes.get(next_at + 1) else {
-        return;
-    };
-    diags.push(diag(
-        W_CODE_AFTER_NEXT,
-        Severity::Warning,
-        "unreachable content after `::next` (the walk jumps away here)".to_string(),
-        crate::admission::node_span(dead),
-    ));
+    for dead in dead_stretches(nodes, is_unguarded_next, targets) {
+        diags.push(diag(
+            W_CODE_AFTER_NEXT,
+            Severity::Warning,
+            "unreachable content after `::next` (the walk jumps away here)".to_string(),
+            crate::admission::node_span(dead),
+        ));
+    }
 }
 
 /// §5.2/§5.3 whole-document pass. Walks `doc.shots` + `doc.quests` +
@@ -363,6 +390,7 @@ pub(crate) fn check_reachability_in(
     env: &ReachEnv<'_>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+    let targets = crate::next_labels::next_targets(doc);
     // One body's walk under the `when` it runs behind (dsl 0.24.0).
     let walk_body = |bodies: &[&[Node]], when: Option<&CelSlot>, diags: &mut Vec<Diagnostic>| {
         let assumption = when.zip(env.snapshot).and_then(|(when, snapshot)| {
@@ -371,6 +399,7 @@ pub(crate) fn check_reachability_in(
         let rx = Reach {
             def_types: env.def_types,
             assume: assumption.as_ref(),
+            targets: &targets,
         };
         for body in bodies {
             walk_reach(body, defs, &rx, base_ctx, diags);
@@ -424,11 +453,12 @@ pub(crate) struct ReachEnv<'a> {
     pub(crate) snapshot: Option<&'a CapabilitySnapshot>,
 }
 
-/// One body's walk context: [`ReachEnv::def_types`] and the body's own
-/// [`Assumption`].
+/// One body's walk context: [`ReachEnv::def_types`], the body's own
+/// [`Assumption`], and the document's `::next` targets (dsl 0.27.0).
 struct Reach<'a> {
     def_types: &'a BTreeMap<String, Type>,
     assume: Option<&'a Assumption>,
+    targets: &'a BTreeSet<String>,
 }
 
 /// A beat's / entry's `when` as an assumption over the body it guards (dsl
@@ -484,6 +514,8 @@ impl Assumption {
                 params: defs.params,
             },
             def_types,
+            preceded: false,
+            components: None,
         };
         let present = crate::defassign::assumed_present(Some(when), &scope);
         (!conjuncts.is_empty() || !present.is_empty()).then(|| Self {
@@ -612,8 +644,8 @@ fn walk_reach(
     ctx: &DecideCtx<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    check_code_after_end(nodes, diags);
-    check_code_after_next(nodes, diags);
+    check_code_after_end(nodes, rx.targets, diags);
+    check_code_after_next(nodes, rx.targets, diags);
     for node in nodes {
         match node {
             Node::Match(m) => {
@@ -1582,14 +1614,56 @@ fn comparison_set_polar(
     Some((path, set))
 }
 
+/// dsl 0.27.0 (T3-3): `path in [lit, …]` as solution sets over the path's
+/// declared type — the union of the members' `==` sets; `negated`
+/// (`!(path in […])`), one `!=` set per member. `None` for any other shape,
+/// a non-literal or ill-typed member, or an empty list (which holds nowhere
+/// and so constrains nothing we can use).
+fn membership_sets_polar(
+    expr: &Expr,
+    schema: &crate::meta::StateSchema,
+    negated: bool,
+) -> Option<Vec<(String, SolutionSet)>> {
+    let Expr::Call(c) = expr else {
+        return None;
+    };
+    if c.target.is_some() || c.func_name != op::IN || c.args.len() != 2 {
+        return None;
+    }
+    let path = crate::cel_paths::select_path(&c.args[0].expr)?;
+    let Expr::List(list) = &c.args[1].expr else {
+        return None;
+    };
+    let declared = crate::set_op::resolve_type(&path, schema)?;
+    let opname = if negated { op::NOT_EQUALS } else { op::EQUALS };
+    let sets = list
+        .elements
+        .iter()
+        .map(|el| match &el.expr {
+            Expr::Literal(v) => solution_set(declared, opname, v),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    if negated {
+        return Some(sets.into_iter().map(|s| (path.clone(), s)).collect());
+    }
+    let (first, rest) = sets.split_first()?;
+    let union = rest
+        .iter()
+        .try_fold(first.clone(), |acc, s| join(&acc, s))?;
+    Some(vec![(path, union)])
+}
+
 /// The top-level `&&` conjuncts of a condition that are in-domain comparisons
 /// (dsl 0.22.0 §13, `W-BEAT-PRIORITY-TIE`): each `path op literal`, a bare
 /// `bool` path / its `!` as `== true` / `== false` — the reserved
 /// `entry.<id>.read` / `entry.<id>.everRead` flags and a ground `holds(…)` /
 /// `visited('…')` query included, as pseudo-paths — and (dsl 0.24.0, T3-3)
 /// what a positive `holds(A)` of a pure-schedule derived atom implies about
-/// state ([`schedule_conjuncts`]). Every other conjunct constrains nothing
-/// here — which only makes exclusivity harder to prove.
+/// state ([`schedule_conjuncts`]). dsl 0.27.0 (T3-3): a `path in [lit, …]`
+/// (or its `!`) is read as its value set, and an `a || b` constrains a path
+/// BOTH sides constrain, to the union of their sets. Every other conjunct
+/// constrains nothing here — which only makes exclusivity harder to prove.
 ///
 /// Pairwise disjoint TRUE sets mean "never both true" — weaker than the
 /// conjunction deciding `false` (dsl 0.23.0 §9), which an erring read of an
@@ -1640,6 +1714,17 @@ fn collect_conjuncts(expr: &Expr, ctx: &ConjunctCtx<'_>, out: &mut Vec<(String, 
             collect_conjuncts(&c.args[1].expr, ctx, out);
             return;
         }
+        // Either side holding constrains a path both sides constrain to
+        // one of their sets; a path only one side constrains stays free.
+        if c.target.is_none() && c.func_name == op::LOGICAL_OR && c.args.len() == 2 {
+            let sides = c.args.iter().map(|a| {
+                let mut side = Vec::new();
+                collect_conjuncts(&a.expr, ctx, &mut side);
+                side
+            });
+            out.extend(join_common(&sides.collect::<Vec<_>>()));
+            return;
+        }
     }
     let bool_path = |e: &Expr| {
         let path = crate::cel_paths::select_path(e)?;
@@ -1657,6 +1742,8 @@ fn collect_conjuncts(expr: &Expr, ctx: &ConjunctCtx<'_>, out: &mut Vec<(String, 
     };
     if let Some(hit) = comparison_set(expr, ctx.schema) {
         out.push(hit);
+    } else if let Some(hits) = membership_sets_polar(expr, ctx.schema, false) {
+        out.extend(hits);
     } else if let Some(path) = bool_path(expr).or_else(|| holds_key(expr)) {
         out.push(flag(path, true));
         if let Some(vocab) = ctx.vocab {
@@ -1664,8 +1751,11 @@ fn collect_conjuncts(expr: &Expr, ctx: &ConjunctCtx<'_>, out: &mut Vec<(String, 
         }
     } else if let Expr::Call(c) = expr {
         if c.target.is_none() && c.func_name == op::LOGICAL_NOT && c.args.len() == 1 {
-            if let Some(path) = bool_path(&c.args[0].expr).or_else(|| holds_key(&c.args[0].expr)) {
+            let inner = &c.args[0].expr;
+            if let Some(path) = bool_path(inner).or_else(|| holds_key(inner)) {
                 out.push(flag(path, false));
+            } else if let Some(hits) = membership_sets_polar(inner, ctx.schema, true) {
+                out.extend(hits);
             }
         }
     }
@@ -1790,16 +1880,24 @@ fn schedule_conjuncts(
         }
         per_rule.push(sets);
     }
-    if per_rule.is_empty() {
+    join_common(&per_rule)
+}
+
+/// What a disjunction of `alternatives` (each a conjunct list) implies: a
+/// path every alternative constrains, to the union of their sets (the first
+/// set each gives it); a path some alternative leaves free is dropped, as is
+/// one whose sets have no representable union. No alternative, no conjunct.
+fn join_common(alternatives: &[Vec<(String, SolutionSet)>]) -> Vec<(String, SolutionSet)> {
+    let Some((first, rest)) = alternatives.split_first() else {
         return Vec::new();
-    }
+    };
     let mut acc: Vec<(String, SolutionSet)> = Vec::new();
-    for (path, set) in &per_rule[0] {
+    for (path, set) in first {
         if acc.iter().any(|(p, _)| p == path) {
             continue;
         }
         let mut joined = Some(set.clone());
-        for other in &per_rule[1..] {
+        for other in rest {
             joined = match (joined, other.iter().find(|(p, _)| p == path)) {
                 (Some(j), Some((_, s))) => join(&j, s),
                 _ => None,
@@ -1975,6 +2073,10 @@ fn literal_conjuncts(
 ) -> bool {
     if let Some(hit) = comparison_set_polar(expr, ctx.schema, negated) {
         out.push(hit);
+        return true;
+    }
+    if let Some(hits) = membership_sets_polar(expr, ctx.schema, negated) {
+        out.extend(hits);
         return true;
     }
     let bool_path = crate::cel_paths::select_path(expr).filter(|path| {

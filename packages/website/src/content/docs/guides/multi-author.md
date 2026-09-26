@@ -130,8 +130,9 @@ entities:
   did-you-mean, and so is an `add:` onto an `open:` kind or beside `members:` / `open:` in the same
   entry.
 
-Like the other schema errors, these are reported once, at the schema line, and folded
-(`(+N more callers)`) instead of once for every document that imports the schema.
+Like the other schema errors, `check-project` reports these once, as a project-wide line at the
+schema line ending `(imported by N documents)`, instead of once for every document that imports the
+schema; the importing documents themselves stay `ok`.
 
 <!-- lute-diagnostics -->
 ```

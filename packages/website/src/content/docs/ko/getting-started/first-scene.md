@@ -1,6 +1,6 @@
 ---
 title: 첫 장면 작성하기
-description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하나를 단계별로 만들면서, 매 단계마다 lute 도구를 실행해 그 결과를 정확히 확인합니다.
+description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하나를 단계별로 만들면서, 매 단계마다 lute 도구를 실행해 그 결과를 정확히 확인하고, 테스트로 고정합니다.
 ---
 
 이 문서는 Lute를 한 번도 다뤄본 적 없는 시나리오 작가를 위한 "여기서 시작" 안내입니다 —
@@ -11,6 +11,10 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 일반 텍스트 편집기, 터미널, 그리고 `lute` 명령
 ([먼저 설치하세요](/ko/getting-started/installation/))이 필요합니다. 여기서 작성하는 모든
 것은 **코어 Lute만** 사용합니다 — 플러그인도, 프로젝트 설정도 없습니다. 오직 언어 그 자체입니다.
+
+**편집기와 터미널이 다르게 말하면** — `lute check`가 `ok`라고 하는 파일에 편집기가 빨간 밑줄을
+긋거나, 그 반대라면 — 터미널을 믿고 `lute doctor .`를 실행하세요. 흔한 원인을 짚어 줍니다:
+`lute`보다 오래된 편집기 언어 서버입니다(업그레이드한 뒤에는 편집기를 다시 시작하세요).
 
 ## Part 1 — 최소한의 뼈대
 
@@ -27,24 +31,29 @@ failed: my-scene.lute (4 error(s), 0 warning(s))
 ```
 
 이것이 `lute check`의 핵심 아이디어입니다: 파일을 읽고 무엇이 왜 잘못되었는지 한 줄씩 정확히
-알려줍니다 — 결코 조용히 실패하지 않습니다. 모든 `.lute` 파일은 "이 문서는 무엇이고, 누구의
-장면인가?"에 답하는 YAML **프런트매터 블록**(두 `---` 줄 사이)으로 시작합니다. 하나 추가하세요:
+알려줍니다 — 결코 조용히 실패하지 않습니다. 모든 `.lute` 파일은 "이 문서는 무엇이고, 이름은
+무엇인가?"에 답하는 YAML **프런트매터 블록**(두 `---` 줄 사이)으로 시작합니다. 하나 추가하세요:
 
 ```yaml
 ---
 kind: scene
+id: mira.s01ep01
 title: A Quiet Table
-character: mira
-season: 1
-episode: 1
 pov: fixer
 ---
 ```
 
-- `kind: scene` — 이 파일은 장면입니다(다른 종류인 `quest`는 퀘스트 로직 파일용입니다).
-- `character` — 누구의 에피소드인지(시점 캐릭터의 스토리라인).
-- `season` / `episode` — 이 장면이 속한 에피소드.
+- `kind: scene` — 이 파일은 장면, 즉 플레이어가 보는 대사입니다. 다른 두 종류는 `quest`(이야기가
+  추적하는 목표)와 `lore`(아이템 설명처럼 게임이 찾아 읽는 텍스트)입니다.
+- `id` — 프로젝트 안에서 유일한 장면의 이름입니다. 다른 장면과 테스트는 이 이름으로 이 장면을
+  가리킵니다. 문자, 숫자, `_`, `-`, `.`를 쓸 수 있습니다. `mira.s01ep01`은 "Mira, 시즌 1,
+  에피소드 1"로 읽히지만 어떤 이름이든 됩니다(`prologue`, `diner.opening`).
+- `title` — 도구와 검색을 위한 사람이 읽는 제목입니다.
 - `pov` — 플레이어 캐릭터의 id(플레이어가 조종하는 주인공).
+
+위의 `E-META-MISSING` 오류 세 개는 `character`, `season`, `episode`를 말합니다: 장면에 이름을
+붙이던 예전 방식입니다. 메시지 괄호 안에 적힌 대로 `id:` 하나가 셋을 모두 대신하므로 그 키들은
+쓸 필요가 없습니다.
 
 저장하고 다시 검사하세요:
 
@@ -53,8 +62,37 @@ $ lute check my-scene.lute
 ok: my-scene.lute (0 warning(s))
 ```
 
-깔끔합니다 — 하지만 파일에는 아직 내용이 없습니다. 프런트매터 바로 아래에 내레이션 한 줄을
-추가해 보세요:
+### 작가를 위한 따옴표와 YAML
+
+프런트매터는 **YAML**이고, 뒤에 나올 테스트 파일과 플레이 파일도 YAML입니다. 이 안내서가 쓰는
+것은 다섯 가지 규칙이면 모두 됩니다:
+
+- **`key: value`**, 콜론 뒤에 공백 하나. 들여쓰기는 **공백으로만, 탭은 절대 쓰지 않습니다**.
+  하위 항목은 부모 아래로 들여씁니다.
+- **목록**은 한 줄에 `[a, b, c]`, 또는 줄마다 `- item`. **맵**은 한 줄에 `{ key: value }`, 또는
+  들여쓴 `key: value` 줄들.
+- **기호로 시작하는 값**(`!`, `[`, `{`, `'`, `"`, `*`, `&`)이나 `: ` 또는 ` #`가 들어간 값은
+  **따옴표로 감쌉니다**. 평범한 단어와 숫자는 따옴표가 필요 없습니다.
+- **따옴표는 번갈아 겹칩니다.** 큰따옴표 안에는 작은따옴표를, 작은따옴표 안에는 큰따옴표를 씁니다:
+
+  ```yaml
+  after: 'visited("mira.s01ep01")'    # Lute의 "…"를 감싼 YAML의 작은따옴표
+  when: "run.accused == 'ruben'"      # Lute의 '…'를 감싼 YAML의 큰따옴표
+  when: "!visited('accusation')"      # !로 시작하므로 반드시 따옴표
+  ```
+
+  `when: "run.accused == "ruben""`이라고 쓰면 문자열이 두 번째 `"`에서 끝납니다: `lute check`는 그
+  줄에 `E-META-PARSE`를 보고하며 안쪽에 작은따옴표를 쓰라고 제안합니다. 안쪽 한 쌍을 바꾸세요.
+- **곧은 따옴표만.** 워드 프로세서와 메모 앱은 `"`를 둥근 `“ ”`로 바꿉니다. Lute는 프런트매터에서도,
+  `label="…"` 같은 태그 속성에서도 곧은 `"`와 `'`만 읽습니다. 태그 속성의 둥근 따옴표는
+  `E-ATTR-QUOTE`이며, 다시 입력하라고 알려 줍니다.
+
+`.lute` 본문 안의 태그 속성은 언제나 큰따옴표로 감싸므로, 그 안의 조건은 작은따옴표를 씁니다:
+`when="run.accused == 'ruben'"`.
+
+### 내용은 헤딩 아래에
+
+파일에는 아직 내용이 없습니다. 프런트매터 바로 아래에 내레이션 한 줄을 추가해 보세요:
 
 ```lute
 @narrator: The diner is empty at this hour, and Mira likes it that way.
@@ -65,7 +103,7 @@ ok: my-scene.lute (0 warning(s))
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
+my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -109,7 +147,7 @@ ok: my-scene.lute (0 warning(s))
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:14:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+my-scene.lute:12:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -156,10 +194,8 @@ ok: my-scene.lute (0 warning(s))
 ```lute check
 ---
 kind: scene
+id: mira.s01ep01
 title: A Quiet Table
-character: mira
-season: 1
-episode: 1
 pov: fixer
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
@@ -219,7 +255,7 @@ state:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -246,10 +282,6 @@ $ lute compile my-scene.lute
   "capabilityVersion": "0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3",
   "meta": {
     "id": "mira.s01ep01",
-    "character": "mira",
-    "season": 1,
-    "episode": 1,
-    "episodeId": "s01ep01",
     "title": "A Quiet Table"
   },
   "state": [ … ],
@@ -288,36 +320,37 @@ $ lute compile my-scene.lute
 
 (`…`는 지면을 위해 잘라낸 자리이고, 나머지는 출력 그대로입니다.) 당신이 선언한 `enums:`는
 산출물의 **`enums`** 블록으로 그대로 실려 가므로, 엔진은 체커가 쓴 것과 똑같은 어휘로 값을
-해석합니다. 그 밖에 한눈에 알아둘 필드가 둘 있습니다. **`addr`**는 레코드의 주소로
-`{shot}-{index}` 형태이며, 하나의 산출물 안의 모든
+해석합니다. 당신의 `id:`는 모든 `lineId`와 `voiceKey`의 접두사이므로, 이 장면의 모든 줄은 다른
+장면의 줄이 가질 수 없는 이름을 갖습니다. 그 밖에 한눈에 알아둘 필드가 둘 있습니다. **`addr`**는
+레코드의 주소로 `{shot}-{index}` 형태이며, 하나의 산출물 안의 모든
 `addr`는 같은 너비로 채워집니다 — 그래서 `addr` 문자열을 정렬하기만 하면 실행 순서가 나옵니다.
 파싱할 필요가 없습니다. **`shots`**는 당신이 쓴 `## ` 헤딩을 산출물까지 실어 나르므로, 하위
 도구가 어떤 레코드가 *어느 비트에* 속하는지 여전히 말할 수 있습니다.
 
 이 파일은 절대 손으로 편집하지 않습니다 — 엔진이 소비하는 컴파일된 산출물입니다. 오류 없이
 컴파일되었다는 것은 그 장면이 **정적으로 유효함**을 증명합니다: 모든 구성이 올바르게
-형성되었고, 모든 상태 경로가 선언되었으며, 모든 `<match>`가 망라적입니다. 이것이 장면이
-처음부터 끝까지 플레이 가능함을 증명하는 것은 아닙니다 — 그것은 통합 시점에 검증되는 런타임
-속성입니다.
+형성되었고, 모든 상태 경로가 선언되었으며, 모든 `<match>`가 망라적입니다. 이것이 장면이 의도한
+대로 재생됨을 증명하지는 않습니다 — 그것은 `lute trace`와, Part 6의 `lute test`가 하는 일입니다.
 
-마지막으로, `lute trace`는 게임을 열지 않고 플레이스루를 미리 봅니다 — 각 분기에서 어떤 선택을
+`lute trace`는 게임을 열지 않고 플레이스루를 미리 봅니다 — 각 분기에서 어떤 선택을
 할지 `--choose <branchId>=<choiceId>`로 알려주면, 장면을 따라가며 화면에 무엇이 표시될지
 출력합니다:
 
 ```
 $ lute trace my-scene.lute --choose orderChoice=black
 trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
-  ## Shot 1.
+  ## The Counter
     @narrator  The diner is empty at this hour, and Mira likes it that way.
-    @mira  {{userName}}, you made it.
-    @mira  I should not be this pleased about a coffee order.
+    @mira{emotion="content" variant="0"}  {{userName}}, you made it.
+    @mira{mono}  I should not be this pleased about a coffee order.
   <branch orderChoice>   eligible: black   -> black
-    @mira  Good. No nonsense in a cup.
+    @mira{emotion="content" variant="0"}  Good. No nonsense in a cup.
 trace complete: 1 decision; choices 1/2 (orderChoice)
 ```
 
-그 기록은 당신이 제공한 모의 시나리오를 정확히 미리 보여줍니다 — 분기가 제대로 읽히는지
-점검하기 위한 저작 보조 수단이며, 런타임 동작의 증명은 결코 아닙니다.
+그 기록은 당신이 준 선택을 그대로 미리 보여줍니다 — 분기를 플레이어처럼 읽어 보는 빠른
+방법입니다. 줄은 속성을 중괄호에 그대로 달고 나오므로, `@mira{mono}`를 보면 어느 줄이 생각인지 바로
+알 수 있습니다.
 
 ## Part 5 — `after:`로 장면 순서 잡기
 
@@ -325,12 +358,15 @@ trace complete: 1 decision; choices 1/2 (orderChoice)
 그 의도된 순서는 하나의 프런트매터 키로 선언합니다: **`after:`**.
 
 `after:`는 Lute의 체커와 `lute scenario` 분석이 이 장면에 도달한다고 가정하는 경로를 선언합니다.
-이것은 플레이어를 어디로도 이동시키지 않으며 점프도 아닙니다 — *권고적(advisory)*입니다: 도구는
-이를 사용해 당신의 에피소드들이 하나의 일관되고 분석 가능한 그래프로 맞물리는지 검증합니다.
+이것은 플레이어를 어디로도 이동시키지 않으며 점프도 아닙니다: "이 장면은 저 장면 뒤에 온다"고
+말할 뿐이고, 도구는 이를 사용해 당신의 에피소드들이 하나의 일관되고 분석 가능한 그래프로
+맞물리는지 검증합니다. 각 장면을 실제로 *시작*하는 것은 게임 엔진입니다 — 엔진이 아직 없다면
+`lute play`이고, 다음 페이지 [장면을 이야기로 잇기](/ko/getting-started/connect-scenes/)에서
+그것을 준비합니다.
 
 `after:`는 의도적으로 아주 작습니다. 정확히 세 개의 구성 요소만 주어집니다:
 
-- `visited("<sceneKey>")` — 플레이어가 그 장면을 본 순간 참이 됩니다.
+- `visited("<id>")` — 플레이어가 그 `id:`의 장면을 본 순간 참이 됩니다.
 - `completed("<questId>")` — 그 퀘스트가 완료된 순간 참이 됩니다.
 - `active("<questId>")` — 그 퀘스트가 진행 중인 동안 참입니다: 시작되었고, 아직 끝나지 않은 상태.
 
@@ -347,38 +383,22 @@ after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
 after: 'visited("mira.s01ep01") || visited("mira.s01ep03")'
 ```
 
-이것이 어휘의 전부입니다. `!`도, 산술도, 상태 읽기도 없습니다 — 이것들은 의도적으로 제외되었습니다.
-런타임 상태에 조건부인 것은 무엇이든 당신의 `when=` 가드에 남습니다.
+(바깥 작은따옴표는 YAML의 것이고 안쪽 큰따옴표는 장면 id의 것입니다.
+[작가를 위한 따옴표와 YAML](#작가를-위한-따옴표와-yaml)을 보세요.) 이것이 어휘의 전부입니다.
+`!`도, 산술도, 상태 읽기도 없습니다 — 이것들은 의도적으로 제외되었습니다. 런타임 상태에
+조건부인 것은 무엇이든 당신의 `when=` 가드에 남습니다.
 
-`visited("…")`에는 장면의 **표준 키(canonical key)**가 필요합니다. 새 문서를 쓸 때 우선적으로
-선택해야 하는 방식은 그것을 *직접 작성*하는 것 — 전용 프런트매터 키 하나(dsl 0.15.0 §2):
+`visited("mira.s01ep01")`는 Part 1에서 붙인 `id:`로 다이너를 가리킵니다. 모든 장면이 `id:`를 갖는
+이유가 바로 이것입니다.
 
-```yaml
-id: mira.s01ep01
-```
-
-`id:`는 이 장면을 프로젝트 전역에서 식별하는 평문 문자열입니다(문자, 숫자, `_`, `-`, `.`).
-다른 장면의 `after:`에 있는 `visited("mira.s01ep01")`는 *이* 장면을 가리키고, 컴파일된
-산출물의 모든 `lineId` / `voiceKey`의 접두사(Part 4 출력의
-`"lineId": "mira.s01ep01.narrator_0010"`와 `"voiceKey": "mira.s01ep01.mira-0010"`)도 같은
-문자열에서 만들어집니다. `id:`가 선언되면
-`character:` / `season:` / `episode:`는 선택 사항이 됩니다 — 검색·TMS 등 유용한 메타데이터로
-남기려면 유지하고, 그렇지 않으면 지우세요. `id:`와 저 레거시 식별 키들을 한 문서에서 함께
-작성하면 체커는 각 키마다 `W-META-LEGACY` 한 건씩을 냅니다: 정체성은 이제 `id:`에서 오고,
-서술 정보는 `extra:` 아래에 둡니다(같은 스펙 §3).
-
-**레거시 폴백(`id:` 미선언).** `character:` / `season:` / `episode:`만 작성한 기존
-장면 — 이 튜토리얼의 다이너 포함 — 은 그대로 유효합니다: `id:`가 없으면 표준 키는
-프런트매터에서 `{character}.{episodeId}`로 유도되며, `{episodeId}`는 선언된 `episodeId:`
-값이거나, 없으면 각각 두 자리로 0을 채운 `s{season}ep{episode}`입니다. 우리 튜토리얼 장면은
-`character: mira`, `season: 1`, `episode: 1`을 선언하고 명시적 `id:`나 `episodeId:`가 없으므로
-표준 키는 여전히 **`mira.s01ep01`** — `id: mira.s01ep01`을 그대로 쓴 것과 동일한
-문자열이며, 그래서 Part 4의 컴파일 출력이 어느 쪽이든 `"meta": { "id": "mira.s01ep01", … }`를
-보여줍니다. 컴파일러 출력에서 키를 역추적할 필요가 전혀 없습니다 — 프런트매터에서 곧바로
-읽으세요, 작성한 `id:` 또는 유도된 조인 중 어느 것이든.
+(**예전 장면.** `id:`가 생기기 전에는 장면을 세 키 `character:`, `season:`, `episode:`로 불렀고,
+이름은 그 키들로 만들어졌습니다: `character: mira`, `season: 1`, `episode: 1`은 `mira.s01ep01`을
+뜻했습니다. 그렇게 쓴 장면도 여전히 검사를 통과합니다. 새 장면에는 `id:`를 쓰세요. `id:`와 그
+세 키 중 하나를 함께 쓴 장면은 키마다 `W-META-LEGACY` 경고 한 건을 받고, 서술 정보는 `extra:`
+아래에 둡니다.)
 
 에피소드를 넘나들며 팩트를 이어가려면, 지속되는 **`run.`** 계층을 사용하세요. 만남을 기억하도록
-다이너를 가르쳐 봅시다 — `run.metMira`를 선언하고 설정하세요:
+다이너를 가르쳐 봅시다 — `run.metMira`를 선언하고 장면 끝에서 설정하세요:
 
 ```yaml
 state:
@@ -390,10 +410,18 @@ state:
 ```
 
 `after:`와 장면 간 읽기는 여러 파일에 걸쳐야만 의미가 있으므로, 두 장면을 한 폴더에 넣고, 그
-폴더를 프로젝트 루트로 표시하는 `lute.project.yaml`을 두세요. 음성 키에는 이미 장면이 들어가
-있습니다 — 기본 `voiceKey`가 `{prefix}.{speaker}-{code}`이므로, 다이너와 부스의 첫 Mira 대사는
-각각 `mira.s01ep01.mira-0010`과 `mira.s01ep02.mira-0010`, 녹음 두 개가 되고 따로 설정할 것은
-없습니다:
+폴더를 프로젝트 루트로 표시하는 `lute.project.yaml`을 두세요:
+
+```
+episodes/
+  lute.project.yaml
+  diner.lute        ← Part 1–4의 장면에 run.metMira와 ::set을 더한 것
+  booth.lute        ← 아래의 새 후속 장면
+```
+
+음성 키에는 이미 장면이 들어가 있습니다 — 기본 `voiceKey`가 `{prefix}.{speaker}-{code}`이므로,
+다이너와 부스의 첫 Mira 대사는 각각 `mira.s01ep01.mira-0010`과 `mira.s01ep02.mira-0010`, 녹음 두
+개가 되고 따로 설정할 것은 없습니다:
 
 ```yaml
 # episodes/lute.project.yaml
@@ -411,10 +439,8 @@ profiles:
 ```lute check-project="docs/examples/episodes/booth.lute"
 ---
 kind: scene
+id: mira.s01ep02
 title: The Usual Booth
-character: mira
-season: 1
-episode: 2
 pov: fixer
 after: 'visited("mira.s01ep01")'
 enums:
@@ -458,8 +484,8 @@ project root: episodes
     scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
-`reach <key>`는 "플레이어가 여기까지 도달할 수 있는가, 그리고 어떤 경로로?"에 답하고,
-`envelope <key>`는 `when=` 가드를 작성하기 전에 가장 알고 싶은 질문 — *여기서 읽어도 안전한
+`reach <id>`는 "플레이어가 여기까지 도달할 수 있는가, 그리고 어떤 경로로?"에 답하고,
+`envelope <id>`는 `when=` 가드를 작성하기 전에 가장 알고 싶은 질문 — *여기서 읽어도 안전한
 상태는 무엇인가?* — 에 답합니다:
 
 ```
@@ -467,9 +493,11 @@ $ lute scenario episodes envelope mira.s01ep02
 project root: episodes
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
-    - run.metMira
-  Possible (set on at least one declared route reaching this node):
-    - run.metMira
+    - run.metMira   written by: scene(mira.s01ep01)
+  Possible (set on SOME but not every declared route reaching this node; the Guaranteed paths above are not repeated):
+    (none)
+  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+    (none)
   Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
     (none)
 ```
@@ -478,7 +506,61 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
 다이너를 거치고, 다이너는 언제나 그것을 `::set`합니다. 이것이 진정한 장면 간 보장입니다 — 부스의
 `when="run.metMira"` 읽기가 안전함이 증명됩니다.
 
-## Part 6 — 다음 갈 곳
+## Part 6 — 테스트로 이야기 고정하기
+
+trace는 한 경로를 한 번 보여줍니다. **테스트**는 참이어야 할 것을 적어 두고 `lute test`를 실행할
+때마다 확인하므로, 나중의 수정이 장면을 망가뜨리면 조용히 지나가지 않고 크게 실패합니다.
+
+테스트는 프로젝트의 `tests/` 폴더에 `*.test.yaml` 파일 하나씩으로 둡니다.
+`episodes/tests/diner.test.yaml`을 만드세요:
+
+```yaml
+file: ../diner.lute
+choose: { orderChoice: black }
+expect:
+  transcriptContains: ["@mira: Good. No nonsense in a cup."]
+  transcriptLacks: ["@mira: You remembered. That's new."]
+  state: { run.metMira: true }
+```
+
+- `file:`은 테스트할 장면이며 **테스트 파일 기준 상대 경로**입니다: 테스트가 `tests/`에 있으므로
+  다이너는 `../diner.lute`입니다. (`scenes/` 폴더가 있는 프로젝트라면 `../scenes/<name>.lute`.)
+- `choose:`는 각 분기에서 고를 선택지로, `lute trace`의 `--choose`와 같습니다.
+- `expect:`는 성립해야 할 것들입니다: `transcriptContains`는 반드시 나와야 할 줄(`@speaker: text`
+  형태), `transcriptLacks`는 나오면 안 되는 줄, `state`는 장면이 끝난 뒤의 값입니다.
+
+```
+$ lute test episodes --project episodes
+PASS  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+
+1 passed, 0 failed
+```
+
+실패한 테스트는 이유를 말합니다. `scene.knowsMira`로 가드된 `familiar`로 선택을 바꿔 보세요:
+
+<!-- lute-diagnostics unverified="lute test respells the walk.rs literal `--choose {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
+```
+$ lute test episodes --project episodes
+FAIL  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+      trace refused:
+        episodes/tests/../diner.lute:25:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard decided false at this presentation point (dsl 0.4.0 §4.4)
+
+0 passed, 1 failed
+```
+
+아무것도 `scene.knowsMira`를 설정하지 않았으므로 그 선택지의 가드는 거짓입니다. 테스트는 원하는
+상태에서 시작할 수 있습니다: `choose:` 위에 `state: { scene.knowsMira: true }`를 더하면
+`familiar` 경로도 테스트할 수 있습니다. 그다음 `lute test episodes --project episodes --coverage`는
+아직 어느 테스트도 고르지 않은 선택지와, 어느 테스트도 가리키지 않는 장면을 나열합니다 — 다음
+테스트를 위한 할 일 목록입니다.
+
+테스트 파일이 받는 모든 키는 [CLI 참조](/tooling/cli/#test)에 있습니다.
+
+## Part 7 — 다음 갈 곳
+
+**이야기 전체를 플레이하기.** 테스트는 장면을 하나씩 확인합니다. 첫 장면부터 엔딩까지 모든 장면을
+순서대로 플레이하려면 [장면을 이야기로 잇기](/ko/getting-started/connect-scenes/)로 가세요. 장면마다
+한 줄과 플레이 스크립트 하나를 더하면, `lute play`가 플레이어처럼 이야기를 따라갑니다.
 
 **무엇을 쓸 수 있는지 확실하지 않으신가요?** `lute context <file>`는 프로젝트가 허용하는 어휘를
 정확히 출력합니다 — 연출 디렉티브, 그 속성, 현재 유효한 어휘 멤버(예: 당신의 `emotion` 목록),
@@ -486,13 +568,14 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
 id — 당신이 지정한 특정 파일에 맞게 해석하여:
 
 ```
-$ lute context my-scene.lute
+$ lute context episodes/diner.lute
 capabilityVersion: 0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3
 permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
-directives (11):
+directives (12):
   auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location, time, assetId   [mutatesScene]
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
+  clear:    [reads.onStage mayExitCharacter]
   cut: assetId, action, full
   end: reason   [terminatesWalk]
   mark: id
@@ -506,7 +589,8 @@ rewardKinds (0):
 occasions (0):
 questsAllowed: true
 enums (0):
-stateSchema (3):
+stateSchema (4):
+  prev.run.metMira: bool (owner: engine)
   run.metMira: bool
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
@@ -517,11 +601,11 @@ deliveryFlags (3):
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
 builtinDirectives (5):
-  ::set{ <path> = <expr> }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
-  ::assert{ <relation>(<arg>, …) } — assert a ground fact of a declared, non-derived, non-reserved relation
-  ::retract{ <relation>(<arg | _>, …) } — retract the matching facts of a declared, non-derived, non-reserved relation
-  ::accept{quest="<questId>"} — accept a quest that has no `start` condition
-  ::use{component="<name>" <param>=<value> …} — expand an imported component with named arguments
+  ::set{ <path> = <expr> [when="<condition>"] }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
+  ::assert{ <relation>(<arg>, …) [when="<condition>"] } — assert a ground fact of a declared, non-derived, non-reserved relation
+  ::retract{ <relation>(<arg | _>, …) [when="<condition>"] } — retract the matching facts of a declared, non-derived, non-reserved relation
+  ::accept{quest="<questId>" [when="<condition>"]} — accept a quest that has no `start` condition
+  ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
 scenes (1; read as visited("<id>")):
   mira.s01ep01
 ```
@@ -531,16 +615,21 @@ scenes (1; read as visited("<id>")):
 `emotion="content"`를 실제로 해석해 주는 어휘입니다.
 
 `stateSchema`도 상태에 대해 같은 이야기입니다: 당신이 직접 선언한 것(Part 3의 `scene.knowsMira`,
-Part 5의 `run.metMira`)에, `<branch>`가 대신 선언해 주는 `scene.choices.orderChoice`가 더해진
-목록입니다. 뒤따르는 구성이 플레이어가 어느 선택지를 골랐는지 읽을 수 있도록 하기 위한 것입니다.
+Part 5의 `run.metMira`), 뒤따르는 구성이 플레이어가 어느 선택지를 골랐는지 읽을 수 있도록
+`<branch>`가 대신 선언해 주는 `scene.choices.orderChoice`, 그리고 이전 런이 끝났을 때
+`run.metMira`가 가졌던 값인 읽기 전용 `prev.run.metMira`입니다.
 
 `builtinDirectives`는 언어가 직접 제공하는 디렉티브 목록입니다 — 이미 써 본 `::set`도 여기
 있습니다. `scenes`는 `visited("…")`가 가리킬 수 있는 id 목록입니다. `--project episodes`를
 넘기면 이 목록이 프로젝트의 모든 장면을 담고, 퀘스트와 로어 엔트리 id도 함께 나옵니다.
 
 디렉티브 이름, 속성, 유효한 `emotion` 값을 추측하는 대신 다시 확인하고 싶을 때 언제든 실행하세요.
-여기서부터는 각 구성을 깊이 다루는 **Language** 섹션을 따라가거나, 실제 프로젝트를 기능별로
-둘러보는 [전체 스펙 쇼케이스](/examples/showcase/)를 읽어보세요.
+여기서부터는 각 구성을 깊이 다루는 **Language** 섹션을 따라가거나, 쓰는 동안
+[치트시트](/ko/reference/cheatsheet/)를 열어 두거나, 실제 프로젝트를 기능별로 둘러보는
+[전체 스펙 쇼케이스](/examples/showcase/)를 읽어보세요.
+
+**편집기와 터미널이 다르게 말하나요?** 프로젝트에서 `lute doctor .`를 실행하세요. 툴체인과
+프로젝트 설정을 검사하고, `lute`보다 오래된 편집기 언어 서버를 짚어 줍니다.
 
 정해진 에피소드 순서가 아니라, 엔진이 알리는 순간 — 플레이어가 허브에 도착하고, 누군가에게 말을
 걸고, 하루를 마치는 순간 — 에 따라 이야기가 흘러가는 게임을 만드시나요? 출발점이 될 동작하는

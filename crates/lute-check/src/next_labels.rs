@@ -17,7 +17,7 @@
 //! skipping uninteresting nodes never changes the RELATIVE order of two
 //! ticked sites, so the counter stays a sound (if sparse) position axis.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Attr, AttrValue, Document, Node};
@@ -189,6 +189,62 @@ impl Collector {
 /// lets a guarded `::next` join a LATER shot, `lute-compile::address`'s
 /// document-wide named-label resolution pass).
 pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
+    let Collector {
+        labels,
+        dups,
+        nexts,
+        ..
+    } = collect(doc);
+    let mut diags = dups;
+    for next in nexts {
+        match labels.get(&next.to) {
+            None => diags.push(diag(
+                E_NEXT_UNDEFINED,
+                format!("`::next` targets undefined label `{}` (dsl 0.12.0)", next.to),
+                next.span,
+            )),
+            Some(label) if label.pos <= next.pos => diags.push(diag(
+                E_NEXT_BACKWARD,
+                format!(
+                    "`::next` targets label `{}`, which is not forward of this `::next` in document order (dsl 0.12.0)",
+                    next.to
+                ),
+                next.span,
+            )),
+            Some(_) => {}
+        }
+    }
+    diags
+}
+
+/// dsl 0.27.0 (round-5 T3-7): every label id some `::next{to}` in `doc`
+/// names — the `::mark`s / `id=` lines a walk can enter by a jump, so
+/// content from one of them on is reachable even after an `::end`.
+pub(crate) fn next_targets(doc: &Document) -> BTreeSet<String> {
+    collect(doc).nexts.into_iter().map(|n| n.to).collect()
+}
+
+/// `node` is — or holds, at any depth — a label (`::mark{id}` or a line's
+/// `id=`) named in `targets`: a walk can enter it by a jump.
+pub(crate) fn holds_label(node: &Node, targets: &BTreeSet<String>) -> bool {
+    let named = |attrs: &[Attr]| attr_str(attrs, "id").is_some_and(|id| targets.contains(id));
+    let any = |nodes: &[Node]| nodes.iter().any(|n| holds_label(n, targets));
+    match node {
+        Node::Directive(d) => d.tag == lute_manifest::core::MARK_DIRECTIVE && named(&d.attrs),
+        Node::Line(l) => named(&l.attrs),
+        Node::Branch(b) => b.choices.iter().any(|c| any(&c.body)),
+        Node::Hub(h) => h.choices.iter().any(|c| any(&c.body)),
+        Node::Match(m) => m.arms.iter().any(|arm| match arm {
+            Arm::When { body, .. } | Arm::Otherwise { body, .. } => any(body),
+        }),
+        Node::On(o) => any(&o.body),
+        Node::Objective(o) => any(&o.body),
+        Node::Set(_) | Node::Assert(_) | Node::Retract(_) | Node::Timeline(_) => false,
+    }
+}
+
+/// The document's labels and `::next` sites, in [`Collector::walk`] order.
+fn collect(doc: &Document) -> Collector {
     let mut c = Collector {
         pos: 0,
         labels: BTreeMap::new(),
@@ -215,32 +271,7 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
     for (_, body) in units {
         c.walk(body);
     }
-    let Collector {
-        labels,
-        dups,
-        nexts,
-        ..
-    } = c;
-    let mut diags = dups;
-    for next in nexts {
-        match labels.get(&next.to) {
-            None => diags.push(diag(
-                E_NEXT_UNDEFINED,
-                format!("`::next` targets undefined label `{}` (dsl 0.12.0)", next.to),
-                next.span,
-            )),
-            Some(label) if label.pos <= next.pos => diags.push(diag(
-                E_NEXT_BACKWARD,
-                format!(
-                    "`::next` targets label `{}`, which is not forward of this `::next` in document order (dsl 0.12.0)",
-                    next.to
-                ),
-                next.span,
-            )),
-            Some(_) => {}
-        }
-    }
-    diags
+    c
 }
 
 #[cfg(test)]

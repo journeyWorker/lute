@@ -347,7 +347,10 @@ fn language_server_check() -> Check {
 /// global build first on `PATH`, and the two report the same version, so
 /// the `PATH` check passes while the editor runs another build. Compare the
 /// `lute-lsp` beside the running `lute` with the one on `PATH` as files —
-/// the same file or identical bytes is the same build.
+/// the same file or identical bytes is the same build. The npm/bun package
+/// puts its `lsp-bin.js` launcher on `PATH`, which runs the native binary
+/// its platform package ships beside `lute`: there, bytes cannot match, so
+/// the version the launcher reports decides (round-5 OT-F5).
 fn sibling_language_server_check() -> Check {
     const KEY: &str = "siblingLanguageServer";
     const LABEL: &str = "lute-lsp beside lute";
@@ -387,6 +390,29 @@ fn sibling_language_server_check() -> Check {
             format!("{ours} at {at} — not on PATH; point the editor's language server at it"),
         );
     };
+    if is_package_launcher(&on_path) {
+        return match lsp_reported_version(&on_path) {
+            Some(v) if v == ours => Check::pass(
+                KEY,
+                LABEL,
+                format!(
+                    "{ours} at {at} — {} on PATH is the npm launcher and reports {v}",
+                    on_path.display()
+                ),
+            ),
+            other => Check::fail(
+                KEY,
+                LABEL,
+                format!(
+                    "{} on PATH is the npm launcher of lute-lsp {} — differs from lute {ours}",
+                    on_path.display(),
+                    other.as_deref().unwrap_or("with no version")
+                ),
+                "reinstall the package (`npm i -g @lute-lang/lute` or `bun add -g @lute-lang/lute`) \
+                 and restart the editor",
+            ),
+        };
+    }
     let same_file = matches!(
         (sibling.canonicalize(), on_path.canonicalize()),
         (Ok(a), Ok(b)) if a == b
@@ -420,6 +446,32 @@ fn lsp_reported_version(lsp: &Path) -> Option<String> {
             .and_then(|l| l.trim().strip_prefix("lute-lsp "))
             .map(|v| v.trim().to_string())
     })
+}
+
+/// Whether `path` is the npm/bun package's `lsp-bin.js` launcher (a `.js`
+/// file, usually reached through a symlink in the package manager's `bin`)
+/// or a shim script handing off to one (`#!/usr/bin/env node`, a pnpm/npm
+/// shell shim naming `lsp-bin.js`) rather than a native `lute-lsp` binary.
+fn is_package_launcher(path: &Path) -> bool {
+    use std::io::Read;
+    let target = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if target
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e, "js" | "mjs" | "cjs"))
+    {
+        return true;
+    }
+    let Ok(file) = std::fs::File::open(&target) else {
+        return false;
+    };
+    let mut head = Vec::with_capacity(4096);
+    if file.take(4096).read_to_end(&mut head).is_err() || !head.starts_with(b"#!") {
+        return false;
+    }
+    let text = String::from_utf8_lossy(&head);
+    let shebang = text.lines().next().unwrap_or("");
+    shebang.contains("node") || shebang.contains("bun") || text.contains("lsp-bin.js")
 }
 
 /// One running `lute-lsp` process: its pid, the binary it was started from

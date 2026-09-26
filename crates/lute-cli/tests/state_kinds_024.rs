@@ -98,6 +98,7 @@ fn per_member_default_maps_are_checked() {
 
 /// CR N1 / ER N10: `per:`, `subsetOf:` and a rule-body kind atom are reads;
 /// an unread kind is reported at its schema line, not `1:1` of an importer.
+/// A kind query written only in a comment is not a read.
 #[test]
 fn kind_reads_and_schema_anchor() {
     let schema = format!(
@@ -108,7 +109,10 @@ fn kind_reads_and_schema_anchor() {
          {GIFTED}  trusts: {{ args: [npc], derive: true }}\n\
          rules:\n  - \"trusts(P) :- confidant(P), cel(\\\"user.bond[P] >= 3\\\")\"\n"
     );
-    let body = scene("@narrator{when=\"holds(trusts(sefa))\"}: Trusted.\n@narrator: x\n");
+    let body = scene(
+        "/* holds(unused(x)) */\n// holds(unused(x))\n\
+         @narrator{when=\"holds(trusts(sefa))\"}: Trusted.\n@narrator: x\n",
+    );
     let dir = project("unread", &schema, &[("s.lute", &body)]);
     let (_, t) = run(&dir, &["check-project", "."]);
     let unread: Vec<&str> = t

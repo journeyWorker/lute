@@ -972,6 +972,93 @@ pub fn check_doc_quest_tiers(doc: &Document) -> Vec<Diagnostic> {
     out
 }
 
+/// dsl 0.27.0 §9 (round-5 T3-24): a `<quest>` with no `tier=` (and none
+/// from `defaults.questTier`) is user-tier, but every state its conditions
+/// read is run-tier — it looks meant to reset each run.
+pub const W_QUEST_TIER_IMPLICIT: &str = "W-QUEST-TIER-IMPLICIT";
+
+/// [`W_QUEST_TIER_IMPLICIT`] for every quest of `doc` whose tier is implicit
+/// (runs after [`crate::meta::apply_quest_tier_default`], so `tier == None`
+/// means neither the quest nor the project wrote one) and whose `start`,
+/// `fail`, and objectives' `done` / `by` / `until` (`@def`s expanded) read
+/// at least one run-tier piece of state and no user- or app-tier one
+/// ([`crate::beats::read_tier`]). A quest of this document with an explicit
+/// tier classifies its `quest.<id>.*`; any other quest's is unknown.
+pub fn check_quest_tier_implicit(
+    doc: &Document,
+    folded: &crate::check::FoldedEnv,
+) -> Vec<Diagnostic> {
+    use crate::beats::{read_tiers, ReadTier, UserTier};
+    let quests: BTreeMap<&str, bool> = doc
+        .quests
+        .iter()
+        .filter_map(|q| q.tier.as_ref().map(|(t, _)| (q.id.as_str(), t != "run")))
+        .collect();
+    let tiers = UserTier {
+        relations: &folded.env.rel_vocab.relations,
+        quests: &quests,
+    };
+    let defs = crate::cel_expand::DefTable {
+        bodies: &folded.def_bodies,
+        params: &folded.env.def_params,
+    };
+    let mut out = Vec::new();
+    for q in doc
+        .quests
+        .iter()
+        .filter(|q| q.tier.is_none() && !q.id.is_empty())
+    {
+        let slots = q
+            .start
+            .iter()
+            .chain(&q.fail)
+            .chain(q.body.iter().flat_map(|n| {
+                let Node::Objective(o) = n else {
+                    return Vec::new();
+                };
+                std::iter::once(&o.done)
+                    .chain(&o.by)
+                    .chain(&o.until)
+                    .collect()
+            }));
+        let mut read = Vec::new();
+        for slot in slots.filter(|s| !s.raw.trim().is_empty()) {
+            let raw = crate::cel_expand::expand_cel(&slot.raw, &defs, None, &mut Vec::new())
+                .unwrap_or_else(|_| slot.raw.clone());
+            let mut arena = CelArena::default();
+            if let Some(ided) =
+                lute_cel::parse_slot_marked_refs(&mut arena, &raw).and_then(|h| arena.get(h))
+            {
+                read_tiers(&ided.expr, &tiers, &mut read);
+            }
+        }
+        if !read.contains(&ReadTier::Run)
+            || read
+                .iter()
+                .any(|t| matches!(t, ReadTier::User | ReadTier::App))
+        {
+            continue;
+        }
+        out.push(Diagnostic {
+            code: W_QUEST_TIER_IMPLICIT.to_string(),
+            severity: Severity::Warning,
+            message: format!(
+                "quest `{id}` has no `tier=`, so it is user-tier (it persists across runs), but \
+                 its conditions read only run state — write `tier=\"run\"` (or `tier=\"user\"` \
+                 if it should persist), or set `defaults.questTier` in lute.project.yaml",
+                id = q.id
+            ),
+            span: q.id_span,
+            layer: Layer::Logic,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        });
+    }
+    out
+}
+
 /// dsl 2026-08-31 §4 (extension): propagate `E-QUEST-UNREACHABLE` one edge
 /// up the subquest tree — a REQUIRED `<objective quest="c">` whose child
 /// `c` is unreachable can never complete (§2.1 makes the objective's

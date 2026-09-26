@@ -1,0 +1,13 @@
+---
+kind: scene
+id: counter
+title: The Counter
+on: chapter
+after: 'visited("prologue")'
+priority: 20
+---
+
+## The Counter
+
+@narrator: Mr. Pryce is face down on the counter. The till is open.
+@wren: Somebody here knows what happened.

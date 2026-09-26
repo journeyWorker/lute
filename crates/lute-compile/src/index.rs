@@ -152,12 +152,6 @@ impl IndexBeat {
             (None, Some(t)) => (Some(t) == target).then_some(None),
         }
     }
-
-    /// dsl 0.26.0 §5: selection rank at one priority — a member-specific
-    /// (or untargeted) beat before a kind beat.
-    pub fn is_kind(&self) -> bool {
-        self.target_kind.is_some()
-    }
 }
 
 /// The `project.index.json` envelope. Field DECLARATION ORDER is the serialized

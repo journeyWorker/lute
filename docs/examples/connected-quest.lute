@@ -8,6 +8,6 @@ state:
   run.returnedToOverlook: { type: bool, default: false }
 ---
 
-<quest id="overlookReturn" title="Return to the Overlook" after="visited('kestrel.s01ep01')" start="true">
+<quest id="overlookReturn" tier="run" title="Return to the Overlook" after="visited('kestrel.s01ep01')" start="true">
 <objective id="returned" title="Return to the overlook" done="run.returnedToOverlook"/>
 </quest>

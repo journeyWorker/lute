@@ -316,6 +316,34 @@ pub fn validate_rel_decls(
             ));
         }
     }
+    for (name, key) in &kinds.unknown_keys {
+        const NO_LABELS: &str = "entity-kind display labels are not supported yet; an enum's \
+                                 long form (`{ members: […], labels: {…} }`) carries labels";
+        let hint = if key == "labels" {
+            format!(" — {NO_LABELS}")
+        } else {
+            match lute_manifest::suggest::nearest(
+                key,
+                lute_manifest::relations::ENTITY_KIND_KEYS
+                    .iter()
+                    .copied()
+                    .chain(["labels"]),
+                2,
+            ) {
+                Some("labels") => format!(" — did you mean `labels`? ({NO_LABELS})"),
+                Some(s) => format!(" — did you mean `{s}`?"),
+                None => String::new(),
+            }
+        };
+        out.push(diag(
+            E_ENTITY_KIND_SHAPE,
+            format!(
+                "entity kind `{name}` has an unknown key `{key}:` (an entity kind takes \
+                 `members:`, `open:`, `add:` and `subsetOf:`){hint} (dsl 0.27.0 §2)"
+            ),
+            span_of(name),
+        ));
+    }
     for name in &kinds.dups {
         out.push(diag(
             E_KIND_NAME_CLASH,

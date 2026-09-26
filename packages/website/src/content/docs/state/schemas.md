@@ -20,7 +20,7 @@ defs:
   helped: { type: bool, cel: "run.choseHelp" }
 ```
 
-Each `<path>` segment is a CEL-facing identifier (no `-`). A declaration is `{ type, default?, owner?, per? }`. A `default` is materialized into the tier's initial state at schema load **and** re-materialized whenever the engine fires that tier's reset — so a defaulted path is always assigned, and the checker and engine read the one snapshot. `owner: engine` (0.22.0) marks a path content may read but never `::set` (`E-ENGINE-OWNED-WRITE`); `engine` is the only value it takes — see [`owner: engine`](/state/state-model/#owner-engine). `per: <kind>` (0.24.0) declares one path per member of a closed entity kind — see [One path per entity](/state/state-model/#one-path-per-entity-per).
+Each `<path>` segment is a CEL-facing identifier (no `-`). A declaration is `{ type, default?, owner?, per? }`. `type: { domain: <name> }` takes its members from a named enum or from an entity kind, the way to type an engine-kept position over a map kind — see [Paths typed by a named enum](/state/state-model/#paths-typed-by-a-named-enum). A `default` is materialized into the tier's initial state at schema load **and** re-materialized whenever the engine fires that tier's reset — so a defaulted path is always assigned, and the checker and engine read the one snapshot. `owner: engine` (0.22.0) marks a path content may read but never `::set` (`E-ENGINE-OWNED-WRITE`); `engine` is the only value it takes — see [`owner: engine`](/state/state-model/#owner-engine). `per: <kind>` (0.24.0) declares one path per member of a closed entity kind — see [One path per entity](/state/state-model/#one-path-per-entity-per).
 
 An `enums:` block does double duty. Its domains are argument types for the
 [relational layer](/state/facts-and-datalog/), and since language `0.9.0` they are also how a project
@@ -138,7 +138,8 @@ A path declared in two documents' frontmatter `state:` is one runtime value, so 
 
 Schema errors that every importer would repeat — sub-kind and `add:` `E-ENTITY-KIND-SHAPE`,
 `E-USES-DUP-STATE`, `E-USES-DUP-DEF`, `E-USES-DUP-RELATION`, a peer `E-KIND-NAME-CLASH`, and
-`E-DEF-DECL` for an imported def — are reported once at the schema line (dsl 0.26.0 §2.7), with
-the other importers folded into `(+N more callers)`, rather than at every importing document.
+`E-DEF-DECL` for an imported def — are reported by `check-project` once, as a project-wide line at
+the schema line ending `(imported by N documents)` (dsl 0.26.0 §2.7), rather than at every importing
+document; the importers stay `ok`.
 
 The state schema is *game content* — separate from the engine **capability manifest** (engine vocabulary), which has its own owner and change cadence.

@@ -35,7 +35,7 @@ occasions:
 - `description` — optional prose for tooling.
 - `judge: before` (dsl 0.24.0 §2) — the occasion judges its `on=` objectives and settles its quests **before** its beats are decided, so an epilogue on it reads how its quests ended. Only the judging moves: the handler bodies the raise answers — its same-named `<on event>` handlers, and the `questComplete` / `questFailed` handlers of the quests it settles — still run after the beats, so their narration follows the scene. The default, `after`, judges after the presentations. See [Quest structure](#quest-structure).
 
-When no resolved plugin declares occasions, occasion names are **shape-only**: any identifier is accepted, so you can write beats before the engine's plugin exists. Once any plugin declares them, a beat naming an undeclared occasion is `E-OCCASION-UNKNOWN`, and a `target` on an occasion declared without a target is `E-BEAT-ATTR`. On an occasion with a target domain, a beat target outside it — `npc.achiles` for `npc.achilles` — is `E-BEAT-ATTR` with a did-you-mean, and so is a domain naming an entity kind the project does not declare. The export folds into the capability snapshot as a guarded section, so a project whose plugins declare no occasions keeps its `capabilityVersion`. A target domain is part of the snapshot; `target: true` hashes exactly as it did in 0.21.
+When no resolved plugin declares occasions, occasion names are **shape-only**: any identifier is accepted, so you can write beats before the engine's plugin exists. A story with no engine plugin at all plays this way: [Connect scenes into a story](/getting-started/connect-scenes/) answers one shape-only occasion with every scene and plays it with `lute play`. Once any plugin declares them, a beat naming an undeclared occasion is `E-OCCASION-UNKNOWN`, and a `target` on an occasion declared without a target is `E-BEAT-ATTR`. On an occasion with a target domain, a beat target outside it — `npc.achiles` for `npc.achilles` — is `E-BEAT-ATTR` with a did-you-mean, and so is a domain naming an entity kind the project does not declare. The export folds into the capability snapshot as a guarded section, so a project whose plugins declare no occasions keeps its `capabilityVersion`. A target domain is part of the snapshot; `target: true` hashes exactly as it did in 0.21.
 
 Quest objectives judged at an occasion (`<objective on="runEnd">`) take `on=`, and since 0.23.0 an optional `target=` — `<objective on="talk" target="npc.maud">` is judged only when `talk` is raised for `npc.maud`, and is checked like a beat target (`E-BEAT-ATTR`: a dotted id, only beside `on`, on an occasion that takes a target, inside its domain). See [Deadlines and targeted objectives](#deadlines-and-targeted-objectives).
 
@@ -66,7 +66,7 @@ once: user
 | `once` | `run` (the default — once per run), `user` (once ever), or `false` (repeatable). With a declared [clock](/language/clock/), `day` or `slot` (dsl 0.24.0 §1): spent until the clock's day or slot changes. |
 | `also` | Optional `true` (dsl 0.23.0): on a `select: first` occasion the beat never wins — it is presented **after** the winner, as a side remark, and even when no main beat is eligible. See [Composing occasions](#composing-occasions). |
 
-`after:` keeps its meaning — the structural prerequisite over `visited` / `completed` / `active` that [connectivity](/connectivity/scene-graph/) analyzes — and a beat is eligible only when both `after:` and `when` hold. `when`, `target`, `priority`, `once`, or `also` without `on` is `E-BEAT-ATTR`: a scene that answers no occasion is reached by explicit flow, as before. So is an `also` that is not a bool, or `also: true` on a `select: all` or `select: sequence` occasion, where every eligible beat is already presented or offered.
+`after:` keeps its meaning — the structural prerequisite over `visited` / `completed` / `active` that [connectivity](/connectivity/scene-graph/) analyzes — and a beat is eligible only when both `after:` and `when` hold. `when`, `target`, `priority`, `once`, or `also` without `on` is `E-BEAT-ATTR`. A scene that answers no occasion is never presented by an occasion: your engine starts it itself, by its scene id, `lute trace` and `lute run` walk it on its own, and `lute play` never presents it. To chain scenes into a story you can play with `lute play`, see [Connect scenes into a story](/getting-started/connect-scenes/). An `also` that is not a bool is `E-BEAT-ATTR` too, and so is `also: true` on a `select: all` or `select: sequence` occasion, where every eligible beat is already presented or offered.
 
 ### Entry beats
 
@@ -249,7 +249,7 @@ A play script is a YAML mapping. `steps` is required; every other top-level key 
 | `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--explain`](#derivation-and---explain). |
 | `bridges` | Answers for the plugin calls that read a bridge result, consumed in call order across the play (dsl 0.24.0 §5) — see [Answering bridge calls](#answering-bridge-calls). |
 
-Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, an [`expect:`](#expectations), and its own [`bridges:`](#answering-bridge-calls) answers; an `end` step takes only a `label`. The one pairing: an `advance` may carry the `engine:` writes of the same moment. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)). A tour of every shape, against the tower:
+Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, an [`expect:`](#expectations), and its own [`bridges:`](#answering-bridge-calls) answers; an `end` step takes only a `label`. The one pairing: an `advance` may carry the `engine:` writes of the same moment. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)); it names only the file, so a `label`, `repeat`, or `expect:` beside it is a usage error. A tour of every shape, against the tower:
 
 ```yaml
 state: { user.runs: 2 }                   # path -> scalar literal, over the declared defaults
@@ -1430,7 +1430,7 @@ In `--json` the call's `plugin` record carries `"answered": [{ "field": "passed"
 
 ### Expectations
 
-A step may carry `expect:`, judged against what that step did. Four keys judge an occasion's selection, so they belong only on an `occasion` step:
+A step may carry `expect:`, judged against what that step did. Four keys judge an occasion's selection, so they belong on a step that raises one: an `occasion` step, or an [`advance`](#advancing-the-clock) step, where `winner`, `offered` and `notOffered` judge the raise where the clock stops and `presented` lists every beat the step presented, in order:
 
 | Key | Holds when |
 |---|---|
@@ -1448,7 +1448,7 @@ Five more judge the world **right after the step settled** — for an occasion s
 | `facts: [atoms]` / `notFacts: [atoms]` | each atom holds / does not hold after the step, **after derivation** |
 | `clock: { weekday, slot, day }` | the clock stands there after the step (dsl 0.26.0 §7): `weekday` a `week.labels` label or a `clock.weekday` number, `slot` a declared slot, `day` the day number — any of the three |
 
-So an `engine:` step can assert what its write did — `expect: { quests: { houndHunt: failed } }` in the [deadline example](#deadlines-and-targeted-objectives) — and an occasion step can check its quest progress without waiting for the end. `winner`, `offered`, `notOffered`, or `presented` on a step that is not an `occasion` is a usage error (exit 2): `` step 2: `expect.winner` applies only to an `occasion` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
+So an `engine:` step can assert what its write did — `expect: { quests: { houndHunt: failed } }` in the [deadline example](#deadlines-and-targeted-objectives) — and an occasion step can check its quest progress without waiting for the end. `winner`, `offered`, `notOffered`, or `presented` on any other step is a usage error (exit 2): `` step 2: `expect.winner` applies only to an `occasion` or `advance` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
 
 A `clock:` miss names the key and prints the weekday's number beside its label (`expect clock weekday: expected Wed, actual Tue (1)`); on a project that declares no clock every `clock:` key misses (`actual no clock position …`). See [Advancing the clock](#advancing-the-clock) for how an `include:`d steps file uses it.
 

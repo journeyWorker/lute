@@ -47,11 +47,14 @@ pub fn check_project_usage(
     docs: &[UsageDoc<'_>],
     extra_sources: &[&str],
 ) -> Vec<(PathBuf, Diagnostic)> {
-    let texts: Vec<&str> = docs
+    // A use written only in a comment is not a read: scan what the sources
+    // say outside their comments.
+    let views: Vec<String> = docs
         .iter()
-        .map(|d| d.text)
-        .chain(extra_sources.iter().copied())
+        .map(|d| document_read_view(d.text))
+        .chain(extra_sources.iter().map(|t| yaml_read_view(t)))
         .collect();
+    let texts: Vec<&str> = views.iter().map(String::as_str).collect();
     let mut out = Vec::new();
 
     // --- relations -----------------------------------------------------------
@@ -228,9 +231,58 @@ pub fn schema_sources(foldeds: &[&FoldedEnv]) -> BTreeSet<PathBuf> {
         .collect()
 }
 
+/// What a `.lute` source says outside its comments: the frontmatter's YAML
+/// scalars ([`yaml_read_view`]) and the body with its `/* … */` and
+/// line-leading `//` comments blanked (dsl §4.2, [`lute_syntax::lex::strip_comments`]).
+/// The text-scan read counters — [`W_RELATION_UNREAD`], [`W_DEF_UNUSED`],
+/// `W-DOMAIN-UNREAD`'s kind queries, the bridge result fields content reads —
+/// scan this, so a `holds(r(…))` or `@name` written only in a comment is not a
+/// read.
+pub fn document_read_view(text: &str) -> String {
+    let (front, body_start) = match lute_syntax::lex::peel_frontmatter(text) {
+        Ok((Some((yaml, _)), start)) => (yaml_read_view(&yaml), start),
+        _ => (String::new(), 0),
+    };
+    front + "\n" + &lute_syntax::lex::strip_comments(&text[body_start..])
+}
+
+/// A YAML source's scalars (keys and values, one per line): the YAML as its
+/// readers see it, `#` comments dropped. Unparseable YAML is scanned as
+/// written — its parse error is reported elsewhere, and a read is never
+/// dropped for it.
+pub fn yaml_read_view(text: &str) -> String {
+    fn push_scalars(v: &serde_yaml::Value, out: &mut String) {
+        match v {
+            serde_yaml::Value::String(s) => {
+                out.push_str(s);
+                out.push('\n');
+            }
+            serde_yaml::Value::Sequence(items) => items.iter().for_each(|i| push_scalars(i, out)),
+            serde_yaml::Value::Mapping(m) => {
+                for (k, v) in m {
+                    push_scalars(k, out);
+                    push_scalars(v, out);
+                }
+            }
+            serde_yaml::Value::Tagged(t) => push_scalars(&t.value, out),
+            serde_yaml::Value::Null | serde_yaml::Value::Bool(_) | serde_yaml::Value::Number(_) => {
+            }
+        }
+    }
+    match serde_yaml::from_str::<serde_yaml::Value>(text) {
+        Ok(v) => {
+            let mut out = String::new();
+            push_scalars(&v, &mut out);
+            out
+        }
+        Err(_) => text.to_string(),
+    }
+}
+
 /// Every relation `text` queries: `holds(R(`, `count(R(`, `countDistinct(R(`,
-/// whitespace allowed. Textual on purpose — a use in a comment only ever
-/// silences the advisory, never fakes one.
+/// whitespace allowed. Textual on purpose; callers pass a source's
+/// [`document_read_view`] / [`yaml_read_view`], so a use in a comment is not a
+/// read.
 pub(crate) fn queried_relations(text: &str, out: &mut BTreeSet<String>) {
     for f in ["holds", "count", "countDistinct"] {
         let mut rest = text;

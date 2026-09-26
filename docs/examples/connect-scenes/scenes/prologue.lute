@@ -1,0 +1,12 @@
+---
+kind: scene
+id: prologue
+title: Closing Time
+on: chapter
+priority: 30
+---
+
+## Closing Time
+
+@narrator: Five minutes to close, and the bakery smells of burnt sugar.
+@wren: Mr. Pryce? We're closing.

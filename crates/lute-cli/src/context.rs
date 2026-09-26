@@ -14,32 +14,34 @@ use serde_json::{json, Map, Value};
 
 /// The language's built-in directives: recognized by tag in every document,
 /// never looked up in a capability snapshot, so the snapshot-derived
-/// `directives` list cannot show them. `(name, syntax, meaning)`.
+/// `directives` list cannot show them. `(name, syntax, meaning)`. Every one
+/// takes an optional trailing `when="<condition>"` guard (dsl 0.24.0 §1 for
+/// `::set`, dsl 0.26.0 §4 for the rest), shown in brackets.
 const BUILTIN_DIRECTIVES: &[(&str, &str, &str)] = &[
     (
         "set",
-        "::set{ <path> = <expr> }  (also += / -=)",
+        "::set{ <path> = <expr> [when=\"<condition>\"] }  (also += / -=)",
         "write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)",
     ),
     (
         "assert",
-        "::assert{ <relation>(<arg>, …) }",
+        "::assert{ <relation>(<arg>, …) [when=\"<condition>\"] }",
         "assert a ground fact of a declared, non-derived, non-reserved relation",
     ),
     (
         "retract",
-        "::retract{ <relation>(<arg | _>, …) }",
+        "::retract{ <relation>(<arg | _>, …) [when=\"<condition>\"] }",
         "retract the matching facts of a declared, non-derived, non-reserved relation",
     ),
     (
         "accept",
-        "::accept{quest=\"<questId>\"}",
+        "::accept{quest=\"<questId>\" [when=\"<condition>\"]}",
         "accept a quest that has no `start` condition",
     ),
     (
         "use",
-        "::use{component=\"<name>\" <param>=<value> …}",
-        "expand an imported component with named arguments",
+        "::use{component=\"<name>\" <param>=<value> … [when=\"<condition>\"]}",
+        "expand an imported component with named arguments; a param with a default may be omitted",
     ),
 ];
 

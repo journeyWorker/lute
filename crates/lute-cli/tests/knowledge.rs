@@ -461,3 +461,53 @@ fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises()
         "{premises}"
     );
 }
+
+/// dsl 0.27.0 §2 (T1-8): a negated premise whose variable an entity-kind
+/// atom binds (`routeOpen(S) :- suitor(S), not locked(S)`) is instantiated
+/// as the checker instantiates the rule — over the kind's members — so an
+/// asserted `locked(ren)` defeats it, and `lute lore` lists the derivation.
+#[test]
+fn a_kind_bound_negated_premise_names_its_defeater() {
+    let d = temp_dir("kind-neg");
+    write(
+        &d,
+        "lute.project.yaml",
+        "defaultProfile: game\nprofiles:\n  game:\n    plugins: {}\n\
+         defaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &d,
+        "world.schema.yaml",
+        "entities:\n  suitor: { members: [ren, kai] }\n\
+         relations:\n  locked: { args: [suitor], tier: run }\n  routeOpen: { args: [suitor], derive: true }\n\
+         rules:\n  - \"routeOpen(S) :- suitor(S), not locked(S)\"\n",
+    );
+    write(
+        &d,
+        "scenes/clash.lute",
+        "---\nkind: scene\nid: clash\n---\n\n## Clash\n\n<branch id=\"side\">\n  \
+         <choice id=\"ren\" label=\"Ren\">\n    ::assert{locked(kai)}\n  </choice>\n  \
+         <choice id=\"kai\" label=\"Kai\">\n    ::assert{locked(ren)}\n  </choice>\n</branch>\n",
+    );
+    write(
+        &d,
+        "scenes/festival.lute",
+        "---\nkind: scene\nid: festival\nafter: 'visited(\"clash\")'\n---\n\n## Festival\n\n\
+         @narrator{when=\"holds(routeOpen(ren))\"}: Ren's route is open.\n",
+    );
+    let dir = d.to_str().unwrap();
+    let s = ok(&["scenario", dir, "knowledge", "--for", "festival"]);
+    assert!(!s.contains("cannot be defeated"), "{s}");
+    assert!(
+        s.contains(
+            "not locked(ren) — holds unless defeated\n            \
+             defeated when locked(ren) is asserted by scene `clash` (scenes/clash.lute)\n"
+        ),
+        "{s}"
+    );
+    let lore = ok(&["lore", dir]);
+    assert!(
+        lore.contains("routeOpen(ren)\n      ⇐ suitor(ren), not locked(ren)\n"),
+        "{lore}"
+    );
+}

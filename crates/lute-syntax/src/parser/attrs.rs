@@ -32,6 +32,9 @@ impl Parser<'_> {
         // Body-offset spans of single-quoted values (`E-ATTR-QUOTE`), same
         // deferred-emit reason as `escapes`.
         let mut single_quoted: Vec<(usize, usize)> = Vec::new();
+        // Body-offset spans of curly (word-processor) quotes used as value
+        // delimiters (`E-ATTR-QUOTE`), with the quote found.
+        let mut curly: Vec<(usize, usize, char)> = Vec::new();
         let mut j = start;
         loop {
             while j < n && (b[j] == b' ' || b[j] == b'\t') {
@@ -56,6 +59,10 @@ impl Parser<'_> {
                     j += 1; // past opening quote
                     let inner_start = j;
                     let mut esc = false;
+                    // The first curly double quote that could close this
+                    // value (`label="Open the oven”>`): used only when no
+                    // straight `"` closes it on this line.
+                    let mut curly_close: Option<(usize, char)> = None;
                     while j < n {
                         let c = b[j];
                         if esc {
@@ -86,11 +93,24 @@ impl Parser<'_> {
                             // the closing quote.
                             break;
                         }
+                        if curly_close.is_none() {
+                            if let Some(q @ ('\u{201C}' | '\u{201D}')) = curly_quote_at(b, j) {
+                                if closes_value(b, j + 3, term) {
+                                    curly_close = Some((j, q));
+                                }
+                            }
+                        }
                         j += 1;
                     }
-                    let inner_end = j;
+                    let mut inner_end = j;
                     if j < n && b[j] == b'"' {
                         j += 1; // past closing quote (only when actually found)
+                    } else if let Some((at, q)) = curly_close {
+                        // Unterminated on this line, but a curly quote sits
+                        // where the closing `"` belongs: end the value there.
+                        curly.push((at, at + 3, q));
+                        inner_end = at;
+                        j = at + 3;
                     }
                     let value = decode_value(&self.body[inner_start..inner_end]);
                     let vspan = self.span(inner_start, inner_end);
@@ -182,6 +202,58 @@ impl Parser<'_> {
                         value_span: vspan,
                         span: self.span(key_start, j),
                     });
+                } else if let Some(q) = curly_quote_at(b, j) {
+                    // `key=“…”`: a word processor's curly quote is not
+                    // attribute quoting (§4.4). Read the curly-quoted span as
+                    // the value — up to a matching quote (curly or straight)
+                    // that ends the token — so the words inside do not become
+                    // one bogus attribute each, and report `E-ATTR-QUOTE` once.
+                    let quote_start = j;
+                    let double = matches!(q, '\u{201C}' | '\u{201D}');
+                    let inner_start = j + 3;
+                    let mut k = inner_start;
+                    let mut close: Option<(usize, usize)> = None;
+                    while k < n && b[k] != b'\n' {
+                        let len = match curly_quote_at(b, k) {
+                            Some(c) if matches!(c, '\u{201C}' | '\u{201D}') == double => 3,
+                            None if b[k] == if double { b'"' } else { b'\'' } => 1,
+                            _ => 0,
+                        };
+                        if len > 0 && closes_value(b, k + len, term) {
+                            close = Some((k, k + len));
+                            break;
+                        }
+                        k += 1;
+                    }
+                    let inner_end = match close {
+                        Some((end, after)) => {
+                            j = after;
+                            end
+                        }
+                        None => {
+                            // No closing quote on this line: read it like a
+                            // bare token so the rest of the list still parses.
+                            j = inner_start;
+                            while j < n
+                                && b[j] != b' '
+                                && b[j] != b'\t'
+                                && b[j] != term
+                                && b[j] != b'\n'
+                            {
+                                j += 1;
+                            }
+                            j
+                        }
+                    };
+                    curly.push((quote_start, j, q));
+                    let value = self.body[inner_start..inner_end].to_string();
+                    let vspan = self.span(inner_start, inner_end);
+                    attrs.push(Attr {
+                        key,
+                        value: AttrValue::Str(value),
+                        value_span: vspan,
+                        span: self.span(key_start, j),
+                    });
                 } else {
                     // `key=` with a bare/unquoted token: read to whitespace/term.
                     let vstart = j;
@@ -231,6 +303,18 @@ impl Parser<'_> {
                 Layer::Content,
             );
         }
+        for (s, e, q) in curly {
+            self.emit_o(
+                E_ATTR_QUOTE,
+                format!(
+                    "attribute values use straight quotes `\"` — found `{q}` (a word \
+                     processor's curly quote); retype it as `\"` (dsl §4.4)"
+                ),
+                self.orig(s),
+                self.orig(e),
+                Layer::Content,
+            );
+        }
         (attrs, after)
     }
 
@@ -272,6 +356,26 @@ impl Parser<'_> {
         }
         None
     }
+}
+
+/// The curly (word-processor) quote — `‘` `’` `“` `”` — whose UTF-8 encoding
+/// starts at byte `j`, if any.
+fn curly_quote_at(b: &[u8], j: usize) -> Option<char> {
+    match b.get(j..j + 3)? {
+        [0xE2, 0x80, 0x98] => Some('\u{2018}'),
+        [0xE2, 0x80, 0x99] => Some('\u{2019}'),
+        [0xE2, 0x80, 0x9C] => Some('\u{201C}'),
+        [0xE2, 0x80, 0x9D] => Some('\u{201D}'),
+        _ => None,
+    }
+}
+
+/// Whether the byte at `k` ends an attribute value: whitespace, the list
+/// terminator `term`, a self-closing `/`, a line end, or the end of input.
+fn closes_value(b: &[u8], k: usize, term: u8) -> bool {
+    b.get(k).map_or(true, |&c| {
+        matches!(c, b' ' | b'\t' | b'\n' | b'/') || c == term
+    })
 }
 
 /// The stored text of a `"`-quoted attribute value (§4.4): its `\"` escapes
@@ -548,5 +652,67 @@ mod tests {
             "{:?}",
             b.choices[0].attrs
         );
+    }
+
+    // Round-5 T3-1: word-processor curly quotes around a value used to split
+    // it into one bogus attribute per word (`E-UNKNOWN-ATTR` × n, with a
+    // did-you-mean). Now one `E-ATTR-QUOTE` at the quote naming it, and the
+    // curly-quoted span is the value so the rest of the list still parses.
+    #[test]
+    fn curly_quoted_value_is_one_attr_quote_error() {
+        let src = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=“Open the oven” once>\n\
+                   @x: a\n</choice>\n</branch>\n";
+        let (doc, diags) = parse(src);
+        let quote: Vec<_> = diags.iter().filter(|d| d.code == "E-ATTR-QUOTE").collect();
+        assert_eq!(quote.len(), 1, "{diags:?}");
+        assert!(
+            quote[0].message.contains("found `“`"),
+            "{}",
+            quote[0].message
+        );
+        assert_eq!(
+            (quote[0].span.line, quote[0].span.column),
+            (3, 22),
+            "anchored at the curly quote"
+        );
+        let crate::ast::Node::Branch(b) = &doc.shots[0].body[0] else {
+            panic!("branch expected");
+        };
+        assert_eq!(b.choices[0].label, "Open the oven");
+        let keys: Vec<_> = b.choices[0].attrs.iter().map(|a| a.key.as_str()).collect();
+        assert!(keys.contains(&"once") && !keys.contains(&"the"), "{keys:?}");
+    }
+
+    // A curly quote closing a straight-quoted value (`label="Open”>`) ends the
+    // value there instead of swallowing the rest of the line; a curly opener
+    // closed by a straight `"` (`sound=“x"`) and single curly quotes in a
+    // directive's braces are the same error.
+    #[test]
+    fn mixed_and_single_curly_quotes_are_attr_quote_errors() {
+        let label = first_choice_label(
+            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"Open it”>\n\
+             @x: a\n</choice>\n</branch>\n",
+        );
+        assert_eq!(label, "Open it");
+        for src in [
+            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"Open it”>\n@x: a\n</choice>\n</branch>\n",
+            "## Shot 1.\n::sfx{sound=“a b\" note=\"n\"}\n",
+            "## Shot 1.\n::sfx{sound=‘a b’ note=\"n\"}\n",
+        ] {
+            let (_, diags) = parse(src);
+            let codes: Vec<_> = diags.iter().map(|d| d.code.as_str()).collect();
+            assert_eq!(codes, ["E-ATTR-QUOTE"], "{src}: {diags:?}");
+        }
+        let (doc, _) = parse("## Shot 1.\n::sfx{sound=‘a b’ note=\"n\"}\n");
+        let crate::ast::Node::Directive(d) = &doc.shots[0].body[0] else {
+            panic!("directive expected");
+        };
+        let sound = d.attrs.iter().find(|a| a.key == "sound").expect("sound");
+        assert!(
+            matches!(&sound.value, crate::ast::AttrValue::Str(s) if s == "a b"),
+            "{:?}",
+            sound.value
+        );
+        assert!(d.attrs.iter().any(|a| a.key == "note"), "{:?}", d.attrs);
     }
 }

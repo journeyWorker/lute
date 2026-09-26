@@ -1,0 +1,13 @@
+---
+kind: scene
+id: ending.wrong
+title: The Wrong Name
+on: chapter
+after: 'visited("accusation")'
+when: "run.accused != 'ruben'"
+---
+
+## The Wrong Name
+
+@tilly: Me? I was in the back the whole time.
+@narrator: Behind her, the baker quietly unties his apron.

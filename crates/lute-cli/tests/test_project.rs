@@ -354,6 +354,7 @@ fn expect_quests_mismatch_fails_naming_expected_and_actual() {
     assert_eq!(e["passed"], false);
 }
 
+/// An id no document of the project declares fails, naming the nearest id.
 #[test]
 fn expect_quests_naming_an_undeclared_quest_fails() {
     let (code, text) = run_quest_test(
@@ -364,8 +365,52 @@ fn expect_quests_naming_an_undeclared_quest_fails() {
     assert_eq!(code, Some(1), "{text}");
     assert!(
         text.contains(
-            "quests ghost: expected \"active\", but the traced document declares no quest `ghost`"
+            "quests ghost: expected \"active\", but no document of the project declares quest \
+             `ghost`"
         ),
+        "{text}"
+    );
+
+    let (code, text) = run_quest_test(
+        "quests-undeclared-near",
+        "file: ../scenes/shed.lute\nchoose:\n  offer: [take]\nexpect:\n  quests:\n    \
+         sidejob: active\n",
+        &[],
+    );
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        text.contains(
+            "no document of the project declares quest `sidejob` — did you mean `sideJob`?"
+        ),
+        "{text}"
+    );
+}
+
+/// Round-5 T3-24 (S26-5): a scene test's `expect.quests` sees the quests
+/// another document of the project declares. The walk does not judge such a
+/// quest, so it ends as it began — its `quests:` seed, else `unset` — made
+/// `active` by the `::accept` the walk runs.
+#[test]
+fn expect_quests_judges_a_project_quest_a_scene_accepts() {
+    let (code, text) = run_quest_test(
+        "quests-project-accept",
+        "file: ../scenes/shed.lute\nchoose:\n  offer: [take]\nquests: { holdLine: complete }\n\
+         expect:\n  quests:\n    sideJob: active\n    holdLine: complete\n",
+        &[],
+    );
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("1 passed, 0 failed"), "{text}");
+
+    // The other arm never accepts it.
+    let (code, text) = run_quest_test(
+        "quests-project-pass",
+        "file: ../scenes/shed.lute\nchoose:\n  offer: [pass]\nexpect:\n  quests:\n    \
+         sideJob: active\n",
+        &[],
+    );
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        text.contains("quests sideJob: expected \"active\", got \"unset\""),
         "{text}"
     );
 }

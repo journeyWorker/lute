@@ -1091,6 +1091,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-RULE-EXCLUSIVE",
     "E-RULE-GUARD-DEF",
     "E-SET-OP-TYPE",
+    "E-SET-SHAPE",
     "E-SET-TYPE",
     "E-STATE-COLLECTION",
     "E-STATE-DECL",
@@ -1178,6 +1179,7 @@ const DENIABLE_CODES: &[&str] = &[
     "W-QUEST-NEVER-ACCEPTED",
     "W-QUEST-REF-UNKNOWN",
     "W-QUEST-STATE-ISSET",
+    "W-QUEST-TIER-IMPLICIT",
     "W-RELATION-UNREAD",
     "W-REWARD-DOUBLE-CREDIT",
     "W-STAGE-ABSENT",
@@ -2253,9 +2255,23 @@ fn run_check(
             // some but not all callers is caller-specific and stays with
             // `check-project`, where the caller is visible. Anchored inside the
             // component — that is the whole point of running it here.
-            Some((root, callers)) if !callers.is_empty() => result
-                .diagnostics
-                .extend(caller_resolved_common(&callers, file, providers, root)),
+            Some((root, callers)) if !callers.is_empty() => {
+                // A caller-independent fault the component's own check already
+                // reports at the same position is one fault, printed once
+                // (round-5 T3-4).
+                let common: Vec<Diagnostic> =
+                    caller_resolved_common(&callers, file, providers, root)
+                        .into_iter()
+                        .filter(|c| {
+                            !result.diagnostics.iter().any(|d| {
+                                d.span.byte_start == c.span.byte_start
+                                    && d.span.byte_end == c.span.byte_end
+                                    && d.message == c.message
+                            })
+                        })
+                        .collect();
+                result.diagnostics.extend(common);
+            }
             Some(_) => result
                 .diagnostics
                 .push(lute_check::component_unverified_diag(
@@ -3278,6 +3294,127 @@ fn reconcile_collected(
     (file_results, project_diags, nodes_by_path)
 }
 
+/// Round-5 T3-4: a diagnostic a document carries only because it imports a
+/// broken file is reported where the fault IS, not at the importer.
+///
+/// - Its cause lies in a `.lute` file this walk checks itself (a component)
+///   and that file's own check already reports every cause at the same
+///   position: every importer's copy is dropped. The component file carries
+///   the failure; its callers are judged on their own content.
+/// - Its cause lies in a schema (a non-`.lute` file, never a walked document):
+///   each cause becomes ONE project-wide diagnostic at the schema's own line,
+///   counting the importers, and every importer's copy is dropped — so no
+///   importer is `failed` while another is `ok` for the same fault.
+///
+/// Anything else (a caller-specific body fault the component's own check does
+/// not report) is left for [`rollup_component_body_diags`].
+fn relocate_imported_diags(
+    file_results: &mut [(PathBuf, lute_check::CheckResult)],
+    project_diags: &mut Vec<(PathBuf, Diagnostic)>,
+    dir: &Path,
+) {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let canon_of = |p: &Path| {
+        std::fs::canonicalize(p)
+            .unwrap_or_else(|_| p.to_path_buf())
+            .display()
+            .to_string()
+    };
+    let canon: Vec<String> = file_results.iter().map(|(p, _)| canon_of(p)).collect();
+    let by_canon: BTreeMap<&str, usize> = canon
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c.as_str(), i))
+        .collect();
+    // Whether `file`'s own check reports `inner` (or, for an already-folded
+    // body copy, every cause it wraps) at the same position, as a LOCAL
+    // diagnostic — never another cross-file copy, so two files naming each
+    // other cannot both drop theirs.
+    fn reported_at(
+        file: &str,
+        inner: &Diagnostic,
+        results: &[(PathBuf, lute_check::CheckResult)],
+        by_canon: &BTreeMap<&str, usize>,
+    ) -> bool {
+        let Some(&i) = by_canon.get(file) else {
+            return false;
+        };
+        let own = results[i].1.diagnostics.iter().any(|h| {
+            h.code == inner.code
+                && h.span.byte_start == inner.span.byte_start
+                && h.message == inner.message
+                && h.related.iter().all(|r| r.file == file)
+        });
+        own || (!inner.related.is_empty()
+            && inner
+                .related
+                .iter()
+                .all(|r| reported_at(&r.file, &r.diagnostic, results, by_canon)))
+    }
+    let is_schema =
+        |file: &str| Path::new(file).extension().and_then(|e| e.to_str()) != Some("lute");
+
+    let mut drop: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); file_results.len()];
+    // (schema file, code, byte_start, message) -> (diagnostic, importers).
+    let mut moved: BTreeMap<(String, String, usize, String), (Diagnostic, usize)> = BTreeMap::new();
+    for (fi, (_, result)) in file_results.iter().enumerate() {
+        let here = &canon[fi];
+        for (di, d) in result.diagnostics.iter().enumerate() {
+            let foreign: Vec<_> = d.related.iter().filter(|r| &r.file != here).collect();
+            if foreign.is_empty() || foreign.len() != d.related.len() {
+                continue;
+            }
+            if foreign
+                .iter()
+                .all(|r| reported_at(&r.file, &r.diagnostic, file_results, &by_canon))
+            {
+                drop[fi].insert(di);
+            } else if foreign.iter().all(|r| is_schema(&r.file)) {
+                drop[fi].insert(di);
+                for r in foreign {
+                    let key = (
+                        r.file.clone(),
+                        r.diagnostic.code.clone(),
+                        r.diagnostic.span.byte_start,
+                        r.diagnostic.message.clone(),
+                    );
+                    moved
+                        .entry(key)
+                        .or_insert_with(|| (r.diagnostic.clone(), 0))
+                        .1 += 1;
+                }
+            }
+        }
+    }
+    for ((_, result), drop) in file_results.iter_mut().zip(drop) {
+        if drop.is_empty() {
+            continue;
+        }
+        let mut i = 0;
+        result.diagnostics.retain(|_| {
+            i += 1;
+            !drop.contains(&(i - 1))
+        });
+        result.ok = !result
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error);
+    }
+    let canon_dir = std::fs::canonicalize(dir).ok();
+    for ((file, ..), (mut d, n)) in moved {
+        let path = PathBuf::from(&file);
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        d.span = normalize_span_from_text(&text, d.span);
+        d.message = format!("{} (imported by {n} document{})", d.message, plural(n));
+        let shown = canon_dir
+            .as_deref()
+            .and_then(|c| path.strip_prefix(c).ok())
+            .map_or_else(|| path.clone(), |rel| dir.join(rel));
+        project_diags.push((shown, d));
+    }
+}
+
 /// dsl 0.10.0 §9 rule 2: fold identical component-body diagnostics across
 /// callers into one, keeping the first in byte-sorted path order and
 /// summarising the rest.
@@ -3400,7 +3537,8 @@ fn run_check_project(
     project_compile_pass(&mut file_results, &mut project_diags, &inputs);
     fold_inherited_version_stale(&mut file_results, &mut project_diags, &inputs);
 
-    // dsl 0.10.0 §9 rule 2.
+    // Round-5 T3-4, then dsl 0.10.0 §9 rule 2.
+    relocate_imported_diags(&mut file_results, &mut project_diags, dir);
     rollup_component_body_diags(&mut file_results);
 
     // dsl 0.10.0 §11.1 (**D-V**): `W-DOMAIN-UNREAD` is project-wide only. The
@@ -5694,7 +5832,8 @@ fn authoring_surface(
         .collect();
 
     // Imported components (dsl §13): BTreeMap key == name ⇒ name-sorted; params
-    // keep source (named-arg binding) order.
+    // keep source (named-arg binding) order. A declared `default:` (dsl 0.26.0
+    // §3) rides as `default`, a `@def` default by its name as written.
     let components: Vec<Value> = input
         .components
         .table
@@ -5710,6 +5849,18 @@ fn authoring_surface(
                     o.insert("type".into(), ty.into());
                     if let Some(dom) = domain {
                         o.insert("domain".into(), dom.into());
+                    }
+                    match def.defaults.get(pname) {
+                        Some(lute_syntax::ast::AttrValue::Str(s)) => {
+                            o.insert("default".into(), s.clone().into());
+                        }
+                        Some(lute_syntax::ast::AttrValue::Ref(slot)) => {
+                            o.insert("default".into(), slot.raw.clone().into());
+                        }
+                        Some(lute_syntax::ast::AttrValue::BoolTrue) => {
+                            o.insert("default".into(), "true".into());
+                        }
+                        None => {}
                     }
                     Value::Object(o)
                 })
@@ -6280,8 +6431,18 @@ fn context_outline(surface: &serde_json::Value) -> String {
                                         format!("[{}]", m.join(", "))
                                     })
                                     .unwrap_or_default();
+                                // `= <default>`: a string default quoted,
+                                // anything else (enum member, number, `@def`)
+                                // as written.
+                                let default = match p["default"].as_str() {
+                                    Some(d) if p["type"] == "string" && !d.starts_with('@') => {
+                                        format!(" = {d:?}")
+                                    }
+                                    Some(d) => format!(" = {d}"),
+                                    None => String::new(),
+                                };
                                 format!(
-                                    "{}: {}{dom}",
+                                    "{}: {}{dom}{default}",
                                     p["name"].as_str().unwrap_or(""),
                                     p["type"].as_str().unwrap_or("")
                                 )

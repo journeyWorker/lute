@@ -78,6 +78,13 @@ pub enum Step {
     Line {
         speaker: String,
         text: String,
+        /// The line's authored delivery — its `{…}` attrs as written
+        /// (`mono`, `vo`, `as="…"`, `emotion="…"`), minus the extracted
+        /// `when=` — rendered `@wren{mono}` like `lute play`'s head, so a
+        /// thought reads apart from speech (round-5 FS-F12). Absent when
+        /// the line has none.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        delivery: Option<String>,
     },
     Set {
         path: String,
@@ -567,7 +574,7 @@ impl TraceReport {
     pub fn said(&self) -> String {
         let mut out = String::new();
         for step in &self.steps {
-            if let Step::Line { speaker, text } = step {
+            if let Step::Line { speaker, text, .. } = step {
                 out.push_str(&format!("@{speaker}: {text}\n"));
             }
         }
@@ -609,7 +616,14 @@ fn render_step(step: &Step, out: &mut String, expand: bool) {
                 out.push_str(&format!("  ## {heading}\n"));
             }
         }
-        Step::Line { speaker, text } => out.push_str(&format!("    @{speaker}  {text}\n")),
+        Step::Line {
+            speaker,
+            text,
+            delivery,
+        } => match delivery {
+            Some(d) => out.push_str(&format!("    @{speaker}{{{d}}}  {text}\n")),
+            None => out.push_str(&format!("    @{speaker}  {text}\n")),
+        },
         Step::Set { path, value, sugar } => {
             let annot = if *sugar { "  (into sugar)" } else { "" };
             out.push_str(&format!("    ::set  {path} = {value}{annot}\n"));

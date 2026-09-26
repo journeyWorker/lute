@@ -244,6 +244,11 @@ prints `lute-lsp <version>`, and `lute doctor` compares the `lute-lsp` first on 
 this CLI, flagging an older server (one that predates the flag reports no version at all) with how
 to reinstall it.
 
+**If your editor and the terminal disagree** about a file — red underlines on a file `lute check`
+calls `ok`, or the other way round — trust the terminal and run `lute doctor .` in the project: the
+usual cause is an editor language server older than your `lute`, and restarting the editor after an
+upgrade fixes it.
+
 ## Next
 
 Head to [Write your first scene](/getting-started/first-scene/) to build a real `.lute` file from
@@ -267,6 +272,10 @@ You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
 only** — no plugins, no project configuration. Just the language itself.
 
+**If your editor and the terminal disagree** — red underlines in the editor on a file `lute check`
+calls `ok`, or the other way round — trust the terminal and run `lute doctor .`. It names the usual
+cause: an editor language server older than your `lute` (restart the editor after upgrading).
+
 ## Part 1 — The minimal skeleton
 
 Create an empty file, `my-scene.lute`, and run the checker on it — the checker tells you whether a
@@ -284,24 +293,29 @@ failed: my-scene.lute (4 error(s), 0 warning(s))
 
 That's the whole idea of `lute check`: it reads your file and tells you, line by line, exactly
 what is wrong and why — never a silent failure. Every `.lute` file starts with a YAML
-**frontmatter block** (between two `---` lines) that answers "what is this document, and whose
-scene is it?". Add one:
+**frontmatter block** (between two `---` lines) that answers "what is this document, and what is
+it called?". Add one:
 
 ```yaml
 ---
 kind: scene
+id: mira.s01ep01
 title: A Quiet Table
-character: mira
-season: 1
-episode: 1
 pov: fixer
 ---
 ```
 
-- `kind: scene` — this file is a scene (the other kind, `quest`, is for quest-logic files).
-- `character` — whose episode this is (the point-of-view character's storyline).
-- `season` / `episode` — which episode this scene belongs to.
+- `kind: scene` — this file is a scene: dialogue the player sees. The other two kinds are `quest`
+  (goals the story tracks) and `lore` (text the game looks up, such as item descriptions).
+- `id` — the scene's name, unique in your project. Other scenes and your tests refer to this scene
+  by it. Letters, digits, `_`, `-` and `.` are allowed; `mira.s01ep01` reads as "Mira, season 1,
+  episode 1", but any name works (`prologue`, `diner.opening`).
+- `title` — a human-readable title for tools and search.
 - `pov` — the id of the player character (the protagonist the player controls).
+
+The three `E-META-MISSING` errors above name `character`, `season` and `episode`: an older way to
+name a scene. As the message says in parentheses, an `id:` replaces all three, so you never need
+them.
 
 Save that and re-check:
 
@@ -310,8 +324,38 @@ $ lute check my-scene.lute
 ok: my-scene.lute (0 warning(s))
 ```
 
-Clean — but the file has no content yet. Try adding a line of narration directly under the
-frontmatter:
+### Quotes and YAML for writers
+
+The frontmatter is **YAML**, and so are the test and play files later on. Five rules cover
+everything this guide writes:
+
+- **`key: value`**, with a space after the colon. Indent with **spaces, never tabs**; a nested
+  entry is indented under its parent.
+- **A list** is `[a, b, c]` on one line, or one `- item` per line. **A map** is `{ key: value }` on
+  one line, or indented `key: value` lines.
+- **Quote a value that starts with a symbol** (`!`, `[`, `{`, `'`, `"`, `*`, `&`) or that contains
+  `: ` or ` #`. Plain words and numbers need no quotes.
+- **Quotes nest by alternating.** Inside double quotes, write single quotes; inside single quotes,
+  write double quotes:
+
+  ```yaml
+  after: 'visited("mira.s01ep01")'    # YAML's single quotes around Lute's "…"
+  when: "run.accused == 'ruben'"      # YAML's double quotes around Lute's '…'
+  when: "!visited('accusation')"      # starts with ! — must be quoted
+  ```
+
+  Writing `when: "run.accused == "ruben""` ends the string at the second `"`: `lute check`
+  reports `E-META-PARSE` on that line and suggests single quotes inside. Switch the inner pair.
+- **Straight quotes only.** Word processors and note apps turn `"` into curly `“ ”`. Lute reads only
+  the straight `"` and `'`, in the frontmatter and in tag attributes such as `label="…"` alike; a
+  curly quote in a tag attribute is `E-ATTR-QUOTE`, which says to retype it.
+
+Inside a `.lute` body, tag attributes are always double-quoted, so a condition in one uses single
+quotes inside: `when="run.accused == 'ruben'"`.
+
+### Content lives under a heading
+
+The file has no content yet. Try adding a line of narration directly under the frontmatter:
 
 ```lute
 @narrator: The diner is empty at this hour, and Mira likes it that way.
@@ -322,7 +366,7 @@ Check again:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
+my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -365,7 +409,7 @@ Save and check. This one does **not** pass yet:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:14:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+my-scene.lute:12:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -409,13 +453,11 @@ over the scene). All three are mutually exclusive — at most one per line — a
 
 The file so far:
 
-```lute
+```lute check
 ---
 kind: scene
+id: mira.s01ep01
 title: A Quiet Table
-character: mira
-season: 1
-episode: 1
 pov: fixer
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
@@ -476,7 +518,7 @@ Say you type an old-style sigil out of habit — a colon instead of `@` — on t
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -502,10 +544,6 @@ $ lute compile my-scene.lute
   "capabilityVersion": "0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3",
   "meta": {
     "id": "mira.s01ep01",
-    "character": "mira",
-    "season": 1,
-    "episode": 1,
-    "episodeId": "s01ep01",
     "title": "A Quiet Table"
   },
   "state": [ … ],
@@ -544,7 +582,9 @@ $ lute compile my-scene.lute
 
 (`…` marks where output was trimmed for space; everything else is verbatim.) Your `enums:`
 declaration rides along into the artifact's own **`enums`** block, so the engine resolves values
-against exactly the vocabulary the checker used. Two other fields are worth knowing on sight.
+against exactly the vocabulary the checker used. Your `id:` is the prefix of every `lineId` and
+`voiceKey`, so each line of this scene has a name no other scene's line can take. Two other fields
+are worth knowing on sight.
 **`addr`** is the record's address, `{shot}-{index}`, and every `addr` in one
 artifact is padded to the same width — so sorting the `addr` strings gives you execution order, no
 parsing required. **`shots`** carries your `## ` headings through to the artifact, so a tool
@@ -552,27 +592,28 @@ downstream can still say *which beat* a record belongs to.
 
 You never hand-edit this file — it's the compiled artifact the engine consumes. That it compiled
 without error is proof the scene is **statically valid**: every construct well-formed, every state
-path declared, every `<match>` exhaustive. It is not proof the scene is playable end to end —
-that's a runtime property, verified at integration time.
+path declared, every `<match>` exhaustive. It is not proof the scene plays the way you meant —
+that is what `lute trace` and, in Part 6, `lute test` are for.
 
-Finally, `lute trace` previews a playthrough without opening the game — you tell it which choice to
+`lute trace` previews a playthrough without opening the game — you tell it which choice to
 take at each branch with `--choose <branchId>=<choiceId>`, and it walks the scene and prints what
 would show on screen:
 
 ```
 $ lute trace my-scene.lute --choose orderChoice=black
 trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
-  ## Shot 1.
+  ## The Counter
     @narrator  The diner is empty at this hour, and Mira likes it that way.
-    @mira  {{userName}}, you made it.
-    @mira  I should not be this pleased about a coffee order.
+    @mira{emotion="content" variant="0"}  {{userName}}, you made it.
+    @mira{mono}  I should not be this pleased about a coffee order.
   <branch orderChoice>   eligible: black   -> black
-    @mira  Good. No nonsense in a cup.
+    @mira{emotion="content" variant="0"}  Good. No nonsense in a cup.
 trace complete: 1 decision; choices 1/2 (orderChoice)
 ```
 
-That transcript previews exactly the mock scenario you supplied — an authoring aid for
-sanity-checking that a branch reads right, never proof of runtime behavior.
+That transcript previews exactly the choices you supplied — a quick way to read a branch the way a
+player would. A line keeps its attributes in braces, so `@mira{mono}` shows at a glance which line
+is a thought.
 
 ## Part 5 — Sequencing scenes with `after:`
 
@@ -580,12 +621,14 @@ A real episode is a *sequence* — one scene is meant to come after the player h
 declare that intended ordering with one frontmatter key: **`after:`**.
 
 `after:` declares the routes Lute's checker and `lute scenario` analyses assume reach this scene. It
-doesn't move the player anywhere and it isn't a jump — it's *advisory*: the tool uses it to verify
-your episodes fit together into one coherent, analysable graph.
+doesn't move the player anywhere and it isn't a jump: it says "this scene comes after that one",
+and the tool uses it to verify your episodes fit together into one coherent, analysable graph.
+What actually *starts* each scene is the game engine — or, before there is one, `lute play`, which
+[Connect scenes into a story](/getting-started/connect-scenes/) sets up on the next page.
 
 `after:` is deliberately tiny. You get exactly three building blocks:
 
-- `visited("<sceneKey>")` — true once the player has seen that scene.
+- `visited("<id>")` — true once the player has seen the scene with that `id:`.
 - `completed("<questId>")` — true once that quest is finished.
 - `active("<questId>")` — true while that quest is running: started, not yet finished.
 
@@ -602,40 +645,22 @@ after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
 after: 'visited("mira.s01ep01") || visited("mira.s01ep03")'
 ```
 
-That is the whole vocabulary. There is no `!`, no arithmetic, and no reading state — those are
-intentionally left out. Anything conditional on runtime state stays in your `when=` guards.
+(The outer single quotes are YAML's; the inner double quotes are the scene id's. See
+[Quotes and YAML for writers](#quotes-and-yaml-for-writers).) That is the whole vocabulary. There is
+no `!`, no arithmetic, and no reading state — those are intentionally left out. Anything conditional
+on runtime state stays in your `when=` guards.
 
-`visited("…")` needs a scene's **canonical key**. The primary way to name one — and the shape you
-should reach for in new work — is to *author* it, with one dedicated frontmatter key (dsl 0.15.0
-§2):
+`visited("mira.s01ep01")` names the diner by the `id:` you gave it in Part 1. That is the whole
+reason every scene carries an `id:`.
 
-```yaml
-id: mira.s01ep01
-```
-
-`id:` is a plain string (letters, digits, `_`, `-`, `.`) that identifies this scene project-wide.
-`visited("mira.s01ep01")` in another scene's `after:` names *this* one; the same string is the
-prefix every `lineId`/`voiceKey` in the compiled artifact is built from
-(`"lineId": "mira.s01ep01.narrator_0010"` and `"voiceKey": "mira.s01ep01.mira-0010"` in the Part 4
-output). With `id:` declared,
-`character:` / `season:` / `episode:` become optional — keep them if they carry useful metadata
-(search, TMS), drop them if they don't. If you write `id:` **and** any of those legacy identity
-keys in the same document, the checker draws one `W-META-LEGACY` per key: identity now comes from
-`id:`, and anything descriptive belongs under `extra:` (see §3 of the same spec).
-
-**Legacy fallback (no `id:` declared).** Every existing scene that authored
-`character:` / `season:` / `episode:` — including this tutorial's diner — is still valid: when
-`id:` is absent, the canonical key derives from the frontmatter as `{character}.{episodeId}`,
-where `{episodeId}` is the `episodeId:` key when declared, otherwise `s{season}ep{episode}`
-zero-padded to two digits each. Our tutorial scene declares `character: mira`, `season: 1`,
-`episode: 1` and no explicit `id:` or `episodeId:`, so its canonical key is still
-**`mira.s01ep01`** — the same string you would get by writing `id: mira.s01ep01` outright, which
-is why the Part 4 compile output shows `"meta": { "id": "mira.s01ep01", … }` regardless. You
-never have to reverse-engineer the key from compiler output — read it straight off the
-frontmatter, either the authored `id:` or the derived join.
+(**Older scenes.** Before `id:` existed, a scene was named by three keys, `character:`,
+`season:` and `episode:`, and its name was built from them: `character: mira`, `season: 1`,
+`episode: 1` named `mira.s01ep01`. Scenes written that way still check. Write `id:` in new
+scenes; a scene that has `id:` **and** any of those three keys draws one `W-META-LEGACY` warning
+per key, and anything descriptive belongs under `extra:`.)
 
 To carry a fact across episodes, use the persistent **`run.`** tier. Teach the diner to remember
-the meeting — declare `run.metMira` and set it:
+the meeting — declare `run.metMira` and set it at the end of the scene:
 
 ```yaml
 state:
@@ -647,10 +672,18 @@ state:
 ```
 
 `after:` and cross-scene reads only make sense across several files, so put both scenes in a folder
-with a `lute.project.yaml` marking it a project root. Every voice line is already keyed by its scene
-— the default `voiceKey` is `{prefix}.{speaker}-{code}` — so the diner's and the booth's first Mira
-lines are `mira.s01ep01.mira-0010` and `mira.s01ep02.mira-0010`, two recordings, with nothing to
-configure:
+with a `lute.project.yaml` marking it a project root:
+
+```
+episodes/
+  lute.project.yaml
+  diner.lute        ← the scene from Parts 1–4, plus run.metMira and the ::set
+  booth.lute        ← the new follow-up, below
+```
+
+Every voice line is already keyed by its scene — the default `voiceKey` is
+`{prefix}.{speaker}-{code}` — so the diner's and the booth's first Mira lines are
+`mira.s01ep01.mira-0010` and `mira.s01ep02.mira-0010`, two recordings, with nothing to configure:
 
 ```yaml
 # episodes/lute.project.yaml
@@ -665,13 +698,11 @@ one recording for two lines, which `check-project` refuses as `E-DUP-VOICEKEY`. 
 already recorded audio against those old keys keeps them by pinning
 `identity: { voiceKey: "{speaker}-{code}" }` in `lute.project.yaml`.)
 
-```lute
+```lute check-project="docs/examples/episodes/booth.lute"
 ---
 kind: scene
+id: mira.s01ep02
 title: The Usual Booth
-character: mira
-season: 1
-episode: 2
 pov: fixer
 after: 'visited("mira.s01ep01")'
 enums:
@@ -715,7 +746,7 @@ project root: episodes
     scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
-`reach <key>` answers "can the player ever get here, and by what route?"; `envelope <key>` answers
+`reach <id>` answers "can the player ever get here, and by what route?"; `envelope <id>` answers
 the question you most want before writing a `when=` guard — *what state is safe to read here?*:
 
 ```
@@ -723,9 +754,11 @@ $ lute scenario episodes envelope mira.s01ep02
 project root: episodes
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
-    - run.metMira
-  Possible (set on at least one declared route reaching this node):
-    - run.metMira
+    - run.metMira   written by: scene(mira.s01ep01)
+  Possible (set on SOME but not every declared route reaching this node; the Guaranteed paths above are not repeated):
+    (none)
+  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+    (none)
   Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
     (none)
 ```
@@ -734,7 +767,61 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
 through the diner, which always `::set`s it. That's a genuine cross-scene guarantee — the booth's
 `when="run.metMira"` read is provably safe.
 
-## Part 6 — Where to go next
+## Part 6 — Pin your story with tests
+
+A trace shows you one path once. A **test** writes down what must be true and checks it every time
+you run `lute test`, so a later edit that breaks the scene fails loudly instead of slipping by.
+
+Tests live in a `tests/` folder in the project, one `*.test.yaml` file each. Create
+`episodes/tests/diner.test.yaml`:
+
+```yaml
+file: ../diner.lute
+choose: { orderChoice: black }
+expect:
+  transcriptContains: ["@mira: Good. No nonsense in a cup."]
+  transcriptLacks: ["@mira: You remembered. That's new."]
+  state: { run.metMira: true }
+```
+
+- `file:` is the scene under test, **relative to the test file**: the test sits in `tests/`, so
+  the diner is `../diner.lute`. (In a project with a `scenes/` folder it would be
+  `../scenes/<name>.lute`.)
+- `choose:` picks at each branch, exactly like `--choose` on `lute trace`.
+- `expect:` lists what must hold: `transcriptContains` lines that must be shown, written
+  `@speaker: text`; `transcriptLacks` lines that must not; `state` the values after the scene.
+
+```
+$ lute test episodes --project episodes
+PASS  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+
+1 passed, 0 failed
+```
+
+A failing test says why. Change the choice to `familiar`, which is guarded by `scene.knowsMira`:
+
+<!-- lute-diagnostics unverified="lute test respells the walk.rs literal `--choose {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
+```
+$ lute test episodes --project episodes
+FAIL  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+      trace refused:
+        episodes/tests/../diner.lute:25:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard decided false at this presentation point (dsl 0.4.0 §4.4)
+
+0 passed, 1 failed
+```
+
+The choice's guard is false because nothing set `scene.knowsMira`. A test can start from any state
+you name: add `state: { scene.knowsMira: true }` above `choose:` and the `familiar` path is testable
+too. `lute test episodes --project episodes --coverage` then lists which choices no test has taken
+yet, and which scenes no test names — a to-do list for your next tests.
+
+Every key a test file takes is in the [CLI reference](/tooling/cli/#test).
+
+## Part 7 — Where to go next
+
+**Play the whole story.** Tests check one scene at a time; to play every scene in order, from the
+first to an ending, go to [Connect scenes into a story](/getting-started/connect-scenes/). It adds
+one line to each scene and a play script, and `lute play` walks the story the way a player would.
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
 project accepts — the staging directives, their attributes, the vocabulary members in scope (your
@@ -743,13 +830,14 @@ built-in directives, and the scene ids you can name in `visited(…)` — resolv
 file you give it:
 
 ```
-$ lute context my-scene.lute
+$ lute context episodes/diner.lute
 capabilityVersion: 0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3
 permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
-directives (11):
+directives (12):
   auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location, time, assetId   [mutatesScene]
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
+  clear:    [reads.onStage mayExitCharacter]
   cut: assetId, action, full
   end: reason   [terminatesWalk]
   mark: id
@@ -763,7 +851,8 @@ rewardKinds (0):
 occasions (0):
 questsAllowed: true
 enums (0):
-stateSchema (3):
+stateSchema (4):
+  prev.run.metMira: bool (owner: engine)
   run.metMira: bool
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
@@ -774,11 +863,11 @@ deliveryFlags (3):
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
 builtinDirectives (5):
-  ::set{ <path> = <expr> }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
-  ::assert{ <relation>(<arg>, …) } — assert a ground fact of a declared, non-derived, non-reserved relation
-  ::retract{ <relation>(<arg | _>, …) } — retract the matching facts of a declared, non-derived, non-reserved relation
-  ::accept{quest="<questId>"} — accept a quest that has no `start` condition
-  ::use{component="<name>" <param>=<value> …} — expand an imported component with named arguments
+  ::set{ <path> = <expr> [when="<condition>"] }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
+  ::assert{ <relation>(<arg>, …) [when="<condition>"] } — assert a ground fact of a declared, non-derived, non-reserved relation
+  ::retract{ <relation>(<arg | _>, …) [when="<condition>"] } — retract the matching facts of a declared, non-derived, non-reserved relation
+  ::accept{quest="<questId>" [when="<condition>"]} — accept a quest that has no `start` condition
+  ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
 scenes (1; read as visited("<id>")):
   mira.s01ep01
 ```
@@ -788,16 +877,21 @@ activates none. Your own declarations show up under **`projectEnums`** — the v
 actually resolves `emotion="content"`.
 
 `stateSchema` is the same story for state: your own declarations (`scene.knowsMira` from Part 3,
-`run.metMira` from Part 5) plus `scene.choices.orderChoice`, which the `<branch>` declares on your
-behalf so a later construct can read which option the player took.
+`run.metMira` from Part 5), `scene.choices.orderChoice`, which the `<branch>` declares on your
+behalf so a later construct can read which option the player took, and `prev.run.metMira`, the
+read-only value `run.metMira` had when the previous run ended.
 
 `builtinDirectives` lists the directives the language itself provides — `::set` you have already
 used — and `scenes` lists the ids `visited("…")` can name. Pass `--project episodes` and that list
 covers every scene in the project, alongside its quests and lore entries.
 
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
-instead of guessing. From here, follow the **Language** section for each construct in depth, or read
-the [full-spec showcase](/examples/showcase/) for a feature-by-feature tour of a real project.
+instead of guessing. From here, follow the **Language** section for each construct in depth, keep
+the [cheatsheet](/reference/cheatsheet/) open while you write, or read the
+[full-spec showcase](/examples/showcase/) for a feature-by-feature tour of a real project.
+
+**Editor and terminal disagree?** Run `lute doctor .` in the project. It checks your toolchain and
+project setup and names an editor language server that is older than your `lute`.
 
 **Building a game the engine drives by moments** — the player walks into the hub, talks to
 someone, ends the day — rather than a fixed episode order? Scaffold a working example to start
@@ -813,11 +907,357 @@ scaffolded. [Beats](/language/beats/) and [Playing a story](/tooling/play/) expl
 
 ---
 
+# Connect scenes into a story
+
+[Write your first scene](/getting-started/first-scene/) ended with two scenes and an `after:` line
+between them. `after:` says which scene comes *after* which. It does not move the player: something
+still has to **start** each scene. In a shipped game that something is the engine. Before an engine
+exists, it is **`lute play`**: the tool plays your whole story from the first scene to an ending,
+prints every line, and tells you why each scene did or did not play.
+
+This page builds a five-scene whodunit and plays it. Everything here is core Lute: no plugin, no
+engine, no programming.
+
+## The idea in one paragraph
+
+`lute play` moves the story forward by raising **occasions**: named moments such as "the next
+chapter". Each scene says which occasion it answers with one frontmatter key, `on:`. When an
+occasion is raised, every scene that answers it is a candidate. A candidate is **eligible** when its
+`after:` and `when:` hold and it has not played yet this run. The eligible scene with the highest
+`priority:` plays. Raise the occasion again and the next scene plays.
+
+You do not declare the occasion anywhere. While no plugin declares occasions, any name is accepted,
+so you can invent one. This page calls it `chapter`.
+
+## The project
+
+```
+a-story/
+  lute.project.yaml
+  world.schema.yaml
+  scenes/
+    prologue.lute
+    counter.lute
+    accusation.lute
+    ending/
+      caught.lute
+      wrong.lute
+  plays/
+    caught.play.yaml
+  tests/
+    accusation.test.yaml
+```
+
+Make the folder and run every command below from inside it. The files are shown whole, so you can
+type the project from this page. The same files are in the repository at
+[`docs/examples/connect-scenes/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/connect-scenes)
+for reference.
+
+`lute.project.yaml` marks the folder as a project. Its `defaults:` block gives every document the
+same `uses:` line, so no scene has to repeat it ([Project defaults](/language/imports/#project-defaults)):
+
+```yaml
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+defaults:
+  uses: [world.schema.yaml]
+```
+
+`world.schema.yaml` declares the one piece of state the story remembers: whom the player accused.
+
+```yaml
+state:
+  run.accused: { type: { enum: [nobody, ruben, tilly] }, default: nobody }
+```
+
+## The chapters: `on:`, `after:`, `priority:`
+
+The first scene answers `chapter`. It has no `after:`, so it is eligible from the start:
+
+```lute check="docs/examples/connect-scenes/scenes/prologue.lute"
+---
+kind: scene
+id: prologue
+title: Closing Time
+on: chapter
+priority: 30
+---
+
+## Closing Time
+
+@narrator: Five minutes to close, and the bakery smells of burnt sugar.
+@wren: Mr. Pryce? We're closing.
+```
+
+The second scene answers `chapter` too, and only after the prologue has played:
+
+```lute check="docs/examples/connect-scenes/scenes/counter.lute"
+---
+kind: scene
+id: counter
+title: The Counter
+on: chapter
+after: 'visited("prologue")'
+priority: 20
+---
+
+## The Counter
+
+@narrator: Mr. Pryce is face down on the counter. The till is open.
+@wren: Somebody here knows what happened.
+```
+
+- `on: chapter` makes the scene a candidate whenever `chapter` is raised.
+- `after: 'visited("prologue")'` keeps it waiting until the scene with `id: prologue` has played.
+  `visited("…")` names a scene by its `id:`.
+- A scene plays at most once per run, so after the prologue has played it drops out and the counter
+  is the one left.
+- `priority:` states the running order outright: higher plays first, and each chapter gets a lower
+  number than the one before. The checker cannot see that `after:` already keeps two chapters apart,
+  so without distinct priorities `lute check-project` may warn `W-BEAT-PRIORITY-TIE` for scenes that
+  share one. Leave gaps (30, 20, 10) so a scene added later fits between two others.
+
+The third scene gives the player a choice and remembers it:
+
+```lute check="docs/examples/connect-scenes/scenes/accusation.lute"
+---
+kind: scene
+id: accusation
+title: The Accusation
+on: chapter
+after: 'visited("counter")'
+priority: 10
+---
+
+## The Accusation
+
+@wren: One of you did this.
+
+<branch id="accuse">
+  <choice id="ruben" label="Ruben, the baker">
+    ::set{ run.accused = "ruben" }
+  </choice>
+  <choice id="tilly" label="Tilly, the waitress">
+    ::set{ run.accused = "tilly" }
+  </choice>
+</branch>
+```
+
+## Branching endings: `when:`
+
+Two endings answer the same `chapter` after the accusation. `when:` decides which one is eligible,
+reading the state the accusation wrote:
+
+```lute check="docs/examples/connect-scenes/scenes/ending/caught.lute"
+---
+kind: scene
+id: ending.caught
+title: Caught
+on: chapter
+after: 'visited("accusation")'
+when: "run.accused == 'ruben'"
+---
+
+## Caught
+
+@ruben: The sugar tin. Of course you noticed the sugar tin.
+```
+
+```lute check="docs/examples/connect-scenes/scenes/ending/wrong.lute"
+---
+kind: scene
+id: ending.wrong
+title: The Wrong Name
+on: chapter
+after: 'visited("accusation")'
+when: "run.accused != 'ruben'"
+---
+
+## The Wrong Name
+
+@tilly: Me? I was in the back the whole time.
+@narrator: Behind her, the baker quietly unties his apron.
+```
+
+The two endings share priority `0` and draw no warning: their `when:`s can never both be true, and
+the checker can see that. Put the route in `after:` and the condition in `when:`. The quotes nest:
+the outer double quotes belong to YAML and the inner single quotes to the condition. If that is new,
+read [Quotes and YAML for writers](/getting-started/first-scene/#quotes-and-yaml-for-writers).
+
+## Check it and see the order
+
+```
+$ lute check-project .
+ok: ./scenes/accusation.lute (0 warning(s))
+ok: ./scenes/counter.lute (0 warning(s))
+ok: ./scenes/ending/caught.lute (0 warning(s))
+ok: ./scenes/ending/wrong.lute (0 warning(s))
+ok: ./scenes/prologue.lute (0 warning(s))
+ok: . (5 file(s), 0 project-wide warning(s))
+```
+
+`lute beats` prints every scene that answers each occasion, in the order they compete:
+
+```
+$ lute beats .
+project root: .
+
+  chapter — select: first
+    #  priority  beat                           kind   once  verdict  after                  when
+    1  30        prologue "Closing Time"        scene  run   -        -                      -
+    2  20        counter "The Counter"          scene  run   -        visited("prologue")    -
+    3  10        accusation "The Accusation"    scene  run   -        visited("counter")     -
+    4  0         ending.caught "Caught"         scene  run   -        visited("accusation")  run.accused == 'ruben'
+    5  0         ending.wrong "The Wrong Name"  scene  run   -        visited("accusation")  run.accused != 'ruben'
+
+```
+
+## Play it
+
+A **play script** lists the occasions to raise, in order, and the choice to take at each menu. Save
+it as `plays/caught.play.yaml`:
+
+```yaml
+choose: { accuse: ruben }
+steps:
+  - occasion: chapter
+    expect: { winner: prologue }
+  - occasion: chapter
+    expect: { winner: counter }
+  - occasion: chapter
+    expect: { winner: accusation }
+  - occasion: chapter
+    expect: { winner: ending.caught }
+expect:
+  state: { run.accused: ruben }
+```
+
+- `choose:` maps a branch id to the choice id to pick: at `<branch id="accuse">`, take `ruben`.
+- Each step raises `chapter` once. Its `expect: { winner: … }` says which scene should play.
+- The last `expect:` checks the state after the whole story.
+
+```
+$ lute play . --script plays/caught.play.yaml
+── step 1 · chapter ──────────────
+  ✓ prologue [scene, priority 30]
+  ✗ counter [scene, priority 20] — after: prerequisite not satisfied
+  ✗ accusation [scene, priority 10] — after: prerequisite not satisfied
+  ✗ ending.caught [scene, priority 0] — after: prerequisite not satisfied
+  ✗ ending.wrong [scene, priority 0] — after: prerequisite not satisfied
+  → prologue
+@narrator: Five minutes to close, and the bakery smells of burnt sugar.
+@wren: Mr. Pryce? We're closing.
+── step 2 · chapter ──────────────
+  ✓ counter [scene, priority 20]
+  ✗ prologue [scene, priority 30] — once: run — already presented this run
+  ✗ accusation [scene, priority 10] — after: prerequisite not satisfied
+  ✗ ending.caught [scene, priority 0] — after: prerequisite not satisfied
+  ✗ ending.wrong [scene, priority 0] — after: prerequisite not satisfied
+  → counter
+@narrator: Mr. Pryce is face down on the counter. The till is open.
+@wren: Somebody here knows what happened.
+── step 3 · chapter ──────────────
+  ✓ accusation [scene, priority 10]
+  ✗ prologue [scene, priority 30] — once: run — already presented this run
+  ✗ counter [scene, priority 20] — once: run — already presented this run
+  ✗ ending.caught [scene, priority 0] — after: prerequisite not satisfied
+  ✗ ending.wrong [scene, priority 0] — after: prerequisite not satisfied
+  → accusation
+@wren: One of you did this.
+▷ choice accuse: [ruben] tilly        ← chosen: ruben
+  set run.accused = "ruben"
+── step 4 · chapter ──────────────
+  ✓ ending.caught [scene, priority 0]
+  ✗ prologue [scene, priority 30] — once: run — already presented this run
+  ✗ counter [scene, priority 20] — once: run — already presented this run
+  ✗ accusation [scene, priority 10] — once: run — already presented this run
+  ✗ ending.wrong [scene, priority 0] — when: false
+  → ending.caught
+@ruben: The sugar tin. Of course you noticed the sugar tin.
+── end: complete (4 steps) ──────────────
+── expect: every expectation held ──────────────
+```
+
+Each step lists the candidates: `✓` is eligible, `✗` is not, with the reason. `→` is the scene that
+played. Read it when a scene does not play where you expected: the reason is on its line. Change
+`choose:` to `{ accuse: tilly }` and step 4 plays `ending.wrong` instead.
+
+## Test it
+
+`lute test` runs every play script that carries an `expect:`, so the play above is already a test.
+A **scenario test** checks one scene on its own. Save `tests/accusation.test.yaml`:
+
+```yaml
+file: ../scenes/accusation.lute
+visited: [counter]
+choose: { accuse: tilly }
+expect:
+  transcriptContains: ["@wren: One of you did this."]
+  state: { run.accused: tilly }
+```
+
+`file:` is relative to the test file, so a test in `tests/` names its scene `../scenes/…`.
+`visited:` pretends the counter scene has already played. Leave it out and the test tells you it is
+needed, because the accusation waits for `after: 'visited("counter")'`:
+
+```
+$ lute test . --project .
+FAIL  ./tests/accusation.test.yaml  (./tests/../scenes/accusation.lute)
+      eligible accusation: not eligible under these mocks (its `after: visited("counter")` is false — mock `visited: [counter]`) — the engine would never present it, so the walk proves nothing about play; fix the mocks, or assert `expect: { eligible: { accusation: false } }` (the body is then not walked)
+PASS  ./plays/caught.play.yaml  (play of .)
+
+1 passed, 1 failed
+```
+
+With `visited: [counter]` in place:
+
+```
+$ lute test . --project .
+PASS  ./tests/accusation.test.yaml  (./tests/../scenes/accusation.lute)
+PASS  ./plays/caught.play.yaml  (play of .)
+
+2 passed, 0 failed
+```
+
+The test file format is in the [CLI reference](/tooling/cli/#test), and every play script key is in
+[Playing a story](/tooling/play/).
+
+## Adding a scene
+
+`lute new scene <name> --on chapter` writes a new scene that answers `chapter`, with an `id:` taken
+from the name and a `priority:` below every scene already on `chapter`, so it comes last. Give it an
+`after:` naming the scene it follows; if it belongs between two chapters, set its `priority:`
+between theirs. Then add a step to your play script.
+
+A conversation the player chooses, rather than the next chapter, is a second occasion raised
+*for* someone. The scene names the person with `target:`:
+
+```yaml
+on: talk
+target: npc.tilly
+after: 'visited("counter")'
+when: "!visited('accusation')"
+```
+
+In the play script the step names the person too: `- occasion: talk` with `target: npc.tilly`.
+The `when:` closes the conversation once the accusation has played.
+
+## When the engine arrives
+
+Nothing on this page is a stand-in. When the game is built, the engine raises `chapter` where the
+play script did, and presents the scene that wins, exactly as `lute play` showed. When the engine's
+plugin declares its occasions, the checker then also catches a misspelled `on:`. See
+[Occasions](/tooling/play/#occasions) and [Beats](/language/beats/).
+
+---
+
 # Learning paths
 
 Role-first routes through the docs — pick the reading order that matches what you are here to do. Each is a short ordered list of existing pages.
 
-- **Scenario writer:** installation → first scene → build an investigation → dialogue & cast → branch/match/when → choices & hubs → quests & scenes → tracing → beats & playing a story (`lute init --template beats` scaffolds a passing start).
+- **Scenario writer:** installation → first scene (with tests; `lute doctor` when the editor and terminal disagree) → connect scenes into a story (`lute play`) → build an investigation → dialogue & cast → branch/match/when → choices & hubs → quests & scenes → tracing → beats & playing a story (`lute init --template beats` scaffolds a passing start).
 - **Narrative programmer:** frontmatter → state model → CEL → facts & Datalog → timeline → scene graph & after: → reachability → envelopes.
 - **Engine integrator:** runtime contract → capability permissions/security boundary → streaming continuation compiler → the normative [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime) specs → the [`conformance/`](https://github.com/journeyWorker/lute/tree/main/conformance) fixtures → `lute run` (the reference consumer) → CEL semantics.
 - **Plugin author:** plugin concepts → manifests & resolution → profiles & activation versus permissions → typed bridges → providers & catalog.
@@ -833,20 +1273,35 @@ quest, over a relational fact world. It is the shape of a real Lute game in
 miniature — and it shows what the checker proves about relational fact guards
 across scenes, so you can see exactly what it will and will not claim.
 
-Everything here mirrors the worked example in the repository:
+All you need is the `lute` command ([Installation](/getting-started/installation/)) —
+no copy of the Lute repository and no Rust. Make an empty folder for the
+project and its subfolders, and work from inside it:
+
+```sh
+mkdir investigation && cd investigation
+mkdir scenes quests mocks tests
+```
+
+Every command below runs from inside `investigation/`, and every path is
+relative to it. Each step shows one file **whole**: create it at the path the
+step names and paste or type it in, and by the end you have the entire project.
+The same files, for reference, live in the repository at
 [`docs/examples/investigation/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/investigation).
-Every command below is copy-paste runnable from the **repository root**, and
-every snippet is taken verbatim from that directory, so what you read stays
-checkable.
+
+This is not the project `lute init --template investigation` creates. That
+template scaffolds a different, larger whodunit — beats driven by occasions, a
+plugin, lore, plays and tests — worth exploring once you have finished here.
+None of its files are the ones below.
 
 ## 1. The project manifest
 
 A project is any directory with a `lute.project.yaml` at its root. This one is
 **core-only** — no plugins — so every document resolves against the built-in
-`lute.core` capability snapshot:
+`lute.core` capabilities. Create `lute.project.yaml`:
 
 ```yaml
-# docs/examples/investigation/lute.project.yaml
+# The project root. Core-only: no plugins, so every document resolves
+# against Lute's built-in `lute.core` capabilities.
 defaultProfile: core
 profiles:
   core:
@@ -860,10 +1315,14 @@ The manifest is what turns a folder of `.lute` files into something
 
 Every scene and the quest import one schema with `uses: ../world.schema.yaml`.
 It declares the scalar state tiers **and** the relational vocabulary — a pure
-declaration map, no `---`/body:
+declaration map, no `---`/body. Create `world.schema.yaml`:
 
 ```yaml
-# --- Scalar state (run/user tiers) ---------------------------------------
+# The shared world every scene and the quest import with
+# `uses: ../world.schema.yaml`. Declarations only: no `---`, no body.
+
+# --- Scalar state -----------------------------------------------------------
+# Every path has a `default:`, so every read has a value from the start.
 state:
   run.cluesLogged:  { type: number, default: 0 }
   run.leadStrength: { type: number, default: 0 }
@@ -871,19 +1330,8 @@ state:
   run.accused:      { type: { enum: [none, blake, cass, dana] }, default: none }
   run.trueKiller:   { type: { enum: [blake, cass, dana] }, default: blake }
   user.solved:      { type: number, default: 0 }
-```
 
-Every path carries a `default:`, so each read is definitely assigned even in a
-standalone single-file `check`. (See [state schemas](/state/schemas/) and the
-[state model](/state/state-model/) for the tier rules.)
-
-## 3. Facts, relations, and one Datalog rule
-
-The same schema declares the **relational world** — entities, relations, seed
-facts, and a derivation rule:
-
-```yaml
-# --- Relational fact world (0.3.0 §3) ------------------------------------
+# --- Relational facts -------------------------------------------------------
 entities:
   suspect: { members: [blake, cass, dana] }
   clue:    { members: [ledger, letter, knife] }
@@ -891,34 +1339,51 @@ entities:
 relations:
   # `foundClue` is asserted by the crime scene as the detective logs evidence.
   foundClue:  { args: [clue], tier: run }
-  # `implicates` is the static case map — which clue points at which suspect.
+  # `implicates` is the fixed case map: which clue points at which suspect.
   implicates: { args: [clue, suspect], tier: run, key: [0] }
   # `points` is DERIVED: a suspect the found clues implicate (see `rules:`).
   points:     { args: [suspect], derive: true }
 
-# Seed facts (0.3.0 §4): the fixed evidence-to-suspect map, loaded from start.
+# Seed facts: true from the start of every playthrough.
 facts:
   - "implicates(ledger, blake)"
   - "implicates(letter, blake)"
   - "implicates(knife, cass)"
 
-# Datalog derivation (0.3.0 §7): a suspect is `points`-ed at once a clue that
-# implicates them has been found. Function-free, terminating by construction.
+# One rule: a suspect is pointed at once a clue that implicates them is found.
 rules:
   - "points(S) :- foundClue(C), implicates(C, S)"
 ```
 
-`points` is not stored — it is *derived*: a suspect is pointed at once a found
+The first half is scalar state. Every path carries a `default:`, so each read is
+definitely assigned even in a standalone single-file `check`. (See
+[state schemas](/state/schemas/) and the [state model](/state/state-model/) for
+the tier rules.)
+
+## 3. Facts, relations, and one Datalog rule
+
+The second half of the same file declares the **relational world**: two
+entities (the suspects and the clues), three relations, three seed facts, and a
+derivation rule. `foundClue` is written by the crime scene; `implicates` is the
+fixed case map, true from the start because of the seed `facts:`; and `points`
+is not stored at all — it is *derived*: a suspect is pointed at once a found
 clue implicates them. See [facts and Datalog](/state/facts-and-datalog/) for the
 full model.
 
 ## 4. The entry scene — logging clues
 
-`scenes/crime-scene.lute` has **no `after:`**, so it is the graph root. It writes
-relational-fact deltas with `::assert{ foundClue(...) }` and bumps a scalar
-counter the quest gates on:
+Create `scenes/crime-scene.lute`:
 
-```lute
+```lute check="docs/examples/investigation/scenes/crime-scene.lute"
+---
+kind: scene
+luteVersion: "0.26.0"
+id: detective.s01ep01
+title: The Study
+# No `after:`, so this scene is where the case starts.
+uses: ../world.schema.yaml
+---
+
 ## The Study
 
 @narrator: The victim's study, untouched since the coroner left.
@@ -931,26 +1396,43 @@ counter the quest gates on:
 ::assert{ foundClue(letter) }
 ::set{ run.cluesLogged += 1 }
 @detective: And a letter, signed once and then unsigned.
-```
 
-The last line reads the **derived** relation `points` — Blake is pointed at
-once a found clue implicates him — and deliberately carries **no** guard:
-
-```lute
+// No `when=`: both clues above are logged on every playthrough, so the
+// derived fact `points(blake)` always holds here.
 @detective{mono}: Both threads pull toward one name.
 ```
 
-`when="holds(points(blake))"` would be redundant. Both clues are asserted on the
-only route through this shot and `implicates(ledger, blake)` is a seed, so the
-rule derives `points(blake)` before the line on every playthrough — and
-`check-project` proves exactly that (step 8).
+The frontmatter names the scene with `id:`. The other scenes refer to it by that
+name; `detective.s01ep01` is just a name, and any dotted name works. The scene
+has **no `after:`**, so it is the graph root — where the case starts. It writes
+relational-fact deltas with `::assert{ foundClue(...) }` and bumps a scalar
+counter the quest gates on.
+
+The last line, *"Both threads pull toward one name"*, deliberately carries
+**no** guard. `when="holds(points(blake))"` would be redundant: both clues are
+asserted on the only route through this shot and `implicates(ledger, blake)` is
+a seed, so the rule derives `points(blake)` before the line on every
+playthrough — and `check-project` proves exactly that kind of claim (step 8).
 
 ## 5. The interrogation hub
 
-`scenes/interview.lute` is sequenced `after:` the crime scene and uses a revisit
-`<hub>` whose first two choices press the clues the crime scene logged:
+Create `scenes/interview.lute`:
 
-```lute
+```lute check="docs/examples/investigation/scenes/interview.lute"
+---
+kind: scene
+luteVersion: "0.26.0"
+id: detective.s01ep02
+title: The Interview Room
+# Comes after the crime scene.
+after: 'visited("detective.s01ep01")'
+uses: ../world.schema.yaml
+---
+
+## The Interview Room
+
+@narrator: Three chairs, one table, and the smell of cold coffee.
+
 <hub id="interrogate">
   <choice id="pressLedger" label="Press them on the ledger">
     @detective: These numbers were bled dry. Explain them.
@@ -969,26 +1451,50 @@ rule derives `points(blake)` before the line on every playthrough — and
     @detective: We're done here. For now.
   </choice>
 </hub>
+
+## Reading the Room
+
+<match on="run.suspectFocus">
+  <when is="blake">
+    @detective{mono}: Blake keeps surfacing. A thread worth pulling.
+  </when>
+  <when is="cass">
+    @detective{mono}: Cass, then — the quiet ones keep the best books.
+  </when>
+  <when is="dana">
+    @detective{mono}: Dana. I'm not convinced, but I'll note it.
+  </when>
+</match>
 ```
 
-`leave` is the unguarded `exit` that satisfies the no-dead-end guarantee — every
-hub must offer a way out. See [choices & hubs](/language/choices-and-hubs/).
+The interview is sequenced `after:` the crime scene (step 7) and uses a revisit
+`<hub>` whose first two choices press the clues the crime scene logged. `leave`
+is the unguarded `exit` that satisfies the no-dead-end guarantee — every hub
+must offer a way out. See [choices & hubs](/language/choices-and-hubs/). After
+the hub, a `<match>` reads the `run.suspectFocus` the choices wrote; it covers
+every member of the enum, so it needs no `<otherwise>`.
 
 `pressLedger` and `pressLetter` carry no `when="holds(foundClue(…))"` guard for
-the same reason as the line above: the crime scene asserts both clues on its
-only route, and the interview is only reachable `after:` it, so both facts
-already hold whenever this hub runs.
+the same reason as the crime scene's last line: the crime scene asserts both
+clues on its only route, and the interview is only reachable `after:` it, so
+both facts already hold whenever this hub runs.
 
 ## 6. The quest — the goal machine
 
-`quests/identify-killer.lute` gates the case. Completion is derived: the quest
-completes once every non-`optional` objective is `done`.
+Create `quests/identify-killer.lute`:
 
-```lute
-<quest id="identifyKiller" title="Identify the Killer" start="true">
+```lute check="docs/examples/investigation/quests/identify-killer.lute"
+---
+kind: quest
+luteVersion: "0.26.0"
+uses: ../world.schema.yaml
+title: Identify the Killer
+---
+
+<quest id="identifyKiller" tier="run" title="Identify the Killer" start="true">
   <objective id="gatherEvidence" title="Log at least two clues" done="run.cluesLogged >= 2"/>
   <objective id="nameSuspect" title="Name a suspect at the confrontation" done="run.accused != 'none'"/>
-  <objective id="clinchMotive" title="Tie a clue to the accused" done="holds(implicates(ledger, blake))" optional/>
+  <objective id="followClues" title="Let the clues point at a suspect" done="holds(points(blake))" optional/>
 
   <on event="questComplete">
     ::set{ user.solved += 1 }
@@ -997,30 +1503,35 @@ completes once every non-`optional` objective is `done`.
 </quest>
 ```
 
+`start="true"` makes the quest active from the start, and `tier="run"` makes it a
+quest of one playthrough: it resets with every new run. (Without `tier=` a quest is
+user-tier and persists across runs; `check-project` warns `W-QUEST-TIER-IMPLICIT`
+when such a quest reads only run state.) Completion is derived: the
+quest completes once every non-`optional` objective is `done`.
 `gatherEvidence` and `nameSuspect` gate on scalar run state the scenes write, so
-both are statically satisfiable. `clinchMotive` gates on a relational fact
-query — hold that thought for step 8.
+both are statically satisfiable. The optional `followClues` gates on a
+relational fact query over the derived `points` — hold that thought for step 8.
 
-## 7. Sequencing with `after:`
+## 7. The confrontation, and sequencing with `after:`
 
-The three scenes form a chain. `interview.lute` declares:
+Create `scenes/confrontation.lute`:
 
-```yaml
-after: 'visited("detective.s01ep01")'
-```
-
-and `confrontation.lute` declares:
-
-```yaml
+```lute check="docs/examples/investigation/scenes/confrontation.lute"
+---
+kind: scene
+luteVersion: "0.26.0"
+id: detective.s01ep03
+title: The Confrontation
+# Comes after the interview.
 after: 'visited("detective.s01ep02")'
-```
+uses: ../world.schema.yaml
+---
 
-That is the whole prerequisite graph: crime-scene → interview → confrontation.
-`confrontation.lute` closes it with a `<branch>` accusation that records the
-pick with the `into=`/`value=` record sugar, then branches the verdict on
-whether the accusation matched the truth:
+## The Confrontation
 
-```lute
+@narrator: Everyone in one room. The detective lays the file on the table.
+@detective{mono}: One name. I only get to say one.
+
 <branch id="accuse">
   <choice id="accuseBlake" label="Accuse Blake" into="run.accused" value="blake">
     @detective: Blake. The ledger and the letter were both yours.
@@ -1032,50 +1543,98 @@ whether the accusation matched the truth:
     @detective: Dana. You were never as far away as you claimed.
   </choice>
 </branch>
+
+## The Verdict
+
+@narrator{when="run.accused == run.trueKiller"}: The cuffs close on the right wrists. Case closed.
+@detective{mono when="run.accused == run.trueKiller"}: Booked. The file can finally rest.
+@narrator{when="run.accused != run.trueKiller"}: The wrong suspect walks free. Somewhere, the real one exhales.
+@detective{mono when="run.accused != run.trueKiller"}: I got it wrong. The file stays open.
+```
+
+The three scenes form a chain. `interview.lute` declares
+`after: 'visited("detective.s01ep01")'` and `confrontation.lute` declares
+`after: 'visited("detective.s01ep02")'`, each naming the previous scene by its
+`id:`. That is the whole prerequisite graph: crime-scene → interview →
+confrontation. `after:` states what must come first; it does not move a player
+from one scene to the next.
+
+The confrontation closes the chain with a `<branch>` accusation that records the
+pick into `run.accused` with the `into=`/`value=` record sugar. The verdict
+lines then branch on whether the accusation matched `run.trueKiller`: a pair of
+complementary `when=` guards, so exactly one of the success or failure ending
+plays.
+
+Your folder now holds the whole story:
+
+```text
+investigation/
+├── lute.project.yaml
+├── world.schema.yaml
+├── quests/
+│   └── identify-killer.lute
+└── scenes/
+    ├── confrontation.lute
+    ├── crime-scene.lute
+    └── interview.lute
 ```
 
 ## 8. Check the whole project
 
 ```sh
-cargo run -q -p lute-cli -- check-project docs/examples/investigation
+lute check-project .
 ```
 
 Exit `0`, and nothing to report — no errors, no warnings:
 
 ```
-ok: docs/examples/investigation/quests/identify-killer.lute (0 warning(s))
-ok: docs/examples/investigation/scenes/confrontation.lute (0 warning(s))
-ok: docs/examples/investigation/scenes/crime-scene.lute (0 warning(s))
-ok: docs/examples/investigation/scenes/interview.lute (0 warning(s))
-ok: docs/examples/investigation (4 file(s), 0 project-wide warning(s))
+ok: ./quests/identify-killer.lute (0 warning(s))
+ok: ./scenes/confrontation.lute (0 warning(s))
+ok: ./scenes/crime-scene.lute (0 warning(s))
+ok: ./scenes/interview.lute (0 warning(s))
+ok: . (4 file(s), 0 project-wide warning(s))
 ```
 
 That silence is a proof, not an absence of one. `check-project` decides every
 relational fact query (`holds(…)`, `count(…)`) in every guard: **impossible**
 (no seed, assert, rule, or engine relation can produce the fact), **guaranteed**
 (it holds on every declared route to the guard), or **possible** — the normal
-case for a guard, and silent. Put the guards back to see it: give `pressLedger`
+case for a guard, and silent. Put the guards back to see it. In
+`scenes/interview.lute`, give `pressLedger` the guard
 `when="holds(foundClue(ledger))"`, and give `pressLetter` a guard on a clue
 nobody ever logs, `when="holds(foundClue(knife))"`:
 
+```lute
+  <choice id="pressLedger" label="Press them on the ledger" when="holds(foundClue(ledger))">
+```
+
+```lute
+  <choice id="pressLetter" label="Press them on the letter" when="holds(foundClue(knife))">
+```
+
+Run `lute check-project .` again. It now exits `1`, and among its output are
+these two project-wide diagnostics:
+
 {/* lute-diagnostics */}
 ```
-docs/examples/investigation/scenes/interview.lute:31:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (docs/examples/investigation/scenes/crime-scene.lute:28) (dsl 0.20.0 §5)
+./scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (./scenes/crime-scene.lute:15) (dsl 0.20.0 §5)
 ```
 
 {/* lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" */}
 ```
-docs/examples/investigation/scenes/interview.lute:36:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes (dsl 0.20.0 §5)
+./scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes (dsl 0.20.0 §5)
 ```
 
 The first guard can never close — the crime scene asserts the fact on its only
 route, and the interview is only reachable `after:` it — so the warning names
 the assert that settles it. The second can never open, so the choice is dead
-code and the project fails. The quest's `clinchMotive` objective is decided the
-same way: `implicates(ledger, blake)` is a seed nothing retracts, so the
-objective is satisfiable; name a fact nothing produces and it becomes
-`E-OBJECTIVE-UNSATISFIABLE`. (A `done` is a predicate rather than a guard, so an
-always-true one is never flagged as redundant.)
+code and the project fails. Remove both guards again before you go on.
+
+The quest's `followClues` objective is decided the same way: `points(blake)`
+follows from the crime scene's asserts and a seed fact, so the objective can
+complete; give it a fact nothing produces, such as `holds(foundClue(knife))`,
+and it becomes `E-OBJECTIVE-UNSATISFIABLE`. (A `done` is a predicate rather
+than a guard, so an always-true one is never flagged as redundant.)
 
 The analysis needs every document at once — an assert in a sibling scene is
 invisible to one file — so it runs in `check-project` only; a single-file
@@ -1086,14 +1645,14 @@ for the full model.
 ## 9. Reachability & the scene graph
 
 `lute scenario` reports pure graph structure over the declared `after:` routes —
-no CEL, no Datalog:
+no CEL, no Datalog. Ask about the last scene by its `id:`:
 
 ```sh
-cargo run -q -p lute-cli -- scenario docs/examples/investigation reach detective.s01ep03
+lute scenario . reach detective.s01ep03
 ```
 
 ```
-project root: docs/examples/investigation
+project root: .
 reach scene(detective.s01ep03):
   verdict: Reachable — a satisfiable route exists under your declared routes.
   after: visited("detective.s01ep02")
@@ -1108,21 +1667,27 @@ See [reachability](/connectivity/reachability/).
 ## 10. Trace both endings
 
 `lute trace` walks **one** document along **one** deterministic, mock-driven
-path — a preview, not a proof of all paths. Both mocks drive the confrontation
-scene: they seed the truth and force the `accuse` branch to a different choice.
+path — a preview, not a proof of all paths. A mock is a small YAML file that
+names the document it previews (`file:`, relative to the mock), seeds state,
+and forces choices. Both mocks drive the confrontation scene: they seed the
+truth and force the `accuse` branch to a different choice.
 
-The two mocks are tiny:
+Create `mocks/accuse-correctly.yaml`:
 
 ```yaml
-# mocks/accuse-correctly.yaml
+# Preview the confrontation: accuse the RIGHT suspect.
+file: ../scenes/confrontation.lute
 state:
   run.trueKiller: blake
 choose:
   accuse: accuseBlake
 ```
 
+and `mocks/accuse-wrongly.yaml`:
+
 ```yaml
-# mocks/accuse-wrongly.yaml
+# Preview the confrontation: accuse the WRONG suspect.
+file: ../scenes/confrontation.lute
 state:
   run.trueKiller: blake
 choose:
@@ -1132,71 +1697,154 @@ choose:
 Accuse the **right** suspect → the success ending:
 
 ```sh
-cargo run -q -p lute-cli -- trace docs/examples/investigation/scenes/confrontation.lute \
-  --mock docs/examples/investigation/mocks/accuse-correctly.yaml
+lute trace scenes/confrontation.lute --mock mocks/accuse-correctly.yaml
 ```
 
 ```
-trace: docs/examples/investigation/scenes/confrontation.lute  (seeds: 1 paths, 0 facts; 1 selection)
-note: the schema declares seed facts (e.g. `implicates`) but trace does not auto-load them (§3.1, the explicit-world model) — supply seeded relations explicitly via --fact
-  ## Shot 1.
+trace: scenes/confrontation.lute  (seeds: 1 paths, 0 facts; 1 selection)
+  ## The Confrontation
     @narrator  Everyone in one room. The detective lays the file on the table.
-    @detective  One name. I only get to say one.
+    @detective{mono}  One name. I only get to say one.
   <branch accuse>   eligible: accuseBlake, accuseCass, accuseDana   -> accuseBlake
     @detective  Blake. The ledger and the letter were both yours.
     ::set  run.accused = blake  (into sugar)
-  ## Shot 2.
-  <match run.accused == run.trueKiller>   -> arm 1 ((run.accused == run.trueKiller))
+  ## The Verdict
+  <match run.accused == run.trueKiller>   -> arm 1 ($)
     @narrator  The cuffs close on the right wrists. Case closed.
-  <match run.accused == run.trueKiller>   -> arm 1 ((run.accused == run.trueKiller))
-    @detective  Booked. The file can finally rest.
+  <match run.accused == run.trueKiller>   -> arm 1 ($)
+    @detective{mono}  Booked. The file can finally rest.
   <match run.accused != run.trueKiller>   -> otherwise
   <match run.accused != run.trueKiller>   -> otherwise
-trace complete: 5 decisions; choices 1/3 (accuse), arms 1/2 (run.accused != run.trueKiller), arms 1/2 (run.accused == run.trueKiller)
+trace complete: 5 decisions; choices 1/3 (accuse), arms 1/2 (run.accused == run.trueKiller @30:1), arms 1/2 (run.accused == run.trueKiller @31:1), arms 1/2 (run.accused != run.trueKiller @32:1), arms 1/2 (run.accused != run.trueKiller @33:1)
 ```
 
-Accuse the **wrong** suspect → the failure ending. Same document, same seeded truth, one different
-forced choice:
+Accuse the **wrong** suspect → the failure ending. Same document, same seeded
+truth, one different forced choice:
 
 ```sh
-cargo run -q -p lute-cli -- trace docs/examples/investigation/scenes/confrontation.lute \
-  --mock docs/examples/investigation/mocks/accuse-wrongly.yaml
+lute trace scenes/confrontation.lute --mock mocks/accuse-wrongly.yaml
 ```
 
 ```
+trace: scenes/confrontation.lute  (seeds: 1 paths, 0 facts; 1 selection)
+  ## The Confrontation
+    @narrator  Everyone in one room. The detective lays the file on the table.
+    @detective{mono}  One name. I only get to say one.
   <branch accuse>   eligible: accuseBlake, accuseCass, accuseDana   -> accuseCass
     @detective  Cass. You balanced these books in blood.
     ::set  run.accused = cass  (into sugar)
-  ## Shot 2.
+  ## The Verdict
   <match run.accused == run.trueKiller>   -> otherwise
   <match run.accused == run.trueKiller>   -> otherwise
-  <match run.accused != run.trueKiller>   -> arm 1 ((run.accused != run.trueKiller))
+  <match run.accused != run.trueKiller>   -> arm 1 ($)
     @narrator  The wrong suspect walks free. Somewhere, the real one exhales.
-  <match run.accused != run.trueKiller>   -> arm 1 ((run.accused != run.trueKiller))
-    @detective  I got it wrong. The file stays open.
+  <match run.accused != run.trueKiller>   -> arm 1 ($)
+    @detective{mono}  I got it wrong. The file stays open.
+trace complete: 5 decisions; choices 1/3 (accuse), arms 1/2 (run.accused == run.trueKiller @30:1), arms 1/2 (run.accused == run.trueKiller @31:1), arms 1/2 (run.accused != run.trueKiller @32:1), arms 1/2 (run.accused != run.trueKiller @33:1)
 ```
 
-(Second transcript trimmed to the point of divergence.) Both traces exit `0` — a complete walk —
-and the `note:` is the explicit-world model showing its work: `trace` will not silently load the
-schema's seed facts for you, so a fact-gated line needs `--fact`. See the
-[tracing guide](/tooling/tracing/) for every mock surface.
+The `##` lines are the scene's shot headings. Each guarded verdict line shows up
+as a `<match>` step: `arm 1` when its `when=` held and the line played,
+`otherwise` when it did not. Both traces exit `0` — a complete walk — and reach
+visibly different endings. Trace also loads the schema's seed facts and applies
+its rule by default, so a fact-gated line would be decided with no extra flags;
+these endings turn only on run state. See the [tracing guide](/tooling/tracing/)
+for every mock surface and [derivation](/tooling/tracing/#derivation).
 
-## 11. Compile
+## 11. Pin both endings with tests
+
+A trace is something you read; a scenario test asserts it. `lute test` runs
+every `*.test.yaml` under the folder: each names a document (`file:`, relative
+to the test), takes the same seeds and forced choices as a mock, and adds an
+`expect:` block. Create three tests. `tests/accuse-correctly.test.yaml`:
+
+```yaml
+# Accuse the RIGHT suspect: the success ending plays.
+file: ../scenes/confrontation.lute
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseBlake
+expect:
+  exit: complete
+  transcriptContains:
+    - "The cuffs close on the right wrists. Case closed."
+    - "Booked. The file can finally rest."
+  state:
+    run.accused: blake
+```
+
+`tests/accuse-wrongly.test.yaml`:
+
+```yaml
+# Accuse the WRONG suspect: the failure ending plays.
+file: ../scenes/confrontation.lute
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseCass
+expect:
+  exit: complete
+  transcriptContains:
+    - "The wrong suspect walks free. Somewhere, the real one exhales."
+    - "I got it wrong. The file stays open."
+  state:
+    run.accused: cass
+```
+
+and `tests/interview-press-ledger.test.yaml`, which walks the hub — press the
+ledger, then leave — and checks where the `<match>` went:
+
+```yaml
+# The interview: press the ledger, then leave.
+file: ../scenes/interview.lute
+choose:
+  interrogate: [pressLedger, leave]
+expect:
+  exit: complete
+  transcriptContains:
+    - "These numbers were bled dry. Explain them."
+    - "Blake keeps surfacing. A thread worth pulling."
+  state:
+    run.suspectFocus: blake
+    run.leadStrength: 1
+```
+
+```sh
+lute test
+```
+
+```
+lute: note: scenario tests use project . (nearest lute.project.yaml); pass --project to choose another
+PASS  ./tests/accuse-correctly.test.yaml  (./tests/../scenes/confrontation.lute)
+PASS  ./tests/accuse-wrongly.test.yaml  (./tests/../scenes/confrontation.lute)
+PASS  ./tests/interview-press-ledger.test.yaml  (./tests/../scenes/interview.lute)
+
+3 passed, 0 failed
+```
+
+Exit `0` when every test passes and `1` when any expectation fails, naming what
+was expected and what the walk produced. The note says which project the tests
+resolved against; `lute test --project .` names it and silences the note. See
+[`lute test`](/tooling/cli/#test) for every expectation.
+
+## 12. Compile
 
 Once a document checks clean it compiles to its JSON command-record artifact:
 
 ```sh
-cargo run -q -p lute-cli -- compile docs/examples/investigation/scenes/crime-scene.lute \
-  --project docs/examples/investigation -o /tmp/crime-scene.json
+lute compile scenes/crime-scene.lute --project . -o crime-scene.json
 ```
 
-Exit `0`; the artifact is stamped `"lute": "0.26.0"` / `"irVersion": "0.26.0"`.
-Every document in the project compiles. That artifact — not the source — is what
-an engine plays through the [runtime contract](/tooling/runtime-contract/).
+Exit `0`; `crime-scene.json` is stamped `"lute": "0.26.0"` /
+`"irVersion": "0.26.0"`. Every document in the project compiles. That artifact —
+not the source — is what an engine plays through the
+[runtime contract](/tooling/runtime-contract/).
 
 ## Where to go next
 
-- Automate this whole loop with [scenario tests](/tooling/cli/) (`*.test.yaml`) so both endings stay pinned as your project grows.
+- Play several scenes in order as one story with `lute play`: [Connect scenes into a story](/getting-started/connect-scenes/).
+- Scaffold the larger whodunit with `lute init --template investigation` and compare it with what you built here.
 - Trace the machine-driven version of check → fix in the [AI harness guide](/tooling/ai-harness/).
 - Pick a role-first reading order from the [learning paths](/getting-started/learning-paths/).
 
@@ -1216,6 +1864,95 @@ Honest selection guidance. Lute is the author-time half of a narrative game — 
 
 Every construct on one page, as snippets you can copy. Each `lute` block below is compile-checked in CI
 against the real toolchain, and a link after each section goes to the full page.
+
+## Writer's card
+
+What you need to write a story and play it, on one screen. The rest of the page starts at
+[Project layout](#project-layout) and covers every construct in full.
+
+```lute
+---
+kind: scene
+id: cafe.counter
+on: chapter
+after: 'visited("cafe.arrival")'
+priority: 10
+when: "run.tips == 0"
+state:
+  run.tips: { type: number, default: 0 }
+  run.mood: { type: { enum: [calm, tense] }, default: calm }
+---
+
+## Counter
+
+@narrator: The espresso machine hisses.
+@mira: The usual?
+@fixer{mono}: She remembered.
+@mira{os}: One moment!
+
+<branch id="order" prompt="What will you have?">
+  <choice id="tea" label="Tea, and a tip">
+    ::set{run.tips += 5}
+    @mira: Thank you!
+  </choice>
+  <choice id="nothing" label="Nothing tonight">
+    ::set{run.mood = 'tense'}
+    @mira: Suit yourself.
+  </choice>
+</branch>
+
+<match on="run.mood">
+  <when is="calm">
+    @mira: Stay as long as you like.
+  </when>
+  <when is="tense">
+    @mira: We close at ten.
+  </when>
+</match>
+```
+
+- `@speaker: text` is a line, and `@narrator` narrates. `{mono}` is a thought, `{os}` off-screen,
+  `{vo}` voiceover. Content sits under a `## Heading`. → [Lines, cast & staging](#lines-cast--staging)
+- `<branch>` is a menu of `<choice>`s. → [Choices, hubs, jumps & endings](#choices-hubs-jumps--endings)
+- `<match on>` picks the first `<when is>` arm that fits. → [Match & when](#match--when)
+- `::set{…}` writes state declared under `state:`. → [State writes & facts](#state-writes--facts)
+- `on:` makes the scene answer an occasion, here `chapter`: any name works until a plugin declares
+  occasions. `after:` orders it after another scene, `priority:` wins a tie, and `when:` gates it on
+  state. → [Beats](#beats-scenes-and-entries-that-answer-occasions) ·
+  [Connect scenes into a story](/getting-started/connect-scenes/)
+
+A test walks one scene; a play raises the occasion through the whole project, once per step:
+
+```yaml
+# tests/counter.test.yaml
+file: ../scenes/counter.lute        # relative to this test file
+visited: [cafe.arrival]             # the after: route this walk assumes
+choose: { order: tea }
+expect:
+  state: { run.tips: 5 }
+  transcriptContains: ["@mira: Stay as long as you like."]
+  exit: complete
+```
+
+```yaml
+# plays/story.play.yaml: cafe.arrival answers `chapter` first, then cafe.counter
+choose: { order: nothing }
+steps:
+  - occasion: chapter
+    expect: { winner: cafe.arrival }
+  - occasion: chapter
+    expect: { winner: cafe.counter }
+expect:
+  transcriptContains: ["@mira: We close at ten."]
+```
+
+```console
+$ lute check-project .                              # every document, and the project as a whole
+$ lute test .                                       # every *.test.yaml, and every play with an expect:
+$ lute play . --script plays/story.play.yaml        # the transcript of one playthrough
+```
+
+→ [Tests and plays](#cli) · [Playing a story](/tooling/play/)
 
 ## Project layout
 
@@ -1645,9 +2382,11 @@ rules:
 @hollis{when="holds(witness(hollis))"}: I was there.
 ```
 
-- `per: companion` declares `run.approval.<member>` for each member. Content names a member;
-  only a rule `cel()` guard indexes the family with a variable a positive atom binds
-  (`run.approval[P]`), and such a rule compiles to one instance per member.
+- `per: companion` declares `run.approval.<member>` for each member. Content names a member.
+  Two places index the family instead: a rule `cel()` guard, with a variable a positive atom binds
+  (`run.approval[P]`; such a rule compiles to one instance per member), and a component's
+  `::set`, with a param (`run.approval[@who]`, checked at each `::use`: see
+  [Components](#components-extends--params)).
 - `_` in a rule body is a fresh anonymous variable (under `not`, "no such tuple at all"). It is
   still an error in a rule head (`E-DATALOG-PARSE`) and in a comparison.
 - `countDistinct(sawAt(W, _), W)` counts distinct values of one position, where `count(…)`
@@ -2233,8 +2972,10 @@ A component that declares `effects: true` (0.24.0) may `::set`, `::assert`, and 
 params in fact atoms (`::assert{gifted(@who, @item)}`; each `::use` binds them, and a non-constant
 argument is `E-COMPONENT-ARG`; a `@param` in a fact outside a component is `E-FACT-DOMAIN`). Each
 write is checked at every `::use` against the host's schema and compiles where the `::use` sits. A
-`speaker` param takes a cast id (`E-CAST-UNKNOWN` outside a declared cast): `{{@who}}` renders the
-cast `name`, while `<match on="@who">` and directive attributes (`::battle{foe=@who}`) see the id.
+param also picks the member of a [`per:`](#state-writes--facts) family, `run.approval[@who]`: each
+`::use` writes the member its argument names, and an argument that is not a member of the family's
+kind is `E-COMPONENT-ARG`. A `speaker` param takes a cast id (`E-CAST-UNKNOWN` outside a declared
+cast): `{{@who}}` renders the cast `name`, while `<match on="@who">` and directive attributes (`::battle{foe=@who}`) see the id.
 Since 0.26.0 a line's `as=@who` label shows the cast name too, as `{{@who}}` does.
 
 ```lute
@@ -2253,14 +2994,7 @@ state:
 ## Praise
 
 @narrator: {{@who}} approves.
-<match on="@who">
-  <when is="isolde">
-    ::set{run.approval.isolde += @delta}
-  </when>
-  <otherwise>
-    ::set{run.approval.corvin += @delta}
-  </otherwise>
-</match>
+::set{run.approval[@who] += @delta}
 ```
 
 Guards and match subjects in the body still cannot read state (`E-COMPONENT-STATE`), and without
@@ -2354,7 +3088,7 @@ timed pause.
 | `lute scenario <dir> [reach <node> \| envelope <node> \| knowledge [--for <node>]] [--facts] [--format text\|json\|dot]` | The `after:` graph, reachability, and guaranteed state and facts. A node is a scene id, `quest:<id>`, or a bundle beat's canonical id (bare or `beat:<doc>.<beat>`; drawn as an edgeless entry node). `knowledge` (0.23.0) traces every fact-guarded beat, entry, and objective to the relations it queries and each relation to its producers through the rules: asserting documents, seed facts, the engine (`reserved`), or no producer, and names what can defeat a negated premise. Its `--for` also takes an entry id or `<quest>.<objective>`. Since 0.24.0 it covers every guard slot, reads a kind atom as membership (``suitor(sol) — entity kind `suitor`; sol is a member``), and names what a rule's `cel()` premise reads; since 0.26.0 it traces a rule's `count(…)` premise to the producers of the facts it counts. `--facts` (0.26.0) also draws fact-producer edges (`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`; `--format json`: `factEdges`, `dot`: dotted). |
 | `lute beats <dir> [--occasion o] [--target t] [--json] [--expand]` | 0.23.0. Each occasion's (and target's) beat ladder in selection order, with priority, `once` (including bundle beats' `day` / `slot`), `also`, `after:`, `when` (a `@def` as written; `--expand` expands it), title, and the `check-project` verdicts (unreachable, shadowed, tied, once-run-user). The project need not check clean. Since 0.26.0 a fallback that an earlier, never-spent beat whose `when` it implies always beats shows `covered by <id>` (`--json`: `coveredBy`), a kind-target beat gets a `kind:<kind>` ladder, and `--target` takes any member. |
 | `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. Every value of a directive attribute (`give.item`) or every reward target of a kind, with the documents and lines using it; a value passed through a component is listed at its `::use` (`via component <name>`), a reward without a target as `(no target)`. Who gives what, before a merge. |
-| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds(awake(toma))=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis clock=1..3] [--occasion o[@target \| @clock.day[,clock.slot=night]]] [--target t] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name. 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion dusk@clock.day` (or `@run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--facts at` prints who is where per cell. |
+| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds(awake(toma))=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis clock=1..3] [--occasion o[@axis[=value],…]] [--target t] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name; `--target mon.inchlet` names one instead (the `@` of `--occasion` takes axes, not targets). 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion dusk@clock.day` (or `@run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--facts at` prints who is where per cell. |
 | `lute lore <dir>` | Entries and beats by target and series, and which facts they reveal. |
 | `lute context <file> [--project <dir>]` | Everything legal to write here: directives (built-ins included), vocabulary, state (marking `owner: engine`), defs, relations with their tier and `reserved`, occasions with target domains, the cast, component signatures, and every scene, quest, and entry id. |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | Advisory editorial lints (`L-*`), configured per project. The linear-VN metrics skip beats, components, quests, and lore. Since 0.26.0 it also reports `W-DISPLAY-NAME-DUP` (`--deny W-DISPLAY-NAME-DUP` accepts the code). |
@@ -2502,10 +3236,14 @@ expect:                                 # judged at the end; a miss exits 1
   anything plays, then settles the quest lifecycle, so a write can complete a quest on the spot. It
   refuses `quest.*`: a quest's status is the lifecycle's, seeded with `quests:`. `newRun` takes the
   same `state:` and `facts:` as the new run's seed.
-- `target`, `pick`, and `choose` belong to an `occasion` step; `label` goes on any step, and `repeat`
-  on any but `end`. A step `expect:` takes `winner` (`none` when the occasion passes), `offered` (a subset
-  of the eligible beats), `notOffered`, and `presented` (0.23.0: the exact ids presented, in order)
-  on an `occasion` step, and `quests`, `state`, `facts`, `notFacts` (0.23.1) and `clock` (0.26.0:
+- `target` belongs to an `occasion` step, and `pick` and `choose` to an `occasion` or `advance`
+  step; `label` goes on any step, and `repeat` on any but `end`. An `include:` step is the
+  exception: it names only its file, with no `label`, `repeat`, or `expect`. A step `expect:` takes
+  `winner` (`none` when the occasion passes), `offered` (a subset of the eligible beats),
+  `notOffered`, and `presented` (0.23.0: the exact ids presented, in order) on an `occasion` step,
+  and on an `advance` step, where `winner`, `offered`, and `notOffered` judge the raise where the
+  clock stops and `presented` lists every beat the step presented, `dayStart` / `dayEnd` raises
+  first; it takes `quests`, `state`, `facts`, `notFacts` (0.23.1) and `clock` (0.26.0:
   `{ weekday, slot, day }`, any of them) on any step but `end`. A miss names the step and both
   values. A step with `target:` also judges that target's `<objective on target>`. A winner or
   `pick:` names an entry by its id or (0.26.0) `<doc>.<entry>`.
@@ -2564,7 +3302,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-SET-TYPE` / `E-REF-TYPE` / `E-ATTR-TYPE` | A value has the wrong type for its slot, often a quoted `"@def"` in a directive, or a `@def` bound to a component `string` param the component interpolates. |
 | `E-ATTR-DEF-DYNAMIC` | A directive attribute takes a `@def` that reads state. An attribute value must be a constant; branch with `<match>`. |
 | `E-INTERP-DEF` | A `{{@def}}` whose body cannot be inlined into one expression (an expansion cycle, or a body that reads `$`). |
-| `E-ATTR-QUOTE` | An attribute value in single quotes. Use `"…"`, and write a `"` inside it as `\"`. |
+| `E-ATTR-QUOTE` | An attribute value in single quotes, or in curly quotes (`“…”`, `‘…’`) a word processor typed. Use straight `"…"`, and write a `"` inside it as `\"`. |
 | `E-DEF-DECL` | A def is malformed: its type cannot be inferred, it has `params:` without `type:`, or it has an unknown key. |
 | `E-OBJECTIVE-MISSING-DONE` / `E-OBJECTIVE-QUEST-DONE` | An objective has no `done`, or has both `quest=` and `done=`. |
 | `E-QUEST-TIER-MIX` | A subquest's `tier` differs from its parent's. Give both the same tier: a mixed tree locks for good once a new run resets only one side. |
@@ -2754,7 +3492,8 @@ quoted `zoom="@closeUp"` is the literal string `@closeUp` (`E-ATTR-TYPE` on a nu
 def that reads state is `E-ATTR-DEF-DYNAMIC`.
 
 **Attribute values use double quotes.** `label='"Hi."'` is `E-ATTR-QUOTE`. Write
-`label="\"Hi.\""`; the label is `"Hi."`.
+`label="\"Hi.\""`; the label is `"Hi."`. Curly quotes pasted from a word processor
+(`label=“Hi”`) are `E-ATTR-QUOTE` too: retype them as straight `"`.
 
 **Numbers are real numbers in `<match>`.** `is="1..9"` followed by `is="10.."` does not cover
 `9.5`. Add an `<otherwise>`, or use open ranges that meet.
@@ -3018,8 +3757,9 @@ entities:
   did-you-mean, and so is an `add:` onto an `open:` kind or beside `members:` / `open:` in the same
   entry.
 
-Like the other schema errors, these are reported once, at the schema line, and folded
-(`(+N more callers)`) instead of once for every document that imports the schema.
+Like the other schema errors, `check-project` reports these once, as a project-wide line at the
+schema line ending `(imported by N documents)`, instead of once for every document that imports the
+schema; the importing documents themselves stay `ok`.
 
 <!-- lute-diagnostics -->
 ```
@@ -5453,6 +6193,13 @@ and using it there is `E-ATTR-DEF-DYNAMIC`. Branch instead, with a literal in ea
 </match>
 ```
 
+That advice is for a directive attribute. A component enum param takes the def directly, even one
+that reads state: `::use{component="greet" tier=@mood}` hands the def to the component, whose
+`<match on="@tier">` dispatches on it at run time, so there is nothing to branch around (see
+[Reusable content components](/language/components-and-extends/#reusable-content-components)). Only
+a component that puts the param into a directive attribute of its own meets `E-ATTR-DEF-DYNAMIC`
+again, reported at the `::use`.
+
 In content text, `{{@name}}` renders the def's value: the artifact carries the def body with the
 placeholder, and the engine evaluates it like any guard. A def whose body cannot be inlined into one
 expression (an expansion cycle, or a body that reads `$`) is `E-INTERP-DEF`. A def body gets the same
@@ -5617,12 +6364,14 @@ page: [Lore entries](/language/lore-entries/).
 
 ## Scenes and `after:`
 
-A scene is one episode — the frontmatter identity triple (`character`/`season`/`episode`) plus its
-shots. Scenes are *sequenced* with the frontmatter key **`after:`**, which declares the routes the
-checker and `lute scenario` assume reach this scene. It is advisory ordering metadata, not a jump.
+A scene is one episode — a frontmatter `id:` that names it project-wide, plus its shots. (Older
+scenes name themselves with `character`/`season`/`episode` instead, and the name is built as
+`{character}.{episodeId}`; that still works, but new scenes use `id:`.) Scenes are *sequenced* with the frontmatter key **`after:`**, which declares the routes the
+checker and `lute scenario` assume reach this scene. It is advisory ordering metadata, not a jump:
+to have scenes actually play one after another, see [Connect scenes into a story](/getting-started/connect-scenes/).
 Its vocabulary is exactly three predicates combined with `&&` / `||`:
 
-- `visited("<sceneKey>")` — true once the player has seen that scene (key = `{character}.{episodeId}`);
+- `visited("<id>")` — true once the player has seen the scene with that `id:`;
 - `completed("<questId>")` — true once that quest is finished;
 - `active("<questId>")` — true once that quest has been taken up and not yet resolved.
 
@@ -5649,7 +6398,7 @@ A quest document declares `kind: quest` and carries `uses:` for the schema it ga
 one or more `<quest>` declarations — quests forbid `<hub>`, `<timeline>`, and `#`/`##` headings.
 
 ```lute
-<quest id="rescueHalsinGrove" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
+<quest id="rescueHalsinGrove" tier="run" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
   <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
   <objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed"/>
 
@@ -5739,7 +6488,7 @@ a frontmatter key — the one place this page's opening heading, "Scenes and
 `after:`", does not apply:
 
 ```lute
-<quest id="manifestGap" title="The Manifest Gap" start="true" after="visited('haven.s01ep06') && completed('whoWakes')">
+<quest id="manifestGap" tier="run" title="The Manifest Gap" start="true" after="visited('haven.s01ep06') && completed('whoWakes')">
   <objective id="reconcile" title="Reconcile the count" done="true"/>
 </quest>
 ```
@@ -6106,7 +6855,7 @@ are unchanged, and authored `done=` and subquest `quest=` objectives mix
 freely in one parent.
 
 ```lute
-<quest id="saveTheGrove" title="Save the Grove" start="run.act == 1">
+<quest id="saveTheGrove" tier="run" title="Save the Grove" start="run.act == 1">
 <objective id="halsin" title="Find Halsin" quest="findHalsin"/>
 <objective id="ritual" title="Stop the ritual" quest="stopRitual"/>
 <objective id="scout" title="Scout the perimeter" quest="scoutPerimeter" optional/>
@@ -6808,8 +7557,11 @@ may not read the scene's own `scene.*` state. That state does not exist until th
 `active` that [connectivity](/connectivity/scene-graph/) analyzes. A beat is eligible only when
 **both** `after:` and `when` hold, so put route order in `after:` and state conditions in `when`.
 
-A scene without `on:` is reached by explicit flow, as before. `when`, `target`, `priority`, `once`,
-`also`, or `share` without `on` is an error:
+A scene without `on:` answers no occasion, so no occasion presents it: your engine starts it
+itself, by its scene id, the way it started every scene before occasions existed. `lute trace` and
+`lute run` walk such a scene on its own, and `lute play` never presents it. To chain scenes into a
+story you can play with `lute play`, see [Connect scenes into a story](/getting-started/connect-scenes/).
+`when`, `target`, `priority`, `once`, `also`, or `share` without `on` is an error:
 
 ```lute
 ---
@@ -7293,10 +8045,13 @@ and writes one beat per tier, in a lore document `contest`:
   take a kind target alike, and it counts as a read of the kind, so the kind draws no
   `W-DOMAIN-UNREAD`.
 - **`occasion.target`.** In the beat's `when`, its guards, and its text, `occasion.target` is the
-  member the occasion was raised for (`inchlet` for `mon.inchlet`), typed by the kind. A
+  member the occasion was raised for (`inchlet` for `mon.inchlet`), typed by the kind. It is a
+  value you compare (`occasion.target == 'inchlet'`) or match on: a
   `<match on="occasion.target">` checks its arms against the kind's members, and needs no `unset`
-  arm, because the engine always assigns it. The value lasts for that presentation only. Reading
-  `occasion.target` in a beat or entry that does not target a kind is `E-UNDECLARED`.
+  arm, because the engine always assigns it. It cannot yet stand in for a member name, so a fact
+  query or a `per:` family does not take it: see [Asking about the member](#asking-about-the-member).
+  The value lasts for that presentation only. Reading `occasion.target` in a beat or entry that
+  does not target a kind is `E-UNDECLARED`.
 - **Display.** `{{occasion.target}}` compiles to the placeholder
   `{"kind": "occasionTarget", "entityKind": "bugCommon"}`, so an engine can show the member's
   display name. [`lute play`](/tooling/play/) renders the member's cast `name:` when the member is a
@@ -7335,6 +8090,39 @@ in each member's ladder that names a beat of its own, and in a `kind:<kind>` lad
 kind beat names the member in `state: { occasion.target: inchlet }`. The compiled beat carries
 `targetKind: { kind, prefix, members }` on its scene `meta.beat`, its `entry` or `beat` record, and
 its `project.index.json` row.
+
+#### Asking about the member
+
+A fact query's argument is a member name, `_`, or a boolean, and `occasion.target` is none of
+them, so `holds(logged(occasion.target))` is `E-CEL-PROFILE`. A `per:` family is read one member
+by name, so `run.caught[occasion.target]` is `E-UNDECLARED`. To ask a question about the member,
+name each member where you ask it. Compare `occasion.target` beside a query that names the member:
+
+```lute
+<beat id="rareAgain" on="caught" target="kind:bugRare" once="false" priority="5" when="(occasion.target == 'hornbeetle' && holds(logged(hornbeetle))) || (occasion.target == 'bladebug' && holds(logged(bladebug)))">
+  @narrator: That one is in the book already.
+</beat>
+```
+
+or match on the member and ask inside each arm:
+
+```lute
+<beat id="catchRare" on="caught" target="kind:bugRare" once="false">
+  <match on="occasion.target">
+    <when is="hornbeetle">
+      @narrator{when="holds(logged(hornbeetle))"}: Another hornbeetle for the book.
+    </when>
+    <when is="bladebug">
+      @narrator{when="holds(logged(bladebug))"}: Another bladebug for the book.
+    </when>
+  </match>
+  @narrator: A {{occasion.target}}! The nets all around you go still.
+</beat>
+```
+
+A state question reads the member the same way, `run.caught.hornbeetle` in the `hornbeetle` arm.
+When each member needs its own conditions throughout, a beat per member (`target="mon.hornbeetle"`)
+says it more plainly, and it outranks the kind beat at equal priority.
 
 ## What the checker proves
 
@@ -7554,8 +8342,9 @@ Everything wrong with a clock is `E-CLOCK-DECL`:
 Apart from a second clock, which only the project can see, each is reported on the schema, at the line of its `clock:` key, and
 `lute check world.schema.yaml` finds them on its own (the `raise` occasions against the plugins of
 the project the schema sits in; outside a project, any occasion name passes). A document that uses
-the schema carries the same error at its line 1, naming the schema, and `check-project` folds those
-copies into one record (`+N more caller`) with the schema line under it. A clock over a `run.day`
+the schema carries the same error at its line 1 in a single-file `lute check`, naming the schema, with
+the schema line under it. `check-project` instead reports it once, as a project-wide line at the
+schema line ending `(imported by N documents)`, and leaves the importers `ok`. A clock over a `run.day`
 without `owner: engine`:
 
 <!-- lute-diagnostics -->
@@ -8077,8 +8866,8 @@ A def is its CEL body as a string — `helped: "run.choseHelp"` — and its type
 body. Since dsl 0.26.0 §2.7 a body that is a `visited('…')` or `validAt(…)` call infers `bool`, so
 `pierSeen: "visited('south.pier')"` needs no long form. A def with `params:`, or one whose type the
 checker cannot infer, takes the long form `{ type: bool, cel: "…" }`; any other shape is
-`E-DEF-DECL`. For a def in an imported schema, `E-DEF-DECL` is reported once, at the schema line,
-with the other importers folded into `(+N more callers)`, rather than at every importing document.
+`E-DEF-DECL`. For a def in an imported schema, `check-project` reports `E-DEF-DECL` once, at the
+schema line, ending `(imported by N documents)`, rather than at every importing document.
 
 Import paths are resolved **relative to the importing scene file**, so a scene and its schema must
 travel together (copying a scene to `/tmp` without its schema reports `E-USES-NOT-FOUND`).
@@ -8211,6 +9000,17 @@ enums:
 
 `@narrator: Today is {{run.weekday}}.` renders `Today is Sunday.`. A member without a label renders its id (`tue`). Conditions still compare ids: `run.weekday == 'sun'`. A label for something that is not a member is `E-ENUM-LABEL-NOT-MEMBER`, and a label that is not a string is `E-META-VALUE`. A declared [clock](/language/clock/) uses the same mechanism for its weekday names.
 
+`domain:` may also name an [entity kind](/state/facts-and-datalog/#entities-relations-ground-facts) instead of an enum. The path then holds one member of that kind. It is the way to type a position the engine keeps over a map kind, such as the room a stalker is in:
+
+```yaml
+state:
+  run.stalker: { type: { domain: room }, default: chapel, owner: engine }
+entities:
+  room: { members: [chapel, ward, cellar] }
+```
+
+A condition compares it with a member, `run.stalker == 'ward'`, and in a beat that answers a whole kind it compares with the member the occasion was raised for, `run.stalker == occasion.target` (see [Kind targets](/language/beats/#kind-targets)). A `<match on="run.stalker">` covers every member of the kind or has an `<otherwise>` (`E-NONEXHAUSTIVE`). Whether `domain:` names an enum or a kind, a literal must be one of its members: `run.stalker == 'wrd'` is `E-WHEN-LITERAL-DOMAIN` with a did-you-mean, and a `::set` of a non-member into such a path is `E-SET-TYPE`. The path counts as a read of the kind, so the kind draws no `W-DOMAIN-UNREAD`.
+
 ### One path per entity: `per:`
 
 A number kept for each member of a group, such as a companion's approval, is one declaration with **`per:`** (dsl 0.24.0 §3) rather than one line per member:
@@ -8223,7 +9023,7 @@ entities:
   companion: { subsetOf: person, members: [isolde, corvin] }
 ```
 
-This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: number, default: 0 }`, and the compiled state table carries one entry per member. Content addresses a member by name: `::set{run.approval.isolde += 1}`, `when="run.approval.corvin >= 3"`, `{{run.approval.isolde}}`. The family itself is not a path, so `when="run.approval > 1"` is `E-UNDECLARED`, and the message says the path is entity-indexed and asks for a member. A Datalog rule is the one place that reads a member through a variable, `cel("run.approval[P] >= 3")` (see [Facts and Datalog](/state/facts-and-datalog/#entity-indexed-state-in-a-rule-guard)).
+This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: number, default: 0 }`, and the compiled state table carries one entry per member. Content addresses a member by name: `::set{run.approval.isolde += 1}`, `when="run.approval.corvin >= 3"`, `{{run.approval.isolde}}`. The family itself is not a path, so `when="run.approval > 1"` is `E-UNDECLARED`, and the message says the path is entity-indexed and asks for a member. Two places reach a member through something other than its name. A Datalog rule reads it through a variable, `cel("run.approval[P] >= 3")` (see [Facts and Datalog](/state/facts-and-datalog/#entity-indexed-state-in-a-rule-guard)). A component with `effects: true` writes it through a param, `::set{run.approval[@who] += @delta}`: each `::use` writes the member its argument names, and an argument outside the kind is `E-COMPONENT-ARG` (see [Components](/language/components-and-extends/)).
 
 `per:` names a **closed** entity kind, one with `members:`, declared in the same document as the path. A kind declared `open:`, a kind the document does not declare, or a malformed one is `E-STATE-DECL`, because the checker cannot list the paths it would declare. The kind may be a [sub-kind](/state/facts-and-datalog/#sub-kinds-subsetof). Indexing a path by a kind counts as reading the kind, so it draws no `W-DOMAIN-UNREAD`.
 
@@ -8631,7 +9431,7 @@ Before 0.24.0 this passed `check` and then never derived: the guard was evaluate
 
 ### Entity-indexed state in a rule guard
 
-A path declared with [`per:`](/state/state-model/) holds one number per member of a kind. Anywhere else a member is named (`run.approval.isolde`). In a rule `cel()` guard, `run.approval[P]` reads the member bound to the rule variable `P` (dsl 0.24.0 §3):
+A path declared with [`per:`](/state/state-model/) holds one number per member of a kind. A document names the member (`run.approval.isolde`), and a component's `::set` may index it through a param (`run.approval[@who]`, checked at each `::use`; see [the state model](/state/state-model/)). In a rule `cel()` guard, `run.approval[P]` reads the member bound to the rule variable `P` (dsl 0.24.0 §3):
 
 ```lute
 ---
@@ -8922,7 +9722,7 @@ defs:
   helped: { type: bool, cel: "run.choseHelp" }
 ```
 
-Each `<path>` segment is a CEL-facing identifier (no `-`). A declaration is `{ type, default?, owner?, per? }`. A `default` is materialized into the tier's initial state at schema load **and** re-materialized whenever the engine fires that tier's reset — so a defaulted path is always assigned, and the checker and engine read the one snapshot. `owner: engine` (0.22.0) marks a path content may read but never `::set` (`E-ENGINE-OWNED-WRITE`); `engine` is the only value it takes — see [`owner: engine`](/state/state-model/#owner-engine). `per: <kind>` (0.24.0) declares one path per member of a closed entity kind — see [One path per entity](/state/state-model/#one-path-per-entity-per).
+Each `<path>` segment is a CEL-facing identifier (no `-`). A declaration is `{ type, default?, owner?, per? }`. `type: { domain: <name> }` takes its members from a named enum or from an entity kind, the way to type an engine-kept position over a map kind — see [Paths typed by a named enum](/state/state-model/#paths-typed-by-a-named-enum). A `default` is materialized into the tier's initial state at schema load **and** re-materialized whenever the engine fires that tier's reset — so a defaulted path is always assigned, and the checker and engine read the one snapshot. `owner: engine` (0.22.0) marks a path content may read but never `::set` (`E-ENGINE-OWNED-WRITE`); `engine` is the only value it takes — see [`owner: engine`](/state/state-model/#owner-engine). `per: <kind>` (0.24.0) declares one path per member of a closed entity kind — see [One path per entity](/state/state-model/#one-path-per-entity-per).
 
 An `enums:` block does double duty. Its domains are argument types for the
 [relational layer](/state/facts-and-datalog/), and since language `0.9.0` they are also how a project
@@ -9040,8 +9840,9 @@ A path declared in two documents' frontmatter `state:` is one runtime value, so 
 
 Schema errors that every importer would repeat — sub-kind and `add:` `E-ENTITY-KIND-SHAPE`,
 `E-USES-DUP-STATE`, `E-USES-DUP-DEF`, `E-USES-DUP-RELATION`, a peer `E-KIND-NAME-CLASH`, and
-`E-DEF-DECL` for an imported def — are reported once at the schema line (dsl 0.26.0 §2.7), with
-the other importers folded into `(+N more callers)`, rather than at every importing document.
+`E-DEF-DECL` for an imported def — are reported by `check-project` once, as a project-wide line at
+the schema line ending `(imported by N documents)` (dsl 0.26.0 §2.7), rather than at every importing
+document; the importers stay `ok`.
 
 The state schema is *game content* — separate from the engine **capability manifest** (engine vocabulary), which has its own owner and change cadence.
 
@@ -9599,7 +10400,7 @@ $ lute init <dir> [--template minimal|investigation|beats]
 
 Scaffold a new Lute project directory, ready for `lute check-project`. `<dir>` must not already contain a `lute.project.yaml`. `--template` selects the starter content:
 
-- `minimal` (default) — a core-only `lute.project.yaml`, a state schema, a vocabulary schema, a starter scene, and a trace mock.
+- `minimal` (default) — a core-only `lute.project.yaml`, a state schema, a vocabulary schema, a starter scene with an `id:`, a trace mock, and a passing scenario test in `tests/`.
 - `investigation` — the worked whodunit.
   Since dsl 0.24.0 it is a small whodunit built on the `beats` skeleton: a `case.occasions` plugin raising `arrive`, the targeted `examine` (`item.<evidence>`) and `interview` (`npc.<suspect>`), and `accuse`; evidence lore that `::assert`s what is on record; derived rules with stratified negation (a suspect is `cleared` by an alibi unless evidence contradicts it; the `culprit` is implicated and not cleared); an accept-driven quest; an accusation whose choices are guarded by `holds(culprit(…))`; `plays/the-case.play.yaml` with `expect:`, and a scenario test. `check-project`, `test` and `play` pass as scaffolded, and its README shares the `beats` commands.
 - `beats` (dsl 0.22.0) — a game driven by [beats and occasions](/tooling/play/): a project-local occasions plugin (one occasion with a `{ prefix, entity }` target domain), a manifest whose `defaults:` supply `luteVersion` and `uses`, a `world.schema.yaml` with an `owner: engine` clock and shorthand `defs`, scene beats with `id:`, a quest, lore entry beats, a play script with an `engine:` step and `expect:`s, and scenario tests. `check-project`, `test`, and `play` all pass as scaffolded.
@@ -9804,7 +10605,7 @@ coverage over 2 traced path(s) and 1 play(s) (plays count toward documents prese
 A `*.test.yaml` file declares:
 
 ```yaml
-file: scenes/confrontation.lute   # path to the .lute under test, relative to this file
+file: ../scenes/confrontation.lute   # the .lute under test, relative to THIS file (tests/ → ../scenes/…)
 # optional mock surfaces — identical to `lute trace --mock`:
 state:   { run.trueKiller: blake }
 facts:   ["implicates(ledger, blake)"]
@@ -9865,7 +10666,7 @@ The failure names the premise that is false and, where one exists, the mock that
 `expect.quests` (dsl 0.21.0 §7a.4) asserts a quest document's lifecycle outcome directly — the state each quest ended the trace in, one of `unset`, `active`, `complete`, `failed`:
 
 ```yaml
-file: quests/hold.lute
+file: ../quests/hold.lute
 visited: [haven.shed]
 occasions: [runEnd]
 expect:
@@ -9968,7 +10769,7 @@ occasions:
 - `description` — optional prose for tooling.
 - `judge: before` (dsl 0.24.0 §2) — the occasion judges its `on=` objectives and settles its quests **before** its beats are decided, so an epilogue on it reads how its quests ended. Only the judging moves: the handler bodies the raise answers — its same-named `<on event>` handlers, and the `questComplete` / `questFailed` handlers of the quests it settles — still run after the beats, so their narration follows the scene. The default, `after`, judges after the presentations. See [Quest structure](#quest-structure).
 
-When no resolved plugin declares occasions, occasion names are **shape-only**: any identifier is accepted, so you can write beats before the engine's plugin exists. Once any plugin declares them, a beat naming an undeclared occasion is `E-OCCASION-UNKNOWN`, and a `target` on an occasion declared without a target is `E-BEAT-ATTR`. On an occasion with a target domain, a beat target outside it — `npc.achiles` for `npc.achilles` — is `E-BEAT-ATTR` with a did-you-mean, and so is a domain naming an entity kind the project does not declare. The export folds into the capability snapshot as a guarded section, so a project whose plugins declare no occasions keeps its `capabilityVersion`. A target domain is part of the snapshot; `target: true` hashes exactly as it did in 0.21.
+When no resolved plugin declares occasions, occasion names are **shape-only**: any identifier is accepted, so you can write beats before the engine's plugin exists. A story with no engine plugin at all plays this way: [Connect scenes into a story](/getting-started/connect-scenes/) answers one shape-only occasion with every scene and plays it with `lute play`. Once any plugin declares them, a beat naming an undeclared occasion is `E-OCCASION-UNKNOWN`, and a `target` on an occasion declared without a target is `E-BEAT-ATTR`. On an occasion with a target domain, a beat target outside it — `npc.achiles` for `npc.achilles` — is `E-BEAT-ATTR` with a did-you-mean, and so is a domain naming an entity kind the project does not declare. The export folds into the capability snapshot as a guarded section, so a project whose plugins declare no occasions keeps its `capabilityVersion`. A target domain is part of the snapshot; `target: true` hashes exactly as it did in 0.21.
 
 Quest objectives judged at an occasion (`<objective on="runEnd">`) take `on=`, and since 0.23.0 an optional `target=` — `<objective on="talk" target="npc.maud">` is judged only when `talk` is raised for `npc.maud`, and is checked like a beat target (`E-BEAT-ATTR`: a dotted id, only beside `on`, on an occasion that takes a target, inside its domain). See [Deadlines and targeted objectives](#deadlines-and-targeted-objectives).
 
@@ -9999,7 +10800,7 @@ once: user
 | `once` | `run` (the default — once per run), `user` (once ever), or `false` (repeatable). With a declared [clock](/language/clock/), `day` or `slot` (dsl 0.24.0 §1): spent until the clock's day or slot changes. |
 | `also` | Optional `true` (dsl 0.23.0): on a `select: first` occasion the beat never wins — it is presented **after** the winner, as a side remark, and even when no main beat is eligible. See [Composing occasions](#composing-occasions). |
 
-`after:` keeps its meaning — the structural prerequisite over `visited` / `completed` / `active` that [connectivity](/connectivity/scene-graph/) analyzes — and a beat is eligible only when both `after:` and `when` hold. `when`, `target`, `priority`, `once`, or `also` without `on` is `E-BEAT-ATTR`: a scene that answers no occasion is reached by explicit flow, as before. So is an `also` that is not a bool, or `also: true` on a `select: all` or `select: sequence` occasion, where every eligible beat is already presented or offered.
+`after:` keeps its meaning — the structural prerequisite over `visited` / `completed` / `active` that [connectivity](/connectivity/scene-graph/) analyzes — and a beat is eligible only when both `after:` and `when` hold. `when`, `target`, `priority`, `once`, or `also` without `on` is `E-BEAT-ATTR`. A scene that answers no occasion is never presented by an occasion: your engine starts it itself, by its scene id, `lute trace` and `lute run` walk it on its own, and `lute play` never presents it. To chain scenes into a story you can play with `lute play`, see [Connect scenes into a story](/getting-started/connect-scenes/). An `also` that is not a bool is `E-BEAT-ATTR` too, and so is `also: true` on a `select: all` or `select: sequence` occasion, where every eligible beat is already presented or offered.
 
 ### Entry beats
 
@@ -10182,7 +10983,7 @@ A play script is a YAML mapping. `steps` is required; every other top-level key 
 | `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--explain`](#derivation-and---explain). |
 | `bridges` | Answers for the plugin calls that read a bridge result, consumed in call order across the play (dsl 0.24.0 §5) — see [Answering bridge calls](#answering-bridge-calls). |
 
-Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, an [`expect:`](#expectations), and its own [`bridges:`](#answering-bridge-calls) answers; an `end` step takes only a `label`. The one pairing: an `advance` may carry the `engine:` writes of the same moment. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)). A tour of every shape, against the tower:
+Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, an [`expect:`](#expectations), and its own [`bridges:`](#answering-bridge-calls) answers; an `end` step takes only a `label`. The one pairing: an `advance` may carry the `engine:` writes of the same moment. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)); it names only the file, so a `label`, `repeat`, or `expect:` beside it is a usage error. A tour of every shape, against the tower:
 
 ```yaml
 state: { user.runs: 2 }                   # path -> scalar literal, over the declared defaults
@@ -11363,7 +12164,7 @@ In `--json` the call's `plugin` record carries `"answered": [{ "field": "passed"
 
 ### Expectations
 
-A step may carry `expect:`, judged against what that step did. Four keys judge an occasion's selection, so they belong only on an `occasion` step:
+A step may carry `expect:`, judged against what that step did. Four keys judge an occasion's selection, so they belong on a step that raises one: an `occasion` step, or an [`advance`](#advancing-the-clock) step, where `winner`, `offered` and `notOffered` judge the raise where the clock stops and `presented` lists every beat the step presented, in order:
 
 | Key | Holds when |
 |---|---|
@@ -11381,7 +12182,7 @@ Five more judge the world **right after the step settled** — for an occasion s
 | `facts: [atoms]` / `notFacts: [atoms]` | each atom holds / does not hold after the step, **after derivation** |
 | `clock: { weekday, slot, day }` | the clock stands there after the step (dsl 0.26.0 §7): `weekday` a `week.labels` label or a `clock.weekday` number, `slot` a declared slot, `day` the day number — any of the three |
 
-So an `engine:` step can assert what its write did — `expect: { quests: { houndHunt: failed } }` in the [deadline example](#deadlines-and-targeted-objectives) — and an occasion step can check its quest progress without waiting for the end. `winner`, `offered`, `notOffered`, or `presented` on a step that is not an `occasion` is a usage error (exit 2): `` step 2: `expect.winner` applies only to an `occasion` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
+So an `engine:` step can assert what its write did — `expect: { quests: { houndHunt: failed } }` in the [deadline example](#deadlines-and-targeted-objectives) — and an occasion step can check its quest progress without waiting for the end. `winner`, `offered`, `notOffered`, or `presented` on any other step is a usage error (exit 2): `` step 2: `expect.winner` applies only to an `occasion` or `advance` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
 
 A `clock:` miss names the key and prints the weekday's number beside its label (`expect clock weekday: expected Wed, actual Tue (1)`); on a project that declares no clock every `clock:` key misses (`actual no clock position …`). See [Advancing the clock](#advancing-the-clock) for how an `include:`d steps file uses it.
 
@@ -14915,6 +15716,42 @@ A range amount (`amount="10..20"`) is the engine's roll, so the toolchain grants
 ```
 
 A kind without `credits:` hashes exactly as it did before 0.23.0, so adding the key to one kind restamps only the snapshots that declare it.
+
+### Directive effects
+
+A directive may declare the state it writes when it runs: `effects.writes`, a list of
+`{ scope, path, value }`. [Typed bridge directives](/plugins/bridge/#the-directive-that-invokes-it)
+shows a bridge directive writing its result slot. A passthrough directive may write too, such as a
+scare that costs the player sanity:
+
+```yaml
+# directives/ward.yaml
+directives:
+  - name: fright
+    attrs:
+      - { name: amount, type: number }
+    effects:
+      writes:
+        - { scope: run, path: [sanity], value: { op: decrement, by: { fromAttr: amount } } }
+```
+
+`scope` and `path` name the state path, `run.sanity` here. It may be an
+[`owner: engine`](/state/state-model/#owner-engine) path: content cannot `::set` it
+(`E-ENGINE-OWNED-WRITE`), but a directive's effect is a write the engine makes, and
+[`lute play`](/tooling/play/) applies it where the directive runs. With `run.sanity` at 10,
+`::fright{amount=2}` leaves it at 8.
+
+`value` takes one of four shapes (dsl 0.27.0 §2):
+
+| `value` | Writes |
+|---|---|
+| a bool, number, or string literal | that value |
+| `{ fromAttr: <attr> }` | the value the call gives one of the directive's own attrs, or that attr's declared `default:`. A call that omits an attr with no default writes nothing. |
+| `{ fromBridgeResult: <field> }` | a field of the bridge's answer; see [Typed bridge directives](/plugins/bridge/) |
+| `{ op: increment \| decrement, by: <number> \| { fromAttr: <attr> } }` | adds `by` to the path, or subtracts it. An attr named in `by:` must be `type: number`. |
+
+Any other value fails the plugin load with `E-PLUGIN-PARSE`, and the message lists the four
+shapes. So does a `fromAttr` naming an attr the directive does not declare, with a did-you-mean.
 
 ### Engine ids typed by an entity kind
 

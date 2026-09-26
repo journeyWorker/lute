@@ -1,0 +1,6 @@
+file: ../scenes/accusation.lute
+visited: [counter]
+choose: { accuse: tilly }
+expect:
+  transcriptContains: ["@wren: One of you did this."]
+  state: { run.accused: tilly }

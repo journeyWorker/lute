@@ -274,7 +274,7 @@ Before 0.24.0 this passed `check` and then never derived: the guard was evaluate
 
 ### Entity-indexed state in a rule guard
 
-A path declared with [`per:`](/state/state-model/) holds one number per member of a kind. Anywhere else a member is named (`run.approval.isolde`). In a rule `cel()` guard, `run.approval[P]` reads the member bound to the rule variable `P` (dsl 0.24.0 §3):
+A path declared with [`per:`](/state/state-model/) holds one number per member of a kind. A document names the member (`run.approval.isolde`), and a component's `::set` may index it through a param (`run.approval[@who]`, checked at each `::use`; see [the state model](/state/state-model/)). In a rule `cel()` guard, `run.approval[P]` reads the member bound to the rule variable `P` (dsl 0.24.0 §3):
 
 ```lute check
 ---

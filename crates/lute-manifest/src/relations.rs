@@ -83,6 +83,11 @@ pub struct ParsedKinds {
     /// Never in [`Self::kinds`]; the checker merges them into the one base
     /// declaration (`E-ENTITY-KIND-SHAPE` when there is none).
     pub adds: BTreeMap<String, Vec<String>>,
+    /// dsl 0.27.0 §2 (T3-15): `(kind, key)` for every key of a kind's mapping
+    /// outside [`ENTITY_KIND_KEYS`], in encounter order (checker →
+    /// `E-ENTITY-KIND-SHAPE` with did-you-mean). A typo'd `lables:` was
+    /// silently ignored.
+    pub unknown_keys: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -92,6 +97,10 @@ pub struct ParsedRelations {
     /// best-effort caveat as [`ParsedKinds::dups`].
     pub dups: Vec<String>,
 }
+
+/// The keys an `entities:` entry may carry (spec §3.1, dsl 0.24.0 §3, 0.26.0
+/// §2.3). Every other key is reported, never ignored.
+pub const ENTITY_KIND_KEYS: &[&str] = &["members", "open", "add", "subsetOf"];
 
 /// Classify one `entities:` value: `{ members: […] }` (closed), `{ open: … }`
 /// (engine-populated — the value itself is not inspected, only key
@@ -140,6 +149,14 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
         };
         if out.kinds.contains_key(name) || out.adds.contains_key(name) {
             out.dups.push(name.to_string());
+        }
+        if let Some(m) = v.as_mapping() {
+            for key in m.keys() {
+                let key = key.as_str().unwrap_or_default();
+                if !ENTITY_KIND_KEYS.contains(&key) {
+                    out.unknown_keys.push((name.to_string(), key.to_string()));
+                }
+            }
         }
         let add = v.get("add");
         if let (Some(seq), Some(1)) = (

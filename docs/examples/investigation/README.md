@@ -9,7 +9,9 @@ scenes. It also shows what `check-project` proves about relational fact
 queries across scenes — which is why two guards you might expect to see here
 are not.
 
-Every command below is copy-paste runnable from the **repository root**.
+Every command below is copy-paste runnable from the **repository root**. The
+website tutorial [Build an investigation](https://lute-lang.vercel.app/getting-started/build-an-investigation/)
+builds these same files from an empty folder with only the `lute` command.
 
 ## Layout
 
@@ -23,6 +25,10 @@ Every command below is copy-paste runnable from the **repository root**.
 | `quests/identify-killer.lute` | the goal machine — objectives whose `done=` predicates the scenes satisfy |
 | `mocks/accuse-correctly.yaml` | trace mock: accuse the right suspect → success ending |
 | `mocks/accuse-wrongly.yaml` | trace mock: accuse the wrong suspect → failure ending |
+| `tests/*.test.yaml` | scenario tests: both endings, and one walk through the interrogation hub |
+
+Each scene names itself with `id:` (`detective.s01ep01` … `detective.s01ep03`);
+`after: 'visited("…")'` refers to those ids.
 
 ## 1. Check the whole project
 
@@ -52,20 +58,20 @@ as redundant (it can never close) and the second as dead (it can never open):
 
 <!-- lute-diagnostics -->
 ```
-docs/examples/investigation/scenes/interview.lute:31:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (docs/examples/investigation/scenes/crime-scene.lute:28) (dsl 0.20.0 §5)
+docs/examples/investigation/scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (docs/examples/investigation/scenes/crime-scene.lute:15) (dsl 0.20.0 §5)
 ```
 
 <!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
 ```
-docs/examples/investigation/scenes/interview.lute:36:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes (dsl 0.20.0 §5)
+docs/examples/investigation/scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes (dsl 0.20.0 §5)
 ```
 
 That is why `pressLedger` / `pressLetter` carry no `when=`, and why the crime
-scene's last line reads the derived `points(blake)` without one. The quest's
-optional `clinchMotive` objective, `done="holds(implicates(ledger, blake))"`,
-is decided the same way: the fact is a schema seed nothing retracts, so the
-objective is satisfiable; had no seed, assert, or rule produced it, the
-objective would be `E-OBJECTIVE-UNSATISFIABLE`. (A `done` is a predicate, not a
+scene's last line carries no `when="holds(points(blake))"`. The quest's
+optional `followClues` objective, `done="holds(points(blake))"`, is decided the
+same way: the rule derives `points(blake)` from the crime scene's asserts and a
+seed fact, so the objective is satisfiable; had no seed, assert, or rule
+produced it, the objective would be `E-OBJECTIVE-UNSATISFIABLE`. (A `done` is a predicate, not a
 guard, so an always-true one is never reported as redundant.) The analysis
 needs every document at once, so it runs in `check-project` only; a
 single-file `lute check` leaves relational queries undecided.
@@ -82,9 +88,10 @@ cargo run -q -p lute-cli -- scenario docs/examples/investigation
 shows the reachability chain as topological layers:
 
 ```
-    layer 0: scene(detective.s01ep01)   # crime scene (root)
-    layer 1: scene(detective.s01ep02)   # interview  (after crime scene)
-    layer 2: scene(detective.s01ep03)   # confrontation (after interview)
+  topological layers:
+    layer 0: scene(detective.s01ep01)
+    layer 1: scene(detective.s01ep02)
+    layer 2: scene(detective.s01ep03)
 ```
 
 Ask about one node's reachability and its declared prerequisite structure:
@@ -144,10 +151,9 @@ trace complete: ...
 Both traces exit `0` (a complete walk) and reach visibly **different** endings —
 the same document, two forced choices.
 
-> Trace prints an informational note that it does **not** auto-load the schema's
-> seed `facts:` (the explicit-world model, §3.1). These endings turn only on
-> scalar run state, so no `--fact` seeds are needed here; a trace that gated on a
-> fact query would supply it with `--fact "implicates(ledger, blake)"`.
+> Trace loads the schema's seed `facts:` and applies its `rules:` by default
+> (`--no-derive` turns that off). These endings turn only on scalar run state,
+> so the facts play no part here.
 
 ## 4. Compile
 
@@ -214,7 +220,14 @@ cargo run -q -p lute-cli -- test docs/examples/investigation --coverage
 
 ```
 coverage over 3 traced path(s):
-  branch/hub accuse: 2/3 chosen [accuseBlake, accuseCass]; never chosen [accuseDana]
-  branch/hub interrogate: 2/4 chosen [leave, pressLedger]; 2 never seen eligible in any traced path
-  match `run.suspectFocus`: 1/3 arm(s) executed [arm 1]; 2 unexecuted
+  branch/hub accuse (docs/examples/investigation/tests/../scenes/confrontation.lute:accuse): 2/3 chosen [accuseBlake, accuseCass]; never chosen [accuseDana]
+  branch/hub interrogate (docs/examples/investigation/tests/../scenes/interview.lute:interrogate): 2/4 chosen [leave, pressLedger]; never chosen [askAlibi, pressLetter]
+  match `run.accused == run.trueKiller` (docs/examples/investigation/tests/../scenes/confrontation.lute:30:1): 2/2 arm(s) executed [arm 1, otherwise]
+  match `run.accused == run.trueKiller` (docs/examples/investigation/tests/../scenes/confrontation.lute:31:1): 2/2 arm(s) executed [arm 1, otherwise]
+  match `run.accused != run.trueKiller` (docs/examples/investigation/tests/../scenes/confrontation.lute:32:1): 2/2 arm(s) executed [arm 1, otherwise]
+  match `run.accused != run.trueKiller` (docs/examples/investigation/tests/../scenes/confrontation.lute:33:1): 2/2 arm(s) executed [arm 1, otherwise]
+  match `run.suspectFocus` (docs/examples/investigation/tests/../scenes/interview.lute:36:1): 1/3 arm(s) executed [arm 1]; 2 unexecuted
+  2 untested document(s) under docs/examples/investigation — no *.test.yaml names them and no play presents them:
+    docs/examples/investigation/quests/identify-killer.lute
+    docs/examples/investigation/scenes/crime-scene.lute
 ```

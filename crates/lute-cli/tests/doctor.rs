@@ -273,3 +273,63 @@ fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
     let l = line(&text, "lute-lsp beside lute");
     assert!(l.contains('✓') && l.contains("the build on PATH"), "{text}");
 }
+
+/// Round-5 OT-F5: a bun/npm global install puts the package's `lsp-bin.js`
+/// launcher (a symlink into `node_modules/@lute-lang/lute/`) on `PATH`,
+/// while `lute` runs the native binary beside its own `lute-lsp`. The two
+/// files never match byte for byte, so the launcher's reported version
+/// decides: the same version passes, another fails.
+#[cfg(unix)]
+#[test]
+fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
+    use std::os::unix::fs::PermissionsExt;
+    let proj = occasions_project("launcher");
+    let ours = env!("CARGO_PKG_VERSION");
+    let native = temp_dir("launcher-native");
+    let lute = native.join("lute");
+    std::fs::copy(BIN, &lute).unwrap();
+    let sibling = native.join("lute-lsp");
+    std::fs::write(
+        &sibling,
+        format!("#!/bin/sh\nprintf 'lute-lsp {ours}\\n'\n"),
+    )
+    .unwrap();
+    std::fs::set_permissions(&sibling, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let launcher_at = |tag: &str, version: &str| {
+        let root = temp_dir(tag);
+        let pkg = root.join("node_modules/@lute-lang/lute");
+        std::fs::create_dir_all(&pkg).unwrap();
+        let script = pkg.join("lsp-bin.js");
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\nprintf 'lute-lsp {version}\\n'\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::os::unix::fs::symlink(&script, bin.join("lute-lsp")).unwrap();
+        bin
+    };
+    let run = |path: &Path| {
+        let out = Command::new(&lute)
+            .arg("doctor")
+            .arg(&proj)
+            .env("PATH", path)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{out:?}");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+
+    let text = run(&launcher_at("launcher-current", ours));
+    let l = line(&text, "lute-lsp beside lute");
+    assert!(l.contains('✓') && l.contains("npm launcher"), "{text}");
+
+    let text = run(&launcher_at("launcher-stale", "0.17.1"));
+    let l = line(&text, "lute-lsp beside lute");
+    assert!(
+        l.contains('✗') && l.contains("0.17.1") && l.contains(&format!("differs from lute {ours}")),
+        "{text}"
+    );
+}

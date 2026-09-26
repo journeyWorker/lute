@@ -817,6 +817,10 @@ pub fn fold_env(
     //     opens `scene.minigame.k.<field>` for each field of its shape. This runs
     //     before the walk + defassign so plugin-declared state resolves.
     fold_directive_slots(doc, &input.snapshot, &input.components, &mut schema);
+    // dsl 0.27.0 §2 (T1-2): a `{ domain: K }` / `{ entity: K }` path is
+    // member-checked like an inline enum — its members, from the merged
+    // domains, ride on the schema every pass reads.
+    schema.resolve_domains(&domains);
 
     // The def names the `@ref` resolver validates against (dsl §8.1): inline
     // frontmatter defs plus plugin-exported defs (both are declared refs).
@@ -836,6 +840,9 @@ pub fn fold_env(
     // `params:` under the SAME guard below — keep all three in sync.
     if meta_kind == crate::meta::MetaKind::Component {
         defs.extend(typed.params.iter().map(|p| p.name.clone()));
+        // Round-5 T3-23: a literal param `default:` is judged once, here, at
+        // the component's own `params:` entry — not at every `::use`.
+        fold_diags.extend(check_param_literal_defaults(&typed, &doc.meta));
     }
 
     // dsl 0.21.0 §7b: settle every imported and inline def's produced type
@@ -845,41 +852,49 @@ pub fn fold_env(
     // written back, and an explicit one must agree with it. Every table below
     // then reads the settled values, so a shorthand def has a body, a type and
     // a (0-arity) params entry exactly like a long-form one.
+    // Round-5 T3-14: in dependency order, so a def whose body calls another
+    // def takes that def's type.
     let mut imported_defs = input.imports.defs.clone();
-    for (name, def) in imported_defs.iter_mut() {
-        if let Some(msg) = crate::def_decl::settle_def_type(name, def, &schema) {
-            // Prerelease N5: reported at the def's schema line and folded
-            // across importers (dsl 0.26.0 §2.7), not at every importer's 1:1.
-            fold_diags.push(crate::rel_schema::at_origin(
-                Diagnostic {
-                    code: crate::def_decl::E_DEF_DECL.to_string(),
-                    severity: Severity::Error,
-                    message: msg,
-                    span: doc.meta.span,
-                    layer: Layer::Content,
-                    fixits: Vec::new(),
-                    provenance: None,
-                    covered: Vec::new(),
-                    related: Vec::new(),
-                },
-                input.imports.rel.origins.defs.get(name),
-            ));
-        }
-    }
-    for (name, def) in typed.defs.iter_mut() {
-        if let Some(msg) = crate::def_decl::settle_def_type(name, def, &schema) {
-            fold_diags.push(Diagnostic {
+    let (imported_def_msgs, inline_def_msgs) = crate::def_decl::settle_defs(
+        &mut imported_defs,
+        &mut typed.defs,
+        input
+            .snapshot
+            .defs
+            .iter()
+            .map(|(n, d)| (n.clone(), d.ty.clone())),
+        &schema,
+    );
+    for (name, msg) in imported_def_msgs {
+        // Prerelease N5: reported at the def's schema line and folded
+        // across importers (dsl 0.26.0 §2.7), not at every importer's 1:1.
+        fold_diags.push(crate::rel_schema::at_origin(
+            Diagnostic {
                 code: crate::def_decl::E_DEF_DECL.to_string(),
                 severity: Severity::Error,
                 message: msg,
-                span: crate::meta::meta_key_span(&doc.meta, name),
+                span: doc.meta.span,
                 layer: Layer::Content,
                 fixits: Vec::new(),
                 provenance: None,
                 covered: Vec::new(),
                 related: Vec::new(),
-            });
-        }
+            },
+            input.imports.rel.origins.defs.get(&name),
+        ));
+    }
+    for (name, msg) in inline_def_msgs {
+        fold_diags.push(Diagnostic {
+            code: crate::def_decl::E_DEF_DECL.to_string(),
+            severity: Severity::Error,
+            message: msg,
+            span: crate::meta::meta_key_span(&doc.meta, &name),
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        });
     }
 
     // The def name -> produced `Type` table the `@ref` type-context check
@@ -1182,7 +1197,9 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     };
     // dsl 0.24.0: every `@def` use is checked on its expansion, and a beat's
     // / entry's `when` is an assumption for its body.
-    let scope = crate::defassign::Scope::of(&folded);
+    let mut scope = crate::defassign::Scope::of(&folded);
+    // dsl 0.27.0 §2 (T1-10): a `::use` reads its omitted params' `@def` defaults.
+    scope.components = Some(&input.components);
     let mut walker = Walker {
         snapshot: &input.snapshot,
         providers: &input.providers,
@@ -1538,6 +1555,11 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // profile/path-declaredness checks — after `base_ctx` (needs `ctx.env`)
     // is constructed above.
     diags.extend(check_rule_guards(&env.rel_vocab, &base_ctx));
+    // Round-5 T3-24: a quest left user-tier by default whose conditions read
+    // only run state.
+    diags.extend(crate::project_check::check_quest_tier_implicit(
+        &doc, &folded,
+    ));
     diags.extend(input.imports.diags.clone());
     // Component-import resolution diagnostics (dsl §13) + the per-component
     // body validation and `::use` expansion-cycle diagnostics, reported at
@@ -1552,6 +1574,18 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // `E-COMPONENT-STATE` keeps finding it there regardless of whether the
     // SAME component also failed to parse.
     let mut component_diags = input.components.diags.clone();
+    // A component file that reaches itself through `defaults: components:`
+    // re-imports its own text: an import failure whose every cause lies in
+    // THIS file is the file's own parse/frontmatter diagnostics a second time
+    // (round-5 T3-4) — they are already reported above, at their own lines.
+    if let Ok(own) = std::fs::canonicalize(&input.uri) {
+        let own = own.display().to_string();
+        component_diags.retain(|d| {
+            d.code != "E-COMPONENT-PARSE"
+                || d.related.is_empty()
+                || d.related.iter().any(|r| r.file != own)
+        });
+    }
     let component_body_diags = validate_components(
         &input.components,
         &input.snapshot,
@@ -1743,7 +1777,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                 read.extend(crate::project_check::domain_reads_from_state(&env.state));
                 read.extend(crate::project_check::domain_reads_from_kinds(
                     &env.rel_vocab,
-                    std::iter::once(input.text.as_str())
+                    std::iter::once(crate::usage::document_read_view(&input.text).as_str())
                         .chain(folded.def_bodies.values().map(String::as_str)),
                 ));
                 // dsl 0.26.0 §5: a `target="kind:<kind>"` beat reads its kind.
@@ -1877,7 +1911,9 @@ fn check_lute_version_stale(
     let message = if newer {
         format!(
             "{what}: \"{stamped}\"` is newer than this toolchain (Lute \
-             {current}) — upgrade the toolchain; do not downgrade the stamp (dsl 0.6.1 §3)"
+             {current}) — upgrade the toolchain; do not downgrade the stamp. In an editor this \
+             is its lute-lsp, and its other diagnostics may be wrong: run `lute doctor` to see \
+             which install is behind (dsl 0.6.1 §3)"
         )
     } else {
         format!(
@@ -2143,6 +2179,12 @@ impl Walker<'_> {
                         &subject_ctx,
                         subject_expected.as_ref(),
                     ));
+                    // dsl 0.27.0 §2 (T1-5a): the same firewall through `@def`s.
+                    self.diags
+                        .extend(crate::cel_resolve::check_match_subject_defs(
+                            &m.subject,
+                            &self.scope.defs,
+                        ));
                     // dsl 0.4.0 §6.2/§6.3: a bare `@param` subject naming one of
                     // THIS document's own declared params (`self.param_domains`
                     // is non-empty ONLY for a standalone `MetaKind::Component`
@@ -2865,8 +2907,10 @@ fn check_use(
         }
     }
     // Every param must be supplied — dsl 0.26.0 §3.3: or declare a
-    // `default:`, which an omitted param takes and which is judged here, at
-    // the `::use`, like the argument it stands for.
+    // `default:`, which an omitted param takes. A `@def` default resolves in
+    // this host and is judged here, at the `::use`, like the argument it
+    // stands for; a literal one is the component's own, judged once at its
+    // `params:` entry ([`check_param_literal_defaults`], round-5 T3-23).
     let mut args = crate::component_effects::use_args_for(dir, def);
     let mut defaulted: Vec<Attr> = Vec::new();
     for (p, pty) in &def.params {
@@ -2902,15 +2946,22 @@ fn check_use(
                 ),
                 dir.span,
             ));
-        } else if !def.speakers.contains(p) && !use_arg_ok(pty, &value, ctx) {
-            diags.push(use_diag(
-                E_COMPONENT_ARG,
-                format!(
-                    "component `{name}` defaults `{p}` to `{shown}`, which is not compatible \
-                     with its declared type (dsl 0.26.0 §3.3)"
-                ),
-                dir.span,
-            ));
+        } else if let (AttrValue::Ref(slot), false) = (&value, def.speakers.contains(p)) {
+            if let Some(produced) = ref_produced_type(&slot.raw, ctx)
+                .filter(|t| !compatible(t, &ExpectedType::Ty(pty.clone())))
+            {
+                diags.push(use_diag(
+                    E_COMPONENT_ARG,
+                    format!(
+                        "component `{name}` param `{p}` is {} but its default `{shown}` is {} \
+                         here — pass `{p}=…` at this `::use`, or default it to a def of the \
+                         param's type (dsl 0.26.0 §3.3)",
+                        param_ty_label(pty),
+                        param_ty_label(produced),
+                    ),
+                    dir.span,
+                ));
+            }
         }
         defaulted.push(Attr {
             key: p.clone(),
@@ -3167,8 +3218,76 @@ fn use_arg_ok(ty: &Type, value: &AttrValue, ctx: &Ctx<'_>) -> bool {
             Some(produced) => compatible(produced, &ExpectedType::Ty(ty.clone())),
             None => true, // unresolvable ref — conservative, never flag
         },
-        _ if matches!(ty, Type::ProviderRef(_)) => matches!(value, AttrValue::Str(_)),
+        _ => literal_arg_ok(ty, value),
+    }
+}
+
+/// Round-5 T3-23: every literal `default:` in a component's `params:` that
+/// its declared type rejects is `E-COMPONENT-ARG` at that param's entry, with
+/// the nearest enum member as a did-you-mean. A `@def` default resolves in
+/// each host, so it stays with each `::use` ([`check_use`]); a `speaker`
+/// default is judged against each host's cast.
+fn check_param_literal_defaults(
+    typed: &crate::meta::TypedMeta,
+    meta: &lute_syntax::ast::Meta,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for param in &typed.params {
+        let p = &param.name;
+        let Some(value @ (AttrValue::Str(_) | AttrValue::BoolTrue)) = typed.param_defaults.get(p)
+        else {
+            continue;
+        };
+        if typed.speaker_params.contains(p) || literal_arg_ok(&param.ty, value) {
+            continue;
+        }
+        let shown = match value {
+            AttrValue::Str(s) => s.as_str(),
+            _ => "true",
+        };
+        let hint = match &param.ty {
+            Type::Enum(members) => {
+                lute_manifest::suggest::nearest(shown, members.iter().map(String::as_str), 2)
+                    .map(|m| format!(" — did you mean `{m}`?"))
+                    .unwrap_or_default()
+            }
+            _ => String::new(),
+        };
+        out.push(use_diag(
+            E_COMPONENT_ARG,
+            format!(
+                "param `{p}` defaults to `{shown}`, which {}{hint} (dsl 0.26.0 §3.3)",
+                match &param.ty {
+                    Type::Enum(_) => format!(
+                        "is not a member of its declared `{}`",
+                        param_ty_label(&param.ty)
+                    ),
+                    t => format!("its declared type `{}` does not accept", param_ty_label(t)),
+                },
+            ),
+            crate::meta::meta_key_span(meta, p),
+        ));
+    }
+    out
+}
+
+/// A literal `::use` argument (or `default:`) the param type accepts.
+fn literal_arg_ok(ty: &Type, value: &AttrValue) -> bool {
+    match ty {
+        Type::ProviderRef(_) => matches!(value, AttrValue::Str(_)),
         _ => into_literal(ty, value).is_some_and(|lit| type_accepts(ty, &lit)),
+    }
+}
+
+/// A param's declared type as a message names it: `enum[a, b]`, `bool`, …
+fn param_ty_label(ty: &Type) -> String {
+    match ty {
+        Type::Enum(members) => format!("enum[{}]", members.join(", ")),
+        t => {
+            let d = crate::cel_resolve::ty_desc(t);
+            d.split_once(' ')
+                .map_or(d.clone(), |(_, rest)| rest.to_string())
+        }
     }
 }
 
@@ -3472,14 +3591,19 @@ fn body_interpolates(
     })
 }
 
-/// Validate every imported component (dsl §13): its presentational body plus the
-/// `::use` expansion graph across components. Body diagnostics are re-anchored to
-/// the FIRST `::use` in this document that brings the body in (`use_sites`,
-/// [`component_use_sites`]) — or `at` (the scene frontmatter span) for a body no
-/// `::use` reaches — and prefixed with the component name and its
-/// project-relative source path: a component file's own byte spans cannot be
-/// represented in this document's diagnostic surface. Deterministic:
-/// components iterate in name order.
+/// Validate every component this document `::use`s (dsl §13), directly or
+/// through another component's body: its presentational body plus the
+/// `::use` expansion graph across components. Body diagnostics are
+/// re-anchored to the FIRST `::use` in this document that brings the body in
+/// (`use_sites`, [`component_use_sites`]) and prefixed with the component
+/// name and its project-relative source path: a component file's own byte
+/// spans cannot be represented in this document's diagnostic surface, so the
+/// position inside the component rides along as a `related` entry, with its
+/// line/column resolved against the component's own text. A component this
+/// document imports but never `::use`s (e.g. one every document gets through
+/// `defaults: components:`) contributes nothing here: its body is not this
+/// document's fault, and the component file's own check reports it
+/// (round-5 T3-4). Deterministic: components iterate in name order.
 ///
 /// Each body ALSO gets its own isolated run of the whole-document
 /// duplicate-line-code pass ([`check_line_codes`], dsl §12) — see the comment
@@ -3495,6 +3619,9 @@ fn validate_components(
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (name, def) in &components.table {
+        let Some(&site) = use_sites.get(name) else {
+            continue;
+        };
         // dsl 0.24.0 §4: a `speaker` param is this host's cast ids.
         let params = crate::component_effects::host_param_types(&def.params, &def.speakers, cast);
         let env = component_env(&params);
@@ -3646,6 +3773,13 @@ fn validate_components(
         body_diags.retain(|d| {
             d.code != "E-UNDECLARED" && d.code != crate::rel_schema::E_RELATION_UNKNOWN
         });
+        // The component's own text resolves each inner span's line/column: a
+        // CEL-slot span carries byte offsets only (`normalize_spans` never
+        // walks `related`), which printed as `0:0`.
+        let src_text = (!body_diags.is_empty())
+            .then(|| std::fs::read_to_string(&def.src).ok())
+            .flatten();
+        let src_index = src_text.as_deref().map(lute_core_span::TextIndex::new);
         for mut d in body_diags {
             // dsl 0.10.0 §9 rule 1: the primary anchor stays at the caller with
             // the component prefix (0.9.0 §5) — for the injection case it is the
@@ -3668,7 +3802,10 @@ fn validate_components(
                 code: d.code.clone(),
                 severity: d.severity,
                 message: d.message.clone(),
-                span: d.span,
+                span: match &src_index {
+                    Some(idx) => Span::from_bytes(idx, d.span.byte_start, d.span.byte_end),
+                    None => d.span,
+                },
                 layer: d.layer,
                 fixits: Vec::new(),
                 provenance: None,
@@ -3682,9 +3819,8 @@ fn validate_components(
             );
             // 0.21.1 T3-7 (lamplight F4): the `::use` that brings this body in
             // is the one position in THIS document that caused the fault, and
-            // where an editor should land — not the frontmatter's 1:1. A body
-            // reached through no `::use` (imported, never used) keeps `at`.
-            d.span = use_sites.get(name).copied().unwrap_or(at);
+            // where an editor should land — not the frontmatter's 1:1.
+            d.span = site;
             // T13: a CEL-parse fixit's edit span (if any) is in the COMPONENT
             // file's own byte-space — this document's diagnostic surface
             // cannot represent it (same reason the span itself collapses to
@@ -5067,9 +5203,16 @@ fn check_choice_record(choice: &Choice, ctx: &Ctx<'_>, src: &str, diags: &mut Ve
         ));
         return;
     };
-    // §2.2 rule 4: the `value` policy depends on the declared type.
+    // §2.2 rule 4: the `value` policy depends on the declared type — a
+    // `{ domain: K }` path's is K's members (dsl 0.27.0 §2).
+    let resolved = ctx
+        .env
+        .state
+        .domain_members
+        .get(into_path)
+        .map(|(_, ms)| Type::Enum(ms.clone()));
     check_into_value(
-        ty,
+        resolved.as_ref().unwrap_or(ty),
         choice.attrs.iter().find(|a| a.key == "value"),
         into_path,
         choice.span,
@@ -6226,7 +6369,7 @@ mod lute_version_tests {
         };
         let newer = stamp("999.0.0");
         assert!(
-            newer.contains("upgrade the toolchain"),
+            newer.contains("upgrade the toolchain") && newer.contains("run `lute doctor`"),
             "a newer stamp names the toolchain: {newer}"
         );
         assert!(

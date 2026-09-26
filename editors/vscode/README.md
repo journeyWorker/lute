@@ -38,16 +38,18 @@ toast naming where it looked and how to fix it (install the binary or set
 ### Stale-server version guard
 
 A `lute-lsp` binary older than the language a document targets silently
-mis-analyzes newer grammar — the server cannot self-detect this (its own
-`W-LUTE-VERSION-STALE` check compares against the version it was *built* at). To
-catch it, the server advertises the language version it implements as
-`serverInfo.version`, and the extension compares that against each `.lute`
-document's frontmatter `luteVersion:` stamp. When the server is strictly older,
-a one-time warning tells you to rebuild it (`cargo install --path
-crates/lute-lsp`) or point `lute.lsp.path` at a current binary. Disable the
-check with `"lute.versionCheck": false` (only if you knowingly pin an older
-server). The CLI (`lute check` / `check-project`) remains the canonical source
-of truth.
+mis-analyzes newer grammar. The server advertises the language version it
+implements as `serverInfo.version`, and the extension compares that against the
+document's frontmatter `luteVersion:` stamp — or, for an unstamped document, the
+project's `lute.project.yaml` `defaults: luteVersion`, and failing that the
+`lute` CLI on PATH (`lute --version`). When the server is older than a stamp, or
+differs from the CLI, a one-time warning says so and tells you to run
+`lute doctor`, which names the stale install. (The server itself also shows a
+one-time message, and its `W-LUTE-VERSION-STALE` warning names `lute doctor`, when
+a stamp is newer than it — that reaches any LSP client, not only this extension.)
+Disable the extension's check with `"lute.versionCheck": false` (only if you
+knowingly pin an older server). The CLI (`lute check` / `check-project`) remains
+the canonical source of truth.
 
 ## Develop / run from source
 

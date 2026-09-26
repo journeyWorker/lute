@@ -58,7 +58,7 @@
         "lute.versionCheck": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Warn when the running `lute-lsp` binary is older than a document's `luteVersion:` target. A stale server silently mis-analyzes newer grammar; disable only if you knowingly run a pinned older server."
+          "markdownDescription": "Warn when the running `lute-lsp` binary is older than a document's `luteVersion:` target (or the project's `defaults: luteVersion`), or differs from the `lute` CLI on PATH when nothing is stamped. A stale server silently mis-analyzes newer grammar; the warning points at `lute doctor`. Disable only if you knowingly run a pinned older server."
         }
       }
     },

@@ -1861,6 +1861,58 @@ fn read_never_set_on_any_route_errors() {
     );
 }
 
+/// dsl 0.27.0 (round-5 T3-21): the project envelope's error names the fix.
+#[test]
+fn maybe_unavailable_names_after_as_the_fix() {
+    let y =
+        "---\nkind: scene\ncharacter: yf\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let x = "---\nkind: scene\ncharacter: xf\nseason: 1\nepisode: 1\nafter: 'visited(\"yf.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let res = check_project_fixture(&[("yf.lute", y), ("xf.lute", x)]);
+    let (_p, d) = res
+        .iter()
+        .find(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE)
+        .unwrap_or_else(|| panic!("expected E-STATE-MAYBE-UNAVAILABLE, got {res:?}"));
+    assert!(d.message.contains("add an `after:`"), "{}", d.message);
+}
+
+/// dsl 0.27.0 (round-5 T3-21): single-file `check` cannot see the scene an
+/// `after:` orders before this one, so its `E-MAYBE-UNSET` on a `run.*`
+/// path this file never sets says `check-project` decides it. A file with
+/// no `after:`/`on:`, or one that sets the path itself, gets no such hint.
+#[test]
+fn single_file_maybe_unset_points_at_check_project_for_ordered_scenes() {
+    let hint = "lute check-project";
+    let scene = |meta: &str, body: &str| {
+        format!(
+            "---\nkind: scene\nid: late\n{meta}state:\n  run.exam: {{ type: {{ enum: [passed, failed] }} }}\n\
+             ---\n## Shot 1.\n{body}@narrator: You {{{{run.exam}}}}.\n"
+        )
+    };
+    let maybe_unset = |text: &str| -> Vec<String> {
+        check(&input_for(text))
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.code == "E-MAYBE-UNSET")
+            .map(|d| d.message)
+            .collect()
+    };
+    for meta in ["after: \"visited('early')\"\n", "on: chapter\n"] {
+        let msgs = maybe_unset(&scene(meta, ""));
+        assert_eq!(msgs.len(), 1, "{meta}: {msgs:?}");
+        assert!(msgs[0].contains(hint), "{meta}: {}", msgs[0]);
+    }
+    let msgs = maybe_unset(&scene("", ""));
+    assert_eq!(msgs.len(), 1, "{msgs:?}");
+    assert!(!msgs[0].contains(hint), "no `after:`/`on:`: {}", msgs[0]);
+    // Set here on one route only: still maybe-unset, but a local matter.
+    let branch = "<branch id=\"b\">\n<choice id=\"p\" label=\"Pass\">\n\
+                  ::set{run.exam = 'passed'}\n</choice>\n\
+                  <choice id=\"q\" label=\"Quit\">\n@narrator: no.\n</choice>\n</branch>\n";
+    let msgs = maybe_unset(&scene("after: \"visited('early')\"\n", branch));
+    assert_eq!(msgs.len(), 1, "{msgs:?}");
+    assert!(!msgs[0].contains(hint), "written in this file: {}", msgs[0]);
+}
+
 #[test]
 fn read_set_on_all_routes_is_clean() {
     // Same shape as above, but `y` (the ONLY predecessor route)
@@ -2470,6 +2522,55 @@ fn meta_parse_failure_stops_semantic_checks() {
         .map(|d| d.code)
         .collect();
     assert_eq!(codes, vec!["E-META-PARSE".to_string()], "{codes:?}");
+}
+
+/// Round-5 T3-2: `E-META-PARSE` sat at `1:1` and quoted serde_yaml's line,
+/// counted from the line after `---` (one short). It now anchors at the
+/// offending character's real file line and column, and the two common
+/// causes carry their fix: a quote nested in a same-quoted value, and a tab
+/// in the indentation.
+#[test]
+fn meta_parse_error_is_anchored_at_the_file_line_with_a_fix() {
+    let parse_error = |text: &str| {
+        let ds = check(&input_for(text)).diagnostics;
+        let d = ds
+            .iter()
+            .find(|d| d.code == "E-META-PARSE")
+            .unwrap_or_else(|| panic!("{ds:?}"))
+            .clone();
+        (d.span.line, d.span.column, d.message)
+    };
+
+    let (line, col, msg) = parse_error(
+        "---\nkind: scene\nid: s\ntitle: A title\npov: wren\n\
+         when: \"run.suspicion == \"ruben\"\"\n---\n## One\n@narrator: Hello.\n",
+    );
+    assert_eq!((line, col), (6, 26), "{msg}");
+    assert!(
+        msg.contains(
+            "use single quotes inside a double-quoted value — `when: \"run.suspicion == 'ruben'\"`"
+        ),
+        "{msg}"
+    );
+    assert!(
+        !msg.contains("line 5"),
+        "serde_yaml's own line is gone: {msg}"
+    );
+
+    let (line, _, msg) = parse_error(
+        "---\nkind: scene\nid: probe.bad\nwhen: 'run.day == 4 && run.slot == 'night''\n---\n\
+         ## Shot 1.\n@x: hi.\n",
+    );
+    assert_eq!(line, 4, "{msg}");
+    assert!(
+        msg.contains("`when: \"run.day == 4 && run.slot == 'night'\"`"),
+        "{msg}"
+    );
+
+    let (line, col, msg) =
+        parse_error("---\nkind: scene\nid: s\n\ttitle: A\n---\n## One\n@narrator: Hello.\n");
+    assert_eq!((line, col), (4, 1), "{msg}");
+    assert!(msg.contains("YAML indents with spaces, not tabs"), "{msg}");
 }
 
 // ── dsl 0.24.0 §2 (T2-13): bundle beats as predecessors, accept anchors ──

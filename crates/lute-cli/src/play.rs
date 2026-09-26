@@ -2918,9 +2918,6 @@ struct Candidate {
     /// dsl 0.23.0 §3: a scene beat's `also: true` — presented after the
     /// `select: first` winner, never the winner itself.
     also: bool,
-    /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat — ranked after the
-    /// member-specific beats of its priority.
-    kind_target: bool,
 }
 
 fn kind_label(kind: BeatKind) -> &'static str {
@@ -3025,8 +3022,9 @@ fn record_kind(kind: BeatKind) -> &'static str {
 }
 
 /// Every candidate for `occasion`/`target` with its verdict, in selection
-/// order: priority descending, a kind beat after the other beats of its
-/// priority (dsl 0.26.0 §5), then `ProjectIndex.beats` order. Pure over
+/// order ([`lute_check::beats::selection_order`]): priority descending, a
+/// kind beat after the other beats of its priority and a sub-kind's before
+/// its parent's (dsl 0.26.0 §5, dsl 0.27.0), then `ProjectIndex.beats` order. Pure over
 /// the world — what a play step presents from and what `lute calendar`
 /// evaluates at every cell (dsl 0.23.0 §1).
 fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> Vec<Candidate> {
@@ -3148,12 +3146,23 @@ fn eligible_at(p: &Project, w: &World, occasion: &str, target: Option<&str>) -> 
                 verdict,
                 read: beat.kind == BeatKind::Entry && flag(format!("entry.{}.read", beat.id)),
                 also: beat_also(p, beat),
-                kind_target: beat.is_kind(),
             },
         ));
     }
-    out.sort_by_key(|(idx, c)| (std::cmp::Reverse(c.priority), c.kind_target, *idx));
-    out.into_iter().map(|(_, c)| c).collect()
+    // dsl 0.26.0 §5, dsl 0.27.0 (T3-10): the checker's order — priority
+    // descending, member > sub-kind > kind, then index order.
+    let order = lute_check::beats::selection_order(
+        &out.iter()
+            .map(|(idx, c)| {
+                let kind = p.index.beats[*idx].target_kind.as_ref();
+                (occasion, c.priority, kind.map(|k| k.members.as_slice()))
+            })
+            .collect::<Vec<_>>(),
+    );
+    lute_check::beats::reorder(out, &order)
+        .into_iter()
+        .map(|(_, c)| c)
+        .collect()
 }
 
 /// The unknown `when` that could change this step's outcome, if any. On a
@@ -3537,7 +3546,9 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
                 body,
                 quests,
                 world: wants.map(|wants| world_view(p, &w, wants.facts)),
-                notes: clock_raised_note(p, &step.action).into_iter().collect(),
+                notes: clock_raised_note(p, &w, &step.action, &plan[i + 1..])
+                    .into_iter()
+                    .collect(),
                 exclusive,
             });
             if let Some(h) = halt {
@@ -3561,12 +3572,16 @@ fn execute(p: &Project, script: &PlayScript, plan: &[Step], mut w: World) -> Pla
 /// Summer R1: an `occasion:` step raising the `dayEnd` / `dayStart` the
 /// clock's `raise:` map declares — the next `advance:` crossing that
 /// midnight raises it again, so its content runs twice for one day. A note,
-/// not an error: a script may mean it.
-fn clock_raised_note(p: &Project, action: &Action) -> Option<String> {
+/// not an error: a script may mean it. Ember F7 (round-5 T3-24): only when
+/// such an `advance:` comes — some `later` step, before a `newRun` / `end`,
+/// moves the clock (from where it stands now, each advance from where the
+/// one before it left it) across a midnight while raising that moment.
+fn clock_raised_note(p: &Project, w: &World, action: &Action, later: &[Step]) -> Option<String> {
     let Action::Occasion { occasion, .. } = action else {
         return None;
     };
-    let moments = p.index.clock.as_ref()?.raise.as_ref()?.moments();
+    let clock = p.index.clock.as_ref()?;
+    let moments = clock.raise.as_ref()?.moments();
     let (moment, when) = if moments.day_end.as_ref() == Some(occasion) {
         (
             "dayEnd",
@@ -3577,11 +3592,33 @@ fn clock_raised_note(p: &Project, action: &Action) -> Option<String> {
     } else {
         return None;
     };
-    Some(format!(
-        "`{occasion}` is the clock's `raise: {{ {moment}: {occasion} }}` — an `advance:` raises it \
-         {when}; this step raises it again, so the same day's `{occasion}` runs twice once an \
-         `advance:` passes it (drop the step and let `advance:` raise it; dsl 0.24.0 §1)"
-    ))
+    let mut at = clock_at(p, w)?;
+    let passed = later
+        .iter()
+        .take_while(|s| !matches!(s.action, Action::NewRun(_) | Action::End))
+        .any(|s| {
+            let Action::Advance { by, raise, .. } = &s.action else {
+                return false;
+            };
+            let raises = match moment {
+                "dayEnd" => raise.day_end.as_ref(),
+                _ => raise.day_start.as_ref(),
+            } == Some(occasion);
+            (0..s.repeat).any(|_| {
+                let to = clock.advance(at, *by);
+                let crossed = to.day > at.day;
+                at = to;
+                raises && crossed
+            })
+        });
+    passed.then(|| {
+        format!(
+            "`{occasion}` is the clock's `raise: {{ {moment}: {occasion} }}` — an `advance:` \
+             raises it {when}; this step raises it again, so the same day's `{occasion}` runs \
+             twice once an `advance:` passes it (drop the step and let `advance:` raise it; dsl \
+             0.24.0 §1)"
+        )
+    })
 }
 
 /// dsl 0.24.0 §5: answers a step's own `bridges:` gave that no plugin call

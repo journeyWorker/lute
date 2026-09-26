@@ -62,6 +62,17 @@ enums:
 
 `@narrator: Today is {{run.weekday}}.` renders `Today is Sunday.`. A member without a label renders its id (`tue`). Conditions still compare ids: `run.weekday == 'sun'`. A label for something that is not a member is `E-ENUM-LABEL-NOT-MEMBER`, and a label that is not a string is `E-META-VALUE`. A declared [clock](/language/clock/) uses the same mechanism for its weekday names.
 
+`domain:` may also name an [entity kind](/state/facts-and-datalog/#entities-relations-ground-facts) instead of an enum. The path then holds one member of that kind. It is the way to type a position the engine keeps over a map kind, such as the room a stalker is in:
+
+```yaml
+state:
+  run.stalker: { type: { domain: room }, default: chapel, owner: engine }
+entities:
+  room: { members: [chapel, ward, cellar] }
+```
+
+A condition compares it with a member, `run.stalker == 'ward'`, and in a beat that answers a whole kind it compares with the member the occasion was raised for, `run.stalker == occasion.target` (see [Kind targets](/language/beats/#kind-targets)). A `<match on="run.stalker">` covers every member of the kind or has an `<otherwise>` (`E-NONEXHAUSTIVE`). Whether `domain:` names an enum or a kind, a literal must be one of its members: `run.stalker == 'wrd'` is `E-WHEN-LITERAL-DOMAIN` with a did-you-mean, and a `::set` of a non-member into such a path is `E-SET-TYPE`. The path counts as a read of the kind, so the kind draws no `W-DOMAIN-UNREAD`.
+
 ### One path per entity: `per:`
 
 A number kept for each member of a group, such as a companion's approval, is one declaration with **`per:`** (dsl 0.24.0 §3) rather than one line per member:
@@ -74,7 +85,7 @@ entities:
   companion: { subsetOf: person, members: [isolde, corvin] }
 ```
 
-This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: number, default: 0 }`, and the compiled state table carries one entry per member. Content addresses a member by name: `::set{run.approval.isolde += 1}`, `when="run.approval.corvin >= 3"`, `{{run.approval.isolde}}`. The family itself is not a path, so `when="run.approval > 1"` is `E-UNDECLARED`, and the message says the path is entity-indexed and asks for a member. A Datalog rule is the one place that reads a member through a variable, `cel("run.approval[P] >= 3")` (see [Facts and Datalog](/state/facts-and-datalog/#entity-indexed-state-in-a-rule-guard)).
+This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: number, default: 0 }`, and the compiled state table carries one entry per member. Content addresses a member by name: `::set{run.approval.isolde += 1}`, `when="run.approval.corvin >= 3"`, `{{run.approval.isolde}}`. The family itself is not a path, so `when="run.approval > 1"` is `E-UNDECLARED`, and the message says the path is entity-indexed and asks for a member. Two places reach a member through something other than its name. A Datalog rule reads it through a variable, `cel("run.approval[P] >= 3")` (see [Facts and Datalog](/state/facts-and-datalog/#entity-indexed-state-in-a-rule-guard)). A component with `effects: true` writes it through a param, `::set{run.approval[@who] += @delta}`: each `::use` writes the member its argument names, and an argument outside the kind is `E-COMPONENT-ARG` (see [Components](/language/components-and-extends/)).
 
 `per:` names a **closed** entity kind, one with `members:`, declared in the same document as the path. A kind declared `open:`, a kind the document does not declare, or a malformed one is `E-STATE-DECL`, because the checker cannot list the paths it would declare. The kind may be a [sub-kind](/state/facts-and-datalog/#sub-kinds-subsetof). Indexing a path by a kind counts as reading the kind, so it draws no `W-DOMAIN-UNREAD`.
 

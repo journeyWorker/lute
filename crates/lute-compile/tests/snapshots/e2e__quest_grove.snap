@@ -183,7 +183,8 @@ expression: json
           "amount": 1,
           "on": "failed"
         }
-      ]
+      ],
+      "tier": "run"
     },
     {
       "kind": "on",
@@ -275,7 +276,8 @@ expression: json
           "optional": false,
           "body": null
         }
-      ]
+      ],
+      "tier": "run"
     },
     {
       "kind": "on",

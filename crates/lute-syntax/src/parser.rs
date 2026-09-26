@@ -48,6 +48,10 @@ pub const E_STRING_ESCAPE: &str = "E-STRING-ESCAPE";
 /// part of the value (a `label='"Hi."'` showed `'"Hi."'`). A `"` inside a
 /// value is written `\"`.
 pub const E_ATTR_QUOTE: &str = "E-ATTR-QUOTE";
+/// Diagnostic code: a `::set{ path … }` whose path is not followed by an
+/// assignment operator (`=`, `+=`, `-=`, `*=`) — `run.clues - 1`,
+/// `run.clues 2`, `run.clues == 2` (dsl 0.27.0 §2, T1-1).
+pub const E_SET_SHAPE: &str = "E-SET-SHAPE";
 /// Diagnostic code: a `{{` interpolation had no closing `}}` before end of line
 /// (§7.6).
 pub const E_INTERP_UNTERMINATED: &str = "E-INTERP-UNTERMINATED";
@@ -644,23 +648,56 @@ impl Parser<'_> {
                 j = k + 1;
             }
         }
+        // `run.aff.@who` — a param as a dotted segment. Only `run.aff[@who]`
+        // indexes a family; recover as that path so the error does not
+        // cascade into `E-UNDECLARED run.aff.` / `E-CEL-PARSE`.
+        let mut param_segment: Option<String> = None;
+        if j > path_start && ib[j - 1] == b'.' && ib.get(j) == Some(&b'@') {
+            let mut k = j + 1;
+            while k < n && is_ident_byte(ib[k]) {
+                k += 1;
+            }
+            if k > j + 1 {
+                param_segment = Some(format!("{}[{}]", &inner[path_start..j - 1], &inner[j..k]));
+                j = k;
+            }
+        }
         let path_end = j;
-        let path = inner[path_start..path_end].to_string();
+        let path = param_segment
+            .clone()
+            .unwrap_or_else(|| inner[path_start..path_end].to_string());
         let path_span = self.span(inner_start + path_start, inner_start + path_end);
         while j < n && (ib[j] == b' ' || ib[j] == b'\t') {
             j += 1;
         }
+        let op_start = j;
         let rest = &inner[j..];
-        let op = if rest.starts_with("+=") {
-            "+="
+        // dsl 0.27.0 §2 (T1-1): only `=`, `+=`, `-=` and `*=` assign. Anything
+        // else is `E-SET-SHAPE` — never a silent `=` that eats the author's
+        // operator (`run.clues - 1` became `run.clues = 1`). The recovered node
+        // takes the operator the author most likely meant, so the error does
+        // not cascade into type errors on the leftover expression.
+        // (op, bytes consumed, Some(guess) when the shape is wrong)
+        let (op, skip, shape_err): (&str, usize, Option<Option<&str>>) = if rest.starts_with("+=") {
+            ("+=", 2, None)
         } else if rest.starts_with("-=") {
-            "-="
+            ("-=", 2, None)
         } else if rest.starts_with("*=") {
-            "*="
+            ("*=", 2, None)
+        } else if rest.starts_with("==") {
+            ("=", 2, Some(Some("=")))
+        } else if rest.starts_with('=') {
+            ("=", 1, None)
+        } else if rest.starts_with('+') {
+            ("+=", 1, Some(Some("+=")))
+        } else if rest.starts_with('-') {
+            ("-=", 1, Some(Some("-=")))
+        } else if rest.starts_with('*') {
+            ("*=", 1, Some(Some("*=")))
         } else {
-            "=" // "=" or a malformed operator: default; the checker validates.
+            ("=", 0, Some(None))
         };
-        j += op.len();
+        j += skip;
         while j < n && (ib[j] == b' ' || ib[j] == b'\t') {
             j += 1;
         }
@@ -687,6 +724,41 @@ impl Parser<'_> {
             inner[expr_start..expr_end].to_string(),
             self.span(inner_start + expr_start, inner_start + expr_end),
         );
+        if let Some(guess) = shape_err {
+            let value = expr.raw.trim();
+            let hint = match (guess, value.is_empty()) {
+                (_, true) => " and a value".to_string(),
+                (Some(g), false) => format!(" — did you mean `{path} {g} {value}`?"),
+                (None, false) => format!(" — did you mean `{path} = {value}`?"),
+            };
+            let end = expr_end.max(op_start);
+            let written = self.body[inner_start + op_start..inner_start + end].trim();
+            let found = if written.is_empty() {
+                "nothing".to_string()
+            } else {
+                format!("`{written}`")
+            };
+            let msg = format!(
+                "`::set` needs an assignment operator after `{path}` — `=` (replace), `+=` \
+                 (add) or `-=` (subtract) — but found {found}{hint}"
+            );
+            let (a, b) = (
+                self.orig(inner_start + op_start),
+                self.orig(inner_start + end),
+            );
+            self.emit_o(E_SET_SHAPE, msg, a, b, Layer::Logic);
+        }
+        if param_segment.is_some() {
+            let written = self.body[inner_start + path_start..inner_start + path_end].to_string();
+            let msg = format!(
+                "`{written}`: a path segment cannot be a param — index the family: `{path}`"
+            );
+            let (a, b) = (
+                self.orig(inner_start + path_start),
+                self.orig(inner_start + path_end),
+            );
+            self.emit_o(E_SET_SHAPE, msg, a, b, Layer::Logic);
+        }
         let span = self.span(cstart, node_end);
         self.cursor += 1;
         Node::Set(Set {

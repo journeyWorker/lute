@@ -1715,15 +1715,17 @@ pub fn bridge_result_writes(
 
 /// dsl 0.25.0 §7: the state paths a document's content may read — every
 /// dotted identifier chain (`scene.check.guards.margin`) in its source
-/// `text`, and in the body of every `@def` it names, transitively
-/// (`def_bodies`, [`FoldedEnv::def_bodies`]). Textual on purpose, like
-/// `W-RELATION-UNREAD`'s scan: a chain in a comment or a string is counted
-/// too, which only ever keeps a bridge result field required (the 0.24
-/// rule), never lets a read one go unanswered.
+/// `text` outside its comments ([`lute_check::document_read_view`]), and in
+/// the body of every `@def` it names, transitively (`def_bodies`,
+/// [`FoldedEnv::def_bodies`]). Textual on purpose, like
+/// `W-RELATION-UNREAD`'s scan: a chain in a string is counted too, which only
+/// ever keeps a bridge result field required (the 0.24 rule), never lets a
+/// read one go unanswered.
 pub fn content_read_paths(text: &str, def_bodies: &BTreeMap<String, String>) -> BTreeSet<String> {
+    let view = lute_check::document_read_view(text);
     let mut paths = BTreeSet::new();
     let mut seen = BTreeSet::new();
-    let mut todo = vec![text];
+    let mut todo = vec![view.as_str()];
     while let Some(text) = todo.pop() {
         let b = text.as_bytes();
         let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';

@@ -1,9 +1,7 @@
 ---
 kind: scene
+id: mira.s01ep01
 title: A Quiet Table
-character: mira
-season: 1
-episode: 1
 pov: fixer
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]

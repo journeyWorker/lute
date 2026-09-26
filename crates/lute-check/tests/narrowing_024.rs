@@ -272,6 +272,43 @@ fn exhaustiveness_honors_the_beat_when() {
     assert_eq!(with_code(&ds, "E-NONEXHAUSTIVE").len(), 1, "{ds:#?}");
 }
 
+/// dsl 0.27.0 (round-5 T3-3): a `||` whose every side constrains the subject
+/// narrows it to the union, and `in [...]` (or `!(… in [...])`) to its value
+/// set — like one `==`. A `||` with a side that leaves the subject free
+/// narrows nothing.
+#[test]
+fn a_disjunction_or_membership_when_narrows_like_equality() {
+    let arms = "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
+                <when is=\"b\">\n@n: b\n</when>\n<when is=\"c\">\n@n: c\n</when>\n</match>\n";
+    for when in [
+        "run.wd == 'a' || run.wd == 'b'",
+        "run.wd in ['a', 'b']",
+        "!(run.wd in ['c'])",
+    ] {
+        let ds = run(&beat(when, arms));
+        let dead = with_code(&ds, "E-ARM-DEAD");
+        assert_eq!(dead.len(), 1, "{when}: {ds:#?}");
+        assert!(
+            dead[0].message.contains("pattern `c`"),
+            "{when}: {}",
+            dead[0].message
+        );
+        // The dead arm removed, the narrowed domain is fully covered.
+        let two = "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
+                   <when is=\"b\">\n@n: b\n</when>\n</match>\n";
+        assert!(run(&beat(when, two)).is_empty(), "{when}");
+    }
+    // A side over another path leaves `run.wd` free: no dead arm, and the
+    // partial match stays non-exhaustive.
+    let mixed = "run.wd == 'a' || run.a == 1";
+    assert!(with_code(&run(&beat(mixed, arms)), "E-ARM-DEAD").is_empty());
+    let partial = "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n";
+    assert_eq!(
+        with_code(&run(&beat(mixed, partial)), "E-NONEXHAUSTIVE").len(),
+        1
+    );
+}
+
 // --- T1-7 (b): short-circuit narrowing ---------------------------------------------
 
 fn line_reads(when: &str) -> usize {

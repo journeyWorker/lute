@@ -31,22 +31,22 @@ state:
       needed to golden the synthesis output).
 */
 
-<quest id="saveTheGrove" title="Save the Grove" start="run.act == 1" fail="run.npc.halsin.dead">
+<quest id="saveTheGrove" tier="run" title="Save the Grove" start="run.act == 1" fail="run.npc.halsin.dead">
   <objective id="halsin" title="Find Halsin" quest="findHalsin"/>
   <objective id="ritual" title="Stop the ritual" quest="stopRitual"/>
   <objective id="scout" title="Scout the perimeter" quest="scoutPerimeter" optional/>
   <objective id="talkRath" title="Speak with Rath" done="run.spokeRath"/>
 </quest>
 
-<quest id="findHalsin" title="Find Halsin">
+<quest id="findHalsin" tier="run" title="Find Halsin">
   <reward kind="XP" amount="120"/>
   <objective id="reachCage" title="Reach the cage" done="run.npc.halsin.freed"/>
 </quest>
 
-<quest id="stopRitual" title="Stop the ritual">
+<quest id="stopRitual" tier="run" title="Stop the ritual">
   <objective id="disrupt" title="Disrupt the ritual" done="run.ritual.stopped"/>
 </quest>
 
-<quest id="scoutPerimeter" title="Scout the perimeter">
+<quest id="scoutPerimeter" tier="run" title="Scout the perimeter">
   <objective id="mapEdges" title="Map the perimeter" done="run.perimeter.mapped"/>
 </quest>

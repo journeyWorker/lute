@@ -1012,19 +1012,42 @@ fn run_one_test(
     } else {
         shared.for_document(&lute_path, project, providers)
     };
-    // dsl 0.26.0 §7 (T3-5): an `accepts:` naming a quest this document does
-    // not declare resolves against every quest of the project.
-    if !mocks.accepts.is_empty() {
+    // dsl 0.26.0 §7 (T3-5), round-5 T3-24: an `accepts:`, a `quests:` seed or
+    // an `expect.quests` naming a quest this document does not declare
+    // resolves against every quest of the project.
+    let expected_quests: Vec<&str> = map
+        .get("expect")
+        .and_then(|v| v.get("quests"))
+        .and_then(|v| v.as_mapping())
+        .map(|m| m.keys().filter_map(|k| k.as_str()).collect())
+        .unwrap_or_default();
+    let named_quests: Vec<&str> = mocks
+        .accepts
+        .iter()
+        .map(String::as_str)
+        .chain(mocks.state.iter().filter_map(|(p, _, _)| seeded_quest(p)))
+        .chain(expected_quests.iter().copied())
+        .collect();
+    if !named_quests.is_empty() {
         let (doc, _) = lute_syntax::parse(&input.text);
-        let foreign = mocks
-            .accepts
+        let foreign = named_quests
             .iter()
-            .any(|id| !doc.quests.iter().any(|q| &q.id == id));
+            .any(|id| !doc.quests.iter().any(|q| q.id == *id));
         if foreign {
             mocks.project_quests =
                 resolve_with.and_then(|root| shared.project_quests(root, providers));
         }
     }
+    // What a quest another document declares starts the walk as (T3-24).
+    let foreign_start = ForeignQuestStart {
+        project: mocks.project_quests.clone(),
+        seeds: mocks
+            .state
+            .iter()
+            .filter_map(|(p, v, _)| seeded_quest(p).map(|id| (id.to_string(), v.clone())))
+            .collect(),
+        accepted: mocks.accepts.clone(),
+    };
     // The mocks an unpresented entry / beat is judged under (T3-5).
     let eligibility_mocks = judges_eligibility_by_id.then(|| mocks.clone());
     let checked = lute_check::check(&input);
@@ -1212,17 +1235,20 @@ fn run_one_test(
         }
 
         // quests: { id: unset|active|complete|failed } — against the
-        // lifecycle the trace ran (dsl 0.21.0 §7a.4).
+        // lifecycle the trace ran (dsl 0.21.0 §7a.4); a quest another
+        // document of the project declares, against where the walk left it
+        // (round-5 T3-24, [`ForeignQuestStart::judge`]).
         if let Some(quests) = expect.get("quests").and_then(|v| v.as_mapping()) {
             let final_quests = final_quests(&report, &input.text);
             for (k, v) in quests {
                 let Some(id) = k.as_str() else { continue };
                 let want = yaml_scalar_text(v).unwrap_or_default();
-                // `None`: the traced document declares no such quest — there
-                // is no lifecycle to observe (the T9.9 absent-value rule).
-                let actual = final_quests.get(id).cloned();
+                let (actual, why) = match final_quests.get(id) {
+                    Some(state) => (Some(state.clone()), None),
+                    None => foreign_start.judge(&report, id, &final_quests),
+                };
                 expectations.push(ExpectResult {
-                    why: None,
+                    why,
                     kind: "quests",
                     subject: id.to_string(),
                     passed: QUEST_STATES.contains(&want.as_str())
@@ -1750,6 +1776,75 @@ fn final_quests(report: &TraceReport, text: &str) -> BTreeMap<String, String> {
     out
 }
 
+/// The quest id a `quest.<id>.state` seed (a `quests:` entry, or a `state:`
+/// seed of the reserved path) names.
+fn seeded_quest(path: &str) -> Option<&str> {
+    path.strip_prefix("quest.")?.strip_suffix(".state")
+}
+
+/// Round-5 T3-24: what `expect.quests` needs to judge a quest another
+/// document of the project declares. The walk holds no such quest — it
+/// never judges its `start` or objectives — so the quest ends the walk as
+/// it began (its `quests:` / `state:` seed, else `unset`), except that an
+/// accept — `accepts:`, or a `::accept` the walk ran that is not queued for
+/// the next run — activates it while `unset`, as the engine's settle does.
+struct ForeignQuestStart {
+    /// Every quest id of the resolved project (`None`: no project resolved,
+    /// or the test names no quest outside the traced document).
+    project: Option<BTreeSet<String>>,
+    seeds: BTreeMap<String, String>,
+    accepted: Vec<String>,
+}
+
+impl ForeignQuestStart {
+    /// `(observed state, why)` for `id`, which the traced document does not
+    /// declare (`own` is [`final_quests`]). The state is `None` when no
+    /// quest of the project — or, with no project, of the document —
+    /// declares `id`; `why` then says so, with the nearest id.
+    fn judge(
+        &self,
+        report: &TraceReport,
+        id: &str,
+        own: &BTreeMap<String, String>,
+    ) -> (Option<String>, Option<String>) {
+        if !self.project.as_ref().is_some_and(|p| p.contains(id)) {
+            let (unknown, candidates): (String, Vec<&str>) = match &self.project {
+                Some(p) => (
+                    format!("no document of the project declares quest `{id}`"),
+                    p.iter().map(String::as_str).collect(),
+                ),
+                None => (
+                    format!("the traced document declares no quest `{id}`"),
+                    own.keys().map(String::as_str).collect(),
+                ),
+            };
+            let hint = lute_manifest::suggest::nearest(id, candidates, 2)
+                .map(|c| format!(" — did you mean `{c}`?"))
+                .unwrap_or_default();
+            return (None, Some(format!("{unknown}{hint}")));
+        }
+        let seeded = self
+            .seeds
+            .get(id)
+            .map(|s| s.trim_matches(['\'', '"']).to_string());
+        let accepted = self.accepted.iter().any(|a| a == id)
+            || report.steps.iter().any(
+                |s| matches!(s, lute_trace::Step::Accept { quest, next_run: false } if quest == id),
+            );
+        let state = match seeded {
+            Some(s) if s != "unset" => s,
+            _ if accepted => "active".to_string(),
+            _ => "unset".to_string(),
+        };
+        let why = format!(
+            "quest `{id}` is declared in another document of the project, so the walk does not \
+             judge its `start` or objectives: it is its state at the start of the walk (a \
+             `quests:` seed, else `unset`), made `active` by an accept"
+        );
+        (Some(state), Some(why))
+    }
+}
+
 /// T9.11's second half. `lute-trace` composes its mock diagnostics for
 /// `lute trace`'s command line (`--choose id=arm`, `--state path=value`,
 /// `--fact`, `--event`, `--accept`, `--entry`), but in a `*.test.yaml` the same input
@@ -2012,19 +2107,26 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
             e.expected,
             QUEST_STATES.join(", ")
         ),
-        ("quests", Some(actual)) => outln!(
-            out,
-            "      quests {}: expected {:?}, got {:?}",
-            e.subject,
-            e.expected,
-            actual
-        ),
+        ("quests", Some(actual)) => {
+            outln!(
+                out,
+                "      quests {}: expected {:?}, got {:?}",
+                e.subject,
+                e.expected,
+                actual
+            );
+            if let Some(why) = &e.why {
+                outln!(out, "      note: {why}");
+            }
+        }
         ("quests", None) => outln!(
             out,
-            "      quests {}: expected {:?}, but the traced document declares no quest `{}`",
+            "      quests {}: expected {:?}, but {}",
             e.subject,
             e.expected,
-            e.subject
+            e.why
+                .as_deref()
+                .unwrap_or("the traced document declares no such quest")
         ),
         // T9.9: there is no observed value to print. The old line printed
         // the sentinel on the `got` side, so a test whose expected literal

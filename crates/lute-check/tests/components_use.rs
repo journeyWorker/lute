@@ -336,3 +336,72 @@ fn def_arg_to_enum_param_must_produce_members() {
         "a string read cannot be proven a member"
     );
 }
+
+/// Every diagnostic `check()` reports for `text`, its `components:` resolved
+/// from `dir` (the [`codes`] wiring, keeping positions and messages).
+fn diagnostics(dir: &Path, text: &str) -> Vec<lute_core_span::Diagnostic> {
+    let (doc, _) = lute_syntax::parse(text);
+    let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "doc".into(),
+        snapshot: load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Ci,
+        imports: Default::default(),
+        components: resolve_components(dir, &meta0.components, doc.meta.span),
+        defaults: Default::default(),
+    };
+    check(&input).diagnostics
+}
+
+const WEATHER: &str = "---\ncomponent: weather\nparams:\n  \
+    sky: { type: { enum: [clear, fog, storm] }, default: fogg }\n  \
+    glass: { type: { enum: [steady, guttering] }, default: \"@glassTonight\" }\n---\n\
+    ## W.\n@narrator: w.\n";
+
+/// Round-5 T3-23: a literal param default the declared type rejects is the
+/// component's own fault — reported once, at its `params:` entry, with a
+/// did-you-mean — and never again at a `::use` that omits the param. A
+/// `@def` default resolves in each host, so a wrong-typed one stays at the
+/// `::use`, and its message names both types.
+#[test]
+fn a_bad_literal_default_is_reported_at_the_params_line_once() {
+    let dir = unique_dir();
+    write_lute(&dir, "weather.lute", WEATHER);
+    let own = diagnostics(&dir, WEATHER);
+    let bad: Vec<_> = own.iter().filter(|d| d.code == "E-COMPONENT-ARG").collect();
+    assert_eq!(bad.len(), 1, "{own:#?}");
+    assert_eq!(
+        bad[0].span.line, 4,
+        "at the `sky:` entry: {:?}",
+        bad[0].span
+    );
+    assert!(
+        bad[0].message.contains("`fogg`")
+            && bad[0].message.contains("enum[clear, fog, storm]")
+            && bad[0].message.contains("did you mean `fog`?"),
+        "{}",
+        bad[0].message
+    );
+
+    let host = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [weather.lute]\n\
+                state:\n  run.flag: { type: bool, default: false }\n\
+                defs:\n  glassTonight: \"run.flag\"\n---\n## Shot 1.\n::use{component=\"weather\"}\n";
+    let at_use: Vec<_> = diagnostics(&dir, host)
+        .into_iter()
+        .filter(|d| d.code == "E-COMPONENT-ARG")
+        .collect();
+    assert_eq!(
+        at_use.len(),
+        1,
+        "the literal default is not repeated: {at_use:#?}"
+    );
+    assert!(
+        at_use[0].message.contains(
+            "param `glass` is enum[steady, guttering] but its default `@glassTonight` is bool"
+        ),
+        "{}",
+        at_use[0].message
+    );
+}

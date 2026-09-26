@@ -6,7 +6,11 @@
 //! reaches about it: unreachable, shadowed, tied, and once-per-run over
 //! user state — plus (dsl 0.26.0 §8) `covered by <id>`, a fallback an
 //! earlier never-spent beat whose `when` it implies always beats
-//! ([`lute_check::beats::coverers`]; informational, no diagnostic).
+//! ([`lute_check::beats::coverers`]; informational, no diagnostic), and
+//! (dsl 0.27.0 T3-9) `shadowed by <id>` per ladder cell: the beats that win
+//! every time on THAT ladder ([`lute_check::beats::shadowers_at`]), even
+//! where the beat wins another target's ladder. A kind beat's row names its
+//! `kind:<kind>` target.
 //!
 //! Nothing is re-derived. The rows are [`lute_check::project_beats`] — the
 //! beat list the project beat passes judge — and the verdicts are the
@@ -43,6 +47,9 @@ struct Ladder<'a> {
     /// untargeted beats answer any target). `kind:<kind>` (dsl 0.26.0 §5):
     /// each member of the kind that no beat names on its own.
     target: Option<String>,
+    /// The targets the ladder is raised for: the named one, or a kind
+    /// ladder's members; empty when raised without a target.
+    members: Vec<String>,
     targeted: bool,
     select: OccasionSelect,
     /// Indices into the root's selection-ordered beat list.
@@ -54,6 +61,52 @@ struct Ladder<'a> {
 fn named_beat(message: &str) -> Option<&str> {
     let (_, rest) = message.split_once('`')?;
     rest.split_once('`').map(|(name, _)| name)
+}
+
+/// Whether verdict `d` (reported in `path`) is about `b`: the beat its
+/// message names first, in `b`'s document — or (dsl 0.27.0 T3-11) any beat a
+/// `W-BEAT-PRIORITY-TIE` names before `share priority`, in any document
+/// (one warning per tied group, anchored at its first beat).
+fn names_beat(path: &Path, d: &Diagnostic, b: &ProjectBeat<'_>) -> bool {
+    if d.code == lute_check::W_BEAT_PRIORITY_TIE {
+        return d
+            .message
+            .split_once(" share priority ")
+            .is_some_and(|(names, _)| names.contains(&b.name()));
+    }
+    path == b.path.as_path() && named_beat(&d.message) == Some(b.id.as_str())
+}
+
+/// One root's rows and what the ladder cells print about them.
+struct Cells<'r, 'a> {
+    /// The root's beats in selection order.
+    beats: &'r [ProjectBeat<'a>],
+    /// The `check-project` verdicts per beat.
+    verdicts: &'r [Vec<&'r Diagnostic>],
+    covered: &'r [Option<&'r str>],
+    /// [`lute_check::beats::always_eligible`] per beat.
+    always: &'r [bool],
+}
+
+impl Cells<'_, '_> {
+    /// dsl 0.27.0 (T3-9): the ids of the beats that win every time row `i`
+    /// could on `ladder` — at each ladder target the row answers.
+    fn shadowed_by(&self, ladder: &Ladder<'_>, i: usize) -> Option<Vec<&str>> {
+        let b = &self.beats[i];
+        let targets: Vec<&str> = ladder
+            .members
+            .iter()
+            .map(String::as_str)
+            .filter(|t| b.cells().answers(t))
+            .collect();
+        let found = lute_check::beats::shadowers_at(self.beats, self.always, i, &targets)?;
+        Some(
+            found
+                .into_iter()
+                .map(|a| self.beats[a].id.as_str())
+                .collect(),
+        )
+    }
 }
 
 fn kind_label(kind: ProjectBeatKind) -> &'static str {
@@ -119,10 +172,10 @@ pub(crate) fn run_beats(
             .map(|(p, d, _)| (p.clone(), d.clone()))
             .collect();
         let foldeds: Vec<&lute_check::FoldedEnv> = group.iter().map(|(_, _, f)| f).collect();
-        let mut beats = lute_check::project_beats(&docs, &foldeds);
-        // Selection order: priority descending, a kind beat after the other
-        // beats of its priority (dsl 0.26.0 §5), project order within (stable).
-        beats.sort_by_key(|b| (std::cmp::Reverse(b.priority), b.cells().is_kind()));
+        // Selection order (dsl 0.26.0 §5, dsl 0.27.0 T3-10): priority
+        // descending, member > sub-kind > kind, project order within.
+        let beats =
+            lute_check::beats::in_selection_order(lute_check::project_beats(&docs, &foldeds));
         let mut decls: BTreeMap<&str, &OccasionDecl> = BTreeMap::new();
         for f in &foldeds {
             for (name, d) in &f.occasions {
@@ -136,22 +189,30 @@ pub(crate) fn run_beats(
             .map(|b| {
                 verdict_diags
                     .iter()
-                    .filter(|(p, d)| *p == b.path && named_beat(&d.message) == Some(b.id.as_str()))
+                    .filter(|(p, d)| names_beat(p, d, b))
                     .map(|(_, d)| *d)
                     .collect()
             })
+            .collect();
+        let always: Vec<bool> = beats
+            .iter()
+            .map(lute_check::beats::always_eligible)
             .collect();
         let covered: Vec<Option<&str>> = lute_check::beats::coverers(&beats)
             .into_iter()
             .map(|c| c.map(|i| beats[i].id.as_str()))
             .collect();
         let ladders = ladders(&beats, &decls, occasions, targets);
+        let cells = Cells {
+            beats: &beats,
+            verdicts: &verdicts,
+            covered: &covered,
+            always: &always,
+        };
         if json_out {
-            roots_json.push(root_json(root, &beats, &verdicts, &covered, &ladders));
+            roots_json.push(root_json(root, &cells, &ladders));
         } else {
-            render_root(
-                &mut text, root, &beats, &verdicts, &covered, &ladders, expand,
-            );
+            render_root(&mut text, root, &cells, &ladders, expand);
         }
     }
     if let Some(o) = occasions.iter().find(|o| !known_occasions.contains(*o)) {
@@ -227,10 +288,11 @@ fn ladders<'a>(
                 .map(|(i, _)| i)
                 .collect()
         };
-        let mut push = |target: Option<String>, rows: Vec<usize>| {
+        let mut push = |target: Option<String>, members: Vec<String>, rows: Vec<usize>| {
             out.push(Ladder {
                 occasion: occ,
                 target,
+                members,
                 targeted,
                 select,
                 beats: rows,
@@ -242,7 +304,11 @@ fn ladders<'a>(
                     !matches!(b.cells(), lute_check::beats::BeatCells::Any) && b.cells().answers(t)
                 });
                 if raised {
-                    push(Some(t.clone()), rows_for(&|c| c.answers(t)));
+                    push(
+                        Some(t.clone()),
+                        vec![t.clone()],
+                        rows_for(&|c| c.answers(t)),
+                    );
                 }
             }
             continue;
@@ -250,12 +316,17 @@ fn ladders<'a>(
         if named.is_empty() && kinds.is_empty() {
             push(
                 None,
+                Vec::new(),
                 rows_for(&|c| matches!(c, lute_check::beats::BeatCells::Any)),
             );
             continue;
         }
         for t in &named {
-            push(Some(t.to_string()), rows_for(&|c| c.answers(t)));
+            push(
+                Some(t.to_string()),
+                vec![t.to_string()],
+                rows_for(&|c| c.answers(t)),
+            );
         }
         for (label, rest) in &kinds {
             if rest.is_empty() {
@@ -263,6 +334,7 @@ fn ladders<'a>(
             }
             push(
                 Some(label.to_string()),
+                rest.iter().map(|m| m.to_string()).collect(),
                 rows_for(&|c| rest.iter().any(|m| c.answers(m))),
             );
         }
@@ -270,12 +342,28 @@ fn ladders<'a>(
     out
 }
 
-fn verdict_words(ds: &[&Diagnostic], covered: Option<&str>) -> String {
+/// The verdict cell: the `check-project` verdicts about the beat, with
+/// (dsl 0.27.0 T3-9) `shadowed by <id>` where this ladder's earlier beats
+/// win every time it could — even when it wins on another ladder.
+fn verdict_words(
+    ds: &[&Diagnostic],
+    covered: Option<&str>,
+    shadowed_by: Option<&[&str]>,
+) -> String {
     let words: BTreeSet<&str> = ds
         .iter()
         .filter_map(|d| VERDICTS.iter().find(|(c, _)| d.code == *c).map(|(_, w)| *w))
         .collect();
-    let mut words: Vec<String> = words.into_iter().map(str::to_string).collect();
+    let mut words: Vec<String> = words
+        .into_iter()
+        .map(|w| match (w, shadowed_by) {
+            ("shadowed", Some(by)) => format!("shadowed by {}", by.join(" / ")),
+            _ => w.to_string(),
+        })
+        .collect();
+    if let Some(by) = shadowed_by.filter(|_| !words.iter().any(|w| w.starts_with("shadowed"))) {
+        words.insert(0, format!("shadowed by {}", by.join(" / ")));
+    }
     if let Some(id) = covered {
         words.push(format!("covered by {id}"));
     }
@@ -289,12 +377,11 @@ fn verdict_words(ds: &[&Diagnostic], covered: Option<&str>) -> String {
 fn render_root(
     out: &mut String,
     root: &Path,
-    beats: &[ProjectBeat<'_>],
-    verdicts: &[Vec<&Diagnostic>],
-    covered: &[Option<&str>],
+    cells: &Cells<'_, '_>,
     ladders: &[Ladder<'_>],
     expand: bool,
 ) {
+    let beats = cells.beats;
     let _ = writeln!(out, "project root: {}", root.display());
     if ladders.is_empty() {
         let _ = writeln!(out, "  (no beats)");
@@ -333,16 +420,22 @@ fn render_root(
                 let _ = write!(once, ", share {key}");
             }
             let mut id = b.id.clone();
+            // dsl 0.27.0 (T3-9): a kind beat's row says which kind it
+            // answers the ladder's target through.
+            if let (Some(t), lute_check::beats::BeatCells::Kind(_)) = (b.target, b.cells()) {
+                let _ = write!(id, " ({t})");
+            }
             if let Some(t) = &b.title {
                 let _ = write!(id, " \"{t}\"");
             }
+            let shadowed_by = cells.shadowed_by(ladder, i);
             rows.push([
                 (rank + 1).to_string(),
                 b.priority.to_string(),
                 id,
                 kind_label(b.kind).to_string(),
                 once,
-                verdict_words(&verdicts[i], covered[i]),
+                verdict_words(&cells.verdicts[i], cells.covered[i], shadowed_by.as_deref()),
                 b.after.map_or_else(|| "-".to_string(), one_line),
                 when_text(b, expand).unwrap_or_else(|| "-".to_string()),
             ]);
@@ -367,13 +460,8 @@ fn render_root(
     out.push('\n');
 }
 
-fn root_json(
-    root: &Path,
-    beats: &[ProjectBeat<'_>],
-    verdicts: &[Vec<&Diagnostic>],
-    covered: &[Option<&str>],
-    ladders: &[Ladder<'_>],
-) -> Json {
+fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json {
+    let (beats, verdicts, covered) = (cells.beats, cells.verdicts, cells.covered);
     let rel = |p: &Path| p.strip_prefix(root).unwrap_or(p).display().to_string();
     let ladders: Vec<Json> = ladders
         .iter()
@@ -413,6 +501,10 @@ fn root_json(
                     }
                     if let Some(id) = covered[i] {
                         m.insert("coveredBy".into(), json!(id));
+                    }
+                    // dsl 0.27.0 (T3-9): this ladder's own verdict.
+                    if let Some(by) = cells.shadowed_by(l, i) {
+                        m.insert("shadowedBy".into(), json!(by));
                     }
                     m.insert(
                         "verdicts".into(),

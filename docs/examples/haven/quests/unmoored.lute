@@ -34,7 +34,7 @@ title: Unmoored
   restored: the prologue has two endings, and the frame quest is about the shed,
   not which terminal the player reaches.
 */
-<quest id="unmoored" title="Unmoored" start="true" fail="run.shedPressure >= 4" after="visited('haven.s01ep03')">
+<quest id="unmoored" tier="run" title="Unmoored" start="true" fail="run.shedPressure >= 4" after="visited('haven.s01ep03')">
 <objective id="aHandAtTheCoupling" title="Have somebody aboard who can stop the shed" done="count(can_halt(_)) >= 1"/>
 <objective id="somebodyToWalkWith" title="Give Vesna a reason to work with you" done="run.vesnaTrust >= 1"/>
 <objective id="noNewReasons" title="Give the schedule no new reasons" on="runEnd" done="run.shedPressure < 2"/>

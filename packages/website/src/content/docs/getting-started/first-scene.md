@@ -1,6 +1,6 @@
 ---
 title: Write your first scene
-description: Build one small, real Lute scene from an empty file step by step, running the lute tool at every step to see exactly what it reports.
+description: Build one small, real Lute scene from an empty file step by step, running the lute tool at every step to see exactly what it reports, then pin it with a test.
 ---
 
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
@@ -11,6 +11,10 @@ required. It builds **one small real scene** from an empty file, step by step, r
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
 only** — no plugins, no project configuration. Just the language itself.
+
+**If your editor and the terminal disagree** — red underlines in the editor on a file `lute check`
+calls `ok`, or the other way round — trust the terminal and run `lute doctor .`. It names the usual
+cause: an editor language server older than your `lute` (restart the editor after upgrading).
 
 ## Part 1 — The minimal skeleton
 
@@ -29,24 +33,29 @@ failed: my-scene.lute (4 error(s), 0 warning(s))
 
 That's the whole idea of `lute check`: it reads your file and tells you, line by line, exactly
 what is wrong and why — never a silent failure. Every `.lute` file starts with a YAML
-**frontmatter block** (between two `---` lines) that answers "what is this document, and whose
-scene is it?". Add one:
+**frontmatter block** (between two `---` lines) that answers "what is this document, and what is
+it called?". Add one:
 
 ```yaml
 ---
 kind: scene
+id: mira.s01ep01
 title: A Quiet Table
-character: mira
-season: 1
-episode: 1
 pov: fixer
 ---
 ```
 
-- `kind: scene` — this file is a scene (the other kind, `quest`, is for quest-logic files).
-- `character` — whose episode this is (the point-of-view character's storyline).
-- `season` / `episode` — which episode this scene belongs to.
+- `kind: scene` — this file is a scene: dialogue the player sees. The other two kinds are `quest`
+  (goals the story tracks) and `lore` (text the game looks up, such as item descriptions).
+- `id` — the scene's name, unique in your project. Other scenes and your tests refer to this scene
+  by it. Letters, digits, `_`, `-` and `.` are allowed; `mira.s01ep01` reads as "Mira, season 1,
+  episode 1", but any name works (`prologue`, `diner.opening`).
+- `title` — a human-readable title for tools and search.
 - `pov` — the id of the player character (the protagonist the player controls).
+
+The three `E-META-MISSING` errors above name `character`, `season` and `episode`: an older way to
+name a scene. As the message says in parentheses, an `id:` replaces all three, so you never need
+them.
 
 Save that and re-check:
 
@@ -55,8 +64,38 @@ $ lute check my-scene.lute
 ok: my-scene.lute (0 warning(s))
 ```
 
-Clean — but the file has no content yet. Try adding a line of narration directly under the
-frontmatter:
+### Quotes and YAML for writers
+
+The frontmatter is **YAML**, and so are the test and play files later on. Five rules cover
+everything this guide writes:
+
+- **`key: value`**, with a space after the colon. Indent with **spaces, never tabs**; a nested
+  entry is indented under its parent.
+- **A list** is `[a, b, c]` on one line, or one `- item` per line. **A map** is `{ key: value }` on
+  one line, or indented `key: value` lines.
+- **Quote a value that starts with a symbol** (`!`, `[`, `{`, `'`, `"`, `*`, `&`) or that contains
+  `: ` or ` #`. Plain words and numbers need no quotes.
+- **Quotes nest by alternating.** Inside double quotes, write single quotes; inside single quotes,
+  write double quotes:
+
+  ```yaml
+  after: 'visited("mira.s01ep01")'    # YAML's single quotes around Lute's "…"
+  when: "run.accused == 'ruben'"      # YAML's double quotes around Lute's '…'
+  when: "!visited('accusation')"      # starts with ! — must be quoted
+  ```
+
+  Writing `when: "run.accused == "ruben""` ends the string at the second `"`: `lute check`
+  reports `E-META-PARSE` on that line and suggests single quotes inside. Switch the inner pair.
+- **Straight quotes only.** Word processors and note apps turn `"` into curly `“ ”`. Lute reads only
+  the straight `"` and `'`, in the frontmatter and in tag attributes such as `label="…"` alike; a
+  curly quote in a tag attribute is `E-ATTR-QUOTE`, which says to retype it.
+
+Inside a `.lute` body, tag attributes are always double-quoted, so a condition in one uses single
+quotes inside: `when="run.accused == 'ruben'"`.
+
+### Content lives under a heading
+
+The file has no content yet. Try adding a line of narration directly under the frontmatter:
 
 ```lute
 @narrator: The diner is empty at this hour, and Mira likes it that way.
@@ -67,7 +106,7 @@ Check again:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
+my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -110,7 +149,7 @@ Save and check. This one does **not** pass yet:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:14:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+my-scene.lute:12:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -157,10 +196,8 @@ The file so far:
 ```lute check
 ---
 kind: scene
+id: mira.s01ep01
 title: A Quiet Table
-character: mira
-season: 1
-episode: 1
 pov: fixer
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
@@ -221,7 +258,7 @@ Say you type an old-style sigil out of habit — a colon instead of `@` — on t
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -247,10 +284,6 @@ $ lute compile my-scene.lute
   "capabilityVersion": "0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3",
   "meta": {
     "id": "mira.s01ep01",
-    "character": "mira",
-    "season": 1,
-    "episode": 1,
-    "episodeId": "s01ep01",
     "title": "A Quiet Table"
   },
   "state": [ … ],
@@ -289,7 +322,9 @@ $ lute compile my-scene.lute
 
 (`…` marks where output was trimmed for space; everything else is verbatim.) Your `enums:`
 declaration rides along into the artifact's own **`enums`** block, so the engine resolves values
-against exactly the vocabulary the checker used. Two other fields are worth knowing on sight.
+against exactly the vocabulary the checker used. Your `id:` is the prefix of every `lineId` and
+`voiceKey`, so each line of this scene has a name no other scene's line can take. Two other fields
+are worth knowing on sight.
 **`addr`** is the record's address, `{shot}-{index}`, and every `addr` in one
 artifact is padded to the same width — so sorting the `addr` strings gives you execution order, no
 parsing required. **`shots`** carries your `## ` headings through to the artifact, so a tool
@@ -297,27 +332,28 @@ downstream can still say *which beat* a record belongs to.
 
 You never hand-edit this file — it's the compiled artifact the engine consumes. That it compiled
 without error is proof the scene is **statically valid**: every construct well-formed, every state
-path declared, every `<match>` exhaustive. It is not proof the scene is playable end to end —
-that's a runtime property, verified at integration time.
+path declared, every `<match>` exhaustive. It is not proof the scene plays the way you meant —
+that is what `lute trace` and, in Part 6, `lute test` are for.
 
-Finally, `lute trace` previews a playthrough without opening the game — you tell it which choice to
+`lute trace` previews a playthrough without opening the game — you tell it which choice to
 take at each branch with `--choose <branchId>=<choiceId>`, and it walks the scene and prints what
 would show on screen:
 
 ```
 $ lute trace my-scene.lute --choose orderChoice=black
 trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
-  ## Shot 1.
+  ## The Counter
     @narrator  The diner is empty at this hour, and Mira likes it that way.
-    @mira  {{userName}}, you made it.
-    @mira  I should not be this pleased about a coffee order.
+    @mira{emotion="content" variant="0"}  {{userName}}, you made it.
+    @mira{mono}  I should not be this pleased about a coffee order.
   <branch orderChoice>   eligible: black   -> black
-    @mira  Good. No nonsense in a cup.
+    @mira{emotion="content" variant="0"}  Good. No nonsense in a cup.
 trace complete: 1 decision; choices 1/2 (orderChoice)
 ```
 
-That transcript previews exactly the mock scenario you supplied — an authoring aid for
-sanity-checking that a branch reads right, never proof of runtime behavior.
+That transcript previews exactly the choices you supplied — a quick way to read a branch the way a
+player would. A line keeps its attributes in braces, so `@mira{mono}` shows at a glance which line
+is a thought.
 
 ## Part 5 — Sequencing scenes with `after:`
 
@@ -325,12 +361,14 @@ A real episode is a *sequence* — one scene is meant to come after the player h
 declare that intended ordering with one frontmatter key: **`after:`**.
 
 `after:` declares the routes Lute's checker and `lute scenario` analyses assume reach this scene. It
-doesn't move the player anywhere and it isn't a jump — it's *advisory*: the tool uses it to verify
-your episodes fit together into one coherent, analysable graph.
+doesn't move the player anywhere and it isn't a jump: it says "this scene comes after that one",
+and the tool uses it to verify your episodes fit together into one coherent, analysable graph.
+What actually *starts* each scene is the game engine — or, before there is one, `lute play`, which
+[Connect scenes into a story](/getting-started/connect-scenes/) sets up on the next page.
 
 `after:` is deliberately tiny. You get exactly three building blocks:
 
-- `visited("<sceneKey>")` — true once the player has seen that scene.
+- `visited("<id>")` — true once the player has seen the scene with that `id:`.
 - `completed("<questId>")` — true once that quest is finished.
 - `active("<questId>")` — true while that quest is running: started, not yet finished.
 
@@ -347,40 +385,22 @@ after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
 after: 'visited("mira.s01ep01") || visited("mira.s01ep03")'
 ```
 
-That is the whole vocabulary. There is no `!`, no arithmetic, and no reading state — those are
-intentionally left out. Anything conditional on runtime state stays in your `when=` guards.
+(The outer single quotes are YAML's; the inner double quotes are the scene id's. See
+[Quotes and YAML for writers](#quotes-and-yaml-for-writers).) That is the whole vocabulary. There is
+no `!`, no arithmetic, and no reading state — those are intentionally left out. Anything conditional
+on runtime state stays in your `when=` guards.
 
-`visited("…")` needs a scene's **canonical key**. The primary way to name one — and the shape you
-should reach for in new work — is to *author* it, with one dedicated frontmatter key (dsl 0.15.0
-§2):
+`visited("mira.s01ep01")` names the diner by the `id:` you gave it in Part 1. That is the whole
+reason every scene carries an `id:`.
 
-```yaml
-id: mira.s01ep01
-```
-
-`id:` is a plain string (letters, digits, `_`, `-`, `.`) that identifies this scene project-wide.
-`visited("mira.s01ep01")` in another scene's `after:` names *this* one; the same string is the
-prefix every `lineId`/`voiceKey` in the compiled artifact is built from
-(`"lineId": "mira.s01ep01.narrator_0010"` and `"voiceKey": "mira.s01ep01.mira-0010"` in the Part 4
-output). With `id:` declared,
-`character:` / `season:` / `episode:` become optional — keep them if they carry useful metadata
-(search, TMS), drop them if they don't. If you write `id:` **and** any of those legacy identity
-keys in the same document, the checker draws one `W-META-LEGACY` per key: identity now comes from
-`id:`, and anything descriptive belongs under `extra:` (see §3 of the same spec).
-
-**Legacy fallback (no `id:` declared).** Every existing scene that authored
-`character:` / `season:` / `episode:` — including this tutorial's diner — is still valid: when
-`id:` is absent, the canonical key derives from the frontmatter as `{character}.{episodeId}`,
-where `{episodeId}` is the `episodeId:` key when declared, otherwise `s{season}ep{episode}`
-zero-padded to two digits each. Our tutorial scene declares `character: mira`, `season: 1`,
-`episode: 1` and no explicit `id:` or `episodeId:`, so its canonical key is still
-**`mira.s01ep01`** — the same string you would get by writing `id: mira.s01ep01` outright, which
-is why the Part 4 compile output shows `"meta": { "id": "mira.s01ep01", … }` regardless. You
-never have to reverse-engineer the key from compiler output — read it straight off the
-frontmatter, either the authored `id:` or the derived join.
+(**Older scenes.** Before `id:` existed, a scene was named by three keys, `character:`,
+`season:` and `episode:`, and its name was built from them: `character: mira`, `season: 1`,
+`episode: 1` named `mira.s01ep01`. Scenes written that way still check. Write `id:` in new
+scenes; a scene that has `id:` **and** any of those three keys draws one `W-META-LEGACY` warning
+per key, and anything descriptive belongs under `extra:`.)
 
 To carry a fact across episodes, use the persistent **`run.`** tier. Teach the diner to remember
-the meeting — declare `run.metMira` and set it:
+the meeting — declare `run.metMira` and set it at the end of the scene:
 
 ```yaml
 state:
@@ -392,10 +412,18 @@ state:
 ```
 
 `after:` and cross-scene reads only make sense across several files, so put both scenes in a folder
-with a `lute.project.yaml` marking it a project root. Every voice line is already keyed by its scene
-— the default `voiceKey` is `{prefix}.{speaker}-{code}` — so the diner's and the booth's first Mira
-lines are `mira.s01ep01.mira-0010` and `mira.s01ep02.mira-0010`, two recordings, with nothing to
-configure:
+with a `lute.project.yaml` marking it a project root:
+
+```
+episodes/
+  lute.project.yaml
+  diner.lute        ← the scene from Parts 1–4, plus run.metMira and the ::set
+  booth.lute        ← the new follow-up, below
+```
+
+Every voice line is already keyed by its scene — the default `voiceKey` is
+`{prefix}.{speaker}-{code}` — so the diner's and the booth's first Mira lines are
+`mira.s01ep01.mira-0010` and `mira.s01ep02.mira-0010`, two recordings, with nothing to configure:
 
 ```yaml
 # episodes/lute.project.yaml
@@ -413,10 +441,8 @@ already recorded audio against those old keys keeps them by pinning
 ```lute check-project="docs/examples/episodes/booth.lute"
 ---
 kind: scene
+id: mira.s01ep02
 title: The Usual Booth
-character: mira
-season: 1
-episode: 2
 pov: fixer
 after: 'visited("mira.s01ep01")'
 enums:
@@ -460,7 +486,7 @@ project root: episodes
     scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
-`reach <key>` answers "can the player ever get here, and by what route?"; `envelope <key>` answers
+`reach <id>` answers "can the player ever get here, and by what route?"; `envelope <id>` answers
 the question you most want before writing a `when=` guard — *what state is safe to read here?*:
 
 ```
@@ -468,9 +494,11 @@ $ lute scenario episodes envelope mira.s01ep02
 project root: episodes
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
-    - run.metMira
-  Possible (set on at least one declared route reaching this node):
-    - run.metMira
+    - run.metMira   written by: scene(mira.s01ep01)
+  Possible (set on SOME but not every declared route reaching this node; the Guaranteed paths above are not repeated):
+    (none)
+  Guaranteed facts (hold on every declared route reaching this node, dsl 0.20.0 §4):
+    (none)
   Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
     (none)
 ```
@@ -479,7 +507,61 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
 through the diner, which always `::set`s it. That's a genuine cross-scene guarantee — the booth's
 `when="run.metMira"` read is provably safe.
 
-## Part 6 — Where to go next
+## Part 6 — Pin your story with tests
+
+A trace shows you one path once. A **test** writes down what must be true and checks it every time
+you run `lute test`, so a later edit that breaks the scene fails loudly instead of slipping by.
+
+Tests live in a `tests/` folder in the project, one `*.test.yaml` file each. Create
+`episodes/tests/diner.test.yaml`:
+
+```yaml
+file: ../diner.lute
+choose: { orderChoice: black }
+expect:
+  transcriptContains: ["@mira: Good. No nonsense in a cup."]
+  transcriptLacks: ["@mira: You remembered. That's new."]
+  state: { run.metMira: true }
+```
+
+- `file:` is the scene under test, **relative to the test file**: the test sits in `tests/`, so
+  the diner is `../diner.lute`. (In a project with a `scenes/` folder it would be
+  `../scenes/<name>.lute`.)
+- `choose:` picks at each branch, exactly like `--choose` on `lute trace`.
+- `expect:` lists what must hold: `transcriptContains` lines that must be shown, written
+  `@speaker: text`; `transcriptLacks` lines that must not; `state` the values after the scene.
+
+```
+$ lute test episodes --project episodes
+PASS  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+
+1 passed, 0 failed
+```
+
+A failing test says why. Change the choice to `familiar`, which is guarded by `scene.knowsMira`:
+
+<!-- lute-diagnostics unverified="lute test respells the walk.rs literal `--choose {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
+```
+$ lute test episodes --project episodes
+FAIL  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+      trace refused:
+        episodes/tests/../diner.lute:25:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard decided false at this presentation point (dsl 0.4.0 §4.4)
+
+0 passed, 1 failed
+```
+
+The choice's guard is false because nothing set `scene.knowsMira`. A test can start from any state
+you name: add `state: { scene.knowsMira: true }` above `choose:` and the `familiar` path is testable
+too. `lute test episodes --project episodes --coverage` then lists which choices no test has taken
+yet, and which scenes no test names — a to-do list for your next tests.
+
+Every key a test file takes is in the [CLI reference](/tooling/cli/#test).
+
+## Part 7 — Where to go next
+
+**Play the whole story.** Tests check one scene at a time; to play every scene in order, from the
+first to an ending, go to [Connect scenes into a story](/getting-started/connect-scenes/). It adds
+one line to each scene and a play script, and `lute play` walks the story the way a player would.
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
 project accepts — the staging directives, their attributes, the vocabulary members in scope (your
@@ -488,13 +570,14 @@ built-in directives, and the scene ids you can name in `visited(…)` — resolv
 file you give it:
 
 ```
-$ lute context my-scene.lute
+$ lute context episodes/diner.lute
 capabilityVersion: 0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3
 permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
-directives (11):
+directives (12):
   auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location, time, assetId   [mutatesScene]
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
+  clear:    [reads.onStage mayExitCharacter]
   cut: assetId, action, full
   end: reason   [terminatesWalk]
   mark: id
@@ -508,7 +591,8 @@ rewardKinds (0):
 occasions (0):
 questsAllowed: true
 enums (0):
-stateSchema (3):
+stateSchema (4):
+  prev.run.metMira: bool (owner: engine)
   run.metMira: bool
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
@@ -519,11 +603,11 @@ deliveryFlags (3):
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
 builtinDirectives (5):
-  ::set{ <path> = <expr> }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
-  ::assert{ <relation>(<arg>, …) } — assert a ground fact of a declared, non-derived, non-reserved relation
-  ::retract{ <relation>(<arg | _>, …) } — retract the matching facts of a declared, non-derived, non-reserved relation
-  ::accept{quest="<questId>"} — accept a quest that has no `start` condition
-  ::use{component="<name>" <param>=<value> …} — expand an imported component with named arguments
+  ::set{ <path> = <expr> [when="<condition>"] }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
+  ::assert{ <relation>(<arg>, …) [when="<condition>"] } — assert a ground fact of a declared, non-derived, non-reserved relation
+  ::retract{ <relation>(<arg | _>, …) [when="<condition>"] } — retract the matching facts of a declared, non-derived, non-reserved relation
+  ::accept{quest="<questId>" [when="<condition>"]} — accept a quest that has no `start` condition
+  ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
 scenes (1; read as visited("<id>")):
   mira.s01ep01
 ```
@@ -533,16 +617,21 @@ activates none. Your own declarations show up under **`projectEnums`** — the v
 actually resolves `emotion="content"`.
 
 `stateSchema` is the same story for state: your own declarations (`scene.knowsMira` from Part 3,
-`run.metMira` from Part 5) plus `scene.choices.orderChoice`, which the `<branch>` declares on your
-behalf so a later construct can read which option the player took.
+`run.metMira` from Part 5), `scene.choices.orderChoice`, which the `<branch>` declares on your
+behalf so a later construct can read which option the player took, and `prev.run.metMira`, the
+read-only value `run.metMira` had when the previous run ended.
 
 `builtinDirectives` lists the directives the language itself provides — `::set` you have already
 used — and `scenes` lists the ids `visited("…")` can name. Pass `--project episodes` and that list
 covers every scene in the project, alongside its quests and lore entries.
 
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
-instead of guessing. From here, follow the **Language** section for each construct in depth, or read
-the [full-spec showcase](/examples/showcase/) for a feature-by-feature tour of a real project.
+instead of guessing. From here, follow the **Language** section for each construct in depth, keep
+the [cheatsheet](/reference/cheatsheet/) open while you write, or read the
+[full-spec showcase](/examples/showcase/) for a feature-by-feature tour of a real project.
+
+**Editor and terminal disagree?** Run `lute doctor .` in the project. It checks your toolchain and
+project setup and names an editor language server that is older than your `lute`.
 
 **Building a game the engine drives by moments** — the player walks into the hub, talks to
 someone, ends the day — rather than a fixed episode order? Scaffold a working example to start

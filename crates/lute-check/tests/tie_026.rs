@@ -173,3 +173,59 @@ fn a_flag_that_outlives_a_run_spend_is_named() {
         out[0].message
     );
 }
+
+/// dsl 0.27.0 (T3-11): a beat waiting on `after: visited('X')` and a
+/// `once: user` `X` are never eligible together — `X` is spent exactly when
+/// it is visited. A `once: run` `X` plays again in a later run, so that
+/// pair still ties.
+#[test]
+fn a_beat_after_a_once_user_beat_never_ties_it() {
+    let first = |once: &str| {
+        scene(
+            "run",
+            "h3",
+            &format!("on: talk\npriority: 10\nonce: {once}\nwhen: 'run.day >= 1'\n"),
+            "",
+        )
+    };
+    let encore = scene(
+        "run",
+        "encore",
+        "on: talk\npriority: 10\nonce: user\nafter: visited('h3')\nwhen: 'run.day >= 1'\n",
+        "",
+    );
+    let out = ties(&[&first("user"), &encore]);
+    assert!(out.is_empty(), "{out:?}");
+    let out = ties(&[&first("run"), &encore]);
+    assert_eq!(out.len(), 1, "{out:?}");
+    assert!(
+        out[0]
+            .message
+            .contains("`visited('h3')` persists across runs"),
+        "{}",
+        out[0].message
+    );
+}
+
+/// dsl 0.27.0 (T3-11): beats that tie one another draw ONE warning naming
+/// each once, at the first — not one per beat repeating every earlier pair.
+#[test]
+fn beats_that_tie_together_draw_one_warning_with_each_reason_once() {
+    let stubs: Vec<String> = (0..6)
+        .map(|i| scene("run", &format!("s{i}"), "on: talk\npriority: 10\n", ""))
+        .collect();
+    let refs: Vec<&str> = stubs.iter().map(String::as_str).collect();
+    let out = ties(&refs);
+    assert_eq!(out.len(), 1, "{out:?}");
+    let m = &out[0].message;
+    assert!(
+        m.starts_with(
+            "scene `s0`, scene `s1`, scene `s2`, scene `s3`, scene `s4` and scene `s5` share \
+             priority 10 on occasion `talk`"
+        ),
+        "{m}"
+    );
+    assert_eq!(m.matches("scene `s1`").count(), 1, "{m}");
+    assert_eq!(m.matches("has a `when`").count(), 1, "{m}");
+    assert!(m.contains("none of them has a `when`"), "{m}");
+}

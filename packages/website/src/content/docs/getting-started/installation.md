@@ -93,6 +93,11 @@ prints `lute-lsp <version>`, and `lute doctor` compares the `lute-lsp` first on 
 this CLI, flagging an older server (one that predates the flag reports no version at all) with how
 to reinstall it.
 
+**If your editor and the terminal disagree** about a file — red underlines on a file `lute check`
+calls `ok`, or the other way round — trust the terminal and run `lute doctor .` in the project: the
+usual cause is an editor language server older than your `lute`, and restarting the editor after an
+upgrade fixes it.
+
 ## Next
 
 Head to [Write your first scene](/getting-started/first-scene/) to build a real `.lute` file from

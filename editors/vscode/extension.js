@@ -4,6 +4,9 @@
 //
 // Resolves `lute-lsp` from the `lute.lsp.path` setting or PATH (see README.md).
 
+const fs = require("fs");
+const path = require("path");
+const { execFile } = require("child_process");
 const { workspace, window } = require("vscode");
 const {
   LanguageClient,
@@ -11,7 +14,10 @@ const {
 } = require("vscode-languageclient/node");
 const {
   parseFrontmatterLuteVersion,
-  serverIsStale,
+  parseProjectLuteVersion,
+  parseCliVersion,
+  versionTarget,
+  serverDisagrees,
   staleServerMessage,
 } = require("./version-guard");
 
@@ -83,13 +89,16 @@ function activate(context) {
 }
 
 /**
- * Warn once if the running server is older than a `.lute` document targets.
- * The server advertises the language version it implements as
- * `serverInfo.version` (see `backend.rs`); a document declares its target via
- * the frontmatter `luteVersion:` stamp. When the server is strictly older, its
- * diagnostics are untrustworthy for newer grammar — the exact failure the pilot
- * hit with a stale binary — so surface an actionable warning. Disabled by the
- * `lute.versionCheck` setting.
+ * Warn once if the running server disagrees with what a `.lute` document
+ * targets. The server advertises the language version it implements as
+ * `serverInfo.version` (see `backend.rs`). The target is the document's
+ * frontmatter `luteVersion:` stamp, else the enclosing project's
+ * `lute.project.yaml` `defaults: luteVersion`, else the `lute` CLI on PATH
+ * (`lute --version`) — so an unstamped document in an unstamped project
+ * still catches an editor server that is not the terminal's. A stale server's
+ * diagnostics are untrustworthy — the exact failure the pilot and every
+ * round-5 writer hit — so surface an actionable warning naming `lute doctor`.
+ * Disabled by the `lute.versionCheck` setting.
  * @param {import("vscode").ExtensionContext} context
  */
 function wireVersionGuard(context) {
@@ -105,18 +114,61 @@ function wireVersionGuard(context) {
     return;
   }
   let warned = false;
+  /** @type {string | null | undefined} undefined until `lute --version` answers */
+  let cliVersion;
+  const pending = [];
   const inspect = (doc) => {
     if (warned || !doc || doc.languageId !== "lute") {
       return;
     }
-    const declared = parseFrontmatterLuteVersion(doc.getText());
-    if (declared && serverIsStale(serverVersion, declared)) {
+    if (cliVersion === undefined) {
+      pending.push(doc);
+      return;
+    }
+    const target = versionTarget({
+      doc: parseFrontmatterLuteVersion(doc.getText()),
+      project: projectLuteVersion(doc.uri && doc.uri.fsPath),
+      cli: cliVersion,
+    });
+    if (serverDisagrees(serverVersion, target)) {
       warned = true;
-      window.showWarningMessage(staleServerMessage(serverVersion, declared));
+      window.showWarningMessage(staleServerMessage(serverVersion, target));
     }
   };
+  execFile("lute", ["--version"], { timeout: 3000 }, (err, stdout) => {
+    cliVersion = err ? null : parseCliVersion(String(stdout));
+    pending.splice(0).forEach(inspect);
+  });
   workspace.textDocuments.forEach(inspect);
   context.subscriptions.push(workspace.onDidOpenTextDocument(inspect));
+}
+
+/**
+ * The `defaults: luteVersion` of the nearest `lute.project.yaml` at or above
+ * `file`'s directory, or `null`.
+ * @param {string | undefined} file
+ * @returns {string | null}
+ */
+function projectLuteVersion(file) {
+  if (!file) {
+    return null;
+  }
+  let dir = path.dirname(file);
+  for (;;) {
+    const manifest = path.join(dir, "lute.project.yaml");
+    if (fs.existsSync(manifest)) {
+      try {
+        return parseProjectLuteVersion(fs.readFileSync(manifest, "utf8"));
+      } catch {
+        return null;
+      }
+    }
+    const up = path.dirname(dir);
+    if (up === dir) {
+      return null;
+    }
+    dir = up;
+  }
 }
 
 function deactivate() {

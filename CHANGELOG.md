@@ -36,6 +36,181 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Added
+
+- Docs: a writer page, **Connect scenes into a story**
+  (`getting-started/connect-scenes`, with a Korean mirror), that chains scenes
+  into a story `lute play` plays without an engine: one made-up occasion
+  answered by every scene with `on:`, `after:` for the order, descending
+  `priority:`, `when:` for branching endings, a play script and a scene test.
+  Its files are the new `docs/examples/connect-scenes/` project.
+- **`W-QUEST-TIER-IMPLICIT`**: a `<quest>` with no `tier=` (and no
+  `defaults.questTier`) whose conditions read only run state — `run.*` paths,
+  run-tier relations or quests — is user-tier by default and outlives the run;
+  the warning asks for an explicit `tier="run"` / `tier="user"` or a
+  `defaults.questTier`. The `lute init` templates and the `docs/examples`
+  quests now write `tier="run"`.
+
+### Changed
+
+- `lute init` (the `minimal` template): the starter scene names itself with
+  `id: opening` instead of `character:`/`season:`/`episode:`, the template adds
+  `tests/opening.test.yaml` (one passing scenario test, `file: ../scenes/…`),
+  and the README and "Next steps" list `lute test` and `lute doctor`.
+- Docs: the writer path teaches `id:` identity from the first frontmatter, adds
+  a "Quotes and YAML for writers" primer, a "Pin your story with tests" part and
+  `lute doctor` for an editor that disagrees with the terminal
+  (`first-scene`, `learning-paths`, `installation`, Korean mirrors). The
+  first-scene transcripts are regenerated from the tool, and
+  `docs/examples/episodes` uses `id:`. Test-file examples in the CLI reference
+  name their scene relative to `tests/` (`../scenes/…`).
+- Docs: **Build an investigation** needs only the `lute` command. It builds the
+  project in the reader's own folder with `lute …` commands (no `cargo run`, no
+  repository), shows every file whole (pinned to `docs/examples/investigation`),
+  adds a scenario-test step, regenerates every transcript from the tool (trace
+  prints shot headings; seed facts and rules load by default), and says that
+  `lute init --template investigation` is a different, larger whodunit.
+  `docs/examples/investigation` uses `id:` identity with the same keys, and its
+  optional objective reads the derived `points` relation.
+- `lute check-project` reports a fault in an imported schema once, at the
+  schema's own line, ending `(imported by N documents)`; the importers are
+  judged on their own content. It used to head the fault at the first
+  importer's `1:1` with `(+N more callers)` and the schema line nested under
+  it. A component body fault is reported in the component file at its line,
+  and a document that never `::use`s a component no longer carries that
+  component's body diagnostics.
+- At equal priority a sub-kind's beat outranks its parent kind's (member >
+  sub-kind > kind, by strict member-set inclusion) in `lute check-project`,
+  `lute beats` and `lute play`; overlapping unrelated kinds keep file order.
+- `W-BEAT-PRIORITY-TIE` is one warning per group of beats that tie one
+  another, anchored at the group's first beat, naming each beat and each
+  distinct reason once. It was one warning per beat, repeating every earlier
+  pair.
+- `lute new scene --on <occasion>` writes a `priority:` 10 below the lowest
+  beat already on that occasion, so successive stubs rank in creation order
+  instead of tying.
+- A beat's or entry's `when:` narrows a `<match>` subject through
+  `a == 'x' || a == 'y'`, `a in ['x', 'y']` and `!(a in […])` as it does
+  through one `==`: arms the guard rules out are `E-ARM-DEAD`, and
+  exhaustiveness asks only for the values left. A `||` with a side that leaves
+  the subject free narrows nothing.
+- `E-STATE-MAYBE-UNAVAILABLE` names the fix: an `after:` naming a scene that
+  sets the path, or an `isSet(…)` guard. A single-file `E-MAYBE-UNSET` on a
+  `run.*` / `user.*` path the file never sets, in a scene with `after:` or
+  `on:`, says a single file cannot see the scenes before it and that
+  `lute check-project` decides reads ordered by `after:`.
+- Did-you-mean suggestions need at most one edit per three letters (minimum
+  one), and swapping two adjacent letters counts as one edit: `lable` still
+  suggests `label`; `the` and `oven` no longer suggest `when`.
+- `lute context` shows declared param defaults in component signatures
+  (`keeper: string = "The inspector"`, `glass: enum[…] = steady`, a `@def`
+  default by name) and as a `default` key in the JSON surface; each builtin
+  directive line shows its optional `when="<condition>"` guard.
+- `lute new quest` and `lute new lore` write the same `uses:` as
+  `lute new scene` and a Title Case `title:` (`the-cellar` → `The Cellar`);
+  the quest scaffold's objective reads a scene of the project instead of a new
+  document-local counter.
+- `lute trace` shows a line's delivery as written (`@wren{mono}`,
+  `@wren{vo emotion="sad"}`), as `lute play` does; `--json` line steps carry
+  an optional `delivery`.
+- A stale language server points at `lute doctor`: `lute-lsp` shows a
+  one-time message when a document or project `luteVersion` is newer than the
+  server, the newer-stamp `W-LUTE-VERSION-STALE` names `lute doctor`, and the
+  VS Code extension also compares the server with the project's
+  `defaults: luteVersion` and, when nothing is stamped, with the `lute` on
+  `PATH`.
+- A scene test's `expect.quests` may name a quest another document of the
+  project declares: its state is its seed, `active` when the scene accepts it,
+  else `unset`. Only an id no document declares fails, with did-you-mean.
+
+### Fixed
+
+- `::set{ path … }` without an assignment operator is **`E-SET-SHAPE`**
+  naming `=` / `+=` / `-=` and the write you likely meant
+  (`::set{ run.clues - 1 }` → "did you mean `run.clues -= 1`?"). It used to
+  check clean and compile to `run.clues = 1`, eating the operator. A param as a
+  dotted segment (`run.aff.@who`) is the same error, pointing at
+  `run.aff[@who]`.
+- A state path typed `{ domain: K }` or `{ entity: K }` (an enum, or a closed
+  entity kind) is member-checked everywhere a literal meets it — `::set`
+  (`E-SET-TYPE`, with did-you-mean), `==` / `!=` / `in` and `<when is>`
+  (`E-WHEN-LITERAL-DOMAIN`), `into=` values (`E-INTO-VALUE`) — and a `<match>`
+  over it is exhaustive over K (`E-NONEXHAUSTIVE` names the missing members),
+  exactly like an inline `{ enum: […] }` path. The labelled long form of an enum
+  no longer loses member checking.
+- A plugin directive's `effects.writes` value is validated when the plugin
+  loads: a bool/number/string literal, `{ fromBridgeResult: <field> }`,
+  `{ fromAttr: <attr> }`, or `{ op: increment|decrement, by: <number> |
+  { fromAttr: <attr> } }`. Any other shape — a misspelt key, another op, a
+  list, a non-number `by` — is `E-PLUGIN-PARSE` naming the four; so is a
+  `fromAttr` naming an attribute the directive does not declare, or a `by:`
+  `fromAttr` whose attribute is not `type: number`. `{ fromAttr }` used to load
+  clean and write nothing; it is now resolved at compile from the call's
+  attribute (or its declared `default:`; a call with neither writes nothing),
+  so `lute play` and the artifact apply it. `lute trace` / `lute test` apply a
+  directive's literal and `op` writes with the runtime unification later in
+  0.27.
+- `per: K` declares the members K's `subsetOf:` sub-kinds add (one level or
+  more), as relation arguments and beat targets already did: `user.bond.sefa`
+  under `per: bonded` with `confidant: { subsetOf: bonded, members: [sefa] }`
+  is declared, and a map `default:` may name it.
+- A component param's `default: "@def"` is judged for definite assignment at
+  each `::use` that omits the argument (`E-MAYBE-UNSET … read through @def` on
+  the `::use` line), like the argument it stands for.
+- An entity kind with a key other than `members:` / `open:` / `add:` /
+  `subsetOf:` is `E-ENTITY-KIND-SHAPE` with did-you-mean (`membrs:` →
+  `members`); it was silently ignored. Entity-kind `labels:` is refused as not
+  supported yet.
+- `<match on="@def">` whose def expands to a fact query (`holds(…)`,
+  `count(…)`, directly or through another def) is `E-MATCH-RELATION-SUBJECT`,
+  as the inline `<match on="holds(…)">` is; it used to check clean and
+  exhaustive. Both messages now say where the query goes instead: a `when=`
+  guard on the line, choice or `::set`, or an arm's `<when test>`.
+- `lute scenario knowledge` instantiates a rule the way the checker does: a
+  premise over an entity kind (`routeOpen(S) :- suitor(S), not locked(S)`)
+  ranges over the kind's members, so `not locked(ren)` reads "holds unless
+  defeated — defeated when locked(ren) is asserted by …" instead of "cannot
+  be defeated". `lute lore`'s Derived section lists those derivations too.
+- Curly quotes from a word processor around an attribute value
+  (`label=“Open the oven”`, `‘…’`, or a straight value closed by `”`) are one
+  `E-ATTR-QUOTE` at the quote, telling you to retype it as `"`. Each word used
+  to be its own `E-UNKNOWN-ATTR` with a bogus did-you-mean.
+- `E-META-PARSE` (frontmatter and bare schema YAML) points at the real file
+  line and column instead of `1:1`, without serde_yaml's line number (one
+  short). A quote nested in a same-quoted value shows the corrected line; a tab
+  in the indentation says YAML indents with spaces.
+- `W-CODE-AFTER-END` / `W-CODE-AFTER-NEXT` no longer flag a `::mark` or `id=`
+  line a `::next{to=…}` jumps to: only the content between the terminator and
+  the next jump target is dead, and a mark nothing targets still warns.
+- `W-BEAT-PRIORITY-TIE` no longer ties a `once: user` beat with a beat whose
+  `after:` waits on `visited()` of it: the `after:` premise is part of
+  eligibility.
+- `lute beats` gives each ladder cell its own verdict: a beat shadowed on one
+  target's ladder reads `shadowed by <id>` there (JSON: additive
+  `shadowedBy`) even when it wins elsewhere, and a kind beat's row shows its
+  `kind:<kind>` target.
+- `lute doctor`'s `lute-lsp beside lute` no longer fails a bun/npm global
+  install: the package's `lsp-bin.js` launcher on `PATH` is compared by the
+  version it reports; two native binaries are still compared byte for byte.
+- A def whose body calls a typed parameter def
+  (`harvestOriginal: "@onDays(8, 14)"`) or names another def takes that def's
+  type (defs settle in dependency order) instead of
+  `E-DEF-DECL … cannot be inferred`.
+- A component's bad literal param default is reported once, at its `params:`
+  entry, with did-you-mean, not at every `::use`; a `@def` default of the
+  wrong type names both types.
+- A param as a dotted segment in a condition (`when="run.aff.@who > 1"`) is
+  `E-CEL-PARSE` pointing at `run.aff[@who]`; it used to be read as
+  `run.aff.who`.
+- A use written only in a comment (`/* … */`, a line-leading `//`, a YAML
+  `#`) is no longer a read for `W-RELATION-UNREAD`, `W-DEF-UNUSED`,
+  `W-DOMAIN-UNREAD` or the bridge result fields a `bridges:` answer must give.
+  `docs/examples/investigation` had been clean only through such a comment.
+- `lute play`'s note that a hand-raised clock occasion "runs twice" appears
+  only when a later `advance:` in the script actually crosses that moment.
+
 ## [0.26.0] - 2026-09-26
 
 **Scale and many authors.**
@@ -115,7 +290,8 @@ and [`docs/versioning.md`](docs/versioning.md).
   (T3-12).
 - Component params take `default:` (`won: { type: bool, default: "@wonFight" }`,
   a literal or a `@def` resolved in the host); an omitted argument takes it,
-  judged at the `::use` like the argument it stands for (dsl 0.26.0 §3.3).
+  judged at the `::use` like the argument it stands for, though not yet for
+  definite assignment (fixed in 0.27) (dsl 0.26.0 §3.3).
 - A component body may read the result slots of its own plugin directives
   (`<match on="scene.battle.fight.won">`, `{{scene.battle.fight.turns}}`);
   they are not ambient state (dsl 0.26.0 §3.3).
@@ -169,7 +345,8 @@ and [`docs/versioning.md`](docs/versioning.md).
 
 ### Changed
 
-- A `subsetOf:` sub-kind's members are members of its parent: a trainer
+- A `subsetOf:` sub-kind's members are members of its parent, except for
+  `per:` families (fixed in 0.27): a trainer
   listed in `trainer` (⊂ `person`) no longer needs a second line in
   `person` (restating it stays legal). The former "not a member of its
   parent" `E-ENTITY-KIND-SHAPE` is gone (dsl 0.26.0 §2.3).
@@ -308,6 +485,15 @@ and [`docs/versioning.md`](docs/versioning.md).
   continues at the label, so expectations after a jump are judged and a test
   that passed only because the walk stopped there may fail (T1-4). An
   `::accept` in a quest `<on>` handler is applied, as play does (T1-5).
+- **A `transcriptLacks` needle with line attributes can now fail.**
+  `transcriptContains` / `transcriptLacks` drop line attributes from the
+  needle, so `transcriptLacks: ["@fixer{mono}: She remembered."]`, which
+  matched no line before, now matches that line when it plays, and a test
+  or play that passed on it fails (T3-6).
+- **Restamp `luteVersion:`.** A document or `defaults:` stamped with an
+  older version draws `W-LUTE-VERSION-STALE`, which names the stamp to
+  write (`luteVersion: "0.26.0"`); bump the stamp, or `--deny-warnings`
+  fails the project.
 - **`E-STATE-DECL-CONFLICT` can redden a project.** Two frontmatter `state:`
   declarations of one path — inline or imported — that disagree on `type`,
   `default`, `per` or `owner` are now an error naming both files and lines;

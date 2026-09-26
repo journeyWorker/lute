@@ -51,6 +51,13 @@ and using it there is `E-ATTR-DEF-DYNAMIC`. Branch instead, with a literal in ea
 </match>
 ```
 
+That advice is for a directive attribute. A component enum param takes the def directly, even one
+that reads state: `::use{component="greet" tier=@mood}` hands the def to the component, whose
+`<match on="@tier">` dispatches on it at run time, so there is nothing to branch around (see
+[Reusable content components](/language/components-and-extends/#reusable-content-components)). Only
+a component that puts the param into a directive attribute of its own meets `E-ATTR-DEF-DYNAMIC`
+again, reported at the `::use`.
+
 In content text, `{{@name}}` renders the def's value: the artifact carries the def body with the
 placeholder, and the engine evaluates it like any guard. A def whose body cannot be inlined into one
 expression (an expansion cycle, or a body that reads `$`) is `E-INTERP-DEF`. A def body gets the same

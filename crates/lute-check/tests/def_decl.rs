@@ -108,6 +108,36 @@ fn long_form_type_is_optional_and_inferred() {
     assert!(!codes(&ds).contains(&"E-DEF-DECL"), "{ds:#?}");
 }
 
+/// Round-5 T3-14 (SG-F4): a def whose body only CALLS another def takes the
+/// callee's declared type — through a parameterised call, a bare reference,
+/// and a chain declared before its callee. The type is load-bearing: a
+/// number-typed callee makes the caller `E-REF-TYPE` in a bool guard. A
+/// reference cycle still cannot be inferred.
+#[test]
+fn a_def_calling_a_typed_def_takes_its_type() {
+    let defs = "late: \"@harvest\"\n  \
+                harvest: \"@onDays(8, 14)\"\n  \
+                onDays: { type: bool, params: { first: number, last: number }, \
+                cel: \"scene.n >= first && scene.n <= last\" }";
+    let text = scene(defs, "late");
+    let ds = diags(&text);
+    assert!(ds.is_empty(), "{ds:#?}");
+    let (doc, _) = lute_syntax::parse(&text);
+    let (folded, _, _) = fold_env(&doc, &input(&text, SchemaImports::default()));
+    assert_eq!(folded.env.def_types.get("harvest"), Some(&Type::Bool));
+    assert_eq!(folded.env.def_types.get("late"), Some(&Type::Bool));
+
+    let ds = diags(&scene(
+        "m: \"@count1\"\n  count1: { type: number, cel: \"scene.n\" }",
+        "m",
+    ));
+    assert!(codes(&ds).contains(&"E-REF-TYPE"), "{ds:#?}");
+    assert!(!codes(&ds).contains(&"E-DEF-DECL"), "{ds:#?}");
+
+    let d = def_decl("a: \"@b\"\n  b: \"@a\"");
+    assert!(d.message.contains("cannot be inferred"), "{}", d.message);
+}
+
 #[test]
 fn an_undecidable_shorthand_asks_for_the_long_form() {
     let d = def_decl("x: \"scene.flag ? 1 : 'one'\"");
