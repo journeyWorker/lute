@@ -70,15 +70,58 @@ pub fn expand_beat_when(slot: &mut CelSlot, defs: &DefTable<'_>) -> Vec<Diagnost
 }
 
 fn expand_nodes(
-    nodes: &mut [Node],
+    nodes: &mut Vec<Node>,
     defs: &DefTable<'_>,
     subject: Option<&str>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    for node in nodes {
+    let mut i = 0;
+    while i < nodes.len() {
+        // dsl 0.26.0 §4: a guarded `::use` expansion (its guard rides the
+        // begin sentinel, `normalize::expand_use`) runs whole or not at all:
+        // expand the run against the ENCLOSING `$`, then wrap it.
+        if let Some(end) = guarded_use_end(nodes, i) {
+            let mut run: Vec<Node> = nodes.drain(i..=end).collect();
+            let Some(Node::Directive(begin)) = run.first_mut() else {
+                unreachable!("guarded_use_end starts at a begin sentinel");
+            };
+            let (guard, span) = (begin.when.take().expect("guarded"), begin.span);
+            let authored = begin
+                .attrs
+                .iter()
+                .position(|a| a.key == crate::normalize::AUTHORED_ATTR)
+                .map(|at| begin.attrs.remove(at));
+            expand_nodes(&mut run, defs, subject, diags);
+            let mut wrapped = guarded(guard, run, span, defs, diags);
+            if let (Node::Match(m), Some(a)) = (&mut wrapped, authored) {
+                m.attrs.push(a);
+            }
+            nodes.insert(i, wrapped);
+            i += 1;
+            continue;
+        }
+        let node = &mut nodes[i];
         match node {
             Node::Line(l) => expand_attrs(&mut l.attrs, defs, subject, diags),
-            Node::Directive(d) => expand_attrs(&mut d.attrs, defs, subject, diags),
+            Node::Directive(d) => {
+                expand_attrs(&mut d.attrs, defs, subject, diags);
+                // dsl 0.26.0 §4: a guarded directive, like a guarded `::set`
+                // below. (A guarded `::next` was desugared by `normalize`.)
+                if let Some(guard) = d.when.take() {
+                    let span = d.span;
+                    let leaf = std::mem::replace(node, Node::Directive(placeholder(span)));
+                    *node = guarded(guard, vec![leaf], span, defs, diags);
+                }
+            }
+            Node::Assert(lute_syntax::ast::Assert { when, span, .. })
+            | Node::Retract(lute_syntax::ast::Retract { when, span, .. })
+                if when.is_some() =>
+            {
+                // Fact args are ground: only the guard expands.
+                let (guard, span) = (when.take().expect("guarded"), *span);
+                let leaf = std::mem::replace(node, Node::Directive(placeholder(span)));
+                *node = guarded(guard, vec![leaf], span, defs, diags);
+            }
             Node::Set(s) => {
                 expand_slot(&mut s.expr, defs, subject, diags);
                 if let Some(mut guard) = s.when.take() {
@@ -175,6 +218,67 @@ fn expand_nodes(
             // to expand (0.3.0 T2).
             Node::Assert(_) | Node::Retract(_) => {}
         }
+        i += 1;
+    }
+}
+
+/// dsl 0.26.0 §4: when `nodes[i]` is the begin sentinel of a guarded `::use`
+/// expansion, the index of its matching end sentinel.
+fn guarded_use_end(nodes: &[Node], i: usize) -> Option<usize> {
+    use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
+    let Node::Directive(d) = &nodes[i] else {
+        return None;
+    };
+    if d.tag != COMPONENT_BEGIN || d.when.is_none() {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (j, node) in nodes.iter().enumerate().skip(i) {
+        match node {
+            Node::Directive(d) if d.tag == COMPONENT_BEGIN => depth += 1,
+            Node::Directive(d) if d.tag == COMPONENT_END => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// dsl 0.26.0 §4: `body` under its guard — the one-arm match of a guarded
+/// `::set` ([`crate::normalize::guard_match`]). `$` is out of scope in the
+/// guard (the checker's D9 rule), so it expands with no subject; the arm's
+/// `$` test then expands against the guard.
+fn guarded(
+    mut guard: CelSlot,
+    body: Vec<Node>,
+    span: lute_core_span::Span,
+    defs: &DefTable<'_>,
+    diags: &mut Vec<Diagnostic>,
+) -> Node {
+    expand_slot(&mut guard, defs, None, diags);
+    let inner = guard.raw.clone();
+    let mut wrapped = crate::normalize::guard_match(guard, body, span);
+    if let Node::Match(m) = &mut wrapped {
+        for arm in &mut m.arms {
+            if let Arm::When { test, .. } = arm {
+                expand_slot(test, defs, Some(&inner), diags);
+            }
+        }
+    }
+    wrapped
+}
+
+/// A throwaway node standing in while a leaf moves under its guard.
+fn placeholder(span: lute_core_span::Span) -> lute_syntax::ast::Directive {
+    lute_syntax::ast::Directive {
+        tag: String::new(),
+        attrs: Vec::new(),
+        when: None,
+        span,
     }
 }
 

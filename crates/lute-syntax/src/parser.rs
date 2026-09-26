@@ -526,12 +526,8 @@ impl Parser<'_> {
         // and rejects any `:`-led shape with a `migrate` fix-it (dsl §7.1) so
         // `lute fix` (Task C3) can bulk-migrate a whole pre-0.2.2 document.
         // `::` rules already matched above, so a lone `:` here is never `::`.
-        if (trimmed.starts_with('@') || trimmed.starts_with(':'))
-            && trimmed
-                .as_bytes()
-                .get(1)
-                .is_some_and(|b| b.is_ascii_alphabetic())
-        {
+        // dsl 0.26.0 §3.2: `@@who:` speaks as a component's `speaker` param.
+        if is_line_head(&trimmed) {
             return self.parse_line();
         }
         if trimmed.starts_with('<') {
@@ -581,9 +577,10 @@ impl Parser<'_> {
     /// `Directive ::= "::" Ident Attrs?` (§7.2). Layer = Staging.
     ///
     /// dsl 0.12.0 §…: `::next{to when?}`'s `when` is extracted into a typed
-    /// CEL slot the SAME way `Line.when`/`Choice.when` are (`take_cel`) —
-    /// scoped to `tag == "next"` only, so every OTHER directive's `when=`
-    /// (were one ever authored) stays an ordinary residual attr, unchanged.
+    /// CEL slot the SAME way `Line.when`/`Choice.when` are (`take_cel`).
+    /// dsl 0.26.0 §4: every directive's `when=` is its guard, so it is
+    /// extracted for every tag; which directives may carry one is the
+    /// checker's call (a `<track>` clip never keeps one, `parse_track`).
     fn parse_directive(&mut self) -> Node {
         let i = self.cursor;
         let (s, e) = self.lines[i];
@@ -601,11 +598,7 @@ impl Parser<'_> {
         } else {
             (Vec::new(), j)
         };
-        let when = if tag == "next" {
-            attrs::take_cel(&mut attrs, "when", CelKind::Condition)
-        } else {
-            None
-        };
+        let when = attrs::take_cel(&mut attrs, "when", CelKind::Condition);
         let span = self.span(cstart, end);
         self.cursor += 1;
         Node::Directive(Directive {
@@ -714,7 +707,9 @@ impl Parser<'_> {
     /// sentinel (`pattern.relation == ""`) so every downstream consumer skips
     /// an already-diagnosed pattern in exactly one place. Wildcard legality
     /// (`_` in `::assert`) is NOT checked here — that's the checker's job
-    /// (0.3.0 T10); the parser accepts `_` in both directives.
+    /// (0.3.0 T10); the parser accepts `_` in both directives. dsl 0.26.0 §4:
+    /// a trailing `when="…"` after the pattern is the write's guard (split
+    /// exactly like `::set`'s, `split_set_when`).
     fn parse_fact_directive(&mut self, retract: bool) -> Node {
         let i = self.cursor;
         let (s, e) = self.lines[i];
@@ -742,11 +737,24 @@ impl Parser<'_> {
                 self.orig(open + 1),
                 String::new(),
                 span,
+                None,
             );
         };
 
         let inner_start = open + 1;
-        let inner = &self.body[inner_start..close];
+        let (inner_end, when) = match split_set_when(&self.body[inner_start..close]) {
+            Some((expr_len, q_open, q_close)) => {
+                let (a, b) = (inner_start + q_open, inner_start + q_close);
+                let slot = CelSlot::raw(
+                    CelKind::Condition,
+                    self.body[a..b].to_string(),
+                    self.span(a, b),
+                );
+                (inner_start + expr_len, Some(slot))
+            }
+            None => (close, None),
+        };
+        let inner = &self.body[inner_start..inner_end];
         let trim_lead = leading_ws(inner);
         let raw = inner.trim().to_string();
         let base = inner_start + trim_lead; // body-relative start of `raw`
@@ -779,12 +787,15 @@ impl Parser<'_> {
             }
         };
 
-        build_fact_node(retract, pattern, pattern_base, raw, span)
+        build_fact_node(retract, pattern, pattern_base, raw, span, when)
     }
 
     /// `Line ::= "@" Speaker Attrs? ":" WS Text` (dsl §7.1, 0.2.2 — the sigil
     /// was `:` through 0.2.1, foundation C1). Text is opaque to EOL except
-    /// `{{…}}` (§4.4, §7.6). Layer = Content.
+    /// `{{…}}` (§4.4, §7.6). Layer = Content. dsl 0.26.0 §3.2: a speaker
+    /// `@param` (`@@who:`) is kept with its `@` (`speaker == "@who"`); the
+    /// checker holds it to a component's `speaker` params and each `::use`
+    /// binds it to the member its argument names.
     fn parse_line(&mut self) -> Option<Node> {
         let i = self.cursor;
         let (s, e) = self.lines[i];
@@ -793,6 +804,9 @@ impl Parser<'_> {
         let b = self.body.as_bytes();
         let mut j = cstart + 1; // past the sigil (`@`, or legacy `:`)
         let sp_start = j;
+        if b[cstart] == b'@' && b.get(j) == Some(&b'@') {
+            j += 1;
+        }
         while j < e && is_ident_byte(b[j]) {
             j += 1;
         }
@@ -1076,6 +1090,7 @@ fn build_fact_node(
     pattern_base: usize,
     raw: String,
     span: Span,
+    when: Option<CelSlot>,
 ) -> Node {
     if retract {
         Node::Retract(Retract {
@@ -1083,6 +1098,7 @@ fn build_fact_node(
             pattern_base,
             raw,
             span,
+            when,
         })
     } else {
         Node::Assert(Assert {
@@ -1090,6 +1106,7 @@ fn build_fact_node(
             pattern_base,
             raw,
             span,
+            when,
         })
     }
 }
@@ -1124,9 +1141,7 @@ fn is_content_shaped_line(trimmed: &str) -> bool {
     if trimmed.starts_with("::") || trimmed.starts_with('<') {
         return true;
     }
-    let b = trimmed.as_bytes();
-    (b.first() == Some(&b'@') || b.first() == Some(&b':'))
-        && b.get(1).is_some_and(|c| c.is_ascii_alphabetic())
+    is_line_head(trimmed)
 }
 
 /// True when `trimmed` looks like a content line (`@speaker…`/legacy
@@ -1138,9 +1153,19 @@ fn looks_like_content_or_tag_line(trimmed: &str) -> bool {
     if trimmed.starts_with('<') && !trimmed.starts_with("</") {
         return true;
     }
+    is_line_head(trimmed)
+}
+
+/// The content-line head shape: `@speaker`, the legacy `:speaker` sigil, or
+/// (dsl 0.26.0 §3.2) a speaker param `@@who` — a sigil and an ident start.
+fn is_line_head(trimmed: &str) -> bool {
     let b = trimmed.as_bytes();
-    (b.first() == Some(&b'@') || b.first() == Some(&b':'))
-        && b.get(1).is_some_and(|c| c.is_ascii_alphabetic())
+    let ident_at = |k: usize| b.get(k).is_some_and(|c| c.is_ascii_alphabetic());
+    match b.first() {
+        Some(b'@') => ident_at(1) || (b.get(1) == Some(&b'@') && ident_at(2)),
+        Some(b':') => ident_at(1),
+        _ => false,
+    }
 }
 
 /// Tag name of an open tag line (`<branch …>` → `Some("branch")`).

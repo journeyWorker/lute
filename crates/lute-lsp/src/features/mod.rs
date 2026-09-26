@@ -729,6 +729,7 @@ pub(crate) fn type_label(ty: &Type) -> String {
         Type::EnumFromOption(name) => format!("enum(option:{name})"),
         Type::ProviderRef(name) => format!("providerRef({name})"),
         Type::Domain(name) => format!("domain({name})"),
+        Type::Entity(kind) => format!("entity({kind})"),
         Type::SlotId { namespace } => format!("slotId({namespace})"),
         Type::AssetKind(k) => format!("assetKind({k})"),
         Type::NarrativeTime => "narrativeTime".to_string(),
@@ -788,7 +789,7 @@ pub(crate) fn attr_enum_values(
     match &attr.ty {
         Type::Enum(members) => Some(members.clone()),
         Type::EnumFromOption(name) => snapshot.enums.get(name).cloned(),
-        Type::Domain(name) => {
+        Type::Domain(name) | Type::Entity(name) => {
             let zero_span = Span {
                 byte_start: 0,
                 byte_end: 0,

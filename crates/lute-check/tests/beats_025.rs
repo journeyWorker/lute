@@ -60,7 +60,7 @@ fn project_beat_diags(files: &[(&str, &str)]) -> Vec<(PathBuf, Diagnostic)> {
         .map(|((_, t), (_, d))| fold_env(d, &input(t)).0)
         .collect();
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
-    check_project_beats(&docs, &refs)
+    check_project_beats(&docs, &refs, &lute_check::cast::fact_producers(&docs), None)
 }
 
 // ── §2 shape ────────────────────────────────────────────────────────────

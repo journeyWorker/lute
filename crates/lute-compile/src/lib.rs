@@ -359,6 +359,7 @@ pub fn compile_with_check(
     // streams are discarded here — the 3-tuple `fold_env` keeps them separate
     // only to preserve `check()`'s byte-order contract).
     let (mut doc, _) = lute_syntax::parse(&input.text);
+    lute_check::meta::apply_quest_tier_default(&mut doc, &input.defaults);
     let mut arena = CelArena::default();
     let _ = lute_cel::fill_document(&mut arena, &mut doc);
     let (folded, _, _) = fold_env(&doc, input);
@@ -764,6 +765,18 @@ fn body_entry(l: &lute_syntax::datalog::BodyLiteral) -> BodyEntry {
             rhs: term_entry(rhs),
             negated: *negated,
         },
+        BodyLiteral::Count {
+            atom,
+            distinct,
+            op,
+            n,
+            ..
+        } => BodyEntry::Count {
+            atom: atom_entry(atom),
+            distinct: distinct.clone(),
+            op: op.as_str(),
+            n: *n,
+        },
     }
 }
 
@@ -888,6 +901,12 @@ fn scene_beat(
         once: beat.once.into(),
         also: beat.also,
         share: beat.share.clone(),
+        target_kind: ir::TargetKind::resolve(
+            &beat.on,
+            beat.target.as_deref(),
+            &folded.occasions,
+            &folded.env.rel_vocab.kinds,
+        ),
     })
 }
 
@@ -1295,9 +1314,11 @@ fn type_label(append_unset: bool, ty: &Type) -> (String, Option<Vec<String>>) {
         Type::Map { .. } => ("map".to_string(), None),
         // Id-flavored types are strings at the value level (§7 plugin types).
         Type::EnumFromOption(_) => ("enum".to_string(), None),
-        Type::ProviderRef(_) | Type::Domain(_) | Type::SlotId { .. } | Type::AssetKind(_) => {
-            ("string".to_string(), None)
-        }
+        Type::ProviderRef(_)
+        | Type::Domain(_)
+        | Type::Entity(_)
+        | Type::SlotId { .. }
+        | Type::AssetKind(_) => ("string".to_string(), None),
         // dsl 0.3.0 §6: an engine-declared narrative-time anchor's wire label
         // matches the state-decl `type:` form. Never author-writable (D11);
         // only reachable here via a folded plugin capability anchor path.

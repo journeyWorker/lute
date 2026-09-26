@@ -150,7 +150,12 @@ fn an_always_eligible_repeatable_beat_shadows_a_later_one() {
     );
     let docs = project(&[("interviews.lute", &text)]);
     let folded = fold_env(&docs[0].1, &input(&text)).0;
-    let out = check_project_beats(&docs, &[&folded]);
+    let out = check_project_beats(
+        &docs,
+        &[&folded],
+        &lute_check::cast::fact_producers(&docs),
+        None,
+    );
     let shadowed: Vec<_> = out
         .iter()
         .filter(|(_, d)| d.code == "W-BEAT-SHADOWED")

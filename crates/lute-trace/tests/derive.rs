@@ -440,3 +440,84 @@ mod explain {
         );
     }
 }
+
+/// dsl 0.26.0 §6 (T3-9): a rule body's `count(…)` / `countDistinct(…)`
+/// derives in trace over the mocked facts — the gate opens on five of eight
+/// badges, and `countDistinct` groups by the bound `P` and counts distinct
+/// towns, not tuples.
+const COUNT_026: &str = r#"---
+kind: scene
+character: x
+season: 1
+episode: 1
+entities:
+  badge: { members: [b1, b2, b3, b4, b5, b6, b7, b8] }
+  person: { members: [ann, bob] }
+  town: { members: [t1, t2] }
+  door: { members: [earth] }
+relations:
+  hasBadge: { args: [badge] }
+  toured: { args: [person, town, badge] }
+  listed: { args: [person] }
+  open: { args: [door], derive: true }
+  traveled: { args: [person], derive: true }
+facts:
+  - "listed(ann)"
+  - "listed(bob)"
+rules:
+  - "open(earth) :- count(hasBadge(_)) >= 5"
+  - "traveled(P) :- listed(P), countDistinct(toured(P, T, _), T) >= 2"
+---
+## Shot 1.
+<branch id="gate">
+<choice id="pass" label="Pass" when="holds(open(earth)) && holds(traveled(ann)) && !holds(traveled(bob))">
+@narrator: pass
+</choice>
+<choice id="wait" label="Wait">
+@narrator: wait
+</choice>
+</branch>
+"#;
+
+#[test]
+fn count_and_count_distinct_rule_bodies_derive_in_trace() {
+    let input = input_for(COUNT_026, "count_026.lute", Path::new("."));
+    let pass = |badges: usize| {
+        let mut facts: Vec<String> = (1..=badges).map(|i| format!("hasBadge(b{i})")).collect();
+        // ann: two towns; bob: one town over two tuples.
+        facts.extend(
+            [
+                "toured(ann, t1, b1)",
+                "toured(ann, t2, b1)",
+                "toured(bob, t1, b1)",
+                "toured(bob, t1, b2)",
+            ]
+            .map(String::from),
+        );
+        MockSet {
+            facts,
+            choose: [("gate".to_string(), vec!["pass".to_string()])].into(),
+            ..Default::default()
+        }
+    };
+    let (report, exit) = trace_document(&input, pass(5));
+    assert!(
+        matches!(exit, TraceExit::Complete),
+        "{exit:?} {:?}",
+        report.unresolved
+    );
+    let d = report
+        .decisions
+        .iter()
+        .find(|d| d.id == "gate")
+        .expect("decision");
+    assert!(
+        !d.forced && d.eligible.contains(&"pass".to_string()),
+        "{d:?}"
+    );
+    let (_, exit) = trace_document(&input, pass(4));
+    assert!(
+        matches!(exit, TraceExit::Refused(_)),
+        "four of eight badges keep the gate shut: {exit:?}"
+    );
+}

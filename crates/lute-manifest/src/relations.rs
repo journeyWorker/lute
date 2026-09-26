@@ -78,6 +78,11 @@ pub struct ParsedKinds {
     /// this is best-effort over the (already-deduped) mapping iterator; the
     /// authoritative raw-text occurrence scan lives at the meta lift layer.
     pub dups: Vec<String>,
+    /// dsl 0.26.0 §2.3: `<kind>: { add: [<id>…] }` entries — members this
+    /// block adds to a kind another schema declares, by kind name, as written.
+    /// Never in [`Self::kinds`]; the checker merges them into the one base
+    /// declaration (`E-ENTITY-KIND-SHAPE` when there is none).
+    pub adds: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -116,12 +121,14 @@ fn kind_shape(v: &Value) -> KindShape {
 }
 
 /// Parse a schema doc's `entities:` block: `{ <kind>: { members: [<id>…] } |
-/// { open: engine } }` (spec §3.1). `value` is the raw YAML node bound to the
-/// top-level `entities` key (pass `&Value::Null` when absent — yields an
-/// empty map). Total: a non-mapping top-level value yields no kinds; a
-/// non-string kind name is skipped (mirrors `entities.rs`'s key handling);
-/// every OTHER malformed shape is preserved as [`KindShape::Invalid`] rather
-/// than skipped (see module doc).
+/// { open: engine } | { add: [<id>…] } }` (spec §3.1, dsl 0.26.0 §2.3).
+/// `value` is the raw YAML node bound to the top-level `entities` key (pass
+/// `&Value::Null` when absent — yields an empty map). Total: a non-mapping
+/// top-level value yields no kinds; a non-string kind name is skipped (mirrors
+/// `entities.rs`'s key handling); an `add:` alone with a list lands in
+/// [`ParsedKinds::adds`]; every OTHER malformed shape (an `add:` beside another
+/// key, or not a list) is preserved as [`KindShape::Invalid`] rather than
+/// skipped (see module doc).
 pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
     let mut out = ParsedKinds::default();
     let Some(map) = value.as_mapping() else {
@@ -131,13 +138,29 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
         let Some(name) = k.as_str() else {
             continue;
         };
-        if out.kinds.contains_key(name) {
+        if out.kinds.contains_key(name) || out.adds.contains_key(name) {
             out.dups.push(name.to_string());
+        }
+        let add = v.get("add");
+        if let (Some(seq), Some(1)) = (
+            add.and_then(Value::as_sequence),
+            v.as_mapping().map(|m| m.len()),
+        ) {
+            let members = seq
+                .iter()
+                .filter_map(|m| m.as_str().map(str::to_string))
+                .collect();
+            out.adds.insert(name.to_string(), members);
+            continue;
         }
         out.kinds.insert(
             name.to_string(),
             EntityKindDecl {
-                shape: kind_shape(v),
+                shape: if add.is_some() {
+                    KindShape::Invalid
+                } else {
+                    kind_shape(v)
+                },
                 subset_of: v
                     .get("subsetOf")
                     .map(|p| p.as_str().unwrap_or_default().to_string()),
@@ -145,6 +168,56 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
         );
     }
     out
+}
+
+/// dsl 0.26.0 §2.3: every member of a `subsetOf:` sub-kind is a member of its
+/// parent, so the parent need not restate it. Appends each `members:`
+/// sub-kind's members to every `members:` ancestor (after the ancestor's own
+/// list, sub-kinds in name order, each member once). The walk stops at a
+/// missing or `open:` parent and skips a `subsetOf:` loop — the checker
+/// reports those (`E-ENTITY-KIND-SHAPE`).
+pub fn imply_sub_kind_members(kinds: &mut BTreeMap<String, EntityKindDecl>) {
+    let mut implied: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (name, decl) in kinds.iter() {
+        let KindShape::Members(members) = &decl.shape else {
+            continue;
+        };
+        let mut chain = Vec::new();
+        let mut cur = decl.subset_of.as_deref();
+        while let Some(parent) = cur {
+            if parent == name || chain.contains(&parent) {
+                chain.clear();
+                break;
+            }
+            match kinds.get(parent) {
+                Some(p) if matches!(p.shape, KindShape::Members(_)) => {
+                    chain.push(parent);
+                    cur = p.subset_of.as_deref();
+                }
+                _ => break,
+            }
+        }
+        for parent in chain {
+            implied
+                .entry(parent.to_string())
+                .or_default()
+                .extend(members.iter().cloned());
+        }
+    }
+    for (parent, extra) in implied {
+        if let Some(EntityKindDecl {
+            shape: KindShape::Members(ms),
+            ..
+        }) = kinds.get_mut(&parent)
+        {
+            let mut have: std::collections::BTreeSet<String> = ms.iter().cloned().collect();
+            for m in extra {
+                if have.insert(m.clone()) {
+                    ms.push(m);
+                }
+            }
+        }
+    }
 }
 
 /// `true` when `kind` is `ancestor` or a (transitive) `subsetOf` descendant of
@@ -162,6 +235,20 @@ pub fn kind_within(kinds: &BTreeMap<String, EntityKindDecl>, kind: &str, ancesto
         }
     }
     false
+}
+
+/// dsl 0.26.0 §2.2: every member listed more than once in `members`, once
+/// each, in the order of its second occurrence (an entity kind's or enum's
+/// list; the checker owns `E-ENTITY-KIND-SHAPE`).
+pub fn duplicate_members(members: &[String]) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut dups: Vec<String> = Vec::new();
+    for m in members {
+        if !seen.insert(m.as_str()) && !dups.contains(m) {
+            dups.push(m.clone());
+        }
+    }
+    dups
 }
 
 /// dsl 0.25.0 §1: `a` and `b` can never hold together on the same arguments —

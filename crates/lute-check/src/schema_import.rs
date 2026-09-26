@@ -187,6 +187,8 @@ struct ParsedDoc {
     origins: crate::rel_schema::DeclOrigins,
     /// dsl 0.24 T3-6: heads of this doc's `rules:` entries that failed to parse.
     failed_heads: BTreeSet<String>,
+    /// dsl 0.26.0 §2.3: this doc's `entities:` `add:` lists, located here.
+    kind_adds: Vec<crate::rel_schema::KindAdd>,
 }
 
 fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
@@ -467,6 +469,12 @@ pub fn resolve_imports(
             "state path",
             &path,
             &entries,
+            &|f| {
+                parsed
+                    .get(f)
+                    .and_then(|d| d.origins.state.get(&path))
+                    .cloned()
+            },
             &mut diags,
             at,
         );
@@ -496,7 +504,20 @@ pub fn resolve_imports(
     let mut defs = BTreeMap::new();
     let mut def_origins = BTreeMap::new();
     for (name, entries) in def_by_name {
-        emit_level_dups("E-USES-DUP-DEF", "def", &name, &entries, &mut diags, at);
+        emit_level_dups(
+            "E-USES-DUP-DEF",
+            "def",
+            &name,
+            &entries,
+            &|f| {
+                parsed
+                    .get(f)
+                    .and_then(|d| d.origins.defs.get(&name))
+                    .cloned()
+            },
+            &mut diags,
+            at,
+        );
         if let Some((winner, winner_depth)) = pick_winner(&entries) {
             // `pick_winner`'s own tie-break: the byte-least path at the depth.
             if let Some(file) = entries
@@ -521,6 +542,12 @@ pub fn resolve_imports(
             "entity kind",
             &name,
             &entries,
+            &|f| {
+                parsed
+                    .get(f)
+                    .and_then(|d| d.origins.kinds.get(&name))
+                    .cloned()
+            },
             &mut diags,
             at,
         );
@@ -546,6 +573,24 @@ pub fn resolve_imports(
         }
         rel_kinds.insert(name, winner);
     }
+    // dsl 0.26.0 §2.3: every imported `add:` extends the one imported
+    // declaration of its kind (file order, so the report is deterministic).
+    let kind_adds: Vec<crate::rel_schema::KindAdd> = parsed
+        .values()
+        .flat_map(|d| d.kind_adds.iter().cloned())
+        .collect();
+    diags.extend(crate::rel_schema::apply_kind_adds(
+        &mut rel_kinds,
+        &kind_adds,
+        &|kind| {
+            parsed
+                .iter()
+                .filter(|(_, d)| d.rel_kinds.kinds.contains_key(kind))
+                .min_by_key(|(p, _)| (dist.get(*p).copied().unwrap_or(0), *p))
+                .and_then(|(p, _)| p.file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+        },
+    ));
 
     let mut rel_relations: BTreeMap<String, RelationDecl> = BTreeMap::new();
     for (name, entries) in relation_by_name {
@@ -554,6 +599,12 @@ pub fn resolve_imports(
             "relation",
             &name,
             &entries,
+            &|f| {
+                parsed
+                    .get(f)
+                    .and_then(|d| d.origins.relations.get(&name))
+                    .cloned()
+            },
             &mut diags,
             at,
         );
@@ -588,6 +639,12 @@ pub fn resolve_imports(
             "enum",
             &name,
             &entries,
+            &|f| {
+                parsed
+                    .get(f)
+                    .and_then(|d| d.origins.domains.get(&name))
+                    .cloned()
+            },
             &mut diags,
             at,
         );
@@ -619,7 +676,12 @@ pub fn resolve_imports(
         .iter()
         .map(|(name, dom)| (name.clone(), dom.clone()))
         .collect();
-    domains.extend(kinds_to_domains(&rel_kinds));
+    // dsl 0.26.0 §2.3: a parent's domain holds its sub-kinds' members too
+    // (`rel.kinds` keeps the lists as declared; `build_rel_vocab` implies
+    // them once the document's own decls are overlaid).
+    let mut implied_kinds = rel_kinds.clone();
+    lute_manifest::relations::imply_sub_kind_members(&mut implied_kinds);
+    domains.extend(kinds_to_domains(&implied_kinds));
 
     fact_entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
     rule_entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
@@ -724,6 +786,7 @@ pub fn resolve_imports(
             (&mut origins.rules, &doc.origins.rules),
             (&mut origins.facts, &doc.origins.facts),
             (&mut origins.domains, &doc.origins.domains),
+            (&mut origins.state, &doc.origins.state),
         ] {
             for (k, v) in src {
                 dst.entry(k.clone()).or_insert_with(|| v.clone());
@@ -1015,6 +1078,7 @@ fn read_and_parse(
         state_index: BTreeMap::new(),
         origins: Default::default(),
         failed_heads: BTreeSet::new(),
+        kind_adds: Vec::new(),
     };
     let text = match std::fs::read_to_string(canon) {
         Ok(t) => t,
@@ -1137,8 +1201,37 @@ fn read_and_parse(
             .map(|f| (f.raw.clone(), here(f.span)))
             .collect(),
         domains: tm.domains.keys().map(|n| (n.clone(), key(n))).collect(),
+        state: tm
+            .state
+            .decls
+            .keys()
+            .map(|p| (p.clone(), here(crate::rel_schema::state_key_span(&meta, p))))
+            .collect(),
     };
+    // dsl 0.26.0 §2.2: a member listed twice in one of this file's kinds or
+    // enums, reported at its own line (the importers' copies fold).
+    let own_enums: BTreeMap<String, Vec<String>> = tm
+        .domains
+        .iter()
+        .filter(|(n, _)| !tm.rel_kinds.kinds.contains_key(*n))
+        .map(|(n, d)| (n.clone(), d.members.clone()))
+        .collect();
+    for d in crate::rel_schema::check_member_dups(&meta, &tm.rel_kinds, &own_enums) {
+        let origin = here(d.span);
+        diags.push(crate::rel_schema::at_origin(d, Some(&origin)));
+    }
     let failed_heads = tm.rel_rule_failed_heads.clone();
+    let kind_adds = tm
+        .rel_kinds
+        .adds
+        .iter()
+        .map(|(kind, members)| crate::rel_schema::KindAdd {
+            kind: kind.clone(),
+            members: members.clone(),
+            origin: Some(key(kind)),
+            span: at,
+        })
+        .collect();
     let state = tm.state.decls;
     let defs = tm.defs;
     let domains = tm.domains;
@@ -1167,6 +1260,7 @@ fn read_and_parse(
             clock,
             origins,
             failed_heads,
+            kind_adds,
         },
         uses,
         extends,
@@ -1175,12 +1269,16 @@ fn read_and_parse(
 
 /// Report `E-USES-DUP-*`/`E-KIND-NAME-CLASH` for every depth level at which
 /// >= 2 DISTINCT files declare `name`. Deterministic: levels ascend, and the
-/// > two named files are the byte-sorted-first pair.
+/// > two named files are the byte-sorted-first pair. dsl 0.26 §2.7: reported
+/// at the second file's declaration line ([`crate::rel_schema::at_origin`]),
+/// so the project roll-up folds every importer's copy into one report;
+/// `origin_of` locates `name` in a file (`None` keeps the importer anchor).
 fn emit_level_dups<T>(
     code: &str,
     noun: &str,
     name: &str,
     entries: &[(PathBuf, usize, T)],
+    origin_of: &dyn Fn(&Path) -> Option<crate::rel_schema::DeclOrigin>,
     diags: &mut Vec<Diagnostic>,
     at: Span,
 ) {
@@ -1192,7 +1290,7 @@ fn emit_level_dups<T>(
         files.sort();
         files.dedup();
         if files.len() >= 2 {
-            diags.push(uses_diag(
+            let d = uses_diag(
                 code,
                 format!(
                     "{noun} `{name}` is declared by two imports (`{}` and `{}`)",
@@ -1200,6 +1298,10 @@ fn emit_level_dups<T>(
                     files[1].display()
                 ),
                 at,
+            );
+            diags.push(crate::rel_schema::at_origin(
+                d,
+                origin_of(files[1]).as_ref(),
             ));
         }
     }

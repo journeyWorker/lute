@@ -78,19 +78,16 @@ fn two_unrelated_kinds_sharing_an_id_still_clash_and_name_subset_of() {
     assert!(clash[0].contains("subsetOf:"), "{}", clash[0]);
 }
 
+/// dsl 0.26.0 §2.3: a sub-kind's members are its parent's — `wren` need not
+/// be restated in `person`, and a relation over `person` takes it.
 #[test]
-fn a_sub_kind_member_outside_its_parent_is_named() {
+fn a_sub_kind_member_is_a_member_of_its_parent() {
     let all = diags(&scene(
-        "entities:\n  person: { members: [isolde] }\n  companion: { subsetOf: person, members: [isolde, wren] }\n",
+        "entities:\n  person: { members: [isolde] }\n  companion: { subsetOf: person, members: [isolde, wren] }\nrelations:\n  met: { args: [person], tier: run }\nfacts:\n  - \"met(wren)\"\n",
         "@narrator: hi\n",
     ));
-    let shape = with_code(&all, "E-ENTITY-KIND-SHAPE");
-    assert_eq!(shape.len(), 1, "{all:?}");
-    assert!(
-        shape[0].contains("`wren` is not a member of `person`"),
-        "{}",
-        shape[0]
-    );
+    assert!(with_code(&all, "E-ENTITY-KIND-SHAPE").is_empty(), "{all:?}");
+    assert!(with_code(&all, "E-FACT-DOMAIN").is_empty(), "{all:?}");
 }
 
 #[test]

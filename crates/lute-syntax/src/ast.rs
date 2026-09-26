@@ -62,13 +62,13 @@ pub struct Line {
 pub struct Directive {
     pub tag: String,
     pub attrs: Vec<Attr>,
-    /// `::next{when="COND"}` (dsl 0.12.0 §…) — a forward-jump guard,
-    /// extracted into a typed CEL slot the SAME way `Line.when`/`Choice.when`
-    /// are (`take_cel`, parser.rs), so it rides the same CEL walk /
-    /// `StableId` / `check_cel_slot` validation path a content-line guard
-    /// does. `None` for every OTHER directive tag — the parser only ever
-    /// extracts `when` when `tag == "next"`; a `when=` attr elsewhere stays
-    /// an ordinary residual `attrs` entry (`E-UNKNOWN-ATTR`, unchanged).
+    /// A directive's `when="COND"` guard — `::next` (dsl 0.12.0) and, since
+    /// dsl 0.26.0 §4, `::use`, `::accept` and plugin passthrough directives
+    /// (skipped when false, like `::set{… when=}`). Extracted into a typed
+    /// CEL slot the SAME way `Line.when`/`Choice.when` are (`take_cel`,
+    /// parser.rs) for every tag, so it rides the same CEL walk / `StableId` /
+    /// `check_cel_slot` path; the checker refuses it where no guard applies
+    /// (a builtin-lowered directive, a `<track>` clip).
     pub when: Option<CelSlot>,
     pub span: Span,
 }
@@ -136,23 +136,28 @@ pub struct Set {
 
 /// `::assert{ rel(a, b) }` (dsl 0.3.0 §5) — a pure leaf; args are compile-time-ground
 /// (no `{{…}}`, no CEL). `pattern.relation.is_empty()` is the parse-failed sentinel (D13).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Assert {
     pub pattern: crate::datalog::FactPattern,
     /// Byte offset of the payload interior start; pattern spans are relative to it.
     pub pattern_base: usize,
     pub raw: String,
     pub span: Span,
+    /// dsl 0.26.0 §4: `::assert{ rel(a) when="…" }` — the write applies only
+    /// when this condition holds (the meaning of `::set{… when=}`).
+    pub when: Option<CelSlot>,
 }
 
 /// `::retract{ rel(a, _) }` (dsl 0.3.0 §5) — mirrors [`Assert`]; wildcard legality
 /// is checked downstream (Task 10), not here.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Retract {
     pub pattern: crate::datalog::FactPattern,
     pub pattern_base: usize,
     pub raw: String,
     pub span: Span,
+    /// dsl 0.26.0 §4: the retract's guard, as [`Assert::when`].
+    pub when: Option<CelSlot>,
 }
 
 #[derive(Clone, Debug)]
@@ -407,6 +412,8 @@ pub struct Reward {
     pub kind_span: Span,
     /// Value of `target=` when present.
     pub target: Option<String>,
+    /// Span of `target`'s value when present (dsl 0.26.0 §2.5 `E-REWARD-TARGET`).
+    pub target_span: Option<Span>,
     /// Parsed `amount=` literal; `None` when absent OR when the raw text
     /// failed to parse (the raw attr survives inside `attrs` in that case).
     pub amount: Option<RewardAmount>,

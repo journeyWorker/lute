@@ -26,6 +26,7 @@ use serde_yaml::Value as Yaml;
 
 /// The complete legal key set of a STEP `expect:`.
 pub(crate) const STEP_EXPECT_KEYS: &[&str] = &[
+    "clock",
     "facts",
     "notFacts",
     "notOffered",
@@ -41,9 +42,13 @@ pub(crate) const STEP_EXPECT_KEYS: &[&str] = &[
 /// `occasion` step.
 const OCCASION_STEP_KEYS: &[&str] = &["notOffered", "offered", "presented", "winner"];
 
-/// The keys that judge the world (state, facts, quest statuses) — on a step,
-/// right after it settled; at the top level, at the end.
-const WORLD_KEYS: &[&str] = &["facts", "notFacts", "quests", "state"];
+/// The keys that judge the world (state, facts, quest statuses, the clock)
+/// — on a step, right after it settled; at the top level, at the end
+/// (`clock` is a step key only).
+const WORLD_KEYS: &[&str] = &["clock", "facts", "notFacts", "quests", "state"];
+
+/// The keys a step `expect.clock` may name (dsl 0.26.0 §7, T2-5).
+const CLOCK_KEYS: &[&str] = &["day", "slot", "weekday"];
 
 /// The first occasion-only key a step `expect:` carries — a usage error on a
 /// step that raises no occasion.
@@ -74,12 +79,28 @@ pub(crate) struct WorldWants {
 
 /// The world at one moment of a play: the effective state, every fact that
 /// holds after derivation (rendered `rel(a, b)`), every declared quest's
-/// status.
+/// status, and the declared clock's position.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct WorldView {
     pub state: BTreeMap<String, Value>,
     pub facts: BTreeSet<String>,
     pub quests: BTreeMap<String, String>,
+    /// `None` without a declared clock, or while its day/slot paths name no
+    /// position on it.
+    pub clock: Option<ClockView>,
+}
+
+/// Where the declared clock stands (dsl 0.26.0 §7, T2-5: step
+/// `expect.clock`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct ClockView {
+    pub day: i64,
+    /// The slot's name — `None` on a day-granular clock.
+    pub slot: Option<String>,
+    /// `clock.weekday` — `None` without a `week:`.
+    pub weekday: Option<i64>,
+    /// `clock.weekdayLabel` — `None` without week labels.
+    pub weekday_label: Option<String>,
 }
 
 /// The complete legal key set of the top-level (end-of-play) `expect:`.
@@ -146,6 +167,10 @@ pub(crate) struct PlayOutcome {
     pub said: String,
     /// `complete | incomplete | error`.
     pub exit: &'static str,
+    /// dsl 0.26.0 §7 (T3-10): `<document id>.<entry id>` -> the entry id —
+    /// a step's `winner` / `offered` / `notOffered` / `presented` may name
+    /// an entry by that alias.
+    pub entry_aliases: BTreeMap<String, String>,
 }
 
 /// One failed expectation.
@@ -339,6 +364,41 @@ fn validate_value(key: &str, v: &Yaml) -> Result<(), String> {
             }
             Ok(())
         }
+        "clock" => {
+            let shape = "`expect.clock` must be a mapping `{ weekday: <label or number>, slot: \
+                         <slot>, day: <whole number> }` (any of them)";
+            let Yaml::Mapping(m) = v else {
+                return Err(shape.into());
+            };
+            if m.is_empty() {
+                return Err(shape.into());
+            }
+            for (k, want) in m {
+                let k = k.as_str().ok_or(shape)?;
+                let ok = match k {
+                    "day" => want.as_i64().is_some_and(|d| d >= 1),
+                    "slot" => want.as_str().is_some_and(|s| !s.trim().is_empty()),
+                    "weekday" => {
+                        want.as_i64().is_some_and(|d| d >= 0)
+                            || want.as_str().is_some_and(|s| !s.trim().is_empty())
+                    }
+                    _ => {
+                        let sugg =
+                            lute_manifest::suggest::nearest(k, CLOCK_KEYS.iter().copied(), 2)
+                                .map(|k| format!(" — did you mean `{k}`?"))
+                                .unwrap_or_default();
+                        return Err(format!(
+                            "unknown `expect.clock` key `{k}`{sugg} (legal: {})",
+                            CLOCK_KEYS.join(", ")
+                        ));
+                    }
+                };
+                if !ok {
+                    return Err(shape.into());
+                }
+            }
+            Ok(())
+        }
         _ => unreachable!("validate() filtered to the legal key sets"),
     }
 }
@@ -397,6 +457,64 @@ pub(crate) fn canonical_atom(text: &str) -> String {
     }
 }
 
+/// dsl 0.26.0 §7 (T3-6): a `transcriptContains` / `transcriptLacks` needle
+/// in the canonical `@speaker: text` form the transcript is matched in —
+/// line attributes copied from `lute play`'s output
+/// (`@granny{emotion="happy"}: …`) are dropped from each line of it, since
+/// the presented form carries none.
+pub(crate) fn transcript_needle(needle: &str) -> String {
+    needle
+        .split('\n')
+        .map(|line| {
+            let Some(rest) = line.strip_prefix('@') else {
+                return line.to_string();
+            };
+            let name_end = rest
+                .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '.' || c == '-'))
+                .unwrap_or(rest.len());
+            let (name, after) = rest.split_at(name_end);
+            let Some(attrs) = after.strip_prefix('{') else {
+                return line.to_string();
+            };
+            // The attribute block ends at the first `}` outside quotes.
+            let mut quote = None;
+            let close = attrs.char_indices().find_map(|(i, c)| match (quote, c) {
+                (None, '"' | '\'') => {
+                    quote = Some(c);
+                    None
+                }
+                (Some(q), c) if c == q => {
+                    quote = None;
+                    None
+                }
+                (None, '}') => Some(i),
+                _ => None,
+            });
+            match close {
+                Some(i) => format!("@{name}{}", &attrs[i + 1..]),
+                None => line.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// dsl 0.26.0 §7 (T3-6): the presented line of `said` nearest to a needle
+/// that matched none — what a `transcriptContains` miss shows. `None` when
+/// nothing was presented.
+pub(crate) fn nearest_said_line<'a>(said: &'a str, needle: &str) -> Option<&'a str> {
+    let needle = needle.trim();
+    said.lines()
+        .filter(|l| !l.trim().is_empty())
+        .min_by_key(|line| {
+            // A needle is a substring, so the length difference is free: a
+            // short needle is not penalized for the rest of a long line.
+            let dist = lute_manifest::suggest::levenshtein(line, needle);
+            let shorter = line.chars().count().abs_diff(needle.chars().count());
+            dist.saturating_sub(shorter)
+        })
+}
+
 // ===========================================================================
 // Judging.
 // ===========================================================================
@@ -432,6 +550,7 @@ pub(crate) fn check(
                 label.as_ref(),
                 repeated.then_some(r + 1),
                 expect,
+                &outcome.entry_aliases,
                 &mut misses,
             );
         }
@@ -452,8 +571,16 @@ fn check_step(
     label: Option<&String>,
     repetition: Option<usize>,
     expect: &Yaml,
+    entry_aliases: &BTreeMap<String, String>,
     misses: &mut Vec<ExpectMiss>,
 ) {
+    // dsl 0.26.0 §7 (T3-10): an expected id may be an entry's
+    // `<doc>.<entry>` alias; it is judged as the entry id.
+    let resolve = |id: String| entry_aliases.get(&id).cloned().unwrap_or(id);
+    let ids = |key: &str| {
+        let list = string_list(key, expect.get(key)?).ok()?;
+        Some(list.into_iter().map(resolve).collect::<Vec<String>>())
+    };
     let Yaml::Mapping(m) = expect else { return };
     let occasion = match &row.target {
         Some(t) => format!("{} {t}", row.occasion),
@@ -472,7 +599,7 @@ fn check_step(
         })
     };
     let actual_winner = row.winner.clone().unwrap_or_else(|| NO_WINNER.to_string());
-    if let Some(want) = m.get("winner").and_then(scalar_text) {
+    if let Some(want) = m.get("winner").and_then(scalar_text).map(resolve) {
         let holds = match (&row.winner, want.as_str()) {
             (None, NO_WINNER) => true,
             (Some(w), want) => w == want,
@@ -483,10 +610,7 @@ fn check_step(
         }
     }
     let offered: BTreeSet<&str> = row.offered.iter().map(String::as_str).collect();
-    if let Some(want) = m
-        .get("offered")
-        .and_then(|v| string_list("offered", v).ok())
-    {
+    if let Some(want) = ids("offered") {
         let missing: Vec<String> = want
             .iter()
             .filter(|w| !offered.contains(w.as_str()))
@@ -504,10 +628,7 @@ fn check_step(
             );
         }
     }
-    if let Some(want) = m
-        .get("notOffered")
-        .and_then(|v| string_list("notOffered", v).ok())
-    {
+    if let Some(want) = ids("notOffered") {
         let present: Vec<String> = want
             .iter()
             .filter(|w| offered.contains(w.as_str()))
@@ -522,10 +643,7 @@ fn check_step(
         }
     }
     // dsl 0.23.0 §3: the exact presentation order.
-    if let Some(want) = m
-        .get("presented")
-        .and_then(|v| string_list("presented", v).ok())
-    {
+    if let Some(want) = ids("presented") {
         if want != row.presented {
             miss("presented".into(), list(&want), list(&row.presented));
         }
@@ -563,13 +681,16 @@ fn check_step(
     }
 }
 
-/// Judge the world keys (`quests`, `state`, `facts`, `notFacts`) of one
-/// `expect:` against `world`.
+/// Judge the world keys (`quests`, `state`, `facts`, `notFacts`, `clock`)
+/// of one `expect:` against `world`.
 fn check_world(
     world: &WorldView,
     m: &serde_yaml::Mapping,
     miss: &mut impl FnMut(String, String, String),
 ) {
+    if let Some(Yaml::Mapping(want)) = m.get("clock") {
+        check_clock(world.clock.as_ref(), want, miss);
+    }
     if let Some(Yaml::Mapping(quests)) = m.get("quests") {
         for (id, want) in quests {
             let (Some(id), Some(want)) = (id.as_str(), scalar_text(want)) else {
@@ -623,6 +744,61 @@ fn check_world(
     }
 }
 
+/// dsl 0.26.0 §7 (T2-5): judge a step `expect.clock` — the `day`, `slot`
+/// name and `weekday` (a `week.labels` label or a `clock.weekday` number)
+/// where the clock stands after the step. An `include:`d steps file states
+/// the time it assumes, so a clock another area's steps pushed on fails at
+/// the boundary instead of silently skipping time-gated beats.
+fn check_clock(
+    clock: Option<&ClockView>,
+    want: &serde_yaml::Mapping,
+    miss: &mut impl FnMut(String, String, String),
+) {
+    for (key, want) in want {
+        let Some(key) = key.as_str() else { continue };
+        let expected = scalar_text(want).unwrap_or_default();
+        let Some(c) = clock else {
+            miss(
+                format!("clock {key}"),
+                expected,
+                "no clock position (the project declares no clock, or its day/slot name no \
+                 position)"
+                    .to_string(),
+            );
+            continue;
+        };
+        let (held, actual) = match key {
+            "day" => (want.as_i64() == Some(c.day), c.day.to_string()),
+            "slot" => (
+                want.as_str() == c.slot.as_deref(),
+                c.slot
+                    .clone()
+                    .unwrap_or_else(|| "none (a day-granular clock)".to_string()),
+            ),
+            "weekday" => {
+                let held = match want {
+                    Yaml::Number(n) => n.as_i64().is_some_and(|n| Some(n) == c.weekday),
+                    Yaml::String(s) => {
+                        c.weekday_label.as_deref() == Some(s.as_str())
+                            || s.parse::<i64>().ok().is_some_and(|n| Some(n) == c.weekday)
+                    }
+                    _ => false,
+                };
+                let actual = match (&c.weekday_label, c.weekday) {
+                    (Some(label), Some(n)) => format!("{label} ({n})"),
+                    (None, Some(n)) => n.to_string(),
+                    _ => "none (the clock declares no `week:`)".to_string(),
+                };
+                (held, actual)
+            }
+            _ => continue,
+        };
+        if !held {
+            miss(format!("clock {key}"), expected, actual);
+        }
+    }
+}
+
 fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
     let Yaml::Mapping(m) = top else { return };
     let mut miss = |key: String, expected: String, actual: String| {
@@ -647,15 +823,22 @@ fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
             continue;
         };
         for sub in want {
-            let present = outcome.said.contains(&sub);
+            let needle = transcript_needle(&sub);
+            let present = outcome.said.contains(&needle);
             if present != want_present {
+                let actual = match nearest_said_line(&outcome.said, &needle) {
+                    Some(line) if want_present => {
+                        format!("{sub:?} absent (nearest line: {line:?})")
+                    }
+                    _ => format!("{sub:?} {}", if present { "present" } else { "absent" }),
+                };
                 miss(
                     key.to_string(),
                     format!(
                         "{sub:?} {}",
                         if want_present { "present" } else { "absent" }
                     ),
-                    format!("{sub:?} {}", if present { "present" } else { "absent" }),
+                    actual,
                 );
             }
         }
@@ -734,9 +917,11 @@ mod tests {
                     ("caseClosed".to_string(), "complete".to_string()),
                     ("side".to_string(), "unset".to_string()),
                 ]),
+                clock: None,
             },
             said: "@oskar: Welcome back.\n".into(),
             exit: "complete",
+            entry_aliases: BTreeMap::new(),
         }
     }
 
@@ -895,7 +1080,7 @@ transcriptLacks: ["Welcome"]
         assert!(e.contains("`winer`"), "{e}");
         assert!(e.contains("did you mean `winner`"), "{e}");
         assert!(
-            e.contains("legal: facts, notFacts, notOffered, offered, options, presented, quests, state, winner"),
+            e.contains("legal: clock, facts, notFacts, notOffered, offered, options, presented, quests, state, winner"),
             "{e}"
         );
         let e = validate(&y("{transcriptContains: [x]}"), false).unwrap_err();
@@ -914,6 +1099,11 @@ transcriptLacks: ["Welcome"]
             ("{state: {run.day: [1]}}", true),
             ("{facts: ['knows(a']}", true),
             ("[winner]", false),
+            ("{clock: {}}", false),
+            ("{clock: {hour: 3}}", false),
+            ("{clock: {day: 0}}", false),
+            ("{clock: {slot: 3}}", false),
+            ("{clock: {day: 2}}", true),
         ] {
             assert!(
                 validate(&y(text), top).is_err(),
@@ -929,6 +1119,7 @@ transcriptLacks: ["Welcome"]
             state: BTreeMap::from([("run.accused".to_string(), Value::Str("b".into()))]),
             facts: BTreeSet::from(["slew(warden)".to_string()]),
             quests: BTreeMap::from([("caseClosed".to_string(), "failed".to_string())]),
+            clock: None,
         });
         let holds =
             y("{quests: {caseClosed: failed}, state: {run.accused: b}, facts: [slew(warden)]}");
@@ -947,6 +1138,55 @@ transcriptLacks: ["Welcome"]
                 "step 1 (night one) at hubVisit: expect state run.accused: expected \"a\", actual \"b\"",
                 "step 1 (night one) at hubVisit: expect notFacts: expected slew(warden) does not hold, actual slew(warden) holds",
             ]
+        );
+    }
+
+    /// dsl 0.26.0 §7 (T2-5): a step `expect.clock` judges where the clock
+    /// stands — a weekday by label or number, the slot name, the day.
+    #[test]
+    fn a_step_judges_the_clock() {
+        let mut o = outcome();
+        o.steps[0].world = Some(WorldView {
+            clock: Some(ClockView {
+                day: 5,
+                slot: Some("morning".into()),
+                weekday: Some(5),
+                weekday_label: Some("Fri".into()),
+            }),
+            ..WorldView::default()
+        });
+        for holds in [
+            "{clock: {weekday: Fri, slot: morning, day: 5}}",
+            "{clock: {weekday: 5}}",
+        ] {
+            assert_eq!(
+                check(&o, &[(1, None, y(holds))], None),
+                Vec::new(),
+                "{holds}"
+            );
+        }
+        let misses = check(
+            &o,
+            &[(1, None, y("{clock: {weekday: Mon, slot: night, day: 1}}"))],
+            None,
+        );
+        let lines: Vec<String> = misses.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            lines,
+            [
+                "step 1 at hubVisit: expect clock weekday: expected Mon, actual Fri (5)",
+                "step 1 at hubVisit: expect clock slot: expected night, actual morning",
+                "step 1 at hubVisit: expect clock day: expected 1, actual 5",
+            ]
+        );
+        // No clock: every key misses, saying why.
+        o.steps[0].world = Some(WorldView::default());
+        let misses = check(&o, &[(1, None, y("{clock: {day: 1}}"))], None);
+        assert_eq!(misses.len(), 1);
+        assert!(
+            misses[0].to_string().contains("no clock position"),
+            "{}",
+            misses[0]
         );
     }
 

@@ -64,27 +64,94 @@
 //! `everRead` does not re-run the effects, and the run tier has been reset.
 
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use cel_parser::ast::{operators as op, Expr};
 use lute_core_span::Span;
 use lute_syntax::ast::{
     Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Document, Match, Node, Retract,
 };
+use lute_syntax::datalog::FactTerm;
 
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
 use crate::connectivity::{ConnGraph, NodeId, PrereqState};
 use crate::fact_env::{
-    derive_guaranteed, GroundFact, MaySet, MustFact, MustMap, Provenance, QueryPattern, RootVocab,
+    GroundFact, MaySet, MustClosure, MustFact, MustMap, Provenance, QueryPattern, RootVocab,
 };
 use crate::meta::StateSchema;
 use crate::prereq::PrereqFormula;
 use crate::rel_schema::RelVocab;
 
-/// A must set: each guaranteed fact with where it is established.
-type Facts = BTreeMap<GroundFact, Provenance>;
+/// Guaranteed facts, each with where it is established.
+type FactMap = BTreeMap<GroundFact, Provenance>;
+
+/// The must set on one route: the root's seeds — every route holds them (a
+/// seed is monotone: no retract matches it, no produced fact displaces it,
+/// its relation is not derived — so no transfer below removes it) — plus
+/// `own`: every other fact, and a seed whose provenance on this route is
+/// not `Seed` (an `::assert` of it). The seeds are shared, so copying a set
+/// costs what the route added, not the seed count (T2-1).
+#[derive(Clone, Debug)]
+struct Facts {
+    seeds: Arc<FactMap>,
+    own: FactMap,
+}
+
+impl Facts {
+    fn contains_key(&self, f: &GroundFact) -> bool {
+        self.own.contains_key(f) || self.seeds.contains_key(f)
+    }
+
+    /// Add `fact` unless it already holds here (a map's `or_insert`).
+    fn add(&mut self, fact: GroundFact, provenance: Provenance) {
+        if !self.seeds.contains_key(&fact) {
+            self.own.entry(fact).or_insert(provenance);
+        }
+    }
+
+    /// Hold `fact`, established at `provenance` (never `Seed`).
+    fn insert(&mut self, fact: GroundFact, provenance: Provenance) {
+        self.own.insert(fact, provenance);
+    }
+
+    /// Keep the facts `keep` accepts; every seed is kept — each caller's
+    /// predicate accepts it (see the type doc).
+    fn retain(&mut self, mut keep: impl FnMut(&GroundFact) -> bool) {
+        debug_assert!(
+            self.seeds.keys().all(&mut keep),
+            "a transfer removed a seed"
+        );
+        self.own.retain(|f, _| keep(f));
+    }
+
+    /// The facts that are not seeds, with their provenance.
+    fn beyond_seeds(self) -> FactMap {
+        let seeds = self.seeds;
+        let mut own = self.own;
+        own.retain(|f, _| !seeds.contains_key(f));
+        own
+    }
+
+    /// Same facts (provenance ignored): the seeds are shared, so the
+    /// non-seed facts decide.
+    fn same_facts(&self, other: &Facts) -> bool {
+        fn extra(s: &Facts) -> impl Iterator<Item = &GroundFact> {
+            s.own.keys().filter(|f| !s.seeds.contains_key(*f))
+        }
+        extra(self).eq(extra(other))
+    }
+
+    /// `own` as must facts (a seed here overrides the shared one).
+    fn own_facts(self) -> Vec<MustFact> {
+        self.own
+            .into_iter()
+            .map(|(fact, provenance)| MustFact { fact, provenance })
+            .collect()
+    }
+}
 
 /// The must set on the current route; `None` = no route reaches here (the
 /// identity of [`meet`]).
@@ -115,8 +182,11 @@ pub fn compute_must(
 ) -> FactMust {
     let mut root = Root::new(docs, vocab, may);
     root.entry_reads = entry_outcomes(&root, docs, foldeds);
+    // T2-1: the derived closure, prepared once for the root (its seed
+    // closure included) and applied to a slot only when the slot is read.
+    let closure = Arc::new(MustClosure::new(vocab, may, root.seeds.keys().cloned()));
     let mut out = FactMust::default();
-    let mut must_out: BTreeMap<String, Facts> = BTreeMap::new();
+    let mut must_out: BTreeMap<String, FactMap> = BTreeMap::new();
     let mut walked = vec![false; docs.len()];
     // First index per path — `position`'s answer, without a scan per node.
     let mut doc_ix: std::collections::HashMap<&std::path::Path, usize> =
@@ -138,15 +208,25 @@ pub fn compute_must(
             continue;
         }
         walked[idx] = true;
-        let mut entry = root.seeds.clone();
+        let mut entry = root.start();
         if let PrereqState::Valid(f) = &info.prereq {
             for (fact, provenance) in after_facts(f, &must_out) {
-                entry.entry(fact).or_insert(provenance);
+                entry.add(fact, provenance);
             }
         }
         out.scene_entry
-            .insert(key.clone(), with_derived(vocab, may, entry.clone()));
-        let mut end = walk_doc(&root, &docs[idx], foldeds[idx], entry, &mut out.slots);
+            .insert(key.clone(), with_derived(&closure, entry.clone()));
+        let end = walk_doc(
+            &root,
+            &closure,
+            &docs[idx],
+            foldeds[idx],
+            entry,
+            &mut out.slots,
+        );
+        // Only what the route adds to the seeds matters downstream: an
+        // `after:` set only ever adds to a walk's seeds.
+        let mut end = end.map(Facts::beyond_seeds).unwrap_or_default();
         end.retain(|f, _| root.crosses(f));
         must_out.insert(key.clone(), end);
     }
@@ -155,25 +235,33 @@ pub fn compute_must(
     // only.
     for (idx, doc) in docs.iter().enumerate() {
         if !walked[idx] {
-            walk_doc(&root, doc, foldeds[idx], root.seeds.clone(), &mut out.slots);
+            walk_doc(
+                &root,
+                &closure,
+                doc,
+                foldeds[idx],
+                root.start(),
+                &mut out.slots,
+            );
         }
     }
     for (key, info) in &graph.nodes {
         if let NodeId::Scene(k) | NodeId::Beat(k) = key {
             if !out.scene_entry.contains_key(k) && doc_ix.contains_key(info.path.as_path()) {
                 out.scene_entry
-                    .insert(k.clone(), with_derived(vocab, may, root.seeds.clone()));
+                    .insert(k.clone(), with_derived(&closure, root.start()));
             }
         }
     }
     out
 }
 
-/// The facts an `after:` formula guarantees on arrival (§4 entry points).
-fn after_facts(f: &PrereqFormula, must_out: &BTreeMap<String, Facts>) -> Facts {
+/// The non-seed facts an `after:` formula guarantees on arrival (§4 entry
+/// points; `must_out` holds each scene's non-seed crossing facts).
+fn after_facts(f: &PrereqFormula, must_out: &BTreeMap<String, FactMap>) -> FactMap {
     match f {
         PrereqFormula::Visited(key) => must_out.get(key).cloned().unwrap_or_default(),
-        PrereqFormula::Completed(_) | PrereqFormula::Active(_) => Facts::new(),
+        PrereqFormula::Completed(_) | PrereqFormula::Active(_) => FactMap::new(),
         PrereqFormula::And(l, r) => {
             let mut out = after_facts(l, must_out);
             for (fact, provenance) in after_facts(r, must_out) {
@@ -190,17 +278,21 @@ fn after_facts(f: &PrereqFormula, must_out: &BTreeMap<String, Facts>) -> Facts {
     }
 }
 
-fn to_must_facts(facts: Facts) -> Vec<MustFact> {
-    facts
-        .into_iter()
-        .map(|(fact, provenance)| MustFact { fact, provenance })
-        .collect()
-}
-
-fn with_derived(vocab: &RootVocab, may: &MaySet, facts: Facts) -> Vec<MustFact> {
-    let mut base = to_must_facts(facts);
-    let derived = derive_guaranteed(vocab, may, &base);
-    base.extend(derived);
+/// `facts` materialized, then their derived facts (the scene entry sets).
+fn with_derived(closure: &MustClosure, facts: Facts) -> Vec<MustFact> {
+    let mut base: Vec<MustFact> = facts
+        .seeds
+        .iter()
+        .filter(|(f, _)| !facts.own.contains_key(*f))
+        .chain(facts.own.iter())
+        .map(|(fact, provenance)| MustFact {
+            fact: fact.clone(),
+            provenance: provenance.clone(),
+        })
+        .collect();
+    base.sort_by(|a, b| a.fact.cmp(&b.fact));
+    let derived = closure.derived(&base);
+    base.extend(derived.iter().cloned());
     base
 }
 
@@ -209,7 +301,7 @@ fn meet(acc: &mut Flow, other: Flow) {
     match (acc.as_mut(), other) {
         (_, None) => {}
         (None, other) => *acc = other,
-        (Some(a), Some(o)) => a.retain(|f, _| o.contains_key(f)),
+        (Some(a), Some(o)) => a.retain(|f| o.contains_key(f)),
     }
 }
 
@@ -217,7 +309,7 @@ fn meet(acc: &mut Flow, other: Flow) {
 fn same(a: &Flow, b: &Flow) -> bool {
     match (a, b) {
         (None, None) => true,
-        (Some(a), Some(b)) => a.len() == b.len() && a.keys().all(|f| b.contains_key(f)),
+        (Some(a), Some(b)) => a.same_facts(b),
         _ => false,
     }
 }
@@ -238,40 +330,49 @@ struct Root<'a> {
     may: &'a MaySet,
     /// Every `::retract` pattern anywhere in the root.
     retracts: Vec<QueryPattern>,
-    /// Every asserted or seeded ground fact, by relation — the `key:`
-    /// displacement candidates.
-    produced: BTreeMap<String, BTreeSet<Vec<String>>>,
+    /// Per `key:`-declaring relation: each `key:` tuple of an asserted or
+    /// seeded ground fact → the distinct argument tuples carrying it (at most
+    /// two kept: a fact is displaced iff one of them is not its own). Built
+    /// once, so [`Root::monotone`] costs a lookup instead of a scan of every
+    /// produced tuple — which made the must walk quadratic in the seed count
+    /// (T2-1).
+    key_groups: BTreeMap<String, HashMap<Vec<String>, Vec<Vec<String>>>>,
     /// Every relation some `::assert` writes, ground or not.
     asserted: BTreeSet<String>,
-    /// The monotone, crossing seeds.
-    seeds: Facts,
-    /// Entry id → the crossing facts its body guarantees on every route
-    /// (§6); empty until [`entry_outcomes`] fills it.
-    entry_reads: BTreeMap<String, Facts>,
+    /// dsl 0.26.0 §2.6: every relation some component `::assert` writes with
+    /// an unbound `@param` argument (`hasBadge(@badge)` in the component's
+    /// own body) — a producer of whatever its future `::use` sites pass.
+    param_asserted: BTreeSet<String>,
+    /// The monotone, crossing seeds (all `Seed`), shared by every must set.
+    seeds: Arc<FactMap>,
+    /// Entry id → the non-seed crossing facts its body guarantees on every
+    /// route (§6); empty until [`entry_outcomes`] fills it.
+    entry_reads: BTreeMap<String, FactMap>,
 }
 
 /// dsl 0.24.0 §6: for every lore entry of the root, the crossing facts its
 /// body guarantees on every route (seeds and `when` assumptions included —
-/// they held when it was read and nothing removes a crossing fact). An entry
-/// id declared twice keeps the facts both guarantee.
+/// they held when it was read and nothing removes a crossing fact) beyond
+/// the seeds every route holds anyway. An entry id declared twice keeps the
+/// facts both guarantee.
 fn entry_outcomes(
     root: &Root<'_>,
     docs: &[(PathBuf, Document)],
     foldeds: &[&FoldedEnv],
-) -> BTreeMap<String, Facts> {
-    let mut out: BTreeMap<String, Facts> = BTreeMap::new();
+) -> BTreeMap<String, FactMap> {
+    let mut out: BTreeMap<String, FactMap> = BTreeMap::new();
     for ((path, doc), folded) in docs.iter().zip(foldeds) {
         for entry in doc.entries.iter().filter(|e| !e.id.is_empty()) {
             let mut w = Walk::new(root, path, folded);
-            let mut flow = Some(root.seeds.clone());
+            let mut flow = Some(root.start());
             if let Some(when) = &entry.when {
                 w.assume(when, &mut flow);
             }
-            w.body_base = flow.clone().unwrap_or_default();
+            w.body_base = flow.clone().unwrap_or_else(|| root.start());
             w.walk(&entry.body, &mut flow);
             let mut end = w.exit.take();
             meet(&mut end, flow);
-            let mut end = end.unwrap_or_default();
+            let mut end = end.map(Facts::beyond_seeds).unwrap_or_default();
             end.retain(|f, _| root.crosses(f));
             match out.entry(entry.id.clone()) {
                 Entry::Vacant(v) => {
@@ -291,15 +392,28 @@ fn entry_outcomes(
 pub fn stable_seeds(docs: &[(PathBuf, Document)], vocab: &RootVocab) -> BTreeSet<GroundFact> {
     Root::new(docs, vocab, &MaySet::default())
         .seeds
-        .into_keys()
+        .keys()
+        .cloned()
         .collect()
 }
 
-/// dsl 0.23.0 §10: the relations of the root nothing produces at all — no
-/// seed, no `::assert` anywhere, no rule, not reserved
-/// ([`RootVocab::unproduced`]).
+/// dsl 0.23.0 §10 / 0.26.0 §2.6 (`check-project --wip`): the relations of
+/// the root whose facts content not yet written may still produce — those
+/// nothing produces at all (no seed, no `::assert` anywhere, no rule, not
+/// reserved — [`RootVocab::unproduced`]), plus those a component `::assert`
+/// writes with an unbound `@param` (`hasBadge(@badge)`): a specific atom
+/// (`hasBadge(stone)`) no `::use` produces yet has only that producer, so
+/// it counts as unproduced for its arguments.
 pub fn unproduced_relations(docs: &[(PathBuf, Document)], vocab: &RootVocab) -> BTreeSet<String> {
-    vocab.unproduced(&Root::new(docs, vocab, &MaySet::default()).asserted)
+    let may = MaySet::default();
+    let root = Root::new(docs, vocab, &may);
+    let mut open = vocab.unproduced(&root.asserted);
+    open.extend(
+        root.param_asserted
+            .into_iter()
+            .filter(|r| vocab.relations.get(r).is_some_and(|d| !d.reserved)),
+    );
+    open
 }
 
 impl<'a> Root<'a> {
@@ -307,6 +421,7 @@ impl<'a> Root<'a> {
         let mut retracts = Vec::new();
         let mut produced: BTreeMap<String, BTreeSet<Vec<String>>> = BTreeMap::new();
         let mut asserted = BTreeSet::new();
+        let mut param_asserted = BTreeSet::new();
         for seed in &vocab.seeds {
             produced
                 .entry(seed.relation.clone())
@@ -325,6 +440,13 @@ impl<'a> Root<'a> {
                 scan(body, &mut |node| match node {
                     Node::Assert(a) => {
                         asserted.insert(a.pattern.relation.clone());
+                        if a.pattern
+                            .args
+                            .iter()
+                            .any(|x| matches!(x.term, FactTerm::Param(_)))
+                        {
+                            param_asserted.insert(a.pattern.relation.clone());
+                        }
                         if let Some(f) = GroundFact::from_pattern(&a.pattern) {
                             produced.entry(f.relation).or_default().insert(f.args);
                         }
@@ -338,45 +460,81 @@ impl<'a> Root<'a> {
                 });
             }
         }
+        let mut key_groups: BTreeMap<String, HashMap<Vec<String>, Vec<Vec<String>>>> =
+            BTreeMap::new();
+        for (relation, tuples) in &produced {
+            let Some(decl) = vocab.relations.get(relation) else {
+                continue;
+            };
+            if decl.key.is_empty() {
+                continue;
+            }
+            let groups = key_groups.entry(relation.clone()).or_default();
+            for args in tuples {
+                let key = key_of(&decl.key, args)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect();
+                let group = groups.entry(key).or_default();
+                if group.len() < 2 {
+                    group.push(args.clone());
+                }
+            }
+        }
         let mut root = Root {
             vocab,
             may,
             retracts,
-            produced,
+            key_groups,
             asserted,
-            seeds: Facts::new(),
+            param_asserted,
+            seeds: Arc::default(),
             entry_reads: BTreeMap::new(),
         };
-        root.seeds = vocab
-            .seeds
-            .iter()
-            .filter(|f| root.crosses(f))
-            .map(|f| (f.clone(), Provenance::Seed))
-            .collect();
+        root.seeds = Arc::new(
+            vocab
+                .seeds
+                .iter()
+                .filter(|f| root.crosses(f))
+                .map(|f| (f.clone(), Provenance::Seed))
+                .collect(),
+        );
         root
+    }
+
+    /// The must set every walk starts from: the seeds alone.
+    fn start(&self) -> Facts {
+        Facts {
+            seeds: Arc::clone(&self.seeds),
+            own: FactMap::new(),
+        }
+    }
+
+    /// The seeds as must facts, fact-sorted — the part every slot shares.
+    fn seed_facts(&self) -> Arc<Vec<MustFact>> {
+        Arc::new(
+            self.seeds
+                .iter()
+                .map(|(fact, provenance)| MustFact {
+                    fact: fact.clone(),
+                    provenance: provenance.clone(),
+                })
+                .collect(),
+        )
     }
 
     fn is_derived(&self, relation: &str) -> bool {
         self.vocab.relations.get(relation).is_some_and(|d| d.derive)
     }
 
-    /// The `key:` tuple of `f`: `None` when its relation declares no key; an
-    /// out-of-range index yields the empty tuple, which every fact of the
-    /// relation shares (the malformed key is `E-RELATION-DOMAIN`'s; treating
-    /// it as maximally displacing keeps the must set sound).
+    /// The `key:` tuple of `f`: `None` when its relation declares no key (see
+    /// [`key_of`]).
     fn key_tuple<'f>(&self, f: &'f GroundFact) -> Option<Vec<&'f str>> {
         let decl = self.vocab.relations.get(&f.relation)?;
         if decl.key.is_empty() {
             return None;
         }
-        let mut out = Vec::with_capacity(decl.key.len());
-        for &i in &decl.key {
-            match usize::try_from(i).ok().and_then(|i| f.args.get(i)) {
-                Some(a) => out.push(a.as_str()),
-                None => return Some(Vec::new()),
-            }
-        }
-        Some(out)
+        Some(key_of(&decl.key, &f.args))
     }
 
     /// `true` iff asserting `new` removes `old` through `key:`.
@@ -397,16 +555,16 @@ impl<'a> Root<'a> {
         if self.retracts.iter().any(|q| q.matches(f)) {
             return false;
         }
-        !self.produced.get(&f.relation).is_some_and(|tuples| {
-            tuples.iter().any(|args| {
-                self.displaces(
-                    &GroundFact {
-                        relation: f.relation.clone(),
-                        args: args.clone(),
-                    },
-                    f,
-                )
-            })
+        // Displaced iff some produced tuple of `f`'s relation shares its
+        // `key:` tuple with other arguments (`Self::displaces`).
+        !self.key_groups.get(&f.relation).is_some_and(|groups| {
+            let key: Vec<String> = key_of(&decl.key, &f.args)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
+            groups
+                .get(&key)
+                .is_some_and(|group| group.iter().any(|args| *args != f.args))
         })
     }
 
@@ -420,6 +578,21 @@ impl<'a> Root<'a> {
                 .get(&f.relation)
                 .is_some_and(|d| !matches!(d.tier.as_deref(), Some("scene" | "quest")))
     }
+}
+
+/// The `key:` tuple (`key`, non-empty) of a fact with `args`; an
+/// out-of-range index yields the empty tuple, which every fact of the
+/// relation shares (the malformed key is `E-RELATION-DOMAIN`'s; treating it
+/// as maximally displacing keeps the must set sound).
+fn key_of<'f>(key: &[i64], args: &'f [String]) -> Vec<&'f str> {
+    let mut out = Vec::with_capacity(key.len());
+    for &i in key {
+        match usize::try_from(i).ok().and_then(|i| args.get(i)) {
+            Some(a) => out.push(a.as_str()),
+            None => return Vec::new(),
+        }
+    }
+    out
 }
 
 /// Visit every node of `nodes`, nested bodies included.
@@ -448,15 +621,17 @@ fn scan<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
 }
 
 /// Walk one document from `entry` (its shots) and its quest / entry bodies
-/// from their own bases; record every guard slot into `slots`. Returns the
-/// meet of every route to the end of the shots.
+/// from their own bases; record every guard slot into `slots` (its derived
+/// facts under `closure` are added when the slot is read). Returns the meet
+/// of every route to the end of the shots (`None`: no route reaches it).
 fn walk_doc(
     root: &Root<'_>,
+    closure: &Arc<MustClosure>,
     (path, doc): &(PathBuf, Document),
     folded: &FoldedEnv,
     entry: Facts,
     slots: &mut MustMap,
-) -> Facts {
+) -> Flow {
     let mut w = Walk::new(root, path, folded);
     let mut flow = Some(entry);
     if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
@@ -469,15 +644,15 @@ fn walk_doc(
     meet(&mut end, flow);
 
     for quest in &doc.quests {
-        let seeds = Some(root.seeds.clone());
+        let seeds = Some(root.start());
         for slot in [&quest.start, &quest.fail].into_iter().flatten() {
             w.record(slot, &seeds);
         }
-        let mut base = root.seeds.clone();
+        let mut base = root.start();
         if let Some(start) = &quest.start {
             for (fact, provenance) in w.assumptions(start) {
                 if root.crosses(&fact) {
-                    base.entry(fact).or_insert(provenance);
+                    base.add(fact, provenance);
                 }
             }
         }
@@ -486,30 +661,29 @@ fn walk_doc(
         w.walk(&quest.body, &mut flow);
     }
     for entry in &doc.entries {
-        let mut base = Some(root.seeds.clone());
+        let mut base = Some(root.start());
         if let Some(when) = &entry.when {
             w.guard(when, &mut base);
         }
-        w.body_base = base.clone().unwrap_or_default();
+        w.body_base = base.clone().unwrap_or_else(|| root.start());
         w.walk(&entry.body, &mut base);
     }
     // dsl 0.23.0 §4: a bundle beat is presented on its own like an entry
     // (it has no `after:`, so nothing but the seeds is known at its start).
     for beat in &doc.beats {
-        let mut base = Some(root.seeds.clone());
+        let mut base = Some(root.start());
         if let Some(when) = &beat.when {
             w.guard(when, &mut base);
         }
-        w.body_base = base.clone().unwrap_or_default();
+        w.body_base = base.clone().unwrap_or_else(|| root.start());
         w.walk(&beat.body, &mut base);
     }
 
-    let vocab = root.vocab;
-    let may = root.may;
+    let shared = root.seed_facts();
     for (span, facts) in w.slots.into_values() {
-        slots.insert(path, span, with_derived(vocab, may, facts));
+        slots.insert_closed(path, span, &shared, facts.own_facts(), closure);
     }
-    end.unwrap_or_default()
+    end
 }
 
 /// One document's walk state.
@@ -545,7 +719,7 @@ impl<'a> Walk<'a> {
             slots: BTreeMap::new(),
             pending: BTreeMap::new(),
             exit: None,
-            body_base: root.seeds.clone(),
+            body_base: root.start(),
         }
     }
 
@@ -570,7 +744,7 @@ impl<'a> Walk<'a> {
             Entry::Vacant(v) => {
                 v.insert((span, facts.clone()));
             }
-            Entry::Occupied(mut o) => o.get_mut().1.retain(|f, _| facts.contains_key(f)),
+            Entry::Occupied(mut o) => o.get_mut().1.retain(|f| facts.contains_key(f)),
         }
     }
 
@@ -580,7 +754,7 @@ impl<'a> Walk<'a> {
             return;
         };
         for (fact, provenance) in self.assumptions(slot) {
-            facts.entry(fact).or_insert(provenance);
+            facts.add(fact, provenance);
         }
     }
 
@@ -688,7 +862,7 @@ impl<'a> Walk<'a> {
             Entry::Vacant(v) => {
                 v.insert(facts);
             }
-            Entry::Occupied(mut o) => o.get_mut().retain(|f, _| facts.contains_key(f)),
+            Entry::Occupied(mut o) => o.get_mut().retain(|f| facts.contains_key(f)),
         }
     }
 
@@ -711,9 +885,29 @@ impl<'a> Walk<'a> {
                     // dsl 0.25.0 §1: the set an `::assert` meets —
                     // `E-FACT-EXCLUSIVE` reads it.
                     self.record_span(a.span, flow);
-                    self.assert(a, flow)
+                    match &a.when {
+                        // dsl 0.26.0 §4: a guarded assert may be skipped —
+                        // never a Must fact; what it displaces is gone
+                        // either way (the meet of both routes).
+                        Some(when) => {
+                            self.record(when, flow);
+                            let mut taken = flow.clone();
+                            self.assume(when, &mut taken);
+                            self.assert(a, &mut taken);
+                            meet(flow, taken);
+                        }
+                        None => self.assert(a, flow),
+                    }
                 }
-                Node::Retract(r) => self.retract(r, flow),
+                Node::Retract(r) => {
+                    // dsl 0.26.0 §4: a guarded retract may run — it removes
+                    // what it matches from the Must set exactly as one that
+                    // always runs.
+                    if let Some(when) = &r.when {
+                        self.record(when, flow);
+                    }
+                    self.retract(r, flow)
+                }
                 Node::Branch(b) => self.branch(&b.choices, flow),
                 Node::Hub(h) => self.hub(&h.choices, flow),
                 Node::Match(m) => self.match_arms(m, flow),
@@ -773,6 +967,18 @@ impl<'a> Walk<'a> {
                 if let Some(when) = &d.when {
                     self.record(when, flow);
                 }
+                // dsl 0.26.0 §3.2: a `::use` is the slot of the `@@p:` lines
+                // it speaks (`W-CAST-ABSENT`), under its own guard.
+                if d.tag == "use" {
+                    match &d.when {
+                        Some(when) => {
+                            let mut inner = flow.clone();
+                            self.assume(when, &mut inner);
+                            self.record_span(d.span, &inner);
+                        }
+                        None => self.record_span(d.span, flow),
+                    }
+                }
             }
         }
     }
@@ -781,14 +987,14 @@ impl<'a> Walk<'a> {
         let Some(facts) = flow else {
             return;
         };
-        facts.retain(|g, _| !self.root.is_derived(&g.relation));
+        facts.retain(|g| !self.root.is_derived(&g.relation));
         let Some(fact) = GroundFact::from_pattern(&a.pattern) else {
             return;
         };
         if self.root.is_derived(&fact.relation) {
             return; // `E-DERIVED-WRITE`'s problem
         }
-        facts.retain(|g, _| !self.root.displaces(&fact, g));
+        facts.retain(|g| !self.root.displaces(&fact, g));
         if self.trackable(&fact) {
             facts.insert(
                 fact,
@@ -804,9 +1010,9 @@ impl<'a> Walk<'a> {
         let Some(facts) = flow else {
             return;
         };
-        facts.retain(|g, _| !self.root.is_derived(&g.relation));
+        facts.retain(|g| !self.root.is_derived(&g.relation));
         if let Some(q) = QueryPattern::from_fact_pattern(&r.pattern) {
-            facts.retain(|g, _| !q.matches(g));
+            facts.retain(|g| !q.matches(g));
         }
     }
 

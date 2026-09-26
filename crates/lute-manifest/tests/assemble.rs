@@ -956,7 +956,10 @@ fn provider(name: &str) -> ProviderDecl {
 fn reward_kind(name: &str, target: Option<&str>) -> RewardKindDecl {
     RewardKindDecl {
         name: name.into(),
-        target: target.map(|p| RewardTarget { provider: p.into() }),
+        target: target.map(|p| RewardTarget {
+            provider: Some(p.into()),
+            ..Default::default()
+        }),
         attrs: vec![],
         credits: None,
     }
@@ -996,8 +999,12 @@ fn assemble_merges_reward_kinds() {
         .get("ITEM")
         .expect("ITEM reward kind merged");
     assert_eq!(
-        item.target.as_ref().expect("ITEM target").provider,
-        "item",
+        item.target
+            .as_ref()
+            .expect("ITEM target")
+            .provider
+            .as_deref(),
+        Some("item"),
         "target contract must survive the merge verbatim"
     );
 }

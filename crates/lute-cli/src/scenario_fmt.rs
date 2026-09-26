@@ -34,10 +34,11 @@ pub fn run(
     providers: Option<&Path>,
     command: Option<ScenarioCommand>,
     format: &str,
+    facts: bool,
 ) -> ExitCode {
     match format {
-        "json" => run_json(dir, providers, command),
-        "dot" => run_dot(dir, providers, command),
+        "json" => run_json(dir, providers, command, facts),
+        "dot" => run_dot(dir, providers, command, facts),
         other => {
             eprintln!("lute scenario: unknown --format `{other}` (valid formats: text, json, dot)");
             ExitCode::from(2)
@@ -130,7 +131,12 @@ fn path_set_json(set: &std::collections::BTreeSet<String>) -> Value {
 // JSON
 // ===========================================================================
 
-fn run_json(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand>) -> ExitCode {
+fn run_json(
+    dir: &Path,
+    providers: Option<&Path>,
+    command: Option<ScenarioCommand>,
+    facts: bool,
+) -> ExitCode {
     let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
         Ok(v) => v,
         Err(code) => return code,
@@ -141,7 +147,9 @@ fn run_json(dir: &Path, providers: Option<&Path>, command: Option<ScenarioComman
                 .iter()
                 .map(|(root, group_full)| {
                     let scenario = assemble_root_scenario(group_full, &file_results);
-                    root_graph_json(root, &scenario)
+                    let facts = facts
+                        .then(|| crate::FactGraph::of(group_full, &scenario.docs, &scenario.graph));
+                    root_graph_json(root, &scenario, facts.as_ref())
                 })
                 .collect();
             let mut top = Map::new();
@@ -195,7 +203,14 @@ fn edge_kinds_json(graph: &ConnGraph, from: &NodeId, to: &NodeId) -> Value {
 /// hold (dsl 0.21.0 §7a.5; omitted when there are none) — dsl 0.25.0 §3:
 /// plus every beat whose `when` reads `visited()` but that declares no
 /// `after`, each with its `unanchoredHints` entry (the `after` to write).
-fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
+/// dsl 0.26.0 §8 (`--facts`): plus `factEdges` (`from`, `to`, `fact`, `via`
+/// when the gate reads a derived fact, `layered`), the layers then drawn
+/// over them too.
+fn root_graph_json(
+    root: &Path,
+    scenario: &RootScenario,
+    facts: Option<&crate::FactGraph>,
+) -> Value {
     let nodes: Vec<Value> = scenario
         .graph
         .nodes
@@ -230,7 +245,7 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
         }
     }
 
-    let layers: Vec<Value> = topo_layers(&scenario.graph)
+    let layers: Vec<Value> = topo_layers(facts.map_or(&scenario.graph, |f| &f.layered))
         .into_iter()
         .map(|layer| {
             Value::Array(
@@ -250,6 +265,24 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
     obj.insert("nodes".to_string(), Value::Array(nodes));
     obj.insert("edges".to_string(), Value::Array(edges));
     obj.insert("layers".to_string(), Value::Array(layers));
+    if let Some(facts) = facts {
+        let edges = facts
+            .edges
+            .iter()
+            .map(|(e, layered)| {
+                let mut m = Map::new();
+                m.insert("from".to_string(), Value::String(e.from.to_string()));
+                m.insert("to".to_string(), Value::String(e.to.to_string()));
+                m.insert("fact".to_string(), Value::String(e.fact.clone()));
+                if let Some(via) = &e.via {
+                    m.insert("via".to_string(), Value::String(via.clone()));
+                }
+                m.insert("layered".to_string(), Value::Bool(*layered));
+                Value::Object(m)
+            })
+            .collect();
+        obj.insert("factEdges".to_string(), Value::Array(edges));
+    }
     let unanchored = unanchored_quests(&scenario.quest_ids, &scenario.graph);
     let when_visited =
         lute_check::connectivity::when_visited_unanchored(&scenario.docs, &scenario.graph);
@@ -534,7 +567,12 @@ fn write_or_io_error(text: &str) -> ExitCode {
 // DOT (Graphviz)
 // ===========================================================================
 
-fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand>) -> ExitCode {
+fn run_dot(
+    dir: &Path,
+    providers: Option<&Path>,
+    command: Option<ScenarioCommand>,
+    facts: bool,
+) -> ExitCode {
     // `dot` renders the graph structure only; a single-node reach/envelope
     // report has no graph to draw, so it is a usage error (exit 2) rather
     // than a misleading empty digraph.
@@ -555,7 +593,9 @@ fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand
     let mut out = String::new();
     for (root, group_full) in &by_root {
         let scenario = assemble_root_scenario(group_full, &file_results);
-        out.push_str(&root_dot(root, &scenario));
+        let facts =
+            facts.then(|| crate::FactGraph::of(group_full, &scenario.docs, &scenario.graph));
+        out.push_str(&root_dot(root, &scenario, facts.as_ref()));
     }
     write_or_io_error(&out)
 }
@@ -568,8 +608,10 @@ fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand
 /// edge line per `graph.edges` entry (the SAME prerequisite -> dependent walk
 /// the JSON/text views use, with an `active`-ONLY edge drawn `style=dashed` —
 /// lang 0.8.0). Every id is JSON-escaped+quoted so an id
-/// containing a `"`/`\`/control char stays valid Graphviz.
-fn root_dot(root: &Path, scenario: &RootScenario) -> String {
+/// containing a `"`/`\`/control char stays valid Graphviz. dsl 0.26.0 §8
+/// (`--facts`): a dotted purple edge per fact edge, labelled with the fact
+/// (a producer outside the graph drawn as a plain node).
+fn root_dot(root: &Path, scenario: &RootScenario, facts: Option<&crate::FactGraph>) -> String {
     let mut s = String::new();
     s.push_str(&format!(
         "digraph {} {{\n",
@@ -623,6 +665,25 @@ fn root_dot(root: &Path, scenario: &RootScenario) -> String {
                 dot_quote(&from.to_string()),
                 dot_quote(&to.to_string()),
                 style,
+            ));
+        }
+    }
+    if let Some(facts) = facts {
+        let mut outside = std::collections::BTreeSet::new();
+        for (e, _) in &facts.edges {
+            if !scenario.graph.nodes.contains_key(&e.from) && outside.insert(&e.from) {
+                let id = e.from.to_string();
+                s.push_str(&format!(
+                    "  {} [shape=plaintext, label={}];\n",
+                    dot_quote(&id),
+                    dot_quote(&id)
+                ));
+            }
+            s.push_str(&format!(
+                "  {} -> {} [style=dotted, color=purple, label={}];\n",
+                dot_quote(&e.from.to_string()),
+                dot_quote(&e.to.to_string()),
+                dot_quote(&crate::fact_edge_label(e)),
             ));
         }
     }

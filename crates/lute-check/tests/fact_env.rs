@@ -1284,3 +1284,43 @@ fn ever_read_guarantees_only_facts_a_new_run_keeps() {
         r.guards("a.lute")
     );
 }
+
+/// T2-1: a seed's `key:` stability is decided per key tuple (a lookup over
+/// the produced facts, not a scan), and a slot whose facts extend the seeds
+/// derives over both — the derived fact appears exactly where its last
+/// premise is asserted.
+#[test]
+fn keyed_seed_stability_and_derivation_over_seeds_plus_route_facts() {
+    let vocab = VOCAB.replace(
+        "  - \"awake(vesna)\"\n",
+        "  - \"awake(vesna)\"\n  - \"at(vesna, bridge)\"\n  - \"at(toma, hold)\"\n",
+    );
+    let doc = |episode: u32, body: &str| {
+        format!(
+            "---\nkind: scene\ncharacter: haven\nseason: 1\nepisode: {episode}\n{vocab}---\n\
+             ## Shot 1.\n{body}\n"
+        )
+    };
+    let a = doc(
+        1,
+        "@vesna{when=\"holds(at(toma, hold))\"}: Toma holds.\n\
+         @vesna{when=\"holds(at(vesna, bridge))\"}: On the bridge.\n\
+         @vesna{when=\"holds(can_halt(vesna))\"}: Not yet.\n\
+         ::assert{knows(vesna, shed_sequence)}\n\
+         @vesna{when=\"holds(can_halt(vesna))\"}: Now.",
+    );
+    let b = doc(2, "::assert{at(vesna, hold)}\n@vesna: Moved.");
+    let r = root(&[("a.lute", &a), ("b.lute", &b)]);
+    assert_vocab_clean(&r);
+    let guaranteed: Vec<usize> = r
+        .guards("a.lute")
+        .iter()
+        .filter(|d| d.code == "W-FACT-GUARANTEED")
+        .map(|d| d.span.line as usize)
+        .collect();
+    assert_eq!(
+        guaranteed,
+        vec![line_of(&a, "Toma holds"), line_of(&a, "Now.")],
+        "only the undisplaced keyed seed and the derived fact after its last premise"
+    );
+}

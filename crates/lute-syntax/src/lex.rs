@@ -87,12 +87,17 @@ pub(crate) fn content_text_start(line: &str) -> Option<usize> {
     let ws = line.len() - line.trim_start().len();
     let b = line.as_bytes();
     let mut j = ws;
-    match b.get(j) {
+    let sigil = b.get(j).copied();
+    match sigil {
         Some(b'@') => {}
         Some(b':') => {}
         _ => return None,
     }
     j += 1;
+    // dsl 0.26.0 §3.2: `@@who:` — a speaker param.
+    if sigil == Some(b'@') && b.get(j) == Some(&b'@') {
+        j += 1;
+    }
     if j >= b.len() || b[j] == b':' || !b[j].is_ascii_alphabetic() {
         return None; // `::` directive or not an ident — not a content line
     }

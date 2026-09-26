@@ -68,11 +68,17 @@ use crate::value::{UnresolvedAtom, Value};
 /// per-caller plumbing: it rides the SAME `!matches!(flow, Flow::Continue)`
 /// propagation every other halting value uses, and only the exit-code match
 /// at the bottom of this file distinguishes it.
+///
+/// `Jump` (dsl 0.26.0 §7, T1-4) is a taken `::next{to}`: it rides the same
+/// propagation up to the unit being walked (the scene's shots, an entry's
+/// or a bundle beat's body, a quest handler's body), which resumes the walk
+/// at the label ([`walk_from_label`]) — as the compiled jump does in play.
 enum Flow {
     Continue,
     Ended,
     Incomplete,
     Refused(Vec<Diagnostic>),
+    Jump(String),
 }
 
 /// Mutable walk state threaded through every `walk_*` function.
@@ -123,6 +129,16 @@ struct Walk<'a> {
     /// dsl 0.24.0 §2 (ER N15): notes for `accepts:` of an
     /// `activate="accept"` child spent while its parent was not active.
     spent_accepts: Vec<String>,
+    /// dsl 0.26.0 §7 (T1-5): every quest accepted so far — the mock's
+    /// `accepts:`, then each `::accept` the walk took of a quest this
+    /// document declares. [`try_activate_state`] reads this, never the mock.
+    accepted: Vec<String>,
+    /// dsl 0.26.0 §7 (T1-5): accepts taken since the settle last looked — a
+    /// quest they name that was left awaiting an accept is retried
+    /// ([`reopen_accepted`]).
+    pending_accepts: Vec<String>,
+    /// The quest ids the traced document declares.
+    doc_quests: BTreeSet<String>,
 }
 
 impl<'a> Walk<'a> {
@@ -679,11 +695,12 @@ fn walk_line(l: &Line, w: &mut Walk<'_>) {
 }
 
 /// A leaf `::directive`: recorded as a [`Step::Directive`], then `Continue` —
-/// EXCEPT `::end` (dsl 0.8.0) and `::next` (dsl 0.12.0), which are recorded
-/// the same way and then terminate the walk. Both are UNCONDITIONAL here:
-/// there is no guard to evaluate, so no K3 outcome is involved and nothing
-/// here can read `unknown` — the record is emitted and the walk stops,
-/// exactly as if the document had run out of nodes. A GUARDED `::next` never
+/// EXCEPT `::end` (dsl 0.8.0), which is recorded the same way and then
+/// terminates the walk, and `::next` (dsl 0.12.0), recorded as a
+/// [`Step::Jump`] and followed to its label (dsl 0.26.0 §7, T1-4: the walk
+/// continues there, as play's does — it never ends at the jump). Both are
+/// UNCONDITIONAL here: there is no guard to evaluate, so no K3 outcome is
+/// involved and nothing here can read `unknown`. A GUARDED `::next` never
 /// reaches this function as a `Directive` at all — the module doc's §4.3
 /// pipeline step 4 runs `lute_compile::normalize::normalize_document`
 /// BEFORE the walk, which desugars a guarded `::next` into a canonical
@@ -691,15 +708,41 @@ fn walk_line(l: &Line, w: &mut Walk<'_>) {
 /// desugar) that [`walk_match`] already handles — so this function only
 /// ever sees the unconditional form.
 fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
-    // dsl 0.21.0 §7a.3: a core `::accept` names a quest in another document
-    // (a scene holds no quests, and trace walks one document), so the trace
-    // records the accept instead of a staging-directive line.
+    // dsl 0.21.0 §7a.3: a core `::accept` names a quest, usually in another
+    // document (a scene holds no quests), so the trace records the accept
+    // instead of a staging-directive line. dsl 0.26.0 §7 (T1-5): an accept
+    // of a quest THIS document declares — a quest `<on>` handler accepting a
+    // sibling — is applied, exactly as play applies it: the quest settle
+    // retries the quest it names.
     if let Some((quest, _)) = d.accept_quest() {
+        let next_run = d.accept_at().is_some_and(|(at, _)| at == "nextRun");
         w.steps.push(Step::Accept {
             quest: quest.to_string(),
-            next_run: d.accept_at().is_some_and(|(at, _)| at == "nextRun"),
+            next_run,
         });
+        if !next_run && w.doc_quests.contains(quest) {
+            w.accepted.push(quest.to_string());
+            w.pending_accepts.push(quest.to_string());
+        }
         return Flow::Continue;
+    }
+    if d.tag == lute_manifest::core::NEXT_DIRECTIVE {
+        let to = d
+            .attrs
+            .iter()
+            .find(|a| a.key == "to")
+            .and_then(|a| match &a.value {
+                AttrValue::Str(s) => Some(s.clone()),
+                _ => None,
+            });
+        return match to {
+            Some(to) => {
+                w.steps.push(Step::Jump { to: to.clone() });
+                Flow::Jump(to)
+            }
+            // `E-NEXT-UNDEFINED`-gated unreachable: nowhere to go.
+            None => Flow::Ended,
+        };
     }
     let boundary = if d.tag == lute_compile::normalize::COMPONENT_BEGIN {
         Some(ComponentBoundary::Begin)
@@ -739,7 +782,7 @@ fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
         reason,
     });
     walk_bridge_call(d, w);
-    if d.tag == lute_manifest::core::END_DIRECTIVE || d.tag == lute_manifest::core::NEXT_DIRECTIVE {
+    if d.tag == lute_manifest::core::END_DIRECTIVE {
         Flow::Ended
     } else {
         Flow::Continue
@@ -1353,17 +1396,143 @@ fn walk_nodes(nodes: &[Node], w: &mut Walk<'_>, sugar_ctx: Option<&Choice>) -> F
     Flow::Continue
 }
 
+/// The `id=` of a `::mark` or of a content line — a `::next` label (dsl
+/// 0.12.0: one document-wide namespace).
+fn label_of(node: &Node) -> Option<&str> {
+    let attrs = match node {
+        Node::Directive(d) if d.tag == lute_manifest::core::MARK_DIRECTIVE => &d.attrs,
+        Node::Line(l) => &l.attrs,
+        _ => return None,
+    };
+    attrs
+        .iter()
+        .find(|a| a.key == "id")
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.as_str()),
+            _ => None,
+        })
+}
+
+/// Does `node` define `label`, or hold it in a choice or arm body?
+fn holds_label(node: &Node, label: &str) -> bool {
+    if label_of(node) == Some(label) {
+        return true;
+    }
+    let in_body = |body: &[Node]| body.iter().any(|n| holds_label(n, label));
+    match node {
+        Node::Branch(b) => b.choices.iter().any(|c| in_body(&c.body)),
+        Node::Hub(h) => h.choices.iter().any(|c| in_body(&c.body)),
+        Node::Match(m) => m.arms.iter().any(|arm| match arm {
+            Arm::When { body, .. } | Arm::Otherwise { body, .. } => in_body(body),
+        }),
+        _ => false,
+    }
+}
+
+/// dsl 0.26.0 §7 (T1-4): resume the walk at `label` in `nodes` — every node
+/// before it is skipped (the jump never runs it), a `<branch>` choice /
+/// `<match>` arm / `<hub>` choice holding it is entered at the label without
+/// presenting the construct, and the walk goes on after that construct, as
+/// the compiled jump runs in play (a non-`exit` hub choice returns to its
+/// hub). `None` when `nodes` does not hold the label.
+fn walk_from_label(nodes: &[Node], label: &str, w: &mut Walk<'_>) -> Option<Flow> {
+    let i = nodes.iter().position(|n| holds_label(n, label))?;
+    if label_of(&nodes[i]) == Some(label) {
+        return Some(walk_nodes(&nodes[i..], w, None));
+    }
+    let flow = match &nodes[i] {
+        Node::Branch(b) => b
+            .choices
+            .iter()
+            .find_map(|c| walk_from_label_in(&c.body, label, Some(c), w)),
+        Node::Match(m) => m.arms.iter().find_map(|arm| match arm {
+            Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                walk_from_label_in(body, label, None, w)
+            }
+        }),
+        Node::Hub(h) => h.choices.iter().find_map(|c| {
+            let flow = walk_from_label_in(&c.body, label, Some(c), w)?;
+            Some(match flow {
+                Flow::Continue if !is_exit_choice(c) => walk_hub(h, w),
+                flow => flow,
+            })
+        }),
+        _ => None,
+    }
+    .unwrap_or(Flow::Continue);
+    Some(match flow {
+        Flow::Continue => walk_nodes(&nodes[i + 1..], w, None),
+        flow => flow,
+    })
+}
+
+/// [`walk_from_label`] inside one choice / arm body (`sugar_ctx` is the
+/// choice, for its `into=` write).
+fn walk_from_label_in(
+    body: &[Node],
+    label: &str,
+    sugar_ctx: Option<&Choice>,
+    w: &mut Walk<'_>,
+) -> Option<Flow> {
+    let i = body.iter().position(|n| holds_label(n, label))?;
+    if label_of(&body[i]) == Some(label) {
+        return Some(walk_nodes(&body[i..], w, sugar_ctx));
+    }
+    let flow = walk_from_label(&body[i..=i], label, w)?;
+    Some(match flow {
+        Flow::Continue => walk_nodes(&body[i + 1..], w, sugar_ctx),
+        flow => flow,
+    })
+}
+
+/// Walk one presented unit's body (an entry, a bundle beat, a quest
+/// handler), following every `::next` inside it (T1-4). A label outside the
+/// body (gate-proven absent: labels resolve forward in document order, and
+/// a unit's jumps stay in the unit) ends the walk.
+fn walk_body(body: &[Node], w: &mut Walk<'_>) -> Flow {
+    let mut flow = walk_nodes(body, w, None);
+    while let Flow::Jump(label) = flow {
+        flow = walk_from_label(body, &label, w).unwrap_or(Flow::Ended);
+    }
+    flow
+}
+
 fn walk_document(doc: &Document, w: &mut Walk<'_>) -> Flow {
-    for (i, shot) in doc.shots.iter().enumerate() {
+    let shot_head = |i: usize, w: &mut Walk<'_>| {
         // 0.6.0 §3.2: a shot's number is its 1-based document position;
         // authored numbers and the monotone guard are removed.
         w.steps.push(Step::Shot {
             number: i as i64 + 1,
-            heading: shot.heading.clone(),
+            heading: doc.shots[i].heading.clone(),
         });
-        let flow = walk_nodes(&shot.body, w, None);
-        if !matches!(flow, Flow::Continue) {
-            return flow;
+    };
+    let mut i = 0;
+    let mut resume: Option<String> = None;
+    while i < doc.shots.len() {
+        let flow = match resume.take() {
+            // T1-4: a jump lands in this shot (or a later one); the shots
+            // between are skipped, the landing shot's head shown once.
+            Some(label) => {
+                let Some(j) = (i..doc.shots.len())
+                    .find(|&j| doc.shots[j].body.iter().any(|n| holds_label(n, &label)))
+                else {
+                    return Flow::Ended; // `E-NEXT-*`-gated unreachable
+                };
+                if j != i {
+                    shot_head(j, w);
+                }
+                i = j;
+                walk_from_label(&doc.shots[j].body, &label, w).unwrap_or(Flow::Ended)
+            }
+            None => {
+                shot_head(i, w);
+                walk_nodes(&doc.shots[i].body, w, None)
+            }
+        };
+        match flow {
+            Flow::Continue => i += 1,
+            Flow::Jump(label) => resume = Some(label),
+            flow => return flow,
         }
     }
     Flow::Continue
@@ -1382,8 +1551,10 @@ fn skip_effect(effect: &str, text: String, w: &mut Walk<'_>) {
 /// the body runs in document order (lines present, `<match>` picks an arm
 /// exactly as in a scene) with `::set`/`::assert`/`::retract` applied only on
 /// a first read and reported [`Step::Skipped`] otherwise. The `when`
-/// eligibility gate is evaluated and SHOWN on the [`Step::Entry`] head, never
-/// enforced — presenting is what was asked for. An unknown `when` records an
+/// eligibility gate is evaluated and SHOWN on the [`Step::Entry`] head; it is
+/// enforced only under [`MockSet::gate_eligibility`] (dsl 0.26.0 §7, T1-7: a
+/// test asserting `eligible:` does not walk a body the engine would never
+/// present) — otherwise presenting is what was asked for. An unknown `when` records an
 /// unresolved atom without halting, like a quest `start` (exit 3). The
 /// engine's post-presentation `entry.<id>.read` / `entry.<id>.everRead`
 /// writes are applied by the CALLER after this returns, so the next entry of
@@ -1397,8 +1568,11 @@ fn walk_entry(entry: &Entry, w: &mut Walk<'_>) -> Flow {
         first_read,
         eligible,
     });
+    if eligible == Some(false) && w.mocks.gate_eligibility {
+        return Flow::Continue;
+    }
     w.apply_effects = first_read;
-    let flow = walk_nodes(&entry.body, w, None);
+    let flow = walk_body(&entry.body, w);
     w.apply_effects = true;
     flow
 }
@@ -1436,9 +1610,10 @@ fn eval_eligibility(
 /// `<match>`, and every `::set`/`::assert`/`::retract` applied (a bundle
 /// beat has no first-read rule). `scene.*` starts fresh: the walk seeds
 /// only the mocks. The `when` eligibility gate is evaluated and SHOWN on the
-/// [`Step::Beat`] head under the canonical id, never enforced, as on an
-/// entry — conjoined (dsl 0.25.0 §3) with the beat's `after=` over the
-/// mocked `visited:` and quest states ([`prereq_condition`]).
+/// [`Step::Beat`] head under the canonical id — enforced only under
+/// [`MockSet::gate_eligibility`], as on an entry — conjoined (dsl 0.25.0
+/// §3) with the beat's `after=` over the mocked `visited:` and quest states
+/// ([`prereq_condition`]).
 fn walk_bundle_beat(beat: &BundleBeat, canonical: &str, w: &mut Walk<'_>) -> Flow {
     let after = beat
         .after
@@ -1467,7 +1642,10 @@ fn walk_bundle_beat(beat: &BundleBeat, canonical: &str, w: &mut Walk<'_>) -> Flo
         eligible,
         after_unmet: after == Some(false),
     });
-    walk_nodes(&beat.body, w, None)
+    if eligible == Some(false) && w.mocks.gate_eligibility {
+        return Flow::Continue;
+    }
+    walk_body(&beat.body, w)
 }
 
 /// A prerequisite formula as the CEL condition it stands for: `visited(K)`
@@ -1801,7 +1979,7 @@ fn reevaluate_objectives(quest: &Quest, occasion: Option<&str>, w: &mut Walk<'_>
                 // quest-level grant fires and before the derived-complete
                 // pass can run `questComplete` handlers).
                 emit_grants(&quest.id, Some(&o.id), &o.rewards, GrantEvent::Objective, w);
-                let flow = walk_nodes(&o.body, w, None);
+                let flow = walk_body(&o.body, w);
                 if !matches!(flow, Flow::Continue) {
                     return flow;
                 }
@@ -1922,7 +2100,7 @@ fn dispatch_event(quest: &Quest, event_name: &str, target: Option<&str>, w: &mut
                     false,
                     Vec::new(),
                 );
-                let flow = walk_nodes(&on.body, w, None);
+                let flow = walk_body(&on.body, w);
                 if !matches!(flow, Flow::Continue) {
                     return flow;
                 }
@@ -2240,6 +2418,44 @@ fn try_activate_state(
         return ActivateOutcome::StillPending; // already handled — nothing this pass
     }
 
+    // dsl 0.26.0 §7 (T3-5): a quest document seeding its OWN quest
+    // (`quests: { <id>: <state> }` / `state: { quest.<id>.state: … }`) starts
+    // the walk with the quest there, as a play's `quests:` save does — no
+    // `start`, accept or parent is consulted, and no `questActive` fires (the
+    // quest was active before the walk). A seeded `unset` changes nothing.
+    let seeded = w
+        .mocks
+        .state
+        .iter()
+        .rev()
+        .find(|(p, _, _)| *p == quest_state_path(&quest.id))
+        .map(|(_, lit, _)| lit.as_str());
+    let seeded = match seeded {
+        Some("active") => Some(QuestState::Active),
+        Some("complete") => Some(QuestState::Complete),
+        Some("failed") => Some(QuestState::Failed),
+        _ => None,
+    };
+    if let Some(state) = seeded {
+        let outcome = match state {
+            QuestState::Active => "active",
+            QuestState::Complete => "complete",
+            _ => "failed",
+        };
+        states.insert(quest.id.clone(), state);
+        w.push_decision(
+            "quest",
+            &quest.id,
+            quest.span,
+            outcome.to_string(),
+            Some("seeded".to_string()),
+            false,
+            false,
+            Vec::new(),
+        );
+        return ActivateOutcome::Skipped;
+    }
+
     // §2.4: a referenced child's activation gate is CONJUNCTED with
     // parent-Active. Parent Pending → wait. Parent terminal/Skipped
     // without ever activating us → silently Skipped.
@@ -2251,7 +2467,7 @@ fn try_activate_state(
                 // dsl 0.24.0 §2 (ER N15): an accept of an `activate="accept"`
                 // child is spent without effect while its parent is not
                 // active — say so instead of leaving the child silently unset.
-                if quest.activates_on_accept() && w.mocks.accepts.iter().any(|id| id == &quest.id) {
+                if quest.activates_on_accept() && w.accepted.iter().any(|id| id == &quest.id) {
                     let why = match parent {
                         QuestState::Complete => "already complete",
                         QuestState::Failed => "already failed",
@@ -2316,7 +2532,7 @@ fn try_activate_state(
                 // accept-driven (§4.4). `--accept` on a referenced child
                 // that activates with its parent is pre-walk
                 // `E-TRACE-ACCEPT`-refused (`mock::validate_accept`).
-                if !w.mocks.accepts.iter().any(|id| id == &quest.id) {
+                if !w.accepted.iter().any(|id| id == &quest.id) {
                     w.push_decision(
                         "quest",
                         &quest.id,
@@ -2383,6 +2599,7 @@ fn quest_settle_fixpoint(
     let cap = doc.quests.len() * 4 + 4;
     for _ in 0..cap {
         let snap = states.clone();
+        reopen_accepted(states, w);
 
         // A: state-only activation, doc order.
         let mut just_activated: Vec<usize> = Vec::new();
@@ -2420,11 +2637,23 @@ fn quest_settle_fixpoint(
             }
         }
 
+        reopen_accepted(states, w);
         if states == &snap {
             break;
         }
     }
     Flow::Continue
+}
+
+/// dsl 0.26.0 §7 (T1-5): a quest the walk's own `::accept` took (a handler
+/// accepting a sibling) that the settle left awaiting an accept is retried
+/// on the next pass — it now finds its accept, as it does in play.
+fn reopen_accepted(states: &mut BTreeMap<String, QuestState>, w: &mut Walk<'_>) {
+    for id in std::mem::take(&mut w.pending_accepts) {
+        if states.get(&id) == Some(&QuestState::Skipped) {
+            states.remove(&id);
+        }
+    }
 }
 
 /// `doc.quests` linearly, document order — activation + settle via the
@@ -3056,6 +3285,59 @@ fn beat_when_note(folded: &FoldedEnv, table: &DefTable<'_>, w: &Walk<'_>) -> Opt
     }
 }
 
+/// dsl 0.26.0 §7 (T1-7): a scene document's eligibility under the mocks,
+/// judged before the walk writes anything, as the selector judges it at
+/// presentation: the beat's `when` (expanded as `lute compile` expands it),
+/// the scene's `after:` prerequisite over the mocked `visited:` / quest
+/// states, and a `once: user` beat the mocked `visited:` already spent.
+/// `Some(true)` when every part holds (or the scene declares none),
+/// `Some(false)` when one is false, `None` when one is undecided. Nothing is
+/// recorded unresolved — the verdict is the harness's to judge.
+fn scene_eligibility(folded: &FoldedEnv, table: &DefTable<'_>, w: &Walk<'_>) -> Option<bool> {
+    let judge = |slot: &CelSlot| {
+        let mut atoms = Vec::new();
+        match eval_choice_guard(Some(slot), &w.env(), &mut atoms) {
+            Value::Bool(b) => Some(b),
+            _ => None,
+        }
+    };
+    let mut parts: Vec<Option<bool>> = Vec::new();
+    if let Some(beat) = &folded.typed.beat {
+        if let Some(mut slot) = beat.when.clone() {
+            let _ = lute_compile::expand::expand_beat_when(&mut slot, table);
+            parts.push(judge(&slot));
+        }
+        if beat.once == lute_check::beats::BeatOnce::User {
+            let key = lute_check::meta::canonical_scene_key(&folded.typed);
+            parts.push(Some(
+                !key.is_some_and(|k| w.mocks.visited.iter().any(|v| *v == k)),
+            ));
+        }
+    }
+    if let Some(after) = folded
+        .typed
+        .after
+        .as_deref()
+        .filter(|a| !a.trim().is_empty())
+    {
+        let span = mock::synthetic_span();
+        parts.push(lute_check::parse_prereq(after, span).0.and_then(|f| {
+            judge(&CelSlot::raw(
+                lute_syntax::ast::CelKind::Condition,
+                prereq_condition(&f),
+                span,
+            ))
+        }));
+    }
+    if parts.contains(&Some(false)) {
+        Some(false)
+    } else if parts.contains(&None) {
+        None
+    } else {
+        Some(true)
+    }
+}
+
 fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
     TraceReport {
         file: uri.to_string(),
@@ -3072,6 +3354,7 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         final_facts: BTreeSet::new(),
         final_undecided: BTreeSet::new(),
         foreign_quests: BTreeSet::new(),
+        scene_eligible: None,
     }
 }
 
@@ -3240,6 +3523,8 @@ fn trace_pipeline(
         Presentation::Document => {}
         Presentation::Entries(entries) => {
             for id in entries {
+                // dsl 0.26.0 §7 (T3-10): `<document id>.<entry id>` too.
+                let id = mock::entry_local_id(&doc, folded.typed.id.as_deref(), id);
                 for d in mock::validate_entry(&folded, &doc, id) {
                     // A non-lore document refuses every id with the same line.
                     if !mock_diags.iter().any(|m| m.message == d.message) {
@@ -3362,6 +3647,9 @@ fn trace_pipeline(
         content_reads: &content_reads,
         deferred_by: mocks.occasions.clone(),
         spent_accepts: Vec::new(),
+        accepted: mocks.accepts.clone(),
+        pending_accepts: Vec::new(),
+        doc_quests: doc.quests.iter().map(|q| q.id.clone()).collect(),
     };
 
     // T1-13: a beat scene is only presented when its frontmatter `when`
@@ -3372,6 +3660,24 @@ fn trace_pipeline(
         Presentation::Document => beat_when_note(&folded, &table, &w),
         Presentation::Entries(_) | Presentation::Beat(_) => None,
     };
+    // dsl 0.26.0 §7 (T1-7): a scene BEAT's own eligibility (it answers an
+    // occasion, so a selector presents it), judged at the same moment; under
+    // `gate_eligibility` an ineligible scene is not walked. A scene reached by
+    // explicit flow has no presentation gate: its `after:` is structural.
+    let scene_eligible = match present {
+        Presentation::Document
+            if folded.doc_kind == lute_check::DocKind::Scene && folded.typed.beat.is_some() =>
+        {
+            let id = lute_check::meta::canonical_scene_key(&folded.typed)
+                .unwrap_or_else(|| input.uri.clone());
+            Some((id, scene_eligibility(&folded, &table, &w)))
+        }
+        _ => None,
+    };
+    let scene_gated = mocks.gate_eligibility
+        && scene_eligible
+            .as_ref()
+            .is_some_and(|(_, e)| *e == Some(false));
 
     // dsl 0.25.0 §1 (LH N16): the seeded world — the mock's `facts:` /
     // `--fact`, the project's seeds, and what the rules derive over them —
@@ -3402,7 +3708,11 @@ fn trace_pipeline(
     } else {
         match present {
             Presentation::Document => {
-                let flow = walk_document(&doc, &mut w);
+                let flow = if scene_gated {
+                    Flow::Continue
+                } else {
+                    walk_document(&doc, &mut w)
+                };
                 if matches!(flow, Flow::Continue) {
                     walk_quests(&doc, &mocks.events, &mut w)
                 } else {
@@ -3412,8 +3722,9 @@ fn trace_pipeline(
             Presentation::Entries(entries) => {
                 let mut flow = Flow::Continue;
                 for id in entries {
+                    let id = mock::entry_local_id(&doc, folded.typed.id.as_deref(), id);
                     // `validate_entry` proved every id is declared.
-                    let Some(e) = doc.entries.iter().find(|e| e.id == *id) else {
+                    let Some(e) = doc.entries.iter().find(|e| e.id == id) else {
                         continue;
                     };
                     flow = walk_entry(e, &mut w);
@@ -3480,8 +3791,10 @@ fn trace_pipeline(
     // to exit 3, exactly as it would for a walk that ran to the last node.
     let unresolved_empty = w.unresolved.is_empty();
     let exit = match flow {
-        Flow::Continue | Flow::Ended if unresolved_empty => TraceExit::Complete,
-        Flow::Continue | Flow::Ended | Flow::Incomplete => TraceExit::Incomplete,
+        // A `Jump` never reaches here — every unit resolves its own jumps —
+        // but an unresolvable one ends the walk as `::end` does.
+        Flow::Continue | Flow::Ended | Flow::Jump(_) if unresolved_empty => TraceExit::Complete,
+        Flow::Continue | Flow::Ended | Flow::Jump(_) | Flow::Incomplete => TraceExit::Incomplete,
         Flow::Refused(ds) => TraceExit::Refused(ds),
     };
     // ...which is exactly why `disposition` exists: it is the ONE place the
@@ -3527,6 +3840,7 @@ fn trace_pipeline(
         final_facts,
         final_undecided,
         foreign_quests,
+        scene_eligible,
     };
     (report, exit)
 }

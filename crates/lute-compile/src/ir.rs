@@ -182,7 +182,7 @@ pub enum TermEntry {
 }
 
 /// One rule body literal (dsl 0.3.0 §7.1): a positive/negated atom, a CEL
-/// guard, or a term comparison.
+/// guard, a term comparison, or (dsl 0.26.0 §6) a count.
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum BodyEntry {
@@ -197,6 +197,19 @@ pub enum BodyEntry {
         lhs: TermEntry,
         rhs: TermEntry,
         negated: bool,
+    },
+    /// `count(atom) op n` — the number of facts matching `atom` — or, with
+    /// `distinct`, `countDistinct(atom, V…) op n`: the number of distinct
+    /// values of those variables among them. A variable of `atom` bound by
+    /// another literal is read; any other ranges over the facts. `op` is
+    /// one of `==`, `!=`, `<`, `<=`, `>`, `>=`. `atom`'s relation sits in a
+    /// strictly lower stratum than the rule's head.
+    Count {
+        atom: AtomEntry,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        distinct: Vec<String>,
+        op: &'static str,
+        n: u64,
     },
 }
 
@@ -297,6 +310,51 @@ pub struct BeatIr {
     /// when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub share: Option<String>,
+    /// dsl 0.26.0 §5: with `target: "kind:<kind>"`, the members the beat
+    /// answers. Omitted for any other target (byte-stability).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_kind: Option<TargetKind>,
+}
+
+/// dsl 0.26.0 §5: a `target="kind:<kind>"` beat, resolved against the
+/// occasion's `{ prefix, entity }` target domain. It answers a raise for
+/// `<prefix>.<member>` of every listed member (a sub-kind's members already
+/// counted in its parent); while it runs, `occasion.target` is the raised
+/// member's id (`<member>`, the prefix stripped), typed by the kind.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct TargetKind {
+    pub kind: String,
+    pub prefix: String,
+    pub members: Vec<String>,
+}
+
+impl TargetKind {
+    /// The member a raise for `target` binds, when this kind answers it.
+    pub fn member_of<'t>(&self, target: &'t str) -> Option<&'t str> {
+        let member = target
+            .strip_prefix(self.prefix.as_str())?
+            .strip_prefix('.')?;
+        self.members.iter().any(|m| m == member).then_some(member)
+    }
+
+    /// Resolve a beat's authored `target` on occasion `on`: `Some` only for
+    /// a well-formed `kind:<kind>` target the checker accepted
+    /// ([`lute_check::beats::kind_target_members`]).
+    pub fn resolve(
+        on: &str,
+        target: Option<&str>,
+        occasions: &std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+        kinds: &std::collections::BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+    ) -> Option<Self> {
+        let kind = lute_check::kind_target(target?)?;
+        let (prefix, members) =
+            lute_check::beats::kind_target_members(occasions.get(on)?, kind, kinds).ok()?;
+        Some(TargetKind {
+            kind: kind.to_string(),
+            prefix,
+            members,
+        })
+    }
 }
 
 /// A scene beat's repetition policy (dsl 0.21.0 §3.1, 0.24.0 §1): `"run"`
@@ -1232,6 +1290,9 @@ pub struct EntryCmd {
     /// when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub share: Option<String>,
+    /// dsl 0.26.0 §5: as [`BeatIr::target_kind`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_kind: Option<TargetKind>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1273,6 +1334,9 @@ pub struct BeatCmd {
     /// text as the beat's scenario edge. Omitted when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
+    /// dsl 0.26.0 §5: as [`BeatIr::target_kind`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_kind: Option<TargetKind>,
     pub body: String,
     #[serde(flatten)]
     pub stamp: Stamp,
@@ -1495,7 +1559,8 @@ impl Command {
     }
 
     /// `(addr, authored directive)` of a record a directive lowered to —
-    /// staging, `::end`, a plugin passthrough ([`Stamp::authored`]).
+    /// staging, `::end`, a plugin passthrough ([`Stamp::authored`]) — and
+    /// of the match a guarded `::use` compiled to (dsl 0.26.0 §4).
     pub fn authored(&self) -> Option<(&str, &str)> {
         let (addr, stamp) = match self {
             Command::Background(c) => (&c.addr, &c.stamp),
@@ -1508,6 +1573,7 @@ impl Command {
             Command::Video(c) => (&c.addr, &c.stamp),
             Command::End(c) => (&c.addr, &c.stamp),
             Command::Other(c) => (&c.addr, &c.stamp),
+            Command::Match(c) => (&c.addr, &c.stamp),
             _ => return None,
         };
         Some((addr, stamp.authored.as_deref()?))

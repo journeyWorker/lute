@@ -327,6 +327,71 @@ fn advance_needs_a_clock_and_moves_only_forward() {
     );
 }
 
+/// dsl 0.26.0 §7 (T2-5): `advance: { to: … }` moves forward to the next
+/// position with that slot (and weekday) — never backward, never zero steps,
+/// so already there it is the next one — and a step `expect.clock` judges
+/// where the clock stands, failing at the step when it is elsewhere.
+#[test]
+fn advance_to_moves_to_the_next_such_position_and_a_step_judges_the_clock() {
+    let out = clock_play(
+        "advance-to",
+        RAISING_CLOCK,
+        "steps:\n  \
+         - advance: { to: night }\n    \
+           expect: { clock: { weekday: Mon, slot: night, day: 1 } }\n  \
+         - advance: { to: night }\n    \
+           expect: { clock: { weekday: Tue, slot: night, day: 2 } }\n  \
+         - advance: { to: { weekday: Fri, slot: morning } }\n    \
+           expect: { presented: [day.slot], clock: { weekday: 4, slot: morning, day: 5 } }\n  \
+         - advance: { to: { weekday: Fri, slot: morning } }\n    \
+           expect: { clock: { day: 12 } }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(
+        t.contains("── step 1 · advance to night: day 1 (Mon) morning → day 1 (Mon) night"),
+        "{t}"
+    );
+    assert!(
+        t.contains("── step 3 · advance to Fri morning: day 2 (Tue) night → day 5 (Fri) morning"),
+        "{t}"
+    );
+
+    // The clock is elsewhere than the step says: the play fails there.
+    let out = clock_play(
+        "advance-to-miss",
+        RAISING_CLOCK,
+        "steps:\n  - advance: 2\n    expect: { clock: { slot: afternoon, weekday: Tue } }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(
+        t.contains("expect clock slot: expected afternoon, actual night"),
+        "{t}"
+    );
+    assert!(
+        t.contains("expect clock weekday: expected Tue, actual Mon (0)"),
+        "{t}"
+    );
+
+    // A target the clock does not have is refused when the script loads.
+    for (to, says) in [
+        ("noon", "the clock's slots are: morning, afternoon, night"),
+        (
+            "{ weekday: Fun }",
+            "a weekday is a number 0..6 or one of: Mon",
+        ),
+    ] {
+        let out = clock_play(
+            "advance-to-bad",
+            RAISING_CLOCK,
+            &format!("steps:\n  - advance: {{ to: {to} }}\n"),
+        );
+        assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+        assert!(text(&out).contains(says), "{}", text(&out));
+    }
+}
+
 /// Ember N16 / R3: an `advance:` step carries the `engine:` writes of the
 /// same moment — applied where the clock arrives, one settle for both — but
 /// not a write to the clock's own paths.

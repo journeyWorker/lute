@@ -811,8 +811,12 @@ fn loads_reward_kinds_export() {
         .collect();
     let item = by_name.get("ITEM").expect("ITEM present");
     assert_eq!(
-        item.target.as_ref().expect("ITEM target").provider,
-        "item",
+        item.target
+            .as_ref()
+            .expect("ITEM target")
+            .provider
+            .as_deref(),
+        Some("item"),
         "ITEM target must resolve to `{{ provider: item }}`"
     );
     let shard = by_name.get("SHARD").expect("SHARD present");
@@ -842,6 +846,51 @@ fn loads_reward_kinds_rejects_dup() {
         "per-package duplicate must surface as DuplicateId {{ kind: \"rewardKind\" }}, got {errs:?}"
     );
     fs::remove_dir_all(&tmp).ok();
+}
+
+/// dsl 0.26.0 §2.5: `target:` also takes `{ entity: <kind> }` and
+/// `required: true`; naming both `provider:` and `entity:` fails the load.
+#[test]
+fn reward_kind_target_takes_entity_and_required_but_not_both_sources() {
+    let pkg = |tag: &str, body: &str| {
+        let tmp = std::env::temp_dir().join(format!("lute_pkg_rkt_{tag}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("rewardkinds")).unwrap();
+        fs::write(
+            tmp.join("plugin.yaml"),
+            "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  rewardkinds: rewardkinds/\n",
+        )
+        .unwrap();
+        fs::write(tmp.join("rewardkinds/a.yaml"), body).unwrap();
+        tmp
+    };
+    let ok = pkg(
+        "ok",
+        "rewardKinds:\n  ITEM: { target: { entity: bagItem, required: true } }\n  TM: { target: { required: true } }\n",
+    );
+    let loaded = load_plugin_dir(&ok).expect("entity/required contracts load");
+    let item = loaded
+        .reward_kinds
+        .iter()
+        .find(|r| r.name == "ITEM")
+        .unwrap();
+    let t = item.target.as_ref().unwrap();
+    assert_eq!(
+        (t.provider.as_deref(), t.entity.as_deref(), t.required),
+        (None, Some("bagItem"), true)
+    );
+    let tm = loaded.reward_kinds.iter().find(|r| r.name == "TM").unwrap();
+    assert!(tm.target.as_ref().unwrap().required);
+
+    let both = pkg(
+        "both",
+        "rewardKinds:\n  ITEM: { target: { provider: items, entity: bagItem } }\n",
+    );
+    let errs = load_plugin_dir(&both).expect_err("provider + entity must fail the load");
+    let msg = format!("{errs:?}");
+    assert!(msg.contains("not both"), "{msg}");
+    fs::remove_dir_all(&ok).ok();
+    fs::remove_dir_all(&both).ok();
 }
 
 #[test]

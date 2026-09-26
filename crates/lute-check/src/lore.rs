@@ -34,6 +34,17 @@ pub const E_ENTRY_SERIES_ORDER: &str = "E-ENTRY-SERIES-ORDER";
 /// `entry.<id>.read` names an id no document in the project declares (§5,
 /// `check-project` only).
 pub const W_ENTRY_REF_UNKNOWN: &str = "W-ENTRY-REF-UNKNOWN";
+/// dsl 0.26.0 §8 (T3-4): a repeatable entry beat — it answers an occasion
+/// (`on=`) and has no `once`, so every raise may present it again in the
+/// same run — whose body writes state (`::set`) or removes a fact
+/// (`::retract`). Effects apply on the first read in a run only (dsl 0.19.0
+/// §6), so a write meant to repeat is silently skipped. An `::assert` is
+/// exempt: the fact it records holds for the rest of the run either way, so
+/// asserting it once is the same as asserting it on every read. A lookup
+/// entry (no `on=`) cannot take `once`, and applying its effects on the
+/// first read is its design (0.19.0 D-C): no warning. Anchored at the first
+/// such write.
+pub const W_ENTRY_WRITE_REREAD: &str = "W-ENTRY-WRITE-REREAD";
 
 /// What [`check_entries`] folds into the enclosing document: the reserved
 /// `entry.<id>.read` decls (dsl 0.19.0 §5) plus every attribute/identity
@@ -88,6 +99,18 @@ pub fn is_entry_target(s: &str) -> bool {
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
         })
+}
+
+/// dsl 0.26.0 §5: `kind:<Ident>` — a beat or entry that answers its occasion
+/// for every member of an entity kind. The kind name, when `s` is one.
+pub fn kind_target(s: &str) -> Option<&str> {
+    s.strip_prefix("kind:").filter(|k| is_entry_ident(k))
+}
+
+/// A beat's (scene, bundle beat, entry beat) `target`: a dotted id or a
+/// `kind:<Ident>` (dsl 0.26.0 §5) — shape-only.
+pub fn is_beat_target(s: &str) -> bool {
+    is_entry_target(s) || kind_target(s).is_some()
 }
 
 /// One entry's RESOLVED series position (dsl 0.19.0 §2.1, §3, §7): the
@@ -188,6 +211,22 @@ pub fn check_entries(
     let mut positions: BTreeMap<(&str, u32), &str> = BTreeMap::new();
     for (entry, resolved) in entries.iter().zip(&resolved) {
         check_entry_shape(entry, doc_series, &mut record.diags);
+        if entry.on.is_some() && entry.once.is_none() {
+            if let Some((what, span)) = first_write(&entry.body) {
+                record.diags.push(diag(
+                    W_ENTRY_WRITE_REREAD,
+                    Severity::Warning,
+                    format!(
+                        "`<entry id=\"{}\">` has no `once`, so it can be presented again in a \
+                         run, but its `{what}` applies on the first read in a run only (dsl \
+                         0.19.0 §6); a write meant to repeat belongs in a `<beat once=\"false\">`, \
+                         and an entry read once per run says so with `once=\"run\"`",
+                        entry.id
+                    ),
+                    span,
+                ));
+            }
+        }
         let id = entry.id.as_str();
         if !id.is_empty() {
             if !seen_ids.insert(id.to_string()) {
@@ -227,6 +266,24 @@ pub(crate) fn series_order_message(series: &str, order: u32, first: &str, id: &s
          `<entry id=\"{first}\">`; each position in a series names one entry (dsl 0.19.0 §2.1, \
          §3)"
     )
+}
+
+/// The first `::set` / `::retract` of an entry body, in document order,
+/// descending into `<match>` arms and `<branch>` / `<hub>` choices: the
+/// directive's name and span. `::assert` is idempotent within a run and is
+/// not a write that could be lost (see [`W_ENTRY_WRITE_REREAD`]).
+fn first_write(nodes: &[lute_syntax::ast::Node]) -> Option<(&'static str, Span)> {
+    use lute_syntax::ast::{Arm, Node};
+    nodes.iter().find_map(|node| match node {
+        Node::Set(s) => Some(("::set", s.span)),
+        Node::Retract(r) => Some(("::retract", r.span)),
+        Node::Match(m) => m.arms.iter().find_map(|arm| match arm {
+            Arm::When { body, .. } | Arm::Otherwise { body, .. } => first_write(body),
+        }),
+        Node::Branch(b) => b.choices.iter().find_map(|c| first_write(&c.body)),
+        Node::Hub(h) => h.choices.iter().find_map(|c| first_write(&c.body)),
+        _ => None,
+    })
 }
 
 /// One entry's attribute shape (`E-ENTRY-ATTR`, `E-PATH-IDENT`) and closure
@@ -290,12 +347,20 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
         ));
     }
     if let Some((target, span)) = &entry.target {
-        if !is_entry_target(target) {
+        if kind_target(target).is_some() && entry.on.is_none() {
+            diags.push(attr_diag(
+                format!(
+                    "`<entry>` `target=\"{target}\"` answers an occasion for every member of a \
+                     kind, so the entry needs `on=` (dsl 0.26.0 §5)"
+                ),
+                *span,
+            ));
+        } else if !is_beat_target(target) {
             diags.push(attr_diag(
                 format!(
                     "`<entry>` `target=\"{target}\"` is malformed; a target is a dotted id \
                      `Ident (\".\" Segment)*` with `Segment ::= [A-Za-z0-9_-]+`, e.g. \
-                     `item.rusty_key` (dsl 0.19.0 §3)"
+                     `item.rusty_key`, or `kind:<entity kind>` (dsl 0.19.0 §3, 0.26.0 §5)"
                 ),
                 *span,
             ));

@@ -73,6 +73,7 @@
 //! denominator and the producer set `W-TRACE-MOCK-UNPRODUCIBLE` judges
 //! mocked facts against (T1-14).
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -81,8 +82,70 @@ use lute_trace::{
     parse_mock_surfaces, trace_beat_with_check, trace_entries_with_check, trace_with_check,
     TraceExit, TraceReport, UnresolvedEntry,
 };
+use rayon::prelude::*;
 
 use crate::play_expect::ExpectMiss;
+
+/// Every `eprintln!` of this module goes through [`stderr_line`]: `lute
+/// test` runs its tests and plays in parallel (T2-1) and replays each one's
+/// stderr lines in the order they are reported, so what a run prints is
+/// what the sequential run printed.
+macro_rules! eprintln {
+    ($($arg:tt)*) => {
+        stderr_line(StderrLine::Text(format!($($arg)*)))
+    };
+}
+
+/// One stderr line of a test or play.
+enum StderrLine {
+    Text(String),
+    /// The once-per-project-root note: printed for the first test, in
+    /// report order, that reaches it.
+    Note(PathBuf, String),
+}
+
+thread_local! {
+    /// The capture buffers of the tests running on this thread, innermost
+    /// last (a test waiting on nested parallel work may run another to
+    /// completion on the same thread).
+    static CAPTURE: RefCell<Vec<Vec<StderrLine>>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Print `line` on stderr, or into the innermost capture when one is open.
+fn stderr_line(line: StderrLine) {
+    let line = CAPTURE.with(|c| match c.borrow_mut().last_mut() {
+        Some(buffer) => {
+            buffer.push(line);
+            None
+        }
+        None => Some(line),
+    });
+    if let Some(StderrLine::Text(text) | StderrLine::Note(_, text)) = line {
+        std::eprintln!("{text}");
+    }
+}
+
+/// Run `f` with its stderr lines captured.
+fn captured<R>(f: impl FnOnce() -> R) -> (R, Vec<StderrLine>) {
+    CAPTURE.with(|c| c.borrow_mut().push(Vec::new()));
+    let out = f();
+    let lines = CAPTURE.with(|c| c.borrow_mut().pop()).unwrap_or_default();
+    (out, lines)
+}
+
+/// Print captured lines; a note only for a root not `noted` yet.
+fn replay(lines: Vec<StderrLine>, noted: &mut BTreeSet<PathBuf>) {
+    for line in lines {
+        match line {
+            StderrLine::Text(text) => std::eprintln!("{text}"),
+            StderrLine::Note(root, text) => {
+                if noted.insert(root) {
+                    std::eprintln!("{text}");
+                }
+            }
+        }
+    }
+}
 
 /// The complete legal top-level key set of a `*.test.yaml` (module docs).
 /// [`HARNESS_KEYS`] are the harness's own; every other key is exactly
@@ -305,6 +368,33 @@ struct CoverageAccum {
     traced_files: BTreeSet<String>,
 }
 
+impl CoverageAccum {
+    /// Fold a later accumulation in — what accumulating its reports after
+    /// this one's would have produced (a label stays the first one seen).
+    fn merge(&mut self, later: CoverageAccum) {
+        for (key, (label, chosen, eligible, total)) in later.choices {
+            let entry = self
+                .choices
+                .entry(key)
+                .or_insert_with(|| (label, BTreeSet::new(), BTreeSet::new(), 0));
+            entry.1.extend(chosen);
+            entry.2.extend(eligible);
+            entry.3 = entry.3.max(total);
+        }
+        for (key, (label, chosen, total)) in later.arms {
+            let entry = self
+                .arms
+                .entry(key)
+                .or_insert_with(|| (label, BTreeSet::new(), 0));
+            entry.1.extend(chosen);
+            entry.2 = entry.2.max(total);
+        }
+        self.paths += later.paths;
+        self.plays += later.plays;
+        self.traced_files.extend(later.traced_files);
+    }
+}
+
 /// A path in the one spelling both sides of the untested-set difference can
 /// agree on. `TraceReport.file` comes from `base.join(&rel)` — for
 /// `tests/../scenes/wake.lute` that is NOT what `find_lute_files` yields — so
@@ -356,29 +446,71 @@ pub fn run_test(
         },
     };
 
+    // T2-1: the project is loaded and analysed once for the whole run —
+    // every test's project producer set / quest ids before the tests, the
+    // plays' compiled project before the plays — and the tests, then the
+    // plays, run in parallel (`RAYON_NUM_THREADS` respected). Each one's
+    // stderr is captured and replayed, and its result folded, in the order
+    // the sequential run reported them; the first usage/I-O failure still
+    // stops the run with nothing after it printed.
     let mut results = Vec::new();
     let mut cov = CoverageAccum::default();
-    let mut producers = ProducerCache::default();
+    let mut noted: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut shared = Shared::for_tests(&test_files, project, providers);
 
-    for test_file in &test_files {
-        match run_one_test(
-            test_file,
-            providers,
-            project,
-            no_derive,
-            &mut producers,
-            coverage.then_some(&mut cov),
-        ) {
-            Ok(r) => results.push(r),
+    let runs: Vec<_> = test_files
+        .par_iter()
+        .map(|test_file| {
+            let mut local = CoverageAccum::default();
+            let (r, lines) = captured(|| {
+                run_one_test(
+                    test_file,
+                    providers,
+                    project,
+                    no_derive,
+                    &shared,
+                    coverage.then_some(&mut local),
+                )
+            });
+            (r, local, lines)
+        })
+        .collect();
+    for (r, local, lines) in runs {
+        replay(lines, &mut noted);
+        match r {
+            Ok(r) => {
+                results.push(r);
+                cov.merge(local);
+            }
             // A malformed test yaml or an unreadable referenced document is a
             // usage/I-O failure (exit 2) — never a silent skip that would let
             // a broken suite report "all passed".
             Err(code) => return code,
         }
     }
-    for play_file in &play_files {
-        if let Some(r) = run_one_play(play_file, project, no_derive, coverage.then_some(&mut cov)) {
+
+    shared.compile_plays(&play_files, project);
+    let runs: Vec<_> = play_files
+        .par_iter()
+        .map(|play_file| {
+            let mut local = CoverageAccum::default();
+            let (r, lines) = captured(|| {
+                run_one_play(
+                    play_file,
+                    project,
+                    no_derive,
+                    &shared,
+                    coverage.then_some(&mut local),
+                )
+            });
+            (r, local, lines)
+        })
+        .collect();
+    for (r, local, lines) in runs {
+        replay(lines, &mut noted);
+        if let Some(r) = r {
             results.push(r);
+            cov.merge(local);
         }
     }
 
@@ -464,41 +596,119 @@ pub fn run_test(
     }
 }
 
-/// The project May producer set per project root (T1-14), computed once per
-/// root for the whole run — every test of a project shares it, and it costs
-/// a full project collection.
+/// The project state every test and play of one run shares (T2-1),
+/// computed before they run so the parallel tests and plays only read it.
 #[derive(Default)]
-struct ProducerCache {
-    by_root: BTreeMap<PathBuf, Option<BTreeSet<String>>>,
-    /// Project roots a scenario test discovered (nearest `lute.project.yaml`,
-    /// no `--project`) and already announced on stderr — one note per root.
-    noted: BTreeSet<PathBuf>,
-    /// Per-run memo of the shared document inputs every traced document resolves.
+struct Shared {
+    /// Per-run memo of the shared document inputs every traced document
+    /// resolves.
     inputs: crate::InputCache,
+    /// The project May producer set per project root (T1-14), for every
+    /// root a test mocking `facts:` resolves against — it costs a full
+    /// project collection.
+    producers: BTreeMap<PathBuf, Option<BTreeSet<String>>>,
+    /// Every quest id of the project per root (dsl 0.26.0 §7, T3-5), for
+    /// every root a test with `accepts:` resolves against.
+    quests: BTreeMap<PathBuf, Option<BTreeSet<String>>>,
+    /// The compiled project per play project directory.
+    plays: BTreeMap<PathBuf, crate::play::PlayProject>,
 }
 
-impl ProducerCache {
-    /// The producer set of the project `lute_path` belongs to: `--project`
-    /// when given (every file resolves against it, as the trace gate does),
-    /// else the nearest `lute.project.yaml`. `None` when there is no project
-    /// to consult or it could not be collected — the trace then judges the
-    /// document alone and its note says so.
+/// The root whose producer set judges `lute_path`'s mocked facts:
+/// `--project` when given (every file resolves against it, as the trace
+/// gate does), else the nearest `lute.project.yaml` — with whether it is a
+/// single root ([`crate::project_assert_relations`]).
+fn producer_root(lute_path: &Path, project: Option<&Path>) -> Option<(PathBuf, bool)> {
+    match project {
+        Some(p) => Some((p.to_path_buf(), true)),
+        None => crate::nearest_manifest_dir(lute_path).map(|root| (root, false)),
+    }
+}
+
+/// The project `file` belongs to: `--project`, else the nearest
+/// `lute.project.yaml` above it.
+fn project_dir_of(file: &Path, project: Option<&Path>) -> Option<PathBuf> {
+    project
+        .map(Path::to_path_buf)
+        .or_else(|| crate::nearest_manifest_dir(file))
+}
+
+impl Shared {
+    /// Collect, once per root, what `test_files` read of their projects.
+    fn for_tests(test_files: &[PathBuf], project: Option<&Path>, providers: Option<&Path>) -> Self {
+        let mut producer_roots: BTreeSet<(PathBuf, bool)> = BTreeSet::new();
+        let mut quest_roots: BTreeSet<PathBuf> = BTreeSet::new();
+        for test_file in test_files {
+            let Ok(text) = std::fs::read_to_string(test_file) else {
+                continue;
+            };
+            let (Ok(mocks), Ok(Some(rel))) =
+                (parse_mock_surfaces(&text), lute_trace::mock_subject(&text))
+            else {
+                continue;
+            };
+            let lute_path = test_file
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(&rel);
+            if !mocks.facts.is_empty() {
+                producer_roots.extend(producer_root(&lute_path, project));
+            }
+            if !mocks.accepts.is_empty() {
+                quest_roots.extend(project_dir_of(&lute_path, project));
+            }
+        }
+        let mut shared = Shared::default();
+        for (root, single_root) in producer_roots {
+            let set = crate::project_assert_relations(&root, single_root, providers);
+            shared.producers.insert(root, set);
+        }
+        for root in quest_roots {
+            let ids = crate::project_quest_ids(&root, providers);
+            shared.quests.insert(root, ids);
+        }
+        shared
+    }
+
+    /// Compile, once per project, what the expect-carrying `play_files`
+    /// run over.
+    fn compile_plays(&mut self, play_files: &[PathBuf], project: Option<&Path>) {
+        for play_file in play_files {
+            if !matches!(scan_play(play_file), PlayScan::Expect { .. }) {
+                continue;
+            }
+            if let Some(dir) = project_dir_of(play_file, project) {
+                if !self.plays.contains_key(&dir) {
+                    let compiled = crate::play::PlayProject::compile(&dir);
+                    self.plays.insert(dir, compiled);
+                }
+            }
+        }
+    }
+
+    /// The producer set of the project `lute_path` belongs to
+    /// ([`producer_root`]). `None` when there is no project to consult or it
+    /// could not be collected — the trace then judges the document alone
+    /// and its note says so.
     fn for_document(
-        &mut self,
+        &self,
         lute_path: &Path,
         project: Option<&Path>,
         providers: Option<&Path>,
-    ) -> Option<&BTreeSet<String>> {
-        let (root, single_root) = match project {
-            Some(p) => (p.to_path_buf(), true),
-            None => (crate::nearest_manifest_dir(lute_path)?, false),
-        };
-        self.by_root
-            .entry(root)
-            .or_insert_with_key(|root| {
-                crate::project_assert_relations(root, single_root, providers)
-            })
-            .as_ref()
+    ) -> Option<BTreeSet<String>> {
+        let (root, single_root) = producer_root(lute_path, project)?;
+        match self.producers.get(&root) {
+            Some(set) => set.clone(),
+            None => crate::project_assert_relations(&root, single_root, providers),
+        }
+    }
+
+    /// Every quest id of the project at `root`.
+    fn project_quests(&self, root: &Path, providers: Option<&Path>) -> Option<BTreeSet<String>> {
+        match self.quests.get(root) {
+            Some(ids) => ids.clone(),
+            None => crate::project_quest_ids(root, providers),
+        }
     }
 }
 
@@ -518,7 +728,7 @@ fn run_one_test(
     providers: Option<&Path>,
     project: Option<&Path>,
     no_derive: bool,
-    producers: &mut ProducerCache,
+    shared: &Shared,
     cov: Option<&mut CoverageAccum>,
 ) -> Result<TestResult, ExitCode> {
     let text = match std::fs::read_to_string(test_file) {
@@ -668,9 +878,10 @@ fn run_one_test(
         None => crate::nearest_manifest_dir(&lute_path),
     };
     if let Some(root) = &discovered {
-        if producers.noted.insert(root.clone()) {
-            let shown = crate::cwd_relative(&root.display().to_string());
-            eprintln!(
+        let shown = crate::cwd_relative(&root.display().to_string());
+        stderr_line(StderrLine::Note(
+            root.clone(),
+            format!(
                 "lute: note: scenario tests use project {} (nearest lute.project.yaml); pass \
                  --project to choose another",
                 if shown.is_empty() {
@@ -678,18 +889,29 @@ fn run_one_test(
                 } else {
                     shown.as_str()
                 }
-            );
-        }
+            ),
+        ));
     }
     let resolve_with = project.or(discovered.as_deref());
 
-    let Some(built) =
-        crate::build_input_with(&producers.inputs, &lute_path, providers, resolve_with, None)
-    else {
-        // build_input already printed the read error.
-        return Err(ExitCode::from(2));
+    let text = match crate::read_document(&lute_path) {
+        Ok(text) => text,
+        Err(message) => {
+            eprintln!("{message}");
+            return Err(ExitCode::from(2));
+        }
     };
-    built.report_project_diags();
+    let (built, _) = crate::assemble_input(
+        &shared.inputs,
+        &lute_path,
+        text,
+        providers,
+        resolve_with,
+        None,
+    );
+    for m in &built.project_diags {
+        eprintln!("lute: {m}");
+    }
     let crate::BuiltInput {
         input,
         resolve_error,
@@ -702,14 +924,46 @@ fn run_one_test(
         return Err(ExitCode::from(1));
     }
 
+    // `expect.eligible`, a map key naming an entry by its `<document
+    // id>.<entry id>` alias resolved to the entry id (dsl 0.26.0 §7, T3-10).
+    let eligible_want: Option<serde_yaml::Value> = map
+        .get("expect")
+        .and_then(|e| e.get("eligible"))
+        .map(|want| match want {
+            serde_yaml::Value::Mapping(m) => {
+                let (doc, _) = lute_syntax::parse(&input.text);
+                let doc_id = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+                    .ok()
+                    .and_then(|v| v.get("id")?.as_str().map(str::to_string));
+                serde_yaml::Value::Mapping(
+                    m.iter()
+                        .map(|(k, v)| {
+                            let k = match k.as_str() {
+                                Some(id) => serde_yaml::Value::String(
+                                    lute_trace::entry_local_id(&doc, doc_id.as_deref(), id)
+                                        .to_string(),
+                                ),
+                                None => k.clone(),
+                            };
+                            (k, v.clone())
+                        })
+                        .collect(),
+                )
+            }
+            other => other.clone(),
+        });
     // A map-form `expect.eligible` judges every entry / bundle beat of the
     // file it names under the test's mocks, presented or not (dsl 0.24.0,
     // T3-5) — so a lore test may carry it alone, presenting nothing.
-    let judges_eligibility_by_id = map
-        .get("expect")
-        .and_then(|e| e.get("eligible"))
+    let judges_eligibility_by_id = eligible_want
+        .as_ref()
         .is_some_and(serde_yaml::Value::is_mapping);
     let mut lore_lookup_only = false;
+    // dsl 0.26.0 §7 (T1-7): a test asserting `eligible:` judges the
+    // presentation, not a walk the engine would never make — an entry,
+    // bundle beat or scene whose `when` is false under the mocks is shown on
+    // its head and its body is not walked (no bridge answer it would need).
+    mocks.gate_eligibility = eligible_want.is_some();
 
     // T1-13: a lore document is looked up, not played — `lute trace` refuses
     // one without `--entry`/`--beat`, and a test naming it without `entry:`
@@ -752,10 +1006,21 @@ fn run_one_test(
     let project_asserts = if mocks.facts.is_empty() {
         None
     } else {
-        producers
-            .for_document(&lute_path, project, providers)
-            .cloned()
+        shared.for_document(&lute_path, project, providers)
     };
+    // dsl 0.26.0 §7 (T3-5): an `accepts:` naming a quest this document does
+    // not declare resolves against every quest of the project.
+    if !mocks.accepts.is_empty() {
+        let (doc, _) = lute_syntax::parse(&input.text);
+        let foreign = mocks
+            .accepts
+            .iter()
+            .any(|id| !doc.quests.iter().any(|q| &q.id == id));
+        if foreign {
+            mocks.project_quests =
+                resolve_with.and_then(|root| shared.project_quests(root, providers));
+        }
+    }
     // The mocks an unpresented entry / beat is judged under (T3-5).
     let eligibility_mocks = judges_eligibility_by_id.then(|| mocks.clone());
     let checked = lute_check::check(&input);
@@ -857,12 +1122,21 @@ fn run_one_test(
                 continue;
             };
             for sub in list.iter().filter_map(|i| i.as_str()) {
-                let present = transcript.contains(sub);
+                // dsl 0.26.0 §7 (T3-6): a needle copied from `lute play`
+                // output carries line attributes the presented form lacks.
+                let needle = crate::play_expect::transcript_needle(sub);
+                let present = transcript.contains(&needle);
+                let actual = match crate::play_expect::nearest_said_line(&transcript, &needle) {
+                    Some(line) if want_present && !present => {
+                        format!("absent (nearest line: {line:?})")
+                    }
+                    _ => if present { "present" } else { "absent" }.to_string(),
+                };
                 expectations.push(ExpectResult {
                     kind,
                     subject: String::new(),
                     expected: sub.to_string(),
-                    actual: Some(if present { "present" } else { "absent" }.to_string()),
+                    actual: Some(actual),
                     passed: present == want_present,
                 });
             }
@@ -994,7 +1268,7 @@ fn run_one_test(
         // map key naming an entry / bundle beat of the file this test did
         // NOT present is judged on its own under the same mocks (dsl 0.24.0,
         // T3-5) — `eligible:` covers the whole file, not only what played.
-        if let Some(want) = expect.get("eligible") {
+        if let Some(want) = &eligible_want {
             let presented = presented_eligibility(&report);
             let wants: Vec<(Option<String>, Option<bool>)> = match want {
                 serde_yaml::Value::Mapping(m) => m
@@ -1105,6 +1379,23 @@ fn run_one_test(
         });
     }
 
+    // dsl 0.26.0 §7 (T1-7): a walk of an entry, bundle beat or scene the
+    // engine would never present — its `when` false under these mocks —
+    // proves nothing about play (a contract test of another author's file
+    // silently went hollow). It fails unless the test asserts `eligible:`.
+    let asserted = eligible_want.as_ref();
+    for (id, eligible) in presented_eligibility(&report) {
+        if eligible == Some(false) && !eligibility_asserted(&id, asserted) {
+            expectations.push(ExpectResult {
+                kind: "eligible",
+                subject: id,
+                expected: IMPLICIT_ELIGIBLE.to_string(),
+                actual: Some("false".to_string()),
+                passed: false,
+            });
+        }
+    }
+
     let passed = expectations.iter().all(|e| e.passed);
 
     Ok(TestResult {
@@ -1127,10 +1418,7 @@ fn run_one_test(
                     || n.starts_with(lute_trace::NOTE_ACCEPT_SPENT)
             })
             .cloned()
-            .chain(ineligible_notes(
-                &report,
-                expect.and_then(|e| e.get("eligible")),
-            ))
+            .chain(ineligible_notes(&report, asserted))
             .collect(),
     })
 }
@@ -1181,6 +1469,7 @@ fn run_one_play(
     play_file: &Path,
     project: Option<&Path>,
     no_derive: bool,
+    shared: &Shared,
     cov: Option<&mut CoverageAccum>,
 ) -> Option<TestResult> {
     let refused = |lute_file: String, line: String| {
@@ -1193,10 +1482,7 @@ fn run_one_play(
         PlayScan::Expect { declares_exit } => declares_exit,
         PlayScan::Broken(why) => return refused(String::new(), format!("error: {why}")),
     };
-    let Some(project_dir) = project
-        .map(Path::to_path_buf)
-        .or_else(|| crate::nearest_manifest_dir(play_file))
-    else {
+    let Some(project_dir) = project_dir_of(play_file, project) else {
         return refused(
             String::new(),
             "error: no `lute.project.yaml` above this play — a play runs a project; pass \
@@ -1205,7 +1491,15 @@ fn run_one_play(
         );
     };
     let project_display = project_dir.display().to_string();
-    let run = match crate::play::run_play_for_test(&project_dir, play_file, !no_derive) {
+    let compiled;
+    let play_project = match shared.plays.get(&project_dir) {
+        Some(p) => p,
+        None => {
+            compiled = crate::play::PlayProject::compile(&project_dir);
+            &compiled
+        }
+    };
+    let run = match crate::play::run_play_for_test(play_project, play_file, !no_derive) {
         Ok(run) => run,
         Err(why) => return refused(project_display, format!("error: {why}")),
     };
@@ -1276,19 +1570,40 @@ fn yaml_atom_hints(u: &UnresolvedEntry) -> String {
         .join(", ")
 }
 
-/// Every presented lore entry / bundle beat with its `when` verdict, in
-/// presentation order: `Some(true)` eligible (or no `when`), `Some(false)`
-/// not, `None` undecided under the mocks.
+/// The `expected` text of the `eligible` expectation a test carries
+/// implicitly for a presented entry / beat / scene whose `when` is false
+/// (dsl 0.26.0 §7, T1-7).
+const IMPLICIT_ELIGIBLE: &str = "an eligible presentation, or an `eligible:` assertion";
+
+/// Every presented lore entry / bundle beat — and the traced scene itself
+/// (dsl 0.26.0 §7, T1-7) — with its eligibility verdict, in presentation
+/// order: `Some(true)` eligible (or no `when`), `Some(false)` not, `None`
+/// undecided under the mocks.
 fn presented_eligibility(report: &TraceReport) -> Vec<(String, Option<bool>)> {
     report
-        .steps
+        .scene_eligible
         .iter()
-        .filter_map(|s| match s {
+        .cloned()
+        .chain(report.steps.iter().filter_map(|s| match s {
             lute_trace::Step::Entry { id, eligible, .. }
             | lute_trace::Step::Beat { id, eligible, .. } => Some((id.clone(), *eligible)),
             _ => None,
-        })
+        }))
         .collect()
+}
+
+/// Does the test's `expect.eligible` assert the verdict of the presented
+/// `id`? The scalar form covers every presented one, the map form the ids
+/// it names (dsl 0.24.0, T3-5).
+fn eligibility_asserted(id: &str, asserted: Option<&serde_yaml::Value>) -> bool {
+    match asserted {
+        None => false,
+        Some(serde_yaml::Value::Mapping(m)) => m
+            .keys()
+            .filter_map(serde_yaml::Value::as_str)
+            .any(|k| names_presented(id, k)),
+        Some(_) => true,
+    }
 }
 
 /// Does the `expect.eligible` key `id` name the presented entry / beat `p`
@@ -1323,35 +1638,23 @@ fn eligibility_alone(
     presented_eligibility(&report)
 }
 
-/// A note for every presented entry / bundle beat whose `when` does not
-/// hold under the test's mocks: trace presents it anyway (the engine's gate,
-/// shown, not enforced), so a passing test says so instead of staying
-/// silent (lamplight N6) — unless the test's `expect.eligible` already
-/// asserts that verdict (the scalar form covers every presented one, the
-/// map form the ids it names; dsl 0.24.0, T3-5).
+/// A note for every presented entry / bundle beat / scene whose `when` is
+/// undecided under the test's mocks — trace presents it anyway — unless the
+/// test's `expect.eligible` asserts that verdict. A `when` that is false is
+/// no note: the test fails on it (dsl 0.26.0 §7, T1-7).
 fn ineligible_notes(report: &TraceReport, asserted: Option<&serde_yaml::Value>) -> Vec<String> {
-    let covered = |id: &str| match asserted {
-        None => false,
-        Some(serde_yaml::Value::Mapping(m)) => m
-            .keys()
-            .filter_map(serde_yaml::Value::as_str)
-            .any(|k| names_presented(id, k)),
-        Some(_) => true,
-    };
     presented_eligibility(report)
         .into_iter()
-        .filter(|(id, _)| !covered(id))
-        .filter_map(|(id, eligible)| {
-            let why = match eligible {
-                Some(false) => "its `when` is false",
-                None => "its `when` is undecided",
-                Some(true) => return None,
-            };
+        // A scene's undecided `when` is the trace's own beat-`when` note.
+        .filter(|(id, _)| report.scene_eligible.as_ref().is_none_or(|(s, _)| s != id))
+        .filter(|(id, eligible)| eligible.is_none() && !eligibility_asserted(id, asserted))
+        .map(|(id, _)| {
             let local = id.rsplit('.').next().unwrap_or(&id);
-            Some(format!(
-                "`{id}` is not eligible under these mocks ({why}); the test presents it anyway \
-                 — assert it with `expect: {{ eligible: {{ {local}: false }} }}`"
-            ))
+            format!(
+                "`{id}` may not be eligible under these mocks (its `when` is undecided); the \
+                 test presents it anyway — assert it with `expect: {{ eligible: {{ {local}: \
+                 true|false }} }}` or supply what its `when` reads"
+            )
         })
         .collect()
 }
@@ -1700,6 +2003,17 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
             e.subject,
             e.expected
         ),
+        ("eligible", Some(_)) if e.expected == IMPLICIT_ELIGIBLE => {
+            let local = e.subject.rsplit('.').next().unwrap_or(&e.subject);
+            outln!(
+                out,
+                "      eligible {}: not eligible under these mocks (its `when` is false) — the \
+                 engine would never present it, so the walk proves nothing about play; fix the \
+                 mocks, or assert `expect: {{ eligible: {{ {local}: false }} }}` (the body is \
+                 then not walked)",
+                e.subject
+            )
+        }
         ("eligible", Some(actual)) => outln!(
             out,
             "      eligible{}: expected {}, got {actual}",
@@ -1712,7 +2026,7 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
         ),
         ("eligible", None) if e.subject.is_empty() => outln!(
             out,
-            "      eligible: expected {}, but the test presented no entry or beat",
+            "      eligible: expected {}, but the test presented no entry, beat or scene",
             e.expected
         ),
         ("eligible", None) => outln!(

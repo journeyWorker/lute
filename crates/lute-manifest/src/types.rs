@@ -22,10 +22,14 @@ pub enum Type {
     EnumFromOption(String), // attribute types only
     ProviderRef(String),    // any typed position
     Domain(String),         // any typed position; membership checked at check-stage
+    /// dsl 0.26.0 §2.5: `{ entity: <kind> }` — a member of a project entity
+    /// kind (`entities:`). Attribute types only; membership (with a
+    /// did-you-mean) is checked at check-stage against the merged kinds.
+    Entity(String),
     SlotId {
         namespace: String,
     }, // attribute types only
-    AssetKind(String),      // attribute types only
+    AssetKind(String), // attribute types only
     /// dsl 0.3.0 §6, D11: opaque, ordering-only narrative-time value. NEVER
     /// author-declarable state (an author `state:`/schema-doc decl of it is
     /// `E-TEMPORAL-ARG` at the decl, `lute-check/src/meta.rs`) — this variant
@@ -160,6 +164,7 @@ pub fn type_accepts(ty: &Type, lit: &Literal) -> bool {
         // vocabulary; structurally any string, membership is a check-stage
         // concern (mirrors `assetKind`/`providerRef`).
         (Type::Domain(_), Literal::Str(_)) => true,
+        (Type::Entity(_), Literal::Str(_)) => true,
         // dsl 0.3.0 §6: narrative-time is opaque — no `Literal` ever
         // inhabits it (not a bool, number, string, or anything else).
         (Type::NarrativeTime, _) => false,
@@ -215,6 +220,7 @@ pub fn type_str(ty: &Type) -> String {
         Type::EnumFromOption(opt) => format!("enumFromOption:{opt}"),
         Type::ProviderRef(name) => format!("providerRef:{name}"),
         Type::Domain(name) => format!("domain:{name}"),
+        Type::Entity(kind) => format!("entity:{kind}"),
         Type::SlotId { namespace } => format!("slotId:{namespace}"),
         Type::AssetKind(name) => format!("assetKind:{name}"),
         Type::NarrativeTime => "narrativeTime".to_string(),
@@ -271,6 +277,7 @@ enum TypeDef {
     EnumFromOption(String),
     ProviderRef(String),
     Domain(String),
+    Entity(String),
     SlotId {
         namespace: String,
     },
@@ -307,6 +314,7 @@ impl From<TypeDef> for Type {
             TypeDef::EnumFromOption(s) => Type::EnumFromOption(s),
             TypeDef::ProviderRef(s) => Type::ProviderRef(s),
             TypeDef::Domain(s) => Type::Domain(s),
+            TypeDef::Entity(s) => Type::Entity(s),
             TypeDef::SlotId { namespace } => Type::SlotId { namespace },
             TypeDef::AssetKind(s) => Type::AssetKind(s),
             TypeDef::NarrativeTime => Type::NarrativeTime,
@@ -330,6 +338,7 @@ impl From<&Type> for TypeDef {
             Type::EnumFromOption(s) => TypeDef::EnumFromOption(s.clone()),
             Type::ProviderRef(s) => TypeDef::ProviderRef(s.clone()),
             Type::Domain(s) => TypeDef::Domain(s.clone()),
+            Type::Entity(s) => TypeDef::Entity(s.clone()),
             Type::SlotId { namespace } => TypeDef::SlotId {
                 namespace: namespace.clone(),
             },
@@ -417,6 +426,18 @@ mod tests {
         );
         assert!(type_accepts(&ty, &Literal::Str("neutral".into()))); // structural: any string
         assert!(!type_accepts(&ty, &Literal::Bool(true)));
+    }
+
+    /// dsl 0.26.0 §2.5: the `{ entity: <kind> }` attr type.
+    #[test]
+    fn entity_type_roundtrips() {
+        let ty: Type = serde_yaml::from_str("{ entity: bagItem }").unwrap();
+        assert_eq!(ty, Type::Entity("bagItem".into()));
+        assert_eq!(
+            serde_yaml::to_string(&ty).unwrap().trim(),
+            "entity: bagItem"
+        );
+        assert!(!type_accepts(&ty, &Literal::Num(1.0)));
     }
 
     #[test]

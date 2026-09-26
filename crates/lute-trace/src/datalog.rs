@@ -52,13 +52,32 @@ pub struct Atom {
     pub terms: Vec<Term>,
 }
 
-/// One rule-body literal: atom / negated atom / comparison / scalar guard.
+/// One rule-body literal: atom / negated atom / comparison / scalar guard /
+/// (dsl 0.26.0 §6) count.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Lit {
-    Atom { atom: Atom, negated: bool },
-    Cmp { lhs: Term, rhs: Term, negated: bool },
-    Guard { cel: String },
+    Atom {
+        atom: Atom,
+        negated: bool,
+    },
+    Cmp {
+        lhs: Term,
+        rhs: Term,
+        negated: bool,
+    },
+    Guard {
+        cel: String,
+    },
+    /// `count(atom) op n`, or with `distinct` `countDistinct(atom, V…) op n`.
+    Count {
+        atom: Atom,
+        distinct: Vec<String>,
+        op: CountOp,
+        n: u64,
+    },
 }
+
+pub use lute_syntax::datalog::CountOp;
 
 /// A parsed rule `head :- body`, with its source text.
 #[derive(Clone, Debug, PartialEq)]
@@ -258,7 +277,7 @@ impl Program {
             let mut changed = false;
             for rule in &self.rules {
                 for lit in &rule.body {
-                    let Lit::Atom { atom, .. } = lit else {
+                    let (Lit::Atom { atom, .. } | Lit::Count { atom, .. }) = lit else {
                         continue;
                     };
                     let Some(atoms) = undecided.get(&atom.rel).cloned() else {
@@ -600,6 +619,20 @@ fn ir_lit(l: &Json) -> Option<Lit> {
         "guard" => Some(Lit::Guard {
             cel: l.get("cel").and_then(Json::as_str)?.to_string(),
         }),
+        "count" => Some(Lit::Count {
+            atom: ir_atom(l.get("atom")?)?,
+            distinct: l
+                .get("distinct")
+                .and_then(Json::as_array)
+                .map(|vs| {
+                    vs.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            op: CountOp::parse(l.get("op").and_then(Json::as_str)?)?,
+            n: l.get("n").and_then(Json::as_u64)?,
+        }),
         _ => None,
     }
 }
@@ -639,6 +672,18 @@ fn syntax_lit(l: &lute_syntax::datalog::BodyLiteral) -> Lit {
             rhs: syntax_term(rhs),
             negated: *negated,
         },
+        BodyLiteral::Count {
+            atom,
+            distinct,
+            op,
+            n,
+            ..
+        } => Lit::Count {
+            atom: syntax_atom(atom),
+            distinct: distinct.clone(),
+            op: *op,
+            n: *n,
+        },
     }
 }
 
@@ -647,9 +692,9 @@ fn syntax_lit(l: &lute_syntax::datalog::BodyLiteral) -> Lit {
 // ---------------------------------------------------------------------------
 
 /// Least stratum per derived relation: a positive body atom keeps the head
-/// at-or-above its stratum, a negated one pushes it strictly above.
-/// Stratification (checker-guaranteed) makes this converge; the cap defends
-/// against a malformed artifact.
+/// at-or-above its stratum, a negated one — or a counted one (dsl 0.26.0
+/// §6) — pushes it strictly above. Stratification (checker-guaranteed)
+/// makes this converge; the cap defends against a malformed artifact.
 fn compute_strata(rules: &[Rule], derived: &BTreeSet<String>) -> BTreeMap<String, usize> {
     let mut strata: BTreeMap<String, usize> = derived.iter().map(|r| (r.clone(), 0)).collect();
     let cap = derived.len() + 2;
@@ -658,13 +703,16 @@ fn compute_strata(rules: &[Rule], derived: &BTreeSet<String>) -> BTreeMap<String
         for rule in rules {
             let h = &rule.head.rel;
             for lit in &rule.body {
-                if let Lit::Atom { atom, negated } = lit {
-                    if let Some(&s) = strata.get(&atom.rel) {
-                        let want = s + usize::from(*negated);
-                        if strata[h] < want {
-                            strata.insert(h.clone(), want);
-                            changed = true;
-                        }
+                let (atom, above) = match lit {
+                    Lit::Atom { atom, negated } => (atom, *negated),
+                    Lit::Count { atom, .. } => (atom, true),
+                    Lit::Cmp { .. } | Lit::Guard { .. } => continue,
+                };
+                if let Some(&s) = strata.get(&atom.rel) {
+                    let want = s + usize::from(above);
+                    if strata[h] < want {
+                        strata.insert(h.clone(), want);
+                        changed = true;
                     }
                 }
             }
@@ -832,7 +880,36 @@ fn test_holds(
             Value::Bool(v) => Some(v),
             _ => None,
         },
+        Lit::Count {
+            atom,
+            distinct,
+            op,
+            n,
+        } => Some(op.holds(count_matches(atom, distinct, b, facts, kinds), *n)),
     }
+}
+
+/// dsl 0.26.0 §6: the facts (kind members) `atom` matches under `b` — or,
+/// with `distinct`, the distinct values of those variables among them.
+fn count_matches(
+    atom: &Atom,
+    distinct: &[String],
+    b: &Binding,
+    facts: &BTreeSet<Fact>,
+    kinds: &Kinds,
+) -> u64 {
+    let matches = extend(atom, std::slice::from_ref(b), facts, kinds);
+    let n = if distinct.is_empty() {
+        // Each match is a distinct fact: `extend` yields one per fact.
+        matches.len()
+    } else {
+        matches
+            .iter()
+            .map(|m| distinct.iter().map(|v| m.get(v)).collect::<Vec<_>>())
+            .collect::<BTreeSet<_>>()
+            .len()
+    };
+    n as u64
 }
 
 fn ground_term(t: &Term, b: &Binding) -> Option<String> {
@@ -979,5 +1056,22 @@ fn render_test(lit: &Lit, b: &Binding) -> String {
             render_term(rhs, b)
         ),
         Lit::Guard { cel } => format!("cel(\"{}\")", substitute_vars(cel, b)),
+        Lit::Count {
+            atom,
+            distinct,
+            op,
+            n,
+        } => {
+            let call = if distinct.is_empty() {
+                format!("count({})", render_atom(atom, b))
+            } else {
+                format!(
+                    "countDistinct({}, {})",
+                    render_atom(atom, b),
+                    distinct.join(", ")
+                )
+            };
+            format!("{call} {} {n}", op.as_str())
+        }
     }
 }

@@ -10,8 +10,9 @@
 //!
 //! ## Canonical pre-order (per shot body, per node in source order)
 //! - [`Node::Line`] → `when` (if any), then each `AttrValue::Ref` slot in
-//!   `attrs` order. [`Node::Directive`] → `when` (if any — only ever
-//!   `::next`, dsl 0.12.0), then each `AttrValue::Ref` slot in `attrs` order.
+//!   `attrs` order. [`Node::Directive`] → `when` (if any — `::next`, dsl
+//!   0.12.0; any directive, dsl 0.26.0 §4), then each `AttrValue::Ref` slot
+//!   in `attrs` order.
 //! - [`Node::Set`] → `expr`; then `when` (if any, dsl 0.24.0 §1).
 //! - [`Node::Branch`] → `attrs` refs; then per `choice`: `choice.when` (if any),
 //!   `choice.attrs` refs, then recurse `choice.body`.
@@ -22,8 +23,8 @@
 //! - [`Node::Objective`] → `done`; `when` (if any); `by` (if any, dsl
 //!   0.23.0 §2); `until` (if any, dsl 0.24.0 §2.1); `attrs` refs; then `body`.
 //! - [`Node::On`] → `when` (if any); `attrs` refs; then `body`.
-//! - [`Node::Assert`] / [`Node::Retract`] → no `CelSlot`s (args are
-//!   compile-time-ground; 0.3.0 T2). No-op.
+//! - [`Node::Assert`] / [`Node::Retract`] → `when` (if any, dsl 0.26.0 §4);
+//!   the args are compile-time-ground (0.3.0 T2).
 //!
 //! ## Document-level order (dsl 0.2.0, 0.19.0, 0.23.0)
 //! Every `shot.body` (as above), THEN every `quest` in `doc.quests`, THEN
@@ -90,7 +91,16 @@ fn node<'a>(n: &'a Node, f: &mut impl FnMut(&'a CelSlot)) {
         Node::Hub(h) => hub(h, f),
         Node::Objective(o) => objective(o, f),
         Node::On(o) => on(o, f),
-        Node::Assert(_) | Node::Retract(_) => {}
+        Node::Assert(a) => {
+            if let Some(w) = &a.when {
+                f(w);
+            }
+        }
+        Node::Retract(r) => {
+            if let Some(w) = &r.when {
+                f(w);
+            }
+        }
     }
 }
 
@@ -275,7 +285,16 @@ fn node_mut(n: &mut Node, f: &mut impl FnMut(&mut CelSlot)) {
         Node::Hub(h) => hub_mut(h, f),
         Node::Objective(o) => objective_mut(o, f),
         Node::On(o) => on_mut(o, f),
-        Node::Assert(_) | Node::Retract(_) => {}
+        Node::Assert(a) => {
+            if let Some(w) = &mut a.when {
+                f(w);
+            }
+        }
+        Node::Retract(r) => {
+            if let Some(w) = &mut r.when {
+                f(w);
+            }
+        }
     }
 }
 

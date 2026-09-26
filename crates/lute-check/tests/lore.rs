@@ -722,3 +722,45 @@ fn document_series_collides_with_attribute_positions_project_wide() {
     assert_eq!(anchored(&a, &out[0].1), "log2");
     assert_eq!(colliding_entry_occurrences(&docs).len(), 2);
 }
+
+/// dsl 0.26.0 §8 (T3-4): an entry beat without `once` is presented again by
+/// every raise of its occasion, but its writes apply on the first read in a
+/// run only — `W-ENTRY-WRITE-REREAD` at the first write (nested ones too).
+/// A `once` entry beat, a lookup entry (it cannot take `once`; first-read
+/// effects are its design) and an entry beat that writes nothing are clean.
+#[test]
+fn a_repeatable_entry_beat_that_writes_warns_at_its_first_write() {
+    let src = lore(
+        "<entry id=\"pay\" on=\"visit\">\n@n: Here.\n<match on=\"run.labBurned\">\n\
+         <when is=\"true\">\n::retract{knows(vesna, project_lumen)}\n</when>\n\
+         <otherwise>\n@n: ok\n</otherwise>\n</match>\n::set{run.labBurned = true}\n</entry>\n",
+    );
+    let ds = diags(&src);
+    let w = with_code(&ds, "W-ENTRY-WRITE-REREAD");
+    assert_eq!(w.len(), 1, "{ds:#?}");
+    assert_eq!(w[0].severity, Severity::Warning);
+    assert!(
+        anchored(&src, w[0]).contains("knows(vesna, project_lumen)"),
+        "{:?}",
+        anchored(&src, w[0])
+    );
+    assert!(
+        w[0].message.contains("`<entry id=\"pay\">` has no `once`")
+            && w[0]
+                .message
+                .contains("its `::retract` applies on the first read in a run only"),
+        "{}",
+        w[0].message
+    );
+
+    for clean in [
+        "<entry id=\"pay\" on=\"visit\" once=\"run\">\n::set{run.labBurned = true}\n</entry>\n",
+        "<entry id=\"note\">\n::set{run.labBurned = true}\n::assert{knows(vesna, project_lumen)}\n</entry>\n",
+        "<entry id=\"bark\" on=\"visit\">\n@n: Hello again.\n</entry>\n",
+        // An assert records a fact that holds for the rest of the run anyway.
+        "<entry id=\"clue\" on=\"visit\">\n@n: A clue.\n::assert{knows(vesna, project_lumen)}\n</entry>\n",
+    ] {
+        let ds = diags(&lore(clean));
+        assert!(with_code(&ds, "W-ENTRY-WRITE-REREAD").is_empty(), "{clean}\n{ds:#?}");
+    }
+}

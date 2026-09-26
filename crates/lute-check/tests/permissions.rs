@@ -286,6 +286,7 @@ params: {}
             ComponentDef {
                 params: Vec::new(),
                 speakers: Vec::new(),
+                defaults: BTreeMap::new(),
                 effects: false,
                 body: component,
                 src: PathBuf::from("sound.component.lute"),

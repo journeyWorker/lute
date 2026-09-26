@@ -135,10 +135,25 @@ entry-specific at runtime.
   artifact; `lute run` on a lore artifact without `--entry` is a usage error.
 - `lute test` presents a lore test's `entry: <id>` / `entries: [ids]` in
   order, with the engine's flag writes applied between them, so a repeated id
-  is a re-read.
+  is a re-read. An entry may be named by its `<document id>.<entry id>`
+  alias there, in `expect.eligible` keys, and in a play script's `pick:`,
+  `entriesRead:` and step `winner` / `offered` / `notOffered` / `presented`
+  (dsl 0.26.0 §8).
+- An entry whose `when` is false under the test's mocks is one the engine
+  would never present (dsl 0.26.0 §7): walking it fails the test unless the
+  test asserts `expect: { eligible: … }` for it. A test that asserts
+  `eligible:` shows the verdict on the entry's head and does not walk the body
+  of an ineligible entry — it needs no bridge answer and plays no line of it.
+  The same holds for a bundle beat, and a test of a scene beat (`on:`)
+  may assert `eligible:` for the scene itself (its `when`, `after:` and `once:
+  user` under the mocks); a scene reached by explicit flow has no such gate.
 - `lute play` keeps both flags across a playthrough: a `newRun` step resets
   every `entry.<id>.read` and no `everRead`, and a script's top-level
   `entriesRead: { run, user }` starts from a save.
+- `check` warns `W-ENTRY-WRITE-REREAD` (dsl 0.26.0 §8) on an entry beat
+  (`on=`) without `once` whose body has a `set` or `retract` (an `assert` is exempt: the fact holds for the rest of the run anyway): every
+  raise may present it again in the run, but its writes apply on the first
+  read only. A write meant to repeat belongs in a `<beat once="false">`.
 - `lute lore <dir>` prints the project's world-narrative map: entries and
   beats by target (a bundle beat under its `<document id>.<beat id>`, a scene
   beat under its scene key, each labelled `beat`), entries by series, and

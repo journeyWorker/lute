@@ -17,7 +17,7 @@ use lute_manifest::schema::OccasionDecl;
 use lute_syntax::ast::{AttrValue, BundleBeat};
 
 use crate::beats::{parse_beat_priority, BeatOnce, E_BEAT_ATTR};
-use crate::lore::{is_entry_ident, is_entry_target};
+use crate::lore::{is_beat_target, is_entry_ident};
 
 /// `<beat>`'s permitted attribute keys (dsl 0.23.0 §4). The parser extracts
 /// each into a typed field, so a permitted key reaches the residual list only
@@ -100,7 +100,7 @@ pub fn check_bundle_beats(
         let target_span = beat
             .target
             .as_ref()
-            .filter(|(t, _)| is_entry_target(t))
+            .filter(|(t, _)| is_beat_target(t))
             .map(|(_, span)| *span);
         crate::beats::check_occasion(
             on,
@@ -175,12 +175,12 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
         _ => {}
     }
     if let Some((target, span)) = &beat.target {
-        if !is_entry_target(target) {
+        if !is_beat_target(target) {
             diags.push(beat_attr(
                 format!(
                     "`<beat>` `target=\"{target}\"` is malformed; a target is a dotted id \
                      `Ident (\".\" Segment)*` with `Segment ::= [A-Za-z0-9_-]+`, e.g. \
-                     `npc.porter` (dsl 0.23.0 §4)"
+                     `npc.porter`, or `kind:<entity kind>` (dsl 0.23.0 §4, 0.26.0 §5)"
                 ),
                 *span,
             ));

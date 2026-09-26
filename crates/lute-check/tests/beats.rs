@@ -519,10 +519,15 @@ impl Project {
     /// tests in `harness_022.rs`).
     fn shadowed(&self) -> Vec<(PathBuf, Diagnostic)> {
         let refs: Vec<&FoldedEnv> = self.foldeds.iter().collect();
-        check_project_beats(&self.docs, &refs)
-            .into_iter()
-            .filter(|(_, d)| d.code == "W-BEAT-SHADOWED")
-            .collect()
+        check_project_beats(
+            &self.docs,
+            &refs,
+            &lute_check::cast::fact_producers(&self.docs),
+            None,
+        )
+        .into_iter()
+        .filter(|(_, d)| d.code == "W-BEAT-SHADOWED")
+        .collect()
     }
 }
 

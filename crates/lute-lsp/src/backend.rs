@@ -70,6 +70,30 @@ pub struct Backend {
     /// `Diagnostic` the client echoes back in `CodeActionContext` never
     /// carried one. Cleared on `did_close` alongside `docs`.
     diagnostics: DashMap<Uri, Vec<Diagnostic>>,
+    /// dsl 0.26.0 §8: the binary this server runs, as it was at start.
+    binary: Option<(PathBuf, BinaryId)>,
+}
+
+/// What identifies one build of a binary file: its length, mtime and (on
+/// unix) inode — a reinstall writes a new file or renames one over it.
+#[derive(Debug, PartialEq, Eq)]
+struct BinaryId {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+    inode: u64,
+}
+
+fn binary_id(path: &Path) -> Option<BinaryId> {
+    let m = std::fs::metadata(path).ok()?;
+    #[cfg(unix)]
+    let inode = std::os::unix::fs::MetadataExt::ino(&m);
+    #[cfg(not(unix))]
+    let inode = 0;
+    Some(BinaryId {
+        len: m.len(),
+        modified: m.modified().ok(),
+        inode,
+    })
 }
 
 impl Backend {
@@ -79,7 +103,48 @@ impl Backend {
             client,
             docs: DashMap::new(),
             diagnostics: DashMap::new(),
+            binary: std::env::current_exe()
+                .ok()
+                .and_then(|p| binary_id(&p).map(|id| (p, id))),
         }
+    }
+
+    /// dsl 0.26.0 §8 (T3-12): `Some(message)` once the binary this server
+    /// was started from has been replaced or removed — its results would be
+    /// an older build's, so it publishes this one diagnostic instead.
+    fn stale(&self) -> Option<String> {
+        let (path, id) = self.binary.as_ref()?;
+        (binary_id(path).as_ref() != Some(id)).then(|| {
+            format!(
+                "stale server: lute-lsp {} was started from {}, which has been replaced since, so \
+                 its diagnostics would come from an older build — restart the language server",
+                env!("CARGO_PKG_VERSION"),
+                path.display()
+            )
+        })
+    }
+
+    /// Publish the [`Self::stale`] diagnostic alone for `uri`; `false` when
+    /// the server is current.
+    async fn publish_if_stale(&self, uri: &Uri, version: i32) -> bool {
+        let Some(message) = self.stale() else {
+            return false;
+        };
+        self.diagnostics.insert(uri.clone(), Vec::new());
+        let diag = LspDiagnostic {
+            range: Range::default(),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: Some(tower_lsp_server::ls_types::NumberOrString::String(
+                "lute-lsp-stale".into(),
+            )),
+            source: Some("lute-lsp".into()),
+            message,
+            ..Default::default()
+        };
+        self.client
+            .publish_diagnostics(uri.clone(), vec![diag], Some(version))
+            .await;
+        true
     }
 
     /// Run `check()` over `snapshot`'s text and publish the converted diagnostics
@@ -91,6 +156,9 @@ impl Backend {
     /// Error at the document start — otherwise a scene that is itself clean would
     /// silently validate against a broken project (plugin §11).
     async fn analyze(&self, uri: Uri, snapshot: &DocumentSnapshot) {
+        if self.publish_if_stale(&uri, snapshot.version).await {
+            return;
+        }
         // B3 (data-catalog foundation 0.3.0): a project declaration `.yaml`
         // (under the project's `schema:`/`catalog:` dir) is a pure declaration
         // map, not a `.lute` scene — it has no body for `check()` to walk. Claim
@@ -553,6 +621,9 @@ impl LanguageServer for Backend {
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        if self.stale().is_some() {
+            return Ok(None);
+        }
         let pos = params.text_document_position_params;
         let Some(text) = self.document_text(&pos.text_document.uri) else {
             return Ok(None);
@@ -565,6 +636,9 @@ impl LanguageServer for Backend {
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        if self.stale().is_some() {
+            return Ok(None);
+        }
         let pos = params.text_document_position;
         let Some(text) = self.document_text(&pos.text_document.uri) else {
             return Ok(None);
@@ -584,6 +658,9 @@ impl LanguageServer for Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
+        if self.stale().is_some() {
+            return Ok(None);
+        }
         let pos = params.text_document_position_params;
         let uri = pos.text_document.uri;
         let Some(text) = self.document_text(&uri) else {
@@ -605,6 +682,9 @@ impl LanguageServer for Backend {
     }
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        if self.stale().is_some() {
+            return Ok(None);
+        }
         let pos = params.text_document_position;
         let uri = pos.text_document.uri;
         let Some(text) = self.document_text(&uri) else {
@@ -680,6 +760,9 @@ impl LanguageServer for Backend {
     /// when the document isn't open, has no cached diagnostics yet (never
     /// analyzed), or none overlap with a fixit — never an empty `Some(vec![])`.
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        if self.stale().is_some() {
+            return Ok(None);
+        }
         let uri = params.text_document.uri;
         let Some(text) = self.document_text(&uri) else {
             return Ok(None);
@@ -702,7 +785,10 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _params: tower_lsp_server::ls_types::InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "lute-lsp initialized")
+            .log_message(
+                MessageType::INFO,
+                format!("lute-lsp {} initialized", env!("CARGO_PKG_VERSION")),
+            )
             .await;
     }
 

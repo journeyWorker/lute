@@ -316,7 +316,11 @@ fn arith_rejects(t: &Type) -> bool {
 fn is_id_family(t: &Type) -> bool {
     matches!(
         t,
-        Type::ProviderRef(_) | Type::Domain(_) | Type::SlotId { .. } | Type::AssetKind(_)
+        Type::ProviderRef(_)
+            | Type::Domain(_)
+            | Type::Entity(_)
+            | Type::SlotId { .. }
+            | Type::AssetKind(_)
     )
 }
 
@@ -433,6 +437,7 @@ fn scalar_name(t: &Type) -> &'static str {
         Type::Map { .. } => "map",
         Type::ProviderRef(_) => "providerRef",
         Type::Domain(_) => "domain",
+        Type::Entity(_) => "entity",
         Type::SlotId { .. } => "slotId",
         Type::AssetKind(_) => "assetKind",
     }

@@ -53,12 +53,12 @@ pub mod walk;
 
 pub use eval::{eval, EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use mock::{
-    bridge_answer_shape, bridge_result_writes, content_read_paths, merge, mock_subject,
-    parse_bridges, parse_mock_surfaces, parse_mock_yaml, raise_judges, split_occasion,
-    type_placeholder, validate, validate_bridges, BridgeAnswer, BridgeSpans, MockSet,
-    E_MOCK_SUBJECT, E_TRACE_ACCEPT, E_TRACE_BEAT, E_TRACE_CHOICE, E_TRACE_ENTRY, E_TRACE_EVENT,
-    E_TRACE_MOCK_FACT, E_TRACE_MOCK_PARSE, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED, MOCK_TEXT,
-    MOCK_TOP_KEYS, W_TRACE_MOCK_UNPRODUCIBLE,
+    bridge_answer_shape, bridge_result_writes, content_read_paths, entry_local_id, merge,
+    mock_subject, parse_bridges, parse_mock_surfaces, parse_mock_yaml, raise_judges,
+    split_occasion, type_placeholder, validate, validate_bridges, BridgeAnswer, BridgeSpans,
+    MockSet, E_MOCK_SUBJECT, E_TRACE_ACCEPT, E_TRACE_BEAT, E_TRACE_CHOICE, E_TRACE_ENTRY,
+    E_TRACE_EVENT, E_TRACE_MOCK_FACT, E_TRACE_MOCK_PARSE, E_TRACE_MOCK_TYPE,
+    E_TRACE_MOCK_UNDECLARED, MOCK_TEXT, MOCK_TOP_KEYS, W_TRACE_MOCK_UNPRODUCIBLE,
 };
 pub use quest_refs::collect_referenced_reserved_quest_paths;
 pub use report::{

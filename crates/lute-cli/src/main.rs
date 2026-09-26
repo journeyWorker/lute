@@ -89,6 +89,7 @@ mod manifests;
 mod mockcheck;
 mod play;
 mod play_expect;
+mod refs;
 mod rewrite;
 mod runner;
 mod scaffold;
@@ -171,8 +172,12 @@ enum Command {
         /// Work in progress (dsl 0.23.0 §10): report `E-ENTRY-UNREACHABLE`,
         /// `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings
         /// when only relations nothing produces yet (no seed, assert, rule,
-        /// or reserved declaration) make the guard dead. A relation that has
-        /// producers but can never match stays an error.
+        /// or reserved declaration) make the guard dead. dsl 0.26.0 §2.6: a
+        /// relation only a component `::assert` with an unbound `@param`
+        /// writes counts as unproduced for specific arguments, and a
+        /// required `<objective quest=…>` on a child dead only for that
+        /// reason is a warning too. A relation with no such component
+        /// producer whose producers can never match stays an error.
         #[arg(long)]
         wip: bool,
     },
@@ -466,7 +471,7 @@ enum Command {
     },
     /// Diagnose the local toolchain + project setup: versions, project
     /// manifest, provider snapshots, vocabulary slots, and editor integration
-    /// hints.
+    /// hints. Exit `0` (it reports, never gates) unless `--strict`.
     Doctor {
         /// Project directory to inspect (default: current directory).
         #[arg(default_value = ".")]
@@ -474,6 +479,11 @@ enum Command {
         /// Emit the report as JSON instead of human checklist lines.
         #[arg(long)]
         json: bool,
+        /// Exit `1` when any check fails (a `✗`) — a stale running
+        /// `lute-lsp`, another build beside `lute`, a stale snapshot, … — so
+        /// a harness can refuse to start on a broken setup (dsl 0.26.0 §8).
+        #[arg(long)]
+        strict: bool,
     },
     /// Execute a COMPILED artifact (`lute compile` output) headlessly against
     /// a mock playthrough — the reference consumer of the runtime contract
@@ -606,6 +616,25 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Who uses which engine content id (dsl 0.26.0 §2.5): every value of a
+    /// directive attribute (`--attr give.item`) or every target of a reward
+    /// kind (`--reward ITEM`), with the documents and lines using it — so a
+    /// lead sees "who gives what" before a merge. Read-only; documents need
+    /// not check clean. Exit `0` on success, `2` on an I/O or usage failure.
+    Refs {
+        /// Directory to walk recursively for `*.lute` files.
+        dir: PathBuf,
+        /// A directive attribute, `<directive>.<attr>` (repeatable).
+        #[arg(long, value_name = "DIRECTIVE.ATTR")]
+        attr: Vec<String>,
+        /// A reward kind whose `target=` values to list (repeatable); a
+        /// reward without a target is listed as `(no target)`.
+        #[arg(long, value_name = "KIND")]
+        reward: Vec<String>,
+        /// Emit the report as JSON instead of human-readable lines.
+        #[arg(long)]
+        json: bool,
+    },
     /// Project-wide, read-only reporting surface over everything the
     /// connectivity layer computes (dsl §5:571-584): the assembled node/edge
     /// graph, per-node reachability plus its declared `after` structure, and
@@ -627,6 +656,13 @@ enum Command {
         /// Output format: `text` (default), `json`, or `dot` (Graphviz).
         #[arg(long, value_name = "FORMAT")]
         format: Option<String>,
+        /// Graph view: also draw fact-producer edges (dsl 0.26.0 §8) —
+        /// `scene(A) -> scene(B) [hasItem(x)]` when B's gate (`when:` /
+        /// `start=`) reads `holds(F)` and A asserts `F` (or a fact the rules
+        /// deriving `F` need) — and layer over them where they close no
+        /// cycle, so progress gated by facts shows in the layers.
+        #[arg(long)]
+        facts: bool,
         /// `reach`/`envelope` sub-view; omitted -> prints the assembled
         /// topological graph (dsl §5:574).
         #[command(subcommand)]
@@ -1050,12 +1086,15 @@ const DENIABLE_CODES: &[&str] = &[
     "E-RETRACT-WILDCARD-ASSERT",
     "E-REWARD-ATTR",
     "E-REWARD-KIND",
+    "E-REWARD-TARGET",
+    "E-RULE-AGGREGATE-CYCLE",
     "E-RULE-EXCLUSIVE",
     "E-RULE-GUARD-DEF",
     "E-SET-OP-TYPE",
     "E-SET-TYPE",
     "E-STATE-COLLECTION",
     "E-STATE-DECL",
+    "E-STATE-DECL-CONFLICT",
     "E-STATE-MAYBE-UNAVAILABLE",
     "E-STATE-NAMESPACE",
     "E-STATE-REDECLARE",
@@ -1121,8 +1160,10 @@ const DENIABLE_CODES: &[&str] = &[
     "W-DEADLINE-BEFORE-DONE",
     "W-DEF-UNUSED",
     "W-DERIVE-NO-RULES",
+    "W-DISPLAY-NAME-DUP",
     "W-DOMAIN-UNREAD",
     "W-ENTRY-REF-UNKNOWN",
+    "W-ENTRY-WRITE-REREAD",
     "W-EXIT-INERT",
     "W-FACT-GUARANTEED",
     "W-INTO-SET-DUP",
@@ -1353,7 +1394,13 @@ fn main() -> ExitCode {
             start,
         ),
         Command::Lore { dir, json } => lore_report::run_lore(&dir, json),
-        Command::Doctor { dir, json } => doctor::run_doctor(&dir, json),
+        Command::Refs {
+            dir,
+            attr,
+            reward,
+            json,
+        } => refs::run_refs(&dir, &attr, &reward, json),
+        Command::Doctor { dir, json, strict } => doctor::run_doctor(&dir, json, strict),
         Command::Run {
             artifact,
             mock,
@@ -1401,11 +1448,21 @@ fn main() -> ExitCode {
             dir,
             providers,
             format,
+            facts,
             command,
-        } => match format.as_deref() {
-            None | Some("text") => run_scenario(&dir, providers.as_deref(), command),
-            Some(fmt) => scenario_fmt::run(&dir, providers.as_deref(), command, fmt),
-        },
+        } => {
+            if facts && command.is_some() {
+                eprintln!(
+                    "lute scenario: --facts applies to the graph view only; \
+                     `reach`/`envelope`/`knowledge` already show a node's facts"
+                );
+                return ExitCode::from(2);
+            }
+            match format.as_deref() {
+                None | Some("text") => run_scenario(&dir, providers.as_deref(), command, facts),
+                Some(fmt) => scenario_fmt::run(&dir, providers.as_deref(), command, fmt, facts),
+            }
+        }
         Command::Beats {
             dir,
             occasion,
@@ -1608,7 +1665,8 @@ fn assemble_input(
 
     // Lift the scene's frontmatter `profile`/`plugins` — both built-in keys, so a
     // default snapshot suffices to type them (they are not capability-gated).
-    let parsed = lute_syntax::parse(&text);
+    let mut parsed = lute_syntax::parse(&text);
+    lute_check::meta::apply_quest_tier_default(&mut parsed.0, &defaults);
     let doc = &parsed.0;
     let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
         &doc.meta,
@@ -2812,13 +2870,16 @@ fn reconcile_collected(
             // fail (project-wide: a parent in another file can cascade-fail it).
             Box::new(|| lute_check::check_project_quest_handlers(group)),
             Box::new(|| lute_check::connectivity::check_conn_episode_dup(group)),
-            // dsl 0.21.0 §5: `W-BEAT-SHADOWED` — a `select: first` beat an
-            // earlier-ordered, always-eligible, never-spent beat on the same
-            // occasion always beats. Project order is the selection tiebreak.
-            // Appended after the fact-guard pass below, where it always was.
-            Box::new(|| lute_check::check_project_beats(group, &beat_foldeds)),
+            // dsl 0.26.0 §2.1: every declaration of one state path agrees.
+            Box::new(|| lute_check::state_decls::check_project_state_decls(group, &beat_foldeds)),
+            // dsl 0.26.0 §2.8: advisory — two speakers sharing a display name.
+            Box::new(|| {
+                let casts: Vec<_> = beat_foldeds.iter().map(|f| &f.cast).collect();
+                let use_lines: Vec<_> = beat_foldeds.iter().map(|f| &f.use_lines).collect();
+                lute_check::display_names::check_display_names(group, &casts, &use_lines)
+            }),
         ];
-        let (chain, (mut standalone_diags, (ladder, producers))) = rayon::join(
+        let (chain, (standalone_diags, (ladder, producers))) = rayon::join(
             || {
                 let key_set = lute_check::connectivity::scene_key_set(group);
                 let quest_ids = lute_check::connectivity::quest_id_set(group);
@@ -2862,7 +2923,7 @@ fn reconcile_collected(
             },
         );
         let (key_set, node_diags, conn_graph, cycle_diags, ambiguous_quests, fp) = chain;
-        let beat_diags = standalone_diags.pop().expect("the beats pass is last");
+        // `standalone_diags` keeps the fixed order the passes always ran in.
         for diags in standalone_diags {
             project_diags.extend(diags);
         }
@@ -2887,14 +2948,13 @@ fn reconcile_collected(
         // of lifecycle-dead, dead-`start`, and dead-required-objective
         // consequences the fixpoint has just settled. `optional` is
         // filtered inside the helper, matching §2.1's own carve-out.
-        project_diags.extend(lute_check::check_project_subquest_unsatisfiable(
-            group,
-            &fp.unreachable_quests,
-        ));
-        // dsl 0.20.0 §5: every guard slot re-decided under the root's fact
-        // envelope (built once, by the fixpoint above). Only verdicts the
-        // facts newly make decidable are added; one the per-file `check()`
-        // already reported for the same slot is not repeated.
+        //
+        // dsl 0.20.0 §5: every guard slot below is re-decided under the
+        // root's fact envelope (built once, by the fixpoint above). Under
+        // `--wip` (dsl 0.23.0 §10, 0.26.0 §2.6) the envelope carries its
+        // work-in-progress twin: relations nothing produces yet, or only a
+        // component `::assert` with an unbound `@param` writes, may hold
+        // anything there.
         let wip_env = wip.then(|| {
             let mut vocab = lute_check::RootVocab::default();
             for (_, _, folded) in group_full {
@@ -2903,17 +2963,79 @@ fn reconcile_collected(
             let unproduced = lute_check::unproduced_relations(group, &vocab);
             fp.fact_env.clone().with_wip(&vocab, &unproduced)
         });
+        match &wip_env {
+            None => project_diags.extend(lute_check::check_project_subquest_unsatisfiable(
+                group,
+                &fp.unreachable_quests,
+            )),
+            // dsl 0.26.0 §2.6: a child unreachable only for want of
+            // producers not written yet grades its parent's objective a
+            // warning. `firm` re-derives the fixpoint's causes ignoring
+            // verdicts the work-in-progress twin does not share.
+            Some(env) => {
+                let mut firm =
+                    lute_check::connectivity::unreachable_quest_ids(group, &file_results);
+                for (path, doc, folded) in group_full {
+                    firm.extend(lute_check::fact_check::dead_required_objective_quests(
+                        path,
+                        doc,
+                        folded,
+                        env,
+                        &ambiguous_quests,
+                    ));
+                    firm.extend(lute_check::fact_check::dead_lifecycle_quests(
+                        path,
+                        doc,
+                        folded,
+                        env,
+                        &ambiguous_quests,
+                    ));
+                }
+                firm.retain(|q| fp.unreachable_quests.contains(q));
+                let pending: BTreeSet<String> =
+                    fp.unreachable_quests.difference(&firm).cloned().collect();
+                project_diags.extend(lute_check::check_project_subquest_unsatisfiable(
+                    group, &firm,
+                ));
+                project_diags.extend(
+                    lute_check::check_project_subquest_unsatisfiable(group, &pending)
+                        .into_iter()
+                        .map(|(path, mut d)| {
+                            d.severity = Severity::Warning;
+                            d.message.push_str(
+                                " — a warning under `--wip`: the child is unreachable only for \
+                                 want of producers not written yet (dsl 0.26.0 §2.6)",
+                            );
+                            (path, d)
+                        }),
+                );
+            }
+        }
         let fact_env = wip_env.as_ref().unwrap_or(&fp.fact_env);
+        // Only verdicts the facts newly make decidable are added; one the
+        // per-file `check()` already reported for the same slot is not
+        // repeated.
         // Per document, independent: in parallel, appended in walk order.
-        let guard_diags: Vec<Vec<Diagnostic>> = group_full
-            .par_iter()
-            .map(|(path, doc, folded)| {
-                let reported = result_ix
-                    .get(path)
-                    .map_or(&[][..], |&i| file_results[i].1.diagnostics.as_slice());
-                lute_check::check_fact_guards(path, doc, folded, fact_env, reported)
-            })
-            .collect();
+        // Beside it, dsl 0.21.0 §5 / 0.22.0 §13: `W-BEAT-SHADOWED` — a
+        // `select: first` beat an earlier-ordered, always-eligible,
+        // never-spent beat on the same occasion always beats (project order
+        // is the selection tiebreak) — and `W-BEAT-PRIORITY-TIE`, which (dsl
+        // 0.26.0 §8) reads the fact envelope's must sets and the root's
+        // assert sites; appended after the cast pass, where it always was.
+        let (guard_diags, beat_diags): (Vec<Vec<Diagnostic>>, _) = rayon::join(
+            || {
+                group_full
+                    .par_iter()
+                    .map(|(path, doc, folded)| {
+                        let reported = result_ix
+                            .get(path)
+                            .map_or(&[][..], |&i| file_results[i].1.diagnostics.as_slice());
+                        lute_check::check_fact_guards(path, doc, folded, fact_env, reported)
+                    })
+                    .collect()
+            },
+            || lute_check::check_project_beats(group, &beat_foldeds, &producers, Some(fact_env)),
+        );
         for ((path, _, _), diags) in group_full.iter().zip(guard_diags) {
             for d in diags {
                 project_diags.push((path.clone(), d));
@@ -5080,6 +5202,7 @@ fn print_graph_for_root(
     graph: &lute_check::connectivity::ConnGraph,
     unanchored: &[lute_check::connectivity::NodeId],
     when_visited: &[(lute_check::connectivity::NodeId, Vec<String>)],
+    facts: Option<&FactGraph>,
 ) {
     outln!(out, "project root: {}", root.display());
     if graph.nodes.is_empty() {
@@ -5087,8 +5210,12 @@ fn print_graph_for_root(
         print_unanchored(out, unanchored, when_visited);
         return;
     }
-    let layers = topo_layers(graph);
-    outln!(out, "  topological layers:");
+    let layers = topo_layers(facts.map_or(graph, |f| &f.layered));
+    if facts.is_some() {
+        outln!(out, "  topological layers (after: and fact edges):");
+    } else {
+        outln!(out, "  topological layers:");
+    }
     for (i, layer) in layers.iter().enumerate() {
         let names: Vec<String> = layer.iter().map(|n| n.to_string()).collect();
         outln!(out, "    layer {i}: {}", names.join(", "));
@@ -5122,6 +5249,28 @@ fn print_graph_for_root(
     }
     if !printed_any {
         outln!(out, "    (none)");
+    }
+    if let Some(facts) = facts {
+        outln!(out, "  fact edges (producer -> reader) [asserted fact]:");
+        if facts.edges.is_empty() {
+            outln!(out, "    (none)");
+        }
+        for (e, layered) in &facts.edges {
+            let note = if *layered {
+                ""
+            } else if graph.nodes.contains_key(&e.from) {
+                " (not layered: it closes a cycle)"
+            } else {
+                " (not layered: the producer is no graph node)"
+            };
+            outln!(
+                out,
+                "    {} -> {} [{}]{note}",
+                e.from,
+                e.to,
+                fact_edge_label(e)
+            );
+        }
     }
     print_unanchored(out, unanchored, when_visited);
 }
@@ -5205,7 +5354,7 @@ fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedR
     }
 }
 
-fn run_scenario_graph(out: &mut String, by_root: &ByRoot) -> ExitCode {
+fn run_scenario_graph(out: &mut String, by_root: &ByRoot, facts: bool) -> ExitCode {
     if by_root.is_empty() {
         outln!(out, "lute: no .lute files found");
         return ExitCode::SUCCESS;
@@ -5220,12 +5369,14 @@ fn run_scenario_graph(out: &mut String, by_root: &ByRoot) -> ExitCode {
         let (graph, _cycle_diags) =
             lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
         let when_visited = lute_check::connectivity::when_visited_unanchored(&docs, &graph);
+        let fact_graph = facts.then(|| FactGraph::of(group_full, &docs, &graph));
         print_graph_for_root(
             out,
             root,
             &graph,
             &unanchored_quests(&quest_ids, &graph),
             &when_visited,
+            fact_graph.as_ref(),
         );
         print_omitted(
             out,
@@ -5235,6 +5386,72 @@ fn run_scenario_graph(out: &mut String, by_root: &ByRoot) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// dsl 0.26.0 §8 (T3-11, `lute scenario --facts`): the root's fact-producer
+/// edges ([`lute_check::fact_edges::fact_edges`]) and the graph the layers
+/// are drawn from — `after:` edges plus every fact edge between two graph
+/// nodes, each added in edge order only where it closes no cycle (a fact
+/// edge is a "may", so a cycle through one says nothing about `after:`).
+pub(crate) struct FactGraph {
+    /// Every edge, with whether it is layered.
+    pub edges: Vec<(lute_check::fact_edges::FactEdge, bool)>,
+    pub layered: lute_check::connectivity::ConnGraph,
+}
+
+impl FactGraph {
+    pub(crate) fn of(
+        group_full: &DocGroup,
+        docs: &[(PathBuf, lute_syntax::ast::Document)],
+        graph: &lute_check::connectivity::ConnGraph,
+    ) -> Self {
+        use lute_check::connectivity::NodeId;
+        let foldeds: Vec<&lute_check::FoldedEnv> = group_full.iter().map(|(_, _, f)| f).collect();
+        let mut layered = graph.clone();
+        let reaches = |g: &lute_check::connectivity::ConnGraph, from: &NodeId, to: &NodeId| {
+            let mut seen = BTreeSet::new();
+            let mut stack = vec![from];
+            while let Some(n) = stack.pop() {
+                if n == to {
+                    return true;
+                }
+                if seen.insert(n) {
+                    stack.extend(g.edges.get(n).into_iter().flatten());
+                }
+            }
+            false
+        };
+        let edges = lute_check::fact_edges::fact_edges(docs, &foldeds, graph)
+            .into_iter()
+            .map(|e| {
+                let joins = graph.nodes.contains_key(&e.from)
+                    && graph.nodes.contains_key(&e.to)
+                    && (layered
+                        .edges
+                        .get(&e.from)
+                        .is_some_and(|t| t.contains(&e.to))
+                        || !reaches(&layered, &e.to, &e.from));
+                if joins {
+                    layered
+                        .edges
+                        .entry(e.from.clone())
+                        .or_default()
+                        .insert(e.to.clone());
+                }
+                (e, joins)
+            })
+            .collect();
+        FactGraph { edges, layered }
+    }
+}
+
+/// One fact edge's bracket: the asserted fact, and the gate's derived fact
+/// it serves.
+pub(crate) fn fact_edge_label(e: &lute_check::fact_edges::FactEdge) -> String {
+    match &e.via {
+        Some(via) => format!("{}, via {via}", e.fact),
+        None => e.fact.clone(),
+    }
+}
+
 /// `lute scenario` dispatch (dsl §5:571-584): reuses [`collect_project_docs`]
 /// — the SAME per-root doc collection `check-project` builds — then routes
 /// to the bare graph view, `reach`, or `envelope`.
@@ -5242,6 +5459,7 @@ fn run_scenario(
     dir: &Path,
     providers: Option<&Path>,
     command: Option<ScenarioCommand>,
+    facts: bool,
 ) -> ExitCode {
     let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
         Ok(v) => v,
@@ -5252,7 +5470,7 @@ fn run_scenario(
     // from a bare `println!`.
     let mut out = String::new();
     let code = match command {
-        None => run_scenario_graph(&mut out, &by_root),
+        None => run_scenario_graph(&mut out, &by_root, facts),
         Some(ScenarioCommand::Reach { node_id }) => {
             run_scenario_reach(&mut out, dir, &by_root, &file_results, &node_id)
         }
@@ -5725,9 +5943,11 @@ fn state_type_str(is_implicit: bool, ty: &Type) -> (String, Option<Vec<String>>)
         Type::Record(_) => ("record".to_string(), None),
         Type::Map { .. } => ("map".to_string(), None),
         Type::EnumFromOption(_) => ("enum".to_string(), None),
-        Type::ProviderRef(_) | Type::Domain(_) | Type::SlotId { .. } | Type::AssetKind(_) => {
-            ("string".to_string(), None)
-        }
+        Type::ProviderRef(_)
+        | Type::Domain(_)
+        | Type::Entity(_)
+        | Type::SlotId { .. }
+        | Type::AssetKind(_) => ("string".to_string(), None),
         Type::NarrativeTime => ("narrativeTime".to_string(), None),
     }
 }
@@ -5753,6 +5973,7 @@ fn attr_type_str(ty: &Type) -> (String, Option<Vec<String>>) {
         Type::EnumFromOption(opt) => (format!("enumFromOption:{opt}"), None),
         Type::ProviderRef(name) => (format!("providerRef:{name}"), None),
         Type::Domain(name) => (format!("domain:{name}"), None),
+        Type::Entity(kind) => (format!("entity:{kind}"), None),
         Type::SlotId { namespace } => (format!("slotId:{namespace}"), None),
         Type::AssetKind(name) => (format!("assetKind:{name}"), None),
         Type::NarrativeTime => ("narrativeTime".to_string(), None),
@@ -6555,9 +6776,16 @@ fn run_trace(
         derive: no_derive.then_some(false),
         bridges: Default::default(),
         bridge_spans: Default::default(),
+        gate_eligibility: false,
+        project_quests: None,
     };
 
-    let mocks = merge(file_mocks, flag_mocks);
+    let mut mocks = merge(file_mocks, flag_mocks);
+    // dsl 0.26.0 §7 (T3-5): `--accept` / `accepts:` resolve against every
+    // quest of the project, not only this document's.
+    if !mocks.accepts.is_empty() {
+        mocks.project_quests = project.and_then(|dir| project_quest_ids(dir, providers));
+    }
     // Project-aware gate (connectivity spec §5, mirrors `run_compile`): WITH
     // `--project <dir>` trace gates on the target's RECONCILED `check-project`
     // verdict; WITHOUT it, the standalone single-file `check` gate, unchanged.

@@ -919,9 +919,10 @@ fn print_json(dir: &Path, checks: &[Check]) {
 
 /// Diagnose the toolchain and project setup. See [`crate::Command::Doctor`].
 ///
-/// Always exits `0` (doctor reports, never gates) unless `dir` is unreadable,
-/// which is exit `2`.
-pub fn run_doctor(dir: &Path, json: bool) -> ExitCode {
+/// Exits `0` (doctor reports, never gates) unless `dir` is unreadable, which
+/// is exit `2` — or, with `strict` (dsl 0.26.0 §8), `1` when any check
+/// failed.
+pub fn run_doctor(dir: &Path, json: bool, strict: bool) -> ExitCode {
     let Some(checks) = collect_checks(dir) else {
         eprintln!("lute doctor: cannot read `{}`", dir.display());
         return ExitCode::from(2);
@@ -931,5 +932,9 @@ pub fn run_doctor(dir: &Path, json: bool) -> ExitCode {
     } else {
         print_human(dir, &checks);
     }
-    ExitCode::SUCCESS
+    if strict && checks.iter().any(|c| c.ok == Some(false)) {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
 }

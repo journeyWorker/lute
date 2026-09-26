@@ -502,13 +502,21 @@ fn walk_match(
             Arm::Otherwise { .. } => otherwise = Some(l.sym()),
         }
     }
+    // dsl 0.26.0 §4: a guarded `::use`'s match reports the use as authored.
+    let authored = m.attrs.iter().find_map(|a| match (&*a.key, &a.value) {
+        (crate::normalize::AUTHORED_ATTR, AttrValue::Str(s)) => Some(s.clone()),
+        _ => None,
+    });
     let mut cmd = Command::Match(MatchCmd {
         addr: String::new(),
         subject: m.subject.raw.clone(),
         arms,
         otherwise,
         converge: conv.sym(),
-        stamp: Stamp::default(),
+        stamp: Stamp {
+            authored,
+            ..Stamp::default()
+        },
     });
     apply_source(&mut cmd, cx);
     em.push(cmd);
@@ -835,6 +843,14 @@ pub fn walk_entry(
             _ => None,
         }),
         share: text(&entry.share),
+        target_kind: entry.on.as_ref().and_then(|(on, _)| {
+            crate::ir::TargetKind::resolve(
+                on,
+                entry.target.as_ref().map(|(t, _)| t.as_str()),
+                &cx.snapshot.occasions,
+                &cx.env.rel_vocab.kinds,
+            )
+        }),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -878,6 +894,14 @@ pub fn walk_bundle_beat(
         also: lute_check::bundle_beat_also(beat),
         share: beat.share.as_ref().map(|(k, _)| k.clone()),
         after: beat.after.as_ref().map(|(a, _)| a.clone()),
+        target_kind: beat.on.as_ref().and_then(|(on, _)| {
+            crate::ir::TargetKind::resolve(
+                on,
+                beat.target.as_ref().map(|(t, _)| t.as_str()),
+                &cx.snapshot.occasions,
+                &cx.env.rel_vocab.kinds,
+            )
+        }),
         body: label.sym(),
         stamp: Stamp::default(),
     });

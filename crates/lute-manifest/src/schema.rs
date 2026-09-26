@@ -460,15 +460,70 @@ pub struct RewardKindBody {
     pub credits: Option<String>,
 }
 
-/// A reward kind's `target:` contract (dsl 0.16.0 §4): the id-space a
-/// `<reward target=…>` value must resolve against. `provider` names one of
-/// the active-snapshot providers — the `providerRef` pattern — and assembly
-/// rejects a kind that pins a provider no active plugin declares (parallels
-/// [`crate::assemble::AssembleError::UnknownAssetKind`]).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// A reward kind's `target:` contract (dsl 0.16.0 §4, 0.26.0 §2.5): the
+/// id-space a `<reward target=…>` value must resolve against. `provider`
+/// names one of the active-snapshot providers — the `providerRef` pattern —
+/// and assembly rejects a kind that pins a provider no active plugin
+/// declares (parallels [`crate::assemble::AssembleError::UnknownAssetKind`]).
+/// `entity` names a project entity kind instead (checked against the merged
+/// `entities:`). At most one of the two; `required: true` rejects a reward
+/// of this kind with no `target=` at all. The checker reports a violation
+/// as `E-REWARD-TARGET`.
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, try_from = "RawRewardTarget")]
 pub struct RewardTarget {
-    pub provider: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub required: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawRewardTarget {
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    entity: Option<String>,
+    #[serde(default)]
+    required: bool,
+}
+
+impl TryFrom<RawRewardTarget> for RewardTarget {
+    type Error = String;
+    fn try_from(raw: RawRewardTarget) -> Result<Self, String> {
+        if raw.provider.is_some() && raw.entity.is_some() {
+            return Err(
+                "a reward kind's `target:` takes `provider:` or `entity:`, not both".to_string(),
+            );
+        }
+        Ok(RewardTarget {
+            provider: raw.provider,
+            entity: raw.entity,
+            required: raw.required,
+        })
+    }
+}
+
+/// Hand-written so a pre-0.26 `{ provider: p }` contract prints exactly as
+/// it did (`capabilityVersion` hashes [`RewardKindDecl`]'s `Debug`): only the
+/// fields a contract sets are shown.
+impl std::fmt::Debug for RewardTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("RewardTarget");
+        if let Some(p) = &self.provider {
+            s.field("provider", p);
+        }
+        if let Some(e) = &self.entity {
+            s.field("entity", e);
+        }
+        if self.required {
+            s.field("required", &true);
+        }
+        s.finish()
+    }
 }
 
 /// A capability-declared reward kind (dsl 0.16.0 §4): the vocabulary a

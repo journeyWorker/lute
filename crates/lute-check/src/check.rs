@@ -408,6 +408,11 @@ pub struct FoldedEnv {
     /// (`crate::cast::reconcile_presence`, dsl 0.24.0 §4) reads `present:`
     /// from.
     pub cast: std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
+    /// dsl 0.26.0 §3.2: per `::use` of this document (keyed by its span
+    /// start), the `@@p:` lines it speaks, bound to the members its
+    /// arguments name ([`crate::component_effects::use_speaker_lines`]) —
+    /// what the emotion and presence passes judge at that `::use`.
+    pub use_lines: std::collections::BTreeMap<usize, Vec<lute_syntax::ast::Line>>,
 }
 
 /// Fold the analysis environment from an already-parsed document. Returns two
@@ -501,10 +506,21 @@ pub fn fold_env(
     //     `entities:`/`relations:`/`enums:`/`facts:`/`rules:`, every
     //     declaration checked (§3.1/§4) and every seed `facts:` entry
     //     validated via `check_atom` (D12 wildcard-in-seed included).
-    let (domains, domain_diags) =
+    let (mut domains, domain_diags) =
         merge_domains(&input.snapshot, &input.imports, &typed, doc.meta.span);
     let (mut vocab, rel_diags) =
         crate::rel_schema::build_rel_vocab(&input.imports, &typed, &domains, &doc.meta);
+    // dsl 0.26.0 §2.3: a project kind's domain is the kind's final member
+    // list — this document's `add:`s and sub-kinds included.
+    for (name, decl) in &vocab.kinds {
+        if let (lute_manifest::relations::KindShape::Members(ms), Some(d)) =
+            (&decl.shape, domains.get_mut(name))
+        {
+            if !input.snapshot.domains.contains_key(name) && d.members.len() != ms.len() {
+                d.members = ms.clone();
+            }
+        }
+    }
     fold_diags.extend(domain_diags);
     fold_diags.extend(rel_diags);
     // Per-rule Datalog checks (dsl 0.3.0 §7.1/§7.2, 0.3.0 T8): heads, body
@@ -636,7 +652,12 @@ pub fn fold_env(
         // (with `fold_diags`) so a shape/vocab fault surfaces alongside the
         // rest of the quest fold — the Walker's `reward.when` Bool profile
         // gate below owns only the CEL-side check.
-        fold_diags.extend(check_quest_rewards(quest, &input.snapshot));
+        fold_diags.extend(check_quest_rewards(
+            quest,
+            &input.snapshot,
+            &input.providers,
+            &vocab.kinds,
+        ));
     }
     // dsl 0.23.0 §6: a subquest's `tier` equals its parent's — the
     // same-document half of `E-QUEST-TIER-MIX` (check-project owns the
@@ -758,6 +779,27 @@ pub fn fold_env(
         &input.snapshot.occasions,
         &vocab.kinds,
     ));
+    // dsl 0.26.0 §5: a kind beat reads the member it was raised for as
+    // `occasion.target`, typed by the kinds the document's kind beats answer
+    // (engine-owned, always assigned while such a beat runs).
+    let occasion_members = crate::beats::occasion_target_members(
+        doc,
+        typed.beat.as_ref(),
+        &input.snapshot.occasions,
+        &vocab.kinds,
+    );
+    if !occasion_members.is_empty() {
+        schema.decls.insert(
+            crate::beats::OCCASION_TARGET.to_string(),
+            crate::meta::StateDecl {
+                ty: lute_manifest::types::Type::Enum(occasion_members),
+                default: None,
+                namespace: crate::meta::Namespace::Scene,
+                owner: Some(lute_manifest::types::Owner::Engine),
+            },
+        );
+        fold_diags.extend(crate::beats::check_occasion_target_scope(doc));
+    }
     // dsl 0.24.0 §2: every `<on event target>`, checked like an objective's.
     fold_diags.extend(crate::on::check_on_targets(
         &doc.quests,
@@ -775,7 +817,7 @@ pub fn fold_env(
     //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
     //     opens `scene.minigame.k.<field>` for each field of its shape. This runs
     //     before the walk + defassign so plugin-declared state resolves.
-    fold_directive_slots(doc, &input.snapshot, &mut schema);
+    fold_directive_slots(doc, &input.snapshot, &input.components, &mut schema);
 
     // The def names the `@ref` resolver validates against (dsl §8.1): inline
     // frontmatter defs plus plugin-exported defs (both are declared refs).
@@ -964,6 +1006,7 @@ pub fn fold_env(
         clock,
     };
     let declared_cast = crate::cast::declared_cast(&input.snapshot, &input.imports, &typed.cast);
+    let use_lines = use_speaker_lines(doc, &input.components);
     (
         FoldedEnv {
             typed,
@@ -973,6 +1016,7 @@ pub fn fold_env(
             domains,
             occasions: input.snapshot.occasions.clone(),
             cast: declared_cast,
+            use_lines,
         },
         fold_diags,
         state_merge_diags,
@@ -994,6 +1038,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
 
     // 1. Parse the DSL structure (done by the caller).
     let (mut doc, parse_diags) = parsed;
+    crate::meta::apply_quest_tier_default(&mut doc, &input.defaults);
     // dsl 0.24.0 §4: each `::use` of an `effects: true` component performs
     // its body's writes HERE, in this document — splice them in (anchored at
     // the `::use`) so every pass below judges them against this document's
@@ -1181,6 +1226,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                 effects: folded.typed.effects,
                 speakers: &folded.typed.speaker_params,
                 cast: &own_cast,
+                own: component_own_slots(&doc, &input.snapshot, &input.components),
             };
             for shot in &doc.shots {
                 walk_component_body(
@@ -1407,7 +1453,12 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // dsl 0.24.0 §4: `emotion=` against the speaker's `emotions:`, and
     // `W-CAST-ABSENT` (decided without facts here; `check-project`
     // re-decides it under the fact envelope).
-    cast_diags.extend(crate::cast::check_emotions(&doc, cast, &folded.domains));
+    cast_diags.extend(crate::cast::check_emotions(
+        &doc,
+        cast,
+        &folded.domains,
+        &folded.use_lines,
+    ));
     cast_diags.extend(crate::cast::check_presence(
         std::path::Path::new(&input.uri),
         &doc,
@@ -1635,6 +1686,9 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         });
     }
 
+    // dsl 0.26.0 §4: one of each identical report inside a guarded `::use`
+    // (its guard rides every write it splices into the host).
+    let diags = dedup_guarded_use_reports(&doc, diags);
     // Dedup overlapping `E-UNDECLARED` (carry-forward #4) BEFORE the sort.
     let mut diags = dedup_undeclared(diags);
 
@@ -1693,6 +1747,24 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     std::iter::once(input.text.as_str())
                         .chain(folded.def_bodies.values().map(String::as_str)),
                 ));
+                // dsl 0.26.0 §5: a `target="kind:<kind>"` beat reads its kind.
+                let scene_target = folded.typed.beat.as_ref().and_then(|b| b.target.as_deref());
+                read.extend(
+                    scene_target
+                        .into_iter()
+                        .chain(
+                            doc.entries
+                                .iter()
+                                .filter_map(|e| Some(e.target.as_ref()?.0.as_str())),
+                        )
+                        .chain(
+                            doc.beats
+                                .iter()
+                                .filter_map(|b| Some(b.target.as_ref()?.0.as_str())),
+                        )
+                        .filter_map(crate::lore::kind_target)
+                        .map(str::to_string),
+                );
                 read
             },
             at: doc.meta.span,
@@ -1909,6 +1981,19 @@ impl Walker<'_> {
                     );
                     check_interps(&l.interps, ctx, &mut self.diags);
                     self.diags.extend(text_looks_like_ref(l, ctx));
+                    // dsl 0.26.0 §3.2: `@@p:` speaks as a component's
+                    // `speaker` param — there is none outside a component.
+                    if let Some(p) = l.speaker.strip_prefix('@') {
+                        self.diags.push(use_diag(
+                            E_COMPONENT_ARG,
+                            format!(
+                                "`@@{p}:` speaks as a component's `speaker` param `{p}`, and this \
+                                 document is no component — write the cast id (`@{p}:`) (dsl \
+                                 0.26.0 §3.2)"
+                            ),
+                            l.span,
+                        ));
+                    }
                     if let Some(when) = &l.when {
                         // D9 (dsl 0.4.0 §7.2): `$` is NOT in scope in a
                         // content-line `when=`, matching `<on when>` — force
@@ -1938,6 +2023,8 @@ impl Walker<'_> {
                     // `@ref`-valued args still resolve in the current scope; there
                     // is no directive decl to type them against.
                     self.check_attr_refs(&d.attrs, ctx, None);
+                    self.diags
+                        .extend(check_directive_when(d, self.snapshot, self.arena, ctx));
                 }
                 Node::Directive(d) if d.is_accept() => {
                     // dsl 0.21.0 §7a.3: `::accept` is a core directive of the
@@ -1945,6 +2032,8 @@ impl Walker<'_> {
                     // `E-UNKNOWN-DIRECTIVE`). Its one attribute is a quest id,
                     // never a `@ref`, so there is no attr ref to resolve.
                     crate::accept::check_accept_directive(d, &mut self.diags);
+                    self.diags
+                        .extend(check_directive_when(d, self.snapshot, self.arena, ctx));
                 }
                 Node::Directive(d) => {
                     self.diags.extend(check_directive(
@@ -1955,22 +2044,8 @@ impl Walker<'_> {
                         ctx,
                     ));
                     self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
-                    if let Some(when) = &d.when {
-                        // dsl 0.12.0: `::next{when=}` — same "$ not in scope"
-                        // rule as a content-line `when=`/`<on when>` (D9); no
-                        // match-subject context applies to a directive.
-                        let ctx_no_dollar = Ctx {
-                            env: ctx.env,
-                            in_match: false,
-                            match_subject: None,
-                        };
-                        self.diags.extend(check_cel_slot(
-                            when,
-                            self.arena,
-                            &ctx_no_dollar,
-                            Some(&ExpectedType::Bool),
-                        ));
-                    }
+                    self.diags
+                        .extend(check_directive_when(d, self.snapshot, self.arena, ctx));
                 }
                 Node::Set(s) => {
                     self.diags.extend(check_set(s, &ctx.env.state, ctx));
@@ -2333,11 +2408,15 @@ impl Walker<'_> {
                 }
                 Node::Assert(a) => {
                     self.diags
-                        .extend(crate::fact_write::check_assert(a, self.domains, ctx))
+                        .extend(crate::fact_write::check_assert(a, self.domains, ctx));
+                    self.diags
+                        .extend(check_guard(a.when.as_ref(), self.arena, ctx));
                 }
                 Node::Retract(r) => {
                     self.diags
-                        .extend(crate::fact_write::check_retract(r, self.domains, ctx))
+                        .extend(crate::fact_write::check_retract(r, self.domains, ctx));
+                    self.diags
+                        .extend(check_guard(r.when.as_ref(), self.arena, ctx));
                 }
             }
         }
@@ -2770,15 +2849,60 @@ fn check_use(
             }
         }
     }
-    // Every param must be supplied (v1 has no param defaults).
-    for (p, _) in &def.params {
-        if !dir.attrs.iter().any(|a| &a.key == p) {
+    // Every param must be supplied — dsl 0.26.0 §3.3: or declare a
+    // `default:`, which an omitted param takes and which is judged here, at
+    // the `::use`, like the argument it stands for.
+    let mut args = crate::component_effects::use_args_for(dir, def);
+    let mut defaulted: Vec<Attr> = Vec::new();
+    for (p, pty) in &def.params {
+        if dir.attrs.iter().any(|a| &a.key == p) {
+            continue;
+        }
+        let Some(value) = args.remove(p) else {
             diags.push(use_diag(
                 E_COMPONENT_ARG,
                 format!("component `{name}` requires argument `{p}` (dsl §13)"),
                 dir.span,
             ));
+            continue;
+        };
+        let shown = match &value {
+            AttrValue::Ref(slot) => slot.raw.clone(),
+            AttrValue::Str(s) => format!("\"{s}\""),
+            AttrValue::BoolTrue => "true".to_string(),
+        };
+        let unresolved = match &value {
+            AttrValue::Ref(slot) => scan_refs(&slot.raw)
+                .iter()
+                .find(|r| !r.is_dollar && !ctx.env.defs.contains(&r.name))
+                .map(|r| r.name.clone()),
+            _ => None,
+        };
+        if let Some(r) = unresolved {
+            diags.push(use_diag(
+                E_COMPONENT_ARG,
+                format!(
+                    "component `{name}` defaults `{p}` to `{shown}`, but `@{r}` is not a def \
+                     here — declare it, or pass `{p}=…` (dsl 0.26.0 §3.3)"
+                ),
+                dir.span,
+            ));
+        } else if !def.speakers.contains(p) && !use_arg_ok(pty, &value, ctx) {
+            diags.push(use_diag(
+                E_COMPONENT_ARG,
+                format!(
+                    "component `{name}` defaults `{p}` to `{shown}`, which is not compatible \
+                     with its declared type (dsl 0.26.0 §3.3)"
+                ),
+                dir.span,
+            ));
         }
+        defaulted.push(Attr {
+            key: p.clone(),
+            value,
+            value_span: dir.span,
+            span: dir.span,
+        });
     }
     // dsl 0.24.0 §4: a param an `::assert` / `::retract` passes as a fact
     // argument, or a `::set` uses as a `per:` member index
@@ -2790,6 +2914,7 @@ fn check_use(
     for attr in dir
         .attrs
         .iter()
+        .chain(&defaulted)
         .filter(|a| fact_params.contains_key(&a.key) || index_params.contains_key(&a.key))
     {
         let pass_through = matches!(&attr.value, AttrValue::Ref(s)
@@ -2951,7 +3076,25 @@ fn check_speaker_args(
     else {
         return;
     };
-    for attr in dir.attrs.iter().filter(|a| def.speakers.contains(&a.key)) {
+    // dsl 0.26.0 §3.3: an omitted speaker param's `default:` is judged like
+    // the argument it stands for.
+    let defaulted: Vec<Attr> = def
+        .defaults
+        .iter()
+        .filter(|(p, _)| def.speakers.contains(p) && !dir.attrs.iter().any(|a| &a.key == *p))
+        .map(|(p, v)| Attr {
+            key: p.clone(),
+            value: v.clone(),
+            value_span: dir.span,
+            span: dir.span,
+        })
+        .collect();
+    for attr in dir
+        .attrs
+        .iter()
+        .chain(&defaulted)
+        .filter(|a| def.speakers.contains(&a.key))
+    {
         let literal = match &attr.value {
             AttrValue::Str(id) => Some(id.as_str()),
             AttrValue::Ref(slot)
@@ -3173,6 +3316,7 @@ fn validate_components(
             effects: def.effects,
             speakers: &def.speakers,
             cast,
+            own: component_own_slots(&def.body, snapshot, components),
         };
         // Fill the component body's OWN CEL slots into a fresh arena (independent
         // of the scene's).
@@ -3418,6 +3562,95 @@ fn collect_use_names(nodes: &[Node], out: &mut Vec<(String, Span)>) {
     }));
 }
 
+/// dsl 0.26.0 §4: drop a report identical (code, severity, span, message) to
+/// an earlier one inside a guarded `::use`. The guard rides every write the
+/// `::use` splices into the host ([`crate::component_effects`]), each
+/// anchored at the `::use`, so the host passes judge the one guard once per
+/// write.
+fn dedup_guarded_use_reports(doc: &Document, diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    let mut dirs = Vec::new();
+    for body in doc
+        .shots
+        .iter()
+        .map(|s| &s.body)
+        .chain(doc.quests.iter().map(|q| &q.body))
+        .chain(doc.entries.iter().map(|e| &e.body))
+        .chain(doc.beats.iter().map(|b| &b.body))
+    {
+        collect_use_directives(body, &mut dirs);
+    }
+    let guarded: Vec<Span> = dirs
+        .into_iter()
+        .filter(|d| d.when.is_some())
+        .map(|d| d.span)
+        .collect();
+    if guarded.is_empty() {
+        return diags;
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    diags
+        .into_iter()
+        .filter(|d| {
+            !guarded
+                .iter()
+                .any(|g| g.byte_start <= d.span.byte_start && d.span.byte_end <= g.byte_end)
+                || seen.insert((
+                    d.code.clone(),
+                    d.span.byte_start,
+                    d.span.byte_end,
+                    d.severity as u8,
+                    d.message.clone(),
+                ))
+        })
+        .collect()
+}
+
+/// dsl 0.26.0 §3.2: [`FoldedEnv::use_lines`] — every `::use` of `doc` that
+/// speaks through a `speaker` param, with its bound `@@p:` lines.
+pub fn use_speaker_lines(
+    doc: &Document,
+    components: &ComponentSet,
+) -> std::collections::BTreeMap<usize, Vec<lute_syntax::ast::Line>> {
+    let speaks = |def: &crate::component_import::ComponentDef| {
+        def.body.shots.iter().any(|s| body_speaks_as_param(&s.body))
+    };
+    let mut out = std::collections::BTreeMap::new();
+    if !components.table.values().any(speaks) {
+        return out;
+    }
+    let mut dirs = Vec::new();
+    for body in doc
+        .shots
+        .iter()
+        .map(|s| &s.body)
+        .chain(doc.quests.iter().map(|q| &q.body))
+        .chain(doc.entries.iter().map(|e| &e.body))
+        .chain(doc.beats.iter().map(|b| &b.body))
+    {
+        collect_use_directives(body, &mut dirs);
+    }
+    for d in dirs {
+        let lines = crate::component_effects::use_speaker_lines(d, components);
+        if !lines.is_empty() {
+            out.insert(d.span.byte_start, lines);
+        }
+    }
+    out
+}
+
+/// A `@@p:` line anywhere in a component body (param-scoped `<match>` arms
+/// included).
+fn body_speaks_as_param(nodes: &[Node]) -> bool {
+    nodes.iter().any(|n| match n {
+        Node::Line(l) => l.speaker.starts_with('@'),
+        Node::Match(m) => m.arms.iter().any(|arm| {
+            let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+            body_speaks_as_param(body)
+        }),
+        _ => false,
+    })
+}
+
 /// Every `::use` directive in `nodes`, in document order. Recurses every node
 /// kind that can hold one.
 fn collect_use_directives<'a>(nodes: &'a [Node], out: &mut Vec<&'a Directive>) {
@@ -3626,10 +3859,21 @@ fn component_env(params: &[(String, Type)]) -> Env {
 /// `check_cel_slot`'s declared-schema resolution (D6: the empty component env
 /// would otherwise misreport these same sites as
 /// `E-UNDECLARED`/`E-RELATION-UNKNOWN`).
-fn component_slot_state_scan(slot: &CelSlot, arena: &CelArena, diags: &mut Vec<Diagnostic>) {
+///
+/// dsl 0.26.0 §3.3: `own` is the component's OWN result slots
+/// ([`component_own_slots`]) — a read of one is no ambient read.
+fn component_slot_state_scan(
+    slot: &CelSlot,
+    arena: &CelArena,
+    own: &std::collections::BTreeSet<String>,
+    diags: &mut Vec<Diagnostic>,
+) {
     if let Some(handle) = slot.ast.clone() {
         if let Some(root) = arena.get(handle) {
             for use_ in crate::cel_paths::collect_path_uses(&root.expr) {
+                if own.contains(&use_.path) {
+                    continue;
+                }
                 diags.push(use_diag(
                     E_COMPONENT_STATE,
                     format!(
@@ -3746,7 +3990,12 @@ fn text_looks_like_ref(l: &lute_syntax::ast::Line, ctx: &Ctx<'_>) -> Option<Diag
 /// level) — and in rendering a bare `string` param (dsl 0.23.0 §5). A `@ref`
 /// interpolation otherwise keeps its ordinary `E-UNDECLARED-REF`/`E-REF-TYPE`
 /// semantics (resolved against the component's `@param` env in `ctx`).
-fn component_interp_scan(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+fn component_interp_scan(
+    interps: &[Interp],
+    ctx: &Ctx<'_>,
+    own: &std::collections::BTreeSet<String>,
+    diags: &mut Vec<Diagnostic>,
+) {
     let interp_ctx = Ctx {
         env: ctx.env,
         in_match: false,
@@ -3767,6 +4016,10 @@ fn component_interp_scan(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diag
                 // followed. Same code (the read is still not a param ref),
                 // but the message names the fix.
                 let name = interp.raw.trim();
+                // dsl 0.26.0 §3.3: the component's own result slot.
+                if own.contains(name) {
+                    continue;
+                }
                 let message = if ctx.env.defs.contains(name) {
                     format!(
                         "`{{{{{name}}}}}` reads `{name}` as a state path, but `{name}` is a param \
@@ -3827,13 +4080,115 @@ pub(crate) fn directive_writes_state(snapshot: &CapabilitySnapshot, tag: &str) -
     })
 }
 
+/// dsl 0.26.0 §4: a write's or directive's `when=` guard — a `Bool`
+/// condition with `$` out of scope (D9), exactly as `::set{… when=}`'s.
+fn check_guard(when: Option<&CelSlot>, arena: &CelArena, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
+    let Some(when) = when else {
+        return Vec::new();
+    };
+    let ctx_no_dollar = Ctx {
+        env: ctx.env,
+        in_match: false,
+        match_subject: None,
+    };
+    check_cel_slot(when, arena, &ctx_no_dollar, Some(&ExpectedType::Bool))
+}
+
+/// dsl 0.26.0 §4: why directive `d` cannot carry a `when=` guard — `None`
+/// for `::next`, `::use`, `::accept` and a plugin passthrough directive
+/// (and an unknown one, `E-UNKNOWN-DIRECTIVE`'s). A builtin-lowered
+/// directive (core staging, `::end`, `::mark`, a plugin `lower:` record or
+/// builtin hook) runs unconditionally where it stands; a directive that
+/// declares its own `when` attribute reads the guard as that attribute.
+pub(crate) fn directive_when_refused(
+    d: &Directive,
+    snapshot: &CapabilitySnapshot,
+) -> Option<String> {
+    if matches!(d.tag.as_str(), "next" | "use") || d.is_accept() {
+        return None;
+    }
+    let decl = snapshot.directive(&d.tag)?;
+    if decl.attrs.iter().any(|a| a.name == "when") {
+        return Some(format!(
+            "`::{}` declares an attribute named `when`, and since dsl 0.26.0 §4 `when=` on a \
+             directive is its guard — rename the attribute in the plugin",
+            d.tag
+        ));
+    }
+    (!decl.lower.is_passthrough()).then(|| {
+        format!(
+            "`::{}` cannot take `when=`: it lowers to a builtin record and runs where it stands — \
+             put it in a `<match>`; `when=` guards `::use`, `::accept`, `::assert`, `::retract`, \
+             `::set` and plugin passthrough directives (dsl 0.26.0 §4)",
+            d.tag
+        )
+    })
+}
+
+/// dsl 0.26.0 §4: a directive's `when=` — refused where no guard applies
+/// ([`directive_when_refused`], `E-UNKNOWN-ATTR` at the guard), else checked
+/// as [`check_guard`].
+fn check_directive_when(
+    d: &Directive,
+    snapshot: &CapabilitySnapshot,
+    arena: &CelArena,
+    ctx: &Ctx<'_>,
+) -> Vec<Diagnostic> {
+    let Some(when) = &d.when else {
+        return Vec::new();
+    };
+    match directive_when_refused(d, snapshot) {
+        Some(message) => vec![use_diag(
+            crate::content_line::E_UNKNOWN_ATTR,
+            message,
+            when.span,
+        )],
+        None => check_guard(Some(when), arena, ctx),
+    }
+}
+
 /// What a component body may do beyond presenting (dsl 0.24.0 §4): its
-/// `effects:` flag, its own `speaker` params, and the host's cast they
-/// range over.
+/// `effects:` flag, its own `speaker` params, the host's cast they range
+/// over, and (dsl 0.26.0 §3.3) the result slots its own plugin directives
+/// declare ([`component_own_slots`]), which it may read.
 struct BodyScope<'a> {
     effects: bool,
     speakers: &'a [String],
     cast: &'a std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
+    own: std::collections::BTreeSet<String>,
+}
+
+/// dsl 0.26.0 §3.3: the result slots the plugin directives of a component's
+/// own body declare (a literal key: `::battle{resultKey="fight"}` →
+/// `scene.battle.fight.won`, …) — state its body MAY read, since every
+/// `::use` opens them in the host ([`fold_directive_slots`]); not ambient.
+fn component_own_slots(
+    body: &Document,
+    snapshot: &CapabilitySnapshot,
+    components: &ComponentSet,
+) -> std::collections::BTreeSet<String> {
+    let mut schema = crate::meta::StateSchema::default();
+    fold_directive_slots(body, snapshot, components, &mut schema);
+    schema.decls.into_keys().collect()
+}
+
+/// dsl 0.26.0 §3.3: `slot` reads state, and only the component's own result
+/// slots (`own`) — no other path, no fact query, no `now()`.
+fn reads_only_own(
+    slot: &CelSlot,
+    arena: &CelArena,
+    own: &std::collections::BTreeSet<String>,
+) -> bool {
+    let Some(root) = slot.ast.clone().and_then(|h| arena.get(h)) else {
+        return false;
+    };
+    let uses = crate::cel_paths::collect_path_uses(&root.expr);
+    if uses.is_empty() || !uses.iter().all(|u| own.contains(&u.path)) {
+        return false;
+    }
+    let mut queries = Vec::new();
+    component_slot_state_scan(slot, arena, own, &mut queries);
+    queries.is_empty()
 }
 
 /// A diagnostic a component's EMPTY schema/vocabulary raises for a path or
@@ -3841,6 +4196,34 @@ struct BodyScope<'a> {
 /// component-side check, since the host judges that write at each `::use`.
 fn is_host_schema_code(code: &str) -> bool {
     code == "E-UNDECLARED" || code == crate::rel_schema::E_RELATION_UNKNOWN
+}
+
+/// dsl 0.26.0 §4: a component-body directive's `when=` — refused where no
+/// guard applies ([`directive_when_refused`]); a write's guard (`writes`)
+/// is judged at each `::use` against the host (it rides the spliced write),
+/// so here only its `@param`s resolve; any other guard is component logic
+/// and reads params only (`E-COMPONENT-STATE`, like a line's `when=`).
+fn component_guard(
+    d: &Directive,
+    snapshot: &CapabilitySnapshot,
+    arena: &CelArena,
+    ctx: &Ctx<'_>,
+    writes: bool,
+    scope: &BodyScope<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let Some(when) = &d.when else {
+        return;
+    };
+    let ds = check_directive_when(d, snapshot, arena, ctx);
+    if writes {
+        diags.extend(ds.into_iter().filter(|d| !is_host_schema_code(&d.code)));
+    } else {
+        diags.extend(ds);
+        if directive_when_refused(d, snapshot).is_none() {
+            component_slot_state_scan(when, arena, &scope.own, diags);
+        }
+    }
 }
 
 /// Walk a component body in component mode (dsl 0.4.0 §6, §13). Lines +
@@ -3879,7 +4262,7 @@ fn walk_component_body(
     for node in nodes {
         match node {
             Node::Line(l) => {
-                body_attr_refs(&l.attrs, snapshot, arena, ctx, None, diags);
+                body_attr_refs(&l.attrs, snapshot, arena, ctx, None, &scope.own, diags);
                 // finding 2 (Task 7b, the SAME class as finding 1 below):
                 // `check_content_line_attrs` was skipped here entirely, so
                 // NO content-line attribute rule applied inside a component
@@ -3926,8 +4309,27 @@ fn walk_component_body(
                 // `{{run.x}}`-style state path is ALWAYS `E-COMPONENT-STATE`
                 // here (a component has no `state:` schema to resolve one
                 // against, and the purity contract forbids the read anyway).
-                component_interp_scan(&l.interps, ctx, diags);
+                component_interp_scan(&l.interps, ctx, &scope.own, diags);
                 diags.extend(text_looks_like_ref(l, ctx));
+                // dsl 0.26.0 §3.2: `@@p:` speaks as the member the `speaker`
+                // param `p` names at each `::use`.
+                if let Some(p) = l.speaker.strip_prefix('@') {
+                    if !scope.speakers.iter().any(|s| s == p) {
+                        let why = if ctx.env.defs.contains(p) {
+                            format!("`{p}` is not a `speaker` param — declare `{p}: speaker`")
+                        } else {
+                            format!("this component has no param `{p}`")
+                        };
+                        diags.push(use_diag(
+                            E_COMPONENT_ARG,
+                            format!(
+                                "`@@{p}:` speaks as the cast member a `speaker` param names, and \
+                                 {why} (dsl 0.26.0 §3.2)"
+                            ),
+                            l.span,
+                        ));
+                    }
+                }
                 // dsl 0.4.0 §7.2/§6.2: a content-line `when=` guard gets BOTH
                 // the positive ambient-state scan (D6: the AUTHORITATIVE
                 // `E-COMPONENT-STATE` diagnosis for a bare-param guard vs. an
@@ -3955,13 +4357,16 @@ fn walk_component_body(
                         &ctx_no_dollar,
                         Some(&ExpectedType::Bool),
                     ));
-                    component_slot_state_scan(when, arena, diags);
+                    component_slot_state_scan(when, arena, &scope.own, diags);
                 }
             }
             Node::Directive(d) if d.tag == "use" => {
                 check_use(d, components, ctx, diags);
                 check_speaker_args(d, components, scope.cast, scope.speakers, diags);
-                body_attr_refs(&d.attrs, snapshot, arena, ctx, None, diags);
+                body_attr_refs(&d.attrs, snapshot, arena, ctx, None, &scope.own, diags);
+                let writes = scope.effects
+                    && use_target(d).is_some_and(|n| components.table.get(n).is_some_and(|c| c.effects));
+                component_guard(d, snapshot, arena, ctx, writes, scope, diags);
                 if let Some(inner) = use_target(d)
                     .filter(|n| !scope.effects && components.table.get(*n).is_some_and(|c| c.effects))
                 {
@@ -3979,8 +4384,9 @@ fn walk_component_body(
                 // judged at each `::use` against the host (spliced there);
                 // here its attrs resolve against the params only.
                 let mut ds = check_directive(d, snapshot, providers, domains, ctx);
-                body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), &mut ds);
+                body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), &scope.own, &mut ds);
                 diags.extend(ds.into_iter().filter(|d| !is_host_schema_code(&d.code)));
+                component_guard(d, snapshot, arena, ctx, true, scope, diags);
             }
             Node::Directive(d) => {
                 // D7 (dsl 0.4.0 §6.1/§6.2): a directive whose resolved decl
@@ -4002,7 +4408,8 @@ fn walk_component_body(
                     ));
                 } else {
                     diags.extend(check_directive(d, snapshot, providers, domains, ctx));
-                    body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), diags);
+                    body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), &scope.own, diags);
+                    component_guard(d, snapshot, arena, ctx, false, scope, diags);
                 }
             }
             Node::Set(s) if scope.effects => {
@@ -4025,8 +4432,18 @@ fn walk_component_body(
                 }
                 diags.extend(ds.into_iter().filter(|d| !is_host_schema_code(&d.code)));
             }
-            // Ground fact args: nothing to resolve before the host judges them.
-            Node::Assert(_) | Node::Retract(_) if scope.effects => {}
+            // Ground fact args: nothing to resolve before the host judges
+            // them; a guard's `@param`s resolve here (dsl 0.26.0 §4).
+            Node::Assert(lute_syntax::ast::Assert { when, .. })
+            | Node::Retract(lute_syntax::ast::Retract { when, .. })
+                if scope.effects =>
+            {
+                diags.extend(
+                    check_guard(when.as_ref(), arena, ctx)
+                        .into_iter()
+                        .filter(|d| !is_host_schema_code(&d.code)),
+                );
+            }
             Node::Set(s) => diags.push(use_diag(
                 E_COMPONENT_BODY,
                 format!(
@@ -4100,7 +4517,7 @@ fn walk_component_body(
                                         &arm_ctx,
                                         Some(&ExpectedType::Bool),
                                     ));
-                                    component_slot_state_scan(test, arena, diags);
+                                    component_slot_state_scan(test, arena, &scope.own, diags);
                                     walk_component_body(
                                         body, snapshot, providers, domains, arena, &arm_ctx,
                                         components, param_domains, scope, diags,
@@ -4118,6 +4535,36 @@ fn walk_component_body(
                         // subject-slot check above already reported
                         // `E-UNDECLARED-REF` — that IS the root defect.
                     }
+                    None if reads_only_own(&m.subject, arena, &scope.own) => {
+                        // dsl 0.26.0 §3.3: a subject over the component's own
+                        // result slots (`scene.battle.fight.won`) — not
+                        // ambient; the host judges the match where each
+                        // `::use` performs it. Arms evaluate within match
+                        // scope, as for a param subject.
+                        let arm_ctx = Ctx {
+                            env: ctx.env,
+                            in_match: true,
+                            match_subject: Some(m.subject.raw.clone()),
+                        };
+                        for arm in &m.arms {
+                            let body = match arm {
+                                Arm::When { test, body, .. } => {
+                                    diags.extend(
+                                        check_cel_slot(test, arena, &arm_ctx, Some(&ExpectedType::Bool))
+                                            .into_iter()
+                                            .filter(|d| !is_host_schema_code(&d.code)),
+                                    );
+                                    component_slot_state_scan(test, arena, &scope.own, diags);
+                                    body
+                                }
+                                Arm::Otherwise { body, .. } => body,
+                            };
+                            walk_component_body(
+                                body, snapshot, providers, domains, arena, &arm_ctx, components,
+                                param_domains, scope, diags,
+                            );
+                        }
+                    }
                     None => {
                         // (ii)/(iii): not a bare param ref. A subject that
                         // reads ambient state (a state path, a fact query,
@@ -4125,7 +4572,7 @@ fn walk_component_body(
                         // literal, a compound over params) has no domain to
                         // dispatch on and is `E-COMPONENT-BODY`.
                         let before = diags.len();
-                        component_slot_state_scan(&m.subject, arena, diags);
+                        component_slot_state_scan(&m.subject, arena, &scope.own, diags);
                         if diags.len() == before {
                             diags.push(use_diag(
                                 E_COMPONENT_BODY,
@@ -4189,6 +4636,7 @@ fn body_attr_refs(
     arena: &CelArena,
     ctx: &Ctx<'_>,
     directive_tag: Option<&str>,
+    own: &std::collections::BTreeSet<String>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for attr in attrs {
@@ -4198,7 +4646,7 @@ fn body_attr_refs(
                 .and_then(|decl| decl.attrs.iter().find(|a| a.name == attr.key))
                 .map(|a| ExpectedType::Ty(a.ty.clone()));
             diags.extend(check_cel_slot(slot, arena, ctx, expected.as_ref()));
-            component_slot_state_scan(slot, arena, diags);
+            component_slot_state_scan(slot, arena, own, diags);
         }
     }
 }
@@ -4762,73 +5210,129 @@ fn fold_branches_nodes(
 /// shape, feeding the SAME `schema` the walk + defassign consume. Walks every
 /// directive location (top-level, branch choices, match arms, timeline clips),
 /// mirroring the CEL/inject walkers' recursion.
+///
+/// dsl 0.26.0 §3.1: a `::use` declares, in its host, the slots of every
+/// plugin directive its component's body holds (nested `::use`s included),
+/// bound to this use's arguments — exactly the slots the expanded body would
+/// declare written here. Every consumer of the folded schema (the checker,
+/// the compiled `state` table, trace's mocks, `lute play`) sees them.
 fn fold_directive_slots(
     doc: &Document,
     snapshot: &CapabilitySnapshot,
+    components: &ComponentSet,
     schema: &mut crate::meta::StateSchema,
 ) {
-    for shot in &doc.shots {
-        fold_slots_nodes(&shot.body, snapshot, schema);
-    }
-    for quest in &doc.quests {
-        fold_slots_nodes(&quest.body, snapshot, schema);
-    }
-    // dsl 0.19.0 §4: a directive in an entry body is an admission error;
-    // folding its declared slots keeps that the only report.
-    for entry in &doc.entries {
-        fold_slots_nodes(&entry.body, snapshot, schema);
-    }
-    for beat in &doc.beats {
-        fold_slots_nodes(&beat.body, snapshot, schema);
+    let mut cx = SlotFold {
+        snapshot,
+        components,
+        schema,
+        stack: Vec::new(),
+    };
+    let bodies = doc
+        .shots
+        .iter()
+        .map(|s| &s.body)
+        .chain(doc.quests.iter().map(|q| &q.body))
+        // dsl 0.19.0 §4: a directive in an entry body is an admission error;
+        // folding its declared slots keeps that the only report.
+        .chain(doc.entries.iter().map(|e| &e.body))
+        .chain(doc.beats.iter().map(|b| &b.body));
+    for body in bodies {
+        cx.nodes(body, None);
     }
 }
 
-fn fold_slots_nodes(
-    nodes: &[Node],
-    snapshot: &CapabilitySnapshot,
-    schema: &mut crate::meta::StateSchema,
-) {
-    for node in nodes {
-        match node {
-            Node::Directive(d) => expand_directive_slots(d, snapshot, schema),
-            Node::Branch(b) => {
-                for c in &b.choices {
-                    fold_slots_nodes(&c.body, snapshot, schema);
+/// The walk [`fold_directive_slots`] makes. `bind` is `Some` inside a
+/// component body: each directive there is bound to the enclosing `::use`'s
+/// arguments before its slots resolve. `stack` guards a `::use` cycle
+/// (reported elsewhere as `E-COMPONENT-CYCLE`).
+struct SlotFold<'a> {
+    snapshot: &'a CapabilitySnapshot,
+    components: &'a ComponentSet,
+    schema: &'a mut crate::meta::StateSchema,
+    stack: Vec<String>,
+}
+
+type SlotBinding<'b> = (
+    &'b std::collections::BTreeMap<String, AttrValue>,
+    &'b [(String, Type)],
+);
+
+impl SlotFold<'_> {
+    fn nodes(&mut self, nodes: &[Node], bind: Option<SlotBinding<'_>>) {
+        for node in nodes {
+            match node {
+                Node::Directive(d) => self.directive(d, bind),
+                Node::Branch(b) => {
+                    for c in &b.choices {
+                        self.nodes(&c.body, bind);
+                    }
                 }
-            }
-            Node::Match(m) => {
-                for arm in &m.arms {
-                    match arm {
-                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            fold_slots_nodes(body, snapshot, schema)
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        match arm {
+                            Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                                self.nodes(body, bind)
+                            }
                         }
                     }
                 }
-            }
-            Node::Timeline(tl) => {
-                for track in &tl.tracks {
-                    for clip in &track.clips {
-                        if let ClipNode::Directive(d) = &clip.node {
-                            expand_directive_slots(d, snapshot, schema);
+                Node::Timeline(tl) => {
+                    for track in &tl.tracks {
+                        for clip in &track.clips {
+                            if let ClipNode::Directive(d) = &clip.node {
+                                self.directive(d, bind);
+                            }
                         }
                     }
                 }
-            }
-            Node::Hub(h) => {
-                for c in &h.choices {
-                    fold_slots_nodes(&c.body, snapshot, schema);
+                Node::Hub(h) => {
+                    for c in &h.choices {
+                        self.nodes(&c.body, bind);
+                    }
                 }
+                // Quest-only arms (dsl 0.2.0 §4, §6.4): a directive-opening slot
+                // (e.g. `::minigame{resultKey="k"}`) may be used directly inside
+                // an `<on>` event arm or an `<objective>` body — recurse so its
+                // declared state slots open for the quest walk + defassign, same
+                // as a scene shot's directives do.
+                Node::On(o) => self.nodes(&o.body, bind),
+                Node::Objective(o) => self.nodes(&o.body, bind),
+                Node::Line(_) | Node::Set(_) => {}
+                Node::Assert(_) | Node::Retract(_) => {}
             }
-            // Quest-only arms (dsl 0.2.0 §4, §6.4): a directive-opening slot
-            // (e.g. `::minigame{resultKey="k"}`) may be used directly inside
-            // an `<on>` event arm or an `<objective>` body — recurse so its
-            // declared state slots open for the quest walk + defassign, same
-            // as a scene shot's directives do.
-            Node::On(o) => fold_slots_nodes(&o.body, snapshot, schema),
-            Node::Objective(o) => fold_slots_nodes(&o.body, snapshot, schema),
-            Node::Line(_) | Node::Set(_) => {}
-            Node::Assert(_) | Node::Retract(_) => {}
         }
+    }
+
+    fn directive(&mut self, d: &Directive, bind: Option<SlotBinding<'_>>) {
+        let bound;
+        let d = match bind {
+            Some((args, params)) => {
+                let mut b = d.clone();
+                crate::component_effects::bind_attrs(&mut b.attrs, args, params);
+                bound = b;
+                &bound
+            }
+            None => d,
+        };
+        if d.tag != "use" {
+            expand_directive_slots(d, self.snapshot, self.schema);
+            return;
+        }
+        let components = self.components;
+        let Some((name, def)) = use_target(d).and_then(|n| components.table.get_key_value(n))
+        else {
+            return;
+        };
+        if self.stack.contains(name) {
+            return;
+        }
+        let args = crate::component_effects::use_args_for(d, def);
+        self.stack.push(name.clone());
+        for shot in &def.body.shots {
+            self.nodes(&shot.body, Some((&args, &def.params)));
+        }
+        self.stack.pop();
     }
 }
 
@@ -5045,8 +5549,27 @@ fn fold_use(
     }
     using.push(name);
     let mark = state.diags.len();
-    for shot in &def.body.shots {
-        fold_injections(&shot.body, state, out, domains, components, using);
+    // dsl 0.26.0 §3.2: a `@@p:` line stages the member this `::use` binds
+    // `p` to (a nested `::use`'s arguments pass the binding through).
+    let bound: Vec<Vec<Node>>;
+    let bodies: Vec<&[Node]> = if def.speakers.is_empty() {
+        def.body.shots.iter().map(|s| s.body.as_slice()).collect()
+    } else {
+        let args = crate::component_effects::use_args_for(d, def);
+        bound = def
+            .body
+            .shots
+            .iter()
+            .map(|s| {
+                let mut body = s.body.clone();
+                crate::component_effects::bind_speaker_params(&mut body, &args, &def.params);
+                body
+            })
+            .collect();
+        bound.iter().map(Vec::as_slice).collect()
+    };
+    for body in bodies {
+        fold_injections(body, state, out, domains, components, using);
     }
     let name = using.pop().expect("pushed above");
     for diag in &mut state.diags[mark..] {

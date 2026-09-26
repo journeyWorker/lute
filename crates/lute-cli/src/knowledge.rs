@@ -1160,6 +1160,16 @@ impl Tracer<'_> {
                         outln!(out, "{pad}    cel({cel:?}) — {}", guard_reads(&cel));
                     }
                     BodyLiteral::Cmp { .. } => {}
+                    // dsl 0.26.0 §6: a count reads its relation as a whole —
+                    // the facts it counts, traced like a premise beneath it.
+                    BodyLiteral::Count { atom, .. } => {
+                        outln!(out, "{pad}    {} — counts:", count_text(lit, &bound));
+                        let counted = Pattern {
+                            rel: atom.relation.clone(),
+                            args: rule_args(&atom.terms, &bound),
+                        };
+                        self.trace(out, &counted, None, depth + 3, here);
+                    }
                 }
             }
         }
@@ -1352,6 +1362,11 @@ fn derivations(g: &GroundFact, k: &RootKnowledge) -> Vec<Derivation> {
                         let op = if *negated { "!=" } else { "=" };
                         other.push(format!("{} {op} {}", value(lhs), value(rhs)));
                     }
+                    BodyLiteral::Count { .. } => {
+                        let bound: BTreeMap<&str, String> =
+                            s.iter().map(|(v, c)| (v.as_str(), c.clone())).collect();
+                        other.push(count_text(lit, &bound));
+                    }
                 }
             }
             if !out.contains(&(pos.clone(), other.clone())) {
@@ -1374,6 +1389,43 @@ fn derivation_text((pos, other): &Derivation, k: &RootKnowledge) -> String {
     } else {
         premises.join(", ")
     }
+}
+
+/// dsl 0.26.0 §6: a rule's `count(…)` / `countDistinct(…)` literal with the
+/// bound variables substituted.
+fn count_text(lit: &BodyLiteral, bound: &BTreeMap<&str, String>) -> String {
+    let BodyLiteral::Count {
+        atom,
+        distinct,
+        op,
+        n,
+        ..
+    } = lit
+    else {
+        return String::new();
+    };
+    let args: Vec<String> = atom
+        .terms
+        .iter()
+        .map(|t| match t {
+            RuleTerm::Var(v) => bound.get(v.as_str()).cloned().unwrap_or_else(|| {
+                if lute_syntax::datalog::is_anonymous_var(v) {
+                    "_".to_string()
+                } else {
+                    v.clone()
+                }
+            }),
+            RuleTerm::Const(c) => c.clone(),
+            RuleTerm::Bool(b) => b.to_string(),
+        })
+        .collect();
+    let pattern = format!("{}({})", atom.relation, args.join(", "));
+    let call = if distinct.is_empty() {
+        format!("count({pattern})")
+    } else {
+        format!("countDistinct({pattern}, {})", distinct.join(", "))
+    };
+    format!("{call} {} {n}", op.as_str())
 }
 
 /// Every non-derived source `g` rests on, through every derivation.
@@ -1516,6 +1568,10 @@ pub(crate) fn json(by_root: &ByRoot, for_node: Option<&str>) -> Result<Json, Str
                                     }
                                     BodyLiteral::Guard { cel, .. } => Some(json!({ "cel": cel })),
                                     BodyLiteral::Cmp { .. } => None,
+                                    BodyLiteral::Count { atom, distinct, op, n, .. } => Some(json!({
+                                        "relation": atom.relation,
+                                        "count": { "op": op.as_str(), "n": n, "distinct": distinct },
+                                    })),
                                 })
                                 .collect();
                             json!({ "rule": r.raw.trim(), "premises": premises })

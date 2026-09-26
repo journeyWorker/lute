@@ -69,7 +69,9 @@ pub fn check_project_usage(
             written.insert(r.rule.head.relation.clone());
             for lit in &r.rule.body {
                 match lit {
-                    BodyLiteral::Pos(a) | BodyLiteral::Neg(a) => {
+                    BodyLiteral::Pos(a)
+                    | BodyLiteral::Neg(a)
+                    | BodyLiteral::Count { atom: a, .. } => {
                         read.insert(a.relation.clone());
                     }
                     BodyLiteral::Guard { cel, .. } => queried_relations(cel, &mut read),

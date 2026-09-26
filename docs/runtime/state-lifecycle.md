@@ -75,6 +75,23 @@ undecided guard is an undecided match subject. A guarded write is never a
 definite assignment: a later read of a path with no `default` stays
 maybe-unset unless something unconditional writes it.
 
+Since dsl 0.26.0 §4 a directive takes the same guard: `::use`, `::accept`,
+`::assert`, `::retract` and a plugin passthrough (or bridge) directive with
+`when="…"` lower to the same one-arm `match` around the record — for a
+`::use`, around its whole expansion, which runs entirely or not at all. A
+guarded `::assert` is never a guaranteed fact and a guarded `::accept` never a
+definite accept. A builtin-lowered directive (core staging, `::end`,
+`::mark`, a plugin `lower:` record) has no guard: it runs where it stands.
+
+## Bridge answers
+
+A plugin call's `fromBridgeResult` effect writes the answer into the result
+slot the directive declares (`state.declares`) — in the host too when the call
+sits in a component body (dsl 0.26.0 §3.1): the `::use` declares the slot, so
+the compiled `state` table types it. The reference runner types an answer by
+that slot, else by the bridge capability's `result:` shape, and refuses an
+answer neither types instead of storing it as a string.
+
 ## Reserved quest slots
 
 Two families of `quest.<id>.*` paths are **engine-owned**, not author-written
@@ -228,6 +245,17 @@ days in clock order (bare `clock`: one week from day 1, or day 1 without a
 `week:`); `--occasion dayEnd@clock.day,clock.slot=night` (or the clock's own
 paths, `@run.day,run.slot=night`) evaluates an occasion once per day.
 
+`advance: { to: night }` and `advance: { to: { weekday: Fri, slot:
+morning } }` (dsl 0.26.0 §7) move to the next position after the current
+one with that slot and/or weekday (a `week.labels` label or a
+`clock.weekday` number) — forward only, and never zero steps: already there,
+the clock moves on to the next such position (tomorrow night, next Friday
+morning), as every advance moves it. A slot or weekday the clock does not
+declare is a usage error (exit 2). A step's `expect: { clock: { weekday,
+slot, day } }` (any of the three) judges where the clock stands after the
+step, so an `include:`d steps file states the time it expects and fails at
+its first step when an earlier file moved the clock elsewhere.
+
 ## Previous run (`prev.run.*`)
 
 `prev.run.<path>` (dsl 0.23.0 §6) is a reserved, read-only mirror of every
@@ -277,8 +305,11 @@ artifact as a placeholder: a param is a compile-time constant, so each `::use`
 expansion's text already contains the bound literal (`Outside: grey.`). A
 param bound to a caller-side def stays a `ref` placeholder naming that def.
 A `speaker` param (dsl 0.24.0 §4) is likewise spliced as the bound cast
-member's display `name` (its id when it has none), so the artifact carries
-plain text. The writes of an `effects: true` component are ordinary `set` /
+member's display `name` (its id when it has none) in text and in an
+attribute value (`as=@who`, dsl 0.26.0 §3.1), so the artifact carries plain
+text; a `@@who:` line (dsl 0.26.0 §3.2) is emitted with the bound member id
+as its `speaker`. A `{{…}}` placeholder inside a string argument keeps its
+`placeholders` record. The writes of an `effects: true` component are ordinary `set` /
 `assert` / `retract` commands in the host's stream, inside the component's
 `source { component }` region; the IR has no separate record for them.
 

@@ -703,7 +703,20 @@ impl Parser<'_> {
                     });
                 }
             } else if trimmed.starts_with("::") {
+                let line = self.cursor;
                 if let Node::Directive(mut d) = self.parse_directive() {
+                    // dsl 0.26.0 §4: as for `::set`, a guard is logic — no
+                    // clip keeps one. (`::next` is refused whole by the
+                    // checker, guard and all.)
+                    if d.tag != "next" && d.when.take().is_some() {
+                        self.emit_line(
+                            E_TIMELINE_CONTENT,
+                            "a <track> directive cannot carry `when=` — a conditional clip is \
+                             logic; move it outside the <timeline>",
+                            line,
+                            Layer::Logic,
+                        );
+                    }
                     let at = take_at(&mut d.attrs);
                     last_end = d.span.byte_end;
                     clips.push(Clip {
@@ -831,7 +844,10 @@ impl Parser<'_> {
         let mut attrs = open.attrs.clone();
         let (kind, kind_span) = take_str_spanned(&mut attrs, "kind")
             .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
-        let target = take_str(&mut attrs, "target");
+        let (target, target_span) = match take_str_spanned(&mut attrs, "target") {
+            Some((v, sp)) => (Some(v), Some(sp)),
+            None => (None, None),
+        };
         let (amount, amount_span) = match take_str_spanned(&mut attrs, "amount") {
             Some((raw, sp)) => match parse_reward_amount(&raw) {
                 Some(v) => (Some(v), Some(sp)),
@@ -858,6 +874,7 @@ impl Parser<'_> {
             kind,
             kind_span,
             target,
+            target_span,
             amount,
             amount_span,
             when,

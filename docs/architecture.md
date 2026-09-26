@@ -704,7 +704,10 @@ above, never a rule-body dependency):
   operands by path, and compares their solution sets (`solution.rs`: intervals, value sets,
   exclusions, with `unset` as a value), so a same-path contradiction decides false and a
   covering disjunction true. `check-project --wip` re-checks a newly dead fact guard against a
-  second may set in which unproduced relations are unbounded (`FactEnv::with_wip`).
+  second may set in which unproduced relations are unbounded (`FactEnv::with_wip`); since dsl
+  0.26.0 §2.6 a relation only a component `::assert` with an unbound `@param` writes counts as
+  unproduced too (`fact_must::unproduced_relations`), and a required `<objective quest=…>` whose
+  child quest is dead only for want of such producers is graded a warning as well.
 - **Clock, presence and effects (dsl 0.24.0).** `lute_manifest::clock` is the one piece of
   clock arithmetic (`clock.index`, weekday, `once: day` / `slot` spending, advance) shared by
   the checker (`lute_check::clock`, `E-CLOCK-DECL` and the reserved `clock.*` paths), the

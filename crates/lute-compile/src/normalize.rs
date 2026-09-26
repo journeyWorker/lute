@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use lute_check::component_effects::{
     bind_attrs, bind_slot_raw, cel_string_literal, fold_component_matches, speaker_display_args,
-    use_args,
+    use_args_for,
 };
 use lute_check::meta::StateSchema;
 use lute_check::ComponentSet;
@@ -23,8 +23,8 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::CastMember;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
-    classify_interp, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document,
-    Interp, InterpKind, Line, Match, Node, Set,
+    classify_interp, interp_from_inner, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode,
+    Directive, Document, Interp, InterpKind, Line, Match, Node, Set,
 };
 
 pub const COMPONENT_BEGIN: &str = "__component-begin";
@@ -53,6 +53,13 @@ pub fn component_scope(d: &Directive) -> &str {
         })
         .unwrap_or("")
 }
+
+/// dsl 0.26.0 §4: the `::use` as authored (`::use{component="eff" n="5"}`),
+/// carried by a guarded use's begin sentinel onto the one-arm match that
+/// wraps its expansion (`expand`), whose record reports it as authored
+/// ([`crate::ir::Command::authored`]) — `lute play` names a skipped guarded
+/// `::use` by it.
+pub(crate) const AUTHORED_ATTR: &str = "__authored";
 
 /// The internal attr carrying a component line's SOURCE-ORDER back-filled
 /// `code` (ashen N7). [`expand_use`] stamps it on every untagged line of the
@@ -493,7 +500,9 @@ fn synth_when_next_match(mut d: Directive) -> Node {
 /// Unlike the line/`::next` sugar this runs from `expand::expand_nodes`, NOT
 /// [`normalize_nodes`]: a `::set` RHS may read an enclosing `<match>`'s `$`,
 /// which must expand against THAT subject before the write is wrapped in a
-/// match of its own (whose `$` is the guard).
+/// match of its own (whose `$` is the guard). dsl 0.26.0 §4: a guarded
+/// directive, `::assert`/`::retract` and `::use` expansion
+/// ([`guard_match`]) desugar there for the same reason.
 pub(crate) fn synth_when_set_match(mut s: Set) -> Node {
     let guard = s.when.take().expect("caller guarantees `s.when.is_some()`");
     let span = s.span;
@@ -504,6 +513,12 @@ pub(crate) fn synth_when_set_match(mut s: Set) -> Node {
 /// `guard` hoisted verbatim as the subject, one `<when test="$">` arm
 /// holding `node`, and the implicit empty `<otherwise>` fall-through.
 fn one_arm_match(guard: CelSlot, node: Node, span: Span) -> Node {
+    guard_match(guard, vec![node], span)
+}
+
+/// [`one_arm_match`] over a whole run of nodes — dsl 0.26.0 §4: a guarded
+/// `::use` runs its entire expansion (sentinels included) or none of it.
+pub(crate) fn guard_match(guard: CelSlot, body: Vec<Node>, span: Span) -> Node {
     let test = CelSlot::raw(CelKind::Condition, "$".to_string(), span);
     Node::Match(Match {
         subject: guard,
@@ -514,7 +529,7 @@ fn one_arm_match(guard: CelSlot, node: Node, span: Span) -> Node {
                 is: None,
                 test,
                 attrs: Vec::new(),
-                body: vec![node],
+                body,
                 span,
             },
             Arm::Otherwise {
@@ -560,7 +575,7 @@ fn expand_use(
         return Vec::new();
     };
     let name = name.unwrap_or_default();
-    let args = use_args(d);
+    let args = use_args_for(d, def);
     // Defensive arg/param validation (checker gate: E-COMPONENT-ARG). The
     // invocation's arg key set MUST match `def.params` exactly — no missing,
     // no extra. Compile gates on a clean check, so reaching here with a
@@ -612,6 +627,11 @@ fn expand_use(
     // member's NAME; every other position (attrs, match subjects) binds the
     // id below.
     let names = speaker_display_args(def, &args, components.cast);
+    // dsl 0.26.0 §3.1/§3.2: a line speaking as a `speaker` param (`@@who:`)
+    // speaks as the member its argument names, `as=@who` shows that member's
+    // name as the text does, and a `{{@p}}` in a line attribute string is
+    // interpolated.
+    visit_lines(&mut body, &mut |l| bind_line_head(l, &args, &names));
     if !names.is_empty() {
         visit_lines(&mut body, &mut |l| bind_text(l, &names));
     }
@@ -639,10 +659,17 @@ fn expand_use(
         value_span: span,
         span,
     };
+    // dsl 0.26.0 §4: a guarded `::use` rides its guard on the begin sentinel;
+    // `expand` wraps begin…end in the one-arm match once the enclosing `$`
+    // has expanded ([`guard_match`]).
+    let mut attrs = vec![attr("component", name), attr(COMPONENT_SCOPE_ATTR, scope)];
+    if d.when.is_some() {
+        attrs.push(attr(AUTHORED_ATTR, crate::lower::authored_directive(d)));
+    }
     let begin = Node::Directive(Directive {
         tag: COMPONENT_BEGIN.to_string(),
-        attrs: vec![attr("component", name), attr(COMPONENT_SCOPE_ATTR, scope)],
-        when: None,
+        attrs,
+        when: d.when.clone(),
         span,
     });
     let end = Node::Directive(Directive {
@@ -679,7 +706,13 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                 bind_attrs(&mut l.attrs, args, params);
                 bind_text(l, args);
             }
-            Node::Directive(d) => bind_attrs(&mut d.attrs, args, params),
+            Node::Directive(d) => {
+                // dsl 0.26.0 §4: a directive's guard is a CEL slot like any.
+                if let Some(w) = &mut d.when {
+                    bind_slot(w, args, params);
+                }
+                bind_attrs(&mut d.attrs, args, params)
+            }
             Node::Set(s) => {
                 bind_slot(&mut s.expr, args, params);
                 if let Some(w) = &mut s.when {
@@ -750,9 +783,15 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
             // non-constant argument, so a bound build leaves none).
             Node::Assert(a) => {
                 lute_check::component_effects::bind_fact(&mut a.pattern, args);
+                if let Some(w) = &mut a.when {
+                    bind_slot(w, args, params);
+                }
             }
             Node::Retract(r) => {
                 lute_check::component_effects::bind_fact(&mut r.pattern, args);
+                if let Some(w) = &mut r.when {
+                    bind_slot(w, args, params);
+                }
             }
         }
     }
@@ -834,7 +873,15 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                         .as_deref()
                         .zip(s.trim().parse::<f64>().ok())
                         .and_then(|(f, n)| lute_syntax::ast::format_number(f, n));
-                    out.push_str(ordinal.as_deref().unwrap_or(&s));
+                    let lit = ordinal.as_deref().unwrap_or(&s);
+                    out.push_str(lit);
+                    // dsl 0.26.0 §3.1: a `{{…}}` inside a string argument is
+                    // an interpolation exactly as in direct text — it keeps
+                    // its placeholder record.
+                    for (s0, e0) in interp_markers(lit) {
+                        let inner = &lit[s0 + 2..e0 - 2];
+                        kept.push((interp_from_inner(inner, l.text_span), at + s0, at + e0));
+                    }
                 }
                 Some(AttrValue::BoolTrue) => out.push_str("true"),
                 None => {
@@ -865,6 +912,95 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
         })
         .collect();
     l.text = out;
+}
+
+/// The `[start, end)` byte range of every `{{…}}` marker in `text`, left to
+/// right, by the parser's own scan rule (`\{{` is a literal; an unterminated
+/// `{{` ends the scan).
+fn interp_markers(text: &str) -> Vec<(usize, usize)> {
+    let b = text.as_bytes();
+    let mut out = Vec::new();
+    let mut j = 0;
+    while j + 1 < b.len() {
+        if b[j] == b'\\' && text[j + 1..].starts_with("{{") {
+            j += 3;
+            continue;
+        }
+        if b[j] == b'{' && b[j + 1] == b'{' {
+            let Some(rel) = text[j + 2..].find("}}") else {
+                break;
+            };
+            let end = j + 2 + rel + 2;
+            out.push((j, end));
+            j = end;
+            continue;
+        }
+        j += 1;
+    }
+    out
+}
+
+/// dsl 0.26.0 §3.1/§3.2: bind the head of a component body line to its
+/// `::use`. `@@who:` speaks as the cast member the `speaker` param's
+/// argument names; `as=@who` over a `speaker` param shows that member's
+/// display name (`names`, [`speaker_display_args`]) exactly as `{{@who}}` in
+/// the text does; and a `{{@p}}` inside a line attribute string renders as
+/// it would in the text — a speaker param's name, a literal argument
+/// verbatim. Every other attribute position keeps binding the id
+/// ([`bind_params`]).
+fn bind_line_head(
+    l: &mut Line,
+    args: &BTreeMap<String, AttrValue>,
+    names: &BTreeMap<String, AttrValue>,
+) {
+    if let Some(AttrValue::Str(id)) = l.speaker.strip_prefix('@').and_then(|p| args.get(p)) {
+        l.speaker = id.clone();
+    }
+    for a in &mut l.attrs {
+        let bound = match &a.value {
+            AttrValue::Ref(slot) if a.key == "as" => slot
+                .raw
+                .trim()
+                .strip_prefix('@')
+                .and_then(|p| names.get(p))
+                .cloned(),
+            AttrValue::Str(s) if s.contains("{{") => {
+                Some(AttrValue::Str(interpolate_params(s, args, names)))
+            }
+            _ => None,
+        };
+        if let Some(v) = bound {
+            a.value = v;
+        }
+    }
+}
+
+/// Replace each `{{@p}}` marker of `text` that names a param bound to a
+/// literal: a speaker param by its display name (`names`), any other by its
+/// literal argument. Every other marker is kept verbatim.
+fn interpolate_params(
+    text: &str,
+    args: &BTreeMap<String, AttrValue>,
+    names: &BTreeMap<String, AttrValue>,
+) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    for (s, e) in interp_markers(text) {
+        let inner = text[s + 2..e - 2].trim();
+        let value = inner
+            .strip_prefix('@')
+            .and_then(|p| names.get(p).or_else(|| args.get(p)));
+        let lit = match value {
+            Some(AttrValue::Str(v)) => v.as_str(),
+            Some(AttrValue::BoolTrue) => "true",
+            _ => continue,
+        };
+        out.push_str(&text[copied..s]);
+        out.push_str(lit);
+        copied = e;
+    }
+    out.push_str(&text[copied..]);
+    out
 }
 
 /// The span of `text[start..end]` for a line text beginning at `text_span`
@@ -1283,6 +1419,7 @@ params:
             lute_check::ComponentDef {
                 params: vec![("n".to_string(), Type::Number)],
                 speakers: Vec::new(),
+                defaults: BTreeMap::new(),
                 effects: false,
                 body: comp_doc,
                 src: std::path::PathBuf::from("test://reactor"),

@@ -546,6 +546,12 @@ pub(crate) struct BridgeReads {
     /// writes to a path in `paths` — what every answer to the tag gives
     /// (answers queue per tag, not per call), and what a hint lists.
     pub fields: BTreeMap<String, BTreeSet<String>>,
+    /// dsl 0.26.0 §3.1: per plugin directive tag, the declared type (`bool`,
+    /// `number`, `string`) of each bridge result field an effect of the tag
+    /// reads, from the capability's `result:` shape — what types an answer
+    /// whose landing path no state slot declares. Empty for `lute run` (an
+    /// artifact carries no capability snapshot).
+    pub result_types: BTreeMap<String, BTreeMap<String, &'static str>>,
 }
 
 impl BridgeReads {
@@ -582,12 +588,56 @@ impl BridgeReads {
                 }
             }
         }
-        BridgeReads { paths, fields }
+        BridgeReads {
+            paths,
+            fields,
+            result_types: BTreeMap::new(),
+        }
+    }
+
+    /// dsl 0.26.0 §3.1: `snapshot`'s bridge result types, per directive tag
+    /// ([`Self::result_types`]), merged into `self`.
+    pub(crate) fn with_result_types(
+        mut self,
+        snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
+    ) -> Self {
+        use lute_manifest::types::Type;
+        for (tag, decl) in &snapshot.directives {
+            let Some(bridge) = &decl.bridge else {
+                continue;
+            };
+            let Some(cap) = snapshot
+                .bridge_capabilities
+                .get(&(bridge.service.clone(), bridge.operation.clone()))
+            else {
+                continue;
+            };
+            for (field, _) in lute_trace::mock::bridge_result_writes(decl) {
+                let Some(f) = cap.result.iter().find(|f| f.name == field) else {
+                    continue;
+                };
+                let ty = match f.ty {
+                    Type::Bool => "bool",
+                    Type::Number => "number",
+                    _ => "string",
+                };
+                self.result_types
+                    .entry(tag.clone())
+                    .or_default()
+                    .insert(field.to_string(), ty);
+            }
+        }
+        self
     }
 
     /// Whether content reads `field` of a `tag` call's result.
     pub(crate) fn reads(&self, tag: &str, field: &str) -> bool {
         self.fields.get(tag).is_some_and(|f| f.contains(field))
+    }
+
+    /// dsl 0.26.0 §3.1: the capability-declared type of `tag`'s result `field`.
+    pub(crate) fn result_type(&self, tag: &str, field: &str) -> Option<&'static str> {
+        self.result_types.get(tag)?.get(field).copied()
     }
 }
 
@@ -879,6 +929,21 @@ impl Runner {
     pub(crate) fn with_bundle_beat(mut self, id: &str) -> Self {
         self.bundle_beat = Some(id.to_string());
         self
+    }
+
+    /// dsl 0.26.0 §5: the member a `target="kind:<kind>"` beat was raised
+    /// for, readable as `occasion.target` (cleared with `None`).
+    pub(crate) fn bind_occasion_target(&mut self, member: Option<&str>) {
+        let path = lute_check::beats::OCCASION_TARGET;
+        match member {
+            Some(m) => {
+                self.state
+                    .insert(path.to_string(), Value::Str(m.to_string()));
+            }
+            None => {
+                self.state.remove(path);
+            }
+        }
     }
 
     /// `lute play` (dsl 0.21.0 §7a.1): the playthrough's presented scenes,
@@ -2191,20 +2256,33 @@ impl Runner {
                     read.join(", ")
                 ));
             };
-            let ty = self.types.get(path).map(String::as_str);
+            // dsl 0.26.0 §3.1: typed by the result slot, else by the bridge
+            // capability's `result:` shape; an untyped answer is refused —
+            // never stored as a string that no bool/number read can match.
+            let ty = self
+                .types
+                .get(path)
+                .map(String::as_str)
+                .or_else(|| self.bridges.reads.result_type(tag, field));
+            let Some(ty) = ty else {
+                return Err(format!(
+                    "{at}: `{field}` lands on `{path}`, which no state slot of this artifact \
+                     declares, and no bridge capability declares a `result:` type for it — \
+                     an untyped answer is refused (dsl 0.26.0 §3.1)"
+                ));
+            };
             let v = match ty {
-                Some("bool") => match lit.as_str() {
+                "bool" => match lit.as_str() {
                     "true" => Some(Value::Bool(true)),
                     "false" => Some(Value::Bool(false)),
                     _ => None,
                 },
-                Some("number") => lit.parse::<f64>().ok().map(Value::Num),
+                "number" => lit.parse::<f64>().ok().map(Value::Num),
                 _ => Some(Value::Str(lit.clone())),
             };
             let Some(v) = v else {
                 return Err(format!(
-                    "{at}: `{field}: {lit}` does not fit `{path}`, a `{}`",
-                    ty.unwrap_or("?")
+                    "{at}: `{field}: {lit}` does not fit `{path}`, a `{ty}`"
                 ));
             };
             out.push((field.clone(), v));

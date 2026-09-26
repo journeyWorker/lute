@@ -81,6 +81,9 @@ use cel_parser::ast::Expr;
 use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::provider::{IdStatus, ProviderSet};
+use lute_manifest::relations::{EntityKindDecl, KindShape};
+use lute_manifest::schema::RewardTarget;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
@@ -1053,27 +1056,104 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
     QuestRecord { decls, diags }
 }
 
-/// Reward shape (`E-REWARD-ATTR`) + vocabulary (`E-REWARD-KIND`) + D-J
-/// attribute closure (`E-UNKNOWN-ATTR`) checks for every `<reward/>` on
-/// this quest AND its objectives (dsl 0.16.0 §2, §4, §6). The vocabulary
-/// gate stays silent when `snapshot.reward_kinds` is empty — a plugin
-/// publishes the vocabulary in Task 4, and this call becomes the point of
-/// enforcement automatically. Anchored at the offending attribute so the
-/// author's editor lands on the fault, not the enclosing element.
-pub fn check_quest_rewards(quest: &Quest, snapshot: &CapabilitySnapshot) -> Vec<Diagnostic> {
+/// Reward shape (`E-REWARD-ATTR`) + vocabulary (`E-REWARD-KIND`) + target
+/// contract (`E-REWARD-TARGET`) + D-J attribute closure (`E-UNKNOWN-ATTR`)
+/// checks for every `<reward/>` on this quest AND its objectives (dsl 0.16.0
+/// §2, §4, §6; 0.26.0 §2.5). The vocabulary gate stays silent when
+/// `snapshot.reward_kinds` is empty. `providers` resolves a `{ provider: … }`
+/// target contract, `kinds` (the document's merged entity kinds) an
+/// `{ entity: … }` one. Anchored at the offending attribute so the author's
+/// editor lands on the fault, not the enclosing element.
+pub fn check_quest_rewards(
+    quest: &Quest,
+    snapshot: &CapabilitySnapshot,
+    providers: &ProviderSet,
+    kinds: &BTreeMap<String, EntityKindDecl>,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+    let targets = RewardTargetEnv { providers, kinds };
     for r in &quest.rewards {
-        check_one_reward(r, snapshot, RewardPos::Quest, &mut diags);
+        check_one_reward(r, snapshot, &targets, RewardPos::Quest, &mut diags);
     }
     for node in &quest.body {
         if let Node::Objective(o) = node {
             for r in &o.rewards {
-                check_one_reward(r, snapshot, RewardPos::Objective, &mut diags);
+                check_one_reward(r, snapshot, &targets, RewardPos::Objective, &mut diags);
             }
         }
     }
     check_reward_double_credit(quest, snapshot, &mut diags);
     diags
+}
+
+/// What a reward kind's `target:` contract resolves against.
+struct RewardTargetEnv<'a> {
+    providers: &'a ProviderSet,
+    kinds: &'a BTreeMap<String, EntityKindDecl>,
+}
+
+/// `E-REWARD-TARGET` (dsl 0.26.0 §2.5).
+pub const E_REWARD_TARGET: &str = "E-REWARD-TARGET";
+
+/// dsl 0.26.0 §2.5: `r.target` against its kind's `target:` contract. A
+/// missing target fails only `required: true`; a present one must be a
+/// member of the `entity:` kind (did-you-mean) or an id of the `provider:`
+/// catalog (a stale snapshot only warns, as for a `providerRef` attr).
+fn check_reward_target(
+    r: &Reward,
+    contract: &RewardTarget,
+    env: &RewardTargetEnv<'_>,
+) -> Option<Diagnostic> {
+    let kind = r.kind.trim();
+    let Some(target) = r.target.as_deref() else {
+        return contract.required.then(|| {
+            diag(
+                E_REWARD_TARGET,
+                Severity::Error,
+                format!(
+                    "`<reward kind=\"{kind}\">` needs a `target=`: the reward kind declares \
+                     `target: {{ required: true }}` (dsl 0.26.0 §2.5)"
+                ),
+                r.span,
+            )
+        });
+    };
+    let at = r.target_span.unwrap_or(r.span);
+    if let Some(entity) = contract.entity.as_deref() {
+        let message = match env.kinds.get(entity).map(|d| &d.shape) {
+            None => format!(
+                "`<reward kind=\"{kind}\">`'s target contract names entity kind `{entity}`, which \
+                 this document does not declare — import the schema that declares it through \
+                 `uses:` (dsl 0.26.0 §2.5)"
+            ),
+            Some(KindShape::Members(ms)) if !ms.iter().any(|m| m == target) => format!(
+                "`{target}` is not a member of entity kind `{entity}`, which `<reward \
+                 kind=\"{kind}\">` targets (dsl 0.26.0 §2.5){}",
+                crate::rel_schema::member_hint(target, ms)
+            ),
+            Some(_) => return None,
+        };
+        return Some(diag(E_REWARD_TARGET, Severity::Error, message, at));
+    }
+    let provider = contract.provider.as_deref()?;
+    match env.providers.contains(provider, target) {
+        IdStatus::Fresh => None,
+        IdStatus::Stale => Some(diag(
+            "W-CATALOG-STALE",
+            Severity::Warning,
+            format!("`{target}` not found in `{provider}` catalog (snapshot is stale/offline)"),
+            at,
+        )),
+        IdStatus::Absent => Some(diag(
+            E_REWARD_TARGET,
+            Severity::Error,
+            format!(
+                "`{target}` is not a known `{provider}` id, which `<reward kind=\"{kind}\">` \
+                 targets (dsl 0.26.0 §2.5)"
+            ),
+            at,
+        )),
+    }
 }
 
 /// `W-REWARD-DOUBLE-CREDIT` (dsl 0.23.0 §8): a reward kind that declares
@@ -1166,6 +1246,7 @@ enum RewardPos {
 fn check_one_reward(
     r: &Reward,
     snapshot: &CapabilitySnapshot,
+    targets: &RewardTargetEnv<'_>,
     pos: RewardPos,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -1246,6 +1327,14 @@ fn check_one_reward(
             ),
             r.kind_span,
         ));
+    }
+    // dsl 0.26.0 §2.5: the kind's `target:` contract.
+    if let Some(contract) = snapshot
+        .reward_kinds
+        .get(r.kind.trim())
+        .and_then(|k| k.target.as_ref())
+    {
+        diags.extend(check_reward_target(r, contract, targets));
     }
     // D-J attribute closure (dsl 0.16.0 §2 tag row) — E-UNKNOWN-ATTR at
     // each residual key's own span. A malformed `amount=` also survives in
@@ -1561,7 +1650,10 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
                 },
                 _ => Domain::Infinite,
             };
+            // dsl 0.26.0 §5: `occasion.target` is bound whenever its kind
+            // beat runs.
             let maybe_unset = decl.default.is_none()
+                && path != crate::beats::OCCASION_TARGET
                 && matches!(
                     decl.namespace,
                     Namespace::Scene

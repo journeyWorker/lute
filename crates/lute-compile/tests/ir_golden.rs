@@ -591,6 +591,7 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
         kind: "SHARD".into(),
         kind_span: ZERO,
         target: None,
+        target_span: None,
         amount: None,
         amount_span: None,
         when: None,

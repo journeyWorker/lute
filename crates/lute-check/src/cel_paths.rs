@@ -26,9 +26,10 @@ use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr};
 /// [`is_reserved_entry_read`] path, so any other `entry.*` read is
 /// `E-UNDECLARED` and every `entry.*` write is rejected. `prev` (dsl 0.23.0
 /// §6) is read-only too: `prev.run.<path>` mirrors each declared `run.<path>`.
-/// So is `clock` (dsl 0.24.0 §1): the declared clock's derived paths.
+/// So is `clock` (dsl 0.24.0 §1): the declared clock's derived paths. And
+/// `occasion` (dsl 0.26.0 §5): a kind beat's `occasion.target`.
 pub(crate) const STATE_ROOTS: &[&str] = &[
-    "scene", "run", "user", "app", "quest", "entry", "prev", "clock",
+    "scene", "run", "user", "app", "quest", "entry", "prev", "clock", "occasion",
 ];
 
 /// `true` for any path rooted at the read-only `prev` mirror (dsl 0.23.0 §6).
