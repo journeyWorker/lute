@@ -278,7 +278,7 @@ fn trace_binds_the_member_a_raise_names() {
         &dir,
         "lute.project.yaml",
         "pluginsDir: plugins/\ndefaultProfile: g\nprofiles: { g: { plugins: { p: true } } }\n\
-         defaults: { luteVersion: \"0.27.0\", uses: [w.schema.yaml] }\n",
+         defaults: { luteVersion: \"0.28.0\", uses: [w.schema.yaml] }\n",
     );
     write(
         &dir,

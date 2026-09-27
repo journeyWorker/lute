@@ -183,22 +183,24 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.27.0` is a language AND IR release: the engine seam
-    /// (`raisedWhen:` gates, `terminal:`, a finite clock, directive
-    /// `asserts:` / `retracts:` effects), members bound by occasions
-    /// (`occasion.target` as a ground term, `for="kind:<kind>"`, occasion
-    /// `payload:`), cadence (`once: week`, quest `rearm=`, `seasons:`,
-    /// `spentBy:`), beat templates, the manifest's `sequence:`, kind
-    /// `labels:` and the `plural` hint, and plain-language diagnostics. The
-    /// IR gains the optional `gates`, `terminal`, `seasons`, `clock.last` /
-    /// `clock.days`, `forKind`, `spentBy`, `QuestCmd.rearm`, the `once` values
-    /// `week` / `season:<name>`, plugin `asserts` / `retracts`, `labels` on
-    /// `entities[]` / `state[]` and the placeholder format `plural` with its
-    /// `forms`, so the current
-    /// schema is `schemas/lute-ir-0.27.schema.json`.
+    /// `0.28.0` is a language AND IR release: every condition slot and YAML
+    /// surface checks the same way (typed comparisons, unknown keys refused,
+    /// reserved names refused where declared, flag values checked), the
+    /// manifest's `sequence:` becomes `chapters:`, quest-layer attributes are
+    /// renamed (`follows=`, `outcome=`, `visibleWhen=`), `spentBy` latches,
+    /// `occasion.target` can be written, and the clock, seasons, occasions,
+    /// hubs and labels fill their gaps (`clock.day` / `clock.slot` /
+    /// `clock.ended`, `raiseAtStart:`, season-tier relations, `outsideRun:`,
+    /// a hub `<return>`, label forms and number words). The IR renames
+    /// `ObjectiveEntry.when` → `visibleWhen`, `RewardEntry.on` → `outcome`
+    /// and a quest's `prereqEdges` `after` → `follows`, and gains the optional
+    /// `outsideRun`, `HubCmd.return`, `clock.raiseAtStart`, `labelForms` and
+    /// the placeholder formats `cardinalWord` / `capitalize` / `start` /
+    /// `indefinite`, so the current schema is
+    /// `schemas/lute-ir-0.28.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_27_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.27.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.27.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_28_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.28.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.28.0");
     }
 }

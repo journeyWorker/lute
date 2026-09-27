@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "lore",
-  "lute": "0.27.0",
-  "irVersion": "0.27.0",
+  "lute": "0.28.0",
+  "irVersion": "0.28.0",
   "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
   "meta": {
     "title": "Ship's records"
