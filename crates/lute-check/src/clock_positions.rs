@@ -54,6 +54,10 @@ enum Formula {
     /// `visited('<beat>')`: false until the beat has been presented, which
     /// is at the earliest at this position; unknown from then on.
     Visited(ClockAt),
+    /// `clock.ended` (read only with [`Reads::ended`]): false at every
+    /// position but the last, where it is unknown — the clock stands there
+    /// both before and after the advance that ends it.
+    Ended,
     /// Any other atom: its decided value, `None` when undecided.
     Const(Option<bool>),
 }
@@ -75,11 +79,14 @@ struct Reads<'r> {
     /// `visited('<id>')` reads as the earliest position its beat can be
     /// eligible at; `None` leaves it unknown.
     visited: Option<&'r dyn Fn(&str) -> Option<ClockAt>>,
+    /// `clock.ended` reads as [`Formula::Ended`].
+    ended: bool,
 }
 
 const PLAIN: Reads<'static> = Reads {
     schedule: None,
     visited: None,
+    ended: false,
 };
 
 /// The clock paths a formula decides at a position.
@@ -159,6 +166,12 @@ fn build(expr: &Expr, ctx: &DecideCtx<'_>, clock: &ClockDecl, reads: &Reads<'_>)
                 _ => {}
             }
         }
+    }
+    if reads.ended
+        && matches!(expr, Expr::Select(_))
+        && crate::cel_paths::select_path(expr).as_deref() == Some(lute_manifest::clock::CLOCK_ENDED)
+    {
+        return Formula::Ended;
     }
     if let Some((key, dom, truth)) = literal_truth(expr, true, ctx) {
         if is_clock_key(clock, &key) && !dom.maybe_unset && !ctx.schema.is_faulty(&key) {
@@ -307,6 +320,13 @@ impl Formula {
                     Some(false)
                 } else {
                     None
+                }
+            }
+            Formula::Ended => {
+                if clock.last_at() == Some(at) {
+                    None
+                } else {
+                    Some(false)
                 }
             }
             Formula::Const(b) => *b,
@@ -656,6 +676,7 @@ pub fn check_project_deadline_windows(
                         let reads = Reads {
                             schedule: Some((&pb.folded.env.rel_vocab, &bdefs)),
                             visited: None,
+                            ended: false,
                         };
                         let f = build(&ided.expr, &bctx, clock, &reads);
                         let all = positions(clock, &folded.env.state, &[&f], false)?;
@@ -670,6 +691,7 @@ pub fn check_project_deadline_windows(
         let reads = Reads {
             schedule: Some((&folded.env.rel_vocab, &defs)),
             visited: Some(&window),
+            ended: false,
         };
         for quest in &doc.quests {
             for node in &quest.body {
@@ -735,4 +757,354 @@ fn deadline_window(
             clock.describe(fails),
         )
     })
+}
+
+/// `W-BEAT-UNRAISED`: a beat answers an occasion the clock raises, and its
+/// `when` holds only where the clock does not raise it — or only at the
+/// last `dayEnd`, which the game's end closes — so it never plays.
+pub const W_BEAT_UNRAISED: &str = "W-BEAT-UNRAISED";
+
+/// Where the clock's `raise:` map raises one occasion, as `lute play`'s
+/// `advance:` does: the `slot` occasion where an advance stops; `dayStart`
+/// at the first slot of each day an advance enters; `dayEnd` before each
+/// midnight an advance crosses — at the day's last slot, or wherever an
+/// `advance: day` finds the clock — and, on a clock that ends, once at its
+/// last position, raised by the advance that ends it (after `clock.ended`
+/// turns true, [`RaiseRule::ending`]). The run starts with no raise, so
+/// nothing is raised where it starts and `dayStart` never on its day.
+#[derive(Clone, Copy, Debug)]
+pub struct RaiseRule {
+    slot: bool,
+    day_start: bool,
+    day_end: bool,
+}
+
+impl RaiseRule {
+    /// The rule of `occasion`; `None` when the clock does not raise it.
+    pub fn of(clock: &ClockDecl, occasion: &str) -> Option<Self> {
+        let m = clock.raises();
+        let is = |o: &Option<String>| o.as_deref() == Some(occasion);
+        let rule = RaiseRule {
+            slot: is(&m.slot),
+            day_start: is(&m.day_start),
+            day_end: is(&m.day_end),
+        };
+        (rule.slot || rule.day_start || rule.day_end).then_some(rule)
+    }
+
+    /// Whether an advance raises the occasion at `at`, on a run that started
+    /// at `start`. `any_slot`: a `dayEnd` counts at every slot of a day
+    /// before the last (where an `advance: day` may find the clock), not
+    /// only at the day's last slot.
+    pub fn raises(&self, clock: &ClockDecl, start: ClockAt, at: ClockAt, any_slot: bool) -> bool {
+        let last = clock.last_at();
+        if at < start || last.is_some_and(|l| at > l) {
+            return false;
+        }
+        (self.slot && at > start)
+            || (self.day_start && at.slot == 0 && at.day > start.day)
+            || (self.day_end
+                && match last {
+                    // On the last day only the advance that ends the clock
+                    // raises `dayEnd`, where it stops: the last position.
+                    Some(l) if at.day == l.day => at == l,
+                    _ => any_slot || at.slot + 1 == clock.slot_count(),
+                })
+    }
+
+    /// Whether the raise at `at` is the last `dayEnd`, which the advance that
+    /// ends the clock makes after `clock.ended` turns true.
+    pub fn ending(&self, clock: &ClockDecl, at: ClockAt) -> bool {
+        self.day_end && clock.last_at() == Some(at)
+    }
+
+    /// Where the clock raises `occasion`, in words.
+    pub fn describe(&self, clock: &ClockDecl, occasion: &str, start: ClockAt) -> String {
+        let mut parts = Vec::new();
+        if self.slot {
+            parts.push(format!(
+                "where an `advance:` stops (not at {}, where the run starts)",
+                clock.describe(start)
+            ));
+        }
+        if self.day_start {
+            parts.push(format!(
+                "at a day's first slot (not on day {}, the day the run starts)",
+                start.day
+            ));
+        }
+        if self.day_end {
+            parts.push("at a day's last slot".to_string());
+        }
+        format!("the clock raises `{occasion}` only {}", parts.join(", or "))
+    }
+}
+
+/// The project's `terminal:` as written, when it holds whenever
+/// `clock.ended` does (`clock.ended`, or a `||` with it; `@def`s expanded)
+/// — so the game is over before the last `dayEnd` is raised.
+pub fn terminal_on_end(terminal: Option<&str>, defs: &DefTable<'_>) -> Option<String> {
+    fn implied(expr: &Expr) -> bool {
+        match expr {
+            Expr::Select(_) => {
+                crate::cel_paths::select_path(expr).as_deref()
+                    == Some(lute_manifest::clock::CLOCK_ENDED)
+            }
+            Expr::Call(c) if c.target.is_none() => {
+                match (c.func_name.as_str(), c.args.as_slice()) {
+                    (op::LOGICAL_OR, [a, b]) => implied(&a.expr) || implied(&b.expr),
+                    (op::LOGICAL_AND, [a, b]) => implied(&a.expr) && implied(&b.expr),
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+    let t = terminal?.trim();
+    let mut arena = lute_cel::CelArena::default();
+    let ided = parse(t, defs, &mut arena)?;
+    implied(&ided.expr).then(|| t.to_string())
+}
+
+/// One `when` read over the clock's raises of one occasion.
+struct RaiseModel<'c> {
+    clock: &'c ClockDecl,
+    start: ClockAt,
+    /// `None`: the clock does not raise the occasion — the engine may raise
+    /// it at any position.
+    rule: Option<RaiseRule>,
+    /// The project's `terminal:` when it closes the last `dayEnd`.
+    closed_end: Option<String>,
+    when: Formula,
+    all: Vec<ClockAt>,
+}
+
+impl<'c> RaiseModel<'c> {
+    /// The model of `when` (and `prev`, a guard whose positions it must
+    /// cover too) for `occasion`, in `folded`'s schema. `None` without a
+    /// clock, when `when` reads no clock path, or past [`MAX_POSITIONS`].
+    fn new(
+        when: &str,
+        prev: Option<&str>,
+        occasion: &str,
+        folded: &'c FoldedEnv,
+    ) -> Option<(Self, Formula)> {
+        let schema = &folded.env.state;
+        let clock = schema.clock.as_ref()?;
+        let defs = DefTable {
+            bodies: &folded.def_bodies,
+            params: &folded.env.def_params,
+        };
+        let params = Default::default();
+        let ctx = DecideCtx {
+            schema,
+            dollar: None,
+            params: &params,
+            facts: None,
+        };
+        let reads = Reads {
+            schedule: None,
+            visited: None,
+            ended: true,
+        };
+        let formula = |raw: &str| {
+            let mut arena = lute_cel::CelArena::default();
+            parse(raw, &defs, &mut arena).map(|ided| build(&ided.expr, &ctx, clock, &reads))
+        };
+        let when = formula(when)?;
+        let mut clocked = false;
+        when.visit(&mut |f| clocked |= matches!(f, Formula::Clock { .. } | Formula::Ended));
+        if !clocked {
+            return None;
+        }
+        let prev = match prev {
+            Some(p) => formula(p)?,
+            None => Formula::Const(Some(true)),
+        };
+        let all = positions(clock, schema, &[&when, &prev], false)?;
+        let rule = RaiseRule::of(clock, occasion);
+        let outside = folded
+            .occasions
+            .get(occasion)
+            .is_some_and(|d| d.outside_run);
+        let closed_end = terminal_on_end(folded.env.terminal.as_deref(), &defs)
+            .filter(|_| rule.is_some() && !outside);
+        Some((
+            RaiseModel {
+                clock,
+                start: crate::clock::first_at(clock, schema),
+                rule,
+                closed_end,
+                when,
+                all,
+            },
+            prev,
+        ))
+    }
+
+    /// Whether the occasion is raised at `at` with the game still on.
+    fn open(&self, at: ClockAt) -> bool {
+        match self.rule {
+            None => true,
+            Some(r) => {
+                r.raises(self.clock, self.start, at, true)
+                    && !(self.closed_end.is_some() && r.ending(self.clock, at))
+            }
+        }
+    }
+
+    fn may(&self, at: ClockAt) -> bool {
+        self.when.eval(self.clock, at, Settle::Within) != Some(false)
+    }
+
+    /// Why the `when` holds at no open raise of `occasion` though it can
+    /// hold somewhere, and what to do: `None` when some open raise may meet
+    /// it, or it can hold nowhere (that is `E-BEAT-UNREACHABLE`'s).
+    fn unraised(&self, occasion: &str) -> Option<(String, String)> {
+        let rule = self.rule?;
+        if self.all.iter().any(|at| self.open(*at) && self.may(*at)) {
+            return None;
+        }
+        let first = *self.all.iter().find(|at| self.may(**at))?;
+        let last = self.clock.last_at();
+        if let (Some(t), Some(l)) = (&self.closed_end, last) {
+            if rule.ending(self.clock, l) && self.may(l) {
+                return Some((
+                    format!(
+                        "it can hold at {}, where only the advance that ends the clock raises \
+                         `{occasion}`: after `clock.ended` turns true, when `terminal: {t}` \
+                         already holds and the game is over",
+                        self.clock.describe(l)
+                    ),
+                    "raise it before the clock ends, or write `terminal:` so it holds only \
+                     once this has played"
+                        .to_string(),
+                ));
+            }
+        }
+        let start_day = rule.day_start
+            && self
+                .all
+                .iter()
+                .filter(|at| self.may(**at))
+                .all(|at| at.day == self.start.day);
+        Some((
+            format!(
+                "it can hold at {}, but {}",
+                self.clock.describe(first),
+                rule.describe(self.clock, occasion, self.start)
+            ),
+            if start_day {
+                "answer the occasion the run starts with instead".to_string()
+            } else {
+                format!("answer an occasion raised where it holds, or let its `when` hold where the clock raises `{occasion}`")
+            },
+        ))
+    }
+}
+
+/// [`W_BEAT_UNRAISED`] across one project root: `docs` parallel to
+/// `foldeds`. A beat on an occasion the clock raises whose `when` can hold
+/// only where the clock does not raise it ([`RaiseRule`]), or only at the
+/// last `dayEnd` when the project's `terminal:` holds with `clock.ended`.
+/// A scene a `chapters:` chain waits on is left to `W-CHAPTER-STALL`.
+/// Anchored at the beat's `on`.
+pub fn check_project_unraised(
+    docs: &[(PathBuf, Document)],
+    foldeds: &[&FoldedEnv],
+) -> Vec<(PathBuf, Diagnostic)> {
+    let mut out = Vec::new();
+    for pb in crate::beats::project_beats(docs, foldeds) {
+        let Some(when) = pb.when_slot.map(|w| w.raw.trim()).filter(|w| !w.is_empty()) else {
+            continue;
+        };
+        if pb.kind == crate::beats::ProjectBeatKind::Scene
+            && crate::chapters::waited_on(docs, &pb.id)
+        {
+            continue;
+        }
+        let Some((model, _)) = RaiseModel::new(when, None, pb.on, pb.folded) else {
+            continue;
+        };
+        let Some((why, fix)) = model.unraised(pb.on) else {
+            continue;
+        };
+        out.push((
+            pb.path.clone(),
+            crate::reachability::diag(
+                W_BEAT_UNRAISED,
+                Severity::Warning,
+                format!(
+                    "{} answers `{}`, but its `when` `{when}` holds at no raise of it: {why}, so \
+                     it never plays — {fix}",
+                    pb.name(),
+                    pb.on
+                ),
+                pb.anchor,
+            ),
+        ));
+    }
+    out
+}
+
+/// Why a `chapters:` chain on `occasion` can stop for good at a listed
+/// scene whose `when` reads the clock, and what to do — `None` when it
+/// cannot. `prev` is the scene listed before it (its id and own `when`),
+/// `None` for the first. It stops when no raise of `occasion` meets the
+/// `when` ([`RaiseModel::unraised`]), or when the scene before it may play
+/// at a raise after which the occasion is still raised but never again
+/// where the `when` holds — a window that closes. On a clock that never
+/// ends, only arrivals a full week before the model's end are judged
+/// (past it every atom repeats).
+pub(crate) fn chapter_window(
+    when: &str,
+    prev: Option<(&str, Option<&str>)>,
+    occasion: &str,
+    folded: &FoldedEnv,
+) -> Option<(String, String)> {
+    let (model, prev_when) = RaiseModel::new(when, prev.and_then(|(_, w)| w), occasion, folded)?;
+    if let Some((why, fix)) = model.unraised(occasion) {
+        return Some((
+            format!("its `when` holds at no raise of `{occasion}`: {why}"),
+            fix,
+        ));
+    }
+    let (prev_id, _) = prev?;
+    let clock = model.clock;
+    let tail = match clock.last_at() {
+        Some(_) => i64::MAX,
+        None => {
+            let period = clock
+                .week
+                .as_ref()
+                .map_or(1, |w| i64::from(w.length.max(1)));
+            model.all.last()?.day - period
+        }
+    };
+    // A raise the clock makes comes once per position; one the engine makes
+    // may come again where the scene before played.
+    let later = |a: ClockAt, q: ClockAt| if model.rule.is_some() { q > a } else { q >= a };
+    let raises: Vec<ClockAt> = model
+        .all
+        .iter()
+        .copied()
+        .filter(|at| model.open(*at))
+        .collect();
+    let stuck = raises.iter().copied().find(|a| {
+        a.day <= tail
+            && prev_when.eval(clock, *a, Settle::Within) != Some(false)
+            && raises.iter().any(|q| later(*a, *q))
+            && !raises.iter().any(|q| later(*a, *q) && model.may(*q))
+    })?;
+    let ends = match clock.last_at() {
+        Some(l) => format!(" before the clock ends at {}", clock.describe(l)),
+        None => " ever again".to_string(),
+    };
+    Some((
+        format!(
+            "if `{prev_id}` plays at {} or later, no later raise of `{occasion}` meets it{ends}",
+            clock.describe(stuck)
+        ),
+        format!("let its `when` hold at a later raise of `{occasion}` too"),
+    ))
 }

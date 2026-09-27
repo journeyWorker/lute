@@ -30,7 +30,7 @@ Ink와 Yarn Spinner는 흐름(flow)입니다: 텍스트가 위에서 아래로 �
 | `- gather` | 선택지 다음 줄들 | `</branch>` 다음 줄들. 어느 선택지를 골랐든 실행됩니다 |
 | `VAR oil = 1` | `<<declare $oil = 1>>` | 스키마나 프런트매터의 `state:` 아래 `run.oil: { type: number, default: 1 }` |
 | `CONST MAX = 5` | — | `defs:` 아래의 def. `@MAX`로 읽습니다 |
-| `LIST mood = calm, stormy` | — | enum 타입 경로: `run.mood: { type: { enum: [calm, stormy] } }` |
+| `LIST mood = calm, stormy` | — | enum 타입 경로: `run.mood: { type: { enum: [calm, stormy] }, default: calm }` |
 | `~ oil = oil + 2` | `<<set $oil to $oil + 2>>` | `::set{run.oil += 2}` |
 | 텍스트 안의 `{oil}` | 텍스트 안의 `{$oil}` | `{{run.oil}}` |
 | `{oil > 0: text}` | `<<if $oil > 0>>` | 가드를 단 줄: `@narrator{when="run.oil > 0"}: text` |
@@ -146,26 +146,30 @@ trace: lamp.lute  (seeds: 0 paths, 0 facts; 5 selections)
     ::set  scene.ledgerReads = 1
   <match scene.ledgerReads>   -> arm 1 (is="1")
     @narrator  The last entry is three weeks old. "Oil low. Ship due."
+    -- return (hub lamp) --
     @narrator  The lamp room again. The dark is closer.
   <hub lamp>   eligible: ledger, stores, dusk   -> ledger
     ::set  scene.ledgerReads = 2
   <match scene.ledgerReads>   -> arm 2 (is="2")
     @narrator  You read it again. The handwriting shakes toward the end.
+    -- return (hub lamp) --
     @narrator  The lamp room again. The dark is closer.
   <hub lamp>   eligible: ledger, stores, dusk   -> stores
     @narrator  You find two more cans of oil.
     ::set  run.oil = 3
+    -- return (hub lamp) --
     @narrator  The lamp room again. The dark is closer.
   <hub lamp>   eligible: ledger, dusk   -> ledger
     ::set  scene.ledgerReads = 3
   <match scene.ledgerReads>   -> otherwise
     @narrator  The words have stopped changing.
+    -- return (hub lamp) --
     @narrator  The lamp room again. The dark is closer.
   <hub lamp>   eligible: ledger, dusk   -> dusk
   guard `run.oil >= 3`: taken
     @narrator  The lamp catches.
   guard `run.oil < 3`: skipped
-trace complete: 10 decisions; choices 5/3 (lamp), arms 1/3 (scene.ledgerReads @19:5), guard `run.oil >= 3` @36:5: taken, guard `run.oil < 3` @37:5: skipped
+trace complete: 10 decisions; choices 3/3 (lamp), arms 3/3 (scene.ledgerReads @19:5), guard `run.oil >= 3` @36:5: taken, guard `run.oil < 3` @37:5: skipped
 ```
 
 `stores`는 한 번 고른 뒤 메뉴에서 빠집니다. 나머지 허브 규칙은 [Choices & hubs](/language/choices-and-hubs/)에
@@ -304,7 +308,7 @@ ink.lute:15:1: error [E-UNCLASSIFIED] unrecognized line: `* [Read the ledger]` i
 ink.lute:16:1: error [E-UNCLASSIFIED] unrecognized line: `+ [Wait for dark]` is an Ink choice; Lute choices are `<choice id="…" label="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice); Ink's sticky `+` is a plain `<hub>` choice
 ink.lute:17:1: error [E-UNCLASSIFIED] unrecognized line: `- gather` is an Ink gather; Lute has no gathers: after a `<branch>` or `<hub>` closes, the lines below it run whichever choice was taken, so write the gathered text there as an ordinary line (`@narrator: …`)
 ink.lute:18:1: error [E-UNCLASSIFIED] unrecognized line: `-> ledger` is an Ink divert; Lute has no diverts: `::next{to="ledger"}` jumps forward to a `::mark{id="ledger"}` later in this document, a `<hub>` repeats its choices until an `exit` choice, and another scene is reached through the occasion it answers (`on:` in its frontmatter)
-ink.lute:19:1: error [E-UNCLASSIFIED] unrecognized line: `-> END` is an Ink divert; a scene ends with `::end`
+ink.lute:19:1: error [E-UNCLASSIFIED] unrecognized line: `-> END` is an Ink divert; it ends the whole story, which in Lute is the schema's `terminal:` condition: a scene makes it hold with an ordinary `::set{…}` (`::end` is Ink's `-> DONE`: it ends only this scene)
 failed: ink.lute (10 error(s), 0 warning(s))
 ```
 

@@ -278,6 +278,10 @@ pub struct MetaDefaults {
     /// write (`on:` / `after:` / `priority:`), applied by the same parse-time
     /// pass that applies `questTier` (`lute_check::chapters::apply_chapters`).
     chapters: Vec<Chain>,
+    /// Where `defaults.questTier` is written: the manifest file and the
+    /// key's span in it — where a problem with the default itself is
+    /// reported once, not at every quest it applies to.
+    quest_tier_home: Option<(PathBuf, lute_core_span::Span)>,
 }
 
 impl MetaDefaults {
@@ -310,6 +314,10 @@ impl MetaDefaults {
     pub fn with_chapters(mut self, chapters: Vec<Chain>) -> Self {
         self.chapters = chapters;
         self
+    }
+    /// Where `defaults.questTier` is written, when loaded from a manifest.
+    pub fn quest_tier_home(&self) -> Option<&(PathBuf, lute_core_span::Span)> {
+        self.quest_tier_home.as_ref()
     }
 }
 
@@ -440,27 +448,39 @@ fn resolve_chapters(
     let mut diags = Vec::new();
     let mut chains: Vec<Chain> = Vec::new();
     if let Some(old) = retired {
+        let on = ["on", "occasion"]
+            .iter()
+            .find_map(|k| old.get(k)?.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let scenes: Vec<String> = ["scenes", "scene"]
+            .iter()
+            .find_map(|k| old.get(k)?.as_sequence())
+            .into_iter()
+            .flatten()
+            .filter_map(|s| s.as_str().filter(|s| is_scene_word(s)).map(str::to_string))
+            .collect();
+        // TH28-8: the rewrite built from the author's own occasion and
+        // scenes, with a placeholder only for what the old block lacks.
+        let line = format!(
+            "chapters: [{{ on: {}, scenes: [{}] }}]",
+            if on.is_empty() { "<occasion>" } else { &on },
+            if scenes.is_empty() {
+                "<scene id>, …".to_string()
+            } else {
+                scenes.join(", ")
+            }
+        );
         diags.push(ChapterDiag {
-            message: "`sequence:` is now `chapters:`, a list of chains, and its `occasion:` is \
-                      `on:` — write `chapters: [{ on: <occasion>, scenes: [<scene id>, …] }]`"
-                .to_string(),
+            message: format!(
+                "`sequence:` is now `chapters:`, a list of chains, and its `occasion:` is `on:` \
+                 — write `{line}`"
+            ),
             anchor: ChapterAnchor::Top("sequence".to_string()),
         });
         // Keep the old block's ids (unapplied, unchecked) so the scenes it
         // lists hear about the rename, not that they are listed nowhere.
         if raw.is_none() {
-            let on = ["on", "occasion"]
-                .iter()
-                .find_map(|k| old.get(k)?.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let scenes = ["scenes", "scene"]
-                .iter()
-                .find_map(|k| old.get(k)?.as_sequence())
-                .into_iter()
-                .flatten()
-                .filter_map(|s| s.as_str().filter(|s| is_scene_word(s)).map(str::to_string))
-                .collect();
             chains.push(Chain {
                 on,
                 scenes,
@@ -686,6 +706,7 @@ impl FromIterator<(String, serde_yaml::Value)> for MetaDefaults {
         Self {
             entries: iter.into_iter().collect(),
             chapters: Vec::new(),
+            quest_tier_home: None,
         }
     }
 }
@@ -959,10 +980,19 @@ fn defaults_value_hint(key: &str, v: &serde_yaml::Value) -> String {
 fn canonical_default_path(manifest_dir: &Path, rel: &str) -> Result<String, String> {
     match std::fs::canonicalize(manifest_dir.join(rel)) {
         Ok(p) => Ok(p.display().to_string()),
-        Err(e) => Err(format!(
-            "`{rel}` does not resolve against {}: {e}",
-            manifest_dir.display()
-        )),
+        Err(e) => {
+            // `- a.lute, b.lute` is one item naming one (missing) path.
+            let split = if rel.contains(',') {
+                " — a list item holds one path; write each path as its own `- ` item"
+            } else {
+                ""
+            };
+            Err(format!(
+                "`{rel}` does not resolve against {}: {}{split}",
+                manifest_dir.display(),
+                crate::io_reason(&e)
+            ))
+        }
     }
 }
 
@@ -1247,7 +1277,13 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
     let text = match std::fs::read_to_string(&path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
+        Err(e) => {
+            return Err(format!(
+                "cannot read {}: {}",
+                path.display(),
+                crate::io_reason(&e)
+            ))
+        }
     };
     let fail = |offset: usize, message: &str| {
         let (line, col) = crate::yaml_text::line_col(&text, offset);
@@ -1367,7 +1403,15 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
     let (identity, identity_diags) = resolve_identity(raw.identity, &locate);
     let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults, &locate);
     let (chapters, chapter_diags) = resolve_chapters(raw.chapters, raw.sequence);
-    let defaults = defaults.with_chapters(chapters);
+    let mut defaults = defaults.with_chapters(chapters);
+    if defaults.get("questTier").is_some() {
+        if let Some(r) = locate(&["defaults", "questTier"]) {
+            let idx = lute_core_span::TextIndex::new(&text);
+            let file = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            defaults.quest_tier_home =
+                Some((file, lute_core_span::Span::from_bytes(&idx, r.start, r.end)));
+        }
+    }
 
     Ok(Some(ProjectConfig {
         graph,

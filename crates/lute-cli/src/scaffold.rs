@@ -935,11 +935,13 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
         let path = dir.join(file.rel);
         if let Some(parent) = path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
+                let e = lute_manifest::io_reason(&e);
                 eprintln!("lute init: cannot create `{}`: {e}", parent.display());
                 return ExitCode::from(2);
             }
         }
         if let Err(e) = fs::write(&path, &file.content) {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute init: cannot write `{}`: {e}", path.display());
             return ExitCode::from(2);
         }
@@ -1182,11 +1184,13 @@ fn create(path: &Path, content: &str) -> Result<(), ExitCode> {
     }
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute new: cannot create `{}`: {e}", parent.display());
             return Err(ExitCode::from(2));
         }
     }
     if let Err(e) = fs::write(path, content) {
+        let e = lute_manifest::io_reason(&e);
         eprintln!("lute new: cannot write `{}`: {e}", path.display());
         return Err(ExitCode::from(2));
     }
@@ -1253,41 +1257,139 @@ fn validate_beat(
     }
 }
 
-/// dsl 0.27.0 (T3-11): the lowest `priority` of the beats already on `on`
-/// under `root` — scenes' frontmatter, lore `<entry on=…>` and bundle
-/// `<beat on=…>` (an absent priority is `0`) — or `None` when there is none
-/// (or the walk fails: the scaffold then writes no priority, as before).
-fn lowest_beat_priority(root: &Path, on: &str) -> Option<i64> {
+/// Where a fresh beat stub on `on` (for `target`) lands among the beats
+/// already on `on` under `root` — scenes' frontmatter, lore `<entry on=…>`
+/// and bundle `<beat on=…>` (an absent priority is `0`).
+#[derive(Debug, Default, PartialEq, Eq)]
+struct BeatLadder {
+    /// dsl 0.27.0 (T3-11): the lowest priority of the other beats, so the
+    /// stub goes below them and never ties one.
+    lowest: Option<i64>,
+    /// The priorities of the other beats that are candidates whenever the
+    /// stub is (untargeted, or on the stub's target): the ones it could tie.
+    rivals: std::collections::BTreeSet<i64>,
+    /// The highest always-eligible, never-spent rival (no `when:`/`after:`/
+    /// `spentBy`, repeatable) — its priority and id. A stub below it would
+    /// never win (`W-BEAT-SHADOWED`), so it goes above.
+    fallback: Option<(i64, String)>,
+}
+
+impl BeatLadder {
+    /// The stub's `priority:` and the reason written beside it, or `None`
+    /// when `on` has no beat yet.
+    fn place(&self, on: &str) -> Option<(i64, String)> {
+        let below = self.lowest.map(|l| l.saturating_sub(10));
+        match &self.fallback {
+            Some((top, id)) if below.is_none_or(|b| b <= *top) => {
+                // Between the fallback and the next rival above it when there
+                // is room (halfway, so the next stub fits below this one),
+                // else just above the fallback, on a priority no rival holds.
+                let next = self.rivals.range(top.saturating_add(1)..).next().copied();
+                let mut p = match next {
+                    Some(n) if n.saturating_sub(*top) >= 2 => top + (n - top) / 2,
+                    _ => top.saturating_add(1),
+                };
+                while self.rivals.contains(&p) {
+                    p = p.saturating_add(1);
+                }
+                let why = match next {
+                    Some(n) if n > p => {
+                        format!("below the other `{on}` beats, above the fallback `{id}`")
+                    }
+                    _ => format!("above the fallback `{id}`, which answers every time otherwise"),
+                };
+                Some((p, why))
+            }
+            _ => below.map(|b| (b, format!("below every other `{on}` beat"))),
+        }
+    }
+
+    /// One beat on `on`: `rival` when it is a candidate whenever the stub is,
+    /// `fallback` (its id) when it is moreover always eligible and never spent.
+    fn add(&mut self, priority: i64, rival: bool, fallback: Option<&str>) {
+        if let Some(id) = fallback {
+            if self.fallback.as_ref().is_none_or(|(p, _)| priority > *p) {
+                self.fallback = Some((priority, id.to_owned()));
+            }
+            return;
+        }
+        if rival {
+            self.rivals.insert(priority);
+        }
+        self.lowest = Some(self.lowest.map_or(priority, |l| l.min(priority)));
+    }
+}
+
+/// The [`BeatLadder`] of `on` under `root` for a stub on `target` (the walk
+/// failing leaves it empty: the scaffold then writes no priority).
+fn beat_ladder(root: &Path, on: &str, target: Option<&str>) -> BeatLadder {
     let attr = |p: &Option<(String, lute_core_span::Span)>| {
         p.as_ref().map_or(Some(0), |(raw, _)| {
             lute_check::beats::parse_beat_priority(raw)
         })
     };
-    let mut lowest: Option<i64> = None;
-    for file in crate::find_lute_files(root).ok()? {
+    // A candidate whenever the stub is: untargeted, or on the stub's target.
+    let covers = |t: Option<&str>| t.is_none_or(|t| Some(t) == target);
+    let mut ladder = BeatLadder::default();
+    let Ok(files) = crate::find_lute_files(root) else {
+        return ladder;
+    };
+    for file in files {
         let Ok(text) = fs::read_to_string(&file) else {
             continue;
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let scene = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml)
+        if let Some(m) = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml)
             .ok()
             .filter(|m| m.get("on").and_then(serde_yaml::Value::as_str) == Some(on))
-            .map(|m| m.get("priority").map_or(Some(0), serde_yaml::Value::as_i64));
-        let entries = doc
+        {
+            let key = |k: &str| m.get(k);
+            let repeatable = matches!(key("once"), Some(serde_yaml::Value::Bool(false)))
+                || key("once").and_then(serde_yaml::Value::as_str) == Some("false");
+            let rival = covers(key("target").and_then(serde_yaml::Value::as_str));
+            let fallback = rival
+                && repeatable
+                && ["when", "after", "spentBy"]
+                    .iter()
+                    .all(|k| key(k).is_none());
+            let id = key("id").and_then(serde_yaml::Value::as_str).unwrap_or("");
+            if let Some(p) = key("priority").map_or(Some(0), serde_yaml::Value::as_i64) {
+                ladder.add(p, rival, fallback.then_some(id));
+            }
+        }
+        for e in doc
             .entries
             .iter()
             .filter(|e| e.on.as_ref().is_some_and(|(o, _)| o == on))
-            .map(|e| attr(&e.priority));
-        let beats = doc
+        {
+            let rival = covers(e.target.as_ref().map(|(t, _)| t.as_str()));
+            // An entry without `once` is repeatable.
+            let fallback = rival
+                && e.once.as_ref().is_none_or(|(o, _)| o == "false")
+                && e.when.is_none()
+                && e.spent_by.is_none();
+            if let Some(p) = attr(&e.priority) {
+                ladder.add(p, rival, fallback.then_some(e.id.as_str()));
+            }
+        }
+        for b in doc
             .beats
             .iter()
             .filter(|b| b.on.as_ref().is_some_and(|(o, _)| o == on))
-            .map(|b| attr(&b.priority));
-        for p in scene.into_iter().chain(entries).chain(beats).flatten() {
-            lowest = Some(lowest.map_or(p, |l| l.min(p)));
+        {
+            let rival = covers(b.target.as_ref().map(|(t, _)| t.as_str()));
+            // A bundle beat is `once: run` unless it says otherwise.
+            let fallback = rival
+                && b.once.as_ref().is_some_and(|(o, _)| o == "false")
+                && b.when.is_none()
+                && b.after.is_none()
+                && b.spent_by.is_none();
+            if let Some(p) = attr(&b.priority) {
+                ladder.add(p, rival, fallback.then_some(b.id.as_str()));
+            }
         }
     }
-    lowest
+    ladder
 }
 
 /// `lute new scene <name> [--occasion <occasion> [--target <target>]]`.
@@ -1331,16 +1433,12 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
         Some(on) => {
             let mut front = format!(
                 "# A beat: presented when the engine raises `{on}`. Add\n\
-                 # `priority:`, `once:` (run | user | false) and `when:` as needed.\n\
+                 # `priority:`, `once:` (run | user | false | day | slot | week | season:<name>)\n\
+                 # and `when:` as needed.\n\
                  on: {on}\n{target_line}"
             );
-            // dsl 0.27.0 (T3-11): below every beat already on `on`, so a
-            // fresh stub never ties one.
-            if let Some(lowest) = lowest_beat_priority(&dest.root, on) {
-                front.push_str(&format!(
-                    "priority: {}   # below every other `{on}` beat\n",
-                    lowest.saturating_sub(10)
-                ));
+            if let Some((priority, why)) = beat_ladder(&dest.root, on, target).place(on) {
+                front.push_str(&format!("priority: {priority}   # {why}\n"));
             }
             (
                 front,
@@ -1388,6 +1486,7 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
              # then gives it {derives}.\n"
         );
         if let Err(e) = fs::write(&path, render(&comment)) {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute new: cannot write `{}`: {e}", path.display());
             return ExitCode::from(2);
         }

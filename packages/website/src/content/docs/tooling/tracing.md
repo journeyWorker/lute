@@ -20,7 +20,7 @@ $ lute trace scene.lute \
 
 - `--state <path>=<literal>` — a scalar seed on a declared path.
 - `--fact "<rel>(<arg>…)"` — a ground fact, valid-now, over the declared vocabulary (a *supplied answer*, so it may name a `derive:`/`reserved:` relation).
-- `--choose <id>=<choiceId>[,<choiceId>…]` — a menu selection at a `<branch>`/`<hub>` id; a hub may force a whole ordered visit sequence via one flag's comma list.
+- `--choose <id>=<choiceId>[,<choiceId>…]` — a menu selection at a `<branch>`/`<hub>` id; a hub may force a whole ordered visit sequence via one flag's comma list. A hub whose list runs out before it exits halts the walk incomplete (exit 3) and names the list, as `lute play` does.
 - `--event <name>` — fire a capability/world event, in CLI order.
 - `--accept <questId>` — simulate accepting a `start`-less (accept-driven) quest. With a project, since dsl 0.26.0, it may name any quest of the project, not only one the traced document declares; an id no quest declares is `E-TRACE-ACCEPT`.
 
@@ -164,14 +164,14 @@ trace complete: 0 decisions
 
 A beat's own `after="…"` (dsl 0.25.0 §3) is shown the same way, over the mock's `visited:` and quest states, and never enforced: ``<beat keeper.greeting>   (not eligible: `after` prerequisite not satisfied)`` heads the walk when it does not hold.
 
-A beat or entry that targets a whole kind (`target="kind:trainer"`, dsl 0.26.0 §5; see [Kind targets](/tooling/play/#kind-targets)) reads the raised member as `occasion.target`. Seed it like any state path — `--state occasion.target=r16Gus`, or `state: { occasion.target: r16Gus }` in a mock or test — typed by the kind, so a non-member is `E-TRACE-MOCK-TYPE`. Where the text interpolates it, trace and test print the member the way `lute play` does: the kind's label for it, else its cast `name:` when the member is a cast id (`@narrator  Hiker Brom squares up.`), else the id. Without the seed the text keeps `{{occasion.target}}`. `--entry` also takes an entry's `<document id>.<entry id>` (`--entry lore.tomas.tomasOil`).
+A beat or entry that targets a whole kind (`target="kind:trainer"`, dsl 0.26.0 §5; see [Kind targets](/tooling/play/#kind-targets)) reads the raised member as `occasion.target`. Seed it like any state path — `--state occasion.target=r16Gus`, or `state: { occasion.target: r16Gus }` in a mock or test — typed by the kind, so a non-member is `E-TRACE-MOCK-TYPE`; or raise the beat's occasion for the member, `--occasion <occasion>@<target>` naming the member, which binds it as the engine does (a target outside the kind is `E-TRACE-MOCK-TYPE` too). Where the text interpolates it, trace and test print the member the way `lute play` does: the kind's label for it, else its cast `name:` when the member is a cast id (`@narrator  Hiker Brom squares up.`), else the id. Without either, the walk stops incomplete at the first line or write that needs the member, naming the seed. `--entry` also takes an entry's `<document id>.<entry id>` (`--entry lore.tomas.tomasOil`).
 
 A lore document needs `--entry` or `--beat`, and without either the usage error (exit **2**) lists both kinds of id. A `--beat` that names no beat of the document is `E-TRACE-BEAT` (exit **1**), listing the ones it declares:
 
 <!-- lute-diagnostics -->
 ```console
 $ lute trace lore/oskar.lute --project . --beat hnut
-lore/oskar.lute:0:0: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id `hnut`; this document declares: oskar.hunt, oskar.rumor
+lore/oskar.lute: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id `hnut`; this document declares: oskar.hunt, oskar.rumor
 ```
 
 `--beat` on a document with no `<beat>` — a scene, say — is `E-TRACE-BEAT` too. [`lute run --beat`](/tooling/cli/#run) presents the same beat from the compiled lore artifact.

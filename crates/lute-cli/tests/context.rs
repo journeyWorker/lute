@@ -458,7 +458,8 @@ fn context_shows_directive_effects_judge_and_speaker_params() {
         &proj,
         "plugins/demo.occasions/directives/game.yaml",
         "directives:\n  - name: salvage\n    attrs:\n      - { name: what, type: string, required: true }\n    \
-         effects:\n      writes:\n        - { scope: run, path: [salvage], value: { op: increment, by: 1 } }\n",
+         effects:\n      writes:\n        - { scope: run, path: [salvage], value: { op: increment, by: 1 } }\n        \
+         - { scope: run, path: [loot, { fromAttr: { name: what } }], value: { fromAttr: what } }\n",
     );
     write_at(
         &proj,
@@ -493,7 +494,9 @@ fn context_shows_directive_effects_judge_and_speaker_params() {
     let text = context(&proj, false);
     for expected in [
         "  salvage: what: string (required)",
-        "    effects: writes run.salvage = {\"by\":1.0,\"op\":\"increment\"}",
+        // Declared effects read as writes, not as raw IR JSON.
+        "    effects: writes run.salvage += 1; writes run.loot.<what> = <what>",
+        "permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)",
         "  dusk (select: first, payload: { occasion.payload.seconds: number }, judge: before)",
         "  nod(who: speaker)",
     ] {

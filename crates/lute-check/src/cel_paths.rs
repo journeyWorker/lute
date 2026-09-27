@@ -716,6 +716,9 @@ pub(crate) fn engine_path_hint(path: &str, declared: &dyn Fn(&str) -> bool) -> O
     Some(match root {
         "quest" | "entry" => {
             let head = format!("{root}.<{root}>.");
+            if let Some(dotted) = dotted_id_read(path, &head, &rows) {
+                return Some(dotted);
+            }
             let keys: Vec<String> = rows
                 .iter()
                 .map(|r| format!("`{}`", r.shape.trim_start_matches(head.as_str())))
@@ -737,6 +740,48 @@ pub(crate) fn engine_path_hint(path: &str, declared: &dyn Fn(&str) -> bool) -> O
              answers its occasion",
             listing(&rows)
         ),
+    })
+}
+
+/// A `quest.<id>…` / `entry.<id>…` read whose id has a `.` (`quest.wing.hush
+/// .state`): the path is one the engine keeps once the id is one name. The
+/// id is refused where it is declared (`E-PATH-IDENT`), so the read says how
+/// the two go together — `None` when no split of the path reads that way.
+fn dotted_id_read(path: &str, head: &str, rows: &[&EnginePath]) -> Option<String> {
+    let segs: Vec<&str> = path.split('.').collect();
+    let root = segs[0];
+    let fits = |rest: &[&str]| {
+        rows.iter().any(|r| {
+            let tail: Vec<&str> = r.shape.trim_start_matches(head).split('.').collect();
+            tail.len() == rest.len()
+                && tail
+                    .iter()
+                    .zip(rest)
+                    .all(|(t, s)| t.starts_with('<') || t == s)
+        })
+    };
+    (3..segs.len()).find_map(|end| {
+        let id = &segs[1..end];
+        if !fits(&segs[end..]) || id.iter().any(|s| s.is_empty()) {
+            return None;
+        }
+        let one: String = id
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                let mut c = s.chars();
+                match c.next() {
+                    Some(f) if i > 0 => f.to_uppercase().chain(c).collect(),
+                    _ => (*s).to_string(),
+                }
+            })
+            .collect();
+        let rest = segs[end..].join(".");
+        Some(format!(
+            "`{path}` reads {root} `{}`, but a {root} id is one name (no `.`), so this path never \
+             names it — rename the {root} (for example `{one}`) and read `{root}.{one}.{rest}`",
+            id.join(".")
+        ))
     })
 }
 

@@ -227,7 +227,7 @@ declaration; the first one is used:
 
 <!-- lute-diagnostics unverified="byte-exact check-project output; the plugin loader prefixes the file position to a composed message, so no single format! literal holds it" -->
 ```
-lute: E-PLUGIN-DUP-ID: ./plugins/harbor.engine/cast/south.yaml:3:3: cast `keeper` is already declared at cast/north.yaml:2; this declaration is ignored — rename or remove one
+./plugins/harbor.engine/cast/south.yaml:3:3: error [E-PLUGIN-DUP-ID] cast `keeper` is already declared at cast/north.yaml:2; this declaration is ignored — rename or remove one
 ```
 
 ## Shared components

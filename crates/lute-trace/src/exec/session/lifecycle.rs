@@ -42,6 +42,9 @@ pub fn advance_quests(p: &ExecProject, w: &mut World) -> (Vec<QuestAdvance>, Opt
         // reading it: observed before the next pass.
         out.extend(crate::exec::cadence::observe(p, w));
     }
+    // `spentBy` latches see the settled world only: a quest its `start`
+    // activates in this settle is `active`, never its `unset` before.
+    crate::exec::cadence::observe_latches(p, w);
     // dsl 0.24.0 §2 (ER N15): an accept of an `activate="accept"` child
     // while its parent is not active is spent — the transcript says so.
     for id in std::mem::take(&mut w.accepts) {

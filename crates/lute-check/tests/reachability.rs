@@ -1380,6 +1380,47 @@ fn an_options_own_visit_record_is_true_in_its_arm() {
     assert!(!other.contains(&"E-ARM-DEAD".to_string()), "{other:?}");
 }
 
+/// dsl 0.28.0 §5 (ledger LG28-17): a hub's `<return>` runs only after an
+/// option that is not `exit`. With one such option its records hold it
+/// there; in a hub entered once, no `exit` option has been visited yet. A
+/// hub an outer hub's option enters again may have been left by its exit.
+#[test]
+fn a_hubs_return_knows_what_ran_before_it() {
+    let hub = |stays: &str, ret: &str| {
+        format!(
+            "<hub id=\"h\">\n<return>\n{ret}</return>\n{stays}\
+             <choice id=\"x\" label=\"Leave\" exit>\n@narrator: Out.\n</choice>\n</hub>\n"
+        )
+    };
+    let scene = |body: &str| format!("---\nkind: scene\nid: s\n---\n## Room\n{body}");
+    let a = "<choice id=\"a\" label=\"A\">\n@narrator: A.\n</choice>\n";
+    let line = |guard: &str| format!("@narrator{{when=\"{guard}\"}}: Never.\n");
+    for guard in [
+        "scene.visited.h.x",
+        "!scene.visited.h.a",
+        "scene.choices.h == 'x'",
+    ] {
+        let ds = run(&scene(&hub(a, &line(guard)))).diagnostics;
+        assert!(
+            ds.iter()
+                .any(|d| d.code == "E-ARM-DEAD" && d.message.contains("in the hub's `<return>`")),
+            "{guard}: {ds:#?}"
+        );
+    }
+    // Two options stay: which one ran is not known.
+    let two = format!("{a}<choice id=\"b\" label=\"B\">\n@narrator: B.\n</choice>\n");
+    let cs = codes(&scene(&hub(&two, &line("!scene.visited.h.a"))));
+    assert!(!cs.contains(&"E-ARM-DEAD".to_string()), "{cs:?}");
+    // Entered again from an outer hub's option: `x` may have been taken.
+    let nested = scene(&format!(
+        "<hub id=\"o\">\n<choice id=\"talk\" label=\"Talk\">\n{}</choice>\n\
+         <choice id=\"go\" label=\"Go\" exit>\n@narrator: Go.\n</choice>\n</hub>\n",
+        hub(a, &line("scene.visited.h.x"))
+    ));
+    let cs = codes(&nested);
+    assert!(!cs.contains(&"E-ARM-DEAD".to_string()), "{cs:?}");
+}
+
 /// dsl 0.28.0 (T3-61): after a `<branch>` that always picks (an unguarded
 /// choice, no `timeout`) its record is set: a match on it needs no `unset`
 /// arm. A `timeout` can end the branch without a pick, and the one report

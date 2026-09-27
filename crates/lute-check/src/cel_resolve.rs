@@ -1012,17 +1012,33 @@ fn call_hint(c: &cel_parser::ast::CallExpr, scope: &ProfileScope<'_>) -> String 
         },
         _ => None,
     };
-    match (name, id) {
-        ("completed" | "active", Some(id)) => format!(
-            " — `{name}()` belongs to `after:`; a condition reads the quest's state: \
+    // A near miss (`complete('q1')`) is read as the function it misspells.
+    let meant = match name {
+        "completed" | "active" | VISITED_FN => Some(name),
+        _ if c.target.is_none() => {
+            lute_manifest::suggest::nearest(name, ["completed", "active", VISITED_FN], 2)
+        }
+        _ => None,
+    };
+    let not = if meant == Some(name) {
+        String::new()
+    } else {
+        format!(" (not `{name}`)")
+    };
+    match (meant, id) {
+        (Some(m @ ("completed" | "active")), Some(id)) => format!(
+            " — `{m}()`{not} belongs to `after:`; a condition reads the quest's state: \
              `quest.{id}.state == '{}'`",
-            if name == "completed" {
+            if m == "completed" {
                 "complete"
             } else {
                 "active"
             }
         ),
-        (VISITED_FN, Some(id)) => format!(" — the scene id is quoted: `visited('{id}')`"),
+        (Some(VISITED_FN), Some(id)) if meant == Some(name) => {
+            format!(" — the scene id is quoted: `visited('{id}')`")
+        }
+        (Some(VISITED_FN), Some(id)) => format!(" — did you mean `visited('{id}')`?"),
         _ => String::new(),
     }
 }

@@ -472,6 +472,9 @@ QUOTE_HEAD_RES = (
     re.compile(r"^[ \t]*(?:(?P<path>[^\s:]+):)?(?P<line>\d+):(?P<col>\d+): " + _SEV + r" (?P<rest>.*)$"),
     # The position elided entirely, as the reference pages write it.
     re.compile(r"^[ \t]*" + _SEV + r" (?P<rest>.*)$"),
+    # A file-level diagnostic the CLI prints without a position
+    # (`lore/oskar.lute: error [E-TRACE-BEAT] …`: no line to name).
+    re.compile(r"^[ \t]*[^\s:]+: " + _SEV + r" (?P<rest>.*)$"),
     # A project-level diagnostic: no span in any one file.
     re.compile(r"^[ \t]*lute: (?P<code>[A-Z][A-Z0-9-]+): (?P<rest>.*)$"),
 )

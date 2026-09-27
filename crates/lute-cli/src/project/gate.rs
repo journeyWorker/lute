@@ -139,6 +139,7 @@ pub(crate) fn project_gate_result(
 ) -> Result<lute_check::CheckResult, ExitCode> {
     let reconciled = reconciled_project_results(dir, providers)?;
     if let Err(e) = std::fs::canonicalize(file) {
+        let e = lute_manifest::io_reason(&e);
         eprintln!("lute: cannot read {}: {e}", file.display());
         return Err(ExitCode::from(2));
     }

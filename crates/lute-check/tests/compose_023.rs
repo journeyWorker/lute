@@ -292,6 +292,34 @@ fn also_on_an_entry_is_beat_attr_only() {
     assert!(with_code(&ds, "E-UNKNOWN-ATTR").is_empty(), "{ds:?}");
 }
 
+/// A bundle `<beat also>` answers to the rule a scene's `also: true` does:
+/// on a `select: all` / `sequence` occasion it is `E-BEAT-ATTR` at `also`.
+#[test]
+fn bundle_beat_also_on_a_non_first_occasion_is_beat_attr() {
+    for (occasion, select) in [("board", "all"), ("evening", "sequence")] {
+        let src = format!(
+            "---\nkind: lore\nid: barks\n{VOCAB}---\n\
+             <beat id=\"b\" on=\"{occasion}\" also>\n@narrator: Hi.\n</beat>\n"
+        );
+        let ds = diags(&src);
+        let d = only(&ds, "E-BEAT-ATTR");
+        assert!(
+            d.message.contains(&format!(
+                "`also` applies only to a `select: first` occasion; `{occasion}` is \
+                 `select: {select}`"
+            )),
+            "{}",
+            d.message
+        );
+        assert_eq!(anchored(&src, d), "also", "anchored at `also`: {ds:?}");
+    }
+    let src = format!(
+        "---\nkind: lore\nid: barks\n{VOCAB}---\n\
+         <beat id=\"b\" on=\"hubVisit\" also>\n@narrator: Hi.\n</beat>\n"
+    );
+    assert!(errors(&diags(&src)).is_empty(), "{:?}", diags(&src));
+}
+
 // --- §3 project advisories ignore `also` ----------------------------------------------
 
 fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {

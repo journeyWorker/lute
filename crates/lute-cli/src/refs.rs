@@ -84,6 +84,7 @@ pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) ->
     let files = match crate::find_lute_files(dir) {
         Ok(f) => f,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute refs: cannot walk {}: {e}", dir.display());
             return ExitCode::from(2);
         }
@@ -98,6 +99,7 @@ pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) ->
         match doc {
             Ok(d) => docs.push((path, d)),
             Err(e) => {
+                let e = lute_manifest::io_reason(&e);
                 eprintln!("lute refs: cannot read {}: {e}", path.display());
                 return ExitCode::from(2);
             }

@@ -61,15 +61,29 @@ pub fn peel_frontmatter(text: &str) -> Result<(Option<(String, Span)>, usize), C
     Ok((None, 0)) // no closing delimiter: treated as no frontmatter (checker flags)
 }
 
+/// A frontmatter opened with `---` and never closed (dsl 0.28.0, T3-46).
+#[derive(Debug, PartialEq, Eq)]
+pub struct UnclosedFrontmatter {
+    /// The byte offset just past its last YAML-looking line — where the
+    /// closing `---` belongs — and that line's 1-based number.
+    pub end: usize,
+    pub last_line: usize,
+    /// A line meant as the closing fence but not exactly `---` (`--`,
+    /// `----`, `—`, `--- ` with trailing space): its byte range (newline
+    /// excluded), its 1-based number and its text. The frontmatter ends
+    /// before it and the body starts after it.
+    pub near_fence: Option<(std::ops::Range<usize>, usize, String)>,
+}
+
 /// dsl 0.28.0 (T3-46): for a document that opens a frontmatter with `---`
-/// and never closes it, the byte offset just past its last YAML-looking line
-/// — where the closing `---` belongs — and that line's 1-based number.
-/// `None` when the frontmatter is closed, or there is none.
+/// and never closes it, where the closing `---` belongs. `None` when the
+/// frontmatter is closed, or there is none.
 ///
-/// The YAML run is the lines after the opener up to the first blank line or
-/// the first line that is no YAML (a `## heading`, a content line, a tag):
-/// a `key:` line, an indented continuation, a `- ` item or a `#` comment.
-pub fn unclosed_frontmatter_end(text: &str) -> Option<(usize, usize)> {
+/// The YAML run is the lines after the opener that are YAML — a `key:`
+/// line, an indented continuation, a `- ` item or a `#` comment — across
+/// blank lines, up to the first line that is no YAML (a `## heading`, a
+/// content line, a tag) or a line of dashes meant as the fence.
+pub fn unclosed_frontmatter_end(text: &str) -> Option<UnclosedFrontmatter> {
     if !text.starts_with("---\n") || !matches!(peel_frontmatter(text), Ok((None, _))) {
         return None;
     }
@@ -86,16 +100,34 @@ pub fn unclosed_frontmatter_end(text: &str) -> Option<(usize, usize)> {
             .unwrap_or(t.len());
         key_end > 0 && t[key_end..].trim_start().starts_with(':')
     };
-    let mut end = 4;
-    let mut last_line = 1;
+    let fence_like = |line: &str| {
+        let t = line.trim();
+        t.chars().count() >= 2 && t.chars().all(|c| matches!(c, '-' | '—' | '–'))
+    };
+    let mut out = UnclosedFrontmatter {
+        end: 4,
+        last_line: 1,
+        near_fence: None,
+    };
+    let mut at = 4;
     for (i, line) in text[4..].split_inclusive('\n').enumerate() {
-        if !yaml_line(line.trim_end_matches('\n')) {
+        let body = line.trim_end_matches('\n');
+        let start = at;
+        at += line.len();
+        if fence_like(body) {
+            out.near_fence = Some((start..start + body.len(), i + 2, body.to_string()));
             break;
         }
-        end += line.len();
-        last_line = i + 2;
+        if body.trim().is_empty() {
+            continue;
+        }
+        if !yaml_line(body) {
+            break;
+        }
+        out.end = at;
+        out.last_line = i + 2;
     }
-    Some((end, last_line))
+    Some(out)
 }
 
 /// Strip `/* … */` block comments from `text`, falling back to the original on

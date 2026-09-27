@@ -107,7 +107,10 @@ fn engine_namespaces_cannot_be_declared() {
 fn content_cannot_write_engine_records() {
     for (set, needle) in [
         ("scene.choices.door = \"stay\"", "`scene.choices.<id>`"),
-        ("scene.visited.lamp = false", "`scene.visited.*`"),
+        (
+            "scene.visited.lamp = false",
+            "`scene.visited.<hub>.<choice>`",
+        ),
         ("occasion.target = \"mira\"", "`occasion.*`"),
         (
             "occasion.payload.seconds = 2",
@@ -143,6 +146,30 @@ fn unclosed_frontmatter_is_one_error() {
         errors[0].message
     );
     assert_eq!(errors[0].fixits.len(), 1, "{errors:#?}");
+}
+
+/// The YAML run goes on past a blank line (`on:` below it is still a key,
+/// not a content line missing its `@`), and a line of dashes that is not
+/// exactly `---` is named as the fence it was meant to be.
+#[test]
+fn unclosed_frontmatter_spans_blank_lines_and_names_a_near_fence() {
+    let one_error = |text: &str, needle: &str| {
+        let ds = diags(text);
+        let errors: Vec<&Diagnostic> = ds
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert_eq!(errors.len(), 1, "{errors:#?}");
+        assert!(errors[0].message.contains(needle), "{}", errors[0].message);
+    };
+    one_error(
+        "---\nkind: scene\nid: s\ntitle: Tea\n\non: chapter\n\n## A\n@narrator: a\n",
+        "add a `---` line after line 6",
+    );
+    one_error(
+        "---\nkind: scene\nid: s\ntitle: Tea\n--\n\n## A\n@narrator: a\n",
+        "`--` on line 5 is not a closing fence",
+    );
 }
 
 /// An unknown top-level frontmatter key sits at the key, not at `1:1`.

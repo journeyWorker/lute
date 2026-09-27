@@ -204,7 +204,7 @@ pub(crate) fn merge_gate_diags(result: &mut lute_check::CheckResult, gate: Vec<D
     if !added {
         return;
     }
-    result.diagnostics.sort_by(lute_check::diagnostic_order);
+    lute_check::order_diagnostics(&mut result.diagnostics);
     result.ok = !result
         .diagnostics
         .iter()
@@ -336,6 +336,7 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot read {}: {e}", file.display());
             return ExitCode::from(2);
         }
@@ -373,7 +374,7 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
         let end = d.span.byte_end.min(byte_end).max(start);
         d.span = Span::from_bytes(&idx, start, end);
     }
-    diagnostics.sort_by(lute_check::diagnostic_order);
+    lute_check::order_diagnostics(&mut diagnostics);
     let result = lute_check::CheckResult {
         ok: !diagnostics.iter().any(|d| d.severity == Severity::Error),
         diagnostics,

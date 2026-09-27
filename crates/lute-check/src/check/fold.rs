@@ -455,6 +455,7 @@ pub fn fold_env(
         doc,
         typed.beat.as_ref(),
         &seasons,
+        &input.defaults,
     ));
     fold_diags.extend(crate::season::check_relation_tiers(
         &vocab,
@@ -789,8 +790,35 @@ pub fn fold_env(
     );
     // dsl 0.28.0 (T3-45): a declared path that is also another's prefix — at
     // this document's own `state:` key, else at the schema that declares it.
+    let declared = |path: &str| {
+        typed.state.decls.contains_key(path) || input.imports.rel.origins.state.contains_key(path)
+    };
+    let results_under = |value: &str| {
+        input
+            .snapshot
+            .directives
+            .iter()
+            .filter(|(_, d)| {
+                d.state.iter().flat_map(|s| &s.declares).any(|slot| {
+                    let mut base = slot.scope.clone();
+                    for seg in &slot.path {
+                        let lute_manifest::types::PathSegment::Literal(s) = seg else {
+                            break;
+                        };
+                        base = format!("{base}.{s}");
+                    }
+                    base == value
+                        || base.starts_with(&format!("{value}."))
+                        || value.starts_with(&format!("{base}."))
+                })
+            })
+            .map(|(tag, _)| tag.clone())
+            .collect()
+    };
     fold_diags.extend(crate::state_decls::check_value_prefix(
         &schema,
+        &declared,
+        &results_under,
         &|path, message| {
             let d = |span| Diagnostic {
                 code: "E-STATE-DECL".to_string(),
@@ -807,6 +835,44 @@ pub fn fold_env(
                 Some(d(crate::meta::meta_path_span(&doc.meta, &["state", path])))
             } else {
                 let origin = input.imports.rel.origins.state.get(path)?;
+                Some(crate::rel_schema::at_origin(d(doc.meta.span), Some(origin)))
+            }
+        },
+    ));
+    // A `{ domain: K }` / `{ entity: K }` path naming no declared K, or with a
+    // `default:` outside K — at this document's key, else at the schema's.
+    fold_diags.extend(crate::state_decls::check_domain_types(
+        &schema,
+        &domains,
+        &vocab.indexed_state,
+        &|path, key, message, code| {
+            let d = |span| Diagnostic {
+                code: code.to_string(),
+                severity: Severity::Error,
+                message: message.to_string(),
+                span,
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            };
+            let own_family = typed.state_index.contains_key(path)
+                || typed.per_pending.iter().any(|p| p.path == path);
+            if typed.state.decls.contains_key(path) || own_family {
+                Some(d(crate::meta::meta_path_span(
+                    &doc.meta,
+                    &["state", path, key],
+                )))
+            } else {
+                let origins = &input.imports.rel.origins.state;
+                let member = format!("{path}.");
+                let origin = origins.get(path).or_else(|| {
+                    origins
+                        .iter()
+                        .find(|(p, _)| p.starts_with(&member))
+                        .map(|(_, o)| o)
+                })?;
                 Some(crate::rel_schema::at_origin(d(doc.meta.span), Some(origin)))
             }
         },

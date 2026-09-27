@@ -661,25 +661,34 @@ fn assemble_rejects_reserved_builtin_event_name() {
 #[test]
 fn assemble_rejects_core_names_as_plugin_directive_names() {
     for (reserved, says) in [
-        ("use", "`use` is a core statement"),
-        ("set", "`set` is a core statement"),
+        (
+            "use",
+            "it is a core statement: content always reads `::use{…}`",
+        ),
+        ("set", "reads `::set{…}` as the core one"),
         ("assert", "a core statement"),
-        ("retract", "a core statement"),
+        ("retract", "reads `::retract{…}` as the core one"),
         ("accept", "a core statement"),
         ("body", "a core statement"),
-        ("match", "`match` is a core block tag"),
+        (
+            "match",
+            "it is a core block tag (`<match>`), which content always reads",
+        ),
         ("branch", "a core block tag"),
-        ("hub", "a core block tag"),
+        ("hub", "(`<hub>`)"),
         ("choice", "a core block tag"),
         ("when", "a core block tag"),
         ("otherwise", "a core block tag"),
         ("entry", "a core block tag"),
         ("beat", "a core block tag"),
         ("on", "a core block tag"),
-        ("quest", "a core block tag"),
+        ("quest", "(`<quest>`)"),
         ("objective", "a core block tag"),
-        ("end", "`end` is a core directive (`::end`)"),
-        ("mark", "a core directive"),
+        (
+            "end",
+            "it is a core directive, which content always reads as the core `::end`",
+        ),
+        ("mark", "the core `::mark`"),
         ("bg", "a core directive"),
     ] {
         let reg = InstalledPlugins {
@@ -758,14 +767,16 @@ fn reserved_plugin_names_point_at_their_file_and_line() {
     let msgs: Vec<String> = errs.iter().map(ToString::to_string).collect();
     assert_eq!(msgs.len(), 2, "{msgs:?}");
     assert!(
-        msgs.iter()
-            .any(|m| m.contains("d.yaml:3:11: plugin `p`: `use` is a core statement")),
+        msgs.iter().any(|m| m.contains(
+            "d.yaml:3:11: plugin `p`: `use` cannot name a plugin directive because it is a core \
+                 statement"
+        )),
         "{msgs:?}"
     );
     assert!(
         msgs.iter().any(|m| m.contains(
-            "o.yaml:3:3: plugin `p`: `questComplete` is an engine \
-             lifecycle event"
+            "o.yaml:3:3: plugin `p`: `questComplete` cannot name a plugin occasion because it is an \
+             engine lifecycle event (`<on event=\"questComplete\">`)"
         )),
         "{msgs:?}"
     );

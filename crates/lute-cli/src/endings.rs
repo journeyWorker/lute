@@ -67,6 +67,8 @@ struct Need {
     none: bool,
     /// The words for `producers` when the list alone does not say it.
     note: Option<String>,
+    /// A fact need's asserting sites (`None`: a state path).
+    asserted_by: Option<Vec<String>>,
 }
 
 /// One ending row.
@@ -89,6 +91,8 @@ struct Row {
     /// What the beat writes (a state path, `holds(<relation>(…))`) that
     /// the project's `terminal:` reads — it can end the game that way.
     terminal: Vec<String>,
+    /// How the beat can settle a quest whose state `terminal:` reads.
+    settles: Vec<String>,
     /// OT-F-13: the errors inside the `when` (the root cause of a
     /// never-holds verdict), as `(code, line, column, message)`.
     causes: Vec<(String, u32, u32, String)>,
@@ -104,30 +108,73 @@ struct RootRows {
 }
 
 /// The project's `terminal:` condition and what it reads: the state paths,
-/// and the relations of the facts it needs to hold.
+/// the relations of the facts it needs to hold, and the quests whose state
+/// it reads.
 struct Terminal {
     raw: String,
     paths: BTreeSet<String>,
     relations: BTreeSet<String>,
+    quests: Vec<QuestSettle>,
+}
+
+/// A quest whose state `terminal:` reads, and what settles it: the
+/// occasions its `on=` objectives are judged at, and the paths its other
+/// objectives and its `fail=` read (judged after every presentation).
+struct QuestSettle {
+    id: String,
+    occasions: BTreeSet<String>,
+    paths: BTreeSet<String>,
 }
 
 impl Terminal {
-    fn of(root: &Path, group: &DocGroup, producers: &Producers<'_>) -> Option<Self> {
+    fn of(root: &Path, group: &DocGroup) -> Option<Self> {
         let folded = group
             .iter()
             .map(|(_, _, f)| f)
             .find(|f| f.env.terminal.is_some())?;
         let raw = folded.env.terminal.clone()?;
         let expanded = expand(folded, &raw);
-        let relations =
-            crate::knowledge::condition_atoms(root, group, &expanded, &producers.asserts)
-                .into_iter()
-                .filter(|(_, negated, _)| !negated)
-                .filter_map(|(atom, _, _)| atom.split_once('(').map(|(r, _)| r.trim().to_string()))
-                .collect();
+        let relations = crate::knowledge::condition_atoms(root, group, &expanded, None)
+            .into_iter()
+            .filter(|(_, negated, _, _)| !negated)
+            .filter_map(|(atom, ..)| atom.split_once('(').map(|(r, _)| r.trim().to_string()))
+            .collect();
+        let paths = read_paths(&expanded);
+        let read: BTreeSet<&str> = paths
+            .iter()
+            .filter_map(|p| p.strip_prefix("quest.")?.split('.').next())
+            .collect();
+        let mut quests = Vec::new();
+        for (_, doc, folded) in group {
+            for q in doc.quests.iter().filter(|q| read.contains(q.id.as_str())) {
+                let (mut occasions, mut judged) = (BTreeSet::new(), BTreeSet::new());
+                let slots = q
+                    .fail
+                    .iter()
+                    .chain(q.body.iter().flat_map(|node| match node {
+                        Node::Objective(o) if o.on.is_none() => {
+                            std::iter::once(&o.done).chain(&o.by).collect::<Vec<_>>()
+                        }
+                        Node::Objective(o) => {
+                            occasions.extend(o.on.as_ref().map(|(on, _)| on.clone()));
+                            Vec::new()
+                        }
+                        _ => Vec::new(),
+                    }));
+                for slot in slots.collect::<Vec<_>>() {
+                    judged.extend(read_paths(&expand(folded, &slot.raw)));
+                }
+                quests.push(QuestSettle {
+                    id: q.id.clone(),
+                    occasions,
+                    paths: judged,
+                });
+            }
+        }
         Some(Terminal {
-            paths: read_paths(&expanded),
+            paths,
             relations,
+            quests,
             raw,
         })
     }
@@ -151,6 +198,41 @@ impl Terminal {
             }
         }
         out.into_iter().collect()
+    }
+
+    /// How beat `b` can settle a quest whose state the condition reads: its
+    /// occasion judges one of the quest's `on=` objectives, or its content
+    /// writes what the quest's other objectives or `fail=` read.
+    fn settled_by(
+        &self,
+        root: &Path,
+        producers: &Producers<'_>,
+        b: &ProjectBeat<'_>,
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        for q in &self.quests {
+            if q.occasions.contains(b.on) {
+                out.push(format!("its `{}` raise judges quest `{}`", b.on, q.id));
+                continue;
+            }
+            let writes: BTreeSet<&str> = producers
+                .writes
+                .iter()
+                .filter(|(w, path)| {
+                    w.origin.is_beat(b, root) && q.paths.iter().any(|r| overlaps(path, r))
+                })
+                .map(|(_, path)| path.as_str())
+                .collect();
+            if !writes.is_empty() {
+                let what: Vec<String> = writes.iter().map(|w| format!("`{w}`")).collect();
+                out.push(format!(
+                    "writes {}, which settles quest `{}`",
+                    what.join(", "),
+                    q.id
+                ));
+            }
+        }
+        out
     }
 }
 
@@ -225,7 +307,7 @@ fn rows(
         ));
         known.extend(beats.iter().map(|b| b.on.to_string()));
         let producers = Producers::of(root, group);
-        let terminal = Terminal::of(root, group, &producers);
+        let terminal = Terminal::of(root, group);
         let mut rows = Vec::new();
         for b in &beats {
             let doc = scenario
@@ -239,10 +321,14 @@ fn rows(
                 .as_ref()
                 .map(|t| t.written_by(root, &producers, b))
                 .unwrap_or_default();
+            let settles = terminal
+                .as_ref()
+                .map(|t| t.settled_by(root, &producers, b))
+                .unwrap_or_default();
             let is_ending = match occasion {
                 Some(o) => b.on == o,
                 // An ending runs `::end`, or can make `terminal:` hold.
-                None => runs_end || !writes_terminal.is_empty(),
+                None => runs_end || !writes_terminal.is_empty() || !settles.is_empty(),
             };
             if !is_ending {
                 continue;
@@ -269,6 +355,7 @@ fn rows(
             let mut row = row(root, group, &scenario, &producers, b, &about, &causes);
             row.runs_end = runs_end;
             row.terminal = writes_terminal;
+            row.settles = settles;
             rows.push(row);
         }
         out.push(RootRows {
@@ -395,14 +482,14 @@ fn row(
         )
     };
     let needs = match (&b.when, when_token) {
-        (Some(expanded), "unrefuted") => needs(root, group, producers, expanded),
+        (Some(expanded), "unrefuted") => needs(root, group, producers, b, expanded),
         _ => Vec::new(),
     };
     // The gate is judged with the `when`: a refuted beat needs nothing.
     let gate = gate.map(|raw| {
         let needs = match when_token {
             "never-holds" | "never-wins" => Vec::new(),
-            _ => self::needs(root, group, producers, &expand(b.folded, raw)),
+            _ => self::needs(root, group, producers, b, &expand(b.folded, raw)),
         };
         (raw.to_string(), needs)
     });
@@ -440,6 +527,7 @@ fn row(
         // Set by the caller, which decides what makes the beat an ending.
         runs_end: false,
         terminal: Vec::new(),
+        settles: Vec::new(),
         causes: causes
             .iter()
             .map(|d| {
@@ -459,14 +547,27 @@ fn one_line(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The state paths and fact atoms `expanded` reads, with their producers.
-fn needs(root: &Path, group: &DocGroup, producers: &Producers<'_>, expanded: &str) -> Vec<Need> {
+/// The state paths and fact atoms `expanded` reads, with their producers —
+/// beat `own`'s content (the beat `expanded` gates) aside.
+fn needs(
+    root: &Path,
+    group: &DocGroup,
+    producers: &Producers<'_>,
+    own: &ProjectBeat<'_>,
+    expanded: &str,
+) -> Vec<Need> {
     let mut out: Vec<Need> = read_paths(expanded)
         .into_iter()
-        .map(|path| producers.of_path(&path))
+        .map(|path| producers.of_path(&path, Some(own), root))
         .collect();
-    for (atom, negated, line) in
-        crate::knowledge::condition_atoms(root, group, expanded, &producers.asserts)
+    let kind = match own.kind {
+        ProjectBeatKind::Scene => "scene",
+        ProjectBeatKind::Entry => "entry",
+        ProjectBeatKind::Bundle => "beat",
+    };
+    let label = crate::knowledge::site_label(kind, &own.id, root, own.path);
+    for (atom, negated, line, sites) in
+        crate::knowledge::condition_atoms(root, group, expanded, Some(&label))
     {
         let none = line.starts_with("NO PRODUCER");
         out.push(Need {
@@ -482,6 +583,7 @@ fn needs(root: &Path, group: &DocGroup, producers: &Producers<'_>, expanded: &st
             } else {
                 line
             }),
+            asserted_by: Some(sites),
         });
     }
     out
@@ -724,8 +826,6 @@ impl Writer {
 struct Producers<'g> {
     /// `(writer, written path)`.
     writes: Vec<(Writer, String)>,
-    /// `(label, relation)` asserting sites the knowledge walk does not see.
-    asserts: Vec<(String, String)>,
     /// `(origin, relation)` of every assert, the document's own included.
     asserted: Vec<(Origin, String)>,
     /// component name -> its document.
@@ -749,7 +849,6 @@ impl<'g> Producers<'g> {
             .collect();
         let mut p = Producers {
             writes: Vec::new(),
-            asserts: Vec::new(),
             asserted: Vec::new(),
             components,
             snapshot,
@@ -862,14 +961,9 @@ impl<'g> Producers<'g> {
                         }
                     }
                 }
-                Node::Assert(a) => {
-                    let relation = a.pattern.relation.clone();
-                    // Asserts in a document's own body are the knowledge walk's.
-                    if depth > 0 {
-                        self.asserts.push((origin.text(), relation.clone()));
-                    }
-                    self.asserted.push((origin.clone(), relation));
-                }
+                Node::Assert(a) => self
+                    .asserted
+                    .push((origin.clone(), a.pattern.relation.clone())),
                 Node::Line(_) | Node::Retract(_) => {}
             }
         }
@@ -963,8 +1057,6 @@ impl<'g> Producers<'g> {
             ));
         }
         for a in &effects.asserts {
-            let label = format!("{} via `::{}`", origin.text(), d.tag);
-            self.asserts.push((label, a.relation.clone()));
             self.asserted.push((origin.clone(), a.relation.clone()));
         }
     }
@@ -1024,8 +1116,8 @@ impl<'g> Producers<'g> {
         }
     }
 
-    /// Who writes `path`.
-    fn of_path(&self, path: &str) -> Need {
+    /// Who writes `path` — beat `own`'s content (the beat it gates) aside.
+    fn of_path(&self, path: &str, own: Option<&ProjectBeat<'_>>, root: &Path) -> Need {
         let mut segs = path.split('.');
         let head = segs.next().unwrap_or_default();
         let need = |producers: Vec<Writer>, none: bool, note: Option<String>| Need {
@@ -1033,6 +1125,7 @@ impl<'g> Producers<'g> {
             producers,
             none,
             note,
+            asserted_by: None,
         };
         match head {
             "quest" => {
@@ -1075,6 +1168,13 @@ impl<'g> Producers<'g> {
         for own in spliced {
             writers.remove(&own);
         }
+        // A beat's own content does not produce what gates it: it runs only
+        // once that already held.
+        let before = writers.len();
+        if let Some(b) = own {
+            writers.retain(|w| !w.origin.is_beat(b, root));
+        }
+        let dropped_own = writers.len() < before;
         let decl = self.decl(&target);
         let engine = decl.is_some_and(|d| d.owner.is_some());
         let mut note = None;
@@ -1095,10 +1195,17 @@ impl<'g> Producers<'g> {
                 Some(_) => "it keeps its declared default",
                 None => "it stays unset",
             };
-            note = Some(format!(
-                "nothing writes it{} — {rest}",
-                if earlier { " in any run" } else { "" }
-            ));
+            note = Some(if dropped_own {
+                format!(
+                    "only this beat writes it, after its conditions held — nothing else does, so \
+                     {rest}"
+                )
+            } else {
+                format!(
+                    "nothing writes it{} — {rest}",
+                    if earlier { " in any run" } else { "" }
+                )
+            });
         }
         need(writers.into_iter().collect(), none, note)
     }
@@ -1121,12 +1228,17 @@ fn need_line(out: &mut String, n: &Need) {
 }
 
 fn need_json(n: &Need) -> Json {
-    json!({
+    let mut v = json!({
         "what": n.what,
         "writers": n.producers.iter().map(Writer::json).collect::<Vec<_>>(),
         "note": n.note,
         "nothingProduces": n.none,
-    })
+    });
+    // A fact need: the sites that assert it, as `scenario knowledge` names them.
+    if let Some(sites) = &n.asserted_by {
+        v["assertedBy"] = json!(sites);
+    }
+    v
 }
 
 /// `lute scenario <dir> reach --endings[=<occasion>]`, text.
@@ -1180,6 +1292,11 @@ pub(crate) fn run_text(
                     "    ends: writes {}, which `terminal: {t}` reads",
                     what.join(", ")
                 );
+            }
+            if let Some(t) = &r.terminal {
+                for s in &row.settles {
+                    outln!(out, "    ends: {s}, whose state `terminal: {t}` reads");
+                }
             }
             outln!(out, "    after: {}", row.after_text);
             if let Some((gate, needs)) = &row.gate {
@@ -1258,6 +1375,7 @@ pub(crate) fn json(
                         "verdict": row.bucket.as_str(),
                         "runsEnd": row.runs_end,
                         "writesTerminal": row.terminal,
+                        "settlesTerminal": row.settles,
                         "after": { "reach": row.after_token, "text": row.after_text },
                         "gate": row.gate.as_ref().map(|(text, needs)| json!({
                             "text": text,

@@ -124,15 +124,24 @@ pub fn check_content_line_attrs(
                 }
                 continue;
             }
+            // `when=` is the line's guard: the parser takes it off the
+            // attribute list, so it is named here with the keys a line owns.
+            // `test=` is the `<when>` arm's guard, the one a line most often
+            // borrows.
             let known = KNOWN_ATTRS
                 .iter()
                 .copied()
+                .chain(["when"])
                 .chain(snapshot.stamp_attrs.keys().map(String::as_str));
-            let hint = lute_manifest::suggest::did_you_mean(&attr.key, known);
+            let hint = if attr.key == "test" {
+                " — a line is guarded with `when=` (`test=` guards a `<when>` arm)".to_string()
+            } else {
+                lute_manifest::suggest::did_you_mean(&attr.key, known)
+            };
             diags.push(err(
                 E_UNKNOWN_ATTR,
                 format!(
-                    "unknown content-line attribute `{}`{hint}; a line takes {}",
+                    "unknown content-line attribute `{}`{hint}; a line takes `when`, {}",
                     attr.key,
                     KNOWN_ATTRS
                         .iter()

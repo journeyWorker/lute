@@ -93,6 +93,7 @@ pub fn run_artifact(
     let text = match std::fs::read_to_string(artifact) {
         Ok(t) => t,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute run: cannot read {}: {e}", artifact.display());
             return ExitCode::from(2);
         }
@@ -171,6 +172,7 @@ pub fn run_artifact(
                 }
             },
             Err(e) => {
+                let e = lute_manifest::io_reason(&e);
                 eprintln!("lute run: cannot read mock {}: {e}", path.display());
                 return ExitCode::from(2);
             }
@@ -376,6 +378,10 @@ fn print_human(m: &Machine<RunDriver>, art: &Json, artifact: &Path) {
                     .unwrap_or_default(),
                 e.get("chose").and_then(Json::as_str).unwrap_or("(none)")
             ),
+            "hubReturn" => format!(
+                "  {a}  return [{}]",
+                e.get("hub").and_then(Json::as_str).unwrap_or("")
+            ),
             "match" => format!(
                 "  {a}  match  -> {}",
                 e.get("result").and_then(Json::as_str).unwrap_or("")
@@ -505,7 +511,7 @@ fn print_human(m: &Machine<RunDriver>, art: &Json, artifact: &Path) {
                     .map(|t| format!(" -> {t}"))
                     .unwrap_or_default();
                 let annot = if e.get("onFailed").and_then(Json::as_bool) == Some(true) {
-                    " (on failed)"
+                    " (outcome=\"failed\")"
                 } else {
                     ""
                 };

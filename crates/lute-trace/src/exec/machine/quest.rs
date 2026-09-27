@@ -540,19 +540,19 @@ impl<D: Driver> Machine<D> {
                         if o.optional {
                             return None;
                         }
-                        if let Some(child) = &o.quest {
-                            let failed =
-                                self.quest_status.get(child).map(String::as_str) == Some("failed");
-                            return failed.then(|| {
-                                ("subquest", Some(format!("quest.{child}.state == 'failed'")))
-                            });
-                        }
+                        // The objective's own miss (`by` / `until`) first —
+                        // a subquest objective has deadlines too.
                         let key = format!("{}.{}", q.id, o.id);
-                        self.failed_objectives.contains(&key).then(|| {
+                        if self.failed_objectives.contains(&key) {
                             let kind = self.objective_failed_by.get(&key).copied().unwrap_or("by");
                             let text = if kind == "until" { &o.until } else { &o.by };
-                            (kind, text.clone())
-                        })
+                            return Some((kind, text.clone()));
+                        }
+                        let child = o.quest.as_ref()?;
+                        let failed =
+                            self.quest_status.get(child).map(String::as_str) == Some("failed");
+                        failed
+                            .then(|| ("subquest", Some(format!("quest.{child}.state == 'failed'"))))
                     })
                 };
                 let failed_by = match missed {

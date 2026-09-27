@@ -77,24 +77,33 @@ pub(super) struct Scope {
 /// the quest runner's (its lifecycle transitions fire handlers and grants),
 /// never written directly — a save's quest status is top-level `quests:`.
 /// What the playthrough itself records — the raise (`occasion.*`), a taken
-/// choice, a visit — has its own script spelling ([`recorded_by_play`]).
-fn resolve_writes(p: &ExecProject, n: usize, key: &str, raw: &RawWrites) -> Result<Writes, String> {
+/// choice, a visit — has its own script spelling ([`recorded_by_play`]);
+/// `raising` is set on an `occasion:` step's own `engine:`. `Err` is every
+/// write that cannot be made, in the order they were written.
+fn resolve_writes(
+    p: &ExecProject,
+    n: usize,
+    key: &str,
+    raw: &RawWrites,
+    raising: bool,
+) -> Result<Writes, Vec<String>> {
     let mut out = Writes::default();
+    let mut errs = Vec::new();
     for (path, write) in &raw.state {
         let at = format!("step {n}: `{key}.state.{path}`");
         if path.starts_with("quest.") {
-            return Err(format!(
+            errs.push(format!(
                 "{at}: quest state is written by the quest lifecycle, not the engine — seed a \
                  save's quest status with top-level `quests:`"
             ));
+            continue;
         }
-        if let Some(instead) = recorded_by_play(path) {
-            return Err(format!("{at}: {instead}"));
+        if let Some(instead) = recorded_by_play(path, raising) {
+            errs.push(format!("{at}: {instead}"));
+            continue;
         }
         let write = match write {
-            RawWrite::Lit(lit) => {
-                Write::Set(resolve_state(p, path, lit).map_err(|e| format!("{at} {e}"))?)
-            }
+            RawWrite::Lit(lit) => resolve_state(p, path, lit).map(Write::Set),
             RawWrite::Add(d) => {
                 let ty = p
                     .state_table
@@ -106,13 +115,13 @@ fn resolve_writes(p: &ExecProject, n: usize, key: &str, raw: &RawWrites) -> Resu
                     Some(Some("number")) => None,
                     _ => Some("is not a `number` path, so it takes no `{ add: … }`".to_string()),
                 };
-                if let Some(why) = why {
-                    return Err(format!("{at} {why}"));
-                }
-                Write::Add(*d)
+                why.map_or(Ok(Write::Add(*d)), Err)
             }
         };
-        out.state.push((path.clone(), write));
+        match write {
+            Ok(write) => out.state.push((path.clone(), write)),
+            Err(why) => errs.push(format!("{at} {why}")),
+        }
     }
     for (list, into, what) in [
         (&raw.facts, &mut out.facts, "facts"),
@@ -120,46 +129,58 @@ fn resolve_writes(p: &ExecProject, n: usize, key: &str, raw: &RawWrites) -> Resu
     ] {
         for (i, f) in list.iter().enumerate() {
             let next = list.get(i + 1).map(String::as_str);
-            into.push(
-                resolve_fact(p, f, next)
-                    .map_err(|e| format!("step {n}: `{key}.{what}` entry `{f}` {e}"))?,
-            );
+            match resolve_fact(p, f, next) {
+                Ok(fact) => into.push(fact),
+                Err(e) => errs.push(format!("step {n}: `{key}.{what}` entry `{f}` {e}")),
+            }
         }
     }
     // dsl 0.26.0 §7 (T2-9): the engine accepts an accept-driven quest.
     for id in &raw.accept {
-        if !p.accept_driven.contains(id) {
-            return Err(format!(
+        if p.accept_driven.contains(id) {
+            out.accept.push(id.clone());
+        } else {
+            errs.push(format!(
                 "step {n}: `{key}.accept` names `{id}`, which is no accept-driven quest of this \
                  project (a quest with no `start`, e.g. `accept=\"external\"`)"
             ));
         }
-        out.accept.push(id.clone());
     }
-    Ok(out)
+    if errs.is_empty() {
+        Ok(out)
+    } else {
+        Err(errs)
+    }
 }
 
 /// The script spelling of a state path the playthrough records itself, or
-/// `None` when an `engine:` write may set the path.
-fn recorded_by_play(path: &str) -> Option<&'static str> {
+/// `None` when an `engine:` write may set the path. `raising`: the write is
+/// an `occasion:` step's own, so the raise it belongs to is that step.
+fn recorded_by_play(path: &str, raising: bool) -> Option<String> {
     let segs: Vec<&str> = path.split('.').collect();
+    let step = if raising {
+        "this step"
+    } else {
+        "the `occasion:` step"
+    };
     Some(match segs.as_slice() {
+        ["occasion", "payload", field, ..] if raising => format!(
+            "the payload comes from the raise, not the engine — write `{field}` in this step's \
+             `payload:` instead"
+        ),
         ["occasion", "payload", ..] => {
-            "the payload comes from the raise, not the engine — give the `occasion:` step a \
-             `payload:`"
+            format!("the payload comes from the raise, not the engine — give {step} a `payload:`")
         }
-        ["occasion", ..] => {
-            "`occasion.*` comes from the raise, not the engine — give the `occasion:` step a \
-             `target:` (and a `payload:` for its fields)"
-        }
-        ["scene", "choices", ..] => {
-            "the engine records a taken choice when it is taken — answer the branch or hub with \
-             `choose:`"
-        }
-        ["scene", "visited", ..] => {
-            "the engine records visits as scenes play — list the scenes a save has visited in \
-             top-level `visited:`"
-        }
+        ["occasion", ..] => format!(
+            "`occasion.*` comes from the raise, not the engine — give {step} a `target:` (and a \
+             `payload:` for its fields)"
+        ),
+        ["scene", "choices", ..] => "the engine records a taken choice when it is taken — answer \
+                                     the branch or hub with `choose:`"
+            .to_string(),
+        ["scene", "visited", ..] => "the engine records visits as scenes play — list the scenes \
+                                     a save has visited in top-level `visited:`"
+            .to_string(),
         _ => return None,
     })
 }
@@ -171,45 +192,33 @@ fn recorded_by_play(path: &str) -> Option<&'static str> {
 /// its domain; `pick` is required exactly for `select: all` and names a beat
 /// answering that occasion, or `none`; an `engine:`/`newRun` write names
 /// declared paths and relations with values that fit; an `event:` names a
-/// declared world event. `Err` is every refused step's first usage error
-/// (`step N: …`, unlocated), in step order.
+/// declared world event. `Err` is every usage error of every refused step
+/// (`step N: …`, unlocated), in step order — a step's independent checks
+/// all run, so one refusal never hides another.
 pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, Vec<String>> {
     let mut answered: BTreeSet<&str> = p.index.beats.iter().map(|b| b.on.as_str()).collect();
     answered.extend(p.objective_occasions.iter().map(String::as_str));
     let mut plan = Vec::with_capacity(steps.len());
-    let mut errs = Vec::new();
+    let mut errs: Vec<String> = Vec::new();
     // One resolved scope per segment, shared by every step it spliced in.
     let mut scopes: Vec<(Arc<Segment>, Arc<Scope>)> = Vec::new();
-    let mut plan_step = |step: &ScriptStep| -> Result<Step, String> {
+    let mut plan_step = |step: &ScriptStep| -> Option<Step> {
         let n = step.n;
+        let before = errs.len();
         let action = match &step.action {
-            StepAction::NewRun(raw) => Action::NewRun(resolve_writes(p, n, "newRun", raw)?),
-            StepAction::Engine(raw) => Action::Engine(resolve_writes(p, n, "engine", raw)?),
-            StepAction::End => Action::End,
-            StepAction::Event(name) => {
-                if lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&name.as_str()) {
-                    return Err(format!(
-                        "step {n}: `{name}` is a quest lifecycle event — the quest runner fires it \
-                         on a transition; it cannot be fired from a script"
-                    ));
-                }
-                if !p.world_events.contains(name) {
-                    let hint = if p.occasions.contains_key(name) || answered.contains(name.as_str())
-                    {
-                        format!(" — `{name}` is an occasion; raise it with `occasion: {name}`")
-                    } else if p.world_events.is_empty() {
-                        " (no plugin declares world events)".to_string()
-                    } else {
-                        let declared: Vec<&str> =
-                            p.world_events.iter().map(String::as_str).collect();
-                        format!(" (declared: {})", declared.join(", "))
-                    };
-                    return Err(format!(
-                        "step {n}: `event: {name}` names no declared world event{hint}"
-                    ));
-                }
-                Action::Event(name.clone())
-            }
+            StepAction::NewRun(raw) => resolve_writes(p, n, "newRun", raw, false)
+                .map(Action::NewRun)
+                .map_err(|es| errs.extend(es))
+                .ok(),
+            StepAction::Engine(raw) => resolve_writes(p, n, "engine", raw, false)
+                .map(Action::Engine)
+                .map_err(|es| errs.extend(es))
+                .ok(),
+            StepAction::End => Some(Action::End),
+            StepAction::Event(name) => plan_event(p, &answered, n, name)
+                .map(|()| Action::Event(name.clone()))
+                .map_err(|e| errs.push(e))
+                .ok(),
             StepAction::Occasion {
                 occasion,
                 target,
@@ -219,20 +228,29 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                 writes,
             } => {
                 let pick = entry_pick(p, pick);
-                plan_occasion(p, &answered, n, occasion, target.as_deref(), pick.as_ref())?;
+                let raised =
+                    plan_occasion(p, &answered, n, occasion, target.as_deref(), pick.as_ref())
+                        .map_err(|e| errs.push(e))
+                        .ok();
                 let payload = lute_trace::exec::session::typed_payload(p, occasion, payload)
-                    .map_err(|e| format!("step {n}: {e}"))?;
-                let writes = match writes {
-                    Some(raw) => Some(resolve_writes(p, n, "engine", raw)?),
-                    None => None,
-                };
-                Action::Occasion {
-                    occasion: occasion.clone(),
-                    target: target.clone(),
-                    pick,
-                    choose: choose.clone(),
-                    payload,
-                    writes,
+                    .map_err(|e| errs.push(format!("step {n}: {e}")))
+                    .ok();
+                let writes = writes
+                    .as_ref()
+                    .map(|raw| resolve_writes(p, n, "engine", raw, true))
+                    .transpose()
+                    .map_err(|es| errs.extend(es))
+                    .ok();
+                match (raised, payload, writes) {
+                    (Some(()), Some(payload), Some(writes)) => Some(Action::Occasion {
+                        occasion: occasion.clone(),
+                        target: target.clone(),
+                        pick,
+                        choose: choose.clone(),
+                        payload,
+                        writes,
+                    }),
+                    _ => None,
                 }
             }
             StepAction::Advance {
@@ -243,31 +261,34 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                 occasion_expect,
             } => {
                 let Some(clock) = &p.index.clock else {
-                    return Err(format!(
+                    errs.push(format!(
                         "step {n}: `advance:` moves the declared clock, and no schema of this \
                          project declares a `clock:`"
                     ));
+                    return None;
                 };
-                let writes = resolve_writes(p, n, "engine", writes)?;
+                let writes = resolve_writes(p, n, "engine", writes, false)
+                    .map_err(|es| errs.extend(es))
+                    .ok();
                 if let Some((path, _)) = writes
-                    .state
                     .iter()
+                    .flat_map(|w| &w.state)
                     .find(|(path, _)| *path == clock.day || clock.slot.as_ref() == Some(path))
                 {
-                    return Err(format!(
+                    errs.push(format!(
                         "step {n}: `engine:` writes `{path}`, which the `advance:` beside it \
                          moves — write the clock in a step of its own, or let `advance:` move it"
                     ));
                 }
-                let by = resolve_advance(clock, n, by)?;
-                let pick = &entry_pick(p, pick);
+                let by = resolve_advance(clock, n, by).map_err(|e| errs.push(e)).ok();
+                let pick = entry_pick(p, pick);
                 let raise = clock.raises();
                 // dsl 0.27.0 (T3-8): `pick` answers the `select: all` slot
                 // raise where the clock stops; `choose` and the selection
                 // expectations judge whatever the step raises — its
                 // midnights' `dayEnd` / `dayStart` too.
                 if raise.slot.is_none() && pick.is_some() {
-                    return Err(format!(
+                    errs.push(format!(
                         "step {n}: `pick` answers the slot occasion an `advance:` raises where \
                          the clock stops, and the clock declares no `raise.slot` occasion"
                     ));
@@ -280,7 +301,7 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                     occasion_expect.map(|k| format!("`expect.{k}`"))
                 };
                 if let (Some(key), false) = (key, raises_any) {
-                    return Err(format!(
+                    errs.push(format!(
                         "step {n}: {key} judges what an `advance:` raises, and the clock \
                          declares no `raise:` occasion — the advance presents nothing"
                     ));
@@ -296,10 +317,11 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                         .get(occasion)
                         .is_some_and(|d| d.target.takes_target())
                     {
-                        return Err(format!(
+                        errs.push(format!(
                             "step {n}: the clock raises `{occasion}`, which is declared \
                              `target: true` — an `advance:` raises it for no target"
                         ));
+                        continue;
                     }
                     // Shape-only vocabulary: an occasion no beat answers
                     // and no objective is judged at is raised to nobody.
@@ -307,15 +329,20 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                         || answered.contains(occasion.as_str())
                         || pick.is_some()
                     {
-                        plan_occasion(p, &answered, n, occasion, None, pick)?;
+                        if let Err(e) = plan_occasion(p, &answered, n, occasion, None, pick) {
+                            errs.push(e);
+                        }
                     }
                 }
-                Action::Advance {
-                    by,
-                    writes,
-                    raise,
-                    pick: pick.clone(),
-                    choose: choose.clone(),
+                match (writes, by) {
+                    (Some(writes), Some(by)) => Some(Action::Advance {
+                        by,
+                        writes,
+                        raise,
+                        pick,
+                        choose: choose.clone(),
+                    }),
+                    _ => None,
                 }
             }
         };
@@ -325,27 +352,37 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                 segments.push(scope.clone());
                 continue;
             }
-            let scope = Arc::new(Scope {
-                include: seg.include.clone(),
-                choose: seg.choose.clone(),
-                bridges: resolve_bridges(p, &format!("step {n}: {}", seg.include), &seg.bridges)?,
-            });
-            scopes.push((seg.clone(), scope.clone()));
-            segments.push(scope);
+            match resolve_bridges(p, &format!("step {n}: {}", seg.include), &seg.bridges) {
+                Ok(bridges) => {
+                    let scope = Arc::new(Scope {
+                        include: seg.include.clone(),
+                        choose: seg.choose.clone(),
+                        bridges,
+                    });
+                    scopes.push((seg.clone(), scope.clone()));
+                    segments.push(scope);
+                }
+                Err(e) => errs.push(e),
+            }
         }
-        Ok(Step {
-            n,
-            label: step.label.clone(),
-            repeat: step.repeat,
-            action,
-            bridges: resolve_bridges(p, &format!("step {n}"), &step.bridges)?,
-            segments,
-        })
+        let bridges = resolve_bridges(p, &format!("step {n}"), &step.bridges)
+            .map_err(|e| errs.push(e))
+            .ok();
+        match (action, bridges) {
+            (Some(action), Some(bridges)) if errs.len() == before => Some(Step {
+                n,
+                label: step.label.clone(),
+                repeat: step.repeat,
+                action,
+                bridges,
+                segments,
+            }),
+            _ => None,
+        }
     };
     for step in steps {
-        match plan_step(step) {
-            Ok(s) => plan.push(s),
-            Err(e) => errs.push(e),
+        if let Some(s) = plan_step(step) {
+            plan.push(s);
         }
     }
     if errs.is_empty() {
@@ -353,6 +390,36 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
     } else {
         Err(errs)
     }
+}
+
+/// [`plan_steps`] for one `event:` step: a declared world event, not a
+/// quest lifecycle event.
+fn plan_event(
+    p: &ExecProject,
+    answered: &BTreeSet<&str>,
+    n: usize,
+    name: &str,
+) -> Result<(), String> {
+    if lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&name) {
+        return Err(format!(
+            "step {n}: `{name}` is a quest lifecycle event — the quest runner fires it on a \
+             transition; it cannot be fired from a script"
+        ));
+    }
+    if p.world_events.contains(name) {
+        return Ok(());
+    }
+    let hint = if p.occasions.contains_key(name) || answered.contains(name) {
+        format!(" — `{name}` is an occasion; raise it with `occasion: {name}`")
+    } else if p.world_events.is_empty() {
+        " (no plugin declares world events)".to_string()
+    } else {
+        let declared: Vec<&str> = p.world_events.iter().map(String::as_str).collect();
+        format!(" (declared: {})", declared.join(", "))
+    };
+    Err(format!(
+        "step {n}: `event: {name}` names no declared world event{hint}"
+    ))
 }
 
 /// dsl 0.26.0 §7 (T3-10): a `pick:` naming an entry as `<document id>.<entry
@@ -1054,21 +1121,15 @@ fn check_expect_state_values(p: &ExecProject, script: &PlayScript, errs: &mut Ve
     };
     for (n, _, expect) in &script.step_expects {
         for (path, why) in problems(expect) {
-            errs.push(step_error(
-                script,
-                *n,
-                &["expect", "state", &path],
-                None,
-                &why,
-            ));
+            let msg = format!("step {n}: {why}");
+            errs.push(match script.steps.iter().find(|s| s.n == *n) {
+                Some(step) => step.at.locate_value(&["expect", "state", &path], &msg),
+                None => msg,
+            });
         }
     }
     for (path, why) in script.expect.as_ref().map(problems).unwrap_or_default() {
-        errs.push(top_error(
-            script,
-            &["expect", "state", &path],
-            None,
-            &format!("end of play: {why}"),
-        ));
+        let at = script.source.at_value(&["expect", "state", &path]);
+        errs.push(format!("{at}: end of play: {why}"));
     }
 }

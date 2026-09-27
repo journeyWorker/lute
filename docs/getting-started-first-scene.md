@@ -635,7 +635,7 @@ specific file you give it:
 ```
 $ ./target/debug/lute context my-scene.lute
 capabilityVersion: ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319
-permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
+permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (12):
   auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location, time, assetId   [mutatesScene]

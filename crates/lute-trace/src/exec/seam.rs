@@ -137,8 +137,15 @@ pub fn closed_in<D: Driver>(
 }
 
 /// The halt of a `lute play` step (`n`) raising `occasion` (for `target`)
-/// while it is [`Closed`].
-pub fn refusal(n: usize, occasion: &str, target: Option<&str>, why: &Closed) -> PlayHalt {
+/// while it is [`Closed`]. `clock`: the project's clock, so a gate over it
+/// is told to advance the clock rather than write its paths.
+pub fn refusal(
+    n: usize,
+    occasion: &str,
+    target: Option<&str>,
+    why: &Closed,
+    clock: Option<&lute_manifest::clock::ClockDecl>,
+) -> PlayHalt {
     let raised = match target {
         Some(t) => format!("`{occasion}` for `{t}`"),
         None => format!("`{occasion}`"),
@@ -146,7 +153,8 @@ pub fn refusal(n: usize, occasion: &str, target: Option<&str>, why: &Closed) -> 
     match why {
         Closed::Terminal(t) => PlayHalt::Error(format!(
             "step {n}: {E_OCCASION_GATE}: the game is over — `terminal: {t}` holds, so the engine \
-             raises no occasion ({raised} included); {}",
+             raises no occasion ({raised} included); {}, or, if the engine raises `{occasion}` \
+             outside a run too (a title screen, a gallery), declare it `outsideRun: true`",
             play_on(t)
         )),
         Closed::Gate { raw, reads } => {
@@ -155,8 +163,18 @@ pub fn refusal(n: usize, occasion: &str, target: Option<&str>, why: &Closed) -> 
             let payload = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
             let by_payload =
                 |r: &GuardRead| matches!(r, GuardRead::Path(p, _) if p.starts_with(&payload));
+            let by_clock = |r: &GuardRead| {
+                matches!(r, GuardRead::Path(p, _) if lute_manifest::clock::is_clock_path(p)
+                    || clock.is_some_and(|c| c.day == *p || c.slot.as_deref() == Some(p)))
+            };
             let fix = if !reads.is_empty() && reads.iter().all(by_payload) {
                 "raise it with a payload that satisfies it (`payload:` on this step)"
+            } else if reads.iter().any(by_clock) {
+                // An `engine:` write to the clock's paths jumps it without
+                // raising what the clock raises on the way.
+                "make it hold first (an `advance:` step to that moment, or an earlier step; an \
+                 `engine:` write to the clock's paths moves it without raising anything on the \
+                 way)"
             } else if reads.iter().any(by_payload) {
                 "make it hold first (an `engine:` write, an earlier step, or `payload:` on this \
                  step)"
@@ -186,15 +204,24 @@ pub fn advance_after_terminal(n: usize, terminal: &str) -> PlayHalt {
 
 /// dsl 0.28.0 (T3-19): what a script does once `terminal` holds — a new
 /// run, unless the condition reads state a new run keeps
-/// ([`lute_check::gates::persistent_reads`]), when a new run does not help.
+/// ([`persistent_read`]), when a new run does not help.
 fn play_on(terminal: &str) -> String {
-    let unknown = |_: &str| None;
-    match lute_check::gates::persistent_reads(terminal, &unknown, &unknown).first() {
+    match persistent_read(terminal) {
         Some(read) => {
             format!("it still holds after a new run: it reads `{read}`, which a new run keeps")
         }
         None => "start a new run (`newRun: true`) to play on".to_string(),
     }
+}
+
+/// The first path `terminal` reads that a new run keeps
+/// ([`lute_check::gates::persistent_reads`]) — once it holds, a new run
+/// does not end the game over.
+pub fn persistent_read(terminal: &str) -> Option<String> {
+    let unknown = |_: &str| None;
+    lute_check::gates::persistent_reads(terminal, &unknown, &unknown)
+        .into_iter()
+        .next()
 }
 
 /// A raise the clock did not make during an `advance:` because the seam

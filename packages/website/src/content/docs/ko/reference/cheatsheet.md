@@ -455,6 +455,9 @@ state:
 - `test="$ == 'x'"`는 `W-WHEN-TEST-LITERAL`이며, `lute fix`가 `is="x"`로 바꿔 줍니다.
 - `@who{when="G"}: …`는 갈래가 하나인 match의 축약입니다. 팩트 질의(`holds(…)`)에는 이 줄 형태만 쓸 수
   있습니다. `<match on="holds(…)">`는 `E-MATCH-RELATION-SUBJECT`이기 때문입니다.
+- `on`이 없는 `<match>`에는 주제가 없으므로 모든 갈래가 `test=`입니다. 거기서 `is=` 갈래는
+  `E-MATCH-NO-SUBJECT`입니다. `on="…"`을 쓰거나, 조건을 `test=`로 쓰세요(`<when is="run.lamps >= 3">`는
+  `<when test="run.lamps >= 3">`입니다).
 - 모든 태그는 한 물리적 줄에 혼자 놓입니다. 한 줄짜리 `<when …>text</when>`는 `E-TAG-INLINE-BODY`이고,
   여러 줄로 나눈 태그는 `E-TAG-NOT-ONE-LINE`입니다.
 
@@ -731,7 +734,7 @@ state:
 | `once` | 씬: `run`(기본값), `user`(평생 한 번), `false`(반복 가능). 엔트리: `once="run"`(새 런이 `entry.<id>.read`를 초기화할 때까지) 또는 `once="user"`(`entry.<id>.everRead`가 설정되면 소진). 엔트리에 `once`가 없으면 반복됩니다. 시계를 선언했다면(0.24.0) `once: day` / `once: slot`(엔트리는 `once="day"` / `"slot"`)은 날이나 슬롯이 바뀔 때까지 소진 상태로 둡니다. 시계 없이 쓰면 `E-BEAT-ATTR`입니다. 엔트리의 쓰기는 한 런에서 처음 읽을 때만 적용되므로, `once` 없는 엔트리의 본문에 `::set` / `::retract`가 있으면 `W-ENTRY-WRITE-REREAD`입니다(0.26.0, `::assert`는 제외). 반복되어야 하는 쓰기는 `<beat once="false">`에 두세요. |
 | `also` | 0.23.0. `select: first` 계기의 씬(`also: true`)과 번들 비트(`also`): 승자 뒤에, 또는 주 비트가 하나도 자격이 없을 때는 혼자 제시되며, 승자를 대신하지 않습니다. 엔트리에 쓰거나 `select: all` / `sequence` 계기에 쓰면 `E-BEAT-ATTR`입니다. `W-BEAT-SHADOWED`와 `W-BEAT-PRIORITY-TIE`는 `also` 비트를 무시합니다. |
 | `share` | 0.25.0. 씬(`share:`), 엔트리와 번들 비트(`share=`): 여러 곳에서 이야기되는 한 사건을 위한 프로젝트 전체의 키입니다. 키의 어느 비트든 제시되면(엔트리는 읽히면) 그 키의 모든 비트가 `once` 기간 동안 소진됩니다(`lute play`: `` once: user — `share: miraThanks` already spent … by cafe.talks.thanksCounter ``). `false`가 아닌 `once`를 함께 써야 하고, 한 키의 모든 비트는 같은 `once`를 선언해야 합니다. 그렇지 않으면 `E-BEAT-ATTR`입니다. `lute beats`는 `user, share miraThanks`로 보여 줍니다. |
-| `spentBy` | 0.27.0. 씬(`spentBy:`), 엔트리와 번들 비트(`spentBy=`): 제시 대신 비트를 소진하는 조건입니다(`spentBy: "holds(solved(valves))"`). 0.28.0부터 래치입니다. 한 번 성립하면 조건이 다시 거짓이 되어도 비트는 `once` 기간(쓰지 않으면 `run`, 주마다 초기화하려면 `once: week`) 동안 소진된 채로 남고, `lute play`는 ``spentBy: `run.solved` held — spent this run``으로 알립니다. `once: false`나 `share`와 함께 쓰면 `E-BEAT-ATTR`, 시작부터 성립하면 `W-BEAT-SPENT-AT-START`입니다. |
+| `spentBy` | 0.27.0. 씬(`spentBy:`), 엔트리와 번들 비트(`spentBy=`): 제시 대신 비트를 소진하는 조건입니다(`spentBy: "holds(solved(valves))"`). 0.28.0부터 래치입니다. 한 번 성립하면 조건이 다시 거짓이 되어도 비트는 `once` 기간(쓰지 않으면 `run`, 주마다 초기화하려면 `once: week`) 동안 소진된 채로 남고, `lute play`는 ``spentBy: `run.solved` held — spent this run``으로 알립니다. `once: false`나 `share`와 함께 쓰면 `E-BEAT-ATTR`, 시작부터 성립하면 `W-BEAT-SPENT-AT-START`입니다. `once`를 쓰지 않았는데 조건이 다시 거짓이 될 수 있으면(철회되는 팩트, 시즌 상태, rearm되는 퀘스트) `W-SPENT-BY-REVERSIBLE`이며, `once: false` + `when: "!(…)"`, `once: season:<name>`, 또는 래치를 유지하는 `once: run`을 알려 줍니다. |
 | `use` | 0.27.0. 번들 비트(`use="bondStory"`): 비트 템플릿입니다. 컴포넌트의 `beat:` 머리가 `<beat>`가 직접 쓰지 않은 키를 모두 채웁니다(`@param`은 인자로 바뀌고, 빈 값은 빠지며, id 하나뿐인 `after`는 `visited("<id>")`입니다). 템플릿 본문이 먼저 실행되고(최상위 `::body`가 있으면 비트 자신의 본문이 그 자리에 들어갑니다), 나머지 속성은 파라미터입니다(`E-COMPONENT-ARG`). `<beat use="trainer" id="r3Joey" who="joey"/>`는 한 줄 비트입니다. 잘못 쓰면 `E-TEMPLATE`입니다. |
 | `for` | 0.27.0. 대상 없는 `select: sequence` 계기의 씬(`for: "kind:crew"`), 엔트리와 번들 비트(`for="kind:crew"`): `when`이 성립하는 멤버마다 한 번씩, 멤버 순서대로 제시되며 그 멤버를 `occasion.target`으로 읽습니다(`lute play`: `✓ cafe.birthday for toma`). `once`(와 `spentBy`)는 0.28.0부터 멤버마다 따로 소진됩니다. `target`과 함께 쓰거나, 대상이 있는 계기나 sequence가 아닌 계기에 쓰면 `E-BEAT-ATTR`입니다. |
 
@@ -1521,7 +1524,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-SEASON-DECL` | 0.27.0. `seasons:` 항목이 잘못되었거나(맵이 아님, `live`가 없거나 비어 있음, 알 수 없는 키, 잘못된 이름), 두 스키마가 한 시즌을 다르게 선언했거나, `season.<name>.*` 경로·`once: season:<name>`·`tier="season:<name>"`가 선언되지 않은 시즌을 가리킵니다. `prev.season.*`에 쓰면 `prev.run.*`처럼 `E-QUEST-RESERVED-WRITE`입니다. |
 | `E-TEMPLATE` | 0.27.0. 비트 템플릿을 잘못 썼습니다: `<beat use>`가 가져오지 않은 컴포넌트(비슷한 이름 제안)나 `beat:` 머리가 없는 컴포넌트를 가리키거나, 머리에 모르는 키(`id` 포함)나 파라미터가 아닌 `@name`이 있거나, 일반 텍스트 머리 키에 식 인자가 들어가거나, `::body`가 템플릿 최상위가 아닌 곳에 있습니다. |
 | `E-CHAPTERS` | 0.28.0. `lute.project.yaml`의 `chapters:`가 `{ on, scenes }` 사슬의 목록이 아니거나, 씬을 두 번 적었거나, 한 계기에 사슬을 둘 두었거나, 폐지된 `sequence:` 키를 아직 씁니다. 또는 (`check-project`) 사슬이 어떤 플러그인도 선언하지 않은 계기에 응답하거나, 어느 씬도 선언하지 않은 id(비슷한 id 제안)나 자기 `on:`으로 다른 계기에 응답하는 씬을 적었거나, 대상 있는 계기에서 `target:`이 없는 씬을 적었습니다. 그 밖에는 적용된 사슬의 각 씬이 직접 쓰지 않은 `on:`, 내려가는 `priority:`, 그리고 (`select: sequence` 계기가 아니면) `after: visited("<앞 씬>")`를 받습니다. |
-| `W-CHAPTER-STALL` | 0.28.0. 사슬의 씬이 가진 자기 `when:`이 끝내 참이 되지 않을 수도 있는 상태를 읽는데, 다음 씬의 `after:`가 그 씬을 기다리므로 장이 거기서 멈출 수 있습니다. 시계만 읽는 `when:`은 늦출 뿐이라 보고하지 않습니다. |
+| `W-CHAPTER-STALL` | 0.28.0. 사슬의 씬이 가진 자기 `when:`이 끝내 참이 되지 않을 수도 있는 상태를 읽는데, 다음 씬의 `after:`가 그 씬을 기다리므로 장이 거기서 멈출 수 있습니다. 시계만 읽는 `when:`은 그 창이 닫힐 때(계기의 이후 어떤 raise도 맞추지 못할 때)만 보고합니다. |
 | `W-CHAPTER-ORDER` | 0.28.0. `select: sequence` 계기에서 사슬의 씬이 가진 자기 `priority:`가 목록 순서를 벗어나게 재생합니다. |
 | `E-ENUM-LABEL-NOT-MEMBER` | 0.24.0. enum의 `labels:`가 그 멤버가 아닌 것을 가리킵니다. |
 | `E-CEL-TYPE` | 0.24.0. `%`의 피연산자가 정수가 아닙니다: `` `%` takes two integers: `2.5` is not an integer ``. |

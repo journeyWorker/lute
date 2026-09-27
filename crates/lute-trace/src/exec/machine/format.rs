@@ -99,6 +99,29 @@ impl<D: Driver> Machine<D> {
             .map(str::to_string)
     }
 
+    /// Whether `placeholders` read `occasion.target` — `{{occasion.target}}`
+    /// in any form, `{{run.count[occasion.target]}}` — with no member bound
+    /// (a trace that did not mock the raise).
+    pub(super) fn unbound_target(&self, placeholders: Option<&Vec<Json>>) -> bool {
+        if matches!(
+            self.store.values.get(lute_check::beats::OCCASION_TARGET),
+            Some(crate::Value::Str(_))
+        ) {
+            return false;
+        }
+        placeholders
+            .into_iter()
+            .flatten()
+            .any(|ph| match ph.get("kind").and_then(Json::as_str) {
+                Some("occasionTarget") => true,
+                Some("ref") => ph
+                    .pointer("/expr/raw")
+                    .and_then(Json::as_str)
+                    .is_some_and(lute_check::occasion_bind::mentions_target),
+                _ => false,
+            })
+    }
+
     /// A `{{path}}` value as text: an enum member with a declared label
     /// renders the label (dsl 0.24.0 §1) — `prev.run.X` shares `run.X`'s —
     /// anything else its plain value.

@@ -144,6 +144,67 @@ fn match_subject_def_expanding_to_a_relation_query_is_flagged() {
     );
 }
 
+fn diagnostics(text: &str) -> Vec<lute_core_span::Diagnostic> {
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "t".into(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+        defaults: Default::default(),
+    };
+    check(&input).diagnostics
+}
+
+/// A `<match>` with no `on` has no subject, so a `<when is>` arm there has
+/// nothing to compare: one `E-MATCH-NO-SUBJECT` at the `is` value, naming
+/// the declared path the literal belongs to — or, for a value that is a
+/// condition, `test=`. The all-`test` form stays clean.
+#[test]
+fn an_is_arm_in_a_match_with_no_on_is_refused_and_a_test_arm_is_not() {
+    let vocab = VOCAB.replace(
+        "state:\n",
+        "state:\n  run.route: { type: { enum: [none, ren] }, default: none }\n",
+    );
+    let doc = |when: &str| {
+        format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{vocab}---\n## Shot 1.\n<match>\n<when {when}>\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
+        )
+    };
+    let only = |text: &str| {
+        let ds = diagnostics(text);
+        let hits: Vec<_> = ds
+            .iter()
+            .filter(|d| d.code == "E-MATCH-NO-SUBJECT")
+            .cloned()
+            .collect();
+        assert_eq!(hits.len(), 1, "{ds:#?}");
+        let d = hits[0].clone();
+        (
+            text[d.span.byte_start..d.span.byte_end].to_string(),
+            d.message,
+        )
+    };
+    let src = doc("is=\"ren\"");
+    let (at, msg) = only(&src);
+    assert_eq!(at, "ren");
+    assert!(
+        msg.contains("add `on=\"run.route\"` to the `<match>`"),
+        "{msg}"
+    );
+    let src = doc("is=\"run.act >= 3\"");
+    let (at, msg) = only(&src);
+    assert_eq!(at, "run.act >= 3");
+    assert!(
+        msg.contains("write `<when test=\"run.act >= 3\">`"),
+        "{msg}"
+    );
+    let c = codes(&doc("test=\"run.act >= 3\""));
+    assert!(!c.iter().any(|k| k.starts_with("E-")), "{c:?}");
+}
+
 #[test]
 fn quest_lifecycle_guards_admit_fact_queries() {
     let quest = format!(

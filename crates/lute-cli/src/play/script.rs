@@ -266,6 +266,27 @@ impl StepSource {
         }
         out
     }
+
+    /// `msg` located at the value of the key `keys` names inside the step
+    /// (else at the key, as [`Self::locate_keys`]).
+    pub(super) fn locate_value(&self, keys: &[&str], msg: &str) -> String {
+        use lute_trace::YamlStep::{Item, Key, Value};
+        let mut path = Vec::with_capacity(keys.len() + 3);
+        if self.under_steps {
+            path.push(Key("steps"));
+        }
+        path.push(Item(self.index));
+        path.extend(keys.iter().map(|k| Key(k)));
+        path.push(Value);
+        let Some(s) = lute_trace::yaml_span(&self.text, &path) else {
+            return self.locate_keys(keys, msg);
+        };
+        let mut out = format!("{}:{}:{}: {msg}", self.file.display(), s.line, s.column);
+        for via in &self.via {
+            out.push_str(&format!(" (included from {via})"));
+        }
+        out
+    }
 }
 
 /// dsl 0.27.0 (T3-22): one splice of an `include:` that carries `choose:` /
@@ -320,6 +341,18 @@ impl ScriptSource {
         use lute_trace::YamlStep::{Item, Key};
         let mut path: Vec<_> = keys.iter().map(|k| Key(k)).collect();
         path.push(Item(item));
+        match lute_trace::yaml_span(&self.text, &path) {
+            Some(s) => format!("{}:{}:{}", self.file.display(), s.line, s.column),
+            None => self.at(keys),
+        }
+    }
+
+    /// `file:line:col` of the value of the top-level key `keys` names, else
+    /// [`Self::at`] of the key.
+    pub(super) fn at_value(&self, keys: &[&str]) -> String {
+        use lute_trace::YamlStep::{Key, Value};
+        let mut path: Vec<_> = keys.iter().map(|k| Key(k)).collect();
+        path.push(Value);
         match lute_trace::yaml_span(&self.text, &path) {
             Some(s) => format!("{}:{}:{}", self.file.display(), s.line, s.column),
             None => self.at(keys),
@@ -794,6 +827,7 @@ fn expand_includes(
         };
         let file = from.file.parent().unwrap_or(Path::new(".")).join(rel);
         let canonical = file.canonicalize().map_err(|e| {
+            let e = lute_manifest::io_reason(&e);
             err(
                 "include",
                 format!("cannot read `include: {rel}` ({}): {e}", file.display()),
@@ -809,6 +843,7 @@ fn expand_includes(
             ));
         }
         let text = std::fs::read_to_string(&canonical).map_err(|e| {
+            let e = lute_manifest::io_reason(&e);
             err(
                 "include",
                 format!("cannot read `include: {rel}` ({}): {e}", file.display()),

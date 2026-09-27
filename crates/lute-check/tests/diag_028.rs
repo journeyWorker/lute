@@ -313,3 +313,54 @@ fn on_one_position_the_cause_comes_first() {
     ds.sort_by(lute_check::diagnostic_order);
     assert_eq!(ds[0].code, "E-WHEN-LITERAL-DOMAIN");
 }
+
+/// An `exit` written with a value that is no flag is taken as meant: its
+/// `E-FLAG-VALUE` is the one report, not also `E-HUB-NO-EXIT` (TH28-4b).
+#[test]
+fn a_refused_exit_flag_is_one_report() {
+    let text = "---\nkind: scene\nid: k\n---\n## K\n<hub id=\"ask\">\n\
+                <choice id=\"oven\" label=\"Oven\">\n@cook: Cake.\n</choice>\n\
+                <choice id=\"leave\" label=\"Go\" exit=\"yes\">\n@cook: Bye.\n</choice>\n</hub>\n";
+    let codes: Vec<String> = lute_check::check(&input(text))
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, ["E-FLAG-VALUE"]);
+}
+
+/// An objective's literal fault prints before the unsatisfiable objective
+/// it makes, though the objective's report starts earlier on the line
+/// (TH28-4c).
+#[test]
+fn a_literal_fault_prints_before_the_objective_it_kills() {
+    let text = "---\nkind: quest\nid: spoon\nstate:\n  run.accused: { type: { enum: [nobody, cook] }, \
+                default: nobody }\n---\n<quest id=\"spoon\" title=\"Find\" start=\"true\" tier=\"run\">\n  \
+                <objective id=\"name\" title=\"Name\" done=\"run.accused == 'magpie'\"/>\n</quest>\n";
+    let codes: Vec<String> = lute_check::check(&input(text))
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(
+        codes,
+        ["E-WHEN-LITERAL-DOMAIN", "E-OBJECTIVE-UNSATISFIABLE"]
+    );
+}
+
+/// `{{a ? 'x' : 'y'}}` is told to write one line per case, spelled out — a
+/// string `@def` is not shown either (ledger LG28-2).
+#[test]
+fn a_text_ternary_interpolation_is_told_to_split_into_lines() {
+    let text = "---\nkind: scene\nid: t\nstate:\n  run.k: { type: bool, default: false }\n---\n\
+                ## T\n@narrator: {{run.k ? 'Yes.' : 'No.'}}\n";
+    let ds = lute_check::check(&input(text)).diagnostics;
+    assert_eq!(ds.len(), 1, "{ds:#?}");
+    assert!(
+        ds[0]
+            .message
+            .contains("`@who{when=\"run.k\"}: Yes.` and `@who{when=\"!run.k\"}: No.`"),
+        "{}",
+        ds[0].message
+    );
+}

@@ -125,12 +125,12 @@ use interp::{
 };
 use pipeline::cel_parse_diagnostics;
 pub use pipeline::{check, check_parsed};
-pub use postprocess::diagnostic_order;
 use postprocess::{
     collapse_same_root, dedup_rehomed, dedup_undeclared, first_backtick_token, normalize_spans,
     suppress_dead_arm_overlaps, suppress_exhaustive_subject_reads,
     suppress_unparsed_child_list_verdicts, suppress_unproven_absence,
 };
+pub use postprocess::{diagnostic_order, order_diagnostics};
 pub(crate) use use_site::literal_arg_ok;
 pub use use_site::use_speaker_lines;
 use use_site::{

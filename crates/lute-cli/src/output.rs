@@ -109,11 +109,16 @@ pub(crate) fn render_diagnostics(
         // marker so it is distinguishable from a native error.
         let denied = policy.denied(d);
         let marker = if denied { " [denied]" } else { "" };
+        // A diagnostic with no place in the file (a mock flag's, D-AB)
+        // names the file alone: `:0:0` claims a position that does not exist.
+        let at = if d.span.line > 0 {
+            format!(":{}:{}", d.span.line, d.span.column)
+        } else {
+            String::new()
+        };
         let _ = writeln!(
             out,
-            "{path}:{}:{}: {} [{}]{marker} {}{more}",
-            d.span.line,
-            d.span.column,
+            "{path}{at}: {} [{}]{marker} {}{more}",
             if denied {
                 "error"
             } else {

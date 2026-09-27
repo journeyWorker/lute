@@ -234,6 +234,19 @@ const RENAMED_TEST_KEYS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// A play step's keys a `*.test.yaml` writes another way: `(key, how a test
+/// says it)`. Both are seeds of the presented raise.
+const TEST_SPELLING_OF_STEP_KEYS: &[(&str, &str)] = &[
+    (
+        "payload",
+        "seeds the raise's payload as state, `state: { occasion.payload.<field>: … }`",
+    ),
+    (
+        "target",
+        "seeds the raised target as state, `state: { occasion.target: <member> }`",
+    ),
+];
+
 /// One `E-TEST-KEY` line for an unrecognised key, with the same
 /// edit-distance did-you-mean four checker codes already use (dsl 0.5.0
 /// §2.2), over the workspace's ONE suggestion helper. `where_` names the
@@ -262,7 +275,14 @@ fn unknown_key_line(where_: &str, key: &str, allowed: &[&str]) -> String {
             .then_some("a play step's `expect:`")
     };
     let hint = play
-        .map(|p| format!(" (`{key}:` belongs to {p}, in a `*.play.yaml`)"))
+        .map(|p| {
+            let ours = TEST_SPELLING_OF_STEP_KEYS
+                .iter()
+                .find(|(k, _)| where_ == "top-level" && *k == key)
+                .map(|(_, ours)| format!("; a test {ours}"))
+                .unwrap_or_default();
+            format!(" (`{key}:` belongs to {p}, in a `*.play.yaml`{ours})")
+        })
         .unwrap_or_default();
     format!(
         "error [E-TEST-KEY] unknown {where_} key `{key}` in a `*.test.yaml`{sugg}{hint} (legal: {})",
@@ -271,19 +291,34 @@ fn unknown_key_line(where_: &str, key: &str, allowed: &[&str]) -> String {
 }
 
 /// Every closed-key violation in one test file, both levels, in document
-/// order. Empty when the file is well-keyed.
-fn closed_key_violations(map: &serde_yaml::Mapping) -> Vec<String> {
+/// order, each at `file:line:col` of the key (or value) it names. Empty
+/// when the file is well-keyed.
+fn closed_key_violations(map: &serde_yaml::Mapping, text: &str, file: &Path) -> Vec<String> {
+    use lute_trace::YamlStep::{Key, Value};
+    let at = |path: &[lute_trace::YamlStep<'_>]| {
+        let s = (1..=path.len())
+            .rev()
+            .find_map(|end| lute_trace::yaml_span(text, &path[..end]));
+        match s {
+            Some(s) => format!("{}:{}:{}: ", file.display(), s.line, s.column),
+            None => format!("{}: ", file.display()),
+        }
+    };
     let mut out = Vec::new();
     for (k, v) in map {
         let Some(key) = k.as_str() else {
-            out.push(
-                "error [E-TEST-KEY] a top-level key must be a string in a `*.test.yaml`"
-                    .to_string(),
-            );
+            out.push(format!(
+                "{}error [E-TEST-KEY] a top-level key must be a string in a `*.test.yaml`",
+                at(&[])
+            ));
             continue;
         };
         if !TEST_TOP_KEYS.contains(&key) {
-            out.push(unknown_key_line("top-level", key, TEST_TOP_KEYS));
+            out.push(format!(
+                "{}{}",
+                at(&[Key(key)]),
+                unknown_key_line("top-level", key, TEST_TOP_KEYS)
+            ));
             continue;
         }
         if key == "expect" {
@@ -297,8 +332,9 @@ fn closed_key_violations(map: &serde_yaml::Mapping) -> Vec<String> {
                             match ev.as_str() {
                                 Some(e) if ends.contains(&e) => {}
                                 got => out.push(format!(
-                                    "error [E-TEST-KEY] `expect.end: {}` names no way a walk \
+                                    "{}error [E-TEST-KEY] `expect.end: {}` names no way a walk \
                                      ends{} (one of: {})",
+                                    at(&[Key("expect"), Key("end"), Value]),
                                     got.unwrap_or("?"),
                                     got.map(|g| lute_manifest::suggest::did_you_mean(
                                         g,
@@ -310,12 +346,15 @@ fn closed_key_violations(map: &serde_yaml::Mapping) -> Vec<String> {
                             }
                         }
                         Some(ekey) if TEST_EXPECT_KEYS.contains(&ekey) => {}
-                        Some(ekey) => {
-                            out.push(unknown_key_line("`expect:`", ekey, TEST_EXPECT_KEYS))
-                        }
-                        None => out.push(
-                            "error [E-TEST-KEY] an `expect:` key must be a string".to_string(),
-                        ),
+                        Some(ekey) => out.push(format!(
+                            "{}{}",
+                            at(&[Key("expect"), Key(ekey)]),
+                            unknown_key_line("`expect:`", ekey, TEST_EXPECT_KEYS)
+                        )),
+                        None => out.push(format!(
+                            "{}error [E-TEST-KEY] an `expect:` key must be a string",
+                            at(&[Key("expect")])
+                        )),
                     }
                 }
             }
@@ -730,6 +769,7 @@ pub fn run_test(
         ) {
             (Ok(t), Ok(p)) => (t, p),
             (Err(e), _) | (_, Err(e)) => {
+                let e = lute_manifest::io_reason(&e);
                 eprintln!("lute: cannot walk {}: {e}", dir.display());
                 return ExitCode::from(2);
             }
@@ -876,6 +916,7 @@ pub fn run_test(
         match coverage_units(&coverage_root) {
             Ok(units) => units,
             Err(e) => {
+                let e = lute_manifest::io_reason(&e);
                 eprintln!(
                     "lute: cannot walk {} for the untested set: {e}",
                     coverage_root.display()
@@ -1071,6 +1112,7 @@ fn run_one_test(
     let text = match std::fs::read_to_string(test_file) {
         Ok(t) => t,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot read {}: {e}", test_file.display());
             return Err(ExitCode::from(2));
         }
@@ -1118,11 +1160,19 @@ fn run_one_test(
     // per-test FAILURE (exit 1), not an I/O error (exit 2) — every offending
     // file must be named in one run, and the suite must keep going. T9.8's
     // acceptance test asks for exit 1 by name.
-    let key_violations = closed_key_violations(map);
+    let key_violations = closed_key_violations(map, &text, test_file);
     if !key_violations.is_empty() {
+        // The document the test names, when `file:` says, as a run of it would.
+        let lute_display = match lute_trace::mock_subject(&text) {
+            Ok(Some(rel)) => {
+                let base = test_file.parent().unwrap_or_else(|| Path::new("."));
+                fold_parent_dirs(&base.join(rel)).display().to_string()
+            }
+            _ => String::new(),
+        };
         return Ok(TestResult::refused(
             test_file,
-            String::new(),
+            lute_display,
             "invalid",
             key_violations,
         ));
@@ -1136,9 +1186,9 @@ fn run_one_test(
         .into_iter()
         .flatten()
         .filter_map(|(k, v)| {
-            use lute_trace::YamlStep::Key;
+            use lute_trace::YamlStep::{Key, Value};
             let (path, want) = (k.as_str()?, v.as_str()?);
-            let at = lute_trace::yaml_span(&text, &[Key("expect"), Key("state"), Key(path)])
+            let at = lute_trace::yaml_span(&text, &[Key("expect"), Key("state"), Key(path), Value])
                 .map_or_else(
                     || test_file.display().to_string(),
                     |s| format!("{}:{}:{}", test_file.display(), s.line, s.column),
@@ -1285,7 +1335,7 @@ fn run_one_test(
         None,
     );
     for m in &built.project_diags {
-        eprintln!("lute: {m}");
+        eprintln!("{}", crate::input::project_diag_line(m));
     }
     let crate::BuiltInput {
         input,
@@ -1585,17 +1635,26 @@ fn run_one_test(
         let lines: Vec<String> = diags
             .iter()
             .map(|d| {
+                // A diagnostic with no place in the document is about the
+                // test's own input (every mock here comes from this file):
+                // a refused raise at its `occasions:`, anything else at the
+                // file, never at a made-up `:0:0` of the document.
                 let at = if d.provenance.as_deref() == Some(lute_trace::MOCK_TEXT) {
-                    &test_display
+                    format!("{test_display}:{}:{}", d.span.line, d.span.column)
+                } else if d.span.line > 0 {
+                    format!("{lute_display}:{}:{}", d.span.line, d.span.column)
                 } else {
-                    &lute_display
+                    let key = (d.code == lute_check::gates::E_OCCASION_GATE).then_some("occasions");
+                    match key
+                        .and_then(|k| lute_trace::yaml_span(&text, &[lute_trace::YamlStep::Key(k)]))
+                    {
+                        Some(s) => format!("{test_display}:{}:{}", s.line, s.column),
+                        None => test_display.clone(),
+                    }
                 };
                 let severity = crate::output::severity_str(d.severity);
                 format!(
-                    "{}:{}:{}: {severity} [{}] {}",
-                    at,
-                    d.span.line,
-                    d.span.column,
+                    "{at}: {severity} [{}] {}",
                     d.code,
                     yaml_key_spelling(&d.text())
                 )
@@ -2085,7 +2144,12 @@ enum PlayScan {
 fn scan_play(play_file: &Path) -> PlayScan {
     let text = match std::fs::read_to_string(play_file) {
         Ok(t) => t,
-        Err(e) => return PlayScan::Broken(format!("cannot read the play: {e}")),
+        Err(e) => {
+            return PlayScan::Broken(format!(
+                "cannot read the play: {}",
+                lute_manifest::io_reason(&e)
+            ))
+        }
     };
     let top: serde_yaml::Value = match serde_yaml::from_str(&text) {
         Ok(v) => v,

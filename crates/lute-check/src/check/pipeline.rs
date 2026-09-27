@@ -230,7 +230,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
             .chain(import_diags)
             .collect();
         normalize_spans(&idx, &input.text, &mut diags);
-        diags.sort_by(super::postprocess::diagnostic_order);
+        super::postprocess::order_diagnostics(&mut diags);
         return CheckResult {
             ok: false,
             diagnostics: diags,
@@ -276,6 +276,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         &doc,
         &input.components,
         &folded.def_bodies,
+        &folded.env.def_types,
         &folded.env.state,
         &mut def_body_diags,
     );
@@ -554,6 +555,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         &doc,
         &folded.typed.seasons,
         &input.imports.seasons,
+        &input.imports.season_lives,
         &base_ctx,
         &scope,
     ));
@@ -980,7 +982,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // leave them zeroed), then sort deterministically (carry-forward #3),
     // the cause first where several share a position.
     normalize_spans(&idx, &input.text, &mut diags);
-    diags.sort_by(super::postprocess::diagnostic_order);
+    super::postprocess::order_diagnostics(&mut diags);
 
     // C3 (dsl 0.4.0 §8.2/D12): a failed uses/extends/components import
     // suppresses the absence diagnostics that depend on the merge it never

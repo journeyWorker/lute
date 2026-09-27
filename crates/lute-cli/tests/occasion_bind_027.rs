@@ -266,6 +266,75 @@ fn test_and_trace_judge_a_kind_beat_by_the_mocked_member() {
     );
 }
 
+/// `lute trace --occasion O@<target>` binds `occasion.target` for a kind
+/// beat answering O, as the engine's raise does: its writes and text name
+/// the member. A target outside the beat's kind is refused; with no raise,
+/// a write or a `{{occasion.target}}` line halts incomplete instead of
+/// printing the marker raw or passing as an empty `match`.
+#[test]
+fn trace_binds_the_member_a_raise_names() {
+    let dir = temp_dir("raise-binds");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: g\nprofiles: { g: { plugins: { p: true } } }\n\
+         defaults: { luteVersion: \"0.27.0\", uses: [w.schema.yaml] }\n",
+    );
+    write(
+        &dir,
+        "plugins/p/plugin.yaml",
+        "id: p\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports: { occasions: occasions/ }\n",
+    );
+    write(
+        &dir,
+        "plugins/p/occasions/o.yaml",
+        "occasions:\n  landed: { select: first, target: { prefix: fish, entity: fish } }\n",
+    );
+    write(
+        &dir,
+        "w.schema.yaml",
+        "entities:\n  fish: { members: [cod, marlin] }\nrelations:\n  caught: { args: [fish], tier: run }\n",
+    );
+    write(
+        &dir,
+        "lore/catch.lute",
+        "---\nkind: lore\nid: catch\n---\n\n<beat id=\"land\" on=\"landed\" target=\"kind:fish\" once=\"false\">\n  \
+         @narrator: You land a {{occasion.target}}.\n  ::assert{caught(occasion.target)}\n</beat>\n",
+    );
+    let trace = |extra: &[&str]| {
+        let mut args = vec![
+            "trace",
+            "lore/catch.lute",
+            "--project",
+            ".",
+            "--beat",
+            "land",
+        ];
+        args.extend_from_slice(extra);
+        let out = run(&dir, &args);
+        (out.status.code(), text(&out))
+    };
+
+    let (code, t) = trace(&["--occasion", "landed@fish.cod"]);
+    assert_eq!(code, Some(0), "{t}");
+    assert!(t.contains("You land a cod."), "{t}");
+    assert!(t.contains("caught(cod)"), "{t}");
+    assert!(!t.contains("judged by no `<objective on>`"), "{t}");
+
+    let (code, t) = trace(&["--occasion", "landed@fish.tuna"]);
+    assert_eq!(code, Some(1), "{t}");
+    assert!(
+        t.contains("not a member the beat `land` runs for (cod, marlin)"),
+        "{t}"
+    );
+
+    let (code, t) = trace(&[]);
+    assert_eq!(code, Some(3), "{t}");
+    assert!(!t.contains("{{occasion.target}}"), "{t}");
+    assert!(!t.contains("match ``"), "{t}");
+}
+
 /// Every `forKind` object in an artifact, depth-first.
 fn for_kinds(v: &Json, out: &mut Vec<Json>) {
     match v {

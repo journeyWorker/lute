@@ -34,6 +34,9 @@
 //! inferred result type.
 //! - **`E-WHEN-PATTERN`** — a `<when>` arm with neither an `is` pattern nor a
 //!   `test` guard (§7.3.1); one of the two is REQUIRED.
+//! - **`E-MATCH-NO-SUBJECT`** — a `<when is>` arm in a `<match>` with no `on`:
+//!   there is no subject to compare against. An all-`test` subject-less match
+//!   is legal.
 //! - **`E-UNSET-UNCOVERED`** — the subject is *maybe-unset* (`scene.choices.*`, or
 //!   a `run.*`/`user.*`/`app.*` decl with no schema `default`) and the `unset`
 //!   case is not covered by an `unset`-matching arm nor an `<otherwise>`.
@@ -109,11 +112,12 @@ mod rewards;
 pub(crate) use domain::{infer_domain, param_domain, resolve_subject, subject_path};
 pub use domain::{Domain, DomainInfo, DomainValue};
 pub use exhaustive::{
-    check_match, is_exhaustive, E_WHEN_LITERAL_DOMAIN, E_WHEN_PATTERN, E_WHEN_RANGE,
+    check_match, is_exhaustive, E_MATCH_NO_SUBJECT, E_WHEN_LITERAL_DOMAIN, E_WHEN_PATTERN,
+    E_WHEN_RANGE,
 };
 pub(crate) use exhaustive::{
-    check_match_with_domain, check_param_match, handles_unset_resolved, is_exhaustive_resolved,
-    CoverItem,
+    check_match_has_subject, check_match_with_domain, check_param_match, handles_unset_resolved,
+    is_exhaustive_resolved, CoverItem,
 };
 pub(crate) use interval::{Interval, NumCoverage};
 pub use line_codes::check_line_codes;

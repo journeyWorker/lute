@@ -26,6 +26,88 @@ pub const E_WHEN_LITERAL_DOMAIN: &str = "E-WHEN-LITERAL-DOMAIN";
 /// `E-WHEN-LITERAL-DOMAIN` domain check.
 pub const E_WHEN_RANGE: &str = "E-WHEN-RANGE";
 
+/// `E-MATCH-NO-SUBJECT`: a `<when is="…">` arm in a `<match>` with no `on=`.
+/// An `is` literal is compared against the subject, and there is none, so the
+/// arm could never be decided. A `<match>` with no `on` whose arms are all
+/// `test=` stays legal (the form for fact queries).
+pub const E_MATCH_NO_SUBJECT: &str = "E-MATCH-NO-SUBJECT";
+
+/// [`E_MATCH_NO_SUBJECT`] at every `is=` value of a subject-less `<match>`.
+/// A value that reads as a condition (`run.lamps >= 3`) is pointed at
+/// `test=`; otherwise the message names the one declared finite path whose
+/// members hold every `is` literal, when there is exactly one.
+pub(crate) fn check_match_has_subject(m: &Match, schema: &StateSchema) -> Vec<Diagnostic> {
+    if !m.subject.raw.trim().is_empty() {
+        return Vec::new();
+    }
+    let patterns: Vec<&IsPattern> = m
+        .arms
+        .iter()
+        .filter_map(|a| match a {
+            Arm::When { is: Some(p), .. } => Some(p),
+            _ => None,
+        })
+        .collect();
+    if patterns.is_empty() {
+        return Vec::new();
+    }
+    let subject = subject_for(&patterns, schema)
+        .map_or_else(|| "on=\"…\"".to_string(), |p| format!("on=\"{p}\""));
+    patterns
+        .iter()
+        .map(|p| {
+            let raw = p.raw.trim();
+            let message = if reads_as_condition(raw) {
+                format!(
+                    "`is=\"{raw}\"` compares against the `<match on>` subject; this `<match>` \
+                     has none, and `{raw}` is a condition — write `<when test=\"{raw}\">`"
+                )
+            } else {
+                format!(
+                    "`is=\"{raw}\"` compares against the `<match on>` subject; this `<match>` \
+                     has none — add `{subject}` to the `<match>`, or write `test=` for a \
+                     condition"
+                )
+            };
+            diag(E_MATCH_NO_SUBJECT, Severity::Error, message, p.span)
+        })
+        .collect()
+}
+
+/// An `is=` value no literal pattern spells: an operator, a call, a `@def`,
+/// or a state path.
+fn reads_as_condition(raw: &str) -> bool {
+    raw.contains(['<', '>', '=', '!', '&', '(', '@'])
+        || raw.contains("||")
+        || ["scene.", "run.", "user.", "app.", "quest.", "clock."]
+            .iter()
+            .any(|t| raw.starts_with(t))
+}
+
+/// The one declared path with a finite domain holding every member literal
+/// of `patterns`, if exactly one does.
+fn subject_for(patterns: &[&IsPattern], schema: &StateSchema) -> Option<String> {
+    let lits: Vec<IsLiteral> = patterns
+        .iter()
+        .flat_map(|p| is_alternatives(&p.raw))
+        .filter_map(|lit| classify_is_literal(lit).ok())
+        .filter(|lit| matches!(lit, IsLiteral::Str(_)))
+        .collect();
+    if lits.is_empty() {
+        return None;
+    }
+    // A `prev.*` mirror holds the last run's value of the path beside it.
+    let mut fits = schema.decls.keys().filter(|path| {
+        let info = infer_domain(Some(path.as_str()), schema);
+        !path.starts_with("prev.")
+            && matches!(info.domain, Domain::Finite(_))
+            && info.resolved
+            && !lits.iter().any(|lit| literal_is_foreign(lit, &info))
+    });
+    let one = fits.next()?;
+    fits.next().is_none().then(|| one.clone())
+}
+
 /// Validate a `<match>` for exhaustiveness, unset coverage, the age-gate, and
 /// provably-overlapping arms (dsl §11.2). Thin wrapper: infers the subject's
 /// domain from `schema` exactly as before, then delegates to

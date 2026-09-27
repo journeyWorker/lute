@@ -134,7 +134,7 @@ pub(crate) fn compute_conn_fixpoint(
             root_vocab.effect_directives(),
         )
         .into_iter()
-        .filter_map(|(_path, p)| lute_check::GroundFact::from_pattern(&p));
+        .flat_map(|(_path, p)| root_vocab.asserted_facts(&p));
         let may = lute_check::MaySet::build(&root_vocab, live_facts, &stable);
         let must = must.get_or_insert_with(|| {
             lute_check::compute_must(group, &foldeds, conn_graph, &root_vocab, &may)
@@ -272,6 +272,13 @@ pub(crate) fn reconcile_collected(
     // occurrence the project entry pass already reports, used below to
     // suppress the per-file `E-ENTRY-ID-DUP` / `E-ENTRY-SERIES-ORDER` twins.
     let mut entry_covered = Vec::new();
+    // P28S-03/HW28-06: per root, the `quest.<id>.` / `entry.<id>.` heads of
+    // every quest or entry id with a `.`. Its declaration is refused
+    // (`E-PATH-IDENT` / `E-ENTRY-ATTR`), the one report: a per-file
+    // `E-UNDECLARED` read of it in the same root is dropped below.
+    let mut dotted_heads: Vec<Vec<String>> = Vec::new();
+    let mut dotted_root_of: std::collections::HashMap<PathBuf, usize> =
+        std::collections::HashMap::new();
     // Spec §5 project gate side channel (additive; NEVER affects
     // `project_diags`, so `check-project`'s output is byte-identical).
     // Accumulated across every resolved root so the single-root gate
@@ -342,6 +349,12 @@ pub(crate) fn reconcile_collected(
             Box::new(|| {
                 lute_check::clock_positions::check_project_deadline_windows(group, &beat_foldeds)
             }),
+            // A beat whose `when` holds only where the clock does not raise
+            // its occasion (or only at a last `dayEnd` the game's end closes).
+            Box::new(|| lute_check::clock_positions::check_project_unraised(group, &beat_foldeds)),
+            // A `spentBy` another document's quest spends at the start, or
+            // one whose condition can turn false again after it has held.
+            Box::new(|| lute_check::spent_by::check_project_spent_by(root, group, &beat_foldeds)),
             // dsl 0.26.0 §2.8: advisory — two speakers sharing a display name.
             Box::new(|| {
                 let casts: Vec<_> = beat_foldeds.iter().map(|f| &f.cast).collect();
@@ -521,7 +534,9 @@ pub(crate) fn reconcile_collected(
             },
             || {
                 // T3-5: a beat the per-file check rejected is left out of the
-                // tie and shadow passes — its error is the one report.
+                // tie and shadow passes — its error is the one report. An
+                // error folded into an earlier one (`(+N more: …)`) rejects
+                // the beat it sits in just the same.
                 let errors: lute_check::beats::ReportedErrors = group_full
                     .iter()
                     .filter_map(|(path, _, _)| {
@@ -531,7 +546,8 @@ pub(crate) fn reconcile_collected(
                             .diagnostics
                             .iter()
                             .filter(|d| d.severity == Severity::Error)
-                            .map(|d| d.span.byte_start..d.span.byte_end)
+                            .flat_map(|d| std::iter::once(&d.span).chain(&d.covered))
+                            .map(|s| s.byte_start..s.byte_end)
                             .collect();
                         (!spans.is_empty()).then(|| (path.clone(), spans))
                     })
@@ -622,8 +638,20 @@ pub(crate) fn reconcile_collected(
         // (defassign.rs), so zipping them by position is exact, not a
         // heuristic.
         let mut sites_per_scene: BTreeMap<String, Vec<(Span, String)>> = BTreeMap::new();
+        // `owner: engine` paths: an unavailable read of one is advised a
+        // guard or a default, never an `after:` (no scene sets it).
+        let mut engine_owned: BTreeSet<String> = BTreeSet::new();
         for (_path, doc, folded) in group_full {
             envelope_d.extend(envelope::schema_defaults(&folded.env.state));
+            engine_owned.extend(
+                folded
+                    .env
+                    .state
+                    .decls
+                    .iter()
+                    .filter(|(_, d)| d.owner == Some(lute_manifest::types::Owner::Engine))
+                    .map(|(p, _)| p.clone()),
+            );
             for quest in &doc.quests {
                 if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
                     continue;
@@ -712,7 +740,13 @@ pub(crate) fn reconcile_collected(
         // exists to surface it). EVERY entry-dependent, in-scope,
         // non-tainted read is reconciled below regardless of its own
         // classification outcome.
-        for (path, d) in envelope::check_envelope(&conn_graph, &envs, &tainted, &reads_per_scene) {
+        for (path, d) in envelope::check_envelope(
+            &conn_graph,
+            &envs,
+            &tainted,
+            &reads_per_scene,
+            &engine_owned,
+        ) {
             if d.severity == Severity::Error {
                 project_diags.push((path, d));
             }
@@ -745,6 +779,21 @@ pub(crate) fn reconcile_collected(
         }
         covered.extend(lute_check::colliding_occurrences(group));
         entry_covered.extend(lute_check::colliding_entry_occurrences(group));
+        let heads: Vec<String> = group
+            .iter()
+            .flat_map(|(_, doc)| {
+                let quests = doc.quests.iter().map(|q| ("quest", &q.id));
+                quests.chain(doc.entries.iter().map(|e| ("entry", &e.id)))
+            })
+            .filter(|(_, id)| id.contains('.'))
+            .map(|(root, id)| format!("{root}.{id}."))
+            .collect();
+        if !heads.is_empty() {
+            for (p, _) in group {
+                dotted_root_of.insert(p.clone(), dotted_heads.len());
+            }
+            dotted_heads.push(heads);
+        }
     }
     for (path, result) in &mut file_results {
         result.diagnostics.retain(|d| {
@@ -757,7 +806,18 @@ pub(crate) fn reconcile_collected(
                 && reconciled_reads
                     .iter()
                     .any(|(p, s, m)| p == path && *s == d.span && *m == d.message);
-            !quest_dup_covered && !entry_dup_covered && !envelope_reconciled
+            // The path an `E-UNDECLARED` names first, read of a dotted id
+            // this root declares.
+            let dotted_read = d.code == "E-UNDECLARED"
+                && dotted_root_of.get(path).is_some_and(|&i| {
+                    d.message
+                        .strip_prefix('`')
+                        .and_then(|m| m.split_once('`'))
+                        .is_some_and(|(read, _)| {
+                            dotted_heads[i].iter().any(|h| read.starts_with(h.as_str()))
+                        })
+                });
+            !quest_dup_covered && !entry_dup_covered && !envelope_reconciled && !dotted_read
         });
         result.ok = !result
             .diagnostics
@@ -901,7 +961,13 @@ pub(crate) fn relocate_imported_diags(
         let path = PathBuf::from(&file);
         let text = std::fs::read_to_string(&path).unwrap_or_default();
         d.span = normalize_span_from_text(&text, d.span);
-        d.message = format!("{} (imported by {n} document{})", d.message, plural(n));
+        // A default the manifest supplies is used by the documents, not imported.
+        let verb = if path.file_name().is_some_and(|n| n == "lute.project.yaml") {
+            "applies to"
+        } else {
+            "imported by"
+        };
+        d.message = format!("{} ({verb} {n} document{})", d.message, plural(n));
         let shown = canon_dir
             .as_deref()
             .and_then(|c| path.strip_prefix(c).ok())

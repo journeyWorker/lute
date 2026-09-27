@@ -85,8 +85,11 @@ impl Slot {
 pub struct Group {
     pub names: &'static [&'static str],
     pub slots: &'static [Slot],
-    /// What each name already is; completes "`<name>` is …".
+    /// What each name already is, for the table; completes "`<name>` is …".
     pub is: &'static str,
+    /// What one refused name already is, for its diagnostic: the same
+    /// clause with the example written for that name and slot.
+    pub says: fn(&str, Slot) -> String,
 }
 
 /// The state roots: a bare one in a condition starts a state path.
@@ -179,6 +182,9 @@ pub const BEAT_TEMPLATE_PARAM_NAMES: &[&str] = &[
 /// never be passed.
 pub const COMPONENT_PARAM_NAMES: &[&str] = &["component", "when"];
 
+/// The `once`/tier periods a season name would sit beside.
+const PERIODS: &[&str] = &["run", "user", "day", "week", "slot"];
+
 /// The table. [`refusal`] takes the first row naming both the name and the
 /// slot, so a more specific row comes first.
 pub const GROUPS: &[Group] = &[
@@ -187,6 +193,11 @@ pub const GROUPS: &[Group] = &[
         slots: &[Slot::EntityMember, Slot::EnumMember, Slot::Id],
         is: "the no-value word: `is=\"unset\"` and `== 'unset'` test for a path that holds \
              nothing, so a value named `unset` can never be matched",
+        says: |_, _| {
+            "the no-value word: `is=\"unset\"` and `== 'unset'` test for a path that holds \
+             nothing, never for a value named `unset`"
+                .into()
+        },
     },
     Group {
         names: CEL_LITERALS,
@@ -199,23 +210,45 @@ pub const GROUPS: &[Group] = &[
             Slot::PathSegment,
         ],
         is: "a CEL literal: in a condition and in `is=` it is read as the value, never as a name",
+        says: |name, _| {
+            format!("a CEL literal: a condition and `is=\"{name}\"` read `{name}` as the value, never as a name")
+        },
     },
     Group {
         names: &["_"],
         slots: &[Slot::EntityMember, Slot::EnumMember],
         is: "the wildcard of fact patterns (`holds(knows(_))`) and the fallback key of `per:` \
              defaults",
+        says: |_, _| {
+            "the wildcard of fact patterns (`holds(knows(_))`) and the fallback key of `per:` \
+             defaults"
+                .into()
+        },
     },
     Group {
         names: &["none"],
         slots: &[Slot::Id],
         is: "the play and test word for no pick and no winner (`pick: none`, `winner: none`)",
+        says: |_, _| {
+            "the play and test word for no pick and no winner (`pick: none`, `winner: none`)".into()
+        },
     },
     Group {
         names: STATE_ROOTS,
         slots: &[Slot::EntityMember, Slot::Def],
         is: "a state root: in a condition a bare root name starts a state path, so \
              `holds(found(clock))` and `@clock` read state instead",
+        says: |name, slot| match slot {
+            Slot::Def => format!(
+                "a state root: `@{name}` reads as a bare `{name}`, which starts a state path, \
+                 never the def"
+            ),
+            _ => format!(
+                "a state root: in a condition a bare `{name}` starts a state path, so a fact \
+                 query naming this member (`holds(<relation>({name}))`) reads `{name}` state \
+                 instead"
+            ),
+        },
     },
     Group {
         names: &[
@@ -225,6 +258,19 @@ pub const GROUPS: &[Group] = &[
         slots: &[Slot::Season],
         is: "a state root or a `once`/tier period, so `once=\"season:run\"` would sit beside \
              `once=\"run\"` meaning something else",
+        says: |name, _| {
+            if PERIODS.contains(&name) {
+                format!(
+                    "a `once`/tier period: `once=\"season:{name}\"` would sit beside \
+                     `once=\"{name}\"` meaning something else"
+                )
+            } else {
+                format!(
+                    "a state root: `season.{name}.…` and `once=\"season:{name}\"` would name the \
+                     season with the word that starts `{name}.…` state paths"
+                )
+            }
+        },
     },
     Group {
         names: CEL_KEYWORDS,
@@ -236,62 +282,114 @@ pub const GROUPS: &[Group] = &[
         ],
         is: "a CEL keyword, which a condition cannot write as a name (`quest.in.state` does not \
              parse)",
+        says: |name, slot| {
+            let example = match slot {
+                Slot::EntityMember => format!("a fact query naming `{name}` does not parse"),
+                Slot::Relation => format!("`holds({name}(…))` does not parse"),
+                Slot::Season => format!("`season.{name}.…` does not parse"),
+                _ => format!("a state path through `{name}` does not parse"),
+            };
+            format!("a CEL keyword, which a condition cannot write as a name ({example})")
+        },
     },
     Group {
         names: CEL_CALLS,
         slots: &[Slot::Relation],
         is: "a Lute-CEL call or CEL macro, so `holds(<name>(…))` parses as the call",
+        says: |name, _| {
+            format!("a Lute-CEL call or CEL macro: `holds({name}(…))` parses as the call")
+        },
     },
     Group {
         names: &["completed", "active"],
         slots: &[Slot::Relation],
         is: "an `after:` call (`completed(\"<quest>\")`, `active(\"<quest>\")`), so \
              `after=\"completed(dorm)\"` would read the quest call",
+        says: |name, _| {
+            format!(
+                "an `after:` call: `after=\"{name}(…)\"` reads the quest call \
+                 `{name}(\"<quest>\")`, never this relation"
+            )
+        },
     },
     Group {
         names: &["cel", "not"],
         slots: &[Slot::Relation],
         is: "a rule word: in `rules:` `not(…)` negates and `cel(\"…\")` is a condition",
+        says: |name, _| match name {
+            "not" => "a rule word: in `rules:` `not(…)` negates, never matches a `not` fact".into(),
+            _ => "a rule word: in `rules:` `cel(\"…\")` is a condition, never a `cel` fact".into(),
+        },
     },
     Group {
         names: &["narrator"],
         slots: &[Slot::Cast],
         is: "the built-in narration speaker: `@narrator:` lines are narration, so a cast entry \
              for it is never shown and its `present:` guards every narrated line",
+        says: |_, _| {
+            "the built-in narration speaker: `@narrator:` lines are narration, a cast entry for \
+             it is never shown, and its `present:` would guard every narrated line"
+                .into()
+        },
     },
     Group {
         names: BUILTIN_LIFECYCLE_EVENTS,
         slots: &[Slot::Occasion, Slot::Event],
         is: "an engine lifecycle event (`<on event=\"questComplete\">`)",
+        says: |name, _| format!("an engine lifecycle event (`<on event=\"{name}\">`)"),
     },
     Group {
         names: PLAY_STEP_ACTIONS,
         slots: &[Slot::Occasion],
         is: "a play-script step key: `- newRun: true` starts a new run and `- end: true` ends \
              the play, neither raises an occasion of that name",
+        says: |name, _| {
+            format!(
+                "a play-script step key: `- {name}: …` is a step of its own, never raises an \
+                 occasion `{name}`"
+            )
+        },
     },
     Group {
         names: CORE_STATEMENT_NAMES,
         slots: &[Slot::Directive],
         is: "a core statement (`::set{…}`, `::use{component=…}`), which content always reads \
              as the core one",
+        says: |name, _| {
+            format!("a core statement: content always reads `::{name}{{…}}` as the core one")
+        },
     },
     Group {
         names: CORE_TAG_NAMES,
         slots: &[Slot::Directive],
         is: "a core block tag (`<match>`, `<quest>`), which content always reads as the core one",
+        says: |name, _| {
+            format!("a core block tag (`<{name}>`), which content always reads as the core one")
+        },
     },
     Group {
         names: BEAT_TEMPLATE_PARAM_NAMES,
         slots: &[Slot::BeatTemplateParam],
         is: "a beat header key: `<beat use=… when=…>` sets the beat's own `when`, never the \
              param",
+        says: |name, _| {
+            format!(
+                "a beat header key: `<beat use=… {name}=…>` sets the beat's own `{name}`, never \
+                 the param"
+            )
+        },
     },
     Group {
         names: COMPONENT_PARAM_NAMES,
         slots: &[Slot::ComponentParam],
         is: "a `::use` key of its own (`::use{component=… when=…}`), so the param could never \
              be passed",
+        says: |name, _| {
+            format!(
+                "a `::use` key of its own: `::use{{component=… {name}=…}}` sets the `::use`'s \
+                 own `{name}`, never the param"
+            )
+        },
     },
 ];
 
@@ -314,14 +412,14 @@ impl Refusal {
         instead(self.name, self.slot)
     }
 
-    /// The whole sentence: what `name` already is, that it cannot be `what`
-    /// (the declaration, e.g. "a def" or "a member of entity kind `crew`"),
-    /// and a name to use instead.
+    /// The whole sentence: that `name` cannot be `what` (the declaration,
+    /// e.g. "a def" or "a member of entity kind `crew`"), what it already
+    /// is, and a name to use instead.
     pub fn message(&self, what: &str) -> String {
         format!(
-            "`{}` is {}, so it cannot name {what} — rename it (e.g. `{}`)",
+            "`{}` cannot name {what} because it is {} — rename it (e.g. `{}`)",
             self.name,
-            self.group.is,
+            (self.group.says)(self.name, self.slot),
             self.instead()
         )
     }

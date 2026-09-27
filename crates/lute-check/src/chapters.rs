@@ -557,11 +557,25 @@ fn requires_visited(f: &crate::prereq::PrereqFormula, id: &str) -> bool {
     }
 }
 
-/// The state paths a `when:` (its `@def`s expanded) reads that the clock
-/// does not advance — empty when the condition waits on the clock alone, so
-/// it comes true as time passes: a delay, not a stall. `None` when every
-/// read is the clock's (or it reads nothing, or calls a function but the
-/// CEL operators).
+/// Whether a chain waits on scene `id`: some scene's `after:` the chain
+/// derived cannot hold until `visited("<id>")` does — so a stop there is
+/// [`W_CHAPTER_STALL`]'s to report.
+pub fn waited_on(docs: &[(PathBuf, Document)], id: &str) -> bool {
+    docs.iter().any(|(_, d)| {
+        derived(&d.meta, "after")
+            && effective(d, "after")
+                .and_then(|a| crate::prereq::parse_prereq(&a, span_at(0, 0)).0)
+                .is_some_and(|f| requires_visited(&f, id))
+    })
+}
+
+/// The state paths a `when:` (its `@def`s expanded) reads that neither the
+/// clock nor the engine advances — empty when it reads one the walk cannot
+/// place. `None` when every read is the clock's or another `owner: engine`
+/// path (or it reads nothing, or calls a function but the CEL operators):
+/// the story cannot make those true, so whether the chain waits is the
+/// clock's question ([`crate::clock_positions::chapter_window`]) or the
+/// engine's.
 fn paths_that_may_stay(when: &str, folded: &FoldedEnv) -> Option<Vec<String>> {
     use cel_parser::ast::Expr;
     let defs = crate::cel_expand::DefTable {
@@ -572,7 +586,14 @@ fn paths_that_may_stay(when: &str, folded: &FoldedEnv) -> Option<Vec<String>> {
         .unwrap_or_else(|_| when.to_string());
     let clock = folded.env.clock.as_ref();
     let is_clock = |p: &str| {
-        p.starts_with("clock.") || clock.is_some_and(|c| c.day == p || c.slot.as_deref() == Some(p))
+        p.starts_with("clock.")
+            || clock.is_some_and(|c| c.day == p || c.slot.as_deref() == Some(p))
+            || folded
+                .env
+                .state
+                .decls
+                .get(p)
+                .is_some_and(|d| d.owner == Some(lute_manifest::types::Owner::Engine))
     };
     // `Err(())`: a read the walk cannot place (a function call, a query).
     fn walk(
@@ -691,6 +712,8 @@ fn check_chain(
             }
         }
     }
+    // A chain whose `on:` is refused is reported there, not also as stalls.
+    let on_refused = !out.is_empty();
     let decl = occasions.get(on);
     let is_chained = chained(on, occasions);
     for (i, id) in chain.scenes.iter().enumerate() {
@@ -706,7 +729,8 @@ fn check_chain(
             let Some(doc) = scope.doc(path) else {
                 continue;
             };
-            if let Some(own_on) = own(doc, "on").filter(|o| o != on) {
+            let own_on = own(doc, "on").filter(|o| o != on);
+            if let Some(own_on) = &own_on {
                 out.push((
                     None,
                     error(
@@ -734,6 +758,11 @@ fn check_chain(
                     ),
                 ));
             }
+            // A scene that answers another occasion (or a chain whose `on:`
+            // is refused) is reported as such, not also as a stall.
+            if own_on.is_some() || on_refused {
+                continue;
+            }
             if let Some(stall) = stall(index, chain, i, doc, is_chained, manifest, path, scope) {
                 out.push((None, stall));
             }
@@ -750,8 +779,10 @@ fn check_chain(
 }
 
 /// [`W_CHAPTER_STALL`] for the `i`th listed scene (`doc`, at `path`): its own
-/// `when:` may stay false for good and the next listed scene's effective
-/// `after:` — derived or written — cannot hold until it plays.
+/// `when:` may stay false for good — it reads state the story may never
+/// set, or a clock window that closes ([`crate::clock_positions::chapter_window`])
+/// — and the next listed scene's effective `after:` — derived or written —
+/// cannot hold until it plays.
 #[allow(clippy::too_many_arguments)]
 fn stall(
     index: usize,
@@ -777,17 +808,41 @@ fn stall(
         return None;
     }
     let folded = scope.fold_of(path)?;
-    let paths = paths_that_may_stay(&when, folded)?;
-    let reads = match paths.as_slice() {
-        [] => String::new(),
-        [one] => format!(" (it reads `{one}`, which may never make it true)"),
-        many => format!(
-            " (it reads {}, which may never make it true)",
-            many.iter()
-                .map(|p| format!("`{p}`"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
+    let (reads, must) = match paths_that_may_stay(&when, folded) {
+        Some(paths) => {
+            let reads = match paths.as_slice() {
+                [] => String::new(),
+                [one] => format!(" (it reads `{one}`, which may never make it true)"),
+                many => format!(
+                    " (it reads {}, which may never make it true)",
+                    many.iter()
+                        .map(|p| format!("`{p}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            };
+            (
+                reads,
+                "make sure the story makes its condition true".to_string(),
+            )
+        }
+        None => {
+            let prev = i.checked_sub(1).map(|p| {
+                let prev_id = chain.scenes[p].as_str();
+                let prev_when = scenes
+                    .get(prev_id)
+                    .and_then(|homes| homes.iter().find_map(|(p, _)| scope.doc(p)))
+                    .and_then(|d| own(d, "when"));
+                (prev_id, prev_when)
+            });
+            let (why, fix) = crate::clock_positions::chapter_window(
+                &when,
+                prev.as_ref().map(|(id, w)| (*id, w.as_deref())),
+                &chain.on,
+                folded,
+            )?;
+            (format!(", and {why}"), fix)
+        }
     };
     let whose = if derived(&next_doc.meta, "after") {
         format!("the `after: visited(\"{id}\")` the chain gives it")
@@ -811,7 +866,7 @@ fn stall(
         format!(
             "{label} lists `{id}`, which plays only `when: {when}`{reads}; `{next}` waits on it \
              through {whose}, so while that stays false the chapters stop at `{id}` — \
-             {optional}; if `{id}` must play, make sure the story makes its condition true",
+             {optional}; if `{id}` must play, {must}",
             label = chain_label(index, &chain.on),
         ),
         locate(manifest, &ChapterAnchor::Entry(index, id.clone(), 0)),

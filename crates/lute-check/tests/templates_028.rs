@@ -224,6 +224,82 @@ cast:\n  isolde: { name: Isolde }\n---\n\n<beat use=\"idle\" id=\"isoldeIdle\" w
     assert!(lute_check::bundle_beat_also(beat));
 }
 
+/// A header `also: true` beside a header `on:` naming a `select: sequence`
+/// occasion is `E-BEAT-ATTR` once, at the header's `also`; its uses derive
+/// no `also` and say nothing. A use that writes its own such `on=` is judged
+/// where it is written.
+#[test]
+fn a_header_also_on_a_non_first_occasion_is_one_report_at_the_header() {
+    let mut occasions = std::collections::BTreeMap::new();
+    occasions.insert(
+        "evening".to_string(),
+        lute_manifest::schema::OccasionDecl {
+            name: "evening".into(),
+            select: lute_manifest::schema::OccasionSelect::Sequence,
+            ..Default::default()
+        },
+    );
+    let src = "---\ncomponent: idle\nparams:\n  who: speaker\n\
+beat:\n  on: evening\n  also: true\n---\n";
+    let (doc, _) = lute_syntax::parse(src);
+    let (typed, _) = parse_meta_kind(
+        &doc.meta,
+        &CapabilitySnapshot::default(),
+        MetaKind::Component,
+    );
+    let template = typed.beat_template.expect("a template");
+    let header = lute_check::templates::check_template_header(&template, &occasions);
+    assert_eq!(header.len(), 1, "{header:#?}");
+    assert_eq!(header[0].code, "E-BEAT-ATTR");
+    assert_eq!(
+        &src[header[0].span.byte_start..header[0].span.byte_end],
+        "also"
+    );
+    assert!(
+        header[0]
+            .message
+            .contains("`also: true` applies only to a `select: first` occasion"),
+        "{}",
+        header[0].message
+    );
+
+    let beat_attr = |lore: &str| {
+        let dir = unique_dir();
+        std::fs::write(dir.join("t.lute"), src).unwrap();
+        let (doc, _) = lute_syntax::parse(lore);
+        let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
+        let mut snapshot = vocab_snapshot();
+        snapshot.occasions.extend(occasions.clone());
+        let input = CheckInput {
+            text: lore.to_string(),
+            uri: "talks.lute".into(),
+            snapshot,
+            providers: ProviderSet::default(),
+            mode: Mode::Ci,
+            imports: SchemaImports::default(),
+            components: resolve_components(&dir, &meta0.components, doc.meta.span),
+            defaults: Default::default(),
+        };
+        let n = check(&input)
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "E-BEAT-ATTR")
+            .count();
+        (n, desugared(&input))
+    };
+    let head = "---\nkind: lore\nid: talks\ncomponents: [t.lute]\n\
+cast:\n  isolde: { name: Isolde }\n---\n\n";
+    let (n, doc) = beat_attr(&format!(
+        "{head}<beat use=\"idle\" id=\"a\" who=\"isolde\">\n@isolde: Posted.\n</beat>\n"
+    ));
+    assert_eq!(n, 0, "the header owns the report");
+    assert!(!lute_check::bundle_beat_also(&doc.beats[0]));
+    let (n, _) = beat_attr(&format!(
+        "{head}<beat use=\"idle\" id=\"a\" who=\"isolde\" on=\"evening\">\n@isolde: Posted.\n</beat>\n"
+    ));
+    assert_eq!(n, 1, "a use's own `on=` is judged at the use");
+}
+
 #[test]
 fn an_entry_use_is_one_error_naming_beat() {
     let lore = format!(

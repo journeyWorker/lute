@@ -115,6 +115,7 @@ pub(crate) fn run_trace(
             let text = match std::fs::read_to_string(path) {
                 Ok(t) => t,
                 Err(e) => {
+                    let e = lute_manifest::io_reason(&e);
                     eprintln!("lute: cannot read {}: {e}", path.display());
                     return ExitCode::from(2);
                 }
@@ -260,6 +261,9 @@ pub(crate) fn run_trace(
             report.verify_quests(&declared);
         }
     }
+    // A component's file prints the way the traced file does: relative to
+    // the current directory, not as the canonical path the import resolved.
+    report.respell_component_files(crate::output::cwd_relative);
 
     match exit {
         TraceExit::Complete => print_trace_report(&report, json, expand, ExitCode::SUCCESS),
@@ -297,12 +301,21 @@ pub(crate) fn run_trace(
                 // anything else came from the `check` gate itself (§4.3:
                 // "MUST refuse a document with check errors ... run `check`
                 // first").
+                let gate = lute_check::gates::E_OCCASION_GATE;
                 if exclusive {
                     println!(
                         "trace refused: {} — exclusive relations hold together",
                         file.display()
                     );
-                } else if diags.iter().any(|d| !d.code.starts_with("E-TRACE-")) {
+                } else if diags.iter().all(|d| d.code == gate) {
+                    println!(
+                        "trace refused: {} — the engine would not raise a mocked occasion",
+                        file.display()
+                    );
+                } else if diags
+                    .iter()
+                    .any(|d| !d.code.starts_with("E-TRACE-") && d.code != gate)
+                {
                     println!(
                         "trace refused: {} has check error(s) — run `lute check` first",
                         file.display()
@@ -311,6 +324,11 @@ pub(crate) fn run_trace(
                     println!("trace refused: {} — invalid `--entry`", file.display());
                 } else if diags.iter().all(|d| d.code == lute_trace::E_TRACE_BEAT) {
                     println!("trace refused: {} — invalid `--beat`", file.display());
+                } else if diags.iter().all(|d| d.code == lute_trace::E_TRACE_CHOICE) {
+                    println!(
+                        "trace refused: {} — a `--choose` / `choose:` selection cannot be followed",
+                        file.display()
+                    );
                 } else {
                     println!("trace refused: {} — invalid mock input", file.display());
                 }

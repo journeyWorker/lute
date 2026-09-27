@@ -953,19 +953,23 @@ fn calendar_marks_the_cells_the_clock_does_not_raise() {
         }
     }
     // Day 1's `dayStart` is never raised, so the beat only it would take
-    // is never eligible, and says where it was.
+    // is never eligible, and says where it was — once, in clock order.
     let never = v["neverEligible"].as_array().unwrap();
     let first = never
         .iter()
         .find(|b| b["id"] == "c.first")
         .unwrap_or_else(|| panic!("{v}"));
+    let unraised: Vec<&str> = first["reasons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r.as_str())
+        .filter(|r| r.contains("where the clock does not raise"))
+        .collect();
+    assert_eq!(unraised.len(), 1, "{first}");
     assert!(
-        first["reasons"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|r| r
-                == "eligible at day 1 (Mon) morning, where the clock does not raise `dayStart`"),
+        unraised[0].starts_with("eligible at day 1 (Mon) morning")
+            && unraised[0].ends_with(", where the clock does not raise `dayStart`"),
         "{first}"
     );
 

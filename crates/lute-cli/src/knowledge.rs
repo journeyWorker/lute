@@ -720,39 +720,45 @@ pub(crate) fn relation_producers(rel: &str, vocab: &RelVocab, sites: &[&str]) ->
 
 /// T3-20 (`lute scenario reach --endings`): the fact atoms condition
 /// `expanded` (after `@def` expansion) queries, each as `(atom, negated,
-/// producers)` in this view's words. `extra` are asserting sites this view's
-/// own walk does not see — a `::use`d component's `::assert`, a plugin
-/// directive's declared `asserts` — as `(label, relation)`, matched at the
-/// relation (any arguments), so they can only widen the producer list.
+/// producers, asserting sites)` in this view's words — a site matched with
+/// its arguments, a `::use`d component's and a directive call's included.
+/// A site `own` names (the beat the condition gates, and what its content
+/// `::use`s) is not counted: a beat does not produce its own condition.
 pub(crate) fn condition_atoms(
     root: &Path,
     group: &DocGroup,
     expanded: &str,
-    extra: &[(String, String)],
-) -> Vec<(String, bool, String)> {
+    own: Option<&str>,
+) -> Vec<(String, bool, String, Vec<String>)> {
     let reads = queried(expanded);
     if reads.is_empty() {
         return Vec::new();
     }
     let vocab = vocab(group);
     let mut asserted = asserters(root, group);
-    for (label, rel) in extra {
-        let arity = vocab.relations.get(rel).map_or(0, |d| d.args.len());
-        asserted.push((
-            label.clone(),
-            Pattern {
-                rel: rel.clone(),
-                args: vec![None; arity],
-            },
-        ));
+    if let Some(own) = own {
+        let via = format!(" via {own}");
+        asserted.retain(|(label, _)| label != own && !label.ends_with(&via));
     }
     reads
         .into_iter()
         .map(|r| {
             let line = producer_line(&r.pattern, &vocab, &asserted);
-            (r.pattern.text(), r.negated, line)
+            let sites: BTreeSet<&str> = asserted
+                .iter()
+                .filter(|(_, a)| r.pattern.unifies(&a.rel, &a.args))
+                .map(|(label, _)| label.as_str())
+                .collect();
+            let sites = sites.into_iter().map(str::to_string).collect();
+            (r.pattern.text(), r.negated, line, sites)
         })
         .collect()
+}
+
+/// The label [`condition_atoms`] gives the asserting sites of a beat's own
+/// content: ``scene `k` (path)``, ``entry `id` (path)``, ``beat `id` (path)``.
+pub(crate) fn site_label(kind: &str, id: &str, root: &Path, path: &Path) -> String {
+    format!("{kind} `{id}` ({})", rel_path(root, path))
 }
 
 /// A rule with this head can conclude `p`.
@@ -794,7 +800,7 @@ fn may_set(group: &DocGroup, docs: &[(PathBuf, Document)]) -> (MaySet, lute_chec
         vocab.effect_directives(),
     )
     .into_iter()
-    .filter_map(|(_, p)| GroundFact::from_pattern(&p));
+    .flat_map(|(_, p)| vocab.asserted_facts(&p));
     (MaySet::build(&vocab, facts, &stable), vocab)
 }
 

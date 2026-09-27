@@ -758,7 +758,7 @@ steps:
 `--json`에서는 루트에 `"exit": "complete"` 옆으로 `"end": "terminal"`이 붙고, 최상위 `expect: { end: terminal }`이
 그것을 단언합니다. 그 뒤의 `occasion:` 스텝은
 `E-OCCASION-GATE`입니다(종료 코드 1:
-`` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on ``).
+`` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on, or, if the engine raises `enter` outside a run too (a title screen, a gallery), declare it `outsideRun: true` ``).
 그 뒤의 `advance:`도 마찬가지이며 시계도 움직이지 않습니다. `engine:` 스텝은 엔진 자신의 쓰기이므로 여전히 받아들여집니다.
 [`outsideRun: true`](/plugins/manifests/)를 선언한 계기(타이틀 화면, 런 사이의 갤러리)는 그래도 발생합니다.
 

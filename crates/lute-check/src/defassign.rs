@@ -1058,7 +1058,7 @@ fn check_read(
     let through = u
         .via
         .as_deref()
-        .map(|def| format!(", read through `@{def}`"))
+        .map(|def| format!(", read through {def}"))
         .unwrap_or_default();
     reads.push((path.to_string(), u.span));
     diags.push(diag(
@@ -1092,7 +1092,7 @@ fn undeclared_through_def(u: &Use, schema: &StateSchema, diags: &mut Vec<Diagnos
         .map(|s| format!(" — did you mean `{s}`?"))
         .unwrap_or_default();
     let message = format!(
-        "`@{def}` reads state path `{path}`, which is not declared in `state:`{hint} (dsl §9.4)"
+        "{def} reads state path `{path}`, which is not declared in `state:`{hint} (dsl §9.4)"
     );
     if diags
         .iter()
@@ -1104,8 +1104,10 @@ fn undeclared_through_def(u: &Use, schema: &StateSchema, diags: &mut Vec<Diagnos
 }
 
 /// One state-path use at a use site: its role, the paths its enclosing
-/// short-circuits prove there, where a diagnostic about it anchors, and the
-/// `@def` it was read through (`None` for the site's own text).
+/// short-circuits prove there, where a diagnostic about it anchors, and how
+/// a message names the `@def` it was read through (`None` for the site's own
+/// text): the def whose own body reads it, and the def the site used to
+/// reach it ([`crate::cel_expand::def_chain_label`]).
 struct Use {
     path: String,
     role: PathRole,
@@ -1199,7 +1201,13 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
                 .then(|| {
                     top.iter()
                         .find(|(_, paths)| paths.contains(&u.path))
-                        .map(|(name, _)| (*name).to_string())
+                        .map(|(name, _)| {
+                            let reads =
+                                |body: &str| parse_uses(body).iter().any(|own| own.path == u.path);
+                            let chain = crate::cel_expand::def_chain_where(name, &cx.defs, &reads)
+                                .unwrap_or_else(|| vec![(*name).to_string()]);
+                            crate::cel_expand::def_chain_label(&chain)
+                        })
                 })
                 .flatten();
             Use {

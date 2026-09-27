@@ -242,7 +242,7 @@ fn emit_primitive(
         // once where it happened (an empty stage emits nothing to print).
         let mut clear = match node {
             Node::Directive(d) if d.tag == lute_manifest::core::CLEAR_DIRECTIVE => {
-                Some(crate::lower::authored_directive(d))
+                Some(crate::lower::authored_directive(d, None))
             }
             _ => None,
         };
@@ -607,6 +607,27 @@ fn walk_match(
         match arm {
             Arm::When { is, test, span, .. } => {
                 let is_raw = is.as_ref().map(|p| p.raw.as_str());
+                // An `is` literal compares against the subject; with none there
+                // is nothing to compare, and an engine would read the arm as
+                // unknown. The checker refuses this first; lowering never
+                // emits it.
+                if let (Some(p), true) = (is, m.subject.raw.trim().is_empty()) {
+                    diags.push(arm_diag(
+                        "E-MATCH-NO-SUBJECT",
+                        format!(
+                            "`is=\"{}\"` compares against the `<match on>` subject; this \
+                             `<match>` has none — add `on=`, or write `test=`",
+                            p.raw.trim()
+                        ),
+                        p.span,
+                    ));
+                    arms.push(MatchArm {
+                        test: test.raw.clone(),
+                        target: l.sym(),
+                        expr: None,
+                    });
+                    continue;
+                }
                 let expr = match crate::expr::synth_arm_expr(is_raw, &test.raw, &m.subject.raw) {
                     crate::expr::ArmExpr::Lowered(expr) => expr,
                     crate::expr::ArmExpr::UnsetOnCompoundSubject => {
@@ -666,6 +687,12 @@ fn walk_match(
         (crate::normalize::AUTHORED_ATTR, AttrValue::Str(s)) => Some(s.clone()),
         _ => None,
     });
+    // dsl 0.28.0 §3: the per-member dispatch of a `::use{… who=
+    // occasion.target}` is the compiler's, not a decision the author wrote.
+    let target_use = m
+        .attrs
+        .iter()
+        .any(|a| a.key == crate::normalize::TARGET_USE_ATTR);
     let mut cmd = Command::Match(MatchCmd {
         addr: String::new(),
         subject: m.subject.raw.clone(),
@@ -674,6 +701,12 @@ fn walk_match(
         converge: conv.sym(),
         stamp: Stamp {
             authored,
+            provenance: target_use.then(|| lute_check::Provenance {
+                injected: true,
+                by: "occasion-target-use".to_string(),
+                explanation: "plays the `::use` for the member `occasion.target` is bound to"
+                    .to_string(),
+            }),
             ..Stamp::default()
         },
     });
@@ -690,6 +723,7 @@ fn walk_match(
             .collect(),
         guard: is_guard_desugar(m),
         component: component_use(cx),
+        injected: target_use,
         ..SourceInfo::at(m.span)
     });
     let mut state = state;
@@ -1059,12 +1093,16 @@ pub fn walk_entry(
             .as_ref()
             .and_then(|(p, _)| lute_check::parse_beat_priority(p)),
         // dsl 0.22.0 §7, 0.24.0 §1, 0.27.0 §5: `once="run"|"user"|"day"|
-        // "slot"|"week"|"season:<name>"` (`E-BEAT-ATTR` gated the rest).
-        once: entry
-            .once
-            .as_ref()
-            .and_then(|(o, _)| lute_check::BeatOnce::parse(o))
-            .map(Into::into),
+        // "slot"|"week"|"season:<name>"` (`E-BEAT-ATTR` gated the rest). A
+        // `spentBy` entry stays spent for its `once` period, `run` unless
+        // written — recorded, as a bundle beat's is.
+        once: match entry.once.as_ref() {
+            Some((o, _)) => lute_check::BeatOnce::parse(o).map(Into::into),
+            None => entry
+                .spent_by
+                .as_ref()
+                .map(|_| lute_check::BeatOnce::Run.into()),
+        },
         share: text(&entry.share),
         target_kind: entry.on.as_ref().and_then(|(on, _)| {
             crate::ir::TargetKind::resolve(

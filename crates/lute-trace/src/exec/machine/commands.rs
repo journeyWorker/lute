@@ -71,6 +71,20 @@ impl<D: Driver> Machine<D> {
                 return;
             }
         }
+        // A kind beat's `{{occasion.target}}` with no member bound has no
+        // text to print either.
+        if self.unbound_target(placeholders) {
+            let target = lute_check::beats::OCCASION_TARGET;
+            let atoms = [UnresolvedAtom::Path(target.to_string())];
+            self.unresolved.extend(atoms.iter().cloned());
+            if self.at_unknown(
+                Site::new(SiteKind::OccasionTarget, target, addr(cmd)),
+                target,
+                &atoms,
+            ) {
+                return;
+            }
+        }
         let text = self.interpolate(raw, placeholders);
         let mut rec = serde_json::Map::new();
         rec.insert("addr".into(), Json::String(addr(cmd).to_string()));

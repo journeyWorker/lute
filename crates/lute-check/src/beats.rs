@@ -424,27 +424,14 @@ pub(crate) fn lift_scene_beat(
         }
     }
     diags.extend(occasion_diags);
-    // dsl 0.23.0 §3: a side remark rides along a single winner — on a
-    // `select: all` / `sequence` occasion every eligible beat is already
-    // offered or presented, so `also` means nothing there.
     if also {
-        if let Some(decl) = occasions
-            .get(&on)
-            .filter(|d| d.select != OccasionSelect::First)
-        {
-            diags.push(beat_diag(
-                E_BEAT_ATTR,
-                Severity::Error,
-                format!(
-                    "`also: true` applies only to a `select: first` occasion; `{on}` is \
-                     `select: {}`, which already presents or offers every eligible beat — \
-                     remove `also:` (dsl 0.23.0 §3)",
-                    decl.select.as_str()
-                ),
-                top_value_span(meta, "also"),
-                Layer::Content,
-            ));
-        }
+        diags.extend(also_fault(
+            &on,
+            top_value_span(meta, "also"),
+            true,
+            occasions,
+            Layer::Content,
+        ));
     }
     Some(BeatMeta {
         on,
@@ -723,6 +710,41 @@ pub(crate) fn check_objective_occasions(
         );
     }
     diags
+}
+
+/// dsl 0.23.0 §3: a side remark rides along a single winner — on a
+/// `select: all` / `sequence` occasion every eligible beat is already offered
+/// or presented, so `also` means nothing there. The one rule a scene's
+/// `also: true`, a bundle `<beat also>`, and a template header's `also: true`
+/// share; `yaml` spells the key as frontmatter writes it. `None` for a
+/// `select: first` or undeclared occasion.
+pub(crate) fn also_fault(
+    on: &str,
+    span: Span,
+    yaml: bool,
+    occasions: &BTreeMap<String, OccasionDecl>,
+    layer: Layer,
+) -> Option<Diagnostic> {
+    let decl = occasions
+        .get(on)
+        .filter(|d| d.select != OccasionSelect::First)?;
+    let (written, remove) = if yaml {
+        ("also: true", "also:")
+    } else {
+        ("also", "also")
+    };
+    Some(beat_diag(
+        E_BEAT_ATTR,
+        Severity::Error,
+        format!(
+            "`{written}` applies only to a `select: first` occasion; `{on}` is `select: {}`, \
+             which already presents or offers every eligible beat — remove `{remove}` \
+             (dsl 0.23.0 §3)",
+            decl.select.as_str()
+        ),
+        span,
+        layer,
+    ))
 }
 
 /// `on` against the resolved occasion vocabulary (dsl 0.21.0 §2): unknown is
@@ -1579,6 +1601,9 @@ pub fn project_beats<'a>(
                 continue;
             };
             let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
+                // A `spentBy` entry stays spent for its `once` period, `run`
+                // unless written.
+                None if entry.spent_by.is_some() => BeatOnce::Run,
                 None | Some("false") => BeatOnce::None,
                 Some(raw) => match BeatOnce::parse(raw) {
                     Some(once) => once,

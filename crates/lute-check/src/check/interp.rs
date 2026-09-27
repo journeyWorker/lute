@@ -131,11 +131,20 @@ pub(super) fn check_interp_referent(
                     && bare_param_ref(referent).as_deref() == Some(name.as_str());
                 if !is_renderable(ty) && !string_param {
                     type_flagged = true;
+                    // A string def is the usual way to pick a text; the way
+                    // that shows is one line per case (ledger LG28-2).
+                    let advice = if matches!(ty, Type::Str) {
+                        " — a string def is not shown: show a string state path itself \
+                         (`{{run.name}}`), and write text chosen by a condition as one line \
+                         per case, each with its own `when` (`@who{when=\"…\"}: …`)"
+                    } else {
+                        ""
+                    };
                     diags.push(Diagnostic {
                         code: "E-REF-TYPE".to_string(),
                         severity: Severity::Error,
                         message: format!(
-                            "`@{name}` produces a non-renderable type; a `{{{{…}}}}` interpolation renders only number/bool/enum (dsl §7.6)"
+                            "`@{name}` produces a non-renderable type; a `{{{{…}}}}` interpolation renders only number/bool/enum{advice} (dsl §7.6)"
                         ),
                         span: interp.span,
                         layer: Layer::Cel,
@@ -168,21 +177,30 @@ pub(super) fn is_renderable(ty: &Type) -> bool {
 /// `{{…}}` is a `@fn(args)` argument).
 pub(super) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
     // dsl 0.28.0 (T3-4): conditional text is a line with its own `when`; a
-    // `@def` only helps a computed number or string (a bool is not shown).
-    let advice = match raw.split_once(':') {
-        Some((cond, text))
-            if !cond.trim().is_empty() && !cond.contains('?') && !text.starts_with(':') =>
-        {
-            format!(
-                "text shown only while a condition holds is a line of its own — split it into \
-                 `@who{{when=\"{}\"}}: {}` lines",
-                cond.trim(),
-                text.trim()
-            )
+    // `@def` only helps a computed number (a string def is not shown either,
+    // `E-REF-TYPE` — ledger LG28-2).
+    let advice = if let Some((cond, yes, no)) = text_ternary(raw) {
+        format!(
+            "text chosen by a condition is one line per case — `@who{{when=\"{cond}\"}}: {yes}` \
+             and `@who{{when=\"{}\"}}: {no}`",
+            negated(cond)
+        )
+    } else {
+        match raw.split_once(':') {
+            Some((cond, text))
+                if !cond.trim().is_empty() && !cond.contains('?') && !text.starts_with(':') =>
+            {
+                format!(
+                    "text shown only while a condition holds is a line of its own — split it \
+                     into `@who{{when=\"{}\"}}: {}` lines",
+                    cond.trim(),
+                    text.trim()
+                )
+            }
+            _ => "name a computed number with a `@def` and show `{{@name}}`; text shown only \
+                  while a condition holds is a line of its own — `@who{when=\"…\"}: …`"
+                .to_string(),
         }
-        _ => "name a computed number or string with a `@def` and show `{{@name}}`; text shown \
-              only while a condition holds is a line of its own — `@who{when=\"…\"}: …`"
-            .to_string(),
     };
     Diagnostic {
         code: crate::cel_resolve::E_CEL_PROFILE.to_string(),
@@ -198,6 +216,53 @@ pub(super) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+    }
+}
+
+/// `cond ? 'a' : 'b'` whose two results are string literals: the condition
+/// and the two texts, unquoted. `?`/`:` inside a quoted string do not split.
+fn text_ternary(raw: &str) -> Option<(&str, &str, &str)> {
+    let top_level = |s: &str, ch: char| {
+        let mut quote = None;
+        s.char_indices().find_map(|(i, c)| match (quote, c) {
+            (None, '\'' | '"') => {
+                quote = Some(c);
+                None
+            }
+            (Some(q), _) if c == q => {
+                quote = None;
+                None
+            }
+            (None, _) if c == ch => Some(i),
+            _ => None,
+        })
+    };
+    let q = top_level(raw, '?')?;
+    let (cond, rest) = (raw[..q].trim(), &raw[q + 1..]);
+    let c = top_level(rest, ':')?;
+    fn unquote(s: &str) -> Option<&str> {
+        let s = s.trim();
+        let inner = s
+            .strip_prefix('\'')
+            .and_then(|s| s.strip_suffix('\''))
+            .or_else(|| s.strip_prefix('"').and_then(|s| s.strip_suffix('"')))?;
+        (!inner.contains(['\'', '"'])).then_some(inner)
+    }
+    Some((cond, unquote(&rest[..c])?, unquote(&rest[c + 1..])?)).filter(|(c, ..)| !c.is_empty())
+}
+
+/// The negation of a condition as an author would write it: `!run.x` for a
+/// bare path, `run.x` for `!run.x`, `!(…)` otherwise.
+fn negated(cond: &str) -> String {
+    let bare = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+    };
+    match cond.strip_prefix('!') {
+        Some(inner) if bare(inner) => inner.to_string(),
+        _ if bare(cond) => format!("!{cond}"),
+        _ => format!("!({cond})"),
     }
 }
 

@@ -134,8 +134,8 @@ pub(crate) enum Command {
     /// or — with `--all` — every document in a project plus a
     /// `project.index.json` unioning their vocabularies.
     Compile {
-        /// Path to the `.lute` file to compile. Ignored (and optional) under
-        /// `--all`, which takes its documents from `--project` instead.
+        /// Path to the `.lute` file to compile. Under `--all`, the project
+        /// directory instead (the same as `--project <DIR>`).
         file: Option<PathBuf>,
         /// On a failed gate, print the diagnostics as JSON instead of
         /// human-readable lines. (The artifact itself is always JSON.)
@@ -159,13 +159,14 @@ pub(crate) enum Command {
         /// required output DIRECTORY, not a file.
         #[arg(short = 'o', long = "out", value_name = "FILE")]
         out: Option<PathBuf>,
-        /// Compile EVERY `*.lute` document under `--project <dir>` into
-        /// `-o <dir>`, mirroring the project's own directory layout, and write
-        /// a `project.index.json` whose `entities`/`enums`/`relations`/
-        /// `seedFacts`/`rules`/`prereqEdges` are the UNION across all of them
-        /// (`docs/runtime/execution-model.md` requires an engine to compute
-        /// exactly that union before it can evaluate anything). Requires BOTH
-        /// `--project` and `-o`; any other combination is a usage error.
+        /// Compile EVERY `*.lute` document of the project (`--all <DIR>` or
+        /// `--all --project <DIR>`) into `-o <dir>`, mirroring the project's
+        /// own directory layout, and write a `project.index.json` whose
+        /// `entities`/`enums`/`relations`/`seedFacts`/`rules`/`prereqEdges`
+        /// are the UNION across all of them (`docs/runtime/execution-model.md`
+        /// requires an engine to compute exactly that union before it can
+        /// evaluate anything). Requires the project directory and `-o`; a
+        /// `.lute` file is a usage error.
         #[arg(long)]
         all: bool,
         /// Merge a locale bundle (`lute loc import`) into the artifact:
@@ -294,6 +295,9 @@ pub(crate) enum Command {
         /// `<occasion>@<target>`.
         #[arg(long = "occasion", value_name = "OCCASION[@TARGET]")]
         occasion: Vec<String>,
+        /// Renamed `--occasion`; refused with the new spelling.
+        #[arg(long = "on", value_name = "OCCASION", hide = true)]
+        retired_on: Vec<String>,
         /// Refused: trace names a raise's target in `--occasion
         /// <occasion>@<target>`.
         #[arg(long, hide = true, value_name = "TARGET")]
@@ -615,6 +619,9 @@ pub(crate) enum Command {
         /// Only this occasion's ladders (repeatable).
         #[arg(long, value_name = "OCCASION")]
         occasion: Vec<String>,
+        /// Renamed `--occasion`; refused with the new spelling.
+        #[arg(long = "on", value_name = "OCCASION", hide = true)]
+        retired_on: Vec<String>,
         /// Only the ladders raised for this target (repeatable).
         #[arg(long, value_name = "TARGET")]
         target: Vec<String>,
@@ -660,6 +667,9 @@ pub(crate) enum Command {
         /// once-a-day occasion once per day.
         #[arg(long, value_name = "OCCASION[@AXIS[=VALUE],…]")]
         occasion: Vec<String>,
+        /// Renamed `--occasion`; refused with the new spelling.
+        #[arg(long = "on", value_name = "OCCASION", hide = true)]
+        retired_on: Vec<String>,
         /// A relation whose facts to show per cell once it has settled
         /// (repeatable): in text a table with a row per first argument and a
         /// column per cell (`--facts at`: who is where, when); a per-cell

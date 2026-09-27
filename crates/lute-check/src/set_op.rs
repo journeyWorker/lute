@@ -147,8 +147,9 @@ fn reserved_write_why(
     } else if scene_record {
         (
             "E-QUEST-RESERVED-WRITE",
-            "`scene.visited.*` records what a run has visited; the engine writes it — keep \
-             your own record in a `run.` path",
+            "`scene.visited.<hub>.<choice>` records whether that hub choice was taken in this \
+             presentation; the engine writes it when the choice is picked — keep your own record \
+             in a `run.` path",
         )
     } else if occasion && path.starts_with("occasion.payload") {
         (

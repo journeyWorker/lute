@@ -74,10 +74,10 @@ Compile a document to its JSON command-record artifact (gated on a clean check a
 
 ```console
 $ lute compile --all
-error: --all requires --project <DIR> (the document set and capability snapshot both resolve per project)
+error: --all requires the project directory, `--all <DIR>` or `--project <DIR>` (the document set and capability snapshot both resolve per project)
 error: --all requires -o <DIR>, an output DIRECTORY (there is no single artifact to write to stdout)
 
-Usage: lute compile --all --project <DIR> -o <DIR>
+Usage: lute compile --all <DIR> -o <DIR>
 ```
 
 The index carries the document table plus the **union** of every artifact's `entities`, `enums`, `relations`, `seedFacts`, `rules`, and `prereqEdges` — the union [an engine must compute anyway](/tooling/runtime-contract/) before it can evaluate anything:
@@ -220,6 +220,8 @@ $ lute beats <dir> [--occasion <O>]… [--target <T>]… [--expand] [--json]
 Print every beat of the project as one ladder per occasion — and per target of a targeted occasion — in selection order (dsl 0.23.0): priority, beat and title, kind (`scene`, `entry`, `bundle`), `once` (`run`, `user`, `day`, `slot`, or `no` — a bundle beat's `once="day"` / `once="slot"` included — and `also`, and since dsl 0.25.0 a `share` key: `day, share solWarm`; `share` in `--json`), the `check-project` verdicts (`unreachable`, `shadowed`, `tied`, `once-run-user`), `after:` (a bundle beat's `after=` included), and `when` as the author wrote it — `@def` references included (dsl 0.24.0); `--expand` prints each `when` with its defs expanded, and `--json` carries both, `when` (expanded) and `whenAuthored`. `--occasion` and `--target` (both repeatable) filter the ladders; `--json` carries each verdict's full diagnostic. Read-only, and the project need not check clean. Exit **0** on success, **2** on I/O or an unknown `--occasion`. See [Story overviews](/tooling/overviews/#lute-beats).
 
 Since dsl 0.26.0: a fallback that an earlier, never-spent beat whose `when` it implies always beats shows `covered by <id>` in the verdict column (`coveredBy` in `--json`) — informational, not a diagnostic, so a lead can tell a fallback that still plays from one that no longer can; a [kind beat](/tooling/play/#kind-targets) is listed in the ladder of every member some beat names, and in a `kind:<kind>` ladder for the members no beat names on its own; and `--target` accepts any member of a targeted occasion's domain.
+
+Since dsl 0.28.0: a [kind beat](/tooling/play/#kind-targets) or a `for=` beat whose `when` never holds for some member — as written (`occasion.target != 'village'`), or because nothing produces the fact it needs for that member — says `never for <member>` in its verdict column: a kind beat on that member's ladder, a `for=` beat on its occasion's ladder (`neverFor` in `--json`). `check-project` reports nothing, because the beat still plays for the other members.
 
 ## calendar
 
@@ -539,10 +541,10 @@ expect:
   state: { run.accused: blake }          # path: literal assertions after the walk
   facts: ["points(blake)"]               # atoms that hold when the walk ends, after derivation
   notFacts: ["points(cass)"]             # atoms that do not hold then
-  end: complete                         # complete | incomplete
+  end: complete                         # complete | terminal | incomplete | error
 ```
 
-`file:` is required; every mock surface and every `expect:` key is optional. The mock surfaces also include `visited:` and `occasions:` (dsl 0.21.0), the save seeds `quests:` and `entriesRead:` (dsl 0.22.0), and `derive:`, exactly as in a [trace mock](#trace). `expect.transcriptContains` lists substrings that must appear in the transcript and `expect.transcriptLacks` substrings that must not. `expect.options` maps a `<branch>`/`<hub>` id to the exact set of options the walk offered there, order-insensitive and across all its presentations; a mismatch names both sets, and a branch the walk never presented fails as such. `expect.state` maps a state path to the literal it must hold after the walk — compared against the value the walk ends with, read the way trace reads it: the walk's last write (a [credited reward](/tooling/tracing/#rewards-and-objective-bodies) included), else the test's `state:` seed, else the declared `default:` — and `expect.exit` asserts the terminal verdict (`complete` or `incomplete`). `expect.facts` and `expect.notFacts` list ground atoms that must hold, or must not, when the walk ends — after derivation, so a rule's conclusion is asserted directly. A miss names both sides (`facts points(blake): expected holds, got does not hold`), and an atom whose derivation read undecided state is `unknown`, which satisfies neither list.
+`file:` is required; every mock surface and every `expect:` key is optional. The mock surfaces also include `visited:` and `occasions:` (dsl 0.21.0), the save seeds `quests:` and `entriesRead:` (dsl 0.22.0), and `derive:`, exactly as in a [trace mock](#trace). `expect.transcriptContains` lists substrings that must appear in the transcript and `expect.transcriptLacks` substrings that must not. `expect.options` maps a `<branch>`/`<hub>` id to the exact set of options the walk offered there, order-insensitive and across all its presentations; a mismatch names both sets, and a branch the walk never presented fails as such. `expect.state` maps a state path to the literal it must hold after the walk — compared against the value the walk ends with, read the way trace reads it: the walk's last write (a [credited reward](/tooling/tracing/#rewards-and-objective-bodies) included), else the test's `state:` seed, else the declared `default:` — and `expect.end` asserts how the walk ended (`complete`, `terminal` when the project's `terminal:` holds at its end, `incomplete`, or `error`). `expect.facts` and `expect.notFacts` list ground atoms that must hold, or must not, when the walk ends — after derivation, so a rule's conclusion is asserted directly. A miss names both sides (`facts points(blake): expected holds, got does not hold`), and an atom whose derivation read undecided state is `unknown`, which satisfies neither list.
 
 Since dsl 0.24.0 a test takes the mock's `bridges:` key too (see [Bridge answers](/tooling/tracing/#bridge-answers)), and three expectations read more: `expect.accepts: [quest ids]` asserts the quests the scene's `::accept`s took, as a set (`accepts: expected [toll], got [parley]`); `expect.options` of a `<hub>` is every choice eligible at any of its visits, unioned (it was always `[]`); and `transcriptContains` / `transcriptLacks` match only the content lines that played, each in the form `@speaker: text` — the form a play script matches, so `"@narrator: Always shown."` works in both, and a guarded line that never played no longer satisfies `transcriptContains`.
 

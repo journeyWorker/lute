@@ -136,6 +136,34 @@ fn arguments_are_checked_like_use_args() {
     );
 }
 
+/// EMB-07: a use also writes the `<beat>`'s own keys, so a misspelt header
+/// key names the key it misses; an authored `::use` writes no header key,
+/// so it is never offered one.
+#[test]
+fn a_misspelt_header_key_on_a_use_names_the_beat_key() {
+    let lore = format!(
+        "{LORE_HEAD}<beat use=\"bondStory\" id=\"a\" who=\"aria\" priorty=\"5\">\n@narrator: Hi.\n</beat>\n"
+    );
+    let (_, diags) = run(BOND, &lore);
+    assert!(
+        diags.iter().any(|d| d.code == "E-COMPONENT-ARG"
+            && d.message
+                .contains("no parameter `priorty` — did you mean the `<beat>` key `priority`?")),
+        "{diags:#?}"
+    );
+
+    let plain =
+        "---\ncomponent: bondStory\nparams: { who: { type: string } }\n---\n## B\n@narrator: Hi.\n";
+    let scene = "---\nkind: scene\nid: s\ncomponents: [bond.lute]\n---\n## S\n\
+                 ::use{component=\"bondStory\" who=\"aria\" priorty=\"5\"}\n";
+    let (_, diags) = run(plain, scene);
+    let arg = diags
+        .iter()
+        .find(|d| d.code == "E-COMPONENT-ARG")
+        .expect("the unknown argument is refused");
+    assert!(!arg.message.contains("did you mean"), "{diags:#?}");
+}
+
 #[test]
 fn a_body_less_template_and_self_closing_use_make_a_one_line_beat() {
     let trainer = "---\ncomponent: trainer\nparams: { who: { type: string } }\n\

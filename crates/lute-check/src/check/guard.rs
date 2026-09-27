@@ -26,6 +26,9 @@ pub(super) fn check_beat_when(
                 .into_iter()
                 .map(|u| u.path)
                 .filter(|p| p == "scene" || p.starts_with("scene."))
+                // A member named `scene`, already refused where it is
+                // declared, is not a scene read to judge again.
+                .filter(|p| !ctx.env.state.is_faulty(p))
                 .collect()
         })
         .unwrap_or_default();

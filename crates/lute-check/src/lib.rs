@@ -171,8 +171,8 @@ pub use cel_resolve::{
     E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,
 };
 pub use check::{
-    check, check_parsed, diagnostic_order, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv,
-    Resolved, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
+    check, check_parsed, diagnostic_order, fold_env, order_diagnostics, CheckInput, CheckResult,
+    DomainUse, FoldedEnv, Resolved, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
 };
 pub use component_effects::{display_args, splice_component_effects};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};

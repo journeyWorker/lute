@@ -250,6 +250,40 @@ fn a_failed_required_subquest_fails_its_parent_by_subquest() {
     assert!(t.contains("quest inquiry -> failed (subquest)"), "{t}");
 }
 
+/// A subquest objective's own missed `by` fails its quest (`failedBy: by`)
+/// and cascades to the still-active subquest — the T2-13 subquest judgement
+/// must not shadow the objective's deadline.
+#[test]
+fn a_subquest_objective_missing_its_by_fails_its_quest_and_cascades() {
+    let quests = "---\nkind: quest\nid: qs\n---\n\n\
+                  <quest id=\"inquiry\" title=\"Inquiry\" start=\"true\" tier=\"run\">\n  \
+                  <objective id=\"report\" title=\"Report\" quest=\"reconstruction\" by=\"run.day > 1\"/>\n\
+                  </quest>\n\n\
+                  <quest id=\"reconstruction\" title=\"Reconstruction\" tier=\"run\">\n  \
+                  <objective id=\"file\" title=\"File it\" done=\"run.filed\"/>\n\
+                  </quest>\n";
+    let hall = scene(
+        "h",
+        "on: hearing\n",
+        "@narrator: The hearing sits.\n::set{run.day += 1}",
+    );
+    let dir = project(
+        "subquest-by",
+        "  hearing: { select: first }\n",
+        "state:\n  run.day: { type: number, default: 1 }\n  run.filed: { type: bool, default: false }\n",
+        &[("quests/q.lute", quests), ("scenes/h.lute", &hall)],
+    );
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: hearing\n\
+         expect:\n  quests: { inquiry: failed, reconstruction: failed }\n  \
+         state: { quest.inquiry.failedBy: by, quest.reconstruction.failedBy: cascade }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(t.contains("quest inquiry -> failed (by)"), "{t}");
+}
+
 /// T3-65: `lute test` reads an objective's unwritten `failed` as `false`
 /// (as `lute play` does), while a written `true` still fails that pin.
 #[test]

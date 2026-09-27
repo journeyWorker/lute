@@ -116,7 +116,7 @@ pub fn check_mocks_under(
                     mock.clone(),
                     crate::manifests::as_diagnostic(
                         lute_trace::E_TRACE_MOCK_PARSE,
-                        format!("cannot read mock: {e}"),
+                        format!("cannot read mock: {}", lute_manifest::io_reason(&e)),
                     ),
                 ));
                 continue;
@@ -177,6 +177,20 @@ pub fn check_mocks_under(
                 continue;
             }
         };
+        // A schema import of the subject that did not load (missing, or not
+        // YAML) leaves its resolved schema empty: every mock key naming what
+        // it declares would fail. That import's own error is the report.
+        if input.is_some_and(|i| {
+            i.imports.diags.iter().any(|d| {
+                d.code == "E-USES-NOT-FOUND"
+                    || d.code == "E-USES-PARSE"
+                        && d.related
+                            .iter()
+                            .any(|r| r.diagnostic.code == "E-META-PARSE")
+            })
+        }) {
+            continue;
+        }
         let mut diags = lute_trace::validate(&mocks, folded, doc);
         if let Some(input) = input {
             let reads = lute_trace::content_read_paths(&input.text, &folded.def_bodies);

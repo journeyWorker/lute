@@ -213,8 +213,8 @@ pub fn check_entries(
     for (entry, resolved) in entries.iter().zip(&resolved) {
         check_entry_shape(entry, doc_series, &mut record.diags);
         if let Some(reread) = Reread::of(entry) {
-            let guard = format!("!entry.{}.read", entry.id);
-            if let Some((what, span)) = first_write(&entry.body, snapshot, &guard, false) {
+            let read = entry_read_path(&entry.id);
+            if let Some((what, span)) = first_write(&entry.body, snapshot, &read, false) {
                 record.diags.push(diag(
                     W_ENTRY_WRITE_REREAD,
                     Severity::Warning,
@@ -270,19 +270,20 @@ pub(crate) fn series_order_message(series: &str, order: u32, first: &str, id: &s
 /// `<branch>` / `<hub>` choices: the directive's name and span. `::assert`
 /// (and an `asserts`-only effect) is idempotent within a run and is not a
 /// write that could be lost (see [`W_ENTRY_WRITE_REREAD`]). dsl 0.28.0
-/// (T1-6): a write under `guard` (`!entry.<id>.read`) — in its own `when=`,
-/// an enclosing `<when test>` / `<choice when>`, or a `<match
-/// on="entry.<id>.read">` arm `is="false"` — applies on the first read on
-/// purpose (`guarded`) and is skipped.
+/// (T1-6): a write under a condition that holds only while `read`
+/// (`entry.<id>.read`) is false — in its own `when=`, an enclosing `<when
+/// test>` / `<choice when>`, or a `<match on="entry.<id>.read">` arm
+/// `is="false"` — applies on the first read on purpose (`guarded`) and is
+/// skipped.
 fn first_write(
     nodes: &[lute_syntax::ast::Node],
     snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
-    guard: &str,
+    read: &str,
     guarded: bool,
 ) -> Option<(String, Span)> {
     use lute_syntax::ast::{Arm, CelSlot, Node};
     let under =
-        |slot: Option<&CelSlot>| guarded || slot.is_some_and(|s| reads_guard(&s.raw, guard));
+        |slot: Option<&CelSlot>| guarded || slot.is_some_and(|s| first_read_only(&s.raw, read));
     nodes.iter().find_map(|node| match node {
         Node::Set(s) if !under(s.when.as_ref()) => Some(("::set".to_string(), s.span)),
         Node::Retract(r) if !under(r.when.as_ref()) => Some(("::retract".to_string(), r.span)),
@@ -297,45 +298,60 @@ fn first_write(
             Some((format!("::{}", d.tag), d.span))
         }
         Node::Match(m) => {
-            let on_read = m.subject.raw.replace(char::is_whitespace, "") == guard[1..];
+            let on_read = m.subject.raw.trim() == read;
             m.arms.iter().find_map(|arm| match arm {
                 Arm::When { is, test, body, .. } => {
                     let first_only =
                         on_read && is.as_ref().is_some_and(|p| p.raw.trim() == "false");
-                    first_write(body, snapshot, guard, first_only || under(Some(test)))
+                    first_write(body, snapshot, read, first_only || under(Some(test)))
                 }
-                Arm::Otherwise { body, .. } => first_write(body, snapshot, guard, guarded),
+                Arm::Otherwise { body, .. } => first_write(body, snapshot, read, guarded),
             })
         }
         Node::Branch(b) => b
             .choices
             .iter()
-            .find_map(|c| first_write(&c.body, snapshot, guard, under(c.when.as_ref()))),
+            .find_map(|c| first_write(&c.body, snapshot, read, under(c.when.as_ref()))),
         Node::Hub(h) => {
             let options = h
                 .choices
                 .iter()
-                .find_map(|c| first_write(&c.body, snapshot, guard, under(c.when.as_ref())));
+                .find_map(|c| first_write(&c.body, snapshot, read, under(c.when.as_ref())));
             options.or_else(|| {
                 h.bodies()
                     .skip(h.choices.len())
-                    .find_map(|b| first_write(b, snapshot, guard, guarded))
+                    .find_map(|b| first_write(b, snapshot, read, guarded))
             })
         }
         _ => None,
     })
 }
 
-/// Whether condition `raw` reads `guard` (`!entry.<id>.read`), spaces
-/// ignored — and not a longer path starting with it.
-fn reads_guard(raw: &str, guard: &str) -> bool {
-    let text: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
-    text.match_indices(guard).any(|(at, _)| {
-        !text[at + guard.len()..]
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
-    })
+/// Whether condition `raw` holds only while `read` (`entry.<id>.read`) is
+/// false: with every read of the path taken as `true` it decides false —
+/// `!entry.tape.read`, `!(entry.tape.read)`, `entry.tape.read == false`, or
+/// any of them in a conjunction.
+fn first_read_only(raw: &str, read: &str) -> bool {
+    let mask = lute_cel::cel_string_mask(raw);
+    let bytes = raw.as_bytes();
+    let joins = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'.';
+    let mut probe = String::with_capacity(raw.len());
+    let mut rest = 0;
+    for (at, _) in raw.match_indices(read) {
+        let end = at + read.len();
+        if mask[at] || (at > 0 && joins(bytes[at - 1])) || bytes.get(end).is_some_and(|&c| joins(c))
+        {
+            continue;
+        }
+        probe.push_str(&raw[rest..at]);
+        probe.push_str("true");
+        rest = end;
+    }
+    if probe.is_empty() {
+        return false;
+    }
+    probe.push_str(&raw[rest..]);
+    crate::fact_env::guard_decides(&probe, false)
 }
 
 /// dsl 0.28.0 (T1-6): why an entry can be read more than once in a run —
@@ -534,8 +550,8 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
     } else if !is_entry_ident(id) {
         diags.push(attr_diag(
             format!(
-                "`<entry id=\"{id}\">`: `id` must be an identifier \
-                 (`[A-Za-z][A-Za-z0-9_-]*`, dsl 0.19.0 §3)"
+                "`<entry id=\"{id}\">`: `id` must be one name — a letter, then letters, digits \
+                 or `_` — since it is read as `entry.<id>.read` (dsl 0.19.0 §3)"
             ),
             entry.id_span,
         ));

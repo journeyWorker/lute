@@ -440,9 +440,11 @@ condition holds, and from then on it is spent:
 
 A scene writes it in frontmatter (`spentBy: "holds(solved(valves))"`), an entry and a bundle beat
 as an attribute (`spentBy="…"`). The condition may read anything a `when` may. It is a latch:
-once it has held — at any settle of the playthrough (after every presentation, engine write,
-clock move and new run) or when the beat is judged — the beat is spent, and a condition that turns
-false again does not bring it back. For a [kind beat](#kind-targets) or a
+once it has held — in the settled world after any settle of the playthrough (every presentation,
+engine write, clock move and new run), or when the beat is judged — the beat is spent, and a
+condition that turns false again does not bring it back. The latch looks only once a settle is
+done, so a `start="true"` quest is already `active` when it first reads it, never the `unset` it
+had a moment before. For a [kind beat](#kind-targets) or a
 [`for=` beat](#once-per-member-for) the condition is judged per member, `occasion.target` bound,
 and spends that member.
 
@@ -453,8 +455,18 @@ or `season:<name>` (until the season opens again). A weekly puzzle that resets w
 a beat that should answer only while something is false writes `when="!(…)"`. A
 [`share`](#one-event-several-places-share) key spends beats by presentation, so it cannot sit
 beside `spentBy` either. A `spentBy` that already holds at the start of play (every state path
-at its default, only the seed facts) is `W-BEAT-SPENT-AT-START`: the beat would be spent before
-it could play.
+at its default, only the seed facts, each quest `unset` until its `start` holds) is
+`W-BEAT-SPENT-AT-START`: the beat would be spent before it could play, and the message names
+the `when: "!(…)"` rewrite.
+
+A latch is not a condition judged afresh at each raise, and the two differ when the condition can
+turn false again after it has held. `check-project` warns **`W-SPENT-BY-REVERSIBLE`** on a
+`spentBy` beat with no `once` written whose condition reads a fact some `::retract` / `::assert`
+or a directive's declared effect can undo, a season's state, facts or quest (each reset when the
+season opens again), or a quest a `rearm` returns to `unset`. The message names the rewrite:
+`once: false` with `when: "!(…)"` for a beat that should come back whenever the condition is
+false again, `once: season:<name>` for a condition over one season, or `once: run` to keep the
+latch on purpose. Writing `once` states the period, so it silences the warning.
 
 `lute play`, `lute calendar`, and `lute test`'s `eligible:` report a spent beat as ineligible with
 the reason ``spentBy: `run.solved` holds`` while the condition holds and

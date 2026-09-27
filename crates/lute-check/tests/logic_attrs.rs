@@ -421,7 +421,7 @@ fn a_key_of_another_construct_names_where_it_lives() {
                 "",
                 &format!("{done}<on occasion=\"questComplete\">\n@x: y\n</on>\n"),
             ),
-            "names what it answers with `event=`",
+            "names the world event it answers with `event=`",
         ),
     ] {
         let diags = run(&text).diagnostics;

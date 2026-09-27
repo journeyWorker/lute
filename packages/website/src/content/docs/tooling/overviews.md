@@ -199,7 +199,7 @@ $ lute beats . --occasion daystart
 lute beats: `--occasion daystart` is not an occasion of this project (known: board, dayStart, placeVisit)
 ```
 
-`--json` emits `{ "roots": [ { "root", "ladders": [ { "occasion", "select", "target"? | "anyTarget"?, "beats": [ … ] } ] } ] }`. Each beat is `{ id, kind, document, priority, once, share?, target?, also?, after?, when?, whenAuthored?, title?, coveredBy?, verdicts }`, where `once` is `"run"`, `"user"`, `"day"`, `"slot"`, or `"none"`, `share` the beat's shared-spend key (dsl 0.25.0), `when` carries the expansion and `whenAuthored` the author's text (dsl 0.24.0), `coveredBy` the id of the beat that always beats it (dsl 0.26.0), and `verdicts` carries the full diagnostics, each `{ code, severity, message }`; a kind ladder's `target` is `"kind:<kind>"`:
+`--json` emits `{ "roots": [ { "root", "ladders": [ { "occasion", "select", "target"? | "anyTarget"?, "beats": [ … ] } ] } ] }`. Each beat is `{ id, kind, document, priority, once, share?, target?, also?, after?, when?, whenAuthored?, title?, coveredBy?, neverFor?, verdicts }`, where `once` is `"run"`, `"user"`, `"day"`, `"slot"`, or `"none"`, `share` the beat's shared-spend key (dsl 0.25.0), `when` carries the expansion and `whenAuthored` the author's text (dsl 0.24.0), `coveredBy` the id of the beat that always beats it (dsl 0.26.0), `neverFor` the ladder's targets a kind or `for=` beat's `when` never holds for (dsl 0.28.0), and `verdicts` carries the full diagnostics, each `{ code, severity, message }`; a kind ladder's `target` is `"kind:<kind>"`:
 
 ```json
 {

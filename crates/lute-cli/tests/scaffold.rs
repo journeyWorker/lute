@@ -205,8 +205,9 @@ fn new_scene_on_writes_a_beat_that_respects_defaults() {
 }
 
 /// `lute new scene --occasion` writes a `priority:` below every beat already
-/// on the occasion, so stubs scaffolded one after another rank in creation
-/// order and never tie.
+/// on the occasion, but above a fallback that answers every time (the
+/// template's `Mara, any other time`), so stubs scaffolded one after another
+/// rank in creation order, never tie, and are never shadowed.
 #[test]
 fn new_scene_on_ranks_below_every_existing_beat_of_the_occasion() {
     let proj = init_beats("new-on-priority");
@@ -242,6 +243,7 @@ fn new_scene_on_ranks_below_every_existing_beat_of_the_occasion() {
     let check = lute(&["check-project", d]);
     let t = text(&check);
     assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
+    assert!(!t.contains("W-BEAT-SHADOWED"), "{t}");
 }
 
 /// T3-14: `--dir` names the PROJECT. A directory inside a project that is not

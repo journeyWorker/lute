@@ -230,6 +230,11 @@ pub enum Step {
     Jump {
         to: String,
     },
+    /// dsl 0.28.0 §5: control comes back to hub `hub` through its `<return>`
+    /// block — the lines that follow are the return's, not the option's.
+    HubReturn {
+        hub: String,
+    },
 }
 
 /// dsl 0.16.0 §3: the reward-declaration data carried by a fired [`Step::Grant`],
@@ -329,13 +334,19 @@ impl UnresolvedEntry {
     /// The transcript's line for a construct that HALTED on (or left
     /// undecided) this entry, naming the mocks that would decide it.
     pub fn render_unresolved(&self) -> String {
+        let what = if self.id.is_empty() {
+            String::new()
+        } else {
+            format!(" ({} {})", self.id, self.construct)
+        };
+        let supply = if self.atoms.is_empty() {
+            String::new()
+        } else {
+            format!(" — supply {} as a mock", self.atoms.join(", "))
+        };
         format!(
-            "unresolved: {} `{}` ({} {}) — supply {} as a mock",
-            self.construct,
-            self.expression,
-            self.id,
-            self.construct,
-            self.atoms.join(", ")
+            "unresolved: {} `{}`{what}{supply}",
+            self.construct, self.expression
         )
     }
 
@@ -388,7 +399,9 @@ pub struct CoverageCount {
 pub struct ComponentSite {
     /// The component's name.
     pub name: String,
-    /// The component's file, as the traced document's import resolved it.
+    /// The component's file, as the traced document's import resolved it
+    /// (canonical; `lute trace` respells it with
+    /// [`TraceReport::respell_component_files`]).
     pub file: String,
     /// Which use: `{component}#{n}` (the n-th `::use` of that component in
     /// its host), one segment per enclosing expansion, outermost first
@@ -666,6 +679,7 @@ impl TraceReport {
                         self.guard_outcomes(site)
                     ));
                 } else {
+                    let label = if label.is_empty() { "match" } else { label };
                     parts.push(format!("arms {}/{} ({label} @{site})", c.visited, c.total));
                 }
             }
@@ -736,6 +750,39 @@ impl TraceReport {
                  of `quest.{id}.*` takes its reserved default)"
             );
         }
+    }
+
+    /// Re-spell every component file the report names — each
+    /// [`ComponentSite::file`] and the coverage site keys built from it
+    /// ([`site_key_in`]) — through `shown`. The walk records the canonical
+    /// path the import resolved; `lute trace` passes a cwd-relative form so
+    /// the summary reads `components/card.component.lute:12:1`, the way the
+    /// traced file itself is spelled.
+    pub fn respell_component_files(&mut self, shown: impl Fn(&str) -> String) {
+        let steps = self.steps.iter_mut().filter_map(|s| match s {
+            Step::Decision(d) => Some(d),
+            _ => None,
+        });
+        for d in steps.chain(&mut self.decisions) {
+            if let Some(site) = d.component.as_mut() {
+                site.file = shown(&site.file);
+            }
+        }
+        self.coverage.arms = std::mem::take(&mut self.coverage.arms)
+            .into_iter()
+            .map(|(key, mut count)| {
+                let Some(site) = count.component.as_mut() else {
+                    return (key, count);
+                };
+                let file = shown(&site.file);
+                let key = match key.strip_prefix(site.file.as_str()) {
+                    Some(rest) => format!("{file}{rest}"),
+                    None => key,
+                };
+                site.file = file;
+                (key, count)
+            })
+            .collect();
     }
 }
 
@@ -864,8 +911,13 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             } else {
                 format!("   eligible: {}", d.eligible.join(", "))
             };
+            let id = if id.is_empty() {
+                String::new()
+            } else {
+                format!(" {id}")
+            };
             out.push_str(&format!(
-                "  <{} {}>{}   -> {}{}{}\n",
+                "  <{}{}>{}   -> {}{}{}\n",
                 d.construct, id, eligible, d.outcome, guard, annot
             ));
         }
@@ -924,6 +976,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
         }
         Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),
         Step::Jump { to } => out.push_str(&format!("    <next -> {to}>\n")),
+        Step::HubReturn { hub } => out.push_str(&format!("    -- return (hub {hub}) --\n")),
         Step::Grant {
             quest,
             objective,
@@ -945,7 +998,11 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
                 .as_deref()
                 .map(|t| format!(" -> {t}"))
                 .unwrap_or_default();
-            let annot = if *on_failed { " (on failed)" } else { "" };
+            let annot = if *on_failed {
+                " (outcome=\"failed\")"
+            } else {
+                ""
+            };
             let credit = credited
                 .as_ref()
                 .map(|c| format!(" (credits {} = {})", c.path, c.value))

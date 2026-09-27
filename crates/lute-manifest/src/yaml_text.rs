@@ -57,6 +57,20 @@ fn key_len_at(body: &str, key: &str) -> Option<usize> {
     (after.is_empty() || after.starts_with([' ', '\t'])).then_some(written.len())
 }
 
+/// The offset of the second `key:` of the block mapping whose first line
+/// starts at byte `from` (same indentation, before the mapping ends).
+fn second_occurrence(text: &str, from: usize, key: &str) -> Option<usize> {
+    let all = lines(text);
+    let first = all.iter().position(|l| l.start == from)?;
+    let indent = all[first].indent;
+    all[first..]
+        .iter()
+        .take_while(|l| !is_content(l.body) || l.indent >= indent)
+        .filter(|l| l.indent == indent && key_len_at(l.body, key).is_some())
+        .nth(1)
+        .map(|l| l.start + l.indent)
+}
+
 /// The key `key` inside a flow mapping `{ … }` on one line, word-bounded and
 /// followed by `:` — `defualt` in `run.n: { type: number, defualt: 3 }`.
 fn flow_key(line: &str, from: usize, key: &str) -> Option<Range<usize>> {
@@ -177,23 +191,34 @@ pub fn yaml_fault(text: &str, e: &serde_yaml::Error) -> YamlFault {
         )
     } else if let Some(hint) = nested_quote_hint(bad_line) {
         Some(hint)
+    } else if let Some((at, hint)) = second_key(bad_line) {
+        offset = line_start + at;
+        Some(hint)
     } else if let Some((at, hint)) = earlier_line_fault(text, line_no) {
         // The error surfaced on a later line; the anchor is the slip.
         offset = at;
         Some(hint)
     } else if problem.contains("mapping values are not allowed") {
-        colon_in_value(bad_line).map(|(at, hint)| {
-            offset = line_start + at;
-            hint
-        })
+        let indented = || over_indented(text, line_no).map(|(at, hint)| (at - line_start, hint));
+        colon_in_value(bad_line)
+            .or_else(indented)
+            .map(|(at, hint)| {
+                offset = line_start + at;
+                hint
+            })
     } else if problem.contains("cannot start any token") {
         reserved_start(bad_line).map(|(at, hint)| {
             offset = line_start + at;
             hint
         })
     } else if let Some(key) = duplicate_key(&problem) {
+        // The error sits at the mapping; the second `key:` is the one to fix.
+        if let Some(at) = second_occurrence(text, line_start, key) {
+            offset = at;
+        }
         Some(format!(
-            "`{key}:` is written twice in one mapping — keep one of them"
+            "`{key}:` is written twice in one mapping — keep one of them, or rename the second \
+             to the key you meant"
         ))
     } else {
         None
@@ -247,6 +272,10 @@ fn plain_problem(problem: &str) -> String {
             "the text ends inside an unclosed quote, `[` or `{`",
         ),
         (
+            "did not find expected node content",
+            "a value is missing here — a `[` or `{` never closed, or a `,` with no item after it",
+        ),
+        (
             "could not find expected ':'",
             "a key is missing its `:` (write `key: value`)",
         ),
@@ -268,6 +297,70 @@ fn plain_problem(problem: &str) -> String {
 fn duplicate_key(problem: &str) -> Option<&str> {
     let rest = problem.split("duplicate entry with key ").nth(1)?;
     Some(rest.trim().trim_matches('"'))
+}
+
+/// `key: "value" other: x` — a second key written on the line of a quoted
+/// value, meant as the next line. The offset of the second key and the fix.
+fn second_key(line: &str) -> Option<(usize, String)> {
+    let colon = line.find(": ")?;
+    let key = line[..colon].trim().trim_start_matches("- ");
+    let after = &line[colon + 2..];
+    let at = colon + 2 + (after.len() - after.trim_start().len());
+    let value = &line[at..];
+    let quote = value.chars().next().filter(|c| matches!(c, '"' | '\''))?;
+    let b = value.as_bytes();
+    let close =
+        (1..b.len()).find(|&i| b[i] == quote as u8 && (quote == '\'' || b[i - 1] != b'\\'))?;
+    let rest = &value[close + 1..];
+    let next = at + close + 1 + (rest.len() - rest.trim_start().len());
+    let tail = line[next..].trim_end();
+    let name_end = tail
+        .find(|c: char| !(c.is_ascii_alphanumeric() || "_.-".contains(c)))
+        .unwrap_or(tail.len());
+    let second = &tail[..name_end];
+    let after_name = &tail[name_end..];
+    (!second.is_empty() && (after_name == ":" || after_name.starts_with(": "))).then(|| {
+        (
+            next,
+            format!("`{second}:` starts a new key on `{key}:`'s line — put `{tail}` on a line of its own"),
+        )
+    })
+}
+
+/// A key indented under a key that already has a value (`title: D` then
+/// `  on: evening`): YAML reads it as part of that value. The 1-based line
+/// `line_no` of `text`; the offset of the key and the fix.
+fn over_indented(text: &str, line_no: usize) -> Option<(usize, String)> {
+    let mut offset = 0;
+    let mut above: Option<&str> = None;
+    for (i, line) in text.split_inclusive('\n').enumerate() {
+        let body = line.trim_end_matches(['\n', '\r']);
+        if i + 1 == line_no {
+            let indent = body.len() - body.trim_start().len();
+            let key = body
+                .trim_start()
+                .split(": ")
+                .next()
+                .filter(|k| !k.is_empty() && !k.contains(' '))?;
+            let parent = above?;
+            let parent_indent = parent.len() - parent.trim_start().len();
+            let (pkey, pvalue) = parent.trim_start().split_once(": ")?;
+            return (indent > parent_indent && !pvalue.trim().is_empty()).then(|| {
+                (
+                    offset + indent,
+                    format!(
+                        "`{key}:` is indented under `{pkey}:`, which already has a value — start \
+                         `{key}:` in the same column as `{pkey}:`"
+                    ),
+                )
+            });
+        }
+        if is_content(body) {
+            above = Some(body);
+        }
+        offset += line.len();
+    }
+    None
 }
 
 /// `key: a plain value: with a colon` — YAML reads the second `: ` as a
@@ -459,6 +552,35 @@ mod tests {
             assert!(f.message.contains(fix), "{}", f.message);
             assert!(!f.message.contains("mapping values"), "{}", f.message);
             assert_eq!(line_col(text, f.offset).0, 2, "{f:?}");
+        }
+    }
+
+    // Each slip gets its own fix at its own place, not a neighbour's hint:
+    // two keys on one line are no indentation problem, an over-indented key
+    // holds no `: ` to quote, and a duplicate is fixed at its second copy.
+    #[test]
+    fn each_slip_is_named_where_it_is() {
+        for (text, fix, pos) in [
+            (
+                "id: c\nwhen: \"run.n == 1\" priority: 3\n",
+                "put `priority: 3` on a line of its own",
+                (2, 20),
+            ),
+            (
+                "id: d\ntitle: D\n  on: evening\n",
+                "`on:` is indented under `title:`",
+                (3, 3),
+            ),
+            (
+                "clock:\n  day: run.day\n  slots: [a]\n  day: 1\n",
+                "`day:` is written twice",
+                (4, 3),
+            ),
+        ] {
+            let e = serde_yaml::from_str::<serde_yaml::Value>(text).unwrap_err();
+            let f = yaml_fault(text, &e);
+            assert!(f.message.contains(fix), "{}", f.message);
+            assert_eq!(line_col(text, f.offset), pos, "{f:?}");
         }
     }
 }

@@ -117,6 +117,7 @@ pub fn run(
             }
         }
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot walk {} for manifests: {e}", project.display());
             return ExitCode::from(2);
         }
@@ -314,21 +315,25 @@ pub fn run(
         s.push('\n');
         if let Some(parent) = c.out_path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
+                let e = lute_manifest::io_reason(&e);
                 eprintln!("lute: cannot create {}: {e}", parent.display());
                 return ExitCode::from(2);
             }
         }
         if let Err(e) = std::fs::write(&c.out_path, &s) {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot write {}: {e}", c.out_path.display());
             return ExitCode::from(2);
         }
     }
     if let Err(e) = std::fs::create_dir_all(out_dir) {
+        let e = lute_manifest::io_reason(&e);
         eprintln!("lute: cannot create {}: {e}", out_dir.display());
         return ExitCode::from(2);
     }
     let index_path = out_dir.join(INDEX_FILE);
     if let Err(e) = std::fs::write(&index_path, index_json.as_bytes()) {
+        let e = lute_manifest::io_reason(&e);
         eprintln!("lute: cannot write {}: {e}", index_path.display());
         return ExitCode::from(2);
     }

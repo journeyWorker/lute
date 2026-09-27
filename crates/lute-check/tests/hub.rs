@@ -316,6 +316,13 @@ fn hub_return_attr_rejected() {
         "{}",
         res.diagnostics[0].message
     );
+    // Any other attribute says it takes none (the list was empty and the
+    // sentence dangled: "its attributes are ").
+    let res = run(&lamp(
+        "<return id=\"again\">\n@narrator: again.\n</return>\n",
+    ));
+    let m = &res.diagnostics[0].message;
+    assert!(m.ends_with("it takes no attributes"), "{m}");
 }
 
 // Outside a hub, a second one, or inside an option body: an error naming

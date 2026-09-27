@@ -708,7 +708,8 @@ fn test_and_play_keys_name_the_spelling_and_the_file_they_belong_to() {
     for want in [
         "error [E-TEST-KEY] `accept:` is now `accepts:` in a `*.test.yaml`",
         "unknown top-level key `payload` in a `*.test.yaml` (`payload:` belongs to a play step, \
-         in a `*.play.yaml`)",
+         in a `*.play.yaml`; a test seeds the raise's payload as state, \
+         `state: { occasion.payload.<field>: … }`)",
         "error [E-TEST-KEY] `expect.offered` is now `expect.options` — in a test and in a play, \
          `options` are the menu choices a branch/hub presents (a play's `offered` lists beat \
          candidates)",
@@ -1439,8 +1440,9 @@ fn every_play_usage_error_is_reported_at_once_in_file_order() {
         lines[2].contains("p.play.yaml:5:15: step 1: `choose.pik`"),
         "{t}"
     );
+    // LF28-8: a non-member is located at the value, not the key.
     assert!(
-        lines[3].contains("p.play.yaml:6:24: step 1: `expect.state.run.route: mkia`"),
+        lines[3].contains("p.play.yaml:6:35: step 1: `expect.state.run.route: mkia`"),
         "{t}"
     );
     assert!(lines.iter().all(|l| l.starts_with("lute play: ")), "{t}");

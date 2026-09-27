@@ -241,8 +241,17 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
 fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
     const TARGET: &str = "a `::next` target is a `::mark{id=\"…\"}` (or a line's `id=`) later in \
                           this document";
-    if matches!(to, "END" | "DONE") {
-        return Some("a scene ends with `::end`".to_string());
+    match to {
+        "END" => {
+            return Some(
+                "Ink's `END` ends the whole story, which in Lute is the schema's `terminal:` \
+                 condition: a scene makes it hold with an ordinary `::set{…}` (`::end` ends only \
+                 this scene, like Ink's `DONE`)"
+                    .to_string(),
+            );
+        }
+        "DONE" => return Some("a scene ends with `::end`".to_string()),
+        _ => {}
     }
     let fold = |s: &str| -> String {
         s.chars()
@@ -434,7 +443,9 @@ mod tests {
              </choice>\n</branch>\n",
         );
         assert!(m.contains("choice id in `<branch id=\"door\">`"), "{m}");
-        assert!(message("::next{to=\"END\"}\n").contains("`::end`"));
+        // Ink's END ends the story (`terminal:`); DONE ends the scene.
+        assert!(message("::next{to=\"END\"}\n").contains("`terminal:`"));
+        assert!(message("::next{to=\"DONE\"}\n").contains("a scene ends with `::end`"));
     }
 
     #[test]

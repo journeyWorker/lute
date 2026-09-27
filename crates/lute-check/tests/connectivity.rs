@@ -1331,7 +1331,7 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         &Default::default(),
     )
     .into_iter()
-    .filter_map(|(_, a)| lute_check::GroundFact::from_pattern(&a));
+    .flat_map(|(_, a)| root_vocab.asserted_facts(&a));
     let may = lute_check::MaySet::build(
         &root_vocab,
         live_facts,
@@ -1415,9 +1415,13 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         reads_per_scene.insert(key.clone(), reads);
     }
     let (envs, tainted) = lute_check::envelope::propagate(&conn_graph, &per_doc, &d);
-    for (path, diag) in
-        lute_check::envelope::check_envelope(&conn_graph, &envs, &tainted, &reads_per_scene)
-    {
+    for (path, diag) in lute_check::envelope::check_envelope(
+        &conn_graph,
+        &envs,
+        &tainted,
+        &reads_per_scene,
+        &Default::default(),
+    ) {
         out.push((path, diag));
     }
 

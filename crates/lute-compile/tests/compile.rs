@@ -1529,6 +1529,33 @@ fn forward_jump_scene_check_and_compile_are_both_clean() {
     }
 }
 
+/// A `<when is>` arm in a `<match>` with no `on` has no subject to compare
+/// against. The checker refuses it; lowering refuses it too rather than emit
+/// a match record with an empty `subject` an engine could never decide.
+#[test]
+fn an_is_arm_with_no_match_subject_never_lowers() {
+    const DOC: &str = "---\nkind: scene\nid: s\nstate:\n  run.route: { type: { enum: [none, ren] }, default: none }\n---\n\n## S\n\n<match>\n  <when is=\"ren\">\n    @narrator: Stay.\n  </when>\n  <otherwise>\n    @narrator: Go.\n  </otherwise>\n</match>\n";
+    let ci = input(DOC);
+    let mut checked = lute_check::check(&ci);
+    assert!(
+        checked
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E-MATCH-NO-SUBJECT"),
+        "{:#?}",
+        checked.diagnostics
+    );
+    // Past a gate that let it through, lowering still refuses it.
+    checked.ok = true;
+    checked.diagnostics.clear();
+    let errs = lute_compile::compile_with_check(&ci, checked, &Default::default())
+        .expect_err("an `is` arm with no subject does not lower");
+    assert!(
+        errs.iter().any(|d| d.code == "E-MATCH-NO-SUBJECT"),
+        "{errs:#?}"
+    );
+}
+
 // --- dsl 0.15.0 §2/§3: authored scene identity + descriptive meta block ----
 
 /// dsl 0.15.0 §2: an authored `id:` becomes the ONE canonical scene key —

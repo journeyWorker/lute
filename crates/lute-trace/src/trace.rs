@@ -265,6 +265,12 @@ fn trace_pipeline(
         Err(diags) => return (empty_report(&input.uri, &mocks), TraceExit::Refused(diags)),
     };
     let art = serde_json::to_value(&artifact).unwrap_or(Json::Null);
+    let authored: BTreeMap<String, String> = artifact
+        .commands
+        .iter()
+        .filter_map(|c| c.authored())
+        .map(|(addr, text)| (addr.to_string(), text.to_string()))
+        .collect();
     // Leftover (a): the traced document as a one-document project, so a
     // presented scene beat, entry or bundle beat is judged by the session's
     // ONE eligibility rule ([`exec::session::judge_beat`]) — `once`,
@@ -330,6 +336,85 @@ fn trace_pipeline(
     if members.is_empty() {
         members = scopes.members();
     }
+    // A mocked raise for a target (`--occasion landed@fish.cod`) binds
+    // `occasion.target` for the presented unit answering it that runs for a
+    // kind's members (`target="kind:K"`, `for="kind:K"`) — the member the
+    // engine binds presenting it. A seeded `--state occasion.target=…` wins.
+    // Keyed by entry id; the scene or `--beat` beat under "".
+    let mut raised: BTreeMap<String, String> = BTreeMap::new();
+    let mut binding_ons: BTreeSet<String> = BTreeSet::new();
+    if !mocks
+        .state
+        .iter()
+        .any(|(p, _, _)| p == lute_check::beats::OCCASION_TARGET)
+    {
+        fn text(v: &Option<(String, Span)>) -> Option<&str> {
+            v.as_ref().map(|(s, _)| s.as_str())
+        }
+        let units: Vec<(String, String, &str, (usize, usize))> = match present {
+            Presentation::Document => folded
+                .typed
+                .beat
+                .iter()
+                .map(|b| {
+                    (
+                        String::new(),
+                        "the scene".to_string(),
+                        b.on.as_str(),
+                        (0, usize::MAX),
+                    )
+                })
+                .collect(),
+            Presentation::Beat(_) => beat_at
+                .iter()
+                .filter_map(|(i, _)| {
+                    let b = &doc.beats[*i];
+                    let s = (b.span.byte_start, b.span.byte_end);
+                    Some((
+                        String::new(),
+                        format!("the beat `{}`", b.id),
+                        text(&b.on)?,
+                        s,
+                    ))
+                })
+                .collect(),
+            Presentation::Entries(ids) => ids
+                .iter()
+                .filter_map(|id| {
+                    let id = mock::entry_local_id(&doc, folded.typed.id.as_deref(), id);
+                    let e = doc.entries.iter().find(|e| e.id == id)?;
+                    let s = (e.span.byte_start, e.span.byte_end);
+                    Some((
+                        e.id.clone(),
+                        format!("the entry `{}`", e.id),
+                        text(&e.on)?,
+                        s,
+                    ))
+                })
+                .collect(),
+        };
+        let mut refused: Vec<Diagnostic> = Vec::new();
+        for (key, unit, on, (start, end)) in units {
+            // Only a unit that runs for members opens a scope.
+            let Some(members) = scopes.members_at(start, end) else {
+                continue;
+            };
+            match raised_member(&mocks, &input.snapshot.occasions, &unit, on, members) {
+                Ok(Some(m)) => {
+                    raised.insert(key, m);
+                    binding_ons.insert(on.to_string());
+                }
+                Ok(None) => {}
+                Err(d) => refused.push(d),
+            }
+        }
+        if !refused.is_empty() {
+            return (
+                empty_report(&input.uri, &mocks),
+                TraceExit::Refused(refused),
+            );
+        }
+    }
     let mut driver = TraceDriver::new(TraceContext {
         art: &art,
         map: &map,
@@ -339,6 +424,7 @@ fn trace_pipeline(
         snapshot: &input.snapshot,
         content_reads: &content_reads,
         members,
+        authored,
         component_files: input
             .components
             .table
@@ -350,6 +436,9 @@ fn trace_pipeline(
     });
     let seed = Seed::from(&mocks);
     let mut m = Machine::new(&art, seed.clone(), &mut driver).with_display_names(&names);
+    if let Some(member) = raised.get("") {
+        m.bind_occasion_target(Some(member));
+    }
 
     // T1-13: a beat scene is only presented when its frontmatter `when`
     // holds. Judged against the mocks BEFORE the walk writes anything — the
@@ -406,20 +495,26 @@ fn trace_pipeline(
             m.bind_occasion_target(None);
             let why = match closed {
                 Some(exec::seam::Closed::Gate { raw, reads }) => format!(
-                    "the engine does not raise `{name}` here: its `raisedWhen: {raw}` is \
-                     false{} — seed the state that opens it, or drop the raise",
+                    "its `raisedWhen: {raw}` is false{} — seed the state that opens it (`state:` \
+                     / `--state`), or drop the raise",
                     exec::seam::Closed::reads_text(&reads)
                 ),
                 Some(exec::seam::Closed::Terminal(t)) => format!(
                     "the game is over (`terminal: {t}` holds), so the engine raises no occasion \
-                     (`{name}` included)"
+                     — seed state under which `terminal:` does not hold (`state:` / `--state`), \
+                     or drop the raise; to judge the raise whose beat ends the game, play it \
+                     (an `occasion: {name}` step in a `*.play.yaml`); if the engine raises \
+                     `{name}` outside a run too (a title screen, a gallery), declare it \
+                     `outsideRun: true`"
                 ),
                 // Undecided under the mocks: the walk reports what it needs.
                 Some(exec::seam::Closed::Unknown(_)) | None => continue,
             };
+            // A mocked raise from a test's `occasions:` or a `--occasion`
+            // flag: named as raised, located by the caller that knows which.
             gate_refusals.push(logic_diag(
                 lute_check::gates::E_OCCASION_GATE,
-                format!("`occasions: [{raised}]`: {why}"),
+                format!("the engine would not raise `{raised}` here: {why}"),
                 mock::synthetic_span(),
             ));
         }
@@ -498,6 +593,11 @@ fn trace_pipeline(
                         Some(c) => Machine::resume(&art, carried(&seed), c, &mut driver),
                     };
                     let mut em = em.with_display_names(&names).with_entry(id);
+                    // The raise binds this entry's member, never the one a
+                    // previous entry ran for.
+                    if !raised.is_empty() {
+                        em.bind_occasion_target(raised.get(id).map(String::as_str));
+                    }
                     walk = present_entry(&mut em, entry, judging.as_ref(), &mocks);
                     let mut now = World::of(&mut em);
                     now.terminal = terminal_at(&mut em, terminal);
@@ -540,6 +640,7 @@ fn trace_pipeline(
         beat_note,
         scene_eligible,
         world,
+        binding_ons,
     })
 }
 
@@ -695,6 +796,48 @@ fn present_beat(
         after_unmet,
     });
     run_presented(m)
+}
+
+/// The member a mocked raise of `on` for a target binds as
+/// `occasion.target` for `unit`, which runs for `members`: `landed@fish.cod`
+/// binds `cod` (a bare `landed@cod` too), as the engine binds it presenting
+/// the unit. `None` when no raise of `on` names a target; a target that is
+/// none of `members` is refused.
+fn raised_member(
+    mocks: &MockSet,
+    occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+    unit: &str,
+    on: &str,
+    members: &[String],
+) -> Result<Option<String>, Diagnostic> {
+    let Some((raise, target)) =
+        mocks
+            .occasions
+            .iter()
+            .find_map(|r| match crate::split_occasion(r) {
+                (name, Some(t)) if name == on => Some((r, t)),
+                _ => None,
+            })
+    else {
+        return Ok(None);
+    };
+    let member = occasions
+        .get(on)
+        .and_then(|d| lute_check::gates::target_member(d, target))
+        .unwrap_or_else(|| target.to_string());
+    if members.contains(&member) {
+        return Ok(Some(member));
+    }
+    Err(logic_diag(
+        mock::E_TRACE_MOCK_TYPE,
+        format!(
+            "the raise `{raise}` binds `occasion.target` to `{member}`, which is not a member \
+             {unit} runs for ({}){}",
+            members.join(", "),
+            lute_manifest::suggest::did_you_mean(&member, members.iter().map(String::as_str))
+        ),
+        mock::synthetic_span(),
+    ))
 }
 
 /// The traced document as a one-document [`ExecProject`] — what the
@@ -985,6 +1128,9 @@ struct Finish<'a, 'd> {
     beat_note: Option<String>,
     scene_eligible: Option<(String, Option<bool>)>,
     world: World,
+    /// The occasions whose mocked raise bound the presented unit's
+    /// `occasion.target`: those raises did what they were for.
+    binding_ons: BTreeSet<String>,
 }
 
 /// The notes, the exit code and the report.
@@ -1000,6 +1146,7 @@ fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
         beat_note,
         scene_eligible,
         world,
+        binding_ons,
     } = f;
     let World {
         state,
@@ -1021,7 +1168,12 @@ fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
     let foreign_quests: BTreeSet<String> = quest_notes.iter().map(|(id, _)| id.clone()).collect();
     notes.extend(quest_notes.into_iter().map(|(_, note)| note));
     notes.extend(unmatched_event_notes(doc, &mocks.events));
-    notes.extend(occasion_notes(doc, &mocks.occasions, &driver.decisions));
+    notes.extend(occasion_notes(
+        doc,
+        &mocks.occasions,
+        &binding_ons,
+        &driver.decisions,
+    ));
     notes.extend(std::mem::take(&mut driver.spent_accepts));
     notes.extend(mock_unproducible_notes(mocks, folded, doc, project_asserts));
     let ended = matches!(walk, Walked::Ended);
@@ -1218,6 +1370,9 @@ struct TraceContext<'a> {
     shots: bool,
     /// Every component the document imports, by name → its file.
     component_files: BTreeMap<String, String>,
+    /// addr → a staging directive as authored (`::sfx{id="bell"}`), what
+    /// `lute play` prints for it.
+    authored: BTreeMap<String, String>,
 }
 
 /// The menu a pick answered, until its record arrives.
@@ -1285,6 +1440,10 @@ pub(crate) struct TraceDriver<'a> {
     forced_unknown: Vec<UnresolvedEntry>,
     coverage_choices: BTreeMap<String, CoverageCount>,
     coverage_arms: BTreeMap<String, CoverageCount>,
+    /// (construct key, outcome) pairs already counted, so a hub picked
+    /// again or a `<match>` re-run counts each option / arm once: coverage
+    /// is how many distinct ones ran, never how many times.
+    coverage_seen: BTreeSet<(String, String)>,
     said: Vec<String>,
     spent_accepts: Vec<String>,
     /// Round-5 T3-12: presented scene / entry / beat id → the false premise
@@ -1347,6 +1506,7 @@ impl<'a> TraceDriver<'a> {
             forced_unknown: Vec::new(),
             coverage_choices: BTreeMap::new(),
             coverage_arms: BTreeMap::new(),
+            coverage_seen: BTreeSet::new(),
             said: Vec::new(),
             spent_accepts: Vec::new(),
             premises: BTreeMap::new(),
@@ -1756,6 +1916,7 @@ impl<'a> TraceDriver<'a> {
                 }
             }
             "choice" | "hub" => self.menu_record(&rec, &kind, &addr),
+            "hubReturn" => self.steps.push(Step::HubReturn { hub: str_of("hub") }),
             "match" => self.match_record(&rec, &addr),
             "end" => self.steps.push(Step::Directive {
                 tag: lute_manifest::core::END_DIRECTIVE.to_string(),
@@ -1817,18 +1978,22 @@ impl<'a> TraceDriver<'a> {
             }
             "barrier" | "occasion" => {}
             _ => {
-                // A staging record: the directive it was lowered from.
+                // A staging record: the directive it was lowered from, as
+                // authored (an exit or a reason keeps its marked tag).
                 let tag = info
                     .as_ref()
                     .and_then(|i| i.directive.clone())
                     .unwrap_or(kind.clone());
                 let exit = tag == lute_manifest::core::CLEAR_DIRECTIVE
                     || tag == "auto" && self.auto_exits(&addr);
+                let call = (!exit)
+                    .then(|| self.cx.authored.get(&addr).cloned())
+                    .flatten();
                 self.steps.push(Step::Directive {
                     tag,
                     component_boundary: None,
                     component: None,
-                    call: None,
+                    call,
                     exit,
                     reason: None,
                 });
@@ -1886,9 +2051,12 @@ impl<'a> TraceDriver<'a> {
             authored_guard,
             component: None,
         });
+        let fresh = self
+            .coverage_seen
+            .insert((format!("choice {id}"), chose.to_string()));
         self.coverage_choices
             .entry(id.clone())
-            .and_modify(|c| c.visited += 1)
+            .and_modify(|c| c.visited += usize::from(fresh))
             .or_insert(CoverageCount {
                 visited: 1,
                 total,
@@ -1920,6 +2088,7 @@ impl<'a> TraceDriver<'a> {
             None => ("no arm".to_string(), None),
         };
         let visited = usize::from(outcome != "no arm");
+        let count_outcome = outcome.clone();
         // T3-22: a `when=` guard is taken or skipped; its lowered `$` arm
         // and empty `<otherwise>` are compiler plumbing.
         let decision = if guard_site {
@@ -1967,7 +2136,13 @@ impl<'a> TraceDriver<'a> {
             component,
         };
         if visited == 1 {
-            self.coverage_arms.insert(site, count);
+            let fresh = self
+                .coverage_seen
+                .insert((format!("arm {site}"), count_outcome));
+            self.coverage_arms
+                .entry(site)
+                .and_modify(|c| c.visited += usize::from(fresh))
+                .or_insert(count);
         } else {
             self.coverage_arms.entry(site).or_insert(count);
         }
@@ -2112,7 +2287,11 @@ fn plugin_call(tag: &str, cmd: Option<&Json>) -> String {
         .map(|f| {
             f.iter()
                 .map(|(k, v)| match v {
+                    Json::String(s) if s == lute_check::beats::OCCASION_TARGET => {
+                        format!("{k}={s}")
+                    }
                     Json::String(s) => format!("{k}={s:?}"),
+                    Json::Number(_) => format!("{k}={}", json_text(Some(v))),
                     v => format!("{k}={v}"),
                 })
                 .collect::<Vec<_>>()
@@ -2338,6 +2517,40 @@ impl Driver for TraceDriver<'_> {
         }
         let raw = site.raw.trim().to_string();
         match site.kind {
+            // A write through an unbound `occasion.target` (`::set`,
+            // `::assert`/`::retract`, a plugin call) or a line interpolating
+            // it is no `<match>`: it has no arms to count.
+            SiteKind::OccasionTarget
+                if self
+                    .cmds
+                    .get(site.addr)
+                    .and_then(|c| c.get("kind"))
+                    .and_then(Json::as_str)
+                    != Some("match") =>
+            {
+                let span = self.span_at(site.addr);
+                let cmd = self.cmds.get(site.addr);
+                let kind = cmd.and_then(|c| c.get("kind")).and_then(Json::as_str);
+                let (construct, id, expr) = match kind {
+                    Some("line") => ("line", "placeholder".to_string(), site.id.to_string()),
+                    Some("plugin") => {
+                        ("write", format!("::{}", site.id), plugin_call(site.id, cmd))
+                    }
+                    Some(k) => ("write", format!("::{k}"), site.id.to_string()),
+                    None => ("write", String::new(), site.id.to_string()),
+                };
+                // One cause, one report: the beat's own `when` already
+                // names the missing member when it read it first.
+                let hints: Vec<String> = site.atoms.iter().map(|a| self.render_atom(a)).collect();
+                let named = self
+                    .unresolved
+                    .iter()
+                    .any(|u| !hints.is_empty() && hints.iter().all(|h| u.atoms.contains(h)));
+                if !named {
+                    self.record_unresolved(construct, &id, span, expr, site.atoms);
+                }
+                OnUnknown::Halt
+            }
             SiteKind::Arm | SiteKind::OccasionTarget => {
                 let span = self.span_at(site.addr);
                 let info = self.info(site.addr).cloned();
@@ -2745,8 +2958,14 @@ fn unmatched_event_notes(doc: &Document, events: &[String]) -> Vec<String> {
 /// not stuck, it is waiting for a moment the mock did not supply.
 /// Read off the recorded decisions (the last `quest` outcome per id, an
 /// `objective` `done` at the objective's own span), never the reserved
-/// state paths, so the §1.3 reserved-read log is untouched.
-fn occasion_notes(doc: &Document, occasions: &[String], decisions: &[Decision]) -> Vec<String> {
+/// state paths, so the §1.3 reserved-read log is untouched. A raise that
+/// bound the presented unit's `occasion.target` (`binding`) did something.
+fn occasion_notes(
+    doc: &Document,
+    occasions: &[String],
+    binding: &BTreeSet<String>,
+    decisions: &[Decision],
+) -> Vec<String> {
     let mut notes = Vec::new();
     // 0.23.1: a same-named `<on event>` handler answers a raise too.
     let answered: BTreeSet<&str> = doc
@@ -2762,7 +2981,7 @@ fn occasion_notes(doc: &Document, occasions: &[String], decisions: &[Decision]) 
     let mut seen = BTreeSet::new();
     for name in occasions {
         let (bare, _) = crate::mock::split_occasion(name);
-        if answered.contains(bare) || !seen.insert(name.as_str()) {
+        if answered.contains(bare) || binding.contains(bare) || !seen.insert(name.as_str()) {
             continue;
         }
         notes.push(format!(

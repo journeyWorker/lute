@@ -581,7 +581,7 @@ id — 당신이 지정한 특정 파일에 맞게 해석하여:
 $ lute context episodes/diner.lute
 lute: note: using project episodes (nearest lute.project.yaml); pass --project to choose another
 capabilityVersion: ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319
-permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
+permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (12):
   auto: character: string, anchor: domain:anchor, action: domain:action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location: string, time: string, assetId: string   [mutatesScene]

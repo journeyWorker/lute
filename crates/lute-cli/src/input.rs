@@ -59,13 +59,37 @@ pub(crate) struct BuiltInput {
 }
 
 impl BuiltInput {
-    /// Print [`BuiltInput::project_diags`] on the `lute:` stderr channel — the
-    /// exact lines `build_input` used to emit inline.
+    /// Print [`BuiltInput::project_diags`] on stderr ([`project_diag_line`]).
     pub fn report_project_diags(&self) {
         for m in &self.project_diags {
-            eprintln!("lute: {m}");
+            eprintln!("{}", project_diag_line(m));
         }
     }
+}
+
+/// One [`BuiltInput::project_diags`] entry (`<code>: <message>`) as a
+/// stderr line: a message that names its own place (`<file>:<line>:<col>:
+/// …`, a plugin package's) reads like any diagnostic, `<file>:<line>:<col>:
+/// error [<code>] …`; the rest go on the `lute:` channel.
+pub(crate) fn project_diag_line(m: &str) -> String {
+    let located = m.split_once(": ").and_then(|(code, rest)| {
+        let (at, msg) = rest.split_once(": ")?;
+        let mut parts = at.rsplitn(3, ':');
+        let (col, line) = (parts.next()?, parts.next()?);
+        let file = parts.next().filter(|f| !f.is_empty())?;
+        let numeric = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+        (numeric(col) && numeric(line) && code.starts_with(['E', 'W']) && !code.contains(' ')).then(
+            || {
+                let severity = if code.starts_with("W-") {
+                    "warning"
+                } else {
+                    "error"
+                };
+                format!("{file}:{line}:{col}: {severity} [{code}] {msg}")
+            },
+        )
+    });
+    located.unwrap_or_else(|| format!("lute: {m}"))
 }
 
 /// Assemble the `CheckInput` for `file` exactly as `check` does: project
@@ -109,7 +133,13 @@ pub(crate) fn build_input_with(
 
 /// `file`'s text, or the `lute: cannot read …` line [`build_input`] prints.
 pub(crate) fn read_document(file: &Path) -> Result<String, String> {
-    std::fs::read_to_string(file).map_err(|e| format!("lute: cannot read {}: {e}", file.display()))
+    std::fs::read_to_string(file).map_err(|e| {
+        format!(
+            "lute: cannot read {}: {}",
+            file.display(),
+            lute_manifest::io_reason(&e)
+        )
+    })
 }
 
 /// The body of [`build_input`] over already-read `text`, also handing back

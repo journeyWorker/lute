@@ -208,9 +208,18 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                 .chain(closed_raise_notes(&body))
                 .chain(passed_raise_note(&s, &body))
                 .collect();
-            // dsl 0.27.0 §4: the step that ended the game says so.
-            if halt.is_none() && !was_terminal && s.terminal() {
-                notes.push(terminal_note(&s));
+            // dsl 0.27.0 §4: the step that ended the game says so; a new run
+            // that did not reopen it says so too.
+            if halt.is_none() && s.terminal() {
+                if !was_terminal {
+                    notes.push(terminal_note(&s));
+                } else if matches!(body, StepBody::NewRun { .. }) {
+                    notes.push(format!(
+                        "the game is still over after the new run — `terminal: {}` holds, so \
+                         the engine raises no occasion",
+                        terminal_text(&s)
+                    ));
+                }
             }
             steps.push(StepRecord {
                 n: step.n,
@@ -273,12 +282,19 @@ fn terminal_text<'s>(s: &'s Session<'_>) -> &'s str {
         .map_or("", |t| t.raw.as_str())
 }
 
-/// dsl 0.27.0 §4: the note on the step after which `terminal:` holds.
+/// dsl 0.27.0 §4: the note on the step after which `terminal:` holds. A new
+/// run plays on — unless the condition reads state a new run keeps.
 fn terminal_note(s: &Session<'_>) -> String {
+    let terminal = terminal_text(s);
+    let after = match lute_trace::exec::seam::persistent_read(terminal) {
+        Some(read) => {
+            format!("it still holds after a new run: it reads `{read}`, which a new run keeps")
+        }
+        None => "`newRun: true` starts a new run".to_string(),
+    };
     format!(
-        "the game is over — `terminal: {}` holds, so the engine raises no occasion from here \
-         (`occasion:` / `advance:` steps are refused; `newRun: true` starts a new run)",
-        terminal_text(s)
+        "the game is over — `terminal: {terminal}` holds, so the engine raises no occasion from \
+         here (`occasion:` / `advance:` steps are refused; {after})"
     )
 }
 

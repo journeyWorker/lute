@@ -568,16 +568,28 @@ pub fn quest_envelope(
 /// BY DEFAULT). See [`check_envelope`].
 pub const E_STATE_MAYBE_UNAVAILABLE: &str = "E-STATE-MAYBE-UNAVAILABLE";
 
-fn maybe_unavailable_error(path: &str, span: Span) -> Diagnostic {
-    Diagnostic {
-        code: E_STATE_MAYBE_UNAVAILABLE.to_string(),
-        severity: Severity::Error,
-        message: format!(
+fn maybe_unavailable_error(path: &str, span: Span, engine_owned: bool) -> Diagnostic {
+    // An `owner: engine` path is written by the engine, never by a scene:
+    // no `after:` route can set it (ledger LG28-8).
+    let message = if engine_owned {
+        format!(
+            "state path `{path}` may be unavailable under your declared routes — it is \
+             `owner: engine`, so no scene sets it and the engine may not have written it \
+             before this read; guard the read with `isSet({path})`, or give it a `default:` \
+             in the schema (dsl §4.3)"
+        )
+    } else {
+        format!(
             "state path `{path}` may be unavailable under your declared routes — no \
              declared `after` route sets it before this read; add an `after:` naming a \
              scene that sets it (e.g. `after: visited('<scene>')`), or guard the read \
              with `isSet({path})` (dsl §4.3)"
-        ),
+        )
+    };
+    Diagnostic {
+        code: E_STATE_MAYBE_UNAVAILABLE.to_string(),
+        severity: Severity::Error,
+        message,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),
@@ -659,11 +671,16 @@ fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
 /// INVENTORY surface, never a `check-project` diagnostic here (design spec
 /// lines 37-45, 540-546). This function never looks at [`NodeId::Quest`]
 /// at all.
+///
+/// `engine_owned` names the `owner: engine` paths: no scene route can set
+/// one, so its error advises a guard or a schema `default:` instead of an
+/// `after:`.
 pub fn check_envelope(
     g: &ConnGraph,
     envs: &BTreeMap<NodeId, Env>,
     tainted: &BTreeSet<NodeId>,
     reads_per_scene: &BTreeMap<String, Vec<(String, Span)>>,
+    engine_owned: &BTreeSet<String>,
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (key, reads) in reads_per_scene {
@@ -681,7 +698,7 @@ pub fn check_envelope(
             let diag = if env.possible.contains(path) {
                 maybe_unavailable_warning(path, *span)
             } else {
-                maybe_unavailable_error(path, *span)
+                maybe_unavailable_error(path, *span, engine_owned.contains(path))
             };
             out.push((info.path.clone(), diag));
         }
