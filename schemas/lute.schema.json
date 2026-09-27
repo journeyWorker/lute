@@ -145,6 +145,10 @@
             }
           ]
         },
+        "raiseAtStart": {
+          "type": "boolean",
+          "description": "dsl 0.28.0: `true` when the engine raises the clock's slot occasion and `dayStart` itself at the run's first position (default `false`: nothing is raised where the run starts)."
+        },
         "week": {
           "type": "object",
           "required": [

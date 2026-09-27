@@ -936,7 +936,9 @@ impl Outcome {
 /// Where the clock's `raise:` map raises one occasion
 /// ([`lute_check::clock_positions::RaiseRule`], the rule `lute play`'s
 /// `advance:` follows), on a run that starts at `start`: nothing is raised
-/// there and `dayStart` is never raised on its day.
+/// there and `dayStart` is never raised on its day — unless the clock
+/// declares `raiseAtStart: true`, when the slot occasion and `dayStart` are
+/// raised where the run starts.
 struct RaiseRule {
     rule: lute_check::clock_positions::RaiseRule,
     start: lute_manifest::clock::ClockAt,

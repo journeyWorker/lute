@@ -207,6 +207,7 @@ clock:                                   # optional (0.24.0), one per project: s
   slot: run.slot                         # optional, with slots: (owner: engine); omit both for a clock of whole days
   slots: [morning, afternoon, night]     # exactly the slot enum's members, in order
   raise: { slot: slotStart, dayEnd: dusk }   # optional: one occasion (= slot:), or any of slot / dayStart / dayEnd
+  raiseAtStart: true                     # optional (0.28.0): the engine raises slot / dayStart where the run starts
   week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }   # optional
   last: { day: 1, slot: night }          # optional (0.27.0): where the clock ends; or days: 1
 cast:                                    # optional (0.23.0): once declared, any other speaker is E-CAST-UNKNOWN
@@ -874,7 +875,10 @@ when: "clock.weekday < 5"
   `terminal: "clock.ended"`는 거기서 게임을 끝내며, 플레이 스텝은 `expect: { clock: { ended: true } }`로
   확인합니다. 슬롯 계기를 발생시키지 않고 슬롯을 지나친 `advance:`는 그 슬롯을 메모로 남기고(`note: passed
   day 1 (Mon) afternoon, night without raising …`), `lute calendar --axis clock`은 시계가 계기를 발생시키지
-  않는 칸을 `not raised`로 읽습니다.
+  않는 칸을 `not raised`로 읽습니다. 실행이 시작되는 위치에서는 어떤 전진도 멈추지 않으므로 시계는 거기서
+  `slot` 계기도 `dayStart`도 발생시키지 않습니다. `raiseAtStart: true`는 엔진이 그것을 발생시킨다고 밝히며,
+  검사기와 캘린더는 그 위치를 발생한 것으로 셉니다. 이 키가 없으면 그 위치에서만 받는 비트는
+  `W-BEAT-UNRAISED`이고, 경고가 이 키를 알려 줍니다.
 - 0.27.0: 계기는 `raisedWhen: "holds(canEnter(occasion.target))"`를 선언할 수 있습니다(플러그인
   `occasions/*.yaml`): 그 계기의 비트는 관문 아래에서 판정되고(`E-BEAT-UNREACHABLE`이 관문을 댐), `lute beats`는
   관문이 결코 성립하지 않는 대상을 표시하며, `lute play`는 관문이 거짓일 때 그 계기를 발생시키는 스텝을

@@ -66,6 +66,15 @@ pub struct ClockDecl {
     /// last slot> }`. Never both with `last:`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub days: Option<u32>,
+    /// dsl 0.28.0: the engine raises the clock's slot occasion (and
+    /// `raise.dayStart`) itself at the run's first position, where no
+    /// `advance:` stops. `false` (the default): nothing is raised there.
+    #[serde(
+        default,
+        rename = "raiseAtStart",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub raise_at_start: bool,
 }
 
 /// A finite clock's `last:` — the day and (on a clock with slots) the slot
@@ -254,6 +263,14 @@ impl ClockDecl {
                 }
             }
             _ => {}
+        }
+        let m = self.raises();
+        if self.raise_at_start && m.slot.is_none() && m.day_start.is_none() {
+            out.push(
+                "`raiseAtStart: true` has nothing to raise: the clock's `raise:` names no slot \
+                 occasion and no `dayStart` — declare one, or drop `raiseAtStart`"
+                    .to_string(),
+            );
         }
         out
     }

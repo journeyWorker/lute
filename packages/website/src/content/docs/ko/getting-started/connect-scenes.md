@@ -130,7 +130,7 @@ priority: 20
 
 자기 `when:`이 이야기가 끝내 설정하지 않을 수도 있는 상태를 읽어 재생되지 않을 수도 있는 장은 사슬을
 멈춥니다: 목록의 다음 장면이 `after:`로 그 장을 기다리기 때문이며, `lute check-project`가
-경고합니다(`W-CHAPTER-STALL`). 시계만 읽는 `when:`은 그 계기의 이후 raise가 여전히 맞추는 동안 사슬을 늦출 뿐이므로 경고하지 않습니다. 창이 닫히는 `when:`은 경고합니다: 실행이 시작된 날의 `dayStart` 장(그날은 시계가 `dayStart`를 raise하지 않습니다)이나, 사슬이 너무 늦게 닿을 수 있는, 끝나는 시계의 마지막 날의 슬롯이 그렇습니다. 선택적인
+경고합니다(`W-CHAPTER-STALL`). 시계만 읽는 `when:`은 그 계기의 이후 raise가 여전히 맞추는 동안 사슬을 늦출 뿐이므로 경고하지 않습니다. 창이 닫히는 `when:`은 경고합니다: 실행이 시작된 날의 `dayStart` 장(그날은 시계가 `dayStart`를 raise하지 않습니다. 시계가 `raiseAtStart: true`를 선언했다면 예외입니다)이나, 사슬이 너무 늦게 닿을 수 있는, 끝나는 시계의 마지막 날의 슬롯이 그렇습니다. 선택적인
 장 뒤의 장면에 그 앞 장을 가리키는 자기 `after:`를 주거나, 첫 장이라면 사슬에서 빼고 자기 `on:`을
 직접 쓰세요. `lute play`는 파생된 `after:`를 이유에 밝힙니다: `after: visited("pryceWakes") is not
 satisfied (written by `chapters:` in lute.project.yaml)`.

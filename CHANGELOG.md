@@ -110,6 +110,17 @@ table.
   the facts should outlive.
 - An enum and an entity kind with the same name are `E-DOMAIN-NAME-CLASH`,
   whether declared in one document or merged from several schemas.
+- A clock may declare `raiseAtStart: true`: the engine raises the clock's
+  slot occasion (and a `raise:` map's `dayStart`) itself where a run starts,
+  where no `advance:` stops. `W-BEAT-UNRAISED`, `W-CHAPTER-STALL` and `lute
+  calendar --axis clock` then count the run's first position as raised; the
+  artifact's `clock` carries the key (omitted when `false`). `lute play` is
+  unchanged: a script still plays that raise with an `occasion:` step, which
+  without the key notes that the clock does not raise it there. Without the
+  key, `W-BEAT-UNRAISED` no longer says a beat that holds only where the run
+  starts never plays: it says the clock does not raise the occasion there,
+  and to declare `raiseAtStart: true` if the engine raises it when a run
+  starts, or else to answer an occasion raised where the beat holds.
 
 ### Changed
 

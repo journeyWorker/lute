@@ -346,17 +346,20 @@ fn clock_ended_turns_true_at_the_advance_that_ends_the_clock() {
 /// beat only it would take never plays. The checker warns, the calendar
 /// shows the cell `not raised`, and play agrees. Without the terminal the
 /// raise is made, and nothing is warned. A `dayStart` beat for the day the
-/// run starts is warned the same way: the clock never raises it there.
+/// run starts is warned too — the clock does not raise it where the run
+/// starts — unless the clock declares `raiseAtStart: true` (the engine
+/// raises it there): then nothing is warned and the calendar shows it raised.
 #[test]
 fn a_beat_only_a_raise_the_clock_never_makes_would_take_is_warned() {
-    let schema = |terminal: &str| {
+    let clock_schema = |terminal: &str, extra: &str| {
         format!(
             "state:\n  run.day: {{ type: number, default: 1, owner: engine }}\n  \
              run.slot: {{ type: {{ enum: [dawn, dusk] }}, default: dawn, owner: engine }}\n\
              {terminal}clock:\n  day: run.day\n  slot: run.slot\n  slots: [dawn, dusk]\n  \
-             raise: {{ dayStart: morning, dayEnd: nightfall }}\n  last: {{ day: 2 }}\n"
+             raise: {{ dayStart: morning, dayEnd: nightfall }}\n  last: {{ day: 2 }}\n{extra}"
         )
     };
+    let schema = |terminal: &str| clock_schema(terminal, "");
     let docs = [(
         "scenes/farewell.lute",
         scene(
@@ -426,13 +429,57 @@ fn a_beat_only_a_raise_the_clock_never_makes_would_take_is_warned() {
     assert!(
         t.contains(
             "[W-BEAT-UNRAISED] scene `arrival` answers `morning`, but its `when` `run.day == 1` \
-             holds at no raise of it"
+             holds at no raise the clock makes: the clock does not raise `morning` at day 1 \
+             dawn, where the run starts — if the engine raises it when a run starts, declare \
+             `raiseAtStart: true` on the clock; otherwise answer an occasion raised where it \
+             holds"
         ),
         "{t}"
     );
+    assert!(!t.contains("never plays"), "{t}");
+    let calendar = |dir: &Path| {
+        let cal = Command::new(BIN)
+            .args([
+                "calendar",
+                &dir.display().to_string(),
+                "--axis",
+                "clock=1..2",
+            ])
+            .args(["--occasion", "morning"])
+            .output()
+            .unwrap();
+        let c = text(&cal);
+        assert!(cal.status.success(), "{c}");
+        c
+    };
+    let start_cell = |c: &str| {
+        c.lines()
+            .find(|l| l.starts_with("1 dawn"))
+            .map(str::to_string)
+            .unwrap_or_else(|| panic!("{c}"))
+    };
+    let c = calendar(&dir);
+    assert!(start_cell(&c).contains("not raised"), "{c}");
+
+    let dir = project(
+        "first-day-raised",
+        &clock_schema("", "  raiseAtStart: true\n"),
+        occasions,
+        &first,
+    );
+    let t = text(&check_project(&dir));
+    assert!(!t.contains("W-BEAT-UNRAISED"), "{t}");
+    let c = calendar(&dir);
+    let cell = start_cell(&c);
     assert!(
-        t.contains("answer the occasion the run starts with instead"),
-        "{t}"
+        !cell.contains("not raised") && cell.contains("arrival"),
+        "{c}"
+    );
+    // Only where the run starts: day 1's dusk is still not raised.
+    assert!(
+        c.lines()
+            .any(|l| l.starts_with("1 dusk") && l.contains("not raised")),
+        "{c}"
     );
 }
 

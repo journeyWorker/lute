@@ -1117,7 +1117,7 @@ A chapter that may not play, because its own `when:` reads state the story may n
 the chain: the next listed scene waits on it through its `after:`, and `lute check-project` warns
 (`W-CHAPTER-STALL`). A `when:` that reads only the clock merely delays the chain while a later
 raise of its occasion still meets it, so it draws no warning; one whose window closes does: a
-`dayStart` chapter for the day the run starts (the clock never raises `dayStart` then), or a slot
+`dayStart` chapter for the day the run starts (the clock never raises `dayStart` then, unless it declares `raiseAtStart: true`), or a slot
 on the last day of a clock that ends, which the chain may reach too late. Either give the scene after the optional chapter its own `after:` naming the chapter
 before it, or, for the first chapter, take it out of the chain and give it its own `on:`. `lute
 play` names a derived `after:` in its reasons: `after: visited("pryceWakes") is not satisfied
@@ -2176,6 +2176,7 @@ clock:                                   # optional (0.24.0), one per project: s
   slot: run.slot                         # optional, with slots: (owner: engine); omit both for a clock of whole days
   slots: [morning, afternoon, night]     # exactly the slot enum's members, in order
   raise: { slot: slotStart, dayEnd: dusk }   # optional: one occasion (= slot:), or any of slot / dayStart / dayEnd
+  raiseAtStart: true                     # optional (0.28.0): the engine raises slot / dayStart where the run starts
   week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }   # optional
   last: { day: 1, slot: night }          # optional (0.27.0): where the clock ends; or days: 1
 cast:                                    # optional (0.23.0): once declared, any other speaker is E-CAST-UNKNOWN
@@ -2866,7 +2867,10 @@ when: "clock.weekday < 5"
   step checks it with `expect: { clock: { ended: true } }`. An `advance:` that passes slots without
   raising the slot occasion notes them (`note: passed day 1 (Mon) afternoon, night without raising
   …`), and `lute calendar --axis clock` reads `not raised` where the clock would not raise an
-  occasion.
+  occasion. No advance stops where the run starts, so the clock raises neither the `slot` occasion
+  nor `dayStart` there; `raiseAtStart: true` says the engine does, and the checker and calendar
+  count it raised there. Without it, a beat only that position takes is `W-BEAT-UNRAISED`, which
+  names the key.
 - 0.27.0: an occasion may declare `raisedWhen: "holds(canEnter(occasion.target))"` (plugin
   `occasions/*.yaml`): its beats are judged under the gate (`E-BEAT-UNREACHABLE` names it), `lute
   beats` marks a target whose gate never holds, `lute play` refuses a step raising it while the
@@ -9465,6 +9469,7 @@ clock:
 | `slot` | optional; an enum state path declared `owner: engine`, inline (`{ enum: [...] }`) or a named domain (`{ domain: slot }`). `slot` and `slots` come together or not at all |
 | `slots` | with `slot`; the slot enum's members, each exactly once, in the order a day runs through them. The enum's own member order does not matter; this list is the clock's order |
 | `raise` | optional; the occasion the engine raises after every advance of the clock, where it stops, so beats can answer "a new slot has started". Or a map naming an occasion for each moment, each key optional: `{ slot, dayStart, dayEnd }` (see [Moving time](#moving-time)) |
+| `raiseAtStart` | optional (dsl 0.28.0), default `false`; `true` says the engine raises the `slot` occasion and `dayStart` itself where a run starts, where no advance stops (see [Where the run starts](#where-the-run-starts)) |
 | `week` | optional; `length` (required inside `week`, at least 1), `first` (the weekday index of day 1, 0-based, default `0`), and `labels` (one display text per weekday, in weekday order) |
 | `last` / `days` | optional (dsl 0.27.0); where the clock ends. `last: { day: 1, slot: h05 }` names the last position (`slot` omitted: that day's last slot; a clock without slots gives `day` alone), and `days: N` is short for `last: { day: N }`. Declare one of the two. See [A clock that ends](#a-clock-that-ends) |
 
@@ -9742,6 +9747,25 @@ Each midnight is a stop of its own. The clock moves there, the quests settle, th
 raised, so a `dayEnd` beat still reads the old day. Writing the clock paths directly, as an
 `engine:` step in `lute play` does, raises none of the three.
 
+### Where the run starts
+
+A run starts at a position no advance stopped at, so by these rules the clock raises nothing there:
+not the `slot` occasion, and not the `dayStart` of the day the run starts on. Many engines raise
+them anyway when a run starts, so the first morning's scene plays. Say so on the clock:
+
+```yaml
+clock:
+  # day, slot, slots, raise as above
+  raiseAtStart: true
+```
+
+With `raiseAtStart: true` the run's first position counts as raised for the `slot` occasion and
+for `dayStart`; `dayEnd` is unchanged. The checker and `lute calendar` follow it. `lute play` does
+not raise anything by itself at the start: a script still plays the first raise with an
+`occasion:` step. Without the key, a beat whose `when` holds only where the run starts is
+`W-BEAT-UNRAISED`, which names the key if your engine raises it there, and an `occasion:` step
+raising the `slot` occasion or `dayStart` at the start carries a note saying the same.
+
 [`lute play`](/tooling/play/) stands in for that engine with an `advance:` step:
 
 - `advance: slot` moves to the next slot, wrapping from the last slot into the next day;
@@ -9830,7 +9854,8 @@ clock            slotStart (sequence)
 An occasion raised once a day should be read once a day, not in every slot row. The calendar
 follows the clock's raise map: a cell where no advance would raise the occasion reads `not raised`
 — `dayStart` anywhere but a day's first slot, and never on the day the run starts; `dayEnd`
-anywhere but a day's last slot; the `slot` occasion at the position the run starts at. A beat
+anywhere but a day's last slot; the `slot` occasion at the position the run starts at. With
+`raiseAtStart: true`, the `slot` occasion and `dayStart` are raised at that position. A beat
 only such cells would take is listed as never eligible. `--occasion dayEnd@clock.day` evaluates
 `dayEnd` once per day, at the day's last slot where the clock raises it (`@run.day`, the clock's
 own path, works too), and leaves the other rows blank; `,clock.slot=afternoon` reads it where an
@@ -9963,10 +9988,11 @@ Two spellings look close and are not the same:
   dawn and a `questComplete` handler fires there. Use it only when that is what you want.
 
 `terminal: "clock.ended"` ends the game when the clock does. The `dayStart` of the day the run starts
-on is never raised: an advance raises `dayStart` on each day it *enters*, and the run starts inside
-day 1. Put a first-morning beat on the occasion your play starts with instead.
-`lute calendar --axis clock` shows day 1's `dayStart` cells as `not raised`, and a beat only day
-1's `dayStart` would take as never eligible.
+on is not raised by the clock: an advance raises `dayStart` on each day it *enters*, and the run
+starts inside day 1. If your engine raises it when a run starts, declare `raiseAtStart: true` (see
+[Where the run starts](#where-the-run-starts)); otherwise put a first-morning beat on the occasion
+your play starts with. Without the key, `lute calendar --axis clock` shows day 1's `dayStart` cells
+as `not raised`, and a beat only day 1's `dayStart` would take as never eligible.
 
 ## Shipped alongside
 
@@ -11839,7 +11865,7 @@ Evaluate `lute play`'s own eligibility at every cell of a grid of state values (
 - `--axis <path>=<values>` (optional, repeatable) — an inclusive integer range (`run.day=1..7`) or a list (`run.slot=morning,evening`) over a declared path, checked against its type; the first axis varies slowest, and with no `--axis` the grid is one cell. `quest.<id>.state=unset,active,…` seeds the quest's status as a save's `quests:` does (`unset` and `active` also clear the objective progress a replayed route made), and `quest.<id>.objectives.<oid>.done` is accepted as written; any other `quest.*` path is a usage error. `holds(<fact>)=true,false` asserts or retracts a base fact of a declared relation; a derived relation is refused (`` `trusted(ada)` is derived by rules and cannot be asserted ``). `visited('<id>')=true,false` (dsl 0.24.0) puts a scene or bundle beat in or out of the visited set, so an `after: visited(…)` beat reads both ways. `clock[=<d1>..<d2>]` (dsl 0.24.0 §1) expands to every slot of those days in clock order (bare `clock`: one week). Anything else is a usage error that lists the axis kinds, with a did-you-mean for a mistyped state path.
 - `--axis <family>.*=<values>` / `--axis '<family>[<axis>]=<values>'` (since 0.27.0) — one axis over a whole [`per:` family](/state/state-model/#one-path-per-entity-per): `run.aff.*=6,7` gives every member (`run.aff.ren`, `run.aff.kai`, …) the cell's value; `run.aff[run.route]=6,7` gives it only to the member the `--axis run.route` value names at that cell, and the other members keep their seed or default — route × own affection in one axis pair. The indexing axis must be an `--axis` of the same calendar naming at least one member of the family's kind (at a value naming none, the tied axis sets nothing and one cell stands for all its values); the bare family (`--axis run.aff=6,7`) is a usage error that names the three forms (`` `run.aff` is a `per: suitor` family — name a member (`run.aff.ren`), all of them (`run.aff.*`), or tie it to an axis (`run.aff[run.route]`) ``), and so is a second axis over a member the family axis already sets. Row labels, `--json` `at` keys and `--csv` headers name the axis as written.
 - `--occasion <O>` (repeatable) — the occasions to evaluate; default every occasion a beat answers. `<O>@<axis>,…` (dsl 0.24.0) varies only the named axes for `O`: it is evaluated where every other axis is at its first value (`dayEnd@run.day,run.slot=night` holds `run.slot` at `night` instead) and left blank elsewhere, so a once-a-day occasion reads once per day (`--json`: the column's `varies` and `heldAt`). With `--axis clock`, name the clock's axes — `dayEnd@clock.day,clock.slot=night`, or the clock's own paths, `dayEnd@run.day,run.slot=night` — to evaluate `O` once per day at one slot (the day's first slot when none is named; the day's last for the clock's `raise.dayEnd` occasion, where the clock raises it).
-- With `--axis clock`, an occasion the clock's `raise:` names is judged only where `lute play`'s `advance:` raises it: the `slot` occasion at every position but the one the run starts at, `dayStart` at a day's first slot but never on the day the run starts, `dayEnd` at a day's last slot (and at the last position of a clock that ends). Every other cell reads `not raised`, with no winner, eligible list or shadowed beats (`--json`: `"notRaised": true` on the result, and a root `notRaised` list of `{ occasion, reason }`; `--csv`: `not raised` in `notes`), and a header line says where the clock raises it. A beat eligible only in such cells is never eligible, with `` eligible at day 1 (Mon) morning, where the clock does not raise `dayStart` ``. The run starts where the save puts the clock, before any `--script` step. A `dayEnd` column that names its slot (`dayEnd@clock.day,clock.slot=afternoon`) is judged there: an `advance: day` closes the day wherever the clock stands.
+- With `--axis clock`, an occasion the clock's `raise:` names is judged only where `lute play`'s `advance:` raises it: the `slot` occasion at every position but the one the run starts at, `dayStart` at a day's first slot but never on the day the run starts, `dayEnd` at a day's last slot (and at the last position of a clock that ends); with the clock's `raiseAtStart: true`, the `slot` occasion and `dayStart` are raised where the run starts too. Every other cell reads `not raised`, with no winner, eligible list or shadowed beats (`--json`: `"notRaised": true` on the result, and a root `notRaised` list of `{ occasion, reason }`; `--csv`: `not raised` in `notes`), and a header line says where the clock raises it. A beat eligible only in such cells is never eligible, with `` eligible at day 1 (Mon) morning, where the clock does not raise `dayStart` ``. The run starts where the save puts the clock, before any `--script` step. A `dayEnd` column that names its slot (`dayEnd@clock.day,clock.slot=afternoon`) is judged there: an `advance: day` closes the day wherever the clock stands.
 - `--target <T>` (repeatable) — the targets a targeted occasion is raised for. By default a targeted occasion gets one column per target its beats name, not one per member of its domain; when no beat names a target, a single `(any)` column only its untargeted beats answer.
 - `--facts <REL>` (repeatable, dsl 0.24.0) — print the relation's facts in every settled cell: a table with a row per first argument and a column per cell (`--facts at`: who is where, when); a per-cell `facts` map in `--json`, a `facts:<rel>` column in `--csv`.
 - `--script <FILE>` — a play script: every cell starts from its save, with its `steps:` replayed exactly as `lute play` plays them.
@@ -13015,6 +13041,14 @@ The clock raises `dayEnd` and `dayStart` itself, so an `occasion:` step that rai
 ```
 
 `--json` carries it in the step's `notes`.
+
+Where the run starts no advance has stopped, so the clock raises neither its `slot` occasion nor
+`dayStart` there. An `occasion:` step raising one of them at that position plays what only the
+engine may raise, and says so: `` note: `dayStart` is the clock's `raise: { dayStart: dayStart }`,
+which the clock does not raise at day 1 (Mon) morning, where the run starts — if the engine raises
+it when a run starts, declare `raiseAtStart: true` on the clock ``. With `raiseAtStart: true` the
+step stands for the engine's own raise and carries no note; play still raises nothing by itself
+at the start.
 
 In `--json` each midnight stop is one entry of the advance's `days`, in order: `at` (the position), `occasion`, `writes` (the move that brought the clock there), `settled` (the settle after that move), and the raised occasion's own fields — `select`, `candidates`, `winner`, `presented`, `then`, and `quests` (the transitions after its raise). The advance's own `writes` and `quests` are then the last move, to where it stops. Step 3's second stop:
 
