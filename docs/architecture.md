@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.26.0.md`](proposals/scenario-dsl/0.26.0.md). The
+> [`proposals/scenario-dsl/0.27.0.md`](proposals/scenario-dsl/0.27.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -39,7 +39,13 @@ target is the flat command-record format the engine consumes.
 > `accept="external"`. Since 0.26.0 a project scales to many authors: state declared in
 > several documents must agree, a schema may `add:` members to a kind another declares,
 > directives take `when=`, components gain `@@who:` and param `default:`s, a beat may target
-> a whole kind (`target="kind:<kind>"`), and a rule body may count a lower stratum.
+> a whole kind (`target="kind:<kind>"`), and a rule body may count a lower stratum. Since
+> 0.27.0 every tool runs a document on one runtime (`lute play`, `run`, `trace` and `test`
+> execute the compiled IR on `lute_trace::exec::Machine`), `occasion.target` is a ground term
+> and `for="kind:<kind>"` presents a beat per member, the engine seam declares `raisedWhen:`
+> gates, a `terminal:` state, a finite clock and directive `asserts` / `retracts`, cadence
+> gains `once: week`, `seasons:`, quest `rearm=` and `spentBy:`, a component may be a beat
+> template, and the manifest's `sequence:` chains scenes into chapters.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -680,7 +686,7 @@ above, never a rule-body dependency):
   Single-file `check()` leaves relational queries undecided: a sibling's asserts are invisible
   to it.
 - **Beats (dsl 0.21.0).** A scene's `when:` beat condition is a CEL slot checked like a quest
-  `start` (`check.rs::check_beat_when` — profile, definite assignment, no `scene.*` reads) and
+  `start` (`check/guard.rs::check_beat_when` — profile, definite assignment, no `scene.*` reads) and
   decided per file by `reachability.rs` and under the project fact envelope by `fact_check.rs`,
   so a never-eligible beat is `E-BEAT-UNREACHABLE` (an entry beat keeps
   `E-ENTRY-UNREACHABLE`). `beats.rs` owns the shape rules (`E-BEAT-ATTR`), the occasion
@@ -739,13 +745,26 @@ above, never a rule-body dependency):
   one path (`E-STATE-DECL-CONFLICT`); `rel_schema.rs` / `schema_import.rs` merge each
   `add:` into the one declaration of its kind and fold a `subsetOf:` child's members into its
   parent, and `lute_manifest::project` expands `defaults.uses` globs and `questTier`.
-  `match_check.rs` checks entity-typed directive attributes and a reward kind's `target:`
+  `match_check/` checks entity-typed directive attributes and a reward kind's `target:`
   (`E-REWARD-TARGET`); `datalog_check.rs` stratifies rule-body `count(…)` aggregates
   (`E-RULE-AGGREGATE-CYCLE`); `display_names.rs` owns `W-DISPLAY-NAME-DUP` and `lore.rs`
   `W-ENTRY-WRITE-REREAD`. `beats.rs` resolves a `target="kind:<kind>"` beat to its members
   (`occasion.target`) and ranks it after a member-specific beat at equal priority, which the
   compiler carries as `targetKind`; a directive's `when=` lowers to a one-arm match in
   `normalize` / `expand`, and the trace walk follows a taken `::next`.
+- **One runtime, seasons, templates (dsl 0.27.0).** `templates.rs` desugars a `<beat use=…>`
+  into an ordinary bundle beat from its component's `beat:` header and `sequence.rs` derives
+  `on:` / `after:` / `priority:` from the manifest's `sequence:`, both before any check, so
+  every later pass sees plain beats. `gates.rs` judges a beat under its occasion's
+  `raisedWhen:` gate and the project's `terminal:` condition; `season.rs` folds `seasons:`
+  and checks `season.<name>.*`, `once: season:<name>` and `tier="season:<name>"`
+  (`E-SEASON-DECL`); `lute_manifest::clock` bounds a finite clock (`last:` / `days:`). The
+  parser owns `E-SET-SHAPE` and `E-ATTR-QUOTE`, and `project_check.rs`
+  `W-QUEST-TIER-IMPLICIT`. The monolithic `check.rs`, `match_check.rs` and `lute-cli`'s
+  `play.rs` are split into the `check/`, `match_check/` and `play/` module directories.
+  Messages carry no spec citation (`lute_core_span::plain_message`); `lute-cli`'s
+  `codes.rs` registry holds each code's grade, meaning and sections for `--explain`,
+  `--deny` and the diagnostics reference.
 
 ### Narrative time (spec §6, D11)
 
@@ -782,7 +801,7 @@ No part of this implementation is a Datalog evaluator, fixpoint loop, semi-naive
 store, or timestamp logic — every checker pass above is a compile-time property of the
 DECLARED schema/rule set, never a runtime derivation over live facts.
 
-### Checker pass ordering (`lute-check/src/check.rs::fold_env`)
+### Checker pass ordering (`lute-check/src/check/fold.rs::fold_env`)
 
 1. **Schema** — `rel_schema::build_rel_vocab` merges the `uses`/`extends`-composed vocabulary
    into one `RelVocab`, validating decl shape (`E-RELATION-*`, `E-ENTITY-KIND-*`,
@@ -867,7 +886,7 @@ can never false-positive. Every consumer's soundness argument reduces to "correc
 
 A new whole-document pass (`lute-check/src/reachability.rs`, modeled on `check_line_codes` —
 a free function over `&Document`, wired once in `check()` step 8) plus a per-literal
-extension of the existing exhaustiveness engine (`match_check.rs`). All analysis is **local**
+extension of the existing exhaustiveness engine (`match_check/`). All analysis is **local**
 to one `<match>`/`<branch>`/`<hub>`/`<quest>` — no cross-construct graph, no cross-document
 reasoning (spec §9 non-goals).
 
@@ -920,7 +939,7 @@ Dispatch on a param is a pure read of an invocation argument — it touches no a
 and records nothing, so it doesn't violate the purity contract that keeps `<branch>`/`<hub>`
 forbidden (recording a choice is a state *write*, which no component-body shape may do).
 
-`walk_component_body` (`lute-check/src/check.rs`) admits the param-`<match>` shape and
+`walk_component_body` (`lute-check/src/check/component_body.rs`) admits the param-`<match>` shape and
 recurses through its arms; every other shape hits one of two diagnostics:
 
 - **`E-COMPONENT-STATE`** — new (D6): a **positive scan** (unlike the ordinary
@@ -981,7 +1000,7 @@ parsed by `parse_line`'s `take_cel`) as a `CelString` guard — same key/type/cl
   against the hand-expanded twin's, modulo `addr`/label churn.
 - **`$` is NOT in scope (D9)** — the guard is checked under a `Ctx{ in_match: false,
   match_subject: None }` clone even when the line sits inside a `<match>` arm
-  (`check.rs`, `Node::Line` walk), matching `<on when>`'s existing rule; a bare `$` in a
+  (`check/walker.rs`, `Node::Line` walk), matching `<on when>`'s existing rule; a bare `$` in a
   `when=` slot is `E-DOLLAR-OUTSIDE-MATCH`.
 - **Identity invariants (§7.4)** — the sugar never adds, removes, renames, or reorders
   content lines relative to its explicit equivalent: `code` back-fill, `lineId` derivation,
@@ -1058,15 +1077,30 @@ raw slot text (string-mask aware via `cel_string_mask`, so `&`/`|`/`=`/`and`/`or
 expression evaluator, so D1 ("Lute declares; the engine executes") is restated as hard,
 structurally-enforced conformance rules — not conventions.
 
-**Crate map.** `lute-trace` is a **new terminal crate**
-(`src/{lib,value,eval,mock,walk,report}.rs`) depending on `lute-core-span`, `lute-syntax`,
-`lute-cel`, `lute-manifest`, `lute-check`, `lute-compile` — wired **only** into `lute-cli`
-(the one reverse edge, `lute-cli/Cargo.toml`'s `lute-trace` path dep). The workspace
+**Crate map.** `lute-trace` is a **terminal crate** depending on `lute-core-span`,
+`lute-syntax`, `lute-cel`, `lute-manifest`, `lute-check`, `lute-compile` — wired **only** into
+`lute-cli` and `lute-wasm` (the only reverse edges, their `Cargo.toml`s' `lute-trace` path
+deps). The workspace
 `members = ["crates/*"]` glob picks it up with no root edit. `crates/lute-trace/tests/
 quarantine.rs` reads every sibling manifest's raw `Cargo.toml` text — `lute-core-span`,
 `lute-syntax`, `lute-cel`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-lsp` — and
 fails the build if **any** contains the string `lute-trace`; this is a reviewable one-line
 manifest diff, not a convention.
+
+**One runtime (dsl 0.27.0, [`design/runtime-unification.md`](design/runtime-unification.md)).**
+Since 0.27 `lute-trace` also owns the one executor every tool runs a document on:
+`exec::Machine` walks a COMPILED artifact and a `Driver` (`exec/driver.rs`) supplies only what
+the runtimes decide differently — decisions, refusals, bridge answers, whether an unknown
+halts — and receives every transcript record. `lute run` drives it with `RunDriver`
+(`lute-cli/src/runner.rs`), `lute play` with `PlayDriver` (`exec/session/`, the playthrough
+world: tiers, `once` spending, the clock, quest settling, `engine:` writes), and `lute trace` /
+`lute test` / the playground's `trace_source` with `TraceDriver` (`trace.rs`). `exec/seam.rs`
+honours `raisedWhen:` gates and `terminal:`, `exec/cadence.rs` weeks, seasons and quest
+`rearm`, and `datalog.rs` is the one stratified fixpoint all of them derive with. The old AST
+walker (`walk.rs`) is gone. The differential test (`lute-cli/src/differential.rs`,
+`differential_trace_vs_run`, part of `cargo test`) runs every `docs/examples` document,
+conformance fixture and test fixture through trace and run with concrete inputs and fails on
+any difference in transcript, final state, facts, quest states or exit.
 
 **§4.2 rules, restated as implemented:**
 
@@ -1075,11 +1109,11 @@ manifest diff, not a convention.
    smoke (final gate step 4, below).
 2. **`trace` output is never a static guarantee.** The §5 codes, computed by the checker
    alone, are the only static reachability surface.
-3. **No engine machinery.** No Datalog fixpoint — a `derive: true` relation's `holds`/`count`
-   is a **bounded scan of the supplied mock fact set** (`eval::FactStore`; pattern lookup,
-   never derivation), reusing `rel_schema::check_atom` for the same
-   unknown/arity/foreign-arg checks seeded facts get (D18); no capability bridge, dice, or
-   scheduler.
+3. **No engine machinery beyond the shared runtime.** A `derive: true` relation is derived by
+   the one stratified fixpoint `lute run` and `lute play` use (`datalog.rs`, since 0.22), over
+   the mock's seeded facts, reusing `rel_schema::check_atom` for the same
+   unknown/arity/foreign-arg checks seeded facts get (D18); no capability bridge (bridge
+   results come from the mock's `bridges:` answers or stay unknown), dice, or scheduler.
 4. **Isolation is structural.** Per the crate map above.
 5. **The evaluated subset is closed.** `eval::eval` implements exactly §4.3's subset under
    three-valued (Kleene/K3) logic: `Value::Unknown` propagates — `false && unknown = false`,
@@ -1089,15 +1123,16 @@ manifest diff, not a convention.
    `isSet()`/`has()` are **definite** (D19 — see below); a bare value read of an unset path is
    `unknown`.
 
-**Walk (§4.4, `walk::trace_document`).** Document-ordered, applying writes as it goes
-(`::set`, mock-fact `::assert`/`::retract`); `<match>` arms top-to-bottom, an `unknown` arm
-halts the trace at that point (exit 3, unresolved atoms reported — trace never guesses past
-an unknown guard); `<branch>`/`<hub>` eligibility is re-evaluated at each presentation point
-against the then-effective state, so a choice enabled by an earlier in-flow write is never
-wrongly refused; `::use` is expanded via the SAME `lute-compile` normalize/expand entry
-points the compiler uses (`normalize_document`/`expand_document`, made `pub` for this), so
-component binding, the `when=` desugar, and the persist desugar are inherited by construction
-— zero duplicated logic (D14). Desugared records render with a `"(… sugar)"` annotation.
+**Walk (§4.4, `trace::trace_document`).** The document is gated, its mocks validated, then
+compiled (`lute_compile::compile_mapped`) and the artifact executed by the `Machine` with a
+`TraceDriver`: writes apply as it goes (`::set`, directive effects, `::assert` / `::retract`);
+`<match>` arms top-to-bottom, an `unknown` arm halts the trace at that point (exit 3,
+unresolved atoms reported — trace never guesses past an unknown guard); `<branch>`/`<hub>`
+eligibility is re-evaluated at each presentation point against the then-effective state, so a
+choice enabled by an earlier in-flow write is never wrongly refused. Because trace runs what
+the compiler emits, component binding, the `when=` desugar and the persist desugar are
+inherited by construction (D14); the compile-time `SourceMap` maps each record back to its
+span and authored text.
 
 **Output (§4.5).** Deterministic for identical inputs; human transcript or `--json`
 (`TraceReport::render_json`, normative top-level keys `file`/`seeds`/`steps`/`decisions`/

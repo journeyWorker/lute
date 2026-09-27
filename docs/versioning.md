@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.26.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.26.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.26.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.26.schema.json`](../schemas/lute-ir-0.26.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.27.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.27.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.27.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.27.schema.json`](../schemas/lute-ir-0.27.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.26.schema.json`](../schemas/lute-ir-0.26.schema.json)
+published as [`schemas/lute-ir-0.27.schema.json`](../schemas/lute-ir-0.27.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -693,11 +693,66 @@ placeholder kind `occasionTarget` (with its `entityKind`), and the rule-body
 literal `count`; a directive's `when=` lowers to a one-arm match and a param
 `default:` to its value, so neither adds a field. The schema file renames per
 release line (`lute-ir-0.25.schema.json` →
-[`lute-ir-0.26.schema.json`](../schemas/lute-ir-0.26.schema.json)).
+`lute-ir-0.26.schema.json`, since renamed).
 Artifacts that use none of it compile byte-identically apart from the version
 strings; `lute.core` does not move, so neither does `capabilityVersion`.
 Engines gate on MAJOR, so nothing widens, and the tree-sitter grammar is
 unchanged.
+
+**`0.27.0` aligns all three axes at `0.27.0`; the language and the IR both
+earn the move, the IR additively.** One runtime, seasons, templates: what the
+fifth dogfood round asked for
+([`proposals/scenario-dsl/0.27.0.md`](proposals/scenario-dsl/0.27.0.md)).
+`lute play`, `lute run`, `lute trace`, `lute test` and the playground's
+`trace_source` execute the compiled IR on one walker (`lute-trace`'s
+`exec::Machine`, driven per tool), and a differential test holds every example,
+conformance fixture and test fixture to one transcript, state and fact set
+under both drivers; directive effects, exclusivity after every write, bridge
+unknowns, hub `once` and quest settling now follow one rule in every tool.
+`occasion.target` is a ground term in fact queries and `per:` indexes, a
+`for="kind:<kind>"` beat of a `select: sequence` occasion is presented once
+per member, and an occasion may declare a typed `payload:`. The engine seam
+gains an occasion's `raisedWhen:` gate and a schema's `terminal:` condition
+(both judged by the checker and refused by `lute play` with the new
+`E-OCCASION-GATE`), a finite clock (`last:` / `days:`, the new
+`E-CLOCK-END`), and plugin directive `effects: { asserts, retracts }`; a
+`lute play` occasion step may carry `engine:` writes. Cadence gains
+`once: week`, quest `rearm=`, `seasons:` (the new `E-SEASON-DECL`) and
+`spentBy:`. A component may declare a `beat:` header and be used as a beat
+template (`<beat use=…>`, the new `E-TEMPLATE`), and the manifest's
+`sequence:` chains scenes into chapters (the new `E-SEQUENCE`,
+`W-SEQUENCE-ORDER`, `W-SEQUENCE-STALL`). Kinds may carry display `labels:`,
+and `{{n:plural(lamp|lamps)}}` joins the format hints. Diagnostics drop their
+spec citations from the message: the sections move to a `--json` `spec`
+array and `lute --explain <CODE>`, backed by one code registry and the new
+diagnostics reference. What moves for a 0.26-clean project: `::set` without an
+assignment operator is `E-SET-SHAPE` (it used to compile as `= 1`); a
+`{ domain: K }` / `{ entity: K }` path is member-checked wherever a literal
+meets it, and a `<match>` over it must cover K; a `<match on="@def">` whose
+def is a fact query is `E-MATCH-RELATION-SUBJECT`; curly-quoted attribute
+values are `E-ATTR-QUOTE`; a run-reading quest with no `tier=` warns
+`W-QUEST-TIER-IMPLICIT`; `lute test` gates on the project's verdict and judges
+`raisedWhen` / `terminal:`; transcript needles judge their attribute blocks;
+play and test scripts are validated before they run; `lute trace`, `compile`
+and `context` resolve a file against the nearest `lute.project.yaml`; and the
+diagnostics JSON `message` no longer carries citations. The IR change is
+additive: optional `gates`, `terminal` and `seasons` on the artifact and
+index, `clock.last` / `clock.days`, `forKind` and `spentBy` on beats, entries,
+bundle beats and index beat rows, the `once` values `week` and
+`season:<name>`, `QuestCmd.rearm` and the quest tier `season:<name>`, a
+`plugin` record's resolved `asserts` / `retracts`, `labels` on `entities[]`
+and `state[]` entries, and the placeholder format `plural` with its `forms`;
+a beat template, `sequence:` and `occasion.target` as a ground term lower to
+plain beats and conditions, so none adds a field. A `<match>` arm's `test` now
+carries the whole arm condition as CEL (an `is` arm over a subject with no
+portable `expr` used to lower to an empty or partial `test`). The schema file
+renames per release line (`lute-ir-0.26.schema.json` →
+[`lute-ir-0.27.schema.json`](../schemas/lute-ir-0.27.schema.json)).
+Artifacts that use none of it compile byte-identically apart from the version
+strings; `lute.core` does not move, so neither does `capabilityVersion`.
+Engines gate on MAJOR, so nothing widens. The tree-sitter grammar admits a
+self-closing template use (`<beat use="trainer" id="r3"/>`) and treats
+`rearm` / `spentBy` values as CEL.
 
 ## Which bump when
 

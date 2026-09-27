@@ -38,8 +38,8 @@ dsl 0.26.0(초안)부터 스크립트는 시계를 다음의 이름 붙은 슬�
 [0.22.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)(플레이·테스트
 하네스), [0.23.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)(계기
 조합, 기한, 번들), [0.24.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)(시계,
-퀘스트 구조, 브리지 응답), 초안인 [0.26.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)(시계
-목표, 엔진 수락, 종류 대상, 테스트와 플레이의 일치)가 이를 확장합니다. 엔진 측 계약(IR 필드와 엔진이 구현하는 선택 알고리즘)은
+퀘스트 구조, 브리지 응답), [0.26.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)(시계
+목표, 엔진 수락, 종류 대상, 테스트와 플레이의 일치), [0.27.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)(하나의 런타임, 엔진 게이트와 종료 상태, 끝이 있는 시계, 시즌, 비트 템플릿, `sequence:`)가 이를 확장합니다. 엔진 측 계약(IR 필드와 엔진이 구현하는 선택 알고리즘)은
 [`docs/runtime/beats-and-occasions.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/beats-and-occasions.md)입니다.
 0.21.0 이전의 `lute play`는 틱 클록 스케줄 파일을 걸었습니다. 그 레이어와 클록/레인/배치 모델, 그리고
 관련 플래그는 모두 제거되었습니다. 이제 시간은 틀이 아니라 비트 조건의 입력 중 하나입니다.

@@ -323,7 +323,23 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// of it compile byte-identically apart from the version strings.
 /// `schemas/lute-ir-0.25.schema.json` is renamed to
 /// `schemas/lute-ir-0.26.schema.json` per the release-line rule.
-pub const LUTE_IR_VERSION: &str = "0.26.0";
+///
+/// IR `0.27.0` is ADDITIVE over `0.26.0` (dsl 0.27.0): the optional
+/// artifact / index `gates` (occasion `raisedWhen:`), `terminal` and
+/// `seasons`, `clock.last` / `clock.days`, `forKind` and `spentBy` on
+/// `BeatIr` / `EntryCmd` / `BeatCmd` / index beat rows, the `once` values
+/// `"week"` and `"season:<name>"`, `QuestCmd.rearm` and the quest tier
+/// `"season:<name>"`, the `plugin` record's resolved `asserts` /
+/// `retracts`, `labels` on `entities[]` and `state[]` entries, and the
+/// placeholder format `"plural"` with its `forms` appear only when authored.
+/// A beat template, the manifest's `sequence:` and `occasion.target` as a
+/// ground term lower to plain beats and conditions, so none adds a field. A
+/// `<match>` arm's `test` now carries the whole arm condition as CEL (an
+/// `is` arm over a subject with no portable `expr` used to lower to an empty
+/// or partial test). Documents that use none of it compile byte-identically
+/// apart from the version strings. `schemas/lute-ir-0.26.schema.json` is
+/// renamed to `schemas/lute-ir-0.27.schema.json` per the release-line rule.
+pub const LUTE_IR_VERSION: &str = "0.27.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1535,14 +1551,14 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.26.0 axis alignment (docs/versioning.md): a minor release. The
-        // language earns the move (multi-author integrity, kinds assembled
-        // with `add:`, component `@@who` / defaults, directive `when=`, kind
-        // targets, rule aggregates) and so does the IR (additive
-        // `targetKind`, `occasionTarget`, the rule `count` literal) — both
-        // move independently of the toolchain pin.
-        assert_eq!(super::LUTE_IR_VERSION, "0.26.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.26.0");
+        // 0.27.0 axis alignment (docs/versioning.md): a minor release. The
+        // language earns the move (the engine seam, members bound by
+        // occasions, cadence, beat templates, `sequence:`, labels / plural)
+        // and so does the IR (additive `gates`, `terminal`, `seasons`,
+        // `forKind`, `spentBy`, `rearm`, directive `asserts` / `retracts`,
+        // `labels`, `plural`) — both move independently of the toolchain pin.
+        assert_eq!(super::LUTE_IR_VERSION, "0.27.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.27.0");
     }
 
     #[test]
@@ -1551,8 +1567,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.26.0");
-        assert_eq!(v["irVersion"], "0.26.0");
+        assert_eq!(v["lute"], "0.27.0");
+        assert_eq!(v["irVersion"], "0.27.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");
