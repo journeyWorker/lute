@@ -200,23 +200,7 @@ fn an_unknown_sequence_id_is_e_sequence_at_the_manifest() {
 #[test]
 fn a_sequence_on_a_select_sequence_occasion_plays_in_one_raise() {
     let dir = temp_dir("seqsel");
-    write(
-        &dir,
-        "lute.project.yaml",
-        "pluginsDir: plugins/\ndefaultProfile: core\nprofiles:\n  core:\n    plugins: { mini: true }\n\
-         sequence:\n  occasion: newGame\n  scenes: [one, two]\n",
-    );
-    write(
-        &dir,
-        "plugins/mini/plugin.yaml",
-        "id: mini\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
-         exports:\n  occasions: occasions/\n",
-    );
-    write(
-        &dir,
-        "plugins/mini/occasions/o.yaml",
-        "occasions:\n  newGame: { select: sequence, description: \"every eligible beat\" }\n",
-    );
+    select_sequence_project(&dir, "[one, two]");
     for id in ["one", "two"] {
         write(&dir, &format!("scenes/{id}.lute"), &scene(id));
     }
@@ -227,6 +211,60 @@ fn a_sequence_on_a_select_sequence_occasion_plays_in_one_raise() {
     );
     let (code, play) = run(&dir, &["play", ".", "--script", "plays/new.play.yaml"]);
     assert_eq!(code, Some(0), "{play}");
+}
+
+/// A project whose `sequence:` lists `scenes` on `newGame`, a `select:
+/// sequence` occasion.
+fn select_sequence_project(dir: &Path, scenes: &str) {
+    write(
+        dir,
+        "lute.project.yaml",
+        &format!(
+            "pluginsDir: plugins/\ndefaultProfile: core\nprofiles:\n  core:\n    plugins: {{ mini: true }}\n\
+             sequence:\n  occasion: newGame\n  scenes: {scenes}\n"
+        ),
+    );
+    write(
+        dir,
+        "plugins/mini/plugin.yaml",
+        "id: mini\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n",
+    );
+    write(
+        dir,
+        "plugins/mini/occasions/o.yaml",
+        "occasions:\n  newGame: { select: sequence, description: \"every eligible beat\" }\n",
+    );
+}
+
+/// On a `select: sequence` occasion the list's order IS the derived
+/// priority, so a listed scene's own `priority:` that breaks it is
+/// `W-SEQUENCE-ORDER` at that key; one that keeps the order is silent.
+#[test]
+fn an_own_priority_that_reorders_a_select_sequence_warns() {
+    let dir = temp_dir("seqorder");
+    select_sequence_project(&dir, "[one, two, three]");
+    write(&dir, "scenes/one.lute", &scene("one"));
+    write(
+        &dir,
+        "scenes/two.lute",
+        &scene("two").replacen("title: two\n", "title: two\npriority: 50\n", 1),
+    );
+    write(
+        &dir,
+        "scenes/three.lute",
+        &scene("three").replacen("title: three\n", "title: three\npriority: 5\n", 1),
+    );
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(0), "{out}");
+    assert!(
+        out.contains(
+            "scenes/two.lute:5:1: warning [W-SEQUENCE-ORDER] scene `two` sets its own `priority: \
+             50`, so it plays out of the order `sequence:` lists"
+        ),
+        "{out}"
+    );
+    assert_eq!(out.matches("W-SEQUENCE-ORDER").count(), 1, "{out}");
 }
 
 /// FS-F5: a malformed `sequence:` is located, suggests the key, and does

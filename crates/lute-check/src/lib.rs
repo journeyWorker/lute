@@ -82,7 +82,28 @@ pub fn desugar_document(
 ) -> Vec<lute_core_span::Diagnostic> {
     meta::apply_quest_tier_default(doc, &input.defaults);
     sequence::apply_sequence(doc, &input.defaults, &input.snapshot.occasions);
-    templates::expand_beat_templates(doc, &input.components, &input.snapshot.occasions)
+    if !doc
+        .beats
+        .iter()
+        .any(|b| b.template.as_ref().is_some_and(|t| !t.expanded))
+    {
+        return Vec::new();
+    }
+    // The def names `@name` resolves against in this document: plugin,
+    // imported and inline `defs:`.
+    let mut host_defs: std::collections::BTreeSet<String> =
+        input.snapshot.defs.keys().cloned().collect();
+    host_defs.extend(input.imports.defs.keys().cloned());
+    let inline = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml).ok();
+    if let Some(defs) = inline.as_ref().and_then(|v| v.get("defs")?.as_mapping()) {
+        host_defs.extend(defs.keys().filter_map(|k| k.as_str().map(str::to_string)));
+    }
+    templates::expand_beat_templates(
+        doc,
+        &input.components,
+        &input.snapshot.occasions,
+        &host_defs,
+    )
 }
 
 pub use accept::{

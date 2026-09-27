@@ -557,6 +557,11 @@ pub fn fold_env(
         // Round-5 T3-23: a literal param `default:` is judged once, here, at
         // the component's own `params:` entry — not at every `::use`.
         fold_diags.extend(check_param_literal_defaults(&typed, &doc.meta));
+        // dsl 0.27.0 §6: a template condition's `@name` resolves here, once,
+        // against the params and every def this component sees.
+        if let Some(template) = &typed.beat_template {
+            fold_diags.extend(crate::templates::check_template_refs(template, &defs));
+        }
     }
 
     // dsl 0.21.0 §7b: settle every imported and inline def's produced type

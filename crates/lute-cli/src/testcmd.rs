@@ -2567,10 +2567,10 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
         ),
         ("state", Some(actual)) => outln!(
             out,
-            "      state {}: expected {:?}, got {:?}",
+            "      state {}: expected {}, got {}",
             e.subject,
-            e.expected,
-            actual
+            state_literal(&e.expected),
+            state_literal(actual)
         ),
         ("quests", _) if !QUEST_STATES.contains(&e.expected.as_str()) => outln!(
             out,
@@ -2609,10 +2609,10 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
         ("state", None) => {
             outln!(
                 out,
-                "      state {}: expected {:?}, but the path was never written and has no seed \
+                "      state {}: expected {}, but the path was never written and has no seed \
                  or declared default",
                 e.subject,
-                e.expected
+                state_literal(&e.expected)
             );
             if e.expected == NEVER_WRITTEN {
                 // Do not invent grammar here: `expect:`'s key set is closed
@@ -2685,6 +2685,17 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
             outln!(out, "      accepts: expected {}, got {actual}", e.expected)
         }
         _ => {}
+    }
+}
+
+/// A state value as a miss line shows it: numbers and booleans bare (`3`,
+/// `true`), anything else quoted (`"open"`) — the text form carries no type,
+/// so the shape decides.
+fn state_literal(text: &str) -> String {
+    if text == "true" || text == "false" || text.parse::<f64>().is_ok_and(f64::is_finite) {
+        text.to_string()
+    } else {
+        format!("{text:?}")
     }
 }
 

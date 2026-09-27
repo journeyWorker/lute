@@ -259,7 +259,7 @@ fn expect_state_compares_the_effective_value_default_and_seed_included() {
     let out = lute(&["test", dir.to_str().unwrap()]);
     let text = stdout(&out);
     assert_eq!(out.status.code(), Some(1), "{text}");
-    assert!(text.contains("expected \"5\", got \"0\""), "{text}");
+    assert!(text.contains("expected 5, got 0"), "{text}");
 }
 
 /// A beat scene (dsl 0.21.0 §3.1) that answers `arrive` only on day 3.

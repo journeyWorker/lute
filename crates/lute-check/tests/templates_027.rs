@@ -275,6 +275,50 @@ fn a_failed_template_does_not_cascade_into_its_uses() {
     assert_eq!(codes(&diags), vec!["E-TEMPLATE"], "{diags:#?}");
 }
 
+/// A `@name` in a condition key that is no param and no def is
+/// `E-UNDECLARED-REF` once, at the header's `when:` key with a did-you-mean
+/// over the params — never at every use, which derives no `when` for it.
+#[test]
+fn an_unknown_condition_ref_is_reported_once_at_the_header() {
+    let bad = BOND.replace(
+        "when: \"user.bond >= @need\"",
+        "when: \"user.bond >= @need && @nedd\"",
+    );
+    let lore = format!(
+        "{LORE_HEAD}<beat use=\"bondStory\" id=\"a\" who=\"x\">\n@narrator: Hi.\n</beat>\n\n\
+<beat use=\"bondStory\" id=\"b\" who=\"y\">\n@narrator: Hi.\n</beat>\n"
+    );
+    let (input, diags) = run(&bad, &lore);
+    assert!(diags.is_empty(), "the uses report nothing: {diags:#?}");
+    let doc = desugared(&input);
+    assert!(
+        doc.beats.iter().all(|b| b.when.is_none()),
+        "the unresolvable `when` is not derived"
+    );
+
+    let own = check_component(&bad);
+    let refs: Vec<_> = own
+        .iter()
+        .filter(|d| d.code == "E-UNDECLARED-REF")
+        .collect();
+    assert_eq!(refs.len(), 1, "{own:#?}");
+    assert_eq!(refs[0].span.byte_start, bad.find("when: ").unwrap());
+    assert!(
+        refs[0].message.contains("`@nedd`") && refs[0].message.contains("did you mean `@need`?"),
+        "{}",
+        refs[0].message
+    );
+
+    // A def the component declares resolves in both places.
+    let with_def = bad.replace("beat:\n", "defs:\n  nedd: \"user.bond > 1\"\nbeat:\n");
+    assert!(
+        !check_component(&with_def)
+            .iter()
+            .any(|d| d.code == "E-UNDECLARED-REF"),
+        "a declared def resolves"
+    );
+}
+
 /// ML-F7: an optional extra condition passed as a param and left empty or
 /// `true` drops out of the derived `when`, never `… && (true)`.
 #[test]

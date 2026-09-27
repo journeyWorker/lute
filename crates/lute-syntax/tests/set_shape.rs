@@ -84,6 +84,33 @@ fn a_set_with_no_value_is_an_error() {
     );
 }
 
+/// Prose that does not open with a state path and an operator gets the
+/// shape itself, never an invented operator guess (`add = 1 to …`), and
+/// leaves no write behind for the checker to cascade on.
+#[test]
+fn prose_that_is_not_path_op_value_names_the_shape() {
+    for set in [
+        "::set{ add 1 to run.cluesFound }",
+        "::set{ increment run.cluesFound }",
+        "::set{ run.cluesFound by 2 }",
+    ] {
+        let (doc, diags) = lute_syntax::parse(&format!("{HDR}{set}\n"));
+        assert_eq!(diags.len(), 1, "{set}: {diags:?}");
+        assert_eq!(diags[0].code, "E-SET-SHAPE");
+        assert_eq!(
+            diags[0].message, "`::set` takes `<path> <op> <value>`, e.g. `run.cluesFound += 1`",
+            "{set}"
+        );
+        assert!(
+            !doc.shots[0]
+                .body
+                .iter()
+                .any(|n| matches!(n, lute_syntax::ast::Node::Set(_))),
+            "{set}: no write is recovered"
+        );
+    }
+}
+
 #[test]
 fn every_assignment_operator_parses_clean() {
     for set in [

@@ -1630,7 +1630,7 @@ fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
     );
     assert_eq!(code, Some(1), "{text}");
     assert!(
-        text.contains("expected \"9\", got \"2\""),
+        text.contains("expected 9, got 2"),
         "a real value miss still names both sides: {text}"
     );
 

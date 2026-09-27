@@ -837,7 +837,7 @@ impl Parser<'_> {
             }
             if trimmed.starts_with("::set{") {
                 let line = self.cursor;
-                if let Node::Set(mut set) = self.parse_set() {
+                if let Some(Node::Set(mut set)) = self.parse_set() {
                     // dsl 0.24.0 §1: a guarded write is logic, and a track
                     // holds no logic (§7.4) — reject it and keep the clip
                     // unguarded so no consumer ever sees a clip `when`.
